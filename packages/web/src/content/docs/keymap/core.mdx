@@ -8,7 +8,7 @@ order: 2
 
 This page covers `@opentui/keymap` without any host-specific adapter.
 
-Use the bare engine when you want a custom host or when you want to build addons on top of the shared registration surface. If you want a ready-made host, start with [OpenTUI](/docs/keymap/opentui) or [HTML](/docs/keymap/html).
+Use the bare engine when you want a custom host or when you want to build addons on top of the shared registration surface. If you want a ready-made host or need the host contract, start with [Hosts](/docs/keymap/hosts).
 
 ## Installation
 
@@ -27,6 +27,8 @@ const keymap = new Keymap(host as KeymapHost<object>)
 Bare keymaps do not parse string bindings until you install binding parsers and event match resolvers. In practice that usually means `registerDefaultKeys()` or one of the default host helpers.
 
 ## `KeymapHost`
+
+`KeymapHost` is the contract that built-in hosts and custom adapters implement. See [Hosts](/docs/keymap/hosts) for the built-in OpenTUI and HTML adapters.
 
 | Member                        | Required | Description                                                                 |
 | ----------------------------- | -------- | --------------------------------------------------------------------------- |

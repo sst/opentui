@@ -29,7 +29,7 @@ A binding can target a named command, an inline handler, or a specific key event
 ]
 ```
 
-<img src="/keymap-engine-overview.svg" alt="Keymap Engine Concept Overview" style="width: 100%; margin: 1.5rem 0; display: block;" />
+![Keymap Engine Concept Overview](/keymap-engine-overview.svg)
 
 ## Register
 
@@ -151,9 +151,8 @@ A pending sequence is the prefix the user has already typed, such as `g` while w
 
 `getActiveKeys()` is the companion query. It does not list every registered binding; it projects the next reachable strokes from the current focus and pending state. That makes it the right API for key hints, which-key style UIs and other live discovery surfaces.
 
-- [Core](/docs/keymap/core) - bare `Keymap` and `KeymapHost`
-- [OpenTUI](/docs/keymap/opentui) - `CliRenderer` / `Renderable` host adapter
-- [HTML](/docs/keymap/html) - `HTMLElement` / `KeyboardEvent` host adapter
+- [Core](/docs/keymap/core) - bare `Keymap` and the shared runtime APIs
+- [Hosts](/docs/keymap/hosts) - built-in OpenTUI and HTML adapters plus the `KeymapHost` contract
 - [React](/docs/keymap/react) - provider and hooks for a pre-created OpenTUI keymap
 - [Solid](/docs/keymap/solid) - provider and hooks for a pre-created OpenTUI keymap
 - [Addons](/docs/keymap/addons) - shipped addons plus addon authoring
@@ -186,4 +185,4 @@ The default helpers intentionally stay small. Leader tokens, ex commands, timed 
 
 - [Core](/docs/keymap/core) documents the shared runtime, queries, intercepts and extension points.
 - [Addons](/docs/keymap/addons) covers the shipped addons and how to build your own on top of the public APIs.
-- [OpenTUI](/docs/keymap/opentui), [HTML](/docs/keymap/html), [React](/docs/keymap/react) and [Solid](/docs/keymap/solid) cover the host/framework-specific surfaces.
+- [Hosts](/docs/keymap/hosts), [React](/docs/keymap/react) and [Solid](/docs/keymap/solid) cover the built-in host and framework-specific surfaces.
