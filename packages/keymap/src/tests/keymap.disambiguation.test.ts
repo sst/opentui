@@ -316,6 +316,10 @@ describe("keymap: disambiguation", () => {
   test("deferred disambiguation can resolve to the exact binding after a timeout", async () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
+    let resolveGoRan: () => void = () => {}
+    const goRan = new Promise<void>((resolve) => {
+      resolveGoRan = resolve
+    })
 
     keymap.registerLayer({
       commands: [
@@ -323,6 +327,7 @@ describe("keymap: disambiguation", () => {
           name: "go",
           run() {
             calls.push("go")
+            resolveGoRan()
           },
         },
         {
@@ -336,7 +341,7 @@ describe("keymap: disambiguation", () => {
 
     keymap.appendDisambiguationResolver((ctx) => {
       return ctx.defer(async (deferred) => {
-        const elapsed = await deferred.sleep(5)
+        const elapsed = await deferred.sleep(1)
         if (!elapsed) {
           return
         }
@@ -356,7 +361,7 @@ describe("keymap: disambiguation", () => {
 
     expect(stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true })).toBe("g")
 
-    await Bun.sleep(20)
+    await goRan
 
     expect(calls).toEqual(["go"])
     expect(keymap.getPendingSequence()).toEqual([])
