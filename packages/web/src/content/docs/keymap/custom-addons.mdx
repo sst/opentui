@@ -198,6 +198,8 @@ Use the `clear*()` methods only when your addon owns that whole stage. They are 
 
 Use this when the same sequence is both an exact command and a prefix, such as `g` and `gg`.
 
+Register a disambiguation resolver before registering same-layer exact/prefix bindings. Without a resolver, the compiler rejects the ambiguous binding and keeps the valid earlier bindings.
+
 `KeyDisambiguationContext` exposes:
 
 | Member | Purpose |
@@ -214,6 +216,8 @@ Use this when the same sequence is both an exact command and a prefix, such as `
 | `defer(handler)` | Start cancellable async disambiguation work |
 
 Disambiguation resolvers themselves must return synchronously. If you need async behavior, use `ctx.defer(...)`.
+
+Command handlers are different: they may return a promise, but only a synchronous `false` rejects the current candidate and lets lower-precedence handlers continue.
 
 ### `LayerAnalyzer`
 
@@ -305,6 +309,7 @@ This is how the OpenTUI textarea helpers safely share command and suspension inf
 ### Host-dependent behavior
 
 - `intercept("raw", ...)` only works when the host implements `onRawInput()`.
+- Raw hosts must stop raw input propagation when an `onRawInput()` listener returns `true`.
 - After the host is destroyed, host-backed reads such as `getActiveKeys()` are unavailable, but metadata reads such as `getCommands()` and runtime data access remain usable.
 
 ## Reference implementations

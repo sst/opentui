@@ -42,9 +42,22 @@ The keymap core does not know about DOM nodes, terminal renderables or any other
 | `onTargetDestroy(target, listener)` | yes | Notifies when a local layer target is destroyed or removed |
 | `createCommandEvent()` | yes | Creates the synthetic event used by `runCommand()` and `dispatchCommand()` |
 | `onDestroy(listener)` | no | Optional host-destroy notification |
-| `onRawInput(listener)` | no | Optional raw input hook used before key parsing |
+| `onRawInput(listener)` | no | Optional raw input hook used before key parsing. The listener returns `true` when it consumed the sequence |
 
 If you are building your own runtime adapter, implement this contract and pass it to `new Keymap(host)`.
+
+Host key events must satisfy `KeymapEvent`:
+
+| Member | Purpose |
+| --- | --- |
+| `name` | Normalized key name |
+| `ctrl` / `shift` / `meta` | Modifier state |
+| `super` / `hyper` | Optional extra modifier state |
+| `preventDefault()` | Prevent the matched event from reaching the host target |
+| `stopPropagation()` | Stop later listeners from seeing the event |
+| `propagationStopped` | `true` after propagation was stopped |
+
+If your host implements `onRawInput()`, it must call each listener before key parsing and stop when a listener returns `true`.
 
 ## Built-in host helpers
 

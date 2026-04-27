@@ -53,7 +53,7 @@ When a key event arrives from the host, the engine walks the active layers to fi
 
 - Bindings are matched against active layers based on focus, priority and conditions.
 - Multi-stroke sequences build up a pending sequence until resolved.
-- Commands run in your application space and can return `false` to let lower-priority handlers continue.
+- Commands run in your application space. A synchronous `false` lets lower-precedence handlers continue; async commands are handled immediately and report async errors through diagnostics.
 - Use `intercept("key", ...)` or `intercept("raw", ...)` to hook into the input pipeline.
 - See [Hosts](/docs/keymap/hosts) for how built-in hosts deliver press, release, focus and optional raw input events.
 
@@ -82,7 +82,7 @@ A binding always has a `key`, and it can also specify `cmd`, `event`, `preventDe
 - `preventDefault` controls whether the host event escapes after a match.
 - `fallthrough` controls whether lower-precedence keymap candidates can continue after this binding runs.
 
-Release bindings are supported, but only for a single stroke. Multi-stroke release bindings such as `"dd"` with `event: "release"` are rejected.
+Release bindings are supported, but only for a single stroke. Multi-stroke release bindings such as `"dd"` with `event: "release"` are rejected. Release bindings dispatch on key release, but they do not appear in `getActiveKeys()` because active-key discovery is based on press/pending-sequence state.
 
 ### Parser-driven strings
 

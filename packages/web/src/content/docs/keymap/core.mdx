@@ -37,7 +37,18 @@ Bare keymaps do not parse string bindings until you install binding parsers and 
 | `onTargetDestroy(target, fn)` | yes      | Subscribe to target disposal/removal                                        |
 | `createCommandEvent()`        | yes      | Creates the synthetic event used by `runCommand()` and `dispatchCommand()`  |
 | `onDestroy(listener)`         | no       | Optional host-destroy notification                                          |
-| `onRawInput(listener)`        | no       | Optional raw input hook, used before host key parsing                       |
+| `onRawInput(listener)`        | no       | Optional raw input hook, used before host key parsing. The listener returns `true` when it consumed the sequence |
+
+Host key events must satisfy `KeymapEvent`:
+
+| Member | Description |
+| --- | --- |
+| `name` | Normalized key name |
+| `ctrl` / `shift` / `meta` | Modifier state |
+| `super` / `hyper` | Optional extra modifier state |
+| `preventDefault()` | Prevents the matched event from reaching the host target |
+| `stopPropagation()` | Stops later keymap/host listeners from seeing the event |
+| `propagationStopped` | `true` after propagation was stopped |
 
 ## Layers
 
@@ -70,7 +81,7 @@ keymap.registerLayer({
 | extra fields | Feed layer-field compilers and binding compilation. Layer fields do not surface public attrs |
 
 - Targetless layers are always active.
-- Local layers dispatch before global layers.
+- Active layers all use the same precedence rules: higher `priority` wins, then newer layers win.
 - Returning `false` from a command rejects that candidate so lower-precedence handlers can continue.
 - `fallthrough` and `preventDefault` are independent. `fallthrough` continues inside the keymap; `preventDefault` controls whether the event escapes to the host.
 
@@ -85,6 +96,8 @@ keymap.registerLayer({
 | Release binding       | `{ key: "a", event: "release", ...}`| Release bindings support a single stroke only                               |
 
 `BindingInput` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
+
+Release bindings dispatch on key release, but they do not appear in `getActiveKeys()` because active-key discovery is based on press/pending-sequence state.
 
 The shared default parser understands single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key and `<token>` segments. Spaced Emacs-style sequences such as `ctrl+x ctrl+s` are not part of the default parser.
 
@@ -122,6 +135,8 @@ Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical fo
 | `normalizeBindings(bindings)`  | Expands shorthand bindings into `BindingInput[]`                                                      |
 
 `dispatchCommand()` respects current activation and can return `inactive` or `disabled` when the command exists but is not currently dispatchable. `runCommand()` walks the registered chain directly, so it can execute command-only layers programmatically even when they do not have an active binding.
+
+Command handlers may be sync or async. Only a synchronous `false` rejects the candidate and lets lower-precedence handlers continue. A returned promise is treated as handled immediately; async rejection is reported through the `error` diagnostic event.
 
 `RunCommandOptions`:
 
@@ -220,6 +235,8 @@ Every registration method above returns a disposer. The matching `clear*()` meth
 ## Disambiguation
 
 Ambiguity happens when the same sequence is both an exact command and a prefix of a longer binding, for example `g` and `gg`.
+
+Same-layer exact/prefix ambiguity is only allowed when at least one disambiguation resolver is registered. Without one, registering both `g` and `gg` in the same layer emits a compile error and keeps the valid earlier bindings.
 
 ```ts
 keymap.appendDisambiguationResolver((ctx) => {
