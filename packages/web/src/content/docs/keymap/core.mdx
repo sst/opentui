@@ -41,14 +41,14 @@ Bare keymaps do not parse string bindings until you install binding parsers and 
 
 Host key events must satisfy `KeymapEvent`:
 
-| Member                    | Description                                              |
-| ------------------------- | -------------------------------------------------------- |
-| `name`                    | Normalized key name                                      |
-| `ctrl` / `shift` / `meta` | Modifier state                                           |
-| `super` / `hyper`         | Optional extra modifier state                            |
-| `preventDefault()`        | Prevents the matched event from reaching the host target |
-| `stopPropagation()`       | Stops later keymap/host listeners from seeing the event  |
-| `propagationStopped`      | `true` after propagation was stopped                     |
+| Member                    | Description                                                                                     |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| `name`                    | Normalized key name                                                                             |
+| `ctrl` / `shift` / `meta` | Modifier state                                                                                  |
+| `super` / `hyper`         | Optional extra modifier state                                                                   |
+| `preventDefault()`        | Prevents the matched event from reaching the host target                                        |
+| `stopPropagation()`       | Stops later keymap/host listeners from seeing the event and sets `propagationStopped` to `true` |
+| `propagationStopped`      | `true` after `stopPropagation()` was called                                                     |
 
 ## Layers
 
@@ -97,22 +97,30 @@ keymap.registerLayer({
 
 `BindingInput` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 
+`BindingInput` field defaults:
+
+| Field            | Default   | Description                                                                                  |
+| ---------------- | --------- | -------------------------------------------------------------------------------------------- |
+| `event`          | `"press"` | Use `"release"` for single-stroke release bindings                                           |
+| `preventDefault` | `true`    | Calls `event.preventDefault()` and `event.stopPropagation()` after a match                   |
+| `fallthrough`    | `false`   | When `true`, later matching bindings in the same dispatch chain still run after this command |
+
 Release bindings dispatch on key release, but they do not appear in `getActiveKeys()` because active-key discovery is based on press/pending-sequence state.
 
 The shared default parser understands single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key and `<token>` segments. Spaced Emacs-style sequences such as `ctrl+x ctrl+s` are not part of the default parser.
 
 ## State and discovery
 
-| Method                    | Description                                                                  |
-| ------------------------- | ---------------------------------------------------------------------------- |
-| `setData(name, value)`    | Write runtime data                                                           |
-| `getData(name)`           | Read runtime data                                                            |
-| `hasPendingSequence()`    | `true` when a multi-stroke prefix is active                                  |
-| `getPendingSequence()`    | Current pending sequence as `KeySequencePart[]`                              |
-| `clearPendingSequence()`  | Clears the pending sequence                                                  |
-| `popPendingSequence()`    | Removes the last pending stroke. Returns `true` when a stroke was removed    |
-| `getActiveKeys(options?)` | Returns the currently reachable keys for the current focus and pending state |
-| `createKeyMatcher(key)`   | Parses once and returns a reusable predicate for strokes or sequence parts   |
+| Method                    | Description                                                                                                                      |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `setData(name, value)`    | Write runtime data                                                                                                               |
+| `getData(name)`           | Read runtime data                                                                                                                |
+| `hasPendingSequence()`    | `true` when a multi-stroke prefix is active                                                                                      |
+| `getPendingSequence()`    | Current pending sequence as `KeySequencePart[]`                                                                                  |
+| `clearPendingSequence()`  | Clears the pending sequence                                                                                                      |
+| `popPendingSequence()`    | Removes the last pending stroke. Returns `true` when a stroke was removed                                                        |
+| `getActiveKeys(options?)` | Returns the currently reachable keys for the current focus and pending state                                                     |
+| `createKeyMatcher(key)`   | Parses one `KeyLike` and returns a single-stroke predicate for any `KeyStringifyInput`. It does not match multi-stroke sequences |
 
 `getActiveKeys()` accepts `ActiveKeyOptions`:
 
@@ -121,7 +129,36 @@ The shared default parser understands single-stroke named keys, modifier chords,
 | `includeBindings` | `false` | Include per-key `bindings` arrays with full binding views                      |
 | `includeMetadata` | `false` | Include `bindingAttrs` and `commandAttrs` on active keys and returned bindings |
 
-Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical formatting renders `return` as `enter`; `preferDisplay: true` keeps preserved token displays such as `<leader>`.
+`ActiveKey` shape:
+
+| Field          | Type                    | Description                                                                                |
+| -------------- | ----------------------- | ------------------------------------------------------------------------------------------ |
+| `stroke`       | `NormalizedKeyStroke`   | Normalized stroke (name plus modifier flags)                                               |
+| `display`      | `string`                | Display string for the stroke, including the preserved token form when one was used        |
+| `tokenName`    | `string?`               | Token name when this key resolved through a registered token such as `<leader>`            |
+| `continues`    | `boolean`               | `true` when at least one binding continues the sequence past this key                      |
+| `command`      | `BindingCommand?`       | Command at this exact sequence, if any                                                     |
+| `bindings`     | `ActiveBinding[]?`      | Per-key bindings; populated only when `includeBindings: true`                              |
+| `bindingAttrs` | `Readonly<Attributes>?` | Compiled binding attrs for the chosen binding; populated only when `includeMetadata: true` |
+| `commandAttrs` | `Readonly<Attributes>?` | Compiled command attrs for the chosen binding; populated only when `includeMetadata: true` |
+
+`ActiveBinding` shape:
+
+| Field            | Type                    | Description                                            |
+| ---------------- | ----------------------- | ------------------------------------------------------ |
+| `sequence`       | `KeySequencePart[]`     | Full key sequence that triggers the binding            |
+| `event`          | `"press" \| "release"`  | Event the binding fires on                             |
+| `preventDefault` | `boolean`               | Resolved `preventDefault` after applying the default   |
+| `fallthrough`    | `boolean`               | Resolved `fallthrough` after applying the default      |
+| `command`        | `BindingCommand?`       | Command name or inline handler attached to the binding |
+| `attrs`          | `Readonly<Attributes>?` | Compiled binding-field attrs                           |
+| `commandAttrs`   | `Readonly<Attributes>?` | Compiled command-field attrs for the bound command     |
+
+Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical formatting renders `return` as `enter`; `preferDisplay: true` keeps preserved token displays such as `<leader>`. Both are exported from `@opentui/keymap`:
+
+```ts
+import { stringifyKeyStroke, stringifyKeySequence } from "@opentui/keymap"
+```
 
 ## Commands and queries
 
@@ -135,6 +172,19 @@ Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical fo
 | `normalizeBindings(bindings)`    | Expands shorthand bindings into `BindingInput[]`                                |
 
 `dispatchCommand()` respects current activation and can return `inactive` or `disabled` when the command exists but is not currently dispatchable. `runCommand()` walks the registered chain directly, so it can execute command-only layers programmatically even when they do not have an active binding.
+
+`RunCommandResult` is `{ ok: true, command? }` on success or `{ ok: false, reason, command? }` on failure. Reject reasons:
+
+| Reason         | Meaning                                                                                               |
+| -------------- | ----------------------------------------------------------------------------------------------------- |
+| `not-found`    | No registered command, resolver, or chain entry matched the supplied name                             |
+| `inactive`     | The command exists but no candidate is active for the supplied/current focus (`dispatchCommand` only) |
+| `disabled`     | All active candidates are gated off by `enabled` or other command-field matchers                      |
+| `invalid-args` | A resolver-provided rejection such as Ex-command argument validation                                  |
+| `rejected`     | Every candidate's handler returned synchronous `false`                                                |
+| `error`        | A resolver, runtime matcher, or handler threw synchronously                                           |
+
+`command` is included on rejected results when `includeCommand: true` is set and the keymap could resolve a record for the name.
 
 Command handlers may be sync or async. Only a synchronous `false` rejects the candidate and lets lower-precedence handlers continue. A returned promise is treated as handled immediately; async rejection is reported through the `error` diagnostic event.
 
@@ -264,6 +314,20 @@ Resolver context exposes:
 | `defer(handler)`      | Start cancellable async disambiguation work    |
 
 Disambiguation resolvers must return synchronously. For async behavior, use `ctx.defer(...)`. If no resolver decides, the engine falls back to prefix handling and emits a warning.
+
+`defer(handler)` invokes `handler` with a `KeyDeferredDisambiguationContext`:
+
+| Member               | Description                                                                                               |
+| -------------------- | --------------------------------------------------------------------------------------------------------- |
+| `signal`             | `AbortSignal` aborted when a new key, focus change, or `clearPendingSequence()` cancels the deferred work |
+| `sequence`           | Pending sequence captured when `defer` was called                                                         |
+| `focused`            | Focused target captured when `defer` was called                                                           |
+| `sleep(ms)`          | Resolves to `true` if the timeout elapsed, `false` if `signal` aborted first                              |
+| `runExact()`         | Decision: dispatch the captured exact binding                                                             |
+| `continueSequence()` | Decision: keep the prefix pending                                                                         |
+| `clear()`            | Decision: clear the pending sequence                                                                      |
+
+The handler may return a decision, a `Promise<decision>`, or nothing (no-op). Returning nothing after the signal aborted is the canonical cancel path.
 
 ## Constraints
 

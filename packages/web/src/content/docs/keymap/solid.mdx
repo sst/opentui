@@ -106,6 +106,8 @@ pendingSequence()
 
 Use it for command palettes, key hint UIs, leader prompts, status bars, or any other derived keymap view.
 
+When the underlying host is destroyed mid-update, `useKeymapSelector()` returns the previous accessor value instead of throwing, so subscribers can render once more before their owner cleans up. The first read still throws if the host is already gone.
+
 ## `reactiveMatcherFromSignal()`
 
 Use this when an addon field expects a `ReactiveMatcher`, for example the shipped `enabled` field:

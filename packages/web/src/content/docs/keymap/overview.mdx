@@ -84,8 +84,8 @@ A binding always has a `key`, and it can also specify `cmd`, `event`, `preventDe
 - `key` can be a string like `"ctrl+x"`, `"dd"` or `"<leader>s"`, or an object stroke like `{ name: "return", ctrl: true }`.
 - `cmd` can be a named command string or an inline handler.
 - `event` defaults to `"press"`; use `"release"` for release bindings.
-- `preventDefault` controls whether the host event escapes after a match.
-- `fallthrough` controls whether lower-precedence keymap candidates can continue after this binding runs.
+- `preventDefault` defaults to `true` and calls `event.preventDefault()` plus `event.stopPropagation()` so the matched key does not reach the host target.
+- `fallthrough` defaults to `false`; setting `true` lets later matching bindings in the same dispatch chain still run after this command. It is independent of `preventDefault`, which controls whether the event escapes the keymap.
 
 Release bindings are supported, but only for a single stroke. Multi-stroke release bindings such as `"dd"` with `event: "release"` are rejected. Release bindings dispatch on key release, but they do not appear in `getActiveKeys()` because active-key discovery is based on press/pending-sequence state.
 

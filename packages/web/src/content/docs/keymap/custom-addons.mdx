@@ -215,7 +215,19 @@ Register a disambiguation resolver before registering same-layer exact/prefix bi
 | `clear()`                 | Clear the pending sequence                  |
 | `defer(handler)`          | Start cancellable async disambiguation work |
 
-Disambiguation resolvers themselves must return synchronously. If you need async behavior, use `ctx.defer(...)`.
+Disambiguation resolvers themselves must return synchronously. If you need async behavior, use `ctx.defer(...)`. The handler receives a `KeyDeferredDisambiguationContext`:
+
+| Member               | Purpose                                                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------------------------- |
+| `signal`             | `AbortSignal` aborted when a new key, focus change, or `clearPendingSequence()` cancels the deferred work |
+| `sequence`           | Pending sequence captured when `defer` was called                                                         |
+| `focused`            | Focused target captured when `defer` was called                                                           |
+| `sleep(ms)`          | Resolves to `true` if the timeout elapsed, `false` if `signal` aborted first                              |
+| `runExact()`         | Decision: dispatch the captured exact binding                                                             |
+| `continueSequence()` | Decision: keep the prefix pending                                                                         |
+| `clear()`            | Decision: clear the pending sequence                                                                      |
+
+The handler may return a decision, a `Promise<decision>`, or nothing. Return nothing after `signal` aborts to drop the deferred work without dispatching.
 
 Command handlers are different: they may return a promise, but only a synchronous `false` rejects the current candidate and lets lower-precedence handlers continue.
 

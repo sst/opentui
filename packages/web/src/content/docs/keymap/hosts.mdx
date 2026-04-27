@@ -48,14 +48,14 @@ If you are building your own runtime adapter, implement this contract and pass i
 
 Host key events must satisfy `KeymapEvent`:
 
-| Member                    | Purpose                                                 |
-| ------------------------- | ------------------------------------------------------- |
-| `name`                    | Normalized key name                                     |
-| `ctrl` / `shift` / `meta` | Modifier state                                          |
-| `super` / `hyper`         | Optional extra modifier state                           |
-| `preventDefault()`        | Prevent the matched event from reaching the host target |
-| `stopPropagation()`       | Stop later listeners from seeing the event              |
-| `propagationStopped`      | `true` after propagation was stopped                    |
+| Member                    | Purpose                                                                           |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `name`                    | Normalized key name                                                               |
+| `ctrl` / `shift` / `meta` | Modifier state                                                                    |
+| `super` / `hyper`         | Optional extra modifier state                                                     |
+| `preventDefault()`        | Prevent the matched event from reaching the host target                           |
+| `stopPropagation()`       | Stop later listeners from seeing the event and set `propagationStopped` to `true` |
+| `propagationStopped`      | `true` after `stopPropagation()` was called                                       |
 
 If your host implements `onRawInput()`, it must call each listener before key parsing and stop when a listener returns `true`.
 
@@ -129,7 +129,7 @@ If you want to control the installed addons yourself, start from `createOpenTuiK
 - `registerEnabledFields()`
 - `registerMetadataFields()`
 
-It does not install leader tokens, ex commands, disambiguation addons, warning analyzers or textarea helpers.
+It does not install leader tokens, ex commands, disambiguation addons, warning analyzers, base-layout fallback or textarea helpers. Call `registerBaseLayoutFallback()` from `@opentui/keymap/addons/opentui` if you want bindings to ignore active keyboard-layout changes.
 
 ### Event notes
 
@@ -225,7 +225,9 @@ When a target element disconnects from the rooted subtree, local layers register
 - `registerDefaultKeys()`
 - `registerEnabledFields()`
 - `registerMetadataFields()`
-- `htmlEventMatchResolver`
+- `htmlEventMatchResolver` via `prependEventMatchResolver(...)` so HTML-specific matching runs before the canonical matcher
+
+Call `prependEventMatchResolver(...)` for any custom resolver that must run before the HTML matcher.
 
 ## Custom hosts
 
