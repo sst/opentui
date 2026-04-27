@@ -39,12 +39,13 @@ A binding can target a named command, an inline handler, or a specific key event
 
 ## Register
 
-Shape the keymap by registering layers, tokens and addons. Each layer declares bindings that map keys or key sequences to commands, optionally scoped to a target with a priority. Addons extend the engine with parsers, field compilers, command resolvers and more.
+Shape the keymap by registering layers, tokens and addons. Each layer declares bindings that map keys or key sequences to commands, optionally scoped to a host target with a priority. Addons extend the engine with parsers, field compilers, command resolvers and more.
 
 - Use `registerLayer()` to add bindings and commands.
 - Use `registerToken()` to define named key aliases like `<leader>`.
 - Use addons to install parsers, field compilers, disambiguation and other behaviour.
 - Every registration call returns a disposer for cleanup.
+- See [Hosts](/docs/keymap/hosts) for how targets, hierarchy and focus enter the engine.
 
 ## Dispatch
 
@@ -54,6 +55,7 @@ When a key event arrives from the host, the engine walks the active layers to fi
 - Multi-stroke sequences build up a pending sequence until resolved.
 - Commands run in your application space and can return `false` to let lower-priority handlers continue.
 - Use `intercept("key", ...)` or `intercept("raw", ...)` to hook into the input pipeline.
+- See [Hosts](/docs/keymap/hosts) for how built-in hosts deliver press, release, focus and optional raw input events.
 
 ## Query
 
@@ -64,6 +66,7 @@ Ask the keymap what is currently available. Query results reflect the live state
 - `getPendingSequence()` returns the current multi-stroke prefix.
 - `runCommand()` and `dispatchCommand()` execute commands programmatically.
 - Subscribe to `on("state")` for batched change notifications.
+- See [Hosts](/docs/keymap/hosts) for how host focus and target lifecycle affect what is active.
 
 ## Bindings
 
@@ -157,8 +160,8 @@ A pending sequence is the prefix the user has already typed, such as `g` while w
 
 `getActiveKeys()` is the companion query. It does not list every registered binding; it projects the next reachable strokes from the current focus and pending state. That makes it the right API for key hints, which-key style UIs and other live discovery surfaces.
 
-- [Core](/docs/keymap/core) - bare `Keymap` and the shared runtime APIs
 - [Hosts](/docs/keymap/hosts) - built-in OpenTUI and HTML adapters plus the `KeymapHost` contract
+- [Core](/docs/keymap/core) - bare `Keymap` and the shared runtime APIs
 - [React](/docs/keymap/react) - provider and hooks for a pre-created OpenTUI keymap
 - [Solid](/docs/keymap/solid) - provider and hooks for a pre-created OpenTUI keymap
 - [Built-in Addons](/docs/keymap/addons) - shipped universal and OpenTUI-specific addons
@@ -190,6 +193,7 @@ The default helpers intentionally stay small. Leader tokens, ex commands, timed 
 
 ## Next
 
+- [Hosts](/docs/keymap/hosts) explains the built-in host adapters and the `KeymapHost` contract.
 - [Core](/docs/keymap/core) documents the shared runtime, queries, intercepts and extension points.
 - [Built-in Addons](/docs/keymap/addons) covers the shipped addon packages.
 - [Custom Addons](/docs/keymap/custom-addons) covers the public addon-authoring APIs and extension-point constraints.
