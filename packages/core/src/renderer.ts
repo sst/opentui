@@ -466,6 +466,7 @@ const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
 const KITTY_FLAG_REPORT_TEXT = 0b10000 // Report text associated with key events
 
 const DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES = 64 * 1024 * 1024
+const NATIVE_PALETTE_QUERY_SIZE = 16
 
 /**
  * Kitty Keyboard Protocol configuration options
@@ -4049,7 +4050,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (!this._terminalIsSetup || this._isDestroyed) return
     const publishGeneration = this._palettePublishGeneration
 
-    void this.getPalette({ size: 256 })
+    void this.getPalette({ size: NATIVE_PALETTE_QUERY_SIZE })
       .then((colors) => {
         if (this._palettePublishGeneration === publishGeneration) {
           this.syncNativePaletteState(colors)
@@ -4124,9 +4125,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this._paletteDetectionSize = 0
 
         if (this._palettePublishGeneration === publishGeneration) {
-          if (result.palette.length >= 256) {
+          if (result.palette.length >= NATIVE_PALETTE_QUERY_SIZE) {
             this.syncNativePaletteState(result)
-          } else if (this._terminalIsSetup && !this._paletteCache.has(256)) {
+          } else if (this._terminalIsSetup && !this._paletteCache.has(NATIVE_PALETTE_QUERY_SIZE)) {
             this.ensureNativePaletteState()
           }
         }
