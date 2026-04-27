@@ -1,12 +1,15 @@
 ---
-title: Addons
-description: Shipped addons and addon authoring surface
+title: Built-in Addons
+description: Shipped universal and OpenTUI-specific keymap addons
 order: 6
+navTitle: Built-in Addons
 ---
 
-# Keymap addons
+# Built-in keymap addons
 
-`@opentui/keymap` keeps the engine bare. Addons install parser stages, field compilers, diagnostics, disambiguation and host-specific helpers by calling the public registration APIs.
+`@opentui/keymap` keeps the engine bare. The built-in addon packages install parser stages, field compilers, diagnostics, disambiguation and host-specific helpers on top of the public registration APIs.
+
+If you want to build your own addon, see [Custom Addons](/docs/keymap/custom-addons).
 
 Every addon returns a disposer.
 
@@ -177,74 +180,4 @@ Adds an event match resolver that falls back to `KeyEvent.baseCode` so bindings 
 
 The generated textarea bindings come from the shared `defaultTextareaKeyBindings` in `@opentui/core`. `createTextareaBindings()` prepends overrides before those defaults so custom bindings win by order.
 
-## Building addons
-
-An addon is usually a function that accepts a keymap, registers one or more pieces of behavior and returns a disposer.
-
-```ts
-import type { Keymap, KeymapEvent } from "@opentui/keymap"
-
-export function registerModeField<TTarget extends object, TEvent extends KeymapEvent>(
-  keymap: Keymap<TTarget, TEvent>,
-): () => void {
-  const offField = keymap.registerBindingFields({
-    mode(value, ctx) {
-      ctx.require("app.mode", value)
-      ctx.attr("mode", value)
-    },
-  })
-
-  const offIntercept = keymap.intercept("key", ({ event, setData }) => {
-    if (event.name === "escape") {
-      setData("app.mode", "normal")
-    }
-  })
-
-  return () => {
-    offIntercept()
-    offField()
-  }
-}
-```
-
-Public addon-authoring APIs:
-
-| API                                      | Use for                                                                  |
-| ---------------------------------------- | ------------------------------------------------------------------------ |
-| `registerLayerFields()`                  | Compile custom layer fields with `require(...)` and `activeWhen(...)`    |
-| `registerBindingFields()`                | Compile custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
-| `registerCommandFields()`                | Compile custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
-| `prepend/appendBindingParser()`          | Add new key string syntaxes                                              |
-| `prepend/appendBindingExpander()`        | Expand one key string into multiple binding strings                      |
-| `prepend/appendBindingTransformer()`     | Rewrite parsed bindings or add derived bindings                          |
-| `prepend/appendCommandResolver()`        | Resolve string commands dynamically                                      |
-| `prepend/appendEventMatchResolver()`     | Add alternate event-to-stroke matching                                   |
-| `prepend/appendDisambiguationResolver()` | Control exact-vs-prefix behavior                                         |
-| `prepend/appendLayerAnalyzer()`          | Emit warnings or errors during layer compilation                         |
-| `intercept(kind, ...)`                  | Install pre-dispatch input hooks for either `key` or `raw` input         |
-| `registerToken()`                        | Install named single-stroke aliases                                      |
-| `acquireResource()`                      | Share ref-counted setup/teardown across multiple registrations           |
-
-Compiler contexts:
-
-| Context                | Methods                                  |
-| ---------------------- | ---------------------------------------- |
-| `LayerFieldContext`    | `require(...)`, `activeWhen(...)`        |
-| `BindingFieldContext`  | `require(...)`, `attr(...)`, `activeWhen(...)` |
-| `CommandFieldContext`  | `require(...)`, `attr(...)`, `activeWhen(...)` |
-
-Layer fields influence activation and binding compilation only. They do not surface public attrs on `ActiveKey`, `ActiveBinding`, or `CommandRecord`.
-
-Reserved field names:
-
-| Registration surface | Reserved names                                             |
-| -------------------- | ---------------------------------------------------------- |
-| Layer fields         | `target`, `targetMode`, `priority`, `bindings`, `commands` |
-| Binding fields       | `key`, `cmd`, `event`, `preventDefault`, `fallthrough`     |
-| Command fields       | `name`, `run`                                              |
-
-- All registration APIs return disposers. Stateful addons should clean up in reverse order.
-- Structural re-entry is not supported during dispatch. Do not register or unregister layers, tokens, parsers, resolvers, or similar environment state while a dispatch is in flight.
-- Runtime data re-entry is supported during dispatch. Commands, intercepts and pending-sequence listeners may read and write `keymap` data.
-
-Reference implementations: `packages/keymap/src/addons/universal/*.ts`, `packages/keymap/src/addons/opentui/*.ts`
+See [Custom Addons](/docs/keymap/custom-addons) for the public addon-authoring APIs, lifecycle rules, callback contexts and extension-point quirks.
