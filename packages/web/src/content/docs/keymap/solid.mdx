@@ -63,13 +63,15 @@ await render(() => <KeymapProvider keymap={keymap}><App /></KeymapProvider>, ren
 | Hook                                    | Description                                                                 |
 | --------------------------------------- | --------------------------------------------------------------------------- |
 | `useKeymap()`                           | Returns the current keymap or throws if the provider is missing             |
-| `useBindings(createLayer)`              | Registers a full layer and disposes it with the current reactive scope      |
-| `useKeymapSelector(selector)`           | Re-runs the selector on batched keymap state changes                        |
+| `useBindings(createLayer)`              | Runs the layer factory in a reactive effect, registers the layer, and disposes it with the current reactive scope |
+| `useKeymapSelector(selector)`           | Returns an `Accessor<T>` that re-runs the selector on batched keymap state changes |
 | `reactiveMatcherFromSignal(...)`        | Builds a `ReactiveMatcher` from any Solid accessor                          |
 
 ## `useBindings`
 
 `useBindings()` registers a full `LayerFields<Renderable, KeyEvent>` object. The returned layer can include `priority`, `enabled`, `bindings`, `commands` and any custom addon fields.
+
+Solid runs `createLayer()` inside a reactive `createEffect`. Any tracked signals or memos you read inside the factory become dependencies, so the hook will unregister and re-register the layer when those values change. If the factory does not read reactive values, the layer stays stable.
 
 Solid-specific layer shapes:
 
@@ -85,11 +87,14 @@ Solid-specific layer shapes:
 
 ## `useKeymapSelector()`
 
-`useKeymapSelector()` is the general derived-read API for Solid:
+`useKeymapSelector()` is the general derived-read API for Solid. It returns an `Accessor<T>`, so you read the current value by calling it:
 
 ```tsx
 const activeKeys = useKeymapSelector((keymap) => keymap.getActiveKeys({ includeMetadata: true }))
 const pendingSequence = useKeymapSelector((keymap) => keymap.getPendingSequence())
+
+activeKeys()
+pendingSequence()
 ```
 
 Use it for command palettes, key hint UIs, leader prompts, status bars, or any other derived keymap view.

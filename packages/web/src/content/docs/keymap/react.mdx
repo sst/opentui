@@ -73,7 +73,7 @@ createRoot(renderer).render(
 | Hook                                   | Description                                                                 |
 | -------------------------------------- | --------------------------------------------------------------------------- |
 | `useKeymap()`                          | Returns the current keymap or throws if the provider is missing             |
-| `useBindings(createLayer, deps?)`      | Registers a full layer and disposes it on unmount                           |
+| `useBindings(createLayer, deps?)`      | Memoizes the layer factory with `deps`, registers the layer, and disposes it on unmount |
 | `useActiveKeys(options?)`              | Re-renders on batched keymap state changes and returns `getActiveKeys(...)` |
 | `usePendingSequence()`                 | Re-renders on batched keymap state changes and returns `getPendingSequence()` |
 | `reactiveMatcherFromStore(...)`        | Builds a `ReactiveMatcher` from any subscribe/getSnapshot store             |
@@ -81,6 +81,8 @@ createRoot(renderer).render(
 ## `useBindings`
 
 `useBindings()` registers a full `LayerFields<Renderable, KeyEvent>` object. The returned layer can include `priority`, `enabled`, `bindings`, `commands` and any custom addon fields.
+
+React memoizes `createLayer` with `useMemo(createLayer, deps)`. If you omit `deps`, the hook treats the layer factory as static after mount because the default is `[]`. If the layer shape depends on props or React state, include those values in `deps`.
 
 React-specific layer shapes:
 
@@ -94,6 +96,7 @@ React-specific layer shapes:
 - If `targetRef.current` is `null`, registration waits until the ref resolves.
 - Passing a local `targetMode` without `targetRef` throws.
 - `deps` controls when the layer factory is re-evaluated.
+- Local layers follow `targetRef.current`, so they can wait for a ref to mount and retarget if that ref later points at a different renderable.
 
 ## `useActiveKeys()` and `usePendingSequence()`
 
