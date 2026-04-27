@@ -165,6 +165,25 @@ Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical fo
 | `warning`           | `WarningEvent`              | Validation or analyzer warning                              |
 | `error`             | `ErrorEvent`                | Registration, query, resolver, or listener error            |
 
+Diagnostic events are not batched through `state`; they are emitted when the warning or error is reported.
+
+`WarningEvent` and `ErrorEvent` payloads:
+
+| Payload type | Fields |
+| ------------ | ------ |
+| `WarningEvent` | `code`, `message`, `warning` |
+| `ErrorEvent` | `code`, `message`, `error` |
+
+Diagnostic-event quirks:
+
+- If no `warning` listener is registered, the keymap falls back to `console.warn(...)` for warnings.
+- If no `error` listener is registered, the keymap falls back to `console.error(...)` for errors.
+- Console fallback is per event type. Registering a `warning` listener suppresses warning console output but does not affect `error`, and vice versa.
+- Console fallback prefixes the message with `[code]`. If the underlying cause is an `Error`, it is passed as the second console argument.
+- Throwing `warning` or `error` listeners do not stop remaining diagnostic listeners from running, and they do not recursively emit another keymap error event.
+- `warning` commonly covers analyzer and validation warnings such as unknown fields or unknown tokens.
+- `error` covers more than registration failures: it also reports resolver failures, command-query failures, runtime matcher failures, and thrown `state` / `pendingSequence` listeners.
+
 `keymap.intercept(...)`:
 
 | Form                      | Description                                                                 |
