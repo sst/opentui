@@ -908,5 +908,4 @@ describe("keymap: disambiguation", () => {
     expect(getActiveKey(keymap, "g")?.command).toBe("go")
     expect(getActiveKey(keymap, "g")?.continues).toBe(false)
   })
-
 })

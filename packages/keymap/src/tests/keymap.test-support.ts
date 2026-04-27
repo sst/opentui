@@ -25,10 +25,7 @@ export interface ReactiveBoolean extends ReactiveMatcher {
   readonly disposeCalls: number
 }
 
-export function createKeymapTestHelpers(
-  diagnostics: DiagnosticHarness,
-  getRenderer: () => TestRenderer,
-) {
+export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRenderer: () => TestRenderer) {
   function createFocusableBox(id: string): BoxRenderable {
     return new BoxRenderable(getRenderer(), {
       id,

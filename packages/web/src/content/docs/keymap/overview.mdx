@@ -23,13 +23,18 @@ Live demo: [HTML keymap demo](/demos/keymap-html/)
 A binding can target a named command, an inline handler, or a specific key event:
 
 ```ts
-[
+;[
   { key: "x", cmd: "save-file" },
   { key: "ctrl+x", event: "release", cmd: "cut" },
   { key: "dd", cmd: "delete-line" },
   { key: "<leader>s", cmd: ":write session.log" },
   { key: "?", cmd: "toggle-help" },
-  { key: "ctrl+k", cmd({ keymap }) { keymap.setData("palette.open", true) } },
+  {
+    key: "ctrl+k",
+    cmd({ keymap }) {
+      keymap.setData("palette.open", true)
+    },
+  },
   { key: "escape", event: "release", cmd: "close-help" },
   { key: { name: "return", ctrl: true }, cmd: "submit" },
 ]
@@ -169,25 +174,25 @@ A pending sequence is the prefix the user has already typed, such as `g` while w
 
 ## Entry points
 
-| Package | Description |
-| --- | --- |
-| `@opentui/keymap` | Bare engine: `Keymap`, key stringifiers and shared types for custom hosts |
-| `@opentui/keymap/addons` | Universal addons for parser stages, metadata, diagnostics and sequences |
+| Package                          | Description                                                                |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| `@opentui/keymap`                | Bare engine: `Keymap`, key stringifiers and shared types for custom hosts  |
+| `@opentui/keymap/addons`         | Universal addons for parser stages, metadata, diagnostics and sequences    |
 | `@opentui/keymap/addons/opentui` | Universal addons plus OpenTUI-specific base-layout and edit-buffer helpers |
-| `@opentui/keymap/opentui` | OpenTUI host adapter for terminal apps built on `@opentui/core` |
-| `@opentui/keymap/html` | DOM host adapter for browser UIs rooted in an `HTMLElement` |
-| `@opentui/keymap/react` | React provider and hooks for an OpenTUI keymap |
-| `@opentui/keymap/solid` | Solid provider and hooks for an OpenTUI keymap |
+| `@opentui/keymap/opentui`        | OpenTUI host adapter for terminal apps built on `@opentui/core`            |
+| `@opentui/keymap/html`           | DOM host adapter for browser UIs rooted in an `HTMLElement`                |
+| `@opentui/keymap/react`          | React provider and hooks for an OpenTUI keymap                             |
+| `@opentui/keymap/solid`          | Solid provider and hooks for an OpenTUI keymap                             |
 
 ## Bare vs default helpers
 
-| Helper | What it installs |
-| --- | --- |
-| `new Keymap(host)` | Bare engine only |
-| `createOpenTuiKeymap(renderer)` | Bare engine plus the OpenTUI host adapter |
-| `createHtmlKeymap(root)` | Bare engine plus the HTML host adapter |
-| `createDefaultOpenTuiKeymap(...)` | OpenTUI keymap plus default keys, enabled fields and metadata fields |
-| `createDefaultHtmlKeymap(...)` | HTML keymap plus default keys, enabled fields, metadata fields and event matching |
+| Helper                            | What it installs                                                                  |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| `new Keymap(host)`                | Bare engine only                                                                  |
+| `createOpenTuiKeymap(renderer)`   | Bare engine plus the OpenTUI host adapter                                         |
+| `createHtmlKeymap(root)`          | Bare engine plus the HTML host adapter                                            |
+| `createDefaultOpenTuiKeymap(...)` | OpenTUI keymap plus default keys, enabled fields and metadata fields              |
+| `createDefaultHtmlKeymap(...)`    | HTML keymap plus default keys, enabled fields, metadata fields and event matching |
 
 The default helpers intentionally stay small. Leader tokens, ex commands, timed disambiguation, warning analyzers and OpenTUI textarea helpers are separate addons.
 

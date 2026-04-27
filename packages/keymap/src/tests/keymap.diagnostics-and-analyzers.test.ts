@@ -679,5 +679,4 @@ describe("keymap: diagnostics and analyzers", () => {
     expect(takeErrors().errors).toEqual(['Conflicting keymap attribute for "label" from field title'])
     expect(getCommand(keymap, "save-file")).toBeUndefined()
   })
-
 })

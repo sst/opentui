@@ -723,5 +723,4 @@ describe("keymap: core and commands", () => {
     expect(errors).toHaveLength(2)
     expect(errors.every((message) => message.includes('Error in command resolver for "external-run":'))).toBe(true)
   })
-
 })

@@ -51,38 +51,38 @@ Guidelines:
 
 ### Fields and tokens
 
-| API | Use for |
-| --- | --- |
-| `registerToken(token)` | Define named single-stroke aliases such as `<leader>` |
-| `registerLayerFields(fields)` | Add custom layer fields with `require(...)` and `activeWhen(...)` |
+| API                             | Use for                                                                       |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| `registerToken(token)`          | Define named single-stroke aliases such as `<leader>`                         |
+| `registerLayerFields(fields)`   | Add custom layer fields with `require(...)` and `activeWhen(...)`             |
 | `registerBindingFields(fields)` | Add custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 | `registerCommandFields(fields)` | Add custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 
 ### Binding pipeline
 
-| API | Use for |
-| --- | --- |
-| `prepend/appendBindingExpander()` | Expand one key string into one or more key strings |
-| `prepend/appendBindingParser()` | Parse string key syntax into normalized sequence parts |
-| `prepend/appendBindingTransformer()` | Rewrite parsed bindings or add derived bindings |
+| API                                  | Use for                                                |
+| ------------------------------------ | ------------------------------------------------------ |
+| `prepend/appendBindingExpander()`    | Expand one key string into one or more key strings     |
+| `prepend/appendBindingParser()`      | Parse string key syntax into normalized sequence parts |
+| `prepend/appendBindingTransformer()` | Rewrite parsed bindings or add derived bindings        |
 
 ### Dispatch and command resolution
 
-| API | Use for |
-| --- | --- |
-| `prepend/appendCommandResolver()` | Resolve string commands dynamically |
-| `prepend/appendEventMatchResolver()` | Add alternate event-to-stroke matching |
+| API                                      | Use for                                                 |
+| ---------------------------------------- | ------------------------------------------------------- |
+| `prepend/appendCommandResolver()`        | Resolve string commands dynamically                     |
+| `prepend/appendEventMatchResolver()`     | Add alternate event-to-stroke matching                  |
 | `prepend/appendDisambiguationResolver()` | Choose exact-vs-prefix behavior for ambiguous sequences |
-| `intercept("key", ...)` | Observe or consume key events before binding dispatch |
-| `intercept("raw", ...)` | Observe raw host input before key parsing |
+| `intercept("key", ...)`                  | Observe or consume key events before binding dispatch   |
+| `intercept("raw", ...)`                  | Observe raw host input before key parsing               |
 
 ### Diagnostics and lifecycle
 
-| API | Use for |
-| --- | --- |
-| `prepend/appendLayerAnalyzer()` | Emit warnings or errors while layers compile |
+| API                              | Use for                                                            |
+| -------------------------------- | ------------------------------------------------------------------ | --------- | -------------- | ------------------------------------------------ |
+| `prepend/appendLayerAnalyzer()`  | Emit warnings or errors while layers compile                       |
 | `acquireResource(symbol, setup)` | Share ref-counted setup and teardown across multiple registrations |
-| `on("state" | "pendingSequence" | "warning" | "error", ...)` | Subscribe to derived-state and diagnostic events |
+| `on("state"                      | "pendingSequence"                                                  | "warning" | "error", ...)` | Subscribe to derived-state and diagnostic events |
 
 Every registration API above returns a disposer.
 
@@ -90,9 +90,9 @@ Every registration API above returns a disposer.
 
 Field compilers turn user-supplied layer, binding, or command fields into activation rules and metadata.
 
-| Context | Methods | Notes |
-| --- | --- | --- |
-| `LayerFieldContext` | `require(...)`, `activeWhen(...)` | Layer fields affect activation and binding compilation only |
+| Context               | Methods                                        | Notes                                                        |
+| --------------------- | ---------------------------------------------- | ------------------------------------------------------------ |
+| `LayerFieldContext`   | `require(...)`, `activeWhen(...)`              | Layer fields affect activation and binding compilation only  |
 | `BindingFieldContext` | `require(...)`, `attr(...)`, `activeWhen(...)` | Binding attrs can surface on active bindings and active keys |
 | `CommandFieldContext` | `require(...)`, `attr(...)`, `activeWhen(...)` | Command attrs can surface on command queries and active keys |
 
@@ -126,34 +126,34 @@ Object-form keys such as `{ name: "return", ctrl: true }` skip string parsing an
 
 ### `BindingExpanderContext`
 
-| Member | Purpose |
-| --- | --- |
-| `input` | Original binding string |
+| Member  | Purpose                                   |
+| ------- | ----------------------------------------- |
+| `input` | Original binding string                   |
 | `layer` | Read-only view of the owning layer fields |
 
 Return `string[]` to replace one binding string with many, or `undefined` to let later expanders continue.
 
 ### `BindingParserContext`
 
-| Member | Purpose |
-| --- | --- |
-| `input` / `index` | Current source string and parser position |
-| `layer` | Read-only layer fields |
-| `tokens` | Registered tokens available to this parser |
-| `normalizeTokenName(token)` | Normalize token names consistently |
-| `createMatch(id)` | Create an opaque match id for custom event matching |
+| Member                          | Purpose                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| `input` / `index`               | Current source string and parser position                               |
+| `layer`                         | Read-only layer fields                                                  |
+| `tokens`                        | Registered tokens available to this parser                              |
+| `normalizeTokenName(token)`     | Normalize token names consistently                                      |
+| `createMatch(id)`               | Create an opaque match id for custom event matching                     |
 | `parseObjectKey(key, options?)` | Normalize a stroke and optionally override display, match or token name |
 
 Return `{ parts, nextIndex }` to claim input, or `undefined` to let later parsers try.
 
 ### `BindingTransformerContext`
 
-| Member | Purpose |
-| --- | --- |
-| `layer` | Read-only layer fields |
-| `parseKey(key)` | Parse or normalize another key input using the current environment |
-| `add(binding)` | Add a derived parsed binding |
-| `skipOriginal()` | Drop the original parsed binding |
+| Member           | Purpose                                                            |
+| ---------------- | ------------------------------------------------------------------ |
+| `layer`          | Read-only layer fields                                             |
+| `parseKey(key)`  | Parse or normalize another key input using the current environment |
+| `add(binding)`   | Add a derived parsed binding                                       |
+| `skipOriginal()` | Drop the original parsed binding                                   |
 
 Ordering rules:
 
@@ -167,24 +167,24 @@ Use the `clear*()` methods only when your addon owns that whole stage. They are 
 ### `CommandResolver`
 
 ```ts
-(command, ctx) => ResolvedBindingCommand | undefined
+;(command, ctx) => ResolvedBindingCommand | undefined
 ```
 
 `CommandResolverContext` exposes:
 
-| Member | Purpose |
-| --- | --- |
-| `getCommandAttrs(name)` | Read compiled command attrs for a registered command |
-| `getCommandRecord(name)` | Read the registered command record |
+| Member                   | Purpose                                              |
+| ------------------------ | ---------------------------------------------------- |
+| `getCommandAttrs(name)`  | Read compiled command attrs for a registered command |
+| `getCommandRecord(name)` | Read the registered command record                   |
 
 `ResolvedBindingCommand` can return:
 
-| Field | Purpose |
-| --- | --- |
-| `run` | The command handler to execute |
-| `attrs` | Extra command attrs exposed through queries |
-| `record` | Custom `CommandRecord` metadata |
-| `rejectedResult` | Override the default rejected result |
+| Field            | Purpose                                     |
+| ---------------- | ------------------------------------------- |
+| `run`            | The command handler to execute              |
+| `attrs`          | Extra command attrs exposed through queries |
+| `record`         | Custom `CommandRecord` metadata             |
+| `rejectedResult` | Override the default rejected result        |
 
 ### `EventMatchResolver`
 
@@ -202,18 +202,18 @@ Register a disambiguation resolver before registering same-layer exact/prefix bi
 
 `KeyDisambiguationContext` exposes:
 
-| Member | Purpose |
-| --- | --- |
-| `event` | Current key event without mutation methods |
-| `focused` | Current focused target |
-| `sequence` / `stroke` | Pending sequence and latest stroke |
-| `exact` | Exact matching bindings |
-| `continuations` | Reachable next keys |
-| `getData()` / `setData()` | Runtime data access |
-| `runExact()` | Dispatch the exact binding now |
-| `continueSequence()` | Keep the sequence pending |
-| `clear()` | Clear the pending sequence |
-| `defer(handler)` | Start cancellable async disambiguation work |
+| Member                    | Purpose                                     |
+| ------------------------- | ------------------------------------------- |
+| `event`                   | Current key event without mutation methods  |
+| `focused`                 | Current focused target                      |
+| `sequence` / `stroke`     | Pending sequence and latest stroke          |
+| `exact`                   | Exact matching bindings                     |
+| `continuations`           | Reachable next keys                         |
+| `getData()` / `setData()` | Runtime data access                         |
+| `runExact()`              | Dispatch the exact binding now              |
+| `continueSequence()`      | Keep the sequence pending                   |
+| `clear()`                 | Clear the pending sequence                  |
+| `defer(handler)`          | Start cancellable async disambiguation work |
 
 Disambiguation resolvers themselves must return synchronously. If you need async behavior, use `ctx.defer(...)`.
 
@@ -225,14 +225,14 @@ Analyzers run while a layer compiles and receive a projected view of the compile
 
 `LayerAnalysisContext` exposes:
 
-| Member | Purpose |
-| --- | --- |
-| `target` / `order` | Source layer identity |
-| `bindingInputs` | Original binding inputs |
-| `bindings` | Compiled binding analysis records |
-| `hasTokenBindings` | Whether any binding used tokens |
-| `checkCommandResolution(command)` | Probe whether a string command resolves |
-| `warn(...)` / `warnOnce(...)` / `error(...)` | Emit diagnostics |
+| Member                                       | Purpose                                 |
+| -------------------------------------------- | --------------------------------------- |
+| `target` / `order`                           | Source layer identity                   |
+| `bindingInputs`                              | Original binding inputs                 |
+| `bindings`                                   | Compiled binding analysis records       |
+| `hasTokenBindings`                           | Whether any binding used tokens         |
+| `checkCommandResolution(command)`            | Probe whether a string command resolves |
+| `warn(...)` / `warnOnce(...)` / `error(...)` | Emit diagnostics                        |
 
 `clearLayerAnalyzers()` removes all registered analyzers for the keymap.
 
@@ -240,36 +240,36 @@ Analyzers run while a layer compiles and receive a projected view of the compile
 
 ### `keymap.on(...)`
 
-| Event | Payload | Notes |
-| --- | --- | --- |
-| `state` | `void` | Batched "derived state may have changed" signal |
-| `pendingSequence` | `KeySequencePart[]` | Synchronous pending-sequence updates |
-| `warning` | `WarningEvent` | Validation or analyzer warning |
-| `error` | `ErrorEvent` | Registration, query, resolver or listener error |
+| Event             | Payload             | Notes                                           |
+| ----------------- | ------------------- | ----------------------------------------------- |
+| `state`           | `void`              | Batched "derived state may have changed" signal |
+| `pendingSequence` | `KeySequencePart[]` | Synchronous pending-sequence updates            |
+| `warning`         | `WarningEvent`      | Validation or analyzer warning                  |
+| `error`           | `ErrorEvent`        | Registration, query, resolver or listener error |
 
 ### `keymap.intercept(...)`
 
-| Form | Context |
-| --- | --- |
+| Form                             | Context                                    |
+| -------------------------------- | ------------------------------------------ |
 | `intercept("key", fn, options?)` | `event`, `setData`, `getData`, `consume()` |
-| `intercept("raw", fn, options?)` | `sequence`, `stop()` |
+| `intercept("raw", fn, options?)` | `sequence`, `stop()`                       |
 
 Options:
 
-| Option | Applies to | Notes |
-| --- | --- | --- |
-| `priority` | both | Higher numbers run first |
-| `release` | key only | Listen to release events instead of press |
+| Option     | Applies to | Notes                                     |
+| ---------- | ---------- | ----------------------------------------- |
+| `priority` | both       | Higher numbers run first                  |
+| `release`  | key only   | Listen to release events instead of press |
 
 ### Useful runtime helpers inside addons
 
-| API | Use for |
-| --- | --- |
-| `getData()` / `setData()` | Shared mutable runtime state |
-| `getPendingSequence()` / `clearPendingSequence()` / `popPendingSequence()` | Sequence-aware addons |
-| `createKeyMatcher(key)` | Match a stroke using the current parser and token configuration |
-| `getActiveKeys()` | Build hint UIs or inspect current reachability |
-| `getCommands()` / `getCommandEntries()` | Inspect command metadata and binding projections |
+| API                                                                        | Use for                                                         |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `getData()` / `setData()`                                                  | Shared mutable runtime state                                    |
+| `getPendingSequence()` / `clearPendingSequence()` / `popPendingSequence()` | Sequence-aware addons                                           |
+| `createKeyMatcher(key)`                                                    | Match a stroke using the current parser and token configuration |
+| `getActiveKeys()`                                                          | Build hint UIs or inspect current reachability                  |
+| `getCommands()` / `getCommandEntries()`                                    | Inspect command metadata and binding projections                |
 
 ## Shared resources with `acquireResource()`
 
@@ -289,11 +289,11 @@ This is how the OpenTUI textarea helpers safely share command and suspension inf
 
 ### Reserved field names
 
-| Registration surface | Reserved names |
-| --- | --- |
-| Layer fields | `target`, `targetMode`, `priority`, `bindings`, `commands` |
-| Binding fields | `key`, `cmd`, `event`, `preventDefault`, `fallthrough` |
-| Command fields | `name`, `run` |
+| Registration surface | Reserved names                                             |
+| -------------------- | ---------------------------------------------------------- |
+| Layer fields         | `target`, `targetMode`, `priority`, `bindings`, `commands` |
+| Binding fields       | `key`, `cmd`, `event`, `preventDefault`, `fallthrough`     |
+| Command fields       | `name`, `run`                                              |
 
 ### Warnings vs errors
 

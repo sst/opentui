@@ -7,12 +7,7 @@ import {
   type Renderable,
   type TextareaRenderable,
 } from "@opentui/core"
-import {
-  type ActiveKey,
-  type CommandRecord,
-  stringifyKeyStroke,
-  type KeySequencePart,
-} from "@opentui/keymap"
+import { type ActiveKey, type CommandRecord, stringifyKeyStroke, type KeySequencePart } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider, useBindings, useKeymap, useKeymapSelector } from "@opentui/keymap/solid"

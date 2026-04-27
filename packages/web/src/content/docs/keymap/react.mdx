@@ -63,20 +63,20 @@ createRoot(renderer).render(
 
 ## Provider
 
-| Prop      | Type                                   | Required | Description                   |
-| --------- | -------------------------------------- | -------- | ----------------------------- |
-| `keymap`  | `Keymap<Renderable, KeyEvent>`         | yes      | The OpenTUI keymap instance   |
-| `children`| `ReactNode`                            | no       | Descendant React tree         |
+| Prop       | Type                           | Required | Description                 |
+| ---------- | ------------------------------ | -------- | --------------------------- |
+| `keymap`   | `Keymap<Renderable, KeyEvent>` | yes      | The OpenTUI keymap instance |
+| `children` | `ReactNode`                    | no       | Descendant React tree       |
 
 ## Hooks
 
-| Hook                                   | Description                                                                 |
-| -------------------------------------- | --------------------------------------------------------------------------- |
-| `useKeymap()`                          | Returns the current keymap or throws if the provider is missing             |
-| `useBindings(createLayer, deps?)`      | Memoizes the layer factory with `deps`, registers the layer, and disposes it on unmount |
-| `useActiveKeys(options?)`              | Re-renders on batched keymap state changes and returns `getActiveKeys(...)` |
-| `usePendingSequence()`                 | Re-renders on batched keymap state changes and returns `getPendingSequence()` |
-| `reactiveMatcherFromStore(...)`        | Builds a `ReactiveMatcher` from any subscribe/getSnapshot store             |
+| Hook                              | Description                                                                             |
+| --------------------------------- | --------------------------------------------------------------------------------------- |
+| `useKeymap()`                     | Returns the current keymap or throws if the provider is missing                         |
+| `useBindings(createLayer, deps?)` | Memoizes the layer factory with `deps`, registers the layer, and disposes it on unmount |
+| `useActiveKeys(options?)`         | Re-renders on batched keymap state changes and returns `getActiveKeys(...)`             |
+| `usePendingSequence()`            | Re-renders on batched keymap state changes and returns `getPendingSequence()`           |
+| `reactiveMatcherFromStore(...)`   | Builds a `ReactiveMatcher` from any subscribe/getSnapshot store                         |
 
 ## `useBindings`
 
@@ -86,11 +86,11 @@ React memoizes `createLayer` with `useMemo(createLayer, deps)`. If you omit `dep
 
 React-specific layer shapes:
 
-| Shape                         | Description                                                                 |
-| ----------------------------- | --------------------------------------------------------------------------- |
-| Global layer                  | Omit `targetRef`                                                            |
-| Local `focus-within` layer    | Set `targetRef` and omit `targetMode`                                       |
-| Local exact-focus layer       | Set `targetRef` and `targetMode: "focus"`                                 |
+| Shape                      | Description                               |
+| -------------------------- | ----------------------------------------- |
+| Global layer               | Omit `targetRef`                          |
+| Local `focus-within` layer | Set `targetRef` and omit `targetMode`     |
+| Local exact-focus layer    | Set `targetRef` and `targetMode: "focus"` |
 
 - When `targetRef` is present and `targetMode` is omitted, `focus-within` is used.
 - If `targetRef.current` is `null`, registration waits until the ref resolves.

@@ -1068,5 +1068,4 @@ describe("keymap: fields and reactive matchers", () => {
     keymap.setData("vim.mode", "visual")
     expect(getActiveKeyNames(keymap)).toEqual([])
   })
-
 })
