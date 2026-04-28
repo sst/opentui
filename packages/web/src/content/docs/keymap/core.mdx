@@ -76,7 +76,7 @@ keymap.registerLayer({
 | `target`     | Optional local target. Omit it for a global layer                                            |
 | `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present         |
 | `priority`   | Higher numbers win. Within the same priority, newer layers win                               |
-| `bindings`   | `BindingInput[]` or shorthand `{ [cmd]: key }`                                               |
+| `bindings`   | `BindingInput[]`                                                                              |
 | `commands`   | Named command definitions registered with the same layer                                     |
 | extra fields | Feed layer-field compilers and binding compilation. Layer fields do not surface public attrs |
 
@@ -87,15 +87,14 @@ keymap.registerLayer({
 
 ## Bindings
 
-| Form            | Example                              | Notes                                                 |
-| --------------- | ------------------------------------ | ----------------------------------------------------- |
-| String stroke   | `"x"`, `"ctrl+x"`, `"enter"`         | Requires a registered binding parser                  |
-| String sequence | `"dd"`, `"<leader>s"`                | Concatenated multi-stroke sequence                    |
-| Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly          |
-| Shorthand map   | `{ "save-file": "x", "delete-line": { name: "y", ctrl: true } }` | Expanded by `normalizeBindings()` / `registerLayer()` |
-| Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only         |
+| Form            | Example                              | Notes                                        |
+| --------------- | ------------------------------------ | -------------------------------------------- |
+| String stroke   | `"x"`, `"ctrl+x"`, `"enter"`         | Requires a registered binding parser         |
+| String sequence | `"dd"`, `"<leader>s"`                | Concatenated multi-stroke sequence           |
+| Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly |
+| Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only |
 
-Shorthand bindings are command-to-key. The object key may be any string command that `cmd` would accept, including resolver strings such as `":write session.log"`. Use full `BindingInput` objects when you need inline handlers or binding-specific fields.
+The core engine only accepts full `BindingInput[]` arrays. If you want command-to-key config sugar, use `commandBindings()` from `@opentui/keymap/addons` to build the array before calling `registerLayer()`.
 
 `BindingInput` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 
@@ -171,7 +170,6 @@ import { stringifyKeyStroke, stringifyKeySequence } from "@opentui/keymap"
 | `runCommand(cmd, options?)`      | Runs a command against the registered command chain plus command resolvers      |
 | `dispatchCommand(cmd, options?)` | Runs a command through the active dispatch chain for the supplied/current focus |
 | `normalizeCommandName(name)`     | Trims a command name and rejects empty or whitespace-containing names           |
-| `normalizeBindings(bindings)`    | Expands shorthand bindings into `BindingInput[]`                                |
 
 `dispatchCommand()` respects current activation and can return `inactive` or `disabled` when the command exists but is not currently dispatchable. `runCommand()` walks the registered chain directly, so it can execute command-only layers programmatically even when they do not have an active binding.
 

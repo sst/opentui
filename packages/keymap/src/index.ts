@@ -20,7 +20,6 @@ export type {
   BindingTransformer,
   BindingTransformerContext,
   ParsedBindingInput,
-  BindingShorthand,
   Bindings,
   ActiveKey,
   ActiveKeyOptions,

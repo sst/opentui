@@ -120,7 +120,7 @@ const matcher = useMemo(
 useBindings(
   () => ({
     enabled: matcher,
-    bindings: { "delete-line": "x" },
+    bindings: [{ key: "x", cmd: "delete-line" }],
   }),
   [matcher],
 )

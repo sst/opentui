@@ -478,11 +478,7 @@ export function registerManagedTextareaLayer(
     const { bindings, target: _ignoredTarget, targetMode: _ignoredTargetMode, ...rest } = layer
     const offLayer = keymap.registerLayer({
       ...rest,
-      bindings: createTextareaBindingsWithResolvedOptions(
-        bindings ? keymap.normalizeBindings(bindings) : undefined,
-        commandNames,
-        descriptions,
-      ),
+      bindings: createTextareaBindingsWithResolvedOptions(bindings, commandNames, descriptions),
     })
 
     return () => {

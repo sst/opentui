@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable, InputRenderable, InputRenderableEvents, TextareaRenderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import {
+  commandBindings,
   createTextareaBindings,
   registerEditBufferCommands,
   registerManagedTextareaLayer,
@@ -132,7 +133,7 @@ describe("edit buffer bindings addon", () => {
     expect(bindings.some((binding) => binding.key === "return" && binding.cmd === "newline")).toBe(true)
   })
 
-  test("registerManagedTextareaLayer normalizes command-to-key shorthand overrides through keymap.normalizeBindings", () => {
+  test("registerManagedTextareaLayer accepts commandBindings helper output for overrides", () => {
     const keymap = getKeymap(renderer)
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
@@ -143,7 +144,7 @@ describe("edit buffer bindings addon", () => {
 
     registerEditBufferCommands(keymap, renderer)
     const off = registerManagedTextareaLayer(keymap, renderer, {
-      bindings: { "delete-line": "dd" },
+      bindings: commandBindings({ "delete-line": "dd" }),
     })
 
     textarea.focus()
@@ -169,10 +170,10 @@ describe("edit buffer bindings addon", () => {
       target: textarea,
       // @ts-expect-error managed textarea layers are always global
       targetMode: "focus-within",
-      bindings: { "delete-line": "dd" },
+      bindings: commandBindings({ "delete-line": "dd" }),
     }
 
-    expect(layer.bindings).toEqual({ "delete-line": "dd" })
+    expect(layer.bindings).toEqual([{ key: "dd", cmd: "delete-line" }])
   })
 
   test("registerManagedTextareaLayer ignores scoped fields passed by untyped callers", () => {
@@ -193,7 +194,7 @@ describe("edit buffer bindings addon", () => {
     const off = registerManagedTextareaLayer(keymap, renderer, {
       target: primary,
       targetMode: "focus-within",
-      bindings: { "delete-line": "dd" },
+      bindings: commandBindings({ "delete-line": "dd" }),
     } as Parameters<typeof registerManagedTextareaLayer>[2])
 
     secondary.focus()

@@ -213,14 +213,10 @@ export interface BindingInput<TTarget extends object = object, TEvent extends Ke
   [key: string]: unknown
 }
 
-export type BindingShorthand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = Record<
-  string,
-  KeyLike
->
-
-export type Bindings<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
-  | BindingInput<TTarget, TEvent>[]
-  | BindingShorthand<TTarget, TEvent>
+export type Bindings<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = readonly BindingInput<
+  TTarget,
+  TEvent
+>[]
 
 export type TargetMode = "focus" | "focus-within"
 

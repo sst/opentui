@@ -1,11 +1,9 @@
 import type {
   ActiveKey,
   ActiveKeyOptions,
-  BindingInput,
   BindingExpander,
   BindingParser,
   BindingFieldCompiler,
-  Bindings,
   BindingTransformer,
   Events,
   Hooks,
@@ -46,7 +44,6 @@ import { Emitter, type EmitterListener } from "./lib/emitter.js"
 import { NotificationService } from "./services/notify.js"
 import { resolveKeyMatch } from "./services/keys.js"
 import { RuntimeService } from "./services/runtime.js"
-import { normalizeBindingInputs } from "./services/primitives/binding-inputs.js"
 import { createKeymapState } from "./services/state.js"
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
@@ -243,10 +240,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public normalizeCommandName(name: string): string {
     return normalizeCommandName(name)
-  }
-
-  public normalizeBindings(bindings: Bindings<TTarget, TEvent>): BindingInput<TTarget, TEvent>[] {
-    return normalizeBindingInputs(bindings)
   }
 
   public acquireResource(key: symbol, setup: () => () => void): () => void {

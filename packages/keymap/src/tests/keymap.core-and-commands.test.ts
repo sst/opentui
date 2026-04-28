@@ -280,11 +280,9 @@ describe("keymap: core and commands", () => {
     )
   })
 
-  test("normalizeBindings exposes command-to-key shorthand normalization on the public facade", () => {
-    const keymap = getKeymap(renderer)
-
+  test("commandBindings expands command-to-key maps into full binding inputs", () => {
     expect(
-      keymap.normalizeBindings({
+      addons.commandBindings({
         "  save-file  ": "x",
         "  :write session.log  ": "ctrl+s",
         "delete-line": { name: "y", ctrl: true },
@@ -296,18 +294,26 @@ describe("keymap: core and commands", () => {
     ])
   })
 
-  test("normalizeBindings rejects invalid command-to-key shorthand entries", () => {
-    const keymap = getKeymap(renderer)
-
-    expect(() => keymap.normalizeBindings({ save: (() => {}) as never } as never)).toThrow(
-      'Invalid keymap binding for "save": shorthand bindings must map command strings to key strings or keystroke objects',
+  test("commandBindings rejects invalid command-to-key entries", () => {
+    expect(() => addons.commandBindings({ save: (() => {}) as never } as never)).toThrow(
+      'Invalid command binding for "save": command bindings must map command strings to key strings or keystroke objects',
     )
   })
 
-  test("normalizeBindings keeps the last shorthand key for a normalized command name", () => {
-    const keymap = getKeymap(renderer)
+  test("commandBindings keeps the last key for a normalized command and reports a warning", () => {
+    const warnings: string[] = []
 
-    expect(keymap.normalizeBindings({ " save-file ": "x", "save-file": "y" })).toEqual([{ key: "y", cmd: "save-file" }])
+    expect(
+      addons.commandBindings(
+        { " save-file ": "x", "save-file": "y" },
+        {
+          onWarning(warning) {
+            warnings.push(`${warning.code}:${warning.command}:${String(warning.previousKey)}->${String(warning.nextKey)}`)
+          },
+        },
+      ),
+    ).toEqual([{ key: "y", cmd: "save-file" }])
+    expect(warnings).toEqual(["command-binding-override:save-file:x->y"])
   })
 
   test("acquireResource shares setup and disposes on last release", () => {

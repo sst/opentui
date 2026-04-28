@@ -182,22 +182,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
 
       try {
         targetMode = this.normalizeTargetMode(layer)
-        bindingInputs = snapshotBindingInputs(layer.bindings ?? [], {
-          onInvalidShorthandBinding: ({ command, error }) => {
-            this.notify.emitError(
-              "invalid-binding-shorthand",
-              error,
-              getErrorMessage(error, `Invalid keymap shorthand binding for command "${command}"`),
-            )
-          },
-          onShorthandOverride: ({ command, previousKey, nextKey }) => {
-            this.notify.emitWarning(
-              "binding-shorthand-override",
-              { command, previousKey, nextKey },
-              `[Keymap] Shorthand binding for command "${command}" was overridden; using the last key`,
-            )
-          },
-        })
+        bindingInputs = snapshotBindingInputs(layer.bindings ?? [])
         commands =
           !layer.commands || layer.commands.length === 0 ? [] : this.options.commands.normalizeCommands(layer.commands)
         commandLookup = createCommandLookup(commands)

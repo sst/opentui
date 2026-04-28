@@ -20,6 +20,27 @@ import * as opentuiAddons from "@opentui/keymap/addons/opentui"
 
 ## Universal addons
 
+### Binding helpers
+
+| Export              | Description                                                                |
+| ------------------- | -------------------------------------------------------------------------- |
+| `commandBindings()` | Converts a command-to-key object map into the `BindingInput[]` core format |
+
+`commandBindings()` is a pure helper. It does not register anything on the keymap.
+
+```ts
+import { commandBindings } from "@opentui/keymap/addons"
+
+keymap.registerLayer({
+  bindings: commandBindings({
+    "save-file": "ctrl+s",
+    ":write session.log": "<leader>s",
+  }),
+})
+```
+
+It trims string commands the same way `cmd` strings are normalized elsewhere, accepts string keys or keystroke objects, and lets the last normalized command win. Pass `onWarning` if you want to hear about normalized command collisions such as `" save-file "` and `"save-file"`.
+
 ### Defaults
 
 | Export                                | Description                                           |

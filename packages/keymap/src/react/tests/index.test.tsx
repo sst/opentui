@@ -109,7 +109,7 @@ describe("React keymap hooks", () => {
         })
       }, [manager])
 
-      useBindings(() => ({ bindings: { global: "x" } }))
+      useBindings(() => ({ bindings: [{ key: "x", cmd: "global" }] }))
 
       return <text>bindings</text>
     }
@@ -170,7 +170,7 @@ describe("React keymap hooks", () => {
         }
       }, [manager])
 
-      useBindings(() => ({ bindings: { probe: "x" } }))
+      useBindings(() => ({ bindings: [{ key: "x", cmd: "probe" }] }))
 
       return <text>{tick}</text>
     }
@@ -271,12 +271,12 @@ describe("React keymap hooks", () => {
       useBindings(() => ({
         targetMode: "focus-within" as const,
         targetRef: firstTargetRef,
-        bindings: { first: "x" },
+        bindings: [{ key: "x", cmd: "first" }],
       }))
       useBindings(() => ({
         targetMode: "focus-within" as const,
         targetRef: secondTargetRef,
-        bindings: { second: "y" },
+        bindings: [{ key: "y", cmd: "second" }],
       }))
 
       return (
@@ -531,7 +531,7 @@ describe("React keymap hooks", () => {
 
       const matcher = useMemo(() => reactiveMatcherFromStore(store.subscribe, store.getSnapshot), [])
 
-      useBindings(() => ({ enabled: matcher, bindings: { reactive: "x" } }), [matcher])
+      useBindings(() => ({ enabled: matcher, bindings: [{ key: "x", cmd: "reactive" }] }), [matcher])
 
       return <box width={20} height={6} />
     }
@@ -610,7 +610,7 @@ describe("React keymap hooks", () => {
         [],
       )
 
-      useBindings(() => ({ enabled: matcher, bindings: { "normal-only": "x" } }), [matcher])
+      useBindings(() => ({ enabled: matcher, bindings: [{ key: "x", cmd: "normal-only" }] }), [matcher])
 
       return <box width={20} height={6} />
     }
@@ -650,7 +650,7 @@ describe("React keymap hooks", () => {
 
     function Child() {
       const matcher = useMemo(() => reactiveMatcherFromStore(store.subscribe, store.getSnapshot), [])
-      useBindings(() => ({ enabled: matcher, bindings: { probe: "x" } }), [matcher])
+      useBindings(() => ({ enabled: matcher, bindings: [{ key: "x", cmd: "probe" }] }), [matcher])
       return <box width={10} height={2} />
     }
 
@@ -690,7 +690,7 @@ describe("React keymap hooks", () => {
       function App() {
         useBindings(() => ({
           targetMode: "focus-within",
-          bindings: { target: "x" },
+          bindings: [{ key: "x", cmd: "target" }],
         }))
 
         return <text>bindings</text>
@@ -738,7 +738,7 @@ describe("React keymap hooks", () => {
         () => ({
           targetMode: "focus-within",
           targetRef,
-          bindings: { target: "x" },
+          bindings: [{ key: "x", cmd: "target" }],
         }),
         [],
       )
