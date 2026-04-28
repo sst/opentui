@@ -10,7 +10,7 @@ const rootDir = resolve(__dirname, "..")
 const testRuns = [
   {
     cwd: rootDir,
-    args: ["test", "./src/tests", "./src/lib", "./src/addons", "./src/react"],
+    args: ["test", "./src/tests", "./src/extras", "./src/lib", "./src/addons", "./src/react"],
   },
   {
     cwd: resolve(rootDir, "src/solid"),

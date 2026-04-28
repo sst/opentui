@@ -1,4 +1,4 @@
-import type { BindingInput, KeyLike, KeymapEvent } from "./types.js"
+import type { BindingInput, KeyLike, KeymapEvent } from "../types.js"
 
 export type CommandBindingMap = Record<string, KeyLike>
 

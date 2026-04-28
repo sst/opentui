@@ -17,6 +17,10 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
+    "./extras": {
+      "import": "./src/extras/index.ts",
+      "types": "./src/extras/index.ts"
+    },
     "./addons": {
       "import": "./src/addons/index.ts",
       "types": "./src/addons/index.ts"

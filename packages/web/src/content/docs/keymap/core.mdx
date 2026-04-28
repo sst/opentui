@@ -94,7 +94,7 @@ keymap.registerLayer({
 | Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly |
 | Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only |
 
-The core engine only accepts full `BindingInput[]` arrays. If you want command-to-key config sugar, use `commandBindings(map)` from `@opentui/keymap` to build the array before calling `registerLayer()`.
+The core engine only accepts full `BindingInput[]` arrays. If you want command-to-key config sugar, use `commandBindings(map)` from `@opentui/keymap/extras` to build the array before calling `registerLayer()`.
 
 `BindingInput` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 
@@ -170,7 +170,7 @@ import { stringifyKeyStroke, stringifyKeySequence } from "@opentui/keymap"
 | `runCommand(cmd, options?)`      | Runs a command against the registered command chain plus command resolvers      |
 | `dispatchCommand(cmd, options?)` | Runs a command through the active dispatch chain for the supplied/current focus |
 
-Pure helper exported from `@opentui/keymap`:
+Pure extra exported from `@opentui/keymap/extras`:
 
 | Helper                       | Description                                                                 |
 | ---------------------------- | --------------------------------------------------------------------------- |
@@ -179,7 +179,7 @@ Pure helper exported from `@opentui/keymap`:
 Example:
 
 ```ts
-import { commandBindings } from "@opentui/keymap"
+import { commandBindings } from "@opentui/keymap/extras"
 
 const bindings = commandBindings({
   "  save-file  ": "ctrl+s",

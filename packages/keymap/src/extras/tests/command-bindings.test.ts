@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import { commandBindings } from "../index.js"
-import { createDefaultOpenTuiKeymap } from "../opentui.js"
-import { createDiagnosticHarness } from "./diagnostic-harness.js"
+import { createDefaultOpenTuiKeymap } from "../../opentui.js"
+import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
