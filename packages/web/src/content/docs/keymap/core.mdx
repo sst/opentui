@@ -172,9 +172,10 @@ import { stringifyKeyStroke, stringifyKeySequence } from "@opentui/keymap"
 
 Pure extra exported from `@opentui/keymap/extras`:
 
-| Helper                       | Description                                                                 |
-| ---------------------------- | --------------------------------------------------------------------------- |
-| `commandBindings(map)`       | Converts a command-to-key object map into `BindingInput[]`, trimming command keys before emitting them |
+| Helper                           | Description                                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `commandBindings(map)`           | Converts a command-to-key object map into `BindingInput[]`, trimming command keys before emitting them |
+| `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)` lookup                  |
 
 `commandBindings()` accepts optional `onWarning` and `onError` callbacks. `onWarning` reports trimmed-command overrides such as `" save-file "` and `"save-file"`; invalid key values are skipped by default, and `onError` lets callers observe them or throw if they want strict behavior.
 
@@ -195,6 +196,29 @@ const bindings = commandBindings({
 
 keymap.registerLayer({ bindings })
 ```
+
+`resolveBindingSections()` is for app-level config split by real registration site. Values can be `false`, a key, a full binding object, or arrays of keys/binding objects. The command name comes from the record key.
+
+```ts
+import { resolveBindingSections } from "@opentui/keymap/extras"
+
+const resolved = resolveBindingSections({
+  app: {
+    "command.palette.show": "ctrl+p",
+    "app.exit": ["ctrl+c", "<leader>q"],
+  },
+  prompt_input: {
+    "prompt.paste": { key: "ctrl+v", preventDefault: false },
+    "prompt.history.previous": "up",
+    "prompt.history.next": "down",
+  },
+})
+
+keymap.registerLayer({ bindings: resolved.sections.app })
+resolved.get("app", "app.exit")
+```
+
+Tokens such as `<leader>` are still registered through the normal keymap token APIs.
 
 `dispatchCommand()` respects current activation and can return `inactive` or `disabled` when the command exists but is not currently dispatchable. `runCommand()` walks the registered chain directly, so it can execute command-only layers programmatically even when they do not have an active binding.
 
