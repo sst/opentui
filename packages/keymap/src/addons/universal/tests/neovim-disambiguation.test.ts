@@ -9,6 +9,14 @@ let renderer: TestRenderer
 let mockInput: MockInput
 const diagnostics = createDiagnosticHarness()
 
+function createRunSignal(): { promise: Promise<void>; resolve: () => void } {
+  let resolve: () => void = () => {}
+  const promise = new Promise<void>((promiseResolve) => {
+    resolve = promiseResolve
+  })
+  return { promise, resolve }
+}
+
 function getKeymap(renderer: TestRenderer) {
   return diagnostics.trackKeymap(createDefaultOpenTuiKeymap(renderer))
 }
@@ -28,6 +36,7 @@ describe("neovim disambiguation addon", () => {
   test("runs the exact binding after its timeout when no continuation arrives", async () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
+    const goRan = createRunSignal()
 
     keymap.registerLayer({
       commands: [
@@ -35,6 +44,7 @@ describe("neovim disambiguation addon", () => {
           name: "go",
           run() {
             calls.push("go")
+            goRan.resolve()
           },
         },
         {
@@ -59,7 +69,7 @@ describe("neovim disambiguation addon", () => {
 
     expect(stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true })).toBe("g")
 
-    await Bun.sleep(20)
+    await goRan.promise
 
     expect(calls).toEqual(["go"])
     expect(keymap.getPendingSequence()).toEqual([])
@@ -148,6 +158,7 @@ describe("neovim disambiguation addon", () => {
   test("works after entering a pending prefix before the ambiguous step", async () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
+    const deleteCharRan = createRunSignal()
 
     keymap.registerLayer({
       commands: [
@@ -155,6 +166,7 @@ describe("neovim disambiguation addon", () => {
           name: "delete-char",
           run() {
             calls.push("delete-char")
+            deleteCharRan.resolve()
           },
         },
         {
@@ -181,7 +193,7 @@ describe("neovim disambiguation addon", () => {
     mockInput.pressKey("c")
     expect(stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true })).toBe("dc")
 
-    await Bun.sleep(20)
+    await deleteCharRan.promise
 
     expect(calls).toEqual(["delete-char"])
     expect(keymap.getPendingSequence()).toEqual([])
