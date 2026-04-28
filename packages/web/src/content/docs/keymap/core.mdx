@@ -197,7 +197,7 @@ const bindings = commandBindings({
 keymap.registerLayer({ bindings })
 ```
 
-`resolveBindingSections()` is for app-level config split by real registration site. Values can be `false`, a key, a full binding object, or arrays of keys/binding objects. The command name comes from the record key.
+`resolveBindingSections()` is for app-level config split by real registration site. Values can be `false`, a key, a full binding object, or arrays of keys/binding objects. `false` and empty arrays emit no bindings. The command name comes from the record key.
 
 ```ts
 import { resolveBindingSections } from "@opentui/keymap/extras"

@@ -84,6 +84,10 @@ function resolveBindingValue<TTarget extends object, TEvent extends KeymapEvent>
   }
 
   if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return undefined
+    }
+
     const items = value as readonly BindingSectionItem<TTarget, TEvent>[]
     return items.map((item, index) => resolveBindingItem(section, command, item, index))
   }

@@ -83,7 +83,7 @@ describe("resolveBindingSections helper", () => {
     expect(resolved.get("app", "ignored.command")).toBeUndefined()
   })
 
-  test("lets false disable a command and lets later normalized entries replace earlier ones", () => {
+  test("lets false and empty arrays disable a command and lets later normalized entries replace earlier ones", () => {
     const resolved = resolveBindingSections({
       app: {
         " save ": "x",
@@ -103,7 +103,7 @@ describe("resolveBindingSections helper", () => {
       { key: "p", cmd: "open" },
       { key: "shift+p", cmd: "open", preventDefault: false },
     ])
-    expect(resolved.get("app", "empty")).toEqual([])
+    expect(resolved.get("app", "empty")).toBeUndefined()
   })
 
   test("throws for invalid sections and binding values", () => {
