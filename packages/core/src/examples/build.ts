@@ -36,6 +36,9 @@ if (!bunWebgpuVersion) {
 }
 await Bun.$`bun install --os="*" --cpu="*" bun-webgpu@${bunWebgpuVersion}`
 console.log(`✅ bun-webgpu@${bunWebgpuVersion} installed for all platforms`)
+console.log("Building local native opentui packages for all platforms...")
+await Bun.$`bun ${join(rootDir, "scripts", "build.ts")} --native --all`
+console.log("✅ Local native opentui packages refreshed")
 console.log()
 
 console.log(`Building examples executable for all platforms...`)
