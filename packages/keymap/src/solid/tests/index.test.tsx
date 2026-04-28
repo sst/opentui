@@ -83,7 +83,7 @@ describe("solid keymap hooks", () => {
 
       useBindings(() => ({
         bindings: {
-          x: "global",
+          global: "x",
         },
       }))
 
@@ -136,7 +136,7 @@ describe("solid keymap hooks", () => {
       }) as typeof manager.registerLayer
 
       useBindings(() => ({
-        bindings: { x: "probe" },
+        bindings: { probe: "x" },
       }))
 
       onCleanup(() => {
@@ -234,12 +234,12 @@ describe("solid keymap hooks", () => {
       useBindings(() => ({
         targetMode: "focus-within",
         target: firstBindingTarget,
-        bindings: { x: "first" },
+        bindings: { first: "x" },
       }))
       useBindings(() => ({
         targetMode: "focus-within",
         target: secondBindingTarget,
-        bindings: { y: "second" },
+        bindings: { second: "y" },
       }))
 
       onCleanup(() => {
@@ -400,7 +400,7 @@ describe("solid keymap hooks", () => {
 
       useBindings(() => ({
         enabled: reactiveMatcherFromSignal(enabled),
-        bindings: { x: "reactive" },
+        bindings: { reactive: "x" },
       }))
 
       onCleanup(() => {
@@ -428,7 +428,7 @@ describe("solid keymap hooks", () => {
     function App() {
       useBindings(() => ({
         targetMode: "focus-within",
-        bindings: { x: "target" },
+        bindings: { target: "x" },
       }))
 
       return <text>bindings</text>
@@ -466,7 +466,7 @@ describe("solid keymap hooks", () => {
       useBindings<Renderable>(() => ({
         targetMode: "focus-within",
         target,
-        bindings: { x: "target" },
+        bindings: { target: "x" },
       }))
 
       onCleanup(() => {
@@ -833,7 +833,7 @@ describe("solid keymap hooks", () => {
 
       useBindings(() => ({
         enabled: reactiveMatcherFromSignal(enabled),
-        bindings: { x: "guarded" },
+        bindings: { guarded: "x" },
       }))
 
       return <text>reactive</text>
@@ -870,7 +870,7 @@ describe("solid keymap hooks", () => {
 
       useBindings(() => ({
         enabled: matcher,
-        bindings: { x: "probe" },
+        bindings: { probe: "x" },
       }))
 
       return <text>child</text>
@@ -925,7 +925,7 @@ describe("solid keymap hooks", () => {
 
       useBindings(() => ({
         enabled: reactiveMatcherFromSignal(mode, (value) => value === "normal"),
-        bindings: { x: "normal-only" },
+        bindings: { "normal-only": "x" },
       }))
 
       return <text>mode</text>

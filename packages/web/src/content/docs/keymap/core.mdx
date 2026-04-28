@@ -76,7 +76,7 @@ keymap.registerLayer({
 | `target`     | Optional local target. Omit it for a global layer                                            |
 | `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present         |
 | `priority`   | Higher numbers win. Within the same priority, newer layers win                               |
-| `bindings`   | `BindingInput[]` or shorthand `{ [key]: cmd }`                                               |
+| `bindings`   | `BindingInput[]` or shorthand `{ [cmd]: key }`                                               |
 | `commands`   | Named command definitions registered with the same layer                                     |
 | extra fields | Feed layer-field compilers and binding compilation. Layer fields do not surface public attrs |
 
@@ -92,8 +92,10 @@ keymap.registerLayer({
 | String stroke   | `"x"`, `"ctrl+x"`, `"enter"`         | Requires a registered binding parser                  |
 | String sequence | `"dd"`, `"<leader>s"`                | Concatenated multi-stroke sequence                    |
 | Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly          |
-| Shorthand map   | `{ x: "save-file", y: () => {} }`    | Expanded by `normalizeBindings()` / `registerLayer()` |
+| Shorthand map   | `{ "save-file": "x", "delete-line": { name: "y", ctrl: true } }` | Expanded by `normalizeBindings()` / `registerLayer()` |
 | Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only         |
+
+Shorthand bindings are command-to-key. The object key may be any string command that `cmd` would accept, including resolver strings such as `":write session.log"`. Use full `BindingInput` objects when you need inline handlers or binding-specific fields.
 
 `BindingInput` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 

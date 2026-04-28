@@ -132,7 +132,7 @@ describe("edit buffer bindings addon", () => {
     expect(bindings.some((binding) => binding.key === "return" && binding.cmd === "newline")).toBe(true)
   })
 
-  test("registerManagedTextareaLayer normalizes shorthand overrides through keymap.normalizeBindings", () => {
+  test("registerManagedTextareaLayer normalizes command-to-key shorthand overrides through keymap.normalizeBindings", () => {
     const keymap = getKeymap(renderer)
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
@@ -143,7 +143,7 @@ describe("edit buffer bindings addon", () => {
 
     registerEditBufferCommands(keymap, renderer)
     const off = registerManagedTextareaLayer(keymap, renderer, {
-      bindings: { dd: "delete-line" },
+      bindings: { "delete-line": "dd" },
     })
 
     textarea.focus()
@@ -169,10 +169,10 @@ describe("edit buffer bindings addon", () => {
       target: textarea,
       // @ts-expect-error managed textarea layers are always global
       targetMode: "focus-within",
-      bindings: { dd: "delete-line" },
+      bindings: { "delete-line": "dd" },
     }
 
-    expect(layer.bindings).toEqual({ dd: "delete-line" })
+    expect(layer.bindings).toEqual({ "delete-line": "dd" })
   })
 
   test("registerManagedTextareaLayer ignores scoped fields passed by untyped callers", () => {
@@ -193,7 +193,7 @@ describe("edit buffer bindings addon", () => {
     const off = registerManagedTextareaLayer(keymap, renderer, {
       target: primary,
       targetMode: "focus-within",
-      bindings: { dd: "delete-line" },
+      bindings: { "delete-line": "dd" },
     } as Parameters<typeof registerManagedTextareaLayer>[2])
 
     secondary.focus()

@@ -310,7 +310,7 @@ describe("keymap: layers and dispatch", () => {
     expect(renderableCount).toBe(1)
   })
 
-  test("supports object shorthand bindings", () => {
+  test("supports command-to-key shorthand bindings", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
@@ -327,13 +327,123 @@ describe("keymap: layers and dispatch", () => {
 
     keymap.registerLayer({
       bindings: {
-        x: "shorthand",
+        shorthand: "x",
       },
     })
 
     mockInput.pressKey("x")
 
     expect(calls).toEqual(["shorthand"])
+  })
+
+  test("command-to-key shorthand supports config-style replacement via object merging", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "save-file",
+          run() {
+            calls.push("save")
+          },
+        },
+      ],
+    })
+
+    const defaultBindings = { "save-file": "x" }
+    const userBindings = { "save-file": "y" }
+
+    keymap.registerLayer({
+      bindings: {
+        ...defaultBindings,
+        ...userBindings,
+      },
+    })
+
+    expect(getActiveKeyNames(keymap)).toContain("y")
+    expect(getActiveKeyNames(keymap)).not.toContain("x")
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("y")
+
+    expect(calls).toEqual(["save"])
+  })
+
+  test("registerLayer warns when shorthand command names normalize to the same command", () => {
+    const keymap = getKeymap(renderer)
+    const { takeWarnings } = captureDiagnostics(keymap)
+
+    keymap.registerLayer({
+      commands: [{ name: "save-file", run() {} }],
+    })
+
+    keymap.registerLayer({
+      bindings: {
+        " save-file ": "x",
+        "save-file": "y",
+      },
+    })
+
+    expect(getActiveKeyNames(keymap)).toEqual(["y"])
+    expect(takeWarnings().warnings).toEqual([
+      '[Keymap] Shorthand binding for command "save-file" was overridden; using the last key',
+    ])
+  })
+
+  test("registerLayer emits an error and skips invalid shorthand keys", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors } = captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        { name: "save-file", run: () => calls.push("save") },
+        { name: "quit", run: () => calls.push("quit") },
+      ],
+    })
+
+    keymap.registerLayer({
+      bindings: {
+        "save-file": (() => {}) as never,
+        quit: "q",
+      } as never,
+    })
+
+    mockInput.pressKey("q")
+
+    expect(calls).toEqual(["quit"])
+    expect(getActiveKeyNames(keymap)).toEqual(["q"])
+    expect(takeErrors().errors).toEqual([
+      'Invalid keymap binding for "save-file": shorthand bindings must map command strings to key strings or keystroke objects',
+    ])
+  })
+
+  test("command-to-key shorthand supports resolver command strings", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.appendCommandResolver((command) => {
+      if (command !== ":write session.log") {
+        return undefined
+      }
+
+      return {
+        run() {
+          calls.push("resolved")
+        },
+      }
+    })
+
+    keymap.registerLayer({
+      bindings: {
+        " :write session.log ": "x",
+      },
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["resolved"])
   })
 
   test("allows duplicate command names across layers and dedupes reachable commands by name", () => {

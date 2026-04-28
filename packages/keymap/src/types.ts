@@ -215,7 +215,7 @@ export interface BindingInput<TTarget extends object = object, TEvent extends Ke
 
 export type BindingShorthand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = Record<
   string,
-  BindingCommand<TTarget, TEvent>
+  KeyLike
 >
 
 export type Bindings<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =

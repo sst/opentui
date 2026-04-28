@@ -115,7 +115,7 @@ Use this when an addon field expects a `ReactiveMatcher`, for example the shippe
 ```tsx
 useBindings(() => ({
   enabled: reactiveMatcherFromSignal(mode, (value) => value === "normal"),
-  bindings: { x: "delete-line" },
+  bindings: { "delete-line": "x" },
 }))
 ```
 
