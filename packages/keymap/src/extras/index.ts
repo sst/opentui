@@ -1,4 +1,13 @@
+export { resolveBindingSections } from "./binding-sections.js"
 export { commandBindings } from "./command-bindings.js"
+
+export type {
+  BindingSectionConfig,
+  BindingSectionItem,
+  BindingSectionsConfig,
+  BindingValue,
+  ResolvedBindingSections,
+} from "./binding-sections.js"
 
 export type {
   CommandBindingMap,
