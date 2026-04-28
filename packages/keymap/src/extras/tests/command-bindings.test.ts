@@ -42,10 +42,41 @@ describe("commandBindings helper", () => {
     expect(commandBindings({ "   ": "x" })).toEqual([{ key: "x", cmd: "" }])
   })
 
-  test("rejects invalid command-to-key entries", () => {
-    expect(() => commandBindings({ save: (() => {}) as never } as never)).toThrow(
-      'Invalid command binding for "save": command bindings must map command strings to key strings or keystroke objects',
-    )
+  test("skips invalid command-to-key entries by default", () => {
+    expect(commandBindings({ save: (() => {}) as never } as never)).toEqual([])
+  })
+
+  test("reports invalid entries through onError and keeps valid ones", () => {
+    const errors: string[] = []
+
+    expect(
+      commandBindings(
+        {
+          save: (() => {}) as never,
+          quit: "q",
+        } as never,
+        {
+          onError(error) {
+            errors.push(`${error.code}:${error.command}`)
+          },
+        },
+      ),
+    ).toEqual([{ key: "q", cmd: "quit" }])
+
+    expect(errors).toEqual(["invalid-command-binding:save"])
+  })
+
+  test("lets callers throw from onError when they want strict behavior", () => {
+    expect(() =>
+      commandBindings(
+        { save: (() => {}) as never } as never,
+        {
+          onError(error) {
+            throw error.reason
+          },
+        },
+      ),
+    ).toThrow('Invalid command binding for "save": command bindings must map command strings to key strings or keystroke objects')
   })
 
   test("keeps the last key for a trimmed command and reports a warning", () => {

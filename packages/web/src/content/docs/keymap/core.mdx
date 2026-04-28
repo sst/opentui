@@ -176,6 +176,8 @@ Pure extra exported from `@opentui/keymap/extras`:
 | ---------------------------- | --------------------------------------------------------------------------- |
 | `commandBindings(map)`       | Converts a command-to-key object map into `BindingInput[]`, trimming command keys before emitting them |
 
+`commandBindings()` accepts optional `onWarning` and `onError` callbacks. `onWarning` reports trimmed-command overrides such as `" save-file "` and `"save-file"`; invalid key values are skipped by default, and `onError` lets callers observe them or throw if they want strict behavior.
+
 Example:
 
 ```ts

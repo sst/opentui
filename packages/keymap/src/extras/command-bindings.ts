@@ -9,8 +9,16 @@ export interface CommandBindingsOverrideWarning {
   nextKey: KeyLike
 }
 
+export interface CommandBindingsError {
+  code: "invalid-command-binding"
+  command: string
+  value: unknown
+  reason: Error
+}
+
 export interface CommandBindingsOptions {
   onWarning?: (warning: CommandBindingsOverrideWarning) => void
+  onError?: (error: CommandBindingsError) => void
 }
 
 function isCommandBindingKey(value: unknown): value is KeyLike {
@@ -26,9 +34,17 @@ export function commandBindings<TTarget extends object = object, TEvent extends 
 
   for (const [command, key] of Object.entries(bindings)) {
     if (!isCommandBindingKey(key)) {
-      throw new Error(
+      const error = new Error(
         `Invalid command binding for "${command}": command bindings must map command strings to key strings or keystroke objects`,
       )
+
+      options?.onError?.({
+        code: "invalid-command-binding",
+        command,
+        value: key,
+        reason: error,
+      })
+      continue
     }
 
     const normalizedCommand = command.trim()
