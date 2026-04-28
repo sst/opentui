@@ -158,6 +158,13 @@ Return `{ parts, nextIndex }` to claim input, or `undefined` to let later parser
 | `add(binding)`   | Add a derived parsed binding                                       |
 | `skipOriginal()` | Drop the original parsed binding                                   |
 
+### `LayerBindingsTransformerContext`
+
+| Member                    | Purpose                                                        |
+| ------------------------- | -------------------------------------------------------------- |
+| `layer`                   | Read-only layer definition                                     |
+| `validateBindings(array)` | Run the engine's structural binding validation on a binding array |
+
 Ordering rules:
 
 - `prepend*` registrations run before `append*` registrations.

@@ -467,8 +467,11 @@ export type BindingTransformer<TTarget extends object = object, TEvent extends K
   ctx: BindingTransformerContext<TTarget, TEvent>,
 ) => void
 
+export type BindingInputsValidationResult = { ok: true } | { ok: false; reason: string }
+
 export interface LayerBindingsTransformerContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   layer: Readonly<Layer<TTarget, TEvent>>
+  validateBindings(bindings: unknown): BindingInputsValidationResult
 }
 
 export type LayerBindingsTransformer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (

@@ -17,6 +17,7 @@ export type {
   BindingFieldCompiler,
   BindingFieldContext,
   BindingInput,
+  BindingInputsValidationResult,
   LayerBindingsTransformer,
   LayerBindingsTransformerContext,
   BindingTransformer,

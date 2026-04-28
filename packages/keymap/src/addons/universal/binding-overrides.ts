@@ -1,8 +1,4 @@
-import type { BindingInput, KeyLike, Keymap, KeymapEvent } from "../../index.js"
-
-function isKeyLike(value: unknown): value is KeyLike {
-  return typeof value === "string" || (!!value && typeof value === "object" && !Array.isArray(value))
-}
+import type { BindingInput, Keymap, KeymapEvent } from "../../index.js"
 
 function normalizeBindingOverrides<TTarget extends object, TEvent extends KeymapEvent>(
   value: unknown,
@@ -11,22 +7,7 @@ function normalizeBindingOverrides<TTarget extends object, TEvent extends Keymap
     throw new Error('Keymap layer field "bindingOverrides" must be an array of binding objects')
   }
 
-  const overrides: BindingInput<TTarget, TEvent>[] = []
-
-  for (const binding of value) {
-    if (!binding || typeof binding !== "object" || Array.isArray(binding)) {
-      throw new Error('Keymap layer field "bindingOverrides" must contain only binding objects')
-    }
-
-    const candidate = binding as BindingInput<TTarget, TEvent>
-    if (!isKeyLike(candidate.key)) {
-      throw new Error('Keymap layer field "bindingOverrides" must contain only binding objects with valid keys')
-    }
-
-    overrides.push(candidate)
-  }
-
-  return overrides
+  return value as readonly BindingInput<TTarget, TEvent>[]
 }
 
 function getBindingOverrides<TTarget extends object, TEvent extends KeymapEvent>(
@@ -57,6 +38,11 @@ export function registerBindingOverrides<TTarget extends object, TEvent extends 
     const overrides = getBindingOverrides<TTarget, TEvent>(ctx.layer)
     if (!overrides) {
       return
+    }
+
+    const validation = ctx.validateBindings(overrides)
+    if (!validation.ok) {
+      throw new Error(validation.reason)
     }
 
     const overrideCommands = new Set(

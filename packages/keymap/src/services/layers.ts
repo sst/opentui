@@ -25,7 +25,7 @@ import type {
 import { RESERVED_LAYER_FIELDS } from "../schema.js"
 import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
-import { snapshotBindingInputs, snapshotParsedBindingInput } from "./primitives/binding-inputs.js"
+import { snapshotBindingInputs, snapshotParsedBindingInput, validateBindingInputs } from "./primitives/binding-inputs.js"
 import { mergeRequirement } from "./primitives/field-invariants.js"
 import { cloneKeySequence } from "./keys.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
@@ -389,7 +389,10 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     let current = bindings
 
     for (const transformer of transformers) {
-      const next = transformer(current, { layer })
+      const next = transformer(current, {
+        layer,
+        validateBindings: (bindings) => validateBindingInputs(bindings),
+      })
       if (!next) {
         continue
       }
