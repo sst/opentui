@@ -4,7 +4,6 @@ import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import * as addons from "../addons/index.js"
 import {
-  commandBindings,
   stringifyKeySequence,
   stringifyKeyStroke,
   type ActiveKey,
@@ -270,42 +269,6 @@ describe("keymap: core and commands", () => {
     expect(keymap.runCommand("missing-command")).toEqual({ ok: false, reason: "not-found" })
     expect(keymap.dispatchCommand("missing-command")).toEqual({ ok: false, reason: "not-found" })
     expect(calls).toEqual(["save-file", "save-file", "save-file", "save-file"])
-  })
-
-  test("commandBindings expands command-to-key maps into full binding inputs", () => {
-    expect(
-      commandBindings({
-        "  save-file  ": "x",
-        "  :write session.log  ": "ctrl+s",
-        "delete-line": { name: "y", ctrl: true },
-      }),
-    ).toEqual([
-      { key: "x", cmd: "save-file" },
-      { key: "ctrl+s", cmd: ":write session.log" },
-      { key: { name: "y", ctrl: true }, cmd: "delete-line" },
-    ])
-  })
-
-  test("commandBindings rejects invalid command-to-key entries", () => {
-    expect(() => commandBindings({ save: (() => {}) as never } as never)).toThrow(
-      'Invalid command binding for "save": command bindings must map command strings to key strings or keystroke objects',
-    )
-  })
-
-  test("commandBindings keeps the last key for a normalized command and reports a warning", () => {
-    const warnings: string[] = []
-
-    expect(
-      commandBindings(
-        { " save-file ": "x", "save-file": "y" },
-        {
-          onWarning(warning) {
-            warnings.push(`${warning.code}:${warning.command}:${String(warning.previousKey)}->${String(warning.nextKey)}`)
-          },
-        },
-      ),
-    ).toEqual([{ key: "y", cmd: "save-file" }])
-    expect(warnings).toEqual(["command-binding-override:save-file:x->y"])
   })
 
   test("acquireResource shares setup and disposes on last release", () => {

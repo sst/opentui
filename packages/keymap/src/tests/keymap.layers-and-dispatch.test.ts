@@ -4,7 +4,6 @@ import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import * as addons from "../addons/index.js"
 import {
-  commandBindings,
   stringifyKeySequence,
   stringifyKeyStroke,
   type ActiveKey,
@@ -311,59 +310,6 @@ describe("keymap: layers and dispatch", () => {
     expect(renderableCount).toBe(1)
   })
 
-  test("supports bindings produced by commandBindings", () => {
-    const keymap = getKeymap(renderer)
-    const calls: string[] = []
-
-    keymap.registerLayer({
-      commands: [
-        {
-          name: "shorthand",
-          run() {
-            calls.push("shorthand")
-          },
-        },
-      ],
-    })
-
-    keymap.registerLayer({
-      bindings: commandBindings({ shorthand: "x" }),
-    })
-
-    mockInput.pressKey("x")
-
-    expect(calls).toEqual(["shorthand"])
-  })
-
-  test("commandBindings supports config-style replacement via object merging", () => {
-    const keymap = getKeymap(renderer)
-    const calls: string[] = []
-
-    keymap.registerLayer({
-      commands: [
-        {
-          name: "save-file",
-          run() {
-            calls.push("save")
-          },
-        },
-      ],
-    })
-
-    const defaultBindings = { "save-file": "x" }
-    const userBindings = { "save-file": "y" }
-
-    keymap.registerLayer({ bindings: commandBindings({ ...defaultBindings, ...userBindings }) })
-
-    expect(getActiveKeyNames(keymap)).toContain("y")
-    expect(getActiveKeyNames(keymap)).not.toContain("x")
-
-    mockInput.pressKey("x")
-    mockInput.pressKey("y")
-
-    expect(calls).toEqual(["save"])
-  })
-
   test("registerLayer emits an error when bindings is not an array", () => {
     const keymap = getKeymap(renderer)
     const { takeErrors } = captureDiagnostics(keymap)
@@ -385,31 +331,6 @@ describe("keymap: layers and dispatch", () => {
     expect(calls).toEqual([])
     expect(getActiveKeyNames(keymap)).toEqual([])
     expect(takeErrors().errors).toEqual(["Invalid keymap bindings: expected an array of binding objects"])
-  })
-
-  test("commandBindings supports resolver command strings", () => {
-    const keymap = getKeymap(renderer)
-    const calls: string[] = []
-
-    keymap.appendCommandResolver((command) => {
-      if (command !== ":write session.log") {
-        return undefined
-      }
-
-      return {
-        run() {
-          calls.push("resolved")
-        },
-      }
-    })
-
-    keymap.registerLayer({
-      bindings: commandBindings({ " :write session.log ": "x" }),
-    })
-
-    mockInput.pressKey("x")
-
-    expect(calls).toEqual(["resolved"])
   })
 
   test("allows duplicate command names across layers and dedupes reachable commands by name", () => {
