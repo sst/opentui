@@ -467,6 +467,15 @@ export type BindingTransformer<TTarget extends object = object, TEvent extends K
   ctx: BindingTransformerContext<TTarget, TEvent>,
 ) => void
 
+export interface LayerBindingsTransformerContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  layer: Readonly<Layer<TTarget, TEvent>>
+}
+
+export type LayerBindingsTransformer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
+  bindings: readonly BindingInput<TTarget, TEvent>[],
+  ctx: LayerBindingsTransformerContext<TTarget, TEvent>,
+) => readonly BindingInput<TTarget, TEvent>[] | void
+
 export interface CommandFieldContext {
   require(name: string, value: unknown): void
   attr(name: string, value: unknown): void

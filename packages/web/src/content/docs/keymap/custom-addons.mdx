@@ -62,6 +62,7 @@ Guidelines:
 
 | API                                  | Use for                                                |
 | ------------------------------------ | ------------------------------------------------------ |
+| `prepend/appendLayerBindingsTransformer()` | Rewrite a whole layer's binding array once before compilation |
 | `prepend/appendBindingExpander()`    | Expand one key string into one or more key strings     |
 | `prepend/appendBindingParser()`      | Parse string key syntax into normalized sequence parts |
 | `prepend/appendBindingTransformer()` | Rewrite parsed bindings or add derived bindings        |
@@ -121,6 +122,8 @@ String bindings go through an ordered pipeline.
 1. Expanders rewrite the input string.
 2. Parsers turn strings into `KeySequencePart[]`.
 3. Transformers rewrite parsed bindings or add more.
+
+Layer-binding transformers run earlier than that pipeline and only once, when the layer is registered. Use them when an addon needs to replace or filter the whole `BindingInput[]` set before compilation.
 
 Object-form keys such as `{ name: "return", ctrl: true }` skip string parsing and normalize directly.
 

@@ -4,6 +4,7 @@ import type {
   BindingExpander,
   BindingParser,
   BindingFieldCompiler,
+  LayerBindingsTransformer,
   BindingTransformer,
   Events,
   Hooks,
@@ -313,6 +314,18 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public registerLayerFields(fields: Record<string, LayerFieldCompiler>): () => void {
     return this.environment.registerLayerFields(fields)
+  }
+
+  public prependLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
+    return this.environment.prependLayerBindingsTransformer(transformer)
+  }
+
+  public appendLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
+    return this.environment.appendLayerBindingsTransformer(transformer)
+  }
+
+  public clearLayerBindingsTransformers(): void {
+    this.environment.clearLayerBindingsTransformers()
   }
 
   public prependBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {

@@ -475,6 +475,26 @@ describe("keymap: parsing and binding pipeline", () => {
     expect(transformerOrder).toEqual(["prepend", "append"])
   })
 
+  test("prependLayerBindingsTransformer runs before appended layer binding transformers", () => {
+    const keymap = getKeymap(renderer)
+    const transformerOrder: string[] = []
+
+    keymap.appendLayerBindingsTransformer((bindings) => {
+      transformerOrder.push("append")
+      return bindings.map((binding) => ({ ...binding, cmd: "append" }))
+    })
+    keymap.prependLayerBindingsTransformer((bindings) => {
+      transformerOrder.push("prepend")
+      return bindings.map((binding) => ({ ...binding, cmd: "prepend" }))
+    })
+
+    keymap.registerLayer({
+      bindings: [{ key: "x", cmd: "original" }],
+    })
+
+    expect(transformerOrder).toEqual(["prepend", "append"])
+  })
+
   test("clearBindingTransformers removes registered binding transformers", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
@@ -484,6 +504,36 @@ describe("keymap: parsing and binding pipeline", () => {
       ctx.skipOriginal()
     })
     keymap.clearBindingTransformers()
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "submit",
+          run() {
+            calls.push("submit")
+          },
+        },
+      ],
+    })
+
+    keymap.registerLayer({
+      bindings: [{ key: "z", cmd: "submit" }],
+    })
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("z")
+
+    expect(calls).toEqual(["submit"])
+  })
+
+  test("clearLayerBindingsTransformers removes registered layer binding transformers", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.appendLayerBindingsTransformer((bindings) => {
+      return bindings.map((binding) => ({ ...binding, key: "x" }))
+    })
+    keymap.clearLayerBindingsTransformers()
 
     keymap.registerLayer({
       commands: [
@@ -635,6 +685,28 @@ describe("keymap: parsing and binding pipeline", () => {
     mockInput.pressKey("y")
 
     expect(calls).toEqual(["comma", "pipe", "pipe"])
+  })
+
+  test("layer binding transformers run only when the layer registers", () => {
+    const keymap = getKeymap(renderer)
+    const { takeWarnings } = captureDiagnostics(keymap)
+    let runs = 0
+
+    keymap.appendLayerBindingsTransformer((bindings) => {
+      runs += 1
+      return bindings
+    })
+
+    keymap.registerLayer({
+      bindings: [{ key: "<leader>x", cmd: "submit" }],
+    })
+
+    expect(runs).toBe(1)
+
+    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+
+    expect(runs).toBe(1)
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored'])
   })
 
   test("can dispose binding transformers to stop transforming future layer registrations", () => {

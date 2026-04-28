@@ -2,6 +2,7 @@ import type {
   ActiveKey,
   BindingExpander,
   BindingFieldCompiler,
+  LayerBindingsTransformer,
   BindingParser,
   BindingTransformer,
   CommandFieldCompiler,
@@ -33,6 +34,7 @@ export interface CoreState {
 export interface EnvironmentState<TTarget extends object, TEvent extends KeymapEvent> {
   tokens: Map<string, import("../types.js").ResolvedKeyToken>
   layerFields: Map<string, LayerFieldCompiler>
+  layerBindingsTransformers: OrderedRegistry<LayerBindingsTransformer<TTarget, TEvent>>
   bindingExpanders: OrderedRegistry<BindingExpander>
   bindingParsers: OrderedRegistry<BindingParser>
   bindingTransformers: OrderedRegistry<BindingTransformer<TTarget, TEvent>>
@@ -162,6 +164,7 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     environment: {
       tokens: new Map<string, import("../types.js").ResolvedKeyToken>(),
       layerFields: new Map<string, LayerFieldCompiler>(),
+      layerBindingsTransformers: new OrderedRegistry<LayerBindingsTransformer<TTarget, TEvent>>(),
       bindingExpanders: new OrderedRegistry<BindingExpander>(),
       bindingParsers: new OrderedRegistry<BindingParser>(),
       bindingTransformers: new OrderedRegistry<BindingTransformer<TTarget, TEvent>>(),

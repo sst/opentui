@@ -6,6 +6,7 @@ import { RESERVED_BINDING_FIELDS, RESERVED_COMMAND_FIELDS, RESERVED_LAYER_FIELDS
 import type {
   BindingExpander,
   BindingFieldCompiler,
+  LayerBindingsTransformer,
   BindingParser,
   BindingTransformer,
   CommandFieldCompiler,
@@ -79,6 +80,18 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
 
   public prependBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
     return this.state.environment.bindingTransformers.prepend(transformer)
+  }
+
+  public prependLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
+    return this.state.environment.layerBindingsTransformers.prepend(transformer)
+  }
+
+  public appendLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
+    return this.state.environment.layerBindingsTransformers.append(transformer)
+  }
+
+  public clearLayerBindingsTransformers(): void {
+    this.state.environment.layerBindingsTransformers.clear()
   }
 
   public appendBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
