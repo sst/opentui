@@ -4,6 +4,7 @@ import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import * as addons from "../addons/index.js"
 import {
+  commandBindings,
   stringifyKeySequence,
   stringifyKeyStroke,
   type ActiveKey,
@@ -271,18 +272,9 @@ describe("keymap: core and commands", () => {
     expect(calls).toEqual(["save-file", "save-file", "save-file", "save-file"])
   })
 
-  test("normalizeCommandName exposes command normalization on the public facade", () => {
-    const keymap = getKeymap(renderer)
-
-    expect(keymap.normalizeCommandName("  save-file  ")).toBe("save-file")
-    expect(() => keymap.normalizeCommandName("save file")).toThrow(
-      'Invalid keymap command name "save file": command names cannot contain whitespace',
-    )
-  })
-
   test("commandBindings expands command-to-key maps into full binding inputs", () => {
     expect(
-      addons.commandBindings({
+      commandBindings({
         "  save-file  ": "x",
         "  :write session.log  ": "ctrl+s",
         "delete-line": { name: "y", ctrl: true },
@@ -295,7 +287,7 @@ describe("keymap: core and commands", () => {
   })
 
   test("commandBindings rejects invalid command-to-key entries", () => {
-    expect(() => addons.commandBindings({ save: (() => {}) as never } as never)).toThrow(
+    expect(() => commandBindings({ save: (() => {}) as never } as never)).toThrow(
       'Invalid command binding for "save": command bindings must map command strings to key strings or keystroke objects',
     )
   })
@@ -304,7 +296,7 @@ describe("keymap: core and commands", () => {
     const warnings: string[] = []
 
     expect(
-      addons.commandBindings(
+      commandBindings(
         { " save-file ": "x", "save-file": "y" },
         {
           onWarning(warning) {

@@ -94,7 +94,7 @@ keymap.registerLayer({
 | Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly |
 | Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only |
 
-The core engine only accepts full `BindingInput[]` arrays. If you want command-to-key config sugar, use `commandBindings()` from `@opentui/keymap/addons` to build the array before calling `registerLayer()`.
+The core engine only accepts full `BindingInput[]` arrays. If you want command-to-key config sugar, use `commandBindings(map)` from `@opentui/keymap` to build the array before calling `registerLayer()`.
 
 `BindingInput` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 
@@ -169,7 +169,30 @@ import { stringifyKeyStroke, stringifyKeySequence } from "@opentui/keymap"
 | -------------------------------- | ------------------------------------------------------------------------------- |
 | `runCommand(cmd, options?)`      | Runs a command against the registered command chain plus command resolvers      |
 | `dispatchCommand(cmd, options?)` | Runs a command through the active dispatch chain for the supplied/current focus |
-| `normalizeCommandName(name)`     | Trims a command name and rejects empty or whitespace-containing names           |
+
+Pure helper exported from `@opentui/keymap`:
+
+| Helper                       | Description                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| `commandBindings(map)`       | Converts a command-to-key object map into `BindingInput[]`, trimming command keys before emitting them |
+
+Example:
+
+```ts
+import { commandBindings } from "@opentui/keymap"
+
+const bindings = commandBindings({
+  "  save-file  ": "ctrl+s",
+  ":write session.log": "<leader>s",
+})
+
+// => [
+//      { key: "ctrl+s", cmd: "save-file" },
+//      { key: "<leader>s", cmd: ":write session.log" },
+//    ]
+
+keymap.registerLayer({ bindings })
+```
 
 `dispatchCommand()` respects current activation and can return `inactive` or `disabled` when the command exists but is not currently dispatchable. `runCommand()` walks the registered chain directly, so it can execute command-only layers programmatically even when they do not have an active binding.
 

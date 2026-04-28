@@ -4,6 +4,7 @@ import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import * as addons from "../addons/index.js"
 import {
+  commandBindings,
   stringifyKeySequence,
   stringifyKeyStroke,
   type ActiveKey,
@@ -326,7 +327,7 @@ describe("keymap: layers and dispatch", () => {
     })
 
     keymap.registerLayer({
-      bindings: addons.commandBindings({ shorthand: "x" }),
+      bindings: commandBindings({ shorthand: "x" }),
     })
 
     mockInput.pressKey("x")
@@ -352,7 +353,7 @@ describe("keymap: layers and dispatch", () => {
     const defaultBindings = { "save-file": "x" }
     const userBindings = { "save-file": "y" }
 
-    keymap.registerLayer({ bindings: addons.commandBindings({ ...defaultBindings, ...userBindings }) })
+    keymap.registerLayer({ bindings: commandBindings({ ...defaultBindings, ...userBindings }) })
 
     expect(getActiveKeyNames(keymap)).toContain("y")
     expect(getActiveKeyNames(keymap)).not.toContain("x")
@@ -403,7 +404,7 @@ describe("keymap: layers and dispatch", () => {
     })
 
     keymap.registerLayer({
-      bindings: addons.commandBindings({ " :write session.log ": "x" }),
+      bindings: commandBindings({ " :write session.log ": "x" }),
     })
 
     mockInput.pressKey("x")

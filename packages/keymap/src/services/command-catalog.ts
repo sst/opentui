@@ -2,7 +2,6 @@ import { RESERVED_COMMAND_FIELDS } from "../schema.js"
 import type {
   ActiveBinding,
   Attributes,
-  BindingCommand,
   CommandEntry,
   CommandContext,
   CommandDefinition,
@@ -23,6 +22,7 @@ import type {
   ResolvedBindingCommand,
   RuntimeMatcher,
 } from "../types.js"
+import { normalizeCommandName } from "./primitives/command-normalization.js"
 import {
   getActiveLayersForFocused,
   getFocusedTargetIfAvailable,
@@ -96,34 +96,6 @@ function createCommandChainCacheState<TTarget extends object, TEvent extends Key
     fallbackWithoutRecordErrors: new Set(),
     fallbackWithRecordErrors: new Set(),
   }
-}
-
-export function normalizeBindingCommand<TTarget extends object, TEvent extends KeymapEvent>(
-  command: BindingCommand<TTarget, TEvent> | undefined,
-): BindingCommand<TTarget, TEvent> | undefined {
-  if (command === undefined || typeof command === "function") {
-    return command
-  }
-
-  const trimmed = command.trim()
-  if (!trimmed) {
-    throw new Error("Invalid keymap command: command cannot be empty")
-  }
-
-  return trimmed
-}
-
-export function normalizeCommandName(name: string): string {
-  const trimmed = name.trim()
-  if (!trimmed) {
-    throw new Error("Invalid keymap command name: name cannot be empty")
-  }
-
-  if (/\s/.test(trimmed)) {
-    throw new Error(`Invalid keymap command name "${name}": command names cannot contain whitespace`)
-  }
-
-  return trimmed
 }
 
 export class CommandCatalogService<TTarget extends object, TEvent extends KeymapEvent> {

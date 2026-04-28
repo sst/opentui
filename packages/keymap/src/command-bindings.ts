@@ -1,5 +1,4 @@
-import { normalizeBindingCommand } from "../../services/command-catalog.js"
-import type { BindingInput, KeyLike, KeymapEvent } from "../../index.js"
+import type { BindingInput, KeyLike, KeymapEvent } from "./types.js"
 
 export type CommandBindingMap = Record<string, KeyLike>
 
@@ -32,10 +31,7 @@ export function commandBindings<TTarget extends object = object, TEvent extends 
       )
     }
 
-    const normalizedCommand = normalizeBindingCommand(command)
-    if (typeof normalizedCommand !== "string") {
-      throw new Error(`Invalid command binding for "${command}": command bindings require string commands`)
-    }
+    const normalizedCommand = command.trim()
 
     const nextBinding = {
       key: typeof key === "string" ? key : { ...key },

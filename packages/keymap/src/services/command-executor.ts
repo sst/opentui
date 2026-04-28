@@ -10,7 +10,8 @@ import type {
   RunCommandOptions,
   RunCommandResult,
 } from "../types.js"
-import { type CommandCatalogService, normalizeBindingCommand } from "./command-catalog.js"
+import { normalizeBindingCommand } from "./primitives/command-normalization.js"
+import type { CommandCatalogService } from "./command-catalog.js"
 import type { ActivationService } from "./activation.js"
 import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"

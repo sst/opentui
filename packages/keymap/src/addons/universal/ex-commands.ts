@@ -18,10 +18,18 @@ export interface ExCommand<TTarget extends object = object, TEvent extends Keyma
 }
 
 function normalizeExCommandName<TTarget extends object, TEvent extends KeymapEvent>(
-  keymap: Keymap<TTarget, TEvent>,
+  _keymap: Keymap<TTarget, TEvent>,
   name: string,
 ): string {
-  const normalized = keymap.normalizeCommandName(name)
+  const normalized = name.trim()
+  if (!normalized) {
+    throw new Error("Invalid keymap command name: name cannot be empty")
+  }
+
+  if (/\s/.test(normalized)) {
+    throw new Error(`Invalid keymap command name "${name}": command names cannot contain whitespace`)
+  }
+
   if (normalized.startsWith(":")) {
     return normalized
   }

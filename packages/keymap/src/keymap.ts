@@ -33,7 +33,7 @@ import type {
   KeySequencePart,
 } from "./types.js"
 import { ActivationService } from "./services/activation.js"
-import { CommandCatalogService, normalizeCommandName } from "./services/command-catalog.js"
+import { CommandCatalogService } from "./services/command-catalog.js"
 import { CommandExecutorService } from "./services/command-executor.js"
 import { CompilerService } from "./services/compiler.js"
 import { ConditionService } from "./services/conditions.js"
@@ -236,10 +236,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public getCommandEntries(query?: CommandQuery<TTarget>): readonly CommandEntry<TTarget, TEvent>[] {
     return this.catalog.getCommandEntries(query)
-  }
-
-  public normalizeCommandName(name: string): string {
-    return normalizeCommandName(name)
   }
 
   public acquireResource(key: symbol, setup: () => () => void): () => void {

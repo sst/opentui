@@ -1,7 +1,7 @@
 import type { ConditionService } from "./conditions.js"
 import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
-import { normalizeBindingCommand } from "./command-catalog.js"
+import { normalizeBindingCommand } from "./primitives/command-normalization.js"
 import type {
   Attributes,
   BindingCommand,

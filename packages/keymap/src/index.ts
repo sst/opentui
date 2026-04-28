@@ -1,4 +1,5 @@
 export { Keymap } from "./keymap.js"
+export { commandBindings } from "./command-bindings.js"
 export { stringifyKeySequence, stringifyKeyStroke } from "./services/keys.js"
 export type {
   KeyLike,
@@ -81,3 +82,4 @@ export type {
   NormalizedKeyStroke,
   KeyStrokeInput,
 } from "./types.js"
+export type { CommandBindingMap, CommandBindingsOptions, CommandBindingsOverrideWarning } from "./command-bindings.js"

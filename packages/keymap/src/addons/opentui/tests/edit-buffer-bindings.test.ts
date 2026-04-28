@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable, InputRenderable, InputRenderableEvents, TextareaRenderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
+import { commandBindings } from "@opentui/keymap"
 import {
-  commandBindings,
   createTextareaBindings,
   registerEditBufferCommands,
   registerManagedTextareaLayer,
