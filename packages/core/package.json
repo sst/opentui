@@ -49,7 +49,7 @@
   },
   "optionalDependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
-    "bun-webgpu": "0.1.5",
+    "bun-webgpu": "0.1.7",
     "planck": "^1.4.2",
     "three": "0.177.0",
     "@opentui/core-darwin-x64": "0.1.106",
