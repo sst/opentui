@@ -233,6 +233,15 @@ describe("keymap: commands and queries", () => {
     expect(
       keymap.getCommands({ filter: (command) => command.name === "palette-help" }).map((command) => command.name),
     ).toEqual(["palette-help"])
+    expect(keymap.getCommands({ filter: { name: ["palette-help", "missing"] } }).map((command) => command.name)).toEqual([
+      "palette-help",
+    ])
+    expect(
+      keymap
+        .getCommands({ filter: { name: ["save-current", "palette-help"], namespace: "excommands" } })
+        .map((command) => command.name),
+    ).toEqual(["save-current"])
+    expect(keymap.getCommands({ filter: { name: [] } }).map((command) => command.name)).toEqual([])
 
     offCommands()
 

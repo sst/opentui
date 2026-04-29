@@ -1126,14 +1126,66 @@ function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapE
   const filter = options.query?.filter
   let filterEntries: readonly [string, CommandQueryValue][] | undefined
   let filterPredicate: ((command: CommandRecord) => boolean) | undefined
+  let exactNameFilter: ReadonlySet<string> | undefined
 
   if (typeof filter === "function") {
     filterPredicate = filter
   } else if (filter) {
-    filterEntries = Object.entries(filter)
+    const entries = Object.entries(filter)
+    const remainingEntries: [string, CommandQueryValue][] = []
+
+    for (const [key, matcher] of entries) {
+      if (key === "name") {
+        if (typeof matcher === "string") {
+          exactNameFilter = new Set([matcher])
+          continue
+        }
+
+        if (Array.isArray(matcher)) {
+          const names = new Set<string>()
+          for (const value of matcher) {
+            if (typeof value === "string") {
+              names.add(value)
+            }
+          }
+          exactNameFilter = names
+          continue
+        }
+      }
+
+      remainingEntries.push([key, matcher])
+    }
+
+    filterEntries = remainingEntries.length > 0 ? remainingEntries : undefined
   }
 
   const results: LayerCommandEntry<TTarget, TEvent>[] = []
+
+  if (exactNameFilter) {
+    for (const entry of options.entries) {
+      const command = entry.command
+
+      if (!commandMatchesNamespace(command, namespace)) {
+        continue
+      }
+
+      if (!commandMatchesSearch(command, normalizedSearch, searchKeys)) {
+        continue
+      }
+
+      if (!exactNameFilter.has(command.name)) {
+        continue
+      }
+
+      if (!commandMatchesFilters(command, filterEntries, options)) {
+        continue
+      }
+
+      results.push(entry)
+    }
+
+    return results
+  }
 
   for (const entry of options.entries) {
     const command = entry.command
