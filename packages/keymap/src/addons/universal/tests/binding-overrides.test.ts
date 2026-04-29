@@ -50,7 +50,12 @@ describe("bindingOverrides addon", () => {
     mockInput.pressKey("q")
 
     expect(calls).toEqual(["save", "quit"])
-    expect(keymap.getActiveKeys().map((candidate) => candidate.stroke.name).sort()).toEqual(["q", "y"])
+    expect(
+      keymap
+        .getActiveKeys()
+        .map((candidate) => candidate.stroke.name)
+        .sort(),
+    ).toEqual(["q", "y"])
   })
 
   test("can add bindings when the layer only provides bindingOverrides", () => {

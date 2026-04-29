@@ -17,7 +17,16 @@ test("dist package exports resolve when dist exists", async () => {
   }
 
   const distPackageJson = JSON.parse(readFileSync(distPackageJsonPath, "utf8")) as DistPackageJson
-  const expectedExports = [".", "./extras", "./addons", "./addons/opentui", "./html", "./opentui", "./react", "./solid"] as const
+  const expectedExports = [
+    ".",
+    "./extras",
+    "./addons",
+    "./addons/opentui",
+    "./html",
+    "./opentui",
+    "./react",
+    "./solid",
+  ] as const
 
   for (const exportName of expectedExports) {
     const entry = distPackageJson.exports?.[exportName]

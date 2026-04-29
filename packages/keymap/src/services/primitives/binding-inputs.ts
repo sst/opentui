@@ -1,4 +1,10 @@
-import type { BindingInput, BindingInputsValidationResult, Bindings, KeymapEvent, ParsedBindingInput } from "../../types.js"
+import type {
+  BindingInput,
+  BindingInputsValidationResult,
+  Bindings,
+  KeymapEvent,
+  ParsedBindingInput,
+} from "../../types.js"
 import { cloneKeySequence } from "../keys.js"
 
 function isKeyLike(value: unknown): boolean {
@@ -16,7 +22,10 @@ export function validateBindingInputs(bindings: unknown): BindingInputsValidatio
     }
 
     if (!isKeyLike((binding as BindingInput).key)) {
-      return { ok: false, reason: `Invalid keymap binding at index ${index}: expected "key" to be a string or keystroke object` }
+      return {
+        ok: false,
+        reason: `Invalid keymap binding at index ${index}: expected "key" to be a string or keystroke object`,
+      }
     }
   }
 

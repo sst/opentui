@@ -68,15 +68,14 @@ describe("commandBindings helper", () => {
 
   test("lets callers throw from onError when they want strict behavior", () => {
     expect(() =>
-      commandBindings(
-        { save: (() => {}) as never } as never,
-        {
-          onError(error) {
-            throw error.reason
-          },
+      commandBindings({ save: (() => {}) as never } as never, {
+        onError(error) {
+          throw error.reason
         },
-      ),
-    ).toThrow('Invalid command binding for "save": command bindings must map command strings to key strings or keystroke objects')
+      }),
+    ).toThrow(
+      'Invalid command binding for "save": command bindings must map command strings to key strings or keystroke objects',
+    )
   })
 
   test("keeps the last key for a trimmed command and reports a warning", () => {
@@ -87,7 +86,9 @@ describe("commandBindings helper", () => {
         { " save-file ": "x", "save-file": "y" },
         {
           onWarning(warning) {
-            warnings.push(`${warning.code}:${warning.command}:${String(warning.previousKey)}->${String(warning.nextKey)}`)
+            warnings.push(
+              `${warning.code}:${warning.command}:${String(warning.previousKey)}->${String(warning.nextKey)}`,
+            )
           },
         },
       ),

@@ -25,7 +25,11 @@ import type {
 import { RESERVED_LAYER_FIELDS } from "../schema.js"
 import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
-import { snapshotBindingInputs, snapshotParsedBindingInput, validateBindingInputs } from "./primitives/binding-inputs.js"
+import {
+  snapshotBindingInputs,
+  snapshotParsedBindingInput,
+  validateBindingInputs,
+} from "./primitives/binding-inputs.js"
 import { mergeRequirement } from "./primitives/field-invariants.js"
 import { cloneKeySequence } from "./keys.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"

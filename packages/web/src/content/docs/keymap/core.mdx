@@ -76,7 +76,7 @@ keymap.registerLayer({
 | `target`     | Optional local target. Omit it for a global layer                                            |
 | `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present         |
 | `priority`   | Higher numbers win. Within the same priority, newer layers win                               |
-| `bindings`   | `BindingInput[]`                                                                              |
+| `bindings`   | `BindingInput[]`                                                                             |
 | `commands`   | Named command definitions registered with the same layer                                     |
 | extra fields | Feed layer-field compilers and binding compilation. Layer fields do not surface public attrs |
 
@@ -87,11 +87,11 @@ keymap.registerLayer({
 
 ## Bindings
 
-| Form            | Example                              | Notes                                        |
-| --------------- | ------------------------------------ | -------------------------------------------- |
-| String stroke   | `"x"`, `"ctrl+x"`, `"enter"`         | Requires a registered binding parser         |
-| String sequence | `"dd"`, `"<leader>s"`                | Concatenated multi-stroke sequence           |
-| Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly |
+| Form            | Example                              | Notes                                         |
+| --------------- | ------------------------------------ | --------------------------------------------- |
+| String stroke   | `"x"`, `"ctrl+x"`, `"enter"`         | Requires a registered binding parser          |
+| String sequence | `"dd"`, `"<leader>s"`                | Concatenated multi-stroke sequence            |
+| Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly  |
 | Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only |
 
 The core engine only accepts full `BindingInput[]` arrays. If you want command-to-key config sugar, use `commandBindings(map)` from `@opentui/keymap/extras` to build the array before calling `registerLayer()`.
@@ -172,8 +172,8 @@ import { stringifyKeyStroke, stringifyKeySequence } from "@opentui/keymap"
 
 Pure extra exported from `@opentui/keymap/extras`:
 
-| Helper                           | Description                                                                                             |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Helper                           | Description                                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `commandBindings(map)`           | Converts a command-to-key object map into `BindingInput[]`, trimming command keys before emitting them |
 | `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)` lookup                  |
 

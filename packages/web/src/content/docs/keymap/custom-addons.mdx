@@ -60,12 +60,12 @@ Guidelines:
 
 ### Binding pipeline
 
-| API                                  | Use for                                                |
-| ------------------------------------ | ------------------------------------------------------ |
+| API                                        | Use for                                                       |
+| ------------------------------------------ | ------------------------------------------------------------- |
 | `prepend/appendLayerBindingsTransformer()` | Rewrite a whole layer's binding array once before compilation |
-| `prepend/appendBindingExpander()`    | Expand one key string into one or more key strings     |
-| `prepend/appendBindingParser()`      | Parse string key syntax into normalized sequence parts |
-| `prepend/appendBindingTransformer()` | Rewrite parsed bindings or add derived bindings        |
+| `prepend/appendBindingExpander()`          | Expand one key string into one or more key strings            |
+| `prepend/appendBindingParser()`            | Parse string key syntax into normalized sequence parts        |
+| `prepend/appendBindingTransformer()`       | Rewrite parsed bindings or add derived bindings               |
 
 ### Dispatch and command resolution
 
@@ -160,9 +160,9 @@ Return `{ parts, nextIndex }` to claim input, or `undefined` to let later parser
 
 ### `LayerBindingsTransformerContext`
 
-| Member                    | Purpose                                                        |
-| ------------------------- | -------------------------------------------------------------- |
-| `layer`                   | Read-only layer definition                                     |
+| Member                    | Purpose                                                           |
+| ------------------------- | ----------------------------------------------------------------- |
+| `layer`                   | Read-only layer definition                                        |
 | `validateBindings(array)` | Run the engine's structural binding validation on a binding array |
 
 Ordering rules:
