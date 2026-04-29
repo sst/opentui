@@ -248,11 +248,11 @@ Command handlers may be sync or async. Only a synchronous `false` rejects the ca
 
 ### Queries
 
-| Method                       | Description                                                                   |
-| ---------------------------- | ----------------------------------------------------------------------------- |
-| `getCommands(query?)`        | Returns command metadata records                                              |
-| `getCommandEntries(query?)`  | Returns command metadata plus the bindings that currently invoke each command |
-| `getCommandBindings(query)`  | Returns bindings grouped by requested command name                            |
+| Method                      | Description                                                                   |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| `getCommands(query?)`       | Returns command metadata records                                              |
+| `getCommandEntries(query?)` | Returns command metadata plus the bindings that currently invoke each command |
+| `getCommandBindings(query)` | Returns bindings grouped by requested command name                            |
 
 `CommandQuery` fields:
 
@@ -284,11 +284,11 @@ The returned map preserves the requested command order and includes every reques
 
 `CommandBindingsQuery` fields:
 
-| Field        | Description                                                |
-| ------------ | ---------------------------------------------------------- |
-| `commands`   | Command names to include as map keys                       |
+| Field        | Description                                            |
+| ------------ | ------------------------------------------------------ |
+| `commands`   | Command names to include as map keys                   |
 | `visibility` | `"reachable"` (default), `"active"`, or `"registered"` |
-| `focused`    | Override the focus context used by the query               |
+| `focused`    | Override the focus context used by the query           |
 
 ## Events and intercepts
 
