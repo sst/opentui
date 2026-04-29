@@ -248,11 +248,11 @@ Command handlers may be sync or async. Only a synchronous `false` rejects the ca
 
 ### Queries
 
-| Method                      | Description                                                                   |
-| --------------------------- | ----------------------------------------------------------------------------- |
-| `getCommands(query?)`       | Returns command metadata records                                              |
-| `getCommandEntries(query?)` | Returns command metadata plus the bindings that currently invoke each command |
-| `getCommandBindings(query)` | Returns bindings grouped by requested command name                            |
+| Method                      | Description                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| `getCommands(query?)`       | Returns command metadata records                                                |
+| `getCommandEntries(query?)` | Returns command metadata plus bindings for command discovery UIs                |
+| `getCommandBindings(query)` | Returns bindings grouped by requested command name for known-command label UIs |
 
 `CommandQuery` fields:
 
@@ -268,6 +268,8 @@ Command handlers may be sync or async. Only a synchronous `false` rejects the ca
 - `reachable` dedupes by command name using the current dispatch winner.
 - `active` keeps every active candidate in precedence order, including same-name duplicates.
 - `registered` ignores focus and returns all registered commands.
+
+Use `getCommandEntries()` for command palettes, searchable help screens and other discovery surfaces that need command records plus their bindings. It runs the full `CommandQuery`, materializes command metadata and attaches matching bindings, so it is the heavier query.
 
 Use `getCommandBindings()` when a UI already knows the commands it wants to label and only needs their bindings:
 
