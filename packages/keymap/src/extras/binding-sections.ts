@@ -1,3 +1,5 @@
+// Opinionated config-to-keymap transformation helper. Treat this as one
+// practical shape you can copy and adjust for application-specific needs.
 import type { BindingInput, KeyLike, KeymapEvent } from "../types.js"
 
 export type BindingSectionItem<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
