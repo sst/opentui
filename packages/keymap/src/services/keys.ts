@@ -128,7 +128,7 @@ export function stringifyKeyStroke(input: KeyStringifyInput, options?: Stringify
 }
 
 export function stringifyKeySequence(input: readonly KeyStringifyInput[], options?: StringifyOptions): string {
-  return input.map((part) => stringifyKeyStroke(part, options)).join("")
+  return input.map((part) => stringifyKeyStroke(part, options)).join(options?.separator ?? "")
 }
 
 function stringifyCanonicalStroke(stroke: NormalizedKeyStroke): string {

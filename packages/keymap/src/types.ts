@@ -123,6 +123,7 @@ export interface KeySequencePart {
 
 export interface StringifyOptions {
   preferDisplay?: boolean
+  separator?: string
 }
 
 export type KeyStringifyInput =

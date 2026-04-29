@@ -43,6 +43,16 @@ They do not compile into public attrs.
 Binding and command fields can compile metadata into attrs that later appear on
 active bindings, active keys, and command query results.
 
+## Formatting Keys
+
+Use `keymap.formatKey` when formatting raw binding config. It parses string
+bindings through the keymap's registered parsers and tokens before stringifying.
+
+```ts
+keymap.formatKey("<leader>s", { separator: " " }) // "space s"
+keymap.formatKey("<leader>s", { preferDisplay: true }) // "<leader>s"
+```
+
 ## Re-entry
 
 Runtime/data-style re-entry is supported during dispatch. For example, command

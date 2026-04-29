@@ -143,4 +143,16 @@ describe("leader addon", () => {
     mockInput.pressKey("x", { ctrl: true })
     expect(calls).toEqual(["leader"])
   })
+
+  test("formats raw leader bindings through registered tokens", () => {
+    const keymap = getKeymap(renderer)
+
+    registerLeader(keymap, {
+      trigger: { name: "space" },
+    })
+
+    expect(keymap.formatKey("<leader>s", { preferDisplay: true })).toBe("<leader>s")
+    expect(keymap.formatKey("<leader>s", { separator: " " })).toBe("space s")
+    expect(keymap.formatKey({ name: "x", ctrl: true })).toBe("ctrl+x")
+  })
 })

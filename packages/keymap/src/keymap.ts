@@ -32,6 +32,7 @@ import type {
   KeyToken,
   KeyLike,
   KeySequencePart,
+  StringifyOptions,
 } from "./types.js"
 import { ActivationService } from "./services/activation.js"
 import { CommandCatalogService } from "./services/command-catalog.js"
@@ -217,6 +218,14 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
       return getKeyMatchKey(input) === match
     }
+  }
+
+  public parseKeySequence(key: KeyLike): readonly KeySequencePart[] {
+    return this.compiler.parseKeySequence(key)
+  }
+
+  public formatKey(key: KeyLike, options?: StringifyOptions): string {
+    return this.compiler.formatKey(key, options)
   }
 
   public clearPendingSequence(): void {

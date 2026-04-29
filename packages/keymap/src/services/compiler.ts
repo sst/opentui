@@ -24,6 +24,7 @@ import type {
   ResolvedKeyToken,
   RuntimeMatcher,
   SequenceNode,
+  StringifyOptions,
 } from "../types.js"
 import { RESERVED_BINDING_FIELDS } from "../schema.js"
 import {
@@ -32,6 +33,7 @@ import {
   createKeySequencePart,
   createTextKeyMatch,
   normalizeBindingTokenName,
+  stringifyKeySequence,
 } from "./keys.js"
 import { snapshotParsedBindingInput } from "./primitives/binding-inputs.js"
 import { mergeAttribute, mergeRequirement } from "./primitives/field-invariants.js"
@@ -92,6 +94,28 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
       layer: EMPTY_COMPILE_FIELDS,
       parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
     })
+  }
+
+  public parseKeySequence(key: KeyLike): KeySequencePart[] {
+    if (typeof key !== "string") {
+      return [this.parseObjectKeyPart(key)]
+    }
+
+    const parsed = parseBindingSequenceWithParsers(key, this.state.environment.bindingParsers.values(), {
+      tokens: this.state.environment.tokens,
+      layer: EMPTY_COMPILE_FIELDS,
+      parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
+    })
+
+    for (const tokenName of parsed.unknownTokens) {
+      this.options.warnUnknownToken(tokenName, key)
+    }
+
+    return parsed.parts
+  }
+
+  public formatKey(key: KeyLike, options?: StringifyOptions): string {
+    return stringifyKeySequence(this.parseKeySequence(key), options)
   }
 
   public compileBindings(
