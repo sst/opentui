@@ -68,6 +68,51 @@ describe("resolveBindingSections helper", () => {
     expect(resolved.get("app", "file.save")?.[0]?.key).not.toBe(saveKey)
   })
 
+  test("includes requested sections that are missing from sparse config", () => {
+    const resolved = resolveBindingSections(
+      {
+        app: {
+          save: "s",
+        },
+        custom: {
+          run: "r",
+        },
+      },
+      {
+        sections: ["app", "prompt", "dialog_select"],
+      },
+    )
+
+    expect(Object.keys(resolved.sections)).toEqual(["app", "prompt", "dialog_select", "custom"])
+    expect(resolved.sections.app).toEqual([{ key: "s", cmd: "save" }])
+    expect(resolved.sections.prompt).toEqual([])
+    expect(resolved.sections.dialog_select).toEqual([])
+    expect(resolved.sections.custom).toEqual([{ key: "r", cmd: "run" }])
+    expect(resolved.sections.prompt).not.toBe(resolved.sections.dialog_select)
+    expect(resolved.get("app", "save")).toEqual([{ key: "s", cmd: "save" }])
+    expect(resolved.get("prompt", "save")).toBeUndefined()
+    expect(resolved.get("dialog_select", "run")).toBeUndefined()
+    expect(resolved.get("custom", "run")).toEqual([{ key: "r", cmd: "run" }])
+  })
+
+  test("can return a complete empty section shape for empty config", () => {
+    const resolved = resolveBindingSections(
+      {},
+      {
+        sections: ["app", "prompt", "dialog_select"],
+      },
+    )
+
+    expect(resolved.sections).toEqual({
+      app: [],
+      prompt: [],
+      dialog_select: [],
+    })
+    expect(resolved.get("app", "save")).toBeUndefined()
+    expect(resolved.get("prompt", "submit")).toBeUndefined()
+    expect(resolved.get("missing", "submit")).toBeUndefined()
+  })
+
   test("uses section command keys as the binding command identity", () => {
     const resolved = resolveBindingSections({
       app: {

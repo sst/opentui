@@ -25,6 +25,10 @@ export interface ResolvedBindingSections<TTarget extends object = object, TEvent
   get(section: string, cmd: string): readonly BindingInput<TTarget, TEvent>[] | undefined
 }
 
+export interface ResolveBindingSectionsOptions {
+  sections?: readonly string[]
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value)
 }
@@ -100,9 +104,15 @@ function resolveBindingValue<TTarget extends object, TEvent extends KeymapEvent>
 
 export function resolveBindingSections<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>(
   config: BindingSectionsConfig<TTarget, TEvent>,
+  options?: ResolveBindingSectionsOptions,
 ): ResolvedBindingSections<TTarget, TEvent> {
   const sections: Record<string, BindingInput<TTarget, TEvent>[]> = {}
   const lookups = new Map<string, Map<string, BindingInput<TTarget, TEvent>[]>>()
+
+  for (const section of options?.sections ?? []) {
+    sections[section] = []
+    lookups.set(section, new Map())
+  }
 
   for (const [section, sectionConfig] of Object.entries(config)) {
     if (!isObject(sectionConfig)) {

@@ -6,6 +6,7 @@ export type {
   BindingSectionItem,
   BindingSectionsConfig,
   BindingValue,
+  ResolveBindingSectionsOptions,
   ResolvedBindingSections,
 } from "./binding-sections.js"
 
