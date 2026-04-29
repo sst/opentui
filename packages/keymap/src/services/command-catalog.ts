@@ -5,6 +5,7 @@ import type {
   CommandEntry,
   CommandContext,
   CommandDefinition,
+  CommandBindingsQuery,
   CommandFieldCompiler,
   CommandFieldContext,
   CommandResolutionStatus,
@@ -176,6 +177,24 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       command: item.command,
       bindings: item.bindings,
     }))
+  }
+
+  public getCommandBindings(
+    query: CommandBindingsQuery<TTarget>,
+  ): ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]> {
+    const bindingsByCommand = new Map<string, ActiveBinding<TTarget, TEvent>[]>()
+    for (const command of query.commands) {
+      if (!bindingsByCommand.has(command)) {
+        bindingsByCommand.set(command, [])
+      }
+    }
+
+    if (bindingsByCommand.size === 0) {
+      return bindingsByCommand
+    }
+
+    this.collectCommandBindings(bindingsByCommand, this.getCommandQueryContext(query))
+    return bindingsByCommand
   }
 
   public getResolvedCommandChain(
@@ -681,6 +700,49 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     }
   }
 
+  private collectCommandBindings(
+    bindingsByCommand: Map<string, ActiveBinding<TTarget, TEvent>[]>,
+    context: {
+      visibility: "reachable" | "active" | "registered"
+      focused: TTarget | null
+      activeView?: ActiveCommandView<TTarget, TEvent>
+    },
+  ): void {
+    if (context.visibility === "registered") {
+      const layers = [...this.state.layers.layers]
+      layers.sort((left, right) => left.order - right.order)
+
+      for (const layer of layers) {
+        for (const binding of layer.compiledBindings) {
+          this.collectBindingForCommandBindings(bindingsByCommand, binding, context)
+        }
+      }
+      return
+    }
+
+    const activeView = context.activeView
+    if (!activeView) {
+      return
+    }
+
+    for (const layer of getActiveLayersForFocused(this.state.layers, this.host, context.focused)) {
+      if (layer.compiledBindings.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
+        continue
+      }
+
+      for (const binding of layer.compiledBindings) {
+        if (
+          !this.conditions.matchesConditions(binding) ||
+          !this.isBindingVisible(binding, context.focused, activeView)
+        ) {
+          continue
+        }
+
+        this.collectBindingForCommandBindings(bindingsByCommand, binding, context)
+      }
+    }
+  }
+
   private collectBindingForCommandEntries(
     grouped: Array<{
       entry: LayerCommandEntry<TTarget, TEvent>
@@ -705,16 +767,68 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
         continue
       }
 
-      item.bindings.push({
-        sequence: binding.sequence,
-        command: binding.command,
-        commandAttrs: item.command.attrs,
-        attrs: binding.attrs,
-        event: binding.event,
-        preventDefault: binding.preventDefault,
-        fallthrough: binding.fallthrough,
-      })
+      item.bindings.push(this.createActiveBinding(binding, item.command.attrs))
     }
+  }
+
+  private collectBindingForCommandBindings(
+    bindingsByCommand: Map<string, ActiveBinding<TTarget, TEvent>[]>,
+    binding: CompiledBinding<TTarget, TEvent>,
+    context: {
+      visibility: "reachable" | "active" | "registered"
+      focused: TTarget | null
+      activeView?: ActiveCommandView<TTarget, TEvent>
+    },
+  ): void {
+    if (typeof binding.command !== "string") {
+      return
+    }
+
+    const bindings = bindingsByCommand.get(binding.command)
+    if (!bindings) {
+      return
+    }
+
+    bindings.push(this.createActiveBinding(binding, this.getCommandBindingAttrs(binding, context)))
+  }
+
+  private createActiveBinding(
+    binding: CompiledBinding<TTarget, TEvent>,
+    commandAttrs: Readonly<Attributes> | undefined,
+  ): ActiveBinding<TTarget, TEvent> {
+    return {
+      sequence: binding.sequence,
+      command: binding.command,
+      commandAttrs,
+      attrs: binding.attrs,
+      event: binding.event,
+      preventDefault: binding.preventDefault,
+      fallthrough: binding.fallthrough,
+    }
+  }
+
+  private getCommandBindingAttrs(
+    binding: CompiledBinding<TTarget, TEvent>,
+    context: {
+      visibility: "reachable" | "active" | "registered"
+      focused: TTarget | null
+      activeView?: ActiveCommandView<TTarget, TEvent>
+    },
+  ): Readonly<Attributes> | undefined {
+    if (typeof binding.command !== "string") {
+      return undefined
+    }
+
+    if (context.visibility === "registered") {
+      return this.getTopRegisteredCommand(binding.command)?.command.attrs
+    }
+
+    const activeView = context.activeView
+    if (!activeView) {
+      return undefined
+    }
+
+    return this.getBindingCommandAttrs(binding, context.focused, activeView)
   }
 
   private resolveCommandWithResolvers(

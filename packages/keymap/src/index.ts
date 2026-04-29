@@ -31,6 +31,7 @@ export type {
   CommandDefinition,
   CommandEntry,
   CommandFilter,
+  CommandBindingsQuery,
   CommandQuery,
   CommandQueryValue,
   CommandRecord,

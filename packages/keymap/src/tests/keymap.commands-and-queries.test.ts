@@ -336,6 +336,177 @@ describe("keymap: commands and queries", () => {
     ])
   })
 
+  test("getCommandBindings returns requested command binding groups", () => {
+    const keymap = getKeymap(renderer)
+
+    keymap.registerLayer({
+      commands: [
+        { name: "save", title: "Save", run() {} },
+        { name: "quit", title: "Quit", run() {} },
+      ],
+      bindings: [
+        { key: "ctrl+s", cmd: "save", desc: "Save with control" },
+        { key: "s", cmd: "save" },
+        { key: "q", cmd: "quit" },
+        { key: "x", cmd: "unrequested" },
+      ],
+    })
+
+    const bindings = keymap.getCommandBindings({
+      visibility: "registered",
+      commands: ["quit", "missing", "save"],
+    })
+
+    expect([...bindings.keys()]).toEqual(["quit", "missing", "save"])
+    expect(bindings.get("quit")?.map((binding) => stringifyKeySequence(binding.sequence))).toEqual(["q"])
+    expect(bindings.get("missing")).toEqual([])
+    expect(bindings.get("save")?.map((binding) => stringifyKeySequence(binding.sequence))).toEqual(["ctrl+s", "s"])
+    expect(bindings.get("save")?.[0]).toMatchObject({
+      command: "save",
+      commandAttrs: {
+        title: "Save",
+      },
+      attrs: {
+        desc: "Save with control",
+      },
+      event: "press",
+      preventDefault: true,
+      fallthrough: false,
+    })
+  })
+
+  test("getCommandBindings collapses duplicate command records without duplicating bindings", () => {
+    const keymap = getKeymap(renderer)
+
+    keymap.registerLayer({
+      commands: [{ name: "duplicate", title: "First", run() {} }],
+      bindings: [{ key: "a", cmd: "duplicate" }],
+    })
+    keymap.registerLayer({
+      commands: [{ name: "duplicate", title: "Second", run() {} }],
+      bindings: [{ key: "b", cmd: "duplicate" }],
+    })
+
+    expect(
+      keymap
+        .getCommandEntries({ visibility: "registered", filter: { name: "duplicate" } })
+        .map((entry) => entry.bindings.map((binding) => stringifyKeySequence(binding.sequence))),
+    ).toEqual([
+      ["a", "b"],
+      ["a", "b"],
+    ])
+    expect(
+      keymap
+        .getCommandBindings({ visibility: "registered", commands: ["duplicate"] })
+        .get("duplicate")
+        ?.map((binding) => stringifyKeySequence(binding.sequence)),
+    ).toEqual(["a", "b"])
+  })
+
+  test("getCommandBindings respects registered and active visibility", () => {
+    const keymap = getKeymap(renderer)
+    const target = createFocusableBox("command-binding-visibility-target")
+    renderer.root.add(target)
+
+    keymap.registerLayer({
+      commands: [{ name: "save", title: "Global Save", run() {} }],
+      bindings: [{ key: "x", cmd: "save" }],
+    })
+    keymap.registerLayer({
+      target,
+      commands: [{ name: "save", title: "Local Save", run() {} }],
+      bindings: [{ key: "l", cmd: "save" }],
+    })
+
+    const labels = (visibility?: "reachable" | "active" | "registered") => {
+      return keymap
+        .getCommandBindings({ visibility, commands: ["save"] })
+        .get("save")
+        ?.map((binding) => stringifyKeySequence(binding.sequence))
+    }
+
+    expect(labels()).toEqual(["x"])
+    expect(labels("active")).toEqual(["x"])
+    expect(labels("registered")).toEqual(["x", "l"])
+
+    target.focus()
+
+    expect(labels()).toEqual(["l", "x"])
+    expect(labels("active")).toEqual(["l", "x"])
+    expect(labels("registered")).toEqual(["x", "l"])
+  })
+
+  test("getCommandBindings filters inactive bindings outside registered visibility", () => {
+    const keymap = getKeymap(renderer)
+    let enabled = false
+
+    keymap.registerBindingFields({
+      active(value, ctx) {
+        if (value !== true) {
+          throw new Error('Keymap binding field "active" must be true')
+        }
+
+        ctx.activeWhen(() => enabled)
+      },
+    })
+    keymap.registerLayer({
+      commands: [{ name: "conditional", run() {} }],
+      bindings: [{ key: "x", cmd: "conditional", active: true }],
+    })
+
+    const labels = (visibility?: "reachable" | "active" | "registered") => {
+      return keymap
+        .getCommandBindings({ visibility, commands: ["conditional"] })
+        .get("conditional")
+        ?.map((binding) => stringifyKeySequence(binding.sequence))
+    }
+
+    expect(labels()).toEqual([])
+    expect(labels("active")).toEqual([])
+    expect(labels("registered")).toEqual(["x"])
+
+    enabled = true
+
+    expect(labels()).toEqual(["x"])
+    expect(labels("active")).toEqual(["x"])
+  })
+
+  test("getCommandBindings includes registered bindings and applies resolver visibility", () => {
+    const keymap = getKeymap(renderer)
+
+    keymap.registerLayer({
+      bindings: [{ key: "x", cmd: "external-run" }],
+    })
+
+    const labels = (visibility?: "reachable" | "active" | "registered") => {
+      return keymap
+        .getCommandBindings({ visibility, commands: ["external-run"] })
+        .get("external-run")
+        ?.map((binding) => stringifyKeySequence(binding.sequence))
+    }
+
+    expect(labels("registered")).toEqual(["x"])
+    expect(labels()).toEqual([])
+
+    keymap.appendCommandResolver((command) => {
+      if (command !== "external-run") {
+        return undefined
+      }
+
+      return {
+        attrs: {
+          title: "External Run",
+        },
+        run() {},
+      }
+    })
+
+    const activeBindings = keymap.getCommandBindings({ commands: ["external-run"] }).get("external-run")
+
+    expect(activeBindings?.map((binding) => stringifyKeySequence(binding.sequence))).toEqual(["x"])
+    expect(activeBindings?.[0]?.commandAttrs).toEqual({ title: "External Run" })
+  })
+
   test("getCommandEntries reuses active binding views and keeps command-only entries", () => {
     const keymap = getKeymap(renderer)
 

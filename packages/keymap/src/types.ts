@@ -157,6 +157,12 @@ export interface CommandQuery<TTarget extends object = object> {
   filter?: CommandFilter
 }
 
+export interface CommandBindingsQuery<TTarget extends object = object> {
+  visibility?: "reachable" | "active" | "registered"
+  focused?: TTarget | null
+  commands: readonly string[]
+}
+
 export interface RunCommandOptions<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   event?: TEvent
   focused?: TTarget | null

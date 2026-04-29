@@ -1,4 +1,5 @@
 import type {
+  ActiveBinding,
   ActiveKey,
   ActiveKeyOptions,
   BindingExpander,
@@ -9,6 +10,7 @@ import type {
   Events,
   Hooks,
   CommandFieldCompiler,
+  CommandBindingsQuery,
   CommandEntry,
   CommandQuery,
   CommandRecord,
@@ -246,6 +248,12 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public getCommandEntries(query?: CommandQuery<TTarget>): readonly CommandEntry<TTarget, TEvent>[] {
     return this.catalog.getCommandEntries(query)
+  }
+
+  public getCommandBindings(
+    query: CommandBindingsQuery<TTarget>,
+  ): ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]> {
+    return this.catalog.getCommandBindings(query)
   }
 
   public acquireResource(key: symbol, setup: () => () => void): () => void {
