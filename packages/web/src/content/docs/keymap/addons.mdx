@@ -154,44 +154,44 @@ Adds an event match resolver that falls back to `KeyEvent.baseCode` so bindings 
 
 ### `EditBufferCommandName`
 
-| Command                   | Default description         |
-| ------------------------- | --------------------------- |
-| `move-left`               | Cursor left                 |
-| `move-right`              | Cursor right                |
-| `move-up`                 | Cursor up                   |
-| `move-down`               | Cursor down                 |
-| `select-left`             | Select left                 |
-| `select-right`            | Select right                |
-| `select-up`               | Select up                   |
-| `select-down`             | Select down                 |
-| `line-home`               | Line start                  |
-| `line-end`                | Line end                    |
-| `select-line-home`        | Select to line start        |
-| `select-line-end`         | Select to line end          |
-| `visual-line-home`        | Visual line start           |
-| `visual-line-end`         | Visual line end             |
-| `select-visual-line-home` | Select to visual line start |
-| `select-visual-line-end`  | Select to visual line end   |
-| `buffer-home`             | Buffer start                |
-| `buffer-end`              | Buffer end                  |
-| `select-buffer-home`      | Select to buffer start      |
-| `select-buffer-end`       | Select to buffer end        |
-| `delete-line`             | Delete line                 |
-| `delete-to-line-end`      | Delete to line end          |
-| `delete-to-line-start`    | Delete to line start        |
-| `backspace`               | Delete backward             |
-| `delete`                  | Delete forward              |
-| `newline`                 | New line                    |
-| `undo`                    | Undo                        |
-| `redo`                    | Redo                        |
-| `word-forward`            | Next word                   |
-| `word-backward`           | Previous word               |
-| `select-word-forward`     | Select next word            |
-| `select-word-backward`    | Select previous word        |
-| `delete-word-forward`     | Delete next word            |
-| `delete-word-backward`    | Delete previous word        |
-| `select-all`              | Select all                  |
-| `submit`                  | Submit                      |
+| Action                    | Default command                    | Default description         |
+| ------------------------- | ---------------------------------- | --------------------------- |
+| `move-left`               | `input.move.left`                  | Cursor left                 |
+| `move-right`              | `input.move.right`                 | Cursor right                |
+| `move-up`                 | `input.move.up`                    | Cursor up                   |
+| `move-down`               | `input.move.down`                  | Cursor down                 |
+| `select-left`             | `input.select.left`                | Select left                 |
+| `select-right`            | `input.select.right`               | Select right                |
+| `select-up`               | `input.select.up`                  | Select up                   |
+| `select-down`             | `input.select.down`                | Select down                 |
+| `line-home`               | `input.line.home`                  | Line start                  |
+| `line-end`                | `input.line.end`                   | Line end                    |
+| `select-line-home`        | `input.select.line.home`           | Select to line start        |
+| `select-line-end`         | `input.select.line.end`            | Select to line end          |
+| `visual-line-home`        | `input.visual.line.home`           | Visual line start           |
+| `visual-line-end`         | `input.visual.line.end`            | Visual line end             |
+| `select-visual-line-home` | `input.select.visual.line.home`    | Select to visual line start |
+| `select-visual-line-end`  | `input.select.visual.line.end`     | Select to visual line end   |
+| `buffer-home`             | `input.buffer.home`                | Buffer start                |
+| `buffer-end`              | `input.buffer.end`                 | Buffer end                  |
+| `select-buffer-home`      | `input.select.buffer.home`         | Select to buffer start      |
+| `select-buffer-end`       | `input.select.buffer.end`          | Select to buffer end        |
+| `delete-line`             | `input.delete.line`                | Delete line                 |
+| `delete-to-line-end`      | `input.delete.to.line.end`         | Delete to line end          |
+| `delete-to-line-start`    | `input.delete.to.line.start`       | Delete to line start        |
+| `backspace`               | `input.backspace`                  | Delete backward             |
+| `delete`                  | `input.delete`                     | Delete forward              |
+| `newline`                 | `input.newline`                    | New line                    |
+| `undo`                    | `input.undo`                       | Undo                        |
+| `redo`                    | `input.redo`                       | Redo                        |
+| `word-forward`            | `input.word.forward`               | Next word                   |
+| `word-backward`           | `input.word.backward`              | Previous word               |
+| `select-word-forward`     | `input.select.word.forward`        | Select next word            |
+| `select-word-backward`    | `input.select.word.backward`       | Select previous word        |
+| `delete-word-forward`     | `input.delete.word.forward`        | Delete next word            |
+| `delete-word-backward`    | `input.delete.word.backward`       | Delete previous word        |
+| `select-all`              | `input.select.all`                 | Select all                  |
+| `submit`                  | `input.submit`                     | Submit                      |
 
 The generated textarea bindings come from the shared `defaultTextareaKeyBindings` in `@opentui/core`. `createTextareaBindings()` prepends overrides before those defaults so custom bindings win by order.
 

@@ -152,7 +152,7 @@ describe("keymap addon composition", () => {
     })
 
     const offManagedTextareas = registerManagedTextareaLayer(keymap, renderer, {
-      bindings: [{ key: "dd", cmd: "delete-line" }],
+      bindings: [{ key: "dd", cmd: "input.delete.line" }],
     })
 
     alpha.focus()

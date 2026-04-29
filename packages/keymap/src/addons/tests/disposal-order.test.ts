@@ -87,7 +87,7 @@ async function createStatefulAddonScenario() {
     },
   ])
   const offManagedTextarea = registerManagedTextareaLayer(keymap, renderer, {
-    bindings: [{ key: "dd", cmd: "delete-line" }],
+    bindings: [{ key: "dd", cmd: "input.delete.line" }],
   })
   const offBackspace = registerBackspacePopsPendingSequence(keymap)
 
