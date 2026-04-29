@@ -67,7 +67,7 @@ When a key event arrives from the host, the engine walks the active layers to fi
 Ask the keymap what is currently available. Query results reflect the live state -- they change when focus, pending sequence, runtime data or conditions change.
 
 - `getActiveKeys()` returns the keys that can fire from the current focus and pending state.
-- `getCommands()` and `getCommandEntries()` return command metadata with optional binding information.
+- `getCommands()`, `getCommandEntries()` and `getCommandBindings()` return command metadata and binding projections.
 - `getPendingSequence()` returns the current multi-stroke prefix.
 - `runCommand()` and `dispatchCommand()` execute commands programmatically.
 - Subscribe to `on("state")` for batched change notifications.
