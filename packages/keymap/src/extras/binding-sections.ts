@@ -8,6 +8,7 @@ export type BindingSectionItem<TTarget extends object = object, TEvent extends K
 
 export type BindingValue<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
   | false
+  | "none"
   | BindingSectionItem<TTarget, TEvent>
   | readonly BindingSectionItem<TTarget, TEvent>[]
 
@@ -81,7 +82,7 @@ function resolveBindingValue<TTarget extends object, TEvent extends KeymapEvent>
   command: string,
   value: BindingValue<TTarget, TEvent>,
 ): BindingInput<TTarget, TEvent>[] | undefined {
-  if (value === false) {
+  if (value === false || value === "none") {
     return undefined
   }
 
