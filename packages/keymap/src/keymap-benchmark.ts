@@ -1020,6 +1020,74 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "get_command_entries_registered_command_filter",
+    description: "Repeated registered command-entry discovery for a requested command set",
+    async setup() {
+      const resources = await createScenarioResources()
+      const commands = Array.from({ length: 64 }, (_, index) => `command-${index}-0`)
+
+      for (let layerIndex = 0; layerIndex < 64; layerIndex += 1) {
+        resources.keymap.registerLayer({
+          commands: Array.from({ length: 8 }, (_, index) => ({
+            name: `command-${layerIndex}-${index}`,
+            namespace: index % 2 === 0 ? "bench" : "other",
+            title: `Command ${layerIndex}-${index}`,
+            usage: `:${layerIndex}-${index}`,
+            run() {},
+          })),
+          bindings: Array.from({ length: 8 }, (_, index) => ({
+            key: createKey(layerIndex * 8 + index),
+            cmd: `command-${layerIndex}-${index}`,
+          })),
+        })
+      }
+
+      return {
+        resources,
+        runIteration() {
+          resources.keymap.getCommandEntries({ visibility: "registered", filter: { name: commands } })
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "get_command_bindings_registered_subset",
+    description: "Repeated registered command-binding grouping for a requested command set",
+    async setup() {
+      const resources = await createScenarioResources()
+      const commands = Array.from({ length: 64 }, (_, index) => `command-${index}-0`)
+
+      for (let layerIndex = 0; layerIndex < 64; layerIndex += 1) {
+        resources.keymap.registerLayer({
+          commands: Array.from({ length: 8 }, (_, index) => ({
+            name: `command-${layerIndex}-${index}`,
+            namespace: index % 2 === 0 ? "bench" : "other",
+            title: `Command ${layerIndex}-${index}`,
+            usage: `:${layerIndex}-${index}`,
+            run() {},
+          })),
+          bindings: Array.from({ length: 8 }, (_, index) => ({
+            key: createKey(layerIndex * 8 + index),
+            cmd: `command-${layerIndex}-${index}`,
+          })),
+        })
+      }
+
+      return {
+        resources,
+        runIteration() {
+          resources.keymap.getCommandBindings({ visibility: "registered", commands })
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "get_command_entries_reachable_shadowed_bindings",
     description: "Repeated reachable command-entry discovery while shadowed commands share bindings by name",
     async setup() {
@@ -1059,6 +1127,54 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           resources.keymap.getCommandEntries()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "get_command_bindings_reachable_shadowed_subset",
+    description: "Repeated reachable command-binding grouping while shadowed commands share bindings by name",
+    async setup() {
+      const resources = await createScenarioResources()
+      const focusChain = createFocusTree(resources, 4)
+      const focusedTarget = focusChain.at(-1)
+      const commands = Array.from({ length: 64 }, (_, index) => `command-${index}`)
+      if (!focusedTarget) {
+        throw new Error("Expected focused target for reachable command-binding benchmark")
+      }
+
+      resources.keymap.registerLayer({
+        commands: Array.from({ length: 128 }, (_, index) => ({
+          name: `command-${index}`,
+          title: `Global ${index}`,
+          run() {},
+        })),
+        bindings: Array.from({ length: 128 }, (_, index) => ({
+          key: createKey(index),
+          cmd: `command-${index}`,
+        })),
+      })
+
+      resources.keymap.registerLayer({
+        target: focusedTarget,
+        commands: Array.from({ length: 64 }, (_, index) => ({
+          name: `command-${index}`,
+          title: `Local ${index}`,
+          run() {},
+        })),
+        bindings: Array.from({ length: 64 }, (_, index) => ({
+          key: createKey(index + 128),
+          cmd: `command-${index}`,
+        })),
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.keymap.getCommandBindings({ commands })
         },
         cleanup() {
           resources.renderer.destroy()

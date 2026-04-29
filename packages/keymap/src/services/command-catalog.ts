@@ -709,10 +709,8 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     },
   ): void {
     if (context.visibility === "registered") {
-      const layers = [...this.state.layers.layers]
-      layers.sort((left, right) => left.order - right.order)
-
-      for (const layer of layers) {
+      // Layer Set iteration is registration order, which matches ascending layer order.
+      for (const layer of this.state.layers.layers) {
         for (const binding of layer.compiledBindings) {
           this.collectBindingForCommandBindings(bindingsByCommand, binding, context)
         }
