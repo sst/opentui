@@ -20,13 +20,19 @@ export type BindingSectionsConfig<TTarget extends object = object, TEvent extend
   Record<string, BindingSectionConfig<TTarget, TEvent>>
 >
 
-export interface ResolvedBindingSections<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
-  sections: Record<string, BindingInput<TTarget, TEvent>[]>
+type LiteralStringKeys<T> = string extends Extract<keyof T, string> ? never : Extract<keyof T, string>
+
+export interface ResolvedBindingSections<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+  TSection extends string = string,
+> {
+  sections: Record<TSection, BindingInput<TTarget, TEvent>[]>
   get(section: string, cmd: string): readonly BindingInput<TTarget, TEvent>[] | undefined
 }
 
-export interface ResolveBindingSectionsOptions {
-  sections?: readonly string[]
+export interface ResolveBindingSectionsOptions<TSection extends string = string> {
+  sections?: readonly TSection[]
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -102,6 +108,19 @@ function resolveBindingValue<TTarget extends object, TEvent extends KeymapEvent>
   return [resolveBindingItem(section, command, value as BindingSectionItem<TTarget, TEvent>)]
 }
 
+export function resolveBindingSections<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+  const TConfig extends BindingSectionsConfig<TTarget, TEvent> = BindingSectionsConfig<TTarget, TEvent>,
+  const TSection extends string = string,
+>(
+  config: TConfig,
+  options: ResolveBindingSectionsOptions<TSection> & { sections: readonly TSection[] },
+): ResolvedBindingSections<TTarget, TEvent, TSection | LiteralStringKeys<TConfig>>
+export function resolveBindingSections<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>(
+  config: BindingSectionsConfig<TTarget, TEvent>,
+  options?: ResolveBindingSectionsOptions,
+): ResolvedBindingSections<TTarget, TEvent>
 export function resolveBindingSections<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>(
   config: BindingSectionsConfig<TTarget, TEvent>,
   options?: ResolveBindingSectionsOptions,

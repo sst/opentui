@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import { resolveBindingSections } from "../index.js"
+import type { BindingInput } from "../../index.js"
 import { createDefaultOpenTuiKeymap } from "../../opentui.js"
 import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"
 
@@ -69,6 +70,10 @@ describe("resolveBindingSections helper", () => {
   })
 
   test("includes requested sections that are missing from sparse config", () => {
+    const sectionNames = ["app", "prompt", "dialog_select"] as const
+    type SectionName = (typeof sectionNames)[number]
+    type KeymapSections = Record<SectionName, BindingInput[]>
+
     const resolved = resolveBindingSections(
       {
         app: {
@@ -79,16 +84,17 @@ describe("resolveBindingSections helper", () => {
         },
       },
       {
-        sections: ["app", "prompt", "dialog_select"],
+        sections: sectionNames,
       },
     )
+    const typedSections: KeymapSections = resolved.sections
 
     expect(Object.keys(resolved.sections)).toEqual(["app", "prompt", "dialog_select", "custom"])
-    expect(resolved.sections.app).toEqual([{ key: "s", cmd: "save" }])
-    expect(resolved.sections.prompt).toEqual([])
-    expect(resolved.sections.dialog_select).toEqual([])
+    expect(typedSections.app).toEqual([{ key: "s", cmd: "save" }])
+    expect(typedSections.prompt).toEqual([])
+    expect(typedSections.dialog_select).toEqual([])
     expect(resolved.sections.custom).toEqual([{ key: "r", cmd: "run" }])
-    expect(resolved.sections.prompt).not.toBe(resolved.sections.dialog_select)
+    expect(typedSections.prompt).not.toBe(typedSections.dialog_select)
     expect(resolved.get("app", "save")).toEqual([{ key: "s", cmd: "save" }])
     expect(resolved.get("prompt", "save")).toBeUndefined()
     expect(resolved.get("dialog_select", "run")).toBeUndefined()
