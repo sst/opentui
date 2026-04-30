@@ -207,8 +207,8 @@ writeFileSync(
   JSON.stringify(
     {
       name: packageJson.name,
-      module: "index.js",
-      main: "index.js",
+      module: "src/index.js",
+      main: "src/index.js",
       types: "src/index.d.ts",
       type: packageJson.type,
       version: packageJson.version,
