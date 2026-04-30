@@ -62,6 +62,7 @@ rmSync(distDir, { recursive: true, force: true })
 mkdirSync(distDir, { recursive: true })
 
 const externalDeps: string[] = [
+  packageJson.name,
   ...Object.keys(packageJson.dependencies || {}),
   ...Object.keys(packageJson.peerDependencies || {}),
 ]
