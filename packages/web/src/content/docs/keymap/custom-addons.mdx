@@ -196,6 +196,10 @@ Use the `clear*()` methods only when your addon owns that whole stage. They are 
 | `record`         | Custom `CommandRecord` metadata             |
 | `rejectedResult` | Override the default rejected result        |
 
+Resolver results used for static binding commands and command-view projections may be cached for the lifetime of that active or registered view.
+Programmatic `runCommand()` and `dispatchCommand()` resolve the supplied command string for each call.
+Put per-execution behavior in the returned `run(ctx)` handler.
+
 ### `EventMatchResolver`
 
 ```ts

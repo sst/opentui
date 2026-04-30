@@ -245,18 +245,41 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return resolved
   }
 
-  public getRegisteredResolverFallback(
+  public getActiveRegisteredResolvedEntries(
+    command: string,
+    focused: TTarget | null,
+    includeRecord: boolean,
+  ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined {
+    const view = this.getActiveCommandView(focused)
+    const chain = view.chainsByName.get(command)
+    if (!chain || chain.length === 0) {
+      return undefined
+    }
+
+    const resolved: ResolvedCommandEntry<TTarget, TEvent>[] = []
+    for (const entry of chain) {
+      resolved.push({
+        target: entry.layer.target,
+        resolved: resolveRegisteredCommand(entry.command, { includeRecord }),
+      })
+    }
+
+    return resolved
+  }
+
+  public resolveRegisteredResolverFallback(
     command: string,
     includeRecord: boolean,
   ): { resolved?: ResolvedBindingCommand<TTarget, TEvent>; hadError: boolean } {
-    const view = this.getRegisteredCommandView()
-    const fallback = this.getFallbackResolvedCommand(view, command, null, includeRecord, "registered")
-    const hadError = (includeRecord ? view.fallbackWithRecordErrors : view.fallbackWithoutRecordErrors).has(command)
+    return this.resolveCommandWithResolvers(command, null, { includeRecord, mode: "registered" })
+  }
 
-    return {
-      resolved: fallback?.resolved,
-      hadError,
-    }
+  public resolveActiveResolverFallback(
+    command: string,
+    focused: TTarget | null,
+    includeRecord: boolean,
+  ): { resolved?: ResolvedBindingCommand<TTarget, TEvent>; hadError: boolean } {
+    return this.resolveCommandWithResolvers(command, focused, { includeRecord, mode: "active" })
   }
 
   public getCommandAttrs(command: string, focused: TTarget | null): Readonly<Attributes> | undefined {

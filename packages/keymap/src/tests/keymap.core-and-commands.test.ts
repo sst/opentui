@@ -425,6 +425,150 @@ describe("keymap: core and commands", () => {
     expect(keymap.runCommand("shared-command")).toEqual({ ok: false, reason: "not-found" })
   })
 
+  test("programmatic resolver fallback resolves freshly for each call", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+    let resolverCalls = 0
+
+    keymap.appendCommandResolver((command) => {
+      if (command !== "dynamic-command") {
+        return undefined
+      }
+
+      resolverCalls += 1
+      const generation = resolverCalls
+      return {
+        run() {
+          calls.push(`run:${generation}`)
+        },
+      }
+    })
+
+    expect(keymap.runCommand("dynamic-command")).toEqual({ ok: true })
+    expect(keymap.runCommand("dynamic-command")).toEqual({ ok: true })
+    expect(keymap.dispatchCommand("dynamic-command")).toEqual({ ok: true })
+    expect(keymap.dispatchCommand("dynamic-command")).toEqual({ ok: true })
+    expect(resolverCalls).toBe(4)
+    expect(calls).toEqual(["run:1", "run:2", "run:3", "run:4"])
+  })
+
+  test("static binding resolver fallback stays cached within the active view", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+    let resolverCalls = 0
+
+    keymap.appendCommandResolver((command) => {
+      if (command !== "dynamic-binding") {
+        return undefined
+      }
+
+      resolverCalls += 1
+      const generation = resolverCalls
+      return {
+        attrs: { generation },
+        run() {
+          calls.push(`run:${generation}`)
+        },
+      }
+    })
+
+    keymap.registerLayer({
+      bindings: [{ key: "x", cmd: "dynamic-binding" }],
+    })
+
+    expect(getActiveKey(keymap, "x", { includeMetadata: true })?.commandAttrs).toEqual({ generation: 1 })
+    expect(resolverCalls).toBe(1)
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("x")
+
+    expect(resolverCalls).toBe(1)
+    expect(calls).toEqual(["run:1", "run:1"])
+
+    expect(keymap.dispatchCommand("dynamic-binding")).toEqual({ ok: true })
+    expect(keymap.runCommand("dynamic-binding")).toEqual({ ok: true })
+    expect(resolverCalls).toBe(3)
+    expect(calls).toEqual(["run:1", "run:1", "run:2", "run:3"])
+  })
+
+  test("programmatic fallback resolves freshly after rejecting registered commands", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+    let resolverCalls = 0
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "shared-reject",
+          run() {
+            calls.push("registered")
+            return false
+          },
+        },
+      ],
+    })
+
+    keymap.appendCommandResolver((command) => {
+      if (command !== "shared-reject") {
+        return undefined
+      }
+
+      resolverCalls += 1
+      const generation = resolverCalls
+      return {
+        run() {
+          calls.push(`resolver:${generation}`)
+        },
+      }
+    })
+
+    expect(keymap.runCommand("shared-reject")).toEqual({ ok: true })
+    expect(keymap.runCommand("shared-reject")).toEqual({ ok: true })
+    expect(keymap.dispatchCommand("shared-reject")).toEqual({ ok: true })
+    expect(keymap.dispatchCommand("shared-reject")).toEqual({ ok: true })
+    expect(resolverCalls).toBe(4)
+    expect(calls).toEqual([
+      "registered",
+      "resolver:1",
+      "registered",
+      "resolver:2",
+      "registered",
+      "resolver:3",
+      "registered",
+      "resolver:4",
+    ])
+  })
+
+  test("dispatchCommand does not resolve fallback when active registered command handles", () => {
+    const keymap = getKeymap(renderer)
+    const { errors } = captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "handled-command",
+          run() {
+            calls.push("registered")
+          },
+        },
+      ],
+    })
+
+    keymap.appendCommandResolver((command) => {
+      if (command === "handled-command") {
+        throw new Error("resolver should not run")
+      }
+
+      return undefined
+    })
+
+    expect(keymap.dispatchCommand("handled-command")).toEqual({ ok: true })
+    expect(keymap.runCommand("handled-command")).toEqual({ ok: true })
+    expect(calls).toEqual(["registered", "registered"])
+    expect(errors).toEqual([])
+  })
+
   test("dispatchCommand resolves active layer commands while runCommand uses registered precedence", () => {
     const keymap = getKeymap(renderer)
     const { warnings } = captureDiagnostics(keymap)
@@ -702,7 +846,7 @@ describe("keymap: core and commands", () => {
     expect(keymap.dispatchCommand("external-run")).toEqual({ ok: false, reason: "error" })
     expect(keymap.runCommand("external-run")).toEqual({ ok: false, reason: "error" })
     const { errors } = takeErrors()
-    expect(errors).toHaveLength(2)
+    expect(errors).toHaveLength(3)
     expect(errors.every((message) => message.includes('Error in command resolver for "external-run":'))).toBe(true)
   })
 })
