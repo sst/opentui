@@ -46,7 +46,9 @@ describe("runtime plugin support", () => {
     const stdout = result.stdout.toString().trim()
 
     expect(result.exitCode).toBe(0)
-    expect(stdout).toContain("OpenTUI Core runtime plugin support is already installed without runtime-plugin-support-extra")
+    expect(stdout).toContain(
+      "OpenTUI Core runtime plugin support is already installed without runtime-plugin-support-extra",
+    )
     expect(stdout).toContain("@opentui/core/runtime-plugin-support/configure")
   })
 })

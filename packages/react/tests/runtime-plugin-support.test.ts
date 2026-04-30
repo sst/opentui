@@ -54,7 +54,9 @@ describe("react runtime plugin support", () => {
     const stdout = result.stdout.toString().trim()
 
     expect(result.exitCode).toBe(0)
-    expect(stdout).toContain("OpenTUI React runtime plugin support is already installed without runtime-plugin-support-extra")
+    expect(stdout).toContain(
+      "OpenTUI React runtime plugin support is already installed without runtime-plugin-support-extra",
+    )
     expect(stdout).toContain("@opentui/react/runtime-plugin-support/configure")
   })
 })

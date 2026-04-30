@@ -55,4 +55,9 @@ export function ensureRuntimePluginSupport(options: CreateRuntimePluginOptions =
 }
 
 export { createRuntimePlugin, runtimeModuleIdForSpecifier } from "./runtime-plugin.js"
-export type { CreateRuntimePluginOptions, RuntimeModuleEntry, RuntimeModuleExports, RuntimeModuleLoader } from "./runtime-plugin.js"
+export type {
+  CreateRuntimePluginOptions,
+  RuntimeModuleEntry,
+  RuntimeModuleExports,
+  RuntimeModuleLoader,
+} from "./runtime-plugin.js"
