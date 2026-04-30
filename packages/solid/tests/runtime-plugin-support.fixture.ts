@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { plugin as registerPlugin } from "bun"
@@ -11,7 +11,6 @@ type FixtureState = typeof globalThis & {
   __solidRuntimeHost__?: {
     solid: Record<string, unknown>
     core: Record<string, unknown>
-    three: Record<string, unknown>
     coreTesting: Record<string, unknown>
     solidJs: Record<string, unknown>
   }
@@ -19,41 +18,19 @@ type FixtureState = typeof globalThis & {
 
 const tempRoot = mkdtempSync(join(tmpdir(), "solid-runtime-plugin-support-fixture-"))
 const entryPath = join(tempRoot, "entry.tsx")
-const threeRuntimePackageDir = join(import.meta.dir, "..", "node_modules", "@opentui", "three")
-const threeRuntimePackageJsonPath = join(threeRuntimePackageDir, "package.json")
-const threeRuntimeShimPath = join(threeRuntimePackageDir, "index.ts")
-const createdThreeRuntimeShim = !existsSync(threeRuntimePackageJsonPath)
-
-if (createdThreeRuntimeShim) {
-  mkdirSync(threeRuntimePackageDir, { recursive: true })
-  writeFileSync(
-    threeRuntimePackageJsonPath,
-    JSON.stringify({
-      name: "@opentui/three",
-      private: true,
-      type: "module",
-      exports: {
-        ".": "./index.ts",
-      },
-    }),
-  )
-  writeFileSync(threeRuntimeShimPath, 'export * from "../../../../three/src/index.ts"\n')
-}
 
 const source = [
   'import * as solid from "@opentui/solid"',
   'import * as core from "@opentui/core"',
-  'import * as three from "@opentui/three"',
   'import * as coreTesting from "@opentui/core/testing"',
   'import { createSignal } from "solid-js"',
-  "const state = globalThis as { __solidRuntimeHost__?: { solid: Record<string, unknown>; core: Record<string, unknown>; three: Record<string, unknown>; coreTesting: Record<string, unknown>; solidJs: Record<string, unknown> } }",
+  "const state = globalThis as { __solidRuntimeHost__?: { solid: Record<string, unknown>; core: Record<string, unknown>; coreTesting: Record<string, unknown>; solidJs: Record<string, unknown> } }",
   "const [value] = createSignal('ok')",
   "const makeNode = () => <text>{value()}</text>",
   "const host = state.__solidRuntimeHost__",
   "const checks = [",
   "  `solid=${solid.extend === host?.solid.extend}`,",
   "  `core=${core.engine === host?.core.engine}`,",
-  "  `three=${three.ThreeRenderable === host?.three.ThreeRenderable}`,",
   "  `coreTesting=${coreTesting.createTestRenderer === host?.coreTesting.createTestRenderer}`,",
   "  `solidJs=${createSignal === host?.solidJs.createSignal}`,",
   "  `jsx=${typeof makeNode === 'function'}`,",
@@ -68,7 +45,6 @@ const state = globalThis as FixtureState
 state.__solidRuntimeHost__ = {
   solid: solidRuntime as Record<string, unknown>,
   core: coreRuntime as Record<string, unknown>,
-  three: (await import("@opentui/three")) as Record<string, unknown>,
   coreTesting: (await import("@opentui/core/testing")) as Record<string, unknown>,
   solidJs: solidJsRuntime as Record<string, unknown>,
 }
@@ -82,8 +58,5 @@ try {
 } finally {
   registerPlugin.clearAll()
   delete state.__solidRuntimeHost__
-  if (createdThreeRuntimeShim) {
-    rmSync(threeRuntimePackageDir, { recursive: true, force: true })
-  }
   rmSync(tempRoot, { recursive: true, force: true })
 }

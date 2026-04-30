@@ -8,6 +8,8 @@ import * as keymapExtrasRuntime from "@opentui/keymap/extras"
 import { runtimeModules as keymapRuntimeModules } from "@opentui/keymap/runtime-modules"
 import * as keymapSolidRuntime from "@opentui/keymap/solid"
 import { ensureRuntimePluginSupport } from "@opentui/solid/runtime-plugin-support/configure"
+import * as threeRuntime from "../../three/src/index.js"
+import { runtimeModules as threeRuntimeModules } from "../../three/src/runtime-modules.js"
 import { resetSolidTransformPluginState } from "../scripts/solid-plugin.js"
 
 type FixtureState = typeof globalThis & {
@@ -16,6 +18,7 @@ type FixtureState = typeof globalThis & {
     keymapAddons: Record<string, unknown>
     keymapExtras: Record<string, unknown>
     keymapSolid: Record<string, unknown>
+    three: Record<string, unknown>
   }
 }
 
@@ -27,8 +30,9 @@ const source = [
   'import { registerDefaultKeys } from "@opentui/keymap/addons"',
   'import { commandBindings } from "@opentui/keymap/extras"',
   'import { useKeymapSelector } from "@opentui/keymap/solid"',
+  'import { ThreeRenderable } from "@opentui/three"',
   'import { createSignal } from "solid-js"',
-  "const state = globalThis as { __solidRuntimeHost__?: { keymap: Record<string, unknown>; keymapAddons: Record<string, unknown>; keymapExtras: Record<string, unknown>; keymapSolid: Record<string, unknown> } }",
+  "const state = globalThis as { __solidRuntimeHost__?: { keymap: Record<string, unknown>; keymapAddons: Record<string, unknown>; keymapExtras: Record<string, unknown>; keymapSolid: Record<string, unknown>; three: Record<string, unknown> } }",
   "const [value] = createSignal('ok')",
   "const makeNode = () => <text>{value()}</text>",
   "const host = state.__solidRuntimeHost__",
@@ -37,6 +41,7 @@ const source = [
   "  `keymapAddons=${registerDefaultKeys === host?.keymapAddons.registerDefaultKeys}`,",
   "  `keymapExtras=${commandBindings === host?.keymapExtras.commandBindings}`,",
   "  `keymapSolid=${useKeymapSelector === host?.keymapSolid.useKeymapSelector}`,",
+  "  `three=${ThreeRenderable === host?.three.ThreeRenderable}`,",
   "  `jsx=${typeof makeNode === 'function'}`,",
   "]",
   "console.log(checks.join(';'))",
@@ -51,14 +56,19 @@ state.__solidRuntimeHost__ = {
   keymapAddons: keymapAddonsRuntime as Record<string, unknown>,
   keymapExtras: keymapExtrasRuntime as Record<string, unknown>,
   keymapSolid: keymapSolidRuntime as Record<string, unknown>,
+  three: threeRuntime as Record<string, unknown>,
 }
 
 registerPlugin.clearAll()
 resetSolidTransformPluginState()
 
 try {
-  const first = ensureRuntimePluginSupport({ additional: keymapRuntimeModules })
-  const second = ensureRuntimePluginSupport({ additional: keymapRuntimeModules })
+  const additional = {
+    ...keymapRuntimeModules,
+    ...threeRuntimeModules,
+  }
+  const first = ensureRuntimePluginSupport({ additional })
+  const second = ensureRuntimePluginSupport({ additional })
   console.log(`first=${first};second=${second}`)
   await import(entryPath)
 } finally {

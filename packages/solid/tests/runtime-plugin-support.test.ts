@@ -16,7 +16,6 @@ describe("solid runtime plugin support", () => {
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("solid=true")
     expect(stdout).toContain("core=true")
-    expect(stdout).toContain("three=true")
     expect(stdout).toContain("coreTesting=true")
     expect(stdout).toContain("solidJs=true")
     expect(stdout).toContain("jsx=true")
@@ -40,6 +39,7 @@ describe("solid runtime plugin support", () => {
     expect(stdout).toContain("keymapAddons=true")
     expect(stdout).toContain("keymapExtras=true")
     expect(stdout).toContain("keymapSolid=true")
+    expect(stdout).toContain("three=true")
     expect(stdout).toContain("jsx=true")
   })
 

@@ -20,6 +20,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
+    },
+    "./runtime-modules": {
+      "types": "./src/runtime-modules.ts",
+      "import": "./src/runtime-modules.ts"
     }
   },
   "dependencies": {

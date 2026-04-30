@@ -43,6 +43,17 @@ ensureRuntimePluginSupport({
 })
 ```
 
+First-party packages expose side-effect-free runtime module maps. For plugins that import `@opentui/three`, install `@opentui/three` in the host app and pass its runtime modules explicitly:
+
+```ts
+import { runtimeModules as threeRuntimeModules } from "@opentui/three/runtime-modules"
+import { ensureRuntimePluginSupport } from "@opentui/react/runtime-plugin-support/configure"
+
+ensureRuntimePluginSupport({
+  additional: threeRuntimeModules,
+})
+```
+
 The side-effect import and configurable entrypoint install the same runtime plugin. Late additions throw with a clear error instead of being ignored.
 
 ## What React adds

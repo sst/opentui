@@ -20,7 +20,7 @@ If your app loads plugins from disk at runtime (for example `await import(fileUr
 import "@opentui/solid/runtime-plugin-support"
 ```
 
-This is a Bun drop-in that installs runtime transform support so external TS/TSX plugin modules use the same runtime instances as the host app (`@opentui/solid`, `@opentui/core`, `@opentui/three`, `@opentui/core/testing`, `solid-js`, and `solid-js/store`). If a plugin imports `@opentui/three`, install `@opentui/three` in the host app so the runtime loader can provide it.
+This is a Bun drop-in that installs runtime transform support so external TS/TSX plugin modules use the same runtime instances as the host app (`@opentui/solid`, `@opentui/core`, `@opentui/core/testing`, `solid-js`, and `solid-js/store`). If a plugin imports another OpenTUI package, provide that package through `additional` runtime modules.
 
 Use this for plugin systems in both normal Bun runs and standalone compiled executables.
 
@@ -43,7 +43,7 @@ ensureRuntimePluginSupport({
 })
 ```
 
-First-party packages can expose side-effect-free runtime module maps. For keymap-aware Solid plugins:
+First-party packages expose side-effect-free runtime module maps. For keymap-aware Solid plugins:
 
 ```ts
 import { runtimeModules as keymapRuntimeModules } from "@opentui/keymap/runtime-modules"
@@ -51,6 +51,17 @@ import { ensureRuntimePluginSupport } from "@opentui/solid/runtime-plugin-suppor
 
 ensureRuntimePluginSupport({
   additional: keymapRuntimeModules,
+})
+```
+
+For plugins that import `@opentui/three`, install `@opentui/three` in the host app and pass its runtime modules explicitly:
+
+```ts
+import { runtimeModules as threeRuntimeModules } from "@opentui/three/runtime-modules"
+import { ensureRuntimePluginSupport } from "@opentui/solid/runtime-plugin-support/configure"
+
+ensureRuntimePluginSupport({
+  additional: threeRuntimeModules,
 })
 ```
 
