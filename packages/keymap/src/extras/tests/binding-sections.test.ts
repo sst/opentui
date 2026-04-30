@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { resolveBindingSections } from "../index.js"
+import { resolveBindingSections, type BindingValue } from "../index.js"
 import type { BindingInput } from "../../index.js"
 import { createDefaultOpenTuiKeymap } from "../../opentui.js"
 import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"
@@ -134,12 +134,40 @@ describe("resolveBindingSections helper", () => {
     expect(resolved.get("app", "ignored.command")).toBeUndefined()
   })
 
+  test("clones key and binding objects without mutating inputs", () => {
+    const key = { name: "s", ctrl: true }
+    const binding = {
+      key,
+      cmd: "ignored.command",
+      preventDefault: false,
+      metadata: { source: "user" },
+    }
+
+    const resolved = resolveBindingSections({
+      app: {
+        save: binding,
+      },
+    })
+    const resolvedBinding = resolved.sections.app?.[0]
+
+    expect(resolvedBinding).toEqual({
+      key: { name: "s", ctrl: true },
+      cmd: "save",
+      preventDefault: false,
+      metadata: { source: "user" },
+    })
+    expect(resolvedBinding).not.toBe(binding)
+    expect(resolvedBinding?.key).not.toBe(key)
+    expect(binding.cmd).toBe("ignored.command")
+  })
+
   test("lets false, none, and empty arrays disable a command and lets later normalized entries replace earlier ones", () => {
     const resolved = resolveBindingSections({
       app: {
         " save ": "x",
         save: false,
         disabled: "none",
+        literal_none_key: ["none"],
         "open ": "o",
         open: ["p", { key: "shift+p", preventDefault: false }],
         empty: [],
@@ -147,26 +175,90 @@ describe("resolveBindingSections helper", () => {
     })
 
     expect(resolved.sections.app).toEqual([
+      { key: "none", cmd: "literal_none_key" },
       { key: "p", cmd: "open" },
       { key: "shift+p", cmd: "open", preventDefault: false },
     ])
     expect(resolved.get("app", "save")).toBeUndefined()
     expect(resolved.get("app", "disabled")).toBeUndefined()
+    expect(resolved.get("app", "literal_none_key")).toEqual([{ key: "none", cmd: "literal_none_key" }])
     expect(resolved.get("app", "open")).toEqual([
+      { key: "p", cmd: "open" },
+      { key: "shift+p", cmd: "open", preventDefault: false },
+    ])
+    expect(resolved.get("app", " open ")).toEqual([
       { key: "p", cmd: "open" },
       { key: "shift+p", cmd: "open", preventDefault: false },
     ])
     expect(resolved.get("app", "empty")).toBeUndefined()
   })
 
+  test("preserves empty sections when every command is disabled", () => {
+    const resolved = resolveBindingSections({
+      app: {
+        save: false,
+        open: "none",
+        close: [],
+      },
+    })
+
+    expect(resolved.sections.app).toEqual([])
+    expect(resolved.get("app", "save")).toBeUndefined()
+    expect(resolved.get("app", "open")).toBeUndefined()
+    expect(resolved.get("app", "close")).toBeUndefined()
+  })
+
+  test("re-adds normalized commands after disables at the latest insertion point", () => {
+    const app: Record<string, BindingValue> = {}
+    app[" action "] = "a"
+    app.action = false
+    app.before_action = "b"
+    app["action "] = "c"
+
+    const resolved = resolveBindingSections({ app })
+
+    expect(resolved.sections.app).toEqual([
+      { key: "b", cmd: "before_action" },
+      { key: "c", cmd: "action" },
+    ])
+    expect(resolved.get("app", " action ")).toEqual([{ key: "c", cmd: "action" }])
+  })
+
+  test("ignores inherited section and command properties", () => {
+    const inheritedSectionConfig = Object.create({ inherited: "i" }) as Record<string, unknown>
+    inheritedSectionConfig.save = "s"
+
+    const config = Object.create({ inherited_section: { run: "r" } }) as Record<string, Record<string, unknown>>
+    config.app = inheritedSectionConfig
+
+    const resolved = resolveBindingSections(config)
+
+    expect(Object.keys(resolved.sections)).toEqual(["app"])
+    expect(resolved.sections.app).toEqual([{ key: "s", cmd: "save" }])
+    expect(resolved.get("app", "inherited")).toBeUndefined()
+    expect(resolved.get("inherited_section", "run")).toBeUndefined()
+  })
+
   test("throws for invalid sections and binding values", () => {
     expect(() => resolveBindingSections({ app: false } as never)).toThrow(
+      'Invalid binding section "app": expected an object',
+    )
+    expect(() => resolveBindingSections({ app: null } as never)).toThrow(
+      'Invalid binding section "app": expected an object',
+    )
+    expect(() => resolveBindingSections({ app: [] } as never)).toThrow(
       'Invalid binding section "app": expected an object',
     )
     expect(() => resolveBindingSections({ app: { save: true } } as never)).toThrow(
       'Invalid binding value for "app.save": expected false, a key, a binding object, or an array of keys/binding objects',
     )
+    expect(() => resolveBindingSections({ app: { save: null } } as never)).toThrow(
+      'Invalid binding value for "app.save": expected false, a key, a binding object, or an array of keys/binding objects',
+    )
     expect(() => resolveBindingSections({ app: { save: ["x", true] } } as never)).toThrow(
+      'Invalid binding value for "app.save" at index 1: expected false, a key, a binding object, or an array of keys/binding objects',
+    )
+    expect(() => resolveBindingSections({ app: { save: ["x", false] } } as never)).toThrow(
       'Invalid binding value for "app.save" at index 1: expected false, a key, a binding object, or an array of keys/binding objects',
     )
     expect(() => resolveBindingSections({ app: { save: { key: true } } } as never)).toThrow(

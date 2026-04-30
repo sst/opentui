@@ -22,6 +22,8 @@ export type BindingSectionsConfig<TTarget extends object = object, TEvent extend
 
 type LiteralStringKeys<T> = string extends Extract<keyof T, string> ? never : Extract<keyof T, string>
 
+const hasOwn = Object.prototype.hasOwnProperty
+
 export interface ResolvedBindingSections<
   TTarget extends object = object,
   TEvent extends KeymapEvent = KeymapEvent,
@@ -102,7 +104,12 @@ function resolveBindingValue<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     const items = value as readonly BindingSectionItem<TTarget, TEvent>[]
-    return items.map((item, index) => resolveBindingItem(section, command, item, index))
+    const bindings = new Array<BindingInput<TTarget, TEvent>>(items.length)
+    for (let index = 0; index < items.length; index += 1) {
+      bindings[index] = resolveBindingItem(section, command, items[index]!, index)
+    }
+
+    return bindings
   }
 
   return [resolveBindingItem(section, command, value as BindingSectionItem<TTarget, TEvent>)]
@@ -133,16 +140,26 @@ export function resolveBindingSections<TTarget extends object = object, TEvent e
     lookups.set(section, new Map())
   }
 
-  for (const [section, sectionConfig] of Object.entries(config)) {
+  // Own-property loops avoid Object.entries allocations while still ignoring inherited config.
+  for (const section in config) {
+    if (!hasOwn.call(config, section)) {
+      continue
+    }
+
+    const sectionConfig = config[section]
     if (!isObject(sectionConfig)) {
       throw new Error(`Invalid binding section "${section}": expected an object`)
     }
 
     const sectionLookup = new Map<string, BindingInput<TTarget, TEvent>[]>()
 
-    for (const [rawCommand, value] of Object.entries(sectionConfig)) {
+    for (const rawCommand in sectionConfig) {
+      if (!hasOwn.call(sectionConfig, rawCommand)) {
+        continue
+      }
+
       const command = rawCommand.trim()
-      const bindings = resolveBindingValue(section, command, value)
+      const bindings = resolveBindingValue(section, command, sectionConfig[rawCommand]!)
 
       if (!bindings) {
         sectionLookup.delete(command)
@@ -152,7 +169,22 @@ export function resolveBindingSections<TTarget extends object = object, TEvent e
       sectionLookup.set(command, bindings)
     }
 
-    sections[section] = Array.from(sectionLookup.values()).flat()
+    // Manual flattening avoids Array.flat allocations on large generated configs.
+    let sectionBindingCount = 0
+    for (const bindings of sectionLookup.values()) {
+      sectionBindingCount += bindings.length
+    }
+
+    const sectionBindings = new Array<BindingInput<TTarget, TEvent>>(sectionBindingCount)
+    let bindingIndex = 0
+    for (const bindings of sectionLookup.values()) {
+      for (let index = 0; index < bindings.length; index += 1) {
+        sectionBindings[bindingIndex] = bindings[index]!
+        bindingIndex += 1
+      }
+    }
+
+    sections[section] = sectionBindings
     lookups.set(section, sectionLookup)
   }
 
