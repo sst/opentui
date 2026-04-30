@@ -25,6 +25,10 @@
       "import": "./scripts/runtime-plugin-support.ts",
       "types": "./scripts/runtime-plugin-support.ts"
     },
+    "./runtime-plugin-support/configure": {
+      "import": "./scripts/runtime-plugin-support-configure.ts",
+      "types": "./scripts/runtime-plugin-support-configure.ts"
+    },
     "./jsx-runtime": {
       "import": "./jsx-runtime.js",
       "types": "./jsx-runtime.d.ts"

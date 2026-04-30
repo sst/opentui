@@ -86,6 +86,12 @@ const workspaceAliasPlugin: BunPlugin = {
         path: join(packageRoot, "scripts", "runtime-plugin-support.ts"),
       }
     })
+
+    build.onResolve({ filter: /^@opentui\/solid\/runtime-plugin-support\/configure$/ }, () => {
+      return {
+        path: join(packageRoot, "scripts", "runtime-plugin-support-configure.ts"),
+      }
+    })
   },
 }
 

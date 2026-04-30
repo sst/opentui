@@ -36,20 +36,19 @@ import "@opentui/core/runtime-plugin-support"
 
 This installs Bun runtime support for `@opentui/core` plus default core runtime entrypoints (`@opentui/core/testing`). Add `@opentui/three` explicitly when a plugin needs the 3D package.
 
-If you need additional host-resolved modules, register your own plugin:
+If you need additional host-resolved modules, configure runtime support before the side-effect import is loaded:
 
 ```ts
-import { plugin } from "bun"
-import { createRuntimePlugin } from "@opentui/core/runtime-plugin"
+const { ensureRuntimePluginSupport } = await import("@opentui/core/runtime-plugin-support/configure")
 
-plugin(
-  createRuntimePlugin({
-    additional: {
-      "my-runtime-module": async () => (await import("./runtime-module")) as Record<string, unknown>,
-    },
-  }),
-)
+ensureRuntimePluginSupport({
+  additional: {
+    "my-runtime-module": { marker: "ok" },
+  },
+})
 ```
+
+The side-effect import and configurable entrypoint install the same runtime plugin. Late additions throw with a clear error instead of being ignored.
 
 ## `CorePlugin` interface
 

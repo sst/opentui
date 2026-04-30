@@ -75,6 +75,7 @@ const keymapEntrypoints = [
   join(rootDir, "src/opentui.ts"),
   join(rootDir, "src/react/index.ts"),
   join(rootDir, "src/solid/index.ts"),
+  join(rootDir, "src/runtime-modules.ts"),
 ]
 
 function verifyHtmlBundleIsolation(bundlePath: string): void {
@@ -120,7 +121,7 @@ if (!buildResult.success) {
   process.exit(1)
 }
 
-verifyHtmlBundleIsolation(join(distDir, "html.js"))
+verifyHtmlBundleIsolation(join(distDir, "src/html.js"))
 
 console.log("Generating TypeScript declarations...")
 
@@ -144,43 +145,48 @@ if (tscResult.status !== 0) {
 const exports = {
   ".": {
     types: "./src/index.d.ts",
-    import: "./index.js",
-    require: "./index.js",
+    import: "./src/index.js",
+    require: "./src/index.js",
   },
   "./extras": {
     types: "./src/extras/index.d.ts",
-    import: "./extras/index.js",
-    require: "./extras/index.js",
+    import: "./src/extras/index.js",
+    require: "./src/extras/index.js",
   },
   "./addons": {
     types: "./src/addons/index.d.ts",
-    import: "./addons/index.js",
-    require: "./addons/index.js",
+    import: "./src/addons/index.js",
+    require: "./src/addons/index.js",
   },
   "./addons/opentui": {
     types: "./src/addons/opentui/index.d.ts",
-    import: "./addons/opentui/index.js",
-    require: "./addons/opentui/index.js",
+    import: "./src/addons/opentui/index.js",
+    require: "./src/addons/opentui/index.js",
   },
   "./html": {
     types: "./src/html.d.ts",
-    import: "./html.js",
-    require: "./html.js",
+    import: "./src/html.js",
+    require: "./src/html.js",
   },
   "./opentui": {
     types: "./src/opentui.d.ts",
-    import: "./opentui.js",
-    require: "./opentui.js",
+    import: "./src/opentui.js",
+    require: "./src/opentui.js",
   },
   "./react": {
     types: "./src/react/index.d.ts",
-    import: "./react/index.js",
-    require: "./react/index.js",
+    import: "./src/react/index.js",
+    require: "./src/react/index.js",
   },
   "./solid": {
     types: "./src/solid/index.d.ts",
-    import: "./solid/index.js",
-    require: "./solid/index.js",
+    import: "./src/solid/index.js",
+    require: "./src/solid/index.js",
+  },
+  "./runtime-modules": {
+    types: "./src/runtime-modules.d.ts",
+    import: "./src/runtime-modules.js",
+    require: "./src/runtime-modules.js",
   },
 }
 

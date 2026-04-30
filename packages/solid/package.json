@@ -30,7 +30,12 @@
       "import": "./scripts/solid-plugin.ts"
     },
     "./runtime-plugin-support": {
+      "types": "./scripts/runtime-plugin-support.ts",
       "import": "./scripts/runtime-plugin-support.ts"
+    },
+    "./runtime-plugin-support/configure": {
+      "types": "./scripts/runtime-plugin-support-configure.ts",
+      "import": "./scripts/runtime-plugin-support-configure.ts"
     },
     "./jsx-runtime": "./jsx-runtime.d.ts",
     "./jsx-dev-runtime": "./jsx-runtime.d.ts"

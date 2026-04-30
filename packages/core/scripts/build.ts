@@ -198,6 +198,7 @@ if (buildLib) {
     "src/testing.ts",
     "src/runtime-plugin.ts",
     "src/runtime-plugin-support.ts",
+    "src/runtime-plugin-support-configure.ts",
   ]
 
   // Build main entry points with code splitting
@@ -258,6 +259,7 @@ if (buildLib) {
     "dist/testing.js",
     "dist/runtime-plugin.js",
     "dist/runtime-plugin-support.js",
+    "dist/runtime-plugin-support-configure.js",
     "dist/lib/tree-sitter/parser.worker.js",
   ]
   for (const filePath of bundledFiles) {
@@ -343,6 +345,11 @@ if (buildLib) {
       import: "./runtime-plugin-support.js",
       require: "./runtime-plugin-support.js",
       types: "./runtime-plugin-support.d.ts",
+    },
+    "./runtime-plugin-support/configure": {
+      import: "./runtime-plugin-support-configure.js",
+      require: "./runtime-plugin-support-configure.js",
+      types: "./runtime-plugin-support-configure.d.ts",
     },
     "./parser.worker": {
       import: "./lib/tree-sitter/parser.worker.js",

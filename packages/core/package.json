@@ -71,6 +71,10 @@
       "types": "./src/runtime-plugin-support.ts",
       "import": "./src/runtime-plugin-support.ts"
     },
+    "./runtime-plugin-support/configure": {
+      "types": "./src/runtime-plugin-support-configure.ts",
+      "import": "./src/runtime-plugin-support-configure.ts"
+    },
     "./parser.worker": {
       "types": "./src/lib/tree-sitter/parser.worker.ts",
       "import": "./src/lib/tree-sitter/parser.worker.ts"

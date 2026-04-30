@@ -44,6 +44,10 @@
     "./solid": {
       "import": "./src/solid/index.ts",
       "types": "./src/solid/index.ts"
+    },
+    "./runtime-modules": {
+      "import": "./src/runtime-modules.ts",
+      "types": "./src/runtime-modules.ts"
     }
   },
   "scripts": {

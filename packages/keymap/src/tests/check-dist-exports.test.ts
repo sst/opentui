@@ -26,6 +26,7 @@ test("dist package exports resolve when dist exists", async () => {
     "./opentui",
     "./react",
     "./solid",
+    "./runtime-modules",
   ] as const
 
   for (const exportName of expectedExports) {
