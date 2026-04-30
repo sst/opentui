@@ -4,6 +4,7 @@ import path from "node:path"
 import { BoxRenderable, type KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import * as addons from "./addons/index.js"
+import { formatCommandBindings, formatKeySequence, type SequenceBindingLike } from "./extras/index.js"
 import { type BindingParser, type Keymap, type ReactiveMatcher } from "./index.js"
 import { createDefaultOpenTuiKeymap as getKeymap } from "./opentui.js"
 
@@ -1177,6 +1178,131 @@ const scenarios: BenchmarkScenario[] = [
           resources.keymap.getCommandBindings({ commands })
         },
         cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "format_key_sequence_plain",
+    description: "Repeated plain key-sequence formatting without custom options",
+    async setup() {
+      const resources = await createScenarioResources()
+      const sequence = resources.keymap.parseKeySequence("gdd")
+      let sink = ""
+
+      return {
+        resources,
+        runIteration() {
+          sink = formatKeySequence(sequence)
+        },
+        cleanup() {
+          void sink
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "format_key_sequence_token_aliases",
+    description: "Repeated key-sequence formatting with token, key, modifier, and separator options",
+    async setup() {
+      const resources = await createScenarioResources()
+      resources.keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+      const sequence = [
+        ...resources.keymap.parseKeySequence("<leader>s"),
+        ...resources.keymap.parseKeySequence({ name: "return", ctrl: true, shift: true, meta: true }),
+      ]
+      const options = {
+        tokenDisplay: {
+          "<leader>": "space",
+        },
+        keyNameAliases: {
+          enter: "return",
+        },
+        modifierAliases: {
+          ctrl: "C",
+          shift: "S",
+          meta: "M",
+        },
+        separator: " then ",
+      }
+      let sink = ""
+
+      return {
+        resources,
+        runIteration() {
+          sink = formatKeySequence(sequence, options)
+        },
+        cleanup() {
+          void sink
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "format_command_bindings_dedupe_many",
+    description: "Repeated command-binding formatting with display-based dedupe over many bindings",
+    async setup() {
+      const resources = await createScenarioResources()
+      resources.keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+      const sequences = [
+        resources.keymap.parseKeySequence("ctrl+s"),
+        resources.keymap.parseKeySequence("ctrl+s"),
+        resources.keymap.parseKeySequence("<leader>s"),
+        resources.keymap.parseKeySequence("dd"),
+        resources.keymap.parseKeySequence("enter"),
+        resources.keymap.parseKeySequence("return"),
+      ]
+      const bindings: SequenceBindingLike[] = Array.from({ length: 512 }, (_, index) => ({
+        sequence: sequences[index % sequences.length] ?? sequences[0]!,
+      }))
+      let sink: string | undefined
+
+      return {
+        resources,
+        runIteration() {
+          sink = formatCommandBindings(bindings)
+        },
+        cleanup() {
+          void sink
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "format_command_bindings_no_dedupe_many",
+    description: "Repeated command-binding formatting retaining duplicate bindings",
+    async setup() {
+      const resources = await createScenarioResources()
+      resources.keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+      const sequences = [
+        resources.keymap.parseKeySequence("ctrl+s"),
+        resources.keymap.parseKeySequence("<leader>s"),
+        resources.keymap.parseKeySequence("dd"),
+        resources.keymap.parseKeySequence({ name: "return", ctrl: true, shift: true }),
+      ]
+      const bindings: SequenceBindingLike[] = Array.from({ length: 512 }, (_, index) => ({
+        sequence: sequences[index % sequences.length] ?? sequences[0]!,
+      }))
+      const options = {
+        dedupe: false,
+        bindingSeparator: " | ",
+        tokenDisplay: {
+          "<leader>": "space",
+        },
+      }
+      let sink: string | undefined
+
+      return {
+        resources,
+        runIteration() {
+          sink = formatCommandBindings(bindings, options)
+        },
+        cleanup() {
+          void sink
           resources.renderer.destroy()
         },
       }

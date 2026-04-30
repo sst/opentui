@@ -1,4 +1,3 @@
-import { stringifyKeyStroke } from "../services/keys.js"
 import type { KeySequencePart } from "../types.js"
 
 export type KeyModifierName = "ctrl" | "shift" | "meta" | "super" | "hyper"
@@ -23,56 +22,95 @@ export interface SequenceBindingLike {
   sequence: readonly KeySequencePart[]
 }
 
-function resolveTokenDisplay(part: KeySequencePart, tokenDisplay: TokenDisplayResolver | undefined) {
-  if (!part.tokenName) return
-  if (!tokenDisplay) return part.display
-  if (typeof tokenDisplay === "function") return tokenDisplay(part.tokenName, part) ?? part.display
-  return tokenDisplay[part.tokenName] ?? part.display
+function formatStroke(part: KeySequencePart, options: FormatKeySequenceOptions): string {
+  if (part.tokenName) {
+    const tokenDisplay = options.tokenDisplay
+    if (!tokenDisplay) return part.display
+    if (typeof tokenDisplay === "function") return tokenDisplay(part.tokenName, part) ?? part.display
+    return tokenDisplay[part.tokenName] ?? part.display
+  }
+
+  // This is on the command-palette hot path; build directly to avoid per-stroke arrays.
+  const stroke = part.stroke
+  const modifierAliases = options.modifierAliases
+  let formatted = ""
+  let pieceCount = 0
+
+  if (stroke.ctrl) {
+    formatted = modifierAliases?.ctrl ?? "ctrl"
+    pieceCount = 1
+  }
+
+  if (stroke.shift) {
+    const alias = modifierAliases?.shift ?? "shift"
+    formatted = pieceCount === 0 ? alias : `${formatted}+${alias}`
+    pieceCount += 1
+  }
+
+  if (stroke.meta) {
+    const alias = modifierAliases?.meta ?? "meta"
+    formatted = pieceCount === 0 ? alias : `${formatted}+${alias}`
+    pieceCount += 1
+  }
+
+  if (stroke.super) {
+    const alias = modifierAliases?.super ?? "super"
+    formatted = pieceCount === 0 ? alias : `${formatted}+${alias}`
+    pieceCount += 1
+  }
+
+  if (stroke.hyper) {
+    const alias = modifierAliases?.hyper ?? "hyper"
+    formatted = pieceCount === 0 ? alias : `${formatted}+${alias}`
+    pieceCount += 1
+  }
+
+  const name = stroke.name === "return" ? "enter" : stroke.name
+  const keyName = options.keyNameAliases?.[name] ?? name
+  return pieceCount === 0 ? keyName : `${formatted}+${keyName}`
 }
 
-function resolveModifierAlias(name: KeyModifierName, modifierAliases: FormatKeySequenceOptions["modifierAliases"]) {
-  return modifierAliases?.[name] ?? name
-}
-
-function resolveKeyName(part: KeySequencePart, keyNameAliases: FormatKeySequenceOptions["keyNameAliases"]) {
-  const name = stringifyKeyStroke({ name: part.stroke.name })
-  return keyNameAliases?.[name] ?? name
-}
-
-function formatStroke(part: KeySequencePart, options: FormatKeySequenceOptions) {
-  const tokenDisplay = resolveTokenDisplay(part, options.tokenDisplay)
-  if (tokenDisplay) return tokenDisplay
-
-  const pieces: string[] = []
-  if (part.stroke.ctrl) pieces.push(resolveModifierAlias("ctrl", options.modifierAliases))
-  if (part.stroke.shift) pieces.push(resolveModifierAlias("shift", options.modifierAliases))
-  if (part.stroke.meta) pieces.push(resolveModifierAlias("meta", options.modifierAliases))
-  if (part.stroke.super) pieces.push(resolveModifierAlias("super", options.modifierAliases))
-  if (part.stroke.hyper) pieces.push(resolveModifierAlias("hyper", options.modifierAliases))
-  pieces.push(resolveKeyName(part, options.keyNameAliases))
-  return pieces.join("+")
-}
-
-export function formatKeySequence(parts: readonly KeySequencePart[] | undefined, options: FormatKeySequenceOptions = {}) {
+export function formatKeySequence(
+  parts: readonly KeySequencePart[] | undefined,
+  options: FormatKeySequenceOptions = {},
+): string {
   if (!parts || parts.length === 0) return ""
-  return parts.map((part) => formatStroke(part, options)).join(options.separator ?? " ")
+
+  // Avoid map/join allocation here; binding-list formatting calls this repeatedly.
+  const separator = options.separator ?? " "
+  let formatted = formatStroke(parts[0]!, options)
+  for (let index = 1; index < parts.length; index += 1) {
+    formatted += separator + formatStroke(parts[index]!, options)
+  }
+
+  return formatted
 }
 
 export function formatCommandBindings(
   bindings: readonly SequenceBindingLike[] | undefined,
   options: FormatCommandBindingsOptions = {},
-) {
+): string | undefined {
   if (!bindings?.length) return
-  const seen = new Set<string>()
 
-  return bindings
-    .map((binding) => formatKeySequence(binding.sequence, options))
-    .filter((item) => {
-      if (!item) return false
-      if (options.dedupe === false) return true
-      if (seen.has(item)) return false
+  const bindingSeparator = options.bindingSeparator ?? ", "
+  const dedupe = options.dedupe !== false
+  const seen = dedupe ? new Set<string>() : undefined
+  let formatted = ""
+  let itemCount = 0
+
+  // One pass keeps dedupe, filtering, and joining allocation-light for large binding lists.
+  for (const binding of bindings) {
+    const item = formatKeySequence(binding.sequence, options)
+    if (!item) continue
+
+    if (seen) {
+      if (seen.has(item)) continue
       seen.add(item)
-      return true
-    })
-    .join(options.bindingSeparator ?? ", ")
+    }
+
+    formatted = itemCount === 0 ? item : `${formatted}${bindingSeparator}${item}`
+    itemCount += 1
+  }
+
+  return formatted
 }
