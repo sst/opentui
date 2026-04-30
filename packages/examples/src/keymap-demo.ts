@@ -15,14 +15,9 @@ import {
   type Renderable,
   type TextChunk,
 } from "@opentui/core"
-import {
-  type ActiveKey,
-  type CommandRecord,
-  type KeySequencePart,
-  type Keymap,
-  stringifyKeyStroke,
-} from "@opentui/keymap"
+import { type ActiveKey, type CommandRecord, type Keymap } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
+import { formatKeySequence } from "@opentui/keymap/extras"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
@@ -45,7 +40,12 @@ const P = {
 } as const
 
 const LEADER_TOKEN = "<leader>"
-const LEADER_TRIGGER_LABEL = stringifyKeyStroke({ name: "x", ctrl: true })
+const KEY_FORMAT_OPTIONS = {
+  tokenDisplay: {
+    [LEADER_TOKEN]: "ctrl+x",
+  },
+} as const
+const LEADER_TRIGGER_LABEL = KEY_FORMAT_OPTIONS.tokenDisplay[LEADER_TOKEN]
 
 interface EditorSpec {
   id: string
@@ -174,18 +174,6 @@ function getActiveKeyLabel(activeKey: ActiveKey): string {
     (typeof activeKey.command === "string" ? activeKey.command : undefined) ??
     ""
   )
-}
-
-function formatDemoKeyPart(part: Pick<KeySequencePart, "stroke" | "tokenName">): string {
-  if (part.tokenName === LEADER_TOKEN) {
-    return LEADER_TRIGGER_LABEL
-  }
-
-  return stringifyKeyStroke(part)
-}
-
-function formatDemoKeySequence(parts: readonly Pick<KeySequencePart, "stroke" | "tokenName">[]): string {
-  return parts.map((part) => formatDemoKeyPart(part)).join(" ")
 }
 
 function normalizeExPromptName(name: string): string {
@@ -646,7 +634,7 @@ function buildWhichKeyEntries(): StyledText {
   }
 
   const activeKeys = [...keymap.getActiveKeys({ includeMetadata: true })].sort((left, right) => {
-    return formatDemoKeyPart(left).localeCompare(formatDemoKeyPart(right))
+    return formatKeySequence([left], KEY_FORMAT_OPTIONS).localeCompare(formatKeySequence([right], KEY_FORMAT_OPTIONS))
   })
 
   if (activeKeys.length === 0) {
@@ -657,7 +645,7 @@ function buildWhichKeyEntries(): StyledText {
   for (const activeKey of activeKeys) {
     lines.push(
       styledLine([
-        bold(fg(P.key)(formatDemoKeyPart(activeKey))),
+        bold(fg(P.key)(formatKeySequence([activeKey], KEY_FORMAT_OPTIONS))),
         fg(P.textMuted)(" -> "),
         fg(P.command)(getActiveKeyLabel(activeKey)),
       ]),
@@ -755,7 +743,7 @@ function renderStatus(renderer: CliRenderer): void {
   }
 
   if (whichKeyHeaderText && keymap) {
-    const prefix = formatDemoKeySequence(keymap.getPendingSequence()) || "<root>"
+    const prefix = formatKeySequence(keymap.getPendingSequence(), KEY_FORMAT_OPTIONS) || "<root>"
     whichKeyHeaderText.content = joinLines([
       styledLine([bold(fg(P.accent)("Which Key")), fg(P.textDim)(`  ${prefix}`)]),
     ])

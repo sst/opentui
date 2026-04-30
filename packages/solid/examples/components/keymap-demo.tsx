@@ -7,8 +7,9 @@ import {
   type Renderable,
   type TextareaRenderable,
 } from "@opentui/core"
-import { type ActiveKey, type CommandRecord, stringifyKeyStroke, type KeySequencePart } from "@opentui/keymap"
+import { type ActiveKey, type CommandRecord } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
+import { formatKeySequence } from "@opentui/keymap/extras"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider, useBindings, useKeymap, useKeymapSelector } from "@opentui/keymap/solid"
 import { render, useRenderer } from "@opentui/solid"
@@ -33,7 +34,12 @@ const palette = {
 } as const
 
 const LEADER_TOKEN = "<leader>"
-const LEADER_TRIGGER_LABEL = stringifyKeyStroke({ name: "x", ctrl: true })
+const KEY_FORMAT_OPTIONS = {
+  tokenDisplay: {
+    [LEADER_TOKEN]: "ctrl+x",
+  },
+} as const
+const LEADER_TRIGGER_LABEL = KEY_FORMAT_OPTIONS.tokenDisplay[LEADER_TOKEN]
 
 function createDemoKeymap(renderer: CliRenderer): ReturnType<typeof createDefaultOpenTuiKeymap> {
   return createDefaultOpenTuiKeymap(renderer)
@@ -260,18 +266,6 @@ function getActiveKeyLabel(activeKey: ActiveKey): string {
     (typeof activeKey.command === "string" ? activeKey.command : undefined) ??
     ""
   )
-}
-
-function formatDemoKeyPart(part: Pick<KeySequencePart, "stroke" | "tokenName">): string {
-  if (part.tokenName === LEADER_TOKEN) {
-    return LEADER_TRIGGER_LABEL
-  }
-
-  return stringifyKeyStroke(part)
-}
-
-function formatDemoKeySequence(parts: readonly Pick<KeySequencePart, "stroke" | "tokenName">[]): string {
-  return parts.map((part) => formatDemoKeyPart(part)).join(" ")
 }
 
 // -- CounterPanel ----------------------------------------------------------
@@ -775,17 +769,17 @@ function KeymapDemoContent() {
 
   const whichKeyEntries = createMemo(() => {
     const sortedActiveKeys = [...activeKeys()].sort((left, right) => {
-      return formatDemoKeyPart(left).localeCompare(formatDemoKeyPart(right))
+      return formatKeySequence([left], KEY_FORMAT_OPTIONS).localeCompare(formatKeySequence([right], KEY_FORMAT_OPTIONS))
     })
 
     return sortedActiveKeys.map((activeKey) => ({
-      key: formatDemoKeyPart(activeKey),
+      key: formatKeySequence([activeKey], KEY_FORMAT_OPTIONS),
       command: getActiveKeyLabel(activeKey),
     }))
   })
 
   const whichKeyPrefix = createMemo(() => {
-    return formatDemoKeySequence(pendingSequence()) || "<root>"
+    return formatKeySequence(pendingSequence(), KEY_FORMAT_OPTIONS) || "<root>"
   })
 
   useBindings<InputRenderable>(() => ({

@@ -2,9 +2,16 @@ import type { KeySequencePart } from "../types.js"
 
 export type KeyModifierName = "ctrl" | "shift" | "meta" | "super" | "hyper"
 
+export interface KeySequenceFormatPart {
+  stroke: KeySequencePart["stroke"]
+  display: string
+  match?: KeySequencePart["match"]
+  tokenName?: string
+}
+
 export type TokenDisplayResolver =
   | Readonly<Record<string, string>>
-  | ((tokenName: string, part: KeySequencePart) => string | undefined)
+  | ((tokenName: string, part: KeySequenceFormatPart) => string | undefined)
 
 export interface FormatKeySequenceOptions {
   tokenDisplay?: TokenDisplayResolver
@@ -19,10 +26,10 @@ export interface FormatCommandBindingsOptions extends FormatKeySequenceOptions {
 }
 
 export interface SequenceBindingLike {
-  sequence: readonly KeySequencePart[]
+  sequence: readonly KeySequenceFormatPart[]
 }
 
-function formatStroke(part: KeySequencePart, options: FormatKeySequenceOptions): string {
+function formatStroke(part: KeySequenceFormatPart, options: FormatKeySequenceOptions): string {
   if (part.tokenName) {
     const tokenDisplay = options.tokenDisplay
     if (!tokenDisplay) return part.display
@@ -71,7 +78,7 @@ function formatStroke(part: KeySequencePart, options: FormatKeySequenceOptions):
 }
 
 export function formatKeySequence(
-  parts: readonly KeySequencePart[] | undefined,
+  parts: readonly KeySequenceFormatPart[] | undefined,
   options: FormatKeySequenceOptions = {},
 ): string {
   if (!parts || parts.length === 0) return ""

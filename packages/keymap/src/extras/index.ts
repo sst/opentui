@@ -14,6 +14,7 @@ export type {
 export type {
   FormatCommandBindingsOptions,
   FormatKeySequenceOptions,
+  KeySequenceFormatPart,
   KeyModifierName,
   SequenceBindingLike,
   TokenDisplayResolver,

@@ -1,11 +1,6 @@
-import {
-  createDefaultHtmlKeymap,
-  createHtmlKeymapEvent,
-  stringifyKeyStroke,
-  type ActiveKey,
-  type KeySequencePart,
-} from "@opentui/keymap/html"
+import { createDefaultHtmlKeymap, createHtmlKeymapEvent, type ActiveKey } from "@opentui/keymap/html"
 import * as addons from "@opentui/keymap/addons"
+import { formatKeySequence } from "@opentui/keymap/extras"
 
 const app = document.getElementById("app") as HTMLElement | null
 const keymapRoot = document.body
@@ -75,24 +70,17 @@ let logEntries: Array<{ at: string; message: string }> = []
 
 const DEBUG_NAMESPACE = "[html-keymap-demo]"
 const LEADER_TOKEN = "<leader>"
-const LEADER_TRIGGER_LABEL = stringifyKeyStroke({ name: "space" })
-
-function formatDemoKeyPart(part: Pick<KeySequencePart, "stroke" | "tokenName">): string {
-  if (part.tokenName === LEADER_TOKEN) {
-    return LEADER_TRIGGER_LABEL
-  }
-
-  return stringifyKeyStroke(part)
-}
-
-function formatDemoKeySequence(parts: readonly Pick<KeySequencePart, "stroke" | "tokenName">[]): string {
-  return parts.map((part) => formatDemoKeyPart(part)).join(" ")
-}
+const KEY_FORMAT_OPTIONS = {
+  tokenDisplay: {
+    [LEADER_TOKEN]: "space",
+  },
+} as const
+const LEADER_TRIGGER_LABEL = KEY_FORMAT_OPTIONS.tokenDisplay[LEADER_TOKEN]
 
 function summarizeActiveKeys(keys: readonly ActiveKey[]): string[] {
   return keys.map((entry) => {
     const summary = entry.continues ? "prefix" : typeof entry.command === "string" ? entry.command : "fn"
-    return `${formatDemoKeyPart(entry)}:${summary}`
+    return `${formatKeySequence([entry], KEY_FORMAT_OPTIONS)}:${summary}`
   })
 }
 
@@ -127,7 +115,7 @@ function debugKeyEvent(phase: "keydown" | "keyup", event: KeyboardEvent): void {
     normalizedSuper: normalized.super,
     focused: getCurrentFocusedTarget()?.id ?? "none",
     activeKeys: summarizeActiveKeys(keymap.getActiveKeys({ includeMetadata: true })).join(", ") || "none",
-    pending: formatDemoKeySequence(keymap.getPendingSequence()) || "none",
+    pending: formatKeySequence(keymap.getPendingSequence(), KEY_FORMAT_OPTIONS) || "none",
     promptVisible,
   })
 }
@@ -460,7 +448,7 @@ function renderStatus(): void {
   leaderState.textContent = leaderArmed ? "Armed" : "Idle"
 
   const pending = keymap.getPendingSequence()
-  pendingSequence.textContent = pending.length === 0 ? "None" : formatDemoKeySequence(pending)
+  pendingSequence.textContent = pending.length === 0 ? "None" : formatKeySequence(pending, KEY_FORMAT_OPTIONS)
 
   const focused = getCurrentFocusedTarget()
   focusedTarget.textContent = focused?.id ?? "None"
@@ -510,7 +498,7 @@ function renderActiveKeys(): void {
       return `
         <div class="active-key-row">
           <div class="active-key-header">
-            <strong><kbd>${formatDemoKeyPart(entry)}</kbd></strong>
+            <strong><kbd>${formatKeySequence([entry], KEY_FORMAT_OPTIONS)}</kbd></strong>
             <span>${entry.continues ? "Prefix" : "Command"}</span>
           </div>
           <div class="active-key-desc">${getActiveKeyDescription(entry)}</div>
@@ -585,7 +573,7 @@ function debugStateSnapshot(source: string): void {
     focused: getCurrentFocusedTarget()?.id ?? "none",
     promptVisible,
     leaderArmed,
-    pending: formatDemoKeySequence(keymap.getPendingSequence()) || "none",
+    pending: formatKeySequence(keymap.getPendingSequence(), KEY_FORMAT_OPTIONS) || "none",
     activeKeys: summarizeActiveKeys(keymap.getActiveKeys({ includeMetadata: true })).join(", ") || "none",
   })
 }

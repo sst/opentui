@@ -105,6 +105,17 @@ describe("formatting helpers", () => {
     ).toBe(" s")
   })
 
+  test("formats active-key shaped parts", () => {
+    const keymap = getKeymap(renderer)
+    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerLayer({ commands: [{ name: "save", run() {} }], bindings: [{ key: "<leader>s", cmd: "save" }] })
+
+    const activeKey = keymap.getActiveKeys()[0]
+
+    expect(formatKeySequence(activeKey ? [activeKey] : [])).toBe("<leader>")
+    expect(formatKeySequence(activeKey ? [activeKey] : [], { tokenDisplay: { "<leader>": "ctrl+x" } })).toBe("ctrl+x")
+  })
+
   test("supports empty separators", () => {
     const keymap = getKeymap(renderer)
 
