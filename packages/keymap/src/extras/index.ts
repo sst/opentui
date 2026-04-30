@@ -1,5 +1,6 @@
 export { resolveBindingSections } from "./binding-sections.js"
 export { commandBindings } from "./command-bindings.js"
+export { formatCommandBindings, formatKeySequence } from "./formatting.js"
 
 export type {
   BindingSectionConfig,
@@ -9,6 +10,14 @@ export type {
   ResolveBindingSectionsOptions,
   ResolvedBindingSections,
 } from "./binding-sections.js"
+
+export type {
+  FormatCommandBindingsOptions,
+  FormatKeySequenceOptions,
+  KeyModifierName,
+  SequenceBindingLike,
+  TokenDisplayResolver,
+} from "./formatting.js"
 
 export type {
   CommandBindingMap,
