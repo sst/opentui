@@ -9,7 +9,7 @@ import {
   type Renderable,
   type TextareaAction,
 } from "@opentui/core"
-import type { BindingInput, Bindings, CommandDefinition, Keymap, Layer } from "../../index.js"
+import type { BindingInput, Bindings, Command, Keymap, Layer } from "../../index.js"
 
 interface KeyBindingLike {
   name: string
@@ -416,10 +416,12 @@ function createEditBufferCommand(
   commandNames: Readonly<Record<EditBufferCommandName, string>>,
   run: (editor: EditBufferRenderable) => boolean,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): CommandDefinition<Renderable, KeyEvent> {
+): Command<Renderable, KeyEvent> {
   return {
     name: commandNames[action],
-    desc: descriptions[action],
+    fields: {
+      desc: descriptions[action],
+    },
     run() {
       return withFocusedEditor(renderer, run)
     },
@@ -430,7 +432,7 @@ function createEditBufferCommands(
   renderer: CliRenderer,
   commandNames: Readonly<Record<EditBufferCommandName, string>>,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): CommandDefinition<Renderable, KeyEvent>[] {
+): Command<Renderable, KeyEvent>[] {
   return editBufferActions.map((action) =>
     createEditBufferCommand(renderer, action, commandNames, editBufferCommandHandlers[action], descriptions),
   )

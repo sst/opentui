@@ -9,7 +9,6 @@ import {
   type ActiveKey,
   type ActiveKeyOptions,
   type BindingParser,
-  type CommandRecord,
   type ErrorEvent,
   type EventMatchResolverContext,
   type Keymap,
@@ -238,34 +237,21 @@ describe("keymap: core and commands", () => {
   test("runCommand and dispatchCommand execute commands and only include metadata when requested", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
+    const command = {
+      name: "save-file",
+      run() {
+        calls.push("save-file")
+      },
+    }
 
     keymap.registerLayer({
-      commands: [
-        {
-          name: "save-file",
-          run() {
-            calls.push("save-file")
-          },
-        },
-      ],
+      commands: [command],
     })
 
     expect(keymap.runCommand("save-file")).toEqual({ ok: true })
     expect(keymap.dispatchCommand("save-file")).toEqual({ ok: true })
-    expect(keymap.runCommand("save-file", { includeCommand: true })).toEqual({
-      ok: true,
-      command: {
-        name: "save-file",
-        fields: {},
-      },
-    })
-    expect(keymap.dispatchCommand("save-file", { includeCommand: true })).toEqual({
-      ok: true,
-      command: {
-        name: "save-file",
-        fields: {},
-      },
-    })
+    expect(keymap.runCommand("save-file", { includeCommand: true })).toEqual({ ok: true, command })
+    expect(keymap.dispatchCommand("save-file", { includeCommand: true })).toEqual({ ok: true, command })
     expect(keymap.runCommand("missing-command")).toEqual({ ok: false, reason: "not-found" })
     expect(keymap.dispatchCommand("missing-command")).toEqual({ ok: false, reason: "not-found" })
     expect(calls).toEqual(["save-file", "save-file", "save-file", "save-file"])
@@ -359,6 +345,7 @@ describe("keymap: core and commands", () => {
       }
 
       return {
+        name: command,
         run() {
           calls.push("resolver")
         },
@@ -384,6 +371,7 @@ describe("keymap: core and commands", () => {
       }
 
       return {
+        name: command,
         run() {
           calls.push("append")
         },
@@ -395,6 +383,7 @@ describe("keymap: core and commands", () => {
       }
 
       return {
+        name: command,
         run() {
           calls.push("prepend")
         },
@@ -414,6 +403,7 @@ describe("keymap: core and commands", () => {
       }
 
       return {
+        name: command,
         run() {},
       }
     })
@@ -438,6 +428,7 @@ describe("keymap: core and commands", () => {
       resolverCalls += 1
       const generation = resolverCalls
       return {
+        name: command,
         run() {
           calls.push(`run:${generation}`)
         },
@@ -465,6 +456,7 @@ describe("keymap: core and commands", () => {
       resolverCalls += 1
       const generation = resolverCalls
       return {
+        name: command,
         attrs: { generation },
         run() {
           calls.push(`run:${generation}`)
@@ -516,6 +508,7 @@ describe("keymap: core and commands", () => {
       resolverCalls += 1
       const generation = resolverCalls
       return {
+        name: command,
         run() {
           calls.push(`resolver:${generation}`)
         },
@@ -611,21 +604,13 @@ describe("keymap: core and commands", () => {
 
     mockInput.pressKey("x")
 
-    expect(keymap.dispatchCommand("submit", { includeCommand: true })).toEqual({
+    expect(keymap.dispatchCommand("submit", { includeCommand: true })).toMatchObject({
       ok: true,
-      command: {
-        name: "submit",
-        fields: { desc: "Local submit" },
-        attrs: { desc: "Local submit" },
-      },
+      command: { name: "submit", fields: { desc: "Local submit" }, attrs: { desc: "Local submit" } },
     })
-    expect(keymap.runCommand("submit", { includeCommand: true })).toEqual({
+    expect(keymap.runCommand("submit", { includeCommand: true })).toMatchObject({
       ok: true,
-      command: {
-        name: "submit",
-        fields: { desc: "Local submit" },
-        attrs: { desc: "Local submit" },
-      },
+      command: { name: "submit", fields: { desc: "Local submit" }, attrs: { desc: "Local submit" } },
     })
     expect(calls).toEqual(["global", "local", "local", "local", "local"])
     expect(warnings).toEqual([])
@@ -768,13 +753,10 @@ describe("keymap: core and commands", () => {
     })
 
     expect(keymap.dispatchCommand("submit")).toEqual({ ok: false, reason: "inactive" })
-    expect(keymap.dispatchCommand("submit", { includeCommand: true })).toEqual({
+    expect(keymap.dispatchCommand("submit", { includeCommand: true })).toMatchObject({
       ok: false,
       reason: "inactive",
-      command: {
-        name: "submit",
-        fields: {},
-      },
+      command: { name: "submit", fields: {} },
     })
     expect(keymap.runCommand("submit")).toEqual({ ok: true })
 

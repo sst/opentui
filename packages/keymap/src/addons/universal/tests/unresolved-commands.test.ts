@@ -78,7 +78,7 @@ describe("unresolved command warnings addon", () => {
         return undefined
       }
 
-      return { run() {} }
+      return { name: command, run() {} }
     })
     keymap.registerLayer({
       bindings: [{ key: "x", cmd: "resolved-by-resolver" }],

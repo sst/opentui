@@ -15,7 +15,7 @@ import type {
   LayerAnalysisContext,
   LayerBindingAnalysis,
   ResolvedKeyToken,
-  RegisteredCommand,
+  CommandState,
   RegisteredLayer,
   RuntimeMatchable,
   RuntimeMatcher,
@@ -50,13 +50,13 @@ function sortLayers<TTarget extends object, TEvent extends KeymapEvent>(
 }
 
 function createCommandLookup<TTarget extends object, TEvent extends KeymapEvent>(
-  commands: readonly RegisteredCommand<TTarget, TEvent>[],
-): ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>> | undefined {
+  commands: readonly CommandState<TTarget, TEvent>[],
+): ReadonlyMap<string, CommandState<TTarget, TEvent>> | undefined {
   if (commands.length === 0) {
     return undefined
   }
 
-  const lookup = new Map<string, RegisteredCommand<TTarget, TEvent>>()
+  const lookup = new Map<string, CommandState<TTarget, TEvent>>()
   for (const command of commands) {
     lookup.set(command.name, command)
   }
@@ -64,18 +64,18 @@ function createCommandLookup<TTarget extends object, TEvent extends KeymapEvent>
   return lookup
 }
 
-function addRegisteredCommandNames<TTarget extends object, TEvent extends KeymapEvent>(
+function addCommandNameRefs<TTarget extends object, TEvent extends KeymapEvent>(
   target: Map<string, number>,
-  commands: readonly RegisteredCommand<TTarget, TEvent>[],
+  commands: readonly CommandState<TTarget, TEvent>[],
 ): void {
   for (const command of commands) {
     target.set(command.name, (target.get(command.name) ?? 0) + 1)
   }
 }
 
-function removeRegisteredCommandNames<TTarget extends object, TEvent extends KeymapEvent>(
+function removeCommandNameRefs<TTarget extends object, TEvent extends KeymapEvent>(
   target: Map<string, number>,
-  commands: readonly RegisteredCommand<TTarget, TEvent>[],
+  commands: readonly CommandState<TTarget, TEvent>[],
 ): void {
   for (const command of commands) {
     const count = target.get(command.name)
@@ -106,7 +106,7 @@ interface LayersOptions<TTarget extends object, TEvent extends KeymapEvent> {
 interface AnalyzeLayerOptions<TTarget extends object, TEvent extends KeymapEvent> {
   target?: TTarget
   order: number
-  commandLookup?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>
+  commandLookup?: ReadonlyMap<string, CommandState<TTarget, TEvent>>
   bindingInputs: readonly BindingInput<TTarget, TEvent>[]
   compiledBindings: readonly CompiledBinding<TTarget, TEvent>[]
   root: RegisteredLayer<TTarget, TEvent>["root"]
@@ -180,8 +180,8 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       let conditionKeys: readonly string[]
       let hasUnkeyedMatchers: boolean
       let compileFields: Readonly<Record<string, unknown>> | undefined
-      let commands: readonly RegisteredCommand<TTarget, TEvent>[]
-      let commandLookup: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>> | undefined
+      let commands: readonly CommandState<TTarget, TEvent>[]
+      let commandLookup: ReadonlyMap<string, CommandState<TTarget, TEvent>> | undefined
       let targetMode: TargetMode | undefined
 
       try {
@@ -245,7 +245,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       if (registeredLayer.commands.length > 0) {
         this.state.layers.layersWithCommands += 1
         this.state.commands.commandMetadataVersion += 1
-        addRegisteredCommandNames(this.state.commands.registeredNames, registeredLayer.commands)
+        addCommandNameRefs(this.state.commands.registeredNames, registeredLayer.commands)
       }
 
       if (registeredLayer.requires.length > 0 || registeredLayer.matchers.length > 0) {
@@ -558,7 +558,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       if (layer.commands.length > 0) {
         this.state.layers.layersWithCommands -= 1
         this.state.commands.commandMetadataVersion += 1
-        removeRegisteredCommandNames(this.state.commands.registeredNames, layer.commands)
+        removeCommandNameRefs(this.state.commands.registeredNames, layer.commands)
       }
 
       this.disconnectRuntimeMatchable(layer)

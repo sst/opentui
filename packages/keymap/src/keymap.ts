@@ -13,7 +13,7 @@ import type {
   CommandBindingsQuery,
   CommandEntry,
   CommandQuery,
-  CommandRecord,
+  Command,
   KeymapEvent,
   KeymapHost,
   LayerAnalyzer,
@@ -242,7 +242,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     return this.activation.getActiveKeys(options)
   }
 
-  public getCommands(query?: CommandQuery<TTarget>): readonly CommandRecord[] {
+  public getCommands(query?: CommandQuery<TTarget, TEvent>): readonly Command<TTarget, TEvent>[] {
     return this.catalog.getCommands(query)
   }
 

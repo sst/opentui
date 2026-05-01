@@ -157,6 +157,7 @@ describe("commandBindings helper", () => {
       }
 
       return {
+        name: command,
         run() {
           calls.push("resolved")
         },

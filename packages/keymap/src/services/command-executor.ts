@@ -1,12 +1,13 @@
 import type { Keymap } from "../keymap.js"
 import type {
   BindingCommand,
+  Command,
   CommandContext,
+  CommandHandler,
   CommandResult,
   CompiledBinding,
   KeymapEvent,
   RegisteredLayer,
-  ResolvedBindingCommand,
   RunCommandOptions,
   RunCommandResult,
 } from "../types.js"
@@ -17,9 +18,9 @@ import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
 import { isPromiseLike } from "./values.js"
 
-interface CommandExecutionResult {
+interface CommandExecutionResult<TTarget extends object, TEvent extends KeymapEvent> {
   status: "handled" | "rejected" | "error"
-  result: RunCommandResult
+  result: RunCommandResult<TTarget, TEvent>
 }
 
 interface CommandExecutorOptions<TTarget extends object, TEvent extends KeymapEvent> {
@@ -49,25 +50,24 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       return { ok: false, reason: "not-found" }
     }
 
-    const includeRecord = options?.includeCommand === true
+    const includeCommand = options?.includeCommand === true
     const focused = options?.focused ?? this.activation.getFocusedTargetIfAvailable()
     const event = options?.event ?? this.options.createCommandEvent()
     const data = this.runtime.getReadonlyData()
-    const chain = this.catalog.getRegisteredResolvedEntries(normalized, includeRecord)
-    let rejectedResult: RunCommandResult | undefined
+    const chain = this.catalog.getRegisteredResolvedEntries(normalized)
+    let rejectedResult: RunCommandResult<TTarget, TEvent> | undefined
 
     // Kept inline across command execution paths: abstracting this chain walk
     // measurably slowed the benchmarked hot path.
     if (chain?.length === 1) {
       const [entry] = chain
       if (entry) {
-        const execution = this.executeResolvedCommand(normalized, entry.resolved, {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: options?.target ?? entry.target ?? null,
-          data,
-        })
+        const execution = this.executeResolvedCommand(
+          normalized,
+          entry.command,
+          { keymap: this.options.keymap, event, focused, target: options?.target ?? entry.target ?? null, data },
+          includeCommand,
+        )
 
         if (execution.status === "handled" || execution.status === "error") {
           return execution.result
@@ -85,7 +85,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
           data,
         }
 
-        const execution = this.executeResolvedCommand(normalized, entry.resolved, context)
+        const execution = this.executeResolvedCommand(normalized, entry.command, context, includeCommand)
         if (execution.status === "handled" || execution.status === "error") {
           return execution.result
         }
@@ -94,15 +94,14 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     }
 
-    const fallback = this.catalog.resolveRegisteredResolverFallback(normalized, includeRecord)
+    const fallback = this.catalog.resolveRegisteredResolverFallback(normalized)
     if (fallback.resolved) {
-      const execution = this.executeResolvedCommand(normalized, fallback.resolved, {
-        keymap: this.options.keymap,
-        event,
-        focused,
-        target: options?.target ?? null,
-        data,
-      })
+      const execution = this.executeResolvedCommand(
+        normalized,
+        fallback.resolved,
+        { keymap: this.options.keymap, event, focused, target: options?.target ?? null, data },
+        includeCommand,
+      )
 
       if (execution.status === "handled" || execution.status === "error") {
         return execution.result
@@ -131,23 +130,22 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       return { ok: false, reason: "not-found" }
     }
 
-    const includeRecord = options?.includeCommand === true
+    const includeCommand = options?.includeCommand === true
     const focused = options?.focused ?? this.activation.getFocusedTargetIfAvailable()
     const event = options?.event ?? this.options.createCommandEvent()
     const data = this.runtime.getReadonlyData()
-    const chain = this.catalog.getActiveRegisteredResolvedEntries(normalized, focused, includeRecord)
-    let rejectedResult: RunCommandResult | undefined
+    const chain = this.catalog.getActiveRegisteredResolvedEntries(normalized, focused)
+    let rejectedResult: RunCommandResult<TTarget, TEvent> | undefined
 
     if (chain?.length === 1) {
       const [entry] = chain
       if (entry) {
-        const execution = this.executeResolvedCommand(normalized, entry.resolved, {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: options?.target ?? entry.target ?? null,
-          data,
-        })
+        const execution = this.executeResolvedCommand(
+          normalized,
+          entry.command,
+          { keymap: this.options.keymap, event, focused, target: options?.target ?? entry.target ?? null, data },
+          includeCommand,
+        )
 
         if (execution.status === "handled" || execution.status === "error") {
           return execution.result
@@ -165,7 +163,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
           data,
         }
 
-        const execution = this.executeResolvedCommand(normalized, entry.resolved, context)
+        const execution = this.executeResolvedCommand(normalized, entry.command, context, includeCommand)
         if (execution.status === "handled" || execution.status === "error") {
           return execution.result
         }
@@ -174,15 +172,14 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     }
 
-    const fallback = this.catalog.resolveActiveResolverFallback(normalized, focused, includeRecord)
+    const fallback = this.catalog.resolveActiveResolverFallback(normalized, focused)
     if (fallback.resolved) {
-      const execution = this.executeResolvedCommand(normalized, fallback.resolved, {
-        keymap: this.options.keymap,
-        event,
-        focused,
-        target: options?.target ?? null,
-        data,
-      })
+      const execution = this.executeResolvedCommand(
+        normalized,
+        fallback.resolved,
+        { keymap: this.options.keymap, event, focused, target: options?.target ?? null, data },
+        includeCommand,
+      )
 
       if (execution.status === "handled" || execution.status === "error") {
         return execution.result
@@ -195,7 +192,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       return { ok: false, reason: "error" }
     }
 
-    const unavailable = this.catalog.getDispatchUnavailableCommandState(normalized, focused, includeRecord)
+    const unavailable = this.catalog.getDispatchUnavailableCommandState(normalized, focused, includeCommand)
     if (unavailable) {
       return unavailable.command
         ? { ok: false, reason: unavailable.reason, command: unavailable.command }
@@ -216,7 +213,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     if (binding.run) {
       const result = this.executeResolvedCommand(
         typeof binding.command === "string" ? binding.command : "<function>",
-        { run: binding.run },
+        binding.run,
         {
           keymap: this.options.keymap,
           event,
@@ -224,6 +221,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
           target: bindingLayer.target ?? null,
           data,
         },
+        false,
       )
 
       if (result.status === "rejected") {
@@ -238,17 +236,16 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       return false
     }
 
-    const chain = this.catalog.getResolvedCommandChain(binding.command, focused, false).entries
+    const chain = this.catalog.getResolvedCommandChain(binding.command, focused).entries
     if (chain?.length === 1) {
       const [entry] = chain
       if (entry) {
-        const execution = this.executeResolvedCommand(binding.command, entry.resolved, {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: entry.target ?? bindingLayer.target ?? null,
-          data,
-        })
+        const execution = this.executeResolvedCommand(
+          binding.command,
+          entry.command,
+          { keymap: this.options.keymap, event, focused, target: entry.target ?? bindingLayer.target ?? null, data },
+          false,
+        )
         if (execution.status === "rejected") {
           return false
         }
@@ -266,7 +263,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
           data,
         }
 
-        const execution = this.executeResolvedCommand(binding.command, entry.resolved, context)
+        const execution = this.executeResolvedCommand(binding.command, entry.command, context, false)
         if (execution.status === "rejected") {
           continue
         }
@@ -281,19 +278,22 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
 
   private executeResolvedCommand(
     commandName: string,
-    resolved: ResolvedBindingCommand<TTarget, TEvent>,
+    command: Command<TTarget, TEvent> | CommandHandler<TTarget, TEvent>,
     context: CommandContext<TTarget, TEvent>,
-  ): CommandExecutionResult {
-    const command = resolved.record
+    includeCommand: boolean,
+  ): CommandExecutionResult<TTarget, TEvent> {
+    const commandView = typeof command === "function" ? undefined : command
+    const run = typeof command === "function" ? command : command.run
+    const resultCommand = includeCommand ? commandView : undefined
     let result: CommandResult
 
     try {
-      result = resolved.run(context)
+      result = run(commandView ? { ...context, command: commandView } : context)
     } catch (error) {
       this.notify.emitError("command-execution-error", error, `[Keymap] Error running command "${commandName}":`)
       return {
         status: "error",
-        result: { ok: false, reason: "error", command },
+        result: resultCommand ? { ok: false, reason: "error", command: resultCommand } : { ok: false, reason: "error" },
       }
     }
 
@@ -304,27 +304,32 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
 
       return {
         status: "handled",
-        result: { ok: true, command },
+        result: resultCommand ? { ok: true, command: resultCommand } : { ok: true },
       }
     }
 
     if (result === false) {
-      if (resolved.rejectedResult) {
+      if (commandView?.rejectedResult) {
+        const rejectedResult = commandView.rejectedResult
         return {
           status: "rejected",
-          result: resolved.rejectedResult,
+          result: includeCommand && rejectedResult.reason !== "not-found"
+            ? { ...rejectedResult, command: commandView }
+            : rejectedResult,
         }
       }
 
       return {
         status: "rejected",
-        result: { ok: false, reason: "rejected", command },
+        result: resultCommand
+          ? { ok: false, reason: "rejected", command: resultCommand }
+          : { ok: false, reason: "rejected" },
       }
     }
 
     return {
       status: "handled",
-      result: { ok: true, command },
+      result: resultCommand ? { ok: true, command: resultCommand } : { ok: true },
     }
   }
 }

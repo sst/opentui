@@ -5,6 +5,7 @@ import type {
   LayerBindingsTransformer,
   BindingParser,
   BindingTransformer,
+  Command,
   CommandFieldCompiler,
   CommandResolver,
   EventData,
@@ -18,9 +19,8 @@ import type {
   LayerFieldCompiler,
   PendingSequenceState,
   RawInputContext,
-  RegisteredCommand,
+  CommandState,
   RegisteredLayer,
-  ResolvedBindingCommand,
   RuntimeMatchable,
 } from "../types.js"
 import { OrderedRegistry, PriorityRegistry } from "../lib/registry.js"
@@ -63,21 +63,18 @@ export interface LayersState<TTarget extends object, TEvent extends KeymapEvent>
 
 export interface LayerCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {
   layer: RegisteredLayer<TTarget, TEvent>
-  command: RegisteredCommand<TTarget, TEvent>
+  command: CommandState<TTarget, TEvent>
 }
 
 export interface ResolvedCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {
   target?: TTarget
-  resolved: ResolvedBindingCommand<TTarget, TEvent>
+  command: Command<TTarget, TEvent>
 }
 
 export interface CommandChainCacheState<TTarget extends object, TEvent extends KeymapEvent> {
-  resolvedWithoutRecordChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
-  resolvedWithRecordChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
-  fallbackWithoutRecord: Map<string, ResolvedBindingCommand<TTarget, TEvent> | null>
-  fallbackWithRecord: Map<string, ResolvedBindingCommand<TTarget, TEvent> | null>
-  fallbackWithoutRecordErrors: Set<string>
-  fallbackWithRecordErrors: Set<string>
+  resolvedChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
+  fallback: Map<string, Command<TTarget, TEvent> | null>
+  fallbackErrors: Set<string>
 }
 
 export interface ActiveCommandView<TTarget extends object, TEvent extends KeymapEvent> extends CommandChainCacheState<
@@ -91,7 +88,7 @@ export interface ActiveCommandView<TTarget extends object, TEvent extends Keymap
   chainsByName: ReadonlyMap<string, readonly LayerCommandEntry<TTarget, TEvent>[]>
 }
 
-export interface RegisteredCommandView<
+export interface CommandView<
   TTarget extends object,
   TEvent extends KeymapEvent,
 > extends CommandChainCacheState<TTarget, TEvent> {
@@ -106,7 +103,7 @@ export interface CommandsState<TTarget extends object, TEvent extends KeymapEven
   activeCommandViewVersion: number
   activeCommandView?: ActiveCommandView<TTarget, TEvent>
   registeredCommandViewVersion: number
-  registeredCommandView?: RegisteredCommandView<TTarget, TEvent>
+  registeredCommandView?: CommandView<TTarget, TEvent>
   registeredCommandEntriesCacheVersion: number
   registeredCommandEntriesCache: readonly LayerCommandEntry<TTarget, TEvent>[]
 }

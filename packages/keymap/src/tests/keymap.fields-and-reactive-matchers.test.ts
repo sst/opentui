@@ -9,7 +9,6 @@ import {
   type ActiveKey,
   type ActiveKeyOptions,
   type BindingParser,
-  type CommandRecord,
   type ErrorEvent,
   type EventMatchResolverContext,
   type Keymap,
@@ -889,7 +888,7 @@ describe("keymap: fields and reactive matchers", () => {
     keymap.setData("vim.mode", "normal")
 
     expect(keymap.getCommands().map((command) => command.name)).toEqual(["save-file"])
-    expect(getCommand(keymap, "save-file")).toEqual({
+    expect(getCommand(keymap, "save-file")).toMatchObject({
       name: "save-file",
       fields: { mode: "normal" },
       attrs: { mode: "normal" },
@@ -1006,7 +1005,7 @@ describe("keymap: fields and reactive matchers", () => {
     expect(getActiveKey(keymap, "y")).toBeUndefined()
     expect(keymap.dispatchCommand("submit")).toEqual({ ok: true })
     expect(keymap.dispatchCommand("hidden-local")).toEqual({ ok: false, reason: "disabled" })
-    expect(keymap.dispatchCommand("hidden-local", { includeCommand: true })).toEqual({
+    expect(keymap.dispatchCommand("hidden-local", { includeCommand: true })).toMatchObject({
       ok: false,
       reason: "disabled",
       command: {

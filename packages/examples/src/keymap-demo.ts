@@ -15,7 +15,7 @@ import {
   type Renderable,
   type TextChunk,
 } from "@opentui/core"
-import { type ActiveKey, type CommandRecord, type Keymap } from "@opentui/keymap"
+import { type ActiveKey, type Command, type Keymap } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
 import { formatKeySequence } from "@opentui/keymap/extras"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
@@ -204,11 +204,11 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function getExPromptCommandFieldText(command: CommandRecord, fieldName: string): string | undefined {
+function getExPromptCommandFieldText(command: Command, fieldName: string): string | undefined {
   return getMetadataText(command.fields[fieldName])
 }
 
-function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined {
+function getExPromptCommandNargs(command: Command): ExArgCount | undefined {
   const value = command.fields.nargs
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
@@ -217,11 +217,11 @@ function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined
   return undefined
 }
 
-function getExPromptCommands(): readonly CommandRecord[] {
+function getExPromptCommands(): readonly Command[] {
   return keymap?.getCommands({ namespace: "excommands" }) ?? []
 }
 
-function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly Command[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {

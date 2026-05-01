@@ -135,26 +135,36 @@ export type KeyStringifyInput =
 export type KeyLike = string | KeyStrokeInput
 
 /**
- * Read-only view of a registered command. `fields` is raw registration
- * metadata; `attrs` is compiled command-field metadata.
+ * Public command shape used for layer registration, command queries, command
+ * contexts, and command resolver results. Registration may provide raw metadata
+ * either as top-level custom fields or through `fields`; normalized command
+ * views expose raw metadata on `fields` and compiled metadata on `attrs`.
  */
-export interface CommandRecord {
+export interface Command<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   name: string
-  fields: Readonly<Record<string, unknown>>
+  run: CommandHandler<TTarget, TEvent>
+  fields?: Readonly<Record<string, unknown>>
   attrs?: Readonly<Attributes>
+  rejectedResult?: Extract<RunCommandResult<TTarget, TEvent>, { ok: false }>
+  [key: string]: unknown
 }
 
-export type CommandQueryValue = unknown | readonly unknown[] | ((value: unknown, command: CommandRecord) => boolean)
+export type CommandQueryValue<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
+  | unknown
+  | readonly unknown[]
+  | ((value: unknown, command: Command<TTarget, TEvent>) => boolean)
 
-export type CommandFilter = Readonly<Record<string, CommandQueryValue>> | ((command: CommandRecord) => boolean)
+export type CommandFilter<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
+  | Readonly<Record<string, CommandQueryValue<TTarget, TEvent>>>
+  | ((command: Command<TTarget, TEvent>) => boolean)
 
-export interface CommandQuery<TTarget extends object = object> {
+export interface CommandQuery<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   visibility?: "reachable" | "active" | "registered"
   focused?: TTarget | null
   namespace?: string | readonly string[]
   search?: string
   searchIn?: readonly string[]
-  filter?: CommandFilter
+  filter?: CommandFilter<TTarget, TEvent>
 }
 
 export interface CommandBindingsQuery<TTarget extends object = object> {
@@ -170,10 +180,14 @@ export interface RunCommandOptions<TTarget extends object = object, TEvent exten
   includeCommand?: boolean
 }
 
-export type RunCommandResult =
-  | { ok: true; command?: CommandRecord }
+export type RunCommandResult<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
+  | { ok: true; command?: Command<TTarget, TEvent> }
   | { ok: false; reason: "not-found" }
-  | { ok: false; reason: "inactive" | "disabled" | "invalid-args" | "rejected" | "error"; command?: CommandRecord }
+  | {
+      ok: false
+      reason: "inactive" | "disabled" | "invalid-args" | "rejected" | "error"
+      command?: Command<TTarget, TEvent>
+    }
 
 export interface CommandContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   keymap: Keymap<TTarget, TEvent>
@@ -181,7 +195,7 @@ export interface CommandContext<TTarget extends object = object, TEvent extends 
   focused: TTarget | null
   target: TTarget | null
   data: Readonly<EventData>
-  command?: CommandRecord
+  command?: Command<TTarget, TEvent>
 }
 
 export type CommandResult = boolean | void | Promise<boolean | void>
@@ -230,7 +244,7 @@ export type TargetMode = "focus" | "focus-within"
 export interface LayerFields<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   priority?: number
   bindings?: Bindings<TTarget, TEvent>
-  commands?: readonly CommandDefinition<TTarget, TEvent>[]
+  commands?: readonly Command<TTarget, TEvent>[]
   targetMode?: TargetMode
   /**
    * Extra layer fields feed layer-field compilers and binding compilation via
@@ -280,36 +294,14 @@ export interface ParsedCommand {
   args: string[]
 }
 
-export interface CommandResolverContext {
-  getCommandAttrs(name: string): Readonly<Attributes> | undefined
-  getCommandRecord(name: string): CommandRecord | undefined
-}
-
-/**
- * Resolver output. `run` executes the command, `attrs` / `record` expose
- * metadata, and `rejectedResult` overrides the default rejected result.
- */
-export interface ResolvedBindingCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
-  run: CommandHandler<TTarget, TEvent>
-  attrs?: Readonly<Attributes>
-  record?: CommandRecord
-  rejectedResult?: Extract<RunCommandResult, { ok: false }>
+export interface CommandResolverContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  getCommand(name: string): Command<TTarget, TEvent> | undefined
 }
 
 export type CommandResolver<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
   command: string,
-  ctx: CommandResolverContext,
-) => ResolvedBindingCommand<TTarget, TEvent> | undefined
-
-/**
- * Layer command registration input. Extra fields stay on `fields` and can be
- * compiled into `attrs` by command-field addons.
- */
-export interface CommandDefinition<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
-  name: string
-  run: CommandHandler<TTarget, TEvent>
-  [key: string]: unknown
-}
+  ctx: CommandResolverContext<TTarget, TEvent>,
+) => Command<TTarget, TEvent> | undefined
 
 export interface KeyToken {
   name: string
@@ -331,7 +323,7 @@ export interface ActiveBinding<TTarget extends object = object, TEvent extends K
  * projection.
  */
 export interface CommandEntry<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
-  command: CommandRecord
+  command: Command<TTarget, TEvent>
   bindings: readonly ActiveBinding<TTarget, TEvent>[]
 }
 
@@ -378,7 +370,7 @@ export interface LayerFieldContext {
   /**
    * Layer fields only influence activation and binding compilation. They do
    * not expose `attr(...)` because the current model has no layer-level attrs
-   * surface on `ActiveKey`, `ActiveBinding`, or `CommandRecord`.
+   * surface on `ActiveKey`, `ActiveBinding`, or `Command`.
    *
    * Registers a runtime matcher. Raw callbacks re-run on every read;
    * reactive matchers stay cached until they notify.
@@ -627,13 +619,15 @@ export interface ActiveKeyState<TTarget extends object = object, TEvent extends 
   bindings?: CompiledBinding<TTarget, TEvent>[]
 }
 
-export interface RegisteredCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
-  extends CommandRecord, RuntimeMatchable {
+export interface CommandState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
+  extends RuntimeMatchable {
+  name: string
+  fields: Readonly<Record<string, unknown>>
+  attrs?: Readonly<Attributes>
   run: (ctx: CommandContext<TTarget, TEvent>) => CommandResult
+  rejectedResult?: Extract<RunCommandResult<TTarget, TEvent>, { ok: false }>
   runner?: CommandHandler<TTarget, TEvent>
-  resolved?: ResolvedBindingCommand<TTarget, TEvent>
-  resolvedWithRecord?: ResolvedBindingCommand<TTarget, TEvent>
-  record?: CommandRecord
+  command: Command<TTarget, TEvent>
 }
 
 export interface CompiledBindingsResult<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
@@ -664,8 +658,8 @@ export interface RegisteredLayer<TTarget extends object = object, TEvent extends
   matchCacheDirty?: boolean
   matchCache?: boolean
   compileFields?: Readonly<Record<string, unknown>>
-  commands: readonly RegisteredCommand<TTarget, TEvent>[]
-  commandLookup?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>
+  commands: readonly CommandState<TTarget, TEvent>[]
+  commandLookup?: ReadonlyMap<string, CommandState<TTarget, TEvent>>
   bindingInputs: readonly BindingInput<TTarget, TEvent>[]
   compiledBindings: readonly CompiledBinding<TTarget, TEvent>[]
   hasUnkeyedCommands: boolean

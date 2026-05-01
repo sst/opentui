@@ -1,7 +1,6 @@
 import type {
-  CommandDefinition,
   CommandContext,
-  CommandRecord,
+  Command,
   Keymap,
   KeymapEvent,
   ParsedCommand,
@@ -96,7 +95,7 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
   keymap: Keymap<TTarget, TEvent>,
   commands: ExCommand<TTarget, TEvent>[],
 ): () => void {
-  const registrations: CommandDefinition<TTarget, TEvent>[] = []
+  const registrations: Command<TTarget, TEvent>[] = []
   const commandMap = new Map<string, ExCommand<TTarget, TEvent>>()
 
   for (const command of commands) {
@@ -113,8 +112,8 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
       commandMap.set(normalizedName, command)
 
       registrations.push({
-        ...registrationFields,
         name: normalizedName,
+        fields: registrationFields,
         run(ctx) {
           const rawInput = (ctx as { raw?: unknown }).raw
           const raw: string = typeof rawInput === "string" ? rawInput : normalizedName
@@ -126,7 +125,7 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
 
           return run({
             ...ctx,
-            command: ctx.command ?? { name: normalizedName, fields: EMPTY_FIELDS },
+            command: ctx.command!,
             raw,
             args,
           })
@@ -148,38 +147,40 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
       return undefined
     }
 
-    const attrs = ctx.getCommandAttrs(normalizedName)
-    const record = ctx.getCommandRecord(normalizedName)
+    const registeredCommand = ctx.getCommand(normalizedName)
+    const attrs = registeredCommand?.attrs
+    const fields = registeredCommand?.fields ?? EMPTY_FIELDS
     if (!validateCommandArgs(command, parsed.args)) {
-      return {
-        attrs,
-        record,
-        rejectedResult: record
-          ? { ok: false, reason: "invalid-args", command: record }
-          : { ok: false, reason: "invalid-args" },
+      const invalidCommand: Command<TTarget, TEvent> = {
+        name: normalizedName,
+        fields,
+        rejectedResult: { ok: false, reason: "invalid-args" },
         run() {
           return false
         },
       }
+      if (attrs) {
+        invalidCommand.attrs = attrs
+      }
+      return invalidCommand
     }
 
-    return {
-      attrs,
-      record,
+    const resolvedCommand: Command<TTarget, TEvent> = {
+      name: normalizedName,
+      fields,
       run(baseCtx) {
-        const commandView: CommandRecord =
-          record ??
-          (attrs
-            ? { name: normalizedName, fields: EMPTY_FIELDS, attrs }
-            : { name: normalizedName, fields: EMPTY_FIELDS })
         return command.run({
           ...baseCtx,
-          command: commandView,
+          command: baseCtx.command!,
           raw: parsed.input,
           args: parsed.args,
         })
       },
     }
+    if (attrs) {
+      resolvedCommand.attrs = attrs
+    }
+    return resolvedCommand
   })
 
   return () => {

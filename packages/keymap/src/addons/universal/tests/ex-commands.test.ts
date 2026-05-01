@@ -190,7 +190,7 @@ describe("ex commands addon", () => {
       category: "File",
     })
 
-    expect(keymap.getCommands({ filter: { namespace: "excommands" } })).toEqual([
+    expect(keymap.getCommands({ filter: { namespace: "excommands" } })).toMatchObject([
       {
         name: ":write",
         fields: {
@@ -287,7 +287,7 @@ describe("ex commands addon", () => {
     expect(keymap.runCommand(":w file.txt")).toEqual({
       ok: true,
     })
-    expect(keymap.runCommand(":w file.txt", { includeCommand: true })).toEqual({
+    expect(keymap.runCommand(":w file.txt", { includeCommand: true })).toMatchObject({
       ok: true,
       command: {
         name: ":w",
@@ -303,7 +303,7 @@ describe("ex commands addon", () => {
       ok: false,
       reason: "invalid-args",
     })
-    expect(keymap.runCommand(":w", { includeCommand: true })).toEqual({
+    expect(keymap.runCommand(":w", { includeCommand: true })).toMatchObject({
       ok: false,
       reason: "invalid-args",
       command: {

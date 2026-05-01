@@ -9,7 +9,6 @@ import {
   type ActiveKey,
   type ActiveKeyOptions,
   type BindingParser,
-  type CommandRecord,
   type ErrorEvent,
   type EventMatchResolverContext,
   type Keymap,
@@ -206,7 +205,7 @@ describe("keymap: diagnostics and analyzers", () => {
       bindings: [{ key: "x", cmd: "save-file" }],
     })
 
-    expect(getCommand(keymap, "save-file")).toEqual({
+    expect(getCommand(keymap, "save-file")).toMatchObject({
       name: "save-file",
       fields: {
         desc: "Save the current file",
