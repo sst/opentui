@@ -612,6 +612,33 @@ test("CliRenderer reuses generic suspend/resume native helpers in split-footer m
   resumeGenericSpy.mockRestore()
 })
 
+test("CliRenderer split-footer resume forces the next footer repaint", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  renderer.start()
+  renderer.suspend()
+
+  const repaintSpy = spyOn((renderer as any).lib, "repaintSplitFooter")
+  renderer.resume()
+  renderer.pause()
+
+  const lastCall = repaintSpy.mock.calls[repaintSpy.mock.calls.length - 1]
+  expect(lastCall?.[2]).toBe(true)
+  expect((renderer as any).forceFullRepaintRequested).toBe(false)
+
+  repaintSpy.mockRestore()
+})
+
 test("CliRenderer does not flush captured split output during resize while suspended", async () => {
   const result = await createTestRenderer({
     width: 40,

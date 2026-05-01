@@ -3432,7 +3432,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.enableMouse()
     }
 
-    this.currentRenderBuffer.clear(this.backgroundColor)
+    this.forceFullRepaintRequested = true
     this._controlState = this._previousControlState
 
     if (
