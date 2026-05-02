@@ -678,6 +678,41 @@ describe("keymap: commands and queries", () => {
     ])
   })
 
+  test("failed command registration does not reserve the command name", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors } = captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    keymap.registerCommandFields({
+      broken() {
+        throw new Error("broken command field")
+      },
+    })
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "retry-command",
+          broken: true,
+          run() {
+            calls.push("broken")
+          },
+        },
+        {
+          name: "retry-command",
+          run() {
+            calls.push("registered")
+          },
+        },
+      ],
+    })
+
+    expect(keymap.getCommands().map((command) => command.name)).toEqual(["retry-command"])
+    expect(keymap.runCommand("retry-command")).toEqual({ ok: true })
+    expect(calls).toEqual(["registered"])
+    expect(takeErrors().errors).toEqual(["broken command field"])
+  })
+
   test("getCommands returns the registered command object across repeated reads", () => {
     const keymap = getKeymap(renderer)
     const command = {

@@ -37,7 +37,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     private readonly options: CommandExecutorOptions<TTarget, TEvent>,
   ) {}
 
-  public runCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult {
+  public runCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult<TTarget, TEvent> {
     let normalized: BindingCommand<TTarget, TEvent> | undefined
 
     try {
@@ -117,7 +117,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     return rejectedResult ?? { ok: false, reason: "not-found" }
   }
 
-  public dispatchCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult {
+  public dispatchCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult<TTarget, TEvent> {
     let normalized: BindingCommand<TTarget, TEvent> | undefined
 
     try {

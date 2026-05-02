@@ -246,7 +246,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     return this.catalog.getCommands(query)
   }
 
-  public getCommandEntries(query?: CommandQuery<TTarget>): readonly CommandEntry<TTarget, TEvent>[] {
+  public getCommandEntries(query?: CommandQuery<TTarget, TEvent>): readonly CommandEntry<TTarget, TEvent>[] {
     return this.catalog.getCommandEntries(query)
   }
 
@@ -278,11 +278,11 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     }
   }
 
-  public runCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult {
+  public runCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult<TTarget, TEvent> {
     return this.executor.runCommand(cmd, options)
   }
 
-  public dispatchCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult {
+  public dispatchCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult<TTarget, TEvent> {
     return this.executor.dispatchCommand(cmd, options)
   }
 

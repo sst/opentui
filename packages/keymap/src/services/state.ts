@@ -63,7 +63,7 @@ export interface LayersState<TTarget extends object, TEvent extends KeymapEvent>
 
 export interface LayerCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {
   layer: RegisteredLayer<TTarget, TEvent>
-  command: CommandState<TTarget, TEvent>
+  commandState: CommandState<TTarget, TEvent>
 }
 
 export interface ResolvedCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {

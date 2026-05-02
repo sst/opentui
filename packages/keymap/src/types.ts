@@ -621,13 +621,7 @@ export interface ActiveKeyState<TTarget extends object = object, TEvent extends 
 
 export interface CommandState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
   extends RuntimeMatchable {
-  name: string
-  fields: Readonly<Record<string, unknown>>
-  attrs?: Readonly<Attributes>
-  run: (ctx: CommandContext<TTarget, TEvent>) => CommandResult
-  rejectedResult?: Extract<RunCommandResult<TTarget, TEvent>, { ok: false }>
-  runner?: CommandHandler<TTarget, TEvent>
-  command: Command<TTarget, TEvent>
+  command: Command<TTarget, TEvent> & { fields: Readonly<Record<string, unknown>> }
 }
 
 export interface CompiledBindingsResult<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {

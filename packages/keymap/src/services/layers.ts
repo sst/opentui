@@ -57,8 +57,8 @@ function createCommandLookup<TTarget extends object, TEvent extends KeymapEvent>
   }
 
   const lookup = new Map<string, CommandState<TTarget, TEvent>>()
-  for (const command of commands) {
-    lookup.set(command.name, command)
+  for (const commandState of commands) {
+    lookup.set(commandState.command.name, commandState)
   }
 
   return lookup
@@ -68,8 +68,8 @@ function addCommandNameRefs<TTarget extends object, TEvent extends KeymapEvent>(
   target: Map<string, number>,
   commands: readonly CommandState<TTarget, TEvent>[],
 ): void {
-  for (const command of commands) {
-    target.set(command.name, (target.get(command.name) ?? 0) + 1)
+  for (const commandState of commands) {
+    target.set(commandState.command.name, (target.get(commandState.command.name) ?? 0) + 1)
   }
 }
 
@@ -77,14 +77,14 @@ function removeCommandNameRefs<TTarget extends object, TEvent extends KeymapEven
   target: Map<string, number>,
   commands: readonly CommandState<TTarget, TEvent>[],
 ): void {
-  for (const command of commands) {
-    const count = target.get(command.name)
+  for (const commandState of commands) {
+    const count = target.get(commandState.command.name)
     if (!count || count <= 1) {
-      target.delete(command.name)
+      target.delete(commandState.command.name)
       continue
     }
 
-    target.set(command.name, count - 1)
+    target.set(commandState.command.name, count - 1)
   }
 }
 
