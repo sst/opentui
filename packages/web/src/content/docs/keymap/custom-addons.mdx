@@ -276,11 +276,11 @@ Use the `clear*()` methods only when your addon owns that whole stage. They are 
 
 Command transformers run once for each command in a layer before command fields compile. They can mutate the command copy they receive, add derived commands or drop the original.
 
-| Member           | Purpose                              |
-| ---------------- | ------------------------------------ |
-| `layer`          | Read-only layer definition           |
-| `add(command)`   | Add a derived command                |
-| `skipOriginal()` | Drop the transformed command          |
+| Member           | Purpose                      |
+| ---------------- | ---------------------------- |
+| `layer`          | Read-only layer definition   |
+| `add(command)`   | Add a derived command        |
+| `skipOriginal()` | Drop the transformed command |
 
 ### `CommandResolver`
 
@@ -366,14 +366,14 @@ Analyzers run while a layer compiles and receive a projected view of the compile
 
 `LayerAnalysisContext` exposes:
 
-| Member                                       | Purpose                                 |
-| -------------------------------------------- | --------------------------------------- |
-| `target` / `order`                           | Source layer identity                   |
+| Member                                       | Purpose                                            |
+| -------------------------------------------- | -------------------------------------------------- |
+| `target` / `order`                           | Source layer identity                              |
 | `sourceBindings`                             | Original bindings after layer-binding transformers |
-| `bindings`                                   | Compiled binding analysis records       |
-| `hasTokenBindings`                           | Whether any binding used tokens         |
-| `checkCommandResolution(command)`            | Probe whether a string command resolves |
-| `warn(...)` / `warnOnce(...)` / `error(...)` | Emit diagnostics                        |
+| `bindings`                                   | Compiled binding analysis records                  |
+| `hasTokenBindings`                           | Whether any binding used tokens                    |
+| `checkCommandResolution(command)`            | Probe whether a string command resolves            |
+| `warn(...)` / `warnOnce(...)` / `error(...)` | Emit diagnostics                                   |
 
 `clearLayerAnalyzers()` removes all registered analyzers for the keymap.
 
