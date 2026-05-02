@@ -19,18 +19,18 @@ function warnDeadMetadataOnlyBinding<TTarget extends object, TEvent extends Keym
   ctx: LayerAnalysisContext<TTarget, TEvent>,
   binding: LayerBindingAnalysis<TTarget, TEvent>,
 ): void {
-  const sequence = stringifyKeySequence(binding.sourceBinding.sequence, { preferDisplay: true })
+  const sequence = stringifyKeySequence(binding.parsedBinding.sequence, { preferDisplay: true })
   const sourceKey =
-    typeof binding.sourceBinding.key === "string"
-      ? binding.sourceBinding.key
-      : stringifyKeyStroke(binding.sourceBinding.key)
-  const warningKey = `dead-binding:${binding.sourceLayerOrder}:${binding.sourceBindingIndex}:${sourceKey}`
+    typeof binding.parsedBinding.key === "string"
+      ? binding.parsedBinding.key
+      : stringifyKeyStroke(binding.parsedBinding.key)
+  const warningKey = `dead-binding:${binding.sourceLayerOrder}:${binding.bindingIndex}:${sourceKey}`
 
   ctx.warnOnce(
     warningKey,
     "dead-binding",
     {
-      binding: binding.sourceBinding,
+      binding: binding.parsedBinding,
       target: binding.sourceTarget,
     },
     `[Keymap] Binding "${sequence}" has no command and no reachable continuations; it will never trigger`,

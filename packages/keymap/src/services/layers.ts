@@ -27,7 +27,7 @@ import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
 import {
   snapshotBindings,
-  snapshotParsedBindingInput,
+  snapshotParsedBinding,
   validateBindings,
 } from "./primitives/bindings.js"
 import { mergeRequirement } from "./primitives/field-invariants.js"
@@ -143,10 +143,10 @@ function buildLayerBindingAnalyses<TTarget extends object, TEvent extends Keymap
       event: binding.event,
       preventDefault: binding.preventDefault,
       fallthrough: binding.fallthrough,
-      sourceBinding: snapshotParsedBindingInput(binding.sourceBinding),
+      parsedBinding: snapshotParsedBinding(binding.parsedBinding),
       sourceTarget: binding.sourceTarget,
       sourceLayerOrder: binding.sourceLayerOrder,
-      sourceBindingIndex: binding.sourceBindingIndex,
+      bindingIndex: binding.bindingIndex,
       hasCommandAtSequence: node ? node.bindings.some((candidate) => candidate.command !== undefined) : false,
       hasContinuations: node ? node.children.size > 0 : false,
     }

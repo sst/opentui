@@ -399,10 +399,10 @@ export interface LayerBindingAnalysis<TTarget extends object = object, TEvent ex
   event: BindingEvent
   preventDefault: boolean
   fallthrough: boolean
-  sourceBinding: ParsedBindingInput<TTarget, TEvent>
+  parsedBinding: ParsedBinding<TTarget, TEvent>
   sourceTarget?: TTarget
   sourceLayerOrder: number
-  sourceBindingIndex: number
+  bindingIndex: number
   hasCommandAtSequence: boolean
   hasContinuations: boolean
 }
@@ -444,7 +444,7 @@ export type BindingParser = (ctx: BindingParserContext) => BindingParserResult |
 
 export type BindingExpander = (ctx: BindingExpanderContext) => readonly string[] | undefined
 
-export interface ParsedBindingInput<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+export interface ParsedBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   key: KeyLike
   sequence: KeySequencePart[]
   cmd?: BindingCommand<TTarget, TEvent>
@@ -457,12 +457,12 @@ export interface ParsedBindingInput<TTarget extends object = object, TEvent exte
 export interface BindingTransformerContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   layer: Readonly<Record<string, unknown>>
   parseKey(key: KeyLike): KeySequencePart
-  add(binding: ParsedBindingInput<TTarget, TEvent>): void
+  add(binding: ParsedBinding<TTarget, TEvent>): void
   skipOriginal(): void
 }
 
 export type BindingTransformer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
-  binding: ParsedBindingInput<TTarget, TEvent>,
+  binding: ParsedBinding<TTarget, TEvent>,
   ctx: BindingTransformerContext<TTarget, TEvent>,
 ) => void
 
@@ -594,10 +594,10 @@ export interface BindingState<TTarget extends object = object, TEvent extends Ke
   extends ActiveBinding<TTarget, TEvent>, RuntimeMatchable {
   binding: Binding<TTarget, TEvent>
   run?: CommandHandler<TTarget, TEvent>
-  sourceBinding: ParsedBindingInput<TTarget, TEvent>
+  parsedBinding: ParsedBinding<TTarget, TEvent>
   sourceTarget?: TTarget
   sourceLayerOrder: number
-  sourceBindingIndex: number
+  bindingIndex: number
 }
 
 export interface ActiveKeySelection<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {

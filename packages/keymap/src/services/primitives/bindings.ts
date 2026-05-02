@@ -3,7 +3,7 @@ import type {
   BindingsValidationResult,
   Bindings,
   KeymapEvent,
-  ParsedBindingInput,
+  ParsedBinding,
 } from "../../types.js"
 import { cloneKeySequence } from "../keys.js"
 
@@ -46,9 +46,9 @@ export function snapshotBindings<TTarget extends object, TEvent extends KeymapEv
   }))
 }
 
-export function snapshotParsedBindingInput<TTarget extends object, TEvent extends KeymapEvent>(
-  binding: ParsedBindingInput<TTarget, TEvent>,
-): ParsedBindingInput<TTarget, TEvent> {
+export function snapshotParsedBinding<TTarget extends object, TEvent extends KeymapEvent>(
+  binding: ParsedBinding<TTarget, TEvent>,
+): ParsedBinding<TTarget, TEvent> {
   return {
     ...binding,
     sequence: cloneKeySequence(binding.sequence),

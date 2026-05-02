@@ -22,7 +22,7 @@ export type {
   LayerBindingsTransformerContext,
   BindingTransformer,
   BindingTransformerContext,
-  ParsedBindingInput,
+  ParsedBinding,
   Bindings,
   ActiveKey,
   ActiveKeyOptions,

@@ -12,7 +12,7 @@ import type {
   BindingParser,
   BindingParserContext,
   EventData,
-  ParsedBindingInput,
+  ParsedBinding,
   ReactiveMatcher,
   BindingState,
   BindingCompilationResult,
@@ -35,7 +35,7 @@ import {
   normalizeBindingTokenName,
   stringifyKeySequence,
 } from "./keys.js"
-import { snapshotParsedBindingInput } from "./primitives/bindings.js"
+import { snapshotParsedBinding } from "./primitives/bindings.js"
 import { mergeAttribute, mergeRequirement } from "./primitives/field-invariants.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
 
@@ -140,7 +140,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
       let expandedBindingKeys: readonly KeyLike[]
 
       try {
-        expandedBindingKeys = expandBindingInputWithExpanders(binding.key, bindingExpanders, {
+        expandedBindingKeys = expandBindingKeyWithExpanders(binding.key, bindingExpanders, {
           layer: compileFields,
         })
       } catch (error) {
@@ -205,7 +205,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
                 continue
               }
 
-              const value = compiledInput[fieldName as keyof ParsedBindingInput]
+              const value = compiledInput[fieldName as keyof ParsedBinding]
 
               if (value === undefined) {
                 continue
@@ -254,10 +254,10 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
               sequence: compiledSequence,
               command,
               event,
-              sourceBinding: snapshotParsedBindingInput(compiledInput),
+              parsedBinding: snapshotParsedBinding(compiledInput),
               sourceTarget,
               sourceLayerOrder,
-              sourceBindingIndex: bindingIndex,
+              bindingIndex: bindingIndex,
               requires: mergedRequires ? Object.entries(mergedRequires) : EMPTY_REQUIRES,
               matchers: matchers ?? EMPTY_MATCHERS,
               conditionKeys: conditionKeys ? [...conditionKeys] : EMPTY_CONDITION_KEYS,
@@ -335,18 +335,18 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
     bindingParsers: readonly BindingParser[],
     compileFields?: Readonly<Record<string, unknown>>,
-  ): ParsedBindingInput<TTarget, TEvent>[] {
+  ): ParsedBinding<TTarget, TEvent>[] {
     const bindingTransformers = this.state.environment.bindingTransformers.values()
 
     if (bindingTransformers.length === 0) {
       return [{ ...binding, sequence: cloneKeySequence(sequence) }]
     }
 
-    const parsedBinding: ParsedBindingInput<TTarget, TEvent> = {
+    const parsedBinding: ParsedBinding<TTarget, TEvent> = {
       ...binding,
       sequence: cloneKeySequence(sequence),
     }
-    const extraBindings: ParsedBindingInput<TTarget, TEvent>[] = []
+    const extraBindings: ParsedBinding<TTarget, TEvent>[] = []
     let keepOriginal = true
     const layer = compileFields ?? EMPTY_COMPILE_FIELDS
 
@@ -362,7 +362,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
             })
           },
           add: (nextBinding) => {
-            extraBindings.push(snapshotParsedBindingInput(nextBinding))
+            extraBindings.push(snapshotParsedBinding(nextBinding))
           },
           skipOriginal: () => {
             keepOriginal = false
@@ -459,7 +459,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
   }
 }
 
-function expandBindingInputWithExpanders(
+function expandBindingKeyWithExpanders(
   key: KeyLike,
   expanders: readonly BindingExpander[],
   options?: {
