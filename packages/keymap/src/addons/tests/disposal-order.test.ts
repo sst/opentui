@@ -323,13 +323,16 @@ describe("addon teardown order", () => {
       '[Keymap] Unresolved command "missing-command" for binding "u"',
     ])
     expect(capture.takeErrors().errors).toEqual([])
-    expect(keymap.getCommands({ visibility: "registered" }).find((command) => command.name === "save-file")).toMatchObject({
+    expect(
+      keymap.getCommands({ visibility: "registered" }).find((command) => command.name === "save-file"),
+    ).toMatchObject({
       desc: "Save file",
       title: "Save",
       category: "File",
     })
-    expect(keymap.getActiveKeys({ includeMetadata: true }).find((key) => key.stroke.name === "return")?.bindingAttrs)
-      .toEqual({ desc: "Save binding", group: "File" })
+    expect(
+      keymap.getActiveKeys({ includeMetadata: true }).find((key) => key.stroke.name === "return")?.bindingAttrs,
+    ).toEqual({ desc: "Save binding", group: "File" })
 
     mockInput.pressEnter()
     mockInput.pressKey("o")
@@ -355,8 +358,9 @@ describe("addon teardown order", () => {
       '[Keymap] Unknown layer field "enabled" was ignored',
       '[Keymap] Unknown binding field "desc" was ignored',
     ])
-    expect(keymap.getActiveKeys({ includeMetadata: true }).find((key) => key.stroke.name === "q")?.bindingAttrs)
-      .toBeUndefined()
+    expect(
+      keymap.getActiveKeys({ includeMetadata: true }).find((key) => key.stroke.name === "q")?.bindingAttrs,
+    ).toBeUndefined()
 
     renderer.destroy()
   })
