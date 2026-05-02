@@ -252,10 +252,9 @@ describe("ex commands addon", () => {
       ],
     })
 
-    expect(keymap.getCommands({ namespace: "excommands", visibility: "registered" }).map((command) => command.name)).toEqual([
-      ":write",
-      ":w",
-    ])
+    expect(
+      keymap.getCommands({ namespace: "excommands", visibility: "registered" }).map((command) => command.name),
+    ).toEqual([":write", ":w"])
     expect(keymap.getCommands({ namespace: "custom", visibility: "registered" })).toEqual([])
     expect(keymap.runCommand(":write")).toEqual({ ok: true })
     expect(keymap.runCommand("p")).toEqual({ ok: false, reason: "not-found" })
@@ -283,11 +282,10 @@ describe("ex commands addon", () => {
     })
 
     const { errors, errorEvents } = capture.takeErrors()
-    expect(errors).toEqual([
-      "[Keymap] Error in command transformer:",
-      "[Keymap] Error in command transformer:",
-    ])
-    expect(errorEvents.map((event) => (event.error instanceof Error ? event.error.message : String(event.error)))).toEqual([
+    expect(errors).toEqual(["[Keymap] Error in command transformer:", "[Keymap] Error in command transformer:"])
+    expect(
+      errorEvents.map((event) => (event.error instanceof Error ? event.error.message : String(event.error))),
+    ).toEqual([
       'Keymap ex-command field "aliases" must only contain command names',
       'Keymap ex-command field "nargs" must be "0", "1", "?", "*", or "+"',
     ])
