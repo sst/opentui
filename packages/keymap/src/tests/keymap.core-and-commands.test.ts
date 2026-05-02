@@ -257,45 +257,45 @@ describe("keymap: core and commands", () => {
     expect(calls).toEqual(["save-file", "save-file", "save-file", "save-file"])
   })
 
-  test("command contexts include invocation input args and payload", () => {
+  test("command contexts include invocation input and payload", () => {
     const keymap = getKeymap(renderer)
-    const seen: Array<{ input: string; args: readonly unknown[]; payload: unknown }> = []
+    const seen: Array<{ input: string; payload: unknown }> = []
 
     keymap.registerLayer({
       commands: [
         {
           name: "save-file",
           run(ctx) {
-            seen.push({ input: ctx.input, args: ctx.args, payload: ctx.payload })
+            seen.push({ input: ctx.input, payload: ctx.payload })
           },
         },
       ],
       bindings: [{ key: "x", cmd: "save-file" }],
     })
 
-    expect(keymap.runCommand("save-file", { args: ["run"], payload: "run-payload" })).toEqual({ ok: true })
-    expect(keymap.dispatchCommand("save-file", { args: ["dispatch"], payload: "dispatch-payload" })).toEqual({
+    expect(keymap.runCommand("save-file", { payload: "run-payload" })).toEqual({ ok: true })
+    expect(keymap.dispatchCommand("save-file", { payload: "dispatch-payload" })).toEqual({
       ok: true,
     })
     mockInput.pressKey("x")
 
     expect(seen).toEqual([
-      { input: "save-file", args: ["run"], payload: "run-payload" },
-      { input: "save-file", args: ["dispatch"], payload: "dispatch-payload" },
-      { input: "save-file", args: [], payload: undefined },
+      { input: "save-file", payload: "run-payload" },
+      { input: "save-file", payload: "dispatch-payload" },
+      { input: "save-file", payload: undefined },
     ])
   })
 
   test("command resolvers can adjust invocation context for the resolved command", () => {
     const keymap = getKeymap(renderer)
-    const seen: Array<{ input: string; args: readonly unknown[]; payload: unknown }> = []
+    const seen: Array<{ input: string; payload: unknown }> = []
 
     keymap.registerLayer({
       commands: [
         {
           name: "target-command",
           run(ctx) {
-            seen.push({ input: ctx.input, args: ctx.args, payload: ctx.payload })
+            seen.push({ input: ctx.input, payload: ctx.payload })
           },
         },
       ],
@@ -306,7 +306,7 @@ describe("keymap: core and commands", () => {
         return undefined
       }
 
-      ctx.prependArgs(["leaked"])
+      ctx.setPayload("leaked")
       return undefined
     })
     keymap.appendCommandResolver((command, ctx) => {
@@ -315,19 +315,16 @@ describe("keymap: core and commands", () => {
       }
 
       ctx.setInput(command)
-      ctx.prependArgs(["parsed"])
-      ctx.appendArgs(["tail"])
-      ctx.setPayload("resolver-payload")
+      ctx.setPayload({ parsed: true, original: ctx.payload })
       return ctx.getCommand("target-command")
     })
 
-    expect(keymap.runCommand("alias target", { args: ["explicit"], payload: "original-payload" })).toEqual({ ok: true })
+    expect(keymap.runCommand("alias target", { payload: "original-payload" })).toEqual({ ok: true })
 
     expect(seen).toEqual([
       {
         input: "alias target",
-        args: ["parsed", "explicit", "tail"],
-        payload: "resolver-payload",
+        payload: { parsed: true, original: "original-payload" },
       },
     ])
   })

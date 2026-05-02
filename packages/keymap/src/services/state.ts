@@ -72,7 +72,6 @@ export interface ResolvedCommandEntry<TTarget extends object, TEvent extends Key
   command: Command<TTarget, TEvent>
   attrs?: Readonly<Attributes>
   input?: string
-  args?: readonly unknown[]
   payload?: unknown
 }
 

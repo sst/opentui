@@ -270,8 +270,8 @@ describe("ex commands addon", () => {
       },
       {
         name: "free",
-        run({ raw, args }) {
-          calls.push(`${raw}:${args.join(",")}`)
+        run({ raw, args, payload }) {
+          calls.push(`${raw}:${args.join(",")}:${payload.payload ?? ""}`)
         },
       },
     ])
@@ -304,8 +304,8 @@ describe("ex commands addon", () => {
         namespace: "excommands",
       },
     })
-    expect(keymap.runCommand(":free one", { args: ["two"] })).toEqual({ ok: true })
+    expect(keymap.runCommand(":free one", { payload: "explicit" })).toEqual({ ok: true })
     expect(keymap.runCommand(":missing")).toEqual({ ok: false, reason: "not-found" })
-    expect(calls).toEqual([":w file.txt:file.txt", ":w file.txt:file.txt", ":free one:one,two"])
+    expect(calls).toEqual([":w file.txt:file.txt", ":w file.txt:file.txt", ":free one:one:explicit"])
   })
 })

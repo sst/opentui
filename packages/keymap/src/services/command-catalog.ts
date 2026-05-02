@@ -71,7 +71,6 @@ interface ResolvedCommandLookup<TTarget extends object, TEvent extends KeymapEve
 
 interface CommandExecutionFields {
   input: string
-  args: readonly unknown[]
   payload?: unknown
 }
 
@@ -79,8 +78,6 @@ interface CommandResolverAttempt<TTarget extends object, TEvent extends KeymapEv
   context: CommandResolverContext<TTarget, TEvent>
   getExecutionFields(): CommandExecutionFields
 }
-
-const EMPTY_COMMAND_ARGS: readonly unknown[] = Object.freeze([])
 
 function createCommandChainCacheState<TTarget extends object, TEvent extends KeymapEvent>(): CommandChainCacheState<
   TTarget,
@@ -849,7 +846,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     options?: { mode?: "active" | "registered"; execution?: CommandExecutionFields },
   ): ResolvedCommandLookup<TTarget, TEvent> {
     const mode = options?.mode ?? "active"
-    const execution = options?.execution ?? { input: command, args: EMPTY_COMMAND_ARGS }
+    const execution = options?.execution ?? { input: command }
 
     const lookup = resolveCommandWithResolvers(
       command,
@@ -909,7 +906,6 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     execution: CommandExecutionFields,
   ): CommandResolverAttempt<TTarget, TEvent> {
     let input = execution.input
-    let args = [...execution.args]
     let payload = execution.payload
 
     return {
@@ -917,23 +913,11 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
         get input() {
           return input
         },
-        get args() {
-          return args
-        },
         get payload() {
           return payload
         },
         setInput(nextInput) {
           input = nextInput
-        },
-        setArgs(nextArgs) {
-          args = [...nextArgs]
-        },
-        prependArgs(nextArgs) {
-          args = [...nextArgs, ...args]
-        },
-        appendArgs(nextArgs) {
-          args = [...args, ...nextArgs]
         },
         setPayload(nextPayload) {
           payload = nextPayload
@@ -947,7 +931,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
         },
       },
       getExecutionFields() {
-        return { input, args, payload }
+        return { input, payload }
       },
     }
   }
@@ -1095,7 +1079,6 @@ function getResolverCommandEntry<TTarget extends object, TEvent extends KeymapEv
   return {
     command,
     input: execution.input,
-    args: execution.args,
     payload: execution.payload,
   }
 }

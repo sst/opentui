@@ -139,9 +139,13 @@ export type KeyLike = string | KeyStrokeInput
  * contexts, and command resolver results. Custom command fields are top-level
  * properties so registration stays as simple as `{ name, run, desc }`.
  */
-export interface Command<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+export interface Command<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+  TPayload = unknown,
+> {
   name: string
-  run: CommandHandler<TTarget, TEvent>
+  run(ctx: CommandContext<TTarget, TEvent, TPayload>): CommandResult<TTarget, TEvent>
   [key: string]: unknown
 }
 
@@ -174,7 +178,6 @@ export interface RunCommandOptions<TTarget extends object = object, TEvent exten
   focused?: TTarget | null
   target?: TTarget | null
   includeCommand?: boolean
-  args?: readonly unknown[]
   payload?: unknown
 }
 
@@ -187,16 +190,19 @@ export type RunCommandResult<TTarget extends object = object, TEvent extends Key
       command?: Command<TTarget, TEvent>
     }
 
-export interface CommandContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+export interface CommandContext<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+  TPayload = unknown,
+> {
   keymap: Keymap<TTarget, TEvent>
   event: TEvent
   focused: TTarget | null
   target: TTarget | null
   data: Readonly<EventData>
-  command?: Command<TTarget, TEvent>
+  command?: Command<TTarget, TEvent, TPayload>
   input: string
-  args: readonly unknown[]
-  payload?: unknown
+  payload: TPayload
 }
 
 export type CommandResult<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
@@ -207,8 +213,12 @@ export type CommandResult<TTarget extends object = object, TEvent extends Keymap
 
 export type CommandResolutionStatus = "resolved" | "unresolved" | "error"
 
-export type CommandHandler<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
-  ctx: CommandContext<TTarget, TEvent>,
+export type CommandHandler<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+  TPayload = unknown,
+> = (
+  ctx: CommandContext<TTarget, TEvent, TPayload>,
 ) => CommandResult<TTarget, TEvent>
 
 export type BindingCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
@@ -250,7 +260,7 @@ export interface Layer<TTarget extends object = object, TEvent extends KeymapEve
   target?: TTarget
   priority?: number
   bindings?: Bindings<TTarget, TEvent>
-  commands?: readonly Command<TTarget, TEvent>[]
+  commands?: readonly Command<TTarget, TEvent, any>[]
   targetMode?: TargetMode
   /**
    * Extra layer fields feed layer-field compilers and binding compilation via
@@ -268,12 +278,8 @@ export interface ParsedCommand {
 
 export interface CommandResolverContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   readonly input: string
-  readonly args: readonly unknown[]
   readonly payload: unknown
   setInput(input: string): void
-  setArgs(args: readonly unknown[]): void
-  prependArgs(args: readonly unknown[]): void
-  appendArgs(args: readonly unknown[]): void
   setPayload(payload: unknown): void
   getCommand(name: string): Command<TTarget, TEvent> | undefined
 }
@@ -602,7 +608,7 @@ export interface ActiveKeyState<TTarget extends object = object, TEvent extends 
 
 export interface CommandState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
   extends RuntimeMatchable {
-  command: Command<TTarget, TEvent>
+  command: Command<TTarget, TEvent, any>
   fields: Readonly<Record<string, unknown>>
   attrs?: Readonly<Attributes>
 }

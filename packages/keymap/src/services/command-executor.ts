@@ -20,17 +20,13 @@ import { isPromiseLike } from "./values.js"
 
 interface CommandExecutionFields {
   input: string
-  args: readonly unknown[]
   payload?: unknown
 }
 
 interface CommandExecutionEntryFields {
   input?: string
-  args?: readonly unknown[]
   payload?: unknown
 }
-
-const EMPTY_COMMAND_ARGS: readonly unknown[] = Object.freeze([])
 
 interface CommandExecutionResult<TTarget extends object, TEvent extends KeymapEvent> {
   status: "handled" | "rejected" | "error"
@@ -92,14 +88,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     } else if (chain) {
       for (const entry of chain) {
-        const context: CommandContext<TTarget, TEvent> = {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: options?.target ?? entry.target ?? null,
-          data,
-          ...baseExecution,
-        }
+        const context = this.createCommandContext(event, focused, options?.target ?? entry.target ?? null, data, baseExecution)
 
         const result = this.executeResolvedCommand(normalized, entry.command, context, includeCommand)
         if (result.status === "handled" || result.status === "error") {
@@ -173,14 +162,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     } else if (chain) {
       for (const entry of chain) {
-        const context: CommandContext<TTarget, TEvent> = {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: options?.target ?? entry.target ?? null,
-          data,
-          ...baseExecution,
-        }
+        const context = this.createCommandContext(event, focused, options?.target ?? entry.target ?? null, data, baseExecution)
 
         const result = this.executeResolvedCommand(normalized, entry.command, context, includeCommand)
         if (result.status === "handled" || result.status === "error") {
@@ -236,7 +218,6 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
         binding.run,
         this.createCommandContext(event, focused, bindingLayer.target ?? null, data, {
           input: typeof binding.command === "string" ? binding.command : "<function>",
-          args: EMPTY_COMMAND_ARGS,
         }),
         false,
       )
@@ -253,7 +234,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       return false
     }
 
-    const baseExecution: CommandExecutionFields = { input: binding.command, args: EMPTY_COMMAND_ARGS }
+    const baseExecution: CommandExecutionFields = { input: binding.command }
     const chain = this.catalog.getResolvedCommandChain(binding.command, focused).entries
     if (chain?.length === 1) {
       const [entry] = chain
@@ -274,14 +255,13 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     } else if (chain) {
       for (const entry of chain) {
-        const context: CommandContext<TTarget, TEvent> = {
-          keymap: this.options.keymap,
+        const context = this.createCommandContext(
           event,
           focused,
-          target: entry.target ?? bindingLayer.target ?? null,
+          entry.target ?? bindingLayer.target ?? null,
           data,
-          ...getEntryExecutionFields(entry, baseExecution),
-        }
+          getEntryExecutionFields(entry, baseExecution),
+        )
 
         const result = this.executeResolvedCommand(binding.command, entry.command, context, false)
         if (result.status === "rejected") {
@@ -310,7 +290,6 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       target,
       data,
       input: execution.input,
-      args: execution.args,
       payload: execution.payload,
     }
   }
@@ -389,7 +368,6 @@ function getOptionsExecutionFields<TTarget extends object, TEvent extends Keymap
 ): CommandExecutionFields {
   return {
     input,
-    args: options?.args ?? EMPTY_COMMAND_ARGS,
     payload: options?.payload,
   }
 }
@@ -400,7 +378,6 @@ function getEntryExecutionFields(
 ): CommandExecutionFields {
   return {
     input: entry.input ?? fallback.input,
-    args: entry.args ?? fallback.args,
     payload: Object.prototype.hasOwnProperty.call(entry, "payload") ? entry.payload : fallback.payload,
   }
 }

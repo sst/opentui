@@ -7,12 +7,37 @@ import type {
   ParsedCommand,
 } from "../../index.js"
 
+export interface ExCommandPayload {
+  raw: string
+  args: readonly string[]
+  payload?: unknown
+}
+
 export interface ExCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   name: string
   aliases?: string[]
   nargs?: "0" | "1" | "?" | "*" | "+"
-  run: (ctx: CommandContext<TTarget, TEvent> & { raw: string; args: readonly string[] }) => CommandResult<TTarget, TEvent>
+  run: (
+    ctx: CommandContext<TTarget, TEvent, ExCommandPayload> & { raw: string; args: readonly string[] },
+  ) => CommandResult<TTarget, TEvent>
   [key: string]: unknown
+}
+
+function isExCommandPayload(value: unknown): value is ExCommandPayload {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+
+  const candidate = value as { raw?: unknown; args?: unknown }
+  return typeof candidate.raw === "string" && Array.isArray(candidate.args)
+}
+
+function getExCommandPayload(input: string, payload: unknown): ExCommandPayload {
+  if (isExCommandPayload(payload)) {
+    return payload
+  }
+
+  return { raw: input, args: [], payload }
 }
 
 function normalizeExCommandName(name: string): string {
@@ -91,7 +116,7 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
   keymap: Keymap<TTarget, TEvent>,
   commands: ExCommand<TTarget, TEvent>[],
 ): () => void {
-  const registrations: Command<TTarget, TEvent>[] = []
+  const registrations: Command<TTarget, TEvent, ExCommandPayload>[] = []
 
   for (const command of commands) {
     const { name, aliases, run, ...fields } = command
@@ -109,15 +134,18 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
         ...registrationFields,
         name: normalizedName,
         run(ctx) {
-          if (!validateCommandArgs(command, ctx.args)) {
+          const payload = getExCommandPayload(ctx.input, ctx.payload)
+
+          if (!validateCommandArgs(command, payload.args)) {
             return { ok: false, reason: "invalid-args" }
           }
 
           return run({
             ...ctx,
             command: ctx.command!,
-            raw: ctx.input,
-            args: ctx.args as readonly string[],
+            payload,
+            raw: payload.raw,
+            args: payload.args,
           })
         },
       })
@@ -139,7 +167,7 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
     }
 
     ctx.setInput(parsed.input)
-    ctx.prependArgs(parsed.args)
+    ctx.setPayload({ raw: parsed.input, args: parsed.args, payload: ctx.payload } satisfies ExCommandPayload)
     return command
   })
 
