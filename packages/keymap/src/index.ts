@@ -37,6 +37,8 @@ export type {
   RunCommandOptions,
   RunCommandResult,
   CommandHandler,
+  CommandTransformer,
+  CommandTransformerContext,
   CommandFieldCompiler,
   CommandFieldContext,
   CommandContext,

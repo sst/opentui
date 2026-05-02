@@ -8,6 +8,7 @@ import type {
   BindingTransformer,
   Command,
   CommandFieldCompiler,
+  CommandTransformer,
   CommandResolver,
   EventData,
   KeyDisambiguationResolver,
@@ -40,6 +41,7 @@ export interface EnvironmentState<TTarget extends object, TEvent extends KeymapE
   bindingParsers: OrderedRegistry<BindingParser>
   bindingTransformers: OrderedRegistry<BindingTransformer<TTarget, TEvent>>
   bindingFields: Map<string, BindingFieldCompiler>
+  commandTransformers: OrderedRegistry<CommandTransformer<TTarget, TEvent>>
   commandFields: Map<string, CommandFieldCompiler>
 }
 
@@ -170,6 +172,7 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
       bindingParsers: new OrderedRegistry<BindingParser>(),
       bindingTransformers: new OrderedRegistry<BindingTransformer<TTarget, TEvent>>(),
       bindingFields: new Map<string, BindingFieldCompiler>(),
+      commandTransformers: new OrderedRegistry<CommandTransformer<TTarget, TEvent>>(),
       commandFields: new Map<string, CommandFieldCompiler>(),
     },
     dispatch: {

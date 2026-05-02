@@ -581,65 +581,7 @@ function debugStateSnapshot(source: string): void {
 disposers()
 
 function disposers(): void {
-  addons.registerExCommands(keymap, [
-    {
-      name: ":help",
-      desc: "Toggle the help card",
-      run() {
-        debug("command :help")
-        toggleHelp()
-      },
-    },
-    {
-      name: ":reset",
-      desc: "Reset the counters",
-      run() {
-        debug("command :reset")
-        resetDemo()
-      },
-    },
-    {
-      name: ":write",
-      aliases: ["w"],
-      nargs: "?",
-      desc: "Log a snapshot for the current demo state",
-      usage: ":write [label]",
-      run({ payload }) {
-        debug("command :write", {
-          args: payload.args.join(" "),
-        })
-        saveSnapshot(payload.args[0] ?? "write")
-      },
-    },
-    {
-      name: ":focus",
-      nargs: "1",
-      desc: "Focus alpha, beta, notes, draft, keys, or log",
-      usage: ":focus <alpha|beta|notes|draft|keys|log>",
-      run({ payload }) {
-        debug("command :focus", {
-          args: payload.args.join(" "),
-        })
-        const targetName = payload.args[0]?.toLowerCase()
-        const targets = new Map<string, HTMLElement>([
-          ["alpha", alphaPanel],
-          ["beta", betaPanel],
-          ["notes", notesField],
-          ["draft", draftField],
-          ["keys", activeKeysCard],
-          ["log", logCard],
-        ])
-        const target = targetName ? targets.get(targetName) : undefined
-        if (!target) {
-          appendLog(`Unknown focus target: ${targetName ?? ""}`)
-          return false
-        }
-
-        target.focus()
-        appendLog(`Focused ${target.id}`)
-      },
-    },
-  ])
+  addons.registerExCommands(keymap)
   addons.registerTimedLeader(keymap, {
     trigger: " ",
     timeoutMs: 1600,
@@ -658,6 +600,63 @@ function disposers(): void {
 
   keymap.registerLayer({
     commands: [
+      {
+        name: ":help",
+        desc: "Toggle the help card",
+        run() {
+          debug("command :help")
+          toggleHelp()
+        },
+      },
+      {
+        name: ":reset",
+        desc: "Reset the counters",
+        run() {
+          debug("command :reset")
+          resetDemo()
+        },
+      },
+      {
+        name: ":write",
+        aliases: ["w"],
+        nargs: "?",
+        desc: "Log a snapshot for the current demo state",
+        usage: ":write [label]",
+        run({ payload }) {
+          debug("command :write", {
+            args: payload.args.join(" "),
+          })
+          saveSnapshot(payload.args[0] ?? "write")
+        },
+      },
+      {
+        name: ":focus",
+        nargs: "1",
+        desc: "Focus alpha, beta, notes, draft, keys, or log",
+        usage: ":focus <alpha|beta|notes|draft|keys|log>",
+        run({ payload }) {
+          debug("command :focus", {
+            args: payload.args.join(" "),
+          })
+          const targetName = payload.args[0]?.toLowerCase()
+          const targets = new Map<string, HTMLElement>([
+            ["alpha", alphaPanel],
+            ["beta", betaPanel],
+            ["notes", notesField],
+            ["draft", draftField],
+            ["keys", activeKeysCard],
+            ["log", logCard],
+          ])
+          const target = targetName ? targets.get(targetName) : undefined
+          if (!target) {
+            appendLog(`Unknown focus target: ${targetName ?? ""}`)
+            return false
+          }
+
+          target.focus()
+          appendLog(`Focused ${target.id}`)
+        },
+      },
       {
         name: "focus-next",
         title: "Focus Next",

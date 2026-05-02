@@ -78,14 +78,7 @@ async function createStatefulAddonScenario() {
     trigger: { name: "x", ctrl: true },
     timeoutMs: 1_000,
   })
-  const offExCommands = registerExCommands(keymap, [
-    {
-      name: "write",
-      run() {
-        return true
-      },
-    },
-  ])
+  const offExCommands = registerExCommands(keymap)
   const offManagedTextarea = registerManagedTextareaLayer(keymap, renderer, {
     bindings: [{ key: "dd", cmd: "input.delete.line" }],
   })
@@ -93,6 +86,13 @@ async function createStatefulAddonScenario() {
 
   keymap.registerLayer({
     commands: [
+      {
+        name: "write",
+        namespace: "excommands",
+        run() {
+          return true
+        },
+      },
       {
         name: "leader-action",
         run() {

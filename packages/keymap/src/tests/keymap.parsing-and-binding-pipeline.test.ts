@@ -525,6 +525,98 @@ describe("keymap: parsing and binding pipeline", () => {
     expect(calls).toEqual(["submit"])
   })
 
+  test("prependCommandTransformer runs before appended command transformers", () => {
+    const keymap = getKeymap(renderer)
+    const transformerOrder: string[] = []
+
+    keymap.appendCommandTransformer(() => {
+      transformerOrder.push("append")
+    })
+    keymap.prependCommandTransformer(() => {
+      transformerOrder.push("prepend")
+    })
+
+    keymap.registerLayer({ commands: [{ name: "submit", run() {} }] })
+
+    expect(transformerOrder).toEqual(["prepend", "append"])
+  })
+
+  test("command transformers can add commands and skip the original before command fields compile", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.registerCommandFields({
+      summary(value, ctx) {
+        ctx.attr("desc", value)
+      },
+    })
+
+    keymap.appendCommandTransformer((command, ctx) => {
+      if (command.alias !== "alias-submit") {
+        return
+      }
+
+      ctx.add({ ...command, name: "alias-submit", summary: "Alias submit" })
+      ctx.skipOriginal()
+    })
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "submit",
+          alias: "alias-submit",
+          run() {
+            calls.push("submit")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "alias-submit" }],
+    })
+
+    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.name)).toEqual(["alias-submit"])
+    expect(getActiveKey(keymap, "x", { includeMetadata: true })?.commandAttrs).toEqual({ desc: "Alias submit" })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["submit"])
+  })
+
+  test("clearCommandTransformers removes registered command transformers", () => {
+    const keymap = getKeymap(renderer)
+
+    keymap.appendCommandTransformer((command, ctx) => {
+      ctx.add({ ...command, name: "alias-submit" })
+      ctx.skipOriginal()
+    })
+    keymap.clearCommandTransformers()
+
+    keymap.registerLayer({ commands: [{ name: "submit", run() {} }] })
+
+    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.name)).toEqual(["submit"])
+  })
+
+  test("can dispose command transformers to stop transforming future layer registrations", () => {
+    const keymap = getKeymap(renderer)
+
+    const offTransformer = keymap.appendCommandTransformer((command, ctx) => {
+      if (command.alias !== "alias-submit") {
+        return
+      }
+
+      ctx.add({ ...command, name: "alias-submit" })
+      ctx.skipOriginal()
+    })
+
+    keymap.registerLayer({ commands: [{ name: "submit", alias: "alias-submit", run() {} }] })
+    offTransformer()
+    keymap.registerLayer({ commands: [{ name: "save", alias: "alias-save", run() {} }] })
+
+    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.name)).toEqual([
+      "alias-submit",
+      "save",
+    ])
+  })
+
   test("clearLayerBindingsTransformers removes registered layer binding transformers", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []

@@ -767,6 +767,7 @@ function renderAll(renderer: CliRenderer): void {
 
 function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Renderable, KeyEvent>): void {
   keymap = keymapInstance
+  disposers.push(addons.registerExCommands(keymapInstance))
 
   disposers.push(
     keymapInstance.registerLayer({
@@ -848,39 +849,36 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
             setStatus(renderer, `Beta decreased to ${betaCount}`)
           },
         },
+        {
+          name: "reset",
+          namespace: "excommands",
+          aliases: ["r"],
+          nargs: "0",
+          title: "Reset counters",
+          desc: "Reset counters",
+          category: "Session",
+          usage: ":reset",
+          run() {
+            alphaCount = 0
+            betaCount = 0
+            setStatus(renderer, "Counters reset through :reset")
+          },
+        },
+        {
+          name: "write",
+          namespace: "excommands",
+          aliases: ["w"],
+          nargs: "1",
+          title: "Write file",
+          desc: "Write file",
+          category: "File",
+          usage: ":write <file>",
+          run({ payload }) {
+            setStatus(renderer, `Wrote ${payload.args[0]}`)
+          },
+        },
       ],
     }),
-  )
-
-  disposers.push(
-    addons.registerExCommands(keymapInstance, [
-      {
-        name: "reset",
-        aliases: ["r"],
-        nargs: "0",
-        title: "Reset counters",
-        desc: "Reset counters",
-        category: "Session",
-        usage: ":reset",
-        run() {
-          alphaCount = 0
-          betaCount = 0
-          setStatus(renderer, "Counters reset through :reset")
-        },
-      },
-      {
-        name: "write",
-        aliases: ["w"],
-        nargs: "1",
-        title: "Write file",
-        desc: "Write file",
-        category: "File",
-        usage: ":write <file>",
-        run({ payload }) {
-          setStatus(renderer, `Wrote ${payload.args[0]}`)
-        },
-      },
-    ]),
   )
 
   disposers.push(

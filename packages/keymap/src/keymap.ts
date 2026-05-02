@@ -10,6 +10,7 @@ import type {
   Events,
   Hooks,
   CommandFieldCompiler,
+  CommandTransformer,
   CommandBindingsQuery,
   CommandEntry,
   CommandQuery,
@@ -355,6 +356,18 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public clearBindingTransformers(): void {
     this.environment.clearBindingTransformers()
+  }
+
+  public prependCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
+    return this.environment.prependCommandTransformer(transformer)
+  }
+
+  public appendCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
+    return this.environment.appendCommandTransformer(transformer)
+  }
+
+  public clearCommandTransformers(): void {
+    this.environment.clearCommandTransformers()
   }
 
   public prependBindingParser(parser: BindingParser): () => void {

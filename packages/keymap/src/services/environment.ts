@@ -10,6 +10,7 @@ import type {
   BindingParser,
   BindingTransformer,
   CommandFieldCompiler,
+  CommandTransformer,
   KeySequencePart,
   KeyToken,
   KeymapEvent,
@@ -100,6 +101,18 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
 
   public clearBindingTransformers(): void {
     this.state.environment.bindingTransformers.clear()
+  }
+
+  public prependCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
+    return this.state.environment.commandTransformers.prepend(transformer)
+  }
+
+  public appendCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
+    return this.state.environment.commandTransformers.append(transformer)
+  }
+
+  public clearCommandTransformers(): void {
+    this.state.environment.commandTransformers.clear()
   }
 
   public prependBindingParser(parser: BindingParser): () => void {

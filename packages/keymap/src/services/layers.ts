@@ -6,6 +6,7 @@ import type {
   Binding,
   BindingState,
   BindingCompilationResult,
+  Command,
   EventData,
   KeymapEvent,
   KeymapHost,
@@ -183,8 +184,8 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       try {
         targetMode = this.normalizeTargetMode(layer)
         sourceBindings = this.applyLayerBindingsTransformers(snapshotBindings(layer.bindings ?? []), layer)
-        commands =
-          !layer.commands || layer.commands.length === 0 ? [] : this.options.commands.normalizeCommands(layer.commands)
+        const sourceCommands = this.applyCommandTransformers(layer.commands ?? [], layer)
+        commands = sourceCommands.length === 0 ? [] : this.options.commands.normalizeCommands(sourceCommands)
         commandLookup = createCommandLookup(commands)
         ;({ requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } =
           this.compileLayerRuntimeState(layer))
@@ -401,6 +402,47 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     }
 
     return current
+  }
+
+  private applyCommandTransformers(
+    commands: readonly Command<TTarget, TEvent>[],
+    layer: Layer<TTarget, TEvent>,
+  ): readonly Command<TTarget, TEvent>[] {
+    const transformers = this.state.environment.commandTransformers.values()
+    if (commands.length === 0 || transformers.length === 0) {
+      return commands
+    }
+
+    const transformedCommands: Command<TTarget, TEvent>[] = []
+
+    for (const command of commands) {
+      const transformedCommand = { ...command }
+      const extraCommands: Command<TTarget, TEvent>[] = []
+      let keepOriginal = true
+
+      for (const transformer of transformers) {
+        try {
+          transformer(transformedCommand, {
+            layer,
+            add(nextCommand) {
+              extraCommands.push({ ...nextCommand })
+            },
+            skipOriginal() {
+              keepOriginal = false
+            },
+          })
+        } catch (error) {
+          this.notify.emitError("command-transformer-error", error, "[Keymap] Error in command transformer:")
+        }
+      }
+
+      if (keepOriginal) {
+        transformedCommands.push(transformedCommand)
+      }
+      transformedCommands.push(...extraCommands)
+    }
+
+    return transformedCommands
   }
 
   private runLayerAnalyzers(options: AnalyzeLayerOptions<TTarget, TEvent>): void {
