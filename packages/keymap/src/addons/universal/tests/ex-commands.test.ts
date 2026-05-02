@@ -54,8 +54,8 @@ describe("ex commands addon", () => {
         name: "write",
         aliases: ["w"],
         nargs: "1",
-        run({ args }) {
-          calls.push(`write:${args.join(",")}`)
+        run({ payload }) {
+          calls.push(`write:${payload.args.join(",")}`)
         },
       },
     ])
@@ -98,28 +98,28 @@ describe("ex commands addon", () => {
       {
         name: "maybe",
         nargs: "?",
-        run({ args }) {
-          calls.push(`maybe:${args.join(",")}`)
+        run({ payload }) {
+          calls.push(`maybe:${payload.args.join(",")}`)
         },
       },
       {
         name: "many",
         nargs: "*",
-        run({ args }) {
-          calls.push(`many:${args.join(",")}`)
+        run({ payload }) {
+          calls.push(`many:${payload.args.join(",")}`)
         },
       },
       {
         name: "plus",
         nargs: "+",
-        run({ args }) {
-          calls.push(`plus:${args.join(",")}`)
+        run({ payload }) {
+          calls.push(`plus:${payload.args.join(",")}`)
         },
       },
       {
         name: "free",
-        run({ args }) {
-          calls.push(`free:${args.join(",")}`)
+        run({ payload }) {
+          calls.push(`free:${payload.args.join(",")}`)
         },
       },
     ])
@@ -235,8 +235,8 @@ describe("ex commands addon", () => {
       {
         name: "write",
         aliases: ["w"],
-        run({ args }) {
-          calls.push(`write:${args.join(",")}`)
+        run({ payload }) {
+          calls.push(`write:${payload.args.join(",")}`)
         },
       },
     ])
@@ -264,14 +264,14 @@ describe("ex commands addon", () => {
         aliases: ["w"],
         nargs: "1",
         usage: ":write <file>",
-        run({ raw, args }) {
-          calls.push(`${raw}:${args.join(",")}`)
+        run({ payload }) {
+          calls.push(`${payload.raw}:${payload.args.join(",")}`)
         },
       },
       {
         name: "free",
-        run({ raw, args, payload }) {
-          calls.push(`${raw}:${args.join(",")}:${payload.payload ?? ""}`)
+        run({ payload }) {
+          calls.push(`${payload.raw}:${payload.args.join(",")}:${payload.payload ?? ""}`)
         },
       },
     ])

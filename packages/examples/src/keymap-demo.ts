@@ -876,8 +876,8 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
         desc: "Write file",
         category: "File",
         usage: ":write <file>",
-        run({ args }) {
-          setStatus(renderer, `Wrote ${args[0]}`)
+        run({ payload }) {
+          setStatus(renderer, `Wrote ${payload.args[0]}`)
         },
       },
     ]),

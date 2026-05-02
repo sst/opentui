@@ -604,11 +604,11 @@ function disposers(): void {
       nargs: "?",
       desc: "Log a snapshot for the current demo state",
       usage: ":write [label]",
-      run({ args }) {
+      run({ payload }) {
         debug("command :write", {
-          args: args.join(" "),
+          args: payload.args.join(" "),
         })
-        saveSnapshot(args[0] ?? "write")
+        saveSnapshot(payload.args[0] ?? "write")
       },
     },
     {
@@ -616,11 +616,11 @@ function disposers(): void {
       nargs: "1",
       desc: "Focus alpha, beta, notes, draft, keys, or log",
       usage: ":focus <alpha|beta|notes|draft|keys|log>",
-      run({ args }) {
+      run({ payload }) {
         debug("command :focus", {
-          args: args.join(" "),
+          args: payload.args.join(" "),
         })
-        const targetName = args[0]?.toLowerCase()
+        const targetName = payload.args[0]?.toLowerCase()
         const targets = new Map<string, HTMLElement>([
           ["alpha", alphaPanel],
           ["beta", betaPanel],

@@ -103,9 +103,9 @@ registerExCommands(keymap, [
     aliases: ["w"],
     nargs: "1",
     desc: "Write file",
-    run({ raw, args }) {
-      // raw === ":write session.log"
-      // args === ["session.log"]
+    run({ payload }) {
+      // payload.raw === ":write session.log"
+      // payload.args === ["session.log"]
     },
   },
 ])
@@ -118,7 +118,7 @@ registerExCommands(keymap, [
 | `name`       | `string`                                                                           | yes      | Command name. `:name` and `name` both normalize to `:name`                        |
 | `aliases`    | `string[]`                                                                         | no       | Additional names                                                                  |
 | `nargs`      | `"0"`, `"1"`, `"?"`, `"*"`, `"+"`                                                  | no       | Argument-count validation                                                         |
-| `run`        | `(ctx: CommandContext & { raw: string; args: readonly string[] }) => CommandResult` | yes      | `ctx` is the base `CommandContext` plus the trimmed `raw` input and parsed `args` |
+| `run`        | `(ctx: CommandContext<TTarget, TEvent, ExCommandPayload>) => CommandResult` | yes      | `ctx.payload` contains the trimmed `raw` input and parsed `args` |
 | extra fields | `unknown`                                                                          | no       | Added as top-level fields on the registered command                               |
 
 - Registered ex commands default `namespace` to `excommands`.

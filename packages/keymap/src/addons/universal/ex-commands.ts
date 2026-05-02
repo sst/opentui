@@ -17,9 +17,7 @@ export interface ExCommand<TTarget extends object = object, TEvent extends Keyma
   name: string
   aliases?: string[]
   nargs?: "0" | "1" | "?" | "*" | "+"
-  run: (
-    ctx: CommandContext<TTarget, TEvent, ExCommandPayload> & { raw: string; args: readonly string[] },
-  ) => CommandResult<TTarget, TEvent>
+  run: (ctx: CommandContext<TTarget, TEvent, ExCommandPayload>) => CommandResult<TTarget, TEvent>
   [key: string]: unknown
 }
 
@@ -144,8 +142,6 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
             ...ctx,
             command: ctx.command!,
             payload,
-            raw: payload.raw,
-            args: payload.args,
           })
         },
       })

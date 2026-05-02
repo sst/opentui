@@ -559,8 +559,8 @@ function KeymapDemoContent() {
       desc: "Write file",
       category: "File",
       usage: ":write <file>",
-      run({ args }) {
-        announce(`Wrote ${args[0]}`)
+      run({ payload }) {
+        announce(`Wrote ${payload.args[0]}`)
       },
     },
   ]
