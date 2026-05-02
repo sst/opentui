@@ -1,6 +1,7 @@
 import type {
   CommandContext,
   Command,
+  CommandResult,
   Keymap,
   KeymapEvent,
   ParsedCommand,
@@ -10,14 +11,11 @@ export interface ExCommand<TTarget extends object = object, TEvent extends Keyma
   name: string
   aliases?: string[]
   nargs?: "0" | "1" | "?" | "*" | "+"
-  run: (ctx: CommandContext<TTarget, TEvent> & { raw: string; args: string[] }) => void | Promise<void>
+  run: (ctx: CommandContext<TTarget, TEvent> & { raw: string; args: readonly string[] }) => CommandResult<TTarget, TEvent>
   [key: string]: unknown
 }
 
-function normalizeExCommandName<TTarget extends object, TEvent extends KeymapEvent>(
-  _keymap: Keymap<TTarget, TEvent>,
-  name: string,
-): string {
+function normalizeExCommandName(name: string): string {
   const normalized = name.trim()
   if (!normalized) {
     throw new Error("Invalid keymap command name: name cannot be empty")
@@ -55,7 +53,7 @@ function parseCommandInput(input: string): ParsedCommand {
 
 function validateCommandArgs<TTarget extends object, TEvent extends KeymapEvent>(
   command: ExCommand<TTarget, TEvent>,
-  args: string[],
+  args: readonly unknown[],
 ): boolean {
   if (!command.nargs) {
     return true
@@ -94,7 +92,6 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
   commands: ExCommand<TTarget, TEvent>[],
 ): () => void {
   const registrations: Command<TTarget, TEvent>[] = []
-  const commandMap = new Map<string, ExCommand<TTarget, TEvent>>()
 
   for (const command of commands) {
     const { name, aliases, run, ...fields } = command
@@ -106,26 +103,21 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
     }
 
     for (const name of names) {
-      const normalizedName = normalizeExCommandName(keymap, name)
-      commandMap.set(normalizedName, command)
+      const normalizedName = normalizeExCommandName(name)
 
       registrations.push({
         ...registrationFields,
         name: normalizedName,
         run(ctx) {
-          const rawInput = (ctx as { raw?: unknown }).raw
-          const raw: string = typeof rawInput === "string" ? rawInput : normalizedName
-          const args = Array.isArray((ctx as { args?: unknown }).args) ? ((ctx as { args?: string[] }).args ?? []) : []
-
-          if (!validateCommandArgs(command, args)) {
-            return false
+          if (!validateCommandArgs(command, ctx.args)) {
+            return { ok: false, reason: "invalid-args" }
           }
 
           return run({
             ...ctx,
             command: ctx.command!,
-            raw,
-            args,
+            raw: ctx.input,
+            args: ctx.args as readonly string[],
           })
         },
       })
@@ -139,38 +131,16 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
     }
 
     const parsed = parseCommandInput(input)
-    const normalizedName = normalizeExCommandName(keymap, parsed.name)
-    const command = commandMap.get(normalizedName)
+    const normalizedName = normalizeExCommandName(parsed.name)
+    const command = ctx.getCommand(normalizedName)
+
     if (!command) {
       return undefined
     }
 
-    const registeredCommand = ctx.getCommand(normalizedName)
-    const baseCommand = registeredCommand ? { ...registeredCommand, name: normalizedName } : { name: normalizedName }
-    if (!validateCommandArgs(command, parsed.args)) {
-      const invalidCommand: Command<TTarget, TEvent> = {
-        ...baseCommand,
-        name: normalizedName,
-        run() {
-          return { ok: false, reason: "invalid-args" }
-        },
-      }
-      return invalidCommand
-    }
-
-    const resolvedCommand: Command<TTarget, TEvent> = {
-      ...baseCommand,
-      name: normalizedName,
-      run(baseCtx) {
-        return command.run({
-          ...baseCtx,
-          command: baseCtx.command!,
-          raw: parsed.input,
-          args: parsed.args,
-        })
-      },
-    }
-    return resolvedCommand
+    ctx.setInput(parsed.input)
+    ctx.prependArgs(parsed.args)
+    return command
   })
 
   return () => {

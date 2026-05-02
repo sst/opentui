@@ -174,6 +174,8 @@ export interface RunCommandOptions<TTarget extends object = object, TEvent exten
   focused?: TTarget | null
   target?: TTarget | null
   includeCommand?: boolean
+  args?: readonly unknown[]
+  payload?: unknown
 }
 
 export type RunCommandResult<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
@@ -192,6 +194,9 @@ export interface CommandContext<TTarget extends object = object, TEvent extends 
   target: TTarget | null
   data: Readonly<EventData>
   command?: Command<TTarget, TEvent>
+  input: string
+  args: readonly unknown[]
+  payload?: unknown
 }
 
 export type CommandResult<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
@@ -262,6 +267,14 @@ export interface ParsedCommand {
 }
 
 export interface CommandResolverContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  readonly input: string
+  readonly args: readonly unknown[]
+  readonly payload: unknown
+  setInput(input: string): void
+  setArgs(args: readonly unknown[]): void
+  prependArgs(args: readonly unknown[]): void
+  appendArgs(args: readonly unknown[]): void
+  setPayload(payload: unknown): void
   getCommand(name: string): Command<TTarget, TEvent> | undefined
 }
 

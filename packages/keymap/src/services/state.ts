@@ -71,6 +71,9 @@ export interface ResolvedCommandEntry<TTarget extends object, TEvent extends Key
   target?: TTarget
   command: Command<TTarget, TEvent>
   attrs?: Readonly<Attributes>
+  input?: string
+  args?: readonly unknown[]
+  payload?: unknown
 }
 
 export interface CommandChainCacheState<TTarget extends object, TEvent extends KeymapEvent> {

@@ -257,6 +257,114 @@ describe("keymap: core and commands", () => {
     expect(calls).toEqual(["save-file", "save-file", "save-file", "save-file"])
   })
 
+  test("command contexts include invocation input args and payload", () => {
+    const keymap = getKeymap(renderer)
+    const seen: Array<{ input: string; args: readonly unknown[]; payload: unknown }> = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "save-file",
+          run(ctx) {
+            seen.push({ input: ctx.input, args: ctx.args, payload: ctx.payload })
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "save-file" }],
+    })
+
+    expect(keymap.runCommand("save-file", { args: ["run"], payload: "run-payload" })).toEqual({ ok: true })
+    expect(keymap.dispatchCommand("save-file", { args: ["dispatch"], payload: "dispatch-payload" })).toEqual({
+      ok: true,
+    })
+    mockInput.pressKey("x")
+
+    expect(seen).toEqual([
+      { input: "save-file", args: ["run"], payload: "run-payload" },
+      { input: "save-file", args: ["dispatch"], payload: "dispatch-payload" },
+      { input: "save-file", args: [], payload: undefined },
+    ])
+  })
+
+  test("command resolvers can adjust invocation context for the resolved command", () => {
+    const keymap = getKeymap(renderer)
+    const seen: Array<{ input: string; args: readonly unknown[]; payload: unknown }> = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "target-command",
+          run(ctx) {
+            seen.push({ input: ctx.input, args: ctx.args, payload: ctx.payload })
+          },
+        },
+      ],
+    })
+
+    keymap.appendCommandResolver((command, ctx) => {
+      if (command !== "alias target") {
+        return undefined
+      }
+
+      ctx.prependArgs(["leaked"])
+      return undefined
+    })
+    keymap.appendCommandResolver((command, ctx) => {
+      if (command !== "alias target") {
+        return undefined
+      }
+
+      ctx.setInput(command)
+      ctx.prependArgs(["parsed"])
+      ctx.appendArgs(["tail"])
+      ctx.setPayload("resolver-payload")
+      return ctx.getCommand("target-command")
+    })
+
+    expect(keymap.runCommand("alias target", { args: ["explicit"], payload: "original-payload" })).toEqual({ ok: true })
+
+    expect(seen).toEqual([
+      {
+        input: "alias target",
+        args: ["parsed", "explicit", "tail"],
+        payload: "resolver-payload",
+      },
+    ])
+  })
+
+  test("resolver returned registered commands keep active command target", () => {
+    const keymap = getKeymap(renderer)
+    const target = createFocusableBox("resolver-command-target")
+    const seen: Array<boolean> = []
+
+    renderer.root.add(target)
+
+    keymap.registerLayer({
+      target,
+      commands: [
+        {
+          name: "target-command",
+          run(ctx) {
+            seen.push(ctx.target === target)
+          },
+        },
+      ],
+    })
+
+    keymap.appendCommandResolver((command, ctx) => {
+      if (command !== "alias-command") {
+        return undefined
+      }
+
+      return ctx.getCommand("target-command")
+    })
+
+    target.focus()
+
+    expect(keymap.dispatchCommand("alias-command")).toEqual({ ok: true })
+    expect(seen).toEqual([true])
+  })
+
   test("acquireResource shares setup and disposes on last release", () => {
     const keymap = getKeymap(renderer)
     const resource = Symbol("test-resource")

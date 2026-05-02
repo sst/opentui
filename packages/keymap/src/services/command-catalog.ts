@@ -69,6 +69,19 @@ interface ResolvedCommandLookup<TTarget extends object, TEvent extends KeymapEve
   hadError: boolean
 }
 
+interface CommandExecutionFields {
+  input: string
+  args: readonly unknown[]
+  payload?: unknown
+}
+
+interface CommandResolverAttempt<TTarget extends object, TEvent extends KeymapEvent> {
+  context: CommandResolverContext<TTarget, TEvent>
+  getExecutionFields(): CommandExecutionFields
+}
+
+const EMPTY_COMMAND_ARGS: readonly unknown[] = Object.freeze([])
+
 function createCommandChainCacheState<TTarget extends object, TEvent extends KeymapEvent>(): CommandChainCacheState<
   TTarget,
   TEvent
@@ -245,15 +258,19 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return resolved
   }
 
-  public resolveRegisteredResolverFallback(command: string): ResolvedCommandLookup<TTarget, TEvent> {
-    return this.resolveCommandWithResolvers(command, null, { mode: "registered" })
+  public resolveRegisteredResolverFallback(
+    command: string,
+    execution?: CommandExecutionFields,
+  ): ResolvedCommandLookup<TTarget, TEvent> {
+    return this.resolveCommandWithResolvers(command, null, { mode: "registered", execution })
   }
 
   public resolveActiveResolverFallback(
     command: string,
     focused: TTarget | null,
+    execution?: CommandExecutionFields,
   ): ResolvedCommandLookup<TTarget, TEvent> {
-    return this.resolveCommandWithResolvers(command, focused, { mode: "active" })
+    return this.resolveCommandWithResolvers(command, focused, { mode: "active", execution })
   }
 
   public getCommandAttrs(command: string, focused: TTarget | null): Readonly<Attributes> | undefined {
@@ -829,16 +846,30 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   private resolveCommandWithResolvers(
     command: string,
     focused: TTarget | null,
-    options?: { mode?: "active" | "registered" },
+    options?: { mode?: "active" | "registered"; execution?: CommandExecutionFields },
   ): ResolvedCommandLookup<TTarget, TEvent> {
-    const context = this.createCommandResolverContext(focused, options?.mode ?? "active")
+    const mode = options?.mode ?? "active"
+    const execution = options?.execution ?? { input: command, args: EMPTY_COMMAND_ARGS }
 
-    const lookup = resolveCommandWithResolvers(command, this.state.commands.commandResolvers.values(), context, (error) => {
-      this.notify.emitError("command-resolver-error", error, `[Keymap] Error in command resolver for "${command}":`)
-    })
-    const resolved = lookup.resolved
+    const lookup = resolveCommandWithResolvers(
+      command,
+      this.state.commands.commandResolvers.values(),
+      () => this.createCommandResolverContext(focused, mode, execution),
+      (error) => {
+        this.notify.emitError("command-resolver-error", error, `[Keymap] Error in command resolver for "${command}":`)
+      },
+    )
+    let resolved = lookup.resolved
+    if (resolved) {
+      const entry = this.getCommandEntryForMode(resolved.command.name, focused, mode)
+      if (entry?.commandState.command === resolved.command && resolved.target === undefined) {
+        resolved = { ...resolved, target: entry.layer.target }
+        lookup.resolved = resolved
+      }
+    }
+
     if (resolved && !resolved.attrs) {
-      const attrs = this.getCommandStateAttrs(resolved.command.name, focused, options?.mode ?? "active") ??
+      const attrs = this.getCommandStateAttrs(resolved.command.name, focused, mode) ??
         getResolverCommandAttrs(resolved.command)
       if (attrs) {
         lookup.resolved = { ...resolved, attrs }
@@ -860,17 +891,63 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return this.getActiveCommandView(focused).reachableByName.get(command)?.commandState.attrs
   }
 
+  private getCommandEntryForMode(
+    command: string,
+    focused: TTarget | null,
+    mode: "active" | "registered",
+  ): LayerCommandEntry<TTarget, TEvent> | undefined {
+    if (mode === "registered") {
+      return this.getCommandEntry(command)
+    }
+
+    return this.getActiveCommandView(focused).reachableByName.get(command)
+  }
+
   private createCommandResolverContext(
     focused: TTarget | null,
     mode: "active" | "registered",
-  ): CommandResolverContext<TTarget, TEvent> {
-    return {
-      getCommand: (name: string) => {
-        if (mode === "registered") {
-          return this.getCommandByName(name)
-        }
+    execution: CommandExecutionFields,
+  ): CommandResolverAttempt<TTarget, TEvent> {
+    let input = execution.input
+    let args = [...execution.args]
+    let payload = execution.payload
 
-        return this.getTopCommand(name, focused)
+    return {
+      context: {
+        get input() {
+          return input
+        },
+        get args() {
+          return args
+        },
+        get payload() {
+          return payload
+        },
+        setInput(nextInput) {
+          input = nextInput
+        },
+        setArgs(nextArgs) {
+          args = [...nextArgs]
+        },
+        prependArgs(nextArgs) {
+          args = [...nextArgs, ...args]
+        },
+        appendArgs(nextArgs) {
+          args = [...args, ...nextArgs]
+        },
+        setPayload(nextPayload) {
+          payload = nextPayload
+        },
+        getCommand: (name: string) => {
+          if (mode === "registered") {
+            return this.getCommandByName(name)
+          }
+
+          return this.getTopCommand(name, focused)
+        },
+      },
+      getExecutionFields() {
+        return { input, args, payload }
       },
     }
   }
@@ -965,7 +1042,7 @@ function normalizeCommands<TTarget extends object, TEvent extends KeymapEvent>(
 function resolveCommandWithResolvers<TTarget extends object, TEvent extends KeymapEvent>(
   command: string,
   resolvers: readonly CommandResolver<TTarget, TEvent>[],
-  context: CommandResolverContext<TTarget, TEvent>,
+  createContext: () => CommandResolverAttempt<TTarget, TEvent>,
   onResolverError: (error: unknown) => void,
 ): ResolvedCommandLookup<TTarget, TEvent> {
   if (resolvers.length === 0) {
@@ -976,9 +1053,10 @@ function resolveCommandWithResolvers<TTarget extends object, TEvent extends Keym
 
   for (const resolver of resolvers) {
     let resolvedCommand: Command<TTarget, TEvent> | undefined
+    const attempt = createContext()
 
     try {
-      resolvedCommand = resolver(command, context)
+      resolvedCommand = resolver(command, attempt.context)
     } catch (error) {
       hadError = true
       onResolverError(error)
@@ -986,7 +1064,7 @@ function resolveCommandWithResolvers<TTarget extends object, TEvent extends Keym
     }
 
     if (resolvedCommand) {
-      return { hadError, resolved: getResolverCommandEntry(resolvedCommand) }
+      return { hadError, resolved: getResolverCommandEntry(resolvedCommand, attempt.getExecutionFields()) }
     }
   }
 
@@ -1012,9 +1090,13 @@ function getCommandFields<TTarget extends object, TEvent extends KeymapEvent>(
 
 function getResolverCommandEntry<TTarget extends object, TEvent extends KeymapEvent>(
   command: Command<TTarget, TEvent>,
+  execution: CommandExecutionFields,
 ): ResolvedCommandEntry<TTarget, TEvent> {
   return {
     command,
+    input: execution.input,
+    args: execution.args,
+    payload: execution.payload,
   }
 }
 
