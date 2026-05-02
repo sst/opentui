@@ -1,22 +1,46 @@
 # @opentui/keymap
 
-Keymap package for OpenTUI and browser-based UIs.
+A keymap engine for terminal and DOM hosts. Same core, two adapters.
 
-It provides a shared keymap core, adapter-specific entrypoints for HTML and OpenTUI, and framework providers/hooks for React and Solid.
+It models keybindings as priority-ordered, focus-scoped layers attached to targets (terminal renderables or DOM elements). The core is intentionally bare; everything beyond raw key dispatch is opt-in via addons, parsers, and field compilers.
 
-The core `Keymap` is intentionally bare. Create a keymap, install the addons you want, then pass that configured instance to your app.
+## Highlights
 
-Use the HTML entrypoint for DOM-based hosts and the OpenTUI entrypoint for terminal renderers. The React and Solid entrypoints consume a pre-created OpenTUI keymap through context.
+- **Layered bindings** with `focus` / `focus-within` scoping, priority ordering, `fallthrough`, and `preventDefault` control.
+- **Multi-key sequences** with a public pending-sequence API and synchronous `pendingSequence` events. Focus changes invalidate sequences automatically.
+- **Asynchronous disambiguation** for exact-vs-prefix conflicts (e.g. `g` vs `gg`), with `AbortSignal` + `sleep` deferred resolvers. Ships a Neovim-style timeout resolver.
+- **Pluggable parsing pipeline**: stackable binding parsers, expanders, transformers, command resolvers, command transformers, and event-match resolvers.
+- **Extensible schema**: register custom fields on layers, bindings, and commands. Field compilers emit `attrs` and can gate activation via `require(...)` and `activeWhen(matcher)`.
+- **Reactive matchers** with cached invalidation, plus React store and Solid signal helpers.
+- **Intercepts** for raw input and pre-binding key handling, with `consume({ preventDefault, stopPropagation })`.
+- **Command catalog** with namespaces, search, visibility tiers (`registered` / `reachable` / `active`), and binding queries.
+- **Diagnostics** with stable codes (`unknown-token`, `dead-binding`, `unresolved-command`, ...) and lint-style layer analyzers.
 
-Entry points:
+## Addons
 
-- `@opentui/keymap`: core keymap API
-- `@opentui/keymap/addons`: universal addons
-- `@opentui/keymap/addons/opentui`: universal addons plus OpenTUI-specific addons
-- `@opentui/keymap/html`: core API plus the HTML adapter
-- `@opentui/keymap/opentui`: core API plus the OpenTUI adapter
-- `@opentui/keymap/react`: React provider and hooks for a pre-created OpenTUI keymap
-- `@opentui/keymap/solid`: Solid provider and hooks for a pre-created OpenTUI keymap
+`@opentui/keymap/addons` ships ready-made building blocks:
+
+- `registerDefaultKeys` — `ctrl+shift+s` style parser and event matching.
+- `registerLeader`, `registerTimedLeader` — leader tokens with optional timeout.
+- `registerEmacsBindings` — `ctrl+x ctrl+s` chords.
+- `registerExCommands` — `:write`-style commands with `aliases` and `nargs`.
+- `registerCommaBindings`, `registerAliasesField`, `registerBindingOverrides`.
+- `registerEnabledFields`, `registerMetadataFields` (`desc`, `group`, `title`, `category`).
+- `registerNeovimDisambiguation`, `registerEscapeClearsPendingSequence`, `registerBackspacePopsPendingSequence`.
+- `registerDeadBindingWarnings`, `registerUnresolvedCommandWarnings`.
+
+`@opentui/keymap/addons/opentui` adds OpenTUI-specific pieces: layout-independent matching via `event.baseCode`, and pre-wired textarea / edit-buffer commands.
+
+## Entry Points
+
+- `@opentui/keymap` — core API
+- `@opentui/keymap/addons` — universal addons
+- `@opentui/keymap/addons/opentui` — universal + OpenTUI addons
+- `@opentui/keymap/html` — core + HTML adapter
+- `@opentui/keymap/opentui` — core + OpenTUI adapter
+- `@opentui/keymap/react` — `KeymapProvider`, `useKeymap`, `useBindings`, `useActiveKeys`, `usePendingSequence`, `reactiveMatcherFromStore`
+- `@opentui/keymap/solid` — `KeymapProvider`, `useKeymap`, `useKeymapSelector`, `useBindings`, `reactiveMatcherFromSignal`
+- `@opentui/keymap/extras` — helpers for cheat-sheet UIs (`resolveBindingSections`, `commandBindings`, `formatCommandBindings`)
 
 ## Usage
 
@@ -35,18 +59,15 @@ createRoot(renderer).render(
 )
 ```
 
-## Field Model
+Create a keymap, install the addons you want, then pass the configured instance to your app. The React and Solid entrypoints consume a pre-created OpenTUI keymap through context.
 
-Layer fields are for activation requirements and binding-compilation inputs.
-They do not compile into public attrs.
+## Adapters
 
-Binding and command fields can compile metadata into attrs that later appear on
-active bindings, active keys, and command query results.
+Adapters implement a small `KeymapHost` interface (`rootTarget`, `getFocusedTarget`, `getParentTarget`, `onKeyPress`, `onFocusChange`, ...). The HTML adapter normalizes DOM key names (`Escape` → `escape`, `ArrowUp` → `up`, `Meta` → `super`, `Alt` → `meta`) and tracks targets via `MutationObserver`. The OpenTUI adapter hooks `CliRenderer` `keypress`, `keyrelease`, focus, and destroy events.
 
 ## Formatting Keys
 
-Use `keymap.formatKey` when formatting raw binding config. It parses string
-bindings through the keymap's registered parsers and tokens before stringifying.
+Use `keymap.formatKey` when displaying raw binding strings. It runs them through the keymap's parsers and tokens before stringifying.
 
 ```ts
 keymap.formatKey("<leader>s", { separator: " " }) // "space s"
@@ -55,13 +76,9 @@ keymap.formatKey("<leader>s", { preferDisplay: true }) // "<leader>s"
 
 ## Re-entry
 
-Runtime/data-style re-entry is supported during dispatch. For example, command
-handlers, intercepts, and pending-sequence listeners may read or write runtime
-data and manage pending-sequence state.
+Runtime/data re-entry is supported during dispatch: command handlers, intercepts, and pending-sequence listeners may read or write runtime data and pending-sequence state.
 
-Structural re-entry is currently unsupported. Do not register or unregister
-layers, tokens, parsers, resolvers, or other environment-shaping state while a
-dispatch is in flight.
+Structural re-entry is **not** supported. Do not register or unregister layers, tokens, parsers, or resolvers while a dispatch is in flight.
 
 ## Installation
 
@@ -77,5 +94,4 @@ bun run test
 bun src/keymap-benchmark.ts
 ```
 
-- `bun src/keymap-benchmark.ts` runs the benchmark suite from `src/keymap-benchmark.ts`.
-- The HTML demo now lives in the docs app at `/demos/keymap-html/` under `packages/web`.
+The HTML demo lives in the docs app at `/demos/keymap-html/` under `packages/web`.
