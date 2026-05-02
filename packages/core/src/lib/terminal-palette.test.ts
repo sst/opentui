@@ -28,15 +28,15 @@ function createPaletteHarness(
   const stdin = new MockStream() as any
   const stdout = new MockStream() as any
   const clock = new ManualClock()
-  const palette = new TerminalPalette(
+  const palette = new TerminalPalette({
     stdin,
     stdout,
-    options.writeFn,
-    options.isLegacyTmux ?? false,
-    options.isTmux,
-    options.oscSource,
+    writeFn: options.writeFn,
+    isLegacyTmux: options.isLegacyTmux ?? false,
+    isTmux: options.isTmux,
+    oscSource: options.oscSource,
     clock,
-  )
+  })
 
   return { stdin, stdout, clock, palette }
 }
@@ -680,7 +680,12 @@ test("TerminalPalette falls back to stdout.write when no custom write function p
     return true
   }
 
-  const palette = new TerminalPalette(stdin, stdout, undefined, false, undefined, undefined, clock)
+  const palette = new TerminalPalette({
+    stdin,
+    stdout,
+    isLegacyTmux: false,
+    clock,
+  })
 
   const detectPromise = palette.detectOSCSupport(500)
 
@@ -926,7 +931,13 @@ test("TerminalPalette can read OSC from router subscription source", async () =>
 
   const clock = new ManualClock()
   const stdout = new MockStream() as any
-  const palette = new TerminalPalette(stdin, stdout, undefined, false, undefined, oscSource, clock)
+  const palette = new TerminalPalette({
+    stdin,
+    stdout,
+    isLegacyTmux: false,
+    oscSource,
+    clock,
+  })
 
   const detectPromise = palette.detectOSCSupport(500)
   for (const handler of handlers) {

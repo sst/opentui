@@ -55,6 +55,16 @@ export type OscSubscriptionSource = {
   subscribeOsc(handler: (sequence: string) => void): () => void
 }
 
+export interface TerminalPaletteOptions {
+  stdin: NodeJS.ReadStream
+  stdout: NodeJS.WriteStream
+  writeFn?: WriteFunction
+  isLegacyTmux?: boolean
+  isTmux?: boolean
+  oscSource?: OscSubscriptionSource
+  clock?: Clock
+}
+
 function scaleComponent(comp: string): string {
   const val = parseInt(comp, 16)
   const maxIn = (1 << (4 * comp.length)) - 1
@@ -90,15 +100,9 @@ export class TerminalPalette implements TerminalPaletteDetector {
   private oscSource?: OscSubscriptionSource
   private readonly clock: Clock
 
-  constructor(
-    stdin: NodeJS.ReadStream,
-    stdout: NodeJS.WriteStream,
-    writeFn?: WriteFunction,
-    isLegacyTmux?: boolean,
-    isTmux?: boolean,
-    oscSource?: OscSubscriptionSource,
-    clock?: Clock,
-  ) {
+  constructor(options: TerminalPaletteOptions) {
+    const { stdin, stdout, writeFn, isLegacyTmux, isTmux, oscSource, clock } = options
+
     this.stdin = stdin
     this.stdout = stdout
     this.writeFn = writeFn || ((data: string | Buffer) => stdout.write(data))
@@ -388,16 +392,8 @@ export class TerminalPalette implements TerminalPaletteDetector {
   }
 }
 
-export function createTerminalPalette(
-  stdin: NodeJS.ReadStream,
-  stdout: NodeJS.WriteStream,
-  writeFn?: WriteFunction,
-  isLegacyTmux?: boolean,
-  isTmux?: boolean,
-  oscSource?: OscSubscriptionSource,
-  clock?: Clock,
-): TerminalPaletteDetector {
-  return new TerminalPalette(stdin, stdout, writeFn, isLegacyTmux, isTmux, oscSource, clock)
+export function createTerminalPalette(options: TerminalPaletteOptions): TerminalPaletteDetector {
+  return new TerminalPalette(options)
 }
 
 const DEFAULT_FOREGROUND_FALLBACK = RGBA.fromInts(...DEFAULT_FOREGROUND_RGB)

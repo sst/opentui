@@ -4044,17 +4044,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
         this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
-      this._paletteDetector = createTerminalPalette(
-        this.stdin,
-        this.stdout,
-        (data) => (this._isDestroyed ? false : this.writeOut(data)),
+      this._paletteDetector = createTerminalPalette({
+        stdin: this.stdin,
+        stdout: this.stdout,
+        writeFn: (data) => (this._isDestroyed ? false : this.writeOut(data)),
         isLegacyTmux,
         isTmux,
-        {
+        oscSource: {
           subscribeOsc: this.subscribeOsc.bind(this),
         },
-        this.clock,
-      )
+        clock: this.clock,
+      })
     }
 
     return this._paletteDetector
