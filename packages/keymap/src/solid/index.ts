@@ -1,5 +1,5 @@
 import type { KeyEvent, Renderable } from "@opentui/core"
-import { type Keymap, type LayerFields, type ReactiveMatcher, type TargetMode } from "../index.js"
+import { type Keymap, type Layer, type ReactiveMatcher, type TargetMode } from "../index.js"
 import {
   createComponent,
   createContext,
@@ -37,36 +37,13 @@ export function KeymapProvider(props: KeymapProviderProps): JSX.Element {
 
 export type UseBindingsTarget<TRenderable extends Renderable = Renderable> = () => TRenderable | null | undefined
 
-type UseBindingsLayerBase = LayerFields<Renderable, KeyEvent>
-
-export interface UseGlobalBindingsLayer extends UseBindingsLayerBase {
-  target?: undefined
+export interface UseBindingsLayer<TRenderable extends Renderable = Renderable> extends Omit<
+  Layer<Renderable, KeyEvent>,
+  "target" | "targetMode"
+> {
+  target?: UseBindingsTarget<TRenderable>
+  targetMode?: TargetMode
 }
-
-export interface UseFocusBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
-  targetMode: "focus"
-  target: UseBindingsTarget<TRenderable>
-}
-
-export interface UseFocusWithinBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
-  targetMode?: "focus-within"
-  target: UseBindingsTarget<TRenderable>
-}
-
-export interface UseInferredFocusWithinBindingsLayer<
-  TRenderable extends Renderable = Renderable,
-> extends UseBindingsLayerBase {
-  target: UseBindingsTarget<TRenderable>
-}
-
-export type UseTargetBindingsLayer<TRenderable extends Renderable = Renderable> =
-  | UseFocusBindingsLayer<TRenderable>
-  | UseFocusWithinBindingsLayer<TRenderable>
-  | UseInferredFocusWithinBindingsLayer<TRenderable>
-
-export type UseBindingsLayer<TRenderable extends Renderable = Renderable> =
-  | UseGlobalBindingsLayer
-  | UseTargetBindingsLayer<TRenderable>
 
 function resolveBindingsTarget(target: UseBindingsTarget | undefined): Renderable | undefined {
   return target?.() ?? undefined
@@ -127,12 +104,6 @@ export const useKeymapSelector = <T>(selector: (keymap: OpenTuiKeymap) => T): Ac
   })
 }
 
-export function useBindings<TRenderable extends Renderable = Renderable>(
-  createLayer: () => UseGlobalBindingsLayer,
-): void
-export function useBindings<TRenderable extends Renderable = Renderable>(
-  createLayer: () => UseTargetBindingsLayer<TRenderable>,
-): void
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseBindingsLayer<TRenderable>,
 ): void {

@@ -241,7 +241,8 @@ export type Bindings<TTarget extends object = object, TEvent extends KeymapEvent
 
 export type TargetMode = "focus" | "focus-within"
 
-export interface LayerFields<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+export interface Layer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  target?: TTarget
   priority?: number
   bindings?: Bindings<TTarget, TEvent>
   commands?: readonly Command<TTarget, TEvent>[]
@@ -253,40 +254,6 @@ export interface LayerFields<TTarget extends object = object, TEvent extends Key
    */
   [key: string]: unknown
 }
-
-export interface Layer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> extends LayerFields<
-  TTarget,
-  TEvent
-> {
-  target?: TTarget
-}
-
-export interface GlobalLayer<
-  TTarget extends object = object,
-  TEvent extends KeymapEvent = KeymapEvent,
-> extends LayerFields<TTarget, TEvent> {
-  target?: undefined
-}
-
-export interface FocusWithinLayer<
-  TTarget extends object = object,
-  TEvent extends KeymapEvent = KeymapEvent,
-> extends LayerFields<TTarget, TEvent> {
-  target: TTarget
-  targetMode?: TargetMode
-}
-
-export interface FocusLayer<
-  TTarget extends object = object,
-  TEvent extends KeymapEvent = KeymapEvent,
-> extends LayerFields<TTarget, TEvent> {
-  target: TTarget
-  targetMode?: TargetMode
-}
-
-export type TargetLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
-  | FocusWithinLayer<TTarget, TEvent>
-  | FocusLayer<TTarget, TEvent>
 
 export interface ParsedCommand {
   input: string
