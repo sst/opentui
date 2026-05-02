@@ -1,6 +1,8 @@
 import type { Keymap, KeymapEvent, LayerBindingAnalysis, LayerAnalysisContext } from "../../index.js"
 import { stringifyKeySequence, stringifyKeyStroke } from "../../index.js"
 
+const DEAD_BINDING_WARNINGS_RESOURCE = Symbol("keymap:dead-binding-warnings")
+
 function isDeadMetadataOnlyBinding<TTarget extends object, TEvent extends KeymapEvent>(
   binding: LayerBindingAnalysis<TTarget, TEvent>,
 ): boolean {
@@ -44,13 +46,15 @@ function warnDeadMetadataOnlyBinding<TTarget extends object, TEvent extends Keym
 export function registerDeadBindingWarnings<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
-  return keymap.appendLayerAnalyzer((ctx) => {
-    for (const binding of ctx.bindings) {
-      if (!isDeadMetadataOnlyBinding(binding)) {
-        continue
-      }
+  return keymap.acquireResource(DEAD_BINDING_WARNINGS_RESOURCE, () => {
+    return keymap.appendLayerAnalyzer((ctx) => {
+      for (const binding of ctx.bindings) {
+        if (!isDeadMetadataOnlyBinding(binding)) {
+          continue
+        }
 
-      warnDeadMetadataOnlyBinding(ctx, binding)
-    }
+        warnDeadMetadataOnlyBinding(ctx, binding)
+      }
+    })
   })
 }

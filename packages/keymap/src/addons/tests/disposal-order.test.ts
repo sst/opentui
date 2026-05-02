@@ -4,6 +4,7 @@ import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
 import {
   registerAliasesField,
   registerBackspacePopsPendingSequence,
+  registerBindingOverrides,
   registerCommaBindings,
   registerDeadBindingWarnings,
   registerDefaultKeys,
@@ -55,7 +56,9 @@ function assertExpectedTeardownDiagnostics(keymap: ReturnType<typeof createDefau
   const { warnings } = capture.takeWarnings()
   expect(
     warnings.every(
-      (warning) => warning === '[Keymap] Unknown token "<leader>" in key sequence "<leader>a" was ignored',
+      (warning) =>
+        warning === '[Keymap] Unknown token "<leader>" in key sequence "<leader>a" was ignored' ||
+        warning === '[Keymap] Unknown binding field "desc" was ignored',
     ),
   ).toBe(true)
   expect(capture.takeErrors().errors).toEqual([])
@@ -181,6 +184,7 @@ async function createInfrastructureScenario() {
   const offEnabled = registerEnabledFields(keymap)
   const offMetadata = registerMetadataFields(keymap)
   const offAliases = registerAliasesField(keymap)
+  const offBindingOverrides = registerBindingOverrides(keymap)
   const offComma = registerCommaBindings(keymap)
   const offEmacs = registerEmacsBindings(keymap)
   const offDeadWarnings = registerDeadBindingWarnings(keymap)
@@ -226,6 +230,7 @@ async function createInfrastructureScenario() {
       enabled: offEnabled,
       metadata: offMetadata,
       aliases: offAliases,
+      bindingOverrides: offBindingOverrides,
       comma: offComma,
       emacs: offEmacs,
       deadWarnings: offDeadWarnings,
@@ -239,6 +244,121 @@ async function createInfrastructureScenario() {
 describe("addon teardown order", () => {
   afterEach(() => {
     diagnostics.assertNoUnhandledDiagnostics()
+  })
+
+  test("singleton builtin addons are idempotent and reference counted", async () => {
+    const testSetup = await createTestRenderer({ width: 40, height: 10 })
+    const { renderer, mockInput } = testSetup
+    const keymap = diagnostics.trackKeymap(createOpenTuiKeymap(renderer))
+    const capture = diagnostics.captureDiagnostics(keymap)
+    const installSingletons = () => [
+      registerDefaultKeys(keymap),
+      registerEnabledFields(keymap),
+      registerMetadataFields(keymap),
+      registerAliasesField(keymap),
+      registerBindingOverrides(keymap),
+      registerCommaBindings(keymap),
+      registerEmacsBindings(keymap),
+      registerDeadBindingWarnings(keymap),
+      registerUnresolvedCommandWarnings(keymap),
+      registerBaseLayoutFallback(keymap),
+    ]
+
+    const firstDisposers = installSingletons()
+    const secondDisposers = installSingletons()
+    const calls: string[] = []
+
+    expect(capture.takeErrors().errors).toEqual([])
+
+    for (const dispose of firstDisposers) {
+      dispose()
+    }
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "save-file",
+          enabled: true,
+          desc: "Save file",
+          title: "Save",
+          category: "File",
+          run() {
+            calls.push("save")
+          },
+        },
+        {
+          name: "override-command",
+          run() {
+            calls.push("override")
+          },
+        },
+        {
+          name: "comma-command",
+          run() {
+            calls.push("comma")
+          },
+        },
+        {
+          name: "emacs-command",
+          run() {
+            calls.push("emacs")
+          },
+        },
+      ],
+    })
+    keymap.registerLayer({
+      aliases: { enter: "return" },
+      bindings: [{ key: "enter", cmd: "save-file", desc: "Save binding", group: "File" }],
+    })
+    keymap.registerLayer({
+      bindingOverrides: [{ key: "o", cmd: "override-command" }],
+      bindings: [{ key: "p", cmd: "override-command" }],
+    })
+    keymap.registerLayer({ bindings: [{ key: "a,b", cmd: "comma-command" }] })
+    keymap.registerLayer({ bindings: [{ key: "ctrl+x ctrl+s", cmd: "emacs-command" }] })
+    keymap.registerLayer({ bindings: [{ key: "u", cmd: "missing-command" }, { key: "d" }] })
+
+    expect(capture.takeWarnings().warnings).toEqual([
+      '[Keymap] Binding "d" has no command and no reachable continuations; it will never trigger',
+      '[Keymap] Unresolved command "missing-command" for binding "u"',
+    ])
+    expect(capture.takeErrors().errors).toEqual([])
+    expect(keymap.getCommands({ visibility: "registered" }).find((command) => command.name === "save-file")).toMatchObject({
+      desc: "Save file",
+      title: "Save",
+      category: "File",
+    })
+    expect(keymap.getActiveKeys({ includeMetadata: true }).find((key) => key.stroke.name === "return")?.bindingAttrs)
+      .toEqual({ desc: "Save binding", group: "File" })
+
+    mockInput.pressEnter()
+    mockInput.pressKey("o")
+    mockInput.pressKey("p")
+    mockInput.pressKey("a")
+    mockInput.pressKey("b")
+    mockInput.pressKey("x", { ctrl: true })
+    mockInput.pressKey("s", { ctrl: true })
+
+    expect(calls).toEqual(["save", "override", "comma", "comma", "emacs"])
+
+    for (const dispose of secondDisposers) {
+      dispose()
+    }
+
+    keymap.registerLayer({
+      enabled: false,
+      commands: [{ name: "after-dispose", run() {} }],
+      bindings: [{ key: { name: "q" }, cmd: "after-dispose", desc: "After dispose" }],
+    })
+
+    expect(capture.takeWarnings().warnings).toEqual([
+      '[Keymap] Unknown layer field "enabled" was ignored',
+      '[Keymap] Unknown binding field "desc" was ignored',
+    ])
+    expect(keymap.getActiveKeys({ includeMetadata: true }).find((key) => key.stroke.name === "q")?.bindingAttrs)
+      .toBeUndefined()
+
+    renderer.destroy()
   })
 
   test("stateful addon and hook disposers stay safe in every live-order permutation", async () => {
@@ -330,6 +450,7 @@ describe("addon teardown order", () => {
       "comma",
       "unresolvedWarnings",
       "aliases",
+      "bindingOverrides",
       "escape",
       "deadWarnings",
       "metadata",
@@ -341,6 +462,7 @@ describe("addon teardown order", () => {
       "enabled",
       "defaultKeys",
       "aliases",
+      "bindingOverrides",
       "baseLayout",
       "metadata",
       "comma",

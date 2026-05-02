@@ -338,7 +338,7 @@ export const defaultEventMatchResolver: EventMatchResolver<KeymapEvent> = (event
 export function registerDefaultBindingParser<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
-  return keymap.appendBindingParser(defaultBindingParser)
+  return keymap.appendBindingParser((ctx) => defaultBindingParser(ctx))
 }
 
 /**
@@ -347,7 +347,7 @@ export function registerDefaultBindingParser<TTarget extends object, TEvent exte
 export function registerDefaultEventMatchResolver<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
-  return keymap.appendEventMatchResolver(defaultEventMatchResolver)
+  return keymap.appendEventMatchResolver((event, ctx) => defaultEventMatchResolver(event, ctx))
 }
 
 /**

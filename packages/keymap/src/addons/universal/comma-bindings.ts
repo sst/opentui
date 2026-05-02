@@ -1,5 +1,7 @@
 import type { BindingExpander, Keymap, KeymapEvent } from "../../index.js"
 
+const COMMA_BINDINGS_RESOURCE = Symbol("keymap:comma-bindings")
+
 const commaBindingExpander: BindingExpander = ({ input }) => {
   if (!input.includes(",")) {
     return undefined
@@ -20,5 +22,7 @@ const commaBindingExpander: BindingExpander = ({ input }) => {
 export function registerCommaBindings<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
-  return keymap.appendBindingExpander(commaBindingExpander)
+  return keymap.acquireResource(COMMA_BINDINGS_RESOURCE, () => {
+    return keymap.appendBindingExpander(commaBindingExpander)
+  })
 }

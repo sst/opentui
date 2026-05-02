@@ -693,13 +693,13 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerCommandFields({
-        desc(value, ctx) {
+        benchDesc(value, ctx) {
           ctx.attr("desc", value)
         },
-        title(value, ctx) {
+        benchTitle(value, ctx) {
           ctx.attr("title", value)
         },
-        category(value, ctx) {
+        benchCategory(value, ctx) {
           ctx.attr("category", value)
         },
       })
@@ -712,9 +712,9 @@ const scenarios: BenchmarkScenario[] = [
               {
                 name: "bench-command",
                 namespace: "bench",
-                desc: "Write the current file",
-                title: "Write File",
-                category: "File",
+                benchDesc: "Write the current file",
+                benchTitle: "Write File",
+                benchCategory: "File",
                 usage: ":write <file>",
                 tags: ["file", "write"],
                 run() {},
@@ -737,13 +737,13 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerCommandFields({
-        desc(value, ctx) {
+        benchDesc(value, ctx) {
           ctx.attr("desc", value)
         },
-        title(value, ctx) {
+        benchTitle(value, ctx) {
           ctx.attr("title", value)
         },
-        category(value, ctx) {
+        benchCategory(value, ctx) {
           ctx.attr("category", value)
         },
         mode(value, ctx) {
@@ -762,9 +762,9 @@ const scenarios: BenchmarkScenario[] = [
               {
                 name: "bench-command",
                 namespace: "bench",
-                desc: "Write the current file",
-                title: "Write File",
-                category: "File",
+                benchDesc: "Write the current file",
+                benchTitle: "Write File",
+                benchCategory: "File",
                 usage: ":write <file>",
                 tags: ["file", "write"],
                 mode: "normal",
@@ -789,7 +789,7 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerCommandFields({
-        title(value, ctx) {
+        label(value, ctx) {
           ctx.attr("label", value)
         },
       })
@@ -798,7 +798,7 @@ const scenarios: BenchmarkScenario[] = [
         commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
-          title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
+          label: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
           usage: index % 4 === 0 ? `:write file-${index}.txt` : `:open file-${index}.txt`,
           tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
           run() {},
@@ -830,7 +830,7 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerCommandFields({
-        title(value, ctx) {
+        label(value, ctx) {
           ctx.attr("label", value)
         },
       })
@@ -839,7 +839,7 @@ const scenarios: BenchmarkScenario[] = [
         commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
-          title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
+          label: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
           usage: index % 4 === 0 ? `:write file-${index}.txt` : `:open file-${index}.txt`,
           tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
           run() {},
@@ -869,7 +869,7 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerCommandFields({
-        title(value, ctx) {
+        label(value, ctx) {
           ctx.attr("label", value)
         },
       })
@@ -878,7 +878,7 @@ const scenarios: BenchmarkScenario[] = [
         commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
-          title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
+          label: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
           usage: index % 4 === 0 ? `:write file-${index}.txt` : `:open file-${index}.txt`,
           tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
           run() {},
@@ -909,7 +909,7 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerCommandFields({
-        title(value, ctx) {
+        label(value, ctx) {
           ctx.attr("label", value)
         },
       })
@@ -919,7 +919,7 @@ const scenarios: BenchmarkScenario[] = [
           commands: Array.from({ length: 8 }, (_, index) => ({
             name: `command-${layerIndex}-${index}`,
             namespace: index % 2 === 0 ? "bench" : "other",
-            title: `Command ${layerIndex}-${index}`,
+            label: `Command ${layerIndex}-${index}`,
             usage: `:${layerIndex}-${index}`,
             run() {},
           })),
@@ -944,7 +944,7 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerCommandFields({
-        title(value, ctx) {
+        label(value, ctx) {
           ctx.attr("label", value)
         },
       })
@@ -953,7 +953,7 @@ const scenarios: BenchmarkScenario[] = [
         commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
-          title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
+          label: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
           usage: index % 4 === 0 ? `:write file-${index}.txt` : `:open file-${index}.txt`,
           tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
           run() {},
@@ -990,7 +990,7 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerCommandFields({
-        title(value, ctx) {
+        label(value, ctx) {
           ctx.attr("label", value)
         },
       })
@@ -1000,7 +1000,7 @@ const scenarios: BenchmarkScenario[] = [
           commands: Array.from({ length: 8 }, (_, index) => ({
             name: `command-${layerIndex}-${index}`,
             namespace: index % 2 === 0 ? "bench" : "other",
-            title: `Command ${layerIndex}-${index}`,
+            label: `Command ${layerIndex}-${index}`,
             usage: `:${layerIndex}-${index}`,
             run() {},
           })),

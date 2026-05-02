@@ -1,6 +1,8 @@
 import type { Keymap, KeymapEvent, LayerAnalysisContext, ParsedBinding } from "../../index.js"
 import { stringifyKeySequence, stringifyKeyStroke } from "../../index.js"
 
+const UNRESOLVED_COMMAND_WARNINGS_RESOURCE = Symbol("keymap:unresolved-command-warnings")
+
 interface UnresolvedCommandWarning<TTarget extends object, TEvent extends KeymapEvent> {
   command: string
   binding: ParsedBinding<TTarget, TEvent>
@@ -45,9 +47,11 @@ function warnUnresolvedCommand<TTarget extends object, TEvent extends KeymapEven
 export function registerUnresolvedCommandWarnings<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
-  return keymap.appendLayerAnalyzer((ctx) => {
-    for (const binding of ctx.bindings) {
-      warnUnresolvedCommand(ctx, binding)
-    }
+  return keymap.acquireResource(UNRESOLVED_COMMAND_WARNINGS_RESOURCE, () => {
+    return keymap.appendLayerAnalyzer((ctx) => {
+      for (const binding of ctx.bindings) {
+        warnUnresolvedCommand(ctx, binding)
+      }
+    })
   })
 }
