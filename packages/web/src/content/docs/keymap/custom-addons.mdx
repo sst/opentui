@@ -72,6 +72,7 @@ Guidelines:
 | API                                      | Use for                                                 |
 | ---------------------------------------- | ------------------------------------------------------- |
 | `prepend/appendCommandResolver()`        | Resolve string commands dynamically                     |
+| `prepend/appendCommandTransformer()`     | Rewrite registered commands or add derived commands     |
 | `prepend/appendEventMatchResolver()`     | Add alternate event-to-stroke matching                  |
 | `prepend/appendDisambiguationResolver()` | Choose exact-vs-prefix behavior for ambiguous sequences |
 | `intercept("key", ...)`                  | Observe or consume key events before binding dispatch   |
@@ -271,6 +272,16 @@ Use the `clear*()` methods only when your addon owns that whole stage. They are 
 
 ## Command, event and disambiguation callbacks
 
+### `CommandTransformer`
+
+Command transformers run once for each command in a layer before command fields compile. They can mutate the command copy they receive, add derived commands or drop the original.
+
+| Member           | Purpose                              |
+| ---------------- | ------------------------------------ |
+| `layer`          | Read-only layer definition           |
+| `add(command)`   | Add a derived command                |
+| `skipOriginal()` | Drop the transformed command          |
+
 ### `CommandResolver`
 
 ```ts
@@ -358,7 +369,7 @@ Analyzers run while a layer compiles and receive a projected view of the compile
 | Member                                       | Purpose                                 |
 | -------------------------------------------- | --------------------------------------- |
 | `target` / `order`                           | Source layer identity                   |
-| `bindingInputs`                              | Original binding inputs                 |
+| `sourceBindings`                             | Original bindings after layer-binding transformers |
 | `bindings`                                   | Compiled binding analysis records       |
 | `hasTokenBindings`                           | Whether any binding used tokens         |
 | `checkCommandResolution(command)`            | Probe whether a string command resolves |

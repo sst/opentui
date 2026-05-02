@@ -80,7 +80,7 @@ Both built-in host packages re-export the shared `@opentui/keymap` API and add t
 
 - `createOpenTuiKeymapHost(renderer)` - adapts `CliRenderer` and `Renderable` to `KeymapHost`
 - `createOpenTuiKeymap(renderer)` - creates a bare `Keymap<Renderable, KeyEvent>`
-- `createDefaultOpenTuiKeymap(renderer)` - creates an OpenTUI keymap with the default parser, enabled fields and metadata fields installed
+- `createDefaultOpenTuiKeymap(renderer)` - creates an OpenTUI keymap with default keys, enabled fields and metadata fields installed
 
 ### Basic usage
 
@@ -165,7 +165,7 @@ Live demo: [HTML keymap demo](/demos/keymap-html/)
 - `createHtmlKeymapHost(root)` - adapts an `HTMLElement` subtree to `KeymapHost`
 - `htmlEventMatchResolver` - HTML-specific event matcher for browser key events
 - `createHtmlKeymap(root)` - creates a bare `Keymap<HTMLElement, HtmlKeymapEvent>`
-- `createDefaultHtmlKeymap(root)` - creates an HTML keymap with the default parser, enabled fields, metadata fields and HTML event matching installed
+- `createDefaultHtmlKeymap(root)` - creates an HTML keymap with default keys, enabled fields, metadata fields and HTML event matching installed
 
 ### Basic usage
 

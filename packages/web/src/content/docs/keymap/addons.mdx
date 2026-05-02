@@ -92,23 +92,28 @@ Register disambiguation addons before registering same-layer exact/prefix bindin
 
 ## Ex commands
 
-`registerExCommands()` installs a command layer plus a command resolver for `:name ...args` strings.
+`registerExCommands()` installs ex-command field compilers, a command transformer and a resolver for `:name ...args` strings. Register ex commands through normal keymap layers by using a colon-prefixed command name or `namespace: "excommands"`.
 
 ```ts
 import { registerExCommands } from "@opentui/keymap/addons"
 
-registerExCommands(keymap, [
-  {
-    name: "write",
-    aliases: ["w"],
-    nargs: "1",
-    desc: "Write file",
-    run({ payload }) {
-      // payload.raw === ":write session.log"
-      // payload.args === ["session.log"]
+registerExCommands(keymap)
+
+keymap.registerLayer({
+  commands: [
+    {
+      name: "write",
+      namespace: "excommands",
+      aliases: ["w"],
+      nargs: "1",
+      desc: "Write file",
+      run({ payload }) {
+        // payload.raw === ":write session.log"
+        // payload.args === ["session.log"]
+      },
     },
-  },
-])
+  ],
+})
 ```
 
 `ExCommand` fields:
