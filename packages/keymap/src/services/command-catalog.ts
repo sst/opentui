@@ -6,7 +6,6 @@ import type {
   CommandEntry,
   CommandBindingsQuery,
   CommandFieldCompiler,
-  CommandFieldContext,
   CommandResolutionStatus,
   CommandQuery,
   CommandQueryValue,
@@ -26,7 +25,7 @@ import {
   isLayerActiveForFocused,
 } from "./primitives/active-layers.js"
 import type { ConditionService } from "./conditions.js"
-import { mergeAttribute, mergeRequirement } from "./primitives/field-invariants.js"
+import { createFieldCompilerContext } from "./primitives/field-invariants.js"
 import type { NotificationService } from "./notify.js"
 import type {
   ActiveCommandView,
@@ -922,19 +921,17 @@ function normalizeCommands<TTarget extends object, TEvent extends KeymapEvent>(
 
         compiler(
           value,
-          createCommandFieldContext(
-            attrs,
-            mergedRequires,
+          createFieldCompilerContext({
+            fieldName,
+            conditions: options.conditions,
+            requirements: mergedRequires,
             conditionKeys,
             matchers,
-            options.conditions,
-            fieldName,
-            {
-              onUnkeyedMatcher() {
-                hasUnkeyedMatchers = true
-              },
+            attrs,
+            onUnkeyedMatcher() {
+              hasUnkeyedMatchers = true
             },
-          ),
+          }),
         )
       }
 
@@ -963,35 +960,6 @@ function normalizeCommands<TTarget extends object, TEvent extends KeymapEvent>(
   }
 
   return normalizedCommands
-}
-
-function createCommandFieldContext<TTarget extends object, TEvent extends KeymapEvent>(
-  mergedAttrs: Attributes,
-  mergedRequires: EventData,
-  conditionKeys: Set<string>,
-  matchers: RuntimeMatcher[],
-  conditions: ConditionService<TTarget, TEvent>,
-  fieldName: string,
-  options: {
-    onUnkeyedMatcher(): void
-  },
-): CommandFieldContext {
-  return {
-    require(name, requiredValue) {
-      mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
-      conditionKeys.add(name)
-    },
-    attr(name, attributeValue) {
-      mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
-    },
-    activeWhen(matcher) {
-      const runtimeMatcher = conditions.buildRuntimeMatcher(matcher, `field ${fieldName}`)
-      if (!runtimeMatcher.cacheable) {
-        options.onUnkeyedMatcher()
-      }
-      matchers.push(runtimeMatcher)
-    },
-  }
 }
 
 function resolveCommandWithResolvers<TTarget extends object, TEvent extends KeymapEvent>(

@@ -1,4 +1,14 @@
-import type { Attributes, EventData } from "../../types.js"
+import type {
+  Attributes,
+  BindingFieldContext,
+  CommandFieldContext,
+  EventData,
+  KeymapEvent,
+  LayerFieldContext,
+  ReactiveMatcher,
+  RuntimeMatcher,
+} from "../../types.js"
+import type { ConditionService } from "../conditions.js"
 
 export function mergeRequirement(target: EventData, name: string, value: unknown, source: string): void {
   if (Object.prototype.hasOwnProperty.call(target, name) && !Object.is(target[name], value)) {
@@ -14,4 +24,47 @@ export function mergeAttribute(target: Attributes, name: string, value: unknown,
   }
 
   target[name] = value
+}
+
+interface FieldCompilerContextOptions<TTarget extends object, TEvent extends KeymapEvent> {
+  fieldName: string
+  conditions: ConditionService<TTarget, TEvent>
+  requirements: EventData
+  conditionKeys: Set<string>
+  matchers: RuntimeMatcher[]
+  attrs?: Attributes
+  onUnkeyedMatcher(): void
+}
+
+export function createFieldCompilerContext<TTarget extends object, TEvent extends KeymapEvent>(
+  options: FieldCompilerContextOptions<TTarget, TEvent> & { attrs: Attributes },
+): BindingFieldContext & CommandFieldContext
+export function createFieldCompilerContext<TTarget extends object, TEvent extends KeymapEvent>(
+  options: FieldCompilerContextOptions<TTarget, TEvent> & { attrs?: undefined },
+): LayerFieldContext
+export function createFieldCompilerContext<TTarget extends object, TEvent extends KeymapEvent>(
+  options: FieldCompilerContextOptions<TTarget, TEvent>,
+): BindingFieldContext & CommandFieldContext & LayerFieldContext {
+  const source = `field ${options.fieldName}`
+
+  return {
+    require(name: string, value: unknown) {
+      mergeRequirement(options.requirements, name, value, source)
+      options.conditionKeys.add(name)
+    },
+    attr(name: string, value: unknown) {
+      if (!options.attrs) {
+        throw new Error(`Keymap ${source} cannot publish attrs`)
+      }
+
+      mergeAttribute(options.attrs, name, value, source)
+    },
+    activeWhen(matcher: (() => boolean) | ReactiveMatcher) {
+      const runtimeMatcher = options.conditions.buildRuntimeMatcher(matcher, source)
+      if (!runtimeMatcher.cacheable) {
+        options.onUnkeyedMatcher()
+      }
+      options.matchers.push(runtimeMatcher)
+    },
+  }
 }

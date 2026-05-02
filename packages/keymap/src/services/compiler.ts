@@ -36,7 +36,7 @@ import {
   stringifyKeySequence,
 } from "./keys.js"
 import { snapshotParsedBinding } from "./primitives/bindings.js"
-import { mergeAttribute, mergeRequirement } from "./primitives/field-invariants.js"
+import { createFieldCompilerContext } from "./primitives/field-invariants.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
 
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
@@ -190,10 +190,10 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
           try {
             const event = this.normalizeBindingEvent(compiledInput.event)
             const compiledSequence = compiledInput.sequence
-            let mergedRequires: EventData | undefined
-            let mergedAttrs: Attributes | undefined
-            let matchers: RuntimeMatcher[] | undefined
-            let conditionKeys: Set<string> | undefined
+            const mergedRequires: EventData = {}
+            const mergedAttrs: Attributes = {}
+            const matchers: RuntimeMatcher[] = []
+            const conditionKeys = new Set<string>()
             let hasUnkeyedMatchers = false
 
             for (const fieldName in compiledInput) {
@@ -217,37 +217,23 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
                 continue
               }
 
-              compiler(value, {
-                require(name, requiredValue) {
-                  if (!mergedRequires) {
-                    mergedRequires = {}
-                  }
-                  mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
-                  if (!conditionKeys) {
-                    conditionKeys = new Set<string>()
-                  }
-                  conditionKeys.add(name)
-                },
-                attr(name, attributeValue) {
-                  if (!mergedAttrs) {
-                    mergedAttrs = {}
-                  }
-                  mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
-                },
-                activeWhen: (matcher) => {
-                  const runtimeMatcher = conditions.buildRuntimeMatcher(matcher, `field ${fieldName}`)
-                  if (!runtimeMatcher.cacheable) {
+              compiler(
+                value,
+                createFieldCompilerContext({
+                  fieldName,
+                  conditions,
+                  requirements: mergedRequires,
+                  conditionKeys,
+                  matchers,
+                  attrs: mergedAttrs,
+                  onUnkeyedMatcher() {
                     hasUnkeyedMatchers = true
-                  }
-                  if (!matchers) {
-                    matchers = []
-                  }
-                  matchers.push(runtimeMatcher)
-                },
-              })
+                  },
+                }),
+              )
             }
 
-            const attrs = mergedAttrs ? snapshotAttributes(mergedAttrs) : undefined
+            const attrs = Object.keys(mergedAttrs).length > 0 ? snapshotAttributes(mergedAttrs) : undefined
             const command = normalizeBindingCommand(compiledInput.cmd)
             const compiledBinding: BindingState<TTarget, TEvent> = {
               binding,
@@ -258,9 +244,9 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
               sourceTarget,
               sourceLayerOrder,
               bindingIndex: bindingIndex,
-              requires: mergedRequires ? Object.entries(mergedRequires) : EMPTY_REQUIRES,
-              matchers: matchers ?? EMPTY_MATCHERS,
-              conditionKeys: conditionKeys ? [...conditionKeys] : EMPTY_CONDITION_KEYS,
+              requires: Object.keys(mergedRequires).length > 0 ? Object.entries(mergedRequires) : EMPTY_REQUIRES,
+              matchers: matchers.length > 0 ? matchers : EMPTY_MATCHERS,
+              conditionKeys: conditionKeys.size > 0 ? [...conditionKeys] : EMPTY_CONDITION_KEYS,
               hasUnkeyedMatchers,
               matchCacheDirty: true,
               preventDefault: compiledInput.preventDefault !== false,

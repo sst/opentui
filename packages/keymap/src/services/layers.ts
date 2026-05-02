@@ -30,7 +30,7 @@ import {
   snapshotParsedBinding,
   validateBindings,
 } from "./primitives/bindings.js"
-import { mergeRequirement } from "./primitives/field-invariants.js"
+import { createFieldCompilerContext } from "./primitives/field-invariants.js"
 import { cloneKeySequence } from "./keys.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
 
@@ -468,19 +468,19 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         continue
       }
 
-      compiler(value, {
-        require: (name, requiredValue) => {
-          mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
-          conditionKeys.add(name)
-        },
-        activeWhen: (matcher) => {
-          const runtimeMatcher = this.conditions.buildRuntimeMatcher(matcher, `field ${fieldName}`)
-          if (!runtimeMatcher.cacheable) {
+      compiler(
+        value,
+        createFieldCompilerContext({
+          fieldName,
+          conditions: this.conditions,
+          requirements: mergedRequires,
+          conditionKeys,
+          matchers,
+          onUnkeyedMatcher() {
             hasUnkeyedMatchers = true
-          }
-          matchers.push(runtimeMatcher)
-        },
-      })
+          },
+        }),
+      )
     }
 
     return {
