@@ -419,9 +419,7 @@ function createEditBufferCommand(
 ): Command<Renderable, KeyEvent> {
   return {
     name: commandNames[action],
-    fields: {
-      desc: descriptions[action],
-    },
+    desc: descriptions[action],
     run() {
       return withFocusedEditor(renderer, run)
     },

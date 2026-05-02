@@ -193,35 +193,21 @@ describe("ex commands addon", () => {
     expect(keymap.getCommands({ filter: { namespace: "excommands" } })).toMatchObject([
       {
         name: ":write",
-        fields: {
-          aliases: ["w"],
-          nargs: "1",
-          desc: "Write the current buffer",
-          title: "Write Buffer",
-          category: "File",
-          namespace: "excommands",
-        },
-        attrs: {
-          desc: "Write the current buffer",
-          title: "Write Buffer",
-          category: "File",
-        },
+        aliases: ["w"],
+        nargs: "1",
+        desc: "Write the current buffer",
+        title: "Write Buffer",
+        category: "File",
+        namespace: "excommands",
       },
       {
         name: ":w",
-        fields: {
-          aliases: ["w"],
-          nargs: "1",
-          desc: "Write the current buffer",
-          title: "Write Buffer",
-          category: "File",
-          namespace: "excommands",
-        },
-        attrs: {
-          desc: "Write the current buffer",
-          title: "Write Buffer",
-          category: "File",
-        },
+        aliases: ["w"],
+        nargs: "1",
+        desc: "Write the current buffer",
+        title: "Write Buffer",
+        category: "File",
+        namespace: "excommands",
       },
     ])
   })
@@ -291,12 +277,10 @@ describe("ex commands addon", () => {
       ok: true,
       command: {
         name: ":w",
-        fields: {
-          aliases: ["w"],
-          nargs: "1",
-          usage: ":write <file>",
-          namespace: "excommands",
-        },
+        aliases: ["w"],
+        nargs: "1",
+        usage: ":write <file>",
+        namespace: "excommands",
       },
     })
     expect(keymap.runCommand(":w")).toEqual({
@@ -308,12 +292,10 @@ describe("ex commands addon", () => {
       reason: "invalid-args",
       command: {
         name: ":w",
-        fields: {
-          aliases: ["w"],
-          nargs: "1",
-          usage: ":write <file>",
-          namespace: "excommands",
-        },
+        aliases: ["w"],
+        nargs: "1",
+        usage: ":write <file>",
+        namespace: "excommands",
       },
     })
     expect(keymap.runCommand(":missing")).toEqual({ ok: false, reason: "not-found" })

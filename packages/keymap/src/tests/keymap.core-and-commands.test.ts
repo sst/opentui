@@ -457,7 +457,7 @@ describe("keymap: core and commands", () => {
       const generation = resolverCalls
       return {
         name: command,
-        attrs: { generation },
+        generation,
         run() {
           calls.push(`run:${generation}`)
         },
@@ -606,11 +606,11 @@ describe("keymap: core and commands", () => {
 
     expect(keymap.dispatchCommand("submit", { includeCommand: true })).toMatchObject({
       ok: true,
-      command: { name: "submit", fields: { desc: "Local submit" }, attrs: { desc: "Local submit" } },
+      command: { name: "submit", desc: "Local submit" },
     })
     expect(keymap.runCommand("submit", { includeCommand: true })).toMatchObject({
       ok: true,
-      command: { name: "submit", fields: { desc: "Local submit" }, attrs: { desc: "Local submit" } },
+      command: { name: "submit", desc: "Local submit" },
     })
     expect(calls).toEqual(["global", "local", "local", "local", "local"])
     expect(warnings).toEqual([])
@@ -756,7 +756,7 @@ describe("keymap: core and commands", () => {
     expect(keymap.dispatchCommand("submit", { includeCommand: true })).toMatchObject({
       ok: false,
       reason: "inactive",
-      command: { name: "submit", fields: {} },
+      command: { name: "submit" },
     })
     expect(keymap.runCommand("submit")).toEqual({ ok: true })
 

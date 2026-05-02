@@ -66,12 +66,8 @@ interface CommandCatalogOptions {
 }
 
 interface ResolvedCommandLookup<TTarget extends object, TEvent extends KeymapEvent> {
-  resolved?: Command<TTarget, TEvent>
+  resolved?: ResolvedCommandEntry<TTarget, TEvent>
   hadError: boolean
-}
-
-type CommandWithFields<TTarget extends object, TEvent extends KeymapEvent> = Command<TTarget, TEvent> & {
-  fields: Readonly<Record<string, unknown>>
 }
 
 function createCommandChainCacheState<TTarget extends object, TEvent extends KeymapEvent>(): CommandChainCacheState<
@@ -142,6 +138,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     const grouped = filteredEntries.map((entry) => ({
       entry,
       command: getCommand(entry.commandState),
+      commandAttrs: entry.commandState.attrs,
       bindings: [] as ActiveBinding<TTarget, TEvent>[],
     }))
     const indexesByName = new Map<string, number[]>()
@@ -219,6 +216,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       resolved.push({
         target: entry.layer.target,
         command: entry.commandState.command,
+        attrs: entry.commandState.attrs,
       })
     }
 
@@ -241,26 +239,27 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       resolved.push({
         target: entry.layer.target,
         command: entry.commandState.command,
+        attrs: entry.commandState.attrs,
       })
     }
 
     return resolved
   }
 
-  public resolveRegisteredResolverFallback(command: string): { resolved?: Command<TTarget, TEvent>; hadError: boolean } {
+  public resolveRegisteredResolverFallback(command: string): ResolvedCommandLookup<TTarget, TEvent> {
     return this.resolveCommandWithResolvers(command, null, { mode: "registered" })
   }
 
   public resolveActiveResolverFallback(
     command: string,
     focused: TTarget | null,
-  ): { resolved?: Command<TTarget, TEvent>; hadError: boolean } {
+  ): ResolvedCommandLookup<TTarget, TEvent> {
     return this.resolveCommandWithResolvers(command, focused, { mode: "active" })
   }
 
   public getCommandAttrs(command: string, focused: TTarget | null): Readonly<Attributes> | undefined {
     const top = this.getTopResolvedCommand(command, focused)
-    return top?.command.attrs
+    return top?.attrs
   }
 
   public getTopCommand(command: string, focused: TTarget | null): Command<TTarget, TEvent> | undefined {
@@ -455,11 +454,11 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
 
     const active = activeView.reachableByName.get(binding.command)
     if (active) {
-      return active.commandState.command.attrs
+      return active.commandState.attrs
     }
 
     const fallback = this.getFallbackResolvedCommand(activeView, binding.command, focused, "active")
-    return fallback?.command.attrs
+    return fallback?.attrs
   }
 
   public getCommandResolutionStatus(
@@ -507,6 +506,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       return {
         target: active.layer.target,
         command: active.commandState.command,
+        attrs: active.commandState.attrs,
       }
     }
 
@@ -528,7 +528,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     const errorCache = view.fallbackErrors
     if (cache.has(command)) {
       const cached = cache.get(command)
-      return cached ? { command: cached } : undefined
+      return cached ?? undefined
     }
 
     const lookup = this.resolveCommandWithResolvers(command, focused, { mode })
@@ -541,7 +541,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       return undefined
     }
 
-    return { command: lookup.resolved }
+    return lookup.resolved
   }
 
   private getResolvedCommandChainFromView(
@@ -564,6 +564,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
         resolved.push({
           target: entry.layer.target,
           command: entry.commandState.command,
+          attrs: entry.commandState.attrs,
         })
       }
     }
@@ -651,6 +652,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     grouped: Array<{
       entry: LayerCommandEntry<TTarget, TEvent>
       command: Command<TTarget, TEvent>
+      commandAttrs: Readonly<Attributes> | undefined
       bindings: ActiveBinding<TTarget, TEvent>[]
     }>,
     indexesByName: ReadonlyMap<string, readonly number[]>,
@@ -740,6 +742,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     grouped: Array<{
       entry: LayerCommandEntry<TTarget, TEvent>
       command: Command<TTarget, TEvent>
+      commandAttrs: Readonly<Attributes> | undefined
       bindings: ActiveBinding<TTarget, TEvent>[]
     }>,
     indexesByName: ReadonlyMap<string, readonly number[]>,
@@ -760,7 +763,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
         continue
       }
 
-      item.bindings.push(this.createActiveBinding(binding, item.command.attrs))
+      item.bindings.push(this.createActiveBinding(binding, item.commandAttrs))
     }
   }
 
@@ -813,7 +816,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     }
 
     if (context.visibility === "registered") {
-      return this.getCommandEntry(binding.command)?.commandState.command.attrs
+      return this.getCommandEntry(binding.command)?.commandState.attrs
     }
 
     const activeView = context.activeView
@@ -831,9 +834,31 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   ): ResolvedCommandLookup<TTarget, TEvent> {
     const context = this.createCommandResolverContext(focused, options?.mode ?? "active")
 
-    return resolveCommandWithResolvers(command, this.state.commands.commandResolvers.values(), context, (error) => {
+    const lookup = resolveCommandWithResolvers(command, this.state.commands.commandResolvers.values(), context, (error) => {
       this.notify.emitError("command-resolver-error", error, `[Keymap] Error in command resolver for "${command}":`)
     })
+    const resolved = lookup.resolved
+    if (resolved && !resolved.attrs) {
+      const attrs = this.getCommandStateAttrs(resolved.command.name, focused, options?.mode ?? "active") ??
+        getResolverCommandAttrs(resolved.command)
+      if (attrs) {
+        lookup.resolved = { ...resolved, attrs }
+      }
+    }
+
+    return lookup
+  }
+
+  private getCommandStateAttrs(
+    command: string,
+    focused: TTarget | null,
+    mode: "active" | "registered",
+  ): Readonly<Attributes> | undefined {
+    if (mode === "registered") {
+      return this.getCommandEntry(command)?.commandState.attrs
+    }
+
+    return this.getActiveCommandView(focused).reachableByName.get(command)?.commandState.attrs
   }
 
   private createCommandResolverContext(
@@ -871,25 +896,8 @@ function normalizeCommands<TTarget extends object, TEvent extends KeymapEvent>(
       const conditionKeys = new Set<string>()
       let hasUnkeyedMatchers = false
       const normalizedName = normalizeCommandName(command.name)
-      let fields = command.fields
-      if (!fields) {
-        const topLevelFields: Record<string, unknown> = {}
-        for (const [name, value] of Object.entries(command)) {
-          if (!RESERVED_COMMAND_FIELDS.has(name) && value !== undefined) {
-            topLevelFields[name] = value
-          }
-        }
-        fields = Object.keys(topLevelFields).length === 0 ? EMPTY_COMMAND_FIELDS : topLevelFields
-      }
-      const attrs = command.attrs ?? {}
-
-      if (!isCommandMetadataRecord(fields)) {
-        throw new Error(`Invalid keymap command "${command.name}": fields must be an object`)
-      }
-
-      if (!isCommandMetadataRecord(attrs)) {
-        throw new Error(`Invalid keymap command "${command.name}": attrs must be an object`)
-      }
+      const fields = getCommandFields(command)
+      const attrs: Attributes = {}
 
       if (seen.has(normalizedName)) {
         options.onError(
@@ -901,8 +909,6 @@ function normalizeCommands<TTarget extends object, TEvent extends KeymapEvent>(
       }
 
       command.name = normalizedName
-      command.fields = fields
-      assertCommandHasFields(command)
 
       for (const [fieldName, value] of Object.entries(fields)) {
         if (value === undefined) {
@@ -932,12 +938,10 @@ function normalizeCommands<TTarget extends object, TEvent extends KeymapEvent>(
         )
       }
 
-      if (Object.keys(attrs).length > 0 || command.attrs) {
-        command.attrs = attrs
-      }
-
       const commandState: CommandState<TTarget, TEvent> = {
         command,
+        fields,
+        attrs: Object.keys(attrs).length === 0 ? undefined : attrs,
         requires: Object.entries(mergedRequires),
         matchers,
         conditionKeys: [...conditionKeys],
@@ -1003,18 +1007,18 @@ function resolveCommandWithResolvers<TTarget extends object, TEvent extends Keym
   let hadError = false
 
   for (const resolver of resolvers) {
-    let resolved: Command<TTarget, TEvent> | undefined
+    let resolvedCommand: Command<TTarget, TEvent> | undefined
 
     try {
-      resolved = resolver(command, context)
+      resolvedCommand = resolver(command, context)
     } catch (error) {
       hadError = true
       onResolverError(error)
       continue
     }
 
-    if (resolved) {
-      return { hadError, resolved }
+    if (resolvedCommand) {
+      return { hadError, resolved: getResolverCommandEntry(resolvedCommand) }
     }
   }
 
@@ -1025,12 +1029,32 @@ function isCommandMetadataRecord(value: unknown): value is Readonly<Record<strin
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-function assertCommandHasFields<TTarget extends object, TEvent extends KeymapEvent>(
+function getCommandFields<TTarget extends object, TEvent extends KeymapEvent>(
   command: Command<TTarget, TEvent>,
-): asserts command is CommandWithFields<TTarget, TEvent> {
-  if (command.fields === undefined) {
-    throw new Error(`Failed to normalize keymap command "${command.name}"`)
+): Readonly<Record<string, unknown>> {
+  const fields: Record<string, unknown> = {}
+  for (const [name, value] of Object.entries(command)) {
+    if (!RESERVED_COMMAND_FIELDS.has(name) && value !== undefined) {
+      fields[name] = value
+    }
   }
+
+  return Object.keys(fields).length === 0 ? EMPTY_COMMAND_FIELDS : fields
+}
+
+function getResolverCommandEntry<TTarget extends object, TEvent extends KeymapEvent>(
+  command: Command<TTarget, TEvent>,
+): ResolvedCommandEntry<TTarget, TEvent> {
+  return {
+    command,
+  }
+}
+
+function getResolverCommandAttrs<TTarget extends object, TEvent extends KeymapEvent>(
+  command: Command<TTarget, TEvent>,
+): Readonly<Attributes> | undefined {
+  const fields = getCommandFields(command)
+  return fields === EMPTY_COMMAND_FIELDS ? undefined : fields
 }
 
 function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapEvent>(
@@ -1168,7 +1192,7 @@ function commandMatchesNamespace<TTarget extends object, TEvent extends KeymapEv
   commandState: CommandState<TTarget, TEvent>,
   namespace: string | readonly string[] | undefined,
 ): boolean {
-  const fields = commandState.command.fields
+  const fields = commandState.fields
   if (namespace === undefined) {
     return true
   }
@@ -1204,8 +1228,8 @@ function commandKeyMatchesSearch<TTarget extends object, TEvent extends KeymapEv
   search: string,
 ): boolean {
   const command = commandState.command
-  const fields = command.fields
-  const attrs = command.attrs
+  const fields = commandState.fields
+  const attrs = commandState.attrs
 
   if (key === "name" && commandValueMatchesSearch(command.name, search)) {
     return true
@@ -1233,8 +1257,8 @@ function commandKeyMatchesQuery<TTarget extends object, TEvent extends KeymapEve
 ): boolean {
   if (typeof matcher === "function") {
     const command = commandState.command
-    const fields = command.fields
-    const attrs = command.attrs
+    const fields = commandState.fields
+    const attrs = commandState.attrs
     let commandView: Command<TTarget, TEvent> | undefined
     const getCommandView = () => {
       if (!commandView) {
@@ -1304,8 +1328,8 @@ function commandKeyMatchesExact<TTarget extends object, TEvent extends KeymapEve
   matcher: unknown | readonly unknown[],
 ): boolean {
   const command = commandState.command
-  const fields = command.fields
-  const attrs = command.attrs
+  const fields = commandState.fields
+  const attrs = commandState.attrs
 
   if (key === "name" && commandValueMatchesFilter(command.name, matcher)) {
     return true

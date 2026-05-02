@@ -98,7 +98,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     if (fallback.resolved) {
       const execution = this.executeResolvedCommand(
         normalized,
-        fallback.resolved,
+        fallback.resolved.command,
         { keymap: this.options.keymap, event, focused, target: options?.target ?? null, data },
         includeCommand,
       )
@@ -176,7 +176,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     if (fallback.resolved) {
       const execution = this.executeResolvedCommand(
         normalized,
-        fallback.resolved,
+        fallback.resolved.command,
         { keymap: this.options.keymap, event, focused, target: options?.target ?? null, data },
         includeCommand,
       )
@@ -285,7 +285,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     const commandView = typeof command === "function" ? undefined : command
     const run = typeof command === "function" ? command : command.run
     const resultCommand = includeCommand ? commandView : undefined
-    let result: CommandResult
+    let result: CommandResult<TTarget, TEvent>
 
     try {
       result = run(commandView ? { ...context, command: commandView } : context)
@@ -308,17 +308,21 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     }
 
-    if (result === false) {
-      if (commandView?.rejectedResult) {
-        const rejectedResult = commandView.rejectedResult
-        return {
-          status: "rejected",
-          result: includeCommand && rejectedResult.reason !== "not-found"
-            ? { ...rejectedResult, command: commandView }
-            : rejectedResult,
-        }
+    if (isRunCommandResult(result)) {
+      let commandResult: RunCommandResult<TTarget, TEvent> = result
+      if (!result.ok && result.reason !== "not-found" && includeCommand && commandView && !result.command) {
+        commandResult = { ...result, command: commandView }
+      } else if (result.ok && includeCommand && commandView && !result.command) {
+        commandResult = { ...result, command: commandView }
       }
 
+      return {
+        status: result.ok ? "handled" : "rejected",
+        result: commandResult,
+      }
+    }
+
+    if (result === false) {
       return {
         status: "rejected",
         result: resultCommand
@@ -332,6 +336,12 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       result: resultCommand ? { ok: true, command: resultCommand } : { ok: true },
     }
   }
+}
+
+function isRunCommandResult<TTarget extends object, TEvent extends KeymapEvent>(
+  value: CommandResult<TTarget, TEvent>,
+): value is RunCommandResult<TTarget, TEvent> {
+  return typeof value === "object" && value !== null && "ok" in value
 }
 
 function applyBindingEventEffects<TTarget extends object, TEvent extends KeymapEvent>(

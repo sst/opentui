@@ -6,8 +6,6 @@ import type {
   ParsedCommand,
 } from "../../index.js"
 
-const EMPTY_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
-
 export interface ExCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   name: string
   aliases?: string[]
@@ -112,8 +110,8 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
       commandMap.set(normalizedName, command)
 
       registrations.push({
+        ...registrationFields,
         name: normalizedName,
-        fields: registrationFields,
         run(ctx) {
           const rawInput = (ctx as { raw?: unknown }).raw
           const raw: string = typeof rawInput === "string" ? rawInput : normalizedName
@@ -148,26 +146,21 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
     }
 
     const registeredCommand = ctx.getCommand(normalizedName)
-    const attrs = registeredCommand?.attrs
-    const fields = registeredCommand?.fields ?? EMPTY_FIELDS
+    const baseCommand = registeredCommand ? { ...registeredCommand, name: normalizedName } : { name: normalizedName }
     if (!validateCommandArgs(command, parsed.args)) {
       const invalidCommand: Command<TTarget, TEvent> = {
+        ...baseCommand,
         name: normalizedName,
-        fields,
-        rejectedResult: { ok: false, reason: "invalid-args" },
         run() {
-          return false
+          return { ok: false, reason: "invalid-args" }
         },
-      }
-      if (attrs) {
-        invalidCommand.attrs = attrs
       }
       return invalidCommand
     }
 
     const resolvedCommand: Command<TTarget, TEvent> = {
+      ...baseCommand,
       name: normalizedName,
-      fields,
       run(baseCtx) {
         return command.run({
           ...baseCtx,
@@ -176,9 +169,6 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
           args: parsed.args,
         })
       },
-    }
-    if (attrs) {
-      resolvedCommand.attrs = attrs
     }
     return resolvedCommand
   })

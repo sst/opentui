@@ -145,19 +145,57 @@ In that example, the binding is only active while `getData("vim.mode")` is `"nor
 
 Unknown custom binding fields are not fatal. If no binding-field compiler is registered for a field, the keymap ignores that field and emits a warning.
 
-All entry points below use the same registration, dispatch and query model. They only differ in how they provide targets, focus and input events.
+All entry points use the same registration, dispatch and query model. They only differ in how they provide targets, focus and input events.
+
+## Fields and metadata
+
+Custom fields are raw config inputs. Compiled metadata is what field compilers expose to query UIs.
+
+| Name              | Meaning                                      | Example use                                     |
+| ----------------- | -------------------------------------------- | ----------------------------------------------- |
+| Custom fields     | What the layer, binding or command declared  | `mode`, `enabled`, `desc`, `title`, `namespace` |
+| Compiled metadata | What field compilers expose to query UIs     | `desc`, `group`, `title`, `category`, `label`   |
+
+Fields can affect behavior. Metadata does not. A field compiler can make a record conditional with `require(...)` or `activeWhen(...)`, and it can separately publish metadata with `attr(...)`.
+
+```ts
+keymap.registerBindingFields({
+  mode(value, ctx) {
+    ctx.require("vim.mode", value)
+    ctx.attr("mode", value)
+  },
+})
+```
+
+That field does two things: it gates the binding on `keymap.getData("vim.mode")`, and it exposes `{ mode: value }` to active-key metadata when requested.
+
+Metadata can use a different name from the field when an addon wants to validate, normalize or present a stable public metadata shape:
+
+```ts
+keymap.registerCommandFields({
+  title(value, ctx) {
+    ctx.attr("label", String(value).trim())
+  },
+})
+```
+
+Use top-level custom fields for config DSL. Use `ctx.attr(...)` in field compilers for display/query metadata.
 
 ## Commands
 
-Named commands are the stable app actions in the system. A layer can register a command with a `name`, a `run()` handler and optional fields like `title`, `desc` or `namespace`, and bindings can point at that command by name. Inline binding handlers work too, but named commands are what power command palettes, search and programmatic execution.
+Named commands are the stable app actions in the system. A layer can register a command with a `name`, a `run()` handler and optional top-level fields like `title`, `desc` or `namespace`, and bindings can point at that command by name. Inline binding handlers work too, but named commands are what power command palettes, search and programmatic execution.
 
-Command queries return both raw registration `fields` and any compiled `attrs` produced by command-field addons. `runCommand()` executes the registered command chain directly, while `dispatchCommand()` goes through the active dispatch model and can return `inactive` or `disabled` when that command exists but is not currently dispatchable.
+Command queries return the command objects you registered. Query search/filter can also use compiled command metadata produced by command-field addons. `runCommand()` executes the registered command chain directly, while `dispatchCommand()` goes through the active dispatch model and can return `inactive` or `disabled` when that command exists but is not currently dispatchable.
 
 ## Runtime data
 
 Runtime data is the keymap's mutable key-value store. `setData()` and `getData()` let commands, intercepts and matchers share live state such as an editor mode, leader state or search context.
 
 That data also drives activation. Layer, binding and command fields can depend on runtime values through `require(...)` and `activeWhen(...)`, so changing a value immediately recomputes what is reachable. If the current pending sequence no longer matches after a data change, the engine clears it.
+
+`require(name, value)` is a keyed equality check against `keymap` runtime data. Use it for state the keymap owns, such as `vim.mode === "normal"`.
+
+`activeWhen(matcher)` is an arbitrary runtime predicate or `ReactiveMatcher`. Use it for derived or external state, such as whether an editor has a selection.
 
 ## Pending sequences and active keys
 

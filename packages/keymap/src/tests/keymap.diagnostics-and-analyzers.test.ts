@@ -207,11 +207,9 @@ describe("keymap: diagnostics and analyzers", () => {
 
     expect(getCommand(keymap, "save-file")).toMatchObject({
       name: "save-file",
-      fields: {
-        desc: "Save the current file",
-        usage: ":write <file>",
-        tags: ["file", "write"],
-      },
+      desc: "Save the current file",
+      usage: ":write <file>",
+      tags: ["file", "write"],
     })
 
     expect(getActiveKey(keymap, "x")).toBeDefined()

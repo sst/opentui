@@ -874,7 +874,7 @@ describe("keymap: fields and reactive matchers", () => {
           name: "save-file",
           mode: "normal",
           run(ctx) {
-            calls.push(String(ctx.command?.attrs?.mode))
+            calls.push(String(ctx.command?.mode))
           },
         },
       ],
@@ -890,8 +890,7 @@ describe("keymap: fields and reactive matchers", () => {
     expect(keymap.getCommands().map((command) => command.name)).toEqual(["save-file"])
     expect(getCommand(keymap, "save-file")).toMatchObject({
       name: "save-file",
-      fields: { mode: "normal" },
-      attrs: { mode: "normal" },
+      mode: "normal",
     })
     expect(getActiveKeyNames(keymap)).toEqual(["x"])
 
@@ -1010,7 +1009,7 @@ describe("keymap: fields and reactive matchers", () => {
       reason: "disabled",
       command: {
         name: "hidden-local",
-        fields: { enabled: false },
+        enabled: false,
       },
     })
     expect(keymap.runCommand("submit")).toEqual({ ok: true })

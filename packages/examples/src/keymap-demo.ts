@@ -205,11 +205,11 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
 }
 
 function getExPromptCommandFieldText(command: Command, fieldName: string): string | undefined {
-  return getMetadataText(command.fields[fieldName])
+  return getMetadataText(command[fieldName])
 }
 
 function getExPromptCommandNargs(command: Command): ExArgCount | undefined {
-  const value = command.fields.nargs
+  const value = command["nargs"]
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
   }

@@ -48,12 +48,14 @@ Recognized modifier prefixes (case-insensitive, joined with `+`):
 | ---------------------------- | ---------------------------------------------------------------------------------- |
 | `registerBindingOverrides()` | Layer-local `bindingOverrides` field for replacing bindings by string command name |
 | `registerEnabledFields()`    | Layer and command `enabled` fields                                                 |
-| `registerMetadataFields()`   | Binding `desc` / `group` and command `desc` / `title` / `category` attrs           |
+| `registerMetadataFields()`   | Binding `desc` / `group` and command `desc` / `title` / `category` metadata        |
 | `registerAliasesField()`     | Layer-local `aliases` field for remapping single-key binding names                 |
 
 `registerBindingOverrides()` expects `bindingOverrides` to already be a `BindingInput[]` array. It rewrites that layer's binding array once at registration time. Matching string commands are replaced by the override binding and unmatched bindings stay in place.
 
-`registerEnabledFields()` accepts `boolean`, `() => boolean`, or `ReactiveMatcher` values. It applies to layers and commands, not bindings.
+`registerEnabledFields()` accepts `boolean`, `() => boolean`, or `ReactiveMatcher` values. It applies to layers and commands, not bindings. It controls activation only; it does not publish attrs.
+
+`registerMetadataFields()` validates and trims metadata fields before exposing them in projections. Binding `desc` / `group` become binding metadata. Command `desc` / `title` / `category` become command metadata in `commandAttrs`.
 
 `registerAliasesField()` adds bindings instead of replacing the originals and aliases stay local to the layer that declared them.
 
@@ -117,7 +119,7 @@ registerExCommands(keymap, [
 | `aliases`    | `string[]`                                                                         | no       | Additional names                                                                  |
 | `nargs`      | `"0"`, `"1"`, `"?"`, `"*"`, `"+"`                                                  | no       | Argument-count validation                                                         |
 | `run`        | `(ctx: CommandContext & { raw: string; args: string[] }) => void \| Promise<void>` | yes      | `ctx` is the base `CommandContext` plus the trimmed `raw` input and parsed `args` |
-| extra fields | `unknown`                                                                          | no       | Forwarded into the registered command fields/attrs                                |
+| extra fields | `unknown`                                                                          | no       | Added as top-level fields on the registered command                               |
 
 - Registered ex commands default `namespace` to `excommands`.
 - Aliases produce additional registered commands, for example `:write` and `:w`.

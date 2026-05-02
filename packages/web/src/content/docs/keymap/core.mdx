@@ -98,6 +98,8 @@ The core engine only accepts full `BindingInput[]` arrays. If you want command-t
 
 `BindingInput` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 
+Binding custom fields are compile inputs. They are not exposed as a public `.fields` object. If a binding-field compiler calls `attr(...)`, the compiled metadata appears as `ActiveBinding.attrs` and, when selected, `ActiveKey.bindingAttrs`.
+
 `BindingInput` field defaults:
 
 | Field            | Default   | Description                                                                                  |
@@ -155,6 +157,31 @@ The shared default parser understands single-stroke named keys, modifier chords,
 | `attrs`          | `Readonly<Attributes>?` | Compiled binding-field attrs                           |
 | `commandAttrs`   | `Readonly<Attributes>?` | Compiled command-field attrs for the bound command     |
 
+## Field and metadata model
+
+Custom fields are raw config. Compiled metadata is published by field compilers with `attr(...)`.
+
+| Surface | Custom fields                                                          | Metadata output                                    |
+| ------- | ---------------------------------------------------------------------- | -------------------------------------------------- |
+| Layer   | Extra layer properties feed layer-field compilers and binding pipeline | None. Layers intentionally have no metadata output |
+| Binding | Extra binding properties feed binding-field compilers                  | `ActiveBinding.attrs`, `ActiveKey.bindingAttrs`    |
+| Command | Extra command properties feed command-field compilers                  | `commandAttrs` on active keys and bindings         |
+
+Field compilers can validate and normalize values before publishing attrs. They can also keep behavior-only fields out of public metadata.
+
+```ts
+keymap.registerCommandFields({
+  enabled(value, ctx) {
+    ctx.activeWhen(() => value === true)
+  },
+  title(value, ctx) {
+    ctx.attr("title", String(value).trim())
+  },
+})
+```
+
+In that example, `enabled` controls availability but exposes no metadata. `title` exposes normalized metadata for command palettes and help UIs.
+
 Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical formatting renders `return` as `enter`; `preferDisplay: true` keeps preserved token displays such as `<leader>`. Both are exported from `@opentui/keymap`:
 
 ```ts
@@ -162,6 +189,30 @@ import { stringifyKeyStroke, stringifyKeySequence } from "@opentui/keymap"
 ```
 
 ## Commands and queries
+
+Commands reserve only `name` and `run`. Other top-level properties are custom command fields.
+
+```ts
+keymap.registerLayer({
+  commands: [
+    {
+      name: "save-file",
+      namespace: "file",
+      title: "Save File",
+      run() {},
+    },
+  ],
+})
+
+// getCommands()[0] is the same command object:
+// { name: "save-file", namespace: "file", title: "Save File", run }
+```
+
+Command field compilers can publish metadata, add requirements or attach runtime matchers. Unknown command fields stay on the command object; they do not warn just because no compiler is registered.
+
+Return `{ ok: false, reason: "invalid-args" }` from `run()` when a command wants to reject with a specific programmatic result.
+
+Command queries search and filter across top-level command fields and compiled command metadata. The `namespace` shortcut reads the top-level `namespace` field.
 
 ### Execution
 
@@ -249,9 +300,9 @@ Tokens such as `<leader>` are still registered through the normal keymap token A
 | `rejected`     | Every candidate's handler returned synchronous `false`                                                |
 | `error`        | A resolver, runtime matcher, or handler threw synchronously                                           |
 
-`command` is included on rejected results when `includeCommand: true` is set and the keymap could resolve a record for the name.
+`command` is included on rejected results when `includeCommand: true` is set and the keymap could resolve a command for the name.
 
-Command handlers may be sync or async. Only a synchronous `false` rejects the candidate and lets lower-precedence handlers continue. A returned promise is treated as handled immediately; async rejection is reported through the `error` diagnostic event.
+Command handlers may be sync or async. A synchronous `false` rejects the candidate and lets lower-precedence handlers continue. A handler may also return an explicit `RunCommandResult`, such as `{ ok: false, reason: "invalid-args" }`. A returned promise is treated as handled immediately; async rejection is reported through the `error` diagnostic event.
 
 `RunCommandOptions`:
 
@@ -260,14 +311,14 @@ Command handlers may be sync or async. Only a synchronous `false` rejects the ca
 | `event`          | Event object passed into the command. Defaults to `host.createCommandEvent()`  |
 | `focused`        | Focus context used for active-layer resolution                                 |
 | `target`         | Explicit `ctx.target` override                                                 |
-| `includeCommand` | When `true`, successful and rejected results include the resolved command view |
+| `includeCommand` | When `true`, successful and rejected results include the resolved command object |
 
 ### Queries
 
 | Method                      | Description                                                                    |
 | --------------------------- | ------------------------------------------------------------------------------ |
-| `getCommands(query?)`       | Returns command metadata records                                               |
-| `getCommandEntries(query?)` | Returns command metadata plus bindings for command discovery UIs               |
+| `getCommands(query?)`       | Returns command objects                                                        |
+| `getCommandEntries(query?)` | Returns command objects plus bindings for command discovery UIs                |
 | `getCommandBindings(query)` | Returns bindings grouped by requested command name for known-command label UIs |
 
 `CommandQuery` fields:
@@ -278,14 +329,14 @@ Command handlers may be sync or async. Only a synchronous `false` rejects the ca
 | `focused`    | Override the focus context used by the query                     |
 | `namespace`  | Filter by one or more namespace values                           |
 | `search`     | Text search over command names by default                        |
-| `searchIn`   | Additional fields/attrs to search                                |
-| `filter`     | Object or predicate filter against raw fields and compiled attrs |
+| `searchIn`   | Additional command fields or compiled metadata to search         |
+| `filter`     | Object or predicate filter against command fields and metadata   |
 
 - `reachable` dedupes by command name using the current dispatch winner.
 - `active` keeps every active candidate in precedence order, including same-name duplicates.
 - `registered` ignores focus and returns all registered commands.
 
-Use `getCommandEntries()` for command palettes, searchable help screens and other discovery surfaces that need command records plus their bindings. It runs the full `CommandQuery`, materializes command metadata and attaches matching bindings, so it is the heavier query.
+Use `getCommandEntries()` for command palettes, searchable help screens and other discovery surfaces that need commands plus their bindings. It runs the full `CommandQuery` and attaches matching bindings, so it is the heavier query.
 
 Use `getCommandBindings()` when a UI already knows the commands it wants to label and only needs their bindings:
 

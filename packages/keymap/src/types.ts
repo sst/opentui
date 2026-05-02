@@ -136,16 +136,12 @@ export type KeyLike = string | KeyStrokeInput
 
 /**
  * Public command shape used for layer registration, command queries, command
- * contexts, and command resolver results. Registration may provide raw metadata
- * either as top-level custom fields or through `fields`; normalized command
- * views expose raw metadata on `fields` and compiled metadata on `attrs`.
+ * contexts, and command resolver results. Custom command fields are top-level
+ * properties so registration stays as simple as `{ name, run, desc }`.
  */
 export interface Command<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   name: string
   run: CommandHandler<TTarget, TEvent>
-  fields?: Readonly<Record<string, unknown>>
-  attrs?: Readonly<Attributes>
-  rejectedResult?: Extract<RunCommandResult<TTarget, TEvent>, { ok: false }>
   [key: string]: unknown
 }
 
@@ -198,13 +194,17 @@ export interface CommandContext<TTarget extends object = object, TEvent extends 
   command?: Command<TTarget, TEvent>
 }
 
-export type CommandResult = boolean | void | Promise<boolean | void>
+export type CommandResult<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
+  | boolean
+  | void
+  | RunCommandResult<TTarget, TEvent>
+  | Promise<boolean | void | RunCommandResult<TTarget, TEvent>>
 
 export type CommandResolutionStatus = "resolved" | "unresolved" | "error"
 
 export type CommandHandler<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
   ctx: CommandContext<TTarget, TEvent>,
-) => CommandResult
+) => CommandResult<TTarget, TEvent>
 
 export type BindingCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
   | string
@@ -621,7 +621,9 @@ export interface ActiveKeyState<TTarget extends object = object, TEvent extends 
 
 export interface CommandState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
   extends RuntimeMatchable {
-  command: Command<TTarget, TEvent> & { fields: Readonly<Record<string, unknown>> }
+  command: Command<TTarget, TEvent>
+  fields: Readonly<Record<string, unknown>>
+  attrs?: Readonly<Attributes>
 }
 
 export interface CompiledBindingsResult<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {

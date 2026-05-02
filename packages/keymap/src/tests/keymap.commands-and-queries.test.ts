@@ -62,7 +62,11 @@ describe("keymap: commands and queries", () => {
           title: "Save File",
           category: "File",
           run(ctx) {
-            seen.push({ ...(ctx.command?.attrs ?? {}) })
+            seen.push({
+              desc: ctx.command?.desc,
+              title: ctx.command?.title,
+              category: ctx.command?.category,
+            })
           },
         },
       ],
@@ -133,15 +137,10 @@ describe("keymap: commands and queries", () => {
     ])
     expect(getCommand(keymap, "save-current")).toMatchObject({
       name: "save-current",
-      fields: {
-        namespace: "excommands",
-        title: "Write File",
-        usage: ":write <file>",
-        tags: ["file", "write"],
-      },
-      attrs: {
-        label: "Write File",
-      },
+      namespace: "excommands",
+      title: "Write File",
+      usage: ":write <file>",
+      tags: ["file", "write"],
     })
   })
 
@@ -212,7 +211,7 @@ describe("keymap: commands and queries", () => {
         .getCommands({
           filter: {
             usage(value: unknown, command: Command) {
-              return typeof value === "string" && value.includes("<file>") && command.fields?.namespace === "excommands"
+              return typeof value === "string" && value.includes("<file>") && command.namespace === "excommands"
             },
           },
         })
@@ -266,12 +265,12 @@ describe("keymap: commands and queries", () => {
     })
 
     expect(keymap.getCommands().map((command) => command.name)).toEqual(["save", "quit"])
-    expect(keymap.getCommands().map((command) => command.fields?.title)).toEqual(["Global Save", "Quit"])
-    expect(keymap.getCommands({ visibility: "active" }).map((command) => command.fields?.title)).toEqual([
+    expect(keymap.getCommands().map((command) => command.title)).toEqual(["Global Save", "Quit"])
+    expect(keymap.getCommands({ visibility: "active" }).map((command) => command.title)).toEqual([
       "Global Save",
       "Quit",
     ])
-    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.fields?.title)).toEqual([
+    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.title)).toEqual([
       "Global Save",
       "Quit",
       "Local Save",
@@ -279,13 +278,13 @@ describe("keymap: commands and queries", () => {
 
     target.focus()
 
-    expect(keymap.getCommands().map((command) => command.fields?.title)).toEqual(["Local Save", "Quit"])
-    expect(keymap.getCommands({ visibility: "active" }).map((command) => command.fields?.title)).toEqual([
+    expect(keymap.getCommands().map((command) => command.title)).toEqual(["Local Save", "Quit"])
+    expect(keymap.getCommands({ visibility: "active" }).map((command) => command.title)).toEqual([
       "Local Save",
       "Global Save",
       "Quit",
     ])
-    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.fields?.title)).toEqual([
+    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.title)).toEqual([
       "Global Save",
       "Quit",
       "Local Save",
@@ -315,7 +314,7 @@ describe("keymap: commands and queries", () => {
 
     const snapshot = (visibility?: "reachable" | "active" | "registered") => {
       return keymap.getCommandEntries(visibility ? { visibility } : undefined).map((entry) => ({
-        title: entry.command.fields?.title,
+        title: entry.command.title,
         bindings: entry.bindings
           .map((binding) => stringifyKeySequence(binding.sequence, { preferDisplay: true }))
           .sort(),
@@ -504,9 +503,7 @@ describe("keymap: commands and queries", () => {
 
       return {
         name: command,
-        attrs: {
-          title: "External Run",
-        },
+        title: "External Run",
         run() {},
       }
     })
@@ -542,16 +539,9 @@ describe("keymap: commands and queries", () => {
     expect(save).toMatchObject({
       command: {
         name: "save-file",
-        fields: {
-          desc: "Save the current file",
-          title: "Save File",
-          category: "File",
-        },
-        attrs: {
-          desc: "Save the current file",
-          title: "Save File",
-          category: "File",
-        },
+        desc: "Save the current file",
+        title: "Save File",
+        category: "File",
       },
       bindings: [
         {
@@ -576,12 +566,7 @@ describe("keymap: commands and queries", () => {
     expect(getCommandEntry(keymap, "palette-help")).toMatchObject({
       command: {
         name: "palette-help",
-        fields: {
-          title: "Open Help",
-        },
-        attrs: {
-          title: "Open Help",
-        },
+        title: "Open Help",
       },
       bindings: [],
     })
@@ -730,7 +715,7 @@ describe("keymap: commands and queries", () => {
 
     const second = getCommand(keymap, "save-current")
     expect(second).toBe(first)
-    expect(second?.fields).toEqual({ tags: ["file", "write"] })
+    expect(second?.tags).toEqual(["file", "write"])
   })
 
   test("getCommands returns command metadata by reference", () => {
@@ -758,7 +743,7 @@ describe("keymap: commands and queries", () => {
     ;(payload.tags[1] as { kind: string }).kind = "mutated"
 
     const command = getCommand(keymap, "save-current")
-    const storedPayload = command?.fields?.payload as typeof payload
+    const storedPayload = command?.payload as typeof payload
     expect(storedPayload).toBeDefined()
     expect(storedPayload).toBe(payload)
     expect(storedPayload.nested).toBe(payload.nested)

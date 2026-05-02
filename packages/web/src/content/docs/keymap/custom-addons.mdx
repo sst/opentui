@@ -89,7 +89,31 @@ Every registration API above returns a disposer.
 
 ## Field compilers
 
-Field compilers turn user-supplied layer, binding, or command fields into activation rules and metadata.
+Field compilers turn user-supplied fields into activation rules and public metadata. Layer fields also feed binding pipeline callbacks.
+
+Mental model:
+
+| Term              | Meaning                         | Audience                         |
+| ----------------- | ------------------------------- | -------------------------------- |
+| Custom fields     | Raw config / addon DSL input    | The keymap compiler and addons   |
+| Compiled metadata | Public metadata output          | Command palettes, hints and help |
+
+Fields can be behavior, metadata or both. Compiled metadata is only metadata.
+
+```ts
+keymap.registerBindingFields({
+  mode(value, ctx) {
+    ctx.require("app.mode", value)
+    ctx.attr("mode", value)
+  },
+})
+
+keymap.registerLayer({
+  bindings: [{ key: "x", mode: "normal", cmd() {} }],
+})
+```
+
+That `mode` field is both a condition and metadata. The binding is active only when `keymap.getData("app.mode")` is `"normal"`, and metadata queries can expose `{ mode: "normal" }`.
 
 | Context               | Methods                                        | Notes                                                        |
 | --------------------- | ---------------------------------------------- | ------------------------------------------------------------ |
@@ -97,14 +121,77 @@ Field compilers turn user-supplied layer, binding, or command fields into activa
 | `BindingFieldContext` | `require(...)`, `attr(...)`, `activeWhen(...)` | Binding attrs can surface on active bindings and active keys |
 | `CommandFieldContext` | `require(...)`, `attr(...)`, `activeWhen(...)` | Command attrs can surface on command queries and active keys |
 
-Important behavior:
+### `attr(...)`
 
-- `require(name, value)` ties activation to `keymap` runtime data.
-- `activeWhen(...)` accepts either a raw callback or a `ReactiveMatcher`.
-- `attr(name, value)` exposes compiled metadata through query surfaces.
-- Layer fields do not have `attr(...)` because there is no layer-level public attrs surface.
+`attr(name, value)` publishes compiled metadata. It does not affect activation.
 
-`ReactiveMatcher` is the cache-friendly form:
+The attr name does not have to match the field name. That is useful when an addon wants to validate, normalize, derive or standardize metadata before exposing it.
+
+```ts
+keymap.registerCommandFields({
+  title(value, ctx) {
+    ctx.attr("label", String(value).trim())
+  },
+})
+```
+
+Use same-name attrs when the field already is the public metadata shape:
+
+```ts
+keymap.registerCommandFields({
+  desc(value, ctx) {
+    ctx.attr("desc", String(value).trim())
+  },
+})
+```
+
+Use no attr when the field is behavior-only:
+
+```ts
+keymap.registerCommandFields({
+  enabled(value, ctx) {
+    ctx.activeWhen(() => value === true)
+  },
+})
+```
+
+Compiled metadata is exposed through projections such as `ActiveBinding.attrs`, `ActiveBinding.commandAttrs`, `ActiveKey.bindingAttrs` and `ActiveKey.commandAttrs`. `getCommands()` returns the original command objects, not a separate metadata record.
+
+### `require(...)` vs `activeWhen(...)`
+
+Both gate activation. They differ in where the condition comes from.
+
+| Method                  | Use when                                      | Evaluation model                                            |
+| ----------------------- | --------------------------------------------- | ----------------------------------------------------------- |
+| `require(name, value)`  | The condition is equality against keymap data | Checks `Object.is(keymap.getData(name), value)`             |
+| `activeWhen(callback)`  | The condition is arbitrary code               | Calls the callback whenever the record is evaluated         |
+| `activeWhen(reactive)`  | External state can notify when it changed     | Caches `reactive.get()` until `reactive.subscribe()` fires   |
+
+Use `require(...)` for keymap-owned state such as modes:
+
+```ts
+keymap.registerBindingFields({
+  mode(value, ctx) {
+    ctx.require("app.mode", value)
+  },
+})
+
+keymap.setData("app.mode", "insert")
+```
+
+Use `activeWhen(...)` for derived or external state:
+
+```ts
+keymap.registerBindingFields({
+  hasSelection(_value, ctx) {
+    ctx.activeWhen(() => editor.selection.length > 0)
+  },
+})
+```
+
+`require(...)` is keyed and cache-friendly. Calling `setData(name, value)` invalidates only records that depend on that data key.
+
+Raw callback matchers re-run on every read. `ReactiveMatcher` is the cache-friendly matcher form:
 
 ```ts
 interface ReactiveMatcher {
@@ -113,7 +200,17 @@ interface ReactiveMatcher {
 }
 ```
 
-Raw callback matchers re-run on every read. Reactive matchers stay cached until they notify.
+### Surface rules
+
+| Surface | Field storage                                                                | Metadata output                                 |
+| ------- | ---------------------------------------------------------------------------- | ----------------------------------------------- |
+| Layer   | Extra layer fields feed layer compilers, parsers, expanders and transformers | No metadata output                              |
+| Binding | Extra binding fields are compiler inputs only                                | `ActiveBinding.attrs`, `ActiveKey.bindingAttrs` |
+| Command | Extra command properties are compiler inputs and stay on the command object   | `commandAttrs` projections                      |
+
+Layer fields intentionally do not have `attr(...)` because there is no layer-level metadata surface on active keys, active bindings or commands.
+
+Unknown layer and binding fields are ignored and emit warnings. Unknown command fields stay on the command object, because command metadata is queryable even without a registered command-field compiler.
 
 ## Binding pipeline callbacks
 
@@ -177,24 +274,27 @@ Use the `clear*()` methods only when your addon owns that whole stage. They are 
 ### `CommandResolver`
 
 ```ts
-;(command, ctx) => ResolvedBindingCommand | undefined
+;(command, ctx) => Command | undefined
 ```
 
 `CommandResolverContext` exposes:
 
-| Member                   | Purpose                                              |
-| ------------------------ | ---------------------------------------------------- |
-| `getCommandAttrs(name)`  | Read compiled command attrs for a registered command |
-| `getCommandRecord(name)` | Read the registered command record                   |
+| Member             | Purpose                              |
+| ------------------ | ------------------------------------ |
+| `getCommand(name)` | Read the registered command, if any  |
 
-`ResolvedBindingCommand` can return:
+Resolver commands use the same shape as registered commands: `name`, `run` and optional custom top-level fields.
 
-| Field            | Purpose                                     |
-| ---------------- | ------------------------------------------- |
-| `run`            | The command handler to execute              |
-| `attrs`          | Extra command attrs exposed through queries |
-| `record`         | Custom `CommandRecord` metadata             |
-| `rejectedResult` | Override the default rejected result        |
+Return an explicit command result from `run()` when the command wants a specific failure reason:
+
+```ts
+return {
+  name: ":write",
+  run() {
+    return { ok: false, reason: "invalid-args" }
+  },
+}
+```
 
 Resolver results used for static binding commands and command-view projections may be cached for the lifetime of that active or registered view.
 Programmatic `runCommand()` and `dispatchCommand()` resolve the supplied command string for each call.
@@ -324,6 +424,7 @@ This is how the OpenTUI textarea helpers safely share command and suspension inf
 ### Warnings vs errors
 
 - Unknown custom layer and binding fields are ignored and emit warnings.
+- Unknown custom command fields stay on the command object.
 - Unknown tokens inside binding strings are ignored and emit warnings.
 - Registering the missing token later recompiles affected layers.
 

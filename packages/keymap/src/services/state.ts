@@ -1,5 +1,6 @@
 import type {
   ActiveKey,
+  Attributes,
   BindingExpander,
   BindingFieldCompiler,
   LayerBindingsTransformer,
@@ -69,11 +70,12 @@ export interface LayerCommandEntry<TTarget extends object, TEvent extends Keymap
 export interface ResolvedCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {
   target?: TTarget
   command: Command<TTarget, TEvent>
+  attrs?: Readonly<Attributes>
 }
 
 export interface CommandChainCacheState<TTarget extends object, TEvent extends KeymapEvent> {
   resolvedChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
-  fallback: Map<string, Command<TTarget, TEvent> | null>
+  fallback: Map<string, ResolvedCommandEntry<TTarget, TEvent> | null>
   fallbackErrors: Set<string>
 }
 

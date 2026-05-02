@@ -893,9 +893,9 @@ const scenarios: BenchmarkScenario[] = [
             searchIn: ["name", "title", "usage", "label"],
             filter(command) {
               return (
-                command.fields?.namespace === "bench" &&
-                Array.isArray(command.fields.tags) &&
-                command.fields.tags.includes("file")
+                command.namespace === "bench" &&
+                Array.isArray(command.tags) &&
+                command.tags.includes("file")
               )
             },
           })
