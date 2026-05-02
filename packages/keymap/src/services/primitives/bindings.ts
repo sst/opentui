@@ -1,6 +1,6 @@
 import type {
-  BindingInput,
-  BindingInputsValidationResult,
+  Binding,
+  BindingsValidationResult,
   Bindings,
   KeymapEvent,
   ParsedBindingInput,
@@ -11,7 +11,7 @@ function isKeyLike(value: unknown): boolean {
   return typeof value === "string" || (!!value && typeof value === "object" && !Array.isArray(value))
 }
 
-export function validateBindingInputs(bindings: unknown): BindingInputsValidationResult {
+export function validateBindings(bindings: unknown): BindingsValidationResult {
   if (!Array.isArray(bindings)) {
     return { ok: false, reason: "Invalid keymap bindings: expected an array of binding objects" }
   }
@@ -21,7 +21,7 @@ export function validateBindingInputs(bindings: unknown): BindingInputsValidatio
       return { ok: false, reason: `Invalid keymap binding at index ${index}: expected a binding object` }
     }
 
-    if (!isKeyLike((binding as BindingInput).key)) {
+    if (!isKeyLike((binding as Binding).key)) {
       return {
         ok: false,
         reason: `Invalid keymap binding at index ${index}: expected "key" to be a string or keystroke object`,
@@ -32,10 +32,10 @@ export function validateBindingInputs(bindings: unknown): BindingInputsValidatio
   return { ok: true }
 }
 
-export function snapshotBindingInputs<TTarget extends object, TEvent extends KeymapEvent>(
+export function snapshotBindings<TTarget extends object, TEvent extends KeymapEvent>(
   bindings: Bindings<TTarget, TEvent>,
-): BindingInput<TTarget, TEvent>[] {
-  const validation = validateBindingInputs(bindings)
+): Binding<TTarget, TEvent>[] {
+  const validation = validateBindings(bindings)
   if (!validation.ok) {
     throw new Error(validation.reason)
   }

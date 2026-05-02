@@ -8,14 +8,14 @@ import type {
   BindingEvent,
   BindingExpander,
   BindingExpanderContext,
-  BindingInput,
+  Binding,
   BindingParser,
   BindingParserContext,
   EventData,
   ParsedBindingInput,
   ReactiveMatcher,
-  CompiledBinding,
-  CompiledBindingsResult,
+  BindingState,
+  BindingCompilationResult,
   KeyLike,
   KeyMatch,
   KeymapEvent,
@@ -35,7 +35,7 @@ import {
   normalizeBindingTokenName,
   stringifyKeySequence,
 } from "./keys.js"
-import { snapshotParsedBindingInput } from "./primitives/binding-inputs.js"
+import { snapshotParsedBindingInput } from "./primitives/bindings.js"
 import { mergeAttribute, mergeRequirement } from "./primitives/field-invariants.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
 
@@ -119,14 +119,14 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
   }
 
   public compileBindings(
-    bindings: readonly BindingInput<TTarget, TEvent>[],
+    bindings: readonly Binding<TTarget, TEvent>[],
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
     sourceTarget: TTarget | undefined,
     sourceLayerOrder: number,
     compileFields?: Readonly<Record<string, unknown>>,
-  ): CompiledBindingsResult<TTarget, TEvent> {
+  ): BindingCompilationResult<TTarget, TEvent> {
     const root = createSequenceNode<TTarget, TEvent>(null, null, null)
-    const compiledBindings: CompiledBinding<TTarget, TEvent>[] = []
+    const bindingStates: BindingState<TTarget, TEvent>[] = []
     let hasTokenBindings = false
     const bindingExpanders = this.state.environment.bindingExpanders.values()
     const bindingParsers = this.state.environment.bindingParsers.values()
@@ -249,7 +249,8 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
 
             const attrs = mergedAttrs ? snapshotAttributes(mergedAttrs) : undefined
             const command = normalizeBindingCommand(compiledInput.cmd)
-            const compiledBinding: CompiledBinding<TTarget, TEvent> = {
+            const compiledBinding: BindingState<TTarget, TEvent> = {
+              binding,
               sequence: compiledSequence,
               command,
               event,
@@ -286,7 +287,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
               this.insertBinding(root, compiledBinding, allowExactPrefixAmbiguity)
             }
 
-            compiledBindings.push(compiledBinding)
+            bindingStates.push(compiledBinding)
           } catch (error) {
             this.notify.emitError(
               "binding-compile-error",
@@ -300,7 +301,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
 
     return {
       root,
-      bindings: compiledBindings,
+      bindings: bindingStates,
       hasTokenBindings,
     }
   }
@@ -329,7 +330,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
   }
 
   private applyBindingTransformers(
-    binding: BindingInput<TTarget, TEvent>,
+    binding: Binding<TTarget, TEvent>,
     sequence: KeySequencePart[],
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
     bindingParsers: readonly BindingParser[],
@@ -385,7 +386,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
 
   private insertBinding(
     root: SequenceNode<TTarget, TEvent>,
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
     allowExactPrefixAmbiguity: boolean,
   ): void {
     let node = root

@@ -5,7 +5,7 @@ import type {
   ActiveKeyOptions,
   ActiveKeySelection,
   ActiveKeyState,
-  CompiledBinding,
+  BindingState,
   Hooks,
   KeyMatch,
   KeymapEvent,
@@ -381,11 +381,11 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   }
 
   public collectMatchingBindings(
-    bindings: readonly CompiledBinding<TTarget, TEvent>[],
+    bindings: readonly BindingState<TTarget, TEvent>[],
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
-  ): CompiledBinding<TTarget, TEvent>[] {
-    const matches: CompiledBinding<TTarget, TEvent>[] = []
+  ): BindingState<TTarget, TEvent>[] {
+    const matches: BindingState<TTarget, TEvent>[] = []
 
     for (const binding of bindings) {
       if (this.conditions.matchesConditions(binding) && this.catalog.isBindingVisible(binding, focused, activeView)) {
@@ -397,7 +397,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   }
 
   private hasMatchingBindings(
-    bindings: readonly CompiledBinding<TTarget, TEvent>[],
+    bindings: readonly BindingState<TTarget, TEvent>[],
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ): boolean {
@@ -414,7 +414,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     node: SequenceNode<TTarget, TEvent>,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
-    reachableBindings: readonly CompiledBinding<TTarget, TEvent>[] = this.collectMatchingBindings(
+    reachableBindings: readonly BindingState<TTarget, TEvent>[] = this.collectMatchingBindings(
       node.reachableBindings,
       focused,
       activeView,
@@ -466,7 +466,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   }
 
   private toActiveBinding(
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ): ActiveBinding<TTarget, TEvent> {
@@ -482,7 +482,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   }
 
   public collectActiveBindings(
-    bindings: readonly CompiledBinding<TTarget, TEvent>[],
+    bindings: readonly BindingState<TTarget, TEvent>[],
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ): ActiveBinding<TTarget, TEvent>[] {
@@ -669,18 +669,18 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   }
 
   private selectActiveBindings(
-    bindings: readonly CompiledBinding<TTarget, TEvent>[],
+    bindings: readonly BindingState<TTarget, TEvent>[],
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ):
     | {
-        bindings: readonly CompiledBinding<TTarget, TEvent>[]
-        commandBinding?: CompiledBinding<TTarget, TEvent>
+        bindings: readonly BindingState<TTarget, TEvent>[]
+        commandBinding?: BindingState<TTarget, TEvent>
         stop: boolean
       }
     | undefined {
-    const selected: CompiledBinding<TTarget, TEvent>[] = []
-    let commandBinding: CompiledBinding<TTarget, TEvent> | undefined
+    const selected: BindingState<TTarget, TEvent>[] = []
+    let commandBinding: BindingState<TTarget, TEvent> | undefined
 
     for (const binding of bindings) {
       if (!this.conditions.matchesConditions(binding) || !this.catalog.isBindingVisible(binding, focused, activeView)) {

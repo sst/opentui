@@ -220,7 +220,7 @@ String bindings go through an ordered pipeline.
 2. Parsers turn strings into `KeySequencePart[]`.
 3. Transformers rewrite parsed bindings or add more.
 
-Layer-binding transformers run earlier than that pipeline and only once, when the layer is registered. Use them when an addon needs to replace or filter the whole `BindingInput[]` set before compilation.
+Layer-binding transformers run earlier than that pipeline and only once, when the layer is registered. Use them when an addon needs to replace or filter the whole `Binding[]` set before compilation.
 
 Object-form keys such as `{ name: "return", ctrl: true }` skip string parsing and normalize directly.
 

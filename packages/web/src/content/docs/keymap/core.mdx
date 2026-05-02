@@ -76,7 +76,7 @@ keymap.registerLayer({
 | `target`     | Optional local target. Omit it for a global layer                                            |
 | `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present         |
 | `priority`   | Higher numbers win. Within the same priority, newer layers win                               |
-| `bindings`   | `BindingInput[]`                                                                             |
+| `bindings`   | `Binding[]`                                                                             |
 | `commands`   | Named command definitions registered with the same layer                                     |
 | extra fields | Feed layer-field compilers and binding compilation. Layer fields do not surface public attrs |
 
@@ -94,13 +94,13 @@ keymap.registerLayer({
 | Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly  |
 | Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only |
 
-The core engine only accepts full `BindingInput[]` arrays. If you want command-to-key config sugar, use `commandBindings(map)` from `@opentui/keymap/extras` to build the array before calling `registerLayer()`.
+The core engine only accepts full `Binding[]` arrays. If you want command-to-key config sugar, use `commandBindings(map)` from `@opentui/keymap/extras` to build the array before calling `registerLayer()`.
 
-`BindingInput` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
+`Binding` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 
 Binding custom fields are compile inputs. They are not exposed as a public `.fields` object. If a binding-field compiler calls `attr(...)`, the compiled metadata appears as `ActiveBinding.attrs` and, when selected, `ActiveKey.bindingAttrs`.
 
-`BindingInput` field defaults:
+`Binding` field defaults:
 
 | Field            | Default   | Description                                                                                  |
 | ---------------- | --------- | -------------------------------------------------------------------------------------------- |
@@ -225,7 +225,7 @@ Pure extra exported from `@opentui/keymap/extras`:
 
 | Helper                           | Description                                                                                            |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `commandBindings(map)`           | Converts a command-to-key object map into `BindingInput[]`, trimming command keys before emitting them |
+| `commandBindings(map)`           | Converts a command-to-key object map into `Binding[]`, trimming command keys before emitting them |
 | `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                        |
 | `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default                   |
 | `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)` lookup                  |

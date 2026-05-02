@@ -9,7 +9,7 @@ import {
   type Renderable,
   type TextareaAction,
 } from "@opentui/core"
-import type { BindingInput, Bindings, Command, Keymap, Layer } from "../../index.js"
+import type { Binding, Bindings, Command, Keymap, Layer } from "../../index.js"
 
 interface KeyBindingLike {
   name: string
@@ -246,7 +246,7 @@ function setTextareaSuspend(editor: TextareaRenderable, suspended: boolean): voi
 function createDefaultTextareaBindings(
   commandNames: Readonly<Record<EditBufferCommandName, string>>,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): BindingInput[] {
+): Binding[] {
   return defaultTextareaKeyBindings.map((binding) => ({
     key: keyBindingToString(binding),
     cmd: commandNames[binding.action],
@@ -260,9 +260,9 @@ function createDefaultTextareaBindings(
  * composing a custom textarea integration.
  */
 export function createTextareaBindings(
-  overrides?: readonly BindingInput[],
+  overrides?: readonly Binding[],
   options?: EditBufferCommandOptions,
-): BindingInput[] {
+): Binding[] {
   return createTextareaBindingsWithResolvedOptions(
     overrides,
     resolveEditBufferCommandNames(options),
@@ -271,10 +271,10 @@ export function createTextareaBindings(
 }
 
 function createTextareaBindingsWithResolvedOptions(
-  overrides: readonly BindingInput[] | undefined,
+  overrides: readonly Binding[] | undefined,
   commandNames: Readonly<Record<EditBufferCommandName, string>>,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): BindingInput[] {
+): Binding[] {
   const overrideBindings = overrides ?? []
   return [...overrideBindings, ...createDefaultTextareaBindings(commandNames, descriptions)]
 }

@@ -1,18 +1,18 @@
-import type { BindingInput, Keymap, KeymapEvent } from "../../index.js"
+import type { Binding, Keymap, KeymapEvent } from "../../index.js"
 
 function normalizeBindingOverrides<TTarget extends object, TEvent extends KeymapEvent>(
   value: unknown,
-): readonly BindingInput<TTarget, TEvent>[] {
+): readonly Binding<TTarget, TEvent>[] {
   if (!Array.isArray(value)) {
     throw new Error('Keymap layer field "bindingOverrides" must be an array of binding objects')
   }
 
-  return value as readonly BindingInput<TTarget, TEvent>[]
+  return value as readonly Binding<TTarget, TEvent>[]
 }
 
 function getBindingOverrides<TTarget extends object, TEvent extends KeymapEvent>(
   layer: Readonly<Record<string, unknown>>,
-): readonly BindingInput<TTarget, TEvent>[] | undefined {
+): readonly Binding<TTarget, TEvent>[] | undefined {
   const overrides = layer.bindingOverrides
   if (!overrides || !Array.isArray(overrides)) {
     return undefined

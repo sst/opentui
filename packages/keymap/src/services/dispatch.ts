@@ -30,7 +30,7 @@ import {
   type PendingSequenceState,
   type RawInterceptOptions,
   type RawInputContext,
-  type CompiledBinding,
+  type BindingState,
   type RegisteredLayer,
   type SequenceNode,
 } from "../types.js"
@@ -299,7 +299,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     const matchKeys = this.resolveEventMatchKeys(event)
 
     layerLoop: for (const layer of activeLayers) {
-      if (layer.compiledBindings.length === 0) {
+      if (layer.bindingStates.length === 0) {
         continue
       }
 
@@ -556,7 +556,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     event: TEvent
     focused: TTarget | null
     continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[]
-    exactBindingsSource: readonly CompiledBinding<TTarget, TEvent>[]
+    exactBindingsSource: readonly BindingState<TTarget, TEvent>[]
     runExact: () => void
   }): boolean {
     const { event, focused, continuationCaptures, exactBindingsSource, runExact } = options
@@ -670,7 +670,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     event: TEvent
     focused: TTarget | null
     getSequence: () => ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>
-    exactBindings: readonly CompiledBinding<TTarget, TEvent>[]
+    exactBindings: readonly BindingState<TTarget, TEvent>[]
     continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[]
     activeView: ReturnType<CommandCatalogService<TTarget, TEvent>["getActiveCommandView"]>
   }): InternalDisambiguationDecision | undefined {
@@ -1033,7 +1033,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   ): { handled: boolean; stop: boolean } {
     let handled = false
 
-    for (const binding of layer.compiledBindings) {
+    for (const binding of layer.bindingStates) {
       if (binding.event !== "release") {
         continue
       }
@@ -1080,7 +1080,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
   private runBindings(
     layer: RegisteredLayer<TTarget, TEvent>,
-    bindings: CompiledBinding<TTarget, TEvent>[],
+    bindings: BindingState<TTarget, TEvent>[],
     event: TEvent,
     focused: TTarget | null,
   ): { handled: boolean; stop: boolean } {

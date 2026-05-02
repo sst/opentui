@@ -5,7 +5,7 @@ import type {
   CommandContext,
   CommandHandler,
   CommandResult,
-  CompiledBinding,
+  BindingState,
   KeymapEvent,
   RegisteredLayer,
   RunCommandOptions,
@@ -204,7 +204,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
 
   public runBinding(
     bindingLayer: RegisteredLayer<TTarget, TEvent>,
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
     event: TEvent,
     focused: TTarget | null,
   ): boolean {
@@ -345,7 +345,7 @@ function isRunCommandResult<TTarget extends object, TEvent extends KeymapEvent>(
 }
 
 function applyBindingEventEffects<TTarget extends object, TEvent extends KeymapEvent>(
-  binding: CompiledBinding<TTarget, TEvent>,
+  binding: BindingState<TTarget, TEvent>,
   event: TEvent,
 ): void {
   if (!binding.preventDefault) {

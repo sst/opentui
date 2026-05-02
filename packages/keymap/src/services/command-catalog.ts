@@ -12,7 +12,7 @@ import type {
   CommandQueryValue,
   CommandResolver,
   CommandResolverContext,
-  CompiledBinding,
+  BindingState,
   EventData,
   KeymapEvent,
   KeymapHost,
@@ -424,7 +424,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   }
 
   public isBindingVisible(
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ): boolean {
@@ -444,7 +444,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   }
 
   public getBindingCommandAttrs(
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ): Readonly<Attributes> | undefined {
@@ -667,7 +667,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       layers.sort((left, right) => left.order - right.order)
 
       for (const layer of layers) {
-        for (const binding of layer.compiledBindings) {
+        for (const binding of layer.bindingStates) {
           this.collectBindingForCommandEntries(grouped, indexesByName, binding)
         }
       }
@@ -680,11 +680,11 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     }
 
     for (const layer of getActiveLayersForFocused(this.state.layers, this.host, context.focused)) {
-      if (layer.compiledBindings.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
+      if (layer.bindingStates.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
         continue
       }
 
-      for (const binding of layer.compiledBindings) {
+      for (const binding of layer.bindingStates) {
         if (
           !this.conditions.matchesConditions(binding) ||
           !this.isBindingVisible(binding, context.focused, activeView)
@@ -708,7 +708,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     if (context.visibility === "registered") {
       // Layer Set iteration is registration order, which matches ascending layer order.
       for (const layer of this.state.layers.layers) {
-        for (const binding of layer.compiledBindings) {
+        for (const binding of layer.bindingStates) {
           this.collectBindingForCommandBindings(bindingsByCommand, binding, context)
         }
       }
@@ -721,11 +721,11 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     }
 
     for (const layer of getActiveLayersForFocused(this.state.layers, this.host, context.focused)) {
-      if (layer.compiledBindings.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
+      if (layer.bindingStates.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
         continue
       }
 
-      for (const binding of layer.compiledBindings) {
+      for (const binding of layer.bindingStates) {
         if (
           !this.conditions.matchesConditions(binding) ||
           !this.isBindingVisible(binding, context.focused, activeView)
@@ -746,7 +746,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       bindings: ActiveBinding<TTarget, TEvent>[]
     }>,
     indexesByName: ReadonlyMap<string, readonly number[]>,
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
   ): void {
     if (typeof binding.command !== "string") {
       return
@@ -769,7 +769,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
 
   private collectBindingForCommandBindings(
     bindingsByCommand: Map<string, ActiveBinding<TTarget, TEvent>[]>,
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
     context: {
       visibility: "reachable" | "active" | "registered"
       focused: TTarget | null
@@ -789,7 +789,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   }
 
   private createActiveBinding(
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
     commandAttrs: Readonly<Attributes> | undefined,
   ): ActiveBinding<TTarget, TEvent> {
     return {
@@ -804,7 +804,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   }
 
   private getCommandBindingAttrs(
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
     context: {
       visibility: "reachable" | "active" | "registered"
       focused: TTarget | null

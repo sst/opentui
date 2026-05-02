@@ -3,9 +3,9 @@ import type { CommandCatalogService } from "./command-catalog.js"
 import type { ConditionService } from "./conditions.js"
 import type { ActivationService } from "./activation.js"
 import type {
-  BindingInput,
-  CompiledBinding,
-  CompiledBindingsResult,
+  Binding,
+  BindingState,
+  BindingCompilationResult,
   EventData,
   KeymapEvent,
   KeymapHost,
@@ -26,10 +26,10 @@ import { RESERVED_LAYER_FIELDS } from "../schema.js"
 import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
 import {
-  snapshotBindingInputs,
+  snapshotBindings,
   snapshotParsedBindingInput,
-  validateBindingInputs,
-} from "./primitives/binding-inputs.js"
+  validateBindings,
+} from "./primitives/bindings.js"
 import { mergeRequirement } from "./primitives/field-invariants.js"
 import { cloneKeySequence } from "./keys.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
@@ -107,8 +107,8 @@ interface AnalyzeLayerOptions<TTarget extends object, TEvent extends KeymapEvent
   target?: TTarget
   order: number
   commandLookup?: ReadonlyMap<string, CommandState<TTarget, TEvent>>
-  bindingInputs: readonly BindingInput<TTarget, TEvent>[]
-  compiledBindings: readonly CompiledBinding<TTarget, TEvent>[]
+  sourceBindings: readonly Binding<TTarget, TEvent>[]
+  bindingStates: readonly BindingState<TTarget, TEvent>[]
   root: RegisteredLayer<TTarget, TEvent>["root"]
   hasTokenBindings: boolean
 }
@@ -131,9 +131,9 @@ function getSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
 
 function buildLayerBindingAnalyses<TTarget extends object, TEvent extends KeymapEvent>(
   root: SequenceNode<TTarget, TEvent>,
-  compiledBindings: readonly CompiledBinding<TTarget, TEvent>[],
+  bindingStates: readonly BindingState<TTarget, TEvent>[],
 ): LayerBindingAnalysis<TTarget, TEvent>[] {
-  return compiledBindings.map((binding) => {
+  return bindingStates.map((binding) => {
     const node = binding.event === "press" ? getSequenceNode(root, binding.sequence) : undefined
 
     return {
@@ -174,7 +174,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         return NOOP
       }
 
-      let bindingInputs: BindingInput<TTarget, TEvent>[]
+      let sourceBindings: Binding<TTarget, TEvent>[]
       let requires: readonly [name: string, value: unknown][]
       let matchers: readonly RuntimeMatcher[]
       let conditionKeys: readonly string[]
@@ -186,7 +186,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
 
       try {
         targetMode = this.normalizeTargetMode(layer)
-        bindingInputs = this.applyLayerBindingsTransformers(snapshotBindingInputs(layer.bindings ?? []), layer)
+        sourceBindings = this.applyLayerBindingsTransformers(snapshotBindings(layer.bindings ?? []), layer)
         commands =
           !layer.commands || layer.commands.length === 0 ? [] : this.options.commands.normalizeCommands(layer.commands)
         commandLookup = createCommandLookup(commands)
@@ -198,15 +198,15 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       }
 
       const order = this.state.core.order++
-      const compiledBindings = this.options.compiler.compileBindings(
-        bindingInputs,
+      const bindingStates = this.options.compiler.compileBindings(
+        sourceBindings,
         this.state.environment.tokens,
         target,
         order,
         compileFields,
       )
 
-      if (compiledBindings.bindings.length === 0 && !compiledBindings.hasTokenBindings && commands.length === 0) {
+      if (bindingStates.bindings.length === 0 && !bindingStates.hasTokenBindings && commands.length === 0) {
         return NOOP
       }
 
@@ -214,10 +214,10 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         target,
         order,
         commandLookup,
-        bindingInputs,
-        compiledBindings: compiledBindings.bindings,
-        root: compiledBindings.root,
-        hasTokenBindings: compiledBindings.hasTokenBindings,
+        sourceBindings,
+        bindingStates: bindingStates.bindings,
+        root: bindingStates.root,
+        hasTokenBindings: bindingStates.hasTokenBindings,
       })
 
       const registeredLayer: RegisteredLayer<TTarget, TEvent> = {
@@ -233,12 +233,12 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         compileFields,
         commands,
         commandLookup,
-        bindingInputs,
-        compiledBindings: compiledBindings.bindings,
+        sourceBindings,
+        bindingStates: bindingStates.bindings,
         hasUnkeyedCommands: commands.some((command) => command.hasUnkeyedMatchers),
-        hasUnkeyedBindings: compiledBindings.bindings.some((binding) => binding.hasUnkeyedMatchers),
-        hasTokenBindings: compiledBindings.hasTokenBindings,
-        root: compiledBindings.root,
+        hasUnkeyedBindings: bindingStates.bindings.some((binding) => binding.hasUnkeyedMatchers),
+        hasTokenBindings: bindingStates.hasTokenBindings,
+        root: bindingStates.root,
       }
 
       this.state.layers.layers.add(registeredLayer)
@@ -255,7 +255,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       for (const command of registeredLayer.commands) {
         this.connectRuntimeMatchable(command)
       }
-      for (const binding of registeredLayer.compiledBindings) {
+      for (const binding of registeredLayer.bindingStates) {
         this.connectRuntimeMatchable(binding)
       }
       this.indexLayer(registeredLayer)
@@ -284,7 +284,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
 
   public applyTokenState(nextTokens: Map<string, ResolvedKeyToken>): void {
     this.notify.runWithStateChangeBatch(() => {
-      const nextCompilations = new Map<RegisteredLayer<TTarget, TEvent>, CompiledBindingsResult<TTarget, TEvent>>()
+      const nextCompilations = new Map<RegisteredLayer<TTarget, TEvent>, BindingCompilationResult<TTarget, TEvent>>()
 
       for (const layer of this.state.layers.layers) {
         if (!layer.hasTokenBindings) {
@@ -298,7 +298,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
 
       let shouldClearPending = false
       for (const [layer, compilation] of nextCompilations) {
-        if (this.applyCompiledBindings(layer, compilation)) {
+        if (this.applyBindingStates(layer, compilation)) {
           shouldClearPending = true
         }
       }
@@ -319,13 +319,13 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       let shouldClearPending = false
 
       for (const layer of this.state.layers.layers) {
-        if (layer.bindingInputs.length === 0) {
+        if (layer.sourceBindings.length === 0) {
           continue
         }
 
         const compilation = this.compileLayerBindings(layer, this.state.environment.tokens)
 
-        if (this.applyCompiledBindings(layer, compilation)) {
+        if (this.applyBindingStates(layer, compilation)) {
           shouldClearPending = true
         }
 
@@ -360,7 +360,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       for (const command of layer.commands) {
         this.disconnectRuntimeMatchable(command)
       }
-      for (const binding of layer.compiledBindings) {
+      for (const binding of layer.bindingStates) {
         this.disconnectRuntimeMatchable(binding)
       }
 
@@ -382,9 +382,9 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
   }
 
   private applyLayerBindingsTransformers(
-    bindings: BindingInput<TTarget, TEvent>[],
+    bindings: Binding<TTarget, TEvent>[],
     layer: Layer<TTarget, TEvent>,
-  ): BindingInput<TTarget, TEvent>[] {
+  ): Binding<TTarget, TEvent>[] {
     const transformers = this.state.environment.layerBindingsTransformers.values()
     if (transformers.length === 0) {
       return bindings
@@ -395,13 +395,13 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     for (const transformer of transformers) {
       const next = transformer(current, {
         layer,
-        validateBindings: (bindings) => validateBindingInputs(bindings),
+        validateBindings: (bindings) => validateBindings(bindings),
       })
       if (!next) {
         continue
       }
 
-      current = snapshotBindingInputs(next)
+      current = snapshotBindings(next)
     }
 
     return current
@@ -413,12 +413,12 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       return
     }
 
-    const bindings = buildLayerBindingAnalyses(options.root, options.compiledBindings)
+    const bindings = buildLayerBindingAnalyses(options.root, options.bindingStates)
 
     const ctx: LayerAnalysisContext<TTarget, TEvent> = {
       target: options.target,
       order: options.order,
-      bindingInputs: options.bindingInputs,
+      sourceBindings: options.sourceBindings,
       bindings,
       hasTokenBindings: options.hasTokenBindings,
       checkCommandResolution: (command) => {
@@ -495,9 +495,9 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
   private compileLayerBindings(
     layer: RegisteredLayer<TTarget, TEvent>,
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
-  ): CompiledBindingsResult<TTarget, TEvent> {
+  ): BindingCompilationResult<TTarget, TEvent> {
     return this.options.compiler.compileBindings(
-      layer.bindingInputs,
+      layer.sourceBindings,
       tokens,
       layer.target,
       layer.order,
@@ -505,30 +505,30 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     )
   }
 
-  private applyCompiledBindings(
+  private applyBindingStates(
     layer: RegisteredLayer<TTarget, TEvent>,
-    compilation: CompiledBindingsResult<TTarget, TEvent>,
+    compilation: BindingCompilationResult<TTarget, TEvent>,
   ): boolean {
     this.runLayerAnalyzers({
       target: layer.target,
       order: layer.order,
       commandLookup: layer.commandLookup,
-      bindingInputs: layer.bindingInputs,
-      compiledBindings: compilation.bindings,
+      sourceBindings: layer.sourceBindings,
+      bindingStates: compilation.bindings,
       root: compilation.root,
       hasTokenBindings: compilation.hasTokenBindings,
     })
 
-    for (const binding of layer.compiledBindings) {
+    for (const binding of layer.bindingStates) {
       this.disconnectRuntimeMatchable(binding)
     }
 
     layer.root = compilation.root
-    layer.compiledBindings = compilation.bindings
+    layer.bindingStates = compilation.bindings
     layer.hasUnkeyedBindings = compilation.bindings.some((binding) => binding.hasUnkeyedMatchers)
     layer.hasTokenBindings = compilation.hasTokenBindings
 
-    for (const binding of layer.compiledBindings) {
+    for (const binding of layer.bindingStates) {
       this.connectRuntimeMatchable(binding)
     }
 
@@ -565,7 +565,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       for (const command of layer.commands) {
         this.disconnectRuntimeMatchable(command)
       }
-      for (const binding of layer.compiledBindings) {
+      for (const binding of layer.bindingStates) {
         this.disconnectRuntimeMatchable(binding)
       }
 

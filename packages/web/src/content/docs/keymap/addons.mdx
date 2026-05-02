@@ -51,7 +51,7 @@ Recognized modifier prefixes (case-insensitive, joined with `+`):
 | `registerMetadataFields()`   | Binding `desc` / `group` and command `desc` / `title` / `category` metadata        |
 | `registerAliasesField()`     | Layer-local `aliases` field for remapping single-key binding names                 |
 
-`registerBindingOverrides()` expects `bindingOverrides` to already be a `BindingInput[]` array. It rewrites that layer's binding array once at registration time. Matching string commands are replaced by the override binding and unmatched bindings stay in place.
+`registerBindingOverrides()` expects `bindingOverrides` to already be a `Binding[]` array. It rewrites that layer's binding array once at registration time. Matching string commands are replaced by the override binding and unmatched bindings stay in place.
 
 `registerEnabledFields()` accepts `boolean`, `() => boolean`, or `ReactiveMatcher` values. It applies to layers and commands, not bindings. It controls activation only; it does not publish attrs.
 
