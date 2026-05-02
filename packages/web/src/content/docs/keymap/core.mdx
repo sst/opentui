@@ -76,7 +76,7 @@ keymap.registerLayer({
 | `target`     | Optional local target. Omit it for a global layer                                            |
 | `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present         |
 | `priority`   | Higher numbers win. Within the same priority, newer layers win                               |
-| `bindings`   | `Binding[]`                                                                             |
+| `bindings`   | `Binding[]`                                                                                  |
 | `commands`   | Named command definitions registered with the same layer                                     |
 | extra fields | Feed layer-field compilers and binding compilation. Layer fields do not surface public attrs |
 
@@ -223,12 +223,12 @@ Command queries search and filter across top-level command fields and compiled c
 
 Pure extra exported from `@opentui/keymap/extras`:
 
-| Helper                           | Description                                                                                            |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Helper                           | Description                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `commandBindings(map)`           | Converts a command-to-key object map into `Binding[]`, trimming command keys before emitting them |
-| `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                        |
-| `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default                   |
-| `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)` lookup                  |
+| `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                   |
+| `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default              |
+| `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)` lookup             |
 
 `commandBindings()` accepts optional `onWarning` and `onError` callbacks. `onWarning` reports trimmed-command overrides such as `" save-file "` and `"save-file"`; invalid key values are skipped by default, and `onError` lets callers observe them or throw if they want strict behavior.
 
@@ -306,13 +306,13 @@ Command handlers may be sync or async. A synchronous `false` rejects the candida
 
 `RunCommandOptions`:
 
-| Option           | Description                                                                    |
-| ---------------- | ------------------------------------------------------------------------------ |
-| `event`          | Event object passed into the command. Defaults to `host.createCommandEvent()`  |
-| `focused`        | Focus context used for active-layer resolution                                 |
-| `target`         | Explicit `ctx.target` override                                                 |
+| Option           | Description                                                                      |
+| ---------------- | -------------------------------------------------------------------------------- |
+| `event`          | Event object passed into the command. Defaults to `host.createCommandEvent()`    |
+| `focused`        | Focus context used for active-layer resolution                                   |
+| `target`         | Explicit `ctx.target` override                                                   |
 | `includeCommand` | When `true`, successful and rejected results include the resolved command object |
-| `payload`        | Per-invocation payload exposed as `ctx.payload`                                |
+| `payload`        | Per-invocation payload exposed as `ctx.payload`                                  |
 
 ### Queries
 
@@ -324,14 +324,14 @@ Command handlers may be sync or async. A synchronous `false` rejects the candida
 
 `CommandQuery` fields:
 
-| Field        | Description                                                      |
-| ------------ | ---------------------------------------------------------------- |
-| `visibility` | `"reachable"` (default), `"active"`, or `"registered"`           |
-| `focused`    | Override the focus context used by the query                     |
-| `namespace`  | Filter by one or more namespace values                           |
-| `search`     | Text search over command names by default                        |
-| `searchIn`   | Additional command fields or compiled metadata to search         |
-| `filter`     | Object or predicate filter against command fields and metadata   |
+| Field        | Description                                                    |
+| ------------ | -------------------------------------------------------------- |
+| `visibility` | `"reachable"` (default), `"active"`, or `"registered"`         |
+| `focused`    | Override the focus context used by the query                   |
+| `namespace`  | Filter by one or more namespace values                         |
+| `search`     | Text search over command names by default                      |
+| `searchIn`   | Additional command fields or compiled metadata to search       |
+| `filter`     | Object or predicate filter against command fields and metadata |
 
 - `reachable` dedupes by command name using the current dispatch winner.
 - `active` keeps every active candidate in precedence order, including same-name duplicates.

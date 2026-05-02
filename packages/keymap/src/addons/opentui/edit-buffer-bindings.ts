@@ -259,10 +259,7 @@ function createDefaultTextareaBindings(
  * take precedence. Prefer `registerManagedTextareaLayer` unless you are
  * composing a custom textarea integration.
  */
-export function createTextareaBindings(
-  overrides?: readonly Binding[],
-  options?: EditBufferCommandOptions,
-): Binding[] {
+export function createTextareaBindings(overrides?: readonly Binding[], options?: EditBufferCommandOptions): Binding[] {
   return createTextareaBindingsWithResolvedOptions(
     overrides,
     resolveEditBufferCommandNames(options),

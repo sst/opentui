@@ -92,10 +92,10 @@ export interface ActiveCommandView<TTarget extends object, TEvent extends Keymap
   chainsByName: ReadonlyMap<string, readonly LayerCommandEntry<TTarget, TEvent>[]>
 }
 
-export interface CommandView<
-  TTarget extends object,
-  TEvent extends KeymapEvent,
-> extends CommandChainCacheState<TTarget, TEvent> {
+export interface CommandView<TTarget extends object, TEvent extends KeymapEvent> extends CommandChainCacheState<
+  TTarget,
+  TEvent
+> {
   entries: readonly LayerCommandEntry<TTarget, TEvent>[]
   chainsByName: ReadonlyMap<string, readonly LayerCommandEntry<TTarget, TEvent>[]>
 }

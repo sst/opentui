@@ -78,7 +78,14 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     } else if (chain) {
       for (const entry of chain) {
-        const context = this.createCommandContext(event, focused, options?.target ?? entry.target ?? null, data, normalized, payload)
+        const context = this.createCommandContext(
+          event,
+          focused,
+          options?.target ?? entry.target ?? null,
+          data,
+          normalized,
+          payload,
+        )
 
         const result = this.executeResolvedCommand(normalized, entry.command, context, includeCommand)
         if (result.status === "handled" || result.status === "error") {
@@ -158,7 +165,14 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     } else if (chain) {
       for (const entry of chain) {
-        const context = this.createCommandContext(event, focused, options?.target ?? entry.target ?? null, data, normalized, payload)
+        const context = this.createCommandContext(
+          event,
+          focused,
+          options?.target ?? entry.target ?? null,
+          data,
+          normalized,
+          payload,
+        )
 
         const result = this.executeResolvedCommand(normalized, entry.command, context, includeCommand)
         if (result.status === "handled" || result.status === "error") {

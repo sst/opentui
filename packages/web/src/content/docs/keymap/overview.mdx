@@ -151,10 +151,10 @@ All entry points use the same registration, dispatch and query model. They only 
 
 Custom fields are raw config inputs. Compiled metadata is what field compilers expose to query UIs.
 
-| Name              | Meaning                                      | Example use                                     |
-| ----------------- | -------------------------------------------- | ----------------------------------------------- |
-| Custom fields     | What the layer, binding or command declared  | `mode`, `enabled`, `desc`, `title`, `namespace` |
-| Compiled metadata | What field compilers expose to query UIs     | `desc`, `group`, `title`, `category`, `label`   |
+| Name              | Meaning                                     | Example use                                     |
+| ----------------- | ------------------------------------------- | ----------------------------------------------- |
+| Custom fields     | What the layer, binding or command declared | `mode`, `enabled`, `desc`, `title`, `namespace` |
+| Compiled metadata | What field compilers expose to query UIs    | `desc`, `group`, `title`, `category`, `label`   |
 
 Fields can affect behavior. Metadata does not. A field compiler can make a record conditional with `require(...)` or `activeWhen(...)`, and it can separately publish metadata with `attr(...)`.
 

@@ -113,13 +113,13 @@ registerExCommands(keymap, [
 
 `ExCommand` fields:
 
-| Field        | Type                                                                               | Required | Description                                                                       |
-| ------------ | ---------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------- |
-| `name`       | `string`                                                                           | yes      | Command name. `:name` and `name` both normalize to `:name`                        |
-| `aliases`    | `string[]`                                                                         | no       | Additional names                                                                  |
-| `nargs`      | `"0"`, `"1"`, `"?"`, `"*"`, `"+"`                                                  | no       | Argument-count validation                                                         |
+| Field        | Type                                                                        | Required | Description                                                      |
+| ------------ | --------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------- |
+| `name`       | `string`                                                                    | yes      | Command name. `:name` and `name` both normalize to `:name`       |
+| `aliases`    | `string[]`                                                                  | no       | Additional names                                                 |
+| `nargs`      | `"0"`, `"1"`, `"?"`, `"*"`, `"+"`                                           | no       | Argument-count validation                                        |
 | `run`        | `(ctx: CommandContext<TTarget, TEvent, ExCommandPayload>) => CommandResult` | yes      | `ctx.payload` contains the trimmed `raw` input and parsed `args` |
-| extra fields | `unknown`                                                                          | no       | Added as top-level fields on the registered command                               |
+| extra fields | `unknown`                                                                   | no       | Added as top-level fields on the registered command              |
 
 - Registered ex commands default `namespace` to `excommands`.
 - Aliases produce additional registered commands, for example `:write` and `:w`.

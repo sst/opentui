@@ -1,11 +1,4 @@
-import type {
-  CommandContext,
-  Command,
-  CommandResult,
-  Keymap,
-  KeymapEvent,
-  ParsedCommand,
-} from "../../index.js"
+import type { CommandContext, Command, CommandResult, Keymap, KeymapEvent, ParsedCommand } from "../../index.js"
 
 export interface ExCommandPayload {
   raw: string

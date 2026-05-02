@@ -99,9 +99,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     private readonly options: CommandCatalogOptions,
   ) {}
 
-  public normalizeCommands(
-    commands: readonly Command<TTarget, TEvent>[],
-  ): CommandState<TTarget, TEvent>[] {
+  public normalizeCommands(commands: readonly Command<TTarget, TEvent>[]): CommandState<TTarget, TEvent>[] {
     return normalizeCommands({
       commands,
       commandFields: this.state.environment.commandFields,
@@ -305,7 +303,10 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
         continue
       }
 
-      if (!this.conditions.layerMatchesRuntimeState(entry.layer) || !this.conditions.matchesConditions(entry.commandState)) {
+      if (
+        !this.conditions.layerMatchesRuntimeState(entry.layer) ||
+        !this.conditions.matchesConditions(entry.commandState)
+      ) {
         disabledEntry ??= entry
       }
     }
@@ -512,7 +513,10 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     })
   }
 
-  private getTopResolvedCommand(command: string, focused: TTarget | null): ResolvedCommandEntry<TTarget, TEvent> | undefined {
+  private getTopResolvedCommand(
+    command: string,
+    focused: TTarget | null,
+  ): ResolvedCommandEntry<TTarget, TEvent> | undefined {
     const activeView = this.getActiveCommandView(focused)
     const active = activeView.reachableByName.get(command)
     if (active) {
@@ -866,8 +870,8 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     }
 
     if (resolved && !resolved.attrs) {
-      const attrs = this.getCommandStateAttrs(resolved.command.name, focused, mode) ??
-        getResolverCommandAttrs(resolved.command)
+      const attrs =
+        this.getCommandStateAttrs(resolved.command.name, focused, mode) ?? getResolverCommandAttrs(resolved.command)
       if (attrs) {
         lookup.resolved = { ...resolved, attrs }
       }
@@ -1009,7 +1013,6 @@ function normalizeCommands<TTarget extends object, TEvent extends KeymapEvent>(
 
       seen.add(commandState.command.name)
       normalizedCommands.push(commandState)
-
     } catch (error) {
       options.onError(
         "register-command-failed",
@@ -1268,10 +1271,7 @@ function commandKeyMatchesSearch<TTarget extends object, TEvent extends KeymapEv
     return true
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(fields, key) &&
-    commandValueMatchesSearch(fields[key], search)
-  ) {
+  if (Object.prototype.hasOwnProperty.call(fields, key) && commandValueMatchesSearch(fields[key], search)) {
     return true
   }
 
@@ -1368,10 +1368,7 @@ function commandKeyMatchesExact<TTarget extends object, TEvent extends KeymapEve
     return true
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(fields, key) &&
-    commandValueMatchesFilter(fields[key], matcher)
-  ) {
+  if (Object.prototype.hasOwnProperty.call(fields, key) && commandValueMatchesFilter(fields[key], matcher)) {
     return true
   }
 

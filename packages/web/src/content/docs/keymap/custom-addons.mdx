@@ -93,10 +93,10 @@ Field compilers turn user-supplied fields into activation rules and public metad
 
 Mental model:
 
-| Term              | Meaning                         | Audience                         |
-| ----------------- | ------------------------------- | -------------------------------- |
-| Custom fields     | Raw config / addon DSL input    | The keymap compiler and addons   |
-| Compiled metadata | Public metadata output          | Command palettes, hints and help |
+| Term              | Meaning                      | Audience                         |
+| ----------------- | ---------------------------- | -------------------------------- |
+| Custom fields     | Raw config / addon DSL input | The keymap compiler and addons   |
+| Compiled metadata | Public metadata output       | Command palettes, hints and help |
 
 Fields can be behavior, metadata or both. Compiled metadata is only metadata.
 
@@ -161,11 +161,11 @@ Compiled metadata is exposed through projections such as `ActiveBinding.attrs`, 
 
 Both gate activation. They differ in where the condition comes from.
 
-| Method                  | Use when                                      | Evaluation model                                            |
-| ----------------------- | --------------------------------------------- | ----------------------------------------------------------- |
-| `require(name, value)`  | The condition is equality against keymap data | Checks `Object.is(keymap.getData(name), value)`             |
-| `activeWhen(callback)`  | The condition is arbitrary code               | Calls the callback whenever the record is evaluated         |
-| `activeWhen(reactive)`  | External state can notify when it changed     | Caches `reactive.get()` until `reactive.subscribe()` fires   |
+| Method                 | Use when                                      | Evaluation model                                           |
+| ---------------------- | --------------------------------------------- | ---------------------------------------------------------- |
+| `require(name, value)` | The condition is equality against keymap data | Checks `Object.is(keymap.getData(name), value)`            |
+| `activeWhen(callback)` | The condition is arbitrary code               | Calls the callback whenever the record is evaluated        |
+| `activeWhen(reactive)` | External state can notify when it changed     | Caches `reactive.get()` until `reactive.subscribe()` fires |
 
 Use `require(...)` for keymap-owned state such as modes:
 
@@ -206,7 +206,7 @@ interface ReactiveMatcher {
 | ------- | ---------------------------------------------------------------------------- | ----------------------------------------------- |
 | Layer   | Extra layer fields feed layer compilers, parsers, expanders and transformers | No metadata output                              |
 | Binding | Extra binding fields are compiler inputs only                                | `ActiveBinding.attrs`, `ActiveKey.bindingAttrs` |
-| Command | Extra command properties are compiler inputs and stay on the command object   | `commandAttrs` projections                      |
+| Command | Extra command properties are compiler inputs and stay on the command object  | `commandAttrs` projections                      |
 
 Layer fields intentionally do not have `attr(...)` because there is no layer-level metadata surface on active keys, active bindings or commands.
 
@@ -279,13 +279,13 @@ Use the `clear*()` methods only when your addon owns that whole stage. They are 
 
 `CommandResolverContext` exposes:
 
-| Member                  | Purpose                                                |
-| ----------------------- | ------------------------------------------------------ |
-| `input`                 | Current invocation input                               |
-| `payload`               | Current invocation payload                             |
-| `setInput(input)`       | Replace the input passed to the returned command        |
-| `setPayload(payload)`   | Replace the payload passed to the returned command      |
-| `getCommand(name)`      | Read the registered command for the current mode, if any |
+| Member                | Purpose                                                  |
+| --------------------- | -------------------------------------------------------- |
+| `input`               | Current invocation input                                 |
+| `payload`             | Current invocation payload                               |
+| `setInput(input)`     | Replace the input passed to the returned command         |
+| `setPayload(payload)` | Replace the payload passed to the returned command       |
+| `getCommand(name)`    | Read the registered command for the current mode, if any |
 
 Resolver commands use the same shape as registered commands: `name`, `run` and optional custom top-level fields.
 

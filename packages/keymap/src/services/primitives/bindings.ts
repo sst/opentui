@@ -1,10 +1,4 @@
-import type {
-  Binding,
-  BindingsValidationResult,
-  Bindings,
-  KeymapEvent,
-  ParsedBinding,
-} from "../../types.js"
+import type { Binding, BindingsValidationResult, Bindings, KeymapEvent, ParsedBinding } from "../../types.js"
 import { cloneKeySequence } from "../keys.js"
 
 function isKeyLike(value: unknown): boolean {

@@ -217,9 +217,7 @@ export type CommandHandler<
   TTarget extends object = object,
   TEvent extends KeymapEvent = KeymapEvent,
   TPayload = unknown,
-> = (
-  ctx: CommandContext<TTarget, TEvent, TPayload>,
-) => CommandResult<TTarget, TEvent>
+> = (ctx: CommandContext<TTarget, TEvent, TPayload>) => CommandResult<TTarget, TEvent>
 
 export type BindingCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
   | string
@@ -606,8 +604,10 @@ export interface ActiveKeyState<TTarget extends object = object, TEvent extends 
   bindings?: BindingState<TTarget, TEvent>[]
 }
 
-export interface CommandState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
-  extends RuntimeMatchable {
+export interface CommandState<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> extends RuntimeMatchable {
   command: Command<TTarget, TEvent, any>
   fields: Readonly<Record<string, unknown>>
   attrs?: Readonly<Attributes>
