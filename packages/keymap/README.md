@@ -1,20 +1,24 @@
 # @opentui/keymap
 
-A keymap engine for terminal and DOM hosts. Same core, two adapters.
+A host-agnostic keymap engine for terminal and DOM apps. Same core, multiple adapters.
 
-It models keybindings as priority-ordered, focus-scoped layers attached to targets (terminal renderables or DOM elements). The core is intentionally bare; everything beyond raw key dispatch is opt-in via addons, parsers, and field compilers.
+It models keybindings as priority-ordered, focus-scoped layers attached to targets (terminal renderables or DOM elements). The core is intentionally bare; everything beyond raw key dispatch is opt-in via addons, parsers, expanders, resolvers, and field compilers.
 
 ## Highlights
 
-- **Layered bindings** with `focus` / `focus-within` scoping, priority ordering, `fallthrough`, and `preventDefault` control.
-- **Multi-key sequences** with a public pending-sequence API and synchronous `pendingSequence` events. Focus changes invalidate sequences automatically.
-- **Asynchronous disambiguation** for exact-vs-prefix conflicts (e.g. `g` vs `gg`), with `AbortSignal` + `sleep` deferred resolvers. Ships a Neovim-style timeout resolver.
-- **Pluggable parsing pipeline**: stackable binding parsers, expanders, transformers, command resolvers, command transformers, and event-match resolvers.
-- **Extensible schema**: register custom fields on layers, bindings, and commands. Field compilers emit `attrs` and can gate activation via `require(...)` and `activeWhen(matcher)`.
+- **Host-agnostic core** over a small `KeymapHost` interface with host metadata, focus, parent traversal, target destruction, key press/release, optional raw input, and synthetic command events.
+- **Target-aware focus routing** for global layers plus local `focus` / `focus-within` layers that follow the active target's parent chain.
+- **Layered bindings** with priority ordering, newest-first ties, `fallthrough`, and `preventDefault` control.
+- **Branch-aware multi-key sequences** compiled into layer sequence graphs, with a public pending-sequence API, synchronous `pendingSequence` events, active continuation queries, and automatic invalidation on focus changes.
+- **Programmable exact-vs-prefix disambiguation** (e.g. `g` vs `gg`) with `runExact`, `continueSequence`, `clear`, and deferred `AbortSignal` + `sleep` decisions. Ships a Neovim-style timeout resolver.
+- **Pluggable binding language**: stackable binding parsers, key expanders, layer-binding transformers, binding transformers, command resolvers, command transformers, and event-match resolvers.
+- **Extensible schema and activation**: register custom fields on layers, bindings, and commands. Binding and command fields can emit `attrs`; all field kinds can gate activation via `require(...)` and `activeWhen(matcher)`.
 - **Reactive matchers** with cached invalidation, plus React store and Solid signal helpers.
-- **Intercepts** for raw input and pre-binding key handling, with `consume({ preventDefault, stopPropagation })`.
-- **Command catalog** with namespaces, search, visibility tiers (`registered` / `reachable` / `active`), and binding queries.
-- **Diagnostics** with stable codes (`unknown-token`, `dead-binding`, `unresolved-command`, ...) and lint-style layer analyzers.
+- **Raw and key intercepts** before normal binding dispatch, including pre-binding `consume({ preventDefault, stopPropagation })` and raw input `stop()` handling.
+- **Command catalog and dispatch** with named commands, inline command handlers, command chains, namespaces, search, visibility tiers (`registered` / `reachable` / `active`), binding queries, `runCommand`, and focus-aware `dispatchCommand`.
+- **Graph snapshots and diagnostics** for layers, commands, bindings, sequence nodes, pending paths, inactive reasons, shadowing, stable warning/error codes, and lint-style layer analyzers.
+- **Broad key coverage** in the default parser, including function keys, navigation/editing keys, numpad keys, media keys, left/right modifiers, `super`, `hyper`, and literal `+` bindings.
+- **Platform-aware modifier aliases** via `registerModBindings`, resolving `mod+...` from host metadata while preserving display strings.
 
 ## Addons
 
@@ -63,7 +67,7 @@ Create a keymap, install the addons you want, then pass the configured instance 
 
 ## Adapters
 
-Adapters implement a small `KeymapHost` interface (`rootTarget`, `getFocusedTarget`, `getParentTarget`, `onKeyPress`, `onFocusChange`, ...). The HTML adapter normalizes DOM key names (`Escape` → `escape`, `ArrowUp` → `up`, `Meta` → `super`, `Alt` → `meta`) and tracks targets via `MutationObserver`. The OpenTUI adapter hooks `CliRenderer` `keypress`, `keyrelease`, focus, and destroy events.
+Adapters implement a small `KeymapHost` interface (`metadata`, `rootTarget`, `getFocusedTarget`, `getParentTarget`, `onKeyPress`, `onKeyRelease`, `onFocusChange`, `onTargetDestroy`, ...). The HTML adapter normalizes DOM key names (`Escape` → `escape`, `ArrowUp` → `up`, `Meta` → `super`, `Alt` → `meta`) and tracks targets via `MutationObserver`. The OpenTUI adapter hooks `CliRenderer` `keypress`, `keyrelease`, focus, destroy, target destroy, and raw input events.
 
 ## Formatting Keys
 
