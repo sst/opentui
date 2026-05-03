@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using OpenTui.Core.Ansi;
 using OpenTui.Core.Buffer;
+using SysConsole = System.Console;
 
 namespace OpenTui.Core.Rendering
 {
@@ -35,7 +36,7 @@ namespace OpenTui.Core.Rendering
             Width   = width;
             Height  = height;
             Testing = testing;
-            _out    = output ?? (testing ? TextWriter.Null : Console.Out);
+            _out    = output ?? (testing ? TextWriter.Null : SysConsole.Out);
             _current = new CellBuffer(width, height, "renderer-current");
             _next    = new CellBuffer(width, height, "renderer-next");
         }

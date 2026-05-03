@@ -21,9 +21,39 @@ switch (sample)
     case "input":
         OpenTui.Samples.InputSample.Run();
         break;
+    case "keypress":
+        OpenTui.Samples.KeypressDebugSample.Run();
+        break;
+    case "ascii":
+        OpenTui.Samples.AsciFontSample.Run();
+        break;
+    case "framebuffer":
+        OpenTui.Samples.FrameBufferSample.Run();
+        break;
+    case "code":
+        OpenTui.Samples.CodeSample.Run();
+        break;
+    case "markdown":
+        OpenTui.Samples.MarkdownSample.Run();
+        break;
+    case "diff":
+        OpenTui.Samples.DiffSample.Run();
+        break;
+    case "select":
+        OpenTui.Samples.SelectSample.Run();
+        break;
+    case "slider":
+        OpenTui.Samples.SliderSample.Run();
+        break;
+    case "tabs":
+        OpenTui.Samples.TabSelectSample.Run();
+        break;
+    case "console":
+        OpenTui.Samples.ConsoleDemoSample.Run();
+        break;
     default:
         Console.WriteLine($"Unknown sample: '{sample}'");
-        Console.WriteLine("Available samples: layout, styled, editor, scroll, input");
+        Console.WriteLine("Available samples: layout, styled, editor, scroll, input, keypress, ascii, framebuffer, code, markdown, diff, select, slider, tabs, console");
         Environment.Exit(1);
         break;
 }
