@@ -58,6 +58,25 @@ public class CliRenderer : IDisposable
         Root = new RootRenderable(this);
     }
 
+    public Renderable? CurrentFocus { get; private set; }
+
+    internal void OnRenderableFocused(Renderable r)
+    {
+        if (CurrentFocus != null && CurrentFocus != r)
+        {
+            var prev = CurrentFocus;
+            CurrentFocus = null; // prevent re-entry before Blur emits
+            prev.Blur();
+        }
+        CurrentFocus = r;
+    }
+
+    internal void OnRenderableBlurred(Renderable r)
+    {
+        if (CurrentFocus == r)
+            CurrentFocus = null;
+    }
+
     public void SetBackgroundColor(string color)
     {
         _backgroundColor = Rgba.FromCss(color);
@@ -109,6 +128,44 @@ public class CliRenderer : IDisposable
         {
             if (_config.ExitOnCtrlC && data is KeyEvent k && k.Name == "ctrl+c")
                 Destroy();
+            if (data is KeyEvent key)
+                CurrentFocus?.HandleKey(key);
+        });
+
+        KeyInput.On("mouse", (object? data) =>
+        {
+            if (data is not MouseEvent mouse) return;
+
+            if (mouse.Button is MouseButton.WheelUp or MouseButton.WheelDown)
+            {
+                // Wheel: dispatch to focused renderable first, then hovered
+                if (CurrentFocus != null)
+                    CurrentFocus.HandleMouse(mouse);
+                else
+                {
+                    var hovered = HitTest(mouse.X, mouse.Y);
+                    hovered?.HandleMouse(mouse);
+                }
+            }
+            else if (mouse.Pressed && mouse.Button == MouseButton.Left)
+            {
+                var target = HitTest(mouse.X, mouse.Y);
+                if (target != null)
+                {
+                    if (target.Focusable)
+                        target.Focus();
+                    target.HandleMouse(mouse);
+                }
+                else
+                {
+                    // Click on nothing — blur current focus
+                    CurrentFocus?.Blur();
+                }
+            }
+            else
+            {
+                CurrentFocus?.HandleMouse(mouse);
+            }
         });
 
         int intervalMs = Math.Max(1, 1000 / _config.TargetFps);
@@ -283,6 +340,27 @@ public class CliRenderer : IDisposable
             }
         }
         catch { /* may fail in non-tty environments */ }
+    }
+
+    private Renderable? HitTest(int x, int y) => HitTestNode(Root, x, y);
+
+    private static Renderable? HitTestNode(Renderable node, int x, int y)
+    {
+        if (!node.Visible) return null;
+
+        int nx = node.ScreenX, ny = node.ScreenY;
+        int nw = node.ComputedWidth, nh = node.ComputedHeight;
+        if (nw <= 0 || nh <= 0) return null;
+        if (x < nx || x >= nx + nw || y < ny || y >= ny + nh) return null;
+
+        // Check children in reverse z-order (topmost first)
+        foreach (var child in node.GetChildren().OrderByDescending(c => c.ZIndex))
+        {
+            var hit = HitTestNode(child, x, y);
+            if (hit != null) return hit;
+        }
+
+        return node.Focusable ? node : null;
     }
 
     // ── raw mode (Unix) ───────────────────────────────────────────────────────

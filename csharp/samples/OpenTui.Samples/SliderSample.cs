@@ -73,13 +73,11 @@ internal static class SliderSample
             if (key.Name == "tab")
             {
                 focusedSlider = 1 - focusedSlider;
-                if (focusedSlider == 0) { slider1.Focus(); slider2.Blur(); }
-                else { slider2.Focus(); slider1.Blur(); }
+                if (focusedSlider == 0) slider1.Focus();
+                else slider2.Focus();
                 renderer.RequestRender();
                 return;
             }
-            if (focusedSlider == 0) slider1.HandleKey(key);
-            else slider2.HandleKey(key);
             valueText.Content = $"Volume: {slider1.Value}  Brightness: {slider2.Value}";
             renderer.RequestRender();
         });

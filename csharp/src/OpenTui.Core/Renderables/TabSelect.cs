@@ -20,7 +20,7 @@ public class TabSelectRenderable : Renderable
         LayoutNode.Height = LayoutDimension.Fixed(1);
     }
 
-    public void HandleKey(KeyEvent key)
+    public override void HandleKey(KeyEvent key)
     {
         switch (key.Name)
         {

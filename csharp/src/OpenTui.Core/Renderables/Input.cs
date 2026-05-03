@@ -44,7 +44,7 @@ public class InputRenderable : Renderable
         On("blurred", _ => RequestRender());
     }
 
-    public void HandleKey(KeyEvent key)
+    public override void HandleKey(KeyEvent key)
     {
         switch (key.Name)
         {

@@ -71,10 +71,10 @@ internal static class TabSelectSample
 
         renderer.KeyInput.On("keypress", (KeyEvent key) =>
         {
-            if (key.Name == "q" || key.Name == "escape") { renderer.Destroy(); return; }
-            tabs.HandleKey(key);
+            if (key.Name == "q" || key.Name == "escape") renderer.Destroy();
         });
 
+        tabs.Focus();
         renderer.Start();
     }
 }

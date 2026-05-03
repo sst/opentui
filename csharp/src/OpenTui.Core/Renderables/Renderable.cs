@@ -1,4 +1,5 @@
 using OpenTui.Core.Events;
+using OpenTui.Core.Input;
 using OpenTui.Core.Layout;
 using OpenTui.Core.Rendering;
 
@@ -79,8 +80,24 @@ public abstract class Renderable : EventEmitter
 
     public List<Renderable> GetChildren() => new(_children);
 
-    public void Focus() { Focused = true; Emit("focused"); }
-    public void Blur() { Focused = false; Emit("blurred"); }
+    public void Focus()
+    {
+        if (Focused) return;
+        Renderer?.OnRenderableFocused(this);
+        Focused = true;
+        Emit("focused");
+    }
+
+    public void Blur()
+    {
+        if (!Focused) return;
+        Renderer?.OnRenderableBlurred(this);
+        Focused = false;
+        Emit("blurred");
+    }
+
+    public virtual void HandleKey(KeyEvent key) { }
+    public virtual void HandleMouse(MouseEvent mouse) { }
     public void RequestRender() => Renderer?.RequestRender();
 
     public virtual void Destroy()

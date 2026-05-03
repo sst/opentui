@@ -66,10 +66,10 @@ internal static class SelectSample
 
         renderer.KeyInput.On("keypress", (KeyEvent key) =>
         {
-            if (key.Name == "q" || key.Name == "escape") { renderer.Destroy(); return; }
-            select.HandleKey(key);
+            if (key.Name == "q" || key.Name == "escape") renderer.Destroy();
         });
 
+        select.Focus();
         renderer.Start();
     }
 }

@@ -27,7 +27,7 @@ public class SelectRenderable : Renderable
         Focusable = true;
     }
 
-    public void HandleKey(KeyEvent key)
+    public override void HandleKey(KeyEvent key)
     {
         switch (key.Name)
         {

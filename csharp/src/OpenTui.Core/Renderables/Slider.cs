@@ -20,7 +20,7 @@ public class SliderRenderable : Renderable
         Focusable = true;
     }
 
-    public void HandleKey(KeyEvent key)
+    public override void HandleKey(KeyEvent key)
     {
         bool isHorizontal = Orientation == "horizontal";
         switch (key.Name)
