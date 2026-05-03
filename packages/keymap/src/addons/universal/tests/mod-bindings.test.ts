@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { registerCommaBindings, registerDefaultKeys, registerModBindings } from "@opentui/keymap/addons"
-import { Keymap, type KeymapEvent, type KeymapHost, type KeymapHostMetadata } from "../../../index.js"
+import { Keymap, type HostMetadata, type KeymapEvent, type KeymapHost } from "../../../index.js"
 import { createDiagnosticHarness } from "../../../tests/diagnostic-harness.js"
 
 const diagnostics = createDiagnosticHarness()
@@ -44,7 +44,7 @@ class FakeHost implements KeymapHost<FakeTarget, FakeEvent> {
   private readonly keyReleaseListeners = new Set<(event: FakeEvent) => void>()
   private readonly focusListeners = new Set<(target: FakeTarget | null) => void>()
 
-  constructor(public readonly metadata: KeymapHostMetadata) {}
+  constructor(public readonly metadata: HostMetadata) {}
 
   public getFocusedTarget(): FakeTarget | null {
     return null
@@ -108,9 +108,9 @@ class FakeHost implements KeymapHost<FakeTarget, FakeEvent> {
 }
 
 function createMetadata(
-  primaryModifier: KeymapHostMetadata["primaryModifier"],
-  modifiers: Partial<KeymapHostMetadata["modifiers"]> = {},
-): KeymapHostMetadata {
+  primaryModifier: HostMetadata["primaryModifier"],
+  modifiers: Partial<HostMetadata["modifiers"]> = {},
+): HostMetadata {
   return {
     platform: primaryModifier === "super" ? "macos" : primaryModifier === "ctrl" ? "linux" : "unknown",
     primaryModifier,
@@ -125,7 +125,7 @@ function createMetadata(
   }
 }
 
-function createKeymap(metadata: KeymapHostMetadata): { host: FakeHost; keymap: Keymap<FakeTarget, FakeEvent> } {
+function createKeymap(metadata: HostMetadata): { host: FakeHost; keymap: Keymap<FakeTarget, FakeEvent> } {
   const host = new FakeHost(metadata)
   const keymap = diagnostics.trackKeymap(new Keymap(host))
   registerDefaultKeys(keymap)

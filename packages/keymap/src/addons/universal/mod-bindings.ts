@@ -1,11 +1,11 @@
-import type { BindingExpander, Keymap, KeymapEvent, KeymapHostMetadata } from "../../index.js"
+import type { BindingExpander, HostMetadata, Keymap, KeymapEvent } from "../../index.js"
 
 const MOD_BINDINGS_RESOURCE = Symbol("keymap:mod-bindings")
 
 const MOD_MODIFIER_PATTERN = /(^|[+,\s])mod(?=\s*\+)/i
 const MOD_MODIFIER_REPLACE_PATTERN = /(^|[+,\s])mod(?=\s*\+)/gi
 
-function resolveModModifier(metadata: Readonly<KeymapHostMetadata>): "ctrl" | "super" {
+function resolveModModifier(metadata: Readonly<HostMetadata>): "ctrl" | "super" {
   const primary = metadata.primaryModifier
   if ((primary === "ctrl" || primary === "super") && metadata.modifiers[primary] !== "unsupported") {
     return primary

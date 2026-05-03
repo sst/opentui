@@ -4,11 +4,11 @@ import { registerMetadataFields } from "./addons/universal/metadata.js"
 import { Keymap } from "./keymap.js"
 import type {
   EventMatchResolver,
+  HostMetadata,
+  HostPlatform,
   KeyStrokeInput,
   KeymapEvent,
   KeymapHost,
-  KeymapHostMetadata,
-  KeymapPlatform,
 } from "./types.js"
 
 export * from "./index.js"
@@ -65,7 +65,7 @@ const HTML_KEY_NAME_ALIASES = new Map<string, string>([
   ["Shift", "shift"],
 ])
 
-function normalizeHostPlatform(value: string | undefined): KeymapPlatform {
+function normalizeHostPlatform(value: string | undefined): HostPlatform {
   const normalized = value?.trim().toLowerCase()
   if (!normalized) {
     return "unknown"
@@ -86,7 +86,7 @@ function normalizeHostPlatform(value: string | undefined): KeymapPlatform {
   return "unknown"
 }
 
-function detectBrowserPlatform(): KeymapPlatform {
+function detectBrowserPlatform(): HostPlatform {
   const navigatorLike = globalThis.navigator as
     | (Navigator & { userAgentData?: { platform?: string }; userAgent?: string })
     | undefined
@@ -99,7 +99,7 @@ function detectBrowserPlatform(): KeymapPlatform {
   return normalizeHostPlatform(navigatorLike?.platform ?? navigatorLike?.userAgent)
 }
 
-function createHtmlHostMetadata(): KeymapHostMetadata {
+function createHtmlHostMetadata(): HostMetadata {
   const platform = detectBrowserPlatform()
 
   return {

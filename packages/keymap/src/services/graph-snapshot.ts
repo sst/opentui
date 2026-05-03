@@ -6,13 +6,13 @@ import type {
   BindingState,
   CommandState,
   KeymapEvent,
-  KeymapGraphBinding,
-  KeymapGraphCommand,
-  KeymapGraphInactiveReason,
-  KeymapGraphLayer,
-  KeymapGraphSequenceNode,
-  KeymapGraphSnapshot,
-  KeymapGraphSnapshotOptions,
+  GraphBinding,
+  GraphCommand,
+  GraphInactiveReason,
+  GraphLayer,
+  GraphSequenceNode,
+  GraphSnapshot,
+  GraphSnapshotOptions,
   KeymapHost,
   KeySequencePart,
   RegisteredLayer,
@@ -27,7 +27,7 @@ interface LayerGraphState<TTarget extends object, TEvent extends KeymapEvent> {
   focusActive: boolean
   enabled: boolean
   active: boolean
-  inactiveReasons: KeymapGraphInactiveReason[]
+  inactiveReasons: GraphInactiveReason[]
 }
 
 interface BindingGraphState<TTarget extends object, TEvent extends KeymapEvent> {
@@ -40,7 +40,7 @@ interface BindingGraphState<TTarget extends object, TEvent extends KeymapEvent> 
   active: boolean
   reachable: boolean
   shadowed: boolean
-  inactiveReasons: KeymapGraphInactiveReason[]
+  inactiveReasons: GraphInactiveReason[]
 }
 
 interface CommandGraphState<TTarget extends object, TEvent extends KeymapEvent> {
@@ -50,7 +50,7 @@ interface CommandGraphState<TTarget extends object, TEvent extends KeymapEvent> 
   active: boolean
   reachable: boolean
   enabled: boolean
-  inactiveReasons: KeymapGraphInactiveReason[]
+  inactiveReasons: GraphInactiveReason[]
 }
 
 interface SequenceStop {
@@ -59,8 +59,8 @@ interface SequenceStop {
 }
 
 function hasOwnFocused<TTarget extends object>(
-  options: KeymapGraphSnapshotOptions<TTarget> | undefined,
-): options is KeymapGraphSnapshotOptions<TTarget> & { focused: TTarget | null | undefined } {
+  options: GraphSnapshotOptions<TTarget> | undefined,
+): options is GraphSnapshotOptions<TTarget> & { focused: TTarget | null | undefined } {
   return !!options && Object.prototype.hasOwnProperty.call(options, "focused")
 }
 
@@ -191,8 +191,8 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   conditions: ConditionService<TTarget, TEvent>
   catalog: CommandCatalogService<TTarget, TEvent>
   activation: ActivationService<TTarget, TEvent>
-  snapshotOptions?: KeymapGraphSnapshotOptions<TTarget>
-}): KeymapGraphSnapshot<TTarget, TEvent> {
+  snapshotOptions?: GraphSnapshotOptions<TTarget>
+}): GraphSnapshot<TTarget, TEvent> {
   const { state, host, conditions, catalog, activation, snapshotOptions } = options
   const includeTargets = snapshotOptions?.includeTargets !== false
   const currentFocused = getFocusedTargetIfAvailable(host)
@@ -210,13 +210,13 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   const nodeIds = new Map<SequenceNode<TTarget, TEvent>, string>()
   const layerIds = new Map<RegisteredLayer<TTarget, TEvent>, string>()
   const bindingNodeIds = new Map<BindingState<TTarget, TEvent>, string>()
-  const sequenceNodes: KeymapGraphSequenceNode[] = []
+  const sequenceNodes: GraphSequenceNode[] = []
 
   for (const layer of sortedLayers) {
     const targetDestroyed = layer.target ? host.isTargetDestroyed(layer.target) : false
     const focusActive = isLayerActiveForFocused(host, layer, focused, activationPath)
     const enabled = conditions.layerMatchesRuntimeState(layer)
-    const inactiveReasons: KeymapGraphInactiveReason[] = []
+    const inactiveReasons: GraphInactiveReason[] = []
     if (targetDestroyed) {
       inactiveReasons.push("target-destroyed")
     }
@@ -419,7 +419,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
     visitNode(layer.root, null)
   }
 
-  const layers: KeymapGraphLayer<TTarget>[] = sortedLayers.map((layer) => {
+  const layers: GraphLayer<TTarget>[] = sortedLayers.map((layer) => {
     const state = layerStates.get(layer)!
     return {
       id: state.id,
@@ -437,7 +437,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
     }
   })
 
-  const commands: KeymapGraphCommand<TTarget, TEvent>[] = []
+  const commands: GraphCommand<TTarget, TEvent>[] = []
   for (const state of commandStates.values()) {
     commands.push({
       id: state.id,
@@ -454,7 +454,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
     })
   }
 
-  const bindings: KeymapGraphBinding<TTarget, TEvent>[] = []
+  const bindings: GraphBinding<TTarget, TEvent>[] = []
   for (const state of bindingStates.values()) {
     const binding = state.binding
     bindings.push({

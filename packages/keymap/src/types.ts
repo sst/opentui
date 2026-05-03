@@ -12,20 +12,20 @@ export interface KeymapEvent {
   readonly propagationStopped: boolean
 }
 
-export type KeymapPlatform = "macos" | "windows" | "linux" | "unknown"
+export type HostPlatform = "macos" | "windows" | "linux" | "unknown"
 
-export type KeymapModifier = "ctrl" | "shift" | "meta" | "super" | "hyper"
+export type HostModifier = "ctrl" | "shift" | "meta" | "super" | "hyper"
 
-export type KeymapCapability = "supported" | "unsupported" | "unknown"
+export type HostCapability = "supported" | "unsupported" | "unknown"
 
-export interface KeymapHostMetadata {
-  platform: KeymapPlatform
+export interface HostMetadata {
+  platform: HostPlatform
   primaryModifier: "ctrl" | "super" | "unknown"
-  modifiers: Record<KeymapModifier, KeymapCapability>
+  modifiers: Record<HostModifier, HostCapability>
 }
 
 export interface KeymapHost<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
-  readonly metadata: KeymapHostMetadata
+  readonly metadata: HostMetadata
   readonly rootTarget: TTarget
   readonly isDestroyed: boolean
   getFocusedTarget(): TTarget | null
@@ -315,14 +315,14 @@ export interface ActiveBinding<TTarget extends object = object, TEvent extends K
   fallthrough: boolean
 }
 
-export interface KeymapDispatchLayer<TTarget extends object = object> {
+export interface DispatchLayer<TTarget extends object = object> {
   order: number
   priority: number
   target?: TTarget
   targetMode?: TargetMode
 }
 
-export interface KeymapDispatchBinding<
+export interface DispatchBinding<
   TTarget extends object = object,
   TEvent extends KeymapEvent = KeymapEvent,
 > extends ActiveBinding<TTarget, TEvent> {
@@ -330,19 +330,19 @@ export interface KeymapDispatchBinding<
   bindingIndex: number
 }
 
-export type KeymapDispatchPhase =
+export type DispatchPhase =
   | "sequence-start"
   | "sequence-advance"
   | "sequence-clear"
   | "binding-execute"
   | "binding-reject"
 
-export interface KeymapDispatchEvent<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
-  phase: KeymapDispatchPhase
+export interface DispatchEvent<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  phase: DispatchPhase
   event: BindingEvent
   focused: TTarget | null
-  layer?: KeymapDispatchLayer<TTarget>
-  binding?: KeymapDispatchBinding<TTarget, TEvent>
+  layer?: DispatchLayer<TTarget>
+  binding?: DispatchBinding<TTarget, TEvent>
   sequence: readonly KeySequencePart[]
   command?: BindingCommand<TTarget, TEvent>
 }
@@ -372,12 +372,12 @@ export interface ActiveKey<TTarget extends object = object, TEvent extends Keyma
   continues: boolean
 }
 
-export interface KeymapGraphSnapshotOptions<TTarget extends object = object> {
+export interface GraphSnapshotOptions<TTarget extends object = object> {
   focused?: TTarget | null
   includeTargets?: boolean
 }
 
-export type KeymapGraphInactiveReason =
+export type GraphInactiveReason =
   | "focus"
   | "target-destroyed"
   | "layer-disabled"
@@ -387,7 +387,7 @@ export type KeymapGraphInactiveReason =
   | "command-unresolved"
   | "shadowed"
 
-export interface KeymapGraphLayer<TTarget extends object = object> {
+export interface GraphLayer<TTarget extends object = object> {
   id: string
   order: number
   priority: number
@@ -396,13 +396,13 @@ export interface KeymapGraphLayer<TTarget extends object = object> {
   active: boolean
   focusActive: boolean
   enabled: boolean
-  inactiveReasons: readonly KeymapGraphInactiveReason[]
+  inactiveReasons: readonly GraphInactiveReason[]
   rootNodeId: string
   bindingIds: readonly string[]
   commandIds: readonly string[]
 }
 
-export interface KeymapGraphCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+export interface GraphCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   id: string
   layerId: string
   name: string
@@ -413,10 +413,10 @@ export interface KeymapGraphCommand<TTarget extends object = object, TEvent exte
   active: boolean
   reachable: boolean
   enabled: boolean
-  inactiveReasons: readonly KeymapGraphInactiveReason[]
+  inactiveReasons: readonly GraphInactiveReason[]
 }
 
-export interface KeymapGraphBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+export interface GraphBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   id: string
   layerId: string
   sourceLayerOrder: number
@@ -435,10 +435,10 @@ export interface KeymapGraphBinding<TTarget extends object = object, TEvent exte
   enabled: boolean
   commandResolved: boolean
   shadowed: boolean
-  inactiveReasons: readonly KeymapGraphInactiveReason[]
+  inactiveReasons: readonly GraphInactiveReason[]
 }
 
-export interface KeymapGraphSequenceNode {
+export interface GraphSequenceNode {
   id: string
   layerId: string
   parentId: string | null
@@ -457,14 +457,14 @@ export interface KeymapGraphSequenceNode {
   pendingPath: boolean
 }
 
-export interface KeymapGraphSnapshot<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+export interface GraphSnapshot<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   focused?: TTarget | null
   pendingSequence: readonly KeySequencePart[]
   activeKeys: readonly ActiveKey<TTarget, TEvent>[]
-  layers: readonly KeymapGraphLayer<TTarget>[]
-  commands: readonly KeymapGraphCommand<TTarget, TEvent>[]
-  bindings: readonly KeymapGraphBinding<TTarget, TEvent>[]
-  sequenceNodes: readonly KeymapGraphSequenceNode[]
+  layers: readonly GraphLayer<TTarget>[]
+  commands: readonly GraphCommand<TTarget, TEvent>[]
+  bindings: readonly GraphBinding<TTarget, TEvent>[]
+  sequenceNodes: readonly GraphSequenceNode[]
 }
 
 /**
@@ -658,7 +658,7 @@ export type Hooks<TTarget extends object = object, TEvent extends KeymapEvent = 
    */
   pendingSequence: readonly KeySequencePart[]
   /** Dispatch trace events for sequence continuation and binding execution. */
-  dispatch: KeymapDispatchEvent<TTarget, TEvent>
+  dispatch: DispatchEvent<TTarget, TEvent>
 }
 
 export type HookName = keyof Hooks

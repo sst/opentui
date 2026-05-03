@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { KeyEvent } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { stringifyKeySequence, type KeymapDispatchEvent } from "../index.js"
+import { stringifyKeySequence, type DispatchEvent } from "../index.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 import { createKeymapTestHelpers, type OpenTuiKeymap } from "./keymap.test-support.js"
 
@@ -10,15 +10,15 @@ let mockInput: MockInput
 const diagnostics = createDiagnosticHarness()
 const { createFocusableBox, getKeymap } = createKeymapTestHelpers(diagnostics, () => renderer)
 
-function collectDispatchEvents(keymap: OpenTuiKeymap): KeymapDispatchEvent[] {
-  const events: KeymapDispatchEvent[] = []
+function collectDispatchEvents(keymap: OpenTuiKeymap): DispatchEvent[] {
+  const events: DispatchEvent[] = []
   keymap.on("dispatch", (event) => {
     events.push(event)
   })
   return events
 }
 
-function labels(events: readonly KeymapDispatchEvent[]): string[] {
+function labels(events: readonly DispatchEvent[]): string[] {
   return events.map((event) => `${event.phase}:${stringifyKeySequence(event.sequence, { preferDisplay: true })}`)
 }
 

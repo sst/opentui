@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import * as addons from "../addons/index.js"
-import { Keymap, type KeymapEvent, type KeymapHost, type KeymapHostMetadata } from "../index.js"
+import { Keymap, type HostMetadata, type KeymapEvent, type KeymapHost } from "../index.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 
 const diagnostics = createDiagnosticHarness()
 
-const FAKE_HOST_METADATA: KeymapHostMetadata = {
+const FAKE_HOST_METADATA: HostMetadata = {
   platform: "unknown",
   primaryModifier: "unknown",
   modifiers: {

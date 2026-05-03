@@ -17,7 +17,7 @@ import type {
   Command,
   KeymapEvent,
   KeymapHost,
-  KeymapHostMetadata,
+  HostMetadata,
   LayerAnalyzer,
   Listener,
   RunCommandOptions,
@@ -36,8 +36,8 @@ import type {
   KeyToken,
   KeyLike,
   KeySequencePart,
-  KeymapGraphSnapshot,
-  KeymapGraphSnapshotOptions,
+  GraphSnapshot,
+  GraphSnapshotOptions,
   StringifyOptions,
 } from "./types.js"
 import { ActivationService } from "./services/activation.js"
@@ -208,7 +208,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     return this.runtime.getData(name)
   }
 
-  public getHostMetadata(): Readonly<KeymapHostMetadata> {
+  public getHostMetadata(): Readonly<HostMetadata> {
     return this.host.metadata
   }
 
@@ -266,7 +266,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     return this.catalog.getCommandBindings(query)
   }
 
-  public getGraphSnapshot(options?: KeymapGraphSnapshotOptions<TTarget>): KeymapGraphSnapshot<TTarget, TEvent> {
+  public getGraphSnapshot(options?: GraphSnapshotOptions<TTarget>): GraphSnapshot<TTarget, TEvent> {
     return createGraphSnapshot({
       state: this.state,
       host: this.host,

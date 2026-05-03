@@ -33,8 +33,8 @@ import {
   type RawInputContext,
   type BindingState,
   type Hooks,
-  type KeymapDispatchBinding,
-  type KeymapDispatchEvent,
+  type DispatchBinding,
+  type DispatchEvent,
   type KeySequencePart,
   type RegisteredLayer,
   type SequenceNode,
@@ -220,7 +220,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   private createDispatchBinding(
     binding: BindingState<TTarget, TEvent>,
     focused: TTarget | null,
-  ): KeymapDispatchBinding<TTarget, TEvent> {
+  ): DispatchBinding<TTarget, TEvent> {
     return {
       sequence: cloneKeySequence(binding.sequence),
       command: binding.command,
@@ -234,7 +234,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
   }
 
-  private emitDispatchEvent(event: KeymapDispatchEvent<TTarget, TEvent>): void {
+  private emitDispatchEvent(event: DispatchEvent<TTarget, TEvent>): void {
     if (!this.hooks.has("dispatch")) {
       return
     }

@@ -3,7 +3,7 @@ import { registerDefaultKeys } from "./addons/universal/default-parser.js"
 import { registerEnabledFields } from "./addons/universal/enabled.js"
 import { registerMetadataFields } from "./addons/universal/metadata.js"
 import { Keymap } from "./keymap.js"
-import type { KeymapHost, KeymapHostMetadata, KeymapPlatform } from "./types.js"
+import type { HostMetadata, HostPlatform, KeymapHost } from "./types.js"
 
 export * from "./index.js"
 
@@ -22,7 +22,7 @@ function createSyntheticCommandEvent(): KeyEvent {
   })
 }
 
-function normalizeRuntimePlatform(platform: NodeJS.Platform | string | undefined): KeymapPlatform {
+function normalizeRuntimePlatform(platform: NodeJS.Platform | string | undefined): HostPlatform {
   if (platform === "darwin") {
     return "macos"
   }
@@ -38,7 +38,7 @@ function normalizeRuntimePlatform(platform: NodeJS.Platform | string | undefined
   return "unknown"
 }
 
-function createOpenTuiHostMetadata(renderer: CliRenderer): KeymapHostMetadata {
+function createOpenTuiHostMetadata(renderer: CliRenderer): HostMetadata {
   const platform = normalizeRuntimePlatform(process.platform)
   const hasKittyKeyboard = renderer.capabilities?.kitty_keyboard === true
 

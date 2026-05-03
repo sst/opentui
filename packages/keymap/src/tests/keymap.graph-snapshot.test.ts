@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { stringifyKeySequence, type KeymapGraphSnapshot } from "../index.js"
+import { stringifyKeySequence, type GraphSnapshot } from "../index.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 import { createKeymapTestHelpers, type OpenTuiKeymap } from "./keymap.test-support.js"
 
@@ -9,21 +9,21 @@ let mockInput: MockInput
 const diagnostics = createDiagnosticHarness()
 const { createFocusableBox, getKeymap } = createKeymapTestHelpers(diagnostics, () => renderer)
 
-function bindingLabel(binding: KeymapGraphSnapshot["bindings"][number]): string {
+function bindingLabel(binding: GraphSnapshot["bindings"][number]): string {
   return stringifyKeySequence(binding.sequence, { preferDisplay: true })
 }
 
-function getBinding(snapshot: KeymapGraphSnapshot, label: string): KeymapGraphSnapshot["bindings"][number] {
+function getBinding(snapshot: GraphSnapshot, label: string): GraphSnapshot["bindings"][number] {
   const binding = snapshot.bindings.find((candidate) => bindingLabel(candidate) === label)
   expect(binding).toBeDefined()
   return binding!
 }
 
 function getCommand(
-  snapshot: KeymapGraphSnapshot,
+  snapshot: GraphSnapshot,
   name: string,
   title?: string,
-): KeymapGraphSnapshot["commands"][number] {
+): GraphSnapshot["commands"][number] {
   const command = snapshot.commands.find((candidate) => {
     return candidate.name === name && (title === undefined || candidate.command.title === title)
   })
