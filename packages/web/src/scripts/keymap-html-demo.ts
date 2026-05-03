@@ -1,6 +1,16 @@
-import { createDefaultHtmlKeymap, createHtmlKeymapEvent, type ActiveKey } from "@opentui/keymap/html"
+import {
+  createDefaultHtmlKeymap,
+  createHtmlKeymapEvent,
+  type ActiveKey,
+  type HtmlKeymapEvent,
+  type KeymapGraphBinding,
+  type KeymapGraphSnapshot,
+} from "@opentui/keymap/html"
 import * as addons from "@opentui/keymap/addons"
 import { formatKeySequence } from "@opentui/keymap/extras"
+
+type HtmlGraphSnapshot = KeymapGraphSnapshot<HTMLElement, HtmlKeymapEvent>
+type HtmlGraphBinding = KeymapGraphBinding<HTMLElement, HtmlKeymapEvent>
 
 const app = document.getElementById("app") as HTMLElement | null
 const keymapRoot = document.body
@@ -24,6 +34,8 @@ const activeKeysCard = document.getElementById("active-keys-card") as HTMLElemen
 const activeKeys = document.getElementById("active-keys") as HTMLElement | null
 const logCard = document.getElementById("log-card") as HTMLElement | null
 const logLines = document.getElementById("log-lines") as HTMLElement | null
+const graphCard = document.getElementById("graph-card") as HTMLElement | null
+const keymapGraph = document.getElementById("keymap-graph") as HTMLElement | null
 const helpCard = document.getElementById("help-card") as HTMLElement | null
 const helpCopy = document.getElementById("help-copy") as HTMLElement | null
 
@@ -49,6 +61,8 @@ if (
   !activeKeys ||
   !logCard ||
   !logLines ||
+  !graphCard ||
+  !keymapGraph ||
   !helpCard ||
   !helpCopy
 ) {
@@ -61,6 +75,7 @@ const focusableTargets = [alphaPanel, betaPanel, notesField, draftField, activeK
 let alphaValue = 0
 let betaValue = 0
 let helpVisible = true
+let graphVisible = true
 let promptVisible = false
 let leaderArmed = false
 let promptRestoreTarget: HTMLElement | null = null
@@ -278,6 +293,65 @@ function getText(value: unknown): string | undefined {
   return trimmed
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"]/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;"
+      case "<":
+        return "&lt;"
+      case ">":
+        return "&gt;"
+      default:
+        return "&quot;"
+    }
+  })
+}
+
+function getTargetLabel(target: HTMLElement | undefined): string {
+  if (!target) {
+    return "root"
+  }
+
+  if (target.id) {
+    return `#${target.id}`
+  }
+
+  return target.tagName.toLowerCase()
+}
+
+function getReasonLabel(reasons: readonly string[]): string {
+  return reasons.length === 0 ? "ready" : reasons.join(" + ")
+}
+
+function getBindingCommandLabel(
+  binding: HtmlGraphBinding,
+  snapshot: HtmlGraphSnapshot,
+): string {
+  const resolved = binding.commandIds
+    .map((id) => snapshot.commands.find((command) => command.id === id)?.name)
+    .filter((name): name is string => !!name)
+
+  if (typeof binding.command === "string") {
+    return resolved.length === 0 ? binding.command : `${binding.command} -> ${resolved.join(" -> ")}`
+  }
+
+  if (typeof binding.command === "function") {
+    return "inline fn"
+  }
+
+  return "prefix"
+}
+
+function getBindingDescription(binding: HtmlGraphBinding): string {
+  return (
+    getText(binding.attrs?.desc) ??
+    getText(binding.commandAttrs?.title) ??
+    getText(binding.commandAttrs?.desc) ??
+    getReasonLabel(binding.inactiveReasons)
+  )
+}
+
 function getCommandSuggestions(): ExSuggestion[] {
   const normalized = normalizeExPromptName(commandInput.value)
   const spaceIndex = normalized.indexOf(" ")
@@ -423,6 +497,12 @@ function toggleHelp(): void {
   appendLog(helpVisible ? "Help opened" : "Help hidden")
 }
 
+function toggleGraph(): void {
+  graphVisible = !graphVisible
+  graphCard.classList.toggle("is-hidden", !graphVisible)
+  appendLog(graphVisible ? "Graph opened" : "Graph hidden")
+}
+
 function incrementAlpha(delta: number): void {
   alphaValue += delta
   renderCounters()
@@ -508,6 +588,100 @@ function renderActiveKeys(): void {
     .join("")
 }
 
+function renderGraph(): void {
+  graphCard.classList.toggle("is-hidden", !graphVisible)
+  const snapshot = keymap.getGraphSnapshot()
+  graphCard.dataset.activeLayers = String(snapshot.layers.filter((layer) => layer.active).length)
+  const activeView = snapshot.activeKeys
+    .map((key) => {
+      const label = escapeHtml(formatKeySequence([key], KEY_FORMAT_OPTIONS))
+      return `<span class="graph-chip is-active">${label}${key.continues ? " ..." : ""}</span>`
+    })
+    .join("")
+  const pendingPath = snapshot.sequenceNodes
+    .filter((node) => node.pendingPath && node.depth > 0)
+    .map((node) => {
+      const label = escapeHtml(formatKeySequence(node.sequence, KEY_FORMAT_OPTIONS) || node.display)
+      const pendingClass = node.pending ? " graph-chip is-pending" : " graph-chip is-path"
+      return `<span class="${pendingClass.trim()}">${label}</span>`
+    })
+    .join("")
+
+  const layerHtml = snapshot.layers
+    .map((layer) => {
+      const layerClass = layer.active ? "graph-layer is-active" : "graph-layer is-inactive"
+      const commands = layer.commandIds
+        .map((id) => snapshot.commands.find((command) => command.id === id))
+        .filter((command): command is HtmlGraphSnapshot["commands"][number] => !!command)
+      const bindings = layer.bindingIds
+        .map((id) => snapshot.bindings.find((binding) => binding.id === id))
+        .filter((binding): binding is HtmlGraphBinding => !!binding)
+      const nodes = snapshot.sequenceNodes.filter((node) => node.layerId === layer.id && node.depth > 0)
+      const targetLabel = escapeHtml(getTargetLabel(layer.target))
+      const reasonLabel = escapeHtml(getReasonLabel(layer.inactiveReasons))
+      const commandHtml = commands
+        .map((command) => {
+          const commandClass = command.reachable ? "graph-command is-reachable" : "graph-command is-dimmed"
+          const title = getText(command.attrs?.title) ?? getText(command.fields.title) ?? command.name
+          return `<span class="${commandClass}">${escapeHtml(command.name)}<small>${escapeHtml(title)}</small></span>`
+        })
+        .join("")
+      const bindingHtml = bindings
+        .map((binding) => {
+          const bindingClass = binding.reachable
+            ? "graph-binding is-reachable"
+            : binding.active
+              ? "graph-binding is-shadowed"
+              : "graph-binding is-inactive"
+          const label = escapeHtml(formatKeySequence(binding.sequence, KEY_FORMAT_OPTIONS))
+          const command = escapeHtml(getBindingCommandLabel(binding, snapshot))
+          const description = escapeHtml(getBindingDescription(binding))
+          return `
+            <div class="${bindingClass}">
+              <kbd>${label}</kbd>
+              <span>${command}</span>
+              <small>${description}</small>
+            </div>
+          `
+        })
+        .join("")
+      const nodeHtml = nodes
+        .map((node) => {
+          const nodeClass = node.pending
+            ? "graph-node is-pending"
+            : node.reachable
+              ? "graph-node is-reachable"
+              : "graph-node is-dimmed"
+          const label = escapeHtml(formatKeySequence(node.sequence, KEY_FORMAT_OPTIONS) || node.display)
+          return `<span class="${nodeClass}">${label}</span>`
+        })
+        .join("")
+
+      return `
+        <article class="${layerClass}">
+          <div class="graph-layer-title">
+            <strong>L${layer.order}</strong>
+            <span>${targetLabel}</span>
+            <em>${reasonLabel}</em>
+          </div>
+          <div class="graph-row"><b>keys</b><div>${nodeHtml || '<span class="graph-empty">none</span>'}</div></div>
+          <div class="graph-row"><b>bindings</b><div>${bindingHtml || '<span class="graph-empty">none</span>'}</div></div>
+          <div class="graph-row"><b>commands</b><div>${commandHtml || '<span class="graph-empty">none</span>'}</div></div>
+        </article>
+      `
+    })
+    .join("")
+
+  keymapGraph.innerHTML = `
+    <div class="graph-current">
+      <div><span>focused</span><strong>${escapeHtml(getTargetLabel(snapshot.focused ?? undefined))}</strong></div>
+      <div><span>pending path</span><div>${pendingPath || '<span class="graph-chip is-dimmed">none</span>'}</div></div>
+      <div><span>active view</span><div>${activeView || '<span class="graph-chip is-dimmed">none</span>'}</div></div>
+    </div>
+    <div class="graph-layers">${layerHtml}</div>
+  `
+}
+
 function renderLog(): void {
   logLines.innerHTML = logEntries
     .map((entry) => {
@@ -553,6 +727,7 @@ function renderHelp(): void {
   helpCopy.innerHTML = [
     "<div><kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> cycle focus between panels, textareas, and sidebar panes.</div>",
     `<div><kbd>${LEADER_TRIGGER_LABEL}</kbd> arms a leader sequence for <kbd>${LEADER_TRIGGER_LABEL} s</kbd>, <kbd>${LEADER_TRIGGER_LABEL} h</kbd>, and <kbd>${LEADER_TRIGGER_LABEL} r</kbd>.</div>`,
+    `<div><kbd>?</kbd> toggles Quick Help; <kbd>!</kbd> or <kbd>${LEADER_TRIGGER_LABEL} g</kbd> toggles the runtime graph.</div>`,
     "<div><kbd>:</kbd> opens the ex prompt as a modal overlay. Try <kbd>:help</kbd>, <kbd>:reset</kbd>, <kbd>:write alpha</kbd>, or <kbd>:focus draft</kbd>.</div>",
     "<div>The Alpha and Beta panels each install their own focus-within layers with <kbd>j</kbd>, <kbd>k</kbd>, and <kbd>Enter</kbd>.</div>",
     "<div>The Notes and Draft textareas use plain browser editing plus keymap bindings for <kbd>Ctrl+Enter</kbd>.</div>",
@@ -564,6 +739,7 @@ function renderAll(): void {
   renderCounters()
   renderStatus()
   renderActiveKeys()
+  renderGraph()
   renderPrompt()
   renderHelp()
 }
@@ -679,6 +855,14 @@ function disposers(): void {
         desc: "Show or hide the help card",
         run() {
           toggleHelp()
+        },
+      },
+      {
+        name: "toggle-graph",
+        title: "Toggle Graph",
+        desc: "Show or hide the runtime keymap graph",
+        run() {
+          toggleGraph()
         },
       },
       {
@@ -858,9 +1042,11 @@ function disposers(): void {
       { key: "tab", cmd: "focus-next", desc: "Next focus target" },
       { key: "shift+tab", cmd: "focus-prev", desc: "Previous focus target" },
       { key: "?", cmd: "toggle-help", desc: "Toggle help" },
+      { key: "!", cmd: "toggle-graph", desc: "Toggle runtime graph" },
       { key: ":", cmd: "prompt-open", desc: "Open ex prompt" },
       { key: "<leader>s", cmd: "save-session", desc: "Log a write snapshot" },
       { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help" },
+      { key: "<leader>g", cmd: "toggle-graph", desc: "Toggle runtime graph" },
       { key: "<leader>r", cmd: ":reset", desc: "Reset counters" },
       { key: "<leader>f", cmd: ":focus notes", desc: "Focus the notes editor" },
     ],
