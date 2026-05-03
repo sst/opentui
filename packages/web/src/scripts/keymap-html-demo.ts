@@ -32,6 +32,8 @@ const alphaCount = document.getElementById("alpha-count") as HTMLElement | null
 const betaCount = document.getElementById("beta-count") as HTMLElement | null
 const activeKeysCard = document.getElementById("active-keys-card") as HTMLElement | null
 const activeKeys = document.getElementById("active-keys") as HTMLElement | null
+const graphCanvasCard = document.getElementById("graph-canvas-card") as HTMLElement | null
+const graphCanvas = document.getElementById("graph-canvas") as HTMLCanvasElement | null
 const logCard = document.getElementById("log-card") as HTMLElement | null
 const logLines = document.getElementById("log-lines") as HTMLElement | null
 const graphCard = document.getElementById("graph-card") as HTMLElement | null
@@ -59,6 +61,8 @@ if (
   !betaCount ||
   !activeKeysCard ||
   !activeKeys ||
+  !graphCanvasCard ||
+  !graphCanvas ||
   !logCard ||
   !logLines ||
   !graphCard ||
@@ -352,6 +356,271 @@ function getBindingDescription(binding: HtmlGraphBinding): string {
   )
 }
 
+function getGraphBindingLabel(binding: HtmlGraphBinding): string {
+  return formatKeySequence(binding.sequence, KEY_FORMAT_OPTIONS) || "bind"
+}
+
+interface CanvasGraphNode {
+  id: string
+  x: number
+  y: number
+  radius: number
+  label: string
+  kind: "layer" | "binding" | "command"
+  active: boolean
+  reachable: boolean
+  pending: boolean
+}
+
+interface CanvasPalette {
+  bg: string
+  panel: string
+  border: string
+  comment: string
+  fg: string
+  blue: string
+  cyan: string
+  green: string
+  yellow: string
+  magenta: string
+  red: string
+}
+
+function getCanvasPalette(): CanvasPalette {
+  const styles = getComputedStyle(document.documentElement)
+  const color = (name: string) => styles.getPropertyValue(name).trim()
+
+  return {
+    bg: color("--tn-bg-dark"),
+    panel: color("--tn-bg-panel"),
+    border: color("--tn-border"),
+    comment: color("--tn-comment"),
+    fg: color("--tn-fg"),
+    blue: color("--tn-blue"),
+    cyan: color("--tn-cyan"),
+    green: color("--tn-green"),
+    yellow: color("--tn-yellow"),
+    magenta: color("--tn-magenta"),
+    red: color("--tn-red"),
+  }
+}
+
+function sequenceMatchesPrefix(sequence: readonly { match: string }[], prefix: readonly { match: string }[]): boolean {
+  if (prefix.length === 0 || prefix.length > sequence.length) {
+    return false
+  }
+
+  for (let index = 0; index < prefix.length; index += 1) {
+    if (sequence[index]?.match !== prefix[index]?.match) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function drawCanvasLine(
+  ctx: CanvasRenderingContext2D,
+  from: CanvasGraphNode,
+  to: CanvasGraphNode,
+  color: string,
+  alpha: number,
+  width: number,
+): void {
+  ctx.save()
+  ctx.globalAlpha = alpha
+  ctx.strokeStyle = color
+  ctx.lineWidth = width
+  ctx.beginPath()
+  ctx.moveTo(from.x + from.radius, from.y)
+  const midX = (from.x + to.x) / 2
+  ctx.bezierCurveTo(midX, from.y, midX, to.y, to.x - to.radius, to.y)
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawCanvasNode(ctx: CanvasRenderingContext2D, node: CanvasGraphNode, palette: CanvasPalette): void {
+  const color = node.pending
+    ? palette.yellow
+    : node.kind === "layer"
+      ? palette.green
+      : node.kind === "binding"
+        ? palette.cyan
+        : palette.magenta
+  const alpha = node.reachable ? 1 : node.active ? 0.62 : 0.25
+
+  ctx.save()
+  ctx.globalAlpha = alpha
+  ctx.fillStyle = palette.bg
+  ctx.strokeStyle = color
+  ctx.lineWidth = node.pending ? 2.2 : 1.4
+  ctx.beginPath()
+  ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+
+  if (node.reachable || node.pending) {
+    ctx.globalAlpha = 0.18
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.arc(node.x, node.y, node.radius + 5, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  ctx.globalAlpha = node.reachable || node.pending ? 1 : 0.46
+  ctx.fillStyle = node.pending ? palette.yellow : palette.fg
+  ctx.font = "10px JetBrains Mono, Fira Code, monospace"
+  ctx.textAlign = "center"
+  ctx.textBaseline = "top"
+  ctx.fillText(node.label.slice(0, 12), node.x, node.y + node.radius + 4)
+  ctx.restore()
+}
+
+function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
+  const rect = graphCanvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) {
+    return
+  }
+
+  const dpr = Math.max(1, window.devicePixelRatio || 1)
+  const width = Math.floor(rect.width)
+  const height = Math.floor(rect.height)
+  graphCanvas.width = Math.floor(width * dpr)
+  graphCanvas.height = Math.floor(height * dpr)
+
+  const ctx = graphCanvas.getContext("2d")
+  if (!ctx) {
+    return
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+  const palette = getCanvasPalette()
+  ctx.clearRect(0, 0, width, height)
+  ctx.fillStyle = palette.bg
+  ctx.fillRect(0, 0, width, height)
+
+  ctx.save()
+  ctx.globalAlpha = 0.35
+  ctx.strokeStyle = palette.border
+  ctx.lineWidth = 1
+  for (let x = 18; x < width; x += 28) {
+    ctx.beginPath()
+    ctx.moveTo(x, 0)
+    ctx.lineTo(x, height)
+    ctx.stroke()
+  }
+  for (let y = 18; y < height; y += 28) {
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    ctx.lineTo(width, y)
+    ctx.stroke()
+  }
+  ctx.restore()
+
+  const top = 28
+  const bottom = height - 28
+  const graphHeight = Math.max(1, bottom - top)
+  const layerX = 30
+  const bindingX = Math.max(92, width * 0.48)
+  const commandX = Math.max(bindingX + 68, width - 40)
+  const layerNodes = new Map<string, CanvasGraphNode>()
+  const bindingNodes = new Map<string, CanvasGraphNode>()
+  const commandNodes = new Map<string, CanvasGraphNode>()
+  const visibleBindings = [...snapshot.bindings].sort((left, right) => {
+    if (left.reachable !== right.reachable) return left.reachable ? -1 : 1
+    if (left.active !== right.active) return left.active ? -1 : 1
+    return getGraphBindingLabel(left).localeCompare(getGraphBindingLabel(right))
+  })
+
+  snapshot.layers.forEach((layer, index) => {
+    const y = top + (graphHeight * (index + 0.5)) / Math.max(1, snapshot.layers.length)
+    layerNodes.set(layer.id, {
+      id: layer.id,
+      x: layerX,
+      y,
+      radius: 8,
+      label: `L${layer.order}`,
+      kind: "layer",
+      active: layer.active,
+      reachable: layer.active,
+      pending: false,
+    })
+  })
+
+  visibleBindings.forEach((binding, index) => {
+    const y = top + (graphHeight * (index + 0.5)) / Math.max(1, visibleBindings.length)
+    bindingNodes.set(binding.id, {
+      id: binding.id,
+      x: bindingX,
+      y,
+      radius: binding.reachable ? 6 : 4.5,
+      label: getGraphBindingLabel(binding),
+      kind: "binding",
+      active: binding.active,
+      reachable: binding.reachable,
+      pending: sequenceMatchesPrefix(binding.sequence, snapshot.pendingSequence),
+    })
+  })
+
+  snapshot.commands.forEach((command, index) => {
+    const y = top + (graphHeight * (index + 0.5)) / Math.max(1, snapshot.commands.length)
+    commandNodes.set(command.id, {
+      id: command.id,
+      x: commandX,
+      y,
+      radius: command.reachable ? 6.5 : 4.5,
+      label: command.name.replace(/^:/, ""),
+      kind: "command",
+      active: command.active,
+      reachable: command.reachable,
+      pending: false,
+    })
+  })
+
+  for (const binding of visibleBindings) {
+    const layer = layerNodes.get(binding.layerId)
+    const bindingNode = bindingNodes.get(binding.id)
+    if (!layer || !bindingNode) {
+      continue
+    }
+
+    drawCanvasLine(ctx, layer, bindingNode, bindingNode.pending ? palette.yellow : palette.cyan, binding.reachable ? 0.68 : 0.16, 1.2)
+
+    for (const commandId of binding.commandIds) {
+      const commandNode = commandNodes.get(commandId)
+      if (!commandNode) {
+        continue
+      }
+
+      drawCanvasLine(
+        ctx,
+        bindingNode,
+        commandNode,
+        binding.reachable && commandNode.reachable ? palette.green : palette.comment,
+        binding.reachable && commandNode.reachable ? 0.72 : 0.12,
+        binding.reachable && commandNode.reachable ? 1.6 : 1,
+      )
+    }
+  }
+
+  for (const node of [...layerNodes.values(), ...bindingNodes.values(), ...commandNodes.values()]) {
+    drawCanvasNode(ctx, node, palette)
+  }
+
+  ctx.save()
+  ctx.fillStyle = palette.comment
+  ctx.font = "10px JetBrains Mono, Fira Code, monospace"
+  ctx.textAlign = "left"
+  ctx.textBaseline = "top"
+  ctx.fillText("layers", 8, 8)
+  ctx.textAlign = "center"
+  ctx.fillText("bindings", bindingX, 8)
+  ctx.textAlign = "right"
+  ctx.fillText("commands", width - 8, 8)
+  ctx.restore()
+}
+
 function getCommandSuggestions(): ExSuggestion[] {
   const normalized = normalizeExPromptName(commandInput.value)
   const spaceIndex = normalized.indexOf(" ")
@@ -591,6 +860,7 @@ function renderActiveKeys(): void {
 function renderGraph(): void {
   graphCard.classList.toggle("is-hidden", !graphVisible)
   const snapshot = keymap.getGraphSnapshot()
+  renderGraphCanvas(snapshot)
   graphCard.dataset.activeLayers = String(snapshot.layers.filter((layer) => layer.active).length)
   const activeView = snapshot.activeKeys
     .map((key) => {
@@ -1187,6 +1457,10 @@ promptOverlay.addEventListener("mousedown", (event) => {
 
   debug("prompt backdrop click")
   closePrompt()
+})
+
+window.addEventListener("resize", () => {
+  renderGraphCanvas(keymap.getGraphSnapshot())
 })
 
 renderCounters()
