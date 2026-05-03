@@ -3,6 +3,7 @@ import {
   createHtmlKeymapEvent,
   type ActiveKey,
   type HtmlKeymapEvent,
+  type KeymapDispatchEvent,
   type KeymapGraphBinding,
   type KeymapGraphSnapshot,
 } from "@opentui/keymap/html"
@@ -11,6 +12,7 @@ import { formatKeySequence } from "@opentui/keymap/extras"
 
 type HtmlGraphSnapshot = KeymapGraphSnapshot<HTMLElement, HtmlKeymapEvent>
 type HtmlGraphBinding = KeymapGraphBinding<HTMLElement, HtmlKeymapEvent>
+type HtmlDispatchEvent = KeymapDispatchEvent<HTMLElement, HtmlKeymapEvent>
 
 const app = document.getElementById("app") as HTMLElement | null
 const keymapRoot = document.body
@@ -82,6 +84,8 @@ let promptRestoreTarget: HTMLElement | null = null
 let selectedSuggestion = 0
 let lastAction = "Focus a panel or textarea to begin."
 let logEntries: Array<{ at: string; message: string }> = []
+let graphPulses: CanvasGraphPulse[] = []
+let graphPulseFrame = 0
 
 const DEBUG_NAMESPACE = "[html-keymap-demo]"
 const LEADER_TOKEN = "<leader>"
@@ -362,6 +366,17 @@ interface CanvasGraphNode {
   active: boolean
   reachable: boolean
   pending: boolean
+  pulse: number
+}
+
+interface CanvasGraphPulse {
+  phase: HtmlDispatchEvent["phase"]
+  layerOrder?: number
+  bindingIndex?: number
+  command?: string
+  sequenceMatches: readonly string[]
+  startedAt: number
+  expiresAt: number
 }
 
 interface CanvasPalette {
@@ -411,6 +426,109 @@ function sequenceMatchesPrefix(sequence: readonly { match: string }[], prefix: r
   return true
 }
 
+function sequenceMatchesExact(left: readonly { match: string }[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index]?.match !== right[index]) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function getPulseValue(pulse: CanvasGraphPulse, now: number): number {
+  if (now >= pulse.expiresAt) {
+    return 0
+  }
+
+  const duration = pulse.expiresAt - pulse.startedAt
+  if (duration <= 0) {
+    return 0
+  }
+
+  return Math.max(0, Math.min(1, (pulse.expiresAt - now) / duration))
+}
+
+function getLayerPulse(layerOrder: number, now: number): number {
+  let pulseValue = 0
+  for (const pulse of graphPulses) {
+    if (pulse.layerOrder !== layerOrder) {
+      continue
+    }
+
+    pulseValue = Math.max(pulseValue, getPulseValue(pulse, now))
+  }
+
+  return pulseValue
+}
+
+function getBindingPulse(binding: HtmlGraphBinding, now: number): number {
+  let pulseValue = 0
+  for (const pulse of graphPulses) {
+    if (pulse.layerOrder !== binding.sourceLayerOrder) {
+      continue
+    }
+
+    if (pulse.bindingIndex !== undefined && pulse.bindingIndex !== binding.bindingIndex) {
+      continue
+    }
+
+    if (!sequenceMatchesExact(binding.sequence, pulse.sequenceMatches)) {
+      continue
+    }
+
+    pulseValue = Math.max(pulseValue, getPulseValue(pulse, now))
+  }
+
+  return pulseValue
+}
+
+function getCommandPulse(command: HtmlGraphSnapshot["commands"][number], now: number): number {
+  let pulseValue = 0
+  for (const pulse of graphPulses) {
+    if (pulse.command !== command.name) {
+      continue
+    }
+
+    pulseValue = Math.max(pulseValue, getPulseValue(pulse, now))
+  }
+
+  return pulseValue
+}
+
+function scheduleGraphPulseFrame(): void {
+  if (graphPulseFrame !== 0) {
+    return
+  }
+
+  graphPulseFrame = window.requestAnimationFrame(() => {
+    graphPulseFrame = 0
+    renderGraphCanvas(keymap.getGraphSnapshot())
+  })
+}
+
+function addGraphPulse(event: HtmlDispatchEvent): void {
+  const now = performance.now()
+  const command = typeof event.command === "string" ? event.command : undefined
+  graphPulses = [
+    ...graphPulses.filter((pulse) => pulse.expiresAt > now),
+    {
+      phase: event.phase,
+      layerOrder: event.layer?.order,
+      bindingIndex: event.binding?.bindingIndex,
+      command,
+      sequenceMatches: event.sequence.map((part) => part.match),
+      startedAt: now,
+      expiresAt: now + (event.phase === "binding-reject" ? 900 : 650),
+    },
+  ]
+  scheduleGraphPulseFrame()
+}
+
 function drawCanvasLine(
   ctx: CanvasRenderingContext2D,
   from: CanvasGraphNode,
@@ -419,10 +537,11 @@ function drawCanvasLine(
   alpha: number,
   width: number,
 ): void {
+  const pulse = Math.max(from.pulse, to.pulse)
   ctx.save()
-  ctx.globalAlpha = alpha
+  ctx.globalAlpha = Math.min(1, alpha + pulse * 0.55)
   ctx.strokeStyle = color
-  ctx.lineWidth = width
+  ctx.lineWidth = width + pulse * 3
   ctx.beginPath()
   ctx.moveTo(from.x + from.radius, from.y)
   const midX = (from.x + to.x) / 2
@@ -442,24 +561,24 @@ function drawCanvasNode(ctx: CanvasRenderingContext2D, node: CanvasGraphNode, pa
   const alpha = node.reachable ? 1 : node.active ? 0.62 : 0.25
 
   ctx.save()
-  ctx.globalAlpha = alpha
+  ctx.globalAlpha = Math.min(1, alpha + node.pulse * 0.7)
   ctx.fillStyle = palette.bg
-  ctx.strokeStyle = color
-  ctx.lineWidth = node.pending ? 2.2 : 1.4
+  ctx.strokeStyle = node.pulse > 0 ? (node.kind === "binding" ? palette.yellow : color) : color
+  ctx.lineWidth = node.pending ? 2.2 : 1.4 + node.pulse * 3
   ctx.beginPath()
-  ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2)
+  ctx.arc(node.x, node.y, node.radius + node.pulse * 3, 0, Math.PI * 2)
   ctx.fill()
   ctx.stroke()
 
-  if (node.reachable || node.pending) {
-    ctx.globalAlpha = 0.18
-    ctx.fillStyle = color
+  if (node.reachable || node.pending || node.pulse > 0) {
+    ctx.globalAlpha = 0.18 + node.pulse * 0.28
+    ctx.fillStyle = node.pulse > 0 ? palette.yellow : color
     ctx.beginPath()
-    ctx.arc(node.x, node.y, node.radius + 5, 0, Math.PI * 2)
+    ctx.arc(node.x, node.y, node.radius + 5 + node.pulse * 12, 0, Math.PI * 2)
     ctx.fill()
   }
 
-  ctx.globalAlpha = node.reachable || node.pending ? 1 : 0.46
+  ctx.globalAlpha = node.reachable || node.pending || node.pulse > 0 ? 1 : 0.46
   ctx.fillStyle = node.pending ? palette.yellow : palette.fg
   ctx.font = "10px JetBrains Mono, Fira Code, monospace"
   ctx.textAlign = "center"
@@ -469,6 +588,8 @@ function drawCanvasNode(ctx: CanvasRenderingContext2D, node: CanvasGraphNode, pa
 }
 
 function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
+  const now = performance.now()
+  graphPulses = graphPulses.filter((pulse) => pulse.expiresAt > now)
   const rect = graphCanvas.getBoundingClientRect()
   if (rect.width <= 0 || rect.height <= 0) {
     return
@@ -537,6 +658,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       active: layer.active,
       reachable: layer.active,
       pending: false,
+      pulse: getLayerPulse(layer.order, now),
     })
   })
 
@@ -552,6 +674,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       active: binding.active,
       reachable: binding.reachable,
       pending: sequenceMatchesPrefix(binding.sequence, snapshot.pendingSequence),
+      pulse: getBindingPulse(binding, now),
     })
   })
 
@@ -567,6 +690,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       active: command.active,
       reachable: command.reachable,
       pending: false,
+      pulse: getCommandPulse(command, now),
     })
   })
 
@@ -611,6 +735,10 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
   ctx.textAlign = "right"
   ctx.fillText("commands", width - 8, 8)
   ctx.restore()
+
+  if (graphPulses.length > 0) {
+    scheduleGraphPulseFrame()
+  }
 }
 
 function getCommandSuggestions(): ExSuggestion[] {
@@ -1321,6 +1449,9 @@ function disposers(): void {
   keymap.on("state", () => {
     debugStateSnapshot("event")
     renderAll()
+  })
+  keymap.on("dispatch", (event) => {
+    addGraphPulse(event)
   })
   keymap.on("warning", (event) => {
     debug("warning", {
