@@ -138,22 +138,22 @@ public class CliRenderer : IDisposable
 
             if (mouse.Button is MouseButton.WheelUp or MouseButton.WheelDown)
             {
-                // Wheel: dispatch to focused renderable first, then hovered
-                if (CurrentFocus != null)
-                    CurrentFocus.HandleMouse(mouse);
-                else
-                {
-                    var hovered = HitTest(mouse.X, mouse.Y);
-                    hovered?.HandleMouse(mouse);
-                }
+                // Scroll goes to the renderable under the cursor (like the original),
+                // falling back to the focused renderable when there is no hit.
+                var scrollTarget = HitTest(mouse.X, mouse.Y) ?? CurrentFocus;
+                scrollTarget?.HandleMouse(mouse);
             }
             else if (mouse.Pressed && mouse.Button == MouseButton.Left)
             {
                 var target = HitTest(mouse.X, mouse.Y);
                 if (target != null)
                 {
-                    if (target.Focusable)
-                        target.Focus();
+                    // Walk up the parent chain to focus the nearest focusable ancestor
+                    // (mirrors the original TypeScript autoFocus behaviour).
+                    var focusTarget = target;
+                    while (focusTarget != null && !focusTarget.Focusable)
+                        focusTarget = focusTarget.Parent;
+                    focusTarget?.Focus();
                     target.HandleMouse(mouse);
                 }
                 else
@@ -371,47 +371,106 @@ public class CliRenderer : IDisposable
             SetRawModeUnix(enable);
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Termios
-    {
-        public uint c_iflag, c_oflag, c_cflag, c_lflag;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 20)]
-        public byte[] c_cc;
-        public uint c_ispeed, c_ospeed;
-    }
-
+    // Use raw IntPtr so we control the exact native buffer size for both
+    // Linux (struct termios = 60 bytes: c_line + c_cc[32]) and
+    // macOS (struct termios = 44 bytes: c_cc[20], no c_line).
     [DllImport("libc", EntryPoint = "tcgetattr", SetLastError = true)]
-    private static extern int TcGetAttr(int fd, out Termios termios);
+    private static extern int TcGetAttrPtr(int fd, IntPtr termios);
 
     [DllImport("libc", EntryPoint = "tcsetattr", SetLastError = true)]
-    private static extern int TcSetAttr(int fd, int action, ref Termios termios);
+    private static extern int TcSetAttrPtr(int fd, int action, IntPtr termios);
 
-    private static Termios _savedTermios;
+    // Large enough for Linux (60 B) and macOS (44 B) termios structs.
+    private const int TermiosBufSize = 64;
+
+    // Byte offsets into the native termios struct (same on both platforms).
+    private const int TermiosIflagOffset = 0;
+    private const int TermiosLflagOffset = 12;
+
+    // c_lflag bits — ECHO is 0x8 on both; the rest differ between platforms.
+    private const uint ECHO    = 0x8;
+    private const uint ICANON_LINUX = 0x2;    private const uint ISIG_LINUX   = 0x1;    private const uint IEXTEN_LINUX = 0x8000;
+    private const uint ICANON_MAC   = 0x100;  private const uint ISIG_MAC     = 0x80;   private const uint IEXTEN_MAC   = 0x400;
+
+    // c_iflag bits — ICRNL is 0x100 on both; IXON differs.
+    private const uint ICRNL       = 0x100;
+    private const uint IXON_LINUX  = 0x400;
+    private const uint IXON_MAC    = 0x200;
+
+    // c_cc array: starting byte offset in the native struct, and VMIN/VTIME indices.
+    // macOS: c_cc at offset 16, VMIN=16, VTIME=17
+    // Linux: c_cc at offset 17 (c_line byte sits at offset 16), VMIN=6, VTIME=5
+    private const int CcStartMac   = 16; private const int VminIdxMac  = 16; private const int VtimeIdxMac = 17;
+    private const int CcStartLinux = 17; private const int VminIdxLinux = 6; private const int VtimeIdxLinux = 5;
+
+    private static byte[]? _savedTermiosBytes;
     private static bool _termiosSaved;
 
     private static void SetRawModeUnix(bool enable)
     {
         try
         {
+            bool isMac = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+
             if (enable)
             {
-                if (TcGetAttr(0, out _savedTermios) == 0)
+                var buf = Marshal.AllocHGlobal(TermiosBufSize);
+                try
                 {
+                    // Zero-initialise so any padding bytes are deterministic.
+                    for (int i = 0; i < TermiosBufSize; i++)
+                        Marshal.WriteByte(buf, i, 0);
+
+                    if (TcGetAttrPtr(0, buf) != 0) return;
+
+                    // Persist original settings for restore on exit.
+                    _savedTermiosBytes = new byte[TermiosBufSize];
+                    Marshal.Copy(buf, _savedTermiosBytes, 0, TermiosBufSize);
                     _termiosSaved = true;
-                    var raw = _savedTermios;
-                    // Disable ECHO, ICANON, ISIG, IEXTEN
-                    raw.c_lflag &= ~(uint)(0x8 | 0x2 | 0x1 | 0x8000); // ECHO|ICANON|ISIG|IEXTEN
-                    // Disable IXON, ICRNL
-                    raw.c_iflag &= ~(uint)(0x400 | 0x2); // IXON|ICRNL
-                    raw.c_cc[6] = 1;  // VMIN
-                    raw.c_cc[5] = 0;  // VTIME
-                    TcSetAttr(0, 0, ref raw); // TCSANOW = 0
+
+                    // Clear raw-mode flags in c_lflag (offset 12, same on both platforms).
+                    uint c_lflag = (uint)Marshal.ReadInt32(buf, TermiosLflagOffset);
+                    c_lflag &= isMac
+                        ? ~(ECHO | ICANON_MAC | ISIG_MAC | IEXTEN_MAC)
+                        : ~(ECHO | ICANON_LINUX | ISIG_LINUX | IEXTEN_LINUX);
+                    Marshal.WriteInt32(buf, TermiosLflagOffset, (int)c_lflag);
+
+                    // Clear flow-control flags in c_iflag (offset 0, same on both platforms).
+                    uint c_iflag = (uint)Marshal.ReadInt32(buf, TermiosIflagOffset);
+                    c_iflag &= isMac
+                        ? ~(IXON_MAC  | ICRNL)
+                        : ~(IXON_LINUX | ICRNL);
+                    Marshal.WriteInt32(buf, TermiosIflagOffset, (int)c_iflag);
+
+                    // Set VMIN=1 (block until 1 byte available) and VTIME=0 (no timeout).
+                    int ccStart = isMac ? CcStartMac   : CcStartLinux;
+                    int vminIdx = isMac ? VminIdxMac   : VminIdxLinux;
+                    int vtimeIdx = isMac ? VtimeIdxMac : VtimeIdxLinux;
+                    Marshal.WriteByte(buf, ccStart + vminIdx,  1); // VMIN
+                    Marshal.WriteByte(buf, ccStart + vtimeIdx, 0); // VTIME
+
+                    TcSetAttrPtr(0, 0, buf); // TCSANOW = 0
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buf);
                 }
             }
             else
             {
-                if (_termiosSaved)
-                    TcSetAttr(0, 0, ref _savedTermios);
+                if (_termiosSaved && _savedTermiosBytes != null)
+                {
+                    var buf = Marshal.AllocHGlobal(TermiosBufSize);
+                    try
+                    {
+                        Marshal.Copy(_savedTermiosBytes, 0, buf, TermiosBufSize);
+                        TcSetAttrPtr(0, 0, buf);
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(buf);
+                    }
+                }
             }
         }
         catch { /* ignore in non-tty */ }

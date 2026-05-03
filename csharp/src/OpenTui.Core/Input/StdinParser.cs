@@ -17,6 +17,16 @@ public class StdinParser
             if (!evt) break;
         }
 
+        // If only ESC remains after parsing the complete read chunk, treat it as
+        // a standalone escape key press.  Terminals always send full escape
+        // sequences atomically in a single read(), so a lone ESC that survives to
+        // this point was not the start of a sequence.
+        if (_buf.Count == 1 && _buf[0] == 0x1b)
+        {
+            events.Add(new KeyEvent { Name = "escape", Key = "escape" });
+            _buf.Clear();
+        }
+
         return events;
     }
 
