@@ -32,9 +32,6 @@ public class ScrollBoxRenderable : Renderable
         var sorted = GetChildren().Where(c => c.Visible).OrderBy(c => c.ZIndex).ToList();
         foreach (var child in sorted)
         {
-            // Offset child screen position by scroll
-            var savedParentX = ScreenX;
-            var savedParentY = ScreenY;
             child.Render(buffer, deltaTime);
         }
 
