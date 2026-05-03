@@ -38,7 +38,7 @@ interface FieldCompilerContextOptions<TTarget extends object, TEvent extends Key
 
 export function createFieldCompilerContext<TTarget extends object, TEvent extends KeymapEvent>(
   options: FieldCompilerContextOptions<TTarget, TEvent> & { attrs: Attributes },
-): BindingFieldContext & CommandFieldContext
+): BindingFieldContext & CommandFieldContext & LayerFieldContext
 export function createFieldCompilerContext<TTarget extends object, TEvent extends KeymapEvent>(
   options: FieldCompilerContextOptions<TTarget, TEvent> & { attrs?: undefined },
 ): LayerFieldContext

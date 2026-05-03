@@ -428,6 +428,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
       target: includeTargets ? layer.target : undefined,
       targetMode: layer.targetMode,
       fields: layer.compileFields ?? {},
+      attrs: layer.attrs,
       active: state.active,
       focusActive: state.focusActive,
       enabled: state.enabled,

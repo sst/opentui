@@ -57,6 +57,8 @@ Recognized modifier prefixes (case-insensitive, joined with `+`):
 
 `registerMetadataFields()` validates and trims metadata fields before exposing them in projections. Binding `desc` / `group` become binding metadata. Command `desc` / `title` / `category` become command metadata in `commandAttrs`.
 
+Layer metadata is app-specific. Register layer fields directly with `registerLayerFields()` and call `ctx.attr(...)` when graph/debug visualizations need layer labels or grouping metadata.
+
 `registerAliasesField()` adds bindings instead of replacing the originals and aliases stay local to the layer that declared them.
 
 ### Syntax and sequence addons

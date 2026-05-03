@@ -145,6 +145,21 @@ In that example, the binding is only active while `getData("vim.mode")` is `"nor
 
 Unknown custom binding fields are not fatal. If no binding-field compiler is registered for a field, the keymap ignores that field and emits a warning.
 
+Layer fields follow the same compiler model. Register them with `registerLayerFields()` when you want layer-scoped activation, binding-pipeline inputs, or visualization metadata for graph snapshots:
+
+```ts
+keymap.registerLayerFields({
+  name(value, ctx) {
+    ctx.attr("name", String(value).trim())
+  },
+})
+
+keymap.registerLayer({
+  name: "Global",
+  bindings: [{ key: "?", cmd: "toggle-help" }],
+})
+```
+
 All entry points use the same registration, dispatch and query model. They only differ in how they provide targets, focus and input events.
 
 ## Fields and metadata
@@ -167,7 +182,7 @@ keymap.registerBindingFields({
 })
 ```
 
-That field does two things: it gates the binding on `keymap.getData("vim.mode")`, and it exposes `{ mode: value }` to active-key metadata when requested.
+That field does two things: it gates the binding on `keymap.getData("vim.mode")`, and it exposes `{ mode: value }` to active-key metadata when requested. Layer fields can also publish attrs, but those appear on `GraphLayer.attrs` for graph/debug projections rather than on active keys.
 
 Metadata can use a different name from the field when an addon wants to validate, normalize or present a stable public metadata shape:
 

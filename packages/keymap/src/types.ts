@@ -394,6 +394,7 @@ export interface GraphLayer<TTarget extends object = object> {
   target?: TTarget
   targetMode?: TargetMode
   fields: Readonly<Record<string, unknown>>
+  attrs?: Readonly<Attributes>
   active: boolean
   focusActive: boolean
   enabled: boolean
@@ -492,11 +493,8 @@ export type BindingFieldCompiler = (value: unknown, ctx: BindingFieldContext) =>
 
 export interface LayerFieldContext {
   require(name: string, value: unknown): void
+  attr(name: string, value: unknown): void
   /**
-   * Layer fields only influence activation and binding compilation. They do
-   * not expose `attr(...)` because the current model has no layer-level attrs
-   * surface on `ActiveKey`, `ActiveBinding`, or `Command`.
-   *
    * Registers a runtime matcher. Raw callbacks re-run on every read;
    * reactive matchers stay cached until they notify.
    */
@@ -801,6 +799,7 @@ export interface RegisteredLayer<TTarget extends object = object, TEvent extends
   matchCacheDirty?: boolean
   matchCache?: boolean
   compileFields?: Readonly<Record<string, unknown>>
+  attrs?: Readonly<Attributes>
   commands: readonly CommandState<TTarget, TEvent>[]
   commandLookup?: ReadonlyMap<string, CommandState<TTarget, TEvent>>
   sourceBindings: readonly Binding<TTarget, TEvent>[]

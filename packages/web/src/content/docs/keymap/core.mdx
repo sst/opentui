@@ -71,14 +71,14 @@ keymap.registerLayer({
 })
 ```
 
-| Field        | Description                                                                                  |
-| ------------ | -------------------------------------------------------------------------------------------- |
-| `target`     | Optional local target. Omit it for a global layer                                            |
-| `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present         |
-| `priority`   | Higher numbers win. Within the same priority, newer layers win                               |
-| `bindings`   | `Binding[]`                                                                                  |
-| `commands`   | Named command definitions registered with the same layer                                     |
-| extra fields | Feed layer-field compilers and binding compilation. Layer fields do not surface public attrs |
+| Field        | Description                                                                                         |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| `target`     | Optional local target. Omit it for a global layer                                                   |
+| `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present                |
+| `priority`   | Higher numbers win. Within the same priority, newer layers win                                      |
+| `bindings`   | `Binding[]`                                                                                         |
+| `commands`   | Named command definitions registered with the same layer                                            |
+| extra fields | Feed layer-field compilers and binding compilation. Compiled layer attrs surface in graph snapshots |
 
 - Targetless layers are always active.
 - Active layers all use the same precedence rules: higher `priority` wins, then newer layers win.
@@ -161,15 +161,21 @@ The shared default parser understands single-stroke named keys, modifier chords,
 
 Custom fields are raw config. Compiled metadata is published by field compilers with `attr(...)`.
 
-| Surface | Custom fields                                                          | Metadata output                                    |
-| ------- | ---------------------------------------------------------------------- | -------------------------------------------------- |
-| Layer   | Extra layer properties feed layer-field compilers and binding pipeline | None. Layers intentionally have no metadata output |
-| Binding | Extra binding properties feed binding-field compilers                  | `ActiveBinding.attrs`, `ActiveKey.bindingAttrs`    |
-| Command | Extra command properties feed command-field compilers                  | `commandAttrs` on active keys and bindings         |
+| Surface | Custom fields                                                          | Metadata output                                 |
+| ------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
+| Layer   | Extra layer properties feed layer-field compilers and binding pipeline | `GraphLayer.attrs` in graph snapshots           |
+| Binding | Extra binding properties feed binding-field compilers                  | `ActiveBinding.attrs`, `ActiveKey.bindingAttrs` |
+| Command | Extra command properties feed command-field compilers                  | `commandAttrs` on active keys and bindings      |
 
 Field compilers can validate and normalize values before publishing attrs. They can also keep behavior-only fields out of public metadata.
 
 ```ts
+keymap.registerLayerFields({
+  name(value, ctx) {
+    ctx.attr("name", String(value).trim())
+  },
+})
+
 keymap.registerCommandFields({
   enabled(value, ctx) {
     ctx.activeWhen(() => value === true)
@@ -180,7 +186,7 @@ keymap.registerCommandFields({
 })
 ```
 
-In that example, `enabled` controls availability but exposes no metadata. `title` exposes normalized metadata for command palettes and help UIs.
+In that example, layer `name` exposes metadata for graph/debug UIs. Command `enabled` controls availability but exposes no metadata, while command `title` exposes normalized metadata for command palettes and help UIs.
 
 Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical formatting renders `return` as `enter`; `preferDisplay: true` keeps preserved token displays such as `<leader>`. Both are exported from `@opentui/keymap`:
 
@@ -360,6 +366,28 @@ The returned map preserves the requested command order and includes every reques
 | `visibility` | `"reachable"` (default), `"active"`, or `"registered"` |
 | `focused`    | Override the focus context used by the query           |
 
+## Graph snapshots
+
+`getGraphSnapshot(options?)` returns a diagnostic projection for graph visualizers and debug UIs. It includes layers, commands, bindings, sequence nodes, active keys and the current pending sequence.
+
+Layer custom fields remain available as raw `GraphLayer.fields`; compiled layer metadata published with `ctx.attr(...)` appears as `GraphLayer.attrs`. Use attrs for stable visualization metadata such as layer display names.
+
+```ts
+keymap.registerLayerFields({
+  name(value, ctx) {
+    ctx.attr("name", String(value).trim())
+  },
+})
+
+keymap.registerLayer({
+  name: "Global",
+  bindings: [{ key: "?", cmd: "toggle-help" }],
+})
+
+const snapshot = keymap.getGraphSnapshot()
+snapshot.layers[0]?.attrs?.name // "Global"
+```
+
 ## Events and intercepts
 
 `keymap.on(...)`:
@@ -409,11 +437,11 @@ Intercept options:
 | API                                        | Use for                                                                       |
 | ------------------------------------------ | ----------------------------------------------------------------------------- |
 | `registerToken(token)`                     | Define named single-stroke aliases such as `<leader>`                         |
-| `registerLayerFields(fields)`              | Add custom layer fields with `require(...)` / `activeWhen(...)`               |
+| `registerLayerFields(fields)`              | Add custom layer fields with `require(...)`, `attr(...)`, `activeWhen(...)`   |
 | `registerBindingFields(fields)`            | Add custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 | `registerCommandFields(fields)`            | Add custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 | `prepend/appendBindingParser(parser)`      | Add new key string syntaxes                                                   |
-| `prepend/appendBindingExpander(expander)`  | Expand one key string into expansion objects, optionally preserving displays   |
+| `prepend/appendBindingExpander(expander)`  | Expand one key string into expansion objects, optionally preserving displays  |
 | `prepend/appendBindingTransformer(fn)`     | Rewrite parsed bindings or add derived bindings                               |
 | `prepend/appendCommandTransformer(fn)`     | Rewrite registered commands or add derived commands before command fields     |
 | `prepend/appendCommandResolver(resolver)`  | Resolve string commands dynamically                                           |

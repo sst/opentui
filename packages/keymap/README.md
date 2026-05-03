@@ -12,7 +12,7 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 - **Branch-aware multi-key sequences** compiled into layer sequence graphs, with a public pending-sequence API, synchronous `pendingSequence` events, active continuation queries, and automatic invalidation on focus changes.
 - **Programmable exact-vs-prefix disambiguation** (e.g. `g` vs `gg`) with `runExact`, `continueSequence`, `clear`, and deferred `AbortSignal` + `sleep` decisions. Ships a Neovim-style timeout resolver.
 - **Pluggable binding language**: stackable binding parsers, key expanders, layer-binding transformers, binding transformers, command resolvers, command transformers, and event-match resolvers.
-- **Extensible schema and activation**: register custom fields on layers, bindings, and commands. Binding and command fields can emit `attrs`; all field kinds can gate activation via `require(...)` and `activeWhen(matcher)`.
+- **Extensible schema and activation**: register custom fields on layers, bindings, and commands. Field compilers can emit `attrs`; all field kinds can gate activation via `require(...)` and `activeWhen(matcher)`.
 - **Reactive matchers** with cached invalidation, plus React store and Solid signal helpers.
 - **Raw and key intercepts** before normal binding dispatch, including pre-binding `consume({ preventDefault, stopPropagation })` and raw input `stop()` handling.
 - **Command catalog and dispatch** with named commands, inline command handlers, command chains, namespaces, search, visibility tiers (`registered` / `reachable` / `active`), binding queries, `runCommand`, and focus-aware `dispatchCommand`.

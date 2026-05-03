@@ -321,7 +321,7 @@ function getTargetLabel(target: HTMLElement | undefined): string {
 }
 
 function getGraphLayerLabel(layer: HtmlGraphSnapshot["layers"][number]): string {
-  return getText(layer.fields.name) ?? `L${layer.order}`
+  return getText(layer.attrs?.name) ?? `L${layer.order}`
 }
 
 function getReasonLabel(reasons: readonly string[]): string {
@@ -1185,10 +1185,11 @@ function disposers(): void {
   addons.registerEscapeClearsPendingSequence(keymap)
   addons.registerBackspacePopsPendingSequence(keymap)
   keymap.registerLayerFields({
-    name(value) {
+    name(value, ctx) {
       if (typeof value !== "string" || value.trim().length === 0) {
         throw new Error("Layer name must be a non-empty string")
       }
+      ctx.attr("name", value.trim())
     },
   })
 

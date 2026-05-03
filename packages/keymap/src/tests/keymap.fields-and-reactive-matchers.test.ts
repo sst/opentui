@@ -797,6 +797,41 @@ describe("keymap: fields and reactive matchers", () => {
     expect(getActiveKeyNames(keymap)).toEqual([])
   })
 
+  test("typed layer fields can emit attrs for graph projections", () => {
+    const keymap = getKeymap(renderer)
+
+    keymap.registerLayerFields({
+      name(value, ctx) {
+        if (typeof value !== "string") {
+          throw new Error("name must be a string")
+        }
+
+        ctx.attr("name", value.trim())
+      },
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+        ctx.attr("mode", value)
+      },
+    })
+
+    keymap.registerLayer({
+      name: " Normal Mode ",
+      mode: "normal",
+      bindings: [{ key: "x", cmd: () => {} }],
+    })
+
+    const [layer] = keymap.getGraphSnapshot().layers
+    expect(layer?.fields).toEqual({ name: " Normal Mode ", mode: "normal" })
+    expect(layer?.attrs).toEqual({ name: "Normal Mode", mode: "normal" })
+    expect(layer?.active).toBe(false)
+
+    keymap.setData("vim.mode", "normal")
+
+    const [activeLayer] = keymap.getGraphSnapshot().layers
+    expect(activeLayer?.attrs).toEqual({ name: "Normal Mode", mode: "normal" })
+    expect(activeLayer?.active).toBe(true)
+  })
+
   test("typed layer field matchers clear pending sequences when they stop matching", () => {
     const keymap = getKeymap(renderer)
     let enabled = true

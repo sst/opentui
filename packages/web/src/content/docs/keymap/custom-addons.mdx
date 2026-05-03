@@ -54,7 +54,7 @@ Guidelines:
 | API                             | Use for                                                                       |
 | ------------------------------- | ----------------------------------------------------------------------------- |
 | `registerToken(token)`          | Define named single-stroke aliases such as `<leader>`                         |
-| `registerLayerFields(fields)`   | Add custom layer fields with `require(...)` and `activeWhen(...)`             |
+| `registerLayerFields(fields)`   | Add custom layer fields with `require(...)`, `attr(...)`, `activeWhen(...)`   |
 | `registerBindingFields(fields)` | Add custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 | `registerCommandFields(fields)` | Add custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 
@@ -118,7 +118,7 @@ That `mode` field is both a condition and metadata. The binding is active only w
 
 | Context               | Methods                                        | Notes                                                        |
 | --------------------- | ---------------------------------------------- | ------------------------------------------------------------ |
-| `LayerFieldContext`   | `require(...)`, `activeWhen(...)`              | Layer fields affect activation and binding compilation only  |
+| `LayerFieldContext`   | `require(...)`, `attr(...)`, `activeWhen(...)` | Layer attrs can surface in graph snapshots                   |
 | `BindingFieldContext` | `require(...)`, `attr(...)`, `activeWhen(...)` | Binding attrs can surface on active bindings and active keys |
 | `CommandFieldContext` | `require(...)`, `attr(...)`, `activeWhen(...)` | Command attrs can surface on command queries and active keys |
 
@@ -156,7 +156,7 @@ keymap.registerCommandFields({
 })
 ```
 
-Compiled metadata is exposed through projections such as `ActiveBinding.attrs`, `ActiveBinding.commandAttrs`, `ActiveKey.bindingAttrs` and `ActiveKey.commandAttrs`. `getCommands()` returns the original command objects, not a separate metadata record.
+Compiled metadata is exposed through projections such as `GraphLayer.attrs`, `ActiveBinding.attrs`, `ActiveBinding.commandAttrs`, `ActiveKey.bindingAttrs` and `ActiveKey.commandAttrs`. `getCommands()` returns the original command objects, not a separate metadata record.
 
 ### `require(...)` vs `activeWhen(...)`
 
@@ -205,11 +205,11 @@ interface ReactiveMatcher {
 
 | Surface | Field storage                                                                | Metadata output                                 |
 | ------- | ---------------------------------------------------------------------------- | ----------------------------------------------- |
-| Layer   | Extra layer fields feed layer compilers, parsers, expanders and transformers | No metadata output                              |
+| Layer   | Extra layer fields feed layer compilers, parsers, expanders and transformers | `GraphLayer.attrs` in graph snapshots           |
 | Binding | Extra binding fields are compiler inputs only                                | `ActiveBinding.attrs`, `ActiveKey.bindingAttrs` |
 | Command | Extra command properties are compiler inputs and stay on the command object  | `commandAttrs` projections                      |
 
-Layer fields intentionally do not have `attr(...)` because there is no layer-level metadata surface on active keys, active bindings or commands.
+Layer attrs are intentionally exposed on graph snapshots, not active keys, active bindings or command queries. Use them for debug and visualization metadata such as layer names.
 
 Unknown layer and binding fields are ignored and emit warnings. Unknown command fields stay on the command object, because command metadata is queryable even without a registered command-field compiler.
 

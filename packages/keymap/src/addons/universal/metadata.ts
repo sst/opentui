@@ -19,8 +19,8 @@ function normalizeMetadataText(fieldName: string, value: unknown): string {
  * Maps `desc`, `group`, `title`, and `category` fields into binding and
  * command attrs.
  *
- * Layer fields intentionally do not compile into attrs in the current model,
- * so this addon only registers binding and command field compilers.
+ * This addon only registers binding and command field compilers. Apps can
+ * register layer metadata fields directly with `registerLayerFields`.
  */
 export function registerMetadataFields<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,

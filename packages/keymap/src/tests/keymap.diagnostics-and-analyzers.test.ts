@@ -97,6 +97,32 @@ describe("keymap: diagnostics and analyzers", () => {
     expect(getActiveKey(keymap, "x")).toBeUndefined()
   })
 
+  test("skips layers with conflicting attributes from typed layer fields", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors } = captureDiagnostics(keymap)
+
+    keymap.registerLayerFields({
+      desc(value, ctx) {
+        ctx.attr("label", value)
+      },
+      title(value, ctx) {
+        ctx.attr("label", value)
+      },
+    })
+
+    expect(() => {
+      keymap.registerLayer({
+        desc: "Navigation",
+        title: "Navigate",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).not.toThrow()
+
+    expect(takeErrors().errors).toEqual(['Conflicting keymap attribute for "label" from field title'])
+    expect(getActiveKey(keymap, "x")).toBeUndefined()
+    expect(keymap.getGraphSnapshot().layers).toHaveLength(0)
+  })
+
   test("skips bindings with conflicting attributes from typed binding fields", () => {
     const keymap = getParserKeymap()
     const { takeErrors } = captureDiagnostics(keymap)

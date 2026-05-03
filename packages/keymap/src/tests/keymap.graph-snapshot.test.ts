@@ -43,10 +43,11 @@ describe("keymap: graph snapshot", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerLayerFields({
-      name(value) {
+      name(value, ctx) {
         if (typeof value !== "string") {
           throw new Error("name field expected string")
         }
+        ctx.attr("name", value)
       },
     })
 
@@ -66,6 +67,7 @@ describe("keymap: graph snapshot", () => {
     const [layer] = snapshot.layers
     expect(layer).toMatchObject({ priority: 2, active: true, focusActive: true, enabled: true })
     expect(layer?.fields).toEqual({ name: "Primary" })
+    expect(layer?.attrs).toEqual({ name: "Primary" })
     expect(layer?.bindingIds).toEqual([snapshot.bindings[0]?.id])
     expect(layer?.commandIds).toEqual([snapshot.commands[0]?.id])
     expect(layer?.rootNodeId).toBe(snapshot.sequenceNodes.find((node) => node.depth === 0)?.id)

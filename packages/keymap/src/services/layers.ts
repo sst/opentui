@@ -3,6 +3,7 @@ import type { CommandCatalogService } from "./command-catalog.js"
 import type { ConditionService } from "./conditions.js"
 import type { ActivationService } from "./activation.js"
 import type {
+  Attributes,
   Binding,
   BindingState,
   BindingCompilationResult,
@@ -91,6 +92,7 @@ interface CompileLayerRuntimeStateResult {
   conditionKeys: readonly string[]
   hasUnkeyedMatchers: boolean
   compileFields?: Readonly<Record<string, unknown>>
+  attrs?: Readonly<Attributes>
 }
 
 interface LayersOptions<TTarget extends object, TEvent extends KeymapEvent> {
@@ -177,6 +179,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       let conditionKeys: readonly string[]
       let hasUnkeyedMatchers: boolean
       let compileFields: Readonly<Record<string, unknown>> | undefined
+      let attrs: Readonly<Attributes> | undefined
       let commands: readonly CommandState<TTarget, TEvent>[]
       let commandLookup: ReadonlyMap<string, CommandState<TTarget, TEvent>> | undefined
       let targetMode: TargetMode | undefined
@@ -187,7 +190,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         const sourceCommands = this.applyCommandTransformers(layer.commands ?? [], layer)
         commands = sourceCommands.length === 0 ? [] : this.options.commands.normalizeCommands(sourceCommands)
         commandLookup = createCommandLookup(commands)
-        ;({ requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } =
+        ;({ requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields, attrs } =
           this.compileLayerRuntimeState(layer))
       } catch (error) {
         this.notify.emitError("register-layer-failed", error, getErrorMessage(error, "Failed to register keymap layer"))
@@ -228,6 +231,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         hasUnkeyedMatchers,
         matchCacheDirty: true,
         compileFields,
+        attrs,
         commands,
         commandLookup,
         sourceBindings,
@@ -486,6 +490,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     const mergedRequires: EventData = {}
     const matchers: RuntimeMatcher[] = []
     const compileFields: Record<string, unknown> = Object.create(null)
+    const attrs: Attributes = {}
     const conditionKeys = new Set<string>()
     let hasUnkeyedMatchers = false
 
@@ -514,6 +519,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
           requirements: mergedRequires,
           conditionKeys,
           matchers,
+          attrs,
           onUnkeyedMatcher() {
             hasUnkeyedMatchers = true
           },
@@ -527,6 +533,10 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       conditionKeys: [...conditionKeys],
       hasUnkeyedMatchers,
       compileFields: Object.keys(compileFields).length > 0 ? Object.freeze(compileFields) : undefined,
+      attrs:
+        Object.keys(attrs).length > 0
+          ? (snapshotDataValue(attrs, { freeze: true }) as Readonly<Attributes>)
+          : undefined,
     }
   }
 
