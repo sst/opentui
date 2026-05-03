@@ -283,7 +283,13 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
       return this.collectActiveKeysFromPending(pending.captures, includeBindings, includeMetadata, focused, activeView)
     }
 
-    return this.collectActiveKeysAtRoot(this.getActiveLayers(focused), includeBindings, includeMetadata, focused, activeView)
+    return this.collectActiveKeysAtRoot(
+      this.getActiveLayers(focused),
+      includeBindings,
+      includeMetadata,
+      focused,
+      activeView,
+    )
   }
 
   public nodeHasReachableBindings(node: SequenceNode<TTarget, TEvent>, focused: TTarget | null): boolean {

@@ -324,10 +324,7 @@ function getReasonLabel(reasons: readonly string[]): string {
   return reasons.length === 0 ? "ready" : reasons.join(" + ")
 }
 
-function getBindingCommandLabel(
-  binding: HtmlGraphBinding,
-  snapshot: HtmlGraphSnapshot,
-): string {
+function getBindingCommandLabel(binding: HtmlGraphBinding, snapshot: HtmlGraphSnapshot): string {
   const resolved = binding.commandIds
     .map((id) => snapshot.commands.find((command) => command.id === id)?.name)
     .filter((name): name is string => !!name)
@@ -701,7 +698,14 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       continue
     }
 
-    drawCanvasLine(ctx, layer, bindingNode, bindingNode.pending ? palette.yellow : palette.cyan, binding.reachable ? 0.68 : 0.16, 1.2)
+    drawCanvasLine(
+      ctx,
+      layer,
+      bindingNode,
+      bindingNode.pending ? palette.yellow : palette.cyan,
+      binding.reachable ? 0.68 : 0.16,
+      1.2,
+    )
 
     for (const commandId of binding.commandIds) {
       const commandNode = commandNodes.get(commandId)

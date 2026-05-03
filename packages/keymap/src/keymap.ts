@@ -17,6 +17,7 @@ import type {
   Command,
   KeymapEvent,
   KeymapHost,
+  KeymapHostMetadata,
   LayerAnalyzer,
   Listener,
   RunCommandOptions,
@@ -205,6 +206,10 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public getData(name: string): unknown {
     return this.runtime.getData(name)
+  }
+
+  public getHostMetadata(): Readonly<KeymapHostMetadata> {
+    return this.host.metadata
   }
 
   public hasPendingSequence(): boolean {

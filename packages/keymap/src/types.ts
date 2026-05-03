@@ -12,7 +12,20 @@ export interface KeymapEvent {
   readonly propagationStopped: boolean
 }
 
+export type KeymapPlatform = "macos" | "windows" | "linux" | "unknown"
+
+export type KeymapModifier = "ctrl" | "shift" | "meta" | "super" | "hyper"
+
+export type KeymapCapability = "supported" | "unsupported" | "unknown"
+
+export interface KeymapHostMetadata {
+  platform: KeymapPlatform
+  primaryModifier: "ctrl" | "super" | "unknown"
+  modifiers: Record<KeymapModifier, KeymapCapability>
+}
+
 export interface KeymapHost<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
+  readonly metadata: KeymapHostMetadata
   readonly rootTarget: TTarget
   readonly isDestroyed: boolean
   getFocusedTarget(): TTarget | null
@@ -309,8 +322,10 @@ export interface KeymapDispatchLayer<TTarget extends object = object> {
   targetMode?: TargetMode
 }
 
-export interface KeymapDispatchBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
-  extends ActiveBinding<TTarget, TEvent> {
+export interface KeymapDispatchBinding<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> extends ActiveBinding<TTarget, TEvent> {
   sourceLayerOrder: number
   bindingIndex: number
 }

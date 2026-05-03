@@ -196,9 +196,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   const { state, host, conditions, catalog, activation, snapshotOptions } = options
   const includeTargets = snapshotOptions?.includeTargets !== false
   const currentFocused = getFocusedTargetIfAvailable(host)
-  const focused = hasOwnFocused(snapshotOptions)
-    ? (snapshotOptions.focused ?? null)
-    : currentFocused
+  const focused = hasOwnFocused(snapshotOptions) ? (snapshotOptions.focused ?? null) : currentFocused
   const activeView = catalog.getActiveCommandView(focused)
   const activeCommandStates = new Set(activeView.entries.map((entry) => entry.commandState))
   const reachableCommandStates = new Set(activeView.reachable.map((entry) => entry.commandState))
@@ -376,7 +374,9 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
     const visitNode = (node: SequenceNode<TTarget, TEvent>, parentId: string | null): void => {
       const currentNodeId = nodeIds.get(node)!
       const childIds = [...node.children.values()].map((child) => nodeIds.get(child)!).filter(Boolean)
-      const bindingIds = node.bindings.map((binding) => bindingStates.get(binding)?.id).filter((id): id is string => !!id)
+      const bindingIds = node.bindings
+        .map((binding) => bindingStates.get(binding)?.id)
+        .filter((id): id is string => !!id)
       const reachableBindingIds = node.reachableBindings
         .map((binding) => bindingStates.get(binding)?.id)
         .filter((id): id is string => !!id)

@@ -19,7 +19,11 @@ function getBinding(snapshot: KeymapGraphSnapshot, label: string): KeymapGraphSn
   return binding!
 }
 
-function getCommand(snapshot: KeymapGraphSnapshot, name: string, title?: string): KeymapGraphSnapshot["commands"][number] {
+function getCommand(
+  snapshot: KeymapGraphSnapshot,
+  name: string,
+  title?: string,
+): KeymapGraphSnapshot["commands"][number] {
   const command = snapshot.commands.find((candidate) => {
     return candidate.name === name && (title === undefined || candidate.command.title === title)
   })

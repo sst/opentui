@@ -3,7 +3,7 @@ import { registerDefaultKeys } from "./addons/universal/default-parser.js"
 import { registerEnabledFields } from "./addons/universal/enabled.js"
 import { registerMetadataFields } from "./addons/universal/metadata.js"
 import { Keymap } from "./keymap.js"
-import type { KeymapHost } from "./types.js"
+import type { KeymapHost, KeymapHostMetadata, KeymapPlatform } from "./types.js"
 
 export * from "./index.js"
 
@@ -22,8 +22,41 @@ function createSyntheticCommandEvent(): KeyEvent {
   })
 }
 
+function normalizeRuntimePlatform(platform: NodeJS.Platform | string | undefined): KeymapPlatform {
+  if (platform === "darwin") {
+    return "macos"
+  }
+
+  if (platform === "win32") {
+    return "windows"
+  }
+
+  if (platform === "linux") {
+    return "linux"
+  }
+
+  return "unknown"
+}
+
+function createOpenTuiHostMetadata(): KeymapHostMetadata {
+  const platform = normalizeRuntimePlatform(process.platform)
+
+  return {
+    platform,
+    primaryModifier: platform === "macos" ? "super" : platform === "unknown" ? "unknown" : "ctrl",
+    modifiers: {
+      ctrl: "supported",
+      shift: "supported",
+      meta: "supported",
+      super: "unknown",
+      hyper: "unknown",
+    },
+  }
+}
+
 export function createOpenTuiKeymapHost(renderer: CliRenderer): KeymapHost<Renderable, KeyEvent> {
   return {
+    metadata: createOpenTuiHostMetadata(),
     rootTarget: renderer.root,
     get isDestroyed() {
       return renderer.isDestroyed

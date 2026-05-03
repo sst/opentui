@@ -56,6 +56,30 @@ describe("keymap: core and commands", () => {
     expect(first).not.toBe(second)
   })
 
+  test("OpenTUI host exposes platform and modifier metadata", () => {
+    const keymap = createBareKeymap(renderer)
+    const platform =
+      process.platform === "darwin"
+        ? "macos"
+        : process.platform === "win32"
+          ? "windows"
+          : process.platform === "linux"
+            ? "linux"
+            : "unknown"
+
+    expect(keymap.getHostMetadata()).toEqual({
+      platform,
+      primaryModifier: platform === "macos" ? "super" : platform === "unknown" ? "unknown" : "ctrl",
+      modifiers: {
+        ctrl: "supported",
+        shift: "supported",
+        meta: "supported",
+        super: "unknown",
+        hyper: "unknown",
+      },
+    })
+  })
+
   test("throws when requesting a keymap for a destroyed renderer", () => {
     createOpenTuiKeymap(renderer)
     renderer.destroy()

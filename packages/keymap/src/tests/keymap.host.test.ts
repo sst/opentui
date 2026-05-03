@@ -1,9 +1,21 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import * as addons from "../addons/index.js"
-import { Keymap, type KeymapEvent, type KeymapHost } from "../index.js"
+import { Keymap, type KeymapEvent, type KeymapHost, type KeymapHostMetadata } from "../index.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 
 const diagnostics = createDiagnosticHarness()
+
+const FAKE_HOST_METADATA: KeymapHostMetadata = {
+  platform: "unknown",
+  primaryModifier: "unknown",
+  modifiers: {
+    ctrl: "unknown",
+    shift: "unknown",
+    meta: "unknown",
+    super: "unknown",
+    hyper: "unknown",
+  },
+}
 
 class FakeTarget {
   public parent: FakeTarget | null = null
@@ -48,6 +60,7 @@ class FakeEvent implements KeymapEvent {
 }
 
 class FakeHost implements KeymapHost<FakeTarget, FakeEvent> {
+  public readonly metadata = FAKE_HOST_METADATA
   public readonly rootTarget = new FakeTarget("root")
   public isDestroyed = false
 
@@ -217,8 +230,24 @@ describe("generic keymap host", () => {
     expect(event.propagationStopped).toBe(true)
   })
 
+  test("exposes mandatory host metadata", () => {
+    expect(keymap.getHostMetadata()).toBe(FAKE_HOST_METADATA)
+    expect(keymap.getHostMetadata()).toEqual({
+      platform: "unknown",
+      primaryModifier: "unknown",
+      modifiers: {
+        ctrl: "unknown",
+        shift: "unknown",
+        meta: "unknown",
+        super: "unknown",
+        hyper: "unknown",
+      },
+    })
+  })
+
   test("supports hosts without explicit destroy notifications", () => {
     const hostWithoutDestroy: KeymapHost<FakeTarget, FakeEvent> = {
+      metadata: FAKE_HOST_METADATA,
       rootTarget: host.rootTarget,
       get isDestroyed() {
         return host.isDestroyed
