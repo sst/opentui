@@ -687,6 +687,94 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "compile_layer_many_noop_expanders",
+    description: "Repeated layer registration with many no-op expanders before parsing",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      for (let index = 0; index < 32; index += 1) {
+        resources.keymap.appendBindingExpander(() => undefined)
+      }
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.keymap.registerLayer({
+            bindings: [{ key: "ctrl+x", cmd: "noop" }],
+          })
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "compile_layer_comma_expander",
+    description: "Repeated layer registration with comma-separated binding expansion",
+    async setup() {
+      const resources = await createScenarioResources()
+      addons.registerCommaBindings(resources.keymap)
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.keymap.registerLayer({
+            bindings: [{ key: "a, b, c, d", cmd: "noop" }],
+          })
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "compile_layer_mod_expander",
+    description: "Repeated layer registration with platform-aware mod binding expansion",
+    async setup() {
+      const resources = await createScenarioResources()
+      addons.registerModBindings(resources.keymap)
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.keymap.registerLayer({
+            bindings: [{ key: "mod+x", cmd: "noop" }],
+          })
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "compile_layer_mod_comma_expanders",
+    description: "Repeated layer registration with stacked mod and comma binding expansion",
+    async setup() {
+      const resources = await createScenarioResources()
+      addons.registerModBindings(resources.keymap)
+      addons.registerCommaBindings(resources.keymap)
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.keymap.registerLayer({
+            bindings: [{ key: "mod+a, mod+b, mod+c, mod+d", cmd: "noop" }],
+          })
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "register_commands_custom_fields",
     description: "Repeated command registration with compiled and raw custom fields",
     async setup() {

@@ -40,7 +40,7 @@ function normalizeRuntimePlatform(platform: NodeJS.Platform | string | undefined
 
 function createOpenTuiHostMetadata(renderer: CliRenderer): KeymapHostMetadata {
   const platform = normalizeRuntimePlatform(process.platform)
-  const hasKittyKeyboard = renderer.useKittyKeyboard
+  const hasKittyKeyboard = renderer.capabilities?.kitty_keyboard === true
 
   return {
     platform,

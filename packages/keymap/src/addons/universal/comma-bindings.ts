@@ -2,10 +2,6 @@ import type { BindingExpander, Keymap, KeymapEvent } from "../../index.js"
 
 const COMMA_BINDINGS_RESOURCE = Symbol("keymap:comma-bindings")
 
-function splitDisplays(input: string): string[] {
-  return input.trim().split(/\s+/).filter(Boolean)
-}
-
 const commaBindingExpander: BindingExpander = ({ input, displays }) => {
   if (!input.includes(",")) {
     return undefined
@@ -27,7 +23,7 @@ const commaBindingExpander: BindingExpander = ({ input, displays }) => {
 
   return parts.map((key, index) => ({
     key,
-    displays: splitDisplays(displayParts[index]!),
+    displays: displayParts[index]!.trim().split(/\s+/).filter(Boolean),
   }))
 }
 
