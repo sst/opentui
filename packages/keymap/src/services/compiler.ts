@@ -31,7 +31,6 @@ import { RESERVED_BINDING_FIELDS } from "../schema.js"
 import {
   cloneKeySequence,
   cloneKeySequencePart,
-  cloneKeyStroke,
   createKeySequencePart,
   createTextKeyMatch,
   normalizeBindingTokenName,
@@ -492,12 +491,18 @@ function expandBindingKeyWithExpanders(
         }
 
         if (expanded.displays !== undefined) {
-          if (!Array.isArray(expanded.displays) || expanded.displays.some((display) => typeof display !== "string")) {
+          if (!Array.isArray(expanded.displays)) {
             throw new Error(`Keymap binding expander displays must be an array of strings for "${candidate.key}"`)
+          }
+
+          for (const display of expanded.displays) {
+            if (typeof display !== "string") {
+              throw new Error(`Keymap binding expander displays must be an array of strings for "${candidate.key}"`)
+            }
           }
         }
 
-        nextCandidates.push({ key: expanded.key, displays: expanded.displays })
+        nextCandidates.push(expanded)
       }
     }
 
@@ -525,7 +530,6 @@ function applyExpansionDisplays(
     ...parsed,
     parts: parsed.parts.map((part, index) => ({
       ...part,
-      stroke: cloneKeyStroke(part.stroke),
       display: expansion.displays![index]!,
     })),
   }
