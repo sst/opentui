@@ -157,7 +157,7 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
 }
 
 function getCommandNargs(record: ReturnType<typeof keymap.getCommands>[number]): string | undefined {
-  const value = record.fields.nargs
+  const value = record.nargs
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
   }
@@ -169,8 +169,8 @@ function buildCommandSuggestions(): ExSuggestion[] {
   const records = keymap.getCommands({ namespace: "excommands" })
   return records.map((record) => {
     const label = normalizeExPromptName(record.name)
-    const usage = getText(record.fields.usage) ?? label
-    const desc = getText(record.attrs?.desc) ?? getText(record.fields.desc) ?? ""
+    const usage = getText(record.usage) ?? label
+    const desc = getText(record.desc) ?? ""
 
     return {
       label,
