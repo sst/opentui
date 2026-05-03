@@ -1,0 +1,40 @@
+name: NuGet Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  pack-and-publish:
+    name: Pack & Publish to NuGet
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: csharp
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build (Release)
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release
+
+      - name: Pack
+        run: dotnet pack src/OpenTui.Core/OpenTui.Core.csproj --no-build --configuration Release --output ./nupkgs
+
+      - name: Push to NuGet
+        run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

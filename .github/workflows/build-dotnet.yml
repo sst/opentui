@@ -1,0 +1,54 @@
+name: Build and Test .NET
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: csharp
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+  # Gate job for branch protection
+  build-complete:
+    name: .NET - Build and Test
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+    if: always()
+    permissions: {}
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.build-and-test.result }}" != "success" ]; then
+            echo "Tests failed"
+            exit 1
+          fi
+          echo "All tests passed"

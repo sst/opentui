@@ -1,0 +1,38 @@
+name: Build .NET Samples
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-samples:
+    name: Build Samples
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: csharp
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build samples
+        run: dotnet build samples/OpenTui.Samples/OpenTui.Samples.csproj --no-restore --configuration Release
+
+      - name: Run layout sample (smoke test)
+        run: dotnet run --project samples/OpenTui.Samples/OpenTui.Samples.csproj --configuration Release -- layout
+
+      - name: Run editor sample (smoke test)
+        run: dotnet run --project samples/OpenTui.Samples/OpenTui.Samples.csproj --configuration Release -- editor

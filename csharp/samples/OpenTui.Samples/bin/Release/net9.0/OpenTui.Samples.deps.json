@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v9.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v9.0": {
+      "OpenTui.Samples/1.0.0": {
+        "dependencies": {
+          "OpenTui.Core": "1.0.0"
+        },
+        "runtime": {
+          "OpenTui.Samples.dll": {}
+        }
+      },
+      "OpenTui.Core/1.0.0": {
+        "runtime": {
+          "OpenTui.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "OpenTui.Samples/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "OpenTui.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

@@ -1,16 +1,54 @@
-# Contributing to Opentui
+# Contributing to OpenTUI
 
-Bug fixes and feature suggestions are always welcome. For bug fixes, open a PR
-for reviews. Feature suggestions are subject to discussion via issues.
+Bug fixes and feature suggestions are always welcome. For bug fixes, open a PR for review.
+Feature suggestions are subject to discussion via issues.
 
-## Code style
+## Prerequisites
 
-Reference existing [AGENTS.md](https://github.com/anomalyco/opentui/blob/main/AGENTS.md) or project conventions if applicable.
+- [.NET 9](https://dotnet.microsoft.com/download/dotnet/9.0) or later
 
-## Code of conduct
+## Build
 
-- Treat everyone with respect and empathy. We do not tolerate harassment, discrimination, or personal attacks.
+```bash
+cd csharp
+dotnet restore
+dotnet build
+```
+
+## Test
+
+```bash
+cd csharp
+dotnet test
+```
+
+## Run Samples
+
+```bash
+cd csharp
+dotnet run --project samples/OpenTui.Samples -- layout
+dotnet run --project samples/OpenTui.Samples -- editor
+```
+
+## Project Structure
+
+| Path | Purpose |
+|---|---|
+| `csharp/src/OpenTui.Core/` | Core library — all public API |
+| `csharp/tests/OpenTui.Tests/` | xUnit tests — cover every public API |
+| `csharp/samples/OpenTui.Samples/` | Console app samples demonstrating features |
+
+## Code Style
+
+- Follow standard C# conventions (PascalCase for types/members, camelCase for locals/fields)
+- Use `readonly struct` for value types where appropriate
+- Use `IDisposable` for types that own resources
+- XML doc comments (`/// <summary>`) for public APIs where the intent is non-obvious
+- No JSDoc-style block comments
+
+## Code of Conduct
+
+- Treat everyone with respect and empathy.
 - Be kind, constructive, and assume good intent.
-- Keep feedback specific and actionable; critique code, not people.
-- No unsolicited DMs for support unless invited.
-- Follow project guidelines and maintainers’ decisions.
+- Critique code, not people.
+- Follow project guidelines and maintainers' decisions.

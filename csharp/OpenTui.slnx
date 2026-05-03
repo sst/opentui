@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/OpenTui.Samples/OpenTui.Samples.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/OpenTui.Core/OpenTui.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenTui.Tests/OpenTui.Tests.csproj" />
+  </Folder>
+</Solution>
