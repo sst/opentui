@@ -1,8 +1,11 @@
 {
   "version": 2,
-  "dgSpecHash": "yv+4i4KMTno=",
+  "dgSpecHash": "kaFuKUme+sU=",
   "success": true,
   "projectFilePath": "/home/runner/work/opentui/opentui/csharp/src/OpenTui.Core/OpenTui.Core.csproj",
-  "expectedPackageFiles": [],
+  "expectedPackageFiles": [
+    "/tmp/codeql-scratch-853067eeeec5e0d5/dbs/csharp/working/packages/microsoft.netcore.app.ref/9.0.14/microsoft.netcore.app.ref.9.0.14.nupkg.sha512",
+    "/tmp/codeql-scratch-853067eeeec5e0d5/dbs/csharp/working/packages/microsoft.aspnetcore.app.ref/9.0.14/microsoft.aspnetcore.app.ref.9.0.14.nupkg.sha512"
+  ],
   "logs": []
 }

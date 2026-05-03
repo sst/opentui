@@ -1,0 +1,10 @@
+# Build output
+**/bin/
+**/obj/
+*.nupkg
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
