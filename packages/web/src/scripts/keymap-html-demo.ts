@@ -320,6 +320,10 @@ function getTargetLabel(target: HTMLElement | undefined): string {
   return target.tagName.toLowerCase()
 }
 
+function getGraphLayerLabel(layer: HtmlGraphSnapshot["layers"][number]): string {
+  return getText(layer.fields.name) ?? `L${layer.order}`
+}
+
 function getReasonLabel(reasons: readonly string[]): string {
   return reasons.length === 0 ? "ready" : reasons.join(" + ")
 }
@@ -709,7 +713,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       x: layerX,
       y,
       radius: 8,
-      label: `L${layer.order}`,
+      label: getGraphLayerLabel(layer),
       kind: "layer",
       active: layer.active,
       reachable: layer.active,
@@ -1068,7 +1072,7 @@ function renderGraph(): void {
       return `
         <article class="${layerClass}">
           <div class="graph-layer-title">
-            <strong>L${layer.order}</strong>
+            <strong>${escapeHtml(getGraphLayerLabel(layer))}</strong>
             <span>${targetLabel}</span>
             <em>${reasonLabel}</em>
           </div>
@@ -1180,8 +1184,16 @@ function disposers(): void {
   addons.registerNeovimDisambiguation(keymap)
   addons.registerEscapeClearsPendingSequence(keymap)
   addons.registerBackspacePopsPendingSequence(keymap)
+  keymap.registerLayerFields({
+    name(value) {
+      if (typeof value !== "string" || value.trim().length === 0) {
+        throw new Error("Layer name must be a non-empty string")
+      }
+    },
+  })
 
   keymap.registerLayer({
+    name: "Commands",
     commands: [
       {
         name: ":help",
@@ -1443,6 +1455,7 @@ function disposers(): void {
   })
 
   keymap.registerLayer({
+    name: "Global",
     enabled: () => !promptVisible,
     bindings: [
       { key: "tab", cmd: "focus-next", desc: "Next focus target" },
@@ -1459,6 +1472,7 @@ function disposers(): void {
   })
 
   keymap.registerLayer({
+    name: "Alpha",
     target: alphaPanel,
     targetMode: "focus-within",
     bindings: [
@@ -1469,6 +1483,7 @@ function disposers(): void {
   })
 
   keymap.registerLayer({
+    name: "Beta",
     target: betaPanel,
     targetMode: "focus-within",
     bindings: [
@@ -1479,18 +1494,21 @@ function disposers(): void {
   })
 
   keymap.registerLayer({
+    name: "Notes",
     target: notesCard,
     targetMode: "focus-within",
     bindings: [{ key: "ctrl+return", cmd: "capture-notes", desc: "Capture notes snapshot" }],
   })
 
   keymap.registerLayer({
+    name: "Draft",
     target: draftCard,
     targetMode: "focus-within",
     bindings: [{ key: "ctrl+return", cmd: "capture-draft", desc: "Capture draft snapshot" }],
   })
 
   keymap.registerLayer({
+    name: "Log",
     target: logCard,
     targetMode: "focus-within",
     bindings: [
@@ -1505,6 +1523,7 @@ function disposers(): void {
   })
 
   keymap.registerLayer({
+    name: "Prompt",
     target: promptShell,
     targetMode: "focus-within",
     enabled: () => promptVisible,

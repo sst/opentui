@@ -393,6 +393,7 @@ export interface GraphLayer<TTarget extends object = object> {
   priority: number
   target?: TTarget
   targetMode?: TargetMode
+  fields: Readonly<Record<string, unknown>>
   active: boolean
   focusActive: boolean
   enabled: boolean

@@ -19,11 +19,7 @@ function getBinding(snapshot: GraphSnapshot, label: string): GraphSnapshot["bind
   return binding!
 }
 
-function getCommand(
-  snapshot: GraphSnapshot,
-  name: string,
-  title?: string,
-): GraphSnapshot["commands"][number] {
+function getCommand(snapshot: GraphSnapshot, name: string, title?: string): GraphSnapshot["commands"][number] {
   const command = snapshot.commands.find((candidate) => {
     return candidate.name === name && (title === undefined || candidate.command.title === title)
   })
@@ -46,7 +42,16 @@ describe("keymap: graph snapshot", () => {
   test("exposes registered layers, sequence nodes, commands, and bindings", () => {
     const keymap = getKeymap(renderer)
 
+    keymap.registerLayerFields({
+      name(value) {
+        if (typeof value !== "string") {
+          throw new Error("name field expected string")
+        }
+      },
+    })
+
     keymap.registerLayer({
+      name: "Primary",
       priority: 2,
       commands: [{ name: "save", title: "Save", desc: "Save file", run() {} }],
       bindings: [{ key: "ctrl+s", cmd: "save", desc: "Save with control" }],
@@ -60,6 +65,7 @@ describe("keymap: graph snapshot", () => {
 
     const [layer] = snapshot.layers
     expect(layer).toMatchObject({ priority: 2, active: true, focusActive: true, enabled: true })
+    expect(layer?.fields).toEqual({ name: "Primary" })
     expect(layer?.bindingIds).toEqual([snapshot.bindings[0]?.id])
     expect(layer?.commandIds).toEqual([snapshot.commands[0]?.id])
     expect(layer?.rootNodeId).toBe(snapshot.sequenceNodes.find((node) => node.depth === 0)?.id)
