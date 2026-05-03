@@ -957,6 +957,8 @@ if (!isMainThread) {
             self.postMessage({ type: "WARNING", bufferId, warning: response.warning })
           } else if (response.error) {
             self.postMessage({ type: "ERROR", bufferId, error: response.error })
+          } else {
+            self.postMessage({ type: "HIGHLIGHT_RESPONSE", bufferId, version, highlights: [] })
           }
           break
 
@@ -972,6 +974,8 @@ if (!isMainThread) {
             self.postMessage({ type: "WARNING", bufferId, warning: resetResponse.warning })
           } else if (resetResponse.error) {
             self.postMessage({ type: "ERROR", bufferId, error: resetResponse.error })
+          } else {
+            self.postMessage({ type: "HIGHLIGHT_RESPONSE", bufferId, version, highlights: [] })
           }
           break
 
