@@ -30,8 +30,6 @@ const pendingSequence = document.getElementById("pending-sequence") as HTMLEleme
 const focusedTarget = document.getElementById("focused-target") as HTMLElement | null
 const alphaCount = document.getElementById("alpha-count") as HTMLElement | null
 const betaCount = document.getElementById("beta-count") as HTMLElement | null
-const activeKeysCard = document.getElementById("active-keys-card") as HTMLElement | null
-const activeKeys = document.getElementById("active-keys") as HTMLElement | null
 const graphCanvasCard = document.getElementById("graph-canvas-card") as HTMLElement | null
 const graphCanvas = document.getElementById("graph-canvas") as HTMLCanvasElement | null
 const logCard = document.getElementById("log-card") as HTMLElement | null
@@ -59,8 +57,6 @@ if (
   !focusedTarget ||
   !alphaCount ||
   !betaCount ||
-  !activeKeysCard ||
-  !activeKeys ||
   !graphCanvasCard ||
   !graphCanvas ||
   !logCard ||
@@ -74,7 +70,7 @@ if (
 }
 
 const keymap = createDefaultHtmlKeymap(keymapRoot)
-const focusableTargets = [alphaPanel, betaPanel, notesField, draftField, activeKeysCard, logCard]
+const focusableTargets = [alphaPanel, betaPanel, notesField, draftField, logCard]
 
 let alphaValue = 0
 let betaValue = 0
@@ -234,10 +230,6 @@ function focusOffset(delta: number): void {
 }
 
 function getScrollablePane(target: HTMLElement | null): HTMLElement | null {
-  if (target === activeKeysCard) {
-    return activeKeys
-  }
-
   if (target === logCard) {
     return logLines
   }
@@ -803,60 +795,6 @@ function renderStatus(): void {
   focusedTarget.textContent = focused?.id ?? "None"
 }
 
-function getActiveKeyDescription(activeKey: ActiveKey): string {
-  const fromBinding = getText(activeKey.bindingAttrs?.desc)
-  if (fromBinding) {
-    return fromBinding
-  }
-
-  const fromCommandDesc = getText(activeKey.commandAttrs?.desc)
-  if (fromCommandDesc) {
-    return fromCommandDesc
-  }
-
-  const fromCommandTitle = getText(activeKey.commandAttrs?.title)
-  if (fromCommandTitle) {
-    return fromCommandTitle
-  }
-
-  if (activeKey.continues) {
-    const group = getText(activeKey.bindingAttrs?.group)
-    if (group) {
-      return `Continue ${group.toLowerCase()} bindings`
-    }
-
-    return "Continue sequence"
-  }
-
-  if (typeof activeKey.command === "string") {
-    return activeKey.command
-  }
-
-  return "Action"
-}
-
-function renderActiveKeys(): void {
-  const entries = keymap.getActiveKeys({ includeMetadata: true })
-  if (entries.length === 0) {
-    activeKeys.innerHTML = '<div class="active-key-row">No active bindings for the current focus state.</div>'
-    return
-  }
-
-  activeKeys.innerHTML = entries
-    .map((entry) => {
-      return `
-        <div class="active-key-row">
-          <div class="active-key-header">
-            <strong><kbd>${formatKeySequence([entry], KEY_FORMAT_OPTIONS)}</kbd></strong>
-            <span>${entry.continues ? "Prefix" : "Command"}</span>
-          </div>
-          <div class="active-key-desc">${getActiveKeyDescription(entry)}</div>
-        </div>
-      `
-    })
-    .join("")
-}
-
 function renderGraph(): void {
   graphCard.classList.toggle("is-hidden", !graphVisible)
   const snapshot = keymap.getGraphSnapshot()
@@ -995,20 +933,19 @@ function renderPrompt(): void {
 function renderHelp(): void {
   helpCard.classList.toggle("is-hidden", !helpVisible)
   helpCopy.innerHTML = [
-    "<div><kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> cycle focus between panels, textareas, and sidebar panes.</div>",
+    "<div><kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> cycle focus between panels, textareas, and the log pane.</div>",
     `<div><kbd>${LEADER_TRIGGER_LABEL}</kbd> arms a leader sequence for <kbd>${LEADER_TRIGGER_LABEL} s</kbd>, <kbd>${LEADER_TRIGGER_LABEL} h</kbd>, and <kbd>${LEADER_TRIGGER_LABEL} r</kbd>.</div>`,
     `<div><kbd>?</kbd> toggles Quick Help; <kbd>!</kbd> or <kbd>${LEADER_TRIGGER_LABEL} g</kbd> toggles the runtime graph.</div>`,
     "<div><kbd>:</kbd> opens the ex prompt as a modal overlay. Try <kbd>:help</kbd>, <kbd>:reset</kbd>, <kbd>:write alpha</kbd>, or <kbd>:focus draft</kbd>.</div>",
     "<div>The Alpha and Beta panels each install their own focus-within layers with <kbd>j</kbd>, <kbd>k</kbd>, and <kbd>Enter</kbd>.</div>",
     "<div>The Notes and Draft textareas use plain browser editing plus keymap bindings for <kbd>Ctrl+Enter</kbd>.</div>",
-    "<div>The Active Keys and Recent Actions panes can be focused and scrolled with <kbd>j</kbd>, <kbd>k</kbd>, <kbd>Ctrl+d</kbd>, <kbd>Ctrl+u</kbd>, <kbd>g</kbd>, <kbd>gg</kbd>, and <kbd>Shift+g</kbd>.</div>",
+    "<div>The Recent Actions pane can be focused and scrolled with <kbd>j</kbd>, <kbd>k</kbd>, <kbd>Ctrl+d</kbd>, <kbd>Ctrl+u</kbd>, <kbd>g</kbd>, <kbd>gg</kbd>, and <kbd>Shift+g</kbd>.</div>",
   ].join("")
 }
 
 function renderAll(): void {
   renderCounters()
   renderStatus()
-  renderActiveKeys()
   renderGraph()
   renderPrompt()
   renderHelp()
@@ -1078,8 +1015,8 @@ function disposers(): void {
       {
         name: ":focus",
         nargs: "1",
-        desc: "Focus alpha, beta, notes, draft, keys, or log",
-        usage: ":focus <alpha|beta|notes|draft|keys|log>",
+        desc: "Focus alpha, beta, notes, draft, or log",
+        usage: ":focus <alpha|beta|notes|draft|log>",
         run({ payload }) {
           debug("command :focus", {
             args: payload.args.join(" "),
@@ -1090,7 +1027,6 @@ function disposers(): void {
             ["beta", betaPanel],
             ["notes", notesField],
             ["draft", draftField],
-            ["keys", activeKeysCard],
             ["log", logCard],
           ])
           const target = targetName ? targets.get(targetName) : undefined
@@ -1352,20 +1288,6 @@ function disposers(): void {
     target: draftCard,
     targetMode: "focus-within",
     bindings: [{ key: "ctrl+return", cmd: "capture-draft", desc: "Capture draft snapshot" }],
-  })
-
-  keymap.registerLayer({
-    target: activeKeysCard,
-    targetMode: "focus-within",
-    bindings: [
-      { key: "j", cmd: "scroll-pane-down", desc: "Scroll active keys down" },
-      { key: "k", cmd: "scroll-pane-up", desc: "Scroll active keys up" },
-      { key: "ctrl+d", cmd: "scroll-pane-page-down", desc: "Page active keys down" },
-      { key: "ctrl+u", cmd: "scroll-pane-page-up", desc: "Page active keys up" },
-      { key: "g", cmd: "scroll-pane-page-up", desc: "Page active keys up", group: "Go" },
-      { key: "gg", cmd: "scroll-pane-top", desc: "Jump to the top", group: "Go" },
-      { key: "shift+g", cmd: "scroll-pane-bottom", desc: "Jump to the bottom" },
-    ],
   })
 
   keymap.registerLayer({
