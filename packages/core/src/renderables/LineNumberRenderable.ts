@@ -14,6 +14,7 @@ export interface LineSign {
 export interface LineColorConfig {
   gutter?: string | RGBA
   content?: string | RGBA
+  fg?: string | RGBA
 }
 
 export interface LineNumberOptions extends RenderableOptions<LineNumberRenderable> {
@@ -41,6 +42,7 @@ class GutterRenderable extends Renderable {
   private _paddingRight: number
   private _lineColorsGutter: Map<number, RGBA>
   private _lineColorsContent: Map<number, RGBA>
+  private _lineColorsFg: Map<number, RGBA>
   private _lineSigns: Map<number, LineSign>
   private _lineNumberOffset: number
   private _hideLineNumbers: Set<number>
@@ -60,6 +62,7 @@ class GutterRenderable extends Renderable {
       paddingRight: number
       lineColorsGutter: Map<number, RGBA>
       lineColorsContent: Map<number, RGBA>
+      lineColorsFg: Map<number, RGBA>
       lineSigns: Map<number, LineSign>
       lineNumberOffset: number
       hideLineNumbers: Set<number>
@@ -83,6 +86,7 @@ class GutterRenderable extends Renderable {
     this._paddingRight = options.paddingRight
     this._lineColorsGutter = options.lineColorsGutter
     this._lineColorsContent = options.lineColorsContent
+    this._lineColorsFg = options.lineColorsFg
     this._lineSigns = options.lineSigns
     this._lineNumberOffset = options.lineNumberOffset
     this._hideLineNumbers = options.hideLineNumbers
@@ -184,9 +188,14 @@ class GutterRenderable extends Renderable {
     return baseWidth + this._maxBeforeWidth + this._maxAfterWidth
   }
 
-  public setLineColors(lineColorsGutter: Map<number, RGBA>, lineColorsContent: Map<number, RGBA>): void {
+  public setLineColors(
+    lineColorsGutter: Map<number, RGBA>,
+    lineColorsContent: Map<number, RGBA>,
+    lineColorsFg: Map<number, RGBA>,
+  ): void {
     this._lineColorsGutter = lineColorsGutter
     this._lineColorsContent = lineColorsContent
+    this._lineColorsFg = lineColorsFg
     this.requestRender()
   }
 
@@ -212,10 +221,11 @@ class GutterRenderable extends Renderable {
     }
   }
 
-  public getLineColors(): { gutter: Map<number, RGBA>; content: Map<number, RGBA> } {
+  public getLineColors(): { gutter: Map<number, RGBA>; content: Map<number, RGBA>; fg: Map<number, RGBA> } {
     return {
       gutter: this._lineColorsGutter,
       content: this._lineColorsContent,
+      fg: this._lineColorsFg,
     }
   }
 
@@ -287,6 +297,7 @@ class GutterRenderable extends Renderable {
 
       const logicalLine = sources[visualLineIndex]
       const lineBg = this._lineColorsGutter.get(logicalLine) ?? this._bg
+      const lineFg = this._lineColorsFg.get(logicalLine) ?? this._fg
 
       // Fill background for this line if it has a custom color
       if (lineBg !== this._bg) {
@@ -306,7 +317,7 @@ class GutterRenderable extends Renderable {
           // Pad to max before width for alignment
           const padding = this._maxBeforeWidth - beforeWidth
           currentX += padding
-          const beforeColor = sign.beforeColor ? parseColor(sign.beforeColor) : this._fg
+          const beforeColor = sign.beforeColor ? parseColor(sign.beforeColor) : lineFg
           buffer.drawText(sign.before, currentX, startY + i, beforeColor, lineBg)
           currentX += beforeWidth
         } else if (this._maxBeforeWidth > 0) {
@@ -324,14 +335,14 @@ class GutterRenderable extends Renderable {
           const lineNumX = startX + this._maxBeforeWidth + 1 + availableSpace - lineNumWidth - 1
 
           if (lineNumX >= startX + this._maxBeforeWidth + 1) {
-            buffer.drawText(lineNumStr, lineNumX, startY + i, this._fg, lineBg)
+            buffer.drawText(lineNumStr, lineNumX, startY + i, lineFg, lineBg)
           }
         }
 
         // Draw 'after' sign if present
         if (sign?.after) {
           const afterX = startX + this.width - this._paddingRight - this._maxAfterWidth
-          const afterColor = sign.afterColor ? parseColor(sign.afterColor) : this._fg
+          const afterColor = sign.afterColor ? parseColor(sign.afterColor) : lineFg
           buffer.drawText(sign.after, afterX, startY + i, afterColor, lineBg)
         }
       }
@@ -351,6 +362,7 @@ export class LineNumberRenderable extends Renderable {
   private target: (Renderable & LineInfoProvider) | null = null
   private _lineColorsGutter: Map<number, RGBA>
   private _lineColorsContent: Map<number, RGBA>
+  private _lineColorsFg: Map<number, RGBA>
   private _lineSigns: Map<number, LineSign>
   private _fg: RGBA
   private _bg: RGBA
@@ -367,7 +379,7 @@ export class LineNumberRenderable extends Renderable {
   }
 
   private parseLineColor(line: number, color: string | RGBA | LineColorConfig): void {
-    if (typeof color === "object" && "gutter" in color) {
+    if (typeof color === "object" && !(color instanceof RGBA) && ("gutter" in color || "content" in color || "fg" in color)) {
       // LineColorConfig format
       const config = color as LineColorConfig
       if (config.gutter) {
@@ -378,6 +390,9 @@ export class LineNumberRenderable extends Renderable {
       } else if (config.gutter) {
         // If only gutter is specified, use a darker version for content
         this._lineColorsContent.set(line, darkenColor(parseColor(config.gutter)))
+      }
+      if (config.fg) {
+        this._lineColorsFg.set(line, parseColor(config.fg))
       }
     } else {
       // Simple format - same color for both, but content is darker
@@ -406,6 +421,7 @@ export class LineNumberRenderable extends Renderable {
 
     this._lineColorsGutter = new Map<number, RGBA>()
     this._lineColorsContent = new Map<number, RGBA>()
+    this._lineColorsFg = new Map<number, RGBA>()
     if (options.lineColors) {
       for (const [line, color] of options.lineColors) {
         this.parseLineColor(line, color)
@@ -451,6 +467,7 @@ export class LineNumberRenderable extends Renderable {
       paddingRight: this._paddingRight,
       lineColorsGutter: this._lineColorsGutter,
       lineColorsContent: this._lineColorsContent,
+      lineColorsFg: this._lineColorsFg,
       lineSigns: this._lineSigns,
       lineNumberOffset: this._lineNumberOffset,
       hideLineNumbers: this._hideLineNumbers,
@@ -591,42 +608,46 @@ export class LineNumberRenderable extends Renderable {
     this.parseLineColor(line, color)
     // Update gutter if it exists
     if (this.gutter) {
-      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
+      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent, this._lineColorsFg)
     }
   }
 
   public clearLineColor(line: number): void {
     this._lineColorsGutter.delete(line)
     this._lineColorsContent.delete(line)
+    this._lineColorsFg.delete(line)
     if (this.gutter) {
-      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
+      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent, this._lineColorsFg)
     }
   }
 
   public clearAllLineColors(): void {
     this._lineColorsGutter.clear()
     this._lineColorsContent.clear()
+    this._lineColorsFg.clear()
     if (this.gutter) {
-      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
+      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent, this._lineColorsFg)
     }
   }
 
   public setLineColors(lineColors: Map<number, string | RGBA | LineColorConfig>): void {
     this._lineColorsGutter.clear()
     this._lineColorsContent.clear()
+    this._lineColorsFg.clear()
     for (const [line, color] of lineColors) {
       this.parseLineColor(line, color)
     }
     // Update gutter once after all colors are set
     if (this.gutter) {
-      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
+      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent, this._lineColorsFg)
     }
   }
 
-  public getLineColors(): { gutter: Map<number, RGBA>; content: Map<number, RGBA> } {
+  public getLineColors(): { gutter: Map<number, RGBA>; content: Map<number, RGBA>; fg: Map<number, RGBA> } {
     return {
       gutter: this._lineColorsGutter,
       content: this._lineColorsContent,
+      fg: this._lineColorsFg,
     }
   }
 
@@ -708,7 +729,7 @@ export class LineNumberRenderable extends Renderable {
       this.parseLineColor(i, color)
     }
     if (this.gutter) {
-      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
+      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent, this._lineColorsFg)
     }
   }
 
@@ -716,9 +737,10 @@ export class LineNumberRenderable extends Renderable {
     for (let i = startLine; i <= endLine; i++) {
       this._lineColorsGutter.delete(i)
       this._lineColorsContent.delete(i)
+      this._lineColorsFg.delete(i)
     }
     if (this.gutter) {
-      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
+      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent, this._lineColorsFg)
     }
   }
 }
