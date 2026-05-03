@@ -73,6 +73,7 @@ interface KeyAfterDispatchState<TTarget extends object, TEvent extends KeymapEve
   event: TEvent
   eventType: "press" | "release"
   focused: TTarget | null
+  sequence: readonly KeySequencePart[]
 }
 
 type KeyAfterHook<TTarget extends object, TEvent extends KeymapEvent> = PriorityRegistration<
