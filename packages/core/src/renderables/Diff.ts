@@ -1204,10 +1204,7 @@ export class DiffRenderable extends Renderable {
     this.forSide(side, (target) => target.clearLineColor(line))
   }
 
-  public setLineColors(
-    lineColors: Map<number, string | RGBA | LineColorConfig>,
-    side: DiffSide = "both",
-  ): void {
+  public setLineColors(lineColors: Map<number, string | RGBA | LineColorConfig>, side: DiffSide = "both"): void {
     this.forSide(side, (target) => target.setLineColors(lineColors))
   }
 
