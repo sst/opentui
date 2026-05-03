@@ -118,16 +118,16 @@ If you want to control the installed addons yourself, start from `createOpenTuiK
 
 ### Host behavior
 
-| Behavior                | OpenTUI adapter implementation                                                  |
-| ----------------------- | ------------------------------------------------------------------------------- |
-| Root target             | `renderer.root`                                                                 |
-| Focused target          | `renderer.currentFocusedRenderable` when still focused and not destroyed        |
-| Parent traversal        | `Renderable.parent`                                                             |
-| Target destroy tracking | `RenderableEvents.DESTROYED`                                                    |
-| Host destroy tracking   | `CliRenderEvents.DESTROY`                                                       |
-| Press/release events    | `renderer.keyInput` `keypress` and `keyrelease`                                 |
-| Raw input interception  | `renderer.prependInputHandler(...)`                                             |
-| Synthetic command event | New `KeyEvent` with `name: "command"`                                           |
+| Behavior                | OpenTUI adapter implementation                                                                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Root target             | `renderer.root`                                                                                                                                       |
+| Focused target          | `renderer.currentFocusedRenderable` when still focused and not destroyed                                                                              |
+| Parent traversal        | `Renderable.parent`                                                                                                                                   |
+| Target destroy tracking | `RenderableEvents.DESTROYED`                                                                                                                          |
+| Host destroy tracking   | `CliRenderEvents.DESTROY`                                                                                                                             |
+| Press/release events    | `renderer.keyInput` `keypress` and `keyrelease`                                                                                                       |
+| Raw input interception  | `renderer.prependInputHandler(...)`                                                                                                                   |
+| Synthetic command event | New `KeyEvent` with `name: "command"`                                                                                                                 |
 | Host metadata           | Runtime platform; `ctrl`, `shift` and `meta` supported; `super`/`hyper` supported when terminal capabilities report Kitty keyboard, otherwise unknown |
 
 `createOpenTuiKeymap(renderer)` throws if the renderer is already destroyed.

@@ -420,11 +420,11 @@ Diagnostic-event quirks:
 
 `keymap.intercept(...)`:
 
-| Form                   | Description                                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| `intercept("key", fn)` | Runs before binding dispatch. Context exposes `event`, `setData`, `getData` and `consume()` |
+| Form                         | Description                                                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `intercept("key", fn)`       | Runs before binding dispatch. Context exposes `event`, `setData`, `getData` and `consume()`                                 |
 | `intercept("key:after", fn)` | Runs after binding dispatch. Context exposes `handled`, `reason`, `sequence`, `event`, `setData`, `getData` and `consume()` |
-| `intercept("raw", fn)` | Runs on raw host input before key parsing. Context exposes `sequence` and `stop()`          |
+| `intercept("raw", fn)`       | Runs on raw host input before key parsing. Context exposes `sequence` and `stop()`                                          |
 
 Intercept options:
 

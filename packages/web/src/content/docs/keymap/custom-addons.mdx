@@ -398,11 +398,11 @@ Analyzers run while a layer compiles and receive a projected view of the compile
 
 ### `keymap.intercept(...)`
 
-| Form                             | Context                                    |
-| -------------------------------- | ------------------------------------------ |
-| `intercept("key", fn, options?)` | `event`, `setData`, `getData`, `consume()` |
+| Form                                   | Context                                                                     |
+| -------------------------------------- | --------------------------------------------------------------------------- |
+| `intercept("key", fn, options?)`       | `event`, `setData`, `getData`, `consume()`                                  |
 | `intercept("key:after", fn, options?)` | `handled`, `reason`, `sequence`, `event`, `setData`, `getData`, `consume()` |
-| `intercept("raw", fn, options?)` | `sequence`, `stop()`                       |
+| `intercept("raw", fn, options?)`       | `sequence`, `stop()`                                                        |
 
 Options:
 

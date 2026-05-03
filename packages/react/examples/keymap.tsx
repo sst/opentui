@@ -635,7 +635,10 @@ const AppContent = () => {
   }, [exCommands])
 
   useEffect(() => {
-    return composeDisposers([addons.registerExCommands(manager), manager.registerLayer({ commands: registeredExCommands })])
+    return composeDisposers([
+      addons.registerExCommands(manager),
+      manager.registerLayer({ commands: registeredExCommands }),
+    ])
   }, [manager, registeredExCommands])
 
   const discoveredExCommands = useMemo(() => {
