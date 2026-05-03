@@ -353,6 +353,15 @@ function getGraphBindingLabel(binding: HtmlGraphBinding): string {
   return formatKeySequence(binding.sequence, KEY_FORMAT_OPTIONS) || "bind"
 }
 
+function getGraphBindingKey(binding: HtmlGraphBinding): string {
+  let key = binding.event
+  for (const part of binding.sequence) {
+    key += ":" + part.match.length + ":" + part.match
+  }
+
+  return key
+}
+
 interface CanvasGraphNode {
   id: string
   x: number
@@ -360,6 +369,15 @@ interface CanvasGraphNode {
   radius: number
   label: string
   kind: "layer" | "binding" | "command"
+  active: boolean
+  reachable: boolean
+  pending: boolean
+  pulse: number
+}
+
+interface CanvasBindingGroup {
+  id: string
+  label: string
   active: boolean
   reachable: boolean
   pending: boolean
@@ -533,8 +551,9 @@ function drawCanvasLine(
   color: string,
   alpha: number,
   width: number,
+  pulseOverride?: number,
 ): void {
-  const pulse = Math.max(from.pulse, to.pulse)
+  const pulse = pulseOverride ?? Math.max(from.pulse, to.pulse)
   ctx.save()
   ctx.globalAlpha = Math.min(1, alpha + pulse * 0.55)
   ctx.strokeStyle = color
@@ -642,6 +661,34 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
     if (left.active !== right.active) return left.active ? -1 : 1
     return getGraphBindingLabel(left).localeCompare(getGraphBindingLabel(right))
   })
+  const bindingGroups = new Map<string, CanvasBindingGroup>()
+  const bindingKeys = new Map<string, string>()
+
+  for (const binding of visibleBindings) {
+    const key = getGraphBindingKey(binding)
+    bindingKeys.set(binding.id, key)
+    const pending = sequenceMatchesPrefix(binding.sequence, snapshot.pendingSequence)
+    const pulse = getBindingPulse(binding, now)
+    const existing = bindingGroups.get(key)
+
+    if (existing) {
+      existing.active ||= binding.active
+      existing.reachable ||= binding.reachable
+      existing.pending ||= pending
+      existing.pulse = Math.max(existing.pulse, pulse)
+      continue
+    }
+
+    bindingGroups.set(key, {
+      id: `binding:${key}`,
+      label: getGraphBindingLabel(binding),
+      active: binding.active,
+      reachable: binding.reachable,
+      pending,
+      pulse,
+    })
+  }
+  const visibleBindingGroups = [...bindingGroups]
 
   snapshot.layers.forEach((layer, index) => {
     const y = top + (graphHeight * (index + 0.5)) / Math.max(1, snapshot.layers.length)
@@ -659,19 +706,19 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
     })
   })
 
-  visibleBindings.forEach((binding, index) => {
-    const y = top + (graphHeight * (index + 0.5)) / Math.max(1, visibleBindings.length)
-    bindingNodes.set(binding.id, {
-      id: binding.id,
+  visibleBindingGroups.forEach(([key, group], index) => {
+    const y = top + (graphHeight * (index + 0.5)) / Math.max(1, visibleBindingGroups.length)
+    bindingNodes.set(key, {
+      id: group.id,
       x: bindingX,
       y,
-      radius: binding.reachable ? 6 : 4.5,
-      label: getGraphBindingLabel(binding),
+      radius: group.reachable ? 6 : 4.5,
+      label: group.label,
       kind: "binding",
-      active: binding.active,
-      reachable: binding.reachable,
-      pending: sequenceMatchesPrefix(binding.sequence, snapshot.pendingSequence),
-      pulse: getBindingPulse(binding, now),
+      active: group.active,
+      reachable: group.reachable,
+      pending: group.pending,
+      pulse: group.pulse,
     })
   })
 
@@ -693,18 +740,21 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
 
   for (const binding of visibleBindings) {
     const layer = layerNodes.get(binding.layerId)
-    const bindingNode = bindingNodes.get(binding.id)
+    const bindingNodeKey = bindingKeys.get(binding.id)
+    const bindingNode = bindingNodeKey ? bindingNodes.get(bindingNodeKey) : undefined
     if (!layer || !bindingNode) {
       continue
     }
 
+    const bindingPending = sequenceMatchesPrefix(binding.sequence, snapshot.pendingSequence)
     drawCanvasLine(
       ctx,
       layer,
       bindingNode,
-      bindingNode.pending ? palette.yellow : palette.cyan,
+      bindingPending ? palette.yellow : palette.cyan,
       binding.reachable ? 0.68 : 0.16,
       1.2,
+      Math.max(layer.pulse, getBindingPulse(binding, now)),
     )
 
     for (const commandId of binding.commandIds) {
@@ -720,6 +770,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
         binding.reachable && commandNode.reachable ? palette.green : palette.comment,
         binding.reachable && commandNode.reachable ? 0.72 : 0.12,
         binding.reachable && commandNode.reachable ? 1.6 : 1,
+        Math.max(getBindingPulse(binding, now), commandNode.pulse),
       )
     }
   }
