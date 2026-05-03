@@ -14,6 +14,7 @@ import type {
   KeyDisambiguationResolver,
   EventMatchResolver,
   Hooks,
+  KeyAfterInputContext,
   KeyInputContext,
   KeySequencePart,
   KeymapEvent,
@@ -49,6 +50,10 @@ export interface DispatchState<TTarget extends object, TEvent extends KeymapEven
   eventMatchResolvers: OrderedRegistry<EventMatchResolver<TEvent>>
   disambiguationResolvers: OrderedRegistry<KeyDisambiguationResolver<TTarget, TEvent>>
   keyHooks: PriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>
+  keyAfterHooks: PriorityRegistry<
+    (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
+    { priority: number; release: boolean }
+  >
   rawHooks: PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>
 }
 
@@ -179,6 +184,10 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
       eventMatchResolvers: new OrderedRegistry<EventMatchResolver<TEvent>>(),
       disambiguationResolvers: new OrderedRegistry<KeyDisambiguationResolver<TTarget, TEvent>>(),
       keyHooks: new PriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>(),
+      keyAfterHooks: new PriorityRegistry<
+        (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
+        { priority: number; release: boolean }
+      >(),
       rawHooks: new PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>(),
     },
     layers: {

@@ -23,6 +23,7 @@ import type {
   RunCommandOptions,
   RunCommandResult,
   CommandResolver,
+  KeyAfterInputContext,
   KeyInterceptOptions,
   KeyInputContext,
   Layer,
@@ -334,15 +335,32 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public intercept(name: "key", fn: (ctx: KeyInputContext<TEvent>) => void, options?: KeyInterceptOptions): () => void
 
+  public intercept(
+    name: "key:after",
+    fn: (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
+    options?: KeyInterceptOptions,
+  ): () => void
+
   public intercept(name: "raw", fn: (ctx: RawInputContext) => void, options?: RawInterceptOptions): () => void
 
   public intercept(
-    name: "key" | "raw",
-    fn: ((ctx: KeyInputContext<TEvent>) => void) | ((ctx: RawInputContext) => void),
+    name: "key" | "key:after" | "raw",
+    fn:
+      | ((ctx: KeyInputContext<TEvent>) => void)
+      | ((ctx: KeyAfterInputContext<TTarget, TEvent>) => void)
+      | ((ctx: RawInputContext) => void),
     options?: KeyInterceptOptions | RawInterceptOptions,
   ): () => void {
     if (name === "key") {
       return this.dispatch.intercept(name, fn as (ctx: KeyInputContext<TEvent>) => void, options as KeyInterceptOptions)
+    }
+
+    if (name === "key:after") {
+      return this.dispatch.intercept(
+        name,
+        fn as (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
+        options as KeyInterceptOptions,
+      )
     }
 
     return this.dispatch.intercept(name, fn as (ctx: RawInputContext) => void, options as RawInterceptOptions)

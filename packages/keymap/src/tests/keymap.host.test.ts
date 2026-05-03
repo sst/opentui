@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import * as addons from "../addons/index.js"
-import { Keymap, type HostMetadata, type KeymapEvent, type KeymapHost } from "../index.js"
+import { Keymap, stringifyKeySequence, type HostMetadata, type KeymapEvent, type KeymapHost } from "../index.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 
 const diagnostics = createDiagnosticHarness()
@@ -228,6 +228,195 @@ describe("generic keymap host", () => {
     expect(calls).toEqual(["x:none"])
     expect(event.defaultPrevented).toBe(true)
     expect(event.propagationStopped).toBe(true)
+  })
+
+  test("key:after observes no-match dispatch and can consume afterward", () => {
+    const seen: Array<{ handled: boolean; reason: string }> = []
+
+    keymap.intercept("key:after", (ctx) => {
+      seen.push({ handled: ctx.handled, reason: ctx.reason })
+      ctx.consume()
+    })
+
+    const event = host.press("x")
+
+    expect(seen).toEqual([{ handled: false, reason: "no-match" }])
+    expect(event.defaultPrevented).toBe(true)
+    expect(event.propagationStopped).toBe(true)
+  })
+
+  test("key:after observes handled binding details before optionally consuming", () => {
+    const calls: string[] = []
+    const seen: Array<{
+      handled: boolean
+      reason: string
+      stoppedBeforeAfter: boolean
+      sequence: string
+    }> = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "save",
+          run(ctx) {
+            calls.push(ctx.input)
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "save", preventDefault: false }],
+    })
+
+    keymap.intercept("key:after", (ctx) => {
+      seen.push({
+        handled: ctx.handled,
+        reason: ctx.reason,
+        stoppedBeforeAfter: ctx.event.propagationStopped,
+        sequence: stringifyKeySequence(ctx.sequence, { preferDisplay: true }),
+      })
+      ctx.consume()
+    })
+
+    const event = host.press("x")
+
+    expect(calls).toEqual(["save"])
+    expect(seen).toEqual([
+      {
+        handled: true,
+        reason: "binding-handled",
+        stoppedBeforeAfter: false,
+        sequence: "x",
+      },
+    ])
+    expect(event.defaultPrevented).toBe(true)
+    expect(event.propagationStopped).toBe(true)
+  })
+
+  test("key:after still runs for pre-consumed keys and does not dispatch bindings", () => {
+    const calls: string[] = []
+    const seen: string[] = []
+
+    keymap.registerLayer({ bindings: [{ key: "x", cmd: () => void calls.push("binding") }] })
+    keymap.intercept("key", ({ consume }) => {
+      consume()
+    })
+    keymap.intercept("key:after", (ctx) => {
+      seen.push(`${ctx.reason}:${ctx.handled}:${ctx.event.propagationStopped}`)
+      ctx.consume()
+    })
+    keymap.intercept("key:after", (ctx) => {
+      seen.push(`second:${ctx.reason}`)
+    })
+
+    const event = host.press("x")
+
+    expect(calls).toEqual([])
+    expect(seen).toEqual(["intercept-consumed:true:true", "second:intercept-consumed"])
+    expect(event.defaultPrevented).toBe(true)
+    expect(event.propagationStopped).toBe(true)
+  })
+
+  test("key:after reports rejected bindings without treating them as handled", () => {
+    const seen: Array<{ handled: boolean; reason: string; sequence: string }> = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "reject",
+          run() {
+            return false
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "reject" }],
+    })
+
+    keymap.intercept("key:after", (ctx) => {
+      seen.push({
+        handled: ctx.handled,
+        reason: ctx.reason,
+        sequence: stringifyKeySequence(ctx.sequence, { preferDisplay: true }),
+      })
+      ctx.consume()
+    })
+
+    const event = host.press("x")
+
+    expect(seen).toEqual([{ handled: false, reason: "binding-rejected", sequence: "x" }])
+    expect(event.defaultPrevented).toBe(true)
+    expect(event.propagationStopped).toBe(true)
+  })
+
+  test("key:after reports handled fallthrough dispatch once", () => {
+    const calls: string[] = []
+    const seen: Array<{ handled: boolean; reason: string; sequence: string }> = []
+
+    keymap.registerLayer({
+      priority: 0,
+      commands: [{ name: "low", run: () => void calls.push("low") }],
+      bindings: [{ key: "x", cmd: "low" }],
+    })
+    keymap.registerLayer({
+      priority: 10,
+      commands: [{ name: "high", run: () => void calls.push("high") }],
+      bindings: [{ key: "x", cmd: "high", fallthrough: true }],
+    })
+
+    keymap.intercept("key:after", (ctx) => {
+      seen.push({
+        handled: ctx.handled,
+        reason: ctx.reason,
+        sequence: stringifyKeySequence(ctx.sequence, { preferDisplay: true }),
+      })
+    })
+
+    host.press("x")
+
+    expect(calls).toEqual(["high", "low"])
+    expect(seen).toEqual([{ handled: true, reason: "binding-handled", sequence: "x" }])
+  })
+
+  test("key:after reports sequence pending and sequence miss outcomes", () => {
+    const seen: Array<{ reason: string; handled: boolean; sequence: string; pending: string }> = []
+
+    keymap.registerLayer({ bindings: [{ key: "gg", cmd: () => {} }] })
+    keymap.intercept("key:after", (ctx) => {
+      seen.push({
+        reason: ctx.reason,
+        handled: ctx.handled,
+        sequence: stringifyKeySequence(ctx.sequence, { preferDisplay: true }),
+        pending: stringifyKeySequence(ctx.pendingSequence, { preferDisplay: true }),
+      })
+    })
+
+    const first = host.press("g")
+    const second = host.press("x")
+
+    expect(seen).toEqual([
+      { reason: "sequence-pending", handled: true, sequence: "g", pending: "g" },
+      { reason: "sequence-miss", handled: false, sequence: "g", pending: "" },
+    ])
+    expect(first.propagationStopped).toBe(true)
+    expect(second.propagationStopped).toBe(false)
+  })
+
+  test("key:after release listeners only observe release dispatch", () => {
+    const calls: string[] = []
+    const seen: string[] = []
+
+    keymap.registerLayer({ bindings: [{ key: "x", event: "release", cmd: () => void calls.push("release") }] })
+    keymap.intercept(
+      "key:after",
+      (ctx) => {
+        seen.push(`${ctx.eventType}:${ctx.reason}:${ctx.handled}`)
+      },
+      { release: true },
+    )
+
+    host.press("x")
+    host.release("x")
+
+    expect(calls).toEqual(["release"])
+    expect(seen).toEqual(["release:binding-handled:true"])
   })
 
   test("exposes mandatory host metadata", () => {

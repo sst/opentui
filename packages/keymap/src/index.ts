@@ -38,6 +38,8 @@ export type {
   DispatchEvent,
   DispatchLayer,
   DispatchPhase,
+  KeyAfterInputContext,
+  KeyAfterReason,
   Listener,
   ErrorEvent,
   Command,

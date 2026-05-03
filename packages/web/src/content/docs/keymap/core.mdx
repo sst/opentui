@@ -423,14 +423,17 @@ Diagnostic-event quirks:
 | Form                   | Description                                                                                 |
 | ---------------------- | ------------------------------------------------------------------------------------------- |
 | `intercept("key", fn)` | Runs before binding dispatch. Context exposes `event`, `setData`, `getData` and `consume()` |
+| `intercept("key:after", fn)` | Runs after binding dispatch. Context exposes `handled`, `reason`, `sequence`, `event`, `setData`, `getData` and `consume()` |
 | `intercept("raw", fn)` | Runs on raw host input before key parsing. Context exposes `sequence` and `stop()`          |
 
 Intercept options:
 
 | Option     | Applies to | Description                               |
 | ---------- | ---------- | ----------------------------------------- |
-| `priority` | both       | Higher numbers run first                  |
-| `release`  | key only   | Listen to release events instead of press |
+| `priority` | all        | Higher numbers run first                  |
+| `release`  | key forms  | Listen to release events instead of press |
+
+`key:after` listeners are delivered once per key event that reaches the keymap listener, including no-match, rejected-binding, pending-sequence, and pre-intercept-consumed outcomes. Delivery is not gated by `preventDefault()` or `stopPropagation()`; those methods only affect host propagation/default behavior. The after context is only constructed when a matching `key:after` listener is registered.
 
 ## Extension points
 

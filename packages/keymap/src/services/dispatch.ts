@@ -25,6 +25,8 @@ import {
   type KeyDisambiguationResolver,
   type KeyMatch,
   type KeyInterceptOptions,
+  type KeyAfterInputContext,
+  type KeyAfterReason,
   type KeyInputContext,
   type KeymapEvent,
   type PendingSequenceCapture,
@@ -39,6 +41,7 @@ import {
   type RegisteredLayer,
   type SequenceNode,
 } from "../types.js"
+import type { PriorityRegistration } from "../lib/registry.js"
 
 type SyncDecisionAction = "run-exact" | "continue-sequence" | "clear" | "defer"
 type DeferredDecisionAction = "run-exact" | "continue-sequence" | "clear"
@@ -58,6 +61,24 @@ interface PendingDisambiguation<TTarget extends object, TEvent extends KeymapEve
   captures: readonly PendingSequenceCapture<TTarget, TEvent>[]
   apply: (decision: InternalDeferredDisambiguationDecision | void) => void
 }
+
+interface KeyDispatchOutcome {
+  handled: boolean
+  reason: KeyAfterReason
+  sequence?: readonly KeySequencePart[]
+  captures?: readonly PendingSequenceCapture<any, any>[]
+}
+
+interface KeyAfterDispatchState<TTarget extends object, TEvent extends KeymapEvent> extends KeyDispatchOutcome {
+  event: TEvent
+  eventType: "press" | "release"
+  focused: TTarget | null
+}
+
+type KeyAfterHook<TTarget extends object, TEvent extends KeymapEvent> = PriorityRegistration<
+  (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
+  { priority: number; release: boolean }
+>
 
 function createSyncDecision(
   action: SyncDecisionAction,
@@ -119,16 +140,33 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
   public intercept(name: "key", fn: (ctx: KeyInputContext<TEvent>) => void, options?: KeyInterceptOptions): () => void
 
+  public intercept(
+    name: "key:after",
+    fn: (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
+    options?: KeyInterceptOptions,
+  ): () => void
+
   public intercept(name: "raw", fn: (ctx: RawInputContext) => void, options?: RawInterceptOptions): () => void
 
   public intercept(
-    name: "key" | "raw",
-    fn: ((ctx: KeyInputContext<TEvent>) => void) | ((ctx: RawInputContext) => void),
+    name: "key" | "key:after" | "raw",
+    fn:
+      | ((ctx: KeyInputContext<TEvent>) => void)
+      | ((ctx: KeyAfterInputContext<TTarget, TEvent>) => void)
+      | ((ctx: RawInputContext) => void),
     options?: KeyInterceptOptions | RawInterceptOptions,
   ): () => void {
     if (name === "key") {
       const keyOptions = options as KeyInterceptOptions | undefined
       return this.state.dispatch.keyHooks.register(fn as (ctx: KeyInputContext<TEvent>) => void, {
+        priority: keyOptions?.priority ?? 0,
+        release: keyOptions?.release ?? false,
+      })
+    }
+
+    if (name === "key:after") {
+      const keyOptions = options as KeyInterceptOptions | undefined
+      return this.state.dispatch.keyAfterHooks.register(fn as (ctx: KeyAfterInputContext<TTarget, TEvent>) => void, {
         priority: keyOptions?.priority ?? 0,
         release: keyOptions?.release ?? false,
       })
@@ -296,11 +334,133 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     })
   }
 
+  private getKeyAfterHooks(release: boolean): readonly KeyAfterHook<TTarget, TEvent>[] | undefined {
+    const hooks = this.state.dispatch.keyAfterHooks.entries()
+    for (const hook of hooks) {
+      if (hook.release === release) {
+        return hooks
+      }
+    }
+
+    return undefined
+  }
+
+  private createKeyAfterState(
+    event: TEvent,
+    release: boolean,
+    focused: TTarget | null,
+    outcome: KeyDispatchOutcome,
+  ): KeyAfterDispatchState<TTarget, TEvent> {
+    return {
+      event,
+      eventType: release ? "release" : "press",
+      focused,
+      handled: outcome.handled,
+      reason: outcome.reason,
+      sequence: this.materializeOutcomeSequence(outcome),
+    }
+  }
+
+  private materializeOutcomeSequence(outcome: KeyDispatchOutcome): readonly KeySequencePart[] {
+    if (outcome.sequence) {
+      return cloneKeySequence(outcome.sequence)
+    }
+
+    if (outcome.captures) {
+      return this.activation.collectSequencePartsFromPending({ captures: outcome.captures })
+    }
+
+    return []
+  }
+
+  private createSequenceOutcome(
+    reason: "sequence-pending" | "sequence-miss" | "sequence-cleared",
+    captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+  ): KeyDispatchOutcome {
+    return {
+      handled: reason !== "sequence-miss",
+      reason,
+      captures,
+    }
+  }
+
+  private createBindingOutcome(binding: BindingState<TTarget, TEvent>, handled: boolean): KeyDispatchOutcome {
+    return {
+      handled,
+      reason: handled ? "binding-handled" : "binding-rejected",
+      sequence: binding.sequence,
+    }
+  }
+
+  private preferDispatchOutcome(current: KeyDispatchOutcome, next: KeyDispatchOutcome): KeyDispatchOutcome {
+    if (next.handled || current.reason === "no-match") {
+      return next
+    }
+
+    return current
+  }
+
+  private emitKeyAfter(
+    hooks: readonly KeyAfterHook<TTarget, TEvent>[],
+    after: KeyAfterDispatchState<TTarget, TEvent>,
+  ): void {
+    const context = this.createKeyAfterContext(after)
+    const release = after.eventType === "release"
+
+    for (const hook of hooks) {
+      if (hook.release !== release) {
+        continue
+      }
+
+      try {
+        hook.listener(context)
+      } catch (error) {
+        this.notify.emitError("key-after-intercept-error", error, "[Keymap] Error in key:after intercept listener:")
+      }
+    }
+  }
+
+  private createKeyAfterContext(after: KeyAfterDispatchState<TTarget, TEvent>): KeyAfterInputContext<TTarget, TEvent> {
+    return {
+      event: after.event,
+      eventType: after.eventType,
+      focused: after.focused,
+      handled: after.handled,
+      reason: after.reason,
+      sequence: after.sequence,
+      pendingSequence: this.activation.getPendingSequence(),
+      setData: (name, value) => {
+        this.runtime.setData(name, value)
+      },
+      getData: (name) => {
+        return this.runtime.getData(name)
+      },
+      consume: (options) => {
+        const shouldPreventDefault = options?.preventDefault ?? true
+        const shouldStopPropagation = options?.stopPropagation ?? true
+
+        if (shouldPreventDefault) {
+          after.event.preventDefault()
+        }
+
+        if (shouldStopPropagation) {
+          after.event.stopPropagation()
+        }
+      },
+    }
+  }
+
+  private noMatchOutcome(): KeyDispatchOutcome {
+    return { handled: false, reason: "no-match" }
+  }
+
   public handleKeyEvent(event: TEvent, release: boolean): void {
     if (!release) {
       this.cancelPendingDisambiguation()
     }
 
+    const afterHooks = this.getKeyAfterHooks(release)
+    const afterFocused = afterHooks ? this.activation.getFocusedTarget() : null
     const hooks = this.state.dispatch.keyHooks.entries()
     const context: KeyInputContext<TEvent> = {
       event,
@@ -336,16 +496,32 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       }
 
       if (event.propagationStopped) {
+        if (afterHooks) {
+          this.emitKeyAfter(
+            afterHooks,
+            this.createKeyAfterState(event, release, afterFocused, {
+              handled: true,
+              reason: "intercept-consumed",
+              sequence: [],
+            }),
+          )
+        }
         return
       }
     }
 
     if (release) {
-      this.dispatchReleaseLayers(event)
+      const outcome = this.dispatchReleaseLayers(event)
+      if (afterHooks) {
+        this.emitKeyAfter(afterHooks, this.createKeyAfterState(event, release, afterFocused, outcome))
+      }
       return
     }
 
-    this.dispatchLayers(event)
+    const outcome = this.dispatchLayers(event)
+    if (afterHooks) {
+      this.emitKeyAfter(afterHooks, this.createKeyAfterState(event, release, afterFocused, outcome))
+    }
   }
 
   private mutateDisambiguationResolvers(
@@ -377,11 +553,12 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     })
   }
 
-  private dispatchReleaseLayers(event: TEvent): void {
+  private dispatchReleaseLayers(event: TEvent): KeyDispatchOutcome {
     const focused = this.activation.getFocusedTarget()
     const activeLayers = this.activation.getActiveLayers(focused)
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
     const matchKeys = this.resolveEventMatchKeys(event)
+    let outcome = this.noMatchOutcome()
 
     layerLoop: for (const layer of activeLayers) {
       if (layer.bindingStates.length === 0) {
@@ -394,31 +571,33 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
       for (const strokeKey of matchKeys) {
         const result = this.runReleaseBindings(layer, strokeKey, event, focused)
+        outcome = this.preferDispatchOutcome(outcome, result.outcome)
         if (!result.handled) {
           continue
         }
 
         if (result.stop) {
-          return
+          return outcome
         }
 
         continue layerLoop
       }
     }
+
+    return outcome
   }
 
-  private dispatchLayers(event: TEvent): void {
+  private dispatchLayers(event: TEvent): KeyDispatchOutcome {
     const focused = this.activation.getFocusedTarget()
     const pending = this.activation.ensureValidPendingSequence()
     const matchKeys = this.resolveEventMatchKeys(event)
 
     if (pending) {
-      this.dispatchPendingSequence(pending, matchKeys, event, focused)
-      return
+      return this.dispatchPendingSequence(pending, matchKeys, event, focused)
     }
 
     const activeLayers = this.activation.getActiveLayers(focused)
-    this.dispatchFromRoot(activeLayers, matchKeys, event, focused)
+    return this.dispatchFromRoot(activeLayers, matchKeys, event, focused)
   }
 
   private dispatchPendingSequence(
@@ -426,7 +605,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     matchKeys: readonly KeyMatch[],
     event: TEvent,
     focused: TTarget | null,
-  ): void {
+  ): KeyDispatchOutcome {
     const advancedCaptures: PendingSequenceCapture<TTarget, TEvent>[] = []
 
     for (const capture of pending.captures) {
@@ -442,12 +621,13 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     if (advancedCaptures.length === 0) {
+      const outcome = this.createSequenceOutcome("sequence-miss", pending.captures)
       this.emitSequenceDispatch("sequence-clear", pending.captures, focused)
       this.activation.setPendingSequence(null)
-      return
+      return outcome
     }
 
-    this.dispatchPendingCapturesFromIndex(advancedCaptures, 0, false, event, focused)
+    return this.dispatchPendingCapturesFromIndex(advancedCaptures, 0, false, event, focused)
   }
 
   private dispatchPendingCapturesFromIndex(
@@ -456,8 +636,9 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     handledExact: boolean,
     event: TEvent,
     focused: TTarget | null,
-  ): void {
+  ): KeyDispatchOutcome {
     let hasHandledExact = handledExact
+    let outcome = this.noMatchOutcome()
 
     for (let index = startIndex; index < advancedCaptures.length; index += 1) {
       const capture = advancedCaptures[index]
@@ -471,28 +652,29 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         }
 
         const continuationCaptures = this.collectPendingCapturesFromAdvanced(advancedCaptures, index)
-        if (
-          this.tryResolvePendingAmbiguity(
-            advancedCaptures,
-            index,
-            continuationCaptures,
-            capture,
-            event,
-            focused,
-            hasHandledExact,
-          )
-        ) {
-          return
+        const resolvedOutcome = this.tryResolvePendingAmbiguity(
+          advancedCaptures,
+          index,
+          continuationCaptures,
+          capture,
+          event,
+          focused,
+          hasHandledExact,
+        )
+        if (resolvedOutcome) {
+          return resolvedOutcome
         }
 
         this.activation.setPendingSequence({ captures: continuationCaptures })
+        outcome = this.createSequenceOutcome("sequence-pending", continuationCaptures)
         this.emitSequenceDispatch("sequence-advance", continuationCaptures, focused)
         event.preventDefault()
         event.stopPropagation()
-        return
+        return outcome
       }
 
       const result = this.runBindings(capture.layer, capture.node.bindings, event, focused)
+      outcome = this.preferDispatchOutcome(outcome, result.outcome)
       if (!result.handled) {
         continue
       }
@@ -501,12 +683,13 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       if (result.stop) {
         this.emitSequenceDispatch("sequence-clear", advancedCaptures, focused)
         this.activation.setPendingSequence(null)
-        return
+        return outcome
       }
     }
 
     this.emitSequenceDispatch("sequence-clear", advancedCaptures, focused)
     this.activation.setPendingSequence(null)
+    return outcome
   }
 
   private dispatchFromRoot(
@@ -514,8 +697,8 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     matchKeys: readonly KeyMatch[],
     event: TEvent,
     focused: TTarget | null,
-  ): void {
-    this.dispatchFromRootAtIndex(activeLayers, 0, matchKeys, event, focused)
+  ): KeyDispatchOutcome {
+    return this.dispatchFromRootAtIndex(activeLayers, 0, matchKeys, event, focused)
   }
 
   private dispatchFromRootAtIndex(
@@ -524,8 +707,9 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     matchKeys: readonly KeyMatch[],
     event: TEvent,
     focused: TTarget | null,
-  ): void {
+  ): KeyDispatchOutcome {
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
+    let outcome = this.noMatchOutcome()
 
     for (let index = startIndex; index < activeLayers.length; index += 1) {
       const layer = activeLayers[index]
@@ -548,37 +732,40 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
       if (nextNode.children.size > 0) {
         const continuationCaptures = this.collectPendingCapturesFromRoot(activeLayers, index, matchKeys, focused)
-        if (
-          this.tryResolveRootAmbiguity(
-            activeLayers,
-            index,
-            matchKeys,
-            continuationCaptures,
-            layer,
-            nextNode,
-            event,
-            focused,
-          )
-        ) {
-          return
+        const resolvedOutcome = this.tryResolveRootAmbiguity(
+          activeLayers,
+          index,
+          matchKeys,
+          continuationCaptures,
+          layer,
+          nextNode,
+          event,
+          focused,
+        )
+        if (resolvedOutcome) {
+          return resolvedOutcome
         }
 
         this.activation.setPendingSequence({ captures: continuationCaptures })
+        outcome = this.createSequenceOutcome("sequence-pending", continuationCaptures)
         this.emitSequenceDispatch("sequence-start", continuationCaptures, focused)
         event.preventDefault()
         event.stopPropagation()
-        return
+        return outcome
       }
 
       const result = this.runBindings(layer, nextNode.bindings, event, focused)
+      outcome = this.preferDispatchOutcome(outcome, result.outcome)
       if (!result.handled) {
         continue
       }
 
       if (result.stop) {
-        return
+        return outcome
       }
     }
+
+    return outcome
   }
 
   private tryResolveRootAmbiguity(
@@ -590,13 +777,18 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     node: SequenceNode<TTarget, TEvent>,
     event: TEvent,
     focused: TTarget | null,
-  ): boolean {
-    const applyExact = (): void => {
+  ): KeyDispatchOutcome | undefined {
+    const applyExact = (): KeyDispatchOutcome => {
       this.activation.setPendingSequence(null)
       const result = this.runBindings(layer, node.bindings, event, focused)
       if (!result.stop) {
-        this.dispatchFromRootAtIndex(activeLayers, layerIndex + 1, matchKeys, event, focused)
+        return this.preferDispatchOutcome(
+          result.outcome,
+          this.dispatchFromRootAtIndex(activeLayers, layerIndex + 1, matchKeys, event, focused),
+        )
       }
+
+      return result.outcome
     }
 
     return this.tryResolveAmbiguity({
@@ -617,20 +809,23 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     event: TEvent,
     focused: TTarget | null,
     handledExact: boolean,
-  ): boolean {
-    const applyExact = (): void => {
+  ): KeyDispatchOutcome | undefined {
+    const applyExact = (): KeyDispatchOutcome => {
       this.activation.setPendingSequence(null)
       const result = this.runBindings(capture.layer, capture.node.bindings, event, focused)
       if (result.stop) {
-        return
+        return result.outcome
       }
 
-      this.dispatchPendingCapturesFromIndex(
-        advancedCaptures,
-        captureIndex + 1,
-        handledExact || result.handled,
-        event,
-        focused,
+      return this.preferDispatchOutcome(
+        result.outcome,
+        this.dispatchPendingCapturesFromIndex(
+          advancedCaptures,
+          captureIndex + 1,
+          handledExact || result.handled,
+          event,
+          focused,
+        ),
       )
     }
 
@@ -650,32 +845,36 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[]
     exactBindingsSource: readonly BindingState<TTarget, TEvent>[]
     sequencePhase: "sequence-start" | "sequence-advance"
-    runExact: () => void
-  }): boolean {
+    runExact: () => KeyDispatchOutcome
+  }): KeyDispatchOutcome | undefined {
     const { event, focused, continuationCaptures, exactBindingsSource, sequencePhase, runExact } = options
 
     if (!this.state.dispatch.disambiguationResolvers.has() || continuationCaptures.length === 0) {
-      return false
+      return undefined
     }
 
     const activeView = this.catalog.getActiveCommandView(focused)
     const exactBindings = this.activation.collectMatchingBindings(exactBindingsSource, focused, activeView)
     if (!exactBindings.some((binding) => binding.command !== undefined)) {
-      return false
+      return undefined
     }
 
-    const continueSequence = (): void => {
+    const continueSequence = (): KeyDispatchOutcome => {
       this.activation.setPendingSequence({ captures: continuationCaptures })
+      const outcome = this.createSequenceOutcome("sequence-pending", continuationCaptures)
       this.emitSequenceDispatch(sequencePhase, continuationCaptures, focused)
       event.preventDefault()
       event.stopPropagation()
+      return outcome
     }
 
-    const clear = (): void => {
+    const clear = (): KeyDispatchOutcome => {
+      const outcome = this.createSequenceOutcome("sequence-cleared", continuationCaptures)
       this.emitSequenceDispatch("sequence-clear", continuationCaptures, focused)
       this.activation.setPendingSequence(null)
       event.preventDefault()
       event.stopPropagation()
+      return outcome
     }
 
     let sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]> | undefined
@@ -695,8 +894,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
     if (!decision) {
       this.warnUnresolvedAmbiguity(getSequence())
-      continueSequence()
-      return true
+      return continueSequence()
     }
 
     return this.applySyncDecision(
@@ -713,28 +911,25 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   private applySyncDecision(
     decision: InternalDisambiguationDecision,
     continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[],
-    runExact: () => void,
-    continueSequence: () => void,
-    clear: () => void,
+    runExact: () => KeyDispatchOutcome,
+    continueSequence: () => KeyDispatchOutcome,
+    clear: () => KeyDispatchOutcome,
     focused: TTarget | null,
     getSequence: () => ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>,
-  ): boolean {
+  ): KeyDispatchOutcome {
     if (decision.action === "run-exact") {
-      runExact()
-      return true
+      return runExact()
     }
 
     if (decision.action === "continue-sequence") {
-      continueSequence()
-      return true
+      return continueSequence()
     }
 
     if (decision.action === "clear") {
-      clear()
-      return true
+      return clear()
     }
 
-    continueSequence()
+    const outcome = continueSequence()
     this.scheduleDeferredDisambiguation(
       continuationCaptures,
       decision.handler!,
@@ -758,7 +953,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         clear()
       },
     )
-    return true
+    return outcome
   }
 
   private resolveDisambiguation(options: {
@@ -1125,8 +1320,9 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     strokeKey: KeyMatch,
     event: TEvent,
     focused: TTarget | null,
-  ): { handled: boolean; stop: boolean } {
+  ): { handled: boolean; stop: boolean; outcome: KeyDispatchOutcome } {
     let handled = false
+    let outcome = this.noMatchOutcome()
 
     for (const binding of layer.bindingStates) {
       if (binding.event !== "release") {
@@ -1143,6 +1339,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       }
 
       const bindingHandled = this.executor.runBinding(layer, binding, event, focused)
+      outcome = this.preferDispatchOutcome(outcome, this.createBindingOutcome(binding, bindingHandled))
       if (!bindingHandled) {
         this.emitBindingDispatch("binding-reject", layer, binding, focused)
         continue
@@ -1151,11 +1348,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       this.emitBindingDispatch("binding-execute", layer, binding, focused)
       handled = true
       if (!binding.fallthrough) {
-        return { handled: true, stop: true }
+        return { handled: true, stop: true, outcome }
       }
     }
 
-    return { handled, stop: false }
+    return { handled, stop: false, outcome }
   }
 
   private getReachableChild(
@@ -1180,8 +1377,9 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     bindings: BindingState<TTarget, TEvent>[],
     event: TEvent,
     focused: TTarget | null,
-  ): { handled: boolean; stop: boolean } {
+  ): { handled: boolean; stop: boolean; outcome: KeyDispatchOutcome } {
     let handled = false
+    let outcome = this.noMatchOutcome()
 
     for (const binding of bindings) {
       if (!this.conditions.matchesConditions(binding)) {
@@ -1189,6 +1387,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       }
 
       const bindingHandled = this.executor.runBinding(layer, binding, event, focused)
+      outcome = this.preferDispatchOutcome(outcome, this.createBindingOutcome(binding, bindingHandled))
       if (!bindingHandled) {
         this.emitBindingDispatch("binding-reject", layer, binding, focused)
         continue
@@ -1197,11 +1396,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       this.emitBindingDispatch("binding-execute", layer, binding, focused)
       handled = true
       if (!binding.fallthrough) {
-        return { handled: true, stop: true }
+        return { handled: true, stop: true, outcome }
       }
     }
 
-    return { handled, stop: false }
+    return { handled, stop: false, outcome }
   }
 }
 

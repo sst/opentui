@@ -401,14 +401,17 @@ Analyzers run while a layer compiles and receive a projected view of the compile
 | Form                             | Context                                    |
 | -------------------------------- | ------------------------------------------ |
 | `intercept("key", fn, options?)` | `event`, `setData`, `getData`, `consume()` |
+| `intercept("key:after", fn, options?)` | `handled`, `reason`, `sequence`, `event`, `setData`, `getData`, `consume()` |
 | `intercept("raw", fn, options?)` | `sequence`, `stop()`                       |
 
 Options:
 
 | Option     | Applies to | Notes                                     |
 | ---------- | ---------- | ----------------------------------------- |
-| `priority` | both       | Higher numbers run first                  |
-| `release`  | key only   | Listen to release events instead of press |
+| `priority` | all        | Higher numbers run first                  |
+| `release`  | key forms  | Listen to release events instead of press |
+
+`key:after` is a synchronous post-dispatch hook for optionally calling `preventDefault()` / `stopPropagation()` after observing whether the keymap handled, rejected, missed, or held a sequence. It still fires if the event is already default-prevented or propagation-stopped; those flags affect host delivery, not after-hook delivery.
 
 ### Useful runtime helpers inside addons
 

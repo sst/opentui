@@ -14,7 +14,7 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 - **Pluggable binding language**: stackable binding parsers, key expanders, layer-binding transformers, binding transformers, command resolvers, command transformers, and event-match resolvers.
 - **Extensible schema and activation**: register custom fields on layers, bindings, and commands. Field compilers can emit `attrs`; all field kinds can gate activation via `require(...)` and `activeWhen(matcher)`.
 - **Reactive matchers** with cached invalidation, plus React store and Solid signal helpers.
-- **Raw and key intercepts** before normal binding dispatch, including pre-binding `consume({ preventDefault, stopPropagation })` and raw input `stop()` handling.
+- **Raw and key intercepts** before and after normal binding dispatch, including pre-binding `consume({ preventDefault, stopPropagation })`, post-dispatch handled/no-match outcomes, and raw input `stop()` handling.
 - **Command catalog and dispatch** with named commands, inline command handlers, command chains, namespaces, search, visibility tiers (`registered` / `reachable` / `active`), binding queries, `runCommand`, and focus-aware `dispatchCommand`.
 - **Graph snapshots and diagnostics** for layers, commands, bindings, sequence nodes, pending paths, inactive reasons, shadowing, stable warning/error codes, and lint-style layer analyzers.
 - **Broad key coverage** in the default parser, including function keys, navigation/editing keys, numpad keys, media keys, left/right modifiers, `super`, `hyper`, and literal `+` bindings.

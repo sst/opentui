@@ -347,6 +347,28 @@ export interface DispatchEvent<TTarget extends object = object, TEvent extends K
   command?: BindingCommand<TTarget, TEvent>
 }
 
+export type KeyAfterReason =
+  | "intercept-consumed"
+  | "binding-handled"
+  | "binding-rejected"
+  | "no-match"
+  | "sequence-pending"
+  | "sequence-miss"
+  | "sequence-cleared"
+
+export interface KeyAfterInputContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  event: TEvent
+  eventType: BindingEvent
+  focused: TTarget | null
+  handled: boolean
+  reason: KeyAfterReason
+  sequence: readonly KeySequencePart[]
+  pendingSequence: readonly KeySequencePart[]
+  setData: (name: string, value: unknown) => void
+  getData: (name: string) => unknown
+  consume: (options?: { preventDefault?: boolean; stopPropagation?: boolean }) => void
+}
+
 /**
  * Command metadata together with the bindings that invoke it in a given query
  * projection.
@@ -687,8 +709,9 @@ export type Events<TTarget extends object = object, TEvent extends KeymapEvent =
 
 export type EventName = keyof Events
 
-export type Intercepts<TEvent extends KeymapEvent = KeymapEvent> = {
+export type Intercepts<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = {
   key: KeyInputContext<TEvent>
+  "key:after": KeyAfterInputContext<TTarget, TEvent>
   raw: RawInputContext
 }
 
