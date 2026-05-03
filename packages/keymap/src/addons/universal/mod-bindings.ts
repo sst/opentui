@@ -23,8 +23,8 @@ function createDisplays(input: string): readonly string[] {
     return [input]
   }
 
-  const strokes = input.trim().split(/\s+/).filter(Boolean)
-  return strokes.length > 1 ? strokes : [input]
+  const trimmed = input.trim()
+  return trimmed.includes(" ") ? trimmed.split(/\s+/) : [input]
 }
 
 /**
