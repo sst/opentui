@@ -6,6 +6,7 @@ import type {
   Attributes,
   BindingCommand,
   BindingEvent,
+  BindingExpansion,
   BindingExpander,
   BindingExpanderContext,
   Binding,
@@ -30,6 +31,7 @@ import { RESERVED_BINDING_FIELDS } from "../schema.js"
 import {
   cloneKeySequence,
   cloneKeySequencePart,
+  cloneKeyStroke,
   createKeySequencePart,
   createTextKeyMatch,
   normalizeBindingTokenName,
@@ -73,6 +75,11 @@ interface ParsedBindingSequenceResult {
   usedTokens: readonly string[]
   unknownTokens: readonly string[]
   hasTokenBindings: boolean
+}
+
+interface ExpandedBindingKey {
+  key: KeyLike
+  displays?: readonly string[]
 }
 
 export interface CompilerOptions {
@@ -137,7 +144,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     const conditions = this.conditions
 
     for (const [bindingIndex, binding] of bindings.entries()) {
-      let expandedBindingKeys: readonly KeyLike[]
+      let expandedBindingKeys: readonly ExpandedBindingKey[]
 
       try {
         expandedBindingKeys = expandBindingKeyWithExpanders(binding.key, bindingExpanders, {
@@ -149,22 +156,25 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
       }
 
       for (const expandedBindingKey of expandedBindingKeys) {
+        const expandedKey = expandedBindingKey.key
         let parsed: ParsedBindingSequenceResult | undefined
 
         try {
           parsed =
-            typeof expandedBindingKey === "string"
-              ? parseBindingSequenceWithParsers(expandedBindingKey, bindingParsers, {
+            typeof expandedKey === "string"
+              ? parseBindingSequenceWithParsers(expandedKey, bindingParsers, {
                   tokens,
                   layer: compileFields,
                   parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
                 })
               : {
-                  parts: [this.parseObjectKeyPart(expandedBindingKey)],
+                  parts: [this.parseObjectKeyPart(expandedKey)],
                   usedTokens: [] as readonly string[],
                   unknownTokens: [] as readonly string[],
                   hasTokenBindings: false,
                 }
+
+          parsed = applyExpansionDisplays(parsed, expandedBindingKey)
         } catch (error) {
           this.notify.emitError("binding-parse-error", error, getErrorMessage(error, "Failed to parse keymap binding"))
           continue
@@ -174,10 +184,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
         hasTokenBindings ||= parsed.hasTokenBindings
 
         for (const tokenName of parsed.unknownTokens) {
-          warnUnknownToken(
-            tokenName,
-            typeof expandedBindingKey === "string" ? expandedBindingKey : String(expandedBindingKey.name),
-          )
+          warnUnknownToken(tokenName, typeof expandedKey === "string" ? expandedKey : String(expandedKey.name))
         }
 
         for (const compiledInput of this.applyBindingTransformers(
@@ -451,34 +458,46 @@ function expandBindingKeyWithExpanders(
   options?: {
     layer?: Readonly<Record<string, unknown>>
   },
-): readonly KeyLike[] {
+): readonly ExpandedBindingKey[] {
   if (typeof key !== "string" || expanders.length === 0) {
-    return [key]
+    return [{ key }]
   }
 
   const layer = options?.layer ?? EMPTY_COMPILE_FIELDS
-  let candidates = [key]
+  let candidates: BindingExpansion[] = [{ key }]
 
   for (const expander of expanders) {
-    const nextCandidates: string[] = []
+    const nextCandidates: BindingExpansion[] = []
 
-    for (const input of candidates) {
-      const result = expander({ input, layer } satisfies BindingExpanderContext)
+    for (const candidate of candidates) {
+      const result = expander({
+        input: candidate.key,
+        displays: candidate.displays,
+        layer,
+      } satisfies BindingExpanderContext)
       if (!result) {
-        nextCandidates.push(input)
+        nextCandidates.push(candidate)
         continue
       }
 
       if (result.length === 0) {
-        throw new Error(`Keymap binding expander must return at least one key sequence for "${input}"`)
+        throw new Error(`Keymap binding expander must return at least one key sequence for "${candidate.key}"`)
       }
 
-      for (const expandedInput of result) {
-        if (typeof expandedInput !== "string") {
-          throw new Error(`Keymap binding expander must return string key sequences for "${input}"`)
+      for (const expanded of result) {
+        if (!expanded || typeof expanded !== "object" || Array.isArray(expanded) || typeof expanded.key !== "string") {
+          throw new Error(
+            `Keymap binding expander must return expansion objects with string keys for "${candidate.key}"`,
+          )
         }
 
-        nextCandidates.push(expandedInput)
+        if (expanded.displays !== undefined) {
+          if (!Array.isArray(expanded.displays) || expanded.displays.some((display) => typeof display !== "string")) {
+            throw new Error(`Keymap binding expander displays must be an array of strings for "${candidate.key}"`)
+          }
+        }
+
+        nextCandidates.push({ key: expanded.key, displays: expanded.displays })
       }
     }
 
@@ -486,6 +505,30 @@ function expandBindingKeyWithExpanders(
   }
 
   return candidates
+}
+
+function applyExpansionDisplays(
+  parsed: ParsedBindingSequenceResult,
+  expansion: ExpandedBindingKey,
+): ParsedBindingSequenceResult {
+  if (!expansion.displays) {
+    return parsed
+  }
+
+  if (expansion.displays.length !== parsed.parts.length) {
+    throw new Error(
+      `Keymap binding expansion displays length must match parsed sequence length for "${String(expansion.key)}"`,
+    )
+  }
+
+  return {
+    ...parsed,
+    parts: parsed.parts.map((part, index) => ({
+      ...part,
+      stroke: cloneKeyStroke(part.stroke),
+      display: expansion.displays![index]!,
+    })),
+  }
 }
 
 function parseBindingSequenceWithParsers(

@@ -11,6 +11,7 @@ export type {
   BindingParser,
   BindingParserContext,
   BindingParserResult,
+  BindingExpansion,
   BindingExpander,
   BindingExpanderContext,
   BindingEvent,

@@ -382,6 +382,7 @@ describe("keymap: parsing and binding pipeline", () => {
         .split(",")
         .map((candidate) => candidate.trim())
         .filter(Boolean)
+        .map((key) => ({ key }))
     })
 
     keymap.registerLayer({
@@ -407,6 +408,62 @@ describe("keymap: parsing and binding pipeline", () => {
     expect(calls).toEqual(["split", "split"])
   })
 
+  test("binding expanders can preserve display metadata", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.appendBindingExpander(({ input }) => {
+      if (input !== "alias-x") {
+        return undefined
+      }
+
+      return [{ key: "ctrl+x", displays: ["alias-x"] }]
+    })
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "alias-command",
+          run() {
+            calls.push("alias")
+          },
+        },
+      ],
+      bindings: [{ key: "alias-x", cmd: "alias-command" }],
+    })
+
+    const activeKey = getActiveKey(keymap, "x")
+    expect(activeKey?.stroke.ctrl).toBe(true)
+    expect(activeKey?.display).toBe("alias-x")
+
+    mockInput.pressKey("x", { ctrl: true })
+    expect(calls).toEqual(["alias"])
+  })
+
+  test("skips bindings when expansion display count does not match the parsed sequence", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors } = captureDiagnostics(keymap)
+
+    keymap.appendBindingExpander(({ input }) => {
+      if (input !== "alias") {
+        return undefined
+      }
+
+      return [{ key: "xy", displays: ["alias"] }]
+    })
+
+    expect(() => {
+      keymap.registerLayer({
+        bindings: [{ key: "alias", cmd() {} }],
+      })
+    }).not.toThrow()
+
+    expect(takeErrors().errors).toEqual([
+      'Keymap binding expansion displays length must match parsed sequence length for "xy"',
+    ])
+    expect(keymap.getActiveKeys()).toEqual([])
+  })
+
   test("supports prepending binding expanders ahead of appended expanders", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
@@ -420,13 +477,14 @@ describe("keymap: parsing and binding pipeline", () => {
         .split(",")
         .map((candidate) => candidate.trim())
         .filter(Boolean)
+        .map((key) => ({ key }))
     })
     keymap.prependBindingExpander(({ input }) => {
       if (!input.includes("~")) {
         return undefined
       }
 
-      return [input.replaceAll("~", "")]
+      return [{ key: input.replaceAll("~", "") }]
     })
 
     keymap.registerLayer({
@@ -681,7 +739,7 @@ describe("keymap: parsing and binding pipeline", () => {
         tokenized.push(`<c-${match[1].toLowerCase()}>`)
       }
 
-      return [tokenized.join("")]
+      return [{ key: tokenized.join("") }]
     })
 
     keymap.registerToken({ name: "<c-x>", key: { name: "x", ctrl: true } })
@@ -729,6 +787,7 @@ describe("keymap: parsing and binding pipeline", () => {
         .split(",")
         .map((candidate) => candidate.trim())
         .filter(Boolean)
+        .map((key) => ({ key }))
     })
     keymap.clearBindingExpanders()
 
@@ -741,6 +800,7 @@ describe("keymap: parsing and binding pipeline", () => {
         .split("|")
         .map((candidate) => candidate.trim())
         .filter(Boolean)
+        .map((key) => ({ key }))
     })
 
     keymap.registerLayer({

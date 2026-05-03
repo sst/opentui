@@ -227,12 +227,20 @@ Object-form keys such as `{ name: "return", ctrl: true }` skip string parsing an
 
 ### `BindingExpanderContext`
 
-| Member  | Purpose                                   |
-| ------- | ----------------------------------------- |
-| `input` | Original binding string                   |
-| `layer` | Read-only view of the owning layer fields |
+| Member     | Purpose                                                   |
+| ---------- | --------------------------------------------------------- |
+| `input`    | Current binding string                                    |
+| `displays` | Optional per-stroke display labels from earlier expanders |
+| `layer`    | Read-only view of the owning layer fields                 |
 
-Return `string[]` to replace one binding string with many, or `undefined` to let later expanders continue.
+Return expansion objects to replace one binding string with many, or `undefined` to leave the current candidate unchanged. `displays` must match the parsed sequence length for that expansion.
+
+```ts
+keymap.appendBindingExpander(({ input }) => {
+  if (input !== "save") return undefined
+  return [{ key: "ctrl+s", displays: ["save"] }]
+})
+```
 
 ### `BindingParserContext`
 

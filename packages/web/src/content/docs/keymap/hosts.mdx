@@ -128,7 +128,7 @@ If you want to control the installed addons yourself, start from `createOpenTuiK
 | Press/release events    | `renderer.keyInput` `keypress` and `keyrelease`                                 |
 | Raw input interception  | `renderer.prependInputHandler(...)`                                             |
 | Synthetic command event | New `KeyEvent` with `name: "command"`                                           |
-| Host metadata           | Runtime platform; `ctrl`, `shift` and `meta` supported; `super`/`hyper` unknown |
+| Host metadata           | Runtime platform; `ctrl`, `shift` and `meta` supported; `super`/`hyper` supported when Kitty keyboard is enabled, otherwise unknown |
 
 `createOpenTuiKeymap(renderer)` throws if the renderer is already destroyed.
 

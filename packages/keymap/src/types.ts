@@ -554,7 +554,13 @@ export interface BindingParserContext {
 
 export interface BindingExpanderContext {
   input: string
+  displays?: readonly string[]
   layer: Readonly<Record<string, unknown>>
+}
+
+export interface BindingExpansion {
+  key: string
+  displays?: readonly string[]
 }
 
 export interface BindingParserResult {
@@ -566,7 +572,7 @@ export interface BindingParserResult {
 
 export type BindingParser = (ctx: BindingParserContext) => BindingParserResult | undefined
 
-export type BindingExpander = (ctx: BindingExpanderContext) => readonly string[] | undefined
+export type BindingExpander = (ctx: BindingExpanderContext) => readonly BindingExpansion[] | undefined
 
 export interface ParsedBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   key: KeyLike

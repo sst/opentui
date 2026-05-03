@@ -413,7 +413,7 @@ Intercept options:
 | `registerBindingFields(fields)`            | Add custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 | `registerCommandFields(fields)`            | Add custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 | `prepend/appendBindingParser(parser)`      | Add new key string syntaxes                                                   |
-| `prepend/appendBindingExpander(expander)`  | Expand one key string into multiple binding strings                           |
+| `prepend/appendBindingExpander(expander)`  | Expand one key string into expansion objects, optionally preserving displays   |
 | `prepend/appendBindingTransformer(fn)`     | Rewrite parsed bindings or add derived bindings                               |
 | `prepend/appendCommandTransformer(fn)`     | Rewrite registered commands or add derived commands before command fields     |
 | `prepend/appendCommandResolver(resolver)`  | Resolve string commands dynamically                                           |

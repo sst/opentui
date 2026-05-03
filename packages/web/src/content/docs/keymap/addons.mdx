@@ -66,6 +66,7 @@ Recognized modifier prefixes (case-insensitive, joined with `+`):
 | `registerCommaBindings()`                | Expands `x, y` into multiple bindings                                      |
 | `registerEmacsBindings()`                | Parses Emacs-style spaced chords such as `ctrl+x ctrl+s`                   |
 | `registerLeader()`                       | Defines a token such as `<leader>` that expands to a chosen trigger stroke |
+| `registerModBindings()`                  | Adds platform-aware `mod+...` bindings using host metadata                 |
 | `registerTimedLeader()`                  | Defines a leader token and clears it after a timeout                       |
 | `registerBackspacePopsPendingSequence()` | Lets Backspace step back through the current pending sequence              |
 | `registerEscapeClearsPendingSequence()`  | Lets Escape cancel the current pending sequence                            |

@@ -38,8 +38,9 @@ function normalizeRuntimePlatform(platform: NodeJS.Platform | string | undefined
   return "unknown"
 }
 
-function createOpenTuiHostMetadata(): KeymapHostMetadata {
+function createOpenTuiHostMetadata(renderer: CliRenderer): KeymapHostMetadata {
   const platform = normalizeRuntimePlatform(process.platform)
+  const hasKittyKeyboard = renderer.useKittyKeyboard
 
   return {
     platform,
@@ -48,15 +49,17 @@ function createOpenTuiHostMetadata(): KeymapHostMetadata {
       ctrl: "supported",
       shift: "supported",
       meta: "supported",
-      super: "unknown",
-      hyper: "unknown",
+      super: hasKittyKeyboard ? "supported" : "unknown",
+      hyper: hasKittyKeyboard ? "supported" : "unknown",
     },
   }
 }
 
 export function createOpenTuiKeymapHost(renderer: CliRenderer): KeymapHost<Renderable, KeyEvent> {
   return {
-    metadata: createOpenTuiHostMetadata(),
+    get metadata() {
+      return createOpenTuiHostMetadata(renderer)
+    },
     rootTarget: renderer.root,
     get isDestroyed() {
       return renderer.isDestroyed

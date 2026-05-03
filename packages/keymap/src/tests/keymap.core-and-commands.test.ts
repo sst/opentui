@@ -74,10 +74,18 @@ describe("keymap: core and commands", () => {
         ctrl: "supported",
         shift: "supported",
         meta: "supported",
-        super: "unknown",
-        hyper: "unknown",
+        super: renderer.useKittyKeyboard ? "supported" : "unknown",
+        hyper: renderer.useKittyKeyboard ? "supported" : "unknown",
       },
     })
+  })
+
+  test("OpenTUI host marks super and hyper supported when Kitty keyboard is enabled", () => {
+    renderer.useKittyKeyboard = true
+    const keymap = createBareKeymap(renderer)
+
+    expect(keymap.getHostMetadata().modifiers.super).toBe("supported")
+    expect(keymap.getHostMetadata().modifiers.hyper).toBe("supported")
   })
 
   test("throws when requesting a keymap for a destroyed renderer", () => {

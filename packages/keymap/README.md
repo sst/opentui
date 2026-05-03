@@ -24,7 +24,7 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 - `registerLeader`, `registerTimedLeader` — leader tokens with optional timeout.
 - `registerEmacsBindings` — `ctrl+x ctrl+s` chords.
 - `registerExCommands` — `:write`-style commands with `aliases` and `nargs`.
-- `registerCommaBindings`, `registerAliasesField`, `registerBindingOverrides`.
+- `registerCommaBindings`, `registerModBindings`, `registerAliasesField`, `registerBindingOverrides`.
 - `registerEnabledFields`, `registerMetadataFields` (`desc`, `group`, `title`, `category`).
 - `registerNeovimDisambiguation`, `registerEscapeClearsPendingSequence`, `registerBackspacePopsPendingSequence`.
 - `registerDeadBindingWarnings`, `registerUnresolvedCommandWarnings`.
