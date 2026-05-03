@@ -269,6 +269,23 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return this.collectActiveKeysFromPending(captures, includeBindings, includeMetadata, focused, activeView)
   }
 
+  public getActiveKeysForFocused(
+    focused: TTarget | null,
+    options?: ActiveKeyOptions,
+  ): readonly ActiveKey<TTarget, TEvent>[] {
+    const includeBindings = options?.includeBindings === true
+    const includeMetadata = options?.includeMetadata === true
+    const currentFocused = this.getFocusedTargetIfAvailable()
+    const pending = focused === currentFocused ? this.ensureValidPendingSequence() : undefined
+    const activeView = this.catalog.getActiveCommandView(focused)
+
+    if (pending) {
+      return this.collectActiveKeysFromPending(pending.captures, includeBindings, includeMetadata, focused, activeView)
+    }
+
+    return this.collectActiveKeysAtRoot(this.getActiveLayers(focused), includeBindings, includeMetadata, focused, activeView)
+  }
+
   public nodeHasReachableBindings(node: SequenceNode<TTarget, TEvent>, focused: TTarget | null): boolean {
     return this.hasMatchingBindings(node.reachableBindings, focused, this.catalog.getActiveCommandView(focused))
   }

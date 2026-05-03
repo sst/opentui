@@ -35,6 +35,8 @@ import type {
   KeyToken,
   KeyLike,
   KeySequencePart,
+  KeymapGraphSnapshot,
+  KeymapGraphSnapshotOptions,
   StringifyOptions,
 } from "./types.js"
 import { ActivationService } from "./services/activation.js"
@@ -50,6 +52,7 @@ import { NotificationService } from "./services/notify.js"
 import { resolveKeyMatch } from "./services/keys.js"
 import { RuntimeService } from "./services/runtime.js"
 import { createKeymapState } from "./services/state.js"
+import { createGraphSnapshot } from "./services/graph-snapshot.js"
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
   Events<TTarget, TEvent>,
@@ -255,6 +258,17 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     query: CommandBindingsQuery<TTarget>,
   ): ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]> {
     return this.catalog.getCommandBindings(query)
+  }
+
+  public getGraphSnapshot(options?: KeymapGraphSnapshotOptions<TTarget>): KeymapGraphSnapshot<TTarget, TEvent> {
+    return createGraphSnapshot({
+      state: this.state,
+      host: this.host,
+      conditions: this.conditions,
+      catalog: this.catalog,
+      activation: this.activation,
+      snapshotOptions: options,
+    })
   }
 
   public acquireResource(key: symbol, setup: () => () => void): () => void {

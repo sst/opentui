@@ -327,6 +327,99 @@ export interface ActiveKey<TTarget extends object = object, TEvent extends Keyma
   continues: boolean
 }
 
+export interface KeymapGraphSnapshotOptions<TTarget extends object = object> {
+  focused?: TTarget | null
+  includeTargets?: boolean
+}
+
+export type KeymapGraphInactiveReason =
+  | "focus"
+  | "target-destroyed"
+  | "layer-disabled"
+  | "binding-disabled"
+  | "command-disabled"
+  | "command-inactive"
+  | "command-unresolved"
+  | "shadowed"
+
+export interface KeymapGraphLayer<TTarget extends object = object> {
+  id: string
+  order: number
+  priority: number
+  target?: TTarget
+  targetMode?: TargetMode
+  active: boolean
+  focusActive: boolean
+  enabled: boolean
+  inactiveReasons: readonly KeymapGraphInactiveReason[]
+  rootNodeId: string
+  bindingIds: readonly string[]
+  commandIds: readonly string[]
+}
+
+export interface KeymapGraphCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  id: string
+  layerId: string
+  name: string
+  command: Command<TTarget, TEvent>
+  fields: Readonly<Record<string, unknown>>
+  attrs?: Readonly<Attributes>
+  target?: TTarget
+  active: boolean
+  reachable: boolean
+  enabled: boolean
+  inactiveReasons: readonly KeymapGraphInactiveReason[]
+}
+
+export interface KeymapGraphBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  id: string
+  layerId: string
+  nodeId?: string
+  commandIds: readonly string[]
+  sequence: readonly KeySequencePart[]
+  command?: BindingCommand<TTarget, TEvent>
+  commandAttrs?: Readonly<Attributes>
+  attrs?: Readonly<Attributes>
+  event: BindingEvent
+  preventDefault: boolean
+  fallthrough: boolean
+  active: boolean
+  reachable: boolean
+  enabled: boolean
+  commandResolved: boolean
+  shadowed: boolean
+  inactiveReasons: readonly KeymapGraphInactiveReason[]
+}
+
+export interface KeymapGraphSequenceNode {
+  id: string
+  layerId: string
+  parentId: string | null
+  childIds: readonly string[]
+  bindingIds: readonly string[]
+  reachableBindingIds: readonly string[]
+  depth: number
+  sequence: readonly KeySequencePart[]
+  stroke: NormalizedKeyStroke | null
+  match: KeyMatch | null
+  display: string
+  tokenName?: string
+  active: boolean
+  reachable: boolean
+  pending: boolean
+  pendingPath: boolean
+}
+
+export interface KeymapGraphSnapshot<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  focused?: TTarget | null
+  pendingSequence: readonly KeySequencePart[]
+  activeKeys: readonly ActiveKey<TTarget, TEvent>[]
+  layers: readonly KeymapGraphLayer<TTarget>[]
+  commands: readonly KeymapGraphCommand<TTarget, TEvent>[]
+  bindings: readonly KeymapGraphBinding<TTarget, TEvent>[]
+  sequenceNodes: readonly KeymapGraphSequenceNode[]
+}
+
 /**
  * Boolean source with subscription-based invalidation. `ctx.activeWhen(...)`
  * subscribes at registration time and unsubscribes when the owning
