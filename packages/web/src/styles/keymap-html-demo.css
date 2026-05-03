@@ -881,7 +881,7 @@ textarea::selection,
   }
 
   .help-card {
-    max-height: 8.5rem;
+    max-height: 11rem;
     min-height: 0;
     overflow: auto;
   }
