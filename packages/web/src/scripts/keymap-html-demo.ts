@@ -566,14 +566,18 @@ function drawCanvasLine(
   ctx.restore()
 }
 
-function drawCanvasNode(ctx: CanvasRenderingContext2D, node: CanvasGraphNode, palette: CanvasPalette): void {
-  const color = node.pending
+function getCanvasNodeColor(node: CanvasGraphNode, palette: CanvasPalette): string {
+  return node.pending
     ? palette.yellow
     : node.kind === "layer"
       ? palette.green
       : node.kind === "binding"
         ? palette.cyan
         : palette.magenta
+}
+
+function drawCanvasNode(ctx: CanvasRenderingContext2D, node: CanvasGraphNode, palette: CanvasPalette): void {
+  const color = getCanvasNodeColor(node, palette)
   const alpha = node.reachable ? 1 : node.active ? 0.62 : 0.25
 
   ctx.save()
@@ -594,12 +598,20 @@ function drawCanvasNode(ctx: CanvasRenderingContext2D, node: CanvasGraphNode, pa
     ctx.fill()
   }
 
-  ctx.globalAlpha = node.reachable || node.pending || node.pulse > 0 ? 1 : 0.46
-  ctx.fillStyle = node.pending ? palette.yellow : palette.fg
+  ctx.restore()
+}
+
+function drawCanvasNodeLabel(ctx: CanvasRenderingContext2D, node: CanvasGraphNode, palette: CanvasPalette): void {
+  const label = node.label.slice(0, 12)
+  const labelX = node.kind === "command" ? node.x - node.radius - 5 : node.x + node.radius + 5
+
+  ctx.save()
   ctx.font = "10px JetBrains Mono, Fira Code, monospace"
-  ctx.textAlign = "center"
-  ctx.textBaseline = "top"
-  ctx.fillText(node.label.slice(0, 12), node.x, node.y + node.radius + 4)
+  ctx.textAlign = node.kind === "command" ? "right" : "left"
+  ctx.textBaseline = "middle"
+  ctx.globalAlpha = node.reachable || node.pending || node.pulse > 0 ? 1 : 0.58
+  ctx.fillStyle = node.pending ? palette.yellow : palette.fg
+  ctx.fillText(label, labelX, node.y)
   ctx.restore()
 }
 
@@ -775,7 +787,8 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
     }
   }
 
-  for (const node of [...layerNodes.values(), ...bindingNodes.values(), ...commandNodes.values()]) {
+  const allNodes = [...layerNodes.values(), ...bindingNodes.values(), ...commandNodes.values()]
+  for (const node of allNodes) {
     drawCanvasNode(ctx, node, palette)
   }
 
@@ -790,6 +803,10 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
   ctx.textAlign = "right"
   ctx.fillText("commands", width - 8, 8)
   ctx.restore()
+
+  for (const node of allNodes) {
+    drawCanvasNodeLabel(ctx, node, palette)
+  }
 
   if (graphPulses.length > 0) {
     scheduleGraphPulseFrame()
