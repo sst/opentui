@@ -17,6 +17,15 @@ export interface LineColorConfig {
   fg?: string | RGBA
 }
 
+function isLineColorConfig(value: unknown): value is LineColorConfig {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !(value instanceof RGBA) &&
+    ("gutter" in value || "content" in value || "fg" in value)
+  )
+}
+
 export interface LineNumberOptions extends RenderableOptions<LineNumberRenderable> {
   target?: Renderable & LineInfoProvider
   fg?: string | RGBA
@@ -379,24 +388,21 @@ export class LineNumberRenderable extends Renderable {
   }
 
   private parseLineColor(line: number, color: string | RGBA | LineColorConfig): void {
-    if (typeof color === "object" && !(color instanceof RGBA) && ("gutter" in color || "content" in color || "fg" in color)) {
-      // LineColorConfig format
-      const config = color as LineColorConfig
-      if (config.gutter) {
-        this._lineColorsGutter.set(line, parseColor(config.gutter))
+    if (isLineColorConfig(color)) {
+      if (color.gutter) {
+        this._lineColorsGutter.set(line, parseColor(color.gutter))
       }
-      if (config.content) {
-        this._lineColorsContent.set(line, parseColor(config.content))
-      } else if (config.gutter) {
-        // If only gutter is specified, use a darker version for content
-        this._lineColorsContent.set(line, darkenColor(parseColor(config.gutter)))
+      if (color.content) {
+        this._lineColorsContent.set(line, parseColor(color.content))
+      } else if (color.gutter) {
+        // Only gutter specified: derive a darker content tint for visual hierarchy.
+        this._lineColorsContent.set(line, darkenColor(parseColor(color.gutter)))
       }
-      if (config.fg) {
-        this._lineColorsFg.set(line, parseColor(config.fg))
+      if (color.fg) {
+        this._lineColorsFg.set(line, parseColor(color.fg))
       }
     } else {
-      // Simple format - same color for both, but content is darker
-      const parsedColor = parseColor(color as string | RGBA)
+      const parsedColor = parseColor(color)
       this._lineColorsGutter.set(line, parsedColor)
       this._lineColorsContent.set(line, darkenColor(parsedColor))
     }

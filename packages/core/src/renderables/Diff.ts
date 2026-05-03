@@ -181,6 +181,27 @@ export class DiffRenderable extends Renderable {
     }
   }
 
+  private buildLineConfig(kind: "added" | "removed" | "context"): LineColorConfig {
+    const gutterBg =
+      kind === "added" ? this._addedLineNumberBg : kind === "removed" ? this._removedLineNumberBg : this._lineNumberBg
+    const baseBg = kind === "added" ? this._addedBg : kind === "removed" ? this._removedBg : this._contextBg
+    const overrideBg =
+      kind === "added" ? this._addedContentBg : kind === "removed" ? this._removedContentBg : this._contextContentBg
+    const fg =
+      kind === "added"
+        ? this._addedLineNumberFg
+        : kind === "removed"
+          ? this._removedLineNumberFg
+          : this._contextLineNumberFg
+
+    const config: LineColorConfig = {
+      gutter: gutterBg,
+      content: overrideBg ?? baseBg,
+    }
+    if (fg) config.fg = fg
+    return config
+  }
+
   private buildView(): void {
     if (this._parseError) {
       this.buildErrorView()
@@ -506,18 +527,7 @@ export class DiffRenderable extends Renderable {
 
         if (firstChar === "+") {
           contentLines.push(content)
-          const config: LineColorConfig = {
-            gutter: this._addedLineNumberBg,
-          }
-          if (this._addedContentBg) {
-            config.content = this._addedContentBg
-          } else {
-            config.content = this._addedBg
-          }
-          if (this._addedLineNumberFg) {
-            config.fg = this._addedLineNumberFg
-          }
-          lineColors.set(lineIndex, config)
+          lineColors.set(lineIndex, this.buildLineConfig("added"))
           lineSigns.set(lineIndex, {
             after: " +",
             afterColor: this._addedSignColor,
@@ -527,18 +537,7 @@ export class DiffRenderable extends Renderable {
           lineIndex++
         } else if (firstChar === "-") {
           contentLines.push(content)
-          const config: LineColorConfig = {
-            gutter: this._removedLineNumberBg,
-          }
-          if (this._removedContentBg) {
-            config.content = this._removedContentBg
-          } else {
-            config.content = this._removedBg
-          }
-          if (this._removedLineNumberFg) {
-            config.fg = this._removedLineNumberFg
-          }
-          lineColors.set(lineIndex, config)
+          lineColors.set(lineIndex, this.buildLineConfig("removed"))
           lineSigns.set(lineIndex, {
             after: " -",
             afterColor: this._removedSignColor,
@@ -548,18 +547,7 @@ export class DiffRenderable extends Renderable {
           lineIndex++
         } else if (firstChar === " ") {
           contentLines.push(content)
-          const config: LineColorConfig = {
-            gutter: this._lineNumberBg,
-          }
-          if (this._contextContentBg) {
-            config.content = this._contextContentBg
-          } else {
-            config.content = this._contextBg
-          }
-          if (this._contextLineNumberFg) {
-            config.fg = this._contextLineNumberFg
-          }
-          lineColors.set(lineIndex, config)
+          lineColors.set(lineIndex, this.buildLineConfig("context"))
           lineNumbers.set(lineIndex, newLineNum)
           oldLineNum++
           newLineNum++
@@ -817,31 +805,9 @@ export class DiffRenderable extends Renderable {
         leftHideLineNumbers.add(index)
       }
       if (line.type === "remove") {
-        const config: LineColorConfig = {
-          gutter: this._removedLineNumberBg,
-        }
-        if (this._removedContentBg) {
-          config.content = this._removedContentBg
-        } else {
-          config.content = this._removedBg
-        }
-        if (this._removedLineNumberFg) {
-          config.fg = this._removedLineNumberFg
-        }
-        leftLineColors.set(index, config)
+        leftLineColors.set(index, this.buildLineConfig("removed"))
       } else if (line.type === "context") {
-        const config: LineColorConfig = {
-          gutter: this._lineNumberBg,
-        }
-        if (this._contextContentBg) {
-          config.content = this._contextContentBg
-        } else {
-          config.content = this._contextBg
-        }
-        if (this._contextLineNumberFg) {
-          config.fg = this._contextLineNumberFg
-        }
-        leftLineColors.set(index, config)
+        leftLineColors.set(index, this.buildLineConfig("context"))
       }
       if (line.sign) {
         leftLineSigns.set(index, line.sign)
@@ -856,31 +822,9 @@ export class DiffRenderable extends Renderable {
         rightHideLineNumbers.add(index)
       }
       if (line.type === "add") {
-        const config: LineColorConfig = {
-          gutter: this._addedLineNumberBg,
-        }
-        if (this._addedContentBg) {
-          config.content = this._addedContentBg
-        } else {
-          config.content = this._addedBg
-        }
-        if (this._addedLineNumberFg) {
-          config.fg = this._addedLineNumberFg
-        }
-        rightLineColors.set(index, config)
+        rightLineColors.set(index, this.buildLineConfig("added"))
       } else if (line.type === "context") {
-        const config: LineColorConfig = {
-          gutter: this._lineNumberBg,
-        }
-        if (this._contextContentBg) {
-          config.content = this._contextContentBg
-        } else {
-          config.content = this._contextBg
-        }
-        if (this._contextLineNumberFg) {
-          config.fg = this._contextLineNumberFg
-        }
-        rightLineColors.set(index, config)
+        rightLineColors.set(index, this.buildLineConfig("context"))
       }
       if (line.sign) {
         rightLineSigns.set(index, line.sign)
@@ -1247,27 +1191,28 @@ export class DiffRenderable extends Renderable {
     }
   }
 
+  private forSide(side: DiffSide, fn: (target: LineNumberRenderable) => void): void {
+    if (side !== "right" && this.leftSide) fn(this.leftSide)
+    if (side !== "left" && this.rightSide) fn(this.rightSide)
+  }
+
   public setLineColor(line: number, color: string | RGBA | LineColorConfig, side: DiffSide = "both"): void {
-    if (side !== "right") this.leftSide?.setLineColor(line, color)
-    if (side !== "left") this.rightSide?.setLineColor(line, color)
+    this.forSide(side, (target) => target.setLineColor(line, color))
   }
 
   public clearLineColor(line: number, side: DiffSide = "both"): void {
-    if (side !== "right") this.leftSide?.clearLineColor(line)
-    if (side !== "left") this.rightSide?.clearLineColor(line)
+    this.forSide(side, (target) => target.clearLineColor(line))
   }
 
   public setLineColors(
     lineColors: Map<number, string | RGBA | LineColorConfig>,
     side: DiffSide = "both",
   ): void {
-    if (side !== "right") this.leftSide?.setLineColors(lineColors)
-    if (side !== "left") this.rightSide?.setLineColors(lineColors)
+    this.forSide(side, (target) => target.setLineColors(lineColors))
   }
 
   public clearAllLineColors(side: DiffSide = "both"): void {
-    if (side !== "right") this.leftSide?.clearAllLineColors()
-    if (side !== "left") this.rightSide?.clearAllLineColors()
+    this.forSide(side, (target) => target.clearAllLineColors())
   }
 
   public highlightLines(
@@ -1276,12 +1221,10 @@ export class DiffRenderable extends Renderable {
     color: string | RGBA | LineColorConfig,
     side: DiffSide = "both",
   ): void {
-    if (side !== "right") this.leftSide?.highlightLines(startLine, endLine, color)
-    if (side !== "left") this.rightSide?.highlightLines(startLine, endLine, color)
+    this.forSide(side, (target) => target.highlightLines(startLine, endLine, color))
   }
 
   public clearHighlightLines(startLine: number, endLine: number, side: DiffSide = "both"): void {
-    if (side !== "right") this.leftSide?.clearHighlightLines(startLine, endLine)
-    if (side !== "left") this.rightSide?.clearHighlightLines(startLine, endLine)
+    this.forSide(side, (target) => target.clearHighlightLines(startLine, endLine))
   }
 }
