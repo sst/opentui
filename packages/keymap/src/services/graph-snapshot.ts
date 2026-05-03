@@ -460,6 +460,8 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
     bindings.push({
       id: state.id,
       layerId: state.layerState.id,
+      sourceLayerOrder: binding.sourceLayerOrder,
+      bindingIndex: binding.bindingIndex,
       nodeId: bindingNodeIds.get(binding),
       commandIds: state.commandIds,
       sequence: cloneKeySequence(binding.sequence),

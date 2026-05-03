@@ -148,6 +148,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       this.compiler,
       this.catalog,
       this.layers,
+      this.hooks,
     )
     this.keypressListener = (event) => {
       this.dispatch.handleKeyEvent(event, false)
@@ -304,6 +305,8 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   public on(name: "state", fn: Listener<Events<TTarget, TEvent>["state"]>): () => void
 
   public on(name: "pendingSequence", fn: Listener<Events<TTarget, TEvent>["pendingSequence"]>): () => void
+
+  public on(name: "dispatch", fn: Listener<Events<TTarget, TEvent>["dispatch"]>): () => void
 
   public on(name: "warning", fn: Listener<Events<TTarget, TEvent>["warning"]>): () => void
 

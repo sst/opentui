@@ -302,6 +302,36 @@ export interface ActiveBinding<TTarget extends object = object, TEvent extends K
   fallthrough: boolean
 }
 
+export interface KeymapDispatchLayer<TTarget extends object = object> {
+  order: number
+  priority: number
+  target?: TTarget
+  targetMode?: TargetMode
+}
+
+export interface KeymapDispatchBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
+  extends ActiveBinding<TTarget, TEvent> {
+  sourceLayerOrder: number
+  bindingIndex: number
+}
+
+export type KeymapDispatchPhase =
+  | "sequence-start"
+  | "sequence-advance"
+  | "sequence-clear"
+  | "binding-execute"
+  | "binding-reject"
+
+export interface KeymapDispatchEvent<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  phase: KeymapDispatchPhase
+  event: BindingEvent
+  focused: TTarget | null
+  layer?: KeymapDispatchLayer<TTarget>
+  binding?: KeymapDispatchBinding<TTarget, TEvent>
+  sequence: readonly KeySequencePart[]
+  command?: BindingCommand<TTarget, TEvent>
+}
+
 /**
  * Command metadata together with the bindings that invoke it in a given query
  * projection.
@@ -374,6 +404,8 @@ export interface KeymapGraphCommand<TTarget extends object = object, TEvent exte
 export interface KeymapGraphBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   id: string
   layerId: string
+  sourceLayerOrder: number
+  bindingIndex: number
   nodeId?: string
   commandIds: readonly string[]
   sequence: readonly KeySequencePart[]
@@ -604,6 +636,8 @@ export type Hooks<TTarget extends object = object, TEvent extends KeymapEvent = 
    * current sequence.
    */
   pendingSequence: readonly KeySequencePart[]
+  /** Dispatch trace events for sequence continuation and binding execution. */
+  dispatch: KeymapDispatchEvent<TTarget, TEvent>
 }
 
 export type HookName = keyof Hooks

@@ -1,4 +1,5 @@
 import type { CompilerService } from "./compiler.js"
+import type { Emitter } from "../lib/emitter.js"
 import type { ActivationService } from "./activation.js"
 import type { CommandExecutorService } from "./command-executor.js"
 import type { CommandCatalogService } from "./command-catalog.js"
@@ -31,6 +32,10 @@ import {
   type RawInterceptOptions,
   type RawInputContext,
   type BindingState,
+  type Hooks,
+  type KeymapDispatchBinding,
+  type KeymapDispatchEvent,
+  type KeySequencePart,
   type RegisteredLayer,
   type SequenceNode,
 } from "../types.js"
@@ -103,6 +108,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     private readonly compiler: CompilerService<TTarget, TEvent>,
     private readonly catalog: CommandCatalogService<TTarget, TEvent>,
     private readonly layers: LayerService<TTarget, TEvent>,
+    private readonly hooks: Emitter<Hooks<TTarget, TEvent>>,
   ) {
     this.eventMatchResolverContext = {
       resolveKey: (key) => {
@@ -209,6 +215,85 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     return false
+  }
+
+  private createDispatchBinding(
+    binding: BindingState<TTarget, TEvent>,
+    focused: TTarget | null,
+  ): KeymapDispatchBinding<TTarget, TEvent> {
+    return {
+      sequence: cloneKeySequence(binding.sequence),
+      command: binding.command,
+      commandAttrs: this.catalog.getBindingCommandAttrs(binding, focused, this.catalog.getActiveCommandView(focused)),
+      attrs: binding.attrs,
+      event: binding.event,
+      preventDefault: binding.preventDefault,
+      fallthrough: binding.fallthrough,
+      sourceLayerOrder: binding.sourceLayerOrder,
+      bindingIndex: binding.bindingIndex,
+    }
+  }
+
+  private emitDispatchEvent(event: KeymapDispatchEvent<TTarget, TEvent>): void {
+    if (!this.hooks.has("dispatch")) {
+      return
+    }
+
+    this.hooks.emit("dispatch", event)
+  }
+
+  private emitBindingDispatch(
+    phase: "binding-execute" | "binding-reject",
+    layer: RegisteredLayer<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
+    focused: TTarget | null,
+  ): void {
+    if (!this.hooks.has("dispatch")) {
+      return
+    }
+
+    this.emitDispatchEvent({
+      phase,
+      event: binding.event,
+      focused,
+      layer: {
+        order: layer.order,
+        priority: layer.priority,
+        target: layer.target,
+        targetMode: layer.targetMode,
+      },
+      binding: this.createDispatchBinding(binding, focused),
+      sequence: cloneKeySequence(binding.sequence),
+      command: binding.command,
+    })
+  }
+
+  private emitSequenceDispatch(
+    phase: "sequence-start" | "sequence-advance" | "sequence-clear",
+    captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+    focused: TTarget | null,
+  ): void {
+    if (!this.hooks.has("dispatch")) {
+      return
+    }
+
+    const first = captures[0]
+    const sequence = captures.length > 0 ? this.activation.collectSequencePartsFromPending({ captures }) : []
+
+    this.emitDispatchEvent({
+      phase,
+      event: "press",
+      focused,
+      layer: first
+        ? {
+            order: first.layer.order,
+            priority: first.layer.priority,
+            target: first.layer.target,
+            targetMode: first.layer.targetMode,
+          }
+        : undefined,
+      sequence,
+    })
   }
 
   public handleKeyEvent(event: TEvent, release: boolean): void {
@@ -357,6 +442,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     if (advancedCaptures.length === 0) {
+      this.emitSequenceDispatch("sequence-clear", pending.captures, focused)
       this.activation.setPendingSequence(null)
       return
     }
@@ -400,6 +486,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         }
 
         this.activation.setPendingSequence({ captures: continuationCaptures })
+        this.emitSequenceDispatch("sequence-advance", continuationCaptures, focused)
         event.preventDefault()
         event.stopPropagation()
         return
@@ -412,11 +499,13 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
       hasHandledExact = true
       if (result.stop) {
+        this.emitSequenceDispatch("sequence-clear", advancedCaptures, focused)
         this.activation.setPendingSequence(null)
         return
       }
     }
 
+    this.emitSequenceDispatch("sequence-clear", advancedCaptures, focused)
     this.activation.setPendingSequence(null)
   }
 
@@ -475,6 +564,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         }
 
         this.activation.setPendingSequence({ captures: continuationCaptures })
+        this.emitSequenceDispatch("sequence-start", continuationCaptures, focused)
         event.preventDefault()
         event.stopPropagation()
         return
@@ -514,6 +604,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       focused,
       continuationCaptures,
       exactBindingsSource: node.bindings,
+      sequencePhase: "sequence-start",
       runExact: applyExact,
     })
   }
@@ -548,6 +639,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       focused,
       continuationCaptures,
       exactBindingsSource: capture.node.bindings,
+      sequencePhase: "sequence-advance",
       runExact: applyExact,
     })
   }
@@ -557,9 +649,10 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     focused: TTarget | null
     continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[]
     exactBindingsSource: readonly BindingState<TTarget, TEvent>[]
+    sequencePhase: "sequence-start" | "sequence-advance"
     runExact: () => void
   }): boolean {
-    const { event, focused, continuationCaptures, exactBindingsSource, runExact } = options
+    const { event, focused, continuationCaptures, exactBindingsSource, sequencePhase, runExact } = options
 
     if (!this.state.dispatch.disambiguationResolvers.has() || continuationCaptures.length === 0) {
       return false
@@ -573,11 +666,13 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
     const continueSequence = (): void => {
       this.activation.setPendingSequence({ captures: continuationCaptures })
+      this.emitSequenceDispatch(sequencePhase, continuationCaptures, focused)
       event.preventDefault()
       event.stopPropagation()
     }
 
     const clear = (): void => {
+      this.emitSequenceDispatch("sequence-clear", continuationCaptures, focused)
       this.activation.setPendingSequence(null)
       event.preventDefault()
       event.stopPropagation()
@@ -1049,9 +1144,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
       const bindingHandled = this.executor.runBinding(layer, binding, event, focused)
       if (!bindingHandled) {
+        this.emitBindingDispatch("binding-reject", layer, binding, focused)
         continue
       }
 
+      this.emitBindingDispatch("binding-execute", layer, binding, focused)
       handled = true
       if (!binding.fallthrough) {
         return { handled: true, stop: true }
@@ -1093,9 +1190,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
       const bindingHandled = this.executor.runBinding(layer, binding, event, focused)
       if (!bindingHandled) {
+        this.emitBindingDispatch("binding-reject", layer, binding, focused)
         continue
       }
 
+      this.emitBindingDispatch("binding-execute", layer, binding, focused)
       handled = true
       if (!binding.fallthrough) {
         return { handled: true, stop: true }
