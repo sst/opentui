@@ -2,17 +2,17 @@ import {
   createDefaultHtmlKeymap,
   createHtmlKeymapEvent,
   type ActiveKey,
+  type DispatchEvent,
+  type GraphBinding,
+  type GraphSnapshot,
   type HtmlKeymapEvent,
-  type KeymapDispatchEvent,
-  type KeymapGraphBinding,
-  type KeymapGraphSnapshot,
 } from "@opentui/keymap/html"
 import * as addons from "@opentui/keymap/addons"
 import { formatKeySequence } from "@opentui/keymap/extras"
 
-type HtmlGraphSnapshot = KeymapGraphSnapshot<HTMLElement, HtmlKeymapEvent>
-type HtmlGraphBinding = KeymapGraphBinding<HTMLElement, HtmlKeymapEvent>
-type HtmlDispatchEvent = KeymapDispatchEvent<HTMLElement, HtmlKeymapEvent>
+type HtmlGraphSnapshot = GraphSnapshot<HTMLElement, HtmlKeymapEvent>
+type HtmlGraphBinding = GraphBinding<HTMLElement, HtmlKeymapEvent>
+type HtmlDispatchEvent = DispatchEvent<HTMLElement, HtmlKeymapEvent>
 
 const app = document.getElementById("app") as HTMLElement | null
 const keymapRoot = document.body

@@ -4,11 +4,13 @@ import {
   TextAttributes,
   type CliRenderer,
   type InputRenderable,
+  type KeyEvent,
   type Renderable,
   type TextareaRenderable,
 } from "@opentui/core"
-import { type ActiveKey, type BindingInput, type CommandDefinition, type CommandRecord } from "@opentui/keymap"
+import { type ActiveKey, type Binding, type Command } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
+import type { ExCommandPayload } from "@opentui/keymap/addons/opentui"
 import { formatKeySequence } from "@opentui/keymap/extras"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider, useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/react"
@@ -88,7 +90,7 @@ const editorSpecs: readonly EditorSpec[] = [
 
 type ExArgCount = "0" | "1" | "?" | "*" | "+"
 
-interface DemoExCommand {
+interface DemoExCommand extends Command<Renderable, KeyEvent, ExCommandPayload> {
   name: string
   aliases?: string[]
   nargs?: ExArgCount
@@ -96,7 +98,6 @@ interface DemoExCommand {
   desc: string
   category: string
   usage: string
-  run: (ctx: { raw: string; args: string[] }) => void
 }
 
 interface ExPromptSuggestion {
@@ -140,12 +141,12 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function getExPromptCommandFieldText(command: CommandRecord, fieldName: string): string | undefined {
-  return getMetadataText(command.fields[fieldName])
+function getExPromptCommandFieldText(command: Command, fieldName: string): string | undefined {
+  return getMetadataText(command[fieldName])
 }
 
-function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined {
-  const value = command.fields.nargs
+function getExPromptCommandNargs(command: Command): ExArgCount | undefined {
+  const value = command.nargs
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
   }
@@ -153,7 +154,7 @@ function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined
   return undefined
 }
 
-function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly Command[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {
@@ -170,7 +171,7 @@ function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptS
   return suggestions
 }
 
-function getExPromptSuggestions(commands: readonly CommandRecord[], value: string): ExPromptSuggestion[] {
+function getExPromptSuggestions(commands: readonly Command[], value: string): ExPromptSuggestion[] {
   const normalized = normalizeExPromptName(value)
   const spaceIndex = normalized.indexOf(" ")
   const query = spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
@@ -186,7 +187,7 @@ function getExPromptSuggestions(commands: readonly CommandRecord[], value: strin
 }
 
 function getSelectedExPromptSuggestion(
-  commands: readonly CommandRecord[],
+  commands: readonly Command[],
   value: string,
   selection: number,
 ): ExPromptSuggestion | null {
@@ -199,7 +200,7 @@ function getSelectedExPromptSuggestion(
 }
 
 function moveExPromptSelection(
-  commands: readonly CommandRecord[],
+  commands: readonly Command[],
   value: string,
   selection: number,
   direction: 1 | -1,
@@ -214,7 +215,7 @@ function moveExPromptSelection(
 }
 
 function applyExPromptSuggestion(
-  commands: readonly CommandRecord[],
+  commands: readonly Command[],
   value: string,
   selection: number,
   direction?: 1 | -1,
@@ -302,7 +303,7 @@ function CounterPanel(props: {
   const incrementCommand = useMemo(() => `${props.id}-up`, [props.id])
   const decrementCommand = useMemo(() => `${props.id}-down`, [props.id])
 
-  const commands = useMemo<CommandDefinition[]>(
+  const commands = useMemo<Command<Renderable, KeyEvent>[]>(
     () => [
       {
         name: incrementCommand,
@@ -345,7 +346,7 @@ function CounterPanel(props: {
         { key: "j", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
         { key: "k", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
         { key: "return", cmd: `:w ${props.saveTarget}`, desc: `Write ${props.label.toLowerCase()} panel` },
-      ] satisfies BindingInput[],
+      ] satisfies Binding[],
     }),
     [decrementCommand, incrementCommand, props.label, props.saveTarget, props.step],
   )
@@ -547,7 +548,7 @@ const AppContent = () => {
     announce("Opened ex prompt")
   }, [announce, renderer])
 
-  const commands = useMemo<CommandDefinition[]>(
+  const commands = useMemo<Command<Renderable, KeyEvent>[]>(
     () => [
       {
         name: "focus-next",
@@ -629,12 +630,12 @@ const AppContent = () => {
     [announce],
   )
 
-  const registeredExCommands = useMemo(() => {
-    return exCommands.map(({ usage: _usage, ...command }) => command)
+  const registeredExCommands = useMemo<Command<Renderable, KeyEvent, ExCommandPayload>[]>(() => {
+    return exCommands.map((command) => ({ ...command, namespace: "excommands" }))
   }, [exCommands])
 
   useEffect(() => {
-    return addons.registerExCommands(manager, registeredExCommands)
+    return composeDisposers([addons.registerExCommands(manager), manager.registerLayer({ commands: registeredExCommands })])
   }, [manager, registeredExCommands])
 
   const discoveredExCommands = useMemo(() => {
@@ -752,7 +753,7 @@ const AppContent = () => {
           { key: "g", cmd: "line-home", desc: "Line start", group: "Go" },
           { key: "gg", cmd: "buffer-home", desc: "Buffer start", group: "Go" },
           { key: "shift+g", cmd: "buffer-end", desc: "Buffer end", group: "Go" },
-        ] satisfies BindingInput[],
+        ] satisfies Binding[],
       }),
       manager.registerLayer({
         enabled: () => !commandPromptVisibleRef.current,
@@ -764,11 +765,11 @@ const AppContent = () => {
           { key: "<leader>", group: "Leader" },
           { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
           { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
-        ] satisfies BindingInput[],
+        ] satisfies Binding[],
       }),
       manager.registerLayer({
         enabled: () => !commandPromptVisibleRef.current,
-        bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }] satisfies BindingInput[],
+        bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }] satisfies Binding[],
       }),
     ])
   }, [announce, manager, renderer])
@@ -902,7 +903,7 @@ const AppContent = () => {
         { key: "tab", cmd: "ex-prompt-complete", desc: "Complete suggestion" },
         { key: "shift+tab", cmd: "ex-prompt-complete-prev", desc: "Previous completion" },
         { key: "return", cmd: "ex-prompt-submit", desc: "Run ex command" },
-      ] satisfies BindingInput[],
+      ] satisfies Binding[],
     }),
     [applyCommandPromptSuggestion, closeCommandPrompt, executeCommandPrompt, moveCommandPromptSelection],
   )

@@ -3,12 +3,14 @@ import {
   ConsolePosition,
   type CliRenderer,
   type InputRenderable,
+  type KeyEvent,
   TextAttributes,
   type Renderable,
   type TextareaRenderable,
 } from "@opentui/core"
-import { type ActiveKey, type CommandRecord } from "@opentui/keymap"
+import { type ActiveKey, type Command } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
+import type { ExCommandPayload } from "@opentui/keymap/addons/opentui"
 import { formatKeySequence } from "@opentui/keymap/extras"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider, useBindings, useKeymap, useKeymapSelector } from "@opentui/keymap/solid"
@@ -79,7 +81,7 @@ const editorSpecs: readonly EditorSpec[] = [
 
 type ExArgCount = "0" | "1" | "?" | "*" | "+"
 
-interface DemoExCommand {
+interface DemoExCommand extends Command<Renderable, KeyEvent, ExCommandPayload> {
   name: string
   aliases?: string[]
   nargs?: ExArgCount
@@ -87,7 +89,6 @@ interface DemoExCommand {
   desc: string
   category: string
   usage: string
-  run: (ctx: { raw: string; args: string[] }) => void
 }
 
 interface ExPromptSuggestion {
@@ -131,12 +132,12 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function getExPromptCommandFieldText(command: CommandRecord, fieldName: string): string | undefined {
-  return getMetadataText(command.fields[fieldName])
+function getExPromptCommandFieldText(command: Command, fieldName: string): string | undefined {
+  return getMetadataText(command[fieldName])
 }
 
-function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined {
-  const value = command.fields.nargs
+function getExPromptCommandNargs(command: Command): ExArgCount | undefined {
+  const value = command.nargs
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
   }
@@ -144,7 +145,7 @@ function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined
   return undefined
 }
 
-function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly Command[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {
@@ -161,7 +162,7 @@ function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptS
   return suggestions
 }
 
-function getExPromptSuggestions(commands: readonly CommandRecord[], value: string): ExPromptSuggestion[] {
+function getExPromptSuggestions(commands: readonly Command[], value: string): ExPromptSuggestion[] {
   const normalized = normalizeExPromptName(value)
   const spaceIndex = normalized.indexOf(" ")
   const query = spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
@@ -177,7 +178,7 @@ function getExPromptSuggestions(commands: readonly CommandRecord[], value: strin
 }
 
 function getSelectedExPromptSuggestion(
-  commands: readonly CommandRecord[],
+  commands: readonly Command[],
   value: string,
   selection: number,
 ): ExPromptSuggestion | null {
@@ -190,7 +191,7 @@ function getSelectedExPromptSuggestion(
 }
 
 function moveExPromptSelection(
-  commands: readonly CommandRecord[],
+  commands: readonly Command[],
   value: string,
   selection: number,
   direction: 1 | -1,
@@ -205,7 +206,7 @@ function moveExPromptSelection(
 }
 
 function applyExPromptSuggestion(
-  commands: readonly CommandRecord[],
+  commands: readonly Command[],
   value: string,
   selection: number,
   direction?: 1 | -1,
@@ -565,12 +566,10 @@ function KeymapDemoContent() {
     },
   ]
 
-  const offEx = addons.registerExCommands(
-    manager,
-    exCommands.map(({ usage: _usage, ...command }) => {
-      return command
-    }),
-  )
+  const offEx = addons.registerExCommands(manager)
+  const offExCommands = manager.registerLayer({
+    commands: exCommands.map((command) => ({ ...command, namespace: "excommands" })),
+  })
 
   const discoveredExCommands = createMemo(() => {
     commandPromptVisible()
@@ -862,6 +861,7 @@ function KeymapDemoContent() {
     offEscapePending()
     offBackspacePending()
     offEx()
+    offExCommands()
     offCommands()
   })
 
