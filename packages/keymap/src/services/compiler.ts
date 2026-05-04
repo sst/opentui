@@ -89,7 +89,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
   public parseTokenKey(key: KeyLike): KeySequencePart {
     return parseSingleKeyPartWithParsers(key, this.#state.environment.bindingParsers.values(), {
       tokens: this.#state.environment.tokens,
-      patterns: this.#state.environment.sequencePatterns,
+      patterns: this.#state.environment.patterns,
       layer: EMPTY_COMPILE_FIELDS,
       parseObjectKey: (value, options) => this.#parseObjectKeyPart(value, options),
     })
@@ -102,7 +102,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
 
     const parsed = parseBindingSequenceWithParsers(key, this.#state.environment.bindingParsers.values(), {
       tokens: this.#state.environment.tokens,
-      patterns: this.#state.environment.sequencePatterns,
+      patterns: this.#state.environment.patterns,
       layer: EMPTY_COMPILE_FIELDS,
       parseObjectKey: (value, options) => this.#parseObjectKeyPart(value, options),
     })
@@ -156,7 +156,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
             typeof expandedKey === "string"
               ? parseBindingSequenceWithParsers(expandedKey, bindingParsers, {
                   tokens,
-                  patterns: this.#state.environment.sequencePatterns,
+                  patterns: this.#state.environment.patterns,
                   layer: compileFields,
                   parseObjectKey: (value, options) => this.#parseObjectKeyPart(value, options),
                 })
@@ -262,7 +262,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
 
             const terminalPattern = compiledSequence.at(-1)
             if (terminalPattern?.patternName) {
-              const pattern = this.#state.environment.sequencePatterns.get(terminalPattern.patternName)
+              const pattern = this.#state.environment.patterns.get(terminalPattern.patternName)
               if (pattern && pattern.max !== pattern.min) {
                 throw new Error("Keymap unbounded sequence patterns must be followed by a concrete continuation")
               }
@@ -341,7 +341,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
           parseKey: (key) => {
             return parseSingleKeyPartWithParsers(key, bindingParsers, {
               tokens,
-              patterns: this.#state.environment.sequencePatterns,
+              patterns: this.#state.environment.patterns,
               layer,
               parseObjectKey: (value, options) => this.#parseObjectKeyPart(value, options),
             })

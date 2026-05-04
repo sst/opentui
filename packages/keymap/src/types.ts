@@ -839,12 +839,11 @@ export interface RegisteredLayer<TTarget extends object = object, TEvent extends
   priority: number
   requires: readonly [name: string, value: unknown][]
   matchers: readonly RuntimeMatcher[]
-  compileFields?: Readonly<Record<string, unknown>>
+  fields?: Readonly<Record<string, unknown>>
   attrs?: Readonly<Attributes>
   commands: readonly CommandState<TTarget, TEvent>[]
-  commandLookup?: ReadonlyMap<string, CommandState<TTarget, TEvent>>
   sourceBindings: readonly Binding<TTarget, TEvent>[]
-  bindingStates: readonly BindingState<TTarget, TEvent>[]
+  bindings: readonly BindingState<TTarget, TEvent>[]
   hasTokenBindings: boolean
   offTargetDestroy?: () => void
 }

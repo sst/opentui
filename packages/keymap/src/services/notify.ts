@@ -1,6 +1,6 @@
 import type { Events, HookName, Hooks, KeymapEvent } from "../types.js"
+import type { Emitter } from "../lib/emitter.js"
 import type { State } from "./state.js"
-import { Emitter } from "../lib/emitter.js"
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
   Events<TTarget, TEvent>,
@@ -9,47 +9,22 @@ type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick
 
 export const MAX_STATE_CHANGE_FLUSH_ITERATIONS = 1000
 
-export class NotificationService<TTarget extends object, TEvent extends KeymapEvent> {
-  #state: State<TTarget, TEvent>
-  #events: Emitter<DiagnosticEvents<TTarget, TEvent>>
-  #hooks: Emitter<Hooks<TTarget, TEvent>>
+export interface NotificationService<TTarget extends object, TEvent extends KeymapEvent> {
+  runWithStateChangeBatch<T>(fn: () => T): T
+  queueStateChange(): void
+  emitWarning(code: string, warning: unknown, message: string): void
+  emitError(code: string, error: unknown, message: string): void
+  reportListenerError(name: HookName, error: unknown): void
+  warnOnce(key: string, code: string, warning: unknown, message: string): void
+}
 
-  constructor(
-    state: State<TTarget, TEvent>,
-    events: Emitter<DiagnosticEvents<TTarget, TEvent>>,
-    hooks: Emitter<Hooks<TTarget, TEvent>>,
-  ) {
-    this.#state = state
-    this.#events = events
-    this.#hooks = hooks
-  }
-
-  public runWithStateChangeBatch<T>(fn: () => T): T {
-    this.#state.notify.stateChangeDepth += 1
-
-    try {
-      return fn()
-    } finally {
-      this.#state.notify.stateChangeDepth -= 1
-      if (this.#state.notify.stateChangeDepth === 0) {
-        this.#flushStateChange()
-      }
-    }
-  }
-
-  public queueStateChange(): void {
-    if (!this.#hooks.has("state")) {
-      return
-    }
-
-    this.#state.notify.stateChangePending = true
-    if (this.#state.notify.stateChangeDepth === 0 && !this.#state.notify.flushingStateChange) {
-      this.#flushStateChange()
-    }
-  }
-
-  public emitWarning(code: string, warning: unknown, message: string): void {
-    if (!this.#events.has("warning")) {
+export function createNotificationService<TTarget extends object, TEvent extends KeymapEvent>(
+  state: State<TTarget, TEvent>,
+  events: Emitter<DiagnosticEvents<TTarget, TEvent>>,
+  hooks: Emitter<Hooks<TTarget, TEvent>>,
+): NotificationService<TTarget, TEvent> {
+  const emitWarning = (code: string, warning: unknown, message: string): void => {
+    if (!events.has("warning")) {
       const consoleMessage = `[${code}] ${message}`
       if (warning instanceof Error) {
         console.warn(consoleMessage, warning)
@@ -60,11 +35,11 @@ export class NotificationService<TTarget extends object, TEvent extends KeymapEv
       return
     }
 
-    this.#events.emit("warning", { code, message, warning })
+    events.emit("warning", { code, message, warning })
   }
 
-  public emitError(code: string, error: unknown, message: string): void {
-    if (!this.#events.has("error")) {
+  const emitError = (code: string, error: unknown, message: string): void => {
+    if (!events.has("error")) {
       const consoleMessage = `[${code}] ${message}`
       if (error instanceof Error) {
         console.error(consoleMessage, error)
@@ -75,52 +50,23 @@ export class NotificationService<TTarget extends object, TEvent extends KeymapEv
       return
     }
 
-    this.#events.emit("error", { code, message, error })
+    events.emit("error", { code, message, error })
   }
 
-  public reportListenerError(name: HookName, error: unknown): void {
-    if (name === "state") {
-      this.emitError("state-listener-error", error, "[Keymap] Error in state listener:")
+  const flushStateChange = (): void => {
+    if (!state.notify.stateChangePending || state.notify.stateChangeDepth > 0 || state.notify.flushingStateChange) {
       return
     }
 
-    if (name === "pendingSequence") {
-      this.emitError("pending-sequence-listener-error", error, "[Keymap] Error in pending sequence listener:")
-      return
-    }
-
-    if (name === "dispatch") {
-      this.emitError("dispatch-listener-error", error, "[Keymap] Error in dispatch listener:")
-    }
-  }
-
-  public warnOnce(key: string, code: string, warning: unknown, message: string): void {
-    if (this.#state.notify.usedWarningKeys.has(key)) {
-      return
-    }
-
-    this.#state.notify.usedWarningKeys.add(key)
-    this.emitWarning(code, warning, message)
-  }
-
-  #flushStateChange(): void {
-    if (
-      !this.#state.notify.stateChangePending ||
-      this.#state.notify.stateChangeDepth > 0 ||
-      this.#state.notify.flushingStateChange
-    ) {
-      return
-    }
-
-    this.#state.notify.flushingStateChange = true
+    state.notify.flushingStateChange = true
 
     try {
       let iterations = 0
 
-      while (this.#state.notify.stateChangePending && this.#state.notify.stateChangeDepth === 0) {
+      while (state.notify.stateChangePending && state.notify.stateChangeDepth === 0) {
         if (iterations >= MAX_STATE_CHANGE_FLUSH_ITERATIONS) {
-          this.#state.notify.stateChangePending = false
-          this.emitError(
+          state.notify.stateChangePending = false
+          emitError(
             "state-change-feedback-loop",
             { iterations: MAX_STATE_CHANGE_FLUSH_ITERATIONS },
             `[Keymap] Possible infinite state listener feedback loop detected after ${MAX_STATE_CHANGE_FLUSH_ITERATIONS} iterations; pending state notifications were dropped`,
@@ -129,11 +75,61 @@ export class NotificationService<TTarget extends object, TEvent extends KeymapEv
         }
 
         iterations += 1
-        this.#state.notify.stateChangePending = false
-        this.#hooks.emit("state")
+        state.notify.stateChangePending = false
+        hooks.emit("state")
       }
     } finally {
-      this.#state.notify.flushingStateChange = false
+      state.notify.flushingStateChange = false
     }
+  }
+
+  return {
+    runWithStateChangeBatch(fn) {
+      state.notify.stateChangeDepth += 1
+
+      try {
+        return fn()
+      } finally {
+        state.notify.stateChangeDepth -= 1
+        if (state.notify.stateChangeDepth === 0) {
+          flushStateChange()
+        }
+      }
+    },
+    queueStateChange() {
+      if (!hooks.has("state")) {
+        return
+      }
+
+      state.notify.stateChangePending = true
+      if (state.notify.stateChangeDepth === 0 && !state.notify.flushingStateChange) {
+        flushStateChange()
+      }
+    },
+    emitWarning,
+    emitError,
+    reportListenerError(name, error) {
+      if (name === "state") {
+        emitError("state-listener-error", error, "[Keymap] Error in state listener:")
+        return
+      }
+
+      if (name === "pendingSequence") {
+        emitError("pending-sequence-listener-error", error, "[Keymap] Error in pending sequence listener:")
+        return
+      }
+
+      if (name === "dispatch") {
+        emitError("dispatch-listener-error", error, "[Keymap] Error in dispatch listener:")
+      }
+    },
+    warnOnce(key, code, warning, message) {
+      if (state.notify.usedWarningKeys.has(key)) {
+        return
+      }
+
+      state.notify.usedWarningKeys.add(key)
+      emitWarning(code, warning, message)
+    },
   }
 }

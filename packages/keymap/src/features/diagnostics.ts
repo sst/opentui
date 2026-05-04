@@ -93,7 +93,7 @@ export function createLayerDiagnosticsFeature<TTarget extends object, TEvent ext
         return
       }
 
-      const bindings = buildLayerBindingAnalyses(options.bindingStates)
+      const bindings = buildLayerBindingAnalyses(options.bindings)
       const ctx: LayerAnalysisContext<TTarget, TEvent> = {
         target: options.target,
         order: options.order,
@@ -101,7 +101,7 @@ export function createLayerDiagnosticsFeature<TTarget extends object, TEvent ext
         bindings,
         hasTokenBindings: options.hasTokenBindings,
         checkCommandResolution(command) {
-          return commands.getCommandResolutionStatus(command, options.commandLookup)
+          return commands.getCommandResolutionStatus(command, options.commands)
         },
         warn(code, warning, message) {
           notify.emitWarning(code, warning, message)

@@ -50,13 +50,22 @@ export function getActiveLayersForFocused<TTarget extends object, TEvent extends
   const activeLayers: RegisteredLayer<TTarget, TEvent>[] = []
   const activationPath = getActivationPath(host, focused)
 
-  for (const layer of state.sortedLayers) {
+  for (const layer of getSortedLayers(state)) {
     if (isLayerActiveForFocused(host, layer, focused, activationPath)) {
       activeLayers.push(layer)
     }
   }
 
   return activeLayers
+}
+
+export function getSortedLayers<TTarget extends object, TEvent extends KeymapEvent>(
+  state: LayersState<TTarget, TEvent>,
+): RegisteredLayer<TTarget, TEvent>[] {
+  return [...state.layers].sort((left, right) => {
+    const priorityDiff = right.priority - left.priority
+    return priorityDiff || right.order - left.order
+  })
 }
 
 export function isLayerActiveForFocused<TTarget extends object, TEvent extends KeymapEvent>(

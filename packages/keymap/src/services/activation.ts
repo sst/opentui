@@ -21,6 +21,7 @@ import {
   getFocusedTargetIfAvailable,
   isLayerActiveForFocused,
 } from "./primitives/active-layers.js"
+import { captureHasContinuations, captureHasMinimum } from "./primitives/pending-captures.js"
 import type { CommandCatalogService } from "./command-catalog.js"
 import { cloneKeyStroke, createKeySequencePart, stringifyKeyStroke } from "./keys.js"
 import type { ConditionService } from "./conditions.js"
@@ -175,9 +176,9 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
       return (
         this.#state.layers.layers.has(capture.layer) &&
         this.isLayerActiveForFocused(capture.layer, focused) &&
-        this.#conditions.layerMatchesRuntimeState(capture.layer) &&
+        this.#conditions.matchesConditions(capture.layer) &&
         this.#bindingMatchesRuntimeState(capture.binding, focused, activeView) &&
-        this.#captureHasContinuations(capture)
+        captureHasContinuations(capture, this.#state.environment.patterns)
       )
     })
 
@@ -295,10 +296,6 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return getActiveLayersForFocused(this.#state.layers, this.#host, focused) as RegisteredLayer<TTarget, TEvent>[]
   }
 
-  public refreshActiveLayers(focused: TTarget | null = this.getFocusedTargetIfAvailable()): void {
-    getActiveLayersForFocused(this.#state.layers, this.#host, focused)
-  }
-
   public isLayerActiveForFocused(layer: RegisteredLayer<TTarget, TEvent>, focused: TTarget | null): boolean {
     return isLayerActiveForFocused(this.#host, layer, focused)
   }
@@ -341,38 +338,6 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     }
   }
 
-  #getPatternCaptureCount(capture: PendingSequenceCapture<TTarget, TEvent>): number {
-    const part = capture.binding.sequence[capture.index]
-    if (!part?.patternName) {
-      return 0
-    }
-
-    const captured = capture.patterns?.at(-1)
-    return captured?.name === part.patternName ? captured.values.length : 0
-  }
-
-  #capturePatternHasMinimum(capture: PendingSequenceCapture<TTarget, TEvent>): boolean {
-    const part = capture.binding.sequence[capture.index]
-    if (!part?.patternName) {
-      return true
-    }
-
-    const pattern = this.#state.environment.sequencePatterns.get(part.patternName)
-    return !pattern || this.#getPatternCaptureCount(capture) >= pattern.min
-  }
-
-  #captureHasContinuations(capture: PendingSequenceCapture<TTarget, TEvent>): boolean {
-    const part = capture.binding.sequence[capture.index]
-    if (part?.patternName) {
-      const pattern = this.#state.environment.sequencePatterns.get(part.patternName)
-      if (pattern && this.#getPatternCaptureCount(capture) < pattern.max) {
-        return true
-      }
-    }
-
-    return this.#capturePatternHasMinimum(capture) && capture.index + 1 < capture.binding.sequence.length
-  }
-
   #getActiveKeyOptionsForBinding(binding: BindingState<TTarget, TEvent>): ActiveKeyOption<TTarget, TEvent>[] {
     const part = binding.sequence[0]
     if (!part) {
@@ -393,7 +358,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   #getActiveKeyOptionsForCapture(
     capture: PendingSequenceCapture<TTarget, TEvent>,
   ): ActiveKeyOption<TTarget, TEvent>[] {
-    if (!this.#capturePatternHasMinimum(capture)) {
+    if (!captureHasMinimum(capture, this.#state.environment.patterns)) {
       return []
     }
 
@@ -572,15 +537,14 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   ): readonly ActiveKey<TTarget, TEvent>[] {
     const activeKeys = new Map<KeyMatch, ActiveKeyState<TTarget, TEvent>>()
     const stopped = new Set<KeyMatch>()
-    const hasLayerConditions = this.#state.layers.layersWithConditions > 0
 
     for (const layer of activeLayers) {
-      if (hasLayerConditions && !this.#conditions.hasNoConditions(layer) && !this.#conditions.matchesConditions(layer)) {
+      if (!this.#conditions.matchesConditions(layer)) {
         continue
       }
 
       const options: ActiveKeyOption<TTarget, TEvent>[] = []
-      for (const binding of layer.bindingStates) {
+      for (const binding of layer.bindings) {
         if (binding.event !== "press" || !this.#bindingMatchesRuntimeState(binding, focused, activeView)) {
           continue
         }

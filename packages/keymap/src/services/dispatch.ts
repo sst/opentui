@@ -9,6 +9,12 @@ import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
 import type { State } from "./state.js"
 import { cloneKeySequence, cloneKeyStroke, createKeySequencePart, stringifyKeySequence } from "./keys.js"
+import {
+  captureHasContinuations,
+  captureHasMinimum,
+  captureIsExact,
+  patternCaptureCount,
+} from "./primitives/pending-captures.js"
 import { isPromiseLike } from "./values.js"
 import {
   KEY_DEFERRED_DISAMBIGUATION_DECISION,
@@ -68,13 +74,6 @@ interface KeyDispatchOutcome {
   reason: KeyAfterReason
   sequence?: readonly KeySequencePart[]
   captures?: readonly PendingSequenceCapture<any, any>[]
-}
-
-interface KeyAfterDispatchState<TTarget extends object, TEvent extends KeymapEvent> extends KeyDispatchOutcome {
-  event: TEvent
-  eventType: "press" | "release"
-  focused: TTarget | null
-  sequence: readonly KeySequencePart[]
 }
 
 type KeyAfterHook<TTarget extends object, TEvent extends KeymapEvent> = PriorityRegistration<
@@ -367,23 +366,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     return undefined
   }
 
-  #createKeyAfterState(
-    event: TEvent,
-    release: boolean,
-    focused: TTarget | null,
-    outcome: KeyDispatchOutcome,
-  ): KeyAfterDispatchState<TTarget, TEvent> {
-    return {
-      event,
-      eventType: release ? "release" : "press",
-      focused,
-      handled: outcome.handled,
-      reason: outcome.reason,
-      sequence: this.#materializeOutcomeSequence(outcome),
-    }
-  }
-
-  #materializeOutcomeSequence(outcome: KeyDispatchOutcome): readonly KeySequencePart[] {
+  #getOutcomeSequence(outcome: KeyDispatchOutcome): readonly KeySequencePart[] {
     if (outcome.sequence) {
       return cloneKeySequence(outcome.sequence)
     }
@@ -424,32 +407,18 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
   #emitKeyAfter(
     hooks: readonly KeyAfterHook<TTarget, TEvent>[],
-    after: KeyAfterDispatchState<TTarget, TEvent>,
+    event: TEvent,
+    release: boolean,
+    focused: TTarget | null,
+    outcome: KeyDispatchOutcome,
   ): void {
-    const context = this.#createKeyAfterContext(after)
-    const release = after.eventType === "release"
-
-    for (const hook of hooks) {
-      if (hook.release !== release) {
-        continue
-      }
-
-      try {
-        hook.listener(context)
-      } catch (error) {
-        this.#notify.emitError("key-after-intercept-error", error, "[Keymap] Error in key:after intercept listener:")
-      }
-    }
-  }
-
-  #createKeyAfterContext(after: KeyAfterDispatchState<TTarget, TEvent>): KeyAfterInputContext<TTarget, TEvent> {
-    return {
-      event: after.event,
-      eventType: after.eventType,
-      focused: after.focused,
-      handled: after.handled,
-      reason: after.reason,
-      sequence: after.sequence,
+    const context: KeyAfterInputContext<TTarget, TEvent> = {
+      event,
+      eventType: release ? "release" : "press",
+      focused,
+      handled: outcome.handled,
+      reason: outcome.reason,
+      sequence: this.#getOutcomeSequence(outcome),
       pendingSequence: this.#activation.getPendingSequence(),
       setData: (name, value) => {
         this.#runtime.setData(name, value)
@@ -462,13 +431,25 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         const shouldStopPropagation = options?.stopPropagation ?? true
 
         if (shouldPreventDefault) {
-          after.event.preventDefault()
+          event.preventDefault()
         }
 
         if (shouldStopPropagation) {
-          after.event.stopPropagation()
+          event.stopPropagation()
         }
       },
+    }
+
+    for (const hook of hooks) {
+      if (hook.release !== release) {
+        continue
+      }
+
+      try {
+        hook.listener(context)
+      } catch (error) {
+        this.#notify.emitError("key-after-intercept-error", error, "[Keymap] Error in key:after intercept listener:")
+      }
     }
   }
 
@@ -550,14 +531,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
       if (event.propagationStopped) {
         if (afterHooks) {
-          this.#emitKeyAfter(
-            afterHooks,
-            this.#createKeyAfterState(event, release, afterFocused, {
-              handled: true,
-              reason: "intercept-consumed",
-              sequence: [],
-            }),
-          )
+          this.#emitKeyAfter(afterHooks, event, release, afterFocused, {
+            handled: true,
+            reason: "intercept-consumed",
+            sequence: [],
+          })
         }
         return
       }
@@ -566,14 +544,14 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     if (release) {
       const outcome = this.#dispatchReleaseLayers(event)
       if (afterHooks) {
-        this.#emitKeyAfter(afterHooks, this.#createKeyAfterState(event, release, afterFocused, outcome))
+        this.#emitKeyAfter(afterHooks, event, release, afterFocused, outcome)
       }
       return
     }
 
     const outcome = this.#dispatchLayers(event)
     if (afterHooks) {
-      this.#emitKeyAfter(afterHooks, this.#createKeyAfterState(event, release, afterFocused, outcome))
+      this.#emitKeyAfter(afterHooks, event, release, afterFocused, outcome)
     }
   }
 
@@ -609,16 +587,15 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   #dispatchReleaseLayers(event: TEvent): KeyDispatchOutcome {
     const focused = this.#activation.getFocusedTarget()
     const activeLayers = this.#activation.getActiveLayers(focused)
-    const hasLayerConditions = this.#state.layers.layersWithConditions > 0
     const matchKeys = this.#resolveEventMatchKeys(event)
     let outcome = this.#noMatchOutcome()
 
     layerLoop: for (const layer of activeLayers) {
-      if (layer.bindingStates.length === 0) {
+      if (layer.bindings.length === 0) {
         continue
       }
 
-      if (hasLayerConditions && !this.#conditions.hasNoConditions(layer) && !this.#conditions.matchesConditions(layer)) {
+      if (!this.#conditions.matchesConditions(layer)) {
         continue
       }
 
@@ -727,7 +704,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         return this.#holdSequence("sequence-advance", continuationCapturesForPrefix, focused, event)
       }
 
-      if (!this.#isCaptureExact(capture)) {
+      if (!captureIsExact(capture, this.#state.environment.patterns)) {
         continue
       }
 
@@ -768,7 +745,6 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     event: TEvent,
     focused: TTarget | null,
   ): KeyDispatchOutcome {
-    const hasLayerConditions = this.#state.layers.layersWithConditions > 0
     const activeView = this.#catalog.getActiveCommandView(focused)
     let outcome = this.#noMatchOutcome()
 
@@ -778,7 +754,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      if (hasLayerConditions && !this.#conditions.hasNoConditions(layer) && !this.#conditions.matchesConditions(layer)) {
+      if (!this.#conditions.matchesConditions(layer)) {
         continue
       }
 
@@ -787,9 +763,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      const layerContinuationCaptures = captures.filter((capture) => this.#captureHasContinuations(capture))
+      const layerContinuationCaptures = captures.filter((capture) =>
+        captureHasContinuations(capture, this.#state.environment.patterns, false),
+      )
       if (layerContinuationCaptures.length > 0) {
-        const exactCaptures = captures.filter((capture) => this.#isCaptureExact(capture))
+        const exactCaptures = captures.filter((capture) => captureIsExact(capture, this.#state.environment.patterns))
         const continuationCaptures = this.#collectPendingCapturesFromRoot(activeLayers, index, matchKeys, event, focused)
         const resolvedOutcome = this.#tryResolveRootAmbiguity(
           activeLayers,
@@ -807,7 +785,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         return this.#holdSequence("sequence-start", continuationCaptures, focused, event)
       }
 
-      const exactCaptures = captures.filter((capture) => this.#isCaptureExact(capture))
+      const exactCaptures = captures.filter((capture) => captureIsExact(capture, this.#state.environment.patterns))
       const result = this.#runCaptureBindings(layer, exactCaptures, event, focused)
       outcome = this.#preferDispatchOutcome(outcome, result.outcome)
       if (!result.handled) {
@@ -1278,7 +1256,6 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     focused: TTarget | null,
   ): PendingSequenceCapture<TTarget, TEvent>[] {
     const captures: PendingSequenceCapture<TTarget, TEvent>[] = []
-    const hasLayerConditions = this.#state.layers.layersWithConditions > 0
     const activeView = this.#catalog.getActiveCommandView(focused)
 
     for (let index = startIndex; index < activeLayers.length; index += 1) {
@@ -1287,12 +1264,12 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      if (hasLayerConditions && !this.#conditions.hasNoConditions(layer) && !this.#conditions.matchesConditions(layer)) {
+      if (!this.#conditions.matchesConditions(layer)) {
         continue
       }
 
       for (const capture of this.#collectRootCaptures(layer, matchKeys, event, focused, activeView)) {
-        if (this.#captureHasContinuations(capture)) {
+        if (captureHasContinuations(capture, this.#state.environment.patterns, false)) {
           captures.push(capture)
         }
       }
@@ -1301,22 +1278,17 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     return captures
   }
 
-  #collectPendingCapturesFromAdvanced(
-    advancedCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[],
-    startIndex: number,
-  ): PendingSequenceCapture<TTarget, TEvent>[] {
-    return advancedCaptures.filter((candidate, candidateIndex) => {
-      return candidateIndex >= startIndex && this.#captureHasContinuations(candidate)
-    })
-  }
-
   #collectContinuationCapturesForPrefix(
     captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
     startIndex: number,
     prefix: PendingSequenceCapture<TTarget, TEvent>,
   ): PendingSequenceCapture<TTarget, TEvent>[] {
     return captures.filter((candidate, candidateIndex) => {
-      return candidateIndex >= startIndex && this.#captureHasContinuations(candidate) && sameParts(candidate.parts, prefix.parts)
+      return (
+        candidateIndex >= startIndex &&
+        captureHasContinuations(candidate, this.#state.environment.patterns, false) &&
+        sameParts(candidate.parts, prefix.parts)
+      )
     })
   }
 
@@ -1325,7 +1297,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     prefix: PendingSequenceCapture<TTarget, TEvent>,
   ): PendingSequenceCapture<TTarget, TEvent>[] {
     return captures.filter((capture) => {
-      return capture.layer === prefix.layer && this.#isCaptureExact(capture) && sameParts(capture.parts, prefix.parts)
+      return (
+        capture.layer === prefix.layer &&
+        captureIsExact(capture, this.#state.environment.patterns) &&
+        sameParts(capture.parts, prefix.parts)
+      )
     })
   }
 
@@ -1388,7 +1364,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     let handled = false
     let outcome = this.#noMatchOutcome()
 
-    for (const binding of layer.bindingStates) {
+    for (const binding of layer.bindings) {
       if (binding.event !== "release") {
         continue
       }
@@ -1419,36 +1395,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     return { handled, stop: false, outcome }
   }
 
-  #getPatternCaptureCount(capture: PendingSequenceCapture<TTarget, TEvent>): number {
-    const part = capture.binding.sequence[capture.index]
-    if (!part?.patternName) {
-      return 0
-    }
-
-    const patterns = capture.patterns
-    const captured = patterns?.[patterns.length - 1]
-    return captured?.name === part.patternName ? captured.values.length : 0
-  }
-
-  #patternHasMinimum(capture: PendingSequenceCapture<TTarget, TEvent>): boolean {
-    const part = capture.binding.sequence[capture.index]
-    if (!part?.patternName) {
-      return true
-    }
-
-    const pattern = this.#state.environment.sequencePatterns.get(part.patternName)
-    if (!pattern) {
-      return false
-    }
-
-    return this.#getPatternCaptureCount(capture) >= pattern.min
-  }
-
   #matchPattern(
     patternName: string,
     event: TEvent,
   ): SequencePatternMatch | undefined {
-    const pattern = this.#state.environment.sequencePatterns.get(patternName)
+    const pattern = this.#state.environment.patterns.get(patternName)
     if (!pattern) {
       return undefined
     }
@@ -1470,7 +1421,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     patternName: string,
     match: SequencePatternMatch,
   ): KeySequencePart {
-    const pattern = this.#state.environment.sequencePatterns.get(patternName)
+    const pattern = this.#state.environment.patterns.get(patternName)
     const payloadKey = pattern?.payloadKey ?? patternName
     const part = createKeySequencePart(
       {
@@ -1537,7 +1488,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   ): PendingSequenceCapture<TTarget, TEvent>[] {
     const captures: PendingSequenceCapture<TTarget, TEvent>[] = []
     let bestPriority = Number.POSITIVE_INFINITY
-    for (const binding of layer.bindingStates) {
+    for (const binding of layer.bindings) {
       if (binding.event !== "press") {
         continue
       }
@@ -1567,15 +1518,15 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   ): PendingSequenceCapture<TTarget, TEvent> | undefined {
     const currentPart = capture.binding.sequence[capture.index]
     if (currentPart?.patternName) {
-      const pattern = this.#state.environment.sequencePatterns.get(currentPart.patternName)
-      if (pattern && this.#getPatternCaptureCount(capture) < pattern.max) {
+      const pattern = this.#state.environment.patterns.get(currentPart.patternName)
+      if (pattern && patternCaptureCount(capture) < pattern.max) {
         const patternMatch = this.#matchPattern(pattern.name, event)
         if (patternMatch) {
           return this.#appendPatternCapture(capture, capture.index, event, patternMatch)
         }
       }
 
-      if (!this.#patternHasMinimum(capture)) {
+      if (!captureHasMinimum(capture, this.#state.environment.patterns, false)) {
         return undefined
       }
 
@@ -1645,7 +1596,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     const payload: Record<string, unknown> = {}
     let hasPayload = false
     for (const captured of capture.patterns) {
-      const pattern = this.#state.environment.sequencePatterns.get(captured.name)
+      const pattern = this.#state.environment.patterns.get(captured.name)
       let value: unknown
 
       try {
@@ -1675,22 +1626,6 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     return hasPayload ? payload : undefined
-  }
-
-  #isCaptureExact(capture: PendingSequenceCapture<TTarget, TEvent>): boolean {
-    return capture.index === capture.binding.sequence.length - 1 && this.#patternHasMinimum(capture)
-  }
-
-  #captureHasContinuations(capture: PendingSequenceCapture<TTarget, TEvent>): boolean {
-    const part = capture.binding.sequence[capture.index]
-    if (part?.patternName) {
-      const pattern = this.#state.environment.sequencePatterns.get(part.patternName)
-      if (pattern && this.#getPatternCaptureCount(capture) < pattern.max) {
-        return true
-      }
-    }
-
-    return this.#patternHasMinimum(capture) && capture.index + 1 < capture.binding.sequence.length
   }
 
   #bindingMatchesRuntimeState(

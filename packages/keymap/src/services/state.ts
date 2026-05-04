@@ -31,7 +31,7 @@ export interface CoreState {
 
 export interface EnvironmentState<TTarget extends object, TEvent extends KeymapEvent> {
   tokens: Map<string, import("../types.js").ResolvedKeyToken>
-  sequencePatterns: Map<string, ResolvedSequencePattern<TEvent>>
+  patterns: Map<string, ResolvedSequencePattern<TEvent>>
   layerFields: Map<string, LayerFieldCompiler>
   layerBindingsTransformers: OrderedRegistry<LayerBindingsTransformer<TTarget, TEvent>>
   bindingExpanders: OrderedRegistry<BindingExpander>
@@ -55,9 +55,6 @@ export interface DispatchState<TTarget extends object, TEvent extends KeymapEven
 
 export interface LayersState<TTarget extends object, TEvent extends KeymapEvent> {
   layers: Set<RegisteredLayer<TTarget, TEvent>>
-  sortedLayers: RegisteredLayer<TTarget, TEvent>[]
-  layersWithConditions: number
-  layersWithCommands: number
 }
 
 export interface LayerCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {
@@ -86,7 +83,6 @@ export interface CommandView<TTarget extends object, TEvent extends KeymapEvent>
 }
 
 export interface CommandsState<TTarget extends object, TEvent extends KeymapEvent> {
-  registeredNames: Map<string, number>
   commandResolvers: OrderedRegistry<CommandResolver<TTarget, TEvent>>
 }
 
@@ -123,7 +119,7 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     },
     environment: {
       tokens: new Map<string, import("../types.js").ResolvedKeyToken>(),
-      sequencePatterns: new Map<string, ResolvedSequencePattern<TEvent>>(),
+      patterns: new Map<string, ResolvedSequencePattern<TEvent>>(),
       layerFields: new Map<string, LayerFieldCompiler>(),
       layerBindingsTransformers: new OrderedRegistry<LayerBindingsTransformer<TTarget, TEvent>>(),
       bindingExpanders: new OrderedRegistry<BindingExpander>(),
@@ -145,12 +141,8 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     },
     layers: {
       layers: new Set<RegisteredLayer<TTarget, TEvent>>(),
-      sortedLayers: [],
-      layersWithConditions: 0,
-      layersWithCommands: 0,
     },
     commands: {
-      registeredNames: new Map<string, number>(),
       commandResolvers: new OrderedRegistry<CommandResolver<TTarget, TEvent>>(),
     },
     projection: {

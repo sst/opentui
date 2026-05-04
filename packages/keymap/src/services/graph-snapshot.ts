@@ -21,7 +21,12 @@ import type {
   SequenceNode,
 } from "../types.js"
 import { cloneKeySequence, cloneKeyStroke } from "./keys.js"
-import { getActivationPath, getFocusedTargetIfAvailable, isLayerActiveForFocused } from "./primitives/active-layers.js"
+import {
+  getActivationPath,
+  getFocusedTargetIfAvailable,
+  getSortedLayers,
+  isLayerActiveForFocused,
+} from "./primitives/active-layers.js"
 
 interface LayerGraphState<TTarget extends object, TEvent extends KeymapEvent> {
   layer: RegisteredLayer<TTarget, TEvent>
@@ -115,7 +120,7 @@ function buildSequenceTree<TTarget extends object, TEvent extends KeymapEvent>(
   patterns: ReadonlyMap<string, ResolvedSequencePattern<TEvent>>,
 ): SequenceNode<TTarget, TEvent> {
   const root = createSequenceNode<TTarget, TEvent>(null, null, null)
-  for (const binding of layer.bindingStates) {
+  for (const binding of layer.bindings) {
     if (binding.event !== "press") {
       continue
     }
@@ -285,7 +290,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   const activeCommandStates = new Set(activeView.entries.map((entry) => entry.commandState))
   const reachableCommandStates = new Set(activeView.reachable.map((entry) => entry.commandState))
   const activationPath = getActivationPath(host, focused)
-  const sortedLayers = state.layers.sortedLayers
+  const sortedLayers = getSortedLayers(state.layers)
   const layerStates = new Map<RegisteredLayer<TTarget, TEvent>, LayerGraphState<TTarget, TEvent>>()
   const commandStates = new Map<CommandState<TTarget, TEvent>, CommandGraphState<TTarget, TEvent>>()
   const bindingStates = new Map<BindingState<TTarget, TEvent>, BindingGraphState<TTarget, TEvent>>()
@@ -298,13 +303,13 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   const sequenceNodes: GraphSequenceNode[] = []
 
   for (const layer of sortedLayers) {
-    layerRoots.set(layer, buildSequenceTree(layer, state.environment.sequencePatterns))
+    layerRoots.set(layer, buildSequenceTree(layer, state.environment.patterns))
   }
 
   for (const layer of sortedLayers) {
     const targetDestroyed = layer.target ? host.isTargetDestroyed(layer.target) : false
     const focusActive = isLayerActiveForFocused(host, layer, focused, activationPath)
-    const enabled = conditions.layerMatchesRuntimeState(layer)
+    const enabled = conditions.matchesConditions(layer)
     const inactiveReasons: GraphInactiveReason[] = []
     if (targetDestroyed) {
       inactiveReasons.push("target-destroyed")
@@ -396,7 +401,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   const stoppedSequences: SequenceStop[] = []
   for (const layer of sortedLayers) {
     const layerState = layerStates.get(layer)!
-    for (const [index, binding] of layer.bindingStates.entries()) {
+    for (const [index, binding] of layer.bindings.entries()) {
       const enabled = conditions.matchesConditions(binding)
       const commandResolved = catalog.isBindingVisible(binding, focused, activeView)
       const active = layerState.active && enabled && commandResolved
@@ -525,14 +530,14 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
       priority: layer.priority,
       target: includeTargets ? layer.target : undefined,
       targetMode: layer.targetMode,
-      fields: layer.compileFields ?? {},
+      fields: layer.fields ?? {},
       attrs: layer.attrs,
       active: state.active,
       focusActive: state.focusActive,
       enabled: state.enabled,
       inactiveReasons: state.inactiveReasons,
       rootNodeId: nodeIds.get(layerRoots.get(layer)!)!,
-      bindingIds: layer.bindingStates.map((binding) => bindingStates.get(binding)!.id),
+      bindingIds: layer.bindings.map((binding) => bindingStates.get(binding)!.id),
       commandIds: layer.commands.map((command) => commandStates.get(command)!.id),
     }
   })

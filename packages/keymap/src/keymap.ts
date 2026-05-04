@@ -50,16 +50,20 @@ import {
 import { createGraphFeature, type GraphFeature, type GraphFeatureContext } from "./features/graph.js"
 import { ActivationService } from "./services/activation.js"
 import { CommandCatalogService } from "./services/command-catalog.js"
-import { CommandExecutorService } from "./services/command-executor.js"
+import { createCommandExecutorService, type CommandExecutorService } from "./services/command-executor.js"
 import { CompilerService } from "./services/compiler.js"
-import { ConditionService } from "./services/conditions.js"
+import { createConditionService, type ConditionService } from "./services/conditions.js"
 import { DispatchService } from "./services/dispatch.js"
-import { EnvironmentService } from "./services/environment.js"
+import {
+  registerFields,
+  registerSequencePattern as registerEnvironmentSequencePattern,
+  registerToken as registerEnvironmentToken,
+} from "./services/environment.js"
 import { LayerService } from "./services/layers.js"
 import { Emitter, type EmitterListener } from "./lib/emitter.js"
-import { NotificationService } from "./services/notify.js"
+import { createNotificationService, type NotificationService } from "./services/notify.js"
 import { resolveKeyMatch } from "./services/keys.js"
-import { RuntimeService } from "./services/runtime.js"
+import { createRuntimeService, type RuntimeService } from "./services/runtime.js"
 import { createKeymapState } from "./services/state.js"
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
@@ -94,7 +98,6 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
   #compiler: CompilerService<TTarget, TEvent>
   #dispatch: DispatchService<TTarget, TEvent>
   #layers: LayerService<TTarget, TEvent>
-  #environment: EnvironmentService<TTarget, TEvent>
   #graphFeature?: GraphFeature<TTarget, TEvent>
   #layerDiagnosticsFeature?: LayerDiagnosticsFeature<TTarget, TEvent>
 
@@ -117,8 +120,8 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
     this.#hooks = new Emitter<Hooks<TTarget, TEvent>>((name, error) => {
       this.#notify.reportListenerError(name, error)
     })
-    this.#notify = new NotificationService(this.#state, this.#events, this.#hooks)
-    this.#conditions = new ConditionService(this.#state, this.#notify)
+    this.#notify = createNotificationService(this.#state, this.#events, this.#hooks)
+    this.#conditions = createConditionService(this.#state, this.#notify)
     this.#catalog = new CommandCatalogService(this.#state, this.#host, this.#notify, this.#conditions, {
       onCommandResolversChanged: () => {
         this.#activation.ensureValidPendingSequence()
@@ -137,8 +140,8 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
         },
       },
     )
-    this.#runtime = new RuntimeService(this.#state, this.#notify, this.#activation)
-    this.#executor = new CommandExecutorService(this.#notify, this.#runtime, this.#activation, this.#catalog, {
+    this.#runtime = createRuntimeService(this.#state, this.#notify, this.#activation)
+    this.#executor = createCommandExecutorService(this.#notify, this.#runtime, this.#activation, this.#catalog, {
       keymap: this as unknown as Keymap<TTarget, TEvent>,
       createCommandEvent: () => this.#host.createCommandEvent(),
     })
@@ -163,7 +166,6 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
         this.#warnUnknownField(kind, fieldName)
       },
     })
-    this.#environment = new EnvironmentService(this.#state, this.#notify, this.#compiler, this.#layers)
     this.#dispatch = new DispatchService(
       this.#state,
       this.#notify,
@@ -392,83 +394,83 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
   }
 
   public registerLayerFields(fields: Record<string, LayerFieldCompiler>): () => void {
-    return this.#environment.registerLayerFields(fields)
+    return registerFields(this.#state, this.#notify, "layer", fields)
   }
 
   public prependLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
-    return this.#environment.prependLayerBindingsTransformer(transformer)
+    return this.#state.environment.layerBindingsTransformers.prepend(transformer)
   }
 
   public appendLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
-    return this.#environment.appendLayerBindingsTransformer(transformer)
+    return this.#state.environment.layerBindingsTransformers.append(transformer)
   }
 
   public clearLayerBindingsTransformers(): void {
-    this.#environment.clearLayerBindingsTransformers()
+    this.#state.environment.layerBindingsTransformers.clear()
   }
 
   public prependBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
-    return this.#environment.prependBindingTransformer(transformer)
+    return this.#state.environment.bindingTransformers.prepend(transformer)
   }
 
   public appendBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
-    return this.#environment.appendBindingTransformer(transformer)
+    return this.#state.environment.bindingTransformers.append(transformer)
   }
 
   public clearBindingTransformers(): void {
-    this.#environment.clearBindingTransformers()
+    this.#state.environment.bindingTransformers.clear()
   }
 
   public prependCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
-    return this.#environment.prependCommandTransformer(transformer)
+    return this.#state.environment.commandTransformers.prepend(transformer)
   }
 
   public appendCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
-    return this.#environment.appendCommandTransformer(transformer)
+    return this.#state.environment.commandTransformers.append(transformer)
   }
 
   public clearCommandTransformers(): void {
-    this.#environment.clearCommandTransformers()
+    this.#state.environment.commandTransformers.clear()
   }
 
   public prependBindingParser(parser: BindingParser): () => void {
-    return this.#environment.prependBindingParser(parser)
+    return this.#state.environment.bindingParsers.prepend(parser)
   }
 
   public appendBindingParser(parser: BindingParser): () => void {
-    return this.#environment.appendBindingParser(parser)
+    return this.#state.environment.bindingParsers.append(parser)
   }
 
   public clearBindingParsers(): void {
-    this.#environment.clearBindingParsers()
+    this.#state.environment.bindingParsers.clear()
   }
 
   public registerToken(token: KeyToken): () => void {
-    return this.#environment.registerToken(token)
+    return registerEnvironmentToken(this.#state, this.#notify, this.#compiler, this.#layers, token)
   }
 
   public registerSequencePattern(pattern: SequencePattern<TEvent>): () => void {
-    return this.#environment.registerSequencePattern(pattern)
+    return registerEnvironmentSequencePattern(this.#state, this.#notify, this.#layers, pattern)
   }
 
   public prependBindingExpander(expander: BindingExpander): () => void {
-    return this.#environment.prependBindingExpander(expander)
+    return this.#state.environment.bindingExpanders.prepend(expander)
   }
 
   public appendBindingExpander(expander: BindingExpander): () => void {
-    return this.#environment.appendBindingExpander(expander)
+    return this.#state.environment.bindingExpanders.append(expander)
   }
 
   public clearBindingExpanders(): void {
-    this.#environment.clearBindingExpanders()
+    this.#state.environment.bindingExpanders.clear()
   }
 
   public registerBindingFields(fields: Record<string, BindingFieldCompiler>): () => void {
-    return this.#environment.registerBindingFields(fields)
+    return registerFields(this.#state, this.#notify, "binding", fields)
   }
 
   public registerCommandFields(fields: Record<string, CommandFieldCompiler>): () => void {
-    return this.#environment.registerCommandFields(fields)
+    return registerFields(this.#state, this.#notify, "command", fields)
   }
 
   public prependCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
@@ -545,7 +547,6 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
       // against the state that started it, and changing focus can change the
       // active bindings and their precedence.
       this.#activation.setPendingSequence(null)
-      this.#activation.refreshActiveLayers(_focused)
       this.#notify.queueStateChange()
     })
   }

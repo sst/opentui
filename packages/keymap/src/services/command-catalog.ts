@@ -22,6 +22,7 @@ import { normalizeCommandName } from "./primitives/command-normalization.js"
 import {
   getActiveLayersForFocused,
   getFocusedTargetIfAvailable,
+  getSortedLayers,
   isLayerActiveForFocused,
 } from "./primitives/active-layers.js"
 import type { ConditionService } from "./conditions.js"
@@ -257,11 +258,6 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return this.#resolveCommandWithResolvers(command, focused, { mode: "active", execution })
   }
 
-  public getCommandAttrs(command: string, focused: TTarget | null): Readonly<Attributes> | undefined {
-    const top = this.#getTopResolvedCommand(command, focused)
-    return top?.attrs
-  }
-
   public getTopCommand(command: string, focused: TTarget | null): Command<TTarget, TEvent> | undefined {
     const top = this.#getTopResolvedCommand(command, focused)
     return top?.command
@@ -292,10 +288,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
         continue
       }
 
-      if (
-        !this.#conditions.layerMatchesRuntimeState(entry.layer) ||
-        !this.#conditions.matchesConditions(entry.commandState)
-      ) {
+      if (!this.#conditions.matchesConditions(entry.layer) || !this.#conditions.matchesConditions(entry.commandState)) {
         disabledEntry ??= entry
       }
     }
@@ -317,27 +310,25 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     const reachableByName = new Map<string, LayerCommandEntry<TTarget, TEvent>>()
     const chainsByName = new Map<string, LayerCommandEntry<TTarget, TEvent>[]>()
 
-    if (this.#state.layers.layersWithCommands > 0) {
-      for (const layer of getActiveLayersForFocused(this.#state.layers, this.#host, focused)) {
-        if (layer.commands.length === 0 || !this.#conditions.layerMatchesRuntimeState(layer)) {
+    for (const layer of getActiveLayersForFocused(this.#state.layers, this.#host, focused)) {
+      if (layer.commands.length === 0 || !this.#conditions.matchesConditions(layer)) {
+        continue
+      }
+
+      for (const commandState of layer.commands) {
+        const command = commandState.command
+        if (!this.#conditions.matchesConditions(commandState)) {
           continue
         }
 
-        for (const commandState of layer.commands) {
-          const command = commandState.command
-          if (!this.#conditions.matchesConditions(commandState)) {
-            continue
-          }
+        const entry: LayerCommandEntry<TTarget, TEvent> = { layer, commandState }
+        entries.push(entry)
 
-          const entry: LayerCommandEntry<TTarget, TEvent> = { layer, commandState }
-          entries.push(entry)
+        pushCommandEntry(chainsByName, command.name, entry)
 
-          pushCommandEntry(chainsByName, command.name, entry)
-
-          if (!reachableByName.has(command.name)) {
-            reachableByName.set(command.name, entry)
-            reachable.push(entry)
-          }
+        if (!reachableByName.has(command.name)) {
+          reachableByName.set(command.name, entry)
+          reachable.push(entry)
         }
       }
     }
@@ -354,7 +345,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     const entries: LayerCommandEntry<TTarget, TEvent>[] = []
     const chainsByName = new Map<string, LayerCommandEntry<TTarget, TEvent>[]>()
 
-    for (const layer of this.#state.layers.sortedLayers) {
+    for (const layer of getSortedLayers(this.#state.layers)) {
       if (layer.commands.length === 0) {
         continue
       }
@@ -414,9 +405,9 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
 
   public getCommandResolutionStatus(
     command: string,
-    layerCommands?: ReadonlyMap<string, CommandState<TTarget, TEvent>>,
+    layerCommands?: readonly CommandState<TTarget, TEvent>[],
   ): CommandResolutionStatus {
-    if (layerCommands?.has(command) || this.#state.commands.registeredNames.has(command)) {
+    if (layerCommands?.some((state) => state.command.name === command) || this.getCommandView().chainsByName.has(command)) {
       return "resolved"
     }
 
@@ -494,11 +485,8 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   }
 
   #getRegisteredLayerCommandEntries(): readonly LayerCommandEntry<TTarget, TEvent>[] {
-    const layers = [...this.#state.layers.layers]
-    layers.sort((left, right) => left.order - right.order)
-
     const entries: LayerCommandEntry<TTarget, TEvent>[] = []
-    for (const layer of layers) {
+    for (const layer of this.#state.layers.layers) {
       for (const command of layer.commands) {
         entries.push({ layer, commandState: command })
       }
@@ -570,39 +558,9 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       activeView?: ActiveCommandView<TTarget, TEvent>
     },
   ): void {
-    if (context.visibility === "registered") {
-      const layers = [...this.#state.layers.layers]
-      layers.sort((left, right) => left.order - right.order)
-
-      for (const layer of layers) {
-        for (const binding of layer.bindingStates) {
-          this.#collectBindingForCommandEntries(grouped, indexesByName, binding)
-        }
-      }
-      return
-    }
-
-    const activeView = context.activeView
-    if (!activeView) {
-      return
-    }
-
-    for (const layer of getActiveLayersForFocused(this.#state.layers, this.#host, context.focused)) {
-      if (layer.bindingStates.length === 0 || !this.#conditions.layerMatchesRuntimeState(layer)) {
-        continue
-      }
-
-      for (const binding of layer.bindingStates) {
-        if (
-          !this.#conditions.matchesConditions(binding) ||
-          !this.isBindingVisible(binding, context.focused, activeView)
-        ) {
-          continue
-        }
-
-        this.#collectBindingForCommandEntries(grouped, indexesByName, binding)
-      }
-    }
+    this.#visitCommandQueryBindings(context, (binding) => {
+      this.#collectBindingForCommandEntries(grouped, indexesByName, binding)
+    })
   }
 
   #collectCommandBindings(
@@ -613,12 +571,22 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       activeView?: ActiveCommandView<TTarget, TEvent>
     },
   ): void {
+    this.#visitCommandQueryBindings(context, (binding) => {
+      this.#collectBindingForCommandBindings(bindingsByCommand, binding, context)
+    })
+  }
+
+  #visitCommandQueryBindings(
+    context: {
+      visibility: "reachable" | "active" | "registered"
+      focused: TTarget | null
+      activeView?: ActiveCommandView<TTarget, TEvent>
+    },
+    visit: (binding: BindingState<TTarget, TEvent>) => void,
+  ): void {
     if (context.visibility === "registered") {
-      // Layer Set iteration is registration order, which matches ascending layer order.
       for (const layer of this.#state.layers.layers) {
-        for (const binding of layer.bindingStates) {
-          this.#collectBindingForCommandBindings(bindingsByCommand, binding, context)
-        }
+        for (const binding of layer.bindings) visit(binding)
       }
       return
     }
@@ -629,19 +597,14 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     }
 
     for (const layer of getActiveLayersForFocused(this.#state.layers, this.#host, context.focused)) {
-      if (layer.bindingStates.length === 0 || !this.#conditions.layerMatchesRuntimeState(layer)) {
+      if (layer.bindings.length === 0 || !this.#conditions.matchesConditions(layer)) {
         continue
       }
 
-      for (const binding of layer.bindingStates) {
-        if (
-          !this.#conditions.matchesConditions(binding) ||
-          !this.isBindingVisible(binding, context.focused, activeView)
-        ) {
-          continue
+      for (const binding of layer.bindings) {
+        if (this.#conditions.matchesConditions(binding) && this.isBindingVisible(binding, context.focused, activeView)) {
+          visit(binding)
         }
-
-        this.#collectBindingForCommandBindings(bindingsByCommand, binding, context)
       }
     }
   }
@@ -1001,68 +964,15 @@ function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapE
   const filter = options.query?.filter
   let filterEntries: readonly [string, CommandQueryValue<TTarget, TEvent>][] | undefined
   let filterPredicate: ((command: Command<TTarget, TEvent>) => boolean) | undefined
-  let exactNameFilter: ReadonlySet<string> | undefined
 
   if (typeof filter === "function") {
     filterPredicate = filter
   } else if (filter) {
     const entries = Object.entries(filter)
-    const remainingEntries: [string, CommandQueryValue<TTarget, TEvent>][] = []
-
-    for (const [key, matcher] of entries) {
-      if (key === "name") {
-        if (typeof matcher === "string") {
-          exactNameFilter = new Set([matcher])
-          continue
-        }
-
-        if (Array.isArray(matcher)) {
-          const names = new Set<string>()
-          for (const value of matcher) {
-            if (typeof value === "string") {
-              names.add(value)
-            }
-          }
-          exactNameFilter = names
-          continue
-        }
-      }
-
-      remainingEntries.push([key, matcher])
-    }
-
-    filterEntries = remainingEntries.length > 0 ? remainingEntries : undefined
+    filterEntries = entries.length > 0 ? entries : undefined
   }
 
   const results: LayerCommandEntry<TTarget, TEvent>[] = []
-
-  if (exactNameFilter) {
-    for (const entry of options.entries) {
-      const commandState = entry.commandState
-      const command = commandState.command
-
-      if (!commandMatchesNamespace(commandState, namespace)) {
-        continue
-      }
-
-      if (!commandMatchesSearch(commandState, normalizedSearch, searchKeys)) {
-        continue
-      }
-
-      if (!exactNameFilter.has(command.name)) {
-        continue
-      }
-
-      if (!commandMatchesFilters(commandState, filterEntries, options)) {
-        continue
-      }
-
-      results.push(entry)
-    }
-
-    return results
-  }
-
   for (const entry of options.entries) {
     const commandState = entry.commandState
 

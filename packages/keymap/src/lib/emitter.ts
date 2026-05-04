@@ -19,18 +19,7 @@ export class Emitter<TEvents extends Record<string, unknown>> {
     this.#listeners[name] = [...current, listener] as readonly EmitterListener<TEvents[TName]>[]
 
     return () => {
-      const current = this.#listeners[name]
-      if (!current || current.length === 0) {
-        return
-      }
-
-      const next = current.filter((candidate) => candidate !== listener) as readonly EmitterListener<TEvents[TName]>[]
-      if (next.length === 0) {
-        delete this.#listeners[name]
-        return
-      }
-
-      this.#listeners[name] = next
+      this.off(name, listener)
     }
   }
 
