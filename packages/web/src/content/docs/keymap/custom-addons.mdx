@@ -90,6 +90,8 @@ Guidelines:
 
 Every registration API above returns a disposer.
 
+Layer analyzers are provided by the layer-diagnostics feature pack. The default `Keymap` and built-in host helpers install it; a bare `BaseKeymap` only supports analyzers when constructed with `createLayerDiagnosticsFeature`.
+
 ## Field compilers
 
 Field compilers turn user-supplied fields into activation rules and public metadata. Layer fields also feed binding pipeline callbacks.

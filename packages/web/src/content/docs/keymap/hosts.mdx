@@ -79,7 +79,7 @@ Both built-in host packages re-export the shared `@opentui/keymap` API and add t
 | `@opentui/keymap/html`    | `createHtmlKeymapHost(root)`        | `createHtmlKeymap(root)`        | `createDefaultHtmlKeymap(root)`        |
 
 - The host adapter returns a `KeymapHost` implementation.
-- The bare helper creates a `new Keymap(host)` with only the host installed.
+- The bare helper creates a `new Keymap(host)` with only the host installed; parser and addon stages remain opt-in.
 - The default helper starts from the bare helper and installs the small default addon set for that host.
 
 ## OpenTUI host

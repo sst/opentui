@@ -20,6 +20,21 @@ const keymap = new Keymap(host as KeymapHost<object>)
 
 Bare keymaps do not parse string bindings until you install binding parsers and event match resolvers. In practice that usually means `registerDefaultKeys()` or one of the default host helpers.
 
+`Keymap` installs the graph snapshot and layer-diagnostics feature packs. `BaseKeymap` from `@opentui/keymap/base` keeps the same core runtime but leaves those feature implementations out unless you pass them explicitly:
+
+```ts
+import { BaseKeymap, type KeymapHost } from "@opentui/keymap/base"
+import { createLayerDiagnosticsFeature } from "@opentui/keymap/features/diagnostics"
+import { createGraphFeature } from "@opentui/keymap/features/graph"
+
+const keymap = new BaseKeymap(host as KeymapHost<object>, {
+  graph: createGraphFeature,
+  diagnostics: createLayerDiagnosticsFeature,
+})
+```
+
+Without those options, `getGraphSnapshot()` and layer-analyzer registration throw feature-not-installed errors. Warning and error reporting remains part of the core runtime because command, parser and matcher failures use it.
+
 ## `KeymapHost`
 
 `KeymapHost` is the contract that built-in hosts and custom adapters implement. See [Hosts](/docs/keymap/hosts) for the built-in OpenTUI and HTML adapters.
@@ -387,7 +402,7 @@ The returned map preserves the requested command order and includes every reques
 
 ## Graph snapshots
 
-`getGraphSnapshot(options?)` returns a diagnostic projection for graph visualizers and debug UIs. It includes layers, commands, bindings, sequence nodes, active keys and the current pending sequence.
+`getGraphSnapshot(options?)` returns a diagnostic projection for graph visualizers and debug UIs. It is provided by the graph feature pack, which `Keymap` installs by default. It includes layers, commands, bindings, sequence nodes, active keys and the current pending sequence.
 
 Layer custom fields remain available as raw `GraphLayer.fields`; compiled layer metadata published with `ctx.attr(...)` appears as `GraphLayer.attrs`. Use attrs for stable visualization metadata such as layer display names.
 

@@ -42,6 +42,12 @@ import type {
   GraphSnapshotOptions,
   StringifyOptions,
 } from "./types.js"
+import {
+  createLayerDiagnosticsFeature,
+  type LayerDiagnosticsFeature,
+  type LayerDiagnosticsFeatureContext,
+} from "./features/diagnostics.js"
+import { createGraphFeature, type GraphFeature, type GraphFeatureContext } from "./features/graph.js"
 import { ActivationService } from "./services/activation.js"
 import { CommandCatalogService } from "./services/command-catalog.js"
 import { CommandExecutorService } from "./services/command-executor.js"
@@ -55,7 +61,6 @@ import { NotificationService } from "./services/notify.js"
 import { resolveKeyMatch } from "./services/keys.js"
 import { RuntimeService } from "./services/runtime.js"
 import { createKeymapState } from "./services/state.js"
-import { createGraphSnapshot } from "./services/graph-snapshot.js"
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
   Events<TTarget, TEvent>,
@@ -66,7 +71,12 @@ function getKeyMatchKey(input: KeyStringifyInput): KeyMatch {
   return resolveKeyMatch(input)
 }
 
-export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
+export interface KeymapFeatureOptions<TTarget extends object, TEvent extends KeymapEvent> {
+  graph?: (context: GraphFeatureContext<TTarget, TEvent>) => GraphFeature<TTarget, TEvent>
+  diagnostics?: (context: LayerDiagnosticsFeatureContext<TTarget, TEvent>) => LayerDiagnosticsFeature<TTarget, TEvent>
+}
+
+export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
   private readonly state = createKeymapState<TTarget, TEvent>()
   private cleanedUp = false
   private readonly resources = new Map<symbol, { count: number; dispose: () => void }>()
@@ -85,13 +95,18 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   private readonly dispatch: DispatchService<TTarget, TEvent>
   private readonly layers: LayerService<TTarget, TEvent>
   private readonly environment: EnvironmentService<TTarget, TEvent>
+  private readonly graphFeature?: GraphFeature<TTarget, TEvent>
+  private readonly layerDiagnosticsFeature?: LayerDiagnosticsFeature<TTarget, TEvent>
 
   private readonly keypressListener: (event: TEvent) => void
   private readonly keyreleaseListener: (event: TEvent) => void
   private readonly rawListener: (sequence: string) => boolean
   private readonly focusedTargetListener: (focused: TTarget | null) => void
 
-  constructor(private readonly host: KeymapHost<TTarget, TEvent>) {
+  constructor(
+    private readonly host: KeymapHost<TTarget, TEvent>,
+    features: KeymapFeatureOptions<TTarget, TEvent> = {},
+  ) {
     if (host.isDestroyed) {
       throw new Error("Cannot create a keymap for a destroyed host")
     }
@@ -121,7 +136,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     )
     this.runtime = new RuntimeService(this.state, this.notify, this.conditions, this.activation)
     this.executor = new CommandExecutorService(this.notify, this.runtime, this.activation, this.catalog, {
-      keymap: this,
+      keymap: this as unknown as Keymap<TTarget, TEvent>,
       createCommandEvent: () => this.host.createCommandEvent(),
     })
     this.compiler = new CompilerService(this.state, this.notify, this.conditions, {
@@ -132,10 +147,16 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
         this.warnUnknownToken(token, sequence)
       },
     })
+    this.layerDiagnosticsFeature = features.diagnostics?.({
+      state: this.state,
+      notify: this.notify,
+      commands: this.catalog,
+    })
     this.layers = new LayerService(this.state, this.notify, this.conditions, this.activation, {
       compiler: this.compiler,
       commands: this.catalog,
       host: this.host,
+      diagnostics: this.layerDiagnosticsFeature,
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
       },
@@ -179,6 +200,14 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
         }),
       )
     }
+
+    this.graphFeature = features.graph?.({
+      state: this.state,
+      host: this.host,
+      conditions: this.conditions,
+      catalog: this.catalog,
+      activation: this.activation,
+    })
   }
 
   private cleanup(): void {
@@ -266,17 +295,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     query: CommandBindingsQuery<TTarget>,
   ): ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]> {
     return this.catalog.getCommandBindings(query)
-  }
-
-  public getGraphSnapshot(options?: GraphSnapshotOptions<TTarget>): GraphSnapshot<TTarget, TEvent> {
-    return createGraphSnapshot({
-      state: this.state,
-      host: this.host,
-      conditions: this.conditions,
-      catalog: this.catalog,
-      activation: this.activation,
-      snapshotOptions: options,
-    })
   }
 
   public acquireResource(key: symbol, setup: () => () => void): () => void {
@@ -463,16 +481,36 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     this.catalog.clearCommandResolvers()
   }
 
+  public getGraphSnapshot(options?: GraphSnapshotOptions<TTarget>): GraphSnapshot<TTarget, TEvent> {
+    return this.requireGraphFeature().getGraphSnapshot(options)
+  }
+
   public prependLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
-    return this.layers.prependLayerAnalyzer(analyzer)
+    return this.requireLayerDiagnosticsFeature().prependLayerAnalyzer(analyzer)
   }
 
   public appendLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
-    return this.layers.appendLayerAnalyzer(analyzer)
+    return this.requireLayerDiagnosticsFeature().appendLayerAnalyzer(analyzer)
   }
 
   public clearLayerAnalyzers(): void {
-    this.layers.clearLayerAnalyzers()
+    this.requireLayerDiagnosticsFeature().clearLayerAnalyzers()
+  }
+
+  private requireGraphFeature(): GraphFeature<TTarget, TEvent> {
+    if (!this.graphFeature) {
+      throw new Error("Keymap graph feature is not installed")
+    }
+
+    return this.graphFeature
+  }
+
+  private requireLayerDiagnosticsFeature(): LayerDiagnosticsFeature<TTarget, TEvent> {
+    if (!this.layerDiagnosticsFeature) {
+      throw new Error("Keymap diagnostics feature is not installed")
+    }
+
+    return this.layerDiagnosticsFeature
   }
 
   public prependEventMatchResolver(resolver: EventMatchResolver<TEvent>): () => void {
@@ -542,5 +580,17 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
     resource.dispose()
     this.resources.delete(key)
+  }
+}
+
+export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> extends BaseKeymap<
+  TTarget,
+  TEvent
+> {
+  constructor(host: KeymapHost<TTarget, TEvent>) {
+    super(host, {
+      graph: createGraphFeature,
+      diagnostics: createLayerDiagnosticsFeature,
+    })
   }
 }

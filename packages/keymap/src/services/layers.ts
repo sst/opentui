@@ -11,11 +11,7 @@ import type {
   EventData,
   KeymapEvent,
   KeymapHost,
-  KeySequencePart,
   Layer,
-  LayerAnalyzer,
-  LayerAnalysisContext,
-  LayerBindingAnalysis,
   ResolvedKeyToken,
   CommandState,
   RegisteredLayer,
@@ -27,9 +23,8 @@ import type {
 import { RESERVED_LAYER_FIELDS } from "../schema.js"
 import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
-import { snapshotBindings, snapshotParsedBinding, validateBindings } from "./primitives/bindings.js"
+import { snapshotBindings, validateBindings } from "./primitives/bindings.js"
 import { createFieldCompilerContext } from "./primitives/field-invariants.js"
-import { cloneKeySequence } from "./keys.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
 
 const NOOP = (): void => {}
@@ -99,10 +94,11 @@ interface LayersOptions<TTarget extends object, TEvent extends KeymapEvent> {
   compiler: CompilerService<TTarget, TEvent>
   commands: CommandCatalogService<TTarget, TEvent>
   host: KeymapHost<TTarget, TEvent>
+  diagnostics?: LayerDiagnostics<TTarget, TEvent>
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
 }
 
-interface AnalyzeLayerOptions<TTarget extends object, TEvent extends KeymapEvent> {
+export interface AnalyzeLayerOptions<TTarget extends object, TEvent extends KeymapEvent> {
   target?: TTarget
   order: number
   commandLookup?: ReadonlyMap<string, CommandState<TTarget, TEvent>>
@@ -112,46 +108,8 @@ interface AnalyzeLayerOptions<TTarget extends object, TEvent extends KeymapEvent
   hasTokenBindings: boolean
 }
 
-function getSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
-  root: SequenceNode<TTarget, TEvent>,
-  sequence: readonly KeySequencePart[],
-): SequenceNode<TTarget, TEvent> | undefined {
-  let node: SequenceNode<TTarget, TEvent> | undefined = root
-
-  for (const part of sequence) {
-    node = part.patternName
-      ? node.patternChildren.find((candidate) => candidate.pattern?.name === part.patternName)
-      : node.children.get(part.match)
-    if (!node) {
-      return undefined
-    }
-  }
-
-  return node
-}
-
-function buildLayerBindingAnalyses<TTarget extends object, TEvent extends KeymapEvent>(
-  root: SequenceNode<TTarget, TEvent>,
-  bindingStates: readonly BindingState<TTarget, TEvent>[],
-): LayerBindingAnalysis<TTarget, TEvent>[] {
-  return bindingStates.map((binding) => {
-    const node = binding.event === "press" ? getSequenceNode(root, binding.sequence) : undefined
-
-    return {
-      sequence: cloneKeySequence(binding.sequence),
-      command: binding.command,
-      attrs: binding.attrs,
-      event: binding.event,
-      preventDefault: binding.preventDefault,
-      fallthrough: binding.fallthrough,
-      parsedBinding: snapshotParsedBinding(binding.parsedBinding),
-      sourceTarget: binding.sourceTarget,
-      sourceLayerOrder: binding.sourceLayerOrder,
-      bindingIndex: binding.bindingIndex,
-      hasCommandAtSequence: node ? node.bindings.some((candidate) => candidate.command !== undefined) : false,
-      hasContinuations: node ? node.children.size > 0 || node.patternChildren.length > 0 : false,
-    }
-  })
+export interface LayerDiagnostics<TTarget extends object, TEvent extends KeymapEvent> {
+  analyzeLayer(options: AnalyzeLayerOptions<TTarget, TEvent>): void
 }
 
 export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
@@ -212,7 +170,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         return NOOP
       }
 
-      this.runLayerAnalyzers({
+      this.options.diagnostics?.analyzeLayer({
         target,
         order,
         commandLookup,
@@ -345,18 +303,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     })
   }
 
-  public prependLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
-    return this.state.layers.layerAnalyzers.prepend(analyzer)
-  }
-
-  public appendLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
-    return this.state.layers.layerAnalyzers.append(analyzer)
-  }
-
-  public clearLayerAnalyzers(): void {
-    this.state.layers.layerAnalyzers.clear()
-  }
-
   public cleanup(): void {
     for (const layer of this.state.layers.layers) {
       this.disconnectRuntimeMatchable(layer)
@@ -451,43 +397,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     return transformedCommands
   }
 
-  private runLayerAnalyzers(options: AnalyzeLayerOptions<TTarget, TEvent>): void {
-    const analyzers = this.state.layers.layerAnalyzers.values()
-    if (analyzers.length === 0) {
-      return
-    }
-
-    const bindings = buildLayerBindingAnalyses(options.root, options.bindingStates)
-
-    const ctx: LayerAnalysisContext<TTarget, TEvent> = {
-      target: options.target,
-      order: options.order,
-      sourceBindings: options.sourceBindings,
-      bindings,
-      hasTokenBindings: options.hasTokenBindings,
-      checkCommandResolution: (command) => {
-        return this.options.commands.getCommandResolutionStatus(command, options.commandLookup)
-      },
-      warn: (code, warning, message) => {
-        this.notify.emitWarning(code, warning, message)
-      },
-      warnOnce: (key, code, warning, message) => {
-        this.notify.warnOnce(key, code, warning, message)
-      },
-      error: (code, error, message) => {
-        this.notify.emitError(code, error, message)
-      },
-    }
-
-    for (const analyzer of analyzers) {
-      try {
-        analyzer(ctx)
-      } catch (error) {
-        this.notify.emitError("layer-analyzer-error", error, "[Keymap] Error in layer analyzer:")
-      }
-    }
-  }
-
   private compileLayerRuntimeState(layer: Layer<TTarget, TEvent>): CompileLayerRuntimeStateResult {
     const mergedRequires: EventData = {}
     const matchers: RuntimeMatcher[] = []
@@ -559,7 +468,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     layer: RegisteredLayer<TTarget, TEvent>,
     compilation: BindingCompilationResult<TTarget, TEvent>,
   ): boolean {
-    this.runLayerAnalyzers({
+    this.options.diagnostics?.analyzeLayer({
       target: layer.target,
       order: layer.order,
       commandLookup: layer.commandLookup,

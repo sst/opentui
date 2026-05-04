@@ -69,7 +69,10 @@ const externalDeps: string[] = [
 
 const keymapEntrypoints = [
   join(rootDir, packageJson.module),
+  join(rootDir, "src/base.ts"),
   join(rootDir, "src/extras/index.ts"),
+  join(rootDir, "src/features/graph.ts"),
+  join(rootDir, "src/features/diagnostics.ts"),
   join(rootDir, "src/addons/index.ts"),
   join(rootDir, "src/addons/opentui/index.ts"),
   join(rootDir, "src/testing/index.ts"),
@@ -150,10 +153,25 @@ const exports = {
     import: "./src/index.js",
     require: "./src/index.js",
   },
+  "./base": {
+    types: "./src/base.d.ts",
+    import: "./src/base.js",
+    require: "./src/base.js",
+  },
   "./extras": {
     types: "./src/extras/index.d.ts",
     import: "./src/extras/index.js",
     require: "./src/extras/index.js",
+  },
+  "./features/graph": {
+    types: "./src/features/graph.d.ts",
+    import: "./src/features/graph.js",
+    require: "./src/features/graph.js",
+  },
+  "./features/diagnostics": {
+    types: "./src/features/diagnostics.d.ts",
+    import: "./src/features/diagnostics.js",
+    require: "./src/features/diagnostics.js",
   },
   "./addons": {
     types: "./src/addons/index.d.ts",

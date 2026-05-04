@@ -1,10 +1,7 @@
-export { BaseKeymap, Keymap } from "./keymap.js"
+export { BaseKeymap } from "./keymap.js"
 export { stringifyKeySequence, stringifyKeyStroke } from "./services/keys.js"
-export { createGraphFeature } from "./features/graph.js"
-export { createLayerDiagnosticsFeature } from "./features/diagnostics.js"
-export type { GraphFeature, GraphFeatureContext } from "./features/graph.js"
-export type { LayerDiagnosticsFeature, LayerDiagnosticsFeatureContext } from "./features/diagnostics.js"
 export type { KeymapFeatureOptions } from "./keymap.js"
+
 export type {
   KeyLike,
   KeyMatch,

@@ -17,6 +17,7 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 - **Raw and key intercepts** before and after normal binding dispatch, including pre-binding `consume({ preventDefault, stopPropagation })`, post-dispatch handled/no-match outcomes, and raw input `stop()` handling.
 - **Command catalog and dispatch** with named commands, inline command handlers, command chains, namespaces, search, visibility tiers (`registered` / `reachable` / `active`), binding queries, `runCommand`, and focus-aware `dispatchCommand`.
 - **Graph snapshots and diagnostics** for layers, commands, bindings, sequence nodes, pending paths, inactive reasons, shadowing, stable warning/error codes, and lint-style layer analyzers.
+- **Feature-pack structure** with `BaseKeymap` able to omit graph snapshots and layer-analyzer diagnostics.
 - **Broad key coverage** in the default parser, including function keys, navigation/editing keys, numpad keys, media keys, left/right modifiers, `super`, `hyper`, and literal `+` bindings.
 - **Platform-aware modifier aliases** via `registerModBindings`, resolving `mod+...` from host metadata while preserving display strings.
 
@@ -38,8 +39,11 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 ## Entry Points
 
 - `@opentui/keymap` — core API
+- `@opentui/keymap/base` — `BaseKeymap` without graph snapshot or layer-analyzer implementations
 - `@opentui/keymap/addons` — universal addons
 - `@opentui/keymap/addons/opentui` — universal + OpenTUI addons
+- `@opentui/keymap/features/graph` — graph snapshot feature pack for `BaseKeymap`
+- `@opentui/keymap/features/diagnostics` — layer-analyzer diagnostics feature pack for `BaseKeymap`
 - `@opentui/keymap/testing` — host-agnostic fake keymap host and diagnostics for addon tests
 - `@opentui/keymap/html` — core + HTML adapter
 - `@opentui/keymap/opentui` — core + OpenTUI adapter
@@ -65,6 +69,8 @@ createRoot(renderer).render(
 ```
 
 Create a keymap, install the addons you want, then pass the configured instance to your app. The React and Solid entrypoints consume a pre-created OpenTUI keymap through context.
+
+`Keymap` installs graph snapshots and layer-analyzer diagnostics by default. Use `BaseKeymap` when you need the core runtime without those feature implementations.
 
 ## Adapters
 
