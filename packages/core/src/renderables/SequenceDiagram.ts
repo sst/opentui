@@ -33,26 +33,9 @@ export interface SequenceDiagram {
 
 export interface SequenceDiagramRenderOptions {
   minParticipantGap?: number
-  noteStyle?: SequenceNoteStyle
 }
 
-export interface SequenceDiagramAnsiTheme {
-  participant?: string
-  lifeline?: string
-  requestFade1?: string
-  requestFade2?: string
-  requestFade3?: string
-  requestFade4?: string
-  requestFade5?: string
-  request?: string
-  responseFade1?: string
-  responseFade2?: string
-  responseFade3?: string
-  responseFade4?: string
-  responseFade5?: string
-  response?: string
-  note?: string
-}
+export type SequenceDiagramAnsiTheme = Partial<Record<AnsiSequenceCellStyle, string>>
 
 export interface SequenceDiagramAnsiOptions extends SequenceDiagramRenderOptions {
   theme?: SequenceDiagramAnsiTheme
@@ -61,7 +44,6 @@ export interface SequenceDiagramAnsiOptions extends SequenceDiagramRenderOptions
 export interface SequenceDiagramOptions extends TextBufferOptions {
   content?: string
   minParticipantGap?: number
-  noteStyle?: SequenceNoteStyle
   participantColor?: ColorInput
   lifelineColor?: ColorInput
   requestColor?: ColorInput
@@ -70,25 +52,12 @@ export interface SequenceDiagramOptions extends TextBufferOptions {
   noteBackgroundColor?: ColorInput
 }
 
-type SequenceCellStyle =
-  | "participant"
-  | "lifeline"
-  | "requestFade1"
-  | "requestFade2"
-  | "requestFade3"
-  | "requestFade4"
-  | "requestFade5"
-  | "request"
-  | "responseFade1"
-  | "responseFade2"
-  | "responseFade3"
-  | "responseFade4"
-  | "responseFade5"
-  | "response"
-  | "note"
-  | "noteBadge"
-
-export type SequenceNoteStyle = "badge" | "plain" | "rule"
+type MessageStyle = "request" | "response"
+type FadeStep = 1 | 2 | 3 | 4 | 5
+type FadeStyle = `${MessageStyle}Fade${FadeStep}`
+type AnsiSequenceCellStyle = "participant" | "lifeline" | MessageStyle | FadeStyle | "note"
+type SequenceCellStyle = AnsiSequenceCellStyle | "noteBadge"
+type Rgb = readonly [number, number, number]
 
 interface SequenceCell {
   char: string
@@ -99,48 +68,59 @@ interface SequenceGrid {
   rows: SequenceCell[][]
 }
 
-interface SequenceStyleColors {
-  participant?: RGBA
-  lifeline?: RGBA
-  requestFade1?: RGBA
-  requestFade2?: RGBA
-  requestFade3?: RGBA
-  requestFade4?: RGBA
-  requestFade5?: RGBA
-  request?: RGBA
-  responseFade1?: RGBA
-  responseFade2?: RGBA
-  responseFade3?: RGBA
-  responseFade4?: RGBA
-  responseFade5?: RGBA
-  response?: RGBA
-  note?: RGBA
+type SequenceStyleColors = Partial<Record<AnsiSequenceCellStyle, RGBA>> & {
   noteBg?: RGBA
 }
 
 const DEFAULT_MIN_PARTICIPANT_GAP = 18
-const DEFAULT_NOTE_STYLE: SequenceNoteStyle = "badge"
 const NOTE_HORIZONTAL_PADDING = 1
-const DEFAULT_ANSI_THEME: Required<SequenceDiagramAnsiTheme> = {
-  participant: "\x1b[38;2;228;239;232m",
-  lifeline: "\x1b[38;2;111;138;126m",
-  requestFade1: "\x1b[38;2;115;153;138m",
-  requestFade2: "\x1b[38;2;119;167;151m",
-  requestFade3: "\x1b[38;2;123;182;163m",
-  requestFade4: "\x1b[38;2;126;196;175m",
-  requestFade5: "\x1b[38;2;130;211;188m",
-  request: "\x1b[38;2;134;225;200m",
-  responseFade1: "\x1b[38;2;131;145;126m",
-  responseFade2: "\x1b[38;2;151;151;126m",
-  responseFade3: "\x1b[38;2;171;158;126m",
-  responseFade4: "\x1b[38;2;190;164;126m",
-  responseFade5: "\x1b[38;2;210;171;126m",
-  response: "\x1b[38;2;230;177;126m",
-  note: "\x1b[38;2;215;229;221m\x1b[48;2;36;56;47m",
+const FADE_STEPS = [1, 2, 3, 4, 5] as const satisfies readonly FadeStep[]
+const DEFAULT_THEME_RGB = {
+  participant: [228, 239, 232],
+  lifeline: [111, 138, 126],
+  request: [134, 225, 200],
+  response: [230, 177, 126],
+  noteFg: [215, 229, 221],
+  noteBg: [36, 56, 47],
+} as const
+const DEFAULT_ANSI_THEME: Required<Record<AnsiSequenceCellStyle, string>> = {
+  participant: ansiFg(DEFAULT_THEME_RGB.participant),
+  lifeline: ansiFg(DEFAULT_THEME_RGB.lifeline),
+  request: ansiFg(DEFAULT_THEME_RGB.request),
+  response: ansiFg(DEFAULT_THEME_RGB.response),
+  note: `${ansiFg(DEFAULT_THEME_RGB.noteFg)}${ansiBg(DEFAULT_THEME_RGB.noteBg)}`,
+  ...createAnsiFadeTheme("request", DEFAULT_THEME_RGB.lifeline, DEFAULT_THEME_RGB.request),
+  ...createAnsiFadeTheme("response", DEFAULT_THEME_RGB.lifeline, DEFAULT_THEME_RGB.response),
 }
 const MESSAGE_RE = /^(.+?)\s*(-->>|->>|-->|->)\s*(.+?)\s*:\s*(.*)$/
 const NOTE_RE = /^note\s+over\s+(.+?)\s*:\s*(.*)$/i
 const PARTICIPANT_RE = /^(?:participant|actor)\s+(\S+)(?:\s+as\s+(.+))?$/i
+
+function mixChannel(left: number, right: number, amount: number): number {
+  return Math.round(left + (right - left) * amount)
+}
+
+function mixRgb(left: Rgb, right: Rgb, amount: number): Rgb {
+  return [
+    mixChannel(left[0], right[0], amount),
+    mixChannel(left[1], right[1], amount),
+    mixChannel(left[2], right[2], amount),
+  ]
+}
+
+function ansiFg(rgb: Rgb): string {
+  return `\x1b[38;2;${rgb[0]};${rgb[1]};${rgb[2]}m`
+}
+
+function ansiBg(rgb: Rgb): string {
+  return `\x1b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m`
+}
+
+function createAnsiFadeTheme(style: MessageStyle, from: Rgb, to: Rgb): Record<FadeStyle, string> {
+  return Object.fromEntries(
+    FADE_STEPS.map((step) => [`${style}Fade${step}`, ansiFg(mixRgb(from, to, step / (FADE_STEPS.length + 1)))]),
+  ) as Record<FadeStyle, string>
+}
 
 function visualLength(value: string): number {
   return stringWidth(value)
@@ -340,40 +320,11 @@ function styleAnsi(
   return style ? theme[style] : undefined
 }
 
-function renderGridAnsi(grid: SequenceGrid, theme: SequenceDiagramAnsiTheme = {}): string {
-  const resolvedTheme = { ...DEFAULT_ANSI_THEME, ...theme }
-  let output = ""
-
-  for (let rowIndex = 0; rowIndex < grid.rows.length; rowIndex++) {
-    const row = grid.rows[rowIndex]!
-    let rowEnd = row.length
-    while (rowEnd > 0 && row[rowEnd - 1]?.char === " ") {
-      rowEnd -= 1
-    }
-
-    let activeAnsi: string | undefined
-
-    for (let x = 0; x < rowEnd; x++) {
-      const cell = row[x]!
-      const nextAnsi = styleAnsi(cell.style, resolvedTheme)
-      if (nextAnsi !== activeAnsi) {
-        if (activeAnsi) output += ANSI.reset
-        if (nextAnsi) output += nextAnsi
-        activeAnsi = nextAnsi
-      }
-      output += cell.char
-    }
-
-    if (activeAnsi) output += ANSI.reset
-    if (rowIndex < grid.rows.length - 1) output += "\n"
-  }
-
-  return output
-}
-
-function renderGridStyledText(grid: SequenceGrid, colors: SequenceStyleColors): StyledText {
-  const chunks: TextChunk[] = []
-
+function forEachGridRun(
+  grid: SequenceGrid,
+  onRun: (text: string, style: SequenceCellStyle | undefined) => void,
+  onLineEnd: () => void,
+): void {
   for (let rowIndex = 0; rowIndex < grid.rows.length; rowIndex++) {
     const row = grid.rows[rowIndex]!
     let rowEnd = row.length
@@ -383,32 +334,61 @@ function renderGridStyledText(grid: SequenceGrid, colors: SequenceStyleColors): 
 
     let currentStyle: SequenceCellStyle | undefined
     let currentText = ""
-    const pushCurrent = () => {
+    const flush = () => {
       if (!currentText) return
-      chunks.push({
-        __isChunk: true,
-        text: currentText,
-        fg: styleColor(currentStyle, colors),
-        bg: styleBackgroundColor(currentStyle, colors),
-      })
+      onRun(currentText, currentStyle)
       currentText = ""
     }
 
     for (let x = 0; x < rowEnd; x++) {
       const cell = row[x]!
       if (cell.style !== currentStyle) {
-        pushCurrent()
+        flush()
         currentStyle = cell.style
       }
       currentText += cell.char
     }
 
-    pushCurrent()
-
-    if (rowIndex < grid.rows.length - 1) {
-      chunks.push({ __isChunk: true, text: "\n" })
-    }
+    flush()
+    if (rowIndex < grid.rows.length - 1) onLineEnd()
   }
+}
+
+function renderGridAnsi(grid: SequenceGrid, theme: SequenceDiagramAnsiTheme = {}): string {
+  const resolvedTheme = { ...DEFAULT_ANSI_THEME, ...theme }
+  let output = ""
+
+  forEachGridRun(
+    grid,
+    (text, style) => {
+      const ansi = styleAnsi(style, resolvedTheme)
+      output += ansi ? `${ansi}${text}${ANSI.reset}` : text
+    },
+    () => {
+      output += "\n"
+    },
+  )
+
+  return output
+}
+
+function renderGridStyledText(grid: SequenceGrid, colors: SequenceStyleColors): StyledText {
+  const chunks: TextChunk[] = []
+
+  forEachGridRun(
+    grid,
+    (text, style) => {
+      chunks.push({
+        __isChunk: true,
+        text,
+        fg: styleColor(style, colors),
+        bg: styleBackgroundColor(style, colors),
+      })
+    },
+    () => {
+      chunks.push({ __isChunk: true, text: "\n" })
+    },
+  )
 
   return new StyledText(chunks)
 }
@@ -436,7 +416,21 @@ function getStepHeight(step: SequenceStep): number {
   return messageLabelLines(step.message.label).length + 2
 }
 
-function resolveParticipantCenters(diagram: SequenceDiagram, minParticipantGap: number): number[] {
+function createParticipantIndexMap(diagram: SequenceDiagram): Map<string, number> {
+  return new Map(diagram.participants.map((participant, index) => [participant.id, index]))
+}
+
+function getParticipantIndexes(participantIndexes: Map<string, number>, participantIds: string[]): number[] {
+  return participantIds
+    .map((participantId) => participantIndexes.get(participantId) ?? -1)
+    .filter((index) => index >= 0)
+}
+
+function resolveParticipantCenters(
+  diagram: SequenceDiagram,
+  participantIndexes: Map<string, number>,
+  minParticipantGap: number,
+): number[] {
   const gaps = Array.from({ length: Math.max(0, diagram.participants.length - 1) }, (_, index) => {
     const left = diagram.participants[index]!
     const right = diagram.participants[index + 1]!
@@ -447,8 +441,8 @@ function resolveParticipantCenters(diagram: SequenceDiagram, minParticipantGap: 
   })
 
   for (const message of diagram.messages) {
-    const fromIndex = diagram.participants.findIndex((participant) => participant.id === message.from)
-    const toIndex = diagram.participants.findIndex((participant) => participant.id === message.to)
+    const fromIndex = participantIndexes.get(message.from) ?? -1
+    const toIndex = participantIndexes.get(message.to) ?? -1
     if (fromIndex < 0 || toIndex < 0 || Math.abs(fromIndex - toIndex) !== 1) continue
 
     const gapIndex = Math.min(fromIndex, toIndex)
@@ -458,9 +452,7 @@ function resolveParticipantCenters(diagram: SequenceDiagram, minParticipantGap: 
   for (const step of diagram.steps) {
     if (step.type !== "note") continue
 
-    const indexes = step.note.over
-      .map((participant) => getParticipantIndex(diagram, participant))
-      .filter((index) => index >= 0)
+    const indexes = getParticipantIndexes(participantIndexes, step.note.over)
     if (indexes.length !== 2 || Math.abs(indexes[0]! - indexes[1]!) !== 1) continue
 
     const gapIndex = Math.min(indexes[0]!, indexes[1]!)
@@ -478,16 +470,16 @@ function resolveParticipantCenters(diagram: SequenceDiagram, minParticipantGap: 
   return centers
 }
 
-function getParticipantIndex(diagram: SequenceDiagram, participantId: string): number {
-  return diagram.participants.findIndex((participant) => participant.id === participantId)
-}
-
 function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOptions = {}): SequenceGrid {
   const diagram = parseMermaidSequenceDiagram(content)
   if (diagram.participants.length === 0) return createGrid(0, 0)
-  const noteStyle = options.noteStyle ?? DEFAULT_NOTE_STYLE
+  const participantIndexes = createParticipantIndexMap(diagram)
 
-  const centers = resolveParticipantCenters(diagram, options.minParticipantGap ?? DEFAULT_MIN_PARTICIPANT_GAP)
+  const centers = resolveParticipantCenters(
+    diagram,
+    participantIndexes,
+    options.minParticipantGap ?? DEFAULT_MIN_PARTICIPANT_GAP,
+  )
   const lastParticipant = diagram.participants[diagram.participants.length - 1]!
   const width = centers[centers.length - 1]! + Math.ceil(visualLength(lastParticipant.label) / 2) + 1
   const height = Math.max(3, 3 + diagram.steps.reduce((total, step) => total + getStepHeight(step), 0))
@@ -515,9 +507,7 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
 
   for (const step of diagram.steps) {
     if (step.type === "note") {
-      const indexes = step.note.over
-        .map((participant) => getParticipantIndex(diagram, participant))
-        .filter((index) => index >= 0)
+      const indexes = getParticipantIndexes(participantIndexes, step.note.over)
       if (indexes.length === 0) continue
 
       const leftX = centers[Math.min(...indexes)]!
@@ -525,22 +515,7 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
       const centerX = Math.floor((leftX + rightX) / 2)
       const noteText = noteLabelText(step.note.label)
       const labelRow = stepY + 1
-      if (noteStyle === "rule") {
-        for (let x = leftX; x <= rightX; x++) {
-          setCell(grid, x, labelRow, "─", "lifeline")
-        }
-        setCell(grid, leftX, labelRow, "├", "lifeline")
-        setCell(grid, rightX, labelRow, "┤", "lifeline")
-        setText(grid, centeredStart(centerX, noteText), labelRow, noteText, "note")
-      } else {
-        setText(
-          grid,
-          centeredStart(centerX, noteText),
-          labelRow,
-          noteText,
-          noteStyle === "badge" ? "noteBadge" : "note",
-        )
-      }
+      setText(grid, centeredStart(centerX, noteText), labelRow, noteText, "noteBadge")
       stepY += getStepHeight(step)
       continue
     }
@@ -550,8 +525,8 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
     const messageStyle: SequenceCellStyle = message.style === "dashed" ? "response" : "request"
     const labelLines = messageLabelLines(message.label)
     const arrowRow = labelRow + labelLines.length
-    const fromIndex = getParticipantIndex(diagram, message.from)
-    const toIndex = getParticipantIndex(diagram, message.to)
+    const fromIndex = participantIndexes.get(message.from) ?? -1
+    const toIndex = participantIndexes.get(message.to) ?? -1
     if (fromIndex < 0 || toIndex < 0) continue
 
     const fromX = centers[fromIndex]!
@@ -593,7 +568,6 @@ export function renderSequenceDiagramAnsi(content: string, options: SequenceDiag
 export class SequenceDiagramRenderable extends TextBufferRenderable {
   private _content: string
   private _minParticipantGap: number
-  private _noteStyle: SequenceNoteStyle
   private _participantColor?: RGBA
   private _lifelineColor?: RGBA
   private _requestColor?: RGBA
@@ -605,7 +579,6 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     super(ctx, { ...options, wrapMode: options.wrapMode ?? "none" })
     this._content = options.content ?? ""
     this._minParticipantGap = options.minParticipantGap ?? DEFAULT_MIN_PARTICIPANT_GAP
-    this._noteStyle = options.noteStyle ?? DEFAULT_NOTE_STYLE
     this._participantColor = options.participantColor ? parseColor(options.participantColor) : undefined
     this._lifelineColor = options.lifelineColor ? parseColor(options.lifelineColor) : undefined
     this._requestColor = options.requestColor ? parseColor(options.requestColor) : undefined
@@ -635,25 +608,14 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     this.updateDiagram()
   }
 
-  get noteStyle(): SequenceNoteStyle {
-    return this._noteStyle
-  }
-
-  set noteStyle(value: SequenceNoteStyle) {
-    if (this._noteStyle === value) return
-    this._noteStyle = value
-    this.updateDiagram()
-  }
-
   get participantColor(): RGBA | undefined {
     return this._participantColor
   }
 
   set participantColor(value: ColorInput | undefined) {
-    const next = value ? parseColor(value) : undefined
-    if (colorsEqual(this._participantColor, next)) return
-    this._participantColor = next
-    this.updateDiagram()
+    this.setColor(this._participantColor, value, (color) => {
+      this._participantColor = color
+    })
   }
 
   get lifelineColor(): RGBA | undefined {
@@ -661,10 +623,9 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   }
 
   set lifelineColor(value: ColorInput | undefined) {
-    const next = value ? parseColor(value) : undefined
-    if (colorsEqual(this._lifelineColor, next)) return
-    this._lifelineColor = next
-    this.updateDiagram()
+    this.setColor(this._lifelineColor, value, (color) => {
+      this._lifelineColor = color
+    })
   }
 
   get requestColor(): RGBA | undefined {
@@ -672,10 +633,9 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   }
 
   set requestColor(value: ColorInput | undefined) {
-    const next = value ? parseColor(value) : undefined
-    if (colorsEqual(this._requestColor, next)) return
-    this._requestColor = next
-    this.updateDiagram()
+    this.setColor(this._requestColor, value, (color) => {
+      this._requestColor = color
+    })
   }
 
   get responseColor(): RGBA | undefined {
@@ -683,10 +643,9 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   }
 
   set responseColor(value: ColorInput | undefined) {
-    const next = value ? parseColor(value) : undefined
-    if (colorsEqual(this._responseColor, next)) return
-    this._responseColor = next
-    this.updateDiagram()
+    this.setColor(this._responseColor, value, (color) => {
+      this._responseColor = color
+    })
   }
 
   get noteColor(): RGBA | undefined {
@@ -694,10 +653,9 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   }
 
   set noteColor(value: ColorInput | undefined) {
-    const next = value ? parseColor(value) : undefined
-    if (colorsEqual(this._noteColor, next)) return
-    this._noteColor = next
-    this.updateDiagram()
+    this.setColor(this._noteColor, value, (color) => {
+      this._noteColor = color
+    })
   }
 
   get noteBackgroundColor(): RGBA | undefined {
@@ -705,17 +663,24 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   }
 
   set noteBackgroundColor(value: ColorInput | undefined) {
+    this.setColor(this._noteBackgroundColor, value, (color) => {
+      this._noteBackgroundColor = color
+    })
+  }
+
+  private setColor(
+    current: RGBA | undefined,
+    value: ColorInput | undefined,
+    assign: (color: RGBA | undefined) => void,
+  ): void {
     const next = value ? parseColor(value) : undefined
-    if (colorsEqual(this._noteBackgroundColor, next)) return
-    this._noteBackgroundColor = next
+    if (colorsEqual(current, next)) return
+    assign(next)
     this.updateDiagram()
   }
 
   private updateDiagram(): void {
-    const grid = layoutSequenceDiagram(this._content, {
-      minParticipantGap: this._minParticipantGap,
-      noteStyle: this._noteStyle,
-    })
+    const grid = layoutSequenceDiagram(this._content, { minParticipantGap: this._minParticipantGap })
     this.textBuffer.setStyledText(
       renderGridStyledText(
         grid,
