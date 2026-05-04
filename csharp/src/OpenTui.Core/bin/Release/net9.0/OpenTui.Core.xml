@@ -1,0 +1,166 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>OpenTui.Core</name>
+    </assembly>
+    <members>
+        <member name="T:OpenTui.Core.Ansi.AnsiCodes">
+            <summary>ANSI escape sequence constants and TextWriter helpers.</summary>
+        </member>
+        <member name="M:OpenTui.Core.Ansi.AnsiCodes.MoveTo(System.Int32,System.Int32)">
+            <summary>Move cursor to 1-based column, row.</summary>
+        </member>
+        <member name="T:OpenTui.Core.Ansi.ColorIntent">
+            <summary>
+            Records how the terminal should emit the color:
+            literal RGB (38;2;r;g;b), indexed palette (38;5;n), or terminal default (39/49).
+            </summary>
+        </member>
+        <member name="T:OpenTui.Core.Ansi.Rgba">
+             <summary>
+             Packed RGBA color. Each ushort component stores an 8-bit channel value in its
+             low byte and one byte of a 32-bit metadata word in its high byte.
+            
+             This layout mirrors the Zig/TypeScript implementation exactly so that color +
+             intent live in a single 64-bit value and can be compared with integer equality.
+            
+             Use the static factory methods (FromValues, FromInts, FromIndex, FromHex, …) to
+             build values and the accessors (RedByte, GreenByte, …, Intent, Slot) to read them.
+             </summary>
+        </member>
+        <member name="M:OpenTui.Core.Ansi.Rgba.FromValues(System.Single,System.Single,System.Single,System.Single)">
+            <summary>Create an RGB color from float channels in [0, 1].</summary>
+        </member>
+        <member name="M:OpenTui.Core.Ansi.Rgba.FromInts(System.Int32,System.Int32,System.Int32,System.Int32)">
+            <summary>Create an RGB color from byte channels in [0, 255].</summary>
+        </member>
+        <member name="M:OpenTui.Core.Ansi.Rgba.FromIndex(System.Int32,System.Nullable{OpenTui.Core.Ansi.Rgba})">
+            <summary>Create an ANSI 256-indexed color. Emits 38;5;index sequences.</summary>
+        </member>
+        <member name="M:OpenTui.Core.Ansi.Rgba.DefaultForeground(System.Nullable{OpenTui.Core.Ansi.Rgba})">
+            <summary>Create a terminal-default foreground. Emits SGR 39.</summary>
+        </member>
+        <member name="M:OpenTui.Core.Ansi.Rgba.DefaultBackground(System.Nullable{OpenTui.Core.Ansi.Rgba})">
+            <summary>Create a terminal-default background. Emits SGR 49.</summary>
+        </member>
+        <member name="M:OpenTui.Core.Ansi.Rgba.FromHex(System.String)">
+            <summary>Parse a hex color string (#RGB, #RRGGBB, #RRGGBBAA).</summary>
+        </member>
+        <member name="M:OpenTui.Core.Ansi.Rgba.FromCss(System.String)">
+            <summary>Parse a CSS color name or hex string.</summary>
+        </member>
+        <member name="M:OpenTui.Core.Ansi.Rgba.BlendOver(OpenTui.Core.Ansi.Rgba)">
+            <summary>Source-over alpha compositing: blend this color over dst.</summary>
+        </member>
+        <member name="T:OpenTui.Core.Ansi.TextAttributes">
+            <summary>Bit flags for standard ANSI text attributes.</summary>
+        </member>
+        <member name="T:OpenTui.Core.Buffer.Cell">
+            <summary>A single terminal cell: codepoint + foreground/background colors + attributes.</summary>
+        </member>
+        <member name="T:OpenTui.Core.Buffer.CellBuffer">
+             <summary>
+             A 2D grid of terminal cells. Pure C# port of the Zig <c>OptimizedBuffer</c>.
+            
+             Supports drawing text (ASCII + Unicode graphemes), box borders, alpha blending,
+             frame-buffer blitting and resize — enough to drive a full TUI layout.
+             </summary>
+        </member>
+        <member name="M:OpenTui.Core.Buffer.CellBuffer.DrawFrameBuffer(System.Int32,System.Int32,OpenTui.Core.Buffer.CellBuffer,System.Int32,System.Int32,System.Nullable{System.Int32},System.Nullable{System.Int32})">
+            <summary>
+            Blit <paramref name="src"/> onto this buffer at the given destination position.
+            If <see cref="P:OpenTui.Core.Buffer.CellBuffer.RespectAlpha"/> is set, semi-transparent source cells are blended.
+            </summary>
+        </member>
+        <member name="M:OpenTui.Core.Buffer.CellBuffer.EncodeUnicode(System.String)">
+            <summary>
+            Decompose <paramref name="text"/> into (displayWidth, codepoint) pairs,
+            mirroring the Zig <c>encodeUnicode</c> / <c>GraphemePool</c> API.
+            </summary>
+        </member>
+        <member name="M:OpenTui.Core.Buffer.CellBuffer.GetRealCharBytes(System.Boolean)">
+            <summary>Return UTF-8 bytes for all visible characters in the buffer.</summary>
+        </member>
+        <member name="M:OpenTui.Core.Buffer.CellBuffer.RuneWidth(System.Text.Rune)">
+            <summary>
+            Approximate East Asian / emoji display width (1 or 2 columns).
+            Mirrors the wcwidth / unicode width modes in the Zig implementation.
+            </summary>
+        </member>
+        <member name="T:OpenTui.Core.Events.EventEmitter">
+            <summary>
+            Simple on/off/once/emit event bus. C# equivalent of the Node.js EventEmitter
+            used throughout the TypeScript codebase.
+            </summary>
+        </member>
+        <member name="T:OpenTui.Core.Plugins.PluginRegistry">
+            <summary>Manages plugin registration lifecycle.</summary>
+        </member>
+        <member name="T:OpenTui.Core.Rendering.Renderer">
+            <summary>
+            Diff-based ANSI terminal renderer.
+            Maintains a current and next <see cref="T:OpenTui.Core.Buffer.CellBuffer"/>; <see cref="M:OpenTui.Core.Rendering.Renderer.Render"/> emits
+            only the cells that changed since the last frame.
+            </summary>
+        </member>
+        <member name="M:OpenTui.Core.Rendering.Renderer.GetFrameBuffer">
+            <summary>Returns the writable next-frame buffer for callers to draw into.</summary>
+        </member>
+        <member name="M:OpenTui.Core.Rendering.Renderer.Render">
+            <summary>
+            Render the next frame to the terminal, emitting only diff cells.
+            Call <see cref="M:OpenTui.Core.Rendering.Renderer.GetFrameBuffer"/> to draw into the next frame first.
+            </summary>
+        </member>
+        <member name="T:OpenTui.Core.Syntax.StyleDefinition">
+            <summary>A single named style entry in a <see cref="T:OpenTui.Core.Syntax.SyntaxStyle"/>.</summary>
+        </member>
+        <member name="T:OpenTui.Core.Syntax.SyntaxStyle">
+            <summary>
+            Registry of named syntax styles. C# port of the Zig/TS <c>SyntaxStyle</c>.
+            </summary>
+        </member>
+        <member name="M:OpenTui.Core.Syntax.SyntaxStyle.MergeStyles(OpenTui.Core.Syntax.StyleDefinition,OpenTui.Core.Syntax.StyleDefinition)">
+            <summary>
+            Merge two style definitions: override wins on non-null fields,
+            attributes are OR-ed, priority takes the maximum.
+            </summary>
+        </member>
+        <member name="T:OpenTui.Core.Text.LogicalCursor">
+            <summary>Logical cursor position inside an <see cref="T:OpenTui.Core.Text.EditBuffer"/>.</summary>
+        </member>
+        <member name="T:OpenTui.Core.Text.EditBuffer">
+            <summary>
+            Rope-backed text editor with cursor tracking, undo/redo, insert/delete,
+            line operations, and range queries. C# port of the Zig/TS <c>EditBuffer</c>.
+            </summary>
+        </member>
+        <member name="E:OpenTui.Core.Text.EditBuffer.TextChanged">
+            <summary>Fired after every mutation with the new full text.</summary>
+        </member>
+        <member name="M:OpenTui.Core.Text.RopeNode.Split(System.Int32)">
+            <summary>Split the node at <paramref name="index"/> into (left, right) leaves.</summary>
+        </member>
+        <member name="T:OpenTui.Core.Text.Rope">
+            <summary>
+            Persistent (copy-on-write) rope for efficient text editing.
+            Mutating operations return a new Rope without allocating a full string copy.
+            </summary>
+        </member>
+        <member name="T:OpenTui.Core.Text.StyledChunk">
+            <summary>A single styled run of text.</summary>
+        </member>
+        <member name="T:OpenTui.Core.Text.StyledText">
+            <summary>A sequence of styled text chunks — the C# equivalent of the TS StyledText type.</summary>
+        </member>
+        <member name="T:OpenTui.Core.Text.TextBuffer">
+            <summary>
+            Read-only styled text store — C# port of the TS/Zig <c>TextBuffer</c>.
+            Holds a sequence of <see cref="T:OpenTui.Core.Text.StyledChunk"/>s and exposes plain-text queries.
+            </summary>
+        </member>
+        <member name="P:OpenTui.Core.Text.TextBuffer.Length">
+            <summary>Number of non-newline characters.</summary>
+        </member>
+    </members>
+</doc>

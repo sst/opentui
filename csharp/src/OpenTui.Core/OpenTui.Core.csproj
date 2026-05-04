@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- NuGet metadata -->
+    <PackageId>OpenTui.Core</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>OpenTUI Contributors</Authors>
+    <Description>Terminal UI core library for .NET: cell buffer, ANSI renderer, styled text, edit buffer with undo/redo, plugin architecture.</Description>
+    <PackageTags>terminal;tui;console;ansi;rendering</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/evilz/opentui</RepositoryUrl>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

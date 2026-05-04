@@ -1,92 +1,82 @@
 # OpenTUI
 
 <div align="center">
-    <a href="https://www.npmjs.com/package/@opentui/core"><img alt="npm" src="https://img.shields.io/npm/v/@opentui/core?style=flat-square" /></a>
-    <a href="https://github.com/anomalyco/opentui/actions/workflows/build-core.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opentui/build-core.yml?style=flat-square&branch=main" /></a>
-    <a href="https://github.com/msmps/awesome-opentui"><img alt="awesome opentui list" src="https://awesome.re/badge-flat.svg" /></a>
+    <a href="https://www.nuget.org/packages/OpenTui.Core"><img alt="NuGet" src="https://img.shields.io/nuget/v/OpenTui.Core?style=flat-square" /></a>
+    <a href="https://github.com/evilz/opentui/actions/workflows/build-dotnet.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/evilz/opentui/build-dotnet.yml?style=flat-square&branch=main" /></a>
 </div>
 
-OpenTUI is a native terminal UI core written in Zig with TypeScript bindings. The native core exposes a C ABI and can be used from any language. OpenTUI powers [OpenCode](https://opencode.ai) in production today and will also power [terminal.shop](https://terminal.shop). It is an extensible core with a focus on correctness, stability, and high performance. It provides a component-based architecture with flexible layout capabilities, allowing you to create complex terminal applications.
+OpenTUI is a terminal UI core library for **.NET 9**. It provides a cell-based rendering engine with ANSI escape sequence support, styled text, a rope-backed edit buffer with full undo/redo, a plugin architecture, and sample console applications.
 
-Docs: https://opentui.com/docs/getting-started
+## Requirements
 
-Quick start with [bun](https://bun.sh) and [create-tui](https://github.com/msmps/create-tui):
+- [.NET 9](https://dotnet.microsoft.com/download/dotnet/9.0) or later
 
-```bash
-bun create tui
-```
-
-This monorepo contains the following packages:
-
-- [`@opentui/core`](packages/core) - TypeScript bindings for OpenTUI's native Zig core, with an imperative API and all primitives.
-- [`@opentui/three`](packages/three) - Three.js WebGPU renderer for OpenTUI.
-- [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
-- [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
-- [`@opentui/examples`](packages/examples) - Example browser and standalone examples executable build.
-
-## Install
-
-NOTE: You must have [Zig](https://ziglang.org/learn/getting-started/) installed on your system to build the packages.
-
-### TypeScript/JavaScript
+## Quick Start
 
 ```bash
-bun install @opentui/core
+dotnet add package OpenTui.Core
 ```
 
-## AI Agent Skill
+```csharp
+using OpenTui.Core.Ansi;
+using OpenTui.Core.Buffer;
 
-Teach your AI coding assistant OpenTUI's APIs and patterns.
+using var buf = CellBuffer.Create(60, 20);
+var bg     = Rgba.FromInts(0,   0,   0);
+var fg     = Rgba.FromInts(255, 255, 255);
+var accent = Rgba.FromInts(0,   200, 255);
 
-**Universal skill install with [`npx skills`](https://skills.sh):**
+buf.Clear(bg);
+buf.DrawBox(0, 0, 60, 20, accent, bg, BorderStyle.Rounded, BorderSides.All,
+            fill: true, title: " My App ");
+buf.DrawText("Hello from OpenTUI!", 4, 3, fg, bg);
+```
+
+## Solution Layout
+
+```
+csharp/
+  src/OpenTui.Core/          # Core library (NuGet package)
+    Ansi/                    # Rgba, AnsiCodes, TextAttributes, ColorIntent
+    Buffer/                  # CellBuffer, Cell, BorderStyle
+    Text/                    # TextBuffer, EditBuffer, Rope, StyledText
+    Rendering/               # Renderer (diff-based, alternate screen)
+    Syntax/                  # SyntaxStyle, StyleDefinition
+    Events/                  # EventEmitter
+    Plugins/                 # IPlugin, PluginRegistry
+  tests/OpenTui.Tests/       # xUnit test project (115 tests)
+  samples/OpenTui.Samples/   # Sample console applications
+```
+
+## Build & Test
 
 ```bash
-npx skills add anomalyco/opentui --skill opentui
+cd csharp
+dotnet restore
+dotnet build
+dotnet test
 ```
 
-Install globally for every project:
+## Run Samples
 
 ```bash
-npx skills add anomalyco/opentui --skill opentui -g
+cd csharp
+dotnet run --project samples/OpenTui.Samples -- layout   # simple box layout
+dotnet run --project samples/OpenTui.Samples -- styled   # text attributes
+dotnet run --project samples/OpenTui.Samples -- editor   # edit buffer demo
+dotnet run --project samples/OpenTui.Samples -- scroll   # scrolling content
+dotnet run --project samples/OpenTui.Samples -- input    # keyboard input
 ```
 
-OpenCode uses the same install command. No separate installer is needed.
+## Key Types
 
-## Try Examples
-
-You can quickly try out OpenTUI examples without cloning the repository:
-
-**For macOS, Linux, WSL, Git Bash:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/examples/install.sh | sh
-```
-
-**For Windows (PowerShell/CMD):**
-
-Download the latest release directly from [GitHub Releases](https://github.com/anomalyco/opentui/releases/latest)
-
-## Running Examples (from the repo root)
-
-### TypeScript Examples
-
-```bash
-bun install
-cd packages/examples
-bun run dev
-```
-
-## Development
-
-See the [Development Guide](packages/core/docs/development.md) for building, testing, debugging, and local development linking.
-
-### Documentation
-
-- [Website docs](https://opentui.com/docs/getting-started) - Guides and API references
-- [Development Guide](packages/core/docs/development.md) - Building, testing, and local dev linking
-- [Getting Started](packages/core/docs/getting-started.md) - API and usage guide
-- [Environment Variables](packages/core/docs/env-vars.md) - Configuration options
-
-## Showcase
-
-Consider showcasing your work on the [awesome-opentui](https://github.com/msmps/awesome-opentui) list. A curated list of awesome resources and terminal user interfaces built with OpenTUI.
+| Type | Description |
+|---|---|
+| `Rgba` | Packed color: RGB, ANSI-256 indexed, or terminal-default intent |
+| `CellBuffer` | 2D terminal cell grid with text, borders, blitting, alpha blend |
+| `TextBuffer` | Styled text storage (read-only display) |
+| `EditBuffer` | Rope-backed editor: cursor, insert/delete, undo/redo |
+| `Renderer` | Diff-based ANSI terminal renderer with alternate-screen support |
+| `SyntaxStyle` | Named style definitions with priority-aware merging |
+| `EventEmitter` | Simple on/off/once/emit event bus |
+| `PluginRegistry` | `IPlugin` registration and lifecycle |
