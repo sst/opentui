@@ -131,7 +131,7 @@ test "OptimizedBuffer - drawTextBuffer skips wide char that overflows row" {
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     buf.set(3, 0, .{
         .char = '-',
@@ -140,7 +140,7 @@ test "OptimizedBuffer - drawTextBuffer skips wide char that overflows row" {
         .attributes = 0,
     });
 
-    try buf.drawTextBuffer(view, 3, 0);
+    buf.drawTextBuffer(view, 3, 0);
 
     const edge_cell = buf.get(3, 0).?;
     try std.testing.expectEqual(@as(u32, '-'), edge_cell.char);
@@ -163,7 +163,7 @@ test "OptimizedBuffer - drawBox omits clipped right-aligned wide bottom title" {
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     try buf.drawBox(
         8,
