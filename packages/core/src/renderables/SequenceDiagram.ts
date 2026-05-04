@@ -1,5 +1,5 @@
 import { ANSI } from "../ansi.js"
-import { BorderChars } from "../lib/border.js"
+import { BorderChars, type BorderStyle } from "../lib/border.js"
 import { StyledText } from "../lib/styled-text.js"
 import { isCssColorName, parseColor, RGBA, type ColorInput } from "../lib/RGBA.js"
 import { stringWidth } from "../platform/runtime.js"
@@ -60,6 +60,7 @@ export interface SequenceDiagram {
 
 export interface SequenceDiagramRenderOptions {
   minParticipantGap?: number
+  fragmentBorderStyle?: BorderStyle
 }
 
 export type SequenceDiagramAnsiTheme = Partial<Record<AnsiSequenceCellStyle, string>>
@@ -71,6 +72,7 @@ export interface SequenceDiagramAnsiOptions extends SequenceDiagramRenderOptions
 export interface SequenceDiagramOptions extends TextBufferOptions {
   content?: string
   minParticipantGap?: number
+  fragmentBorderStyle?: BorderStyle
   participantColor?: ColorInput
   lifelineColor?: ColorInput
   groupColor?: ColorInput
@@ -104,6 +106,11 @@ interface SequenceGrid {
   rows: SequenceCell[][]
 }
 
+interface SequenceLayoutOptions {
+  minParticipantGap: number
+  fragmentBorderStyle: BorderStyle
+}
+
 type SequenceStyleColors = Partial<Record<AnsiSequenceCellStyle, RGBA>> & {
   noteBg?: RGBA
   fragmentLabelBg?: RGBA
@@ -114,6 +121,7 @@ const NOTE_HORIZONTAL_PADDING = 1
 const GROUP_HORIZONTAL_PADDING = 2
 const FRAGMENT_HORIZONTAL_OVERHANG = 3
 const SEQUENCE_BORDER = BorderChars.rounded
+const DEFAULT_FRAGMENT_BORDER_STYLE = "rounded" satisfies BorderStyle
 const FADE_STEPS = [1, 2, 3, 4, 5] as const satisfies readonly FadeStep[]
 const DEFAULT_THEME_RGB = {
   participant: [228, 239, 232],
@@ -881,12 +889,19 @@ function renderParticipantGroups(grid: SequenceGrid, groupBounds: SequenceGroupB
   }
 }
 
-function drawFragmentWalls(grid: SequenceGrid, bounds: SequenceHorizontalBounds, startY: number, endY: number): void {
+function drawFragmentWalls(
+  grid: SequenceGrid,
+  bounds: SequenceHorizontalBounds,
+  startY: number,
+  endY: number,
+  borderStyle: BorderStyle,
+): void {
   if (endY < startY) return
+  const border = BorderChars[borderStyle]
 
   for (let y = startY; y <= endY; y++) {
-    setCell(grid, bounds.leftX, y, SEQUENCE_BORDER.vertical, "fragment")
-    setCell(grid, bounds.rightX, y, SEQUENCE_BORDER.vertical, "fragment")
+    setCell(grid, bounds.leftX, y, border.vertical, "fragment")
+    setCell(grid, bounds.rightX, y, border.vertical, "fragment")
   }
 }
 
@@ -895,28 +910,30 @@ function renderFragment(
   centers: number[],
   fragment: SequenceFragment,
   y: number,
+  borderStyle: BorderStyle,
   frameBounds?: SequenceHorizontalBounds,
 ): SequenceHorizontalBounds | undefined {
   const bounds = frameBounds ?? getFragmentFrameBounds(centers, fragment)
   if (!bounds) return
+  const border = BorderChars[borderStyle]
   const { leftX, rightX } = bounds
   const label = fragmentLabelText(fragment)
 
   const leftChar =
     fragment.kind === "alt" || fragment.kind === "loop"
-      ? SEQUENCE_BORDER.topLeft
+      ? border.topLeft
       : fragment.kind === "else"
-        ? SEQUENCE_BORDER.leftT
-        : SEQUENCE_BORDER.bottomLeft
+        ? border.leftT
+        : border.bottomLeft
   const rightChar =
     fragment.kind === "alt" || fragment.kind === "loop"
-      ? SEQUENCE_BORDER.topRight
+      ? border.topRight
       : fragment.kind === "else"
-        ? SEQUENCE_BORDER.rightT
-        : SEQUENCE_BORDER.bottomRight
+        ? border.rightT
+        : border.bottomRight
 
   for (let x = leftX; x <= rightX; x++) {
-    setCell(grid, x, y, SEQUENCE_BORDER.horizontal, "fragment")
+    setCell(grid, x, y, border.horizontal, "fragment")
   }
 
   setCell(grid, leftX, y, leftChar, "fragment")
@@ -1014,6 +1031,7 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   const diagram = parseMermaidSequenceDiagram(content)
   if (diagram.participants.length === 0) return createGrid(0, 0)
   const participantIndexes = createParticipantIndexMap(diagram)
+  const fragmentBorderStyle = options.fragmentBorderStyle ?? DEFAULT_FRAGMENT_BORDER_STYLE
 
   let centers = resolveParticipantCenters(
     diagram,
@@ -1104,26 +1122,26 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
     if (step.type === "fragment") {
       const stepHeight = getStepHeight(step)
       if (step.fragment.kind === "alt" || step.fragment.kind === "loop") {
-        const bounds = renderFragment(grid, centers, step.fragment, stepY)
+        const bounds = renderFragment(grid, centers, step.fragment, stepY, fragmentBorderStyle)
         if (bounds) {
           activeFragmentFrames.push({ bounds, boundaryY: stepY })
         }
       } else if (step.fragment.kind === "else") {
         const activeFrame = activeFragmentFrames[activeFragmentFrames.length - 1]
         if (activeFrame) {
-          drawFragmentWalls(grid, activeFrame.bounds, activeFrame.boundaryY + 1, stepY - 1)
-          renderFragment(grid, centers, step.fragment, stepY, activeFrame.bounds)
+          drawFragmentWalls(grid, activeFrame.bounds, activeFrame.boundaryY + 1, stepY - 1, fragmentBorderStyle)
+          renderFragment(grid, centers, step.fragment, stepY, fragmentBorderStyle, activeFrame.bounds)
           activeFrame.boundaryY = stepY
         } else {
-          renderFragment(grid, centers, step.fragment, stepY)
+          renderFragment(grid, centers, step.fragment, stepY, fragmentBorderStyle)
         }
       } else {
         const activeFrame = activeFragmentFrames.pop()
         if (activeFrame) {
-          drawFragmentWalls(grid, activeFrame.bounds, activeFrame.boundaryY + 1, stepY - 1)
-          renderFragment(grid, centers, step.fragment, stepY, activeFrame.bounds)
+          drawFragmentWalls(grid, activeFrame.bounds, activeFrame.boundaryY + 1, stepY - 1, fragmentBorderStyle)
+          renderFragment(grid, centers, step.fragment, stepY, fragmentBorderStyle, activeFrame.bounds)
         } else {
-          renderFragment(grid, centers, step.fragment, stepY)
+          renderFragment(grid, centers, step.fragment, stepY, fragmentBorderStyle)
         }
       }
       stepY += stepHeight
@@ -1185,6 +1203,7 @@ export function renderSequenceDiagramAnsi(content: string, options: SequenceDiag
 export class SequenceDiagramRenderable extends TextBufferRenderable {
   private _content: string
   private _minParticipantGap: number
+  private _fragmentBorderStyle: BorderStyle
   private _participantColor?: RGBA
   private _lifelineColor?: RGBA
   private _groupColor?: RGBA
@@ -1197,6 +1216,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     super(ctx, { ...options, wrapMode: options.wrapMode ?? "none" })
     this._content = options.content ?? ""
     this._minParticipantGap = options.minParticipantGap ?? DEFAULT_MIN_PARTICIPANT_GAP
+    this._fragmentBorderStyle = options.fragmentBorderStyle ?? DEFAULT_FRAGMENT_BORDER_STYLE
     this._participantColor = options.participantColor ? parseColor(options.participantColor) : undefined
     this._lifelineColor = options.lifelineColor ? parseColor(options.lifelineColor) : undefined
     this._groupColor = options.groupColor ? parseColor(options.groupColor) : undefined
@@ -1224,6 +1244,17 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   set minParticipantGap(value: number) {
     if (this._minParticipantGap === value) return
     this._minParticipantGap = value
+    this.updateDiagram()
+  }
+
+  get fragmentBorderStyle(): BorderStyle {
+    return this._fragmentBorderStyle
+  }
+
+  set fragmentBorderStyle(value: BorderStyle | undefined) {
+    const next = value ?? DEFAULT_FRAGMENT_BORDER_STYLE
+    if (this._fragmentBorderStyle === next) return
+    this._fragmentBorderStyle = next
     this.updateDiagram()
   }
 
@@ -1311,6 +1342,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   private updateDiagram(): void {
     const grid = layoutSequenceDiagram(this._content, {
       minParticipantGap: this._minParticipantGap,
+      fragmentBorderStyle: this._fragmentBorderStyle,
     })
     this.textBuffer.setStyledText(
       renderGridStyledText(

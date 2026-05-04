@@ -224,6 +224,28 @@ sequenceDiagram
     expect(fragmentStart).toBeLessThan(participantCenter)
   })
 
+  test("supports configurable fragment border styles", () => {
+    const output = renderSequenceDiagram(
+      `
+sequenceDiagram
+  participant A
+  participant B
+  alt ok
+    A->>B: yes
+  else no
+    B-->>A: no
+  end
+`,
+      { fragmentBorderStyle: "double" },
+    )
+
+    expect(output).toContain("╔")
+    expect(output).toContain("╠")
+    expect(output).toContain("╚")
+    expect(output).toContain("═")
+    expect(output).toContain("║")
+  })
+
   test("parses and renders autonumbered messages", () => {
     const diagram = parseMermaidSequenceDiagram(`
 sequenceDiagram

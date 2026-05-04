@@ -129,6 +129,7 @@ const EXAMPLES: SequenceDiagramExample[] = [
     content: ARROW_TYPES_SEQUENCE_DIAGRAM,
   },
 ]
+const DEMO_FRAGMENT_BORDER_STYLE = "double" as const
 
 let container: BoxRenderable | null = null
 let scrollBox: ScrollBoxRenderable | null = null
@@ -303,6 +304,7 @@ export function run(renderer: CliRenderer): void {
     bg: initialTheme.background,
     participantColor: initialTheme.participant,
     lifelineColor: initialTheme.lifeline,
+    fragmentBorderStyle: DEMO_FRAGMENT_BORDER_STYLE,
     groupColor: initialTheme.group,
     requestColor: initialTheme.request,
     responseColor: initialTheme.response,
@@ -374,8 +376,8 @@ if (import.meta.main) {
     const selectedExample = EXAMPLES.find((_, index) => process.argv.includes(`--example=${index + 1}`)) ?? EXAMPLES[0]!
     console.log(
       shouldPrintPlain
-        ? renderSequenceDiagram(selectedExample.content)
-        : renderSequenceDiagramAnsi(selectedExample.content),
+        ? renderSequenceDiagram(selectedExample.content, { fragmentBorderStyle: DEMO_FRAGMENT_BORDER_STYLE })
+        : renderSequenceDiagramAnsi(selectedExample.content, { fragmentBorderStyle: DEMO_FRAGMENT_BORDER_STYLE }),
     )
   } else {
     const renderer = await createCliRenderer({ exitOnCtrlC: true })
