@@ -20,11 +20,9 @@ import type {
 } from "../types.js"
 import { cloneKeySequence, cloneKeyStroke } from "./keys.js"
 import {
-  getActivationPath,
   getFocusedTargetIfAvailable,
-  getSortedLayers,
-  isLayerActiveForFocused,
 } from "./primitives/active-layers.js"
+import { getRuntimeView } from "./runtime-view.js"
 import { childNodes, getCaptureNode, getNodePresentation, getNodeSequence } from "./sequence-index.js"
 
 interface LayerGraphState<TTarget extends object, TEvent extends KeymapEvent> {
@@ -167,11 +165,11 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   const includeTargets = snapshotOptions?.includeTargets !== false
   const currentFocused = getFocusedTargetIfAvailable(host)
   const focused = hasOwnFocused(snapshotOptions) ? (snapshotOptions.focused ?? null) : currentFocused
-  const activeView = catalog.getActiveCommandView(focused)
-  const activeCommandStates = new Set(activeView.entries.map((entry) => entry.commandState))
-  const reachableCommandStates = new Set(activeView.reachable.map((entry) => entry.commandState))
-  const activationPath = getActivationPath(host, focused)
-  const sortedLayers = getSortedLayers(state.layers)
+  const view = getRuntimeView(state, host, conditions, focused)
+  const activeView = view.activeCommands
+  const activeCommandStates = view.activeCommandStates
+  const reachableCommandStates = view.reachableCommandStates
+  const sortedLayers = view.sortedLayers
   const layerStates = new Map<RegisteredLayer<TTarget, TEvent>, LayerGraphState<TTarget, TEvent>>()
   const commandStates = new Map<CommandState<TTarget, TEvent>, CommandGraphState<TTarget, TEvent>>()
   const bindingStates = new Map<BindingState<TTarget, TEvent>, BindingGraphState<TTarget, TEvent>>()
@@ -188,29 +186,16 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   }
 
   for (const layer of sortedLayers) {
-    const targetDestroyed = layer.target ? host.isTargetDestroyed(layer.target) : false
-    const focusActive = isLayerActiveForFocused(host, layer, focused, activationPath)
-    const enabled = conditions.matchesConditions(layer)
-    const inactiveReasons: GraphInactiveReason[] = []
-    if (targetDestroyed) {
-      inactiveReasons.push("target-destroyed")
-    }
-    if (!focusActive) {
-      inactiveReasons.push("focus")
-    }
-    if (!enabled) {
-      inactiveReasons.push("layer-disabled")
-    }
-
     const currentLayerId = layerId(layer)
+    const runtimeLayer = view.layerStates.get(layer)!
     layerIds.set(layer, currentLayerId)
     layerStates.set(layer, {
       layer,
       id: currentLayerId,
-      focusActive,
-      enabled,
-      active: !targetDestroyed && focusActive && enabled,
-      inactiveReasons,
+      focusActive: runtimeLayer.focusActive,
+      enabled: runtimeLayer.enabled,
+      active: runtimeLayer.active,
+      inactiveReasons: runtimeLayer.inactiveReasons,
     })
   }
 

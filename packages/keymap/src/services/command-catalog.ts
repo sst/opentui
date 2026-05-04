@@ -22,9 +22,9 @@ import { normalizeCommandName } from "./primitives/command-normalization.js"
 import {
   getActiveLayersForFocused,
   getFocusedTargetIfAvailable,
-  getSortedLayers,
   isLayerActiveForFocused,
 } from "./primitives/active-layers.js"
+import { getActiveCommandView as createActiveCommandView, getRegisteredCommandView } from "./runtime-view.js"
 import type { ConditionService } from "./conditions.js"
 import { createFieldCompilerContext } from "./primitives/field-invariants.js"
 import type { NotificationService } from "./notify.js"
@@ -338,64 +338,11 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
   }
 
   const getActiveCommandView = (focused: TTarget | null): ActiveCommandView<TTarget, TEvent> => {
-    const entries: LayerCommandEntry<TTarget, TEvent>[] = []
-    const reachable: LayerCommandEntry<TTarget, TEvent>[] = []
-    const reachableByName = new Map<string, LayerCommandEntry<TTarget, TEvent>>()
-    const chainsByName = new Map<string, LayerCommandEntry<TTarget, TEvent>[]>()
-
-    for (const layer of getActiveLayersForFocused(state.layers, host, focused)) {
-      if (layer.commands.length === 0 || !conditions.matchesConditions(layer)) {
-        continue
-      }
-
-      for (const commandState of layer.commands) {
-        const command = commandState.command
-        if (!conditions.matchesConditions(commandState)) {
-          continue
-        }
-
-        const entry: LayerCommandEntry<TTarget, TEvent> = { layer, commandState }
-        entries.push(entry)
-
-        pushCommandEntry(chainsByName, command.name, entry)
-
-        if (!reachableByName.has(command.name)) {
-          reachableByName.set(command.name, entry)
-          reachable.push(entry)
-        }
-      }
-    }
-
-    return {
-      entries,
-      reachable,
-      reachableByName,
-      chainsByName,
-    }
+    return createActiveCommandView(state, host, conditions, focused)
   }
 
   const getCommandView = (): CommandView<TTarget, TEvent> => {
-    const entries: LayerCommandEntry<TTarget, TEvent>[] = []
-    const chainsByName = new Map<string, LayerCommandEntry<TTarget, TEvent>[]>()
-
-    for (const layer of getSortedLayers(state.layers)) {
-      if (layer.commands.length === 0) {
-        continue
-      }
-
-      for (const commandState of layer.commands) {
-        const command = commandState.command
-        const entry: LayerCommandEntry<TTarget, TEvent> = { layer, commandState }
-        entries.push(entry)
-
-        pushCommandEntry(chainsByName, command.name, entry)
-      }
-    }
-
-    return {
-      entries,
-      chainsByName,
-    }
+    return getRegisteredCommandView(state)
   }
 
   const isBindingVisible = (
@@ -853,19 +800,6 @@ export function getCommand<TTarget extends object, TEvent extends KeymapEvent>(
   state: CommandState<TTarget, TEvent>,
 ): Command<TTarget, TEvent> {
   return state.command
-}
-
-function pushCommandEntry<TTarget extends object, TEvent extends KeymapEvent>(
-  target: Map<string, LayerCommandEntry<TTarget, TEvent>[]>,
-  name: string,
-  entry: LayerCommandEntry<TTarget, TEvent>,
-): void {
-  const existing = target.get(name)
-  if (existing) {
-    existing.push(entry)
-  } else {
-    target.set(name, [entry])
-  }
 }
 
 function normalizeCommands<TTarget extends object, TEvent extends KeymapEvent>(
