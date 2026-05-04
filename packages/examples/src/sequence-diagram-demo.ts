@@ -12,20 +12,23 @@ import {
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 export const AUTH_SEQUENCE_DIAGRAM = `sequenceDiagram
+  autonumber
   participant Browser
   participant API
   participant Cache
   participant DB
   Browser->>+API: GET /users/42
-  API->>+Cache: get user:42
-  alt cache hit
-    Cache-->>-API: { user }
-  else cache miss
-    Cache-->>-API: null
-    API->>+DB: SELECT user WHERE id=42
-    DB-->>-API: row
-    API->>+Cache: set user:42
-    Cache-->>-API: ok
+  loop read-through cache
+    API->>+Cache: get user:42
+    alt cache hit
+      Cache-->>-API: { user }
+    else cache miss
+      Cache-->>-API: null
+      API->>+DB: SELECT user WHERE id=42
+      DB-->>-API: row
+      API->>+Cache: set user:42
+      Cache-->>-API: ok
+    end
   end
   Note over API,Cache: cache is refreshed on misses
   API-->>-Browser: 200 { user }`

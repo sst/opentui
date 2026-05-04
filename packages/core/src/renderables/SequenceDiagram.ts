@@ -16,6 +16,7 @@ export interface SequenceMessage {
   to: string
   label: string
   style: "solid" | "dashed"
+  number?: number
   activate?: string
   deactivate?: string
 }
@@ -31,7 +32,7 @@ export interface SequenceActivation {
 }
 
 export interface SequenceFragment {
-  kind: "alt" | "else" | "end"
+  kind: "alt" | "else" | "loop" | "end"
   label: string
 }
 
@@ -122,6 +123,8 @@ const PARTICIPANT_RE = /^(?:participant|actor)\s+(\S+)(?:\s+as\s+(.+))?$/i
 const ACTIVATION_RE = /^(activate|deactivate)\s+(.+)$/i
 const ALT_RE = /^alt\s+(.+)$/i
 const ELSE_RE = /^else(?:\s+(.+))?$/i
+const LOOP_RE = /^loop\s+(.+)$/i
+const AUTONUMBER_RE = /^autonumber(?:\s+(\d+)(?:\s+(\d+))?)?$/i
 function mixChannel(left: number, right: number, amount: number): number {
   return Math.round(left + (right - left) * amount)
 }
@@ -195,10 +198,20 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
   const participants: SequenceParticipant[] = []
   const messages: SequenceMessage[] = []
   const steps: SequenceStep[] = []
+  const fragmentStack: Array<"alt" | "loop"> = []
+  let nextMessageNumber: number | undefined
+  let messageNumberIncrement = 1
 
   for (const rawLine of content.split(/\r?\n/)) {
     const line = rawLine.trim()
     if (!line || line.startsWith("%%") || line.toLowerCase() === "sequencediagram") {
+      continue
+    }
+
+    const autonumberMatch = line.match(AUTONUMBER_RE)
+    if (autonumberMatch) {
+      nextMessageNumber = Number.parseInt(autonumberMatch[1] ?? "1", 10)
+      messageNumberIncrement = Number.parseInt(autonumberMatch[2] ?? "1", 10)
       continue
     }
 
@@ -239,7 +252,15 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
 
     const altMatch = line.match(ALT_RE)
     if (altMatch) {
+      fragmentStack.push("alt")
       steps.push({ type: "fragment", fragment: { kind: "alt", label: stripQuotes(altMatch[1]!) } })
+      continue
+    }
+
+    const loopMatch = line.match(LOOP_RE)
+    if (loopMatch) {
+      fragmentStack.push("loop")
+      steps.push({ type: "fragment", fragment: { kind: "loop", label: stripQuotes(loopMatch[1]!) } })
       continue
     }
 
@@ -250,7 +271,7 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
     }
 
     if (line.toLowerCase() === "end") {
-      steps.push({ type: "fragment", fragment: { kind: "end", label: "" } })
+      steps.push({ type: "fragment", fragment: { kind: "end", label: fragmentStack.pop() ?? "" } })
       continue
     }
 
@@ -269,6 +290,10 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
         to,
         label,
         style: arrow.startsWith("--") ? "dashed" : "solid",
+      }
+      if (nextMessageNumber !== undefined) {
+        message.number = nextMessageNumber
+        nextMessageNumber += messageNumberIncrement
       }
       if (activationMarker === "+") {
         message.activate = to
@@ -473,6 +498,19 @@ function noteLabelText(label: string): string {
   return `${padding}${label}${padding}`
 }
 
+function messageLabelText(message: SequenceMessage): string {
+  return message.number === undefined ? message.label : `${message.number}. ${message.label}`
+}
+
+function fragmentLabelText(fragment: SequenceFragment): string {
+  if (fragment.kind === "end") {
+    return fragment.label ? ` end ${fragment.label} ` : " end "
+  }
+
+  const prefix = fragment.kind === "loop" ? "↻ loop" : fragment.kind
+  return ` ${prefix}: ${fragment.label} `
+}
+
 function messageLabelLines(label: string): string[] {
   const lines = label.split(/(?:<br\s*\/?\s*>|\\n)/i).map((line) => line.trimEnd())
   return lines.length > 0 ? lines : [""]
@@ -480,6 +518,10 @@ function messageLabelLines(label: string): string[] {
 
 function messageLabelWidth(label: string): number {
   return messageLabelLines(label).reduce((max, line) => Math.max(max, visualLength(line)), 0)
+}
+
+function messageWidth(message: SequenceMessage): number {
+  return messageLabelWidth(messageLabelText(message))
 }
 
 function getStepHeight(step: SequenceStep): number {
@@ -524,12 +566,13 @@ function drawActivationBars(
 
 function renderFragment(grid: SequenceGrid, centers: number[], fragment: SequenceFragment, y: number): void {
   const leftX = centers[0]
-  const rightX = centers[centers.length - 1]
-  if (leftX === undefined || rightX === undefined) return
+  const participantRightX = centers[centers.length - 1]
+  if (leftX === undefined || participantRightX === undefined) return
+  const label = fragmentLabelText(fragment)
+  const rightX = Math.max(participantRightX, leftX + 2 + visualLength(label) + 1)
 
-  const leftChar = fragment.kind === "alt" ? "╭" : fragment.kind === "else" ? "├" : "╰"
-  const rightChar = fragment.kind === "alt" ? "╮" : fragment.kind === "else" ? "┤" : "╯"
-  const label = fragment.kind === "end" ? " end " : ` ${fragment.kind}: ${fragment.label} `
+  const leftChar = fragment.kind === "alt" || fragment.kind === "loop" ? "╭" : fragment.kind === "else" ? "├" : "╰"
+  const rightChar = fragment.kind === "alt" || fragment.kind === "loop" ? "╮" : fragment.kind === "else" ? "┤" : "╯"
 
   for (let x = leftX; x <= rightX; x++) {
     setCell(grid, x, y, "─", "fragment")
@@ -560,7 +603,7 @@ function resolveParticipantCenters(
     if (fromIndex < 0 || toIndex < 0 || Math.abs(fromIndex - toIndex) !== 1) continue
 
     const gapIndex = Math.min(fromIndex, toIndex)
-    gaps[gapIndex] = Math.max(gaps[gapIndex]!, messageLabelWidth(message.label) + 6)
+    gaps[gapIndex] = Math.max(gaps[gapIndex]!, messageWidth(message) + 6)
   }
 
   for (const step of diagram.steps) {
@@ -596,7 +639,12 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
     options.minParticipantGap ?? DEFAULT_MIN_PARTICIPANT_GAP,
   )
   const lastParticipant = diagram.participants[diagram.participants.length - 1]!
-  const width = centers[centers.length - 1]! + Math.ceil(visualLength(lastParticipant.label) / 2) + 1
+  const contentWidth = centers[centers.length - 1]! + Math.ceil(visualLength(lastParticipant.label) / 2) + 1
+  const fragmentWidth = diagram.steps.reduce((width, step) => {
+    if (step.type !== "fragment") return width
+    return Math.max(width, centers[0]! + 2 + visualLength(fragmentLabelText(step.fragment)) + 2)
+  }, 0)
+  const width = Math.max(contentWidth, fragmentWidth)
   const height = Math.max(3, 3 + diagram.steps.reduce((total, step) => total + getStepHeight(step), 0))
   const grid = createGrid(width, height)
 
@@ -677,7 +725,7 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
     const message = step.message
     const stepHeight = getStepHeight(step)
     const messageStyle: SequenceCellStyle = message.style === "dashed" ? "response" : "request"
-    const labelLines = messageLabelLines(message.label)
+    const labelLines = messageLabelLines(messageLabelText(message))
     const arrowRow = labelRow + labelLines.length
     const stepEndRow = stepY + stepHeight - 1
     const fromIndex = participantIndexes.get(message.from) ?? -1

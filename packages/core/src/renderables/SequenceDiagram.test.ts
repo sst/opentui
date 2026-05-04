@@ -115,7 +115,7 @@ sequenceDiagram
       { type: "activation", activation: { participant: "Server", active: true } },
       { type: "message", message: { from: "Server", to: "Browser", label: "error", style: "dashed" } },
       { type: "activation", activation: { participant: "Server", active: false } },
-      { type: "fragment", fragment: { kind: "end", label: "" } },
+      { type: "fragment", fragment: { kind: "end", label: "alt" } },
     ])
   })
 
@@ -175,6 +175,66 @@ sequenceDiagram
     expect(output).toContain("end")
     expect(output.indexOf("alt: accepted")).toBeLessThan(output.indexOf("ok"))
     expect(output.indexOf("else: rejected")).toBeLessThan(output.indexOf("no"))
+  })
+
+  test("parses and renders autonumbered messages", () => {
+    const diagram = parseMermaidSequenceDiagram(`
+sequenceDiagram
+  autonumber
+  Browser->>API: request
+  API-->>Browser: response
+`)
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  autonumber
+  Browser->>API: request
+  API-->>Browser: response
+`)
+
+    expect(diagram.messages.map((message) => message.number)).toEqual([1, 2])
+    expect(output).toContain("1. request")
+    expect(output).toContain("2. response")
+  })
+
+  test("supports autonumber start and increment", () => {
+    const diagram = parseMermaidSequenceDiagram(`
+sequenceDiagram
+  autonumber 10 5
+  Browser->>API: first
+  API-->>Browser: second
+`)
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  autonumber 10 5
+  Browser->>API: first
+  API-->>Browser: second
+`)
+
+    expect(diagram.messages.map((message) => message.number)).toEqual([10, 15])
+    expect(output).toContain("10. first")
+    expect(output).toContain("15. second")
+  })
+
+  test("parses and renders loop regions", () => {
+    const diagram = parseMermaidSequenceDiagram(`
+sequenceDiagram
+  loop retry up to 3x
+    Browser->>API: GET /users/42
+    API-->>Browser: 503
+  end
+`)
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  loop retry up to 3x
+    Browser->>API: GET /users/42
+    API-->>Browser: 503
+  end
+`)
+
+    expect(diagram.steps[0]).toEqual({ type: "fragment", fragment: { kind: "loop", label: "retry up to 3x" } })
+    expect(output).toContain("╭─ ↻ loop: retry up to 3x")
+    expect(output).toContain("end loop")
+    expect(output.indexOf("loop: retry up to 3x")).toBeLessThan(output.indexOf("GET /users/42"))
   })
 
   test("places two spacer rows above note badges and one below", () => {
