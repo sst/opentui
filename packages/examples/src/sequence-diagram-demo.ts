@@ -80,6 +80,22 @@ export const RETRY_SEQUENCE_DIAGRAM = `sequenceDiagram
   end
   API-->>Client: 200 download URL`
 
+export const ARROW_TYPES_SEQUENCE_DIAGRAM = `sequenceDiagram
+  autonumber
+  participant Browser
+  box Backend
+    participant API
+    participant Worker
+  end
+  Browser->API: open request
+  API-->Browser: provisional response
+  API->>Worker: start job
+  Worker-->>API: accepted
+  API-)Worker: enqueue event
+  Worker--)API: progress event
+  API-xWorker: cancel job
+  Worker--xAPI: timeout`
+
 interface SequenceDiagramExample {
   title: string
   description: string
@@ -106,6 +122,11 @@ const EXAMPLES: SequenceDiagramExample[] = [
     title: "Retry Polling",
     description: "loop region without branching",
     content: RETRY_SEQUENCE_DIAGRAM,
+  },
+  {
+    title: "Arrow Styles",
+    description: "open, filled, async, and failure arrow heads",
+    content: ARROW_TYPES_SEQUENCE_DIAGRAM,
   },
 ]
 

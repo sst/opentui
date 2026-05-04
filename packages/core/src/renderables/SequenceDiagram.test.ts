@@ -42,15 +42,16 @@ sequenceDiagram
 `)
 
     expect(output).toMatchInlineSnapshot(`
-      " Browser           Server
-       ───┬───           ───┬──
-          │                 │
-          │ GET /           │
-          ├─────────────────▶
-          │                 │
-          │ 401 WWW-Auth    │
-          ◀─────────────────┤
-          │                 │"
+      "╭─────────╮       ╭────────╮
+      │ Browser │       │ Server │
+      ╰────┬────╯       ╰────┬───╯
+           │                 │
+           │ GET /           │
+           ├─────────────────▶
+           │                 │
+           │ 401 WWW-Auth    │
+           ◀─────────────────┤
+           │                 │"
     `)
   })
 
@@ -62,13 +63,13 @@ sequenceDiagram
 `)
 
     const lines = output.split("\n")
-    const browserCenter = lines[0]!.indexOf("w")
-    const serverCenter = lines[0]!.indexOf("v")
+    const browserCenter = lines[1]!.indexOf("w")
+    const serverCenter = lines[1]!.indexOf("v")
 
-    expect(lines[1]?.[browserCenter]).toBe("┬")
-    expect(lines[2]?.[browserCenter]).toBe("│")
-    expect(lines[1]?.[serverCenter]).toBe("┬")
-    expect(lines[2]?.[serverCenter]).toBe("│")
+    expect(lines[2]?.[browserCenter]).toBe("┬")
+    expect(lines[3]?.[browserCenter]).toBe("│")
+    expect(lines[2]?.[serverCenter]).toBe("┬")
+    expect(lines[3]?.[serverCenter]).toBe("│")
   })
 
   test("renders notes and long cross-participant messages in order", () => {
@@ -131,6 +132,64 @@ sequenceDiagram
     expect(output).toContain("response")
   })
 
+  test("parses Mermaid arrow head variants", () => {
+    const diagram = parseMermaidSequenceDiagram(`
+sequenceDiagram
+  A->B: open solid
+  B-->A: open dashed
+  A-xB: failed solid
+  B--xA: failed dashed
+  A-)B: async solid
+  B--)A: async dashed
+`)
+
+    expect(diagram.messages).toEqual([
+      { from: "A", to: "B", label: "open solid", style: "solid", head: "open" },
+      { from: "B", to: "A", label: "open dashed", style: "dashed", head: "open" },
+      { from: "A", to: "B", label: "failed solid", style: "solid", head: "cross" },
+      { from: "B", to: "A", label: "failed dashed", style: "dashed", head: "cross" },
+      { from: "A", to: "B", label: "async solid", style: "solid", head: "async" },
+      { from: "B", to: "A", label: "async dashed", style: "dashed", head: "async" },
+    ])
+  })
+
+  test("renders Mermaid arrow head variants", () => {
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  A->B: open solid
+  B-->A: open dashed
+  A-xB: failed solid
+  B--xA: failed dashed
+  A-)B: async solid
+  B--)A: async dashed
+`)
+
+    expect(output).toMatchInlineSnapshot(`
+      "╭───╮              ╭───╮
+      │ A │              │ B │
+      ╰─┬─╯              ╰─┬─╯
+        │                  │
+        │ open solid       │
+        ├─────────────────>│
+        │                  │
+        │ open dashed      │
+        │<─────────────────┤
+        │                  │
+        │ failed solid     │
+        ├─────────────────✕│
+        │                  │
+        │ failed dashed    │
+        │✕─────────────────┤
+        │                  │
+        │ async solid      │
+        ├─────────────────)│
+        │                  │
+        │ async dashed     │
+        │(─────────────────┤
+        │                  │"
+    `)
+  })
+
   test("renders boxed alt else regions", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram
@@ -144,9 +203,25 @@ sequenceDiagram
     expect(output).toContain("╭─ alt: accepted")
     expect(output).toContain("├─ else: rejected")
     expect(output).toContain("╰")
-    expect(output).toContain("end")
+    expect(output).not.toContain("end alt")
     expect(output.indexOf("alt: accepted")).toBeLessThan(output.indexOf("ok"))
     expect(output.indexOf("else: rejected")).toBeLessThan(output.indexOf("no"))
+  })
+
+  test("renders fragment boxes with lifeline overhang", () => {
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  participant A
+  participant B
+  alt ok
+    A->>B: yes
+  end
+`)
+    const lines = output.split("\n")
+    const participantCenter = lines.find((line) => line.includes("│ A │"))!.indexOf("A")
+    const fragmentStart = lines.find((line) => line.includes("alt: ok"))!.indexOf("╭")
+
+    expect(fragmentStart).toBeLessThan(participantCenter)
   })
 
   test("parses and renders autonumbered messages", () => {
@@ -205,7 +280,7 @@ sequenceDiagram
 
     expect(diagram.steps[0]).toEqual({ type: "fragment", fragment: { kind: "loop", label: "retry up to 3x" } })
     expect(output).toContain("╭─ ↻ loop: retry up to 3x")
-    expect(output).toContain("end loop")
+    expect(output).not.toContain("end loop")
     expect(output.indexOf("loop: retry up to 3x")).toBeLessThan(output.indexOf("GET /users/42"))
   })
 
@@ -279,17 +354,18 @@ sequenceDiagram
 `)
 
     expect(output).toMatchInlineSnapshot(`
-      "                    ╭─ Backend ───────────────────────────────╮
-       Browser            │ API              Cache              DB  │
-       ───┬───            │ ─┬─              ──┬──              ─┬─ │
-          │               │  │                 │                 │  │
-          │ GET /users/42 │  │                 │                 │  │
-          ├──────────────────▶                 │                 │  │
-          │               │  │                 │                 │  │
-          │               │  │ get user:42     │                 │  │
-          │               │  ├─────────────────▶                 │  │
-          │               │  │                 │                 │  │
-                          ╰─────────────────────────────────────────╯"
+      "                   ╭─ Backend ──────────────────────────────────╮
+      ╭─────────╮        │ ╭─────╮          ╭───────╮          ╭────╮ │
+      │ Browser │        │ │ API │          │ Cache │          │ DB │ │
+      ╰────┬────╯        │ ╰──┬──╯          ╰───┬───╯          ╰──┬─╯ │
+           │             │    │                 │                 │   │
+           │ GET /users/42    │                 │                 │   │
+           ├──────────────────▶                 │                 │   │
+           │             │    │                 │                 │   │
+           │             │    │ get user:42     │                 │   │
+           │             │    ├─────────────────▶                 │   │
+           │             │    │                 │                 │   │
+                         ╰────────────────────────────────────────────╯"
     `)
   })
 
@@ -316,13 +392,14 @@ sequenceDiagram
 `)
 
     expect(output).toMatchInlineSnapshot(`
-      " Service
-       ───┬───
-          │
-          ├────────────────────╮
-          │ Check Permissions  │
-          ◀────────────────────╯
-          │"
+      "╭─────────╮
+      │ Service │
+      ╰────┬────╯
+           │
+           ├────────────────────╮
+           │ Check Permissions  │
+           ◀────────────────────╯
+           │"
     `)
   })
 
@@ -431,7 +508,7 @@ sequenceDiagram
 
       const arrowLine = testRenderer
         .captureSpans()
-        .lines.find((line) => line.spans.some((span) => span.text.includes("╮")))
+        .lines.find((line) => line.spans.some((span) => span.text.includes("├")))
       const departureSpan = arrowLine?.spans.find((span) => span.text.includes("├"))
 
       expect(departureSpan).toBeDefined()
@@ -503,6 +580,35 @@ sequenceDiagram
 
       expect(groupSpan?.fg.equals(groupColor)).toBe(true)
       expect(fragmentSpan?.fg.equals(groupColor)).toBe(false)
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
+  test("adds a background to fragment labels", async () => {
+    const noteBackgroundColor = parseColor("#24382F")
+    const testRenderer = await createTestRenderer({ width: 70, height: 16 })
+
+    try {
+      const diagram = new SequenceDiagramRenderable(testRenderer.renderer, {
+        content: `sequenceDiagram
+  alt ok
+    Browser->>Server: request
+  else no
+    Server-->>Browser: response
+  end`,
+        noteBackgroundColor,
+      })
+
+      testRenderer.renderer.root.add(diagram)
+      await testRenderer.renderOnce()
+
+      const spans = testRenderer.captureSpans().lines.flatMap((line) => line.spans)
+      const altSpan = spans.find((span) => span.text.includes("alt: ok"))
+      const elseSpan = spans.find((span) => span.text.includes("else: no"))
+
+      expect(altSpan?.bg.equals(noteBackgroundColor)).toBe(true)
+      expect(elseSpan?.bg.equals(noteBackgroundColor)).toBe(true)
     } finally {
       testRenderer.renderer.destroy()
     }

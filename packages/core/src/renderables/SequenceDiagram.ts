@@ -22,10 +22,13 @@ export interface SequenceMessage {
   to: string
   label: string
   style: "solid" | "dashed"
+  head?: SequenceArrowHead
   number?: number
   activate?: string
   deactivate?: string
 }
+
+export type SequenceArrowHead = "open" | "cross" | "async"
 
 export interface SequenceNote {
   over: string[]
@@ -80,7 +83,15 @@ export interface SequenceDiagramOptions extends TextBufferOptions {
 type MessageStyle = "request" | "response"
 type FadeStep = 1 | 2 | 3 | 4 | 5
 type FadeStyle = `${MessageStyle}Fade${FadeStep}`
-type AnsiSequenceCellStyle = "participant" | "lifeline" | "group" | MessageStyle | FadeStyle | "fragment" | "note"
+type AnsiSequenceCellStyle =
+  | "participant"
+  | "lifeline"
+  | "group"
+  | MessageStyle
+  | FadeStyle
+  | "fragment"
+  | "fragmentLabel"
+  | "note"
 type SequenceCellStyle = AnsiSequenceCellStyle | "noteBadge"
 type Rgb = readonly [number, number, number]
 
@@ -95,11 +106,13 @@ interface SequenceGrid {
 
 type SequenceStyleColors = Partial<Record<AnsiSequenceCellStyle, RGBA>> & {
   noteBg?: RGBA
+  fragmentLabelBg?: RGBA
 }
 
 const DEFAULT_MIN_PARTICIPANT_GAP = 18
 const NOTE_HORIZONTAL_PADDING = 1
 const GROUP_HORIZONTAL_PADDING = 2
+const FRAGMENT_HORIZONTAL_OVERHANG = 3
 const SEQUENCE_BORDER = BorderChars.rounded
 const FADE_STEPS = [1, 2, 3, 4, 5] as const satisfies readonly FadeStep[]
 const DEFAULT_THEME_RGB = {
@@ -109,6 +122,7 @@ const DEFAULT_THEME_RGB = {
   request: [134, 225, 200],
   response: [230, 177, 126],
   fragment: [154, 184, 169],
+  fragmentLabelBg: [28, 43, 36],
   noteFg: [215, 229, 221],
   noteBg: [36, 56, 47],
 } as const
@@ -119,11 +133,12 @@ const DEFAULT_ANSI_THEME: Required<Record<AnsiSequenceCellStyle, string>> = {
   request: ansiFg(DEFAULT_THEME_RGB.request),
   response: ansiFg(DEFAULT_THEME_RGB.response),
   fragment: ansiFg(DEFAULT_THEME_RGB.fragment),
+  fragmentLabel: `${ansiFg(DEFAULT_THEME_RGB.fragment)}${ansiBg(DEFAULT_THEME_RGB.fragmentLabelBg)}`,
   note: `${ansiFg(DEFAULT_THEME_RGB.noteFg)}${ansiBg(DEFAULT_THEME_RGB.noteBg)}`,
   ...createAnsiFadeTheme("request", DEFAULT_THEME_RGB.lifeline, DEFAULT_THEME_RGB.request),
   ...createAnsiFadeTheme("response", DEFAULT_THEME_RGB.lifeline, DEFAULT_THEME_RGB.response),
 }
-const MESSAGE_RE = /^(.+?)\s*(-->>|->>|-->|->)([+-]?)\s*(.+?)\s*:\s*(.*)$/
+const MESSAGE_RE = /^(.+?)\s*(-->>|->>|--x|-x|--\)|-\)|-->|->)([+-]?)\s*(.+?)\s*:\s*(.*)$/
 const NOTE_RE = /^note\s+over\s+(.+?)\s*:\s*(.*)$/i
 const PARTICIPANT_RE = /^(?:participant|actor)\s+(\S+)(?:\s+as\s+(.+))?$/i
 const ACTIVATION_RE = /^(activate|deactivate)\s+(.+)$/i
@@ -168,6 +183,30 @@ function stripQuotes(value: string): string {
     return trimmed.slice(1, -1)
   }
   return trimmed
+}
+
+function arrowHeadForSyntax(arrow: string): SequenceArrowHead | undefined {
+  if (arrow.endsWith("x")) return "cross"
+  if (arrow.endsWith(")")) return "async"
+  if (arrow.endsWith(">") && !arrow.endsWith(">>")) return "open"
+  return undefined
+}
+
+function arrowHeadChar(head: SequenceArrowHead | undefined, direction: 1 | -1): string {
+  switch (head) {
+    case "open":
+      return direction === 1 ? ">" : "<"
+    case "cross":
+      return "✕"
+    case "async":
+      return direction === 1 ? ")" : "("
+    default:
+      return direction === 1 ? "▶" : "◀"
+  }
+}
+
+function arrowHeadX(toX: number, direction: 1 | -1, head: SequenceArrowHead | undefined): number {
+  return head === undefined ? toX : toX - direction
 }
 
 function isBoxColorToken(value: string): boolean {
@@ -362,6 +401,10 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
         label,
         style: arrow.startsWith("--") ? "dashed" : "solid",
       }
+      const head = arrowHeadForSyntax(arrow)
+      if (head) {
+        message.head = head
+      }
       if (nextMessageNumber !== undefined) {
         message.number = nextMessageNumber
         nextMessageNumber += messageNumberIncrement
@@ -419,10 +462,12 @@ function renderGridText(grid: SequenceGrid): string {
 
 function styleColor(style: SequenceCellStyle | undefined, colors: SequenceStyleColors): RGBA | undefined {
   if (style === "noteBadge") return colors.note
+  if (style === "fragmentLabel") return colors.fragment
   return style ? colors[style] : undefined
 }
 
 function styleBackgroundColor(style: SequenceCellStyle | undefined, colors: SequenceStyleColors): RGBA | undefined {
+  if (style === "fragmentLabel") return colors.fragmentLabelBg
   return style === "noteBadge" ? colors.noteBg : undefined
 }
 
@@ -579,9 +624,13 @@ function messageLabelText(message: SequenceMessage): string {
   return message.number === undefined ? message.label : `${message.number}. ${message.label}`
 }
 
+function participantHeaderWidth(label: string): number {
+  return Math.max(5, visualLength(label) + 4)
+}
+
 function fragmentLabelText(fragment: SequenceFragment): string {
   if (fragment.kind === "end") {
-    return fragment.label ? ` end ${fragment.label} ` : " end "
+    return ""
   }
 
   const prefix = fragment.kind === "loop" ? "↻ loop" : fragment.kind
@@ -647,6 +696,11 @@ interface SequenceHorizontalBounds {
   rightX: number
 }
 
+interface ActiveFragmentFrame {
+  bounds: SequenceHorizontalBounds
+  boundaryY: number
+}
+
 function groupLabelText(group: SequenceParticipantGroup): string {
   return group.label ? ` ${group.label} ` : ""
 }
@@ -678,10 +732,10 @@ function resolveGroupBounds(
 
     for (let i = range.startIndex; i <= range.endIndex; i++) {
       const participant = diagram.participants[i]!
-      const labelStartX = centeredStart(centers[i]!, participant.label)
-      const headerRuleWidth = Math.max(3, visualLength(participant.label))
-      contentLeftX = Math.min(contentLeftX, labelStartX)
-      contentRightX = Math.max(contentRightX, labelStartX + headerRuleWidth - 1)
+      const headerWidth = participantHeaderWidth(participant.label)
+      const headerStartX = centers[i]! - Math.floor(headerWidth / 2)
+      contentLeftX = Math.min(contentLeftX, headerStartX)
+      contentRightX = Math.max(contentRightX, headerStartX + headerWidth - 1)
     }
 
     for (const message of diagram.messages) {
@@ -720,8 +774,8 @@ function getDiagramContentBounds(
 
   for (let i = 0; i < diagram.participants.length; i++) {
     const participant = diagram.participants[i]!
-    const labelStartX = centeredStart(centers[i]!, participant.label)
-    const headerWidth = Math.max(3, visualLength(participant.label))
+    const headerWidth = participantHeaderWidth(participant.label)
+    const labelStartX = centers[i]! - Math.floor(headerWidth / 2)
     expandHorizontalBounds(bounds, labelStartX, labelStartX + headerWidth - 1)
   }
 
@@ -755,6 +809,31 @@ function getDiagramContentBounds(
     const noteText = noteLabelText(step.note.label)
     const noteStartX = centeredStart(centerX, noteText)
     expandHorizontalBounds(bounds, noteStartX, noteStartX + visualLength(noteText) - 1)
+  }
+
+  return bounds
+}
+
+function getFragmentFrameBounds(centers: number[], fragment: SequenceFragment): SequenceHorizontalBounds | undefined {
+  const leftParticipantX = centers[0]
+  const rightParticipantX = centers[centers.length - 1]
+  if (leftParticipantX === undefined || rightParticipantX === undefined) return undefined
+
+  const leftX = leftParticipantX - FRAGMENT_HORIZONTAL_OVERHANG
+  const participantRightX = rightParticipantX + FRAGMENT_HORIZONTAL_OVERHANG
+  const label = fragmentLabelText(fragment)
+  const rightX = Math.max(participantRightX, leftX + 2 + visualLength(label) + 1)
+  return { leftX, rightX }
+}
+
+function getFragmentBounds(centers: number[], steps: SequenceStep[]): SequenceHorizontalBounds {
+  const bounds: SequenceHorizontalBounds = { leftX: 0, rightX: 0 }
+
+  for (const step of steps) {
+    if (step.type !== "fragment") continue
+    const fragmentBounds = getFragmentFrameBounds(centers, step.fragment)
+    if (!fragmentBounds) continue
+    expandHorizontalBounds(bounds, fragmentBounds.leftX, fragmentBounds.rightX)
   }
 
   return bounds
@@ -802,12 +881,26 @@ function renderParticipantGroups(grid: SequenceGrid, groupBounds: SequenceGroupB
   }
 }
 
-function renderFragment(grid: SequenceGrid, centers: number[], fragment: SequenceFragment, y: number): void {
-  const leftX = centers[0]
-  const participantRightX = centers[centers.length - 1]
-  if (leftX === undefined || participantRightX === undefined) return
+function drawFragmentWalls(grid: SequenceGrid, bounds: SequenceHorizontalBounds, startY: number, endY: number): void {
+  if (endY < startY) return
+
+  for (let y = startY; y <= endY; y++) {
+    setCell(grid, bounds.leftX, y, SEQUENCE_BORDER.vertical, "fragment")
+    setCell(grid, bounds.rightX, y, SEQUENCE_BORDER.vertical, "fragment")
+  }
+}
+
+function renderFragment(
+  grid: SequenceGrid,
+  centers: number[],
+  fragment: SequenceFragment,
+  y: number,
+  frameBounds?: SequenceHorizontalBounds,
+): SequenceHorizontalBounds | undefined {
+  const bounds = frameBounds ?? getFragmentFrameBounds(centers, fragment)
+  if (!bounds) return
+  const { leftX, rightX } = bounds
   const label = fragmentLabelText(fragment)
-  const rightX = Math.max(participantRightX, leftX + 2 + visualLength(label) + 1)
 
   const leftChar =
     fragment.kind === "alt" || fragment.kind === "loop"
@@ -828,7 +921,10 @@ function renderFragment(grid: SequenceGrid, centers: number[], fragment: Sequenc
 
   setCell(grid, leftX, y, leftChar, "fragment")
   setCell(grid, rightX, y, rightChar, "fragment")
-  setText(grid, leftX + 2, y, label, "fragment")
+  if (label) {
+    setText(grid, leftX + 2, y, label, "fragmentLabel")
+  }
+  return bounds
 }
 
 function renderSelfMessage(
@@ -836,6 +932,7 @@ function renderSelfMessage(
   centerX: number,
   topRow: number,
   labelLines: string[],
+  head: SequenceArrowHead | undefined,
   style: SequenceCellStyle,
 ): void {
   const rightX = centerX + selfMessageLoopWidthForLines(labelLines)
@@ -854,10 +951,10 @@ function renderSelfMessage(
     setCell(grid, rightX, y, SEQUENCE_BORDER.vertical, style)
   }
 
-  setCell(grid, centerX, bottomRow, "◀", style)
   for (let x = centerX + 1; x < rightX; x++) {
     setCell(grid, x, bottomRow, SEQUENCE_BORDER.horizontal, style)
   }
+  setCell(grid, arrowHeadX(centerX, -1, head), bottomRow, arrowHeadChar(head, -1), style)
   setCell(grid, rightX, bottomRow, SEQUENCE_BORDER.bottomRight, style)
 }
 
@@ -871,7 +968,7 @@ function resolveParticipantCenters(
     const right = diagram.participants[index + 1]!
     return Math.max(
       minParticipantGap,
-      Math.ceil(visualLength(left.label) / 2) + Math.ceil(visualLength(right.label) / 2) + 6,
+      Math.ceil(participantHeaderWidth(left.label) / 2) + Math.ceil(participantHeaderWidth(right.label) / 2) + 6,
     )
   })
 
@@ -904,7 +1001,7 @@ function resolveParticipantCenters(
 
   const centers: number[] = []
   const firstLabel = diagram.participants[0]?.label ?? ""
-  centers[0] = Math.max(1, Math.ceil(visualLength(firstLabel) / 2))
+  centers[0] = Math.max(1, Math.floor(participantHeaderWidth(firstLabel) / 2))
 
   for (let i = 1; i < diagram.participants.length; i++) {
     centers[i] = centers[i - 1]! + gaps[i - 1]!
@@ -926,27 +1023,26 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   const groupRanges = getGroupRanges(diagram, participantIndexes)
   let groupBounds = resolveGroupBounds(diagram, centers, participantIndexes, groupRanges)
   let contentBounds = getDiagramContentBounds(diagram, centers, participantIndexes)
+  let fragmentBounds = getFragmentBounds(centers, diagram.steps)
   const groupLeftOverflow = groupBounds.reduce((leftmostX, bounds) => Math.min(leftmostX, bounds.leftX), 0)
-  const leftOverflow = Math.min(groupLeftOverflow, contentBounds.leftX, 0)
+  const leftOverflow = Math.min(groupLeftOverflow, contentBounds.leftX, fragmentBounds.leftX, 0)
 
   if (leftOverflow < 0) {
     centers = centers.map((center) => center - leftOverflow)
     groupBounds = resolveGroupBounds(diagram, centers, participantIndexes, groupRanges)
     contentBounds = getDiagramContentBounds(diagram, centers, participantIndexes)
+    fragmentBounds = getFragmentBounds(centers, diagram.steps)
   }
 
   const hasGroups = groupBounds.length > 0
   const groupRowOffset = hasGroups ? 1 : 0
-  const participantHeaderY = groupRowOffset
-  const participantRuleY = participantHeaderY + 1
+  const participantHeaderTopY = groupRowOffset
+  const participantHeaderY = participantHeaderTopY + 1
+  const participantRuleY = participantHeaderTopY + 2
   const lifelineStartY = participantRuleY + 1
   const stepStartY = lifelineStartY + 1
   const groupWidth = groupBounds.reduce((width, bounds) => Math.max(width, bounds.rightX + 1), 0)
-  const fragmentWidth = diagram.steps.reduce((width, step) => {
-    if (step.type !== "fragment") return width
-    return Math.max(width, centers[0]! + 2 + visualLength(fragmentLabelText(step.fragment)) + 2)
-  }, 0)
-  const width = Math.max(contentBounds.rightX + 1, groupWidth, fragmentWidth)
+  const width = Math.max(contentBounds.rightX + 1, groupWidth, fragmentBounds.rightX + 1)
   const baseHeight = stepStartY + diagram.steps.reduce((total, step) => total + getStepHeight(step), 0)
   const height = hasGroups ? Math.max(5, baseHeight + 1) : Math.max(3, baseHeight)
   const grid = createGrid(width, height)
@@ -958,14 +1054,22 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   for (let i = 0; i < diagram.participants.length; i++) {
     const participant = diagram.participants[i]!
     const center = centers[i]!
+    const headerWidth = participantHeaderWidth(participant.label)
+    const headerLeftX = center - Math.floor(headerWidth / 2)
+    const headerRightX = headerLeftX + headerWidth - 1
+
+    for (let x = headerLeftX; x <= headerRightX; x++) {
+      setCell(grid, x, participantHeaderTopY, SEQUENCE_BORDER.horizontal, "lifeline")
+      setCell(grid, x, participantRuleY, SEQUENCE_BORDER.horizontal, "lifeline")
+    }
+
+    setCell(grid, headerLeftX, participantHeaderTopY, SEQUENCE_BORDER.topLeft, "lifeline")
+    setCell(grid, headerRightX, participantHeaderTopY, SEQUENCE_BORDER.topRight, "lifeline")
+    setCell(grid, headerLeftX, participantHeaderY, SEQUENCE_BORDER.vertical, "lifeline")
+    setCell(grid, headerRightX, participantHeaderY, SEQUENCE_BORDER.vertical, "lifeline")
+    setCell(grid, headerLeftX, participantRuleY, SEQUENCE_BORDER.bottomLeft, "lifeline")
+    setCell(grid, headerRightX, participantRuleY, SEQUENCE_BORDER.bottomRight, "lifeline")
     setText(grid, centeredStart(center, participant.label), participantHeaderY, participant.label, "participant")
-    setText(
-      grid,
-      centeredStart(center, participant.label),
-      participantRuleY,
-      SEQUENCE_BORDER.horizontal.repeat(Math.max(3, visualLength(participant.label))),
-      "lifeline",
-    )
     setCell(grid, center, participantRuleY, SEQUENCE_BORDER.topT, "lifeline")
 
     const lifelineEndY = hasGroups ? height - 2 : height - 1
@@ -975,6 +1079,7 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   }
 
   let stepY = stepStartY
+  const activeFragmentFrames: ActiveFragmentFrame[] = []
 
   for (const step of diagram.steps) {
     if (step.type === "activation") {
@@ -998,7 +1103,29 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
 
     if (step.type === "fragment") {
       const stepHeight = getStepHeight(step)
-      renderFragment(grid, centers, step.fragment, stepY)
+      if (step.fragment.kind === "alt" || step.fragment.kind === "loop") {
+        const bounds = renderFragment(grid, centers, step.fragment, stepY)
+        if (bounds) {
+          activeFragmentFrames.push({ bounds, boundaryY: stepY })
+        }
+      } else if (step.fragment.kind === "else") {
+        const activeFrame = activeFragmentFrames[activeFragmentFrames.length - 1]
+        if (activeFrame) {
+          drawFragmentWalls(grid, activeFrame.bounds, activeFrame.boundaryY + 1, stepY - 1)
+          renderFragment(grid, centers, step.fragment, stepY, activeFrame.bounds)
+          activeFrame.boundaryY = stepY
+        } else {
+          renderFragment(grid, centers, step.fragment, stepY)
+        }
+      } else {
+        const activeFrame = activeFragmentFrames.pop()
+        if (activeFrame) {
+          drawFragmentWalls(grid, activeFrame.bounds, activeFrame.boundaryY + 1, stepY - 1)
+          renderFragment(grid, centers, step.fragment, stepY, activeFrame.bounds)
+        } else {
+          renderFragment(grid, centers, step.fragment, stepY)
+        }
+      }
       stepY += stepHeight
       continue
     }
@@ -1014,7 +1141,7 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
     if (fromIndex < 0 || toIndex < 0) continue
 
     if (fromIndex === toIndex) {
-      renderSelfMessage(grid, centers[fromIndex]!, stepY, labelLines, messageStyle)
+      renderSelfMessage(grid, centers[fromIndex]!, stepY, labelLines, message.head, messageStyle)
       stepY += stepHeight
       continue
     }
@@ -1035,10 +1162,10 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
 
     if (toX > fromX) {
       setArrowDepartureFade(grid, fromX, arrowRow, 1, messageStyle)
-      setCell(grid, toX, arrowRow, "▶", messageStyle)
+      setCell(grid, arrowHeadX(toX, 1, message.head), arrowRow, arrowHeadChar(message.head, 1), messageStyle)
     } else {
       setArrowDepartureFade(grid, fromX, arrowRow, -1, messageStyle)
-      setCell(grid, toX, arrowRow, "◀", messageStyle)
+      setCell(grid, arrowHeadX(toX, -1, message.head), arrowRow, arrowHeadChar(message.head, -1), messageStyle)
     }
 
     stepY += stepHeight
@@ -1195,6 +1322,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
           request: this._requestColor,
           response: this._responseColor,
           fragment: brightenColor(this._lifelineColor, 0.18),
+          fragmentLabelBg: this._noteBackgroundColor,
           note: this._noteColor,
           noteBg: this._noteBackgroundColor,
         }),
