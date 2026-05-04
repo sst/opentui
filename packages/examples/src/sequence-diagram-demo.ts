@@ -11,34 +11,110 @@ import {
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
-export const AUTH_SEQUENCE_DIAGRAM = `sequenceDiagram
+export const GROUP_SEQUENCE_DIAGRAM = `sequenceDiagram
+  autonumber
+  participant Shopper
+  box Storefront
+    participant Web
+    participant Cart
+  end
+  box Providers
+    participant Payments
+    participant Email
+  end
+  Shopper->>Web: Submit order
+  Web->>Cart: reserve inventory
+  Cart-->>Web: reserved
+  Web->>Payments: authorize card
+  Payments-->>Web: approved
+  Web->>Email: send receipt
+  Web-->>Shopper: Order confirmed`
+
+export const SELF_LOOP_SEQUENCE_DIAGRAM = `sequenceDiagram
   autonumber
   participant Browser
-  participant API
-  participant Cache
-  participant DB
-  Browser->>+API: GET /users/42
-  loop read-through cache
-    API->>+Cache: get user:42
-    alt cache hit
-      Cache-->>-API: { user }
-    else cache miss
-      Cache-->>-API: null
-      API->>+DB: SELECT user WHERE id=42
-      DB-->>-API: row
-      API->>+Cache: set user:42
-      Cache-->>-API: ok
-    end
+  box Backend
+    participant API
   end
-  Note over API,Cache: cache is refreshed on misses
-  API-->>-Browser: 200 { user }`
+  Browser->>API: GET /me
+  API->>API: Validate JWT
+  API-->>Browser: 200 { user }`
+
+export const CACHE_SEQUENCE_DIAGRAM = `sequenceDiagram
+  autonumber
+  participant Client
+  box Backend
+    participant API
+    participant Cache
+  end
+  box Storage
+    participant DB
+  end
+  Client->>API: GET /users/42
+  API->>Cache: get user:42
+  alt cache hit
+    Cache-->>API: { user }
+  else cache miss
+    Cache-->>API: null
+    API->>DB: SELECT user WHERE id=42
+    DB-->>API: row
+  end
+  API-->>Client: 200 { user }`
+
+export const RETRY_SEQUENCE_DIAGRAM = `sequenceDiagram
+  autonumber
+  participant Client
+  box Backend
+    participant API
+    participant Jobs
+  end
+  Client->>API: Start export
+  API-->>Client: 202 accepted
+  loop poll until ready
+    Client->>API: GET /exports/7
+    API->>Jobs: status export:7
+    Jobs-->>API: pending
+    API-->>Client: 202 pending
+  end
+  API-->>Client: 200 download URL`
+
+interface SequenceDiagramExample {
+  title: string
+  description: string
+  content: string
+}
+
+const EXAMPLES: SequenceDiagramExample[] = [
+  {
+    title: "Grouped Checkout",
+    description: "full-height participant groups with a straight request chain",
+    content: GROUP_SEQUENCE_DIAGRAM,
+  },
+  {
+    title: "Self Check",
+    description: "single participant loopback inside a backend group",
+    content: SELF_LOOP_SEQUENCE_DIAGRAM,
+  },
+  {
+    title: "Cache Branch",
+    description: "alt/else branch without a surrounding loop",
+    content: CACHE_SEQUENCE_DIAGRAM,
+  },
+  {
+    title: "Retry Polling",
+    description: "loop region without branching",
+    content: RETRY_SEQUENCE_DIAGRAM,
+  },
+]
 
 let container: BoxRenderable | null = null
 let scrollBox: ScrollBoxRenderable | null = null
 let diagram: SequenceDiagramRenderable | null = null
+let titleText: TextRenderable | null = null
 let footer: TextRenderable | null = null
 let keyHandler: ((key: KeyEvent) => void) | null = null
 let themeIndex = 0
+let exampleIndex = 0
 
 interface SequenceDiagramTheme {
   name: string
@@ -50,9 +126,9 @@ interface SequenceDiagramTheme {
   foreground: string
   participant: string
   lifeline: string
+  group: string
   request: string
   response: string
-  activation: string
   note: string
   noteBackground: string
 }
@@ -68,9 +144,9 @@ const THEMES: SequenceDiagramTheme[] = [
     foreground: "#D7E5DD",
     participant: "#E4EFE8",
     lifeline: "#6F8A7E",
+    group: "#4E6359",
     request: "#86E1C8",
     response: "#E6B17E",
-    activation: "#AECABD",
     note: "#D7E5DD",
     noteBackground: "#24382F",
   },
@@ -84,9 +160,9 @@ const THEMES: SequenceDiagramTheme[] = [
     foreground: "#D6DEE9",
     participant: "#E7EDF5",
     lifeline: "#64748B",
+    group: "#4F5A6B",
     request: "#7DD3FC",
     response: "#FCD34D",
-    activation: "#A6B2C4",
     note: "#D6DEE9",
     noteBackground: "#253044",
   },
@@ -100,9 +176,9 @@ const THEMES: SequenceDiagramTheme[] = [
     foreground: "#D8DEEE",
     participant: "#E8ECF8",
     lifeline: "#69728B",
+    group: "#51586A",
     request: "#93C5FD",
     response: "#FDBA74",
-    activation: "#ABB3C5",
     note: "#D8DEEE",
     noteBackground: "#2B3144",
   },
@@ -116,15 +192,29 @@ const THEMES: SequenceDiagramTheme[] = [
     foreground: "#D2DAE5",
     participant: "#E3E8EF",
     lifeline: "#606B7A",
+    group: "#4B5563",
     request: "#A5D8FF",
     response: "#FFE08A",
-    activation: "#9FAAB8",
     note: "#D2DAE5",
     noteBackground: "#252C38",
   },
 ]
 
+function applyExample(): void {
+  const example = EXAMPLES[exampleIndex]!
+  diagram!.content = example.content
+  titleText!.content = `Mermaid sequenceDiagram -> OpenTUI · ${exampleIndex + 1}. ${example.title}`
+}
+
+function selectExample(renderer: CliRenderer, nextExampleIndex: number): void {
+  if (nextExampleIndex < 0 || nextExampleIndex >= EXAMPLES.length) return
+  exampleIndex = nextExampleIndex
+  applyExample()
+  applyTheme(renderer, THEMES[themeIndex]!)
+}
+
 function applyTheme(renderer: CliRenderer, theme: SequenceDiagramTheme): void {
+  const example = EXAMPLES[exampleIndex]!
   renderer.setBackgroundColor(theme.background)
   container!.backgroundColor = theme.background
   scrollBox!.backgroundColor = theme.background
@@ -136,14 +226,14 @@ function applyTheme(renderer: CliRenderer, theme: SequenceDiagramTheme): void {
   diagram!.bg = theme.background
   diagram!.participantColor = theme.participant
   diagram!.lifelineColor = theme.lifeline
+  diagram!.groupColor = theme.group
   diagram!.requestColor = theme.request
   diagram!.responseColor = theme.response
-  diagram!.activationColor = theme.activation
   diagram!.noteColor = theme.note
   diagram!.noteBackgroundColor = theme.noteBackground
 
   footer!.fg = theme.footer
-  footer!.content = `Theme: ${theme.name} · T cycles themes · + / - activates participants`
+  footer!.content = `${example.description} · Theme: ${theme.name} · 1-${EXAMPLES.length} or Left/Right switch examples · T cycles themes`
 }
 
 export function run(renderer: CliRenderer): void {
@@ -158,9 +248,9 @@ export function run(renderer: CliRenderer): void {
     padding: 1,
   })
 
-  const title = new TextRenderable(renderer, {
+  titleText = new TextRenderable(renderer, {
     id: "sequence-diagram-title",
-    content: "Mermaid sequenceDiagram → OpenTUI",
+    content: "",
     fg: initialTheme.title,
     marginBottom: 1,
     flexShrink: 0,
@@ -185,14 +275,14 @@ export function run(renderer: CliRenderer): void {
 
   diagram = new SequenceDiagramRenderable(renderer, {
     id: "auth-sequence-diagram",
-    content: AUTH_SEQUENCE_DIAGRAM,
+    content: EXAMPLES[exampleIndex]!.content,
     fg: initialTheme.foreground,
     bg: initialTheme.background,
     participantColor: initialTheme.participant,
     lifelineColor: initialTheme.lifeline,
+    groupColor: initialTheme.group,
     requestColor: initialTheme.request,
     responseColor: initialTheme.response,
-    activationColor: initialTheme.activation,
     noteColor: initialTheme.note,
     noteBackgroundColor: initialTheme.noteBackground,
   })
@@ -206,17 +296,36 @@ export function run(renderer: CliRenderer): void {
   })
 
   scrollBox.add(diagram)
-  container.add(title)
+  container.add(titleText)
   container.add(scrollBox)
   container.add(footer)
   renderer.root.add(container)
   scrollBox.focus()
+  applyExample()
   applyTheme(renderer, initialTheme)
 
   keyHandler = (key: KeyEvent) => {
-    if (key.name !== "t" || key.ctrl || key.meta) return
-    themeIndex = (themeIndex + 1) % THEMES.length
-    applyTheme(renderer, THEMES[themeIndex]!)
+    if (key.ctrl || key.meta) return
+
+    if (/^[1-9]$/.test(key.name)) {
+      selectExample(renderer, Number(key.name) - 1)
+      return
+    }
+
+    if (key.name === "right" || key.name === "arrowright") {
+      selectExample(renderer, (exampleIndex + 1) % EXAMPLES.length)
+      return
+    }
+
+    if (key.name === "left" || key.name === "arrowleft") {
+      selectExample(renderer, (exampleIndex + EXAMPLES.length - 1) % EXAMPLES.length)
+      return
+    }
+
+    if (key.name === "t") {
+      themeIndex = (themeIndex + 1) % THEMES.length
+      applyTheme(renderer, THEMES[themeIndex]!)
+    }
   }
   renderer.keyInput.on("keypress", keyHandler)
 }
@@ -232,16 +341,18 @@ export function destroy(renderer: CliRenderer): void {
   container = null
   scrollBox = null
   diagram = null
+  titleText = null
   footer = null
 }
 
 if (import.meta.main) {
   if (process.argv.includes("--print")) {
     const shouldPrintPlain = process.argv.includes("--plain") || process.env.NO_COLOR !== undefined
+    const selectedExample = EXAMPLES.find((_, index) => process.argv.includes(`--example=${index + 1}`)) ?? EXAMPLES[0]!
     console.log(
       shouldPrintPlain
-        ? renderSequenceDiagram(AUTH_SEQUENCE_DIAGRAM)
-        : renderSequenceDiagramAnsi(AUTH_SEQUENCE_DIAGRAM),
+        ? renderSequenceDiagram(selectedExample.content)
+        : renderSequenceDiagramAnsi(selectedExample.content),
     )
   } else {
     const renderer = await createCliRenderer({ exitOnCtrlC: true })

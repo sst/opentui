@@ -119,44 +119,16 @@ sequenceDiagram
     ])
   })
 
-  test("renders centered heavy activation bars", () => {
+  test("parses activation syntax without rendering activation bars", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram
   Browser->>+Server: request
   Server-->>-Browser: response
 `)
 
-    expect(output).toContain("┃")
-    expect(output.indexOf("request")).toBeLessThan(output.indexOf("┃"))
-    expect(output.indexOf("┃")).toBeLessThan(output.indexOf("response"))
-  })
-
-  test("supports custom activation characters", () => {
-    const output = renderSequenceDiagram(
-      `
-sequenceDiagram
-  Browser->>+Server: request
-  Server-->>-Browser: response
-`,
-      { activationChar: "▓" },
-    )
-
-    expect(output).toContain("▓")
     expect(output).not.toContain("┃")
-  })
-
-  test("renders only the rightmost active participant per row", () => {
-    const output = renderSequenceDiagram(`
-sequenceDiagram
-  Browser->>+API: request
-  API->>+DB: query
-  DB-->>-API: row
-`)
-    const queryLine = output.split("\n").find((line) => line.includes("query"))!
-    const rowLine = output.split("\n").find((line) => line.includes(" row "))!
-
-    expect([...queryLine].filter((char) => char === "┃")).toHaveLength(1)
-    expect([...rowLine].filter((char) => char === "┃")).toHaveLength(1)
+    expect(output).toContain("request")
+    expect(output).toContain("response")
   })
 
   test("renders boxed alt else regions", () => {
@@ -235,6 +207,108 @@ sequenceDiagram
     expect(output).toContain("╭─ ↻ loop: retry up to 3x")
     expect(output).toContain("end loop")
     expect(output.indexOf("loop: retry up to 3x")).toBeLessThan(output.indexOf("GET /users/42"))
+  })
+
+  test("parses Mermaid box participant groups", () => {
+    const diagram = parseMermaidSequenceDiagram(`
+sequenceDiagram
+  participant Browser
+  box Backend
+    participant API
+    participant Cache
+  end
+  box Purple Storage Layer
+    participant DB
+  end
+  box "Purple Literal Label"
+    participant Worker
+  end
+  Browser->>API: request
+`)
+
+    expect(diagram.groups).toEqual([
+      { label: "Backend", participantIds: ["API", "Cache"] },
+      { label: "Storage Layer", participantIds: ["DB"] },
+      { label: "Purple Literal Label", participantIds: ["Worker"] },
+    ])
+    expect(diagram.steps).toEqual([
+      { type: "message", message: { from: "Browser", to: "API", label: "request", style: "solid" } },
+    ])
+  })
+
+  test("adds implicit participants inside box groups", () => {
+    const diagram = parseMermaidSequenceDiagram(`
+sequenceDiagram
+  box Backend
+    API->>DB: query
+  end
+`)
+
+    expect(diagram.groups).toEqual([{ label: "Backend", participantIds: ["API", "DB"] }])
+    expect(diagram.steps).toEqual([
+      { type: "message", message: { from: "API", to: "DB", label: "query", style: "solid" } },
+    ])
+  })
+
+  test("renders full-height participant group boxes", () => {
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  participant Browser
+  box Backend
+    participant API
+    participant Cache
+    participant DB
+  end
+  Browser->>API: GET /users/42
+  API->>Cache: get user:42
+`)
+
+    expect(output).toMatchInlineSnapshot(`
+      "                    ╭─ Backend ───────────────────────────────╮
+       Browser            │ API              Cache              DB  │
+       ───┬───            │ ─┬─              ──┬──              ─┬─ │
+          │               │  │                 │                 │  │
+          │ GET /users/42 │  │                 │                 │  │
+          ├──────────────────▶                 │                 │  │
+          │               │  │                 │                 │  │
+          │               │  │ get user:42     │                 │  │
+          │               │  ├─────────────────▶                 │  │
+          │               │  │                 │                 │  │
+                          ╰─────────────────────────────────────────╯"
+    `)
+  })
+
+  test("lets message lines pass through group borders without intersections", () => {
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  participant Browser
+  box Backend
+    participant API
+  end
+  Browser->>API: GET /users/42
+`)
+    const arrowLine = output.split("\n").find((line) => line.includes("▶"))!
+
+    expect(arrowLine).toContain("───────────────▶")
+    expect(arrowLine).not.toContain("┼")
+  })
+
+  test("renders self messages as loopback arrows", () => {
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  participant Service
+  Service->>Service: Check Permissions
+`)
+
+    expect(output).toMatchInlineSnapshot(`
+      " Service
+       ───┬───
+          │
+          ├────────────────────╮
+          │ Check Permissions  │
+          ◀────────────────────╯
+          │"
+    `)
   })
 
   test("places two spacer rows above note badges and one below", () => {
@@ -324,6 +398,35 @@ sequenceDiagram
     }
   })
 
+  test("tweens self-message departure colors away from lifelines", async () => {
+    const lifelineColor = parseColor("#94A3B8")
+    const requestColor = parseColor("#38BDF8")
+    const testRenderer = await createTestRenderer({ width: 60, height: 12 })
+
+    try {
+      const diagram = new SequenceDiagramRenderable(testRenderer.renderer, {
+        content: `sequenceDiagram
+  Service->>Service: validate`,
+        lifelineColor,
+        requestColor,
+      })
+
+      testRenderer.renderer.root.add(diagram)
+      await testRenderer.renderOnce()
+
+      const arrowLine = testRenderer
+        .captureSpans()
+        .lines.find((line) => line.spans.some((span) => span.text.includes("╮")))
+      const departureSpan = arrowLine?.spans.find((span) => span.text.includes("├"))
+
+      expect(departureSpan).toBeDefined()
+      expect(departureSpan?.fg.equals(lifelineColor)).toBe(false)
+      expect(departureSpan?.fg.equals(requestColor)).toBe(false)
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
   test("colors headers, header rules, and note badges separately", async () => {
     const participantColor = parseColor("#E5E7EB")
     const lifelineColor = parseColor("#64748B")
@@ -355,6 +458,36 @@ sequenceDiagram
       expect(headerRuleSpan?.fg.equals(lifelineColor)).toBe(true)
       expect(noteSpan?.fg.equals(noteColor)).toBe(true)
       expect(noteSpan?.bg.equals(noteBackgroundColor)).toBe(true)
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
+  test("colors group boxes separately from fragments", async () => {
+    const groupColor = parseColor("#8BA394")
+    const testRenderer = await createTestRenderer({ width: 70, height: 16 })
+
+    try {
+      const diagram = new SequenceDiagramRenderable(testRenderer.renderer, {
+        content: `sequenceDiagram
+  box Backend
+    participant API
+  end
+  alt ok
+    API->>API: validate
+  end`,
+        groupColor,
+      })
+
+      testRenderer.renderer.root.add(diagram)
+      await testRenderer.renderOnce()
+
+      const spans = testRenderer.captureSpans().lines.flatMap((line) => line.spans)
+      const groupSpan = spans.find((span) => span.text.includes("Backend"))
+      const fragmentSpan = spans.find((span) => span.text.includes("alt: ok"))
+
+      expect(groupSpan?.fg.equals(groupColor)).toBe(true)
+      expect(fragmentSpan?.fg.equals(groupColor)).toBe(false)
     } finally {
       testRenderer.renderer.destroy()
     }

@@ -325,6 +325,10 @@ const CSS_COLOR_NAMES: Record<string, string> = {
   brightwhite: "#FFFFFF",
 }
 
+export function isCssColorName(color: string): boolean {
+  return CSS_COLOR_NAMES[color.toLowerCase()] !== undefined
+}
+
 export function parseColor(color: ColorInput): RGBA {
   if (typeof color === "string") {
     const lowerColor = color.toLowerCase()
