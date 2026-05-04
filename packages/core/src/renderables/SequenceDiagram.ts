@@ -172,7 +172,12 @@ function stripQuotes(value: string): string {
 
 function isBoxColorToken(value: string): boolean {
   const lowerValue = value.toLowerCase()
-  return lowerValue === "transparent" || isCssColorName(value) || /^#[0-9a-f]{3,8}$/i.test(value) || /^rgba?\(.+\)$/i.test(value)
+  return (
+    lowerValue === "transparent" ||
+    isCssColorName(value) ||
+    /^#[0-9a-f]{3,8}$/i.test(value) ||
+    /^rgba?\(.+\)$/i.test(value)
+  )
 }
 
 function splitLeadingBoxToken(value: string): { token: string; rest: string } {
@@ -184,7 +189,9 @@ function splitLeadingBoxToken(value: string): { token: string; rest: string } {
   }
 
   const firstSpace = value.search(/\s/)
-  return firstSpace < 0 ? { token: value, rest: "" } : { token: value.slice(0, firstSpace), rest: value.slice(firstSpace + 1).trim() }
+  return firstSpace < 0
+    ? { token: value, rest: "" }
+    : { token: value.slice(0, firstSpace), rest: value.slice(firstSpace + 1).trim() }
 }
 
 function boxLabelText(value: string | undefined): string {
@@ -345,8 +352,10 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
       const label = stripQuotes(messageMatch[5]!)
 
       const activeGroup = groupStack[groupStack.length - 1]
-      if (ensureParticipant(participants, from)) addParticipantToGroup(activeGroup, from)
-      if (ensureParticipant(participants, to)) addParticipantToGroup(activeGroup, to)
+      ensureParticipant(participants, from)
+      ensureParticipant(participants, to)
+      addParticipantToGroup(activeGroup, from)
+      addParticipantToGroup(activeGroup, to)
       const message: SequenceMessage = {
         from,
         to,
@@ -464,7 +473,13 @@ function setArrowDepartureFade(
   direction: 1 | -1,
   style: SequenceCellStyle,
 ): void {
-  setCell(grid, x, y, direction === 1 ? SEQUENCE_BORDER.leftT : SEQUENCE_BORDER.rightT, `${style}Fade1` as SequenceCellStyle)
+  setCell(
+    grid,
+    x,
+    y,
+    direction === 1 ? SEQUENCE_BORDER.leftT : SEQUENCE_BORDER.rightT,
+    `${style}Fade1` as SequenceCellStyle,
+  )
   for (let step = 2; step <= 5; step++) {
     setCell(grid, x + direction * (step - 1), y, SEQUENCE_BORDER.horizontal, `${style}Fade${step}` as SequenceCellStyle)
   }
@@ -627,6 +642,11 @@ interface SequenceGroupBounds {
   rightX: number
 }
 
+interface SequenceHorizontalBounds {
+  leftX: number
+  rightX: number
+}
+
 function groupLabelText(group: SequenceParticipantGroup): string {
   return group.label ? ` ${group.label} ` : ""
 }
@@ -686,6 +706,60 @@ function resolveGroupBounds(
   })
 }
 
+function expandHorizontalBounds(bounds: SequenceHorizontalBounds, leftX: number, rightX: number): void {
+  bounds.leftX = Math.min(bounds.leftX, leftX)
+  bounds.rightX = Math.max(bounds.rightX, rightX)
+}
+
+function getDiagramContentBounds(
+  diagram: SequenceDiagram,
+  centers: number[],
+  participantIndexes: Map<string, number>,
+): SequenceHorizontalBounds {
+  const bounds: SequenceHorizontalBounds = { leftX: 0, rightX: 0 }
+
+  for (let i = 0; i < diagram.participants.length; i++) {
+    const participant = diagram.participants[i]!
+    const labelStartX = centeredStart(centers[i]!, participant.label)
+    const headerWidth = Math.max(3, visualLength(participant.label))
+    expandHorizontalBounds(bounds, labelStartX, labelStartX + headerWidth - 1)
+  }
+
+  for (const message of diagram.messages) {
+    const fromIndex = participantIndexes.get(message.from) ?? -1
+    const toIndex = participantIndexes.get(message.to) ?? -1
+    if (fromIndex < 0 || toIndex < 0) continue
+
+    const fromX = centers[fromIndex]!
+    const toX = centers[toIndex]!
+    if (fromIndex === toIndex) {
+      expandHorizontalBounds(bounds, fromX, fromX + selfMessageLoopWidth(message))
+      continue
+    }
+
+    const leftX = Math.min(fromX, toX)
+    const rightX = Math.max(fromX, toX)
+    const labelStartX = leftX + 2
+    expandHorizontalBounds(bounds, leftX, Math.max(rightX, labelStartX + messageWidth(message) - 1))
+  }
+
+  for (const step of diagram.steps) {
+    if (step.type !== "note") continue
+
+    const indexes = getParticipantIndexes(participantIndexes, step.note.over)
+    if (indexes.length === 0) continue
+
+    const leftX = centers[Math.min(...indexes)]!
+    const rightX = centers[Math.max(...indexes)]!
+    const centerX = Math.floor((leftX + rightX) / 2)
+    const noteText = noteLabelText(step.note.label)
+    const noteStartX = centeredStart(centerX, noteText)
+    expandHorizontalBounds(bounds, noteStartX, noteStartX + visualLength(noteText) - 1)
+  }
+
+  return bounds
+}
+
 function groupVerticalChar(existing: string | undefined): string | undefined {
   switch (existing) {
     case undefined:
@@ -735,8 +809,18 @@ function renderFragment(grid: SequenceGrid, centers: number[], fragment: Sequenc
   const label = fragmentLabelText(fragment)
   const rightX = Math.max(participantRightX, leftX + 2 + visualLength(label) + 1)
 
-  const leftChar = fragment.kind === "alt" || fragment.kind === "loop" ? SEQUENCE_BORDER.topLeft : fragment.kind === "else" ? SEQUENCE_BORDER.leftT : SEQUENCE_BORDER.bottomLeft
-  const rightChar = fragment.kind === "alt" || fragment.kind === "loop" ? SEQUENCE_BORDER.topRight : fragment.kind === "else" ? SEQUENCE_BORDER.rightT : SEQUENCE_BORDER.bottomRight
+  const leftChar =
+    fragment.kind === "alt" || fragment.kind === "loop"
+      ? SEQUENCE_BORDER.topLeft
+      : fragment.kind === "else"
+        ? SEQUENCE_BORDER.leftT
+        : SEQUENCE_BORDER.bottomLeft
+  const rightChar =
+    fragment.kind === "alt" || fragment.kind === "loop"
+      ? SEQUENCE_BORDER.topRight
+      : fragment.kind === "else"
+        ? SEQUENCE_BORDER.rightT
+        : SEQUENCE_BORDER.bottomRight
 
   for (let x = leftX; x <= rightX; x++) {
     setCell(grid, x, y, SEQUENCE_BORDER.horizontal, "fragment")
@@ -796,7 +880,10 @@ function resolveParticipantCenters(
     const toIndex = participantIndexes.get(message.to) ?? -1
     if (fromIndex === toIndex && fromIndex >= 0 && fromIndex < diagram.participants.length - 1) {
       const nextParticipant = diagram.participants[fromIndex + 1]!
-      gaps[fromIndex] = Math.max(gaps[fromIndex]!, selfMessageLoopWidth(message) + Math.ceil(visualLength(nextParticipant.label) / 2) + 2)
+      gaps[fromIndex] = Math.max(
+        gaps[fromIndex]!,
+        selfMessageLoopWidth(message) + Math.ceil(visualLength(nextParticipant.label) / 2) + 2,
+      )
       continue
     }
     if (fromIndex < 0 || toIndex < 0 || Math.abs(fromIndex - toIndex) !== 1) continue
@@ -838,11 +925,14 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   )
   const groupRanges = getGroupRanges(diagram, participantIndexes)
   let groupBounds = resolveGroupBounds(diagram, centers, participantIndexes, groupRanges)
-  const leftOverflow = groupBounds.reduce((leftmostX, bounds) => Math.min(leftmostX, bounds.leftX), 0)
+  let contentBounds = getDiagramContentBounds(diagram, centers, participantIndexes)
+  const groupLeftOverflow = groupBounds.reduce((leftmostX, bounds) => Math.min(leftmostX, bounds.leftX), 0)
+  const leftOverflow = Math.min(groupLeftOverflow, contentBounds.leftX, 0)
 
   if (leftOverflow < 0) {
     centers = centers.map((center) => center - leftOverflow)
     groupBounds = resolveGroupBounds(diagram, centers, participantIndexes, groupRanges)
+    contentBounds = getDiagramContentBounds(diagram, centers, participantIndexes)
   }
 
   const hasGroups = groupBounds.length > 0
@@ -851,22 +941,12 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   const participantRuleY = participantHeaderY + 1
   const lifelineStartY = participantRuleY + 1
   const stepStartY = lifelineStartY + 1
-  const lastParticipant = diagram.participants[diagram.participants.length - 1]!
-  const lastParticipantIndex = diagram.participants.length - 1
-  const lastParticipantCenter = centers[lastParticipantIndex]!
-  const lastParticipantLabelStartX = centeredStart(lastParticipantCenter, lastParticipant.label)
-  const contentWidth = lastParticipantLabelStartX + visualLength(lastParticipant.label) + 1
-  const selfMessageWidth = diagram.messages.reduce((width, message) => {
-    const participantIndex = participantIndexes.get(message.from)
-    if (participantIndex === undefined || participantIndex !== participantIndexes.get(message.to)) return width
-    return Math.max(width, centers[participantIndex]! + selfMessageLoopWidth(message) + 1)
-  }, 0)
   const groupWidth = groupBounds.reduce((width, bounds) => Math.max(width, bounds.rightX + 1), 0)
   const fragmentWidth = diagram.steps.reduce((width, step) => {
     if (step.type !== "fragment") return width
     return Math.max(width, centers[0]! + 2 + visualLength(fragmentLabelText(step.fragment)) + 2)
   }, 0)
-  const width = Math.max(contentWidth, selfMessageWidth, groupWidth, fragmentWidth)
+  const width = Math.max(contentBounds.rightX + 1, groupWidth, fragmentWidth)
   const baseHeight = stepStartY + diagram.steps.reduce((total, step) => total + getStepHeight(step), 0)
   const height = hasGroups ? Math.max(5, baseHeight + 1) : Math.max(3, baseHeight)
   const grid = createGrid(width, height)

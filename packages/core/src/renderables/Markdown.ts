@@ -514,14 +514,15 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
-    if (this.isSequenceDiagramCode(token)) {
+    const filetype = infoStringToFiletype(token.lang ?? "")
+    if (this.isSequenceDiagramCode(token, filetype)) {
       return this.createSequenceDiagramRenderable(token.text, id, marginBottom)
     }
 
     return new CodeRenderable(this.ctx, {
       id,
       content: token.text,
-      filetype: infoStringToFiletype(token.lang ?? ""),
+      filetype,
       syntaxStyle: this._syntaxStyle,
       fg: this._fg,
       bg: this._bg,
@@ -534,8 +535,8 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
-  private isSequenceDiagramCode(token: Tokens.Code): boolean {
-    return infoStringToFiletype(token.lang ?? "") === "mermaid" && isMermaidSequenceDiagram(token.text)
+  private isSequenceDiagramCode(token: Tokens.Code, filetype = infoStringToFiletype(token.lang ?? "")): boolean {
+    return filetype === "mermaid" && isMermaidSequenceDiagram(token.text)
   }
 
   private createSequenceDiagramRenderable(

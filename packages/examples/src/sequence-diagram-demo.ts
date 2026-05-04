@@ -222,7 +222,7 @@ function applyTheme(renderer: CliRenderer, theme: SequenceDiagramTheme): void {
   scrollBox!.backgroundColor = theme.background
   scrollBox!.borderColor = theme.panelBorder
   scrollBox!.viewportOptions = { backgroundColor: theme.background }
-  scrollBox!.contentOptions = { backgroundColor: theme.background }
+  scrollBox!.contentOptions = { backgroundColor: theme.background, padding: 1 }
 
   diagram!.fg = theme.foreground
   diagram!.bg = theme.background

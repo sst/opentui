@@ -239,6 +239,7 @@ sequenceDiagram
   test("adds implicit participants inside box groups", () => {
     const diagram = parseMermaidSequenceDiagram(`
 sequenceDiagram
+  participant API
   box Backend
     API->>DB: query
   end
@@ -248,6 +249,20 @@ sequenceDiagram
     expect(diagram.steps).toEqual([
       { type: "message", message: { from: "API", to: "DB", label: "query", style: "solid" } },
     ])
+  })
+
+  test("does not clip long non-adjacent messages or notes", () => {
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  participant A
+  participant B
+  participant C
+  A->>C: this message needs room past the final participant
+  Note over A,C: this note also needs full horizontal room
+`)
+
+    expect(output).toContain("this message needs room past the final participant")
+    expect(output).toContain("this note also needs full horizontal room")
   })
 
   test("renders full-height participant group boxes", () => {
