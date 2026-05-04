@@ -38,12 +38,9 @@ import type {
   SequencePattern,
   KeyLike,
   KeySequencePart,
-  GraphSnapshot,
-  GraphSnapshotOptions,
   StringifyOptions,
 } from "./types.js"
-import type { LayerDiagnosticsFeature, LayerDiagnosticsFeatureContext } from "./features/diagnostics.js"
-import type { GraphFeature, GraphFeatureContext } from "./features/graph.js"
+import { createLayerDiagnostics, type LayerDiagnosticsCore } from "./services/layer-diagnostics.js"
 import { createActivationService, type ActivationService } from "./services/activation.js"
 import { createCommandCatalogService, type CommandCatalogService } from "./services/command-catalog.js"
 import { createCommandExecutorService, type CommandExecutorService } from "./services/command-executor.js"
@@ -61,6 +58,7 @@ import { createRuntimeEmitter, type RuntimeEmitter } from "./lib/runtime-utils.j
 import { createNotificationService, type NotificationService } from "./services/notify.js"
 import { resolveKeyMatch } from "./services/keys.js"
 import { createRuntimeService, type RuntimeService } from "./services/runtime.js"
+import { KEYMAP_EXTENSION_CONTEXT, type KeymapExtensionContext } from "./services/extension-context.js"
 import { createKeymapState } from "./services/state.js"
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
@@ -70,11 +68,6 @@ type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick
 
 function getKeyMatchKey(input: KeyStringifyInput): KeyMatch {
   return resolveKeyMatch(input)
-}
-
-export interface KeymapFeatureOptions<TTarget extends object, TEvent extends KeymapEvent> {
-  graph?: (context: GraphFeatureContext<TTarget, TEvent>) => GraphFeature<TTarget, TEvent>
-  diagnostics?: (context: LayerDiagnosticsFeatureContext<TTarget, TEvent>) => LayerDiagnosticsFeature<TTarget, TEvent>
 }
 
 export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
@@ -95,8 +88,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   #compiler: CompilerService<TTarget, TEvent>
   #dispatch: DispatchService<TTarget, TEvent>
   #layers: LayerService<TTarget, TEvent>
-  #graphFeature?: GraphFeature<TTarget, TEvent>
-  #layerDiagnosticsFeature?: LayerDiagnosticsFeature<TTarget, TEvent>
+  #layerDiagnostics: LayerDiagnosticsCore<TTarget, TEvent>
 
   #keypressListener: (event: TEvent) => void
   #keyreleaseListener: (event: TEvent) => void
@@ -105,10 +97,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   #host: KeymapHost<TTarget, TEvent>
 
-  constructor(
-    host: KeymapHost<TTarget, TEvent>,
-    features: KeymapFeatureOptions<TTarget, TEvent> = {},
-  ) {
+  constructor(host: KeymapHost<TTarget, TEvent>) {
     this.#host = host
     if (host.isDestroyed) {
       throw new Error("Cannot create a keymap for a destroyed host")
@@ -150,15 +139,12 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
         this.#warnUnknownToken(token, sequence)
       },
     })
-    this.#layerDiagnosticsFeature = features.diagnostics?.({
-      notify: this.#notify,
-      commands: this.#catalog,
-    })
+    this.#layerDiagnostics = createLayerDiagnostics(this.#notify, this.#catalog)
     this.#layers = createLayerService(this.#state, this.#notify, this.#conditions, this.#activation, {
       compiler: this.#compiler,
       commands: this.#catalog,
       host: this.#host,
-      diagnostics: this.#layerDiagnosticsFeature,
+      diagnostics: this.#layerDiagnostics,
       warnUnknownField: (kind, fieldName) => {
         this.#warnUnknownField(kind, fieldName)
       },
@@ -201,14 +187,16 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
         }),
       )
     }
+  }
 
-    this.#graphFeature = features.graph?.({
+  public [KEYMAP_EXTENSION_CONTEXT](): KeymapExtensionContext<TTarget, TEvent> {
+    return {
       state: this.#state,
       host: this.#host,
       conditions: this.#conditions,
       catalog: this.#catalog,
       activation: this.#activation,
-    })
+    }
   }
 
   #cleanup(): void {
@@ -482,36 +470,16 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     this.#catalog.clearCommandResolvers()
   }
 
-  public getGraphSnapshot(options?: GraphSnapshotOptions<TTarget>): GraphSnapshot<TTarget, TEvent> {
-    return this.#requireGraphFeature().getGraphSnapshot(options)
-  }
-
   public prependLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
-    return this.#requireLayerDiagnosticsFeature().prependLayerAnalyzer(analyzer)
+    return this.#layerDiagnostics.prependLayerAnalyzer(analyzer)
   }
 
   public appendLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
-    return this.#requireLayerDiagnosticsFeature().appendLayerAnalyzer(analyzer)
+    return this.#layerDiagnostics.appendLayerAnalyzer(analyzer)
   }
 
   public clearLayerAnalyzers(): void {
-    this.#requireLayerDiagnosticsFeature().clearLayerAnalyzers()
-  }
-
-  #requireGraphFeature(): GraphFeature<TTarget, TEvent> {
-    if (!this.#graphFeature) {
-      throw new Error("Keymap graph feature is not installed")
-    }
-
-    return this.#graphFeature
-  }
-
-  #requireLayerDiagnosticsFeature(): LayerDiagnosticsFeature<TTarget, TEvent> {
-    if (!this.#layerDiagnosticsFeature) {
-      throw new Error("Keymap diagnostics feature is not installed")
-    }
-
-    return this.#layerDiagnosticsFeature
+    this.#layerDiagnostics.clearLayerAnalyzers()
   }
 
   public prependEventMatchResolver(resolver: EventMatchResolver<TEvent>): () => void {

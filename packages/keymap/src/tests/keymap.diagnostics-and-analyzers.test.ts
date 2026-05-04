@@ -16,6 +16,7 @@ import {
   type WarningEvent,
 } from "../index.js"
 import { createDefaultOpenTuiKeymap, createOpenTuiKeymap } from "../opentui.js"
+import { getGraphSnapshot } from "../extras/graph.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 import { createKeymapTestHelpers, type OpenTuiKeymap } from "./keymap.test-support.js"
 
@@ -121,7 +122,7 @@ describe("keymap: diagnostics and analyzers", () => {
 
     expect(takeErrors().errors).toEqual(['Conflicting keymap attribute for "label" from field title'])
     expect(getActiveKey(keymap, "x")).toBeUndefined()
-    expect(keymap.getGraphSnapshot().layers).toHaveLength(0)
+    expect(getGraphSnapshot(keymap).layers).toHaveLength(0)
   })
 
   test("skips bindings with conflicting attributes from typed binding fields", () => {

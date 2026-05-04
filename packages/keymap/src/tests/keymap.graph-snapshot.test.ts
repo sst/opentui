@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { stringifyKeySequence, type GraphSnapshot } from "../index.js"
+import { stringifyKeySequence } from "../index.js"
+import { getGraphSnapshot, type GraphSnapshot } from "../extras/graph.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 import { createKeymapTestHelpers, type OpenTuiKeymap } from "./keymap.test-support.js"
 
@@ -58,7 +59,7 @@ describe("keymap: graph snapshot", () => {
       bindings: [{ key: "ctrl+s", cmd: "save", desc: "Save with control" }],
     })
 
-    const snapshot = keymap.getGraphSnapshot()
+    const snapshot = getGraphSnapshot(keymap)
     expect(snapshot.focused).toBeNull()
     expect(snapshot.layers).toHaveLength(1)
     expect(snapshot.commands).toHaveLength(1)
@@ -103,7 +104,7 @@ describe("keymap: graph snapshot", () => {
       bindings: [{ key: "l", cmd: "save" }],
     })
 
-    let snapshot = keymap.getGraphSnapshot()
+    let snapshot = getGraphSnapshot(keymap)
     const globalCommand = getCommand(snapshot, "save", "Global Save")
     const inactiveLocalCommand = getCommand(snapshot, "save", "Local Save")
     const localLayer = snapshot.layers.find((layer) => layer.target === target)
@@ -114,7 +115,7 @@ describe("keymap: graph snapshot", () => {
     expect(localLayer).toMatchObject({ active: false, focusActive: false, enabled: true })
 
     target.focus()
-    snapshot = keymap.getGraphSnapshot()
+    snapshot = getGraphSnapshot(keymap)
     const shadowedGlobalCommand = getCommand(snapshot, "save", "Global Save")
     const activeLocalCommand = getCommand(snapshot, "save", "Local Save")
 
@@ -148,7 +149,7 @@ describe("keymap: graph snapshot", () => {
       ],
     })
 
-    const snapshot = keymap.getGraphSnapshot()
+    const snapshot = getGraphSnapshot(keymap)
     const disabledBinding = getBinding(snapshot, "s")
     const disabledCommandBinding = getBinding(snapshot, "d")
     const missingCommandBinding = getBinding(snapshot, "m")
@@ -174,7 +175,7 @@ describe("keymap: graph snapshot", () => {
 
     mockInput.pressKey("g")
 
-    const snapshot = keymap.getGraphSnapshot()
+    const snapshot = getGraphSnapshot(keymap)
     expect(stringifyKeySequence(snapshot.pendingSequence, { preferDisplay: true })).toBe("g")
     expect(snapshot.activeKeys.map((key) => key.display)).toEqual(["g"])
 
@@ -204,7 +205,7 @@ describe("keymap: graph snapshot", () => {
       bindings: [{ key: "x", cmd: "high" }],
     })
 
-    let snapshot = keymap.getGraphSnapshot()
+    let snapshot = getGraphSnapshot(keymap)
     const highBinding = snapshot.bindings.find((binding) => binding.command === "high")
     const lowBinding = snapshot.bindings.find((binding) => binding.command === "low")
 
@@ -223,7 +224,7 @@ describe("keymap: graph snapshot", () => {
       bindings: [{ key: "x", cmd: "high", fallthrough: true }],
     })
 
-    snapshot = fallthroughKeymap.getGraphSnapshot()
+    snapshot = getGraphSnapshot(fallthroughKeymap)
     expect(snapshot.bindings.find((binding) => binding.command === "high")).toMatchObject({ reachable: true })
     expect(snapshot.bindings.find((binding) => binding.command === "low")).toMatchObject({ reachable: true })
   })
@@ -240,7 +241,7 @@ describe("keymap: graph snapshot", () => {
       bindings: [{ key: "t", cmd: "target-command" }],
     })
 
-    const snapshot = keymap.getGraphSnapshot({ includeTargets: false })
+    const snapshot = getGraphSnapshot(keymap, { includeTargets: false })
     expect(snapshot.focused).toBeUndefined()
     expect(snapshot.layers[0]?.target).toBeUndefined()
     expect(snapshot.commands[0]?.target).toBeUndefined()
@@ -254,7 +255,7 @@ describe("keymap: graph snapshot", () => {
     keymap.registerLayer({ bindings: [{ key: "g", cmd: () => {} }] })
     keymap.registerLayer({ target, bindings: [{ key: "t", cmd: () => {} }] })
 
-    const snapshot = keymap.getGraphSnapshot({ focused: target })
+    const snapshot = getGraphSnapshot(keymap, { focused: target })
     expect(renderer.currentFocusedRenderable).not.toBe(target)
     expect(snapshot.focused).toBe(target)
     expect(snapshot.activeKeys.map((key) => key.display).sort()).toEqual(["g", "t"])

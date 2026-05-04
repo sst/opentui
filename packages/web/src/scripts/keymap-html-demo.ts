@@ -5,13 +5,10 @@ import {
   Keymap,
   type ActiveKey,
   type DispatchEvent,
-  type GraphBinding,
-  type GraphSnapshot,
   type HtmlKeymapEvent,
 } from "@opentui/keymap/html"
 import * as addons from "@opentui/keymap/addons"
-import { createGraphFeature } from "@opentui/keymap/features/graph"
-import { createLayerDiagnosticsFeature } from "@opentui/keymap/features/diagnostics"
+import { getGraphSnapshot, type GraphBinding, type GraphSnapshot } from "@opentui/keymap/extras/graph"
 import { formatKeySequence } from "@opentui/keymap/extras"
 
 type HtmlGraphSnapshot = GraphSnapshot<HTMLElement, HtmlKeymapEvent>
@@ -75,10 +72,7 @@ if (
   throw new Error("HTML keymap example is missing required DOM nodes")
 }
 
-const keymap = new Keymap(createHtmlKeymapHost(keymapRoot), {
-  graph: createGraphFeature,
-  diagnostics: createLayerDiagnosticsFeature,
-})
+const keymap = new Keymap(createHtmlKeymapHost(keymapRoot))
 addons.registerDefaultKeys(keymap)
 addons.registerEnabledFields(keymap)
 addons.registerMetadataFields(keymap)
@@ -610,7 +604,7 @@ function scheduleGraphPulseFrame(): void {
 
   graphPulseFrame = window.requestAnimationFrame(() => {
     graphPulseFrame = 0
-    renderGraphCanvas(keymap.getGraphSnapshot())
+    renderGraphCanvas(getGraphSnapshot(keymap))
   })
 }
 
@@ -1096,7 +1090,7 @@ function renderStatus(): void {
 
 function renderGraph(): void {
   graphCard.classList.toggle("is-hidden", !graphVisible)
-  const snapshot = keymap.getGraphSnapshot()
+  const snapshot = getGraphSnapshot(keymap)
   renderGraphCanvas(snapshot)
   graphCard.dataset.activeLayers = String(snapshot.layers.filter((layer) => layer.active).length)
   const activeView = snapshot.activeKeys
@@ -1759,7 +1753,7 @@ promptOverlay.addEventListener("mousedown", (event) => {
 })
 
 window.addEventListener("resize", () => {
-  renderGraphCanvas(keymap.getGraphSnapshot())
+  renderGraphCanvas(getGraphSnapshot(keymap))
 })
 
 renderCounters()

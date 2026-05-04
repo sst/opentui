@@ -18,14 +18,13 @@ import {
 } from "@opentui/keymap/addons"
 import { registerBaseLayoutFallback, registerManagedTextareaLayer } from "@opentui/keymap/addons/opentui"
 import { Keymap } from "@opentui/keymap"
-import { createLayerDiagnosticsFeature } from "@opentui/keymap/features/diagnostics"
 import { createDefaultOpenTuiKeymap, createOpenTuiKeymapHost } from "@opentui/keymap/opentui"
 import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"
 
 const diagnostics = createDiagnosticHarness()
 
 function createDiagnosticsOpenTuiKeymap(renderer: TestRenderer) {
-  return new Keymap(createOpenTuiKeymapHost(renderer), { diagnostics: createLayerDiagnosticsFeature })
+  return new Keymap(createOpenTuiKeymapHost(renderer))
 }
 
 function permutations<T>(items: readonly T[]): T[][] {

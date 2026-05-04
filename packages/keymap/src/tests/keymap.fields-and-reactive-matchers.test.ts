@@ -16,6 +16,7 @@ import {
   type WarningEvent,
 } from "../index.js"
 import { createDefaultOpenTuiKeymap, createOpenTuiKeymap } from "../opentui.js"
+import { getGraphSnapshot } from "../extras/graph.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 import { createKeymapTestHelpers, type OpenTuiKeymap } from "./keymap.test-support.js"
 
@@ -817,14 +818,14 @@ describe("keymap: fields and reactive matchers", () => {
       bindings: [{ key: "x", cmd: () => {} }],
     })
 
-    const [layer] = keymap.getGraphSnapshot().layers
+    const [layer] = getGraphSnapshot(keymap).layers
     expect(layer?.fields).toEqual({ name: " Normal Mode ", mode: "normal" })
     expect(layer?.attrs).toEqual({ name: "Normal Mode", mode: "normal" })
     expect(layer?.active).toBe(false)
 
     keymap.setData("vim.mode", "normal")
 
-    const [activeLayer] = keymap.getGraphSnapshot().layers
+    const [activeLayer] = getGraphSnapshot(keymap).layers
     expect(activeLayer?.attrs).toEqual({ name: "Normal Mode", mode: "normal" })
     expect(activeLayer?.active).toBe(true)
   })

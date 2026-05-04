@@ -90,7 +90,7 @@ Guidelines:
 
 Every registration API above returns a disposer.
 
-Layer analyzers are provided by the layer-diagnostics feature pack. Construct `Keymap` with `createLayerDiagnosticsFeature` before registering analyzer-based addons.
+Layer analyzers are built into `Keymap`, so analyzer-based addons can register directly with any keymap instance.
 
 ## Field compilers
 
@@ -426,7 +426,7 @@ Options:
 | `getData()` / `setData()`                                                  | Shared mutable runtime state                                    |
 | `getPendingSequence()` / `clearPendingSequence()` / `popPendingSequence()` | Sequence-aware addons                                           |
 | `createKeyMatcher(key)`                                                    | Match a stroke using the current parser and token configuration |
-| `getActiveKeys()` / `getGraphSnapshot()`                                   | Build hint, graph or debug UIs                                  |
+| `getActiveKeys()` / `getGraphSnapshot(keymap)`                             | Build hint, graph or debug UIs                                  |
 | `getCommands()` / `getCommandEntries()` / `getCommandBindings()`           | Inspect command metadata and binding projections                |
 
 ## Shared resources with `acquireResource()`

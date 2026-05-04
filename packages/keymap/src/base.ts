@@ -1,6 +1,5 @@
 export { Keymap } from "./keymap.js"
 export { stringifyKeySequence, stringifyKeyStroke } from "./services/keys.js"
-export type { KeymapFeatureOptions } from "./keymap.js"
 
 export type {
   KeyLike,
@@ -29,13 +28,6 @@ export type {
   Bindings,
   ActiveKey,
   ActiveKeyOptions,
-  GraphBinding,
-  GraphCommand,
-  GraphInactiveReason,
-  GraphLayer,
-  GraphSequenceNode,
-  GraphSnapshot,
-  GraphSnapshotOptions,
   DispatchBinding,
   DispatchEvent,
   DispatchLayer,

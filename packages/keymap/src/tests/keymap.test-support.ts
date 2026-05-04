@@ -12,8 +12,6 @@ import {
   type ReactiveMatcher,
   type WarningEvent,
 } from "../index.js"
-import { createGraphFeature } from "../features/graph.js"
-import { createLayerDiagnosticsFeature } from "../features/diagnostics.js"
 import { type TestRenderer } from "@opentui/core/testing"
 import { type DiagnosticHarness } from "./diagnostic-harness.js"
 
@@ -61,10 +59,7 @@ export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRende
   }
 
   function getGraphKeymap(renderer: TestRenderer): OpenTuiKeymap {
-    const keymap = new Keymap(createOpenTuiKeymapHost(renderer), {
-      graph: createGraphFeature,
-      diagnostics: createLayerDiagnosticsFeature,
-    })
+    const keymap = new Keymap(createOpenTuiKeymapHost(renderer))
     addons.registerDefaultKeys(keymap)
     addons.registerEnabledFields(keymap)
     addons.registerMetadataFields(keymap)

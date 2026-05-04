@@ -20,20 +20,17 @@ const keymap = new Keymap(host as KeymapHost<object>)
 
 Bare keymaps do not parse string bindings until you install binding parsers and event match resolvers. In practice that usually means `registerDefaultKeys()` or one of the default host helpers.
 
-`Keymap` is the core runtime. Graph snapshots and layer analyzers are opt-in feature packs:
+`Keymap` is the core runtime. Layer analyzers are built in. Graph snapshots are provided by an extra helper:
 
 ```ts
 import { Keymap, type KeymapHost } from "@opentui/keymap"
-import { createLayerDiagnosticsFeature } from "@opentui/keymap/features/diagnostics"
-import { createGraphFeature } from "@opentui/keymap/features/graph"
+import { getGraphSnapshot } from "@opentui/keymap/extras/graph"
 
-const keymap = new Keymap(host as KeymapHost<object>, {
-  graph: createGraphFeature,
-  diagnostics: createLayerDiagnosticsFeature,
-})
+const keymap = new Keymap(host as KeymapHost<object>)
+const graph = getGraphSnapshot(keymap)
 ```
 
-Without those options, `getGraphSnapshot()` and layer-analyzer registration throw feature-not-installed errors. Warning and error reporting remains part of the core runtime because command, parser and matcher failures use it.
+Warning/error reporting and layer analyzer registration are part of the core runtime because command, parser, matcher and analyzer failures use them.
 
 ## `KeymapHost`
 
@@ -402,7 +399,7 @@ The returned map preserves the requested command order and includes every reques
 
 ## Graph snapshots
 
-`getGraphSnapshot(options?)` returns a diagnostic projection for graph visualizers and debug UIs. It is provided by the graph feature pack, which `Keymap` installs by default. It includes layers, commands, bindings, sequence nodes, active keys and the current pending sequence.
+`getGraphSnapshot(keymap, options?)` from `@opentui/keymap/extras/graph` returns a diagnostic projection for graph visualizers and debug UIs. It includes layers, commands, bindings, sequence nodes, active keys and the current pending sequence.
 
 Layer custom fields remain available as raw `GraphLayer.fields`; compiled layer metadata published with `ctx.attr(...)` appears as `GraphLayer.attrs`. Use attrs for stable visualization metadata such as layer display names.
 
@@ -418,7 +415,7 @@ keymap.registerLayer({
   bindings: [{ key: "?", cmd: "toggle-help" }],
 })
 
-const snapshot = keymap.getGraphSnapshot()
+const snapshot = getGraphSnapshot(keymap)
 snapshot.layers[0]?.attrs?.name // "Global"
 ```
 

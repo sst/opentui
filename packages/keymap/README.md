@@ -41,8 +41,7 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 - `@opentui/keymap/base` — core `Keymap` entry without graph snapshot or layer-analyzer implementations
 - `@opentui/keymap/addons` — universal addons
 - `@opentui/keymap/addons/opentui` — universal + OpenTUI addons
-- `@opentui/keymap/features/graph` — graph snapshot feature pack for `Keymap`
-- `@opentui/keymap/features/diagnostics` — layer-analyzer diagnostics feature pack for `Keymap`
+- `@opentui/keymap/extras/graph` — graph snapshot helpers for debug and graph UIs
 - `@opentui/keymap/testing` — host-agnostic fake keymap host and diagnostics for addon tests
 - `@opentui/keymap/html` — core + HTML adapter
 - `@opentui/keymap/opentui` — core + OpenTUI adapter

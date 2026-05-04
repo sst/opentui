@@ -2,29 +2,18 @@ import { expect, test } from "bun:test"
 import { Keymap } from "../index.js"
 import { registerDefaultKeys } from "../addons/index.js"
 import { createTestKeymapHost } from "../testing/index.js"
-import { createGraphFeature } from "../features/graph.js"
-import { createLayerDiagnosticsFeature } from "../features/diagnostics.js"
+import { getGraphSnapshot } from "../extras/graph.js"
 
-test("default Keymap installs layer diagnostics but not graph", () => {
+test("Keymap has built-in layer analyzers and graph is external", () => {
   const host = createTestKeymapHost()
   const keymap = new Keymap(host)
 
   expect(typeof keymap.appendLayerAnalyzer).toBe("function")
-  expect(() => keymap.getGraphSnapshot()).toThrow("Keymap graph feature is not installed")
-})
-
-test("Keymap can install graph and diagnostics feature packs explicitly", () => {
-  const host = createTestKeymapHost()
-  const keymap = new Keymap(host, {
-    graph: createGraphFeature,
-    diagnostics: createLayerDiagnosticsFeature,
-  })
-
-  expect(keymap.getGraphSnapshot().layers).toEqual([])
+  expect(getGraphSnapshot(keymap).layers).toEqual([])
   expect(typeof keymap.appendLayerAnalyzer).toBe("function")
 })
 
-test("Keymap runs bindings without graph or layer diagnostics features", () => {
+test("Keymap runs bindings without graph extras", () => {
   const host = createTestKeymapHost()
   const keymap = new Keymap(host)
   let ran = false
@@ -44,6 +33,5 @@ test("Keymap runs bindings without graph or layer diagnostics features", () => {
   host.press("x")
 
   expect(ran).toBe(true)
-  expect(() => keymap.getGraphSnapshot()).toThrow("Keymap graph feature is not installed")
-  expect(() => keymap.appendLayerAnalyzer(() => {})).toThrow("Keymap diagnostics feature is not installed")
+  expect(typeof (keymap as { getGraphSnapshot?: unknown }).getGraphSnapshot).toBe("undefined")
 })

@@ -25,13 +25,9 @@
       "import": "./src/extras/index.ts",
       "types": "./src/extras/index.ts"
     },
-    "./features/graph": {
-      "import": "./src/features/graph.ts",
-      "types": "./src/features/graph.ts"
-    },
-    "./features/diagnostics": {
-      "import": "./src/features/diagnostics.ts",
-      "types": "./src/features/diagnostics.ts"
+    "./extras/graph": {
+      "import": "./src/extras/graph.ts",
+      "types": "./src/extras/graph.ts"
     },
     "./addons": {
       "import": "./src/addons/index.ts",

@@ -1,29 +1,10 @@
 import type { ConditionService } from "./conditions.js"
 import type { ActiveCommandView, CommandView, LayerCommandEntry, State } from "./state.js"
-import type { CommandState, GraphInactiveReason, KeymapEvent, KeymapHost, RegisteredLayer } from "../types.js"
+import type { KeymapEvent, KeymapHost, RegisteredLayer } from "../types.js"
 import {
-  getActivationPath,
   getActiveLayersForFocused,
   getSortedLayers,
-  isLayerActiveForFocused,
 } from "./primitives/active-layers.js"
-
-export interface RuntimeLayerView<TTarget extends object, TEvent extends KeymapEvent> {
-  layer: RegisteredLayer<TTarget, TEvent>
-  focusActive: boolean
-  enabled: boolean
-  active: boolean
-  inactiveReasons: GraphInactiveReason[]
-}
-
-export interface RuntimeView<TTarget extends object, TEvent extends KeymapEvent> {
-  sortedLayers: readonly RegisteredLayer<TTarget, TEvent>[]
-  activeLayers: readonly RegisteredLayer<TTarget, TEvent>[]
-  layerStates: ReadonlyMap<RegisteredLayer<TTarget, TEvent>, RuntimeLayerView<TTarget, TEvent>>
-  activeCommands: ActiveCommandView<TTarget, TEvent>
-  activeCommandStates: ReadonlySet<CommandState<TTarget, TEvent>>
-  reachableCommandStates: ReadonlySet<CommandState<TTarget, TEvent>>
-}
 
 function pushCommandEntry<TTarget extends object, TEvent extends KeymapEvent>(
   target: Map<string, LayerCommandEntry<TTarget, TEvent>[]>,
@@ -82,49 +63,6 @@ function collectActiveCommands<TTarget extends object, TEvent extends KeymapEven
   return { entries, reachable, reachableByName, chainsByName }
 }
 
-export function getRuntimeView<TTarget extends object, TEvent extends KeymapEvent>(
-  state: State<TTarget, TEvent>,
-  host: KeymapHost<TTarget, TEvent>,
-  conditions: ConditionService<TTarget, TEvent>,
-  focused: TTarget | null,
-): RuntimeView<TTarget, TEvent> {
-  const sortedLayers = getSortedLayers(state.layers)
-  const activationPath = getActivationPath(host, focused)
-  const layerStates = new Map<RegisteredLayer<TTarget, TEvent>, RuntimeLayerView<TTarget, TEvent>>()
-  const activeLayers: RegisteredLayer<TTarget, TEvent>[] = []
-
-  for (const layer of sortedLayers) {
-    const targetDestroyed = layer.target ? host.isTargetDestroyed(layer.target) : false
-    const focusActive = isLayerActiveForFocused(host, layer, focused, activationPath)
-    const enabled = conditions.matchesConditions(layer)
-    const inactiveReasons: GraphInactiveReason[] = []
-    if (targetDestroyed) inactiveReasons.push("target-destroyed")
-    if (!focusActive) inactiveReasons.push("focus")
-    if (!enabled) inactiveReasons.push("layer-disabled")
-
-    const layerView = {
-      layer,
-      focusActive,
-      enabled,
-      active: !targetDestroyed && focusActive && enabled,
-      inactiveReasons,
-    }
-    layerStates.set(layer, layerView)
-    if (focusActive && enabled) activeLayers.push(layer)
-  }
-
-  const activeCommands = collectActiveCommands(activeLayers, conditions, false)
-
-  return {
-    sortedLayers,
-    activeLayers,
-    layerStates,
-    activeCommands,
-    activeCommandStates: commandStateSet(activeCommands.entries),
-    reachableCommandStates: commandStateSet(activeCommands.reachable),
-  }
-}
-
 export function getActiveCommandView<TTarget extends object, TEvent extends KeymapEvent>(
   state: State<TTarget, TEvent>,
   host: KeymapHost<TTarget, TEvent>,
@@ -132,10 +70,4 @@ export function getActiveCommandView<TTarget extends object, TEvent extends Keym
   focused: TTarget | null,
 ): ActiveCommandView<TTarget, TEvent> {
   return collectActiveCommands(getActiveLayersForFocused(state.layers, host, focused), conditions, true)
-}
-
-export function commandStateSet<TTarget extends object, TEvent extends KeymapEvent>(
-  entries: readonly LayerCommandEntry<TTarget, TEvent>[],
-): Set<CommandState<TTarget, TEvent>> {
-  return new Set(entries.map((entry) => entry.commandState))
 }

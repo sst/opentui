@@ -2,7 +2,6 @@ import { CliRenderEvents, KeyEvent, RenderableEvents, type CliRenderer, type Ren
 import { registerDefaultKeys } from "./addons/universal/default-parser.js"
 import { registerEnabledFields } from "./addons/universal/enabled.js"
 import { registerMetadataFields } from "./addons/universal/metadata.js"
-import { createLayerDiagnosticsFeature } from "./features/diagnostics.js"
 import { Keymap } from "./keymap.js"
 import type { HostMetadata, HostPlatform, KeymapHost } from "./types.js"
 
@@ -134,7 +133,7 @@ export function createDefaultOpenTuiKeymap(renderer: CliRenderer): Keymap<Render
     throw new Error("Cannot create a keymap for a destroyed renderer")
   }
 
-  const keymap = new Keymap(createOpenTuiKeymapHost(renderer), { diagnostics: createLayerDiagnosticsFeature })
+  const keymap = new Keymap(createOpenTuiKeymapHost(renderer))
   registerDefaultKeys(keymap)
   registerEnabledFields(keymap)
   registerMetadataFields(keymap)

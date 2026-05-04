@@ -1,8 +1,7 @@
 export { Keymap } from "./keymap.js"
+export { KEYMAP_EXTENSION_CONTEXT } from "./services/extension-context.js"
 export { stringifyKeySequence, stringifyKeyStroke } from "./services/keys.js"
-export type { GraphFeature, GraphFeatureContext } from "./features/graph.js"
-export type { LayerDiagnosticsFeature, LayerDiagnosticsFeatureContext } from "./features/diagnostics.js"
-export type { KeymapFeatureOptions } from "./keymap.js"
+export type { KeymapExtensionContext, KeymapExtensionProvider } from "./services/extension-context.js"
 export type {
   KeyLike,
   KeyMatch,
@@ -30,13 +29,6 @@ export type {
   Bindings,
   ActiveKey,
   ActiveKeyOptions,
-  GraphBinding,
-  GraphCommand,
-  GraphInactiveReason,
-  GraphLayer,
-  GraphSequenceNode,
-  GraphSnapshot,
-  GraphSnapshotOptions,
   DispatchBinding,
   DispatchEvent,
   DispatchLayer,
