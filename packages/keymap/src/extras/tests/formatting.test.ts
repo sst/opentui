@@ -105,6 +105,41 @@ describe("formatting helpers", () => {
     ).toBe(" s")
   })
 
+  test("uses preserved pattern display by default and supports pattern overrides", () => {
+    const keymap = getKeymap(renderer)
+    keymap.registerSequencePattern({
+      name: "count",
+      match(event) {
+        return /^\d$/.test(event.name) ? { value: event.name } : undefined
+      },
+    })
+    const countSequence = keymap.parseKeySequence("{count}j")
+
+    expect(formatKeySequence(countSequence)).toBe("{count} j")
+    expect(formatKeySequence(countSequence, { patternDisplay: { count: "N" } })).toBe("N j")
+    expect(
+      formatKeySequence(countSequence, {
+        patternDisplay(patternName, part) {
+          expect(patternName).toBe("count")
+          expect(part.patternName).toBe("count")
+          expect(part.tokenName).toBeUndefined()
+          return "repeat"
+        },
+      }),
+    ).toBe("repeat j")
+  })
+
+  test("uses generic parser-preserved display for non-token and non-pattern parts", () => {
+    expect(
+      formatKeySequence([
+        {
+          stroke: { name: "x", ctrl: false, shift: false, meta: false, super: false },
+          display: "custom-x",
+        },
+      ]),
+    ).toBe("custom-x")
+  })
+
   test("formats active-key shaped parts", () => {
     const keymap = getKeymap(renderer)
     keymap.registerToken({ name: "leader", key: { name: "space" } })
@@ -172,7 +207,7 @@ describe("formatting helpers", () => {
       .getCommandBindings({ visibility: "registered", commands: ["alias-duplicate"] })
       .get("alias-duplicate")
 
-    expect(formatCommandBindings(bindings)).toBe("enter")
+    expect(formatCommandBindings(bindings)).toBe("enter, return")
     expect(formatCommandBindings(bindings, { keyNameAliases: { enter: "ret" } })).toBe("ret")
     expect(formatCommandBindings(bindings, { dedupe: false, keyNameAliases: { enter: "ret" } })).toBe("ret, ret")
   })

@@ -1425,7 +1425,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         super: event.super ?? false,
         hyper: event.hyper || undefined,
       },
-      { display: match.display ?? String(match.value ?? event.name), tokenName: pattern.name },
+      { display: match.display ?? String(match.value ?? event.name) },
     )
 
     return { ...part, patternName: pattern.name, payloadKey: pattern.payloadKey }

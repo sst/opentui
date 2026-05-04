@@ -379,7 +379,7 @@ function getPatternPayloadLabel(binding: HtmlGraphBinding): string | undefined {
 }
 
 function getCapturedPatternLabel(snapshot: HtmlGraphSnapshot, patternName: string): string | undefined {
-  const parts = snapshot.pendingSequence.filter((part) => part.patternName === patternName || part.tokenName === patternName)
+  const parts = snapshot.pendingSequence.filter((part) => part.patternName === patternName)
   return parts.length > 0 ? formatKeySequence(parts, KEY_FORMAT_OPTIONS) : undefined
 }
 
@@ -398,8 +398,8 @@ interface SequencePartLike {
   patternName?: string
 }
 
-function isPatternPart(part: { patternName?: string; tokenName?: string } | undefined): boolean {
-  return !!part?.patternName || part?.tokenName === COUNT_PATTERN
+function isPatternPart(part: { patternName?: string } | undefined): boolean {
+  return !!part?.patternName
 }
 
 function bindingHasPattern(binding: HtmlGraphBinding): boolean {
@@ -407,7 +407,7 @@ function bindingHasPattern(binding: HtmlGraphBinding): boolean {
 }
 
 function sequencePartMatchesPattern(patternName: string, part: SequencePartLike | undefined): boolean {
-  return part?.patternName === patternName || part?.tokenName === patternName
+  return part?.patternName === patternName
 }
 
 interface CanvasGraphNode {

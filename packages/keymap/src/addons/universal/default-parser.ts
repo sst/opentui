@@ -319,7 +319,7 @@ export const defaultBindingParser: BindingParser = (ctx) => {
 
     const part = ctx.parseObjectKey(
       { name: patternName, ctrl: false, shift: false, meta: false, super: false },
-      { display: pattern.display ?? `{${patternName}}`, match: pattern.match, tokenName: patternName },
+      { display: pattern.display ?? `{${patternName}}`, match: pattern.match },
     )
 
     return {
