@@ -90,7 +90,7 @@ Guidelines:
 
 Every registration API above returns a disposer.
 
-Layer analyzers are provided by the layer-diagnostics feature pack. The default `Keymap` and built-in host helpers install it; a bare `BaseKeymap` only supports analyzers when constructed with `createLayerDiagnosticsFeature`.
+Layer analyzers are provided by the layer-diagnostics feature pack. Construct `Keymap` with `createLayerDiagnosticsFeature` before registering analyzer-based addons.
 
 ## Field compilers
 

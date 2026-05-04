@@ -270,11 +270,11 @@ A pending sequence is the prefix the user has already typed, such as `g` while w
 | Package                                  | Description                                                                |
 | ---------------------------------------- | -------------------------------------------------------------------------- |
 | `@opentui/keymap`                        | Full engine: `Keymap`, key stringifiers and shared types for custom hosts  |
-| `@opentui/keymap/base`                   | `BaseKeymap` without graph snapshot or layer-analyzer implementations      |
+| `@opentui/keymap/base`                   | Core `Keymap` entry without graph snapshot or layer-analyzer implementations |
 | `@opentui/keymap/addons`                 | Universal addons for parser stages, metadata, diagnostics and sequences    |
 | `@opentui/keymap/addons/opentui`         | Universal addons plus OpenTUI-specific base-layout and edit-buffer helpers |
-| `@opentui/keymap/features/graph`         | Graph snapshot feature pack for `BaseKeymap`                               |
-| `@opentui/keymap/features/diagnostics`   | Layer-analyzer diagnostics feature pack for `BaseKeymap`                   |
+| `@opentui/keymap/features/graph`         | Graph snapshot feature pack for `Keymap`                                   |
+| `@opentui/keymap/features/diagnostics`   | Layer-analyzer diagnostics feature pack for `Keymap`                       |
 | `@opentui/keymap/testing`                | Host-agnostic fake host and diagnostics for addon tests                    |
 | `@opentui/keymap/opentui`                | OpenTUI host adapter for terminal apps built on `@opentui/core`            |
 | `@opentui/keymap/html`                   | DOM host adapter for browser UIs rooted in an `HTMLElement`                |
@@ -285,8 +285,8 @@ A pending sequence is the prefix the user has already typed, such as `g` while w
 
 | Helper                            | What it installs                                                                  |
 | --------------------------------- | --------------------------------------------------------------------------------- |
-| `new BaseKeymap(host)`            | Core runtime without graph snapshots or layer analyzers                           |
-| `new Keymap(host)`                | Core runtime plus graph snapshots and layer-analyzer diagnostics                  |
+| `new Keymap(host)`                | Core runtime without graph snapshots or layer analyzers                           |
+| `new Keymap(host, features)`      | Core runtime plus explicitly installed feature packs                              |
 | `createOpenTuiKeymap(renderer)`   | `Keymap` plus the OpenTUI host adapter                                            |
 | `createHtmlKeymap(root)`          | `Keymap` plus the HTML host adapter                                               |
 | `createDefaultOpenTuiKeymap(...)` | OpenTUI keymap plus default keys, enabled fields and metadata fields              |

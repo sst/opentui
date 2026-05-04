@@ -42,11 +42,7 @@ import type {
   GraphSnapshotOptions,
   StringifyOptions,
 } from "./types.js"
-import {
-  createLayerDiagnosticsFeature,
-  type LayerDiagnosticsFeature,
-  type LayerDiagnosticsFeatureContext,
-} from "./features/diagnostics.js"
+import type { LayerDiagnosticsFeature, LayerDiagnosticsFeatureContext } from "./features/diagnostics.js"
 import type { GraphFeature, GraphFeatureContext } from "./features/graph.js"
 import { createActivationService, type ActivationService } from "./services/activation.js"
 import { createCommandCatalogService, type CommandCatalogService } from "./services/command-catalog.js"
@@ -81,7 +77,7 @@ export interface KeymapFeatureOptions<TTarget extends object, TEvent extends Key
   diagnostics?: (context: LayerDiagnosticsFeatureContext<TTarget, TEvent>) => LayerDiagnosticsFeature<TTarget, TEvent>
 }
 
-export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
+export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
   #state = createKeymapState<TTarget, TEvent>()
   #cleanedUp = false
   #resources = new Map<symbol, { count: number; dispose: () => void }>()
@@ -143,7 +139,7 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
     )
     this.#runtime = createRuntimeService(this.#state, this.#notify, this.#activation)
     this.#executor = createCommandExecutorService(this.#notify, this.#runtime, this.#activation, this.#catalog, {
-      keymap: this as unknown as Keymap<TTarget, TEvent>,
+      keymap: this,
       createCommandEvent: () => this.#host.createCommandEvent(),
     })
     this.#compiler = createCompilerService(this.#state, this.#notify, this.#conditions, {
@@ -583,16 +579,5 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
 
     resource.dispose()
     this.#resources.delete(key)
-  }
-}
-
-export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> extends BaseKeymap<
-  TTarget,
-  TEvent
-> {
-  constructor(host: KeymapHost<TTarget, TEvent>) {
-    super(host, {
-      diagnostics: createLayerDiagnosticsFeature,
-    })
   }
 }

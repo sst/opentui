@@ -1,6 +1,7 @@
 import { registerDefaultKeys } from "./addons/universal/default-parser.js"
 import { registerEnabledFields } from "./addons/universal/enabled.js"
 import { registerMetadataFields } from "./addons/universal/metadata.js"
+import { createLayerDiagnosticsFeature } from "./features/diagnostics.js"
 import { Keymap } from "./keymap.js"
 import type {
   EventMatchResolver,
@@ -373,7 +374,7 @@ export function createHtmlKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKey
 }
 
 export function createDefaultHtmlKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKeymapEvent> {
-  const keymap = createHtmlKeymap(root)
+  const keymap = new Keymap(createHtmlKeymapHost(root), { diagnostics: createLayerDiagnosticsFeature })
   registerDefaultKeys(keymap)
   registerEnabledFields(keymap)
   registerMetadataFields(keymap)

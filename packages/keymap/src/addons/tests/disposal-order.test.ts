@@ -17,10 +17,16 @@ import {
   registerUnresolvedCommandWarnings,
 } from "@opentui/keymap/addons"
 import { registerBaseLayoutFallback, registerManagedTextareaLayer } from "@opentui/keymap/addons/opentui"
-import { createDefaultOpenTuiKeymap, createOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { Keymap } from "@opentui/keymap"
+import { createLayerDiagnosticsFeature } from "@opentui/keymap/features/diagnostics"
+import { createDefaultOpenTuiKeymap, createOpenTuiKeymapHost } from "@opentui/keymap/opentui"
 import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"
 
 const diagnostics = createDiagnosticHarness()
+
+function createDiagnosticsOpenTuiKeymap(renderer: TestRenderer) {
+  return new Keymap(createOpenTuiKeymapHost(renderer), { diagnostics: createLayerDiagnosticsFeature })
+}
 
 function permutations<T>(items: readonly T[]): T[][] {
   if (items.length <= 1) {
@@ -177,7 +183,7 @@ async function createHookScenario() {
 async function createInfrastructureScenario() {
   const testSetup = await createTestRenderer({ width: 40, height: 10 })
   const { renderer, mockInput } = testSetup
-  const keymap = diagnostics.trackKeymap(createOpenTuiKeymap(renderer))
+  const keymap = diagnostics.trackKeymap(createDiagnosticsOpenTuiKeymap(renderer))
   const capture = diagnostics.captureDiagnostics(keymap)
 
   const offDefaultKeys = registerDefaultKeys(keymap)
@@ -249,7 +255,7 @@ describe("addon teardown order", () => {
   test("singleton builtin addons are idempotent and reference counted", async () => {
     const testSetup = await createTestRenderer({ width: 40, height: 10 })
     const { renderer, mockInput } = testSetup
-    const keymap = diagnostics.trackKeymap(createOpenTuiKeymap(renderer))
+    const keymap = diagnostics.trackKeymap(createDiagnosticsOpenTuiKeymap(renderer))
     const capture = diagnostics.captureDiagnostics(keymap)
     const installSingletons = () => [
       registerDefaultKeys(keymap),

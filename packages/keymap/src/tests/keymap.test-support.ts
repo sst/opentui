@@ -4,20 +4,20 @@ import * as addons from "../addons/index.js"
 import {
   type ActiveKey,
   type ActiveKeyOptions,
-  BaseKeymap,
   type BindingParser,
   type ErrorEvent,
   type EventMatchResolverContext,
+  Keymap,
   type KeyMatch,
-  createLayerDiagnosticsFeature,
   type ReactiveMatcher,
   type WarningEvent,
 } from "../index.js"
 import { createGraphFeature } from "../features/graph.js"
+import { createLayerDiagnosticsFeature } from "../features/diagnostics.js"
 import { type TestRenderer } from "@opentui/core/testing"
 import { type DiagnosticHarness } from "./diagnostic-harness.js"
 
-export type OpenTuiKeymap = BaseKeymap<Renderable, KeyEvent>
+export type OpenTuiKeymap = Keymap<Renderable, KeyEvent>
 
 export interface ReactiveBoolean extends ReactiveMatcher {
   set(next: boolean): void
@@ -61,7 +61,7 @@ export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRende
   }
 
   function getGraphKeymap(renderer: TestRenderer): OpenTuiKeymap {
-    const keymap = new BaseKeymap(createOpenTuiKeymapHost(renderer), {
+    const keymap = new Keymap(createOpenTuiKeymapHost(renderer), {
       graph: createGraphFeature,
       diagnostics: createLayerDiagnosticsFeature,
     })

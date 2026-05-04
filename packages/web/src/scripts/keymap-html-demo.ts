@@ -1,9 +1,8 @@
 import {
-  BaseKeymap,
   createHtmlKeymapHost,
   createHtmlKeymapEvent,
-  createLayerDiagnosticsFeature,
   htmlEventMatchResolver,
+  Keymap,
   type ActiveKey,
   type DispatchEvent,
   type GraphBinding,
@@ -12,6 +11,7 @@ import {
 } from "@opentui/keymap/html"
 import * as addons from "@opentui/keymap/addons"
 import { createGraphFeature } from "@opentui/keymap/features/graph"
+import { createLayerDiagnosticsFeature } from "@opentui/keymap/features/diagnostics"
 import { formatKeySequence } from "@opentui/keymap/extras"
 
 type HtmlGraphSnapshot = GraphSnapshot<HTMLElement, HtmlKeymapEvent>
@@ -75,7 +75,7 @@ if (
   throw new Error("HTML keymap example is missing required DOM nodes")
 }
 
-const keymap = new BaseKeymap(createHtmlKeymapHost(keymapRoot), {
+const keymap = new Keymap(createHtmlKeymapHost(keymapRoot), {
   graph: createGraphFeature,
   diagnostics: createLayerDiagnosticsFeature,
 })

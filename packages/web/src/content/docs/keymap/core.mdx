@@ -20,14 +20,14 @@ const keymap = new Keymap(host as KeymapHost<object>)
 
 Bare keymaps do not parse string bindings until you install binding parsers and event match resolvers. In practice that usually means `registerDefaultKeys()` or one of the default host helpers.
 
-`Keymap` installs the graph snapshot and layer-diagnostics feature packs. `BaseKeymap` from `@opentui/keymap/base` keeps the same core runtime but leaves those feature implementations out unless you pass them explicitly:
+`Keymap` is the core runtime. Graph snapshots and layer analyzers are opt-in feature packs:
 
 ```ts
-import { BaseKeymap, type KeymapHost } from "@opentui/keymap/base"
+import { Keymap, type KeymapHost } from "@opentui/keymap"
 import { createLayerDiagnosticsFeature } from "@opentui/keymap/features/diagnostics"
 import { createGraphFeature } from "@opentui/keymap/features/graph"
 
-const keymap = new BaseKeymap(host as KeymapHost<object>, {
+const keymap = new Keymap(host as KeymapHost<object>, {
   graph: createGraphFeature,
   diagnostics: createLayerDiagnosticsFeature,
 })

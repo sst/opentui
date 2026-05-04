@@ -1,4 +1,4 @@
-export { BaseKeymap } from "./keymap.js"
+export { Keymap } from "./keymap.js"
 export { stringifyKeySequence, stringifyKeyStroke } from "./services/keys.js"
 export type { KeymapFeatureOptions } from "./keymap.js"
 
