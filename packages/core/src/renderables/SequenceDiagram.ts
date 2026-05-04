@@ -100,7 +100,7 @@ const DEFAULT_THEME_RGB = {
   lifeline: [111, 138, 126],
   request: [134, 225, 200],
   response: [230, 177, 126],
-  activation: [198, 218, 207],
+  activation: [174, 202, 189],
   fragment: [154, 184, 169],
   noteFg: [215, 229, 221],
   noteBg: [36, 56, 47],
@@ -122,7 +122,6 @@ const PARTICIPANT_RE = /^(?:participant|actor)\s+(\S+)(?:\s+as\s+(.+))?$/i
 const ACTIVATION_RE = /^(activate|deactivate)\s+(.+)$/i
 const ALT_RE = /^alt\s+(.+)$/i
 const ELSE_RE = /^else(?:\s+(.+))?$/i
-
 function mixChannel(left: number, right: number, amount: number): number {
   return Math.round(left + (right - left) * amount)
 }
@@ -343,6 +342,13 @@ function blendColor(from: RGBA | undefined, to: RGBA | undefined, amount: number
   return RGBA.fromInts(mix(fromR, toR), mix(fromG, toG), mix(fromB, toB), mix(fromA, toA))
 }
 
+function brightenColor(color: RGBA | undefined, amount: number = 0.35): RGBA | undefined {
+  if (!color) return undefined
+
+  const [r, g, b, a] = color.toInts()
+  return RGBA.fromInts(mixChannel(r, 255, amount), mixChannel(g, 255, amount), mixChannel(b, 255, amount), a)
+}
+
 function colorsEqual(left?: RGBA, right?: RGBA): boolean {
   if (!left || !right) return left === right
   return left.equals(right)
@@ -504,16 +510,15 @@ function drawActivationBars(
 ): void {
   if (endY < startY) return
 
-  for (const participant of activeParticipants) {
+  const activeX = [...activeParticipants].reduce<number | undefined>((rightmostX, participant) => {
     const index = participantIndexes.get(participant)
-    if (index === undefined) continue
+    const x = index === undefined ? undefined : centers[index]
+    return x === undefined ? rightmostX : Math.max(rightmostX ?? x, x)
+  }, undefined)
+  if (activeX === undefined) return
 
-    const x = centers[index]
-    if (x === undefined) continue
-
-    for (let y = startY; y <= endY; y++) {
-      setCell(grid, x, y, activationChar, "activation")
-    }
+  for (let y = startY; y <= endY; y++) {
+    setCell(grid, activeX, y, activationChar, "activation")
   }
 }
 
@@ -527,11 +532,11 @@ function renderFragment(grid: SequenceGrid, centers: number[], fragment: Sequenc
   const label = fragment.kind === "end" ? " end " : ` ${fragment.kind}: ${fragment.label} `
 
   for (let x = leftX; x <= rightX; x++) {
-    setCell(grid, x, y, "─", "lifeline")
+    setCell(grid, x, y, "─", "fragment")
   }
 
-  setCell(grid, leftX, y, leftChar, "lifeline")
-  setCell(grid, rightX, y, rightChar, "lifeline")
+  setCell(grid, leftX, y, leftChar, "fragment")
+  setCell(grid, rightX, y, rightChar, "fragment")
   setText(grid, leftX + 2, y, label, "fragment")
 }
 
@@ -887,7 +892,8 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
           lifeline: this._lifelineColor,
           request: this._requestColor,
           response: this._responseColor,
-          activation: this._activationColor,
+          activation: this._activationColor ?? brightenColor(this._lifelineColor),
+          fragment: brightenColor(this._lifelineColor, 0.18),
           note: this._noteColor,
           noteBg: this._noteBackgroundColor,
         }),

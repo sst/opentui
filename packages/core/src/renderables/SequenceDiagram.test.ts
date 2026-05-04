@@ -145,6 +145,20 @@ sequenceDiagram
     expect(output).not.toContain("┃")
   })
 
+  test("renders only the rightmost active participant per row", () => {
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  Browser->>+API: request
+  API->>+DB: query
+  DB-->>-API: row
+`)
+    const queryLine = output.split("\n").find((line) => line.includes("query"))!
+    const rowLine = output.split("\n").find((line) => line.includes(" row "))!
+
+    expect([...queryLine].filter((char) => char === "┃")).toHaveLength(1)
+    expect([...rowLine].filter((char) => char === "┃")).toHaveLength(1)
+  })
+
   test("renders boxed alt else regions", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram

@@ -67,7 +67,7 @@ const THEMES: SequenceDiagramTheme[] = [
     lifeline: "#6F8A7E",
     request: "#86E1C8",
     response: "#E6B17E",
-    activation: "#C6D9CF",
+    activation: "#AECABD",
     note: "#D7E5DD",
     noteBackground: "#24382F",
   },
@@ -83,7 +83,7 @@ const THEMES: SequenceDiagramTheme[] = [
     lifeline: "#64748B",
     request: "#7DD3FC",
     response: "#FCD34D",
-    activation: "#CBD5E1",
+    activation: "#A6B2C4",
     note: "#D6DEE9",
     noteBackground: "#253044",
   },
@@ -99,7 +99,7 @@ const THEMES: SequenceDiagramTheme[] = [
     lifeline: "#69728B",
     request: "#93C5FD",
     response: "#FDBA74",
-    activation: "#C8D0E3",
+    activation: "#ABB3C5",
     note: "#D8DEEE",
     noteBackground: "#2B3144",
   },
@@ -115,7 +115,7 @@ const THEMES: SequenceDiagramTheme[] = [
     lifeline: "#606B7A",
     request: "#A5D8FF",
     response: "#FFE08A",
-    activation: "#C7D1DE",
+    activation: "#9FAAB8",
     note: "#D2DAE5",
     noteBackground: "#252C38",
   },
@@ -140,7 +140,7 @@ function applyTheme(renderer: CliRenderer, theme: SequenceDiagramTheme): void {
   diagram!.noteBackgroundColor = theme.noteBackground
 
   footer!.fg = theme.footer
-  footer!.content = `Theme: ${theme.name} (${theme.description}) · Press T to cycle · Run --print for ANSI output`
+  footer!.content = `Theme: ${theme.name} · T cycles themes · + / - activates participants`
 }
 
 export function run(renderer: CliRenderer): void {
