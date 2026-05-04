@@ -91,7 +91,7 @@ keymap.registerLayer({
 | Form            | Example                              | Notes                                         |
 | --------------- | ------------------------------------ | --------------------------------------------- |
 | String stroke   | `"x"`, `"ctrl+x"`, `"enter"`         | Requires a registered binding parser          |
-| String sequence | `"dd"`, `"<leader>s"`, `"{count}j"` | Concatenated multi-stroke sequence            |
+| String sequence | `"dd"`, `"<leader>s"`, `"{count}j"`  | Concatenated multi-stroke sequence            |
 | Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly  |
 | Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only |
 
@@ -119,37 +119,37 @@ Sequence patterns can capture repeated runtime input and pass finalized values t
 
 | Pattern field | Description                                                                                  |
 | ------------- | -------------------------------------------------------------------------------------------- |
-| `name`        | Semantic pattern name, also the default command payload key                                   |
-| `display`     | Optional parser-facing display override for structural graph/help UI                          |
-| `payloadKey`  | Optional override when the command payload field should differ from `name`                    |
-| `min` / `max` | Optional capture limits. Defaults to at least one input and no practical maximum              |
-| `match`       | Runtime event predicate that returns a captured value/display or `undefined` for no match     |
-| `finalize`    | Optional conversion from captured values to the final payload value, e.g. digits to a number  |
+| `name`        | Semantic pattern name, also the default command payload key                                  |
+| `display`     | Optional parser-facing display override for structural graph/help UI                         |
+| `payloadKey`  | Optional override when the command payload field should differ from `name`                   |
+| `min` / `max` | Optional capture limits. Defaults to at least one input and no practical maximum             |
+| `match`       | Runtime event predicate that returns a captured value/display or `undefined` for no match    |
+| `finalize`    | Optional conversion from captured values to the final payload value, e.g. digits to a number |
 
 Patterns with the default unbounded `max` must be followed by a concrete continuation, such as `{count}j`; terminal unbounded patterns are rejected.
 
 ## State and discovery
 
-| Method                    | Description                                                                                                                      |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `setData(name, value)`    | Write runtime data                                                                                                               |
-| `getData(name)`           | Read runtime data                                                                                                                |
-| `hasPendingSequence()`    | `true` when a multi-stroke prefix is active                                                                                      |
-| `getPendingSequence()`    | Current pending sequence as `KeySequencePart[]`                                                                                  |
-| `clearPendingSequence()`  | Clears the pending sequence                                                                                                      |
-| `popPendingSequence()`    | Removes the last pending stroke. Returns `true` when a stroke was removed                                                        |
-| `getActiveKeys(options?)` | Returns the currently reachable keys for the current focus and pending state                                                     |
-| `parseKeySequence(key)`   | Parses a `KeyLike` with the current parser/token/pattern environment                                                            |
-| `formatKey(key, options?)` | Parses and stringifies a `KeyLike` with the current environment                                                                 |
-| `createKeyMatcher(key)`   | Parses one `KeyLike` and returns a single-stroke predicate for any `KeyStringifyInput`. It does not match multi-stroke sequences |
-| `getHostMetadata()`       | Returns the host metadata used by addons such as `registerModBindings()`                                                        |
+| Method                     | Description                                                                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `setData(name, value)`     | Write runtime data                                                                                                               |
+| `getData(name)`            | Read runtime data                                                                                                                |
+| `hasPendingSequence()`     | `true` when a multi-stroke prefix is active                                                                                      |
+| `getPendingSequence()`     | Current pending sequence as `KeySequencePart[]`                                                                                  |
+| `clearPendingSequence()`   | Clears the pending sequence                                                                                                      |
+| `popPendingSequence()`     | Removes the last pending stroke. Returns `true` when a stroke was removed                                                        |
+| `getActiveKeys(options?)`  | Returns the currently reachable keys for the current focus and pending state                                                     |
+| `parseKeySequence(key)`    | Parses a `KeyLike` with the current parser/token/pattern environment                                                             |
+| `formatKey(key, options?)` | Parses and stringifies a `KeyLike` with the current environment                                                                  |
+| `createKeyMatcher(key)`    | Parses one `KeyLike` and returns a single-stroke predicate for any `KeyStringifyInput`. It does not match multi-stroke sequences |
+| `getHostMetadata()`        | Returns the host metadata used by addons such as `registerModBindings()`                                                         |
 
 `getActiveKeys()` accepts `ActiveKeyOptions`:
 
-| Option            | Default | Description                                                                    |
-| ----------------- | ------- | ------------------------------------------------------------------------------ |
-| `includeBindings` | `false` | Include per-key `bindings` arrays with full binding views                      |
-| `includeMetadata` | `false` | Include top-level `bindingAttrs` and `commandAttrs` on active keys            |
+| Option            | Default | Description                                                        |
+| ----------------- | ------- | ------------------------------------------------------------------ |
+| `includeBindings` | `false` | Include per-key `bindings` arrays with full binding views          |
+| `includeMetadata` | `false` | Include top-level `bindingAttrs` and `commandAttrs` on active keys |
 
 `ActiveKey` shape:
 
@@ -415,7 +415,7 @@ snapshot.layers[0]?.attrs?.name // "Global"
 | ----------------- | ------------------- | ----------------------------------------------------- |
 | `state`           | `void`              | Batched "derived state may have changed" signal       |
 | `pendingSequence` | `KeySequencePart[]` | Synchronous pending-sequence updates, including clear |
-| `dispatch`        | `DispatchEvent`     | Sequence and binding execution trace events          |
+| `dispatch`        | `DispatchEvent`     | Sequence and binding execution trace events           |
 | `warning`         | `WarningEvent`      | Validation or analyzer warning                        |
 | `error`           | `ErrorEvent`        | Registration, query, resolver, or listener error      |
 

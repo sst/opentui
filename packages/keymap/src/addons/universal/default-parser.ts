@@ -146,10 +146,7 @@ function isNamedSingleStrokeKey(input: string, extraNames?: ReadonlySet<string>)
   return /^f\d{1,2}$/i.test(normalized)
 }
 
-function isSingleStrokeString(
-  input: string,
-  extraNames?: ReadonlySet<string>,
-): boolean {
+function isSingleStrokeString(input: string, extraNames?: ReadonlySet<string>): boolean {
   if (input === " " || input === "+") {
     return true
   }
@@ -292,7 +289,7 @@ export const defaultBindingParser: BindingParser = (ctx) => {
     }
 
     return {
-        parts: [parseObjectKeyInput(ctx, token.stroke, `<${tokenName}>`, token.match, tokenName)],
+      parts: [parseObjectKeyInput(ctx, token.stroke, `<${tokenName}>`, token.match, tokenName)],
       nextIndex: end + 1,
       usedTokens: [tokenName],
     }

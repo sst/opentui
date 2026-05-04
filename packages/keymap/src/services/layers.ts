@@ -135,7 +135,7 @@ function buildLayerBindingAnalyses<TTarget extends object, TEvent extends Keymap
   bindingStates: readonly BindingState<TTarget, TEvent>[],
 ): LayerBindingAnalysis<TTarget, TEvent>[] {
   return bindingStates.map((binding) => {
-      const node = binding.event === "press" ? getSequenceNode(root, binding.sequence) : undefined
+    const node = binding.event === "press" ? getSequenceNode(root, binding.sequence) : undefined
 
     return {
       sequence: cloneKeySequence(binding.sequence),

@@ -380,9 +380,7 @@ describe("keymap: diagnostics and analyzers", () => {
       bindings: [{ key: "<leader>x", cmd: () => {} }],
     })
 
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored'])
 
     keymap.registerToken({ name: "leader", key: { name: "space" } })
 

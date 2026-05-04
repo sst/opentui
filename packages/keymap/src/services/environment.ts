@@ -155,7 +155,10 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
       return NOOP
     }
 
-    if (this.state.environment.tokens.has(normalizedToken) || this.state.environment.sequencePatterns.has(normalizedToken)) {
+    if (
+      this.state.environment.tokens.has(normalizedToken) ||
+      this.state.environment.sequencePatterns.has(normalizedToken)
+    ) {
       this.notify.emitError(
         "duplicate-token",
         { token: normalizedToken },
@@ -251,7 +254,10 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
       return NOOP
     }
 
-    if (this.state.environment.tokens.has(normalizedName) || this.state.environment.sequencePatterns.has(normalizedName)) {
+    if (
+      this.state.environment.tokens.has(normalizedName) ||
+      this.state.environment.sequencePatterns.has(normalizedName)
+    ) {
       this.notify.emitError(
         "duplicate-sequence-pattern",
         { pattern: normalizedName },

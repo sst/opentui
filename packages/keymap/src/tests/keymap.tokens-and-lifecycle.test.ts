@@ -183,9 +183,7 @@ describe("keymap: tokens and lifecycle", () => {
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
 
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "leader" in key sequence "<leader>a" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>a" was ignored'])
 
     expect(getActiveKeyNames(keymap)).toEqual(["a"])
 
@@ -238,9 +236,7 @@ describe("keymap: tokens and lifecycle", () => {
       bindings: [{ key: "<leader>", cmd: "leader-only" }],
     })
 
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "leader" in key sequence "<leader>" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>" was ignored'])
 
     expect(keymap.getActiveKeys()).toEqual([])
 
@@ -305,9 +301,7 @@ describe("keymap: tokens and lifecycle", () => {
       ],
     })
 
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "leader" in key sequence "<leader>b" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>b" was ignored'])
 
     expect(getActiveKeyNames(keymap)).toEqual(["a", "b"])
 

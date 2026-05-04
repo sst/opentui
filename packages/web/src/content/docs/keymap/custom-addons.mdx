@@ -51,13 +51,13 @@ Guidelines:
 
 ### Fields, tokens, and patterns
 
-| API                                      | Use for                                                                       |
-| ---------------------------------------- | ----------------------------------------------------------------------------- |
-| `registerToken(token)`                   | Define named single-stroke aliases such as `leader`                           |
-| `registerSequencePattern(pattern)`       | Define named runtime sequence captures such as `count`                        |
-| `registerLayerFields(fields)`            | Add custom layer fields with `require(...)`, `attr(...)`, `activeWhen(...)`   |
-| `registerBindingFields(fields)`          | Add custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
-| `registerCommandFields(fields)`          | Add custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
+| API                                | Use for                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| `registerToken(token)`             | Define named single-stroke aliases such as `leader`                           |
+| `registerSequencePattern(pattern)` | Define named runtime sequence captures such as `count`                        |
+| `registerLayerFields(fields)`      | Add custom layer fields with `require(...)`, `attr(...)`, `activeWhen(...)`   |
+| `registerBindingFields(fields)`    | Add custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
+| `registerCommandFields(fields)`    | Add custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 
 ### Binding pipeline
 
@@ -82,11 +82,11 @@ Guidelines:
 
 ### Diagnostics and lifecycle
 
-| API                                                             | Use for                                                            |
-| --------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `prepend/appendLayerAnalyzer()`                                 | Emit warnings or errors while layers compile                       |
-| `acquireResource(symbol, setup)`                                | Share ref-counted setup and teardown across multiple registrations |
-| `keymap.on(...)`                                                | Subscribe to state, dispatch and diagnostic events                 |
+| API                              | Use for                                                            |
+| -------------------------------- | ------------------------------------------------------------------ |
+| `prepend/appendLayerAnalyzer()`  | Emit warnings or errors while layers compile                       |
+| `acquireResource(symbol, setup)` | Share ref-counted setup and teardown across multiple registrations |
+| `keymap.on(...)`                 | Subscribe to state, dispatch and diagnostic events                 |
 
 Every registration API above returns a disposer.
 
@@ -398,7 +398,7 @@ Analyzers run while a layer compiles and receive a projected view of the compile
 | ----------------- | ------------------- | ----------------------------------------------- |
 | `state`           | `void`              | Batched "derived state may have changed" signal |
 | `pendingSequence` | `KeySequencePart[]` | Synchronous pending-sequence updates            |
-| `dispatch`        | `DispatchEvent`     | Sequence and binding execution trace events    |
+| `dispatch`        | `DispatchEvent`     | Sequence and binding execution trace events     |
 | `warning`         | `WarningEvent`      | Validation or analyzer warning                  |
 | `error`           | `ErrorEvent`        | Registration, query, resolver or listener error |
 
@@ -466,13 +466,13 @@ cleanup()
 
 Testing exports include:
 
-| API | Use for |
-| --- | --- |
-| `createTestKeymap(options?)` | Create a `Keymap`, fake host, root target, and diagnostic capture |
-| `createTestKeymapHost(options?)` | Create only the fake `KeymapHost` when tests need manual keymap construction |
-| `createTestHostMetadata(options?)` | Build host metadata for platform/modifier-sensitive addons |
-| `captureKeymapDiagnostics(keymap)` | Capture warnings/errors without depending on a specific test framework |
-| `TestKeymapHost` / `TestKeymapTarget` / `TestKeymapEvent` | Reusable fake host primitives |
+| API                                                       | Use for                                                                      |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `createTestKeymap(options?)`                              | Create a `Keymap`, fake host, root target, and diagnostic capture            |
+| `createTestKeymapHost(options?)`                          | Create only the fake `KeymapHost` when tests need manual keymap construction |
+| `createTestHostMetadata(options?)`                        | Build host metadata for platform/modifier-sensitive addons                   |
+| `captureKeymapDiagnostics(keymap)`                        | Capture warnings/errors without depending on a specific test framework       |
+| `TestKeymapHost` / `TestKeymapTarget` / `TestKeymapEvent` | Reusable fake host primitives                                                |
 
 The fake host supports press/release events, focus changes, parent traversal, target destruction, host destruction, and raw input. Use adapter-specific test utilities only when an addon is actually testing an adapter such as OpenTUI or HTML.
 

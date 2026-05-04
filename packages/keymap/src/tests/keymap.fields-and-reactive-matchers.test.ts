@@ -698,9 +698,7 @@ describe("keymap: fields and reactive matchers", () => {
     // re-subscribe.
     offToken()
 
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "leader" in key sequence "<leader>a" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>a" was ignored'])
     expect(enabled.disposeCalls).toBe(disposesBefore + 1)
     expect(enabled.subscribeCalls).toBe(subscribesBefore + 1)
     expect(enabled.subscriptions).toBe(1)

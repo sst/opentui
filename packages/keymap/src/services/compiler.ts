@@ -487,7 +487,9 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
         }
 
         if (!createdNode.parent.children.delete(createdNode.key)) {
-          createdNode.parent.patternChildren = createdNode.parent.patternChildren.filter((candidate) => candidate !== child)
+          createdNode.parent.patternChildren = createdNode.parent.patternChildren.filter(
+            (candidate) => candidate !== child,
+          )
         }
       }
 

@@ -566,7 +566,10 @@ function getBindingPulse(binding: HtmlGraphBinding, now: number): number {
       continue
     }
 
-    if (!sequenceMatchesExact(binding.sequence, pulse.sequence) && !sequenceMatchesPrefix(binding.sequence, pulse.sequence)) {
+    if (
+      !sequenceMatchesExact(binding.sequence, pulse.sequence) &&
+      !sequenceMatchesPrefix(binding.sequence, pulse.sequence)
+    ) {
       continue
     }
 
@@ -1134,7 +1137,9 @@ function renderGraph(): void {
           const command = escapeHtml(getBindingCommandLabel(binding, snapshot))
           const payloadLabel = getPatternPayloadLabel(binding)
           const description = escapeHtml(
-            payloadLabel ? `${getBindingDescription(binding)} · payload: ${payloadLabel}` : getBindingDescription(binding),
+            payloadLabel
+              ? `${getBindingDescription(binding)} · payload: ${payloadLabel}`
+              : getBindingDescription(binding),
           )
           return `
             <div class="${bindingClass}">
@@ -1150,11 +1155,7 @@ function renderGraph(): void {
           const patternName = node.sequence.at(-1)?.patternName
           const captured = patternName ? getCapturedPatternLabel(snapshot, patternName) : undefined
           const nodeClass = `${
-            node.pending
-              ? "graph-node is-pending"
-              : node.reachable
-                ? "graph-node is-reachable"
-                : "graph-node is-dimmed"
+            node.pending ? "graph-node is-pending" : node.reachable ? "graph-node is-reachable" : "graph-node is-dimmed"
           }${patternName ? " is-pattern" : ""}`
           const label = escapeHtml(formatKeySequence(node.sequence, KEY_FORMAT_OPTIONS) || node.display)
           return `<span class="${nodeClass}">${label}${captured ? `<small>${escapeHtml(captured)}</small>` : ""}</span>`

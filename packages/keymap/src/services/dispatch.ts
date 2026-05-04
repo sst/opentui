@@ -788,7 +788,9 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   ): KeyDispatchOutcome | undefined {
     const applyExact = (): KeyDispatchOutcome => {
       this.activation.setPendingSequence(null)
-      const exactCapture = continuationCaptures.find((candidate) => candidate.layer === layer && candidate.node === node)
+      const exactCapture = continuationCaptures.find(
+        (candidate) => candidate.layer === layer && candidate.node === node,
+      )
       const result = this.runBindings(layer, node.bindings, event, focused, this.createSequencePayload(exactCapture))
       if (!result.stop) {
         return this.preferDispatchOutcome(
@@ -1406,7 +1408,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     try {
       return pattern.matcher(event)
     } catch (error) {
-      this.notify.emitError("sequence-pattern-match-error", error, `[Keymap] Error matching sequence pattern "${pattern.name}":`)
+      this.notify.emitError(
+        "sequence-pattern-match-error",
+        error,
+        `[Keymap] Error matching sequence pattern "${pattern.name}":`,
+      )
       return undefined
     }
   }
@@ -1525,7 +1531,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       let value: unknown
 
       try {
-        value = pattern?.finalize ? pattern.finalize(captured.values) : captured.values.length === 1 ? captured.values[0] : [...captured.values]
+        value = pattern?.finalize
+          ? pattern.finalize(captured.values)
+          : captured.values.length === 1
+            ? captured.values[0]
+            : [...captured.values]
       } catch (error) {
         this.notify.emitError(
           "sequence-pattern-finalize-error",
