@@ -572,6 +572,22 @@ async function createScenarioResources(): Promise<ScenarioResources> {
   }
 }
 
+function registerDigitPattern(keymap: OpenTuiKeymap): void {
+  keymap.registerSequencePattern({
+    name: "count",
+    match(event) {
+      if (!/^\d$/.test(event.name)) {
+        return undefined
+      }
+
+      return { value: event.name, display: event.name }
+    },
+    finalize(values) {
+      return Number(values.join(""))
+    },
+  })
+}
+
 function createFocusTree(resources: ScenarioResources, depth: number): BoxRenderable[] {
   const chain: BoxRenderable[] = []
   let parent: { add(child: BoxRenderable): void } = resources.renderer.root
@@ -765,6 +781,27 @@ const scenarios: BenchmarkScenario[] = [
         runIteration() {
           const off = resources.keymap.registerLayer({
             bindings: [{ key: "mod+a, mod+b, mod+c, mod+d", cmd: "noop" }],
+          })
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "compile_layer_sequence_pattern",
+    description: "Repeated layer registration using a dynamic sequence pattern segment",
+    async setup() {
+      const resources = await createScenarioResources()
+      registerDigitPattern(resources.keymap)
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.keymap.registerLayer({
+            bindings: [{ key: "d{count}w", cmd: "noop" }],
           })
           off()
         },
@@ -1752,6 +1789,164 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "dispatch_static_sequence_start_clear",
+    description: "Repeated static sequence prefix dispatch followed by pending clear",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.registerLayer({
+        bindings: [{ key: "gw", cmd: "noop" }],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("g")
+          resources.keymap.clearPendingSequence()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_pattern_sequence_start_clear",
+    description: "Repeated pattern sequence prefix dispatch followed by pending clear",
+    async setup() {
+      const resources = await createScenarioResources()
+      registerDigitPattern(resources.keymap)
+
+      resources.keymap.registerLayer({
+        bindings: [{ key: "{count}w", cmd: "noop" }],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("1")
+          resources.keymap.clearPendingSequence()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_static_sequence_complete",
+    description: "Repeated static two-stroke sequence dispatch through command execution",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.registerLayer({
+        bindings: [{ key: "gw", cmd: "noop" }],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("g")
+          resources.mockInput.pressKey("w")
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_pattern_sequence_complete",
+    description: "Repeated dynamic pattern sequence dispatch through payload command execution",
+    async setup() {
+      const resources = await createScenarioResources()
+      registerDigitPattern(resources.keymap)
+
+      resources.keymap.registerLayer({
+        bindings: [{ key: "{count}w", cmd: "noop" }],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("1")
+          resources.mockInput.pressKey("w")
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_static_key_with_pattern_sibling",
+    description: "Repeated exact-key dispatch while the same layer also has a pattern binding",
+    async setup() {
+      const resources = await createScenarioResources()
+      registerDigitPattern(resources.keymap)
+
+      resources.keymap.registerLayer({
+        bindings: [
+          { key: "x", cmd: "noop" },
+          { key: "{count}w", cmd: "noop" },
+        ],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("x")
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_no_match_static_layer",
+    description: "Repeated no-match dispatch against a layer with only static bindings",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.registerLayer({
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("z")
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_no_match_pattern_layer",
+    description: "Repeated no-match dispatch against a layer with a pattern binding",
+    async setup() {
+      const resources = await createScenarioResources()
+      registerDigitPattern(resources.keymap)
+
+      resources.keymap.registerLayer({
+        bindings: [{ key: "{count}w", cmd: "noop" }],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("z")
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "dispatch_disambiguation_default_fast_path",
     description: "Repeated exact-key dispatch with no disambiguation resolver installed",
     async setup() {
@@ -1966,6 +2161,92 @@ const scenarios: BenchmarkScenario[] = [
       })
 
       resources.mockInput.pressKey("g")
+
+      return {
+        resources,
+        runIteration() {
+          readPendingSequencePartsRepeatedly(resources.keymap, 5)
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "active_keys_pending_sequence_pattern",
+    description: "Repeated getActiveKeys while a dynamic sequence pattern is pending",
+    async setup() {
+      const resources = await createScenarioResources()
+      const focusChain = createFocusTree(resources, 5)
+      registerDigitPattern(resources.keymap)
+
+      for (let index = 0; index < focusChain.length; index += 1) {
+        const target = focusChain[index]
+        if (!target) {
+          continue
+        }
+
+        for (let layerIndex = 0; layerIndex < 5; layerIndex += 1) {
+          registerTargetLayer(resources.keymap, target, index * 10 + layerIndex, createKey(layerIndex + 1))
+        }
+      }
+
+      registerGlobalLayers(resources.keymap, 120)
+      resources.keymap.registerLayer({
+        bindings: [
+          { key: "{count}a", cmd: "noop" },
+          { key: "{count}b", cmd: "noop" },
+          { key: "{count}c", cmd: "noop" },
+          { key: "{count}d", cmd: "noop" },
+        ],
+      })
+
+      resources.mockInput.pressKey("1")
+
+      return {
+        resources,
+        runIteration() {
+          resources.keymap.getActiveKeys()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "pending_sequence_pattern_parts_repeat_reads_5x",
+    description: "Repeated pending sequence part reads against captured pattern input",
+    async setup() {
+      const resources = await createScenarioResources()
+      const focusChain = createFocusTree(resources, 5)
+      registerDigitPattern(resources.keymap)
+
+      for (let index = 0; index < focusChain.length; index += 1) {
+        const target = focusChain[index]
+        if (!target) {
+          continue
+        }
+
+        for (let layerIndex = 0; layerIndex < 5; layerIndex += 1) {
+          registerTargetLayer(resources.keymap, target, index * 10 + layerIndex, createKey(layerIndex + 1))
+        }
+      }
+
+      registerGlobalLayers(resources.keymap, 120)
+      resources.keymap.registerLayer({
+        bindings: [
+          { key: "{count}a", cmd: "noop" },
+          { key: "{count}b", cmd: "noop" },
+          { key: "{count}c", cmd: "noop" },
+          { key: "{count}d", cmd: "noop" },
+        ],
+      })
+
+      resources.mockInput.pressKey("1")
+      resources.mockInput.pressKey("2")
+      resources.mockInput.pressKey("3")
 
       return {
         resources,
