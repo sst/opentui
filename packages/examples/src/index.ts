@@ -64,6 +64,7 @@ import * as diffDemo from "./diff-demo.js"
 import * as keypressDebugDemo from "./keypress-debug-demo.js"
 import * as extmarksDemo from "./extmarks-demo.js"
 import * as markdownDemo from "./markdown-demo.js"
+import * as sequenceDiagramDemo from "./sequence-diagram-demo.js"
 import * as linkDemo from "./link-demo.js"
 import * as opacityExample from "./opacity-example.js"
 import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test.js"
@@ -234,6 +235,12 @@ const examples: Example[] = [
     description: "Markdown rendering with table alignment, syntax highlighting, and theme switching",
     run: markdownDemo.run,
     destroy: markdownDemo.destroy,
+  },
+  {
+    name: "Sequence Diagram Demo",
+    description: "Mermaid sequenceDiagram rendered as terminal-native lifelines and arrows",
+    run: sequenceDiagramDemo.run,
+    destroy: sequenceDiagramDemo.destroy,
   },
   {
     name: "Split Footer Streaming Demo",

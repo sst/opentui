@@ -13,6 +13,7 @@ import type {
   OpenTUIComponents,
   ScrollBoxProps,
   SelectProps,
+  SequenceDiagramProps,
   SpanProps,
   TabSelectProps,
   TextareaProps,
@@ -43,6 +44,7 @@ export namespace JSX {
     code: CodeProps
     diff: DiffProps
     markdown: MarkdownProps
+    "sequence-diagram": SequenceDiagramProps
     input: InputProps
     textarea: TextareaProps
     select: SelectProps

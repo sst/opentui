@@ -19,6 +19,7 @@ import { infoStringToFiletype } from "../lib/tree-sitter/resolve-ft.js"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { detectLinks } from "../lib/detect-links.js"
+import { isMermaidSequenceDiagram, SequenceDiagramRenderable } from "./SequenceDiagram.js"
 
 export type MarkdownTableStyle = "grid" | "columns"
 
@@ -513,6 +514,10 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
+    if (this.isSequenceDiagramCode(token)) {
+      return this.createSequenceDiagramRenderable(token.text, id, marginBottom)
+    }
+
     return new CodeRenderable(this.ctx, {
       id,
       content: token.text,
@@ -529,6 +534,25 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
+  private isSequenceDiagramCode(token: Tokens.Code): boolean {
+    return infoStringToFiletype(token.lang ?? "") === "mermaid" && isMermaidSequenceDiagram(token.text)
+  }
+
+  private createSequenceDiagramRenderable(
+    content: string,
+    id: string,
+    marginBottom: number = 0,
+  ): SequenceDiagramRenderable {
+    return new SequenceDiagramRenderable(this.ctx, {
+      id,
+      content,
+      fg: this._fg,
+      bg: this._bg,
+      width: "100%",
+      marginBottom,
+    })
+  }
+
   private applyMarkdownCodeRenderable(renderable: CodeRenderable, content: string, marginBottom: number): void {
     renderable.content = content
     renderable.filetype = "markdown"
@@ -538,6 +562,17 @@ export class MarkdownRenderable extends Renderable {
     renderable.conceal = this._conceal
     renderable.drawUnstyledText = false
     renderable.streaming = true
+    renderable.marginBottom = marginBottom
+  }
+
+  private applySequenceDiagramRenderable(
+    renderable: SequenceDiagramRenderable,
+    content: string,
+    marginBottom: number,
+  ): void {
+    renderable.content = content
+    renderable.fg = this._fg
+    renderable.bg = this._bg
     renderable.marginBottom = marginBottom
   }
 
@@ -1051,7 +1086,33 @@ export class MarkdownRenderable extends Renderable {
     const marginBottom = this.getInterBlockMargin(token, hasNextToken)
 
     if (token.type === "code") {
-      this.applyCodeBlockRenderable(state.renderable as CodeRenderable, token as Tokens.Code, marginBottom)
+      const codeToken = token as Tokens.Code
+      if (this.isSequenceDiagramCode(codeToken)) {
+        if (state.renderable instanceof SequenceDiagramRenderable) {
+          this.applySequenceDiagramRenderable(state.renderable, codeToken.text, marginBottom)
+          return
+        }
+
+        state.renderable.destroyRecursively()
+        const diagramRenderable = this.createSequenceDiagramRenderable(
+          codeToken.text,
+          `${this.id}-block-${index}`,
+          marginBottom,
+        )
+        this.add(diagramRenderable)
+        state.renderable = diagramRenderable
+        return
+      }
+
+      if (state.renderable instanceof CodeRenderable) {
+        this.applyCodeBlockRenderable(state.renderable, codeToken, marginBottom)
+        return
+      }
+
+      state.renderable.destroyRecursively()
+      const codeRenderable = this.createCodeRenderable(codeToken, `${this.id}-block-${index}`, marginBottom)
+      this.add(codeRenderable)
+      state.renderable = codeRenderable
       return
     }
 
@@ -1319,7 +1380,31 @@ export class MarkdownRenderable extends Renderable {
       const marginBottom = this.getInterBlockMargin(state.token, hasNextToken)
 
       if (state.token.type === "code") {
-        this.applyCodeBlockRenderable(state.renderable as CodeRenderable, state.token as Tokens.Code, marginBottom)
+        const codeToken = state.token as Tokens.Code
+        if (this.isSequenceDiagramCode(codeToken)) {
+          if (state.renderable instanceof SequenceDiagramRenderable) {
+            this.applySequenceDiagramRenderable(state.renderable, codeToken.text, marginBottom)
+          } else {
+            state.renderable.destroyRecursively()
+            const diagramRenderable = this.createSequenceDiagramRenderable(
+              codeToken.text,
+              `${this.id}-block-${i}`,
+              marginBottom,
+            )
+            this.add(diagramRenderable)
+            state.renderable = diagramRenderable
+          }
+          continue
+        }
+
+        if (state.renderable instanceof CodeRenderable) {
+          this.applyCodeBlockRenderable(state.renderable, codeToken, marginBottom)
+        } else {
+          state.renderable.destroyRecursively()
+          const codeRenderable = this.createCodeRenderable(codeToken, `${this.id}-block-${i}`, marginBottom)
+          this.add(codeRenderable)
+          state.renderable = codeRenderable
+        }
         continue
       }
 

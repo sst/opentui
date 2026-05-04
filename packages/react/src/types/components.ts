@@ -21,6 +21,8 @@ import type {
   SelectOption,
   SelectRenderable,
   SelectRenderableOptions,
+  SequenceDiagramOptions,
+  SequenceDiagramRenderable,
   TabSelectOption,
   TabSelectRenderable,
   TabSelectRenderableOptions,
@@ -99,7 +101,9 @@ export type GetNonStyledProperties<TConstructor> =
                   | "drawUnstyledText"
               : TConstructor extends RenderableConstructor<MarkdownRenderable>
                 ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode"
-                : NonStyledProps
+                : TConstructor extends RenderableConstructor<SequenceDiagramRenderable>
+                  ? NonStyledProps | "content"
+                  : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -156,6 +160,8 @@ export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> 
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
 
 export type MarkdownProps = ComponentProps<MarkdownOptions, MarkdownRenderable>
+
+export type SequenceDiagramProps = ComponentProps<SequenceDiagramOptions, SequenceDiagramRenderable>
 
 export type DiffProps = ComponentProps<DiffRenderableOptions, DiffRenderable>
 

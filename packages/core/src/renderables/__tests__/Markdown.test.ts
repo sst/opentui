@@ -2,6 +2,7 @@ import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:te
 import { Lexer } from "marked"
 import { MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
 import { CodeRenderable } from "../Code.js"
+import { SequenceDiagramRenderable } from "../SequenceDiagram.js"
 import { TextRenderable } from "../Text.js"
 import { TextTableRenderable } from "../TextTable.js"
 import { SyntaxStyle } from "../../syntax-style.js"
@@ -129,6 +130,50 @@ test("basic table alignment", async () => {
     │Bob  │5  │
     └─────┴───┘"
   `)
+})
+
+test("mermaid sequenceDiagram code fences render as sequence diagrams", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-sequence-diagram",
+    content: "```mermaid\nsequenceDiagram\n  participant B as Browser\n  participant S as Server\n  B->>S: GET /\n```",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const diagram = md._blockStates[0]?.renderable as SequenceDiagramRenderable
+  expect(diagram).toBeInstanceOf(SequenceDiagramRenderable)
+
+  const rendered = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(rendered).toContain("Browser")
+  expect(rendered).toContain("Server")
+  expect(rendered).toContain("GET /")
+  expect(rendered).toContain("▶")
+})
+
+test("updating mermaid sequenceDiagram fences reuses the diagram renderable", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-sequence-diagram-update",
+    content: "```mermaid\nsequenceDiagram\n  A->>B: first\n```",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const diagram = md._blockStates[0]?.renderable as SequenceDiagramRenderable
+  expect(diagram).toBeInstanceOf(SequenceDiagramRenderable)
+
+  md.content = "```mermaid\nsequenceDiagram\n  A->>B: second\n```"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.renderable).toBe(diagram)
+  expect(captureFrame()).toContain("second")
 })
 
 test("tableOptions.widthMode configures markdown table layout", async () => {
