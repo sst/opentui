@@ -78,11 +78,6 @@ interface KeyAfterDispatchState<TTarget extends object, TEvent extends KeymapEve
   sequence: readonly KeySequencePart[]
 }
 
-interface AdvancedCapture<TTarget extends object, TEvent extends KeymapEvent> {
-  capture: PendingSequenceCapture<TTarget, TEvent>
-  consumed: boolean
-}
-
 type KeyAfterHook<TTarget extends object, TEvent extends KeymapEvent> = PriorityRegistration<
   (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
   { priority: number; release: boolean }
@@ -622,7 +617,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      advancedCaptures.push(advanced.capture)
+      advancedCaptures.push(advanced)
     }
 
     if (advancedCaptures.length === 0) {
@@ -741,9 +736,9 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      const nextNode = nextCapture.capture.node
+      const nextNode = nextCapture.node
 
-      if (this.nodeHasContinuations(nextNode, nextCapture.capture)) {
+      if (this.nodeHasContinuations(nextNode, nextCapture)) {
         const continuationCaptures = this.collectPendingCapturesFromRoot(activeLayers, index, matchKeys, event, focused)
         const resolvedOutcome = this.tryResolveRootAmbiguity(
           activeLayers,
@@ -767,7 +762,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         return outcome
       }
 
-      const result = this.runBindings(layer, nextNode.bindings, event, focused, this.createSequencePayload(nextCapture.capture))
+      const result = this.runBindings(layer, nextNode.bindings, event, focused, this.createSequencePayload(nextCapture))
       outcome = this.preferDispatchOutcome(outcome, result.outcome)
       if (!result.handled) {
         continue
@@ -1264,11 +1259,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       }
 
       const advanced = this.advanceCapture({ layer, node: layer.root }, matchKeys, event, focused)
-      if (!advanced || !this.nodeHasContinuations(advanced.capture.node, advanced.capture)) {
+      if (!advanced || !this.nodeHasContinuations(advanced.node, advanced)) {
         continue
       }
 
-      captures.push(advanced.capture)
+      captures.push(advanced)
     }
 
     return captures
@@ -1390,14 +1385,9 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       return 0
     }
 
-    for (let index = (capture.patterns?.length ?? 0) - 1; index >= 0; index -= 1) {
-      const captured = capture.patterns?.[index]
-      if (captured?.name === pattern.name) {
-        return captured.values.length
-      }
-    }
-
-    return 0
+    const patterns = capture.patterns
+    const captured = patterns?.[patterns.length - 1]
+    return captured?.name === pattern.name ? captured.values.length : 0
   }
 
   private patternHasMinimum(capture: PendingSequenceCapture<TTarget, TEvent>): boolean {
@@ -1453,7 +1443,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     const part = this.createPatternEventPart(event, pattern, match)
-    const value = Object.prototype.hasOwnProperty.call(match, "value") ? match.value : event.name
+    const value = match.value ?? event.name
     const patterns = [...(capture.patterns ?? [])]
     const last = patterns.at(-1)
 
@@ -1484,15 +1474,12 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     matchKeys: readonly KeyMatch[],
     event: TEvent,
     focused: TTarget | null,
-  ): AdvancedCapture<TTarget, TEvent> | undefined {
+  ): PendingSequenceCapture<TTarget, TEvent> | undefined {
     const currentPattern = capture.node.pattern
     if (currentPattern && this.getPatternCaptureCount(capture) < currentPattern.max) {
       const patternMatch = this.matchPattern(currentPattern, event)
       if (patternMatch) {
-        return {
-          capture: this.appendPatternCapture(capture, capture.node, event, patternMatch),
-          consumed: true,
-        }
+        return this.appendPatternCapture(capture, capture.node, event, patternMatch)
       }
     }
 
@@ -1503,12 +1490,9 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     const staticChild = this.getReachableChild(capture.node, matchKeys, focused)
     if (staticChild) {
       return {
-        capture: {
-          layer: capture.layer,
-          node: staticChild,
-          patterns: capture.patterns,
-        },
-        consumed: true,
+        layer: capture.layer,
+        node: staticChild,
+        patterns: capture.patterns,
       }
     }
 
@@ -1523,10 +1507,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      return {
-        capture: this.appendPatternCapture(capture, child, event, patternMatch),
-        consumed: true,
-      }
+      return this.appendPatternCapture(capture, child, event, patternMatch)
     }
 
     return undefined
@@ -1538,6 +1519,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     const payload: Record<string, unknown> = {}
+    let hasPayload = false
     for (const captured of capture.patterns) {
       const pattern = this.state.environment.sequencePatterns.get(captured.name)
       let value: unknown
@@ -1556,6 +1538,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       const existing = payload[captured.payloadKey]
       if (existing === undefined) {
         payload[captured.payloadKey] = value
+        hasPayload = true
       } else if (Array.isArray(existing)) {
         existing.push(value)
       } else {
@@ -1563,7 +1546,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       }
     }
 
-    return Object.keys(payload).length > 0 ? payload : undefined
+    return hasPayload ? payload : undefined
   }
 
   private getReachableChild(
