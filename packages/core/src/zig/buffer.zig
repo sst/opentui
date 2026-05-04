@@ -466,14 +466,16 @@ pub const OptimizedBuffer = struct {
         const prev_char = self.buffer.char[index];
         const prev_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index]);
         var tracker_replaced = false;
+        const validated_new_grapheme_id = self.pool.getValidatedStartCharId(cell.char);
+        if (gp.isGraphemeChar(cell.char) and validated_new_grapheme_id == null) return;
 
         if (!span_cleanup) {
             const old_start_id: ?u32 = if (gp.isGraphemeChar(prev_char)) gp.graphemeIdFromChar(prev_char) else null;
             const new_start_id: ?u32 = blk: {
-                if (!gp.isGraphemeChar(cell.char)) break :blk null;
+                if (validated_new_grapheme_id == null) break :blk null;
                 const new_width = gp.charRightExtent(cell.char) + 1;
                 if (x + new_width > self.width) break :blk null;
-                break :blk gp.graphemeIdFromChar(cell.char);
+                break :blk validated_new_grapheme_id;
             };
 
             if (old_start_id != null or new_start_id != null) {
@@ -492,10 +494,10 @@ pub const OptimizedBuffer = struct {
                 const id = gp.graphemeIdFromChar(prev_char);
 
                 const new_grapheme_id: ?u32 = blk: {
-                    if (!gp.isGraphemeChar(cell.char)) break :blk null;
+                    if (validated_new_grapheme_id == null) break :blk null;
                     const new_width = gp.charRightExtent(cell.char) + 1;
                     if (x + new_width > self.width) break :blk null;
-                    break :blk gp.graphemeIdFromChar(cell.char);
+                    break :blk validated_new_grapheme_id;
                 };
                 self.grapheme_tracker.replace(id, new_grapheme_id);
                 tracker_replaced = true;
@@ -553,7 +555,7 @@ pub const OptimizedBuffer = struct {
             self.buffer.bg[index] = cell.bg;
             self.buffer.attributes[index] = cell.attributes;
 
-            const id: u32 = gp.graphemeIdFromChar(cell.char);
+            const id: u32 = validated_new_grapheme_id.?;
             const is_same_grapheme_start = gp.isGraphemeChar(prev_char) and prev_char == cell.char;
             if (!tracker_replaced and !is_same_grapheme_start) {
                 self.grapheme_tracker.add(id);
@@ -1473,7 +1475,10 @@ pub const OptimizedBuffer = struct {
                     if (currentX >= 0) {
                         const charX: u32 = @intCast(currentX);
                         if (g_width > self.width - charX) {
-                            globalCharPos += (col_end - col);
+                            const remaining_width = col_end - col;
+                            globalCharPos += remaining_width;
+                            currentX += @as(i32, @intCast(remaining_width));
+                            column_in_line += remaining_width;
                             break;
                         }
                     }
@@ -1658,6 +1663,7 @@ pub const OptimizedBuffer = struct {
                                 globalCharPos += g_width;
                                 currentX += @as(i32, @intCast(g_width));
                                 col += g_width;
+                                column_in_line += g_width;
                                 continue;
                             };
                             encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);

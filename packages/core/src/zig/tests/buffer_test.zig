@@ -2827,6 +2827,41 @@ test "buffer - set same grapheme ID with different extents keeps slot alive" {
     try std.testing.expectEqualSlices(u8, emoji, bytes);
 }
 
+test "buffer - set ignores stale packed grapheme id before write" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = .{ 1, 1, 1, 1, 1 },
+    });
+    defer local_pool.deinit();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(std.testing.allocator, 4, 1, .{
+        .pool = &local_pool,
+        .link_pool = &local_link_pool,
+        .width_method = .unicode,
+    });
+    defer buf.deinit();
+
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    buf.clear(bg, null);
+
+    const stale_gid = try local_pool.alloc("a");
+    try local_pool.incref(stale_gid);
+    try local_pool.decref(stale_gid);
+
+    const live_gid = try local_pool.alloc("b");
+    try std.testing.expect(stale_gid != live_gid);
+
+    const stale_char = gp.packGraphemeStart(stale_gid & gp.GRAPHEME_ID_MASK, 1);
+    buf.set(0, 0, .{ .char = stale_char, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const cell = buf.get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), cell.char);
+    try std.testing.expectEqual(@as(u32, 0), buf.grapheme_tracker.getGraphemeCount());
+}
+
 // Exercises grapheme pool slot reuse across multiple render frames with
 // alternating dialog/form content to stress the alloc→set→render cycle.
 test "renderer - grapheme WrongGeneration repro with pool slot reuse" {

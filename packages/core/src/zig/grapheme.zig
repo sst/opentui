@@ -254,6 +254,14 @@ pub const GraphemePool = struct {
         return self.classes[class_id].getRefcount(slot_index, generation);
     }
 
+    pub fn getValidatedStartCharId(self: *GraphemePool, char: u32) ?IdPayload {
+        if (!isGraphemeChar(char)) return null;
+
+        const id = graphemeIdFromChar(char);
+        _ = self.getRefcount(id) catch return null; // Validate ID by checking refcount
+        return id;
+    }
+
     const ClassPool = struct {
         allocator: std.mem.Allocator,
         slot_capacity: u32,
