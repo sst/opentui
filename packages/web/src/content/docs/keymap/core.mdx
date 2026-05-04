@@ -26,6 +26,7 @@ Bare keymaps do not parse string bindings until you install binding parsers and 
 
 | Member                        | Required | Description                                                                                                      |
 | ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| `metadata`                    | yes      | Platform, primary shortcut modifier and modifier capability metadata                                             |
 | `rootTarget`                  | yes      | Root target for the host hierarchy                                                                               |
 | `isDestroyed`                 | yes      | Host lifetime flag                                                                                               |
 | `getFocusedTarget()`          | yes      | Returns the currently focused target or `null`                                                                   |
@@ -125,6 +126,8 @@ Sequence patterns can capture repeated runtime input and pass finalized values t
 | `match`       | Runtime event predicate that returns a captured value/display or `undefined` for no match     |
 | `finalize`    | Optional conversion from captured values to the final payload value, e.g. digits to a number  |
 
+Patterns with the default unbounded `max` must be followed by a concrete continuation, such as `{count}j`; terminal unbounded patterns are rejected.
+
 ## State and discovery
 
 | Method                    | Description                                                                                                                      |
@@ -136,14 +139,17 @@ Sequence patterns can capture repeated runtime input and pass finalized values t
 | `clearPendingSequence()`  | Clears the pending sequence                                                                                                      |
 | `popPendingSequence()`    | Removes the last pending stroke. Returns `true` when a stroke was removed                                                        |
 | `getActiveKeys(options?)` | Returns the currently reachable keys for the current focus and pending state                                                     |
+| `parseKeySequence(key)`   | Parses a `KeyLike` with the current parser/token/pattern environment                                                            |
+| `formatKey(key, options?)` | Parses and stringifies a `KeyLike` with the current environment                                                                 |
 | `createKeyMatcher(key)`   | Parses one `KeyLike` and returns a single-stroke predicate for any `KeyStringifyInput`. It does not match multi-stroke sequences |
+| `getHostMetadata()`       | Returns the host metadata used by addons such as `registerModBindings()`                                                        |
 
 `getActiveKeys()` accepts `ActiveKeyOptions`:
 
 | Option            | Default | Description                                                                    |
 | ----------------- | ------- | ------------------------------------------------------------------------------ |
 | `includeBindings` | `false` | Include per-key `bindings` arrays with full binding views                      |
-| `includeMetadata` | `false` | Include `bindingAttrs` and `commandAttrs` on active keys and returned bindings |
+| `includeMetadata` | `false` | Include top-level `bindingAttrs` and `commandAttrs` on active keys            |
 
 `ActiveKey` shape:
 
@@ -409,8 +415,11 @@ snapshot.layers[0]?.attrs?.name // "Global"
 | ----------------- | ------------------- | ----------------------------------------------------- |
 | `state`           | `void`              | Batched "derived state may have changed" signal       |
 | `pendingSequence` | `KeySequencePart[]` | Synchronous pending-sequence updates, including clear |
+| `dispatch`        | `DispatchEvent`     | Sequence and binding execution trace events          |
 | `warning`         | `WarningEvent`      | Validation or analyzer warning                        |
 | `error`           | `ErrorEvent`        | Registration, query, resolver, or listener error      |
+
+`DispatchEvent` exposes `phase`, `event`, `focused`, `sequence` and optional `layer`, `binding` and `command`. Phases are `sequence-start`, `sequence-advance`, `sequence-clear`, `binding-execute` and `binding-reject`.
 
 Diagnostic events are not batched through `state`; they are emitted when the warning or error is reported.
 
@@ -428,8 +437,8 @@ Diagnostic-event quirks:
 - Console fallback is per event type. Registering a `warning` listener suppresses warning console output but does not affect `error`, and vice versa.
 - Console fallback prefixes the message with `[code]`. If the underlying cause is an `Error`, it is passed as the second console argument.
 - Throwing `warning` or `error` listeners do not stop remaining diagnostic listeners from running, and they do not recursively emit another keymap error event.
-- `warning` commonly covers analyzer and validation warnings such as unknown fields or unknown tokens.
-- `error` covers more than registration failures: it also reports resolver failures, command-query failures, runtime matcher failures, and thrown `state` / `pendingSequence` listeners.
+- `warning` commonly covers analyzer and validation warnings such as unknown fields, tokens or sequence patterns.
+- `error` covers more than registration failures: it also reports resolver failures, command-query failures, runtime matcher failures, and thrown `state`, `pendingSequence` or `dispatch` listeners.
 
 `keymap.intercept(...)`:
 

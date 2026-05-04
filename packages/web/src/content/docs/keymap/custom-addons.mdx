@@ -64,7 +64,7 @@ Guidelines:
 | API                                        | Use for                                                       |
 | ------------------------------------------ | ------------------------------------------------------------- |
 | `prepend/appendLayerBindingsTransformer()` | Rewrite a whole layer's binding array once before compilation |
-| `prepend/appendBindingExpander()`          | Expand one key string into one or more key strings            |
+| `prepend/appendBindingExpander()`          | Expand one key string into one or more expansion objects      |
 | `prepend/appendBindingParser()`            | Parse string key syntax into normalized sequence parts        |
 | `prepend/appendBindingTransformer()`       | Rewrite parsed bindings or add derived bindings               |
 
@@ -77,6 +77,7 @@ Guidelines:
 | `prepend/appendEventMatchResolver()`     | Add alternate event-to-stroke matching                  |
 | `prepend/appendDisambiguationResolver()` | Choose exact-vs-prefix behavior for ambiguous sequences |
 | `intercept("key", ...)`                  | Observe or consume key events before binding dispatch   |
+| `intercept("key:after", ...)`            | Observe dispatch outcomes after binding dispatch        |
 | `intercept("raw", ...)`                  | Observe raw host input before key parsing               |
 
 ### Diagnostics and lifecycle
@@ -85,7 +86,7 @@ Guidelines:
 | --------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `prepend/appendLayerAnalyzer()`                                 | Emit warnings or errors while layers compile                       |
 | `acquireResource(symbol, setup)`                                | Share ref-counted setup and teardown across multiple registrations |
-| `on("state" \| "pendingSequence" \| "warning" \| "error", ...)` | Subscribe to derived-state and diagnostic events                   |
+| `keymap.on(...)`                                                | Subscribe to state, dispatch and diagnostic events                 |
 
 Every registration API above returns a disposer.
 
@@ -397,6 +398,7 @@ Analyzers run while a layer compiles and receive a projected view of the compile
 | ----------------- | ------------------- | ----------------------------------------------- |
 | `state`           | `void`              | Batched "derived state may have changed" signal |
 | `pendingSequence` | `KeySequencePart[]` | Synchronous pending-sequence updates            |
+| `dispatch`        | `DispatchEvent`     | Sequence and binding execution trace events    |
 | `warning`         | `WarningEvent`      | Validation or analyzer warning                  |
 | `error`           | `ErrorEvent`        | Registration, query, resolver or listener error |
 
@@ -424,8 +426,8 @@ Options:
 | `getData()` / `setData()`                                                  | Shared mutable runtime state                                    |
 | `getPendingSequence()` / `clearPendingSequence()` / `popPendingSequence()` | Sequence-aware addons                                           |
 | `createKeyMatcher(key)`                                                    | Match a stroke using the current parser and token configuration |
-| `getActiveKeys()`                                                          | Build hint UIs or inspect current reachability                  |
-| `getCommands()` / `getCommandEntries()`                                    | Inspect command metadata and binding projections                |
+| `getActiveKeys()` / `getGraphSnapshot()`                                   | Build hint, graph or debug UIs                                  |
+| `getCommands()` / `getCommandEntries()` / `getCommandBindings()`           | Inspect command metadata and binding projections                |
 
 ## Shared resources with `acquireResource()`
 
