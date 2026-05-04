@@ -146,6 +146,13 @@ class TerminalConsoleCache extends EventEmitter {
     console.debug = (...args: any[]) => {
       this.appendToConsole(LogLevel.DEBUG, ...args)
     }
+
+    // React 19.2's reconciler calls console.timeStamp with a 6-arg Performance Tracks signature.
+    // The new Console instance from setupConsoleCapture lacks timeStamp, so provide a no-op
+    // unless the runtime already supplies one.
+    if (typeof console.timeStamp !== "function") {
+      console.timeStamp = () => {}
+    }
   }
 
   public setCollectCallerInfo(enabled: boolean): void {

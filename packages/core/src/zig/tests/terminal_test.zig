@@ -35,6 +35,7 @@ test "parseXtversion - tmux format" {
     try testing.expectEqualStrings("tmux", term.getTerminalName());
     try testing.expectEqualStrings("3.5a", term.getTerminalVersion());
     try testing.expect(term.term_info.from_xtversion);
+    try testing.expect(term.in_tmux);
     try testing.expect(term.caps.osc52);
 }
 
@@ -116,6 +117,23 @@ test "remote without forwarded env map ignores local env overrides" {
     try testing.expect(!term.in_tmux);
     try testing.expect(!term.caps.osc52);
     try testing.expect(!term.caps.explicit_cursor_positioning);
+}
+
+test "TERM_PROGRAM tmux provides initial tmux version before xtversion" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM_PROGRAM", "tmux");
+    try env.put("TERM_PROGRAM_VERSION", "3.6a");
+    try env.put("TERM", "xterm-256color");
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(term.in_tmux);
+    try testing.expectEqualStrings("tmux", term.getTerminalName());
+    try testing.expectEqualStrings("3.6a", term.getTerminalVersion());
+    try testing.expect(!term.term_info.from_xtversion);
 }
 
 test "remote applies forwarded env overrides and capability responses" {
@@ -311,7 +329,6 @@ test "queryTerminalSend - sends unwrapped queries when not in tmux" {
 
     // Should mark capability queries as pending
     try testing.expect(term.capability_queries_pending);
-    try testing.expect(term.theme_queries_pending);
 }
 
 test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
@@ -330,13 +347,14 @@ test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
 
     const output = writer.getWritten();
 
-    const idx_osc_theme_queries = std.mem.indexOf(u8, output, ansi.ANSI.oscThemeQueriesTmux).?;
+    const idx_osc_theme_queries = std.mem.indexOf(u8, output, ansi.ANSI.oscThemeQueries).?;
     const idx_xtversion = std.mem.indexOf(u8, output, "\x1b[>0q").?;
 
     // Should contain xtversion (unwrapped - used for detection)
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[>0q") != null);
     try testing.expect(idx_osc_theme_queries < idx_xtversion);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?996n") == null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b]10;?") == null);
 
     // Should contain tmux DCS wrapper start and doubled ESC for queries
     // wrapForTmux wraps all queries together with one DCS envelope
@@ -344,10 +362,9 @@ test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
 
     // Should NOT mark capability queries as pending (already sent wrapped)
     try testing.expect(!term.capability_queries_pending);
-    try testing.expect(!term.theme_queries_pending);
 }
 
-test "queryTerminalSend - sends plain and wrapped theme queries when TMUX is set" {
+test "queryTerminalSend - sends plain theme queries when TMUX is set" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     var env = std.process.EnvMap.init(testing.allocator);
@@ -365,9 +382,8 @@ test "queryTerminalSend - sends plain and wrapped theme queries when TMUX is set
 
     try testing.expect(term.in_tmux);
     try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.oscThemeQueries) != null);
-    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.oscThemeQueriesTmux) != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b]10;?") == null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?996n") == null);
-    try testing.expect(!term.theme_queries_pending);
 }
 
 test "sendPendingQueries - sends wrapped queries after tmux detected via xtversion" {
@@ -825,30 +841,7 @@ test "enableDetectedFeatures - sends initial theme queries" {
     try testing.expect(std.mem.indexOf(u8, output, "\x1b]10;?\x07") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b]11;?\x07") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?996n") == null);
-    try testing.expect(term.theme_queries_pending);
     try testing.expect(term.state.theme_queries_sent);
-}
-
-test "sendPendingQueries - sends wrapped OSC theme queries after tmux detected via xtversion" {
-    var term = Terminal.init(.{});
-    term.in_tmux = false;
-    term.theme_queries_pending = true;
-
-    term.term_info.from_xtversion = true;
-    term.term_info.name_len = 4;
-    @memcpy(term.term_info.name[0..4], "tmux");
-
-    var writer = TestWriter.init(testing.allocator);
-    defer writer.deinit();
-
-    const did_send = try term.sendPendingQueries(&writer);
-
-    try testing.expect(did_send);
-
-    const output = writer.getWritten();
-    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b]10;?\x07") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b]11;?\x07") != null);
-    try testing.expect(!term.theme_queries_pending);
 }
 
 test "setMouseMode - enable without movement keeps click/drag only" {

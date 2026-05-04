@@ -68,7 +68,7 @@ test "OptimizedBuffer - clear fills with default char" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var y: u32 = 0;
     while (y < 5) : (y += 1) {
@@ -95,7 +95,7 @@ test "OptimizedBuffer - drawText with ASCII" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
     try buf.drawText("Hello", 0, 0, fg, bg, 0);
@@ -203,9 +203,9 @@ test "OptimizedBuffer - alpha blending downgrades blended metadata to rgb" {
     defer buf.deinit();
 
     const base_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(base_bg, null);
+    buf.clear(base_bg, null);
 
-    try buf.setCellWithAlphaBlending(
+    buf.setCellWithAlphaBlending(
         0,
         0,
         'B',
@@ -226,7 +226,7 @@ test "OptimizedBuffer - alpha blending downgrades blended metadata to rgb" {
         .attributes = 0,
     });
 
-    try buf.setCellWithAlphaBlending(
+    buf.setCellWithAlphaBlending(
         0,
         0,
         'C',
@@ -264,8 +264,8 @@ test "OptimizedBuffer - transparent framebuffer cell background stays transparen
     defer dst.deinit();
 
     const transparent_bg = ansi.rgbColor(0, 0, 0, 0);
-    try src.clear(transparent_bg, null);
-    try dst.clear(transparent_bg, null);
+    src.clear(transparent_bg, null);
+    dst.clear(transparent_bg, null);
     dst.setBlendBackdropColor(ansi.rgbColor(0, 0, 0, 255));
 
     src.set(0, 0, .{
@@ -305,8 +305,8 @@ test "OptimizedBuffer - drawFrameBuffer preserves packed metadata on opaque copy
     defer dst.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try src.clear(bg, null);
-    try dst.clear(bg, null);
+    src.clear(bg, null);
+    dst.clear(bg, null);
 
     src.set(0, 0, .{
         .char = 'X',
@@ -354,7 +354,7 @@ test "OptimizedBuffer - drawTextBuffer transparent fast path preserves destinati
         .attributes = ansi.TextAttributes.BOLD,
     });
 
-    try buf.drawTextBuffer(view, 0, 0);
+    buf.drawTextBuffer(view, 0, 0);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(u32, 'A'), cell.char);
@@ -395,7 +395,7 @@ test "OptimizedBuffer - drawTextBuffer transparent non-ascii preserves destinati
         .attributes = ansi.TextAttributes.BOLD,
     });
 
-    try buf.drawTextBuffer(view, 0, 0);
+    buf.drawTextBuffer(view, 0, 0);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expect(gp.isGraphemeChar(cell.char));
@@ -424,7 +424,7 @@ test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {
 
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
-        try buf.clear(bg, null);
+        buf.clear(bg, null);
         try buf.drawText("🌟🎨🚀", 0, 0, fg, bg, 0);
     }
 
@@ -451,7 +451,7 @@ test "OptimizedBuffer - repeated CJK rendering should not exhaust pool" {
 
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
-        try buf.clear(bg, null);
+        buf.clear(bg, null);
         try buf.drawText("测试文字", 0, 0, fg, bg, 0);
     }
 
@@ -485,8 +485,8 @@ test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
 
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
-        try buf.clear(bg, null);
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.clear(bg, null);
+        buf.drawTextBuffer(view, 0, 0);
     }
 }
 
@@ -509,7 +509,7 @@ test "OptimizedBuffer - mixed ASCII and emoji repeated rendering" {
 
     var i: u32 = 0;
     while (i < 500) : (i += 1) {
-        try buf.clear(bg, null);
+        buf.clear(bg, null);
         try buf.drawText("A🌟B🎨C🚀D", 0, 0, fg, bg, 0);
         try buf.drawText("测试文字处理", 0, 1, fg, bg, 0);
         try buf.drawText("Hello World!", 0, 2, fg, bg, 0);
@@ -566,7 +566,7 @@ test "OptimizedBuffer - rendering to different positions" {
 
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
-        try buf.clear(bg, null);
+        buf.clear(bg, null);
 
         var y: u32 = 0;
         while (y < 20) : (y += 1) {
@@ -620,8 +620,8 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
 
     var i: u32 = 0;
     while (i < 200) : (i += 1) {
-        try buf.clear(bg, null);
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.clear(bg, null);
+        buf.drawTextBuffer(view, 0, 0);
     }
 }
 
@@ -650,7 +650,7 @@ test "OptimizedBuffer - grapheme tracker counts" {
 
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
-        try buf.clear(bg, null);
+        buf.clear(bg, null);
         try buf.drawText("🌟🎨🚀", 0, 0, fg, bg, 0);
     }
 
@@ -711,11 +711,11 @@ test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var i: u32 = 0;
     while (i < 2000) : (i += 1) {
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
     }
 
     const count = buf.grapheme_tracker.getGraphemeCount();
@@ -745,11 +745,11 @@ test "OptimizedBuffer - many small graphemes without clear" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var i: u32 = 0;
     while (i < 5000) : (i += 1) {
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
     }
 
     const count = buf.grapheme_tracker.getGraphemeCount();
@@ -787,11 +787,11 @@ test "OptimizedBuffer - stress test with many graphemes" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
     }
 
     const count = buf.grapheme_tracker.getGraphemeCount();
@@ -829,9 +829,9 @@ test "OptimizedBuffer - pool slot exhaustion test" {
     var i: u32 = 0;
     while (i < 10000) : (i += 1) {
         if (i % 100 == 0) {
-            try buf.clear(bg, null);
+            buf.clear(bg, null);
         }
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
     }
 
     const cell = buf.get(0, 0).?;
@@ -888,14 +888,11 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
         };
 
         if (render_count % 50 == 0) {
-            try buf.clear(bg, null);
+            buf.clear(bg, null);
             tb.reset();
         }
 
-        buf.drawTextBuffer(view, 0, 0) catch {
-            failure_count += 1;
-            continue;
-        };
+        buf.drawTextBuffer(view, 0, 0);
     }
 
     try std.testing.expect(failure_count == 0);
@@ -925,7 +922,7 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
 
     var i: u32 = 0;
     while (i < 50000) : (i += 1) {
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
     }
 }
 
@@ -969,9 +966,9 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
 
     var i: u32 = 0;
     while (i < 5000) : (i += 1) {
-        try buf1.drawTextBuffer(view, 0, 0);
-        try buf2.drawTextBuffer(view, 0, 0);
-        try buf3.drawTextBuffer(view, 0, 0);
+        buf1.drawTextBuffer(view, 0, 0);
+        buf2.drawTextBuffer(view, 0, 0);
+        buf3.drawTextBuffer(view, 0, 0);
     }
 }
 
@@ -999,11 +996,11 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
     }
 }
 
@@ -1031,13 +1028,13 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     try buf.pushScissorRect(0, 0, 5, 5);
 
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
-        try buf.drawTextBuffer(view, 20, 20);
+        buf.drawTextBuffer(view, 20, 20);
     }
 }
 
@@ -1060,7 +1057,7 @@ test "OptimizedBuffer - drawText with alpha blending and scissor" {
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
     const bg_alpha = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.5);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     try buf.pushScissorRect(0, 0, 10, 10);
 
@@ -1089,7 +1086,7 @@ test "OptimizedBuffer - many unique graphemes with alpha and small pool" {
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
     const bg_alpha = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.5);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var i: u32 = 0;
     while (i < 50) : (i += 1) {
@@ -1126,7 +1123,7 @@ test "OptimizedBuffer - fill buffer with many unique graphemes" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var char_idx: u32 = 0;
     var y: u32 = 0;
@@ -1165,7 +1162,7 @@ test "OptimizedBuffer - verify pool growth works correctly" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var char_idx: u32 = 0;
     while (char_idx < 150) : (char_idx += 1) {
@@ -1244,7 +1241,7 @@ test "OptimizedBuffer - two-buffer pattern should not leak" {
         const cell = nextBuffer.get(0, 0).?;
         currentBuffer.setRaw(0, 0, cell);
 
-        try nextBuffer.clear(bg, null);
+        nextBuffer.clear(bg, null);
     }
 }
 
@@ -1269,7 +1266,7 @@ test "OptimizedBuffer - set and clear cycle should not leak" {
     var frame: u32 = 0;
     while (frame < 200) : (frame += 1) {
         try buf.drawText("•", 0, 0, fg, bg, 0);
-        try buf.clear(bg, null);
+        buf.clear(bg, null);
     }
 }
 
@@ -1297,11 +1294,11 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear should not leak" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var frame: u32 = 0;
     while (frame < 500) : (frame += 1) {
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
     }
 }
 
@@ -1337,11 +1334,11 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
     defer next.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try current.clear(bg, null);
+    current.clear(bg, null);
 
     var frame: u32 = 0;
     while (frame < 300) : (frame += 1) {
-        try next.drawTextBuffer(view, 0, 0);
+        next.drawTextBuffer(view, 0, 0);
 
         var x: u32 = 0;
         while (x < 10) : (x += 1) {
@@ -1350,7 +1347,7 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
             }
         }
 
-        try next.clear(bg, null);
+        next.clear(bg, null);
     }
 }
 
@@ -1368,7 +1365,7 @@ test "OptimizedBuffer - set should not clear newly written adjacent grapheme con
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     const old_gid = try local_pool.alloc("🌟");
     const old_start = gp.packGraphemeStart(old_gid & gp.GRAPHEME_ID_MASK, 2);
@@ -1415,7 +1412,7 @@ test "OptimizedBuffer - set span cleanup keeps shared link refcounts consistent"
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     const link_id = try local_link_pool.alloc("https://example.com");
     const linked_attr = ansi.TextAttributes.setLinkId(0, link_id);
@@ -1459,7 +1456,7 @@ test "OptimizedBuffer - syncCell updates grapheme tracker for start transitions"
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     const gid_old = try local_pool.alloc("你");
     const gid_new = try local_pool.alloc("好");
@@ -1506,11 +1503,11 @@ test "OptimizedBuffer - sustained rendering should not leak" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var frame: u32 = 0;
     while (frame < 3000) : (frame += 1) {
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
     }
 }
 
@@ -1536,7 +1533,7 @@ test "OptimizedBuffer - rendering with changing content should not leak" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var frame: u32 = 0;
     while (frame < 100) : (frame += 1) {
@@ -1557,7 +1554,7 @@ test "OptimizedBuffer - rendering with changing content should not leak" {
 
         tb.setText(&text) catch continue;
 
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
     }
 }
 
@@ -1596,13 +1593,13 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously should not
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     var frame: u32 = 0;
     while (frame < 500) : (frame += 1) {
-        try buf.drawTextBuffer(view1, 0, 0);
-        try buf.drawTextBuffer(view2, 0, 10);
-        try buf.drawTextBuffer(view3, 0, 20);
+        buf.drawTextBuffer(view1, 0, 0);
+        buf.drawTextBuffer(view2, 0, 10);
+        buf.drawTextBuffer(view3, 0, 20);
     }
 }
 
@@ -1670,7 +1667,7 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
 
-    try buf.drawTextBuffer(view, 0, 0);
+    buf.drawTextBuffer(view, 0, 0);
 
     const count_after_draw = buf.grapheme_tracker.getGraphemeCount();
     try std.testing.expect(count_after_draw > 0);
@@ -1684,7 +1681,7 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
     const slots_in_use_after_draw = total_allocated_slots - total_free_slots;
     try std.testing.expect(slots_in_use_after_draw > 0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     const count_after_clear = buf.grapheme_tracker.getGraphemeCount();
     try std.testing.expectEqual(@as(u32, 0), count_after_clear);
@@ -1708,7 +1705,7 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
         }
     }
 
-    try buf.drawTextBuffer(view, 0, 0);
+    buf.drawTextBuffer(view, 0, 0);
     const count_after_redraw = buf.grapheme_tracker.getGraphemeCount();
     try std.testing.expect(count_after_redraw > 0);
 
@@ -1721,7 +1718,7 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
     const slots_in_use_after_redraw = allocated_after_redraw - free_after_redraw;
     try std.testing.expect(slots_in_use_after_redraw > 0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     const count_after_second_clear = buf.grapheme_tracker.getGraphemeCount();
     try std.testing.expectEqual(@as(u32, 0), count_after_second_clear);
 
@@ -1757,12 +1754,12 @@ test "OptimizedBuffer - drawTextBuffer with negative y coordinate should not pan
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Draw text buffer at negative y coordinate (-2)
     // This simulates a scenario where content is scrolled partially off-screen
     // The first 2 lines should be clipped, and lines 3, 4, 5 should be visible
-    try buf.drawTextBuffer(view, 0, -2);
+    buf.drawTextBuffer(view, 0, -2);
 
     // Verify that content is properly clipped when drawn at negative y
     // Lines that are off-screen (negative y) should be skipped
@@ -1827,7 +1824,7 @@ test "OptimizedBuffer - link encoding round-trip" {
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Allocate a link
     const link_id = try local_link_pool.alloc("https://example.com");
@@ -1863,7 +1860,7 @@ test "OptimizedBuffer - link tracker per-cell counting" {
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Allocate a link
     const link_id = try local_link_pool.alloc("https://example.com");
@@ -1892,7 +1889,7 @@ test "OptimizedBuffer - link tracker per-cell counting" {
     try std.testing.expectEqual(@as(u32, 1), pool_refcount2);
 
     // Clear all - refcount should be 0 and link freed
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     try std.testing.expectEqual(@as(u32, 0), buf.link_tracker.getLinkCount());
 }
 
@@ -1912,7 +1909,7 @@ test "OptimizedBuffer - fillRect removes links" {
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Allocate a link
     const link_id = try local_link_pool.alloc("https://example.com");
@@ -1927,7 +1924,7 @@ test "OptimizedBuffer - fillRect removes links" {
     try std.testing.expect(ansi.TextAttributes.hasLink(buf.get(10, 0).?.attributes));
 
     // Fill rect over first link
-    try buf.fillRect(0, 0, 6, 1, bg);
+    buf.fillRect(0, 0, 6, 1, bg);
 
     // Cells in rect should have no link
     try std.testing.expect(!ansi.TextAttributes.hasLink(buf.get(0, 0).?.attributes));
@@ -1951,14 +1948,14 @@ test "OptimizedBuffer - fillRect alpha path preserves underlying text without tr
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     try buf.drawText("X", 1, 1, fg, bg, 0);
 
     try std.testing.expect(!buf.grapheme_tracker.hasAny());
     try std.testing.expect(!buf.link_tracker.hasAny());
 
     const overlay_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5);
-    try buf.fillRect(0, 0, 3, 3, overlay_bg);
+    buf.fillRect(0, 0, 3, 3, overlay_bg);
 
     const preserved = buf.get(1, 1).?;
     try std.testing.expectEqual(@as(u32, 'X'), preserved.char);
@@ -1987,7 +1984,7 @@ test "OptimizedBuffer - fillRect transparent path is a no-op without trackers" {
     const yellow_fg = ansi.rgbaFromFloats(1.0, 1.0, 0.0, 1.0);
     const green_fg = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
     const blue_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
-    try buf.clear(red_bg, null);
+    buf.clear(red_bg, null);
     try buf.drawText("X", 1, 1, yellow_fg, red_bg, ansi.TextAttributes.BOLD);
     try buf.drawText(" ", 0, 1, green_fg, blue_bg, ansi.TextAttributes.UNDERLINE);
 
@@ -1995,7 +1992,7 @@ test "OptimizedBuffer - fillRect transparent path is a no-op without trackers" {
     try std.testing.expect(!buf.link_tracker.hasAny());
 
     const transparent_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
-    try buf.fillRect(0, 0, 3, 3, transparent_bg);
+    buf.fillRect(0, 0, 3, 3, transparent_bg);
 
     const preserved = buf.get(1, 1).?;
     try std.testing.expectEqual(@as(u32, 'X'), preserved.char);
@@ -2034,7 +2031,7 @@ test "OptimizedBuffer - drawBox transparent border preserves destination backgro
     const yellow_fg = ansi.defaultColor(255, 255, 0, 255);
     const green_fg = ansi.indexedColor(4, 0, 255, 0);
     const transparent_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
-    try buf.clear(red_bg, null);
+    buf.clear(red_bg, null);
     buf.set(0, 1, .{
         .char = 'A',
         .fg = yellow_fg,
@@ -2086,7 +2083,7 @@ test "OptimizedBuffer - link reuse after free" {
     try buf.drawText("A", 0, 0, fg, bg, attr1);
 
     // Clear - should free the link
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Allocate second link - should reuse same slot but different generation
     const link_id2 = try local_link_pool.alloc("https://second.com");
@@ -2116,7 +2113,7 @@ test "OptimizedBuffer - alpha blending preserves overlay link not dest link" {
     const bg_opaque = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const bg_alpha = ansi.rgbaFromFloats(0.5, 0.5, 0.5, 0.5);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg_opaque, null);
+    buf.clear(bg_opaque, null);
 
     // Draw underlying text with link A
     const link_id_a = try local_link_pool.alloc("https://underlying.com");
@@ -2157,7 +2154,7 @@ test "OptimizedBuffer - alpha blending with no link clears underlying link" {
     const bg_opaque = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const bg_alpha = ansi.rgbaFromFloats(0.5, 0.5, 0.5, 0.5);
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
-    try buf.clear(bg_opaque, null);
+    buf.clear(bg_opaque, null);
 
     // Draw underlying text with link
     const link_id = try local_link_pool.alloc("https://underlying.com");
@@ -2195,7 +2192,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer basic rendering" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Create a 3x3 intensity buffer with varying values
     const intensities = [_]f32{
@@ -2233,7 +2230,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position clipping" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Create a 4x4 intensity buffer
     const intensities = [_]f32{
@@ -2267,7 +2264,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position fully clipped" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     const intensities = [_]f32{
         1.0, 1.0, 1.0, 1.0,
@@ -2297,7 +2294,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer respects scissor rect" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     try buf.pushScissorRect(0, 0, 2, 2);
 
@@ -2336,7 +2333,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer intensity to character mapping" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     const intensities = [_]f32{
         0.005,
@@ -2374,7 +2371,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer alpha blending preserves underlying 
     defer buf.deinit();
 
     const red_bg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
-    try buf.clear(red_bg, null);
+    buf.clear(red_bg, null);
 
     const initial_cell = buf.get(1, 1).?;
     try std.testing.expectEqual(@as(u8, 255), ansi.red(initial_cell.bg));
@@ -2414,7 +2411,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer fully transparent bg preserves under
     defer buf.deinit();
 
     const green_bg = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
-    try buf.clear(green_bg, null);
+    buf.clear(green_bg, null);
 
     const transparent_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.0);
     const intensities = [_]f32{
@@ -2448,7 +2445,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer opaque bg overwrites underlying" {
     defer buf.deinit();
 
     const red_bg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
-    try buf.clear(red_bg, null);
+    buf.clear(red_bg, null);
 
     const blue_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
     const intensities = [_]f32{
@@ -2480,7 +2477,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer with opacity stack" {
     defer buf.deinit();
 
     const red_bg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
-    try buf.clear(red_bg, null);
+    buf.clear(red_bg, null);
 
     try buf.pushOpacity(0.5);
 
@@ -2515,7 +2512,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled alpha blending" {
     defer buf.deinit();
 
     const red_bg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
-    try buf.clear(red_bg, null);
+    buf.clear(red_bg, null);
 
     const intensities = [_]f32{
         1.0, 1.0, 1.0, 1.0,
@@ -2547,7 +2544,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled fully transparent preser
     defer buf.deinit();
 
     const green_bg = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
-    try buf.clear(green_bg, null);
+    buf.clear(green_bg, null);
 
     const intensities = [_]f32{
         1.0, 1.0, 1.0, 1.0,
@@ -2580,7 +2577,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled respects scissor" {
     defer buf.deinit();
 
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     try buf.pushScissorRect(0, 0, 1, 1);
 
@@ -2616,7 +2613,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with opacity stack" {
     defer buf.deinit();
 
     const red_bg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
-    try buf.clear(red_bg, null);
+    buf.clear(red_bg, null);
 
     try buf.pushOpacity(0.5);
 
@@ -2652,11 +2649,11 @@ test "OptimizedBuffer - blendColors with transparent destination" {
     defer buf.deinit();
 
     const transparent_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
-    try buf.clear(transparent_bg, null);
+    buf.clear(transparent_bg, null);
 
     const semi_white = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 0.5);
     const transparent_fg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
-    try buf.setCellWithAlphaBlending(0, 0, 'X', semi_white, transparent_fg, 0);
+    buf.setCellWithAlphaBlending(0, 0, 'X', semi_white, transparent_fg, 0);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(u8, 255), ansi.red(cell.fg));
@@ -2680,11 +2677,11 @@ test "OptimizedBuffer - blend backdrop flattens transparent destination" {
     defer buf.deinit();
 
     const transparent_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
-    try buf.clear(transparent_bg, null);
+    buf.clear(transparent_bg, null);
 
     const opaque_fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
     const semi_black_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.5);
-    try buf.setCellWithAlphaBlending(0, 0, buffer_mod.DEFAULT_SPACE_CHAR, opaque_fg, semi_black_bg, 0);
+    buf.setCellWithAlphaBlending(0, 0, buffer_mod.DEFAULT_SPACE_CHAR, opaque_fg, semi_black_bg, 0);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(u8, 127), ansi.red(cell.bg));
@@ -2708,7 +2705,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer with custom fg color" {
     defer buf.deinit();
 
     const black_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(black_bg, null);
+    buf.clear(black_bg, null);
 
     const intensities = [_]f32{
         1.0, 1.0, 1.0,
@@ -2740,7 +2737,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer custom fg with partial intensity" {
     defer buf.deinit();
 
     const blue_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
-    try buf.clear(blue_bg, null);
+    buf.clear(blue_bg, null);
 
     const intensities = [_]f32{
         0.5, 0.5, 0.5,
@@ -2772,7 +2769,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with custom fg color" {
     defer buf.deinit();
 
     const black_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
-    try buf.clear(black_bg, null);
+    buf.clear(black_bg, null);
 
     const intensities = [_]f32{
         1.0, 1.0, 1.0, 1.0,

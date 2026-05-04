@@ -338,7 +338,7 @@ test "Selection - RENDER TEST: selection highlights correct cells with viewport 
     var render_buffer = try buffer_mod.OptimizedBuffer.init(std.testing.allocator, 20, 10, .{ .pool = pool, .width_method = .unicode });
     defer render_buffer.deinit();
 
-    try render_buffer.drawTextBuffer(view, 0, 0);
+    render_buffer.drawTextBuffer(view, 0, 0);
 
     var x: u32 = 0;
     while (x < 3) : (x += 1) {

@@ -156,7 +156,7 @@ This lets native buffers compare current and next frame colors with exact intege
 
 ## Terminal palette detection
 
-When the terminal supports it, the renderer queries the active palette (OSC 4 for palette slots, OSC 10/11 for default fg/bg) and publishes it to the native renderer. Indexed colors stay mapped to the terminal's user-configured slots, default colors stay linked to the terminal defaults, and the renderer re-resolves RGB fallbacks against the detected palette.
+When the terminal supports it, the renderer queries the active palette (OSC 4 for palette slots, OSC 10/11 for default fg/bg, plus other special colors where supported). Indexed colors stay mapped to the terminal's user-configured slots, default colors stay linked to the terminal defaults, and non-truecolor renderers can re-resolve RGB fallbacks against the detected palette.
 
 ```typescript
 const colors = await renderer.getPalette({ size: 256 })
@@ -170,8 +170,9 @@ Useful members:
 - `renderer.getPalette(options?)` — returns a `TerminalColors` snapshot. Cached by requested size (`16` or `256`).
 - `renderer.paletteDetectionStatus` — `"idle" | "detecting" | "cached"`.
 - `renderer.clearPaletteCache()` — drop cached palettes (for example, after the user changes their theme).
+- `renderer.on("palette", handler)` — subscribe to refreshed palette snapshots when the detected palette changes.
 
-`getPalette` throws if the renderer is suspended. The renderer also runs detection automatically on startup so the native side has palette data for indexed/default emission.
+`getPalette` throws if the renderer is suspended. Startup palette detection runs automatically only when native ANSI-256 fallback rendering needs palette data (`ansi256` without truecolor `rgb`). Truecolor terminals query the palette only when you call `getPalette()` or when a palette listener exists and the terminal reports a theme change.
 
 ## Alpha blending
 

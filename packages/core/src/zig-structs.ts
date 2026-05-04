@@ -104,6 +104,7 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["hyperlinks", "bool_u8"],
   ["osc52", "bool_u8"],
   ["explicit_cursor_positioning", "bool_u8"],
+  ["in_tmux", "bool_u8"],
   ["term_name", "char*"],
   ["term_name_len", "u64", { lengthOf: "term_name" }],
   ["term_version", "char*"],

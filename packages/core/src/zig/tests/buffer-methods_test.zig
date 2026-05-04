@@ -76,7 +76,7 @@ test "colorMatrix - identity matrix leaves colors unchanged" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red; // (0, 0)
     buf.buffer.fg[5] = red; // (1, 1)
 
@@ -105,7 +105,7 @@ test "colorMatrix - applies transformation to specified cells only" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Set all FG to red
     @memset(buf.buffer.fg, red);
@@ -140,7 +140,7 @@ test "colorMatrix - globalStrength scales individual cell strengths" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
 
     // Apply sepia with cell strength 1.0 but globalStrength 0.5
@@ -174,7 +174,7 @@ test "colorMatrix - respects target parameter" {
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const blue = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
     buf.buffer.bg[0] = blue;
     buf.buffer.fg[1] = red;
@@ -218,7 +218,7 @@ test "colorMatrix - skips out-of-bounds coordinates" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[4] = red; // (1, 1)
 
     // Apply to out-of-bounds and valid cell
@@ -247,7 +247,7 @@ test "colorMatrix - skips NaN and Inf coordinates" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[4] = red; // (1, 1)
 
     // Apply with NaN and valid coordinates
@@ -277,7 +277,7 @@ test "colorMatrix - skips zero strength cells" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
 
     // Apply with zero strength
@@ -306,7 +306,7 @@ test "colorMatrix - handles multiple cells in mask" {
     const blue = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
     const white = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Set different colors at different positions
     buf.buffer.fg[0] = red; // (0, 0)
@@ -361,7 +361,7 @@ test "colorMatrix - truncates incomplete mask triplets" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
     buf.buffer.fg[1] = red;
 
@@ -394,7 +394,7 @@ test "colorMatrix - empty mask returns early" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
 
     // Empty mask - should return early
@@ -420,7 +420,7 @@ test "colorMatrix - empty matrix returns early" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
 
     // Empty matrix - should return early
@@ -455,7 +455,7 @@ test "colorMatrix - alpha channel transformation" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const opaque_color = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = opaque_color;
 
     // Apply matrix that halves alpha
@@ -481,7 +481,7 @@ test "colorMatrix - mask with only 1 element" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
 
     // Mask with only 1 element (incomplete triplet)
@@ -507,7 +507,7 @@ test "colorMatrix - mask with only 2 elements" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
     buf.buffer.fg[1] = red;
 
@@ -535,7 +535,7 @@ test "colorMatrix - infinity strength is skipped" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
 
     // Apply with infinity strength (should be skipped)
@@ -562,7 +562,7 @@ test "colorMatrix - non-finite global strength is skipped" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
 
     const inf = std.math.inf(f32);
@@ -589,7 +589,7 @@ test "colorMatrix - large buffer with SIMD and scalar mix" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Set all to red
     @memset(buf.buffer.fg, red);
@@ -622,7 +622,7 @@ test "colorMatrix - negative coordinates are skipped" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[4] = red; // (1, 1)
 
     // Apply with negative coordinates followed by valid
@@ -651,7 +651,7 @@ test "colorMatrix - finite coordinates larger than u32 max are skipped" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[4] = red; // (1, 1)
 
     // First triplet uses finite but out-of-range coordinates for u32 conversion.
@@ -686,7 +686,7 @@ test "colorMatrixUniform - identity matrix leaves colors unchanged" {
     const blue = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
     const white = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Set specific colors at different positions
     buf.buffer.fg[0] = red;
@@ -719,7 +719,7 @@ test "colorMatrixUniform - zero strength has no effect" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     @memset(buf.buffer.fg, red);
 
@@ -746,7 +746,7 @@ test "colorMatrixUniform - non-finite strength has no effect" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
     buf.buffer.fg[1] = red;
 
@@ -774,7 +774,7 @@ test "colorMatrixUniform - grayscale transformation" {
     const green = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
     const blue = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     buf.buffer.fg[0] = red;
     buf.buffer.fg[1] = green;
@@ -810,7 +810,7 @@ test "colorMatrixUniform - partial strength blends with original" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
     buf.buffer.fg[1] = red;
 
@@ -844,7 +844,7 @@ test "colorMatrixUniform - target affects correct buffers" {
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const blue = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     buf.buffer.fg[0] = red;
     buf.buffer.bg[0] = blue;
@@ -901,7 +901,7 @@ test "colorMatrixUniform - handles buffer sizes not divisible by 4" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     // Set all FG to red
     for (0..5) |i| {
@@ -936,7 +936,7 @@ test "colorMatrixUniform - empty matrix returns early" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
 
     // Empty matrix - should return early without changes
@@ -963,7 +963,7 @@ test "colorMatrixUniform - alpha channel transformation" {
     const opaque_color = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const transparent_color = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 0.5);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
 
     buf.buffer.fg[0] = opaque_color;
     buf.buffer.fg[1] = transparent_color;
@@ -994,7 +994,7 @@ test "colorMatrixUniform - very small buffer (less than 4 pixels)" {
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const green = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
     buf.buffer.fg[1] = green;
 
@@ -1030,7 +1030,7 @@ test "colorMatrixUniform - single pixel buffer" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = red;
 
     // Apply sepia at full strength
@@ -1066,7 +1066,7 @@ test "colorMatrixUniform - values can exceed 1.0 (no clamping)" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const gray = ansi.rgbaFromFloats(0.5, 0.5, 0.5, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     buf.buffer.fg[0] = gray;
 
     // Apply amplification at full strength
@@ -1092,7 +1092,7 @@ test "colorMatrixUniform - 3 pixel buffer (simd_end = 0, all scalar)" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const red = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
-    try buf.clear(bg, null);
+    buf.clear(bg, null);
     for (0..3) |i| {
         buf.buffer.fg[i] = red;
     }

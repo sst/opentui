@@ -18,6 +18,8 @@ class MockStream extends EventEmitter {
 function createPaletteHarness(
   options: {
     writeFn?: (data: string | Buffer) => boolean
+    isLegacyTmux?: boolean
+    isTmux?: boolean
     oscSource?: {
       subscribeOsc(handler: (sequence: string) => void): () => void
     }
@@ -26,7 +28,15 @@ function createPaletteHarness(
   const stdin = new MockStream() as any
   const stdout = new MockStream() as any
   const clock = new ManualClock()
-  const palette = new TerminalPalette(stdin, stdout, options.writeFn, false, options.oscSource, clock)
+  const palette = new TerminalPalette({
+    stdin,
+    stdout,
+    writeFn: options.writeFn,
+    isLegacyTmux: options.isLegacyTmux ?? false,
+    isTmux: options.isTmux,
+    oscSource: options.oscSource,
+    clock,
+  })
 
   return { stdin, stdout, clock, palette }
 }
@@ -41,10 +51,16 @@ async function startPaletteDetection(
     timeout?: number
     size?: number
     writeFn?: (data: string | Buffer) => boolean
+    isLegacyTmux?: boolean
+    isTmux?: boolean
   } = {},
 ) {
   const timeout = options.timeout ?? 2000
-  const harness = createPaletteHarness({ writeFn: options.writeFn })
+  const harness = createPaletteHarness({
+    writeFn: options.writeFn,
+    isLegacyTmux: options.isLegacyTmux,
+    isTmux: options.isTmux,
+  })
   const detectPromise = harness.palette.detect({
     timeout,
     size: options.size ?? 256,
@@ -664,7 +680,12 @@ test("TerminalPalette falls back to stdout.write when no custom write function p
     return true
   }
 
-  const palette = new TerminalPalette(stdin, stdout, undefined, false, undefined, clock)
+  const palette = new TerminalPalette({
+    stdin,
+    stdout,
+    isLegacyTmux: false,
+    clock,
+  })
 
   const detectPromise = palette.detectOSCSupport(500)
 
@@ -735,6 +756,44 @@ test("TerminalPalette detects all special OSC colors (10-19)", async () => {
   expect(result.tekBackground).toBe("#ff0007")
   expect(result.highlightBackground).toBe("#ff0008")
   expect(result.highlightForeground).toBe("#ff0009")
+})
+
+test("TerminalPalette only wraps OSC 4 and only queries tmux-supported special colors in legacy tmux", async () => {
+  const writes: string[] = []
+  const { clock, detectPromise, timeout } = await startPaletteDetection({
+    isLegacyTmux: true,
+    isTmux: true,
+    writeFn: (data) => {
+      writes.push(data.toString())
+      return true
+    },
+  })
+
+  expect(writes.some((write) => write.startsWith("\x1bPtmux;\x1b\x1b]4;"))).toBe(true)
+  expect(writes).toContain("\x1b]10;?\x07\x1b]11;?\x07\x1b]12;?\x07")
+  expect(writes.some((write) => write.includes("\x1b]13;?"))).toBe(false)
+
+  await advanceClock(clock, timeout)
+  await detectPromise
+})
+
+test("TerminalPalette uses plain OSC 4 but limits special color queries in modern tmux", async () => {
+  const writes: string[] = []
+  const { clock, detectPromise, timeout } = await startPaletteDetection({
+    isTmux: true,
+    writeFn: (data) => {
+      writes.push(data.toString())
+      return true
+    },
+  })
+
+  expect(writes).toContain("\x1b]4;0;?\x07")
+  expect(writes.some((write) => write.startsWith("\x1bPtmux;"))).toBe(false)
+  expect(writes).toContain("\x1b]10;?\x07\x1b]11;?\x07\x1b]12;?\x07")
+  expect(writes.some((write) => write.includes("\x1b]13;?"))).toBe(false)
+
+  await advanceClock(clock, timeout)
+  await detectPromise
 })
 
 test("TerminalPalette handles special colors in rgb format", async () => {
@@ -872,7 +931,13 @@ test("TerminalPalette can read OSC from router subscription source", async () =>
 
   const clock = new ManualClock()
   const stdout = new MockStream() as any
-  const palette = new TerminalPalette(stdin, stdout, undefined, false, oscSource, clock)
+  const palette = new TerminalPalette({
+    stdin,
+    stdout,
+    isLegacyTmux: false,
+    oscSource,
+    clock,
+  })
 
   const detectPromise = palette.detectOSCSupport(500)
   for (const handler of handlers) {

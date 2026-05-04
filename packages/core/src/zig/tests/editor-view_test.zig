@@ -2056,8 +2056,8 @@ test "EditorView - placeholder with styled text renders with correct highlights"
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
-    try opt_buffer.drawTextBuffer(tbv_ptr, 0, 0);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawTextBuffer(tbv_ptr, 0, 0);
 
     const epsilon: f32 = 0.01;
 
@@ -2747,8 +2747,8 @@ test "EditorView - placeholder renders to buffer when empty" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
 
     var out_buffer: [1000]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -2758,8 +2758,8 @@ test "EditorView - placeholder renders to buffer when empty" {
 
     try eb.insertText("Hello");
 
-    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
     try std.testing.expect(!ev.placeholder_active);
 
     const written2 = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -2809,7 +2809,7 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
 
     var x: u32 = 0;
     while (x < 80) : (x += 1) {
@@ -2817,7 +2817,7 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
     }
 
     try ev.setPlaceholderStyledText(&long_chunks);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.drawEditorView(ev, 0, 0);
 
     x = 0;
     while (x < 80) : (x += 1) {
@@ -2825,7 +2825,7 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
     }
 
     try ev.setPlaceholderStyledText(&short_chunks);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.drawEditorView(ev, 0, 0);
 
     var out_buffer: [1600]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -2863,8 +2863,8 @@ test "EditorView - translucent default background fills viewport without double 
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
 
     const text_cell = opt_buffer.get(0, 0).?;
     const trailing_cell = opt_buffer.get(3, 0).?;
@@ -2910,8 +2910,8 @@ test "EditorView - placeholder uses original default background fill" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
 
     const text_cell = opt_buffer.get(0, 0).?;
     const trailing_cell = opt_buffer.get(4, 0).?;
@@ -2976,8 +2976,8 @@ test "EditorView - tab indicator renders in buffer" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0);
     try std.testing.expect(cell_0 != null);

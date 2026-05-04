@@ -94,7 +94,7 @@ fn runTranslucentBoxes(
 
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -147,7 +147,7 @@ fn runTranslucentBoxes(
 
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             try buf.pushOpacity(0.5);
             errdefer buf.popOpacity();
@@ -225,7 +225,7 @@ fn runTranslucentTextBuffers(
     if (run_translucent_bg) {
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             const tbs = try allocator.alloc(*UnifiedTextBuffer, TEXT_COUNT);
             const views = try allocator.alloc(*UnifiedTextBufferView, TEXT_COUNT);
@@ -245,7 +245,7 @@ fn runTranslucentTextBuffers(
                 const x: i32 = @intCast(@as(i32, @intCast(buf_i % BUFFER_WIDTH)));
                 const y: i32 = 0;
 
-                try buf.drawTextBuffer(views[buf_i % TEXT_COUNT], x, y);
+                buf.drawTextBuffer(views[buf_i % TEXT_COUNT], x, y);
             }
             stats.record(timer.read());
 
@@ -274,7 +274,7 @@ fn runTranslucentTextBuffers(
     if (run_translucent_opacity) {
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             const tbs = try allocator.alloc(*UnifiedTextBuffer, TEXT_COUNT);
             const views = try allocator.alloc(*UnifiedTextBufferView, TEXT_COUNT);
@@ -297,7 +297,7 @@ fn runTranslucentTextBuffers(
                 const x: i32 = @intCast(@as(i32, @intCast(buf_i % BUFFER_WIDTH)));
                 const y: i32 = 0;
 
-                try buf.drawTextBuffer(views[buf_i % TEXT_COUNT], x, y);
+                buf.drawTextBuffer(views[buf_i % TEXT_COUNT], x, y);
             }
             stats.record(timer.read());
 

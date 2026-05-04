@@ -652,6 +652,7 @@ export enum CliRenderEvents {
   FOCUSED_RENDERABLE = "focused_renderable",
   FOCUSED_EDITOR = "focused_editor",
   THEME_MODE = "theme_mode",
+  PALETTE = "palette",
   CAPABILITIES = "capabilities",
   SELECTION = "selection",
   DEBUG_OVERLAY_TOGGLE = "debugOverlay:toggle",
@@ -755,6 +756,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private resizeTimeoutId: TimerHandle | null = null
   private capabilityTimeoutId: TimerHandle | null = null
+  private xtVersionWaiters = new Set<() => void>()
   private splitStartupSeedTimeoutId: TimerHandle | null = null
   private pendingSplitStartupCursorSeed: boolean = false
   private resizeDebounceDelay: number = 100
@@ -816,11 +818,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _openConsoleOnError: boolean = true
   private _paletteDetector: TerminalPaletteDetector | null = null
   private _paletteCache = new Map<number, TerminalColors>()
-  private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
   private _paletteDetectionSize = 0
   private _paletteEpoch = 0
-  private _publishedPaletteSignature: string | null = null
+  private _nativePaletteSignature: string | null = null
+  private _emittedPaletteSignature: string | null = null
   private _palettePublishGeneration = 0
   private _onDestroy?: () => void
   private themeModeState: RendererThemeMode
@@ -965,6 +967,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.themeModeHandler = (sequence: string) => {
       const result = this.themeModeState.handleSequence(sequence)
       if (result.changedMode) {
+        this.clearPaletteCache()
+        if (this.shouldSyncNativePaletteState() || this.listenerCount(CliRenderEvents.PALETTE) > 0) {
+          this.refreshPalette()
+        }
         this.emit(CliRenderEvents.THEME_MODE, result.changedMode)
       }
       return result.handled
@@ -2543,6 +2549,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         },
         true,
       )
+      this.resolveXtVersionWaiters()
     }, 5000)
 
     if (this._useMouse) {
@@ -2572,7 +2579,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.queryPixelResolution()
-    this.ensureNativePaletteState()
+    if (this.shouldSyncNativePaletteState()) {
+      this.refreshPalette()
+    }
   }
 
   private stdinListener: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {
@@ -2623,6 +2632,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.lib.processCapabilityResponse(this.rendererPtr, sequence)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+    if (this._capabilities?.terminal?.from_xtversion) {
+      this.resolveXtVersionWaiters()
+    }
     if (hasStandardCapabilitySignature) {
       this.forceFullRepaintRequested = true
       this.requestRender()
@@ -3432,7 +3444,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.enableMouse()
     }
 
-    this.currentRenderBuffer.clear(this.backgroundColor)
+    this.forceFullRepaintRequested = true
     this._controlState = this._previousControlState
 
     if (
@@ -3585,9 +3597,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._paletteCache.clear()
     this._paletteDetectionPromise = null
     this._paletteDetectionSize = 0
-    this._cachedPalette = null
-    this._publishedPaletteSignature = null
+    this._nativePaletteSignature = null
+    this._emittedPaletteSignature = null
     this._paletteEpoch = 0
+    this.resolveXtVersionWaiters()
 
     this.themeModeState.dispose()
 
@@ -4025,19 +4038,23 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private ensurePaletteDetector(): TerminalPaletteDetector {
     if (!this._paletteDetector) {
+      const isTmux = Boolean(
+        this.capabilities?.in_tmux || this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux"),
+      )
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
         this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
-      this._paletteDetector = createTerminalPalette(
-        this.stdin,
-        this.stdout,
-        (data) => (this._isDestroyed ? false : this.writeOut(data)),
+      this._paletteDetector = createTerminalPalette({
+        stdin: this.stdin,
+        stdout: this.stdout,
+        writeFn: (data) => (this._isDestroyed ? false : this.writeOut(data)),
         isLegacyTmux,
-        {
+        isTmux,
+        oscSource: {
           subscribeOsc: this.subscribeOsc.bind(this),
         },
-        this.clock,
-      )
+        clock: this.clock,
+      })
     }
 
     return this._paletteDetector
@@ -4045,11 +4062,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private syncNativePaletteState(colors: TerminalColors | null): void {
     const signature = buildTerminalPaletteSignature(colors)
-    if (this._publishedPaletteSignature !== signature) {
+    if (this._nativePaletteSignature !== signature) {
       this._paletteEpoch = (this._paletteEpoch + 1) >>> 0
     }
 
-    this._publishedPaletteSignature = signature
+    this._nativePaletteSignature = signature
 
     const normalized = normalizeTerminalPalette(colors)
     this.lib.rendererSetPaletteState(
@@ -4061,25 +4078,56 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     )
   }
 
-  private ensureNativePaletteState(): void {
-    if (!this._terminalIsSetup || this._isDestroyed) return
+  private emitPaletteChange(colors: TerminalColors): void {
+    if (this.listenerCount(CliRenderEvents.PALETTE) === 0) return
+
+    const signature = buildTerminalPaletteSignature(colors)
+    if (this._emittedPaletteSignature === signature) return
+
+    this._emittedPaletteSignature = signature
+    this.emit(CliRenderEvents.PALETTE, colors)
+  }
+
+  private resolveXtVersionWaiters(): void {
+    if (this.xtVersionWaiters.size === 0) return
+
+    const resolvers = [...this.xtVersionWaiters]
+    this.xtVersionWaiters.clear()
+    for (const resolve of resolvers) {
+      resolve()
+    }
+  }
+
+  private waitForXtVersion(): Promise<void> {
+    if (this.capabilityTimeoutId === null || this._capabilities?.terminal?.from_xtversion) {
+      return Promise.resolve()
+    }
+
+    return new Promise((resolve) => {
+      this.xtVersionWaiters.add(resolve)
+    })
+  }
+
+  private shouldSyncNativePaletteState(): boolean {
+    return Boolean(
+      this._terminalIsSetup && !this._isDestroyed && this._capabilities?.ansi256 && !this._capabilities?.rgb,
+    )
+  }
+
+  private refreshPalette(): void {
     const publishGeneration = this._palettePublishGeneration
 
     void this.getPalette({ size: NATIVE_PALETTE_QUERY_SIZE })
-      .then((colors) => {
+      .then(() => {
         if (this._isDestroyed) return
-        if (this._palettePublishGeneration === publishGeneration) {
-          this.syncNativePaletteState(colors)
-        }
-        if (this._isDestroyed) return
-        this.requestRender()
+        if (this._palettePublishGeneration === publishGeneration) this.requestRender()
       })
       .catch(() => {})
   }
 
   public clearPaletteCache(): void {
+    this._palettePublishGeneration++
     this._paletteCache.clear()
-    this._cachedPalette = null
   }
 
   /**
@@ -4098,8 +4146,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const cachedPalette = this.getCachedPaletteBySize(requestedSize)
     if (cachedPalette) {
-      this._cachedPalette = cachedPalette
       return cachedPalette
+    }
+
+    // tmux OSC 4 strategy depends on version. Env may provide it via
+    // TERM_PROGRAM=tmux/TERM_PROGRAM_VERSION; otherwise wait for XTVERSION.
+    const terminal = this._capabilities?.terminal
+    const hasTmuxVersion = terminal?.name?.toLowerCase() === "tmux" && Boolean(terminal.version)
+    if (this._capabilities?.in_tmux && !hasTmuxVersion) {
+      await this.waitForXtVersion()
+
+      // Another caller may have populated the cache while this call waited.
+      const afterCapabilityWait = this.getCachedPaletteBySize(requestedSize)
+      if (afterCapabilityWait) {
+        return afterCapabilityWait
+      }
     }
 
     if (this._paletteDetectionPromise) {
@@ -4107,7 +4168,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return this._paletteDetectionPromise.then((palette) => {
           const cached = this.getCachedPaletteBySize(requestedSize)
           if (cached) {
-            this._cachedPalette = cached
             return cached
           }
 
@@ -4116,7 +4176,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
             palette: palette.palette.slice(0, requestedSize),
           }
           this._paletteCache.set(requestedSize, projected)
-          this._cachedPalette = projected
           return projected
         })
       }
@@ -4125,7 +4184,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       const afterWait = this.getCachedPaletteBySize(requestedSize)
       if (afterWait) {
-        this._cachedPalette = afterWait
         return afterWait
       }
     }
@@ -4137,15 +4195,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       .detect({ ...options, timeout: detectionTimeout })
       .then((result) => {
         this._paletteCache.set(result.palette.length, result)
-        this._cachedPalette = result
         this._paletteDetectionPromise = null
         this._paletteDetectionSize = 0
 
         if (!this._isDestroyed && this._palettePublishGeneration === publishGeneration) {
-          if (result.palette.length >= NATIVE_PALETTE_QUERY_SIZE) {
+          this.emitPaletteChange(result)
+          if (this.shouldSyncNativePaletteState() && result.palette.length >= NATIVE_PALETTE_QUERY_SIZE) {
             this.syncNativePaletteState(result)
-          } else if (this._terminalIsSetup && !this._paletteCache.has(NATIVE_PALETTE_QUERY_SIZE)) {
-            this.ensureNativePaletteState()
+          } else if (this.shouldSyncNativePaletteState() && !this._paletteCache.has(NATIVE_PALETTE_QUERY_SIZE)) {
+            this.refreshPalette()
           }
         }
 
@@ -4159,7 +4217,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const detected = await this._paletteDetectionPromise
     const finalPalette = this.getCachedPaletteBySize(requestedSize) ?? detected
-    this._cachedPalette = finalPalette
     return finalPalette
   }
 }

@@ -6,11 +6,18 @@ import { Readable } from "node:stream"
 import tty from "tty"
 import { ManualClock } from "../testing/manual-clock.js"
 import type { GetPaletteOptions, TerminalColors } from "../lib/terminal-palette.js"
+import { clearEnvCache } from "../lib/env.js"
+import { CliRenderEvents } from "../renderer.js"
 
 const OSC_SUPPORT_TIMEOUT_MS = 300
 
 function flushAsync(): Promise<void> {
   return Promise.resolve().then(() => Promise.resolve())
+}
+
+async function flushPaletteDetection(): Promise<void> {
+  await flushAsync()
+  await flushAsync()
 }
 
 function schedule(clock: ManualClock | undefined, fn: () => void): void {
@@ -22,7 +29,8 @@ function schedule(clock: ManualClock | undefined, fn: () => void): void {
   process.nextTick(fn)
 }
 
-function createMockStreams(clock?: ManualClock) {
+function createMockStreams(clock?: ManualClock, options: { emitSpecialColors?: boolean } = {}) {
+  const emitSpecialColors = options.emitSpecialColors ?? true
   const mockStdin = new Readable({ read() {} }) as tty.ReadStream
   mockStdin.isTTY = true
   mockStdin.setRawMode = () => mockStdin
@@ -48,7 +56,7 @@ function createMockStreams(clock?: ManualClock) {
             mockStdin.emit("data", Buffer.from(`\x1b]4;${i};rgb:1000/2000/3000\x07`))
           }
         })
-      } else if (dataStr.includes("\x1b]10;?")) {
+      } else if (emitSpecialColors && dataStr.includes("\x1b]10;?")) {
         schedule(clock, () => {
           mockStdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
           mockStdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
@@ -97,17 +105,92 @@ async function detectPaletteAndAdvanceClock(
   return palettePromise
 }
 
-async function createPaletteRenderer(options: Partial<TestRendererOptions> = {}) {
+async function createPaletteRenderer(options: Partial<TestRendererOptions> & { emitSpecialColors?: boolean } = {}) {
   const clock = options.clock instanceof ManualClock ? options.clock : new ManualClock()
-  const { mockStdin, mockStdout, writes } = createMockStreams(clock)
+  const { mockStdin, mockStdout, writes } = createMockStreams(clock, { emitSpecialColors: options.emitSpecialColors })
+  const { emitSpecialColors, ...rendererOptions } = options
   const { renderer } = await createTestRenderer({
     stdin: mockStdin,
     stdout: mockStdout,
-    ...options,
+    ...rendererOptions,
     clock,
   })
 
   return { renderer, mockStdin, mockStdout, writes, clock }
+}
+
+async function createSilentFollowUpPaletteRenderer(clock = new ManualClock()) {
+  const mockStdin = new EventEmitter() as any
+  mockStdin.isTTY = true
+  mockStdin.setRawMode = () => {}
+  mockStdin.resume = () => {}
+  mockStdin.pause = () => {}
+  mockStdin.setEncoding = () => {}
+
+  const writes: string[] = []
+  const mockStdout = {
+    isTTY: true,
+    columns: 80,
+    rows: 24,
+    write: (data: string | Buffer) => {
+      const dataStr = data.toString()
+      writes.push(dataStr)
+
+      if (dataStr === "\x1b]4;0;?\x07") {
+        clock.setTimeout(() => {
+          mockStdin.emit("data", Buffer.from("\x1b]4;0;rgb:0000/0000/0000\x07"))
+        }, 0)
+      }
+
+      return true
+    },
+  } as any
+
+  const { renderer } = await createTestRenderer({
+    stdin: mockStdin,
+    stdout: mockStdout,
+    clock,
+    useThread: false,
+  })
+
+  return { renderer, writes, clock }
+}
+
+function restoreEnvValue(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key]
+    return
+  }
+
+  process.env[key] = value
+}
+
+function startCapabilityDetectionWindow(renderer: any, clock: ManualClock): void {
+  renderer._terminalIsSetup = true
+  renderer.capabilityTimeoutId = clock.setTimeout(() => {
+    renderer.capabilityTimeoutId = null
+    renderer.resolveXtVersionWaiters()
+  }, 5000)
+}
+
+function setNativePaletteRequired(renderer: any): void {
+  renderer._terminalIsSetup = true
+  renderer._capabilities = {
+    ...(renderer._capabilities ?? {}),
+    rgb: false,
+    ansi256: true,
+    terminal: renderer._capabilities?.terminal ?? { from_xtversion: false, name: "", version: "" },
+  }
+}
+
+function setNativePaletteUnneeded(renderer: any): void {
+  renderer._terminalIsSetup = true
+  renderer._capabilities = {
+    ...(renderer._capabilities ?? {}),
+    rgb: true,
+    ansi256: true,
+    terminal: renderer._capabilities?.terminal ?? { from_xtversion: false, name: "", version: "" },
+  }
 }
 
 describe("Palette caching behavior", () => {
@@ -447,6 +530,160 @@ describe("Palette cache invalidation", () => {
     renderer.destroy()
   })
 
+  test("getPalette syncs native palette state again after cache invalidation and refetch", async () => {
+    const { renderer, clock } = await createPaletteRenderer({ emitSpecialColors: false })
+    setNativePaletteRequired(renderer)
+    // @ts-expect-error - spying on private method for native palette publishing behavior
+    const sync = spyOn(renderer, "syncNativePaletteState")
+
+    await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
+    expect(sync).toHaveBeenCalledTimes(1)
+
+    renderer.clearPaletteCache()
+    await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
+
+    expect(sync).toHaveBeenCalledTimes(2)
+
+    sync.mockRestore()
+    renderer.destroy()
+  })
+
+  test("theme mode changes clear palette cache and schedule native palette refresh when native palette is needed", async () => {
+    const { renderer } = await createPaletteRenderer()
+    setNativePaletteRequired(renderer)
+    const clear = spyOn(renderer, "clearPaletteCache")
+    // @ts-expect-error - spying on private method for native palette refresh scheduling
+    const refresh = spyOn(renderer, "refreshPalette")
+
+    renderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+    renderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+    await flushAsync()
+
+    expect(renderer.themeMode).toBe("dark")
+    expect(clear).toHaveBeenCalledTimes(1)
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    clear.mockRestore()
+    refresh.mockRestore()
+    renderer.destroy()
+  })
+
+  test("theme mode changes schedule palette refresh for truecolor terminals with palette listeners", async () => {
+    const { renderer } = await createPaletteRenderer()
+    setNativePaletteUnneeded(renderer)
+    // @ts-expect-error - spying on private method for palette refresh scheduling
+    const refresh = spyOn(renderer, "refreshPalette")
+    renderer.on(CliRenderEvents.PALETTE, () => {})
+
+    renderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+    renderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+    await flushAsync()
+
+    expect(renderer.themeMode).toBe("dark")
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    refresh.mockRestore()
+    renderer.destroy()
+  })
+
+  test("theme mode changes skip palette refresh for truecolor terminals without palette listeners", async () => {
+    const { renderer } = await createPaletteRenderer()
+    setNativePaletteUnneeded(renderer)
+    // @ts-expect-error - spying on private method for palette refresh scheduling
+    const refresh = spyOn(renderer, "refreshPalette")
+
+    renderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+    renderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+    await flushAsync()
+
+    expect(renderer.themeMode).toBe("dark")
+    expect(refresh).not.toHaveBeenCalled()
+
+    refresh.mockRestore()
+    renderer.destroy()
+  })
+
+  test("startup palette refresh is skipped for truecolor terminals", async () => {
+    const { renderer, writes } = await createPaletteRenderer()
+    setNativePaletteUnneeded(renderer)
+
+    // Startup only calls refresh when native palette state is useful.
+    // @ts-expect-error - exercising private startup palette gate
+    if (renderer.shouldSyncNativePaletteState()) renderer.refreshPalette()
+
+    expect(writes).toEqual([])
+
+    renderer.destroy()
+  })
+
+  test("setupTerminal does not refresh palette on truecolor startup", async () => {
+    const { renderer } = await createPaletteRenderer({ useMouse: false })
+    const lib = (renderer as unknown as { lib: any }).lib
+    const originalSetupTerminal = lib.setupTerminal
+    const originalGetTerminalCapabilities = lib.getTerminalCapabilities
+    const originalQueryPixelResolution = lib.queryPixelResolution
+    const refresh = spyOn(renderer, "refreshPalette")
+
+    lib.setupTerminal = () => {}
+    lib.queryPixelResolution = () => {}
+    lib.getTerminalCapabilities = () => ({
+      rgb: true,
+      ansi256: true,
+      terminal: { name: "Apple_Terminal", version: "", from_xtversion: false },
+    })
+
+    await renderer.setupTerminal()
+
+    expect(refresh).not.toHaveBeenCalled()
+
+    refresh.mockRestore()
+    lib.setupTerminal = originalSetupTerminal
+    lib.getTerminalCapabilities = originalGetTerminalCapabilities
+    lib.queryPixelResolution = originalQueryPixelResolution
+    renderer.destroy()
+  })
+
+  test("setupTerminal refreshes palette on ANSI-256 non-truecolor startup", async () => {
+    const { renderer } = await createPaletteRenderer({ useMouse: false })
+    const lib = (renderer as unknown as { lib: any }).lib
+    const originalSetupTerminal = lib.setupTerminal
+    const originalGetTerminalCapabilities = lib.getTerminalCapabilities
+    const originalQueryPixelResolution = lib.queryPixelResolution
+    const refresh = spyOn(renderer, "refreshPalette").mockImplementation(() => {})
+
+    lib.setupTerminal = () => {}
+    lib.queryPixelResolution = () => {}
+    lib.getTerminalCapabilities = () => ({
+      rgb: false,
+      ansi256: true,
+      terminal: { name: "Apple_Terminal", version: "", from_xtversion: false },
+    })
+
+    await renderer.setupTerminal()
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    refresh.mockRestore()
+    lib.setupTerminal = originalSetupTerminal
+    lib.getTerminalCapabilities = originalGetTerminalCapabilities
+    lib.queryPixelResolution = originalQueryPixelResolution
+    renderer.destroy()
+  })
+
+  test("getPalette emits palette change events for refreshed palettes", async () => {
+    const { renderer, clock } = await createPaletteRenderer({ emitSpecialColors: false })
+    const palettes: TerminalColors[] = []
+    renderer.on(CliRenderEvents.PALETTE, (colors) => palettes.push(colors))
+
+    await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
+    await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
+
+    expect(palettes).toHaveLength(1)
+    expect(palettes[0]?.palette.length).toBe(16)
+
+    renderer.destroy()
+  })
+
   test("paletteDetectionStatus tracks detection lifecycle", async () => {
     const { renderer, clock, mockStdin, mockStdout } = await createPaletteRenderer()
 
@@ -539,22 +776,20 @@ describe("Palette detector cleanup", () => {
     // @ts-expect-error - accessing private property for testing
     expect(renderer._paletteDetectionPromise).toBeNull()
     // @ts-expect-error - accessing private property for testing
-    expect(renderer._cachedPalette).toBeNull()
+    expect(renderer._paletteCache.size).toBe(0)
   })
 
   test("destroy ignores pending native palette publish", async () => {
     const { renderer, clock } = await createPaletteRenderer()
+    setNativePaletteRequired(renderer)
 
     await detectPaletteAndAdvanceClock(renderer, clock, { size: 256, timeout: 300 })
-
-    // @ts-expect-error - accessing private property for testing
-    renderer._terminalIsSetup = true
     // @ts-expect-error - spying on private method for testing
     const sync = spyOn(renderer, "syncNativePaletteState")
     const requestRender = spyOn(renderer, "requestRender")
 
     // @ts-expect-error - accessing private method for testing
-    renderer.ensureNativePaletteState()
+    renderer.refreshPalette()
     renderer.destroy()
     await flushAsync()
 
@@ -638,7 +873,237 @@ describe("Palette detector cleanup", () => {
   })
 })
 
+describe("Palette detection while capabilities are unsettled", () => {
+  test("getPalette runs immediately outside tmux", async () => {
+    const previousTmux = process.env.TMUX
+    delete process.env.TMUX
+
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
+
+    try {
+      // @ts-expect-error - accessing private native binding for startup state setup
+      renderer._capabilities = renderer.lib.getTerminalCapabilities(renderer.rendererPtr)
+      // @ts-expect-error - simulate TMUX env without TERM_PROGRAM_VERSION=tmux
+      renderer._capabilities.terminal = { name: "", version: "", from_xtversion: false }
+      startCapabilityDetectionWindow(renderer, clock)
+
+      expect(renderer.capabilities?.in_tmux).toBe(false)
+
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
+
+      expect(writes).toContain("\x1b]4;0;?\x07")
+    } finally {
+      renderer.destroy()
+      restoreEnvValue("TMUX", previousTmux)
+    }
+  })
+
+  test("getPalette defers local tmux palette detection while tmux version is unknown", async () => {
+    const previousTmux = process.env.TMUX
+    process.env.TMUX = "/tmp/tmux-1000/default,12345,0"
+
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
+
+    try {
+      // @ts-expect-error - accessing private native binding for startup state setup
+      renderer._capabilities = renderer.lib.getTerminalCapabilities(renderer.rendererPtr)
+      // @ts-expect-error - simulate TMUX env without TERM_PROGRAM_VERSION=tmux
+      renderer._capabilities.terminal = { name: "", version: "", from_xtversion: false }
+      startCapabilityDetectionWindow(renderer, clock)
+
+      expect(renderer.capabilities?.in_tmux).toBe(true)
+      expect(renderer.capabilities?.terminal?.from_xtversion).toBe(false)
+
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
+
+      expect(writes).toEqual([])
+      expect(renderer.paletteDetectionStatus).toBe("idle")
+    } finally {
+      renderer.destroy()
+      restoreEnvValue("TMUX", previousTmux)
+    }
+  })
+
+  test("getPalette does not wait when tmux version came from env", async () => {
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
+
+    try {
+      // @ts-expect-error - simulating initial capabilities from TERM_PROGRAM=tmux and TERM_PROGRAM_VERSION
+      renderer._capabilities = {
+        in_tmux: true,
+        rgb: true,
+        ansi256: true,
+        terminal: { name: "tmux", version: "3.6a", from_xtversion: false },
+      }
+      startCapabilityDetectionWindow(renderer, clock)
+
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
+
+      expect(writes).toContain("\x1b]4;0;?\x07")
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("getPalette uses wrapped palette queries after legacy tmux version is detected", async () => {
+    const previousTmux = process.env.TMUX
+    process.env.TMUX = "/tmp/tmux-1000/default,12345,0"
+
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
+
+    try {
+      // @ts-expect-error - accessing private native binding for startup state setup
+      renderer._capabilities = renderer.lib.getTerminalCapabilities(renderer.rendererPtr)
+      // @ts-expect-error - simulate TMUX env without TERM_PROGRAM_VERSION=tmux
+      renderer._capabilities.terminal = { name: "", version: "", from_xtversion: false }
+      startCapabilityDetectionWindow(renderer, clock)
+
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
+
+      expect(writes).toEqual([])
+
+      // @ts-expect-error - simulating the asynchronous XTVERSION response path
+      renderer.processCapabilitySequence("\x1bP>|tmux 3.5a\x1b\\", false)
+      await flushAsync()
+
+      expect(writes.some((write) => write.startsWith("\x1bPtmux;"))).toBe(true)
+      expect(writes.some((write) => write.includes("\x1b\x1b]4;0;?\x07"))).toBe(true)
+    } finally {
+      renderer.destroy()
+      restoreEnvValue("TMUX", previousTmux)
+    }
+  })
+
+  test("getPalette uses plain palette queries after tmux 3.6 version is detected", async () => {
+    const previousTmux = process.env.TMUX
+    process.env.TMUX = "/tmp/tmux-1000/default,12345,0"
+
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
+
+    try {
+      // @ts-expect-error - accessing private native binding for startup state setup
+      renderer._capabilities = renderer.lib.getTerminalCapabilities(renderer.rendererPtr)
+      // @ts-expect-error - simulate TMUX env without TERM_PROGRAM_VERSION=tmux
+      renderer._capabilities.terminal = { name: "", version: "", from_xtversion: false }
+      startCapabilityDetectionWindow(renderer, clock)
+
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
+
+      expect(writes).toEqual([])
+
+      // @ts-expect-error - simulating the asynchronous XTVERSION response path
+      renderer.processCapabilitySequence("\x1bP>|tmux 3.6a\x1b\\", false)
+      await flushAsync()
+
+      expect(writes).toContain("\x1b]4;0;?\x07")
+      expect(writes.some((write) => write.startsWith("\x1bPtmux;"))).toBe(false)
+    } finally {
+      renderer.destroy()
+      restoreEnvValue("TMUX", previousTmux)
+    }
+  })
+
+  test("getPalette does not wait for remote XTVERSION when local tmux env is unknown", async () => {
+    const previousTmux = process.env.TMUX
+    delete process.env.TMUX
+
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
+
+    try {
+      // @ts-expect-error - simulating a remote renderer without forwarded local env vars
+      renderer._remote = true
+      // @ts-expect-error - accessing private native binding for startup state setup
+      renderer._capabilities = renderer.lib.getTerminalCapabilities(renderer.rendererPtr)
+      startCapabilityDetectionWindow(renderer, clock)
+
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
+
+      expect(renderer.capabilities?.in_tmux).toBe(false)
+      expect(writes).toContain("\x1b]4;0;?\x07")
+    } finally {
+      renderer.destroy()
+      restoreEnvValue("TMUX", previousTmux)
+    }
+  })
+})
+
 describe("Palette detection error handling", () => {
+  test("getPalette settles after idle window when follow-up palette queries are silent", async () => {
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
+
+    let settled = false
+    let palette: TerminalColors | undefined
+    const palettePromise = renderer.getPalette({ size: 16 }).then((result) => {
+      settled = true
+      palette = result
+    })
+
+    try {
+      await flushAsync()
+      clock.advance(0)
+      await flushAsync()
+
+      expect(writes).toContain("\x1b]4;0;?\x07")
+      expect(writes.some((write) => write.includes("\x1b]4;1;?\x07"))).toBe(true)
+      expect(writes.some((write) => write.includes("\x1b]10;?\x07"))).toBe(true)
+
+      clock.advance(299)
+      await flushAsync()
+      expect(settled).toBe(false)
+
+      clock.advance(1)
+      await flushPaletteDetection()
+
+      expect(settled).toBe(true)
+      await palettePromise
+      expect(palette?.palette.every((color) => color === null)).toBe(true)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("getPalette silent follow-up idle window is configurable with OTUI_PALETTE_IDLE_TIMEOUT_MS", async () => {
+    const previousIdleTimeout = process.env.OTUI_PALETTE_IDLE_TIMEOUT_MS
+    process.env.OTUI_PALETTE_IDLE_TIMEOUT_MS = "50"
+    clearEnvCache()
+
+    const { renderer, clock } = await createSilentFollowUpPaletteRenderer()
+    let settled = false
+    const palettePromise = renderer.getPalette({ size: 16 }).then(() => {
+      settled = true
+    })
+
+    try {
+      await flushAsync()
+      clock.advance(0)
+      await flushAsync()
+
+      clock.advance(49)
+      await flushAsync()
+      expect(settled).toBe(false)
+
+      clock.advance(1)
+      await flushPaletteDetection()
+
+      expect(settled).toBe(true)
+      await palettePromise
+    } finally {
+      renderer.destroy()
+      if (previousIdleTimeout === undefined) {
+        delete process.env.OTUI_PALETTE_IDLE_TIMEOUT_MS
+      } else {
+        process.env.OTUI_PALETTE_IDLE_TIMEOUT_MS = previousIdleTimeout
+      }
+      clearEnvCache()
+    }
+  })
+
   test("handles timeout gracefully", async () => {
     const clock = new ManualClock()
     const mockStdin = new EventEmitter() as any

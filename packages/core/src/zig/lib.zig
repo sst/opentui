@@ -430,6 +430,7 @@ pub const ExternalCapabilities = extern struct {
     hyperlinks: bool,
     osc52: bool,
     explicit_cursor_positioning: bool,
+    in_tmux: bool,
     term_name_ptr: [*]const u8,
     term_name_len: usize,
     term_version_ptr: [*]const u8,
@@ -458,6 +459,7 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .hyperlinks = caps.hyperlinks,
         .osc52 = caps.osc52,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
+        .in_tmux = term.in_tmux,
         .term_name_ptr = &term.term_info.name,
         .term_name_len = term.term_info.name_len,
         .term_version_ptr = &term.term_info.version,
@@ -589,7 +591,7 @@ export fn clearClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8) bo
 
 // Buffer functions
 export fn bufferClear(bufferPtr: *buffer.OptimizedBuffer, bg: [*]const u16) void {
-    bufferPtr.clear(ptrToRGBA(bg), null) catch {};
+    bufferPtr.clear(ptrToRGBA(bg), null);
 }
 
 export fn bufferGetCharPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u32 {
@@ -644,7 +646,7 @@ export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, 
 }
 
 export fn bufferSetCellWithAlphaBlending(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const u16, bg: [*]const u16, attributes: u32) void {
-    bufferPtr.setCellWithAlphaBlending(x, y, char, ptrToRGBA(fg), ptrToRGBA(bg), attributes) catch {};
+    bufferPtr.setCellWithAlphaBlending(x, y, char, ptrToRGBA(fg), ptrToRGBA(bg), attributes);
 }
 
 export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const u16, bg: [*]const u16, attributes: u32) void {
@@ -657,7 +659,7 @@ export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char
 }
 
 export fn bufferFillRect(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, width: u32, height: u32, bg: [*]const u16) void {
-    bufferPtr.fillRect(x, y, width, height, ptrToRGBA(bg)) catch {};
+    bufferPtr.fillRect(x, y, width, height, ptrToRGBA(bg));
 }
 
 export fn bufferColorMatrix(bufferPtr: *buffer.OptimizedBuffer, matrixPtr: [*]const f32, cellMaskPtr: [*]const f32, cellMaskCount: usize, strength: f32, target: u8) void {
@@ -733,7 +735,7 @@ export fn bufferClearOpacity(bufferPtr: *buffer.OptimizedBuffer) void {
 }
 
 export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
-    bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
+    bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow);
 }
 
 export fn linkAlloc(urlPtr: [*]const u8, urlLen: usize) u32 {
@@ -1666,7 +1668,7 @@ export fn bufferDrawEditorView(
     x: i32,
     y: i32,
 ) void {
-    bufferPtr.drawEditorView(viewPtr, x, y) catch {};
+    bufferPtr.drawEditorView(viewPtr, x, y);
 }
 
 export fn bufferDrawTextBufferView(
@@ -1675,7 +1677,7 @@ export fn bufferDrawTextBufferView(
     x: i32,
     y: i32,
 ) void {
-    bufferPtr.drawTextBuffer(viewPtr, x, y) catch {};
+    bufferPtr.drawTextBuffer(viewPtr, x, y);
 }
 
 pub const ExternalHighlight = extern struct {
@@ -1979,5 +1981,5 @@ export fn bufferDrawChar(
     bg: [*]const u16,
     attributes: u32,
 ) void {
-    bufferPtr.drawChar(char, x, y, ptrToRGBA(fg), ptrToRGBA(bg), attributes) catch {};
+    bufferPtr.drawChar(char, x, y, ptrToRGBA(fg), ptrToRGBA(bg), attributes);
 }

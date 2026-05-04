@@ -42,8 +42,7 @@ export function _render(element: React.ReactNode, root: RootRenderable) {
     console.error,
     console.error,
     console.error,
-    console.error,
-    null,
+    () => {},
   )
 
   reconciler.updateContainer(element, container, null, () => {})

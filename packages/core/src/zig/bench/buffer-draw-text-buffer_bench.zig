@@ -112,10 +112,10 @@ fn benchRenderColdCache(
         const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
         defer buf.deinit();
 
-        try buf.clear(CLEAR_BG, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -171,10 +171,10 @@ fn benchWrapAndRender(
         const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
         defer buf.deinit();
 
-        try buf.clear(CLEAR_BG, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -236,10 +236,10 @@ fn benchRenderWarmCache(
             const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
             defer buf.deinit();
 
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
 
             if (i == iterations - 1 and show_mem) {
@@ -275,10 +275,10 @@ fn benchRenderWarmCache(
         var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
@@ -327,10 +327,10 @@ fn benchRenderSmallResolution(
         var final_buf_mem: usize = 0;
 
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
 
             if (i == iterations - 1 and show_mem) {
@@ -366,10 +366,10 @@ fn benchRenderSmallResolution(
         var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
@@ -414,10 +414,10 @@ fn benchRenderMediumResolution(
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
-        try buf.clear(CLEAR_BG, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -471,10 +471,10 @@ fn benchRenderMassiveResolution(
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
-        try buf.clear(CLEAR_BG, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -528,10 +528,10 @@ fn benchRenderMassiveLines(
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
-        try buf.clear(CLEAR_BG, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -591,10 +591,10 @@ fn benchRenderOneMassiveLine(
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
-        try buf.clear(CLEAR_BG, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -648,10 +648,10 @@ fn benchRenderManySmallChunks(
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
-        try buf.clear(CLEAR_BG, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -711,10 +711,10 @@ fn benchRenderWithViewport(
         var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
@@ -740,10 +740,10 @@ fn benchRenderWithViewport(
         var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
@@ -794,10 +794,10 @@ fn benchRenderWithSelection(
         var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
@@ -823,10 +823,10 @@ fn benchRenderWithSelection(
         var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 

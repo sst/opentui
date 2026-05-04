@@ -1,4 +1,4 @@
-import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach, spyOn } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer.js"
 import { RendererControlState } from "../renderer.js"
 import { Renderable } from "../Renderable.js"
@@ -21,6 +21,25 @@ beforeEach(async () => {
 afterEach(() => {
   renderer.destroy()
 })
+
+async function expectStartedResumeForcesNextRender(screenMode: "main-screen" | "alternate-screen"): Promise<void> {
+  renderer.destroy()
+  ;({ renderer, mockInput, mockMouse, renderOnce } = await createTestRenderer({ screenMode }))
+  ;(renderer as any)._terminalIsSetup = true
+
+  renderer.start()
+  renderer.suspend()
+
+  const renderSpy = spyOn((renderer as any).lib, "render")
+  renderer.resume()
+  renderer.pause()
+
+  const lastCall = renderSpy.mock.calls[renderSpy.mock.calls.length - 1]
+  expect(lastCall?.[1]).toBe(true)
+  expect((renderer as any).forceFullRepaintRequested).toBe(false)
+
+  renderSpy.mockRestore()
+}
 
 test("initial renderer state is IDLE", () => {
   expect(renderer.controlState).toBe(RendererControlState.IDLE)
@@ -114,6 +133,14 @@ test("resume() restores previous AUTO_STARTED state and restarts rendering", () 
   renderer.resume()
   expect(renderer.controlState).toBe(RendererControlState.AUTO_STARTED)
   expect(renderer.isRunning).toBe(true)
+})
+
+test("resume() forces the next main-screen render to fully repaint", async () => {
+  await expectStartedResumeForcesNextRender("main-screen")
+})
+
+test("resume() forces the next alternate-screen render to fully repaint", async () => {
+  await expectStartedResumeForcesNextRender("alternate-screen")
 })
 
 test("stop() transitions to EXPLICIT_STOPPED and stops rendering", () => {

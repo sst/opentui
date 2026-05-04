@@ -415,7 +415,7 @@ pub const OptimizedBuffer = struct {
 
         // Always clear after resize to initialize cells (realloc doesn't zero memory)
         // This handles both growing (new cells are garbage) and shrinking (grapheme cleanup)
-        try self.clear(ansi.rgbColor(0, 0, 0, 255), null);
+        self.clear(ansi.rgbColor(0, 0, 0, 255), null);
     }
 
     fn coordsToIndex(self: *const OptimizedBuffer, x: u32, y: u32) u32 {
@@ -429,7 +429,7 @@ pub const OptimizedBuffer = struct {
         };
     }
 
-    pub fn clear(self: *OptimizedBuffer, bg: RGBA, char: ?u32) !void {
+    pub fn clear(self: *OptimizedBuffer, bg: RGBA, char: ?u32) void {
         const cellChar = char orelse DEFAULT_SPACE_CHAR;
         self.link_tracker.clear();
         self.grapheme_tracker.clear();
@@ -800,11 +800,11 @@ pub const OptimizedBuffer = struct {
         fg: RGBA,
         bg: RGBA,
         attributes: u32,
-    ) !void {
-        return self.setCellWithAlphaBlendingCell(x, y, makeCell(char, fg, bg, attributes));
+    ) void {
+        self.setCellWithAlphaBlendingCell(x, y, makeCell(char, fg, bg, attributes));
     }
 
-    fn setCellWithAlphaBlendingCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) !void {
+    fn setCellWithAlphaBlendingCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
         const opacity = self.getCurrentOpacity();
@@ -838,11 +838,11 @@ pub const OptimizedBuffer = struct {
         fg: RGBA,
         bg: RGBA,
         attributes: u32,
-    ) !void {
-        return self.setCellWithAlphaBlendingRawCell(x, y, makeCell(char, fg, bg, attributes));
+    ) void {
+        self.setCellWithAlphaBlendingRawCell(x, y, makeCell(char, fg, bg, attributes));
     }
 
-    fn setCellWithAlphaBlendingRawCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) !void {
+    fn setCellWithAlphaBlendingRawCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
         const opacity = self.getCurrentOpacity();
@@ -914,8 +914,8 @@ pub const OptimizedBuffer = struct {
         fg: RGBA,
         bg: RGBA,
         attributes: u32,
-    ) !void {
-        try self.setCellWithAlphaBlendingCell(x, y, makeCell(char, fg, bg, attributes));
+    ) void {
+        self.setCellWithAlphaBlendingCell(x, y, makeCell(char, fg, bg, attributes));
     }
 
     pub fn fillRect(
@@ -925,7 +925,7 @@ pub const OptimizedBuffer = struct {
         width: u32,
         height: u32,
         bg: RGBA,
-    ) !void {
+    ) void {
         if (self.width == 0 or self.height == 0 or width == 0 or height == 0) return;
         if (x >= self.width or y >= self.height) return;
 
@@ -960,7 +960,7 @@ pub const OptimizedBuffer = struct {
             while (fillY <= clippedEndY) : (fillY += 1) {
                 var fillX = clippedStartX;
                 while (fillX <= clippedEndX) : (fillX += 1) {
-                    try self.setCellWithAlphaBlendingCell(
+                    self.setCellWithAlphaBlendingCell(
                         fillX,
                         fillY,
                         makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0),
@@ -974,7 +974,7 @@ pub const OptimizedBuffer = struct {
             while (fillY <= clippedEndY) : (fillY += 1) {
                 var fillX = clippedStartX;
                 while (fillX <= clippedEndX) : (fillX += 1) {
-                    try self.setCellWithAlphaBlendingRaw(fillX, fillY, DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
+                    self.setCellWithAlphaBlendingRaw(fillX, fillY, DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
                 }
             }
         } else {
@@ -1004,7 +1004,7 @@ pub const OptimizedBuffer = struct {
         width: u32,
         height: u32,
         bg: RGBA,
-    ) !void {
+    ) void {
         if (width == 0 or height == 0) return;
 
         const startX = @max(0, x);
@@ -1014,7 +1014,7 @@ pub const OptimizedBuffer = struct {
 
         if (startX > endX or startY > endY) return;
 
-        try self.fillRect(
+        self.fillRect(
             @intCast(startX),
             @intCast(startY),
             @intCast(endX - startX + 1),
@@ -1102,7 +1102,7 @@ pub const OptimizedBuffer = struct {
                     if (tab_x >= self.width) break;
 
                     if (isRGBAWithAlpha(bgColor)) {
-                        try self.setCellWithAlphaBlendingCell(
+                        self.setCellWithAlphaBlendingCell(
                             tab_x,
                             y,
                             makeCell(DEFAULT_SPACE_CHAR, fg, bgColor, attributes),
@@ -1126,7 +1126,7 @@ pub const OptimizedBuffer = struct {
             }
 
             if (isRGBAWithAlpha(bgColor)) {
-                try self.setCellWithAlphaBlendingCell(
+                self.setCellWithAlphaBlendingCell(
                     charX,
                     y,
                     makeCell(encoded_char, fg, bgColor, attributes),
@@ -1239,7 +1239,7 @@ pub const OptimizedBuffer = struct {
                                 @intCast(dX),
                                 @intCast(dY),
                                 makeCell(DEFAULT_SPACE_CHAR, srcFg, srcBg, srcAttr),
-                            ) catch {};
+                            );
                         }
                         continue;
                     }
@@ -1252,7 +1252,7 @@ pub const OptimizedBuffer = struct {
                         @intCast(dX),
                         @intCast(dY),
                         makeCell(srcChar, srcFg, srcBg, srcAttr),
-                    ) catch {};
+                    );
                     continue;
                 }
 
@@ -1260,7 +1260,7 @@ pub const OptimizedBuffer = struct {
                     @intCast(dX),
                     @intCast(dY),
                     makeCell(srcChar, srcFg, srcBg, srcAttr),
-                ) catch {};
+                );
             }
         }
     }
@@ -1271,8 +1271,8 @@ pub const OptimizedBuffer = struct {
         text_buffer_view: *TextBufferView,
         x: i32,
         y: i32,
-    ) !void {
-        try self.drawTextBufferInternal(TextBufferView, text_buffer_view, x, y);
+    ) void {
+        self.drawTextBufferInternal(TextBufferView, text_buffer_view, x, y);
     }
 
     /// Internal implementation that accepts either TextBufferView or EditorView
@@ -1283,7 +1283,7 @@ pub const OptimizedBuffer = struct {
         view: *ViewType,
         x: i32,
         y: i32,
-    ) !void {
+    ) void {
         const opacity = self.getCurrentOpacity();
         if (opacity == 0.0) return;
 
@@ -1301,7 +1301,7 @@ pub const OptimizedBuffer = struct {
             const base_defaults = view.edit_buffer.getTextBuffer().defaults();
             const default_bg = base_defaults.bg orelse break :blk null;
             if (ansi.alpha(default_bg) == 0) break :blk null;
-            try self.fillRectClipped(x, y, vp.width, vp.height, default_bg);
+            self.fillRectClipped(x, y, vp.width, vp.height, default_bg);
             break :blk .{ .bg = default_bg };
         };
 
@@ -1642,7 +1642,7 @@ pub const OptimizedBuffer = struct {
                                 }
                             }
 
-                            try self.setCellWithAlphaBlendingCell(
+                            self.setCellWithAlphaBlendingCell(
                                 @intCast(currentX + @as(i32, @intCast(tab_col))),
                                 @intCast(currentY),
                                 makeCell(char, fg, drawBg, drawAttributes),
@@ -1674,7 +1674,7 @@ pub const OptimizedBuffer = struct {
                             }
                         }
 
-                        try self.setCellWithAlphaBlendingCell(
+                        self.setCellWithAlphaBlendingCell(
                             @intCast(currentX),
                             @intCast(currentY),
                             makeCell(encoded_char, drawFg, drawBg, drawAttributes),
@@ -1710,8 +1710,8 @@ pub const OptimizedBuffer = struct {
         editor_view: *EditorView,
         x: i32,
         y: i32,
-    ) !void {
-        try self.drawTextBufferInternal(EditorView, editor_view, x, y);
+    ) void {
+        self.drawTextBufferInternal(EditorView, editor_view, x, y);
     }
 
     /// Draw a complete border grid in a single call.
@@ -1911,7 +1911,7 @@ pub const OptimizedBuffer = struct {
             if (!borderSides.top and !borderSides.right and !borderSides.bottom and !borderSides.left) {
                 const fillWidth = @as(u32, @intCast(endX - startX + 1));
                 const fillHeight = @as(u32, @intCast(endY - startY + 1));
-                try self.fillRect(@intCast(startX), @intCast(startY), fillWidth, fillHeight, backgroundColor);
+                self.fillRect(@intCast(startX), @intCast(startY), fillWidth, fillHeight, backgroundColor);
             } else {
                 const innerStartX = startX + if (borderSides.left and isAtActualLeft) @as(i32, 1) else @as(i32, 0);
                 const innerStartY = startY + if (borderSides.top and isAtActualTop) @as(i32, 1) else @as(i32, 0);
@@ -1921,7 +1921,7 @@ pub const OptimizedBuffer = struct {
                 if (innerEndX >= innerStartX and innerEndY >= innerStartY) {
                     const fillWidth = @as(u32, @intCast(innerEndX - innerStartX + 1));
                     const fillHeight = @as(u32, @intCast(innerEndY - innerStartY + 1));
-                    try self.fillRect(@intCast(innerStartX), @intCast(innerStartY), fillWidth, fillHeight, backgroundColor);
+                    self.fillRect(@intCast(innerStartX), @intCast(innerStartY), fillWidth, fillHeight, backgroundColor);
                 }
             }
         }
@@ -1962,7 +1962,7 @@ pub const OptimizedBuffer = struct {
                             self.buffer.fg[index] = borderColor;
                             self.buffer.attributes[index] = 0;
                         } else {
-                            try self.setCellWithAlphaBlendingCell(
+                            self.setCellWithAlphaBlendingCell(
                                 @intCast(drawX),
                                 @intCast(startY),
                                 makeCell(char, borderColor, backgroundColor, 0),
@@ -1996,7 +1996,7 @@ pub const OptimizedBuffer = struct {
                             self.buffer.fg[index] = borderColor;
                             self.buffer.attributes[index] = 0;
                         } else {
-                            try self.setCellWithAlphaBlendingCell(
+                            self.setCellWithAlphaBlendingCell(
                                 @intCast(drawX),
                                 @intCast(endY),
                                 makeCell(char, borderColor, backgroundColor, 0),
@@ -2022,7 +2022,7 @@ pub const OptimizedBuffer = struct {
                         self.buffer.fg[index] = borderColor;
                         self.buffer.attributes[index] = 0;
                     } else {
-                        try self.setCellWithAlphaBlendingCell(
+                        self.setCellWithAlphaBlendingCell(
                             @intCast(startX),
                             @intCast(drawY),
                             makeCell(borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0),
@@ -2038,7 +2038,7 @@ pub const OptimizedBuffer = struct {
                         self.buffer.fg[index] = borderColor;
                         self.buffer.attributes[index] = 0;
                     } else {
-                        try self.setCellWithAlphaBlendingCell(
+                        self.setCellWithAlphaBlendingCell(
                             @intCast(endX),
                             @intCast(drawY),
                             makeCell(borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0),
@@ -2116,7 +2116,7 @@ pub const OptimizedBuffer = struct {
         len: usize,
         format: u8, // 0: bgra8unorm, 1: rgba8unorm
         alignedBytesPerRow: u32,
-    ) !void {
+    ) void {
         const bytesPerPixel = 4;
         const isBGRA = (format == 0);
 
@@ -2149,7 +2149,7 @@ pub const OptimizedBuffer = struct {
 
                 const cellResult = renderQuadrantBlock(pixelsRgba);
 
-                try self.setCellWithAlphaBlending(
+                self.setCellWithAlphaBlending(
                     x_cell,
                     y_cell,
                     cellResult.char,
@@ -2206,7 +2206,7 @@ pub const OptimizedBuffer = struct {
                 char = BLOCK_CHAR;
             }
 
-            self.setCellWithAlphaBlending(cellX, cellY, char, fg, bg, 0) catch {};
+            self.setCellWithAlphaBlending(cellX, cellY, char, fg, bg, 0);
         }
     }
 
@@ -2275,9 +2275,9 @@ pub const OptimizedBuffer = struct {
                 const fg = applyOpacity(baseFg, opacityToU8(gray * opacity));
 
                 if (graphemeAware or linkAware) {
-                    self.setCellWithAlphaBlendingCell(destX, destY, makeCell(char, fg, bg, 0)) catch {};
+                    self.setCellWithAlphaBlendingCell(destX, destY, makeCell(char, fg, bg, 0));
                 } else {
-                    self.setCellWithAlphaBlendingRawCell(destX, destY, makeCell(char, fg, bg, 0)) catch {};
+                    self.setCellWithAlphaBlendingRawCell(destX, destY, makeCell(char, fg, bg, 0));
                 }
             }
         }
@@ -2357,9 +2357,9 @@ pub const OptimizedBuffer = struct {
                 const fg = applyOpacity(baseFg, opacityToU8(gray * opacity));
 
                 if (graphemeAware or linkAware) {
-                    self.setCellWithAlphaBlendingCell(destX, destY, makeCell(char, fg, bg, 0)) catch {};
+                    self.setCellWithAlphaBlendingCell(destX, destY, makeCell(char, fg, bg, 0));
                 } else {
-                    self.setCellWithAlphaBlendingRawCell(destX, destY, makeCell(char, fg, bg, 0)) catch {};
+                    self.setCellWithAlphaBlendingRawCell(destX, destY, makeCell(char, fg, bg, 0));
                 }
             }
         }

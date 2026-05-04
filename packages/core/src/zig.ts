@@ -3802,6 +3802,7 @@ class FFIRenderLib implements RenderLib {
       hyperlinks: caps.hyperlinks,
       osc52: caps.osc52,
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
+      in_tmux: caps.in_tmux,
       terminal: {
         name: caps.term_name ?? "",
         version: caps.term_version ?? "",

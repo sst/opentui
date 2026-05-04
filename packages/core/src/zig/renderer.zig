@@ -329,8 +329,8 @@ pub const CliRenderer = struct {
         self.resetFallbackPaletteState();
         nextBuffer.setBlendBackdropColor(ansi.rgbColor(ansi.red(self.backgroundColor), ansi.green(self.backgroundColor), ansi.blue(self.backgroundColor), 255));
 
-        try currentBuffer.clear(self.backgroundColor, CLEAR_CHAR);
-        try nextBuffer.clear(self.backgroundColor, null);
+        currentBuffer.clear(self.backgroundColor, CLEAR_CHAR);
+        nextBuffer.clear(self.backgroundColor, null);
 
         return self;
     }
@@ -549,8 +549,8 @@ pub const CliRenderer = struct {
         try self.nextRenderBuffer.resize(width, height);
         self.nextRenderBuffer.setBlendBackdropColor(ansi.rgbColor(ansi.red(self.backgroundColor), ansi.green(self.backgroundColor), ansi.blue(self.backgroundColor), 255));
 
-        try self.currentRenderBuffer.clear(ansi.rgbColor(0, 0, 0, 255), CLEAR_CHAR);
-        try self.nextRenderBuffer.clear(self.backgroundColor, null);
+        self.currentRenderBuffer.clear(ansi.rgbColor(0, 0, 0, 255), CLEAR_CHAR);
+        self.nextRenderBuffer.clear(self.backgroundColor, null);
 
         const newHitGridSize = width * height;
         const currentHitGridSize = self.hitGridWidth * self.hitGridHeight;
@@ -1513,7 +1513,7 @@ pub const CliRenderer = struct {
         self.last_rendered_palette_epoch = self.palette_epoch;
         self.force_full_repaint = false;
 
-        self.nextRenderBuffer.clear(self.backgroundColor, null) catch {};
+        self.nextRenderBuffer.clear(self.backgroundColor, null);
 
         // Compare hit grids before swap to detect changes. This allows TypeScript to
         // know if hover state needs rechecking without manually tracking dirty state.
@@ -1981,7 +1981,7 @@ pub const CliRenderer = struct {
             },
         }
 
-        self.nextRenderBuffer.fillRect(x, y, width, height, ansi.rgbColor(20, 20, 40, 255)) catch {};
+        self.nextRenderBuffer.fillRect(x, y, width, height, ansi.rgbColor(20, 20, 40, 255));
         self.nextRenderBuffer.drawText("Debug Information", x + 1, y + 1, ansi.rgbColor(255, 255, 100, 255), ansi.rgbColor(0, 0, 0, 0), ansi.TextAttributes.BOLD) catch {};
 
         var row: u32 = 2;

@@ -107,7 +107,6 @@ skip_graphics_query: bool = false,
 skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
 capability_queries_pending: bool = false,
-theme_queries_pending: bool = false,
 startup_cursor_query_pending: bool = false,
 startup_cursor_query_captured: bool = false,
 
@@ -237,7 +236,6 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
     self.graphics_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
-    self.theme_queries_pending = false;
     self.startup_cursor_query_pending = true;
     self.startup_cursor_query_captured = false;
 
@@ -247,7 +245,6 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     try self.setColorSchemeUpdates(tty, true);
 
     try self.queryThemeColors(tty);
-    self.theme_queries_pending = !self.in_tmux;
     self.state.theme_queries_sent = true;
 
     // Send xtversion first (doesn't need DCS wrapping - used for tmux detection)
@@ -302,14 +299,6 @@ pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
         sent = true;
     }
 
-    if (self.theme_queries_pending) {
-        if (self.term_info.from_xtversion and is_tmux) {
-            try tty.writeAll(ansi.ANSI.oscThemeQueriesTmux);
-            sent = true;
-        }
-        self.theme_queries_pending = false;
-    }
-
     return sent;
 }
 
@@ -346,8 +335,6 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
         try self.setFocusTracking(tty, true);
     }
 
-    const is_tmux = self.in_tmux or self.isXtversionTmux();
-
     // queryTerminalSend already enabled mode 2031 during normal startup.
     if (!self.state.color_scheme_updates) {
         try self.setColorSchemeUpdates(tty, true);
@@ -355,29 +342,21 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 
     if (!self.state.theme_queries_sent) {
         try self.queryThemeColors(tty);
-        self.theme_queries_pending = !is_tmux;
         self.state.theme_queries_sent = true;
     }
 }
 
-pub fn queryThemeColors(self: *Terminal, tty: anytype) !void {
-    const is_tmux = self.in_tmux or self.isXtversionTmux();
-
+pub fn queryThemeColors(_: *Terminal, tty: anytype) !void {
     // We only use the ?997 notification as a refresh trigger. The actual theme
     // mode is derived from the returned OSC 10/11 fg/bg colors, so callers
     // should query those colors directly instead of sending CSI ?996n.
+    // tmux handles OSC 10/11 as plain OSC; DCS passthrough replies are not
+    // routed back to the pane that asked.
     try tty.writeAll(ansi.ANSI.oscThemeQueries);
-
-    if (is_tmux) {
-        // In tested tmux 3.5a/3.6a + Ghostty setups, plain OSC 10/11 replied
-        // and the wrapped form did not. Keep dual-send conservatively until we
-        // can prove wrapped OSC 10/11 is never needed elsewhere.
-        try tty.writeAll(ansi.ANSI.oscThemeQueriesTmux);
-    }
 }
 
 fn checkEnvironmentOverrides(self: *Terminal) void {
-    self.in_tmux = false;
+    self.in_tmux = self.isXtversionTmux();
     self.skip_graphics_query = false;
     self.skip_explicit_width_query = false;
 
@@ -449,6 +428,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             const copy_len = @min(prog.len, self.term_info.name.len);
             @memcpy(self.term_info.name[0..copy_len], prog[0..copy_len]);
             self.term_info.name_len = copy_len;
+
+            if (std.mem.eql(u8, prog, "tmux")) {
+                self.in_tmux = true;
+                self.caps.unicode = .wcwidth;
+                self.caps.explicit_cursor_positioning = true;
+            }
 
             if (env_map.get("TERM_PROGRAM_VERSION")) |ver| {
                 const ver_len = @min(ver.len, self.term_info.version.len);
@@ -1095,6 +1080,9 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     }
 
     self.term_info.from_xtversion = true;
+    if (std.mem.eql(u8, self.getTerminalName(), "tmux")) {
+        self.in_tmux = true;
+    }
 }
 
 pub fn isXtversionTmux(self: *Terminal) bool {

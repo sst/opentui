@@ -71,7 +71,7 @@ fn runTransparentBoxes(
 
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             try buf.pushOpacity(0.0);
             errdefer buf.popOpacity();
@@ -128,7 +128,7 @@ fn runTransparentBoxes(
 
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -181,7 +181,7 @@ fn runTransparentBoxes(
 
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -261,7 +261,7 @@ fn runFilledBoxes(
 
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -314,7 +314,7 @@ fn runFilledBoxes(
 
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -367,7 +367,7 @@ fn runFilledBoxes(
 
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             try buf.pushOpacity(0.5);
             errdefer buf.popOpacity();
@@ -445,7 +445,7 @@ fn runFilledBoxesTitle(
 
     var stats: BenchStats = .{};
     for (0..iterations) |i| {
-        try buf.clear(CLEAR_BG, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
         var box_i: usize = 0;
@@ -519,7 +519,7 @@ fn runFilledBoxesBorders(
 
     var stats: BenchStats = .{};
     for (0..iterations) |i| {
-        try buf.clear(CLEAR_BG, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
         var box_i: usize = 0;
@@ -598,7 +598,7 @@ fn runFilledBoxesClipped(
     if (run_fully) {
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -646,7 +646,7 @@ fn runFilledBoxesClipped(
     if (run_half) {
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -696,7 +696,7 @@ fn runFilledBoxesClipped(
     if (run_negative) {
         var stats: BenchStats = .{};
         for (0..iterations) |i| {
-            try buf.clear(CLEAR_BG, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;

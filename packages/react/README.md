@@ -60,6 +60,10 @@ For optimal TypeScript support, configure your `tsconfig.json`:
   - [Hooks](#hooks)
     - [useRenderer()](#userenderer)
     - [useKeyboard(handler, options?)](#usekeyboardhandler-options)
+    - [usePaste(handler)](#usepastehandler)
+    - [useFocus(handler)](#usefocushandler)
+    - [useBlur(handler)](#useblurhandler)
+    - [useSelectionHandler(handler)](#useselectionhandlerhandler)
     - [useOnResize(callback)](#useonresizecallback)
     - [useTerminalDimensions()](#useterminaldimensions)
     - [useTimeline(options?)](#usetimelineoptions)
@@ -238,6 +242,89 @@ function App() {
   )
 }
 ```
+
+#### `usePaste(handler)`
+
+Handle terminal paste events (bracketed paste).
+
+```tsx
+import { decodePasteBytes } from "@opentui/core"
+import { usePaste } from "@opentui/react"
+
+function App() {
+  usePaste((event) => {
+    const text = decodePasteBytes(event.bytes)
+    console.log("Pasted text:", text)
+  })
+
+  return <text>Paste something into the terminal</text>
+}
+```
+
+**Parameters:**
+
+- `handler`: Callback function that receives a `PasteEvent` object with `bytes: Uint8Array` (decode with `decodePasteBytes` from `@opentui/core`)
+
+#### `useFocus(handler)`
+
+Subscribe to terminal window focus events. Fires when the terminal window gains focus.
+
+```tsx
+import { useFocus } from "@opentui/react"
+
+function App() {
+  useFocus(() => {
+    console.log("Terminal gained focus")
+  })
+
+  return <text>Focus-aware component</text>
+}
+```
+
+**Parameters:**
+
+- `handler`: Callback function invoked when the terminal gains focus
+
+#### `useBlur(handler)`
+
+Subscribe to terminal window blur events. Fires when the terminal window loses focus.
+
+```tsx
+import { useBlur } from "@opentui/react"
+
+function App() {
+  useBlur(() => {
+    console.log("Terminal lost focus")
+  })
+
+  return <text>Blur-aware component</text>
+}
+```
+
+**Parameters:**
+
+- `handler`: Callback function invoked when the terminal loses focus
+
+#### `useSelectionHandler(handler)`
+
+Handle text selection events (e.g., when the user selects text via mouse drag).
+
+```tsx
+import { useSelectionHandler } from "@opentui/react"
+
+function App() {
+  useSelectionHandler((selection) => {
+    const text = selection.getSelectedText()
+    console.log("Selected:", text)
+  })
+
+  return <text selectable>Select this text with your mouse</text>
+}
+```
+
+**Parameters:**
+
+- `handler`: Callback function that receives a `Selection` object with methods like `getSelectedText()`
 
 #### `useOnResize(callback)`
 

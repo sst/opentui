@@ -345,6 +345,7 @@ Use `renderer.on(event, callback)` to subscribe:
 | `focus`               | `()`                              | Terminal window gained focus                                          |
 | `blur`                | `()`                              | Terminal window lost focus                                            |
 | `theme_mode`          | `(mode: "dark" \| "light")`       | Terminal color scheme changed. See [Theme mode](#theme-mode) section. |
+| `palette`             | `(colors: TerminalColors)`        | Terminal palette was refreshed and changed                            |
 | `capabilities`        | `(caps: Capabilities)`            | Terminal capabilities detected                                        |
 | `selection`           | `(selection: Selection)`          | Text selection completed                                              |
 | `destroy`             | `()`                              | Renderer destroyed                                                    |
