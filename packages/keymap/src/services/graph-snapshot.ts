@@ -233,7 +233,7 @@ function getNodePresentation<TTarget extends object, TEvent extends KeymapEvent>
 }
 
 function collectPendingNodes<TTarget extends object, TEvent extends KeymapEvent>(
-  pending: State<TTarget, TEvent>["projection"]["pendingSequence"],
+  pending: State<TTarget, TEvent>["pending"],
   layerIds: ReadonlyMap<RegisteredLayer<TTarget, TEvent>, string>,
   nodeIds: ReadonlyMap<SequenceNode<TTarget, TEvent>, string>,
   roots: ReadonlyMap<RegisteredLayer<TTarget, TEvent>, SequenceNode<TTarget, TEvent>>,
@@ -303,7 +303,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   const sequenceNodes: GraphSequenceNode[] = []
 
   for (const layer of sortedLayers) {
-    layerRoots.set(layer, buildSequenceTree(layer, state.environment.patterns))
+    layerRoots.set(layer, buildSequenceTree(layer, state.patterns))
   }
 
   for (const layer of sortedLayers) {

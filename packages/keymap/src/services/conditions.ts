@@ -58,7 +58,7 @@ export function createConditionService<TTarget extends object, TEvent extends Ke
     }
 
     for (const [name, value] of requires) {
-      if (!Object.is(state.runtime.data[name], value)) {
+      if (!Object.is(state.data[name], value)) {
         return false
       }
     }

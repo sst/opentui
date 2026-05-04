@@ -1,5 +1,4 @@
 import type { KeymapEvent, KeymapHost, RegisteredLayer } from "../../types.js"
-import type { LayersState } from "../state.js"
 
 export function getFocusedTargetIfAvailable<TTarget extends object, TEvent extends KeymapEvent>(
   host: KeymapHost<TTarget, TEvent>,
@@ -43,14 +42,14 @@ export function getActivationPath<TTarget extends object, TEvent extends KeymapE
 }
 
 export function getActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
-  state: LayersState<TTarget, TEvent>,
+  layers: ReadonlySet<RegisteredLayer<TTarget, TEvent>>,
   host: KeymapHost<TTarget, TEvent>,
   focused: TTarget | null,
 ): readonly RegisteredLayer<TTarget, TEvent>[] {
   const activeLayers: RegisteredLayer<TTarget, TEvent>[] = []
   const activationPath = getActivationPath(host, focused)
 
-  for (const layer of getSortedLayers(state)) {
+  for (const layer of getSortedLayers(layers)) {
     if (isLayerActiveForFocused(host, layer, focused, activationPath)) {
       activeLayers.push(layer)
     }
@@ -60,9 +59,9 @@ export function getActiveLayersForFocused<TTarget extends object, TEvent extends
 }
 
 export function getSortedLayers<TTarget extends object, TEvent extends KeymapEvent>(
-  state: LayersState<TTarget, TEvent>,
+  layers: ReadonlySet<RegisteredLayer<TTarget, TEvent>>,
 ): RegisteredLayer<TTarget, TEvent>[] {
-  return [...state.layers].sort((left, right) => {
+  return [...layers].sort((left, right) => {
     const priorityDiff = right.priority - left.priority
     return priorityDiff || right.order - left.order
   })

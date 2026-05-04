@@ -1,5 +1,5 @@
 import type { Events, HookName, Hooks, KeymapEvent } from "../types.js"
-import type { Emitter } from "../lib/emitter.js"
+import type { EmitterApi } from "../lib/emitter.js"
 import type { State } from "./state.js"
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
@@ -20,8 +20,8 @@ export interface NotificationService<TTarget extends object, TEvent extends Keym
 
 export function createNotificationService<TTarget extends object, TEvent extends KeymapEvent>(
   state: State<TTarget, TEvent>,
-  events: Emitter<DiagnosticEvents<TTarget, TEvent>>,
-  hooks: Emitter<Hooks<TTarget, TEvent>>,
+  events: EmitterApi<DiagnosticEvents<TTarget, TEvent>>,
+  hooks: EmitterApi<Hooks<TTarget, TEvent>>,
 ): NotificationService<TTarget, TEvent> {
   const emitWarning = (code: string, warning: unknown, message: string): void => {
     if (!events.has("warning")) {
@@ -54,18 +54,18 @@ export function createNotificationService<TTarget extends object, TEvent extends
   }
 
   const flushStateChange = (): void => {
-    if (!state.notify.stateChangePending || state.notify.stateChangeDepth > 0 || state.notify.flushingStateChange) {
+    if (!state.stateChangePending || state.stateChangeDepth > 0 || state.flushingStateChange) {
       return
     }
 
-    state.notify.flushingStateChange = true
+    state.flushingStateChange = true
 
     try {
       let iterations = 0
 
-      while (state.notify.stateChangePending && state.notify.stateChangeDepth === 0) {
+      while (state.stateChangePending && state.stateChangeDepth === 0) {
         if (iterations >= MAX_STATE_CHANGE_FLUSH_ITERATIONS) {
-          state.notify.stateChangePending = false
+          state.stateChangePending = false
           emitError(
             "state-change-feedback-loop",
             { iterations: MAX_STATE_CHANGE_FLUSH_ITERATIONS },
@@ -75,23 +75,23 @@ export function createNotificationService<TTarget extends object, TEvent extends
         }
 
         iterations += 1
-        state.notify.stateChangePending = false
+        state.stateChangePending = false
         hooks.emit("state")
       }
     } finally {
-      state.notify.flushingStateChange = false
+      state.flushingStateChange = false
     }
   }
 
   return {
     runWithStateChangeBatch(fn) {
-      state.notify.stateChangeDepth += 1
+      state.stateChangeDepth += 1
 
       try {
         return fn()
       } finally {
-        state.notify.stateChangeDepth -= 1
-        if (state.notify.stateChangeDepth === 0) {
+        state.stateChangeDepth -= 1
+        if (state.stateChangeDepth === 0) {
           flushStateChange()
         }
       }
@@ -101,8 +101,8 @@ export function createNotificationService<TTarget extends object, TEvent extends
         return
       }
 
-      state.notify.stateChangePending = true
-      if (state.notify.stateChangeDepth === 0 && !state.notify.flushingStateChange) {
+      state.stateChangePending = true
+      if (state.stateChangeDepth === 0 && !state.flushingStateChange) {
         flushStateChange()
       }
     },
@@ -124,11 +124,11 @@ export function createNotificationService<TTarget extends object, TEvent extends
       }
     },
     warnOnce(key, code, warning, message) {
-      if (state.notify.usedWarningKeys.has(key)) {
+      if (state.usedWarningKeys.has(key)) {
         return
       }
 
-      state.notify.usedWarningKeys.add(key)
+      state.usedWarningKeys.add(key)
       emitWarning(code, warning, message)
     },
   }

@@ -48,19 +48,19 @@ import {
   type LayerDiagnosticsFeatureContext,
 } from "./features/diagnostics.js"
 import { createGraphFeature, type GraphFeature, type GraphFeatureContext } from "./features/graph.js"
-import { ActivationService } from "./services/activation.js"
-import { CommandCatalogService } from "./services/command-catalog.js"
+import { createActivationService, type ActivationService } from "./services/activation.js"
+import { createCommandCatalogService, type CommandCatalogService } from "./services/command-catalog.js"
 import { createCommandExecutorService, type CommandExecutorService } from "./services/command-executor.js"
-import { CompilerService } from "./services/compiler.js"
+import { createCompilerService, type CompilerService } from "./services/compiler.js"
 import { createConditionService, type ConditionService } from "./services/conditions.js"
-import { DispatchService } from "./services/dispatch.js"
+import { createDispatchService, type DispatchService } from "./services/dispatch.js"
 import {
   registerFields,
   registerSequencePattern as registerEnvironmentSequencePattern,
   registerToken as registerEnvironmentToken,
 } from "./services/environment.js"
-import { LayerService } from "./services/layers.js"
-import { Emitter, type EmitterListener } from "./lib/emitter.js"
+import { createLayerService, type LayerService } from "./services/layers.js"
+import { createEmitter, type EmitterApi, type EmitterListener } from "./lib/emitter.js"
 import { createNotificationService, type NotificationService } from "./services/notify.js"
 import { resolveKeyMatch } from "./services/keys.js"
 import { createRuntimeService, type RuntimeService } from "./services/runtime.js"
@@ -87,8 +87,8 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
   #cleanupListeners: Array<() => void> = []
   // Reuse `Emitter`, but keep its `onError` hook as a no-op so throwing error
   // listeners cannot re-enter `emitError` and loop forever.
-  #events = new Emitter<DiagnosticEvents<TTarget, TEvent>>(() => {})
-  #hooks: Emitter<Hooks<TTarget, TEvent>>
+  #events = createEmitter<DiagnosticEvents<TTarget, TEvent>>(() => {})
+  #hooks: EmitterApi<Hooks<TTarget, TEvent>>
   #notify: NotificationService<TTarget, TEvent>
   #activation: ActivationService<TTarget, TEvent>
   #runtime: RuntimeService<TTarget, TEvent>
@@ -117,17 +117,17 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
       throw new Error("Cannot create a keymap for a destroyed host")
     }
 
-    this.#hooks = new Emitter<Hooks<TTarget, TEvent>>((name, error) => {
+    this.#hooks = createEmitter<Hooks<TTarget, TEvent>>((name, error) => {
       this.#notify.reportListenerError(name, error)
     })
     this.#notify = createNotificationService(this.#state, this.#events, this.#hooks)
     this.#conditions = createConditionService(this.#state, this.#notify)
-    this.#catalog = new CommandCatalogService(this.#state, this.#host, this.#notify, this.#conditions, {
+    this.#catalog = createCommandCatalogService(this.#state, this.#host, this.#notify, this.#conditions, {
       onCommandResolversChanged: () => {
         this.#activation.ensureValidPendingSequence()
       },
     })
-    this.#activation = new ActivationService(
+    this.#activation = createActivationService(
       this.#state,
       this.#host,
       this.#hooks,
@@ -145,7 +145,7 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
       keymap: this as unknown as Keymap<TTarget, TEvent>,
       createCommandEvent: () => this.#host.createCommandEvent(),
     })
-    this.#compiler = new CompilerService(this.#state, this.#notify, this.#conditions, {
+    this.#compiler = createCompilerService(this.#state, this.#notify, this.#conditions, {
       warnUnknownField: (kind, fieldName) => {
         this.#warnUnknownField(kind, fieldName)
       },
@@ -157,7 +157,7 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
       notify: this.#notify,
       commands: this.#catalog,
     })
-    this.#layers = new LayerService(this.#state, this.#notify, this.#conditions, this.#activation, {
+    this.#layers = createLayerService(this.#state, this.#notify, this.#conditions, this.#activation, {
       compiler: this.#compiler,
       commands: this.#catalog,
       host: this.#host,
@@ -166,7 +166,7 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
         this.#warnUnknownField(kind, fieldName)
       },
     })
-    this.#dispatch = new DispatchService(
+    this.#dispatch = createDispatchService(
       this.#state,
       this.#notify,
       this.#runtime,
@@ -398,51 +398,51 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
   }
 
   public prependLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
-    return this.#state.environment.layerBindingsTransformers.prepend(transformer)
+    return this.#state.layerBindingsTransformers.prepend(transformer)
   }
 
   public appendLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
-    return this.#state.environment.layerBindingsTransformers.append(transformer)
+    return this.#state.layerBindingsTransformers.append(transformer)
   }
 
   public clearLayerBindingsTransformers(): void {
-    this.#state.environment.layerBindingsTransformers.clear()
+    this.#state.layerBindingsTransformers.clear()
   }
 
   public prependBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
-    return this.#state.environment.bindingTransformers.prepend(transformer)
+    return this.#state.bindingTransformers.prepend(transformer)
   }
 
   public appendBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
-    return this.#state.environment.bindingTransformers.append(transformer)
+    return this.#state.bindingTransformers.append(transformer)
   }
 
   public clearBindingTransformers(): void {
-    this.#state.environment.bindingTransformers.clear()
+    this.#state.bindingTransformers.clear()
   }
 
   public prependCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
-    return this.#state.environment.commandTransformers.prepend(transformer)
+    return this.#state.commandTransformers.prepend(transformer)
   }
 
   public appendCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
-    return this.#state.environment.commandTransformers.append(transformer)
+    return this.#state.commandTransformers.append(transformer)
   }
 
   public clearCommandTransformers(): void {
-    this.#state.environment.commandTransformers.clear()
+    this.#state.commandTransformers.clear()
   }
 
   public prependBindingParser(parser: BindingParser): () => void {
-    return this.#state.environment.bindingParsers.prepend(parser)
+    return this.#state.bindingParsers.prepend(parser)
   }
 
   public appendBindingParser(parser: BindingParser): () => void {
-    return this.#state.environment.bindingParsers.append(parser)
+    return this.#state.bindingParsers.append(parser)
   }
 
   public clearBindingParsers(): void {
-    this.#state.environment.bindingParsers.clear()
+    this.#state.bindingParsers.clear()
   }
 
   public registerToken(token: KeyToken): () => void {
@@ -454,15 +454,15 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
   }
 
   public prependBindingExpander(expander: BindingExpander): () => void {
-    return this.#state.environment.bindingExpanders.prepend(expander)
+    return this.#state.bindingExpanders.prepend(expander)
   }
 
   public appendBindingExpander(expander: BindingExpander): () => void {
-    return this.#state.environment.bindingExpanders.append(expander)
+    return this.#state.bindingExpanders.append(expander)
   }
 
   public clearBindingExpanders(): void {
-    this.#state.environment.bindingExpanders.clear()
+    this.#state.bindingExpanders.clear()
   }
 
   public registerBindingFields(fields: Record<string, BindingFieldCompiler>): () => void {

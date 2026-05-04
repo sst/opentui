@@ -56,32 +56,25 @@ export interface LayerDiagnostics<TTarget extends object, TEvent extends KeymapE
   analyzeLayer(options: AnalyzeLayerOptions<TTarget, TEvent>): void
 }
 
-export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
-  #state: State<TTarget, TEvent>
-  #notify: NotificationService<TTarget, TEvent>
-  #conditions: ConditionService<TTarget, TEvent>
-  #activation: ActivationService<TTarget, TEvent>
-  #options: LayersOptions<TTarget, TEvent>
+export interface LayerService<TTarget extends object, TEvent extends KeymapEvent> {
+  registerLayer(layer: Layer<TTarget, TEvent>): () => void
+  applyTokenState(nextTokens: Map<string, ResolvedKeyToken>): void
+  recompileBindings(): void
+  cleanup(): void
+}
 
-  constructor(
-    state: State<TTarget, TEvent>,
-    notify: NotificationService<TTarget, TEvent>,
-    conditions: ConditionService<TTarget, TEvent>,
-    activation: ActivationService<TTarget, TEvent>,
-    options: LayersOptions<TTarget, TEvent>,
-  ) {
-    this.#state = state
-    this.#notify = notify
-    this.#conditions = conditions
-    this.#activation = activation
-    this.#options = options
-  }
-
-  public registerLayer(layer: Layer<TTarget, TEvent>): () => void {
-    return this.#notify.runWithStateChangeBatch(() => {
+export function createLayerService<TTarget extends object, TEvent extends KeymapEvent>(
+  state: State<TTarget, TEvent>,
+  notify: NotificationService<TTarget, TEvent>,
+  conditions: ConditionService<TTarget, TEvent>,
+  activation: ActivationService<TTarget, TEvent>,
+  options: LayersOptions<TTarget, TEvent>,
+): LayerService<TTarget, TEvent> {
+  const registerLayer = (layer: Layer<TTarget, TEvent>): () => void => {
+    return notify.runWithStateChangeBatch(() => {
       const target = layer.target
-      if (target && this.#options.host.isTargetDestroyed(target)) {
-        this.#notify.emitError(
+      if (target && options.host.isTargetDestroyed(target)) {
+        notify.emitError(
           "destroyed-layer-target",
           { target },
           "Cannot register a keymap layer for a destroyed keymap target",
@@ -98,20 +91,20 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       let targetMode: TargetMode | undefined
 
       try {
-        targetMode = this.#normalizeTargetMode(layer)
-        sourceBindings = this.#applyLayerBindingsTransformers(snapshotBindings(layer.bindings ?? []), layer)
-        const sourceCommands = this.#applyCommandTransformers(layer.commands ?? [], layer)
-        commands = sourceCommands.length === 0 ? [] : this.#options.commands.normalizeCommands(sourceCommands)
-        ;({ requires, matchers, fields, attrs } = this.#compileLayerRuntimeState(layer))
+        targetMode = normalizeTargetMode(layer)
+        sourceBindings = applyLayerBindingsTransformers(snapshotBindings(layer.bindings ?? []), layer)
+        const sourceCommands = applyCommandTransformers(layer.commands ?? [], layer)
+        commands = sourceCommands.length === 0 ? [] : options.commands.normalizeCommands(sourceCommands)
+        ;({ requires, matchers, fields, attrs } = compileLayerRuntimeState(layer))
       } catch (error) {
-        this.#notify.emitError("register-layer-failed", error, getErrorMessage(error, "Failed to register keymap layer"))
+        notify.emitError("register-layer-failed", error, getErrorMessage(error, "Failed to register keymap layer"))
         return NOOP
       }
 
-      const order = this.#state.core.order++
-      const bindingStates = this.#options.compiler.compileBindings(
+      const order = state.order++
+      const bindingStates = options.compiler.compileBindings(
         sourceBindings,
-        this.#state.environment.tokens,
+        state.tokens,
         target,
         order,
         fields,
@@ -121,7 +114,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         return NOOP
       }
 
-      this.#options.diagnostics?.analyzeLayer({
+      options.diagnostics?.analyzeLayer({
         target,
         order,
         commands,
@@ -145,79 +138,79 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         hasTokenBindings: bindingStates.hasTokenBindings,
       }
 
-      this.#state.layers.layers.add(registeredLayer)
-      this.#attachReactiveMatchers(registeredLayer)
+      state.layers.add(registeredLayer)
+      attachReactiveMatchers(registeredLayer)
       for (const command of registeredLayer.commands) {
-        this.#attachReactiveMatchers(command)
+        attachReactiveMatchers(command)
       }
       for (const binding of registeredLayer.bindings) {
-        this.#attachReactiveMatchers(binding)
+        attachReactiveMatchers(binding)
       }
 
       if (target) {
         const onTargetDestroy = () => {
-          this.#unregisterLayer(registeredLayer)
+          unregisterLayer(registeredLayer)
         }
 
-        registeredLayer.offTargetDestroy = this.#options.host.onTargetDestroy(target, onTargetDestroy)
+        registeredLayer.offTargetDestroy = options.host.onTargetDestroy(target, onTargetDestroy)
       }
 
       if (registeredLayer.commands.length > 0) {
-        this.#activation.ensureValidPendingSequence()
+        activation.ensureValidPendingSequence()
       }
 
-      this.#notify.queueStateChange()
+      notify.queueStateChange()
 
       return () => {
-        this.#unregisterLayer(registeredLayer)
+        unregisterLayer(registeredLayer)
       }
     })
   }
 
-  public applyTokenState(nextTokens: Map<string, ResolvedKeyToken>): void {
-    this.#notify.runWithStateChangeBatch(() => {
+  const applyTokenState = (nextTokens: Map<string, ResolvedKeyToken>): void => {
+    notify.runWithStateChangeBatch(() => {
       const nextCompilations = new Map<RegisteredLayer<TTarget, TEvent>, BindingCompilationResult<TTarget, TEvent>>()
 
-      for (const layer of this.#state.layers.layers) {
+      for (const layer of state.layers) {
         if (!layer.hasTokenBindings) {
           continue
         }
 
-        nextCompilations.set(layer, this.#compileLayerBindings(layer, nextTokens))
+        nextCompilations.set(layer, compileLayerBindings(layer, nextTokens))
       }
 
-      this.#state.environment.tokens = nextTokens
+      state.tokens = nextTokens
 
       let shouldClearPending = false
       for (const [layer, compilation] of nextCompilations) {
-        if (this.#applyBindingStates(layer, compilation)) {
+        if (applyBindingStates(layer, compilation)) {
           shouldClearPending = true
         }
       }
 
       if (shouldClearPending) {
-        this.#activation.setPendingSequence(null)
+        activation.setPendingSequence(null)
       }
 
       if (nextCompilations.size > 0) {
-        this.#notify.queueStateChange()
+        notify.queueStateChange()
       }
     })
   }
 
-  public recompileBindings(): void {
-    this.#notify.runWithStateChangeBatch(() => {
+  const recompileBindings = (): void => {
+    notify.runWithStateChangeBatch(() => {
       let recompiledLayers = 0
       let shouldClearPending = false
 
-      for (const layer of this.#state.layers.layers) {
+      for (const layer of state.layers) {
         if (layer.sourceBindings.length === 0) {
           continue
         }
 
-        const compilation = this.#compileLayerBindings(layer, this.#state.environment.tokens)
+        const compilation = compileLayerBindings(layer, state.tokens)
 
-        if (this.#applyBindingStates(layer, compilation)) {
+        if (applyBindingStates(layer, compilation)) {
           shouldClearPending = true
         }
 
@@ -225,23 +218,23 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       }
 
       if (shouldClearPending) {
-        this.#activation.setPendingSequence(null)
+        activation.setPendingSequence(null)
       }
 
       if (recompiledLayers > 0) {
-        this.#notify.queueStateChange()
+        notify.queueStateChange()
       }
     })
   }
 
-  public cleanup(): void {
-    for (const layer of this.#state.layers.layers) {
-      this.#detachReactiveMatchers(layer)
+  const cleanup = (): void => {
+    for (const layer of state.layers) {
+      detachReactiveMatchers(layer)
       for (const command of layer.commands) {
-        this.#detachReactiveMatchers(command)
+        detachReactiveMatchers(command)
       }
       for (const binding of layer.bindings) {
-        this.#detachReactiveMatchers(binding)
+        detachReactiveMatchers(binding)
       }
 
       layer.offTargetDestroy?.()
@@ -249,7 +242,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     }
   }
 
-  #normalizeTargetMode(layer: Layer<TTarget, TEvent>): TargetMode | undefined {
+  const normalizeTargetMode = (layer: Layer<TTarget, TEvent>): TargetMode | undefined => {
     if (layer.targetMode) {
       if (!layer.target) {
         throw new Error(`Keymap targetMode "${layer.targetMode}" requires a target`)
@@ -261,11 +254,11 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     return layer.target ? "focus-within" : undefined
   }
 
-  #applyLayerBindingsTransformers(
+  const applyLayerBindingsTransformers = (
     bindings: Binding<TTarget, TEvent>[],
     layer: Layer<TTarget, TEvent>,
-  ): Binding<TTarget, TEvent>[] {
-    const transformers = this.#state.environment.layerBindingsTransformers.values()
+  ): Binding<TTarget, TEvent>[] => {
+    const transformers = state.layerBindingsTransformers.values()
     if (transformers.length === 0) {
       return bindings
     }
@@ -287,11 +280,11 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     return current
   }
 
-  #applyCommandTransformers(
+  const applyCommandTransformers = (
     commands: readonly Command<TTarget, TEvent>[],
     layer: Layer<TTarget, TEvent>,
-  ): readonly Command<TTarget, TEvent>[] {
-    const transformers = this.#state.environment.commandTransformers.values()
+  ): readonly Command<TTarget, TEvent>[] => {
+    const transformers = state.commandTransformers.values()
     if (commands.length === 0 || transformers.length === 0) {
       return commands
     }
@@ -315,7 +308,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
             },
           })
         } catch (error) {
-          this.#notify.emitError("command-transformer-error", error, "[Keymap] Error in command transformer:")
+          notify.emitError("command-transformer-error", error, "[Keymap] Error in command transformer:")
         }
       }
 
@@ -328,7 +321,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     return transformedCommands
   }
 
-  #compileLayerRuntimeState(layer: Layer<TTarget, TEvent>): CompileLayerRuntimeStateResult {
+  const compileLayerRuntimeState = (layer: Layer<TTarget, TEvent>): CompileLayerRuntimeStateResult => {
     const mergedRequires: EventData = {}
     const matchers: RuntimeMatcher[] = []
     const fields: Record<string, unknown> = Object.create(null)
@@ -345,9 +338,9 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
 
       fields[fieldName] = snapshotDataValue(value)
 
-      const compiler = this.#state.environment.layerFields.get(fieldName)
+      const compiler = state.layerFields.get(fieldName)
       if (!compiler) {
-        this.#options.warnUnknownField("layer", fieldName)
+        options.warnUnknownField("layer", fieldName)
         continue
       }
 
@@ -355,7 +348,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         value,
         createFieldCompilerContext({
           fieldName,
-          conditions: this.#conditions,
+          conditions: conditions,
           requirements: mergedRequires,
           matchers,
           attrs,
@@ -374,11 +367,11 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     }
   }
 
-  #compileLayerBindings(
+  const compileLayerBindings = (
     layer: RegisteredLayer<TTarget, TEvent>,
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
-  ): BindingCompilationResult<TTarget, TEvent> {
-    return this.#options.compiler.compileBindings(
+  ): BindingCompilationResult<TTarget, TEvent> => {
+    return options.compiler.compileBindings(
       layer.sourceBindings,
       tokens,
       layer.target,
@@ -387,11 +380,11 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     )
   }
 
-  #applyBindingStates(
+  const applyBindingStates = (
     layer: RegisteredLayer<TTarget, TEvent>,
     compilation: BindingCompilationResult<TTarget, TEvent>,
-  ): boolean {
-      this.#options.diagnostics?.analyzeLayer({
+  ): boolean => {
+      options.diagnostics?.analyzeLayer({
         target: layer.target,
         order: layer.order,
         commands: layer.commands,
@@ -401,47 +394,47 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       })
 
     for (const binding of layer.bindings) {
-      this.#detachReactiveMatchers(binding)
+      detachReactiveMatchers(binding)
     }
 
     layer.bindings = compilation.bindings
     layer.hasTokenBindings = compilation.hasTokenBindings
 
     for (const binding of layer.bindings) {
-      this.#attachReactiveMatchers(binding)
+      attachReactiveMatchers(binding)
     }
 
-    return this.#state.projection.pendingSequence?.captures.some((capture) => capture.layer === layer) ?? false
+    return state.pending?.captures.some((capture) => capture.layer === layer) ?? false
   }
 
-  #unregisterLayer(layer: RegisteredLayer<TTarget, TEvent>): void {
-    this.#notify.runWithStateChangeBatch(() => {
-      if (!this.#state.layers.layers.delete(layer)) {
+  const unregisterLayer = (layer: RegisteredLayer<TTarget, TEvent>): void => {
+    notify.runWithStateChangeBatch(() => {
+      if (!state.layers.delete(layer)) {
         return
       }
 
-      this.#detachReactiveMatchers(layer)
+      detachReactiveMatchers(layer)
       for (const command of layer.commands) {
-        this.#detachReactiveMatchers(command)
+        detachReactiveMatchers(command)
       }
       for (const binding of layer.bindings) {
-        this.#detachReactiveMatchers(binding)
+        detachReactiveMatchers(binding)
       }
 
       layer.offTargetDestroy?.()
       layer.offTargetDestroy = undefined
 
-      if (this.#state.projection.pendingSequence?.captures.some((capture) => capture.layer === layer)) {
-        this.#activation.setPendingSequence(null)
-      } else if (layer.commands.length > 0 && !this.#options.host.isDestroyed) {
-        this.#activation.ensureValidPendingSequence()
+      if (state.pending?.captures.some((capture) => capture.layer === layer)) {
+        activation.setPendingSequence(null)
+      } else if (layer.commands.length > 0 && !options.host.isDestroyed) {
+        activation.ensureValidPendingSequence()
       }
 
-      this.#notify.queueStateChange()
+      notify.queueStateChange()
     })
   }
 
-  #attachReactiveMatchers(target: RuntimeMatchable): void {
+  const attachReactiveMatchers = (target: RuntimeMatchable): void => {
     for (const matcher of target.matchers) {
       if (!matcher.subscribe) {
         continue
@@ -449,18 +442,18 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
 
       try {
         matcher.dispose = matcher.subscribe(() => {
-          if (!this.#activation.hasPendingSequenceState()) {
-            this.#notify.queueStateChange()
+          if (!activation.hasPendingSequenceState()) {
+            notify.queueStateChange()
             return
           }
 
-          this.#notify.runWithStateChangeBatch(() => {
-            this.#activation.revalidatePendingSequenceIfNeeded()
-            this.#notify.queueStateChange()
+          notify.runWithStateChangeBatch(() => {
+            activation.revalidatePendingSequenceIfNeeded()
+            notify.queueStateChange()
           })
         })
       } catch (error) {
-        this.#notify.emitError(
+        notify.emitError(
           "reactive-matcher-subscribe-error",
           error,
           getErrorMessage(error, `Failed to subscribe to reactive matcher from ${matcher.source}`),
@@ -469,7 +462,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     }
   }
 
-  #detachReactiveMatchers(target: RuntimeMatchable): void {
+  const detachReactiveMatchers = (target: RuntimeMatchable): void => {
     for (const matcher of target.matchers) {
       if (!matcher.dispose) {
         continue
@@ -478,7 +471,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       try {
         matcher.dispose()
       } catch (error) {
-        this.#notify.emitError(
+        notify.emitError(
           "reactive-matcher-dispose-error",
           error,
           getErrorMessage(error, `Failed to dispose reactive matcher from ${matcher.source}`),
@@ -488,4 +481,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       matcher.dispose = undefined
     }
   }
+
+  return { registerLayer, applyTokenState, recompileBindings, cleanup }
 }

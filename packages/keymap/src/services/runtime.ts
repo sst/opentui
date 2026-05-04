@@ -16,32 +16,32 @@ export function createRuntimeService<TTarget extends object, TEvent extends Keym
 ): RuntimeService<TTarget, TEvent> {
   return {
     getData(name) {
-      return state.runtime.data[name]
+      return state.data[name]
     },
     setData(name, value) {
       notify.runWithStateChangeBatch(() => {
         if (value === undefined) {
-          if (!(name in state.runtime.data)) {
+          if (!(name in state.data)) {
             return
           }
 
-          delete state.runtime.data[name]
+          delete state.data[name]
           activation.ensureValidPendingSequence()
           notify.queueStateChange()
           return
         }
 
-        if (Object.is(state.runtime.data[name], value)) {
+        if (Object.is(state.data[name], value)) {
           return
         }
 
-        state.runtime.data[name] = value
+        state.data[name] = value
         activation.ensureValidPendingSequence()
         notify.queueStateChange()
       })
     },
     getReadonlyData() {
-      return Object.freeze({ ...state.runtime.data })
+      return Object.freeze({ ...state.data })
     },
   }
 }

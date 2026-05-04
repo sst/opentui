@@ -88,7 +88,7 @@ export function registerToken<TTarget extends object, TEvent extends KeymapEvent
     return NOOP
   }
 
-  if (state.environment.tokens.has(normalizedToken) || state.environment.patterns.has(normalizedToken)) {
+  if (state.tokens.has(normalizedToken) || state.patterns.has(normalizedToken)) {
     notify.emitError("duplicate-token", { token: normalizedToken }, `Keymap token "${normalizedToken}" is already registered`)
     return NOOP
   }
@@ -113,7 +113,7 @@ export function registerToken<TTarget extends object, TEvent extends KeymapEvent
     stroke: parsedToken.stroke,
     match: parsedToken.match,
   }
-  const nextTokens = new Map(state.environment.tokens)
+  const nextTokens = new Map(state.tokens)
   nextTokens.set(normalizedToken, registeredToken)
 
   try {
@@ -128,12 +128,12 @@ export function registerToken<TTarget extends object, TEvent extends KeymapEvent
   }
 
   return () => {
-    const current = state.environment.tokens.get(normalizedToken)
+    const current = state.tokens.get(normalizedToken)
     if (current !== registeredToken) {
       return
     }
 
-    const nextTokens = new Map(state.environment.tokens)
+    const nextTokens = new Map(state.tokens)
     nextTokens.delete(normalizedToken)
 
     try {
@@ -184,7 +184,7 @@ export function registerSequencePattern<TTarget extends object, TEvent extends K
     return NOOP
   }
 
-  if (state.environment.tokens.has(normalizedName) || state.environment.patterns.has(normalizedName)) {
+  if (state.tokens.has(normalizedName) || state.patterns.has(normalizedName)) {
     notify.emitError(
       "duplicate-sequence-pattern",
       { pattern: normalizedName },
@@ -193,16 +193,16 @@ export function registerSequencePattern<TTarget extends object, TEvent extends K
     return NOOP
   }
 
-  state.environment.patterns.set(normalizedName, resolvedPattern)
+  state.patterns.set(normalizedName, resolvedPattern)
   layers.recompileBindings()
 
   return () => {
-    const current = state.environment.patterns.get(normalizedName)
+    const current = state.patterns.get(normalizedName)
     if (current !== resolvedPattern) {
       return
     }
 
-    state.environment.patterns.delete(normalizedName)
+    state.patterns.delete(normalizedName)
     layers.recompileBindings()
   }
 }
@@ -217,10 +217,10 @@ export function registerFields<TTarget extends object, TEvent extends KeymapEven
     kind === "layer" ? RESERVED_LAYER_FIELDS : kind === "binding" ? RESERVED_BINDING_FIELDS : RESERVED_COMMAND_FIELDS
   const registeredFields =
     kind === "layer"
-      ? state.environment.layerFields
+      ? state.layerFields
       : kind === "binding"
-        ? state.environment.bindingFields
-        : state.environment.commandFields
+        ? state.bindingFields
+        : state.commandFields
 
   return registerFieldCompilers(fields, {
     kind,
