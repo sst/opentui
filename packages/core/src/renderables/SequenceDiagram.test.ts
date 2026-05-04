@@ -145,7 +145,7 @@ sequenceDiagram
     expect(output).not.toContain("┃")
   })
 
-  test("renders lightweight alt else separators", () => {
+  test("renders boxed alt else regions", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram
   alt accepted
@@ -155,8 +155,9 @@ sequenceDiagram
   end
 `)
 
-    expect(output).toContain("alt: accepted")
-    expect(output).toContain("else: rejected")
+    expect(output).toContain("╭─ alt: accepted")
+    expect(output).toContain("├─ else: rejected")
+    expect(output).toContain("╰")
     expect(output).toContain("end")
     expect(output.indexOf("alt: accepted")).toBeLessThan(output.indexOf("ok"))
     expect(output.indexOf("else: rejected")).toBeLessThan(output.indexOf("no"))

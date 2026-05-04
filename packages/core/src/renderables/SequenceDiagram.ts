@@ -519,12 +519,19 @@ function drawActivationBars(
 
 function renderFragment(grid: SequenceGrid, centers: number[], fragment: SequenceFragment, y: number): void {
   const leftX = centers[0]
-  if (leftX === undefined) return
+  const rightX = centers[centers.length - 1]
+  if (leftX === undefined || rightX === undefined) return
 
-  const marker = fragment.kind === "end" ? "└" : "├"
-  const label = fragment.kind === "end" ? " end" : ` ${fragment.kind}: ${fragment.label}`
-  setCell(grid, leftX, y, marker, "lifeline")
-  setCell(grid, leftX + 1, y, "─", "lifeline")
+  const leftChar = fragment.kind === "alt" ? "╭" : fragment.kind === "else" ? "├" : "╰"
+  const rightChar = fragment.kind === "alt" ? "╮" : fragment.kind === "else" ? "┤" : "╯"
+  const label = fragment.kind === "end" ? " end " : ` ${fragment.kind}: ${fragment.label} `
+
+  for (let x = leftX; x <= rightX; x++) {
+    setCell(grid, x, y, "─", "lifeline")
+  }
+
+  setCell(grid, leftX, y, leftChar, "lifeline")
+  setCell(grid, rightX, y, rightChar, "lifeline")
   setText(grid, leftX + 2, y, label, "fragment")
 }
 

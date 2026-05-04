@@ -13,29 +13,22 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 export const AUTH_SEQUENCE_DIAGRAM = `sequenceDiagram
   participant Browser
-  participant Server
-  participant Store as Ticket store
-  participant PTY
-  Browser->>Server: GET /
-  alt Basic challenge required
-    Server-->>Browser: 401 WWW-Auth
-    Note over Browser,Server: (native browser Basic prompt)
-    Browser->>Server: GET / · Basic
-    Server-->>Browser: 200 web UI
-  else Basic already cached
-    Server-->>Browser: 200 web UI
+  participant API
+  participant Cache
+  participant DB
+  Browser->>+API: GET /users/42
+  API->>+Cache: get user:42
+  alt cache hit
+    Cache-->>-API: { user }
+  else cache miss
+    Cache-->>-API: null
+    API->>+DB: SELECT user WHERE id=42
+    DB-->>-API: row
+    API->>+Cache: set user:42
+    Cache-->>-API: ok
   end
-  Note over Browser,Server: user opens terminal
-  Browser->>+Server: POST connect-token<br/>· Basic (cached by browser)<br/>· X-OpenCode-Ticket: 1
-  Server->>+Store: issue { ptyID, … }
-  Store-->>-Server: { ticket }
-  Server-->>-Browser: { ticket }
-  Browser->>+Server: WS …?ticket=…<br/>Upgrade: websocket
-  Server->>+Store: consume(token,scope)
-  Store-->>-Server: ok, delete
-  Server->>PTY: attach
-  deactivate Server
-  PTY->>Browser: WS frames`
+  Note over API,Cache: cache is refreshed on misses
+  API-->>-Browser: 200 { user }`
 
 let container: BoxRenderable | null = null
 let scrollBox: ScrollBoxRenderable | null = null
