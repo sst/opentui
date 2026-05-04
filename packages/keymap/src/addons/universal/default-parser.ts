@@ -6,7 +6,6 @@ import type {
   KeymapEvent,
   KeySequencePart,
   KeyStrokeInput,
-  ResolvedKeyToken,
 } from "../../index.js"
 
 const namedSingleStrokeKeys = new Set<string>([
@@ -149,8 +148,6 @@ function isNamedSingleStrokeKey(input: string, extraNames?: ReadonlySet<string>)
 
 function isSingleStrokeString(
   input: string,
-  tokens: ReadonlyMap<string, ResolvedKeyToken>,
-  normalizeTokenName: (token: string) => string,
   extraNames?: ReadonlySet<string>,
 ): boolean {
   if (input === " " || input === "+") {
@@ -158,10 +155,6 @@ function isSingleStrokeString(
   }
 
   if (input.length === 1) {
-    return true
-  }
-
-  if (tokens.has(normalizeTokenName(input))) {
     return true
   }
 
@@ -260,21 +253,11 @@ function parseStringKeyPart(input: string, ctx: DefaultParserContext): KeySequen
 export const defaultBindingParser: BindingParser = (ctx) => {
   const { input, index, tokens, normalizeTokenName } = ctx
 
-  if (index === 0 && isSingleStrokeString(input, tokens, normalizeTokenName)) {
+  if (index === 0 && isSingleStrokeString(input)) {
     if (input === " " || input === "+") {
       return {
         parts: [parseStringKeyPart(input, ctx)],
         nextIndex: input.length,
-      }
-    }
-
-    const normalizedToken = normalizeTokenName(input)
-    const token = tokens.get(normalizedToken)
-    if (token) {
-      return {
-        parts: [parseObjectKeyInput(ctx, token.stroke, normalizedToken, token.match, normalizedToken)],
-        nextIndex: input.length,
-        usedTokens: [normalizedToken],
       }
     }
 
@@ -298,7 +281,7 @@ export const defaultBindingParser: BindingParser = (ctx) => {
       }
     }
 
-    const tokenName = normalizeTokenName(input.slice(index, end + 1))
+    const tokenName = normalizeTokenName(input.slice(index + 1, end))
     const token = tokens.get(tokenName)
     if (!token) {
       return {
@@ -309,7 +292,7 @@ export const defaultBindingParser: BindingParser = (ctx) => {
     }
 
     return {
-      parts: [parseObjectKeyInput(ctx, token.stroke, tokenName, token.match, tokenName)],
+        parts: [parseObjectKeyInput(ctx, token.stroke, `<${tokenName}>`, token.match, tokenName)],
       nextIndex: end + 1,
       usedTokens: [tokenName],
     }
@@ -324,7 +307,7 @@ export const defaultBindingParser: BindingParser = (ctx) => {
       }
     }
 
-    const patternName = normalizeTokenName(input.slice(index, end + 1))
+    const patternName = normalizeTokenName(input.slice(index + 1, end))
     const pattern = ctx.patterns.get(patternName)
     if (!pattern) {
       return {
@@ -336,7 +319,7 @@ export const defaultBindingParser: BindingParser = (ctx) => {
 
     const part = ctx.parseObjectKey(
       { name: patternName, ctrl: false, shift: false, meta: false, super: false },
-      { display: pattern.display, match: pattern.match, tokenName: patternName },
+      { display: pattern.display ?? `{${patternName}}`, match: pattern.match, tokenName: patternName },
     )
 
     return {

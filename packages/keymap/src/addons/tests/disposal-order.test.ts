@@ -57,7 +57,7 @@ function assertExpectedTeardownDiagnostics(keymap: ReturnType<typeof createDefau
   expect(
     warnings.every(
       (warning) =>
-        warning === '[Keymap] Unknown token "<leader>" in key sequence "<leader>a" was ignored' ||
+        warning === '[Keymap] Unknown token "leader" in key sequence "<leader>a" was ignored' ||
         warning === '[Keymap] Unknown binding field "desc" was ignored',
     ),
   ).toBe(true)

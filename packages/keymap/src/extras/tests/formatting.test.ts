@@ -75,30 +75,30 @@ describe("formatting helpers", () => {
 
   test("uses preserved token display by default and supports token overrides", () => {
     const keymap = getKeymap(renderer)
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
     const leaderSequence = keymap.parseKeySequence("<leader>s")
 
     expect(formatKeySequence(leaderSequence)).toBe("<leader> s")
     expect(
       formatKeySequence(leaderSequence, {
         tokenDisplay: {
-          "<leader>": "space",
+          leader: "space",
         },
       }),
     ).toBe("space s")
     expect(
       formatKeySequence(leaderSequence, {
         tokenDisplay(tokenName) {
-          return tokenName === "<leader>" ? "ctrl+x" : undefined
+          return tokenName === "leader" ? "ctrl+x" : undefined
         },
       }),
     ).toBe("ctrl+x s")
-    expect(formatKeySequence(leaderSequence, { tokenDisplay: { "<leader>": "" } })).toBe(" s")
+    expect(formatKeySequence(leaderSequence, { tokenDisplay: { leader: "" } })).toBe(" s")
     expect(
       formatKeySequence(leaderSequence, {
         tokenDisplay(tokenName, part) {
-          expect(tokenName).toBe("<leader>")
-          expect(part.tokenName).toBe("<leader>")
+          expect(tokenName).toBe("leader")
+          expect(part.tokenName).toBe("leader")
           return ""
         },
       }),
@@ -107,13 +107,13 @@ describe("formatting helpers", () => {
 
   test("formats active-key shaped parts", () => {
     const keymap = getKeymap(renderer)
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
     keymap.registerLayer({ commands: [{ name: "save", run() {} }], bindings: [{ key: "<leader>s", cmd: "save" }] })
 
     const activeKey = keymap.getActiveKeys()[0]
 
     expect(formatKeySequence(activeKey ? [activeKey] : [])).toBe("<leader>")
-    expect(formatKeySequence(activeKey ? [activeKey] : [], { tokenDisplay: { "<leader>": "ctrl+x" } })).toBe("ctrl+x")
+    expect(formatKeySequence(activeKey ? [activeKey] : [], { tokenDisplay: { leader: "ctrl+x" } })).toBe("ctrl+x")
   })
 
   test("supports empty separators", () => {
@@ -124,7 +124,7 @@ describe("formatting helpers", () => {
 
   test("formats command binding lists with dedupe by default", () => {
     const keymap = getKeymap(renderer)
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
 
     keymap.registerLayer({
       commands: [{ name: "save-file", run() {} }],

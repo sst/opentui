@@ -184,7 +184,7 @@ describe("keymap: tokens and lifecycle", () => {
     })
 
     expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>a" was ignored',
+      '[Keymap] Unknown token "leader" in key sequence "<leader>a" was ignored',
     ])
 
     expect(getActiveKeyNames(keymap)).toEqual(["a"])
@@ -193,7 +193,7 @@ describe("keymap: tokens and lifecycle", () => {
     expect(calls).toEqual(["leader"])
 
     const offToken = keymap.registerToken({
-      name: "<leader>",
+      name: "leader",
       key: { name: "x", ctrl: true },
     })
 
@@ -239,13 +239,13 @@ describe("keymap: tokens and lifecycle", () => {
     })
 
     expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>" was ignored',
+      '[Keymap] Unknown token "leader" in key sequence "<leader>" was ignored',
     ])
 
     expect(keymap.getActiveKeys()).toEqual([])
 
     keymap.registerToken({
-      name: "<leader>",
+      name: "leader",
       key: { name: "x", ctrl: true },
     })
 
@@ -266,7 +266,7 @@ describe("keymap: tokens and lifecycle", () => {
     })
 
     expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>ab" was ignored',
+      '[Keymap] Unknown token "leader" in key sequence "<leader>ab" was ignored',
     ])
 
     mockInput.pressKey("a")
@@ -279,7 +279,7 @@ describe("keymap: tokens and lifecycle", () => {
     ])
 
     keymap.registerToken({
-      name: "<leader>",
+      name: "leader",
       key: { name: "x", ctrl: true },
     })
 
@@ -306,14 +306,14 @@ describe("keymap: tokens and lifecycle", () => {
     })
 
     expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>b" was ignored',
+      '[Keymap] Unknown token "leader" in key sequence "<leader>b" was ignored',
     ])
 
     expect(getActiveKeyNames(keymap)).toEqual(["a", "b"])
 
     expect(() => {
       keymap.registerToken({
-        name: "<leader>",
+        name: "leader",
         key: "a",
       })
     }).not.toThrow()
@@ -440,7 +440,7 @@ describe("keymap: tokens and lifecycle", () => {
     renderer.root.add(target)
 
     keymap.registerToken({
-      name: "<leader>",
+      name: "leader",
       key: { name: "x", ctrl: true },
     })
 
@@ -501,7 +501,7 @@ describe("keymap: tokens and lifecycle", () => {
     const { takeErrors } = captureDiagnostics(keymap)
 
     expect(() => {
-      keymap.registerToken({ name: "<leader>", key: "dd" })
+      keymap.registerToken({ name: "leader", key: "dd" })
     }).not.toThrow()
 
     expect(takeErrors().errors).toEqual(['Invalid key "dd": expected a single key stroke'])

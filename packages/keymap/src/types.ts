@@ -324,7 +324,7 @@ export interface SequencePattern<TEvent extends KeymapEvent = KeymapEvent> {
 
 export interface ResolvedSequencePattern<TEvent extends KeymapEvent = KeymapEvent> {
   name: string
-  display: string
+  display?: string
   payloadKey: string
   match: KeyMatch
   min: number

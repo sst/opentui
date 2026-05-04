@@ -132,7 +132,7 @@ describe("keymap: parsing and binding pipeline", () => {
 
     keymap.prependBindingParser(createBracketTokenParser())
 
-    keymap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
       commands: [
         {
@@ -160,7 +160,7 @@ describe("keymap: parsing and binding pipeline", () => {
     keymap.clearBindingParsers()
     keymap.appendBindingParser(createBracketTokenParser())
 
-    keymap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
       commands: [
         {
@@ -201,10 +201,10 @@ describe("keymap: parsing and binding pipeline", () => {
     })
 
     expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "[leader]" in key sequence "[Leader]d" was ignored',
+      '[Keymap] Unknown token "leader" in key sequence "[Leader]d" was ignored',
     ])
 
-    keymap.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
 
     const matchesLeader = keymap.createKeyMatcher("[Leader]")
 
@@ -742,8 +742,8 @@ describe("keymap: parsing and binding pipeline", () => {
       return [{ key: tokenized.join("") }]
     })
 
-    keymap.registerToken({ name: "<c-x>", key: { name: "x", ctrl: true } })
-    keymap.registerToken({ name: "<c-s>", key: { name: "s", ctrl: true } })
+    keymap.registerToken({ name: "c-x", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "c-s", key: { name: "s", ctrl: true } })
     keymap.registerLayer({
       commands: [
         {
@@ -854,11 +854,11 @@ describe("keymap: parsing and binding pipeline", () => {
 
     expect(runs).toBe(1)
 
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
 
     expect(runs).toBe(1)
     expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored',
+      '[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored',
     ])
   })
 
@@ -960,7 +960,7 @@ describe("keymap: parsing and binding pipeline", () => {
       ctx.skipOriginal()
     })
 
-    keymap.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
       commands: [
         {
@@ -979,8 +979,8 @@ describe("keymap: parsing and binding pipeline", () => {
     const activeKey = getActiveKey(keymap, "x", { includeBindings: true })
 
     expect(activeKey?.display).toBe("[Leader]")
-    expect(activeKey?.tokenName).toBe("[leader]")
-    expect(activeKey?.bindings?.[0]?.sequence[0]?.tokenName).toBe("[leader]")
+    expect(activeKey?.tokenName).toBe("leader")
+    expect(activeKey?.bindings?.[0]?.sequence[0]?.tokenName).toBe("leader")
 
     mockInput.pressKey("x", { ctrl: true })
 
@@ -1152,7 +1152,7 @@ describe("keymap: parsing and binding pipeline", () => {
       return [ctx.resolveKey("[Leader]")]
     })
 
-    keymap.registerToken({ name: "[Leader]", key: { name: "z" } })
+    keymap.registerToken({ name: "leader", key: { name: "z" } })
     keymap.registerLayer({
       commands: [
         {

@@ -90,7 +90,7 @@ keymap.registerLayer({
 | Form            | Example                              | Notes                                         |
 | --------------- | ------------------------------------ | --------------------------------------------- |
 | String stroke   | `"x"`, `"ctrl+x"`, `"enter"`         | Requires a registered binding parser          |
-| String sequence | `"dd"`, `"<leader>s"`                | Concatenated multi-stroke sequence            |
+| String sequence | `"dd"`, `"<leader>s"`, `"{count}j"` | Concatenated multi-stroke sequence            |
 | Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly  |
 | Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only |
 
@@ -110,7 +110,20 @@ Binding custom fields are compile inputs. They are not exposed as a public `.fie
 
 Release bindings dispatch on key release, but they do not appear in `getActiveKeys()` because active-key discovery is based on press/pending-sequence state.
 
-The shared default parser understands single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key and `<token>` segments. Spaced Emacs-style sequences such as `ctrl+x ctrl+s` are not part of the default parser.
+The shared default parser understands single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key, `<token>` aliases, and `{pattern}` runtime captures. Spaced Emacs-style sequences such as `ctrl+x ctrl+s` are not part of the default parser.
+
+Token and pattern registration names are syntax-free. The default parser maps `<leader>` to the token named `"leader"` and `{count}` to the sequence pattern named `"count"`. Parser-preserved display keeps the original syntax for UIs, while the engine stores semantic names.
+
+Sequence patterns can capture repeated runtime input and pass finalized values to command payloads:
+
+| Pattern field | Description                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------- |
+| `name`        | Semantic pattern name, also the default command payload key                                   |
+| `display`     | Optional parser-facing display override for structural graph/help UI                          |
+| `payloadKey`  | Optional override when the command payload field should differ from `name`                    |
+| `min` / `max` | Optional capture limits. Defaults to at least one input and no practical maximum              |
+| `match`       | Runtime event predicate that returns a captured value/display or `undefined` for no match     |
+| `finalize`    | Optional conversion from captured values to the final payload value, e.g. digits to a number  |
 
 ## State and discovery
 
@@ -138,7 +151,7 @@ The shared default parser understands single-stroke named keys, modifier chords,
 | -------------- | ----------------------- | ------------------------------------------------------------------------------------------ |
 | `stroke`       | `NormalizedKeyStroke`   | Normalized stroke (name plus modifier flags)                                               |
 | `display`      | `string`                | Display string for the stroke, including the preserved token form when one was used        |
-| `tokenName`    | `string?`               | Token name when this key resolved through a registered token such as `<leader>`            |
+| `tokenName`    | `string?`               | Token name when this key resolved through a registered token such as `leader`              |
 | `continues`    | `boolean`               | `true` when at least one binding continues the sequence past this key                      |
 | `command`      | `BindingCommand?`       | Command at this exact sequence, if any                                                     |
 | `bindings`     | `ActiveBinding[]?`      | Per-key bindings; populated only when `includeBindings: true`                              |
@@ -262,7 +275,7 @@ keymap.registerLayer({ bindings })
 import { formatCommandBindings, formatKeySequence } from "@opentui/keymap/extras"
 
 formatKeySequence(keymap.parseKeySequence("<leader>s"), {
-  tokenDisplay: { "<leader>": "space" },
+  tokenDisplay: { leader: "space" },
   modifierAliases: { meta: "alt" },
   keyNameAliases: { pageup: "pgup", pagedown: "pgdn", delete: "del" },
 })
@@ -291,7 +304,7 @@ keymap.registerLayer({ bindings: resolved.sections.app })
 resolved.get("app", "app.exit")
 ```
 
-Tokens such as `<leader>` are still registered through the normal keymap token APIs.
+Tokens such as `leader` are still registered through the normal keymap token APIs and referenced by parser syntax such as `<leader>`.
 
 `dispatchCommand()` respects current activation and can return `inactive` or `disabled` when the command exists but is not currently dispatchable. `runCommand()` walks the registered chain directly, so it can execute command-only layers programmatically even when they do not have an active binding.
 
@@ -439,7 +452,8 @@ Intercept options:
 
 | API                                        | Use for                                                                       |
 | ------------------------------------------ | ----------------------------------------------------------------------------- |
-| `registerToken(token)`                     | Define named single-stroke aliases such as `<leader>`                         |
+| `registerToken(token)`                     | Define named single-stroke aliases such as `leader`                           |
+| `registerSequencePattern(pattern)`         | Define named runtime sequence captures such as `count`                        |
 | `registerLayerFields(fields)`              | Add custom layer fields with `require(...)`, `attr(...)`, `activeWhen(...)`   |
 | `registerBindingFields(fields)`            | Add custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 | `registerCommandFields(fields)`            | Add custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |

@@ -493,7 +493,7 @@ describe("keymap: sequences and state", () => {
     const calls: string[] = []
 
     keymap.registerToken({
-      name: "<leader>",
+      name: "leader",
       key: { name: "x", ctrl: true },
     })
 
@@ -520,7 +520,7 @@ describe("keymap: sequences and state", () => {
       {
         stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
         display: "<leader>",
-        tokenName: "<leader>",
+        tokenName: "leader",
       },
     ])
     expect(getActiveKey(keymap, "g")?.command).toBeUndefined()
@@ -540,7 +540,7 @@ describe("keymap: sequences and state", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerToken({
-      name: "<leader>",
+      name: "leader",
       key: { name: "x", ctrl: true },
     })
 
@@ -561,7 +561,7 @@ describe("keymap: sequences and state", () => {
     const activeKey = getActiveKeyDisplay(keymap, "<leader>", { includeBindings: true })
 
     expect(activeKey?.command).toBeUndefined()
-    expect(activeKey?.tokenName).toBe("<leader>")
+    expect(activeKey?.tokenName).toBe("leader")
     expect(activeKey?.bindings).toBeUndefined()
     expect(stringifyKeyStroke(activeKey!, { preferDisplay: true })).toBe("<leader>")
   })
@@ -569,7 +569,7 @@ describe("keymap: sequences and state", () => {
   test("clears active key token provenance when token and literal prefixes share a key", () => {
     const keymap = getKeymap(renderer)
 
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
     keymap.registerLayer({
       commands: [
         { name: "token-command", run() {} },
@@ -692,7 +692,7 @@ describe("keymap: sequences and state", () => {
     renderer.root.add(target)
 
     keymap.registerToken({
-      name: "<leader>",
+      name: "leader",
       key: { name: "x", ctrl: true },
     })
 

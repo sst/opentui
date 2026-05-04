@@ -685,7 +685,7 @@ describe("keymap: fields and reactive matchers", () => {
 
     keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
 
-    const offToken = keymap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+    const offToken = keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
       bindings: [{ key: "<leader>a", active: true, cmd: "noop" }],
     })
@@ -699,7 +699,7 @@ describe("keymap: fields and reactive matchers", () => {
     offToken()
 
     expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>a" was ignored',
+      '[Keymap] Unknown token "leader" in key sequence "<leader>a" was ignored',
     ])
     expect(enabled.disposeCalls).toBe(disposesBefore + 1)
     expect(enabled.subscribeCalls).toBe(subscribesBefore + 1)

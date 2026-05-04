@@ -113,7 +113,7 @@ export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRende
         throw new Error(`Invalid key sequence "${input}": unterminated token`)
       }
 
-      const tokenName = input.slice(index, end + 1).trim()
+      const tokenName = input.slice(index + 1, end).trim()
       const normalizedTokenName = normalizeTokenName(tokenName)
       const token = tokens.get(normalizedTokenName)
       if (!token) {
@@ -127,7 +127,7 @@ export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRende
       return {
         parts: [
           parseObjectKey(token.stroke, {
-            display: options?.preserveDisplayCase ? tokenName : normalizedTokenName,
+            display: options?.preserveDisplayCase ? `[${tokenName}]` : `[${normalizedTokenName}]`,
             match: token.match,
             tokenName: normalizedTokenName,
           }),

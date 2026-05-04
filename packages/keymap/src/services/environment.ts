@@ -234,7 +234,7 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
 
       resolvedPattern = {
         name: normalizedName,
-        display: pattern.display ?? normalizedName,
+        display: pattern.display,
         payloadKey: pattern.payloadKey ?? normalizedName,
         match: createTextKeyMatch(`pattern:${normalizedName}`),
         min,

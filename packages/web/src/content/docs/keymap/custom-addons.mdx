@@ -49,14 +49,15 @@ Guidelines:
 
 ## Public registration APIs
 
-### Fields and tokens
+### Fields, tokens, and patterns
 
-| API                             | Use for                                                                       |
-| ------------------------------- | ----------------------------------------------------------------------------- |
-| `registerToken(token)`          | Define named single-stroke aliases such as `<leader>`                         |
-| `registerLayerFields(fields)`   | Add custom layer fields with `require(...)`, `attr(...)`, `activeWhen(...)`   |
-| `registerBindingFields(fields)` | Add custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
-| `registerCommandFields(fields)` | Add custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
+| API                                      | Use for                                                                       |
+| ---------------------------------------- | ----------------------------------------------------------------------------- |
+| `registerToken(token)`                   | Define named single-stroke aliases such as `leader`                           |
+| `registerSequencePattern(pattern)`       | Define named runtime sequence captures such as `count`                        |
+| `registerLayerFields(fields)`            | Add custom layer fields with `require(...)`, `attr(...)`, `activeWhen(...)`   |
+| `registerBindingFields(fields)`          | Add custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
+| `registerCommandFields(fields)`          | Add custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 
 ### Binding pipeline
 
@@ -249,11 +250,14 @@ keymap.appendBindingExpander(({ input }) => {
 | `input` / `index`               | Current source string and parser position                               |
 | `layer`                         | Read-only layer fields                                                  |
 | `tokens`                        | Registered tokens available to this parser                              |
+| `patterns`                      | Registered sequence patterns available to this parser                   |
 | `normalizeTokenName(token)`     | Normalize token names consistently                                      |
 | `createMatch(id)`               | Create an opaque match id for custom event matching                     |
 | `parseObjectKey(key, options?)` | Normalize a stroke and optionally override display, match or token name |
 
 Return `{ parts, nextIndex }` to claim input, or `undefined` to let later parsers try.
+
+Parser syntax should stay inside the parser. Register tokens and sequence patterns with bare semantic names such as `"leader"` or `"count"`, then have the parser map whatever syntax it owns (`<leader>`, `{count}`, `[leader]`, `%count%`, etc.) to those names. Use `display` on parsed parts when you want graph/help UIs to preserve that syntax.
 
 ### `BindingTransformerContext`
 
@@ -451,8 +455,8 @@ This is how the OpenTUI textarea helpers safely share command and suspension inf
 
 - Unknown custom layer and binding fields are ignored and emit warnings.
 - Unknown custom command fields stay on the command object.
-- Unknown tokens inside binding strings are ignored and emit warnings.
-- Registering the missing token later recompiles affected layers.
+- Unknown tokens or sequence patterns inside binding strings are ignored and emit warnings.
+- Registering the missing token or pattern later recompiles affected layers.
 
 ### Re-entry
 

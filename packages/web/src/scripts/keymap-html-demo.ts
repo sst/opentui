@@ -88,8 +88,8 @@ let graphPulses: CanvasGraphPulse[] = []
 let graphPulseFrame = 0
 
 const DEBUG_NAMESPACE = "[html-keymap-demo]"
-const LEADER_TOKEN = "<leader>"
-const COUNT_PATTERN = "{count}"
+const LEADER_TOKEN = "leader"
+const COUNT_PATTERN = "count"
 const KEY_FORMAT_OPTIONS = {
   tokenDisplay: {
     [LEADER_TOKEN]: "space",
@@ -1279,7 +1279,6 @@ function disposers(): void {
   addons.registerBackspacePopsPendingSequence(keymap)
   keymap.registerSequencePattern({
     name: COUNT_PATTERN,
-    payloadKey: "count",
     match(event) {
       if (!/^\d$/.test(event.name)) {
         return undefined

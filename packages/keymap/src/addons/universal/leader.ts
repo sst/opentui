@@ -6,14 +6,14 @@ export interface LeaderOptions {
 }
 
 /**
- * Defines a token such as `<leader>` that expands to a chosen trigger key.
+ * Defines a token such as `leader` that the default parser can reference as `<leader>`.
  */
 export function registerLeader<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
   options: LeaderOptions,
 ): () => void {
   return keymap.registerToken({
-    name: options.name ?? "<leader>",
+    name: options.name ?? "leader",
     key: options.trigger,
   })
 }

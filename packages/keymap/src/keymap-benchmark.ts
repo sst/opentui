@@ -207,14 +207,14 @@ function createBracketTokenParser(): BindingParser {
       throw new Error(`Invalid key sequence "${input}": unterminated token`)
     }
 
-    const tokenName = normalizeTokenName(input.slice(index, end + 1))
+    const tokenName = normalizeTokenName(input.slice(index + 1, end))
     const token = tokens.get(tokenName)
     if (!token) {
       return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
     }
 
     return {
-      parts: [parseObjectKey(token.stroke, { display: tokenName, match: token.match, tokenName })],
+      parts: [parseObjectKey(token.stroke, { display: `[${tokenName}]`, match: token.match, tokenName })],
       nextIndex: end + 1,
       usedTokens: [tokenName],
     }
@@ -593,7 +593,7 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated layer registration using the default binding parser",
     async setup() {
       const resources = await createScenarioResources()
-      resources.keymap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+      resources.keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
 
       return {
         resources,
@@ -614,7 +614,7 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated layer registration with per-layer commands compiled on mount",
     async setup() {
       const resources = await createScenarioResources()
-      resources.keymap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+      resources.keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
 
       return {
         resources,
@@ -641,7 +641,7 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated layer registration with many no-op parsers ahead of default",
     async setup() {
       const resources = await createScenarioResources()
-      resources.keymap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+      resources.keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
 
       for (let index = 0; index < 32; index += 1) {
         resources.keymap.prependBindingParser(noopBindingParser)
@@ -670,7 +670,7 @@ const scenarios: BenchmarkScenario[] = [
       resources.keymap.clearBindingParsers()
       resources.keymap.appendBindingParser(createBracketTokenParser())
       resources.keymap.appendBindingParser(addons.defaultBindingParser)
-      resources.keymap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
+      resources.keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
 
       return {
         resources,
@@ -1420,14 +1420,14 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated key-sequence formatting with token, key, modifier, and separator options",
     async setup() {
       const resources = await createScenarioResources()
-      resources.keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+      resources.keymap.registerToken({ name: "leader", key: { name: "space" } })
       const sequence = [
         ...resources.keymap.parseKeySequence("<leader>s"),
         ...resources.keymap.parseKeySequence({ name: "return", ctrl: true, shift: true, meta: true }),
       ]
       const options = {
         tokenDisplay: {
-          "<leader>": "space",
+          leader: "space",
         },
         keyNameAliases: {
           enter: "return",
@@ -1458,7 +1458,7 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated command-binding formatting with display-based dedupe over many bindings",
     async setup() {
       const resources = await createScenarioResources()
-      resources.keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+      resources.keymap.registerToken({ name: "leader", key: { name: "space" } })
       const sequences = [
         resources.keymap.parseKeySequence("ctrl+s"),
         resources.keymap.parseKeySequence("ctrl+s"),
@@ -1489,7 +1489,7 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated command-binding formatting retaining duplicate bindings",
     async setup() {
       const resources = await createScenarioResources()
-      resources.keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+      resources.keymap.registerToken({ name: "leader", key: { name: "space" } })
       const sequences = [
         resources.keymap.parseKeySequence("ctrl+s"),
         resources.keymap.parseKeySequence("<leader>s"),
@@ -1503,7 +1503,7 @@ const scenarios: BenchmarkScenario[] = [
         dedupe: false,
         bindingSeparator: " | ",
         tokenDisplay: {
-          "<leader>": "space",
+          leader: "space",
         },
       }
       let sink: string | undefined
@@ -1991,7 +1991,7 @@ const scenarios: BenchmarkScenario[] = [
       }
 
       resources.keymap.registerToken({
-        name: "<leader>",
+        name: "leader",
         key: { name: "x", ctrl: true },
       })
       resources.mockInput.pressKey("x", { ctrl: true })

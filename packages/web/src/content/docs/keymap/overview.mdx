@@ -47,7 +47,8 @@ A binding can target a named command, an inline handler, or a specific key event
 Shape the keymap by registering layers, tokens and addons. Each layer declares bindings that map keys or key sequences to commands, optionally scoped to a host target with a priority. Addons extend the engine with parsers, field compilers, command resolvers and more.
 
 - Use `registerLayer()` to add bindings and commands.
-- Use `registerToken()` to define named key aliases like `<leader>`.
+- Use `registerToken()` to define named key aliases like `leader`, referenced by the default parser as `<leader>`.
+- Use `registerSequencePattern()` to define runtime sequence captures like `count`, referenced by the default parser as `{count}`.
 - Use addons to install parsers, field compilers, disambiguation and other behaviour.
 - Every registration call returns a disposer for cleanup.
 - See [Hosts](/docs/keymap/hosts) for how targets, hierarchy and focus enter the engine.
@@ -97,18 +98,18 @@ String keys are parser-driven. The engine does not hard-code one binding syntax 
 - Parsers turn a string into one or more normalized strokes.
 - Transformers can rewrite or add parsed bindings before the layer is compiled.
 
-The shared default parser accepts single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key, and concatenated multi-stroke sequences such as `"dd"` or `"<leader>s"`.
+The shared default parser accepts single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key, `<token>` aliases, `{pattern}` runtime captures, and concatenated multi-stroke sequences such as `"dd"`, `"<leader>s"`, or `"{count}j"`.
 
 Object-form keys are the escape hatch when you do not want string parsing. `{ name: "return", ctrl: true }` skips the string parser and normalizes directly to a single stroke.
 
-This parser-driven model is why the same engine can support built-in strings like `"ctrl+x"`, tokenized strings like `"<leader>s"`, and addon-defined syntaxes such as bracket tokens or Emacs-style expansions.
+This parser-driven model is why the same engine can support built-in strings like `"ctrl+x"`, tokenized strings like `"<leader>s"`, pattern strings like `"{count}j"`, and addon-defined syntaxes such as bracket tokens or Emacs-style expansions.
 
 ### Tokens
 
-Tokens are named single-stroke aliases used inside binding strings. Registering `<leader>` as space lets you write bindings like `"<leader>s"` without repeating the underlying key everywhere.
+Tokens are named single-stroke aliases used inside binding strings. Registration names are semantic and delimiter-free; the default parser maps `<leader>` syntax to the registered token named `"leader"`.
 
 ```ts
-keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+keymap.registerToken({ name: "leader", key: { name: "space" } })
 
 keymap.registerLayer({
   bindings: [{ key: "<leader>s", cmd: "save-file" }],
@@ -116,6 +117,42 @@ keymap.registerLayer({
 ```
 
 Tokens are compile-time input syntax, not a separate dispatch mode. They resolve to exactly one stroke, participate in sequence matching like any other stroke, and can be queried with their preserved display form.
+
+### Sequence patterns
+
+Sequence patterns are runtime captures used inside binding strings. Registration names are also semantic and delimiter-free; the default parser maps `{count}` syntax to the registered pattern named `"count"`.
+
+```ts
+import type { Command, KeymapEvent } from "@opentui/keymap"
+
+interface CountPayload {
+  count?: number
+}
+
+keymap.registerSequencePattern({
+  name: "count",
+  match(event) {
+    return /^\d$/.test(event.name) ? { value: event.name, display: event.name } : undefined
+  },
+  finalize(values) {
+    return Number(values.join(""))
+  },
+})
+
+const moveDownCommand: Command<object, KeymapEvent, CountPayload> = {
+  name: "move-down",
+  run({ payload }) {
+    moveDown(payload.count ?? 1)
+  },
+}
+
+keymap.registerLayer({
+  commands: [moveDownCommand],
+  bindings: [{ key: "{count}j", cmd: "move-down" }],
+})
+```
+
+By default, the command payload key is the pattern name, so `name: "count"` produces `payload.count`. Use `payloadKey` only when the command payload field should differ from the pattern name.
 
 ### Custom binding fields
 
@@ -133,7 +170,7 @@ keymap.registerBindingFields({
   },
 })
 
-keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+keymap.registerToken({ name: "leader", key: { name: "space" } })
 
 keymap.registerLayer({
   commands: [{ name: "write-file", run() {} }],

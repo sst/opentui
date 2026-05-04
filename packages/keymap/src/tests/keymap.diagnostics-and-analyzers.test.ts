@@ -291,12 +291,12 @@ describe("keymap: diagnostics and analyzers", () => {
     })
 
     const { warnings, warningEvents } = capture.takeWarnings()
-    expect(warnings).toEqual(['[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored'])
+    expect(warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored'])
     expect(warningEvents).toEqual([
       {
         code: "unknown-token",
-        message: '[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored',
-        warning: { token: "<leader>", sequence: "<leader>x" },
+        message: '[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored',
+        warning: { token: "leader", sequence: "<leader>x" },
       },
     ])
   })
@@ -381,10 +381,10 @@ describe("keymap: diagnostics and analyzers", () => {
     })
 
     expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored',
+      '[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored',
     ])
 
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
 
     expect(calls).toEqual(["0:x", "0:<leader>"])
   })

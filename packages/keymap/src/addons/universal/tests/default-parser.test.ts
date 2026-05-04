@@ -53,13 +53,13 @@ describe("default parser addon", () => {
       ],
       bindings: [{ key: "<leader>d", cmd: "run" }],
     })
-    keymap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
 
     mockInput.pressKey("x", { ctrl: true })
     mockInput.pressKey("d")
 
     expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>d" was ignored',
+      '[Keymap] Unknown token "leader" in key sequence "<leader>d" was ignored',
     ])
     expect(calls).toEqual(["run"])
   })
