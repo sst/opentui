@@ -26,6 +26,7 @@ export const GROUP_SEQUENCE_DIAGRAM = `sequenceDiagram
   Web->>Web: Validate order
   Web->>Cart: reserve inventory
   Cart-->>Web: reserved
+  Note over Web,Cart: inventory is held during payment
   Web->>Payments: authorize card
   Payments-->>Web: approved
   Web->>Email: send receipt
