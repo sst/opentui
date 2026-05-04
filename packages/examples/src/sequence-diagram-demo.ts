@@ -17,18 +17,24 @@ export const AUTH_SEQUENCE_DIAGRAM = `sequenceDiagram
   participant Store as Ticket store
   participant PTY
   Browser->>Server: GET /
-  Server-->>Browser: 401 WWW-Auth
-  Note over Browser,Server: (native browser Basic prompt)
-  Browser->>Server: GET / · Basic
-  Server-->>Browser: 200 web UI
+  alt Basic challenge required
+    Server-->>Browser: 401 WWW-Auth
+    Note over Browser,Server: (native browser Basic prompt)
+    Browser->>Server: GET / · Basic
+    Server-->>Browser: 200 web UI
+  else Basic already cached
+    Server-->>Browser: 200 web UI
+  end
   Note over Browser,Server: user opens terminal
-  Browser->>Server: POST connect-token<br/>· Basic (cached by browser)<br/>· X-OpenCode-Ticket: 1
-  Server->>Store: issue { ptyID, … }
-  Server-->>Browser: { ticket }
-  Browser->>Server: WS …?ticket=…<br/>Upgrade: websocket
-  Server->>Store: consume(token,scope)
-  Store-->>Server: ok, delete
+  Browser->>+Server: POST connect-token<br/>· Basic (cached by browser)<br/>· X-OpenCode-Ticket: 1
+  Server->>+Store: issue { ptyID, … }
+  Store-->>-Server: { ticket }
+  Server-->>-Browser: { ticket }
+  Browser->>+Server: WS …?ticket=…<br/>Upgrade: websocket
+  Server->>+Store: consume(token,scope)
+  Store-->>-Server: ok, delete
   Server->>PTY: attach
+  deactivate Server
   PTY->>Browser: WS frames`
 
 let container: BoxRenderable | null = null
@@ -50,6 +56,7 @@ interface SequenceDiagramTheme {
   lifeline: string
   request: string
   response: string
+  activation: string
   note: string
   noteBackground: string
 }
@@ -67,6 +74,7 @@ const THEMES: SequenceDiagramTheme[] = [
     lifeline: "#6F8A7E",
     request: "#86E1C8",
     response: "#E6B17E",
+    activation: "#C6D9CF",
     note: "#D7E5DD",
     noteBackground: "#24382F",
   },
@@ -82,6 +90,7 @@ const THEMES: SequenceDiagramTheme[] = [
     lifeline: "#64748B",
     request: "#7DD3FC",
     response: "#FCD34D",
+    activation: "#CBD5E1",
     note: "#D6DEE9",
     noteBackground: "#253044",
   },
@@ -97,6 +106,7 @@ const THEMES: SequenceDiagramTheme[] = [
     lifeline: "#69728B",
     request: "#93C5FD",
     response: "#FDBA74",
+    activation: "#C8D0E3",
     note: "#D8DEEE",
     noteBackground: "#2B3144",
   },
@@ -112,6 +122,7 @@ const THEMES: SequenceDiagramTheme[] = [
     lifeline: "#606B7A",
     request: "#A5D8FF",
     response: "#FFE08A",
+    activation: "#C7D1DE",
     note: "#D2DAE5",
     noteBackground: "#252C38",
   },
@@ -131,6 +142,7 @@ function applyTheme(renderer: CliRenderer, theme: SequenceDiagramTheme): void {
   diagram!.lifelineColor = theme.lifeline
   diagram!.requestColor = theme.request
   diagram!.responseColor = theme.response
+  diagram!.activationColor = theme.activation
   diagram!.noteColor = theme.note
   diagram!.noteBackgroundColor = theme.noteBackground
 
@@ -184,6 +196,7 @@ export function run(renderer: CliRenderer): void {
     lifelineColor: initialTheme.lifeline,
     requestColor: initialTheme.request,
     responseColor: initialTheme.response,
+    activationColor: initialTheme.activation,
     noteColor: initialTheme.note,
     noteBackgroundColor: initialTheme.noteBackground,
   })

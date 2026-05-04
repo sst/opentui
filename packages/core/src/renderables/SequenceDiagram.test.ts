@@ -88,6 +88,80 @@ sequenceDiagram
     expect(output.indexOf("native browser Basic prompt")).toBeLessThan(output.indexOf("POST connect-token"))
   })
 
+  test("parses activation shorthand and control blocks", () => {
+    const diagram = parseMermaidSequenceDiagram(`
+sequenceDiagram
+  Browser->>+Server: request
+  alt accepted
+    Server-->>-Browser: response
+  else rejected
+    activate Server
+    Server-->>Browser: error
+    deactivate Server
+  end
+`)
+
+    expect(diagram.steps).toEqual([
+      {
+        type: "message",
+        message: { from: "Browser", to: "Server", label: "request", style: "solid", activate: "Server" },
+      },
+      { type: "fragment", fragment: { kind: "alt", label: "accepted" } },
+      {
+        type: "message",
+        message: { from: "Server", to: "Browser", label: "response", style: "dashed", deactivate: "Server" },
+      },
+      { type: "fragment", fragment: { kind: "else", label: "rejected" } },
+      { type: "activation", activation: { participant: "Server", active: true } },
+      { type: "message", message: { from: "Server", to: "Browser", label: "error", style: "dashed" } },
+      { type: "activation", activation: { participant: "Server", active: false } },
+      { type: "fragment", fragment: { kind: "end", label: "" } },
+    ])
+  })
+
+  test("renders centered heavy activation bars", () => {
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  Browser->>+Server: request
+  Server-->>-Browser: response
+`)
+
+    expect(output).toContain("┃")
+    expect(output.indexOf("request")).toBeLessThan(output.indexOf("┃"))
+    expect(output.indexOf("┃")).toBeLessThan(output.indexOf("response"))
+  })
+
+  test("supports custom activation characters", () => {
+    const output = renderSequenceDiagram(
+      `
+sequenceDiagram
+  Browser->>+Server: request
+  Server-->>-Browser: response
+`,
+      { activationChar: "▓" },
+    )
+
+    expect(output).toContain("▓")
+    expect(output).not.toContain("┃")
+  })
+
+  test("renders lightweight alt else separators", () => {
+    const output = renderSequenceDiagram(`
+sequenceDiagram
+  alt accepted
+    Browser->>Server: ok
+  else rejected
+    Server-->>Browser: no
+  end
+`)
+
+    expect(output).toContain("alt: accepted")
+    expect(output).toContain("else: rejected")
+    expect(output).toContain("end")
+    expect(output.indexOf("alt: accepted")).toBeLessThan(output.indexOf("ok"))
+    expect(output.indexOf("else: rejected")).toBeLessThan(output.indexOf("no"))
+  })
+
   test("places two spacer rows above note badges and one below", () => {
     const output = renderSequenceDiagram(`
 sequenceDiagram

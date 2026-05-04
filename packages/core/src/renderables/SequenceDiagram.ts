@@ -16,6 +16,8 @@ export interface SequenceMessage {
   to: string
   label: string
   style: "solid" | "dashed"
+  activate?: string
+  deactivate?: string
 }
 
 export interface SequenceNote {
@@ -23,7 +25,21 @@ export interface SequenceNote {
   label: string
 }
 
-export type SequenceStep = { type: "message"; message: SequenceMessage } | { type: "note"; note: SequenceNote }
+export interface SequenceActivation {
+  participant: string
+  active: boolean
+}
+
+export interface SequenceFragment {
+  kind: "alt" | "else" | "end"
+  label: string
+}
+
+export type SequenceStep =
+  | { type: "message"; message: SequenceMessage }
+  | { type: "note"; note: SequenceNote }
+  | { type: "activation"; activation: SequenceActivation }
+  | { type: "fragment"; fragment: SequenceFragment }
 
 export interface SequenceDiagram {
   participants: SequenceParticipant[]
@@ -33,6 +49,7 @@ export interface SequenceDiagram {
 
 export interface SequenceDiagramRenderOptions {
   minParticipantGap?: number
+  activationChar?: string
 }
 
 export type SequenceDiagramAnsiTheme = Partial<Record<AnsiSequenceCellStyle, string>>
@@ -48,6 +65,8 @@ export interface SequenceDiagramOptions extends TextBufferOptions {
   lifelineColor?: ColorInput
   requestColor?: ColorInput
   responseColor?: ColorInput
+  activationColor?: ColorInput
+  activationChar?: string
   noteColor?: ColorInput
   noteBackgroundColor?: ColorInput
 }
@@ -55,7 +74,7 @@ export interface SequenceDiagramOptions extends TextBufferOptions {
 type MessageStyle = "request" | "response"
 type FadeStep = 1 | 2 | 3 | 4 | 5
 type FadeStyle = `${MessageStyle}Fade${FadeStep}`
-type AnsiSequenceCellStyle = "participant" | "lifeline" | MessageStyle | FadeStyle | "note"
+type AnsiSequenceCellStyle = "participant" | "lifeline" | MessageStyle | FadeStyle | "activation" | "fragment" | "note"
 type SequenceCellStyle = AnsiSequenceCellStyle | "noteBadge"
 type Rgb = readonly [number, number, number]
 
@@ -73,6 +92,7 @@ type SequenceStyleColors = Partial<Record<AnsiSequenceCellStyle, RGBA>> & {
 }
 
 const DEFAULT_MIN_PARTICIPANT_GAP = 18
+const DEFAULT_ACTIVATION_CHAR = "┃"
 const NOTE_HORIZONTAL_PADDING = 1
 const FADE_STEPS = [1, 2, 3, 4, 5] as const satisfies readonly FadeStep[]
 const DEFAULT_THEME_RGB = {
@@ -80,6 +100,8 @@ const DEFAULT_THEME_RGB = {
   lifeline: [111, 138, 126],
   request: [134, 225, 200],
   response: [230, 177, 126],
+  activation: [198, 218, 207],
+  fragment: [154, 184, 169],
   noteFg: [215, 229, 221],
   noteBg: [36, 56, 47],
 } as const
@@ -88,13 +110,18 @@ const DEFAULT_ANSI_THEME: Required<Record<AnsiSequenceCellStyle, string>> = {
   lifeline: ansiFg(DEFAULT_THEME_RGB.lifeline),
   request: ansiFg(DEFAULT_THEME_RGB.request),
   response: ansiFg(DEFAULT_THEME_RGB.response),
+  activation: ansiFg(DEFAULT_THEME_RGB.activation),
+  fragment: ansiFg(DEFAULT_THEME_RGB.fragment),
   note: `${ansiFg(DEFAULT_THEME_RGB.noteFg)}${ansiBg(DEFAULT_THEME_RGB.noteBg)}`,
   ...createAnsiFadeTheme("request", DEFAULT_THEME_RGB.lifeline, DEFAULT_THEME_RGB.request),
   ...createAnsiFadeTheme("response", DEFAULT_THEME_RGB.lifeline, DEFAULT_THEME_RGB.response),
 }
-const MESSAGE_RE = /^(.+?)\s*(-->>|->>|-->|->)\s*(.+?)\s*:\s*(.*)$/
+const MESSAGE_RE = /^(.+?)\s*(-->>|->>|-->|->)([+-]?)\s*(.+?)\s*:\s*(.*)$/
 const NOTE_RE = /^note\s+over\s+(.+?)\s*:\s*(.*)$/i
 const PARTICIPANT_RE = /^(?:participant|actor)\s+(\S+)(?:\s+as\s+(.+))?$/i
+const ACTIVATION_RE = /^(activate|deactivate)\s+(.+)$/i
+const ALT_RE = /^alt\s+(.+)$/i
+const ELSE_RE = /^else(?:\s+(.+))?$/i
 
 function mixChannel(left: number, right: number, amount: number): number {
   return Math.round(left + (right - left) * amount)
@@ -132,6 +159,10 @@ function stripQuotes(value: string): string {
     return trimmed.slice(1, -1)
   }
   return trimmed
+}
+
+function normalizeSingleCellChar(value: string | undefined, fallback: string): string {
+  return [...(value ?? "")][0] ?? fallback
 }
 
 function ensureParticipant(
@@ -196,12 +227,41 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
       continue
     }
 
+    const activationMatch = line.match(ACTIVATION_RE)
+    if (activationMatch) {
+      const participant = stripQuotes(activationMatch[2]!)
+      ensureParticipant(participants, participant)
+      steps.push({
+        type: "activation",
+        activation: { participant, active: activationMatch[1]!.toLowerCase() === "activate" },
+      })
+      continue
+    }
+
+    const altMatch = line.match(ALT_RE)
+    if (altMatch) {
+      steps.push({ type: "fragment", fragment: { kind: "alt", label: stripQuotes(altMatch[1]!) } })
+      continue
+    }
+
+    const elseMatch = line.match(ELSE_RE)
+    if (elseMatch) {
+      steps.push({ type: "fragment", fragment: { kind: "else", label: stripQuotes(elseMatch[1] ?? "") } })
+      continue
+    }
+
+    if (line.toLowerCase() === "end") {
+      steps.push({ type: "fragment", fragment: { kind: "end", label: "" } })
+      continue
+    }
+
     const messageMatch = line.match(MESSAGE_RE)
     if (messageMatch) {
       const from = stripQuotes(messageMatch[1]!)
       const arrow = messageMatch[2]!
-      const to = stripQuotes(messageMatch[3]!)
-      const label = stripQuotes(messageMatch[4]!)
+      const activationMarker = messageMatch[3]!
+      const to = stripQuotes(messageMatch[4]!)
+      const label = stripQuotes(messageMatch[5]!)
 
       ensureParticipant(participants, from)
       ensureParticipant(participants, to)
@@ -210,6 +270,11 @@ export function parseMermaidSequenceDiagram(content: string): SequenceDiagram {
         to,
         label,
         style: arrow.startsWith("--") ? "dashed" : "solid",
+      }
+      if (activationMarker === "+") {
+        message.activate = to
+      } else if (activationMarker === "-") {
+        message.deactivate = from
       }
       messages.push(message)
       steps.push({ type: "message", message })
@@ -413,6 +478,8 @@ function messageLabelWidth(label: string): number {
 
 function getStepHeight(step: SequenceStep): number {
   if (step.type === "note") return 3
+  if (step.type === "activation") return 0
+  if (step.type === "fragment") return 2
   return messageLabelLines(step.message.label).length + 2
 }
 
@@ -424,6 +491,41 @@ function getParticipantIndexes(participantIndexes: Map<string, number>, particip
   return participantIds
     .map((participantId) => participantIndexes.get(participantId) ?? -1)
     .filter((index) => index >= 0)
+}
+
+function drawActivationBars(
+  grid: SequenceGrid,
+  centers: number[],
+  participantIndexes: Map<string, number>,
+  activeParticipants: Set<string>,
+  activationChar: string,
+  startY: number,
+  endY: number,
+): void {
+  if (endY < startY) return
+
+  for (const participant of activeParticipants) {
+    const index = participantIndexes.get(participant)
+    if (index === undefined) continue
+
+    const x = centers[index]
+    if (x === undefined) continue
+
+    for (let y = startY; y <= endY; y++) {
+      setCell(grid, x, y, activationChar, "activation")
+    }
+  }
+}
+
+function renderFragment(grid: SequenceGrid, centers: number[], fragment: SequenceFragment, y: number): void {
+  const leftX = centers[0]
+  if (leftX === undefined) return
+
+  const marker = fragment.kind === "end" ? "└" : "├"
+  const label = fragment.kind === "end" ? " end" : ` ${fragment.kind}: ${fragment.label}`
+  setCell(grid, leftX, y, marker, "lifeline")
+  setCell(grid, leftX + 1, y, "─", "lifeline")
+  setText(grid, leftX + 2, y, label, "fragment")
 }
 
 function resolveParticipantCenters(
@@ -474,6 +576,7 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   const diagram = parseMermaidSequenceDiagram(content)
   if (diagram.participants.length === 0) return createGrid(0, 0)
   const participantIndexes = createParticipantIndexMap(diagram)
+  const activationChar = normalizeSingleCellChar(options.activationChar, DEFAULT_ACTIVATION_CHAR)
 
   const centers = resolveParticipantCenters(
     diagram,
@@ -504,9 +607,31 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   }
 
   let stepY = 3
+  let activeParticipants = new Set<string>()
 
   for (const step of diagram.steps) {
+    if (step.type === "activation") {
+      activeParticipants = new Set(activeParticipants)
+      if (step.activation.active) {
+        activeParticipants.add(step.activation.participant)
+      } else {
+        activeParticipants.delete(step.activation.participant)
+      }
+      continue
+    }
+
     if (step.type === "note") {
+      const stepHeight = getStepHeight(step)
+      drawActivationBars(
+        grid,
+        centers,
+        participantIndexes,
+        activeParticipants,
+        activationChar,
+        stepY,
+        stepY + stepHeight - 1,
+      )
+
       const indexes = getParticipantIndexes(participantIndexes, step.note.over)
       if (indexes.length === 0) continue
 
@@ -516,18 +641,55 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
       const noteText = noteLabelText(step.note.label)
       const labelRow = stepY + 1
       setText(grid, centeredStart(centerX, noteText), labelRow, noteText, "noteBadge")
-      stepY += getStepHeight(step)
+      stepY += stepHeight
+      continue
+    }
+
+    if (step.type === "fragment") {
+      const stepHeight = getStepHeight(step)
+      drawActivationBars(
+        grid,
+        centers,
+        participantIndexes,
+        activeParticipants,
+        activationChar,
+        stepY,
+        stepY + stepHeight - 1,
+      )
+      renderFragment(grid, centers, step.fragment, stepY)
+      stepY += stepHeight
       continue
     }
 
     const labelRow = stepY
     const message = step.message
+    const stepHeight = getStepHeight(step)
     const messageStyle: SequenceCellStyle = message.style === "dashed" ? "response" : "request"
     const labelLines = messageLabelLines(message.label)
     const arrowRow = labelRow + labelLines.length
+    const stepEndRow = stepY + stepHeight - 1
     const fromIndex = participantIndexes.get(message.from) ?? -1
     const toIndex = participantIndexes.get(message.to) ?? -1
     if (fromIndex < 0 || toIndex < 0) continue
+
+    drawActivationBars(grid, centers, participantIndexes, activeParticipants, activationChar, stepY, arrowRow)
+
+    const nextActiveParticipants = new Set(activeParticipants)
+    if (message.activate) {
+      nextActiveParticipants.add(message.activate)
+    }
+    if (message.deactivate) {
+      nextActiveParticipants.delete(message.deactivate)
+    }
+    drawActivationBars(
+      grid,
+      centers,
+      participantIndexes,
+      nextActiveParticipants,
+      activationChar,
+      arrowRow + 1,
+      stepEndRow,
+    )
 
     const fromX = centers[fromIndex]!
     const toX = centers[toIndex]!
@@ -551,7 +713,8 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
       setCell(grid, toX, arrowRow, "◀", messageStyle)
     }
 
-    stepY += getStepHeight(step)
+    activeParticipants = nextActiveParticipants
+    stepY += stepHeight
   }
 
   return grid
@@ -568,10 +731,12 @@ export function renderSequenceDiagramAnsi(content: string, options: SequenceDiag
 export class SequenceDiagramRenderable extends TextBufferRenderable {
   private _content: string
   private _minParticipantGap: number
+  private _activationChar: string
   private _participantColor?: RGBA
   private _lifelineColor?: RGBA
   private _requestColor?: RGBA
   private _responseColor?: RGBA
+  private _activationColor?: RGBA
   private _noteColor?: RGBA
   private _noteBackgroundColor?: RGBA
 
@@ -579,10 +744,12 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     super(ctx, { ...options, wrapMode: options.wrapMode ?? "none" })
     this._content = options.content ?? ""
     this._minParticipantGap = options.minParticipantGap ?? DEFAULT_MIN_PARTICIPANT_GAP
+    this._activationChar = normalizeSingleCellChar(options.activationChar, DEFAULT_ACTIVATION_CHAR)
     this._participantColor = options.participantColor ? parseColor(options.participantColor) : undefined
     this._lifelineColor = options.lifelineColor ? parseColor(options.lifelineColor) : undefined
     this._requestColor = options.requestColor ? parseColor(options.requestColor) : undefined
     this._responseColor = options.responseColor ? parseColor(options.responseColor) : undefined
+    this._activationColor = options.activationColor ? parseColor(options.activationColor) : undefined
     this._noteColor = options.noteColor ? parseColor(options.noteColor) : undefined
     this._noteBackgroundColor = options.noteBackgroundColor ? parseColor(options.noteBackgroundColor) : undefined
     this.updateDiagram()
@@ -605,6 +772,17 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   set minParticipantGap(value: number) {
     if (this._minParticipantGap === value) return
     this._minParticipantGap = value
+    this.updateDiagram()
+  }
+
+  get activationChar(): string {
+    return this._activationChar
+  }
+
+  set activationChar(value: string | undefined) {
+    const next = normalizeSingleCellChar(value, DEFAULT_ACTIVATION_CHAR)
+    if (this._activationChar === next) return
+    this._activationChar = next
     this.updateDiagram()
   }
 
@@ -648,6 +826,16 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     })
   }
 
+  get activationColor(): RGBA | undefined {
+    return this._activationColor
+  }
+
+  set activationColor(value: ColorInput | undefined) {
+    this.setColor(this._activationColor, value, (color) => {
+      this._activationColor = color
+    })
+  }
+
   get noteColor(): RGBA | undefined {
     return this._noteColor
   }
@@ -680,7 +868,10 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   }
 
   private updateDiagram(): void {
-    const grid = layoutSequenceDiagram(this._content, { minParticipantGap: this._minParticipantGap })
+    const grid = layoutSequenceDiagram(this._content, {
+      minParticipantGap: this._minParticipantGap,
+      activationChar: this._activationChar,
+    })
     this.textBuffer.setStyledText(
       renderGridStyledText(
         grid,
@@ -689,6 +880,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
           lifeline: this._lifelineColor,
           request: this._requestColor,
           response: this._responseColor,
+          activation: this._activationColor,
           note: this._noteColor,
           noteBg: this._noteBackgroundColor,
         }),
