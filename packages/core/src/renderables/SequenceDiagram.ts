@@ -61,6 +61,9 @@ export interface SequenceDiagram {
 export interface SequenceDiagramRenderOptions {
   minParticipantGap?: number
   fragmentBorderStyle?: BorderStyle
+  pulseFrame?: number
+  pulseLength?: number
+  pulseGap?: number
 }
 
 export type SequenceDiagramAnsiTheme = Partial<Record<AnsiSequenceCellStyle, string>>
@@ -73,11 +76,15 @@ export interface SequenceDiagramOptions extends TextBufferOptions {
   content?: string
   minParticipantGap?: number
   fragmentBorderStyle?: BorderStyle
+  pulseFrame?: number
+  pulseLength?: number
+  pulseGap?: number
   participantColor?: ColorInput
   lifelineColor?: ColorInput
   groupColor?: ColorInput
   requestColor?: ColorInput
   responseColor?: ColorInput
+  pulseColor?: ColorInput
   noteColor?: ColorInput
   noteBackgroundColor?: ColorInput
 }
@@ -85,12 +92,16 @@ export interface SequenceDiagramOptions extends TextBufferOptions {
 type MessageStyle = "request" | "response"
 type FadeStep = 1 | 2 | 3 | 4 | 5
 type FadeStyle = `${MessageStyle}Fade${FadeStep}`
+type MessagePulseStyle = `${MessageStyle}Pulse`
+type PulseFadeStyle = `${MessageStyle}PulseFade${FadeStep}`
 type AnsiSequenceCellStyle =
   | "participant"
   | "lifeline"
   | "group"
   | MessageStyle
   | FadeStyle
+  | MessagePulseStyle
+  | PulseFadeStyle
   | "fragment"
   | "fragmentLabel"
   | "note"
@@ -109,26 +120,52 @@ interface SequenceGrid {
 interface SequenceLayoutOptions {
   minParticipantGap: number
   fragmentBorderStyle: BorderStyle
+  pulseFrame?: number
+  pulseLength: number
+  pulseGap: number
 }
 
 type SequenceStyleColors = Partial<Record<AnsiSequenceCellStyle, RGBA>> & {
   noteBg?: RGBA
   fragmentLabelBg?: RGBA
+  pulse?: RGBA
 }
 
 const DEFAULT_MIN_PARTICIPANT_GAP = 18
+const DEFAULT_PULSE_LENGTH = 7
+const DEFAULT_PULSE_GAP = 16
 const NOTE_HORIZONTAL_PADDING = 1
 const GROUP_HORIZONTAL_PADDING = 2
 const FRAGMENT_HORIZONTAL_OVERHANG = 3
 const SEQUENCE_BORDER = BorderChars.rounded
 const DEFAULT_FRAGMENT_BORDER_STYLE = "rounded" satisfies BorderStyle
 const FADE_STEPS = [1, 2, 3, 4, 5] as const satisfies readonly FadeStep[]
+const PULSE_STYLES = {
+  request: [
+    "requestPulseFade1",
+    "requestPulseFade2",
+    "requestPulseFade3",
+    "requestPulseFade4",
+    "requestPulseFade5",
+    "requestPulse",
+  ],
+  response: [
+    "responsePulseFade1",
+    "responsePulseFade2",
+    "responsePulseFade3",
+    "responsePulseFade4",
+    "responsePulseFade5",
+    "responsePulse",
+  ],
+} as const satisfies Record<MessageStyle, readonly SequenceCellStyle[]>
 const DEFAULT_THEME_RGB = {
   participant: [228, 239, 232],
   lifeline: [111, 138, 126],
   group: [76, 99, 89],
   request: [134, 225, 200],
   response: [230, 177, 126],
+  requestPulse: [221, 255, 246],
+  responsePulse: [255, 232, 205],
   fragment: [154, 184, 169],
   fragmentLabelBg: [28, 43, 36],
   noteFg: [215, 229, 221],
@@ -145,6 +182,8 @@ const DEFAULT_ANSI_THEME: Required<Record<AnsiSequenceCellStyle, string>> = {
   note: `${ansiFg(DEFAULT_THEME_RGB.noteFg)}${ansiBg(DEFAULT_THEME_RGB.noteBg)}`,
   ...createAnsiFadeTheme("request", DEFAULT_THEME_RGB.lifeline, DEFAULT_THEME_RGB.request),
   ...createAnsiFadeTheme("response", DEFAULT_THEME_RGB.lifeline, DEFAULT_THEME_RGB.response),
+  ...createAnsiPulseTheme("request", DEFAULT_THEME_RGB.request, DEFAULT_THEME_RGB.requestPulse),
+  ...createAnsiPulseTheme("response", DEFAULT_THEME_RGB.response, DEFAULT_THEME_RGB.responsePulse),
 }
 const MESSAGE_RE = /^(.+?)\s*(-->>|->>|--x|-x|--\)|-\)|-->|->)([+-]?)\s*(.+?)\s*:\s*(.*)$/
 const NOTE_RE = /^note\s+over\s+(.+?)\s*:\s*(.*)$/i
@@ -181,6 +220,19 @@ function createAnsiFadeTheme(style: MessageStyle, from: Rgb, to: Rgb): Record<Fa
   ) as Record<FadeStyle, string>
 }
 
+function createAnsiPulseTheme(
+  style: MessageStyle,
+  from: Rgb,
+  to: Rgb,
+): Record<MessagePulseStyle | PulseFadeStyle, string> {
+  return {
+    [`${style}Pulse`]: ansiFg(to),
+    ...Object.fromEntries(
+      FADE_STEPS.map((step) => [`${style}PulseFade${step}`, ansiFg(mixRgb(from, to, step / (FADE_STEPS.length + 1)))]),
+    ),
+  } as Record<MessagePulseStyle | PulseFadeStyle, string>
+}
+
 function visualLength(value: string): number {
   return stringWidth(value)
 }
@@ -215,6 +267,20 @@ function arrowHeadChar(head: SequenceArrowHead | undefined, direction: 1 | -1): 
 
 function arrowHeadX(toX: number, direction: 1 | -1, head: SequenceArrowHead | undefined): number {
   return head === undefined ? toX : toX - direction
+}
+
+function normalizePulseFrame(value: number | undefined): number | undefined {
+  return value === undefined || !Number.isFinite(value) ? undefined : Math.trunc(value)
+}
+
+function normalizePulseLength(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return DEFAULT_PULSE_LENGTH
+  return Math.max(1, Math.trunc(value))
+}
+
+function normalizePulseGap(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return DEFAULT_PULSE_GAP
+  return Math.max(1, Math.trunc(value))
 }
 
 function isBoxColorToken(value: string): boolean {
@@ -503,7 +569,23 @@ function colorsEqual(left?: RGBA, right?: RGBA): boolean {
   return left.equals(right)
 }
 
+function createPulseStyleColors(
+  style: MessageStyle,
+  from: RGBA | undefined,
+  to: RGBA | undefined,
+): Partial<Record<MessagePulseStyle | PulseFadeStyle, RGBA | undefined>> {
+  return {
+    [`${style}Pulse`]: to,
+    ...Object.fromEntries(
+      FADE_STEPS.map((step) => [`${style}PulseFade${step}`, blendColor(from, to, step / (FADE_STEPS.length + 1))]),
+    ),
+  } as Partial<Record<MessagePulseStyle | PulseFadeStyle, RGBA | undefined>>
+}
+
 function resolveSequenceStyleColors(colors: SequenceStyleColors): SequenceStyleColors {
+  const requestPulse = colors.pulse ?? brightenColor(colors.request, 0.65)
+  const responsePulse = colors.pulse ?? brightenColor(colors.response, 0.65)
+
   return {
     ...colors,
     requestFade1: blendColor(colors.lifeline, colors.request, 1 / 6),
@@ -516,6 +598,8 @@ function resolveSequenceStyleColors(colors: SequenceStyleColors): SequenceStyleC
     responseFade3: blendColor(colors.lifeline, colors.response, 3 / 6),
     responseFade4: blendColor(colors.lifeline, colors.response, 4 / 6),
     responseFade5: blendColor(colors.lifeline, colors.response, 5 / 6),
+    ...createPulseStyleColors("request", colors.request, requestPulse),
+    ...createPulseStyleColors("response", colors.response, responsePulse),
   }
 }
 
@@ -536,6 +620,131 @@ function setArrowDepartureFade(
   for (let step = 2; step <= 5; step++) {
     setCell(grid, x + direction * (step - 1), y, SEQUENCE_BORDER.horizontal, `${style}Fade${step}` as SequenceCellStyle)
   }
+}
+
+function pulseCellStyle(
+  messageStyle: MessageStyle,
+  distance: number,
+  radius: number,
+  edgeDistance: number,
+  char: string,
+): { style: SequenceCellStyle; level: number } {
+  const distanceLevel = distance === 0 ? 6 : Math.max(1, Math.min(5, 6 - Math.ceil((distance / radius) * 5)))
+  const edgeLevel = Math.max(1, Math.min(6, Math.ceil(((edgeDistance + 1) / (radius + 1)) * 6)))
+  const glyphLevel = char === SEQUENCE_BORDER.horizontal || char === SEQUENCE_BORDER.vertical ? 6 : 4
+  const level = Math.min(distanceLevel, edgeLevel, glyphLevel)
+
+  return { style: PULSE_STYLES[messageStyle][level - 1]!, level }
+}
+
+function pulseStyleLevel(style: SequenceCellStyle | undefined): number {
+  if (!style) return 0
+  const pulseStyleSets: ReadonlyArray<readonly SequenceCellStyle[]> = [PULSE_STYLES.request, PULSE_STYLES.response]
+  for (const pulseStyles of pulseStyleSets) {
+    const index = pulseStyles.indexOf(style)
+    if (index >= 0) return index + 1
+  }
+  return 0
+}
+
+function setPulseCell(
+  grid: SequenceGrid,
+  x: number,
+  y: number,
+  messageStyle: MessageStyle,
+  distance: number,
+  radius: number,
+  edgeDistance: number,
+): void {
+  const cell = grid.rows[y]?.[x]
+  if (!cell || cell.char === " ") return
+
+  const pulse = pulseCellStyle(messageStyle, distance, radius, edgeDistance, cell.char)
+  if (pulseStyleLevel(cell.style) > pulse.level) return
+  cell.style = pulse.style
+}
+
+function drawPulseOnPath(
+  grid: SequenceGrid,
+  pathLength: number,
+  pointAt: (index: number) => readonly [number, number],
+  messageStyle: MessageStyle,
+  pulseFrame: number | undefined,
+  pulseLength: number,
+  pulseGap: number,
+): void {
+  if (pulseFrame === undefined || pathLength === 0) return
+
+  const before = Math.floor((pulseLength - 1) / 2)
+  const after = pulseLength - before - 1
+  const radius = Math.max(1, before, after)
+  const phase = (((pulseFrame % pulseGap) + pulseGap) % pulseGap) - pulseLength
+
+  for (let centerIndex = phase; centerIndex < pathLength + radius; centerIndex += pulseGap) {
+    for (let distance = -before; distance <= after; distance++) {
+      const pathIndex = centerIndex + distance
+      if (pathIndex < 0 || pathIndex >= pathLength) continue
+      const [x, y] = pointAt(pathIndex)
+      const edgeDistance = Math.min(pathIndex, pathLength - 1 - pathIndex)
+      setPulseCell(grid, x, y, messageStyle, Math.abs(distance), radius, edgeDistance)
+    }
+  }
+}
+
+function drawStraightPulse(
+  grid: SequenceGrid,
+  leftX: number,
+  rightX: number,
+  y: number,
+  direction: 1 | -1,
+  messageStyle: MessageStyle,
+  pulseFrame: number | undefined,
+  pulseLength: number,
+  pulseGap: number,
+): void {
+  const pathLength = rightX - leftX + 1
+  if (pathLength <= 0) return
+  drawPulseOnPath(
+    grid,
+    pathLength,
+    (index) => [direction === 1 ? leftX + index : rightX - index, y],
+    messageStyle,
+    pulseFrame,
+    pulseLength,
+    pulseGap,
+  )
+}
+
+function drawSelfMessagePulse(
+  grid: SequenceGrid,
+  centerX: number,
+  rightX: number,
+  topRow: number,
+  bottomRow: number,
+  messageStyle: MessageStyle,
+  pulseFrame: number | undefined,
+  pulseLength: number,
+  pulseGap: number,
+): void {
+  const topStartX = Math.min(centerX + FADE_STEPS.length, rightX)
+  const topLength = rightX - topStartX + 1
+  const rightLength = bottomRow - topRow
+  const bottomLength = rightX - centerX
+  const pathLength = topLength + rightLength + bottomLength
+
+  drawPulseOnPath(
+    grid,
+    pathLength,
+    (index) => {
+      if (index < topLength) return [topStartX + index, topRow]
+      if (index < topLength + rightLength) return [rightX, topRow + 1 + index - topLength]
+      return [rightX - 1 - (index - topLength - rightLength), bottomRow]
+    },
+    messageStyle,
+    pulseFrame,
+    pulseLength,
+    pulseGap,
+  )
 }
 
 function styleAnsi(
@@ -950,7 +1159,10 @@ function renderSelfMessage(
   topRow: number,
   labelLines: string[],
   head: SequenceArrowHead | undefined,
-  style: SequenceCellStyle,
+  style: MessageStyle,
+  pulseFrame: number | undefined,
+  pulseLength: number,
+  pulseGap: number,
 ): void {
   const rightX = centerX + selfMessageLoopWidthForLines(labelLines)
   const bottomRow = topRow + labelLines.length + 1
@@ -973,6 +1185,9 @@ function renderSelfMessage(
   }
   setCell(grid, arrowHeadX(centerX, -1, head), bottomRow, arrowHeadChar(head, -1), style)
   setCell(grid, rightX, bottomRow, SEQUENCE_BORDER.bottomRight, style)
+  if (pulseFrame !== undefined) {
+    drawSelfMessagePulse(grid, centerX, rightX, topRow, bottomRow, style, pulseFrame, pulseLength, pulseGap)
+  }
 }
 
 function resolveParticipantCenters(
@@ -1032,6 +1247,9 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
   if (diagram.participants.length === 0) return createGrid(0, 0)
   const participantIndexes = createParticipantIndexMap(diagram)
   const fragmentBorderStyle = options.fragmentBorderStyle ?? DEFAULT_FRAGMENT_BORDER_STYLE
+  const pulseFrame = normalizePulseFrame(options.pulseFrame)
+  const pulseLength = normalizePulseLength(options.pulseLength)
+  const pulseGap = normalizePulseGap(options.pulseGap)
 
   let centers = resolveParticipantCenters(
     diagram,
@@ -1151,7 +1369,7 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
     const labelRow = stepY
     const message = step.message
     const stepHeight = getStepHeight(step)
-    const messageStyle: SequenceCellStyle = message.style === "dashed" ? "response" : "request"
+    const messageStyle: MessageStyle = message.style === "dashed" ? "response" : "request"
     const labelLines = messageLabelLines(messageLabelText(message))
     const arrowRow = labelRow + labelLines.length
     const fromIndex = participantIndexes.get(message.from) ?? -1
@@ -1159,7 +1377,17 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
     if (fromIndex < 0 || toIndex < 0) continue
 
     if (fromIndex === toIndex) {
-      renderSelfMessage(grid, centers[fromIndex]!, stepY, labelLines, message.head, messageStyle)
+      renderSelfMessage(
+        grid,
+        centers[fromIndex]!,
+        stepY,
+        labelLines,
+        message.head,
+        messageStyle,
+        pulseFrame,
+        pulseLength,
+        pulseGap,
+      )
       stepY += stepHeight
       continue
     }
@@ -1180,10 +1408,38 @@ function layoutSequenceDiagram(content: string, options: SequenceDiagramRenderOp
 
     if (toX > fromX) {
       setArrowDepartureFade(grid, fromX, arrowRow, 1, messageStyle)
-      setCell(grid, arrowHeadX(toX, 1, message.head), arrowRow, arrowHeadChar(message.head, 1), messageStyle)
+      const headX = arrowHeadX(toX, 1, message.head)
+      setCell(grid, headX, arrowRow, arrowHeadChar(message.head, 1), messageStyle)
+      if (pulseFrame !== undefined) {
+        drawStraightPulse(
+          grid,
+          fromX + FADE_STEPS.length,
+          headX,
+          arrowRow,
+          1,
+          messageStyle,
+          pulseFrame,
+          pulseLength,
+          pulseGap,
+        )
+      }
     } else {
       setArrowDepartureFade(grid, fromX, arrowRow, -1, messageStyle)
-      setCell(grid, arrowHeadX(toX, -1, message.head), arrowRow, arrowHeadChar(message.head, -1), messageStyle)
+      const headX = arrowHeadX(toX, -1, message.head)
+      setCell(grid, headX, arrowRow, arrowHeadChar(message.head, -1), messageStyle)
+      if (pulseFrame !== undefined) {
+        drawStraightPulse(
+          grid,
+          headX,
+          fromX - FADE_STEPS.length,
+          arrowRow,
+          -1,
+          messageStyle,
+          pulseFrame,
+          pulseLength,
+          pulseGap,
+        )
+      }
     }
 
     stepY += stepHeight
@@ -1204,11 +1460,15 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
   private _content: string
   private _minParticipantGap: number
   private _fragmentBorderStyle: BorderStyle
+  private _pulseFrame?: number
+  private _pulseLength: number
+  private _pulseGap: number
   private _participantColor?: RGBA
   private _lifelineColor?: RGBA
   private _groupColor?: RGBA
   private _requestColor?: RGBA
   private _responseColor?: RGBA
+  private _pulseColor?: RGBA
   private _noteColor?: RGBA
   private _noteBackgroundColor?: RGBA
 
@@ -1217,11 +1477,15 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     this._content = options.content ?? ""
     this._minParticipantGap = options.minParticipantGap ?? DEFAULT_MIN_PARTICIPANT_GAP
     this._fragmentBorderStyle = options.fragmentBorderStyle ?? DEFAULT_FRAGMENT_BORDER_STYLE
+    this._pulseFrame = normalizePulseFrame(options.pulseFrame)
+    this._pulseLength = normalizePulseLength(options.pulseLength)
+    this._pulseGap = normalizePulseGap(options.pulseGap)
     this._participantColor = options.participantColor ? parseColor(options.participantColor) : undefined
     this._lifelineColor = options.lifelineColor ? parseColor(options.lifelineColor) : undefined
     this._groupColor = options.groupColor ? parseColor(options.groupColor) : undefined
     this._requestColor = options.requestColor ? parseColor(options.requestColor) : undefined
     this._responseColor = options.responseColor ? parseColor(options.responseColor) : undefined
+    this._pulseColor = options.pulseColor ? parseColor(options.pulseColor) : undefined
     this._noteColor = options.noteColor ? parseColor(options.noteColor) : undefined
     this._noteBackgroundColor = options.noteBackgroundColor ? parseColor(options.noteBackgroundColor) : undefined
     this.updateDiagram()
@@ -1255,6 +1519,39 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     const next = value ?? DEFAULT_FRAGMENT_BORDER_STYLE
     if (this._fragmentBorderStyle === next) return
     this._fragmentBorderStyle = next
+    this.updateDiagram()
+  }
+
+  get pulseFrame(): number | undefined {
+    return this._pulseFrame
+  }
+
+  set pulseFrame(value: number | undefined) {
+    const next = normalizePulseFrame(value)
+    if (this._pulseFrame === next) return
+    this._pulseFrame = next
+    this.updateDiagram()
+  }
+
+  get pulseLength(): number {
+    return this._pulseLength
+  }
+
+  set pulseLength(value: number | undefined) {
+    const next = normalizePulseLength(value)
+    if (this._pulseLength === next) return
+    this._pulseLength = next
+    this.updateDiagram()
+  }
+
+  get pulseGap(): number {
+    return this._pulseGap
+  }
+
+  set pulseGap(value: number | undefined) {
+    const next = normalizePulseGap(value)
+    if (this._pulseGap === next) return
+    this._pulseGap = next
     this.updateDiagram()
   }
 
@@ -1308,6 +1605,16 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     })
   }
 
+  get pulseColor(): RGBA | undefined {
+    return this._pulseColor
+  }
+
+  set pulseColor(value: ColorInput | undefined) {
+    this.setColor(this._pulseColor, value, (color) => {
+      this._pulseColor = color
+    })
+  }
+
   get noteColor(): RGBA | undefined {
     return this._noteColor
   }
@@ -1343,6 +1650,9 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
     const grid = layoutSequenceDiagram(this._content, {
       minParticipantGap: this._minParticipantGap,
       fragmentBorderStyle: this._fragmentBorderStyle,
+      pulseFrame: this._pulseFrame,
+      pulseLength: this._pulseLength,
+      pulseGap: this._pulseGap,
     })
     this.textBuffer.setStyledText(
       renderGridStyledText(
@@ -1353,6 +1663,7 @@ export class SequenceDiagramRenderable extends TextBufferRenderable {
           group: this._groupColor ?? brightenColor(this._lifelineColor, 0.08),
           request: this._requestColor,
           response: this._responseColor,
+          pulse: this._pulseColor,
           fragment: brightenColor(this._lifelineColor, 0.18),
           fragmentLabelBg: this._noteBackgroundColor,
           note: this._noteColor,

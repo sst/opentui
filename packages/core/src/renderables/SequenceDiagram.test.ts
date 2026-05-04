@@ -483,6 +483,137 @@ sequenceDiagram
     }
   })
 
+  test("colors repeated pulse waves on message arrows", async () => {
+    const pulseColor = parseColor("#F8FAFC")
+    const requestColor = parseColor("#38BDF8")
+    const testRenderer = await createTestRenderer({ width: 60, height: 12 })
+
+    try {
+      const diagram = new SequenceDiagramRenderable(testRenderer.renderer, {
+        content: `sequenceDiagram
+  Browser->>Server: request`,
+        requestColor,
+        pulseColor,
+        pulseFrame: 2,
+        pulseLength: 5,
+        pulseGap: 6,
+      })
+
+      testRenderer.renderer.root.add(diagram)
+      await testRenderer.renderOnce()
+
+      const arrowLine = testRenderer
+        .captureSpans()
+        .lines.find((line) => line.spans.some((span) => span.text.includes("▶")))
+      const pulseSpans = arrowLine?.spans.filter((span) => span.fg?.equals(pulseColor)) ?? []
+      const tweenSpan = arrowLine?.spans.find(
+        (span) => span.text.includes("─") && span.fg && !span.fg.equals(requestColor) && !span.fg.equals(pulseColor),
+      )
+
+      expect(pulseSpans.length).toBeGreaterThan(1)
+      expect(pulseSpans.some((span) => span.text.includes("─"))).toBe(true)
+      expect(tweenSpan).toBeDefined()
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
+  test("fades pulse waves in from the start of message arrows", async () => {
+    const pulseColor = parseColor("#F8FAFC")
+    const requestColor = parseColor("#38BDF8")
+    const testRenderer = await createTestRenderer({ width: 60, height: 12 })
+
+    try {
+      const diagram = new SequenceDiagramRenderable(testRenderer.renderer, {
+        content: `sequenceDiagram
+  Browser->>Server: request`,
+        requestColor,
+        pulseColor,
+        pulseFrame: 3,
+        pulseLength: 5,
+        pulseGap: 100,
+      })
+
+      testRenderer.renderer.root.add(diagram)
+      await testRenderer.renderOnce()
+
+      const arrowLine = testRenderer
+        .captureSpans()
+        .lines.find((line) => line.spans.some((span) => span.text.includes("▶")))
+      const corePulseSpan = arrowLine?.spans.find((span) => span.fg?.equals(pulseColor))
+      const fadeSpan = arrowLine?.spans.find(
+        (span) => span.fg && !span.fg.equals(requestColor) && !span.fg.equals(pulseColor),
+      )
+
+      expect(corePulseSpan).toBeUndefined()
+      expect(fadeSpan).toBeDefined()
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
+  test("keeps arrow connectors softer than pulse cores", async () => {
+    const pulseColor = parseColor("#F8FAFC")
+    const requestColor = parseColor("#38BDF8")
+    const lifelineColor = parseColor("#94A3B8")
+    const testRenderer = await createTestRenderer({ width: 60, height: 12 })
+
+    try {
+      const diagram = new SequenceDiagramRenderable(testRenderer.renderer, {
+        content: `sequenceDiagram
+  Browser->>Server: request`,
+        lifelineColor,
+        requestColor,
+        pulseColor,
+        pulseFrame: 2,
+        pulseLength: 5,
+        pulseGap: 100,
+      })
+
+      testRenderer.renderer.root.add(diagram)
+      await testRenderer.renderOnce()
+
+      const arrowLine = testRenderer
+        .captureSpans()
+        .lines.find((line) => line.spans.some((span) => span.text.includes("▶")))
+      const connectorSpan = arrowLine?.spans.find((span) => span.text.includes("├"))
+
+      expect(connectorSpan?.fg?.equals(requestColor)).toBe(false)
+      expect(connectorSpan?.fg?.equals(pulseColor)).toBe(false)
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
+  test("colors pulse waves around self-message loops", async () => {
+    const pulseColor = parseColor("#F8FAFC")
+    const requestColor = parseColor("#38BDF8")
+    const testRenderer = await createTestRenderer({ width: 60, height: 14 })
+
+    try {
+      const diagram = new SequenceDiagramRenderable(testRenderer.renderer, {
+        content: `sequenceDiagram
+  Service->>Service: validate`,
+        requestColor,
+        pulseColor,
+        pulseFrame: 14,
+        pulseLength: 5,
+        pulseGap: 100,
+      })
+
+      testRenderer.renderer.root.add(diagram)
+      await testRenderer.renderOnce()
+
+      const spans = testRenderer.captureSpans().lines.flatMap((line) => line.spans)
+      const cornerSpan = spans.find((span) => span.text.includes("╮"))
+
+      expect(cornerSpan?.fg?.equals(requestColor)).toBe(false)
+      expect(cornerSpan?.fg?.equals(pulseColor)).toBe(false)
+    } finally {
+      testRenderer.renderer.destroy()
+    }
+  })
+
   test("tweens arrow departure colors away from lifelines over five cells", async () => {
     const lifelineColor = parseColor("#94A3B8")
     const requestColor = parseColor("#38BDF8")

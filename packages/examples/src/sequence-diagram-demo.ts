@@ -137,8 +137,10 @@ let diagram: SequenceDiagramRenderable | null = null
 let titleText: TextRenderable | null = null
 let footer: TextRenderable | null = null
 let keyHandler: ((key: KeyEvent) => void) | null = null
+let pulseTimer: ReturnType<typeof setInterval> | null = null
 let themeIndex = 0
 let exampleIndex = 0
+let pulseFrame = 0
 
 interface SequenceDiagramTheme {
   name: string
@@ -242,7 +244,6 @@ function applyTheme(renderer: CliRenderer, theme: SequenceDiagramTheme): void {
   renderer.setBackgroundColor(theme.background)
   container!.backgroundColor = theme.background
   scrollBox!.backgroundColor = theme.background
-  scrollBox!.borderColor = theme.panelBorder
   scrollBox!.viewportOptions = { backgroundColor: theme.background }
   scrollBox!.contentOptions = { backgroundColor: theme.background, padding: 1 }
 
@@ -283,8 +284,7 @@ export function run(renderer: CliRenderer): void {
   scrollBox = new ScrollBoxRenderable(renderer, {
     id: "sequence-diagram-scrollbox",
     rootOptions: {
-      border: true,
-      borderColor: initialTheme.panelBorder,
+      border: false,
       backgroundColor: initialTheme.background,
     },
     viewportOptions: {
@@ -308,6 +308,9 @@ export function run(renderer: CliRenderer): void {
     groupColor: initialTheme.group,
     requestColor: initialTheme.request,
     responseColor: initialTheme.response,
+    pulseFrame,
+    pulseLength: 9,
+    pulseGap: 16,
     noteColor: initialTheme.note,
     noteBackgroundColor: initialTheme.noteBackground,
   })
@@ -353,9 +356,23 @@ export function run(renderer: CliRenderer): void {
     }
   }
   renderer.keyInput.on("keypress", keyHandler)
+
+  if (pulseTimer) {
+    clearInterval(pulseTimer)
+  }
+  pulseTimer = setInterval(() => {
+    pulseFrame = (pulseFrame + 1) % 10_000
+    if (diagram) {
+      diagram.pulseFrame = pulseFrame
+    }
+  }, 60)
 }
 
 export function destroy(renderer: CliRenderer): void {
+  if (pulseTimer) {
+    clearInterval(pulseTimer)
+    pulseTimer = null
+  }
   if (keyHandler) {
     renderer.keyInput.off("keypress", keyHandler)
     keyHandler = null
