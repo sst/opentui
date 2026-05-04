@@ -23,6 +23,7 @@ import type {
   KeyStrokeInput,
   KeySequencePart,
   ResolvedKeyToken,
+  ResolvedSequencePattern,
   RuntimeMatcher,
   SequenceNode,
   StringifyOptions,
@@ -49,13 +50,16 @@ function createSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
   parent: SequenceNode<TTarget, TEvent> | null,
   stroke: KeySequencePart["stroke"] | null,
   match: KeySequencePart["match"] | null,
+  pattern?: ResolvedSequencePattern<TEvent>,
 ): SequenceNode<TTarget, TEvent> {
   return {
     parent,
     depth: parent ? parent.depth + 1 : 0,
     stroke,
     match,
+    pattern,
     children: new Map(),
+    patternChildren: [],
     bindings: [],
     reachableBindings: [],
   }
@@ -97,6 +101,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
   public parseTokenKey(key: KeyLike): KeySequencePart {
     return parseSingleKeyPartWithParsers(key, this.state.environment.bindingParsers.values(), {
       tokens: this.state.environment.tokens,
+      patterns: this.state.environment.sequencePatterns,
       layer: EMPTY_COMPILE_FIELDS,
       parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
     })
@@ -109,6 +114,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
 
     const parsed = parseBindingSequenceWithParsers(key, this.state.environment.bindingParsers.values(), {
       tokens: this.state.environment.tokens,
+      patterns: this.state.environment.sequencePatterns,
       layer: EMPTY_COMPILE_FIELDS,
       parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
     })
@@ -163,6 +169,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
             typeof expandedKey === "string"
               ? parseBindingSequenceWithParsers(expandedKey, bindingParsers, {
                   tokens,
+                  patterns: this.state.environment.sequencePatterns,
                   layer: compileFields,
                   parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
                 })
@@ -275,6 +282,14 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
               throw new Error("Keymap release bindings only support a single key stroke")
             }
 
+            const terminalPattern = compiledSequence.at(-1)
+            if (terminalPattern?.patternName) {
+              const pattern = this.state.environment.sequencePatterns.get(terminalPattern.patternName)
+              if (pattern && pattern.max !== pattern.min) {
+                throw new Error("Keymap unbounded sequence patterns must be followed by a concrete continuation")
+              }
+            }
+
             if (event === "press") {
               this.insertBinding(root, compiledBinding, allowExactPrefixAmbiguity)
             }
@@ -349,6 +364,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
           parseKey: (key) => {
             return parseSingleKeyPartWithParsers(key, bindingParsers, {
               tokens,
+              patterns: this.state.environment.sequencePatterns,
               layer,
               parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
             })
@@ -394,11 +410,27 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
         }
 
         const bindingKey = part.match
-        let child = node.children.get(bindingKey)
-        if (!child) {
-          child = createSequenceNode<TTarget, TEvent>(node, cloneKeySequencePart(part).stroke, part.match)
-          node.children.set(bindingKey, child)
-          createdNodes.push({ parent: node, key: bindingKey })
+        let child: SequenceNode<TTarget, TEvent> | undefined
+
+        if (part.patternName) {
+          const pattern = this.state.environment.sequencePatterns.get(part.patternName)
+          if (!pattern) {
+            throw new Error(`Unknown keymap sequence pattern "${part.patternName}"`)
+          }
+
+          child = node.patternChildren.find((candidate) => candidate.pattern?.name === pattern.name)
+          if (!child) {
+            child = createSequenceNode<TTarget, TEvent>(node, cloneKeySequencePart(part).stroke, part.match, pattern)
+            node.patternChildren.push(child)
+            createdNodes.push({ parent: node, key: bindingKey })
+          }
+        } else {
+          child = node.children.get(bindingKey)
+          if (!child) {
+            child = createSequenceNode<TTarget, TEvent>(node, cloneKeySequencePart(part).stroke, part.match)
+            node.children.set(bindingKey, child)
+            createdNodes.push({ parent: node, key: bindingKey })
+          }
         }
 
         child.reachableBindings.push(binding)
@@ -406,7 +438,11 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
         node = child
       }
 
-      if (!allowExactPrefixAmbiguity && binding.command !== undefined && node.children.size > 0) {
+      if (
+        !allowExactPrefixAmbiguity &&
+        binding.command !== undefined &&
+        (node.children.size > 0 || node.patternChildren.length > 0)
+      ) {
         throw new Error(
           "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
         )
@@ -434,16 +470,25 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
           continue
         }
 
-        const child = createdNode.parent.children.get(createdNode.key)
+        const child =
+          createdNode.parent.children.get(createdNode.key) ??
+          createdNode.parent.patternChildren.find((candidate) => candidate.match === createdNode.key)
         if (!child) {
           continue
         }
 
-        if (child.children.size > 0 || child.reachableBindings.length > 0 || child.bindings.length > 0) {
+        if (
+          child.children.size > 0 ||
+          child.patternChildren.length > 0 ||
+          child.reachableBindings.length > 0 ||
+          child.bindings.length > 0
+        ) {
           continue
         }
 
-        createdNode.parent.children.delete(createdNode.key)
+        if (!createdNode.parent.children.delete(createdNode.key)) {
+          createdNode.parent.patternChildren = createdNode.parent.patternChildren.filter((candidate) => candidate !== child)
+        }
       }
 
       throw error
@@ -540,6 +585,7 @@ function parseBindingSequenceWithParsers(
   parsers: readonly BindingParser[],
   options: {
     tokens?: ReadonlyMap<string, ResolvedKeyToken>
+    patterns?: ReadonlyMap<string, ResolvedSequencePattern>
     layer?: Readonly<Record<string, unknown>>
     parseObjectKey: (
       key: KeyStrokeInput,
@@ -556,6 +602,7 @@ function parseBindingSequenceWithParsers(
   }
 
   const tokens = options.tokens ?? new Map<string, ResolvedKeyToken>()
+  const patterns = options.patterns ?? new Map<string, ResolvedSequencePattern>()
   const layer = options.layer ?? EMPTY_COMPILE_FIELDS
   const parseObjectKey = options.parseObjectKey
   const parts: KeySequencePart[] = []
@@ -572,6 +619,7 @@ function parseBindingSequenceWithParsers(
         index,
         layer,
         tokens,
+        patterns,
         normalizeTokenName: normalizeBindingTokenName,
         createMatch: createTextKeyMatch,
         parseObjectKey,
@@ -615,6 +663,7 @@ function parseSingleKeyPartWithParsers(
   parsers: readonly BindingParser[],
   options: {
     tokens?: ReadonlyMap<string, ResolvedKeyToken>
+    patterns?: ReadonlyMap<string, ResolvedSequencePattern>
     layer?: Readonly<Record<string, unknown>>
     parseObjectKey: (
       key: KeyStrokeInput,

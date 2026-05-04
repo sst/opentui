@@ -16,13 +16,36 @@ import type {
   KeymapEvent,
   LayerFieldCompiler,
   ResolvedKeyToken,
+  ResolvedSequencePattern,
+  SequencePattern,
 } from "../types.js"
-import { normalizeBindingTokenName } from "./keys.js"
+import { createTextKeyMatch, normalizeBindingTokenName } from "./keys.js"
 import { getErrorMessage } from "./values.js"
 
 const NOOP = (): void => {}
 
 type FieldKind = "layer" | "binding" | "command"
+
+function defaultPayloadKey(name: string): string {
+  const normalized = normalizeBindingTokenName(name)
+  if (normalized.length >= 2 && normalized.startsWith("<") && normalized.endsWith(">")) {
+    return normalized.slice(1, -1)
+  }
+
+  return normalized
+}
+
+function normalizePatternLimit(name: string, field: "min" | "max", value: unknown, fallback: number): number {
+  if (value === undefined) {
+    return fallback
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Keymap sequence pattern "${name}" ${field} must be a non-negative integer`)
+  }
+
+  return value
+}
 
 function registerFieldCompilers<T>(
   fields: Record<string, T>,
@@ -141,7 +164,7 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
       return NOOP
     }
 
-    if (this.state.environment.tokens.has(normalizedToken)) {
+    if (this.state.environment.tokens.has(normalizedToken) || this.state.environment.sequencePatterns.has(normalizedToken)) {
       this.notify.emitError(
         "duplicate-token",
         { token: normalizedToken },
@@ -154,6 +177,9 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
 
     try {
       parsedToken = this.compiler.parseTokenKey(token.key)
+      if (parsedToken.patternName) {
+        throw new Error(`Invalid key "${String(token.key)}": expected a concrete key stroke`)
+      }
     } catch (error) {
       this.notify.emitError(
         "token-parse-error",
@@ -200,6 +226,60 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
           getErrorMessage(error, `Failed to unregister keymap token "${normalizedToken}"`),
         )
       }
+    }
+  }
+
+  public registerSequencePattern(pattern: SequencePattern<TEvent>): () => void {
+    let normalizedName: string
+    let resolvedPattern: ResolvedSequencePattern<TEvent>
+
+    try {
+      normalizedName = normalizeBindingTokenName(pattern.name)
+      const min = normalizePatternLimit(normalizedName, "min", pattern.min, 1)
+      const max = normalizePatternLimit(normalizedName, "max", pattern.max, Number.MAX_SAFE_INTEGER)
+      if (max < min) {
+        throw new Error(`Keymap sequence pattern "${normalizedName}" max must be greater than or equal to min`)
+      }
+
+      resolvedPattern = {
+        name: normalizedName,
+        display: pattern.display ?? normalizedName,
+        payloadKey: pattern.payloadKey ?? defaultPayloadKey(normalizedName),
+        match: createTextKeyMatch(`pattern:${normalizedName}`),
+        min,
+        max,
+        matcher: (event) => pattern.match(event),
+        finalize: pattern.finalize,
+      }
+    } catch (error) {
+      this.notify.emitError(
+        "sequence-pattern-register-error",
+        error,
+        getErrorMessage(error, "Failed to register keymap sequence pattern"),
+      )
+      return NOOP
+    }
+
+    if (this.state.environment.tokens.has(normalizedName) || this.state.environment.sequencePatterns.has(normalizedName)) {
+      this.notify.emitError(
+        "duplicate-sequence-pattern",
+        { pattern: normalizedName },
+        `Keymap sequence pattern "${normalizedName}" is already registered`,
+      )
+      return NOOP
+    }
+
+    this.state.environment.sequencePatterns.set(normalizedName, resolvedPattern)
+    this.layers.recompileBindings()
+
+    return () => {
+      const current = this.state.environment.sequencePatterns.get(normalizedName)
+      if (current !== resolvedPattern) {
+        return
+      }
+
+      this.state.environment.sequencePatterns.delete(normalizedName)
+      this.layers.recompileBindings()
     }
   }
 

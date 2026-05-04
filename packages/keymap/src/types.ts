@@ -132,6 +132,8 @@ export interface KeySequencePart {
   display: string
   match: KeyMatch
   tokenName?: string
+  patternName?: string
+  payloadKey?: string
 }
 
 export interface StringifyOptions {
@@ -303,6 +305,32 @@ export type CommandResolver<TTarget extends object = object, TEvent extends Keym
 export interface KeyToken {
   name: string
   key: KeyLike
+}
+
+export interface SequencePatternMatch {
+  value?: unknown
+  display?: string
+}
+
+export interface SequencePattern<TEvent extends KeymapEvent = KeymapEvent> {
+  name: string
+  display?: string
+  payloadKey?: string
+  min?: number
+  max?: number
+  match(event: TEvent): SequencePatternMatch | undefined
+  finalize?(values: readonly unknown[]): unknown
+}
+
+export interface ResolvedSequencePattern<TEvent extends KeymapEvent = KeymapEvent> {
+  name: string
+  display: string
+  payloadKey: string
+  match: KeyMatch
+  min: number
+  max: number
+  matcher(event: TEvent): SequencePatternMatch | undefined
+  finalize?: (values: readonly unknown[]) => unknown
 }
 
 export interface ActiveBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
@@ -561,6 +589,7 @@ export interface BindingParserContext {
   index: number
   layer: Readonly<Record<string, unknown>>
   tokens: ReadonlyMap<string, ResolvedKeyToken>
+  patterns: ReadonlyMap<string, ResolvedSequencePattern>
   normalizeTokenName(token: string): string
   createMatch(id: string): KeyMatch
   parseObjectKey(
@@ -805,7 +834,9 @@ export interface SequenceNode<TTarget extends object = object, TEvent extends Ke
   depth: number
   stroke: NormalizedKeyStroke | null
   match: KeyMatch | null
+  pattern?: ResolvedSequencePattern<TEvent>
   children: Map<KeyMatch, SequenceNode<TTarget, TEvent>>
+  patternChildren: SequenceNode<TTarget, TEvent>[]
   bindings: BindingState<TTarget, TEvent>[]
   reachableBindings: BindingState<TTarget, TEvent>[]
 }
@@ -837,6 +868,14 @@ export interface RegisteredLayer<TTarget extends object = object, TEvent extends
 export interface PendingSequenceCapture<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   layer: RegisteredLayer<TTarget, TEvent>
   node: SequenceNode<TTarget, TEvent>
+  patterns?: readonly PendingSequencePatternCapture[]
+}
+
+export interface PendingSequencePatternCapture {
+  name: string
+  payloadKey: string
+  values: readonly unknown[]
+  parts: readonly KeySequencePart[]
 }
 
 export interface PendingSequenceState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {

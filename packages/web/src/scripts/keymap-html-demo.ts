@@ -89,6 +89,7 @@ let graphPulseFrame = 0
 
 const DEBUG_NAMESPACE = "[html-keymap-demo]"
 const LEADER_TOKEN = "<leader>"
+const COUNT_PATTERN = "<count>"
 const KEY_FORMAT_OPTIONS = {
   tokenDisplay: {
     [LEADER_TOKEN]: "space",
@@ -101,6 +102,15 @@ function summarizeActiveKeys(keys: readonly ActiveKey[]): string[] {
     const summary = entry.continues ? "prefix" : typeof entry.command === "string" ? entry.command : "fn"
     return `${formatKeySequence([entry], KEY_FORMAT_OPTIONS)}:${summary}`
   })
+}
+
+function getCountPayload(payload: unknown): number {
+  if (!payload || typeof payload !== "object") {
+    return 1
+  }
+
+  const count = (payload as { count?: unknown }).count
+  return typeof count === "number" && Number.isFinite(count) && count > 0 ? count : 1
 }
 
 function debug(label: string, details?: Record<string, unknown>): void {
@@ -357,6 +367,22 @@ function getGraphBindingLabel(binding: HtmlGraphBinding): string {
   return formatKeySequence(binding.sequence, KEY_FORMAT_OPTIONS) || "bind"
 }
 
+function getPatternPayloadLabel(binding: HtmlGraphBinding): string | undefined {
+  const keys = new Set<string>()
+  for (const part of binding.sequence) {
+    if (part.payloadKey) {
+      keys.add(part.payloadKey)
+    }
+  }
+
+  return keys.size > 0 ? [...keys].join(", ") : undefined
+}
+
+function getCapturedPatternLabel(snapshot: HtmlGraphSnapshot, patternName: string): string | undefined {
+  const parts = snapshot.pendingSequence.filter((part) => part.patternName === patternName || part.tokenName === patternName)
+  return parts.length > 0 ? formatKeySequence(parts, KEY_FORMAT_OPTIONS) : undefined
+}
+
 function getGraphBindingKey(binding: HtmlGraphBinding): string {
   let key = binding.event
   for (const part of binding.sequence) {
@@ -364,6 +390,24 @@ function getGraphBindingKey(binding: HtmlGraphBinding): string {
   }
 
   return key
+}
+
+interface SequencePartLike {
+  match: string
+  tokenName?: string
+  patternName?: string
+}
+
+function isPatternPart(part: { patternName?: string; tokenName?: string } | undefined): boolean {
+  return !!part?.patternName || part?.tokenName === COUNT_PATTERN
+}
+
+function bindingHasPattern(binding: HtmlGraphBinding): boolean {
+  return binding.sequence.some((part) => isPatternPart(part))
+}
+
+function sequencePartMatchesPattern(patternName: string, part: SequencePartLike | undefined): boolean {
+  return part?.patternName === patternName || part?.tokenName === patternName
 }
 
 interface CanvasGraphNode {
@@ -376,6 +420,7 @@ interface CanvasGraphNode {
   active: boolean
   reachable: boolean
   pending: boolean
+  pattern: boolean
   pulse: number
 }
 
@@ -385,6 +430,7 @@ interface CanvasBindingGroup {
   active: boolean
   reachable: boolean
   pending: boolean
+  pattern: boolean
   pulse: number
 }
 
@@ -393,7 +439,7 @@ interface CanvasGraphPulse {
   layerOrder?: number
   bindingIndex?: number
   command?: string
-  sequenceMatches: readonly string[]
+  sequence: readonly SequencePartLike[]
   startedAt: number
   expiresAt: number
 }
@@ -431,27 +477,51 @@ function getCanvasPalette(): CanvasPalette {
   }
 }
 
-function sequenceMatchesPrefix(sequence: readonly { match: string }[], prefix: readonly { match: string }[]): boolean {
-  if (prefix.length === 0 || prefix.length > sequence.length) {
+function sequenceMatchesPrefix(sequence: readonly SequencePartLike[], prefix: readonly SequencePartLike[]): boolean {
+  if (prefix.length === 0) {
     return false
   }
 
-  for (let index = 0; index < prefix.length; index += 1) {
-    if (sequence[index]?.match !== prefix[index]?.match) {
+  let sequenceIndex = 0
+  let prefixIndex = 0
+  while (prefixIndex < prefix.length && sequenceIndex < sequence.length) {
+    const sequencePart = sequence[sequenceIndex]
+    const prefixPart = prefix[prefixIndex]
+    const patternName = sequencePart?.patternName
+
+    if (patternName) {
+      let consumed = 0
+      while (prefixIndex < prefix.length && sequencePartMatchesPattern(patternName, prefix[prefixIndex])) {
+        consumed += 1
+        prefixIndex += 1
+      }
+
+      if (consumed === 0) {
+        return false
+      }
+
+      sequenceIndex += 1
+      continue
+    }
+
+    if (sequencePart?.match !== prefixPart?.match) {
       return false
     }
+
+    sequenceIndex += 1
+    prefixIndex += 1
   }
 
-  return true
+  return prefixIndex === prefix.length
 }
 
-function sequenceMatchesExact(left: readonly { match: string }[], right: readonly string[]): boolean {
+function sequenceMatchesExact(left: readonly SequencePartLike[], right: readonly SequencePartLike[]): boolean {
   if (left.length !== right.length) {
     return false
   }
 
   for (let index = 0; index < left.length; index += 1) {
-    if (left[index]?.match !== right[index]) {
+    if (left[index]?.match !== right[index]?.match) {
       return false
     }
   }
@@ -496,7 +566,7 @@ function getBindingPulse(binding: HtmlGraphBinding, now: number): number {
       continue
     }
 
-    if (!sequenceMatchesExact(binding.sequence, pulse.sequenceMatches)) {
+    if (!sequenceMatchesExact(binding.sequence, pulse.sequence) && !sequenceMatchesPrefix(binding.sequence, pulse.sequence)) {
       continue
     }
 
@@ -540,7 +610,11 @@ function addGraphPulse(event: HtmlDispatchEvent): void {
       layerOrder: event.layer?.order,
       bindingIndex: event.binding?.bindingIndex,
       command,
-      sequenceMatches: event.sequence.map((part) => part.match),
+      sequence: event.sequence.map((part) => ({
+        match: part.match,
+        tokenName: part.tokenName,
+        patternName: part.patternName,
+      })),
       startedAt: now,
       expiresAt: now + (event.phase === "binding-reject" ? 900 : 650),
     },
@@ -576,7 +650,9 @@ function getCanvasNodeColor(node: CanvasGraphNode, palette: CanvasPalette): stri
     : node.kind === "layer"
       ? palette.green
       : node.kind === "binding"
-        ? palette.cyan
+        ? node.pattern
+          ? palette.blue
+          : palette.cyan
         : palette.magenta
 }
 
@@ -691,6 +767,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       existing.active ||= binding.active
       existing.reachable ||= binding.reachable
       existing.pending ||= pending
+      existing.pattern ||= bindingHasPattern(binding)
       existing.pulse = Math.max(existing.pulse, pulse)
       continue
     }
@@ -701,6 +778,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       active: binding.active,
       reachable: binding.reachable,
       pending,
+      pattern: bindingHasPattern(binding),
       pulse,
     })
   }
@@ -718,6 +796,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       active: layer.active,
       reachable: layer.active,
       pending: false,
+      pattern: false,
       pulse: getLayerPulse(layer.order, now),
     })
   })
@@ -734,6 +813,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       active: group.active,
       reachable: group.reachable,
       pending: group.pending,
+      pattern: group.pattern,
       pulse: group.pulse,
     })
   })
@@ -750,6 +830,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       active: command.active,
       reachable: command.reachable,
       pending: false,
+      pattern: false,
       pulse: getCommandPulse(command, now),
     })
   })
@@ -767,7 +848,7 @@ function renderGraphCanvas(snapshot: HtmlGraphSnapshot): void {
       ctx,
       layer,
       bindingNode,
-      bindingPending ? palette.yellow : palette.cyan,
+      bindingPending ? palette.yellow : bindingHasPattern(binding) ? palette.blue : palette.cyan,
       binding.reachable ? 0.68 : 0.16,
       1.2,
       Math.max(layer.pulse, getBindingPulse(binding, now)),
@@ -1014,8 +1095,10 @@ function renderGraph(): void {
     .filter((node) => node.pendingPath && node.depth > 0)
     .map((node) => {
       const label = escapeHtml(formatKeySequence(node.sequence, KEY_FORMAT_OPTIONS) || node.display)
+      const patternName = node.sequence.at(-1)?.patternName
+      const captured = patternName ? getCapturedPatternLabel(snapshot, patternName) : undefined
       const pendingClass = node.pending ? " graph-chip is-pending" : " graph-chip is-path"
-      return `<span class="${pendingClass.trim()}">${label}</span>`
+      return `<span class="${pendingClass.trim()}">${label}${captured ? ` <em>${escapeHtml(captured)}</em>` : ""}</span>`
     })
     .join("")
 
@@ -1040,14 +1123,19 @@ function renderGraph(): void {
         .join("")
       const bindingHtml = bindings
         .map((binding) => {
-          const bindingClass = binding.reachable
-            ? "graph-binding is-reachable"
-            : binding.active
-              ? "graph-binding is-shadowed"
-              : "graph-binding is-inactive"
+          const bindingClass = `${
+            binding.reachable
+              ? "graph-binding is-reachable"
+              : binding.active
+                ? "graph-binding is-shadowed"
+                : "graph-binding is-inactive"
+          }${bindingHasPattern(binding) ? " is-pattern" : ""}`
           const label = escapeHtml(formatKeySequence(binding.sequence, KEY_FORMAT_OPTIONS))
           const command = escapeHtml(getBindingCommandLabel(binding, snapshot))
-          const description = escapeHtml(getBindingDescription(binding))
+          const payloadLabel = getPatternPayloadLabel(binding)
+          const description = escapeHtml(
+            payloadLabel ? `${getBindingDescription(binding)} · payload: ${payloadLabel}` : getBindingDescription(binding),
+          )
           return `
             <div class="${bindingClass}">
               <kbd>${label}</kbd>
@@ -1059,13 +1147,17 @@ function renderGraph(): void {
         .join("")
       const nodeHtml = nodes
         .map((node) => {
-          const nodeClass = node.pending
-            ? "graph-node is-pending"
-            : node.reachable
-              ? "graph-node is-reachable"
-              : "graph-node is-dimmed"
+          const patternName = node.sequence.at(-1)?.patternName
+          const captured = patternName ? getCapturedPatternLabel(snapshot, patternName) : undefined
+          const nodeClass = `${
+            node.pending
+              ? "graph-node is-pending"
+              : node.reachable
+                ? "graph-node is-reachable"
+                : "graph-node is-dimmed"
+          }${patternName ? " is-pattern" : ""}`
           const label = escapeHtml(formatKeySequence(node.sequence, KEY_FORMAT_OPTIONS) || node.display)
-          return `<span class="${nodeClass}">${label}</span>`
+          return `<span class="${nodeClass}">${label}${captured ? `<small>${escapeHtml(captured)}</small>` : ""}</span>`
         })
         .join("")
 
@@ -1142,6 +1234,7 @@ function renderHelp(): void {
     `<div><kbd>?</kbd> toggles Quick Help; <kbd>!</kbd> or <kbd>${LEADER_TRIGGER_LABEL} g</kbd> toggles the runtime graph.</div>`,
     "<div><kbd>:</kbd> opens the ex prompt as a modal overlay. Try <kbd>:help</kbd>, <kbd>:reset</kbd>, <kbd>:write alpha</kbd>, or <kbd>:focus draft</kbd>.</div>",
     "<div>The Alpha and Beta panels each install their own focus-within layers with <kbd>j</kbd>, <kbd>k</kbd>, and <kbd>Enter</kbd>.</div>",
+    "<div>Panel counters also use the generic <kbd>&lt;count&gt;</kbd> sequence pattern: try <kbd>5</kbd><kbd>k</kbd> or <kbd>3</kbd><kbd>j</kbd> and watch the graph show the pattern node plus captured digits.</div>",
     "<div>The Notes and Draft textareas use plain browser editing plus keymap bindings for <kbd>Ctrl+Enter</kbd>.</div>",
     "<div>The Recent Actions pane can be focused and scrolled with <kbd>j</kbd>, <kbd>k</kbd>, <kbd>Ctrl+d</kbd>, <kbd>Ctrl+u</kbd>, <kbd>g</kbd>, <kbd>gg</kbd>, and <kbd>Shift+g</kbd>.</div>",
   ].join("")
@@ -1184,6 +1277,19 @@ function disposers(): void {
   addons.registerNeovimDisambiguation(keymap)
   addons.registerEscapeClearsPendingSequence(keymap)
   addons.registerBackspacePopsPendingSequence(keymap)
+  keymap.registerSequencePattern({
+    name: COUNT_PATTERN,
+    match(event) {
+      if (!/^\d$/.test(event.name)) {
+        return undefined
+      }
+
+      return { value: event.name, display: event.name }
+    },
+    finalize(values) {
+      return Number(values.join(""))
+    },
+  })
   keymap.registerLayerFields({
     name(value, ctx) {
       if (typeof value !== "string" || value.trim().length === 0) {
@@ -1357,11 +1463,27 @@ function disposers(): void {
         },
       },
       {
+        name: "alpha-up-count",
+        title: "Alpha Up Count",
+        desc: "Increment Alpha by a captured count",
+        run({ payload }) {
+          incrementAlpha(getCountPayload(payload))
+        },
+      },
+      {
         name: "alpha-down",
         title: "Alpha Down",
         desc: "Decrement the Alpha counter",
         run() {
           incrementAlpha(-1)
+        },
+      },
+      {
+        name: "alpha-down-count",
+        title: "Alpha Down Count",
+        desc: "Decrement Alpha by a captured count",
+        run({ payload }) {
+          incrementAlpha(-getCountPayload(payload))
         },
       },
       {
@@ -1373,11 +1495,27 @@ function disposers(): void {
         },
       },
       {
+        name: "beta-up-count",
+        title: "Beta Up Count",
+        desc: "Increment Beta by a captured count",
+        run({ payload }) {
+          incrementBeta(getCountPayload(payload))
+        },
+      },
+      {
         name: "beta-down",
         title: "Beta Down",
         desc: "Decrement the Beta counter",
         run() {
           incrementBeta(-1)
+        },
+      },
+      {
+        name: "beta-down-count",
+        title: "Beta Down Count",
+        desc: "Decrement Beta by a captured count",
+        run({ payload }) {
+          incrementBeta(-getCountPayload(payload))
         },
       },
       {
@@ -1479,6 +1617,8 @@ function disposers(): void {
     bindings: [
       { key: "j", cmd: "alpha-down", desc: "Alpha -1" },
       { key: "k", cmd: "alpha-up", desc: "Alpha +1" },
+      { key: "<count>j", cmd: "alpha-down-count", desc: "Alpha -count" },
+      { key: "<count>k", cmd: "alpha-up-count", desc: "Alpha +count" },
       { key: "return", cmd: "panel-write", desc: "Write alpha snapshot" },
     ],
   })
@@ -1490,6 +1630,8 @@ function disposers(): void {
     bindings: [
       { key: "j", cmd: "beta-down", desc: "Beta -1" },
       { key: "k", cmd: "beta-up", desc: "Beta +1" },
+      { key: "<count>j", cmd: "beta-down-count", desc: "Beta -count" },
+      { key: "<count>k", cmd: "beta-up-count", desc: "Beta +count" },
       { key: "return", cmd: "panel-write", desc: "Write beta snapshot" },
     ],
   })

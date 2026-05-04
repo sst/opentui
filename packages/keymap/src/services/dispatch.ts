@@ -8,7 +8,7 @@ import type { LayerService } from "./layers.js"
 import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
 import type { State } from "./state.js"
-import { cloneKeySequence, cloneKeyStroke, stringifyKeySequence } from "./keys.js"
+import { cloneKeySequence, cloneKeyStroke, createKeySequencePart, stringifyKeySequence } from "./keys.js"
 import { isPromiseLike } from "./values.js"
 import {
   KEY_DEFERRED_DISAMBIGUATION_DECISION,
@@ -38,7 +38,9 @@ import {
   type DispatchBinding,
   type DispatchEvent,
   type KeySequencePart,
+  type PendingSequencePatternCapture,
   type RegisteredLayer,
+  type SequencePatternMatch,
   type SequenceNode,
 } from "../types.js"
 import type { PriorityRegistration } from "../lib/registry.js"
@@ -74,6 +76,11 @@ interface KeyAfterDispatchState<TTarget extends object, TEvent extends KeymapEve
   eventType: "press" | "release"
   focused: TTarget | null
   sequence: readonly KeySequencePart[]
+}
+
+interface AdvancedCapture<TTarget extends object, TEvent extends KeymapEvent> {
+  capture: PendingSequenceCapture<TTarget, TEvent>
+  consumed: boolean
 }
 
 type KeyAfterHook<TTarget extends object, TEvent extends KeymapEvent> = PriorityRegistration<
@@ -610,15 +617,12 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     const advancedCaptures: PendingSequenceCapture<TTarget, TEvent>[] = []
 
     for (const capture of pending.captures) {
-      const nextNode = this.getReachableChild(capture.node, matchKeys, focused)
-      if (!nextNode) {
+      const advanced = this.advanceCapture(capture, matchKeys, event, focused)
+      if (!advanced) {
         continue
       }
 
-      advancedCaptures.push({
-        layer: capture.layer,
-        node: nextNode,
-      })
+      advancedCaptures.push(advanced.capture)
     }
 
     if (advancedCaptures.length === 0) {
@@ -647,7 +651,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      if (capture.node.children.size > 0) {
+      if (this.nodeHasContinuations(capture.node, capture)) {
         if (hasHandledExact) {
           continue
         }
@@ -674,7 +678,13 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         return outcome
       }
 
-      const result = this.runBindings(capture.layer, capture.node.bindings, event, focused)
+      const result = this.runBindings(
+        capture.layer,
+        capture.node.bindings,
+        event,
+        focused,
+        this.createSequencePayload(capture),
+      )
       outcome = this.preferDispatchOutcome(outcome, result.outcome)
       if (!result.handled) {
         continue
@@ -718,7 +728,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      if (layer.root.children.size === 0) {
+      if (layer.root.children.size === 0 && layer.root.patternChildren.length === 0) {
         continue
       }
 
@@ -726,13 +736,15 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      const nextNode = this.getReachableChild(layer.root, matchKeys, focused)
-      if (!nextNode) {
+      const nextCapture = this.advanceCapture({ layer, node: layer.root }, matchKeys, event, focused)
+      if (!nextCapture) {
         continue
       }
 
-      if (nextNode.children.size > 0) {
-        const continuationCaptures = this.collectPendingCapturesFromRoot(activeLayers, index, matchKeys, focused)
+      const nextNode = nextCapture.capture.node
+
+      if (this.nodeHasContinuations(nextNode, nextCapture.capture)) {
+        const continuationCaptures = this.collectPendingCapturesFromRoot(activeLayers, index, matchKeys, event, focused)
         const resolvedOutcome = this.tryResolveRootAmbiguity(
           activeLayers,
           index,
@@ -755,7 +767,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         return outcome
       }
 
-      const result = this.runBindings(layer, nextNode.bindings, event, focused)
+      const result = this.runBindings(layer, nextNode.bindings, event, focused, this.createSequencePayload(nextCapture.capture))
       outcome = this.preferDispatchOutcome(outcome, result.outcome)
       if (!result.handled) {
         continue
@@ -781,7 +793,8 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   ): KeyDispatchOutcome | undefined {
     const applyExact = (): KeyDispatchOutcome => {
       this.activation.setPendingSequence(null)
-      const result = this.runBindings(layer, node.bindings, event, focused)
+      const exactCapture = continuationCaptures.find((candidate) => candidate.layer === layer && candidate.node === node)
+      const result = this.runBindings(layer, node.bindings, event, focused, this.createSequencePayload(exactCapture))
       if (!result.stop) {
         return this.preferDispatchOutcome(
           result.outcome,
@@ -813,7 +826,13 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   ): KeyDispatchOutcome | undefined {
     const applyExact = (): KeyDispatchOutcome => {
       this.activation.setPendingSequence(null)
-      const result = this.runBindings(capture.layer, capture.node.bindings, event, focused)
+      const result = this.runBindings(
+        capture.layer,
+        capture.node.bindings,
+        event,
+        focused,
+        this.createSequencePayload(capture),
+      )
       if (result.stop) {
         return result.outcome
       }
@@ -1228,6 +1247,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     activeLayers: RegisteredLayer<TTarget, TEvent>[],
     startIndex: number,
     matchKeys: readonly KeyMatch[],
+    event: TEvent,
     focused: TTarget | null,
   ): PendingSequenceCapture<TTarget, TEvent>[] {
     const captures: PendingSequenceCapture<TTarget, TEvent>[] = []
@@ -1235,7 +1255,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
     for (let index = startIndex; index < activeLayers.length; index += 1) {
       const layer = activeLayers[index]
-      if (!layer || layer.root.children.size === 0) {
+      if (!layer || (layer.root.children.size === 0 && layer.root.patternChildren.length === 0)) {
         continue
       }
 
@@ -1243,15 +1263,12 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      const nextNode = this.getReachableChild(layer.root, matchKeys, focused)
-      if (!nextNode || nextNode.children.size === 0) {
+      const advanced = this.advanceCapture({ layer, node: layer.root }, matchKeys, event, focused)
+      if (!advanced || !this.nodeHasContinuations(advanced.capture.node, advanced.capture)) {
         continue
       }
 
-      captures.push({
-        layer,
-        node: nextNode,
-      })
+      captures.push(advanced.capture)
     }
 
     return captures
@@ -1262,7 +1279,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     startIndex: number,
   ): PendingSequenceCapture<TTarget, TEvent>[] {
     return advancedCaptures.filter((candidate, candidateIndex) => {
-      return candidateIndex >= startIndex && candidate.node.children.size > 0
+      return candidateIndex >= startIndex && this.nodeHasContinuations(candidate.node, candidate)
     })
   }
 
@@ -1356,6 +1373,199 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     return { handled, stop: false, outcome }
   }
 
+  private nodeHasContinuations(
+    node: SequenceNode<TTarget, TEvent>,
+    capture?: PendingSequenceCapture<TTarget, TEvent>,
+  ): boolean {
+    if (node.children.size > 0 || node.patternChildren.length > 0) {
+      return true
+    }
+
+    return !!node.pattern && !!capture && this.getPatternCaptureCount(capture) < node.pattern.max
+  }
+
+  private getPatternCaptureCount(capture: PendingSequenceCapture<TTarget, TEvent>): number {
+    const pattern = capture.node.pattern
+    if (!pattern) {
+      return 0
+    }
+
+    for (let index = (capture.patterns?.length ?? 0) - 1; index >= 0; index -= 1) {
+      const captured = capture.patterns?.[index]
+      if (captured?.name === pattern.name) {
+        return captured.values.length
+      }
+    }
+
+    return 0
+  }
+
+  private patternHasMinimum(capture: PendingSequenceCapture<TTarget, TEvent>): boolean {
+    const pattern = capture.node.pattern
+    if (!pattern) {
+      return true
+    }
+
+    return this.getPatternCaptureCount(capture) >= pattern.min
+  }
+
+  private matchPattern(
+    pattern: NonNullable<SequenceNode<TTarget, TEvent>["pattern"]>,
+    event: TEvent,
+  ): SequencePatternMatch | undefined {
+    try {
+      return pattern.matcher(event)
+    } catch (error) {
+      this.notify.emitError("sequence-pattern-match-error", error, `[Keymap] Error matching sequence pattern "${pattern.name}":`)
+      return undefined
+    }
+  }
+
+  private createPatternEventPart(
+    event: TEvent,
+    pattern: NonNullable<SequenceNode<TTarget, TEvent>["pattern"]>,
+    match: SequencePatternMatch,
+  ): KeySequencePart {
+    const part = createKeySequencePart(
+      {
+        name: event.name,
+        ctrl: event.ctrl,
+        shift: event.shift,
+        meta: event.meta,
+        super: event.super ?? false,
+        hyper: event.hyper || undefined,
+      },
+      { display: match.display ?? String(match.value ?? event.name), tokenName: pattern.name },
+    )
+
+    return { ...part, patternName: pattern.name, payloadKey: pattern.payloadKey }
+  }
+
+  private appendPatternCapture(
+    capture: PendingSequenceCapture<TTarget, TEvent>,
+    node: SequenceNode<TTarget, TEvent>,
+    event: TEvent,
+    match: SequencePatternMatch,
+  ): PendingSequenceCapture<TTarget, TEvent> {
+    const pattern = node.pattern
+    if (!pattern) {
+      return { ...capture, node }
+    }
+
+    const part = this.createPatternEventPart(event, pattern, match)
+    const value = Object.prototype.hasOwnProperty.call(match, "value") ? match.value : event.name
+    const patterns = [...(capture.patterns ?? [])]
+    const last = patterns.at(-1)
+
+    if (last?.name === pattern.name) {
+      patterns[patterns.length - 1] = {
+        ...last,
+        values: [...last.values, value],
+        parts: [...last.parts, part],
+      }
+    } else {
+      patterns.push({
+        name: pattern.name,
+        payloadKey: pattern.payloadKey,
+        values: [value],
+        parts: [part],
+      })
+    }
+
+    return {
+      layer: capture.layer,
+      node,
+      patterns,
+    }
+  }
+
+  private advanceCapture(
+    capture: PendingSequenceCapture<TTarget, TEvent>,
+    matchKeys: readonly KeyMatch[],
+    event: TEvent,
+    focused: TTarget | null,
+  ): AdvancedCapture<TTarget, TEvent> | undefined {
+    const currentPattern = capture.node.pattern
+    if (currentPattern && this.getPatternCaptureCount(capture) < currentPattern.max) {
+      const patternMatch = this.matchPattern(currentPattern, event)
+      if (patternMatch) {
+        return {
+          capture: this.appendPatternCapture(capture, capture.node, event, patternMatch),
+          consumed: true,
+        }
+      }
+    }
+
+    if (!this.patternHasMinimum(capture)) {
+      return undefined
+    }
+
+    const staticChild = this.getReachableChild(capture.node, matchKeys, focused)
+    if (staticChild) {
+      return {
+        capture: {
+          layer: capture.layer,
+          node: staticChild,
+          patterns: capture.patterns,
+        },
+        consumed: true,
+      }
+    }
+
+    for (const child of capture.node.patternChildren) {
+      const pattern = child.pattern
+      if (!pattern || !this.activation.nodeHasReachableBindings(child, focused)) {
+        continue
+      }
+
+      const patternMatch = this.matchPattern(pattern, event)
+      if (!patternMatch) {
+        continue
+      }
+
+      return {
+        capture: this.appendPatternCapture(capture, child, event, patternMatch),
+        consumed: true,
+      }
+    }
+
+    return undefined
+  }
+
+  private createSequencePayload(capture?: PendingSequenceCapture<TTarget, TEvent>): unknown {
+    if (!capture?.patterns || capture.patterns.length === 0) {
+      return undefined
+    }
+
+    const payload: Record<string, unknown> = {}
+    for (const captured of capture.patterns) {
+      const pattern = this.state.environment.sequencePatterns.get(captured.name)
+      let value: unknown
+
+      try {
+        value = pattern?.finalize ? pattern.finalize(captured.values) : captured.values.length === 1 ? captured.values[0] : [...captured.values]
+      } catch (error) {
+        this.notify.emitError(
+          "sequence-pattern-finalize-error",
+          error,
+          `[Keymap] Error finalizing sequence pattern "${captured.name}":`,
+        )
+        continue
+      }
+
+      const existing = payload[captured.payloadKey]
+      if (existing === undefined) {
+        payload[captured.payloadKey] = value
+      } else if (Array.isArray(existing)) {
+        existing.push(value)
+      } else {
+        payload[captured.payloadKey] = [existing, value]
+      }
+    }
+
+    return Object.keys(payload).length > 0 ? payload : undefined
+  }
+
   private getReachableChild(
     node: SequenceNode<TTarget, TEvent>,
     matchKeys: readonly KeyMatch[],
@@ -1378,6 +1588,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     bindings: BindingState<TTarget, TEvent>[],
     event: TEvent,
     focused: TTarget | null,
+    payload?: unknown,
   ): { handled: boolean; stop: boolean; outcome: KeyDispatchOutcome } {
     let handled = false
     let outcome = this.noMatchOutcome()
@@ -1387,7 +1598,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      const bindingHandled = this.executor.runBinding(layer, binding, event, focused)
+      const bindingHandled = this.executor.runBinding(layer, binding, event, focused, payload)
       outcome = this.preferDispatchOutcome(outcome, this.createBindingOutcome(binding, bindingHandled))
       if (!bindingHandled) {
         this.emitBindingDispatch("binding-reject", layer, binding, focused)

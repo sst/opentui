@@ -190,8 +190,31 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   public getResolvedCommandChain(
     command: string,
     focused: TTarget | null,
+    execution?: CommandExecutionFields,
   ): { entries?: readonly ResolvedCommandEntry<TTarget, TEvent>[]; hadError: boolean } {
     const view = this.getActiveCommandView(focused)
+    if (execution) {
+      const resolved: ResolvedCommandEntry<TTarget, TEvent>[] = []
+      const chain = view.chainsByName.get(command)
+      if (chain) {
+        for (const entry of chain) {
+          resolved.push({
+            target: entry.layer.target,
+            command: entry.commandState.command,
+            attrs: entry.commandState.attrs,
+            payload: execution.payload,
+          })
+        }
+      }
+
+      const fallback = this.resolveCommandWithResolvers(command, focused, { mode: "active", execution })
+      if (fallback.resolved) {
+        resolved.push(fallback.resolved)
+      }
+
+      return { entries: resolved.length > 0 ? resolved : undefined, hadError: fallback.hadError }
+    }
+
     const entries = this.getResolvedCommandChainFromView(
       view,
       command,

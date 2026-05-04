@@ -61,6 +61,30 @@ function isSamePendingSequence<TTarget extends object, TEvent extends KeymapEven
     if (!left || !right || left.layer !== right.layer || left.node !== right.node) {
       return false
     }
+
+    const leftPatterns = left.patterns ?? []
+    const rightPatterns = right.patterns ?? []
+    if (leftPatterns.length !== rightPatterns.length) {
+      return false
+    }
+
+    for (let patternIndex = 0; patternIndex < leftPatterns.length; patternIndex += 1) {
+      const leftPattern = leftPatterns[patternIndex]
+      const rightPattern = rightPatterns[patternIndex]
+      if (!leftPattern || !rightPattern || leftPattern.name !== rightPattern.name) {
+        return false
+      }
+
+      if (leftPattern.values.length !== rightPattern.values.length) {
+        return false
+      }
+
+      for (let valueIndex = 0; valueIndex < leftPattern.values.length; valueIndex += 1) {
+        if (!Object.is(leftPattern.values[valueIndex], rightPattern.values[valueIndex])) {
+          return false
+        }
+      }
+    }
   }
 
   return true
@@ -172,6 +196,14 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     }
 
     const firstCapture = pending.captures[0]
+    if (firstCapture?.node.pattern) {
+      const nextCaptures = this.popPendingPatternCapture(pending.captures)
+      if (nextCaptures) {
+        this.setPendingSequence(nextCaptures.length > 0 ? { captures: nextCaptures } : null)
+        return true
+      }
+    }
+
     if (!firstCapture || firstCapture.node.depth <= 1) {
       this.setPendingSequence(null)
       return true
@@ -198,6 +230,47 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
 
     this.setPendingSequence({ captures: nextCaptures })
     return true
+  }
+
+  private popPendingPatternCapture(
+    captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+  ): PendingSequenceCapture<TTarget, TEvent>[] | undefined {
+    const nextCaptures: PendingSequenceCapture<TTarget, TEvent>[] = []
+
+    for (const capture of captures) {
+      const last = capture.patterns?.at(-1)
+      if (!last || last.name !== capture.node.pattern?.name) {
+        return undefined
+      }
+
+      if (last.values.length > 1) {
+        nextCaptures.push({
+          ...capture,
+          patterns: [
+            ...(capture.patterns ?? []).slice(0, -1),
+            {
+              ...last,
+              values: last.values.slice(0, -1),
+              parts: last.parts.slice(0, -1),
+            },
+          ],
+        })
+        continue
+      }
+
+      const parent = capture.node.parent
+      if (!parent || !parent.stroke) {
+        return []
+      }
+
+      nextCaptures.push({
+        layer: capture.layer,
+        node: parent,
+        patterns: (capture.patterns ?? []).slice(0, -1),
+      })
+    }
+
+    return nextCaptures
   }
 
   public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] {
@@ -350,9 +423,20 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     }
 
     const parts: KeySequencePart[] = []
+    const firstCapture = pending.captures[0]
+    let nextPatternIndex = 0
     for (let index = 0; index < firstPath.length; index += 1) {
       const firstNode = firstPath[index]
       if (!firstNode?.stroke || firstNode.match === null) {
+        continue
+      }
+
+      if (firstNode.pattern) {
+        const captured = firstCapture?.patterns?.[nextPatternIndex]
+        nextPatternIndex += 1
+        if (captured?.name === firstNode.pattern.name) {
+          parts.push(...captured.parts.map((part) => ({ ...part, stroke: cloneKeyStroke(part.stroke) })))
+        }
         continue
       }
 
@@ -524,7 +608,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
 
     for (const layer of activeLayers) {
-      if (layer.root.children.size === 0) {
+      if (layer.root.children.size === 0 && layer.root.patternChildren.length === 0) {
         continue
       }
 
@@ -534,6 +618,29 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
 
       for (const [bindingKey, child] of layer.root.children) {
         if (stopped.has(bindingKey)) {
+          continue
+        }
+
+        const selection = this.selectActiveKey(child, includeBindings, focused, activeView)
+        if (!selection) {
+          continue
+        }
+
+        const existing = activeKeys.get(bindingKey)
+        if (!existing) {
+          activeKeys.set(bindingKey, this.createActiveKeyState(child.stroke!, selection, includeBindings))
+        } else {
+          this.updateActiveKeyState(existing, selection, includeBindings)
+        }
+
+        if (selection.stop) {
+          stopped.add(bindingKey)
+        }
+      }
+
+      for (const child of layer.root.patternChildren) {
+        const bindingKey = child.match
+        if (!bindingKey || stopped.has(bindingKey)) {
           continue
         }
 
@@ -598,6 +705,29 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
           stopped.add(bindingKey)
         }
       }
+
+      for (const child of capture.node.patternChildren) {
+        const bindingKey = child.match
+        if (!bindingKey || stopped.has(bindingKey)) {
+          continue
+        }
+
+        const selection = this.selectActiveKey(child, includeBindings, focused, activeView)
+        if (!selection) {
+          continue
+        }
+
+        const existing = activeKeys.get(bindingKey)
+        if (!existing) {
+          activeKeys.set(bindingKey, this.createActiveKeyState(child.stroke!, selection, includeBindings))
+        } else {
+          this.updateActiveKeyState(existing, selection, includeBindings)
+        }
+
+        if (selection.stop) {
+          stopped.add(bindingKey)
+        }
+      }
     }
 
     const materialized: ActiveKey<TTarget, TEvent>[] = []
@@ -617,7 +747,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ): ActiveKeySelection<TTarget, TEvent> | undefined {
-    return node.children.size > 0
+    return node.children.size > 0 || node.patternChildren.length > 0
       ? this.selectPrefixActiveKey(node, includeBindings, focused, activeView)
       : this.selectExactActiveKey(node, includeBindings, focused, activeView)
   }

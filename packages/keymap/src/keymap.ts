@@ -35,6 +35,7 @@ import type {
   KeyMatch,
   KeyStringifyInput,
   KeyToken,
+  SequencePattern,
   KeyLike,
   KeySequencePart,
   GraphSnapshot,
@@ -424,6 +425,10 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public registerToken(token: KeyToken): () => void {
     return this.environment.registerToken(token)
+  }
+
+  public registerSequencePattern(pattern: SequencePattern<TEvent>): () => void {
+    return this.environment.registerSequencePattern(pattern)
   }
 
   public prependBindingExpander(expander: BindingExpander): () => void {

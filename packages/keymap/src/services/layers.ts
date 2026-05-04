@@ -119,7 +119,9 @@ function getSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
   let node: SequenceNode<TTarget, TEvent> | undefined = root
 
   for (const part of sequence) {
-    node = node.children.get(part.match)
+    node = part.patternName
+      ? node.patternChildren.find((candidate) => candidate.pattern?.name === part.patternName)
+      : node.children.get(part.match)
     if (!node) {
       return undefined
     }
@@ -133,7 +135,7 @@ function buildLayerBindingAnalyses<TTarget extends object, TEvent extends Keymap
   bindingStates: readonly BindingState<TTarget, TEvent>[],
 ): LayerBindingAnalysis<TTarget, TEvent>[] {
   return bindingStates.map((binding) => {
-    const node = binding.event === "press" ? getSequenceNode(root, binding.sequence) : undefined
+      const node = binding.event === "press" ? getSequenceNode(root, binding.sequence) : undefined
 
     return {
       sequence: cloneKeySequence(binding.sequence),
@@ -147,7 +149,7 @@ function buildLayerBindingAnalyses<TTarget extends object, TEvent extends Keymap
       sourceLayerOrder: binding.sourceLayerOrder,
       bindingIndex: binding.bindingIndex,
       hasCommandAtSequence: node ? node.bindings.some((candidate) => candidate.command !== undefined) : false,
-      hasContinuations: node ? node.children.size > 0 : false,
+      hasContinuations: node ? node.children.size > 0 || node.patternChildren.length > 0 : false,
     }
   })
 }

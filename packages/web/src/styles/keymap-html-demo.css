@@ -383,6 +383,25 @@ kbd {
   color: var(--tn-magenta);
 }
 
+.graph-chip em {
+  margin-left: 0.25rem;
+  color: var(--tn-yellow);
+  font-style: normal;
+}
+
+.graph-node.is-pattern {
+  border-color: rgba(224, 175, 104, 0.55);
+  color: var(--tn-yellow);
+}
+
+.graph-node small {
+  margin-left: 0.3rem;
+  padding-left: 0.3rem;
+  border-left: 1px solid var(--tn-border);
+  color: var(--tn-cyan);
+  font-size: 0.62rem;
+}
+
 .graph-chip.is-dimmed,
 .graph-node.is-dimmed,
 .graph-command.is-dimmed,
@@ -435,6 +454,10 @@ kbd {
 
 .graph-binding.is-reachable {
   border-color: rgba(125, 207, 255, 0.45);
+}
+
+.graph-binding.is-pattern {
+  border-color: rgba(224, 175, 104, 0.45);
 }
 
 .graph-binding.is-shadowed {

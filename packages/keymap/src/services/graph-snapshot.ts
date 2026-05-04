@@ -292,6 +292,9 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
       for (const child of node.children.values()) {
         visitNode(child, currentNodeId)
       }
+      for (const child of node.patternChildren) {
+        visitNode(child, currentNodeId)
+      }
     }
 
     visitNode(layer.root, null)
@@ -373,7 +376,9 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
     const currentLayerId = layerIds.get(layer)!
     const visitNode = (node: SequenceNode<TTarget, TEvent>, parentId: string | null): void => {
       const currentNodeId = nodeIds.get(node)!
-      const childIds = [...node.children.values()].map((child) => nodeIds.get(child)!).filter(Boolean)
+      const childIds = [...node.children.values(), ...node.patternChildren]
+        .map((child) => nodeIds.get(child)!)
+        .filter(Boolean)
       const bindingIds = node.bindings
         .map((binding) => bindingStates.get(binding)?.id)
         .filter((id): id is string => !!id)
@@ -412,6 +417,9 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
       })
 
       for (const child of node.children.values()) {
+        visitNode(child, currentNodeId)
+      }
+      for (const child of node.patternChildren) {
         visitNode(child, currentNodeId)
       }
     }

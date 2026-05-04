@@ -225,6 +225,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     binding: BindingState<TTarget, TEvent>,
     event: TEvent,
     focused: TTarget | null,
+    payload?: unknown,
   ): boolean {
     const data = this.runtime.getReadonlyData()
 
@@ -238,7 +239,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
           bindingLayer.target ?? null,
           data,
           typeof binding.command === "string" ? binding.command : "<function>",
-          undefined,
+          payload,
         ),
         false,
       )
@@ -255,7 +256,11 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       return false
     }
 
-    const chain = this.catalog.getResolvedCommandChain(binding.command, focused).entries
+    const chain = this.catalog.getResolvedCommandChain(
+      binding.command,
+      focused,
+      payload === undefined ? undefined : { input: binding.command, payload },
+    ).entries
     if (chain?.length === 1) {
       const [entry] = chain
       if (entry) {

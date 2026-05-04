@@ -22,6 +22,7 @@ import type {
   LayerFieldCompiler,
   PendingSequenceState,
   RawInputContext,
+  ResolvedSequencePattern,
   CommandState,
   RegisteredLayer,
   RuntimeMatchable,
@@ -36,6 +37,7 @@ export interface CoreState {
 
 export interface EnvironmentState<TTarget extends object, TEvent extends KeymapEvent> {
   tokens: Map<string, import("../types.js").ResolvedKeyToken>
+  sequencePatterns: Map<string, ResolvedSequencePattern<TEvent>>
   layerFields: Map<string, LayerFieldCompiler>
   layerBindingsTransformers: OrderedRegistry<LayerBindingsTransformer<TTarget, TEvent>>
   bindingExpanders: OrderedRegistry<BindingExpander>
@@ -171,6 +173,7 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     },
     environment: {
       tokens: new Map<string, import("../types.js").ResolvedKeyToken>(),
+      sequencePatterns: new Map<string, ResolvedSequencePattern<TEvent>>(),
       layerFields: new Map<string, LayerFieldCompiler>(),
       layerBindingsTransformers: new OrderedRegistry<LayerBindingsTransformer<TTarget, TEvent>>(),
       bindingExpanders: new OrderedRegistry<BindingExpander>(),
