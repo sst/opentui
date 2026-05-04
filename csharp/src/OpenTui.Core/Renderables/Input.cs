@@ -13,11 +13,24 @@ public class InputOptions
     public string? Bg { get; set; }
     public int? MaxLength { get; set; }
     public object? Width { get; set; }
+    public object? Height { get; set; }
+    public string? Value { get; set; }
 }
 
 public class InputRenderable : Renderable
 {
-    public string Value { get; set; } = "";
+    private string _value = "";
+    public string Value
+    {
+        get => _value;
+        set
+        {
+            _value = MaxLength.HasValue && value.Length > MaxLength.Value ? value[..MaxLength.Value] : value;
+            _cursorPos = Math.Min(_cursorPos, _value.Length);
+            _scrollOffset = Math.Min(_scrollOffset, _value.Length);
+            RequestRender();
+        }
+    }
     public string? Placeholder { get; set; }
     public string? PlaceholderColor { get; set; }
     public string? CursorColor { get; set; }
@@ -39,9 +52,19 @@ public class InputRenderable : Renderable
         MaxLength = opts.MaxLength;
         Focusable = true;
         if (opts.Width != null) SetWidth(opts.Width);
+        if (opts.Height != null) SetHeight(opts.Height);
+        if (opts.Value != null)
+        {
+            _value = MaxLength.HasValue && opts.Value.Length > MaxLength.Value ? opts.Value[..MaxLength.Value] : opts.Value;
+            _cursorPos = _value.Length;
+        }
 
         On("focused", _ => RequestRender());
-        On("blurred", _ => RequestRender());
+        On("blurred", _ =>
+        {
+            Emit("change", Value);
+            RequestRender();
+        });
     }
 
     public override void HandleKey(KeyEvent key)
@@ -50,11 +73,13 @@ public class InputRenderable : Renderable
         {
             case "return":
                 Emit("enter", Value);
+                Emit("change", Value);
+                RequestRender();
                 break;
             case "backspace":
                 if (_cursorPos > 0)
                 {
-                    Value = Value[..(_cursorPos - 1)] + Value[_cursorPos..];
+                    _value = Value[..(_cursorPos - 1)] + Value[_cursorPos..];
                     _cursorPos--;
                     Emit("input", Value);
                     RequestRender();
@@ -63,7 +88,7 @@ public class InputRenderable : Renderable
             case "delete":
                 if (_cursorPos < Value.Length)
                 {
-                    Value = Value[.._cursorPos] + Value[(_cursorPos + 1)..];
+                    _value = Value[.._cursorPos] + Value[(_cursorPos + 1)..];
                     Emit("input", Value);
                     RequestRender();
                 }
@@ -85,7 +110,7 @@ public class InputRenderable : Renderable
                 {
                     if (MaxLength == null || Value.Length < MaxLength.Value)
                     {
-                        Value = Value[.._cursorPos] + key.Char.Value + Value[_cursorPos..];
+                        _value = Value[.._cursorPos] + key.Char.Value + Value[_cursorPos..];
                         _cursorPos++;
                         Emit("input", Value);
                         RequestRender();
@@ -97,13 +122,13 @@ public class InputRenderable : Renderable
 
     protected override void RenderSelf(RenderBuffer buffer, double deltaTime)
     {
-        int x = ScreenX, y = ScreenY, w = ComputedWidth;
-        if (w <= 0) return;
+        int x = ScreenX, y = ScreenY, w = ComputedWidth, h = Math.Max(1, ComputedHeight);
+        if (w <= 0 || h <= 0) return;
 
         var fg = Fg != null ? Rgba.FromCss(Fg) : Rgba.FromInts(255, 255, 255);
         var bg = Bg != null ? Rgba.FromCss(Bg) : Rgba.FromInts(30, 30, 30);
 
-        buffer.FillRect(x, y, w, 1, bg);
+        buffer.FillRect(x, y, w, h, bg);
 
         if (Value.Length == 0 && Placeholder != null)
         {

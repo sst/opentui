@@ -182,6 +182,18 @@ namespace OpenTui.Tests
             Assert.Contains("\n", text);
         }
 
+        [Fact]
+        public void GetRealCharBytes_WideCharacters_SkipsContinuationCells()
+        {
+            using var buf = CellBuffer.Create(6, 1);
+            buf.DrawText("世", 0, 0, White, Black);
+            buf.DrawText("X", 2, 0, White, Black);
+
+            var text = Encoding.UTF8.GetString(buf.GetRealCharBytes(false));
+
+            Assert.StartsWith("世X", text);
+        }
+
         // ── DrawBox ───────────────────────────────────────────────────────────────
 
         [Fact]
@@ -268,6 +280,7 @@ namespace OpenTui.Tests
         [InlineData('z',   1)]
         [InlineData('世',  2)]
         [InlineData('界',  2)]
+        [InlineData('✨',  2)]
         public void RuneWidth_KnownValues(char ch, int expected)
         {
             Assert.Equal(expected, CellBuffer.RuneWidth(new System.Text.Rune(ch)));

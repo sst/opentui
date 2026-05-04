@@ -11,9 +11,17 @@ public class ScrollBoxRenderable : Renderable
     public bool StickyScroll { get; set; } = false;
     public bool ShowVerticalScrollbar { get; set; } = true;
     public bool ShowHorizontalScrollbar { get; set; } = false;
+    public bool Border { get; set; } = true;
+    public string BorderColor { get; set; } = "#7aa2f7";
+    public string BackgroundColor { get; set; } = "#1a1b26";
+    public string TrackColor { get; set; } = "#414868";
+    public string ThumbColor { get; set; } = "#7aa2f7";
 
     public int ContentWidth { get; set; } = 0;
     public int ContentHeight { get; set; } = 0;
+
+    private bool _draggingVertical;
+    private bool _draggingHorizontal;
 
     public ScrollBoxRenderable(CliRenderer? renderer) : base(renderer)
     {
@@ -22,8 +30,8 @@ public class ScrollBoxRenderable : Renderable
 
     public override void HandleKey(KeyEvent key)
     {
-        int viewH = ComputedHeight - (ShowHorizontalScrollbar ? 1 : 0);
-        int viewW = ComputedWidth - (ShowVerticalScrollbar ? 1 : 0);
+        int viewH = GetViewportHeight();
+        int viewW = GetViewportWidth();
         int maxScrollY = Math.Max(0, ContentHeight - viewH);
         int maxScrollX = Math.Max(0, ContentWidth - viewW);
 
@@ -67,9 +75,10 @@ public class ScrollBoxRenderable : Renderable
 
     public override void HandleMouse(MouseEvent mouse)
     {
-        int viewH = ComputedHeight - (ShowHorizontalScrollbar ? 1 : 0);
-        int viewW = ComputedWidth - (ShowVerticalScrollbar ? 1 : 0);
+        int viewH = GetViewportHeight();
+        int viewW = GetViewportWidth();
         int maxScrollY = Math.Max(0, ContentHeight - viewH);
+        int maxScrollX = Math.Max(0, ContentWidth - viewW);
 
         if (mouse.Button == MouseButton.WheelUp)
         {
@@ -83,6 +92,26 @@ public class ScrollBoxRenderable : Renderable
             ScrollY = maxScrollY > 0 ? Math.Min(maxScrollY, next) : next;
             RequestRender();
         }
+        else if (mouse.Button == MouseButton.Left && mouse.Pressed)
+        {
+            if (_draggingVertical || IsOnVerticalScrollbar(mouse.X, mouse.Y))
+            {
+                _draggingVertical = true;
+                SetVerticalScrollFromMouse(mouse.Y, maxScrollY, viewH);
+                RequestRender();
+            }
+            else if (_draggingHorizontal || IsOnHorizontalScrollbar(mouse.X, mouse.Y))
+            {
+                _draggingHorizontal = true;
+                SetHorizontalScrollFromMouse(mouse.X, maxScrollX, viewW);
+                RequestRender();
+            }
+        }
+        else if (mouse.Button == MouseButton.Left && !mouse.Pressed)
+        {
+            _draggingVertical = false;
+            _draggingHorizontal = false;
+        }
     }
 
     public override void Render(RenderBuffer buffer, double deltaTime)
@@ -94,10 +123,11 @@ public class ScrollBoxRenderable : Renderable
 
         RenderSelf(buffer, deltaTime);
 
-        int clipX = ScreenX;
-        int clipY = ScreenY;
-        int clipW = ComputedWidth - (ShowVerticalScrollbar ? 1 : 0);
-        int clipH = ComputedHeight - (ShowHorizontalScrollbar ? 1 : 0);
+        int inset = Border ? 1 : 0;
+        int clipX = ScreenX + inset;
+        int clipY = ScreenY + inset;
+        int clipW = GetViewportWidth();
+        int clipH = GetViewportHeight();
 
         buffer.SetClipRegion(clipX, clipY, clipW, clipH);
 
@@ -105,8 +135,8 @@ public class ScrollBoxRenderable : Renderable
         //   child.ScreenX = this.ScreenX + child.X  →  (this.ScreenX - ScrollX) + child.X
         int savedScreenX = ScreenX;
         int savedScreenY = ScreenY;
-        ScreenX -= ScrollX;
-        ScreenY -= ScrollY;
+        ScreenX += inset - ScrollX;
+        ScreenY += inset - ScrollY;
 
         var sorted = GetChildren().Where(c => c.Visible).OrderBy(c => c.ZIndex).ToList();
         foreach (var child in sorted)
@@ -120,30 +150,129 @@ public class ScrollBoxRenderable : Renderable
 
         if (ShowVerticalScrollbar)
             RenderVerticalScrollbar(buffer);
+
+        if (ShowHorizontalScrollbar)
+            RenderHorizontalScrollbar(buffer);
     }
 
     private void RenderVerticalScrollbar(RenderBuffer buffer)
     {
-        int sbX = ScreenX + ComputedWidth - 1;
-        int h = ComputedHeight;
+        int inset = Border ? 1 : 0;
+        int sbX = ScreenX + ComputedWidth - 1 - inset;
+        int h = GetViewportHeight();
         if (h <= 0) return;
 
-        var trackFg = Rgba.FromInts(60, 60, 60);
-        var trackBg = Rgba.FromInts(20, 20, 20);
-        var thumbFg = Rgba.FromInts(160, 160, 160);
+        var trackFg = Rgba.FromCss(TrackColor);
+        var trackBg = Rgba.FromCss(BackgroundColor);
+        var thumbFg = Rgba.FromCss(ThumbColor);
 
         for (int row = 0; row < h; row++)
-            buffer.SetCell(sbX, ScreenY + row, '│', trackFg, trackBg);
+            buffer.SetCell(sbX, ScreenY + inset + row, '│', trackFg, trackBg);
 
-        int viewH = h - (ShowHorizontalScrollbar ? 1 : 0);
+        int viewH = h;
         int totalH = ContentHeight > 0 ? ContentHeight : viewH;
         if (totalH > viewH)
         {
             float ratio = (float)ScrollY / (totalH - viewH);
             int thumbY = (int)(ratio * (viewH - 1));
-            buffer.SetCell(sbX, ScreenY + thumbY, '█', thumbFg, trackBg);
+            buffer.SetCell(sbX, ScreenY + inset + thumbY, '█', thumbFg, trackBg);
         }
     }
 
-    protected override void RenderSelf(RenderBuffer buffer, double deltaTime) { }
+    private bool IsOnVerticalScrollbar(int x, int y)
+    {
+        if (!ShowVerticalScrollbar) return false;
+        int inset = Border ? 1 : 0;
+        int sbX = ScreenX + ComputedWidth - 1 - inset;
+        int top = ScreenY + inset;
+        int bottom = top + GetViewportHeight();
+        return x == sbX && y >= top && y < bottom;
+    }
+
+    private bool IsOnHorizontalScrollbar(int x, int y)
+    {
+        if (!ShowHorizontalScrollbar) return false;
+        int inset = Border ? 1 : 0;
+        int sbY = ScreenY + ComputedHeight - 1 - inset;
+        int left = ScreenX + inset;
+        int right = left + GetViewportWidth();
+        return y == sbY && x >= left && x < right;
+    }
+
+    private void SetVerticalScrollFromMouse(int y, int maxScrollY, int viewH)
+    {
+        if (maxScrollY <= 0 || viewH <= 1)
+        {
+            ScrollY = 0;
+            return;
+        }
+
+        int inset = Border ? 1 : 0;
+        int trackTop = ScreenY + inset;
+        int pos = Math.Clamp(y - trackTop, 0, viewH - 1);
+        ScrollY = (int)Math.Round((double)pos / (viewH - 1) * maxScrollY);
+    }
+
+    private void SetHorizontalScrollFromMouse(int x, int maxScrollX, int viewW)
+    {
+        if (maxScrollX <= 0 || viewW <= 1)
+        {
+            ScrollX = 0;
+            return;
+        }
+
+        int inset = Border ? 1 : 0;
+        int trackLeft = ScreenX + inset;
+        int pos = Math.Clamp(x - trackLeft, 0, viewW - 1);
+        ScrollX = (int)Math.Round((double)pos / (viewW - 1) * maxScrollX);
+    }
+
+    private void RenderHorizontalScrollbar(RenderBuffer buffer)
+    {
+        int inset = Border ? 1 : 0;
+        int sbY = ScreenY + ComputedHeight - 1 - inset;
+        int w = GetViewportWidth();
+        if (w <= 0) return;
+
+        var trackFg = Rgba.FromCss(TrackColor);
+        var trackBg = Rgba.FromCss(BackgroundColor);
+        var thumbFg = Rgba.FromCss(ThumbColor);
+
+        for (int col = 0; col < w; col++)
+            buffer.SetCell(ScreenX + inset + col, sbY, '─', trackFg, trackBg);
+
+        int totalW = ContentWidth > 0 ? ContentWidth : w;
+        if (totalW > w)
+        {
+            float ratio = (float)ScrollX / (totalW - w);
+            int thumbX = (int)(ratio * (w - 1));
+            buffer.SetCell(ScreenX + inset + thumbX, sbY, '█', thumbFg, trackBg);
+        }
+    }
+
+    protected override void RenderSelf(RenderBuffer buffer, double deltaTime)
+    {
+        int x = ScreenX, y = ScreenY, w = ComputedWidth, h = ComputedHeight;
+        if (w <= 0 || h <= 0) return;
+
+        var bg = Rgba.FromCss(BackgroundColor);
+        buffer.FillRect(x, y, w, h, bg);
+
+        if (Border)
+            buffer.DrawBorder(x, y, w, h, "single", Rgba.FromCss(BorderColor), bg);
+    }
+
+    private int GetViewportWidth()
+    {
+        int inset = Border ? 2 : 0;
+        int scrollbar = ShowVerticalScrollbar ? 1 : 0;
+        return Math.Max(0, ComputedWidth - inset - scrollbar);
+    }
+
+    private int GetViewportHeight()
+    {
+        int inset = Border ? 2 : 0;
+        int scrollbar = ShowHorizontalScrollbar ? 1 : 0;
+        return Math.Max(0, ComputedHeight - inset - scrollbar);
+    }
 }

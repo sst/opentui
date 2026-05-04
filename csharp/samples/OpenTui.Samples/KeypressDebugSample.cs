@@ -29,14 +29,16 @@ internal static class KeypressDebugSample
         var text = new TextRenderable(renderer, new TextOptions
         {
             Content = "Press any key... (q or Escape to quit)",
-            Fg = "#aaaaaa"
+            Fg = "#aaaaaa",
+            Height = 1
         });
         box.Add(text);
 
         var lastKey = new TextRenderable(renderer, new TextOptions
         {
             Content = "",
-            Fg = "#00ff88"
+            Fg = "#00ff88",
+            Height = 1
         });
         box.Add(lastKey);
 

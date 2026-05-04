@@ -44,6 +44,7 @@ namespace OpenTui.Samples
                     var cell = buf.GetCell(x, y);
                     if (cell == null) { Console.Write(' '); continue; }
                     var c = cell.Value;
+                    if (c.Codepoint == 0) continue;
 
                     if (c.Fg != curFg)
                     {
@@ -56,9 +57,11 @@ namespace OpenTui.Samples
                         curBg = c.Bg;
                     }
 
-                    Console.Write(c.Codepoint == 0 ? ' ' : char.ConvertFromUtf32(c.Codepoint));
+                    Console.Write(char.ConvertFromUtf32(c.Codepoint));
                 }
                 Console.WriteLine(AnsiCodes.Reset);
+                curFg = Rgba.FromInts(255, 255, 255);
+                curBg = Rgba.FromInts(0,   0,   0);
             }
         }
     }

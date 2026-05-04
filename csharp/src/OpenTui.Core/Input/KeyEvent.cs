@@ -9,4 +9,10 @@ public class KeyEvent
     public bool Shift { get; init; }
     public bool Meta { get; init; }
     public char? Char { get; init; }
+    public bool DefaultPrevented { get; private set; }
+
+    public void PreventDefault()
+    {
+        DefaultPrevented = true;
+    }
 }

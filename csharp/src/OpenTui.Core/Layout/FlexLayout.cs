@@ -18,8 +18,8 @@ public static class FlexLayout
         bool isRow = node.FlexDirection == FlexDirection.Row || node.FlexDirection == FlexDirection.RowReverse;
         bool isReverse = node.FlexDirection == FlexDirection.RowReverse || node.FlexDirection == FlexDirection.ColumnReverse;
 
-        int innerX = node.ComputedX + node.PaddingLeft;
-        int innerY = node.ComputedY + node.PaddingTop;
+        int innerX = node.PaddingLeft;
+        int innerY = node.PaddingTop;
         int innerWidth = Math.Max(0, node.ComputedWidth - node.PaddingLeft - node.PaddingRight);
         int innerHeight = Math.Max(0, node.ComputedHeight - node.PaddingTop - node.PaddingBottom);
 
@@ -45,14 +45,14 @@ public static class FlexLayout
                 : (int)child.Height.Resolve(innerHeight);
 
             if (child.Right.HasValue && !child.Left.HasValue)
-                child.ComputedX = node.ComputedX + node.ComputedWidth - cw - child.Right.Value;
+                child.ComputedX = node.ComputedWidth - cw - child.Right.Value;
             else
-                child.ComputedX = node.ComputedX + (child.Left ?? 0);
+                child.ComputedX = child.Left ?? 0;
 
             if (child.Bottom.HasValue && !child.Top.HasValue)
-                child.ComputedY = node.ComputedY + node.ComputedHeight - ch - child.Bottom.Value;
+                child.ComputedY = node.ComputedHeight - ch - child.Bottom.Value;
             else
-                child.ComputedY = node.ComputedY + (child.Top ?? 0);
+                child.ComputedY = child.Top ?? 0;
 
             child.ComputedWidth = cw;
             child.ComputedHeight = ch;

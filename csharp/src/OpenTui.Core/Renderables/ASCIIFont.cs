@@ -8,6 +8,12 @@ public class ASCIIFontRenderable : Renderable
     public string Text { get; set; } = "";
     public string Font { get; set; } = "normal";
     public string? Color { get; set; }
+    public string? BackgroundColor { get; set; }
+    public string SelectionBg { get; set; } = "#4a5568";
+    public string SelectionFg { get; set; } = "#ffffff";
+
+    private int? _selectionStart;
+    private int? _selectionEnd;
 
     // 5x3 character patterns: each char is 3 rows of 5 chars
     private static readonly Dictionary<char, string[]> Font5x3 = new()
@@ -58,7 +64,57 @@ public class ASCIIFontRenderable : Renderable
         ['/'] = new[] { "  ▄▀", " ▄▀ ", "▄▀  " },
     };
 
+    private static readonly Dictionary<char, string[]> TinyFont = new()
+    {
+        ['A'] = new[] { "A", "A", "A" }, ['B'] = new[] { "B", "B", "B" }, ['C'] = new[] { "C", "C", "C" },
+        ['D'] = new[] { "D", "D", "D" }, ['E'] = new[] { "E", "E", "E" }, ['F'] = new[] { "F", "F", "F" },
+        ['G'] = new[] { "G", "G", "G" }, ['H'] = new[] { "H", "H", "H" }, ['I'] = new[] { "I", "I", "I" },
+        ['J'] = new[] { "J", "J", "J" }, ['K'] = new[] { "K", "K", "K" }, ['L'] = new[] { "L", "L", "L" },
+        ['M'] = new[] { "M", "M", "M" }, ['N'] = new[] { "N", "N", "N" }, ['O'] = new[] { "O", "O", "O" },
+        ['P'] = new[] { "P", "P", "P" }, ['Q'] = new[] { "Q", "Q", "Q" }, ['R'] = new[] { "R", "R", "R" },
+        ['S'] = new[] { "S", "S", "S" }, ['T'] = new[] { "T", "T", "T" }, ['U'] = new[] { "U", "U", "U" },
+        ['V'] = new[] { "V", "V", "V" }, ['W'] = new[] { "W", "W", "W" }, ['X'] = new[] { "X", "X", "X" },
+        ['Y'] = new[] { "Y", "Y", "Y" }, ['Z'] = new[] { "Z", "Z", "Z" }, [' '] = new[] { " ", " ", " " },
+        ['0'] = new[] { "0", "0", "0" }, ['1'] = new[] { "1", "1", "1" }, ['2'] = new[] { "2", "2", "2" },
+        ['3'] = new[] { "3", "3", "3" }, ['4'] = new[] { "4", "4", "4" }, ['5'] = new[] { "5", "5", "5" },
+        ['6'] = new[] { "6", "6", "6" }, ['7'] = new[] { "7", "7", "7" }, ['8'] = new[] { "8", "8", "8" },
+        ['9'] = new[] { "9", "9", "9" }
+    };
+
     public ASCIIFontRenderable(CliRenderer? renderer) : base(renderer) { }
+
+    public bool ContainsPoint(int x, int y)
+        => x >= ScreenX && x < ScreenX + ComputedWidth && y >= ScreenY && y < ScreenY + ComputedHeight;
+
+    public int ColumnToTextIndex(int x)
+    {
+        int relative = Math.Max(0, x - ScreenX);
+        return Math.Clamp(relative / 6, 0, Text.Length);
+    }
+
+    public void SetSelection(int start, int end)
+    {
+        _selectionStart = Math.Clamp(Math.Min(start, end), 0, Text.Length);
+        _selectionEnd = Math.Clamp(Math.Max(start, end), 0, Text.Length);
+        RequestRender();
+    }
+
+    public void ClearSelection()
+    {
+        _selectionStart = null;
+        _selectionEnd = null;
+        RequestRender();
+    }
+
+    public bool HasSelection() => _selectionStart.HasValue && _selectionEnd.HasValue && _selectionEnd > _selectionStart;
+
+    public string GetSelectedText()
+    {
+        if (!HasSelection()) return "";
+        return Text[_selectionStart!.Value.._selectionEnd!.Value];
+    }
+
+    public static IReadOnlyList<string> SupportedFonts { get; } = new[] { "tiny", "block", "shade", "slick" };
 
     protected override void RenderSelf(RenderBuffer buffer, double deltaTime)
     {
@@ -66,24 +122,54 @@ public class ASCIIFontRenderable : Renderable
         if (w <= 0 || h <= 0) return;
 
         var fg = Color != null ? Rgba.FromCss(Color) : Rgba.FromInts(255, 255, 255);
-        var bg = Rgba.FromInts(0, 0, 0, 0);
+        var bg = BackgroundColor != null ? Rgba.FromCss(BackgroundColor) : Rgba.FromInts(0, 0, 0, 0);
+        if (BackgroundColor != null)
+            buffer.FillRect(x, y, w, h, bg);
 
+        var font = GetFont();
+        int spacing = Font.Equals("tiny", StringComparison.OrdinalIgnoreCase) ? 1 : 1;
         int col = x;
-        foreach (char c in Text.ToUpper())
+        for (int i = 0; i < Text.Length; i++)
         {
-            if (!Font5x3.TryGetValue(c, out var pattern))
-                pattern = Font5x3[' '];
+            char c = char.ToUpperInvariant(Text[i]);
+            if (!font.TryGetValue(c, out var pattern))
+                pattern = font.TryGetValue(' ', out var space) ? space : Font5x3[' '];
 
-            int charWidth = pattern[0].Length + 1; // +1 for spacing
+            int charWidth = pattern[0].Length + spacing;
             if (col + charWidth > x + w) break;
+
+            bool selected = _selectionStart.HasValue && _selectionEnd.HasValue && i >= _selectionStart.Value && i < _selectionEnd.Value;
+            var charFg = selected ? Rgba.FromCss(SelectionFg) : fg;
+            var charBg = selected ? Rgba.FromCss(SelectionBg) : bg;
 
             for (int row = 0; row < 3 && row < h; row++)
             {
                 var rowStr = row < pattern.Length ? pattern[row] : "";
-                buffer.DrawText(col, y + row, rowStr, fg, bg);
+                buffer.DrawText(col, y + row, rowStr, charFg, charBg);
             }
 
             col += charWidth;
         }
+    }
+
+    private Dictionary<char, string[]> GetFont()
+    {
+        return Font.ToLowerInvariant() switch
+        {
+            "tiny" => TinyFont,
+            "shade" => BuildTransformedFont('░'),
+            "slick" => BuildTransformedFont('╱'),
+            _ => Font5x3
+        };
+    }
+
+    private static Dictionary<char, string[]> BuildTransformedFont(char fill)
+    {
+        var result = new Dictionary<char, string[]>(Font5x3.Count);
+        foreach (var (ch, rows) in Font5x3)
+        {
+            result[ch] = rows.Select(row => new string(row.Select(c => c == ' ' ? ' ' : fill).ToArray())).ToArray();
+        }
+        return result;
     }
 }

@@ -268,6 +268,7 @@ namespace OpenTui.Core.Buffer
             if (v < 0x1100) return 1;
             if (v <= 0x115F  ||    // Hangul Jamo
                 v == 0x2329  || v == 0x232A ||
+                (v >= 0x2600  && v <= 0x27BF) ||
                 (v >= 0x2E80  && v <= 0x303E) ||
                 (v >= 0x3040  && v <= 0xA4CF) ||
                 (v >= 0xAC00  && v <= 0xD7AF) ||
