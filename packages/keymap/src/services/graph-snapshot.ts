@@ -15,7 +15,9 @@ import type {
   GraphSnapshotOptions,
   KeymapHost,
   KeySequencePart,
+  PendingSequenceCapture,
   RegisteredLayer,
+  ResolvedSequencePattern,
   SequenceNode,
 } from "../types.js"
 import { cloneKeySequence, cloneKeyStroke } from "./keys.js"
@@ -89,6 +91,82 @@ function nodeId<TTarget extends object, TEvent extends KeymapEvent>(
   return `node:${layer.order}:${index}`
 }
 
+function createSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
+  parent: SequenceNode<TTarget, TEvent> | null,
+  stroke: KeySequencePart["stroke"] | null,
+  match: KeySequencePart["match"] | null,
+  pattern?: ResolvedSequencePattern<TEvent>,
+): SequenceNode<TTarget, TEvent> {
+  return {
+    parent,
+    depth: parent ? parent.depth + 1 : 0,
+    stroke,
+    match,
+    pattern,
+    children: new Map(),
+    patternChildren: [],
+    bindings: [],
+    reachableBindings: [],
+  }
+}
+
+function buildSequenceTree<TTarget extends object, TEvent extends KeymapEvent>(
+  layer: RegisteredLayer<TTarget, TEvent>,
+  patterns: ReadonlyMap<string, ResolvedSequencePattern<TEvent>>,
+): SequenceNode<TTarget, TEvent> {
+  const root = createSequenceNode<TTarget, TEvent>(null, null, null)
+  for (const binding of layer.bindingStates) {
+    if (binding.event !== "press") {
+      continue
+    }
+
+    let node = root
+    for (const part of binding.sequence) {
+      let child: SequenceNode<TTarget, TEvent> | undefined
+      if (part.patternName) {
+        const pattern = patterns.get(part.patternName)
+        child = node.patternChildren.find((candidate) => candidate.pattern?.name === part.patternName)
+        if (!child) {
+          child = createSequenceNode(node, part.stroke, part.match, pattern)
+          node.patternChildren.push(child)
+        }
+      } else {
+        child = node.children.get(part.match)
+        if (!child) {
+          child = createSequenceNode(node, part.stroke, part.match)
+          node.children.set(part.match, child)
+        }
+      }
+
+      child.reachableBindings.push(binding)
+      node = child
+    }
+
+    node.bindings.push(binding)
+  }
+
+  return root
+}
+
+function getCaptureNode<TTarget extends object, TEvent extends KeymapEvent>(
+  root: SequenceNode<TTarget, TEvent>,
+  capture: PendingSequenceCapture<TTarget, TEvent>,
+): SequenceNode<TTarget, TEvent> | undefined {
+  let node: SequenceNode<TTarget, TEvent> | undefined = root
+  for (let index = 0; index <= capture.index; index += 1) {
+    const part = capture.binding.sequence[index]
+    if (!part || !node) {
+      return undefined
+    }
+
+    node = part.patternName
+      ? node.patternChildren.find((candidate) => candidate.pattern?.name === part.patternName)
+      : node.children.get(part.match)
+  }
+
+  return node
+}
+
 function getSequenceMatches(sequence: readonly KeySequencePart[]): string[] {
   return sequence.map((part) => part.match)
 }
@@ -153,6 +231,7 @@ function collectPendingNodes<TTarget extends object, TEvent extends KeymapEvent>
   pending: State<TTarget, TEvent>["projection"]["pendingSequence"],
   layerIds: ReadonlyMap<RegisteredLayer<TTarget, TEvent>, string>,
   nodeIds: ReadonlyMap<SequenceNode<TTarget, TEvent>, string>,
+  roots: ReadonlyMap<RegisteredLayer<TTarget, TEvent>, SequenceNode<TTarget, TEvent>>,
 ): { pending: Set<string>; pendingPath: Set<string> } {
   const pendingIds = new Set<string>()
   const pendingPathIds = new Set<string>()
@@ -167,8 +246,13 @@ function collectPendingNodes<TTarget extends object, TEvent extends KeymapEvent>
       continue
     }
 
-    let current: SequenceNode<TTarget, TEvent> | null = capture.node
-    const capturedNodeId = nodeIds.get(capture.node)
+    const root = roots.get(capture.layer)
+    if (!root) {
+      continue
+    }
+
+    let current: SequenceNode<TTarget, TEvent> | null = getCaptureNode(root, capture) ?? null
+    const capturedNodeId = current ? nodeIds.get(current) : undefined
     if (capturedNodeId) {
       pendingIds.add(capturedNodeId)
     }
@@ -209,8 +293,13 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   const commandIdsByName = new Map<string, string[]>()
   const nodeIds = new Map<SequenceNode<TTarget, TEvent>, string>()
   const layerIds = new Map<RegisteredLayer<TTarget, TEvent>, string>()
+  const layerRoots = new Map<RegisteredLayer<TTarget, TEvent>, SequenceNode<TTarget, TEvent>>()
   const bindingNodeIds = new Map<BindingState<TTarget, TEvent>, string>()
   const sequenceNodes: GraphSequenceNode[] = []
+
+  for (const layer of sortedLayers) {
+    layerRoots.set(layer, buildSequenceTree(layer, state.environment.sequencePatterns))
+  }
 
   for (const layer of sortedLayers) {
     const targetDestroyed = layer.target ? host.isTargetDestroyed(layer.target) : false
@@ -297,9 +386,10 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
       }
     }
 
-    visitNode(layer.root, null)
-    if (!nodeIds.has(layer.root)) {
-      nodeIds.set(layer.root, `${currentLayerId}:root`)
+    const root = layerRoots.get(layer)!
+    visitNode(root, null)
+    if (!nodeIds.has(root)) {
+      nodeIds.set(root, `${currentLayerId}:root`)
     }
   }
 
@@ -370,7 +460,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   }
 
   const pending = focused === currentFocused ? activation.ensureValidPendingSequence() : undefined
-  const pendingNodes = collectPendingNodes(pending ?? null, layerIds, nodeIds)
+  const pendingNodes = collectPendingNodes(pending ?? null, layerIds, nodeIds, layerRoots)
 
   for (const layer of sortedLayers) {
     const currentLayerId = layerIds.get(layer)!
@@ -424,7 +514,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
       }
     }
 
-    visitNode(layer.root, null)
+    visitNode(layerRoots.get(layer)!, null)
   }
 
   const layers: GraphLayer<TTarget>[] = sortedLayers.map((layer) => {
@@ -441,7 +531,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
       focusActive: state.focusActive,
       enabled: state.enabled,
       inactiveReasons: state.inactiveReasons,
-      rootNodeId: nodeIds.get(layer.root)!,
+      rootNodeId: nodeIds.get(layerRoots.get(layer)!)!,
       bindingIds: layer.bindingStates.map((binding) => bindingStates.get(binding)!.id),
       commandIds: layer.commands.map((command) => commandStates.get(command)!.id),
     }

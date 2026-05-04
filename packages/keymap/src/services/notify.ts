@@ -10,40 +10,46 @@ type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick
 export const MAX_STATE_CHANGE_FLUSH_ITERATIONS = 1000
 
 export class NotificationService<TTarget extends object, TEvent extends KeymapEvent> {
+  #state: State<TTarget, TEvent>
+  #events: Emitter<DiagnosticEvents<TTarget, TEvent>>
+  #hooks: Emitter<Hooks<TTarget, TEvent>>
+
   constructor(
-    private readonly state: State<TTarget, TEvent>,
-    private readonly events: Emitter<DiagnosticEvents<TTarget, TEvent>>,
-    private readonly hooks: Emitter<Hooks<TTarget, TEvent>>,
-  ) {}
+    state: State<TTarget, TEvent>,
+    events: Emitter<DiagnosticEvents<TTarget, TEvent>>,
+    hooks: Emitter<Hooks<TTarget, TEvent>>,
+  ) {
+    this.#state = state
+    this.#events = events
+    this.#hooks = hooks
+  }
 
   public runWithStateChangeBatch<T>(fn: () => T): T {
-    this.state.notify.stateChangeDepth += 1
+    this.#state.notify.stateChangeDepth += 1
 
     try {
       return fn()
     } finally {
-      this.state.notify.stateChangeDepth -= 1
-      if (this.state.notify.stateChangeDepth === 0) {
-        this.flushStateChange()
+      this.#state.notify.stateChangeDepth -= 1
+      if (this.#state.notify.stateChangeDepth === 0) {
+        this.#flushStateChange()
       }
     }
   }
 
   public queueStateChange(): void {
-    this.state.notify.derivedStateVersion += 1
-
-    if (!this.hooks.has("state")) {
+    if (!this.#hooks.has("state")) {
       return
     }
 
-    this.state.notify.stateChangePending = true
-    if (this.state.notify.stateChangeDepth === 0 && !this.state.notify.flushingStateChange) {
-      this.flushStateChange()
+    this.#state.notify.stateChangePending = true
+    if (this.#state.notify.stateChangeDepth === 0 && !this.#state.notify.flushingStateChange) {
+      this.#flushStateChange()
     }
   }
 
   public emitWarning(code: string, warning: unknown, message: string): void {
-    if (!this.events.has("warning")) {
+    if (!this.#events.has("warning")) {
       const consoleMessage = `[${code}] ${message}`
       if (warning instanceof Error) {
         console.warn(consoleMessage, warning)
@@ -54,11 +60,11 @@ export class NotificationService<TTarget extends object, TEvent extends KeymapEv
       return
     }
 
-    this.events.emit("warning", { code, message, warning })
+    this.#events.emit("warning", { code, message, warning })
   }
 
   public emitError(code: string, error: unknown, message: string): void {
-    if (!this.events.has("error")) {
+    if (!this.#events.has("error")) {
       const consoleMessage = `[${code}] ${message}`
       if (error instanceof Error) {
         console.error(consoleMessage, error)
@@ -69,7 +75,7 @@ export class NotificationService<TTarget extends object, TEvent extends KeymapEv
       return
     }
 
-    this.events.emit("error", { code, message, error })
+    this.#events.emit("error", { code, message, error })
   }
 
   public reportListenerError(name: HookName, error: unknown): void {
@@ -89,31 +95,31 @@ export class NotificationService<TTarget extends object, TEvent extends KeymapEv
   }
 
   public warnOnce(key: string, code: string, warning: unknown, message: string): void {
-    if (this.state.notify.usedWarningKeys.has(key)) {
+    if (this.#state.notify.usedWarningKeys.has(key)) {
       return
     }
 
-    this.state.notify.usedWarningKeys.add(key)
+    this.#state.notify.usedWarningKeys.add(key)
     this.emitWarning(code, warning, message)
   }
 
-  private flushStateChange(): void {
+  #flushStateChange(): void {
     if (
-      !this.state.notify.stateChangePending ||
-      this.state.notify.stateChangeDepth > 0 ||
-      this.state.notify.flushingStateChange
+      !this.#state.notify.stateChangePending ||
+      this.#state.notify.stateChangeDepth > 0 ||
+      this.#state.notify.flushingStateChange
     ) {
       return
     }
 
-    this.state.notify.flushingStateChange = true
+    this.#state.notify.flushingStateChange = true
 
     try {
       let iterations = 0
 
-      while (this.state.notify.stateChangePending && this.state.notify.stateChangeDepth === 0) {
+      while (this.#state.notify.stateChangePending && this.#state.notify.stateChangeDepth === 0) {
         if (iterations >= MAX_STATE_CHANGE_FLUSH_ITERATIONS) {
-          this.state.notify.stateChangePending = false
+          this.#state.notify.stateChangePending = false
           this.emitError(
             "state-change-feedback-loop",
             { iterations: MAX_STATE_CHANGE_FLUSH_ITERATIONS },
@@ -123,11 +129,11 @@ export class NotificationService<TTarget extends object, TEvent extends KeymapEv
         }
 
         iterations += 1
-        this.state.notify.stateChangePending = false
-        this.hooks.emit("state")
+        this.#state.notify.stateChangePending = false
+        this.#hooks.emit("state")
       }
     } finally {
-      this.state.notify.flushingStateChange = false
+      this.#state.notify.flushingStateChange = false
     }
   }
 }

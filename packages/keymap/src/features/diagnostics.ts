@@ -1,17 +1,15 @@
 import type { CommandCatalogService } from "../services/command-catalog.js"
 import type { AnalyzeLayerOptions, LayerDiagnostics } from "../services/layers.js"
 import type { NotificationService } from "../services/notify.js"
-import type { State } from "../services/state.js"
 import { cloneKeySequence } from "../services/keys.js"
 import { snapshotParsedBinding } from "../services/primitives/bindings.js"
+import { OrderedRegistry } from "../lib/registry.js"
 import type {
   BindingState,
   KeymapEvent,
-  KeySequencePart,
   LayerAnalyzer,
   LayerAnalysisContext,
   LayerBindingAnalysis,
-  SequenceNode,
 } from "../types.js"
 
 export interface LayerDiagnosticsFeature<TTarget extends object, TEvent extends KeymapEvent>
@@ -22,36 +20,14 @@ export interface LayerDiagnosticsFeature<TTarget extends object, TEvent extends 
 }
 
 export interface LayerDiagnosticsFeatureContext<TTarget extends object, TEvent extends KeymapEvent> {
-  state: State<TTarget, TEvent>
   notify: NotificationService<TTarget, TEvent>
   commands: CommandCatalogService<TTarget, TEvent>
 }
 
-function getSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
-  root: SequenceNode<TTarget, TEvent>,
-  sequence: readonly KeySequencePart[],
-): SequenceNode<TTarget, TEvent> | undefined {
-  let node: SequenceNode<TTarget, TEvent> | undefined = root
-
-  for (const part of sequence) {
-    node = part.patternName
-      ? node.patternChildren.find((candidate) => candidate.pattern?.name === part.patternName)
-      : node.children.get(part.match)
-    if (!node) {
-      return undefined
-    }
-  }
-
-  return node
-}
-
 function buildLayerBindingAnalyses<TTarget extends object, TEvent extends KeymapEvent>(
-  root: SequenceNode<TTarget, TEvent>,
   bindingStates: readonly BindingState<TTarget, TEvent>[],
 ): LayerBindingAnalysis<TTarget, TEvent>[] {
   return bindingStates.map((binding) => {
-    const node = binding.event === "press" ? getSequenceNode(root, binding.sequence) : undefined
-
     return {
       sequence: cloneKeySequence(binding.sequence),
       command: binding.command,
@@ -63,34 +39,61 @@ function buildLayerBindingAnalyses<TTarget extends object, TEvent extends Keymap
       sourceTarget: binding.sourceTarget,
       sourceLayerOrder: binding.sourceLayerOrder,
       bindingIndex: binding.bindingIndex,
-      hasCommandAtSequence: node ? node.bindings.some((candidate) => candidate.command !== undefined) : false,
-      hasContinuations: node ? node.children.size > 0 || node.patternChildren.length > 0 : false,
+      hasCommandAtSequence: bindingStates.some((candidate) => {
+        return candidate.event === "press" && candidate.command !== undefined && sameSequence(candidate, binding)
+      }),
+      hasContinuations: bindingStates.some((candidate) => {
+        return candidate.event === "press" && isPrefix(binding, candidate)
+      }),
     }
   })
+}
+
+function sameSequence<TTarget extends object, TEvent extends KeymapEvent>(
+  left: BindingState<TTarget, TEvent>,
+  right: BindingState<TTarget, TEvent>,
+): boolean {
+  if (left.sequence.length !== right.sequence.length) {
+    return false
+  }
+
+  return left.sequence.every((part, index) => part.match === right.sequence[index]?.match)
+}
+
+function isPrefix<TTarget extends object, TEvent extends KeymapEvent>(
+  left: BindingState<TTarget, TEvent>,
+  right: BindingState<TTarget, TEvent>,
+): boolean {
+  if (left.sequence.length >= right.sequence.length) {
+    return false
+  }
+
+  return left.sequence.every((part, index) => part.match === right.sequence[index]?.match)
 }
 
 export function createLayerDiagnosticsFeature<TTarget extends object, TEvent extends KeymapEvent>(
   context: LayerDiagnosticsFeatureContext<TTarget, TEvent>,
 ): LayerDiagnosticsFeature<TTarget, TEvent> {
-  const { state, notify, commands } = context
+  const { notify, commands } = context
+  const analyzers = new OrderedRegistry<LayerAnalyzer<TTarget, TEvent>>()
 
   return {
     prependLayerAnalyzer(analyzer) {
-      return state.layers.layerAnalyzers.prepend(analyzer)
+      return analyzers.prepend(analyzer)
     },
     appendLayerAnalyzer(analyzer) {
-      return state.layers.layerAnalyzers.append(analyzer)
+      return analyzers.append(analyzer)
     },
     clearLayerAnalyzers() {
-      state.layers.layerAnalyzers.clear()
+      analyzers.clear()
     },
     analyzeLayer(options: AnalyzeLayerOptions<TTarget, TEvent>) {
-      const analyzers = state.layers.layerAnalyzers.values()
-      if (analyzers.length === 0) {
+      const registeredAnalyzers = analyzers.values()
+      if (registeredAnalyzers.length === 0) {
         return
       }
 
-      const bindings = buildLayerBindingAnalyses(options.root, options.bindingStates)
+      const bindings = buildLayerBindingAnalyses(options.bindingStates)
       const ctx: LayerAnalysisContext<TTarget, TEvent> = {
         target: options.target,
         order: options.order,
@@ -111,7 +114,7 @@ export function createLayerDiagnosticsFeature<TTarget extends object, TEvent ext
         },
       }
 
-      for (const analyzer of analyzers) {
+      for (const analyzer of registeredAnalyzers) {
         try {
           analyzer(ctx)
         } catch (error) {

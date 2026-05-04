@@ -170,7 +170,7 @@ Both gate activation. They differ in where the condition comes from.
 | ---------------------- | --------------------------------------------- | ---------------------------------------------------------- |
 | `require(name, value)` | The condition is equality against keymap data | Checks `Object.is(keymap.getData(name), value)`            |
 | `activeWhen(callback)` | The condition is arbitrary code               | Calls the callback whenever the record is evaluated        |
-| `activeWhen(reactive)` | External state can notify when it changed     | Caches `reactive.get()` until `reactive.subscribe()` fires |
+| `activeWhen(reactive)` | External state can notify when it changed     | Calls `reactive.get()` on reads and dispatch; `subscribe()` notifies state listeners |
 
 Use `require(...)` for keymap-owned state such as modes:
 
@@ -194,9 +194,7 @@ keymap.registerBindingFields({
 })
 ```
 
-`require(...)` is keyed and cache-friendly. Calling `setData(name, value)` invalidates only records that depend on that data key.
-
-Raw callback matchers re-run on every read. `ReactiveMatcher` is the cache-friendly matcher form:
+`require(...)` is a keyed equality check against runtime data. `ReactiveMatcher` is the subscription-aware matcher form:
 
 ```ts
 interface ReactiveMatcher {
@@ -326,7 +324,7 @@ return {
 }
 ```
 
-Resolver results used for static binding commands and command-view projections may be cached for the lifetime of that active or registered view.
+Resolver results are resolved when command views, bindings, `runCommand()` or `dispatchCommand()` need them.
 Programmatic `runCommand()` and `dispatchCommand()` resolve the supplied command string for each call.
 Put per-execution behavior in the returned `run(ctx)` handler.
 

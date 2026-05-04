@@ -47,10 +47,6 @@ export function getActiveLayersForFocused<TTarget extends object, TEvent extends
   host: KeymapHost<TTarget, TEvent>,
   focused: TTarget | null,
 ): readonly RegisteredLayer<TTarget, TEvent>[] {
-  if (state.activeLayersCacheVersion === state.activeLayersVersion && state.activeLayersCacheFocused === focused) {
-    return state.activeLayersCache
-  }
-
   const activeLayers: RegisteredLayer<TTarget, TEvent>[] = []
   const activationPath = getActivationPath(host, focused)
 
@@ -60,18 +56,7 @@ export function getActiveLayersForFocused<TTarget extends object, TEvent extends
     }
   }
 
-  state.activeLayersCacheVersion = state.activeLayersVersion
-  state.activeLayersCacheFocused = focused
-  state.activeLayersCache = activeLayers
   return activeLayers
-}
-
-export function invalidateCachedActiveLayers<TTarget extends object, TEvent extends KeymapEvent>(
-  state: LayersState<TTarget, TEvent>,
-): void {
-  state.activeLayersCacheVersion = -1
-  state.activeLayersCacheFocused = undefined
-  state.activeLayersCache = []
 }
 
 export function isLayerActiveForFocused<TTarget extends object, TEvent extends KeymapEvent>(

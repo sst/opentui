@@ -580,7 +580,7 @@ describe("keymap: core and commands", () => {
     expect(calls).toEqual(["run:1", "run:2", "run:3", "run:4"])
   })
 
-  test("static binding resolver fallback stays cached within the active view", () => {
+  test("static binding resolver fallback resolves on each read and dispatch", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
     let resolverCalls = 0
@@ -605,19 +605,21 @@ describe("keymap: core and commands", () => {
       bindings: [{ key: "x", cmd: "dynamic-binding" }],
     })
 
-    expect(getActiveKey(keymap, "x", { includeMetadata: true })?.commandAttrs).toEqual({ generation: 1 })
-    expect(resolverCalls).toBe(1)
+    expect(getActiveKey(keymap, "x", { includeMetadata: true })?.commandAttrs).toEqual({ generation: 3 })
+    expect(resolverCalls).toBe(3)
 
     mockInput.pressKey("x")
     mockInput.pressKey("x")
 
-    expect(resolverCalls).toBe(1)
-    expect(calls).toEqual(["run:1", "run:1"])
+    expect(resolverCalls).toBeGreaterThan(3)
+    expect(calls).toHaveLength(2)
+    expect(calls[0]).not.toBe(calls[1])
 
     expect(keymap.dispatchCommand("dynamic-binding")).toEqual({ ok: true })
     expect(keymap.runCommand("dynamic-binding")).toEqual({ ok: true })
-    expect(resolverCalls).toBe(3)
-    expect(calls).toEqual(["run:1", "run:1", "run:2", "run:3"])
+    expect(resolverCalls).toBeGreaterThan(5)
+    expect(calls).toHaveLength(4)
+    expect(new Set(calls).size).toBe(4)
   })
 
   test("programmatic fallback resolves freshly after rejecting registered commands", () => {

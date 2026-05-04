@@ -29,13 +29,25 @@ interface CommandExecutorOptions<TTarget extends object, TEvent extends KeymapEv
 }
 
 export class CommandExecutorService<TTarget extends object, TEvent extends KeymapEvent> {
+  #notify: NotificationService<TTarget, TEvent>
+  #runtime: RuntimeService<TTarget, TEvent>
+  #activation: ActivationService<TTarget, TEvent>
+  #catalog: CommandCatalogService<TTarget, TEvent>
+  #options: CommandExecutorOptions<TTarget, TEvent>
+
   constructor(
-    private readonly notify: NotificationService<TTarget, TEvent>,
-    private readonly runtime: RuntimeService<TTarget, TEvent>,
-    private readonly activation: ActivationService<TTarget, TEvent>,
-    private readonly catalog: CommandCatalogService<TTarget, TEvent>,
-    private readonly options: CommandExecutorOptions<TTarget, TEvent>,
-  ) {}
+    notify: NotificationService<TTarget, TEvent>,
+    runtime: RuntimeService<TTarget, TEvent>,
+    activation: ActivationService<TTarget, TEvent>,
+    catalog: CommandCatalogService<TTarget, TEvent>,
+    options: CommandExecutorOptions<TTarget, TEvent>,
+  ) {
+    this.#notify = notify
+    this.#runtime = runtime
+    this.#activation = activation
+    this.#catalog = catalog
+    this.#options = options
+  }
 
   public runCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult<TTarget, TEvent> {
     let normalized: BindingCommand<TTarget, TEvent> | undefined
@@ -51,11 +63,11 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     }
 
     const includeCommand = options?.includeCommand === true
-    const focused = options?.focused ?? this.activation.getFocusedTargetIfAvailable()
-    const event = options?.event ?? this.options.createCommandEvent()
-    const data = this.runtime.getReadonlyData()
+    const focused = options?.focused ?? this.#activation.getFocusedTargetIfAvailable()
+    const event = options?.event ?? this.#options.createCommandEvent()
+    const data = this.#runtime.getReadonlyData()
     const payload = options?.payload
-    const chain = this.catalog.getRegisteredResolvedEntries(normalized)
+    const chain = this.#catalog.getRegisteredResolvedEntries(normalized)
     let rejectedResult: RunCommandResult<TTarget, TEvent> | undefined
 
     // Kept inline across command execution paths: abstracting this chain walk
@@ -63,10 +75,10 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     if (chain?.length === 1) {
       const [entry] = chain
       if (entry) {
-        const result = this.executeResolvedCommand(
+        const result = this.#executeResolvedCommand(
           normalized,
           entry.command,
-          this.createCommandContext(event, focused, options?.target ?? entry.target ?? null, data, normalized, payload),
+          this.#createCommandContext(event, focused, options?.target ?? entry.target ?? null, data, normalized, payload),
           includeCommand,
         )
 
@@ -78,7 +90,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     } else if (chain) {
       for (const entry of chain) {
-        const context = this.createCommandContext(
+        const context = this.#createCommandContext(
           event,
           focused,
           options?.target ?? entry.target ?? null,
@@ -87,7 +99,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
           payload,
         )
 
-        const result = this.executeResolvedCommand(normalized, entry.command, context, includeCommand)
+        const result = this.#executeResolvedCommand(normalized, entry.command, context, includeCommand)
         if (result.status === "handled" || result.status === "error") {
           return result.result
         }
@@ -96,12 +108,12 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     }
 
-    const fallback = this.catalog.resolveRegisteredResolverFallback(normalized, { input: normalized, payload })
+    const fallback = this.#catalog.resolveRegisteredResolverFallback(normalized, { input: normalized, payload })
     if (fallback.resolved) {
-      const result = this.executeResolvedCommand(
+      const result = this.#executeResolvedCommand(
         normalized,
         fallback.resolved.command,
-        this.createCommandContext(
+        this.#createCommandContext(
           event,
           focused,
           options?.target ?? fallback.resolved.target ?? null,
@@ -140,20 +152,20 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     }
 
     const includeCommand = options?.includeCommand === true
-    const focused = options?.focused ?? this.activation.getFocusedTargetIfAvailable()
-    const event = options?.event ?? this.options.createCommandEvent()
-    const data = this.runtime.getReadonlyData()
+    const focused = options?.focused ?? this.#activation.getFocusedTargetIfAvailable()
+    const event = options?.event ?? this.#options.createCommandEvent()
+    const data = this.#runtime.getReadonlyData()
     const payload = options?.payload
-    const chain = this.catalog.getActiveRegisteredResolvedEntries(normalized, focused)
+    const chain = this.#catalog.getActiveRegisteredResolvedEntries(normalized, focused)
     let rejectedResult: RunCommandResult<TTarget, TEvent> | undefined
 
     if (chain?.length === 1) {
       const [entry] = chain
       if (entry) {
-        const result = this.executeResolvedCommand(
+        const result = this.#executeResolvedCommand(
           normalized,
           entry.command,
-          this.createCommandContext(event, focused, options?.target ?? entry.target ?? null, data, normalized, payload),
+          this.#createCommandContext(event, focused, options?.target ?? entry.target ?? null, data, normalized, payload),
           includeCommand,
         )
 
@@ -165,7 +177,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     } else if (chain) {
       for (const entry of chain) {
-        const context = this.createCommandContext(
+        const context = this.#createCommandContext(
           event,
           focused,
           options?.target ?? entry.target ?? null,
@@ -174,7 +186,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
           payload,
         )
 
-        const result = this.executeResolvedCommand(normalized, entry.command, context, includeCommand)
+        const result = this.#executeResolvedCommand(normalized, entry.command, context, includeCommand)
         if (result.status === "handled" || result.status === "error") {
           return result.result
         }
@@ -183,12 +195,12 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     }
 
-    const fallback = this.catalog.resolveActiveResolverFallback(normalized, focused, { input: normalized, payload })
+    const fallback = this.#catalog.resolveActiveResolverFallback(normalized, focused, { input: normalized, payload })
     if (fallback.resolved) {
-      const result = this.executeResolvedCommand(
+      const result = this.#executeResolvedCommand(
         normalized,
         fallback.resolved.command,
-        this.createCommandContext(
+        this.#createCommandContext(
           event,
           focused,
           options?.target ?? fallback.resolved.target ?? null,
@@ -210,7 +222,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       return { ok: false, reason: "error" }
     }
 
-    const unavailable = this.catalog.getDispatchUnavailableCommandState(normalized, focused, includeCommand)
+    const unavailable = this.#catalog.getDispatchUnavailableCommandState(normalized, focused, includeCommand)
     if (unavailable) {
       return unavailable.command
         ? { ok: false, reason: unavailable.reason, command: unavailable.command }
@@ -227,13 +239,13 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     focused: TTarget | null,
     payload?: unknown,
   ): boolean {
-    const data = this.runtime.getReadonlyData()
+    const data = this.#runtime.getReadonlyData()
 
     if (binding.run) {
-      const result = this.executeResolvedCommand(
+      const result = this.#executeResolvedCommand(
         typeof binding.command === "string" ? binding.command : "<function>",
         binding.run,
-        this.createCommandContext(
+        this.#createCommandContext(
           event,
           focused,
           bindingLayer.target ?? null,
@@ -256,7 +268,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       return false
     }
 
-    const chain = this.catalog.getResolvedCommandChain(
+    const chain = this.#catalog.getResolvedCommandChain(
       binding.command,
       focused,
       payload === undefined ? undefined : { input: binding.command, payload },
@@ -264,10 +276,10 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     if (chain?.length === 1) {
       const [entry] = chain
       if (entry) {
-        const result = this.executeResolvedCommand(
+        const result = this.#executeResolvedCommand(
           binding.command,
           entry.command,
-          this.createCommandContext(
+          this.#createCommandContext(
             event,
             focused,
             entry.target ?? bindingLayer.target ?? null,
@@ -286,7 +298,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
       }
     } else if (chain) {
       for (const entry of chain) {
-        const context = this.createCommandContext(
+        const context = this.#createCommandContext(
           event,
           focused,
           entry.target ?? bindingLayer.target ?? null,
@@ -295,7 +307,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
           entry.payload,
         )
 
-        const result = this.executeResolvedCommand(binding.command, entry.command, context, false)
+        const result = this.#executeResolvedCommand(binding.command, entry.command, context, false)
         if (result.status === "rejected") {
           continue
         }
@@ -308,7 +320,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     return false
   }
 
-  private createCommandContext(
+  #createCommandContext(
     event: TEvent,
     focused: TTarget | null,
     target: TTarget | null,
@@ -317,7 +329,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     payload: unknown,
   ): CommandContext<TTarget, TEvent> {
     return {
-      keymap: this.options.keymap,
+      keymap: this.#options.keymap,
       event,
       focused,
       target,
@@ -327,7 +339,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     }
   }
 
-  private executeResolvedCommand(
+  #executeResolvedCommand(
     commandName: string,
     command: Command<TTarget, TEvent> | CommandHandler<TTarget, TEvent>,
     context: CommandContext<TTarget, TEvent>,
@@ -341,7 +353,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     try {
       result = run(commandView ? { ...context, command: commandView } : context)
     } catch (error) {
-      this.notify.emitError("command-execution-error", error, `[Keymap] Error running command "${commandName}":`)
+      this.#notify.emitError("command-execution-error", error, `[Keymap] Error running command "${commandName}":`)
       return {
         status: "error",
         result: resultCommand ? { ok: false, reason: "error", command: resultCommand } : { ok: false, reason: "error" },
@@ -350,7 +362,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
 
     if (isPromiseLike(result)) {
       result.catch((error) => {
-        this.notify.emitError("async-command-error", error, `[Keymap] Async error in command "${commandName}":`)
+        this.#notify.emitError("async-command-error", error, `[Keymap] Async error in command "${commandName}":`)
       })
 
       return {

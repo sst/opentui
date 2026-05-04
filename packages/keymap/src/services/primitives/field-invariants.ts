@@ -30,10 +30,8 @@ interface FieldCompilerContextOptions<TTarget extends object, TEvent extends Key
   fieldName: string
   conditions: ConditionService<TTarget, TEvent>
   requirements: EventData
-  conditionKeys: Set<string>
   matchers: RuntimeMatcher[]
   attrs?: Attributes
-  onUnkeyedMatcher(): void
 }
 
 export function createFieldCompilerContext<TTarget extends object, TEvent extends KeymapEvent>(
@@ -50,7 +48,6 @@ export function createFieldCompilerContext<TTarget extends object, TEvent extend
   return {
     require(name: string, value: unknown) {
       mergeRequirement(options.requirements, name, value, source)
-      options.conditionKeys.add(name)
     },
     attr(name: string, value: unknown) {
       if (!options.attrs) {
@@ -60,11 +57,7 @@ export function createFieldCompilerContext<TTarget extends object, TEvent extend
       mergeAttribute(options.attrs, name, value, source)
     },
     activeWhen(matcher: (() => boolean) | ReactiveMatcher) {
-      const runtimeMatcher = options.conditions.buildRuntimeMatcher(matcher, source)
-      if (!runtimeMatcher.cacheable) {
-        options.onUnkeyedMatcher()
-      }
-      options.matchers.push(runtimeMatcher)
+      options.matchers.push(options.conditions.buildRuntimeMatcher(matcher, source))
     },
   }
 }

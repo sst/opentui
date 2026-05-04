@@ -15,12 +15,10 @@ import type {
   NormalizedKeyStroke,
   PendingSequenceState,
   RegisteredLayer,
-  SequenceNode,
 } from "../types.js"
 import {
   getActiveLayersForFocused,
   getFocusedTargetIfAvailable,
-  invalidateCachedActiveLayers,
   isLayerActiveForFocused,
 } from "./primitives/active-layers.js"
 import type { CommandCatalogService } from "./command-catalog.js"
@@ -58,8 +56,21 @@ function isSamePendingSequence<TTarget extends object, TEvent extends KeymapEven
   for (let index = 0; index < current.captures.length; index += 1) {
     const left = current.captures[index]
     const right = next.captures[index]
-    if (!left || !right || left.layer !== right.layer || left.node !== right.node) {
+    if (
+      !left ||
+      !right ||
+      left.layer !== right.layer ||
+      left.binding !== right.binding ||
+      left.index !== right.index ||
+      left.parts.length !== right.parts.length
+    ) {
       return false
+    }
+
+    for (let partIndex = 0; partIndex < left.parts.length; partIndex += 1) {
+      if (left.parts[partIndex]?.match !== right.parts[partIndex]?.match) {
+        return false
+      }
     }
 
     const leftPatterns = left.patterns ?? []
@@ -97,51 +108,76 @@ interface ActivationOptions<TTarget extends object, TEvent extends KeymapEvent> 
   ) => void
 }
 
+interface ActiveKeyOption<TTarget extends object, TEvent extends KeymapEvent> {
+  part: KeySequencePart
+  binding: BindingState<TTarget, TEvent>
+  index: number
+  exact: boolean
+  continues: boolean
+}
+
 export class ActivationService<TTarget extends object, TEvent extends KeymapEvent> {
+  #state: State<TTarget, TEvent>
+  #host: KeymapHost<TTarget, TEvent>
+  #hooks: Emitter<Hooks<TTarget, TEvent>>
+  #notify: NotificationService<TTarget, TEvent>
+  #conditions: ConditionService<TTarget, TEvent>
+  #catalog: CommandCatalogService<TTarget, TEvent>
+  #options: ActivationOptions<TTarget, TEvent>
+
   constructor(
-    private readonly state: State<TTarget, TEvent>,
-    private readonly host: KeymapHost<TTarget, TEvent>,
-    private readonly hooks: Emitter<Hooks<TTarget, TEvent>>,
-    private readonly notify: NotificationService<TTarget, TEvent>,
-    private readonly conditions: ConditionService<TTarget, TEvent>,
-    private readonly catalog: CommandCatalogService<TTarget, TEvent>,
-    private readonly options: ActivationOptions<TTarget, TEvent> = {},
-  ) {}
+    state: State<TTarget, TEvent>,
+    host: KeymapHost<TTarget, TEvent>,
+    hooks: Emitter<Hooks<TTarget, TEvent>>,
+    notify: NotificationService<TTarget, TEvent>,
+    conditions: ConditionService<TTarget, TEvent>,
+    catalog: CommandCatalogService<TTarget, TEvent>,
+    options: ActivationOptions<TTarget, TEvent> = {},
+  ) {
+    this.#state = state
+    this.#host = host
+    this.#hooks = hooks
+    this.#notify = notify
+    this.#conditions = conditions
+    this.#catalog = catalog
+    this.#options = options
+  }
 
   public getFocusedTarget(): TTarget | null {
-    return getLiveHost(this.host).getFocusedTarget()
+    return getLiveHost(this.#host).getFocusedTarget()
   }
 
   public getFocusedTargetIfAvailable(): TTarget | null {
-    return getFocusedTargetIfAvailable(this.host)
+    return getFocusedTargetIfAvailable(this.#host)
   }
 
   public setPendingSequence(next: PendingSequenceState<TTarget, TEvent> | null): void {
-    const previous = this.state.projection.pendingSequence
+    const previous = this.#state.projection.pendingSequence
     if (isSamePendingSequence(previous, next)) {
       return
     }
 
-    this.state.projection.pendingSequence = next
-    this.options.onPendingSequenceChanged?.(previous, next)
-    this.invalidateCaches()
-    this.notifyPendingSequenceChange()
-    this.notify.queueStateChange()
+    this.#state.projection.pendingSequence = next
+    this.#options.onPendingSequenceChanged?.(previous, next)
+    this.#notifyPendingSequenceChange()
+    this.#notify.queueStateChange()
   }
 
   public ensureValidPendingSequence(): PendingSequenceState<TTarget, TEvent> | undefined {
-    const pending = this.state.projection.pendingSequence
+    const pending = this.#state.projection.pendingSequence
     if (!pending) {
       return undefined
     }
 
     const focused = this.getFocusedTarget()
+    const activeView = this.#catalog.getActiveCommandView(focused)
     const captures = pending.captures.filter((capture) => {
       return (
-        this.state.layers.layers.has(capture.layer) &&
+        this.#state.layers.layers.has(capture.layer) &&
         this.isLayerActiveForFocused(capture.layer, focused) &&
-        this.conditions.layerMatchesRuntimeState(capture.layer) &&
-        this.nodeHasReachableBindings(capture.node, focused)
+        this.#conditions.layerMatchesRuntimeState(capture.layer) &&
+        this.#bindingMatchesRuntimeState(capture.binding, focused, activeView) &&
+        this.#captureHasContinuations(capture)
       )
     })
 
@@ -154,11 +190,11 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
       this.setPendingSequence({ captures })
     }
 
-    return this.state.projection.pendingSequence ?? undefined
+    return this.#state.projection.pendingSequence ?? undefined
   }
 
   public revalidatePendingSequenceIfNeeded(): void {
-    if (this.host.isDestroyed || !this.state.projection.pendingSequence) {
+    if (this.#host.isDestroyed || !this.#state.projection.pendingSequence) {
       return
     }
 
@@ -166,27 +202,12 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   }
 
   public hasPendingSequenceState(): boolean {
-    return !this.host.isDestroyed && this.state.projection.pendingSequence !== null
+    return !this.#host.isDestroyed && this.#state.projection.pendingSequence !== null
   }
 
   public getPendingSequence(): readonly KeySequencePart[] {
-    const projections = this.state.projection
-    const derivedStateVersion = this.state.notify.derivedStateVersion
-
-    if (projections.pendingSequenceCacheVersion === derivedStateVersion) {
-      return projections.pendingSequenceCache
-    }
-
     const pending = this.ensureValidPendingSequence()
-    const canUseCache = !pending || pending.captures.every((capture) => this.layerCanCacheActiveKeys(capture.layer))
-    const sequence = pending ? this.collectSequencePartsFromPending(pending) : []
-
-    if (canUseCache) {
-      projections.pendingSequenceCacheVersion = derivedStateVersion
-      projections.pendingSequenceCache = sequence
-    }
-
-    return sequence
+    return pending ? this.collectSequencePartsFromPending(pending) : []
   }
 
   public popPendingSequence(): boolean {
@@ -196,15 +217,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     }
 
     const firstCapture = pending.captures[0]
-    if (firstCapture?.node.pattern) {
-      const nextCaptures = this.popPendingPatternCapture(pending.captures)
-      if (nextCaptures) {
-        this.setPendingSequence(nextCaptures.length > 0 ? { captures: nextCaptures } : null)
-        return true
-      }
-    }
-
-    if (!firstCapture || firstCapture.node.depth <= 1) {
+    if (!firstCapture || firstCapture.parts.length <= 1) {
       this.setPendingSequence(null)
       return true
     }
@@ -212,15 +225,12 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     const nextCaptures: PendingSequenceCapture<TTarget, TEvent>[] = []
 
     for (const capture of pending.captures) {
-      const parent = capture.node.parent
-      if (!parent || !parent.stroke) {
+      const nextCapture = this.#popCapture(capture)
+      if (!nextCapture) {
         continue
       }
 
-      nextCaptures.push({
-        layer: capture.layer,
-        node: parent,
-      })
+      nextCaptures.push(nextCapture)
     }
 
     if (nextCaptures.length === 0) {
@@ -232,102 +242,18 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return true
   }
 
-  private popPendingPatternCapture(
-    captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
-  ): PendingSequenceCapture<TTarget, TEvent>[] | undefined {
-    const nextCaptures: PendingSequenceCapture<TTarget, TEvent>[] = []
-
-    for (const capture of captures) {
-      const last = capture.patterns?.at(-1)
-      if (!last || last.name !== capture.node.pattern?.name) {
-        return undefined
-      }
-
-      if (last.values.length > 1) {
-        nextCaptures.push({
-          ...capture,
-          patterns: [
-            ...(capture.patterns ?? []).slice(0, -1),
-            {
-              ...last,
-              values: last.values.slice(0, -1),
-              parts: last.parts.slice(0, -1),
-            },
-          ],
-        })
-        continue
-      }
-
-      const parent = capture.node.parent
-      if (!parent || !parent.stroke) {
-        return []
-      }
-
-      nextCaptures.push({
-        layer: capture.layer,
-        node: parent,
-        patterns: (capture.patterns ?? []).slice(0, -1),
-      })
-    }
-
-    return nextCaptures
-  }
-
   public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] {
-    const projections = this.state.projection
-    const derivedStateVersion = this.state.notify.derivedStateVersion
     const includeBindings = options?.includeBindings === true
     const includeMetadata = options?.includeMetadata === true
 
-    if (includeBindings) {
-      if (includeMetadata) {
-        if (projections.activeKeysBindingsAndMetadataCacheVersion === derivedStateVersion) {
-          return projections.activeKeysBindingsAndMetadataCache
-        }
-      } else if (projections.activeKeysBindingsCacheVersion === derivedStateVersion) {
-        return projections.activeKeysBindingsCache
-      }
-    } else if (includeMetadata) {
-      if (projections.activeKeysMetadataCacheVersion === derivedStateVersion) {
-        return projections.activeKeysMetadataCache
-      }
-    } else if (projections.activeKeysPlainCacheVersion === derivedStateVersion) {
-      return projections.activeKeysPlainCache
-    }
-
     const focused = this.getFocusedTarget()
-    const activeView = this.catalog.getActiveCommandView(focused)
+    const activeView = this.#catalog.getActiveCommandView(focused)
     const pending = this.ensureValidPendingSequence()
     const activeLayers = pending ? [] : this.getActiveLayers(focused)
-    const canUseCache = pending
-      ? pending.captures.every((capture) => this.layerCanCacheActiveKeys(capture.layer))
-      : this.activeLayersCanCacheActiveKeys(activeLayers)
 
-    const activeKeys = pending
-      ? this.collectActiveKeysFromPending(pending.captures, includeBindings, includeMetadata, focused, activeView)
-      : this.collectActiveKeysAtRoot(activeLayers, includeBindings, includeMetadata, focused, activeView)
-
-    if (!canUseCache) {
-      return activeKeys
-    }
-
-    if (includeBindings) {
-      if (includeMetadata) {
-        projections.activeKeysBindingsAndMetadataCacheVersion = derivedStateVersion
-        projections.activeKeysBindingsAndMetadataCache = activeKeys
-      } else {
-        projections.activeKeysBindingsCacheVersion = derivedStateVersion
-        projections.activeKeysBindingsCache = activeKeys
-      }
-    } else if (includeMetadata) {
-      projections.activeKeysMetadataCacheVersion = derivedStateVersion
-      projections.activeKeysMetadataCache = activeKeys
-    } else {
-      projections.activeKeysPlainCacheVersion = derivedStateVersion
-      projections.activeKeysPlainCache = activeKeys
-    }
-
-    return activeKeys
+    return pending
+      ? this.#collectActiveKeysFromPending(pending.captures, includeBindings, includeMetadata, focused, activeView)
+      : this.#collectActiveKeysAtRoot(activeLayers, includeBindings, includeMetadata, focused, activeView)
   }
 
   public getActiveKeysForCaptures(
@@ -337,9 +263,9 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     const includeBindings = options?.includeBindings === true
     const includeMetadata = options?.includeMetadata === true
     const focused = this.getFocusedTarget()
-    const activeView = this.catalog.getActiveCommandView(focused)
+    const activeView = this.#catalog.getActiveCommandView(focused)
 
-    return this.collectActiveKeysFromPending(captures, includeBindings, includeMetadata, focused, activeView)
+    return this.#collectActiveKeysFromPending(captures, includeBindings, includeMetadata, focused, activeView)
   }
 
   public getActiveKeysForFocused(
@@ -350,13 +276,13 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     const includeMetadata = options?.includeMetadata === true
     const currentFocused = this.getFocusedTargetIfAvailable()
     const pending = focused === currentFocused ? this.ensureValidPendingSequence() : undefined
-    const activeView = this.catalog.getActiveCommandView(focused)
+    const activeView = this.#catalog.getActiveCommandView(focused)
 
     if (pending) {
-      return this.collectActiveKeysFromPending(pending.captures, includeBindings, includeMetadata, focused, activeView)
+      return this.#collectActiveKeysFromPending(pending.captures, includeBindings, includeMetadata, focused, activeView)
     }
 
-    return this.collectActiveKeysAtRoot(
+    return this.#collectActiveKeysAtRoot(
       this.getActiveLayers(focused),
       includeBindings,
       includeMetadata,
@@ -365,110 +291,167 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     )
   }
 
-  public nodeHasReachableBindings(node: SequenceNode<TTarget, TEvent>, focused: TTarget | null): boolean {
-    return this.hasMatchingBindings(node.reachableBindings, focused, this.catalog.getActiveCommandView(focused))
-  }
-
   public getActiveLayers(focused: TTarget | null): RegisteredLayer<TTarget, TEvent>[] {
-    return getActiveLayersForFocused(this.state.layers, this.host, focused) as RegisteredLayer<TTarget, TEvent>[]
+    return getActiveLayersForFocused(this.#state.layers, this.#host, focused) as RegisteredLayer<TTarget, TEvent>[]
   }
 
   public refreshActiveLayers(focused: TTarget | null = this.getFocusedTargetIfAvailable()): void {
-    getActiveLayersForFocused(this.state.layers, this.host, focused)
-  }
-
-  public invalidateActiveLayers(): void {
-    invalidateCachedActiveLayers(this.state.layers)
+    getActiveLayersForFocused(this.#state.layers, this.#host, focused)
   }
 
   public isLayerActiveForFocused(layer: RegisteredLayer<TTarget, TEvent>, focused: TTarget | null): boolean {
-    return isLayerActiveForFocused(this.host, layer, focused)
+    return isLayerActiveForFocused(this.#host, layer, focused)
   }
 
-  public layerCanCacheActiveKeys(layer: RegisteredLayer<TTarget, TEvent>): boolean {
-    return !layer.hasUnkeyedMatchers && !layer.hasUnkeyedCommands && !layer.hasUnkeyedBindings
-  }
+  #popCapture(
+    capture: PendingSequenceCapture<TTarget, TEvent>,
+  ): PendingSequenceCapture<TTarget, TEvent> | undefined {
+    const lastPart = capture.parts.at(-1)
+    if (!lastPart || capture.parts.length <= 1) {
+      return undefined
+    }
 
-  public activeLayersCanCacheActiveKeys(activeLayers: readonly RegisteredLayer<TTarget, TEvent>[]): boolean {
-    for (const layer of activeLayers) {
-      if (!this.layerCanCacheActiveKeys(layer)) {
-        return false
+    let index = capture.index - 1
+    let patterns = capture.patterns
+    if (lastPart.patternName) {
+      const lastPattern = patterns?.at(-1)
+      if (lastPattern?.name === lastPart.patternName) {
+        if (lastPattern.values.length > 1) {
+          index = capture.index
+          patterns = [
+            ...(patterns ?? []).slice(0, -1),
+            {
+              ...lastPattern,
+              values: lastPattern.values.slice(0, -1),
+              parts: lastPattern.parts.slice(0, -1),
+            },
+          ]
+        } else {
+          patterns = (patterns ?? []).slice(0, -1)
+        }
       }
     }
 
-    return true
+    return {
+      layer: capture.layer,
+      binding: capture.binding,
+      index,
+      parts: capture.parts.slice(0, -1),
+      patterns,
+    }
   }
 
-  private collectNodesFromNode(node: SequenceNode<TTarget, TEvent>): SequenceNode<TTarget, TEvent>[] {
-    const nodes: SequenceNode<TTarget, TEvent>[] = []
-    let current: SequenceNode<TTarget, TEvent> | null = node
-
-    while (current && current.stroke) {
-      nodes.push(current)
-      current = current.parent
+  #getPatternCaptureCount(capture: PendingSequenceCapture<TTarget, TEvent>): number {
+    const part = capture.binding.sequence[capture.index]
+    if (!part?.patternName) {
+      return 0
     }
 
-    nodes.reverse()
+    const captured = capture.patterns?.at(-1)
+    return captured?.name === part.patternName ? captured.values.length : 0
+  }
 
-    return nodes
+  #capturePatternHasMinimum(capture: PendingSequenceCapture<TTarget, TEvent>): boolean {
+    const part = capture.binding.sequence[capture.index]
+    if (!part?.patternName) {
+      return true
+    }
+
+    const pattern = this.#state.environment.sequencePatterns.get(part.patternName)
+    return !pattern || this.#getPatternCaptureCount(capture) >= pattern.min
+  }
+
+  #captureHasContinuations(capture: PendingSequenceCapture<TTarget, TEvent>): boolean {
+    const part = capture.binding.sequence[capture.index]
+    if (part?.patternName) {
+      const pattern = this.#state.environment.sequencePatterns.get(part.patternName)
+      if (pattern && this.#getPatternCaptureCount(capture) < pattern.max) {
+        return true
+      }
+    }
+
+    return this.#capturePatternHasMinimum(capture) && capture.index + 1 < capture.binding.sequence.length
+  }
+
+  #getActiveKeyOptionsForBinding(binding: BindingState<TTarget, TEvent>): ActiveKeyOption<TTarget, TEvent>[] {
+    const part = binding.sequence[0]
+    if (!part) {
+      return []
+    }
+
+    return [
+      {
+        part,
+        binding,
+        index: 0,
+        exact: binding.sequence.length === 1,
+        continues: binding.sequence.length > 1,
+      },
+    ]
+  }
+
+  #getActiveKeyOptionsForCapture(
+    capture: PendingSequenceCapture<TTarget, TEvent>,
+  ): ActiveKeyOption<TTarget, TEvent>[] {
+    if (!this.#capturePatternHasMinimum(capture)) {
+      return []
+    }
+
+    const index = capture.index + 1
+    const part = capture.binding.sequence[index]
+    if (!part) {
+      return []
+    }
+
+    return [
+      {
+        part,
+        binding: capture.binding,
+        index,
+        exact: index === capture.binding.sequence.length - 1,
+        continues: index < capture.binding.sequence.length - 1,
+      },
+    ]
   }
 
   public collectSequencePartsFromPending(pending: PendingSequenceState<TTarget, TEvent>): KeySequencePart[] {
-    const focused = this.getFocusedTarget()
-    const activeView = this.catalog.getActiveCommandView(focused)
-    const paths = pending.captures.map((capture) => this.collectNodesFromNode(capture.node))
-    const firstPath = paths[0]
-    if (!firstPath || firstPath.length === 0) {
+    const firstCapture = pending.captures[0]
+    if (!firstCapture || firstCapture.parts.length === 0) {
       return []
     }
 
     const parts: KeySequencePart[] = []
-    const firstCapture = pending.captures[0]
-    let nextPatternIndex = 0
-    for (let index = 0; index < firstPath.length; index += 1) {
-      const firstNode = firstPath[index]
-      if (!firstNode?.stroke || firstNode.match === null) {
-        continue
-      }
-
-      if (firstNode.pattern) {
-        const captured = firstCapture?.patterns?.[nextPatternIndex]
-        nextPatternIndex += 1
-        if (captured?.name === firstNode.pattern.name) {
-          parts.push(...captured.parts.map((part) => ({ ...part, stroke: cloneKeyStroke(part.stroke) })))
-        }
-        continue
-      }
-
+    for (let index = 0; index < firstCapture.parts.length; index += 1) {
+      const firstPart = firstCapture.parts[index]
+      if (!firstPart) continue
       let display: string | undefined
       let tokenName: string | undefined
       let hasDisplayConflict = false
       let hasTokenConflict = false
 
-      for (const path of paths) {
-        const node = path[index]
-        if (!node) {
+      for (const capture of pending.captures) {
+        const part = capture.parts[index]
+        if (!part) {
           continue
         }
 
-        const presentation = this.getNodePresentation(node, focused, activeView)
         if (display === undefined) {
-          display = presentation.display
-          tokenName = presentation.tokenName
+          display = part.display
+          tokenName = part.tokenName
           continue
         }
 
-        if (!hasDisplayConflict && display !== presentation.display) {
+        if (!hasDisplayConflict && display !== part.display) {
           hasDisplayConflict = true
         }
 
-        if (!hasTokenConflict && tokenName !== presentation.tokenName) {
+        if (!hasTokenConflict && tokenName !== part.tokenName) {
           hasTokenConflict = true
         }
       }
 
       if (display === undefined || hasDisplayConflict) {
-        display = stringifyKeyStroke(firstNode.stroke)
+        display = stringifyKeyStroke(firstPart.stroke)
       }
 
       if (hasTokenConflict) {
@@ -476,9 +459,9 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
       }
 
       parts.push(
-        createKeySequencePart(firstNode.stroke, {
+        createKeySequencePart(firstPart.stroke, {
           display,
-          match: firstNode.match,
+          match: firstPart.match,
           tokenName,
         }),
       )
@@ -495,7 +478,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     const matches: BindingState<TTarget, TEvent>[] = []
 
     for (const binding of bindings) {
-      if (this.conditions.matchesConditions(binding) && this.catalog.isBindingVisible(binding, focused, activeView)) {
+      if (this.#conditions.matchesConditions(binding) && this.#catalog.isBindingVisible(binding, focused, activeView)) {
         matches.push(binding)
       }
     }
@@ -503,41 +486,24 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return matches
   }
 
-  private hasMatchingBindings(
-    bindings: readonly BindingState<TTarget, TEvent>[],
+  #bindingMatchesRuntimeState(
+    binding: BindingState<TTarget, TEvent>,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ): boolean {
-    for (const binding of bindings) {
-      if (this.conditions.matchesConditions(binding) && this.catalog.isBindingVisible(binding, focused, activeView)) {
-        return true
-      }
-    }
-
-    return false
+    return this.#conditions.matchesConditions(binding) && this.#catalog.isBindingVisible(binding, focused, activeView)
   }
 
-  private getNodePresentation(
-    node: SequenceNode<TTarget, TEvent>,
-    focused: TTarget | null,
-    activeView: ActiveCommandView<TTarget, TEvent>,
-    reachableBindings: readonly BindingState<TTarget, TEvent>[] = this.collectMatchingBindings(
-      node.reachableBindings,
-      focused,
-      activeView,
-    ),
+  #getPartPresentation(
+    bindings: readonly BindingState<TTarget, TEvent>[],
+    partIndex: number,
   ): { display: string; tokenName?: string } {
-    if (!node.stroke) {
-      return { display: "" }
-    }
-
-    const partIndex = node.depth - 1
     let display: string | undefined
     let tokenName: string | undefined
     let hasDisplayConflict = false
     let hasTokenConflict = false
 
-    for (const binding of reachableBindings) {
+    for (const binding of bindings) {
       const part = binding.sequence[partIndex]
       if (!part) {
         continue
@@ -559,7 +525,8 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     }
 
     if (display === undefined || hasDisplayConflict) {
-      display = stringifyKeyStroke(node.stroke)
+      const stroke = bindings[0]?.sequence[partIndex]?.stroke
+      display = stroke ? stringifyKeyStroke(stroke) : ""
     }
 
     if (hasTokenConflict) {
@@ -572,7 +539,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     }
   }
 
-  private toActiveBinding(
+  #toActiveBinding(
     binding: BindingState<TTarget, TEvent>,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
@@ -580,7 +547,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return {
       sequence: binding.sequence,
       command: binding.command,
-      commandAttrs: this.catalog.getBindingCommandAttrs(binding, focused, activeView),
+      commandAttrs: this.#catalog.getBindingCommandAttrs(binding, focused, activeView),
       attrs: binding.attrs,
       event: binding.event,
       preventDefault: binding.preventDefault,
@@ -593,10 +560,10 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ): ActiveBinding<TTarget, TEvent>[] {
-    return bindings.map((binding) => this.toActiveBinding(binding, focused, activeView))
+    return bindings.map((binding) => this.#toActiveBinding(binding, focused, activeView))
   }
 
-  private collectActiveKeysAtRoot(
+  #collectActiveKeysAtRoot(
     activeLayers: RegisteredLayer<TTarget, TEvent>[],
     includeBindings: boolean,
     includeMetadata: boolean,
@@ -605,75 +572,29 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   ): readonly ActiveKey<TTarget, TEvent>[] {
     const activeKeys = new Map<KeyMatch, ActiveKeyState<TTarget, TEvent>>()
     const stopped = new Set<KeyMatch>()
-    const hasLayerConditions = this.state.layers.layersWithConditions > 0
+    const hasLayerConditions = this.#state.layers.layersWithConditions > 0
 
     for (const layer of activeLayers) {
-      if (layer.root.children.size === 0 && layer.root.patternChildren.length === 0) {
+      if (hasLayerConditions && !this.#conditions.hasNoConditions(layer) && !this.#conditions.matchesConditions(layer)) {
         continue
       }
 
-      if (hasLayerConditions && !this.conditions.hasNoConditions(layer) && !this.conditions.matchesConditions(layer)) {
-        continue
+      const options: ActiveKeyOption<TTarget, TEvent>[] = []
+      for (const binding of layer.bindingStates) {
+        if (binding.event !== "press" || !this.#bindingMatchesRuntimeState(binding, focused, activeView)) {
+          continue
+        }
+
+        options.push(...this.#getActiveKeyOptionsForBinding(binding))
       }
 
-      for (const [bindingKey, child] of layer.root.children) {
-        if (stopped.has(bindingKey)) {
-          continue
-        }
-
-        const selection = this.selectActiveKey(child, includeBindings, focused, activeView)
-        if (!selection) {
-          continue
-        }
-
-        const existing = activeKeys.get(bindingKey)
-        if (!existing) {
-          activeKeys.set(bindingKey, this.createActiveKeyState(child.stroke!, selection, includeBindings))
-        } else {
-          this.updateActiveKeyState(existing, selection, includeBindings)
-        }
-
-        if (selection.stop) {
-          stopped.add(bindingKey)
-        }
-      }
-
-      for (const child of layer.root.patternChildren) {
-        const bindingKey = child.match
-        if (!bindingKey || stopped.has(bindingKey)) {
-          continue
-        }
-
-        const selection = this.selectActiveKey(child, includeBindings, focused, activeView)
-        if (!selection) {
-          continue
-        }
-
-        const existing = activeKeys.get(bindingKey)
-        if (!existing) {
-          activeKeys.set(bindingKey, this.createActiveKeyState(child.stroke!, selection, includeBindings))
-        } else {
-          this.updateActiveKeyState(existing, selection, includeBindings)
-        }
-
-        if (selection.stop) {
-          stopped.add(bindingKey)
-        }
-      }
+      this.#collectActiveKeyOptions(options, activeKeys, stopped, includeBindings, focused, activeView)
     }
 
-    const materialized: ActiveKey<TTarget, TEvent>[] = []
-    for (const state of activeKeys.values()) {
-      const activeKey = this.materializeActiveKey(state, includeBindings, includeMetadata, focused, activeView)
-      if (activeKey) {
-        materialized.push(activeKey)
-      }
-    }
-
-    return materialized
+    return this.#materializeActiveKeys(activeKeys, includeBindings, includeMetadata, focused, activeView)
   }
 
-  private collectActiveKeysFromPending(
+  #collectActiveKeysFromPending(
     captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
     includeBindings: boolean,
     includeMetadata: boolean,
@@ -682,57 +603,77 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   ): readonly ActiveKey<TTarget, TEvent>[] {
     const activeKeys = new Map<KeyMatch, ActiveKeyState<TTarget, TEvent>>()
     const stopped = new Set<KeyMatch>()
+    const options: ActiveKeyOption<TTarget, TEvent>[] = []
 
     for (const capture of captures) {
-      for (const [bindingKey, child] of capture.node.children) {
-        if (stopped.has(bindingKey)) {
-          continue
-        }
-
-        const selection = this.selectActiveKey(child, includeBindings, focused, activeView)
-        if (!selection) {
-          continue
-        }
-
-        const existing = activeKeys.get(bindingKey)
-        if (!existing) {
-          activeKeys.set(bindingKey, this.createActiveKeyState(child.stroke!, selection, includeBindings))
-        } else {
-          this.updateActiveKeyState(existing, selection, includeBindings)
-        }
-
-        if (selection.stop) {
-          stopped.add(bindingKey)
-        }
-      }
-
-      for (const child of capture.node.patternChildren) {
-        const bindingKey = child.match
-        if (!bindingKey || stopped.has(bindingKey)) {
-          continue
-        }
-
-        const selection = this.selectActiveKey(child, includeBindings, focused, activeView)
-        if (!selection) {
-          continue
-        }
-
-        const existing = activeKeys.get(bindingKey)
-        if (!existing) {
-          activeKeys.set(bindingKey, this.createActiveKeyState(child.stroke!, selection, includeBindings))
-        } else {
-          this.updateActiveKeyState(existing, selection, includeBindings)
-        }
-
-        if (selection.stop) {
-          stopped.add(bindingKey)
-        }
-      }
+      options.push(...this.#getActiveKeyOptionsForCapture(capture))
     }
 
+    this.#collectActiveKeyOptions(options, activeKeys, stopped, includeBindings, focused, activeView)
+
+    return this.#materializeActiveKeys(activeKeys, includeBindings, includeMetadata, focused, activeView)
+  }
+
+  #collectActiveKeyOptions(
+    options: readonly ActiveKeyOption<TTarget, TEvent>[],
+    activeKeys: Map<KeyMatch, ActiveKeyState<TTarget, TEvent>>,
+    stopped: Set<KeyMatch>,
+    includeBindings: boolean,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): void {
+    const seen = new Set<KeyMatch>()
+    for (const option of options) {
+      if (seen.has(option.part.match)) {
+        continue
+      }
+
+      seen.add(option.part.match)
+      this.#collectActiveKeyOption(option, options, activeKeys, stopped, includeBindings, focused, activeView)
+    }
+  }
+
+  #collectActiveKeyOption(
+    option: ActiveKeyOption<TTarget, TEvent>,
+    siblingOptions: readonly ActiveKeyOption<TTarget, TEvent>[],
+    activeKeys: Map<KeyMatch, ActiveKeyState<TTarget, TEvent>>,
+    stopped: Set<KeyMatch>,
+    includeBindings: boolean,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): void {
+    const bindingKey = option.part.match
+    if (stopped.has(bindingKey)) {
+      return
+    }
+
+    const selection = this.#selectActiveKeyOption(option, siblingOptions, includeBindings, focused, activeView)
+    if (!selection) {
+      return
+    }
+
+    const existing = activeKeys.get(bindingKey)
+    if (!existing) {
+      activeKeys.set(bindingKey, this.#createActiveKeyState(option.part.stroke, selection, includeBindings))
+    } else {
+      this.#updateActiveKeyState(existing, selection, includeBindings)
+    }
+
+    if (selection.stop) {
+      stopped.add(bindingKey)
+    }
+  }
+
+  #materializeActiveKeys(
+    activeKeys: ReadonlyMap<KeyMatch, ActiveKeyState<TTarget, TEvent>>,
+    includeBindings: boolean,
+    includeMetadata: boolean,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): readonly ActiveKey<TTarget, TEvent>[] {
     const materialized: ActiveKey<TTarget, TEvent>[] = []
     for (const state of activeKeys.values()) {
-      const activeKey = this.materializeActiveKey(state, includeBindings, includeMetadata, focused, activeView)
+      const activeKey = this.#materializeActiveKey(state, includeBindings, includeMetadata, focused, activeView)
       if (activeKey) {
         materialized.push(activeKey)
       }
@@ -741,87 +682,73 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return materialized
   }
 
-  private selectActiveKey(
-    node: SequenceNode<TTarget, TEvent>,
+  #selectActiveKeyOption(
+    option: ActiveKeyOption<TTarget, TEvent>,
+    siblingOptions: readonly ActiveKeyOption<TTarget, TEvent>[],
     includeBindings: boolean,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ): ActiveKeySelection<TTarget, TEvent> | undefined {
-    return node.children.size > 0 || node.patternChildren.length > 0
-      ? this.selectPrefixActiveKey(node, includeBindings, focused, activeView)
-      : this.selectExactActiveKey(node, includeBindings, focused, activeView)
-  }
+    const matchingOptions = siblingOptions.filter((candidate) => candidate.part.match === option.part.match)
+    const exactBindings = matchingOptions.filter((candidate) => candidate.exact).map((candidate) => candidate.binding)
+    const selected = this.#selectActiveBindings(exactBindings, focused, activeView)
+    const continues = matchingOptions.some((candidate) => candidate.continues)
 
-  private selectPrefixActiveKey(
-    node: SequenceNode<TTarget, TEvent>,
-    includeBindings: boolean,
-    focused: TTarget | null,
-    activeView: ActiveCommandView<TTarget, TEvent>,
-  ): ActiveKeySelection<TTarget, TEvent> | undefined {
-    if (!node.stroke) {
+    if (!continues && !selected) {
       return undefined
     }
 
-    const reachableBindings = this.collectMatchingBindings(node.reachableBindings, focused, activeView)
-    if (reachableBindings.length === 0) {
-      return undefined
-    }
-
-    const prefixBindings = this.selectActiveBindings(node.bindings, focused, activeView)
+    const presentation = this.#getOptionPresentation(matchingOptions)
 
     return {
-      ...this.getNodePresentation(node, focused, activeView, reachableBindings),
-      continues: true,
-      firstBinding: prefixBindings?.bindings[0],
-      commandBinding: prefixBindings?.commandBinding,
-      bindings:
-        includeBindings && prefixBindings && prefixBindings.bindings.length > 0
-          ? [...prefixBindings.bindings]
-          : undefined,
-      stop: true,
+      display: presentation.display,
+      tokenName: presentation.tokenName,
+      continues,
+      firstBinding: selected?.bindings[0],
+      commandBinding: selected?.commandBinding,
+      bindings: includeBindings && selected ? [...selected.bindings] : undefined,
+      stop: continues || selected?.stop === true,
     }
   }
 
-  private selectExactActiveKey(
-    node: SequenceNode<TTarget, TEvent>,
-    includeBindings: boolean,
-    focused: TTarget | null,
-    activeView: ActiveCommandView<TTarget, TEvent>,
-  ): ActiveKeySelection<TTarget, TEvent> | undefined {
-    if (!node.stroke) {
-      return undefined
-    }
-
-    const selected = this.selectActiveBindings(node.bindings, focused, activeView)
-    if (!selected) {
-      return undefined
-    }
-
-    let display: string
+  #getOptionPresentation(
+    options: readonly ActiveKeyOption<TTarget, TEvent>[],
+  ): { display: string; tokenName?: string } {
+    let display: string | undefined
     let tokenName: string | undefined
+    let hasDisplayConflict = false
+    let hasTokenConflict = false
 
-    if (selected.bindings.length === 1) {
-      const part = selected.bindings[0]?.sequence[node.depth - 1]
-      display = part?.display ?? stringifyKeyStroke(node.stroke)
-      tokenName = part?.tokenName
-    } else {
-      const presentation = this.getNodePresentation(node, focused, activeView, selected.bindings)
-      display = presentation.display
-      tokenName = presentation.tokenName
+    for (const option of options) {
+      const part = option.part
+      if (display === undefined) {
+        display = part.display
+        tokenName = part.tokenName
+        continue
+      }
+
+      if (!hasDisplayConflict && display !== part.display) {
+        hasDisplayConflict = true
+      }
+
+      if (!hasTokenConflict && tokenName !== part.tokenName) {
+        hasTokenConflict = true
+      }
     }
 
-    return {
-      display,
-      tokenName,
-      continues: false,
-      firstBinding: selected.bindings[0],
-      commandBinding: selected.commandBinding,
-      bindings: includeBindings ? [...selected.bindings] : undefined,
-      stop: selected.stop,
+    const firstPart = options[0]?.part
+    if (display === undefined || hasDisplayConflict) {
+      display = firstPart ? stringifyKeyStroke(firstPart.stroke) : ""
     }
+
+    if (hasTokenConflict) {
+      tokenName = undefined
+    }
+
+    return { display, tokenName }
   }
 
-  private selectActiveBindings(
+  #selectActiveBindings(
     bindings: readonly BindingState<TTarget, TEvent>[],
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
@@ -836,7 +763,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     let commandBinding: BindingState<TTarget, TEvent> | undefined
 
     for (const binding of bindings) {
-      if (!this.conditions.matchesConditions(binding) || !this.catalog.isBindingVisible(binding, focused, activeView)) {
+      if (!this.#conditions.matchesConditions(binding) || !this.#catalog.isBindingVisible(binding, focused, activeView)) {
         continue
       }
 
@@ -858,7 +785,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return { bindings: selected, commandBinding, stop: false }
   }
 
-  private createActiveKeyState(
+  #createActiveKeyState(
     stroke: NormalizedKeyStroke,
     selection: ActiveKeySelection<TTarget, TEvent>,
     includeBindings: boolean,
@@ -874,7 +801,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     }
   }
 
-  private updateActiveKeyState(
+  #updateActiveKeyState(
     state: ActiveKeyState<TTarget, TEvent>,
     selection: ActiveKeySelection<TTarget, TEvent>,
     includeBindings: boolean,
@@ -903,7 +830,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     state.bindings.push(...selection.bindings)
   }
 
-  private materializeActiveKey(
+  #materializeActiveKey(
     state: ActiveKeyState<TTarget, TEvent>,
     includeBindings: boolean,
     includeMetadata: boolean,
@@ -931,7 +858,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     if (includeBindings && state.bindings && state.bindings.length > 0) {
       activeKey.bindings =
         state.bindings.length === 1
-          ? [this.toActiveBinding(state.bindings[0]!, focused, activeView)]
+          ? [this.#toActiveBinding(state.bindings[0]!, focused, activeView)]
           : this.collectActiveBindings(state.bindings, focused, activeView)
     }
 
@@ -941,7 +868,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
       }
 
       const commandAttrs = state.commandBinding
-        ? this.catalog.getBindingCommandAttrs(state.commandBinding, focused, activeView)
+        ? this.#catalog.getBindingCommandAttrs(state.commandBinding, focused, activeView)
         : undefined
       if (commandAttrs) {
         activeKey.commandAttrs = commandAttrs
@@ -951,23 +878,15 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return activeKey
   }
 
-  private invalidateCaches(): void {
-    this.state.projection.pendingSequenceCacheVersion = -1
-    this.state.projection.activeKeysPlainCacheVersion = -1
-    this.state.projection.activeKeysBindingsCacheVersion = -1
-    this.state.projection.activeKeysMetadataCacheVersion = -1
-    this.state.projection.activeKeysBindingsAndMetadataCacheVersion = -1
-  }
-
-  private notifyPendingSequenceChange(): void {
-    if (!this.hooks.has("pendingSequence")) {
+  #notifyPendingSequenceChange(): void {
+    if (!this.#hooks.has("pendingSequence")) {
       return
     }
 
-    this.hooks.emit(
+    this.#hooks.emit(
       "pendingSequence",
-      this.state.projection.pendingSequence
-        ? this.collectSequencePartsFromPending(this.state.projection.pendingSequence)
+      this.#state.projection.pendingSequence
+        ? this.collectSequencePartsFromPending(this.#state.projection.pendingSequence)
         : [],
     )
   }

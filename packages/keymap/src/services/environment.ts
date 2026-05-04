@@ -86,59 +86,69 @@ function registerFieldCompilers<T>(
 }
 
 export class EnvironmentService<TTarget extends object, TEvent extends KeymapEvent> {
+  #state: State<TTarget, TEvent>
+  #notify: NotificationService<TTarget, TEvent>
+  #compiler: CompilerService<TTarget, TEvent>
+  #layers: LayerService<TTarget, TEvent>
+
   constructor(
-    private readonly state: State<TTarget, TEvent>,
-    private readonly notify: NotificationService<TTarget, TEvent>,
-    private readonly compiler: CompilerService<TTarget, TEvent>,
-    private readonly layers: LayerService<TTarget, TEvent>,
-  ) {}
+    state: State<TTarget, TEvent>,
+    notify: NotificationService<TTarget, TEvent>,
+    compiler: CompilerService<TTarget, TEvent>,
+    layers: LayerService<TTarget, TEvent>,
+  ) {
+    this.#state = state
+    this.#notify = notify
+    this.#compiler = compiler
+    this.#layers = layers
+  }
 
   public prependBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
-    return this.state.environment.bindingTransformers.prepend(transformer)
+    return this.#state.environment.bindingTransformers.prepend(transformer)
   }
 
   public prependLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
-    return this.state.environment.layerBindingsTransformers.prepend(transformer)
+    return this.#state.environment.layerBindingsTransformers.prepend(transformer)
   }
 
   public appendLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
-    return this.state.environment.layerBindingsTransformers.append(transformer)
+    return this.#state.environment.layerBindingsTransformers.append(transformer)
   }
 
   public clearLayerBindingsTransformers(): void {
-    this.state.environment.layerBindingsTransformers.clear()
+    this.#state.environment.layerBindingsTransformers.clear()
   }
 
   public appendBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
-    return this.state.environment.bindingTransformers.append(transformer)
+    return this.#state.environment.bindingTransformers.append(transformer)
   }
 
   public clearBindingTransformers(): void {
-    this.state.environment.bindingTransformers.clear()
+    this.#state.environment.bindingTransformers.clear()
   }
 
   public prependCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
-    return this.state.environment.commandTransformers.prepend(transformer)
+    return this.#state.environment.commandTransformers.prepend(transformer)
   }
 
   public appendCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
-    return this.state.environment.commandTransformers.append(transformer)
+    return this.#state.environment.commandTransformers.append(transformer)
   }
 
   public clearCommandTransformers(): void {
-    this.state.environment.commandTransformers.clear()
+    this.#state.environment.commandTransformers.clear()
   }
 
   public prependBindingParser(parser: BindingParser): () => void {
-    return this.state.environment.bindingParsers.prepend(parser)
+    return this.#state.environment.bindingParsers.prepend(parser)
   }
 
   public appendBindingParser(parser: BindingParser): () => void {
-    return this.state.environment.bindingParsers.append(parser)
+    return this.#state.environment.bindingParsers.append(parser)
   }
 
   public clearBindingParsers(): void {
-    this.state.environment.bindingParsers.clear()
+    this.#state.environment.bindingParsers.clear()
   }
 
   public registerToken(token: KeyToken): () => void {
@@ -147,7 +157,7 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
     try {
       normalizedToken = normalizeBindingTokenName(token.name)
     } catch (error) {
-      this.notify.emitError(
+      this.#notify.emitError(
         "token-name-normalize-error",
         error,
         getErrorMessage(error, "Failed to register keymap token"),
@@ -156,10 +166,10 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
     }
 
     if (
-      this.state.environment.tokens.has(normalizedToken) ||
-      this.state.environment.sequencePatterns.has(normalizedToken)
+      this.#state.environment.tokens.has(normalizedToken) ||
+      this.#state.environment.sequencePatterns.has(normalizedToken)
     ) {
-      this.notify.emitError(
+      this.#notify.emitError(
         "duplicate-token",
         { token: normalizedToken },
         `Keymap token "${normalizedToken}" is already registered`,
@@ -170,12 +180,12 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
     let parsedToken: KeySequencePart
 
     try {
-      parsedToken = this.compiler.parseTokenKey(token.key)
+      parsedToken = this.#compiler.parseTokenKey(token.key)
       if (parsedToken.patternName) {
         throw new Error(`Invalid key "${String(token.key)}": expected a concrete key stroke`)
       }
     } catch (error) {
-      this.notify.emitError(
+      this.#notify.emitError(
         "token-parse-error",
         error,
         getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`),
@@ -188,13 +198,13 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
       match: parsedToken.match,
     }
 
-    const nextTokens = new Map(this.state.environment.tokens)
+    const nextTokens = new Map(this.#state.environment.tokens)
     nextTokens.set(normalizedToken, registeredToken)
 
     try {
-      this.layers.applyTokenState(nextTokens)
+      this.#layers.applyTokenState(nextTokens)
     } catch (error) {
-      this.notify.emitError(
+      this.#notify.emitError(
         "token-register-error",
         error,
         getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`),
@@ -203,18 +213,18 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
     }
 
     return () => {
-      const current = this.state.environment.tokens.get(normalizedToken)
+      const current = this.#state.environment.tokens.get(normalizedToken)
       if (current !== registeredToken) {
         return
       }
 
-      const nextTokens = new Map(this.state.environment.tokens)
+      const nextTokens = new Map(this.#state.environment.tokens)
       nextTokens.delete(normalizedToken)
 
       try {
-        this.layers.applyTokenState(nextTokens)
+        this.#layers.applyTokenState(nextTokens)
       } catch (error) {
-        this.notify.emitError(
+        this.#notify.emitError(
           "token-unregister-error",
           error,
           getErrorMessage(error, `Failed to unregister keymap token "${normalizedToken}"`),
@@ -246,7 +256,7 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
         finalize: pattern.finalize,
       }
     } catch (error) {
-      this.notify.emitError(
+      this.#notify.emitError(
         "sequence-pattern-register-error",
         error,
         getErrorMessage(error, "Failed to register keymap sequence pattern"),
@@ -255,10 +265,10 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
     }
 
     if (
-      this.state.environment.tokens.has(normalizedName) ||
-      this.state.environment.sequencePatterns.has(normalizedName)
+      this.#state.environment.tokens.has(normalizedName) ||
+      this.#state.environment.sequencePatterns.has(normalizedName)
     ) {
-      this.notify.emitError(
+      this.#notify.emitError(
         "duplicate-sequence-pattern",
         { pattern: normalizedName },
         `Keymap sequence pattern "${normalizedName}" is already registered`,
@@ -266,39 +276,39 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
       return NOOP
     }
 
-    this.state.environment.sequencePatterns.set(normalizedName, resolvedPattern)
-    this.layers.recompileBindings()
+    this.#state.environment.sequencePatterns.set(normalizedName, resolvedPattern)
+    this.#layers.recompileBindings()
 
     return () => {
-      const current = this.state.environment.sequencePatterns.get(normalizedName)
+      const current = this.#state.environment.sequencePatterns.get(normalizedName)
       if (current !== resolvedPattern) {
         return
       }
 
-      this.state.environment.sequencePatterns.delete(normalizedName)
-      this.layers.recompileBindings()
+      this.#state.environment.sequencePatterns.delete(normalizedName)
+      this.#layers.recompileBindings()
     }
   }
 
   public prependBindingExpander(expander: BindingExpander): () => void {
-    return this.state.environment.bindingExpanders.prepend(expander)
+    return this.#state.environment.bindingExpanders.prepend(expander)
   }
 
   public appendBindingExpander(expander: BindingExpander): () => void {
-    return this.state.environment.bindingExpanders.append(expander)
+    return this.#state.environment.bindingExpanders.append(expander)
   }
 
   public clearBindingExpanders(): void {
-    this.state.environment.bindingExpanders.clear()
+    this.#state.environment.bindingExpanders.clear()
   }
 
   public registerLayerFields(fields: Record<string, LayerFieldCompiler>): () => void {
     return registerFieldCompilers(fields, {
       kind: "layer",
       reservedFields: RESERVED_LAYER_FIELDS,
-      registeredFields: this.state.environment.layerFields,
+      registeredFields: this.#state.environment.layerFields,
       emitError: (code, error, message) => {
-        this.notify.emitError(code, error, message)
+        this.#notify.emitError(code, error, message)
       },
     })
   }
@@ -307,9 +317,9 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
     return registerFieldCompilers(fields, {
       kind: "binding",
       reservedFields: RESERVED_BINDING_FIELDS,
-      registeredFields: this.state.environment.bindingFields,
+      registeredFields: this.#state.environment.bindingFields,
       emitError: (code, error, message) => {
-        this.notify.emitError(code, error, message)
+        this.#notify.emitError(code, error, message)
       },
     })
   }
@@ -318,9 +328,9 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
     return registerFieldCompilers(fields, {
       kind: "command",
       reservedFields: RESERVED_COMMAND_FIELDS,
-      registeredFields: this.state.environment.commandFields,
+      registeredFields: this.#state.environment.commandFields,
       emitError: (code, error, message) => {
-        this.notify.emitError(code, error, message)
+        this.#notify.emitError(code, error, message)
       },
     })
   }

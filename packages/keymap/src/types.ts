@@ -533,8 +533,9 @@ export interface BindingFieldContext {
   require(name: string, value: unknown): void
   attr(name: string, value: unknown): void
   /**
-   * Registers a runtime matcher. Raw callbacks re-run on every read;
-   * reactive matchers stay cached until they notify.
+   * Registers a runtime matcher. Matchers are evaluated when the owning
+   * record is queried or dispatched; reactive matchers also notify state
+   * subscribers when their external source changes.
    */
   activeWhen(matcher: (() => boolean) | ReactiveMatcher): void
 }
@@ -545,8 +546,9 @@ export interface LayerFieldContext {
   require(name: string, value: unknown): void
   attr(name: string, value: unknown): void
   /**
-   * Registers a runtime matcher. Raw callbacks re-run on every read;
-   * reactive matchers stay cached until they notify.
+   * Registers a runtime matcher. Matchers are evaluated when the owning
+   * record is queried or dispatched; reactive matchers also notify state
+   * subscribers when their external source changes.
    */
   activeWhen(matcher: (() => boolean) | ReactiveMatcher): void
 }
@@ -676,8 +678,9 @@ export interface CommandFieldContext {
   require(name: string, value: unknown): void
   attr(name: string, value: unknown): void
   /**
-   * Registers a runtime matcher. Raw callbacks re-run on every read;
-   * reactive matchers stay cached until they notify.
+   * Registers a runtime matcher. Matchers are evaluated when the owning
+   * record is queried or dispatched; reactive matchers also notify state
+   * subscribers when their external source changes.
    */
   activeWhen(matcher: (() => boolean) | ReactiveMatcher): void
 }
@@ -761,11 +764,6 @@ export interface RuntimeMatcher {
   source: string
   match: () => boolean
   /**
-   * False for raw callbacks with no subscription or data dependency, so the
-   * owner must re-evaluate on every read.
-   */
-  cacheable: boolean
-  /**
    * Present for reactive matchers; wired during registration and torn down via
    * `dispose`.
    */
@@ -776,12 +774,6 @@ export interface RuntimeMatcher {
 export interface RuntimeMatchable {
   requires: readonly [name: string, value: unknown][]
   matchers: readonly RuntimeMatcher[]
-  /** Data keys referenced via `require(...)`; used for `setData` invalidation. */
-  conditionKeys: readonly string[]
-  /** True when any matcher is a raw callback and therefore cannot be cached. */
-  hasUnkeyedMatchers: boolean
-  matchCacheDirty?: boolean
-  matchCache?: boolean
 }
 
 export interface BindingState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
@@ -824,7 +816,6 @@ export interface CommandState<
 }
 
 export interface BindingCompilationResult<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
-  root: SequenceNode<TTarget, TEvent>
   bindings: readonly BindingState<TTarget, TEvent>[]
   hasTokenBindings: boolean
 }
@@ -848,26 +839,21 @@ export interface RegisteredLayer<TTarget extends object = object, TEvent extends
   priority: number
   requires: readonly [name: string, value: unknown][]
   matchers: readonly RuntimeMatcher[]
-  conditionKeys: readonly string[]
-  hasUnkeyedMatchers: boolean
-  matchCacheDirty?: boolean
-  matchCache?: boolean
   compileFields?: Readonly<Record<string, unknown>>
   attrs?: Readonly<Attributes>
   commands: readonly CommandState<TTarget, TEvent>[]
   commandLookup?: ReadonlyMap<string, CommandState<TTarget, TEvent>>
   sourceBindings: readonly Binding<TTarget, TEvent>[]
   bindingStates: readonly BindingState<TTarget, TEvent>[]
-  hasUnkeyedCommands: boolean
-  hasUnkeyedBindings: boolean
   hasTokenBindings: boolean
-  root: SequenceNode<TTarget, TEvent>
   offTargetDestroy?: () => void
 }
 
 export interface PendingSequenceCapture<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   layer: RegisteredLayer<TTarget, TEvent>
-  node: SequenceNode<TTarget, TEvent>
+  binding: BindingState<TTarget, TEvent>
+  index: number
+  parts: readonly KeySequencePart[]
   patterns?: readonly PendingSequencePatternCapture[]
 }
 

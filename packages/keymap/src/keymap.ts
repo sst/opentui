@@ -77,182 +77,184 @@ export interface KeymapFeatureOptions<TTarget extends object, TEvent extends Key
 }
 
 export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
-  private readonly state = createKeymapState<TTarget, TEvent>()
-  private cleanedUp = false
-  private readonly resources = new Map<symbol, { count: number; dispose: () => void }>()
-  private readonly cleanupListeners: Array<() => void> = []
+  #state = createKeymapState<TTarget, TEvent>()
+  #cleanedUp = false
+  #resources = new Map<symbol, { count: number; dispose: () => void }>()
+  #cleanupListeners: Array<() => void> = []
   // Reuse `Emitter`, but keep its `onError` hook as a no-op so throwing error
   // listeners cannot re-enter `emitError` and loop forever.
-  private events = new Emitter<DiagnosticEvents<TTarget, TEvent>>(() => {})
-  private hooks: Emitter<Hooks<TTarget, TEvent>>
-  private readonly notify: NotificationService<TTarget, TEvent>
-  private readonly activation: ActivationService<TTarget, TEvent>
-  private readonly runtime: RuntimeService<TTarget, TEvent>
-  private readonly conditions: ConditionService<TTarget, TEvent>
-  private readonly catalog: CommandCatalogService<TTarget, TEvent>
-  private readonly executor: CommandExecutorService<TTarget, TEvent>
-  private readonly compiler: CompilerService<TTarget, TEvent>
-  private readonly dispatch: DispatchService<TTarget, TEvent>
-  private readonly layers: LayerService<TTarget, TEvent>
-  private readonly environment: EnvironmentService<TTarget, TEvent>
-  private readonly graphFeature?: GraphFeature<TTarget, TEvent>
-  private readonly layerDiagnosticsFeature?: LayerDiagnosticsFeature<TTarget, TEvent>
+  #events = new Emitter<DiagnosticEvents<TTarget, TEvent>>(() => {})
+  #hooks: Emitter<Hooks<TTarget, TEvent>>
+  #notify: NotificationService<TTarget, TEvent>
+  #activation: ActivationService<TTarget, TEvent>
+  #runtime: RuntimeService<TTarget, TEvent>
+  #conditions: ConditionService<TTarget, TEvent>
+  #catalog: CommandCatalogService<TTarget, TEvent>
+  #executor: CommandExecutorService<TTarget, TEvent>
+  #compiler: CompilerService<TTarget, TEvent>
+  #dispatch: DispatchService<TTarget, TEvent>
+  #layers: LayerService<TTarget, TEvent>
+  #environment: EnvironmentService<TTarget, TEvent>
+  #graphFeature?: GraphFeature<TTarget, TEvent>
+  #layerDiagnosticsFeature?: LayerDiagnosticsFeature<TTarget, TEvent>
 
-  private readonly keypressListener: (event: TEvent) => void
-  private readonly keyreleaseListener: (event: TEvent) => void
-  private readonly rawListener: (sequence: string) => boolean
-  private readonly focusedTargetListener: (focused: TTarget | null) => void
+  #keypressListener: (event: TEvent) => void
+  #keyreleaseListener: (event: TEvent) => void
+  #rawListener: (sequence: string) => boolean
+  #focusedTargetListener: (focused: TTarget | null) => void
+
+  #host: KeymapHost<TTarget, TEvent>
 
   constructor(
-    private readonly host: KeymapHost<TTarget, TEvent>,
+    host: KeymapHost<TTarget, TEvent>,
     features: KeymapFeatureOptions<TTarget, TEvent> = {},
   ) {
+    this.#host = host
     if (host.isDestroyed) {
       throw new Error("Cannot create a keymap for a destroyed host")
     }
 
-    this.hooks = new Emitter<Hooks<TTarget, TEvent>>((name, error) => {
-      this.notify.reportListenerError(name, error)
+    this.#hooks = new Emitter<Hooks<TTarget, TEvent>>((name, error) => {
+      this.#notify.reportListenerError(name, error)
     })
-    this.notify = new NotificationService(this.state, this.events, this.hooks)
-    this.conditions = new ConditionService(this.state, this.notify)
-    this.catalog = new CommandCatalogService(this.state, this.host, this.notify, this.conditions, {
+    this.#notify = new NotificationService(this.#state, this.#events, this.#hooks)
+    this.#conditions = new ConditionService(this.#state, this.#notify)
+    this.#catalog = new CommandCatalogService(this.#state, this.#host, this.#notify, this.#conditions, {
       onCommandResolversChanged: () => {
-        this.activation.ensureValidPendingSequence()
+        this.#activation.ensureValidPendingSequence()
       },
     })
-    this.activation = new ActivationService(
-      this.state,
-      this.host,
-      this.hooks,
-      this.notify,
-      this.conditions,
-      this.catalog,
+    this.#activation = new ActivationService(
+      this.#state,
+      this.#host,
+      this.#hooks,
+      this.#notify,
+      this.#conditions,
+      this.#catalog,
       {
         onPendingSequenceChanged: (previous, next) => {
-          this.dispatch?.handlePendingSequenceChange(previous, next)
+          this.#dispatch?.handlePendingSequenceChange(previous, next)
         },
       },
     )
-    this.runtime = new RuntimeService(this.state, this.notify, this.conditions, this.activation)
-    this.executor = new CommandExecutorService(this.notify, this.runtime, this.activation, this.catalog, {
+    this.#runtime = new RuntimeService(this.#state, this.#notify, this.#activation)
+    this.#executor = new CommandExecutorService(this.#notify, this.#runtime, this.#activation, this.#catalog, {
       keymap: this as unknown as Keymap<TTarget, TEvent>,
-      createCommandEvent: () => this.host.createCommandEvent(),
+      createCommandEvent: () => this.#host.createCommandEvent(),
     })
-    this.compiler = new CompilerService(this.state, this.notify, this.conditions, {
+    this.#compiler = new CompilerService(this.#state, this.#notify, this.#conditions, {
       warnUnknownField: (kind, fieldName) => {
-        this.warnUnknownField(kind, fieldName)
+        this.#warnUnknownField(kind, fieldName)
       },
       warnUnknownToken: (token, sequence) => {
-        this.warnUnknownToken(token, sequence)
+        this.#warnUnknownToken(token, sequence)
       },
     })
-    this.layerDiagnosticsFeature = features.diagnostics?.({
-      state: this.state,
-      notify: this.notify,
-      commands: this.catalog,
+    this.#layerDiagnosticsFeature = features.diagnostics?.({
+      notify: this.#notify,
+      commands: this.#catalog,
     })
-    this.layers = new LayerService(this.state, this.notify, this.conditions, this.activation, {
-      compiler: this.compiler,
-      commands: this.catalog,
-      host: this.host,
-      diagnostics: this.layerDiagnosticsFeature,
+    this.#layers = new LayerService(this.#state, this.#notify, this.#conditions, this.#activation, {
+      compiler: this.#compiler,
+      commands: this.#catalog,
+      host: this.#host,
+      diagnostics: this.#layerDiagnosticsFeature,
       warnUnknownField: (kind, fieldName) => {
-        this.warnUnknownField(kind, fieldName)
+        this.#warnUnknownField(kind, fieldName)
       },
     })
-    this.environment = new EnvironmentService(this.state, this.notify, this.compiler, this.layers)
-    this.dispatch = new DispatchService(
-      this.state,
-      this.notify,
-      this.runtime,
-      this.activation,
-      this.conditions,
-      this.executor,
-      this.compiler,
-      this.catalog,
-      this.layers,
-      this.hooks,
+    this.#environment = new EnvironmentService(this.#state, this.#notify, this.#compiler, this.#layers)
+    this.#dispatch = new DispatchService(
+      this.#state,
+      this.#notify,
+      this.#runtime,
+      this.#activation,
+      this.#conditions,
+      this.#executor,
+      this.#compiler,
+      this.#catalog,
+      this.#layers,
+      this.#hooks,
     )
-    this.keypressListener = (event) => {
-      this.dispatch.handleKeyEvent(event, false)
+    this.#keypressListener = (event) => {
+      this.#dispatch.handleKeyEvent(event, false)
     }
-    this.keyreleaseListener = (event) => {
-      this.dispatch.handleKeyEvent(event, true)
+    this.#keyreleaseListener = (event) => {
+      this.#dispatch.handleKeyEvent(event, true)
     }
-    this.rawListener = (sequence) => {
-      return this.dispatch.handleRawSequence(sequence)
+    this.#rawListener = (sequence) => {
+      return this.#dispatch.handleRawSequence(sequence)
     }
-    this.focusedTargetListener = (focused) => {
-      this.handleFocusedTargetChange(focused)
+    this.#focusedTargetListener = (focused) => {
+      this.#handleFocusedTargetChange(focused)
     }
 
-    this.cleanupListeners.push(this.host.onKeyPress(this.keypressListener))
-    this.cleanupListeners.push(this.host.onKeyRelease(this.keyreleaseListener))
-    if (this.host.onRawInput) {
-      this.cleanupListeners.push(this.host.onRawInput(this.rawListener))
+    this.#cleanupListeners.push(this.#host.onKeyPress(this.#keypressListener))
+    this.#cleanupListeners.push(this.#host.onKeyRelease(this.#keyreleaseListener))
+    if (this.#host.onRawInput) {
+      this.#cleanupListeners.push(this.#host.onRawInput(this.#rawListener))
     }
-    this.cleanupListeners.push(this.host.onFocusChange(this.focusedTargetListener))
-    if (this.host.onDestroy) {
-      this.cleanupListeners.push(
-        this.host.onDestroy(() => {
-          this.cleanup()
+    this.#cleanupListeners.push(this.#host.onFocusChange(this.#focusedTargetListener))
+    if (this.#host.onDestroy) {
+      this.#cleanupListeners.push(
+        this.#host.onDestroy(() => {
+          this.#cleanup()
         }),
       )
     }
 
-    this.graphFeature = features.graph?.({
-      state: this.state,
-      host: this.host,
-      conditions: this.conditions,
-      catalog: this.catalog,
-      activation: this.activation,
+    this.#graphFeature = features.graph?.({
+      state: this.#state,
+      host: this.#host,
+      conditions: this.#conditions,
+      catalog: this.#catalog,
+      activation: this.#activation,
     })
   }
 
-  private cleanup(): void {
-    if (this.cleanedUp) {
+  #cleanup(): void {
+    if (this.#cleanedUp) {
       return
     }
 
-    this.cleanedUp = true
+    this.#cleanedUp = true
 
-    this.activation.setPendingSequence(null)
+    this.#activation.setPendingSequence(null)
 
-    for (const resource of this.resources.values()) {
+    for (const resource of this.#resources.values()) {
       resource.dispose()
     }
-    this.resources.clear()
+    this.#resources.clear()
 
-    this.layers.cleanup()
+    this.#layers.cleanup()
 
-    for (const cleanupListener of this.cleanupListeners.splice(0)) {
+    for (const cleanupListener of this.#cleanupListeners.splice(0)) {
       cleanupListener()
     }
   }
 
   public setData(name: string, value: unknown): void {
-    this.runtime.setData(name, value)
+    this.#runtime.setData(name, value)
   }
 
   public getData(name: string): unknown {
-    return this.runtime.getData(name)
+    return this.#runtime.getData(name)
   }
 
   public getHostMetadata(): Readonly<HostMetadata> {
-    return this.host.metadata
+    return this.#host.metadata
   }
 
   public hasPendingSequence(): boolean {
-    return this.activation.ensureValidPendingSequence() !== undefined
+    return this.#activation.ensureValidPendingSequence() !== undefined
   }
 
   public getPendingSequence(): readonly KeySequencePart[] {
-    return this.activation.getPendingSequence()
+    return this.#activation.getPendingSequence()
   }
 
   public createKeyMatcher(key: KeyLike): (input: KeyStringifyInput | null | undefined) => boolean {
-    const match = this.compiler.parseTokenKey(key).match
+    const match = this.#compiler.parseTokenKey(key).match
 
     return (input) => {
       if (!input) {
@@ -264,67 +266,67 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
   }
 
   public parseKeySequence(key: KeyLike): readonly KeySequencePart[] {
-    return this.compiler.parseKeySequence(key)
+    return this.#compiler.parseKeySequence(key)
   }
 
   public formatKey(key: KeyLike, options?: StringifyOptions): string {
-    return this.compiler.formatKey(key, options)
+    return this.#compiler.formatKey(key, options)
   }
 
   public clearPendingSequence(): void {
-    this.activation.setPendingSequence(null)
+    this.#activation.setPendingSequence(null)
   }
 
   public popPendingSequence(): boolean {
-    return this.activation.popPendingSequence()
+    return this.#activation.popPendingSequence()
   }
 
   public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] {
-    return this.activation.getActiveKeys(options)
+    return this.#activation.getActiveKeys(options)
   }
 
   public getCommands(query?: CommandQuery<TTarget, TEvent>): readonly Command<TTarget, TEvent>[] {
-    return this.catalog.getCommands(query)
+    return this.#catalog.getCommands(query)
   }
 
   public getCommandEntries(query?: CommandQuery<TTarget, TEvent>): readonly CommandEntry<TTarget, TEvent>[] {
-    return this.catalog.getCommandEntries(query)
+    return this.#catalog.getCommandEntries(query)
   }
 
   public getCommandBindings(
     query: CommandBindingsQuery<TTarget>,
   ): ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]> {
-    return this.catalog.getCommandBindings(query)
+    return this.#catalog.getCommandBindings(query)
   }
 
   public acquireResource(key: symbol, setup: () => () => void): () => void {
-    if (this.cleanedUp || this.host.isDestroyed) {
+    if (this.#cleanedUp || this.#host.isDestroyed) {
       throw new Error("Cannot use a keymap after its host was destroyed")
     }
 
-    const existing = this.resources.get(key)
+    const existing = this.#resources.get(key)
     if (existing) {
       existing.count += 1
       return () => {
-        this.releaseResource(key, existing)
+        this.#releaseResource(key, existing)
       }
     }
 
     const dispose = setup()
     const resource = { count: 1, dispose }
-    this.resources.set(key, resource)
+    this.#resources.set(key, resource)
 
     return () => {
-      this.releaseResource(key, resource)
+      this.#releaseResource(key, resource)
     }
   }
 
   public runCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult<TTarget, TEvent> {
-    return this.executor.runCommand(cmd, options)
+    return this.#executor.runCommand(cmd, options)
   }
 
   public dispatchCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult<TTarget, TEvent> {
-    return this.executor.dispatchCommand(cmd, options)
+    return this.#executor.dispatchCommand(cmd, options)
   }
 
   public on(name: "state", fn: Listener<Events<TTarget, TEvent>["state"]>): () => void
@@ -342,14 +344,14 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
     fn: (() => void) | ((value: Events<TTarget, TEvent>[keyof Events<TTarget, TEvent>]) => void),
   ): () => void {
     if (name === "warning") {
-      return this.events.hook(name, fn as EmitterListener<Events<TTarget, TEvent>["warning"]>)
+      return this.#events.hook(name, fn as EmitterListener<Events<TTarget, TEvent>["warning"]>)
     }
 
     if (name === "error") {
-      return this.events.hook(name, fn as EmitterListener<Events<TTarget, TEvent>["error"]>)
+      return this.#events.hook(name, fn as EmitterListener<Events<TTarget, TEvent>["error"]>)
     }
 
-    return this.hooks.hook(name, fn as Listener<Hooks<TTarget, TEvent>[typeof name]>)
+    return this.#hooks.hook(name, fn as Listener<Hooks<TTarget, TEvent>[typeof name]>)
   }
 
   public intercept(name: "key", fn: (ctx: KeyInputContext<TEvent>) => void, options?: KeyInterceptOptions): () => void
@@ -371,186 +373,185 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
     options?: KeyInterceptOptions | RawInterceptOptions,
   ): () => void {
     if (name === "key") {
-      return this.dispatch.intercept(name, fn as (ctx: KeyInputContext<TEvent>) => void, options as KeyInterceptOptions)
+      return this.#dispatch.intercept(name, fn as (ctx: KeyInputContext<TEvent>) => void, options as KeyInterceptOptions)
     }
 
     if (name === "key:after") {
-      return this.dispatch.intercept(
+      return this.#dispatch.intercept(
         name,
         fn as (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
         options as KeyInterceptOptions,
       )
     }
 
-    return this.dispatch.intercept(name, fn as (ctx: RawInputContext) => void, options as RawInterceptOptions)
+    return this.#dispatch.intercept(name, fn as (ctx: RawInputContext) => void, options as RawInterceptOptions)
   }
 
   public registerLayer(layer: Layer<TTarget, TEvent>): () => void {
-    return this.layers.registerLayer(layer)
+    return this.#layers.registerLayer(layer)
   }
 
   public registerLayerFields(fields: Record<string, LayerFieldCompiler>): () => void {
-    return this.environment.registerLayerFields(fields)
+    return this.#environment.registerLayerFields(fields)
   }
 
   public prependLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
-    return this.environment.prependLayerBindingsTransformer(transformer)
+    return this.#environment.prependLayerBindingsTransformer(transformer)
   }
 
   public appendLayerBindingsTransformer(transformer: LayerBindingsTransformer<TTarget, TEvent>): () => void {
-    return this.environment.appendLayerBindingsTransformer(transformer)
+    return this.#environment.appendLayerBindingsTransformer(transformer)
   }
 
   public clearLayerBindingsTransformers(): void {
-    this.environment.clearLayerBindingsTransformers()
+    this.#environment.clearLayerBindingsTransformers()
   }
 
   public prependBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
-    return this.environment.prependBindingTransformer(transformer)
+    return this.#environment.prependBindingTransformer(transformer)
   }
 
   public appendBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
-    return this.environment.appendBindingTransformer(transformer)
+    return this.#environment.appendBindingTransformer(transformer)
   }
 
   public clearBindingTransformers(): void {
-    this.environment.clearBindingTransformers()
+    this.#environment.clearBindingTransformers()
   }
 
   public prependCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
-    return this.environment.prependCommandTransformer(transformer)
+    return this.#environment.prependCommandTransformer(transformer)
   }
 
   public appendCommandTransformer(transformer: CommandTransformer<TTarget, TEvent>): () => void {
-    return this.environment.appendCommandTransformer(transformer)
+    return this.#environment.appendCommandTransformer(transformer)
   }
 
   public clearCommandTransformers(): void {
-    this.environment.clearCommandTransformers()
+    this.#environment.clearCommandTransformers()
   }
 
   public prependBindingParser(parser: BindingParser): () => void {
-    return this.environment.prependBindingParser(parser)
+    return this.#environment.prependBindingParser(parser)
   }
 
   public appendBindingParser(parser: BindingParser): () => void {
-    return this.environment.appendBindingParser(parser)
+    return this.#environment.appendBindingParser(parser)
   }
 
   public clearBindingParsers(): void {
-    this.environment.clearBindingParsers()
+    this.#environment.clearBindingParsers()
   }
 
   public registerToken(token: KeyToken): () => void {
-    return this.environment.registerToken(token)
+    return this.#environment.registerToken(token)
   }
 
   public registerSequencePattern(pattern: SequencePattern<TEvent>): () => void {
-    return this.environment.registerSequencePattern(pattern)
+    return this.#environment.registerSequencePattern(pattern)
   }
 
   public prependBindingExpander(expander: BindingExpander): () => void {
-    return this.environment.prependBindingExpander(expander)
+    return this.#environment.prependBindingExpander(expander)
   }
 
   public appendBindingExpander(expander: BindingExpander): () => void {
-    return this.environment.appendBindingExpander(expander)
+    return this.#environment.appendBindingExpander(expander)
   }
 
   public clearBindingExpanders(): void {
-    this.environment.clearBindingExpanders()
+    this.#environment.clearBindingExpanders()
   }
 
   public registerBindingFields(fields: Record<string, BindingFieldCompiler>): () => void {
-    return this.environment.registerBindingFields(fields)
+    return this.#environment.registerBindingFields(fields)
   }
 
   public registerCommandFields(fields: Record<string, CommandFieldCompiler>): () => void {
-    return this.environment.registerCommandFields(fields)
+    return this.#environment.registerCommandFields(fields)
   }
 
   public prependCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
-    return this.catalog.prependCommandResolver(resolver)
+    return this.#catalog.prependCommandResolver(resolver)
   }
 
   public appendCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
-    return this.catalog.appendCommandResolver(resolver)
+    return this.#catalog.appendCommandResolver(resolver)
   }
 
   public clearCommandResolvers(): void {
-    this.catalog.clearCommandResolvers()
+    this.#catalog.clearCommandResolvers()
   }
 
   public getGraphSnapshot(options?: GraphSnapshotOptions<TTarget>): GraphSnapshot<TTarget, TEvent> {
-    return this.requireGraphFeature().getGraphSnapshot(options)
+    return this.#requireGraphFeature().getGraphSnapshot(options)
   }
 
   public prependLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
-    return this.requireLayerDiagnosticsFeature().prependLayerAnalyzer(analyzer)
+    return this.#requireLayerDiagnosticsFeature().prependLayerAnalyzer(analyzer)
   }
 
   public appendLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
-    return this.requireLayerDiagnosticsFeature().appendLayerAnalyzer(analyzer)
+    return this.#requireLayerDiagnosticsFeature().appendLayerAnalyzer(analyzer)
   }
 
   public clearLayerAnalyzers(): void {
-    this.requireLayerDiagnosticsFeature().clearLayerAnalyzers()
+    this.#requireLayerDiagnosticsFeature().clearLayerAnalyzers()
   }
 
-  private requireGraphFeature(): GraphFeature<TTarget, TEvent> {
-    if (!this.graphFeature) {
+  #requireGraphFeature(): GraphFeature<TTarget, TEvent> {
+    if (!this.#graphFeature) {
       throw new Error("Keymap graph feature is not installed")
     }
 
-    return this.graphFeature
+    return this.#graphFeature
   }
 
-  private requireLayerDiagnosticsFeature(): LayerDiagnosticsFeature<TTarget, TEvent> {
-    if (!this.layerDiagnosticsFeature) {
+  #requireLayerDiagnosticsFeature(): LayerDiagnosticsFeature<TTarget, TEvent> {
+    if (!this.#layerDiagnosticsFeature) {
       throw new Error("Keymap diagnostics feature is not installed")
     }
 
-    return this.layerDiagnosticsFeature
+    return this.#layerDiagnosticsFeature
   }
 
   public prependEventMatchResolver(resolver: EventMatchResolver<TEvent>): () => void {
-    return this.dispatch.prependEventMatchResolver(resolver)
+    return this.#dispatch.prependEventMatchResolver(resolver)
   }
 
   public appendEventMatchResolver(resolver: EventMatchResolver<TEvent>): () => void {
-    return this.dispatch.appendEventMatchResolver(resolver)
+    return this.#dispatch.appendEventMatchResolver(resolver)
   }
 
   public clearEventMatchResolvers(): void {
-    this.dispatch.clearEventMatchResolvers()
+    this.#dispatch.clearEventMatchResolvers()
   }
 
   public prependDisambiguationResolver(resolver: KeyDisambiguationResolver<TTarget, TEvent>): () => void {
-    return this.dispatch.prependDisambiguationResolver(resolver)
+    return this.#dispatch.prependDisambiguationResolver(resolver)
   }
 
   public appendDisambiguationResolver(resolver: KeyDisambiguationResolver<TTarget, TEvent>): () => void {
-    return this.dispatch.appendDisambiguationResolver(resolver)
+    return this.#dispatch.appendDisambiguationResolver(resolver)
   }
 
   public clearDisambiguationResolvers(): void {
-    this.dispatch.clearDisambiguationResolvers()
+    this.#dispatch.clearDisambiguationResolvers()
   }
 
-  private handleFocusedTargetChange(_focused: TTarget | null): void {
-    this.notify.runWithStateChangeBatch(() => {
+  #handleFocusedTargetChange(_focused: TTarget | null): void {
+    this.#notify.runWithStateChangeBatch(() => {
       // Any focus change breaks a pending sequence. Prefix dispatch is captured
       // against the state that started it, and changing focus can change the
       // active bindings and their precedence.
-      this.activation.setPendingSequence(null)
-      this.activation.invalidateActiveLayers()
-      this.activation.refreshActiveLayers(_focused)
-      this.notify.queueStateChange()
+      this.#activation.setPendingSequence(null)
+      this.#activation.refreshActiveLayers(_focused)
+      this.#notify.queueStateChange()
     })
   }
 
-  private warnUnknownField(kind: "binding" | "layer", fieldName: string): void {
-    this.notify.warnOnce(
+  #warnUnknownField(kind: "binding" | "layer", fieldName: string): void {
+    this.#notify.warnOnce(
       `${kind}:${fieldName}`,
       `unknown-${kind}-field`,
       { field: fieldName, kind },
@@ -558,8 +559,8 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
     )
   }
 
-  private warnUnknownToken(token: string, sequence: string): void {
-    this.notify.warnOnce(
+  #warnUnknownToken(token: string, sequence: string): void {
+    this.#notify.warnOnce(
       `token:${token}`,
       "unknown-token",
       { token, sequence },
@@ -567,8 +568,8 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
     )
   }
 
-  private releaseResource(key: symbol, resource: { count: number; dispose: () => void }): void {
-    const current = this.resources.get(key)
+  #releaseResource(key: symbol, resource: { count: number; dispose: () => void }): void {
+    const current = this.#resources.get(key)
     if (current !== resource) {
       return
     }
@@ -579,7 +580,7 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
     }
 
     resource.dispose()
-    this.resources.delete(key)
+    this.#resources.delete(key)
   }
 }
 
