@@ -844,6 +844,7 @@ export interface RegisteredLayer<TTarget extends object = object, TEvent extends
   commands: readonly CommandState<TTarget, TEvent>[]
   sourceBindings: readonly Binding<TTarget, TEvent>[]
   bindings: readonly BindingState<TTarget, TEvent>[]
+  root: SequenceNode<TTarget, TEvent>
   hasTokenBindings: boolean
   offTargetDestroy?: () => void
 }

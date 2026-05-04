@@ -24,11 +24,11 @@ import type {
   RegisteredLayer,
 } from "../types.js"
 import {
-  createOrderedRegistry,
-  createPriorityRegistry,
-  type OrderedRegistryApi,
-  type PriorityRegistryApi,
-} from "../lib/registry.js"
+  createRuntimeOrderedRegistry,
+  createRuntimePriorityRegistry,
+  type RuntimeOrderedRegistry,
+  type RuntimePriorityRegistry,
+} from "../lib/runtime-utils.js"
 
 export interface LayerCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {
   layer: RegisteredLayer<TTarget, TEvent>
@@ -60,23 +60,23 @@ export interface State<TTarget extends object, TEvent extends KeymapEvent> {
   tokens: Map<string, import("../types.js").ResolvedKeyToken>
   patterns: Map<string, ResolvedSequencePattern<TEvent>>
   layerFields: Map<string, LayerFieldCompiler>
-  layerBindingsTransformers: OrderedRegistryApi<LayerBindingsTransformer<TTarget, TEvent>>
-  bindingExpanders: OrderedRegistryApi<BindingExpander>
-  bindingParsers: OrderedRegistryApi<BindingParser>
-  bindingTransformers: OrderedRegistryApi<BindingTransformer<TTarget, TEvent>>
+  layerBindingsTransformers: RuntimeOrderedRegistry<LayerBindingsTransformer<TTarget, TEvent>>
+  bindingExpanders: RuntimeOrderedRegistry<BindingExpander>
+  bindingParsers: RuntimeOrderedRegistry<BindingParser>
+  bindingTransformers: RuntimeOrderedRegistry<BindingTransformer<TTarget, TEvent>>
   bindingFields: Map<string, BindingFieldCompiler>
-  commandTransformers: OrderedRegistryApi<CommandTransformer<TTarget, TEvent>>
+  commandTransformers: RuntimeOrderedRegistry<CommandTransformer<TTarget, TEvent>>
   commandFields: Map<string, CommandFieldCompiler>
-  eventMatchResolvers: OrderedRegistryApi<EventMatchResolver<TEvent>>
-  disambiguationResolvers: OrderedRegistryApi<KeyDisambiguationResolver<TTarget, TEvent>>
-  keyHooks: PriorityRegistryApi<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>
-  keyAfterHooks: PriorityRegistryApi<
+  eventMatchResolvers: RuntimeOrderedRegistry<EventMatchResolver<TEvent>>
+  disambiguationResolvers: RuntimeOrderedRegistry<KeyDisambiguationResolver<TTarget, TEvent>>
+  keyHooks: RuntimePriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>
+  keyAfterHooks: RuntimePriorityRegistry<
     (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
     { priority: number; release: boolean }
   >
-  rawHooks: PriorityRegistryApi<(ctx: RawInputContext) => void, { priority: number }>
+  rawHooks: RuntimePriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>
   layers: Set<RegisteredLayer<TTarget, TEvent>>
-  commandResolvers: OrderedRegistryApi<CommandResolver<TTarget, TEvent>>
+  commandResolvers: RuntimeOrderedRegistry<CommandResolver<TTarget, TEvent>>
   pending: PendingSequenceState<TTarget, TEvent> | null
   data: EventData
   stateChangeDepth: number
@@ -91,23 +91,23 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     tokens: new Map<string, import("../types.js").ResolvedKeyToken>(),
     patterns: new Map<string, ResolvedSequencePattern<TEvent>>(),
     layerFields: new Map<string, LayerFieldCompiler>(),
-    layerBindingsTransformers: createOrderedRegistry<LayerBindingsTransformer<TTarget, TEvent>>(),
-    bindingExpanders: createOrderedRegistry<BindingExpander>(),
-    bindingParsers: createOrderedRegistry<BindingParser>(),
-    bindingTransformers: createOrderedRegistry<BindingTransformer<TTarget, TEvent>>(),
+    layerBindingsTransformers: createRuntimeOrderedRegistry<LayerBindingsTransformer<TTarget, TEvent>>(),
+    bindingExpanders: createRuntimeOrderedRegistry<BindingExpander>(),
+    bindingParsers: createRuntimeOrderedRegistry<BindingParser>(),
+    bindingTransformers: createRuntimeOrderedRegistry<BindingTransformer<TTarget, TEvent>>(),
     bindingFields: new Map<string, BindingFieldCompiler>(),
-    commandTransformers: createOrderedRegistry<CommandTransformer<TTarget, TEvent>>(),
+    commandTransformers: createRuntimeOrderedRegistry<CommandTransformer<TTarget, TEvent>>(),
     commandFields: new Map<string, CommandFieldCompiler>(),
-    eventMatchResolvers: createOrderedRegistry<EventMatchResolver<TEvent>>(),
-    disambiguationResolvers: createOrderedRegistry<KeyDisambiguationResolver<TTarget, TEvent>>(),
-    keyHooks: createPriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>(),
-    keyAfterHooks: createPriorityRegistry<
+    eventMatchResolvers: createRuntimeOrderedRegistry<EventMatchResolver<TEvent>>(),
+    disambiguationResolvers: createRuntimeOrderedRegistry<KeyDisambiguationResolver<TTarget, TEvent>>(),
+    keyHooks: createRuntimePriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>(),
+    keyAfterHooks: createRuntimePriorityRegistry<
       (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
       { priority: number; release: boolean }
     >(),
-    rawHooks: createPriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>(),
+    rawHooks: createRuntimePriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>(),
     layers: new Set<RegisteredLayer<TTarget, TEvent>>(),
-    commandResolvers: createOrderedRegistry<CommandResolver<TTarget, TEvent>>(),
+    commandResolvers: createRuntimeOrderedRegistry<CommandResolver<TTarget, TEvent>>(),
     pending: null,
     data: {},
     stateChangeDepth: 0,

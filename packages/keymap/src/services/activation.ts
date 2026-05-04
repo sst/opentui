@@ -1,4 +1,4 @@
-import type { EmitterApi } from "../lib/emitter.js"
+import type { RuntimeEmitter } from "../lib/runtime-utils.js"
 import type {
   ActiveBinding,
   ActiveKey,
@@ -21,12 +21,13 @@ import {
   getFocusedTargetIfAvailable as getHostFocusedTargetIfAvailable,
   isLayerActiveForFocused,
 } from "./primitives/active-layers.js"
-import { captureHasContinuations, captureHasMinimum } from "./primitives/pending-captures.js"
+import { captureHasContinuations } from "./primitives/pending-captures.js"
 import type { CommandCatalogService } from "./command-catalog.js"
 import { cloneKeyStroke, createKeySequencePart, stringifyKeyStroke } from "./keys.js"
 import type { ConditionService } from "./conditions.js"
 import type { NotificationService } from "./notify.js"
 import type { ActiveCommandView, State } from "./state.js"
+import { activeOptionsForBindings, activeOptionsForCaptures, type SequenceActiveOption } from "./sequence-index.js"
 
 function getLiveHost<TTarget extends object, TEvent extends KeymapEvent>(
   host: KeymapHost<TTarget, TEvent>,
@@ -109,14 +110,6 @@ interface ActivationOptions<TTarget extends object, TEvent extends KeymapEvent> 
   ) => void
 }
 
-interface ActiveKeyOption<TTarget extends object, TEvent extends KeymapEvent> {
-  part: KeySequencePart
-  binding: BindingState<TTarget, TEvent>
-  index: number
-  exact: boolean
-  continues: boolean
-}
-
 export interface ActivationService<TTarget extends object, TEvent extends KeymapEvent> {
   getFocusedTarget(): TTarget | null
   getFocusedTargetIfAvailable(): TTarget | null
@@ -153,7 +146,7 @@ export interface ActivationService<TTarget extends object, TEvent extends Keymap
 export function createActivationService<TTarget extends object, TEvent extends KeymapEvent>(
   state: State<TTarget, TEvent>,
   host: KeymapHost<TTarget, TEvent>,
-  hooks: EmitterApi<Hooks<TTarget, TEvent>>,
+  hooks: RuntimeEmitter<Hooks<TTarget, TEvent>>,
   notify: NotificationService<TTarget, TEvent>,
   conditions: ConditionService<TTarget, TEvent>,
   catalog: CommandCatalogService<TTarget, TEvent>,
@@ -353,47 +346,6 @@ export function createActivationService<TTarget extends object, TEvent extends K
     }
   }
 
-  const getActiveKeyOptionsForBinding = (binding: BindingState<TTarget, TEvent>): ActiveKeyOption<TTarget, TEvent>[] => {
-    const part = binding.sequence[0]
-    if (!part) {
-      return []
-    }
-
-    return [
-      {
-        part,
-        binding,
-        index: 0,
-        exact: binding.sequence.length === 1,
-        continues: binding.sequence.length > 1,
-      },
-    ]
-  }
-
-  const getActiveKeyOptionsForCapture = (
-    capture: PendingSequenceCapture<TTarget, TEvent>,
-  ): ActiveKeyOption<TTarget, TEvent>[] => {
-    if (!captureHasMinimum(capture, state.patterns)) {
-      return []
-    }
-
-    const index = capture.index + 1
-    const part = capture.binding.sequence[index]
-    if (!part) {
-      return []
-    }
-
-    return [
-      {
-        part,
-        binding: capture.binding,
-        index,
-        exact: index === capture.binding.sequence.length - 1,
-        continues: index < capture.binding.sequence.length - 1,
-      },
-    ]
-  }
-
   const collectSequencePartsFromPending = (pending: PendingSequenceState<TTarget, TEvent>): KeySequencePart[] => {
     const firstCapture = pending.captures[0]
     if (!firstCapture || firstCapture.parts.length === 0) {
@@ -558,16 +510,16 @@ export function createActivationService<TTarget extends object, TEvent extends K
         continue
       }
 
-      const options: ActiveKeyOption<TTarget, TEvent>[] = []
+      const bindingOptions: BindingState<TTarget, TEvent>[] = []
       for (const binding of layer.bindings) {
         if (binding.event !== "press" || !bindingMatchesRuntimeState(binding, focused, activeView)) {
           continue
         }
 
-        options.push(...getActiveKeyOptionsForBinding(binding))
+        bindingOptions.push(binding)
       }
 
-      collectActiveKeyOptions(options, activeKeys, stopped, includeBindings, focused, activeView)
+      collectActiveKeyOptions(activeOptionsForBindings(bindingOptions), activeKeys, stopped, includeBindings, focused, activeView)
     }
 
     return materializeActiveKeys(activeKeys, includeBindings, includeMetadata, focused, activeView)
@@ -582,19 +534,13 @@ export function createActivationService<TTarget extends object, TEvent extends K
   ): readonly ActiveKey<TTarget, TEvent>[] => {
     const activeKeys = new Map<KeyMatch, ActiveKeyState<TTarget, TEvent>>()
     const stopped = new Set<KeyMatch>()
-    const options: ActiveKeyOption<TTarget, TEvent>[] = []
-
-    for (const capture of captures) {
-      options.push(...getActiveKeyOptionsForCapture(capture))
-    }
-
-    collectActiveKeyOptions(options, activeKeys, stopped, includeBindings, focused, activeView)
+    collectActiveKeyOptions(activeOptionsForCaptures(captures, state.patterns), activeKeys, stopped, includeBindings, focused, activeView)
 
     return materializeActiveKeys(activeKeys, includeBindings, includeMetadata, focused, activeView)
   }
 
   const collectActiveKeyOptions = (
-    options: readonly ActiveKeyOption<TTarget, TEvent>[],
+    options: readonly SequenceActiveOption<TTarget, TEvent>[],
     activeKeys: Map<KeyMatch, ActiveKeyState<TTarget, TEvent>>,
     stopped: Set<KeyMatch>,
     includeBindings: boolean,
@@ -613,8 +559,8 @@ export function createActivationService<TTarget extends object, TEvent extends K
   }
 
   const collectActiveKeyOption = (
-    option: ActiveKeyOption<TTarget, TEvent>,
-    siblingOptions: readonly ActiveKeyOption<TTarget, TEvent>[],
+    option: SequenceActiveOption<TTarget, TEvent>,
+    siblingOptions: readonly SequenceActiveOption<TTarget, TEvent>[],
     activeKeys: Map<KeyMatch, ActiveKeyState<TTarget, TEvent>>,
     stopped: Set<KeyMatch>,
     includeBindings: boolean,
@@ -662,8 +608,8 @@ export function createActivationService<TTarget extends object, TEvent extends K
   }
 
   const selectActiveKeyOption = (
-    option: ActiveKeyOption<TTarget, TEvent>,
-    siblingOptions: readonly ActiveKeyOption<TTarget, TEvent>[],
+    option: SequenceActiveOption<TTarget, TEvent>,
+    siblingOptions: readonly SequenceActiveOption<TTarget, TEvent>[],
     includeBindings: boolean,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
@@ -691,7 +637,7 @@ export function createActivationService<TTarget extends object, TEvent extends K
   }
 
   const getOptionPresentation = (
-    options: readonly ActiveKeyOption<TTarget, TEvent>[],
+    options: readonly SequenceActiveOption<TTarget, TEvent>[],
   ): { display: string; tokenName?: string } => {
     let display: string | undefined
     let tokenName: string | undefined

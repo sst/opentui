@@ -60,7 +60,8 @@ import {
   registerToken as registerEnvironmentToken,
 } from "./services/environment.js"
 import { createLayerService, type LayerService } from "./services/layers.js"
-import { createEmitter, type EmitterApi, type EmitterListener } from "./lib/emitter.js"
+import type { EmitterListener } from "./lib/emitter.js"
+import { createRuntimeEmitter, type RuntimeEmitter } from "./lib/runtime-utils.js"
 import { createNotificationService, type NotificationService } from "./services/notify.js"
 import { resolveKeyMatch } from "./services/keys.js"
 import { createRuntimeService, type RuntimeService } from "./services/runtime.js"
@@ -87,8 +88,8 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
   #cleanupListeners: Array<() => void> = []
   // Reuse `Emitter`, but keep its `onError` hook as a no-op so throwing error
   // listeners cannot re-enter `emitError` and loop forever.
-  #events = createEmitter<DiagnosticEvents<TTarget, TEvent>>(() => {})
-  #hooks: EmitterApi<Hooks<TTarget, TEvent>>
+  #events = createRuntimeEmitter<DiagnosticEvents<TTarget, TEvent>>(() => {})
+  #hooks: RuntimeEmitter<Hooks<TTarget, TEvent>>
   #notify: NotificationService<TTarget, TEvent>
   #activation: ActivationService<TTarget, TEvent>
   #runtime: RuntimeService<TTarget, TEvent>
@@ -117,7 +118,7 @@ export class BaseKeymap<TTarget extends object, TEvent extends KeymapEvent = Key
       throw new Error("Cannot create a keymap for a destroyed host")
     }
 
-    this.#hooks = createEmitter<Hooks<TTarget, TEvent>>((name, error) => {
+    this.#hooks = createRuntimeEmitter<Hooks<TTarget, TEvent>>((name, error) => {
       this.#notify.reportListenerError(name, error)
     })
     this.#notify = createNotificationService(this.#state, this.#events, this.#hooks)

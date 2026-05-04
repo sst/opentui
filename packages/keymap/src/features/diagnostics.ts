@@ -3,7 +3,7 @@ import type { AnalyzeLayerOptions, LayerDiagnostics } from "../services/layers.j
 import type { NotificationService } from "../services/notify.js"
 import { cloneKeySequence } from "../services/keys.js"
 import { snapshotParsedBinding } from "../services/primitives/bindings.js"
-import { createOrderedRegistry } from "../lib/registry.js"
+import { createRuntimeOrderedRegistry } from "../lib/runtime-utils.js"
 import type {
   BindingState,
   KeymapEvent,
@@ -75,7 +75,7 @@ export function createLayerDiagnosticsFeature<TTarget extends object, TEvent ext
   context: LayerDiagnosticsFeatureContext<TTarget, TEvent>,
 ): LayerDiagnosticsFeature<TTarget, TEvent> {
   const { notify, commands } = context
-  const analyzers = createOrderedRegistry<LayerAnalyzer<TTarget, TEvent>>()
+  const analyzers = createRuntimeOrderedRegistry<LayerAnalyzer<TTarget, TEvent>>()
 
   return {
     prependLayerAnalyzer(analyzer) {

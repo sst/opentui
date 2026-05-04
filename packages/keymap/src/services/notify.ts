@@ -1,5 +1,5 @@
 import type { Events, HookName, Hooks, KeymapEvent } from "../types.js"
-import type { EmitterApi } from "../lib/emitter.js"
+import type { RuntimeEmitter } from "../lib/runtime-utils.js"
 import type { State } from "./state.js"
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
@@ -20,8 +20,8 @@ export interface NotificationService<TTarget extends object, TEvent extends Keym
 
 export function createNotificationService<TTarget extends object, TEvent extends KeymapEvent>(
   state: State<TTarget, TEvent>,
-  events: EmitterApi<DiagnosticEvents<TTarget, TEvent>>,
-  hooks: EmitterApi<Hooks<TTarget, TEvent>>,
+  events: RuntimeEmitter<DiagnosticEvents<TTarget, TEvent>>,
+  hooks: RuntimeEmitter<Hooks<TTarget, TEvent>>,
 ): NotificationService<TTarget, TEvent> {
   const emitWarning = (code: string, warning: unknown, message: string): void => {
     if (!events.has("warning")) {

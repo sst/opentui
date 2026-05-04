@@ -15,9 +15,7 @@ import type {
   GraphSnapshotOptions,
   KeymapHost,
   KeySequencePart,
-  PendingSequenceCapture,
   RegisteredLayer,
-  ResolvedSequencePattern,
   SequenceNode,
 } from "../types.js"
 import { cloneKeySequence, cloneKeyStroke } from "./keys.js"
@@ -27,6 +25,7 @@ import {
   getSortedLayers,
   isLayerActiveForFocused,
 } from "./primitives/active-layers.js"
+import { childNodes, getCaptureNode, getNodePresentation, getNodeSequence } from "./sequence-index.js"
 
 interface LayerGraphState<TTarget extends object, TEvent extends KeymapEvent> {
   layer: RegisteredLayer<TTarget, TEvent>
@@ -96,82 +95,6 @@ function nodeId<TTarget extends object, TEvent extends KeymapEvent>(
   return `node:${layer.order}:${index}`
 }
 
-function createSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
-  parent: SequenceNode<TTarget, TEvent> | null,
-  stroke: KeySequencePart["stroke"] | null,
-  match: KeySequencePart["match"] | null,
-  pattern?: ResolvedSequencePattern<TEvent>,
-): SequenceNode<TTarget, TEvent> {
-  return {
-    parent,
-    depth: parent ? parent.depth + 1 : 0,
-    stroke,
-    match,
-    pattern,
-    children: new Map(),
-    patternChildren: [],
-    bindings: [],
-    reachableBindings: [],
-  }
-}
-
-function buildSequenceTree<TTarget extends object, TEvent extends KeymapEvent>(
-  layer: RegisteredLayer<TTarget, TEvent>,
-  patterns: ReadonlyMap<string, ResolvedSequencePattern<TEvent>>,
-): SequenceNode<TTarget, TEvent> {
-  const root = createSequenceNode<TTarget, TEvent>(null, null, null)
-  for (const binding of layer.bindings) {
-    if (binding.event !== "press") {
-      continue
-    }
-
-    let node = root
-    for (const part of binding.sequence) {
-      let child: SequenceNode<TTarget, TEvent> | undefined
-      if (part.patternName) {
-        const pattern = patterns.get(part.patternName)
-        child = node.patternChildren.find((candidate) => candidate.pattern?.name === part.patternName)
-        if (!child) {
-          child = createSequenceNode(node, part.stroke, part.match, pattern)
-          node.patternChildren.push(child)
-        }
-      } else {
-        child = node.children.get(part.match)
-        if (!child) {
-          child = createSequenceNode(node, part.stroke, part.match)
-          node.children.set(part.match, child)
-        }
-      }
-
-      child.reachableBindings.push(binding)
-      node = child
-    }
-
-    node.bindings.push(binding)
-  }
-
-  return root
-}
-
-function getCaptureNode<TTarget extends object, TEvent extends KeymapEvent>(
-  root: SequenceNode<TTarget, TEvent>,
-  capture: PendingSequenceCapture<TTarget, TEvent>,
-): SequenceNode<TTarget, TEvent> | undefined {
-  let node: SequenceNode<TTarget, TEvent> | undefined = root
-  for (let index = 0; index <= capture.index; index += 1) {
-    const part = capture.binding.sequence[index]
-    if (!part || !node) {
-      return undefined
-    }
-
-    node = part.patternName
-      ? node.patternChildren.find((candidate) => candidate.pattern?.name === part.patternName)
-      : node.children.get(part.match)
-  }
-
-  return node
-}
-
 function getSequenceMatches(sequence: readonly KeySequencePart[]): string[] {
   return sequence.map((part) => part.match)
 }
@@ -188,48 +111,6 @@ function isPrefix(left: readonly string[], right: readonly string[]): boolean {
   }
 
   return true
-}
-
-function getNodeSequence<TTarget extends object, TEvent extends KeymapEvent>(
-  node: SequenceNode<TTarget, TEvent>,
-): KeySequencePart[] {
-  const parts: KeySequencePart[] = []
-  let current: SequenceNode<TTarget, TEvent> | null = node
-
-  while (current?.stroke && current.match) {
-    parts.push({
-      stroke: cloneKeyStroke(current.stroke),
-      display: "",
-      match: current.match,
-    })
-    current = current.parent
-  }
-
-  parts.reverse()
-  return parts
-}
-
-function getNodePresentation<TTarget extends object, TEvent extends KeymapEvent>(
-  node: SequenceNode<TTarget, TEvent>,
-): { display: string; tokenName?: string } {
-  if (!node.stroke || node.depth === 0) {
-    return { display: "" }
-  }
-
-  const partIndex = node.depth - 1
-  for (const binding of node.reachableBindings) {
-    const part = binding.sequence[partIndex]
-    if (!part) {
-      continue
-    }
-
-    return {
-      display: part.display,
-      tokenName: part.tokenName,
-    }
-  }
-
-  return { display: node.stroke.name }
 }
 
 function collectPendingNodes<TTarget extends object, TEvent extends KeymapEvent>(
@@ -303,7 +184,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
   const sequenceNodes: GraphSequenceNode[] = []
 
   for (const layer of sortedLayers) {
-    layerRoots.set(layer, buildSequenceTree(layer, state.patterns))
+    layerRoots.set(layer, layer.root)
   }
 
   for (const layer of sortedLayers) {
@@ -383,10 +264,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
         bindingNodeIds.set(binding, currentNodeId)
       }
 
-      for (const child of node.children.values()) {
-        visitNode(child, currentNodeId)
-      }
-      for (const child of node.patternChildren) {
+      for (const child of childNodes(node)) {
         visitNode(child, currentNodeId)
       }
     }
@@ -471,7 +349,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
     const currentLayerId = layerIds.get(layer)!
     const visitNode = (node: SequenceNode<TTarget, TEvent>, parentId: string | null): void => {
       const currentNodeId = nodeIds.get(node)!
-      const childIds = [...node.children.values(), ...node.patternChildren]
+      const childIds = childNodes(node)
         .map((child) => nodeIds.get(child)!)
         .filter(Boolean)
       const bindingIds = node.bindings
@@ -511,10 +389,7 @@ export function createGraphSnapshot<TTarget extends object, TEvent extends Keyma
         pendingPath: pendingNodes.pendingPath.has(currentNodeId),
       })
 
-      for (const child of node.children.values()) {
-        visitNode(child, currentNodeId)
-      }
-      for (const child of node.patternChildren) {
+      for (const child of childNodes(node)) {
         visitNode(child, currentNodeId)
       }
     }

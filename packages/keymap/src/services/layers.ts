@@ -24,6 +24,7 @@ import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
 import { snapshotBindings, validateBindings } from "./primitives/bindings.js"
 import { createFieldCompilerContext } from "./primitives/field-invariants.js"
+import { buildSequenceTree } from "./sequence-index.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
 
 const NOOP = (): void => {}
@@ -135,6 +136,7 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
         commands,
         sourceBindings,
         bindings: bindingStates.bindings,
+        root: buildSequenceTree(bindingStates.bindings, state.patterns),
         hasTokenBindings: bindingStates.hasTokenBindings,
       }
 
@@ -398,6 +400,7 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
     }
 
     layer.bindings = compilation.bindings
+    layer.root = buildSequenceTree(compilation.bindings, state.patterns)
     layer.hasTokenBindings = compilation.hasTokenBindings
 
     for (const binding of layer.bindings) {

@@ -1,5 +1,5 @@
 import type { CompilerService } from "./compiler.js"
-import type { EmitterApi } from "../lib/emitter.js"
+import type { RuntimeEmitter } from "../lib/runtime-utils.js"
 import type { ActivationService } from "./activation.js"
 import type { CommandExecutorService } from "./command-executor.js"
 import type { CommandCatalogService } from "./command-catalog.js"
@@ -11,10 +11,13 @@ import type { State } from "./state.js"
 import { cloneKeySequence, cloneKeyStroke, createKeySequencePart, stringifyKeySequence } from "./keys.js"
 import {
   captureHasContinuations,
-  captureHasMinimum,
   captureIsExact,
-  patternCaptureCount,
 } from "./primitives/pending-captures.js"
+import {
+  advanceSequenceCapture,
+  capturePriority,
+  collectRootSequenceCaptures,
+} from "./sequence-index.js"
 import { isPromiseLike } from "./values.js"
 import {
   KEY_DEFERRED_DISAMBIGUATION_DECISION,
@@ -44,7 +47,6 @@ import {
   type DispatchBinding,
   type DispatchEvent,
   type KeySequencePart,
-  type PendingSequencePatternCapture,
   type RegisteredLayer,
   type SequencePatternMatch,
 } from "../types.js"
@@ -147,7 +149,7 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
   compiler: CompilerService<TTarget, TEvent>,
   catalog: CommandCatalogService<TTarget, TEvent>,
   layers: LayerService<TTarget, TEvent>,
-  hooks: EmitterApi<Hooks<TTarget, TEvent>>,
+  hooks: RuntimeEmitter<Hooks<TTarget, TEvent>>,
 ): DispatchService<TTarget, TEvent> {
   const eventMatchResolverContext: EventMatchResolverContext = {
     resolveKey: (key) => compiler.parseTokenKey(key).match,
@@ -636,7 +638,7 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
     const advancedCaptures: PendingSequenceCapture<TTarget, TEvent>[] = []
 
     for (const capture of pending.captures) {
-      const advanced = advanceCapture(capture, matchKeys, event, activeView)
+      const advanced = advanceSequenceCapture(capture, matchKeys, event, state.patterns, matchPattern, createPatternEventPart)
       if (!advanced) {
         continue
       }
@@ -645,10 +647,10 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
     }
 
     const bestPriority = advancedCaptures.reduce(
-      (best, capture) => Math.min(best, getCapturePriority(capture, matchKeys)),
+      (best, capture) => Math.min(best, capturePriority(capture, matchKeys)),
       Number.POSITIVE_INFINITY,
     )
-    const prioritizedCaptures = advancedCaptures.filter((capture) => getCapturePriority(capture, matchKeys) === bestPriority)
+    const prioritizedCaptures = advancedCaptures.filter((capture) => capturePriority(capture, matchKeys) === bestPriority)
 
     if (prioritizedCaptures.length === 0 || !prioritizedCaptures.some((capture) => captureIsReachable(capture, focused, activeView))) {
       const outcome = createSequenceOutcome("sequence-miss", pending.captures)
@@ -1432,47 +1434,6 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
     return { ...part, patternName, payloadKey }
   }
 
-  function appendPatternCapture(
-    capture: PendingSequenceCapture<TTarget, TEvent>,
-    index: number,
-    event: TEvent,
-    match: SequencePatternMatch,
-  ): PendingSequenceCapture<TTarget, TEvent> {
-    const templatePart = capture.binding.sequence[index]
-    const patternName = templatePart?.patternName
-    if (!patternName) {
-      return { ...capture, index }
-    }
-
-    const part = createPatternEventPart(event, patternName, match)
-    const value = match.value ?? event.name
-    const patterns = [...(capture.patterns ?? [])]
-    const last = patterns.at(-1)
-
-    if (last?.name === patternName) {
-      patterns[patterns.length - 1] = {
-        ...last,
-        values: [...last.values, value],
-        parts: [...last.parts, part],
-      }
-    } else {
-      patterns.push({
-        name: patternName,
-        payloadKey: part.payloadKey ?? patternName,
-        values: [value],
-        parts: [part],
-      })
-    }
-
-    return {
-      layer: capture.layer,
-      binding: capture.binding,
-      index,
-      parts: [...capture.parts, part],
-      patterns,
-    }
-  }
-
   function collectRootCaptures(
     layer: RegisteredLayer<TTarget, TEvent>,
     matchKeys: readonly KeyMatch[],
@@ -1480,106 +1441,8 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
     focused: TTarget | null,
     activeView: ReturnType<CommandCatalogService<TTarget, TEvent>["getActiveCommandView"]>,
   ): PendingSequenceCapture<TTarget, TEvent>[] {
-    const captures: PendingSequenceCapture<TTarget, TEvent>[] = []
-    let bestPriority = Number.POSITIVE_INFINITY
-    for (const binding of layer.bindings) {
-      if (binding.event !== "press") {
-        continue
-      }
-
-      const capture = advanceBindingAtIndex(layer, binding, 0, [], undefined, matchKeys, event)
-      if (capture) {
-        const priority = getCapturePriority(capture, matchKeys)
-        if (priority < bestPriority) {
-          bestPriority = priority
-          captures.length = 0
-        }
-
-        if (priority === bestPriority) {
-          captures.push(capture)
-        }
-      }
-    }
-
+    const captures = collectRootSequenceCaptures(layer, matchKeys, event, matchPattern, createPatternEventPart)
     return captures.some((capture) => captureIsReachable(capture, focused, activeView)) ? captures : []
-  }
-
-  function advanceCapture(
-    capture: PendingSequenceCapture<TTarget, TEvent>,
-    matchKeys: readonly KeyMatch[],
-    event: TEvent,
-    activeView: ReturnType<CommandCatalogService<TTarget, TEvent>["getActiveCommandView"]>,
-  ): PendingSequenceCapture<TTarget, TEvent> | undefined {
-    const currentPart = capture.binding.sequence[capture.index]
-    if (currentPart?.patternName) {
-      const pattern = state.patterns.get(currentPart.patternName)
-      if (pattern && patternCaptureCount(capture) < pattern.max) {
-        const patternMatch = matchPattern(pattern.name, event)
-        if (patternMatch) {
-          return appendPatternCapture(capture, capture.index, event, patternMatch)
-        }
-      }
-
-      if (!captureHasMinimum(capture, state.patterns, false)) {
-        return undefined
-      }
-
-      return advanceBindingAtIndex(
-        capture.layer,
-        capture.binding,
-        capture.index + 1,
-        capture.parts,
-        capture.patterns,
-        matchKeys,
-        event,
-      )
-    }
-
-    return advanceBindingAtIndex(
-      capture.layer,
-      capture.binding,
-      capture.index + 1,
-      capture.parts,
-      capture.patterns,
-      matchKeys,
-      event,
-    )
-  }
-
-  function advanceBindingAtIndex(
-    layer: RegisteredLayer<TTarget, TEvent>,
-    binding: BindingState<TTarget, TEvent>,
-    index: number,
-    parts: readonly KeySequencePart[],
-    patterns: readonly PendingSequencePatternCapture[] | undefined,
-    matchKeys: readonly KeyMatch[],
-    event: TEvent,
-  ): PendingSequenceCapture<TTarget, TEvent> | undefined {
-    const part = binding.sequence[index]
-    if (!part) {
-      return undefined
-    }
-
-    if (part.patternName) {
-      const patternMatch = matchPattern(part.patternName, event)
-      if (patternMatch) {
-        return appendPatternCapture({ layer, binding, index, parts, patterns }, index, event, patternMatch)
-      }
-
-      return undefined
-    }
-
-    if (!matchKeys.includes(part.match)) {
-      return undefined
-    }
-
-    return {
-      layer,
-      binding,
-      index,
-      parts: [...parts, part],
-      patterns,
-    }
   }
 
   function createSequencePayload(capture?: PendingSequenceCapture<TTarget, TEvent>): unknown {
@@ -1636,16 +1499,6 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
     activeView: ReturnType<CommandCatalogService<TTarget, TEvent>["getActiveCommandView"]>,
   ): boolean {
     return bindingMatchesRuntimeState(capture.binding, focused, activeView)
-  }
-
-  function getCapturePriority(capture: PendingSequenceCapture<TTarget, TEvent>, matchKeys: readonly KeyMatch[]): number {
-    const part = capture.parts.at(-1)
-    if (!part || part.patternName) {
-      return matchKeys.length
-    }
-
-    const index = matchKeys.indexOf(part.match)
-    return index === -1 ? matchKeys.length : index
   }
 
   function runCaptureBindings(
