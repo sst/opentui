@@ -22,6 +22,7 @@ test("dist package exports resolve when dist exists", async () => {
     "./extras",
     "./addons",
     "./addons/opentui",
+    "./testing",
     "./html",
     "./opentui",
     "./react",

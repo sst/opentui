@@ -40,6 +40,7 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 - `@opentui/keymap` — core API
 - `@opentui/keymap/addons` — universal addons
 - `@opentui/keymap/addons/opentui` — universal + OpenTUI addons
+- `@opentui/keymap/testing` — host-agnostic fake keymap host and diagnostics for addon tests
 - `@opentui/keymap/html` — core + HTML adapter
 - `@opentui/keymap/opentui` — core + OpenTUI adapter
 - `@opentui/keymap/react` — `KeymapProvider`, `useKeymap`, `useBindings`, `useActiveKeys`, `usePendingSequence`, `reactiveMatcherFromStore`

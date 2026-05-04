@@ -29,6 +29,10 @@
       "import": "./src/addons/opentui/index.ts",
       "types": "./src/addons/opentui/index.ts"
     },
+    "./testing": {
+      "import": "./src/testing/index.ts",
+      "types": "./src/testing/index.ts"
+    },
     "./html": {
       "import": "./src/html.ts",
       "types": "./src/html.ts"

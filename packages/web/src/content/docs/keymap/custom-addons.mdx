@@ -441,6 +441,39 @@ Behavior:
 
 This is how the OpenTUI textarea helpers safely share command and suspension infrastructure.
 
+## Testing Addons
+
+`@opentui/keymap/testing` provides a small host-agnostic test harness for addon authors. It does not depend on OpenTUI renderers or `@opentui/core/testing`.
+
+```ts
+import { createTestKeymap } from "@opentui/keymap/testing"
+import { registerMyAddon } from "./my-addon"
+
+const { keymap, host, diagnostics, cleanup } = createTestKeymap({ defaultKeys: true })
+
+registerMyAddon(keymap)
+keymap.registerLayer({
+  commands: [{ name: "save", run() {} }],
+  bindings: [{ key: "x", cmd: "save" }],
+})
+
+host.press("x")
+diagnostics.takeErrors()
+cleanup()
+```
+
+Testing exports include:
+
+| API | Use for |
+| --- | --- |
+| `createTestKeymap(options?)` | Create a `Keymap`, fake host, root target, and diagnostic capture |
+| `createTestKeymapHost(options?)` | Create only the fake `KeymapHost` when tests need manual keymap construction |
+| `createTestHostMetadata(options?)` | Build host metadata for platform/modifier-sensitive addons |
+| `captureKeymapDiagnostics(keymap)` | Capture warnings/errors without depending on a specific test framework |
+| `TestKeymapHost` / `TestKeymapTarget` / `TestKeymapEvent` | Reusable fake host primitives |
+
+The fake host supports press/release events, focus changes, parent traversal, target destruction, host destruction, and raw input. Use adapter-specific test utilities only when an addon is actually testing an adapter such as OpenTUI or HTML.
+
 ## Constraints and quirks
 
 ### Reserved field names

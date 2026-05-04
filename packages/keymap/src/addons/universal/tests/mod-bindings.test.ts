@@ -1,117 +1,21 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { registerCommaBindings, registerDefaultKeys, registerModBindings } from "@opentui/keymap/addons"
-import { Keymap, type HostMetadata, type KeymapEvent, type KeymapHost } from "../../../index.js"
+import { Keymap, type HostMetadata } from "../../../index.js"
+import {
+  createTestHostMetadata,
+  TestKeymapEvent as FakeEvent,
+  TestKeymapHost as FakeHost,
+  TestKeymapTarget as FakeTarget,
+} from "../../../testing/index.js"
 import { createDiagnosticHarness } from "../../../tests/diagnostic-harness.js"
 
 const diagnostics = createDiagnosticHarness()
-
-class FakeTarget {}
-
-class FakeEvent implements KeymapEvent {
-  public propagationStopped = false
-  public defaultPrevented = false
-
-  constructor(
-    public readonly name: string,
-    public readonly ctrl = false,
-    public readonly shift = false,
-    public readonly meta = false,
-    public readonly superKey = false,
-    public readonly hyperKey = false,
-  ) {}
-
-  public get super(): boolean {
-    return this.superKey
-  }
-
-  public get hyper(): boolean {
-    return this.hyperKey
-  }
-
-  public preventDefault(): void {
-    this.defaultPrevented = true
-  }
-
-  public stopPropagation(): void {
-    this.propagationStopped = true
-  }
-}
-
-class FakeHost implements KeymapHost<FakeTarget, FakeEvent> {
-  public readonly rootTarget = new FakeTarget()
-  public readonly isDestroyed = false
-  private readonly keyPressListeners = new Set<(event: FakeEvent) => void>()
-  private readonly keyReleaseListeners = new Set<(event: FakeEvent) => void>()
-  private readonly focusListeners = new Set<(target: FakeTarget | null) => void>()
-
-  constructor(public readonly metadata: HostMetadata) {}
-
-  public getFocusedTarget(): FakeTarget | null {
-    return null
-  }
-
-  public getParentTarget(_target: FakeTarget): FakeTarget | null {
-    return null
-  }
-
-  public isTargetDestroyed(_target: FakeTarget): boolean {
-    return false
-  }
-
-  public onKeyPress(listener: (event: FakeEvent) => void): () => void {
-    this.keyPressListeners.add(listener)
-    return () => {
-      this.keyPressListeners.delete(listener)
-    }
-  }
-
-  public onKeyRelease(listener: (event: FakeEvent) => void): () => void {
-    this.keyReleaseListeners.add(listener)
-    return () => {
-      this.keyReleaseListeners.delete(listener)
-    }
-  }
-
-  public onFocusChange(listener: (target: FakeTarget | null) => void): () => void {
-    this.focusListeners.add(listener)
-    return () => {
-      this.focusListeners.delete(listener)
-    }
-  }
-
-  public onTargetDestroy(_target: FakeTarget, _listener: () => void): () => void {
-    return () => {}
-  }
-
-  public createCommandEvent(): FakeEvent {
-    return new FakeEvent("command")
-  }
-
-  public press(
-    name: string,
-    modifiers?: { ctrl?: boolean; shift?: boolean; meta?: boolean; super?: boolean },
-  ): FakeEvent {
-    const event = new FakeEvent(
-      name,
-      modifiers?.ctrl ?? false,
-      modifiers?.shift ?? false,
-      modifiers?.meta ?? false,
-      modifiers?.super ?? false,
-    )
-
-    for (const listener of this.keyPressListeners) {
-      listener(event)
-    }
-
-    return event
-  }
-}
 
 function createMetadata(
   primaryModifier: HostMetadata["primaryModifier"],
   modifiers: Partial<HostMetadata["modifiers"]> = {},
 ): HostMetadata {
-  return {
+  return createTestHostMetadata({
     platform: primaryModifier === "super" ? "macos" : primaryModifier === "ctrl" ? "linux" : "unknown",
     primaryModifier,
     modifiers: {
@@ -122,11 +26,11 @@ function createMetadata(
       hyper: "unknown",
       ...modifiers,
     },
-  }
+  })
 }
 
 function createKeymap(metadata: HostMetadata): { host: FakeHost; keymap: Keymap<FakeTarget, FakeEvent> } {
-  const host = new FakeHost(metadata)
+  const host = new FakeHost({ metadata })
   const keymap = diagnostics.trackKeymap(new Keymap(host))
   registerDefaultKeys(keymap)
   return { host, keymap }
