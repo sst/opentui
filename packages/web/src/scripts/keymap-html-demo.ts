@@ -89,7 +89,7 @@ let graphPulseFrame = 0
 
 const DEBUG_NAMESPACE = "[html-keymap-demo]"
 const LEADER_TOKEN = "<leader>"
-const COUNT_PATTERN = "<count>"
+const COUNT_PATTERN = "{count}"
 const KEY_FORMAT_OPTIONS = {
   tokenDisplay: {
     [LEADER_TOKEN]: "space",
@@ -1234,7 +1234,7 @@ function renderHelp(): void {
     `<div><kbd>?</kbd> toggles Quick Help; <kbd>!</kbd> or <kbd>${LEADER_TRIGGER_LABEL} g</kbd> toggles the runtime graph.</div>`,
     "<div><kbd>:</kbd> opens the ex prompt as a modal overlay. Try <kbd>:help</kbd>, <kbd>:reset</kbd>, <kbd>:write alpha</kbd>, or <kbd>:focus draft</kbd>.</div>",
     "<div>The Alpha and Beta panels each install their own focus-within layers with <kbd>j</kbd>, <kbd>k</kbd>, and <kbd>Enter</kbd>.</div>",
-    "<div>Panel counters also use the generic <kbd>&lt;count&gt;</kbd> sequence pattern: try <kbd>5</kbd><kbd>k</kbd> or <kbd>3</kbd><kbd>j</kbd> and watch the graph show the pattern node plus captured digits.</div>",
+    "<div>Panel counters also use the generic <kbd>{count}</kbd> sequence pattern: try <kbd>5</kbd><kbd>k</kbd> or <kbd>3</kbd><kbd>j</kbd> and watch the graph show the pattern node plus captured digits.</div>",
     "<div>The Notes and Draft textareas use plain browser editing plus keymap bindings for <kbd>Ctrl+Enter</kbd>.</div>",
     "<div>The Recent Actions pane can be focused and scrolled with <kbd>j</kbd>, <kbd>k</kbd>, <kbd>Ctrl+d</kbd>, <kbd>Ctrl+u</kbd>, <kbd>g</kbd>, <kbd>gg</kbd>, and <kbd>Shift+g</kbd>.</div>",
   ].join("")
@@ -1279,6 +1279,7 @@ function disposers(): void {
   addons.registerBackspacePopsPendingSequence(keymap)
   keymap.registerSequencePattern({
     name: COUNT_PATTERN,
+    payloadKey: "count",
     match(event) {
       if (!/^\d$/.test(event.name)) {
         return undefined
@@ -1617,8 +1618,8 @@ function disposers(): void {
     bindings: [
       { key: "j", cmd: "alpha-down", desc: "Alpha -1" },
       { key: "k", cmd: "alpha-up", desc: "Alpha +1" },
-      { key: "<count>j", cmd: "alpha-down-count", desc: "Alpha -count" },
-      { key: "<count>k", cmd: "alpha-up-count", desc: "Alpha +count" },
+      { key: "{count}j", cmd: "alpha-down-count", desc: "Alpha -count" },
+      { key: "{count}k", cmd: "alpha-up-count", desc: "Alpha +count" },
       { key: "return", cmd: "panel-write", desc: "Write alpha snapshot" },
     ],
   })
@@ -1630,8 +1631,8 @@ function disposers(): void {
     bindings: [
       { key: "j", cmd: "beta-down", desc: "Beta -1" },
       { key: "k", cmd: "beta-up", desc: "Beta +1" },
-      { key: "<count>j", cmd: "beta-down-count", desc: "Beta -count" },
-      { key: "<count>k", cmd: "beta-up-count", desc: "Beta +count" },
+      { key: "{count}j", cmd: "beta-down-count", desc: "Beta -count" },
+      { key: "{count}k", cmd: "beta-up-count", desc: "Beta +count" },
       { key: "return", cmd: "panel-write", desc: "Write beta snapshot" },
     ],
   })

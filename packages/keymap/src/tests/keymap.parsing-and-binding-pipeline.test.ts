@@ -1206,6 +1206,113 @@ describe("keymap: parsing and binding pipeline", () => {
     expect(calls).toEqual(["hyper", "plain"])
   })
 
+  test("treats unterminated token and pattern openers as literal sequence keys", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors, takeWarnings } = captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "literal-left-angle",
+          run() {
+            calls.push("x<")
+          },
+        },
+        {
+          name: "literal-left-brace",
+          run() {
+            calls.push("x{")
+          },
+        },
+        {
+          name: "literal-openers",
+          run() {
+            calls.push("openers")
+          },
+        },
+      ],
+      bindings: [
+        { key: "x<", cmd: "literal-left-angle" },
+        { key: "x{", cmd: "literal-left-brace" },
+        { key: "<{", cmd: "literal-openers" },
+      ],
+    })
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("<")
+    mockInput.pressKey("x")
+    mockInput.pressKey("{")
+    mockInput.pressKey("<")
+    mockInput.pressKey("{")
+
+    expect(calls).toEqual(["x<", "x{", "openers"])
+    expect(takeErrors().errors).toEqual([])
+    expect(takeWarnings().warnings).toEqual([])
+  })
+
+  test("treats modified angle and brace openers as literal single-stroke bindings", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors, takeWarnings } = captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "ctrl-left-angle",
+          run() {
+            calls.push("ctrl+<")
+          },
+        },
+        {
+          name: "ctrl-left-brace",
+          run() {
+            calls.push("ctrl+{")
+          },
+        },
+      ],
+      bindings: [
+        { key: "ctrl+<", cmd: "ctrl-left-angle" },
+        { key: "ctrl+{", cmd: "ctrl-left-brace" },
+      ],
+    })
+
+    renderer.keyInput.emit(
+      "keypress",
+      new KeyEvent({
+        name: "<",
+        ctrl: true,
+        meta: false,
+        shift: false,
+        option: false,
+        sequence: "<",
+        number: false,
+        raw: "<",
+        eventType: "press",
+        source: "raw",
+      }),
+    )
+    renderer.keyInput.emit(
+      "keypress",
+      new KeyEvent({
+        name: "{",
+        ctrl: true,
+        meta: false,
+        shift: false,
+        option: false,
+        sequence: "{",
+        number: false,
+        raw: "{",
+        eventType: "press",
+        source: "raw",
+      }),
+    )
+
+    expect(calls).toEqual(["ctrl+<", "ctrl+{"])
+    expect(takeErrors().errors).toEqual([])
+    expect(takeWarnings().warnings).toEqual([])
+  })
+
   test("passes lock-state flags to command handlers", async () => {
     renderer.destroy()
     const testSetup = await createTestRenderer({ width: 40, height: 10, kittyKeyboard: true })

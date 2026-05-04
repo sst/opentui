@@ -11,7 +11,8 @@ const { getActiveKeyNames, getKeymap, captureDiagnostics } = createKeymapTestHel
 
 function registerCountPattern(keymap: OpenTuiKeymap): () => void {
   return keymap.registerSequencePattern({
-    name: "<count>",
+    name: "{count}",
+    payloadKey: "count",
     match(event) {
       if (!/^\d$/.test(event.name)) {
         return undefined
@@ -51,10 +52,10 @@ describe("keymap: sequence patterns", () => {
           },
         },
       ],
-      bindings: [{ key: "<count>w", cmd: "word" }],
+      bindings: [{ key: "{count}w", cmd: "word" }],
     })
 
-    expect(getActiveKeyNames(keymap)).toEqual(["<count>"])
+    expect(getActiveKeyNames(keymap)).toEqual(["{count}"])
 
     mockInput.pressKey("1")
     expect(stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true })).toBe("1")
@@ -91,13 +92,13 @@ describe("keymap: sequence patterns", () => {
         },
       ],
       bindings: [
-        { key: "d<count>w", cmd: "delete-word" },
-        { key: "<count>dd", cmd: "delete-lines" },
+        { key: "d{count}w", cmd: "delete-word" },
+        { key: "{count}dd", cmd: "delete-lines" },
       ],
     })
 
     mockInput.pressKey("d")
-    expect(getActiveKeyNames(keymap)).toEqual(["<count>"])
+    expect(getActiveKeyNames(keymap)).toEqual(["{count}"])
     mockInput.pressKey("3")
     expect(stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true })).toBe("d3")
     mockInput.pressKey("w")
@@ -125,12 +126,12 @@ describe("keymap: sequence patterns", () => {
           },
         },
       ],
-      bindings: [{ key: "<leader><count>w", cmd: "leader-word" }],
+      bindings: [{ key: "<leader>{count}w", cmd: "leader-word" }],
     })
 
     mockInput.pressKey("x", { ctrl: true })
     expect(stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true })).toBe("<leader>")
-    expect(getActiveKeyNames(keymap)).toEqual(["<count>"])
+    expect(getActiveKeyNames(keymap)).toEqual(["{count}"])
 
     mockInput.pressKey("9")
     expect(stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true })).toBe("<leader>9")
@@ -145,7 +146,7 @@ describe("keymap: sequence patterns", () => {
     const calls: number[] = []
 
     keymap.registerSequencePattern({
-      name: "<two-digits>",
+      name: "{two-digits}",
       payloadKey: "value",
       min: 2,
       max: 2,
@@ -165,7 +166,7 @@ describe("keymap: sequence patterns", () => {
           },
         },
       ],
-      bindings: [{ key: "<two-digits>w", cmd: "exact-two" }],
+      bindings: [{ key: "{two-digits}w", cmd: "exact-two" }],
     })
 
     mockInput.pressKey("1")
@@ -191,7 +192,7 @@ describe("keymap: sequence patterns", () => {
     registerCountPattern(keymap)
     keymap.registerLayer({
       commands: [{ name: "word", run() {} }],
-      bindings: [{ key: "<count>w", cmd: "word" }],
+      bindings: [{ key: "{count}w", cmd: "word" }],
     })
 
     mockInput.pressKey("1")
@@ -214,7 +215,7 @@ describe("keymap: sequence patterns", () => {
     const { takeErrors } = captureDiagnostics(keymap)
 
     keymap.registerSequencePattern({
-      name: "<bad>",
+      name: "{bad}",
       match(event) {
         if (event.name === "1") {
           return { value: event.name }
@@ -232,14 +233,14 @@ describe("keymap: sequence patterns", () => {
     })
     keymap.registerLayer({
       commands: [{ name: "bad", run() {} }],
-      bindings: [{ key: "<bad>w", cmd: "bad" }],
+      bindings: [{ key: "{bad}w", cmd: "bad" }],
     })
 
     mockInput.pressKey("2")
-    expect(takeErrors().errors).toEqual(['[Keymap] Error matching sequence pattern "<bad>":'])
+    expect(takeErrors().errors).toEqual(['[Keymap] Error matching sequence pattern "{bad}":'])
 
     mockInput.pressKey("1")
     mockInput.pressKey("w")
-    expect(takeErrors().errors).toEqual(['[Keymap] Error finalizing sequence pattern "<bad>":'])
+    expect(takeErrors().errors).toEqual(['[Keymap] Error finalizing sequence pattern "{bad}":'])
   })
 })

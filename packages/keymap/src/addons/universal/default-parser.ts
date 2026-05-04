@@ -269,20 +269,6 @@ export const defaultBindingParser: BindingParser = (ctx) => {
     }
 
     const normalizedToken = normalizeTokenName(input)
-    const pattern = ctx.patterns.get(normalizedToken)
-    if (pattern) {
-      return {
-        parts: [
-          ctx.parseObjectKey(
-            { name: normalizedToken, ctrl: false, shift: false, meta: false, super: false },
-            { display: pattern.display, match: pattern.match, tokenName: normalizedToken },
-          ),
-        ].map((part) => ({ ...part, patternName: pattern.name, payloadKey: pattern.payloadKey })),
-        nextIndex: input.length,
-        usedTokens: [normalizedToken],
-      }
-    }
-
     const token = tokens.get(normalizedToken)
     if (token) {
       return {
@@ -306,24 +292,13 @@ export const defaultBindingParser: BindingParser = (ctx) => {
   if (char === "<") {
     const end = input.indexOf(">", index)
     if (end === -1) {
-      throw new Error(`Invalid key sequence "${input}": unterminated token`)
-    }
-
-    const tokenName = normalizeTokenName(input.slice(index, end + 1))
-    const pattern = ctx.patterns.get(tokenName)
-    if (pattern) {
-      const part = ctx.parseObjectKey(
-        { name: tokenName, ctrl: false, shift: false, meta: false, super: false },
-        { display: pattern.display, match: pattern.match, tokenName },
-      )
-
       return {
-        parts: [{ ...part, patternName: pattern.name, payloadKey: pattern.payloadKey }],
-        nextIndex: end + 1,
-        usedTokens: [tokenName],
+        parts: [parseStringKeyPart(char, ctx)],
+        nextIndex: index + 1,
       }
     }
 
+    const tokenName = normalizeTokenName(input.slice(index, end + 1))
     const token = tokens.get(tokenName)
     if (!token) {
       return {
@@ -337,6 +312,37 @@ export const defaultBindingParser: BindingParser = (ctx) => {
       parts: [parseObjectKeyInput(ctx, token.stroke, tokenName, token.match, tokenName)],
       nextIndex: end + 1,
       usedTokens: [tokenName],
+    }
+  }
+
+  if (char === "{") {
+    const end = input.indexOf("}", index)
+    if (end === -1) {
+      return {
+        parts: [parseStringKeyPart(char, ctx)],
+        nextIndex: index + 1,
+      }
+    }
+
+    const patternName = normalizeTokenName(input.slice(index, end + 1))
+    const pattern = ctx.patterns.get(patternName)
+    if (!pattern) {
+      return {
+        parts: [],
+        nextIndex: end + 1,
+        unknownTokens: [patternName],
+      }
+    }
+
+    const part = ctx.parseObjectKey(
+      { name: patternName, ctrl: false, shift: false, meta: false, super: false },
+      { display: pattern.display, match: pattern.match, tokenName: patternName },
+    )
+
+    return {
+      parts: [{ ...part, patternName: pattern.name, payloadKey: pattern.payloadKey }],
+      nextIndex: end + 1,
+      usedTokens: [patternName],
     }
   }
 
@@ -360,8 +366,8 @@ export const defaultEventMatchResolver: EventMatchResolver<KeymapEvent> = (event
 }
 
 /**
- * Parses the built-in string binding syntax, including modifiers and
- * `<token>` segments.
+ * Parses the built-in string binding syntax, including modifiers,
+ * `<token>` aliases, and `{pattern}` dynamic sequence segments.
  */
 export function registerDefaultBindingParser<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,

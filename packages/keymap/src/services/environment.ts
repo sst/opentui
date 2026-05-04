@@ -26,15 +26,6 @@ const NOOP = (): void => {}
 
 type FieldKind = "layer" | "binding" | "command"
 
-function defaultPayloadKey(name: string): string {
-  const normalized = normalizeBindingTokenName(name)
-  if (normalized.length >= 2 && normalized.startsWith("<") && normalized.endsWith(">")) {
-    return normalized.slice(1, -1)
-  }
-
-  return normalized
-}
-
 function normalizePatternLimit(name: string, field: "min" | "max", value: unknown, fallback: number): number {
   if (value === undefined) {
     return fallback
@@ -244,7 +235,7 @@ export class EnvironmentService<TTarget extends object, TEvent extends KeymapEve
       resolvedPattern = {
         name: normalizedName,
         display: pattern.display ?? normalizedName,
-        payloadKey: pattern.payloadKey ?? defaultPayloadKey(normalizedName),
+        payloadKey: pattern.payloadKey ?? normalizedName,
         match: createTextKeyMatch(`pattern:${normalizedName}`),
         min,
         max,
