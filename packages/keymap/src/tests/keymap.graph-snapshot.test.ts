@@ -7,7 +7,7 @@ import { createKeymapTestHelpers, type OpenTuiKeymap } from "./keymap.test-suppo
 let renderer: TestRenderer
 let mockInput: MockInput
 const diagnostics = createDiagnosticHarness()
-const { createFocusableBox, getKeymap } = createKeymapTestHelpers(diagnostics, () => renderer)
+const { createFocusableBox, getGraphKeymap } = createKeymapTestHelpers(diagnostics, () => renderer)
 
 function bindingLabel(binding: GraphSnapshot["bindings"][number]): string {
   return stringifyKeySequence(binding.sequence, { preferDisplay: true })
@@ -40,7 +40,7 @@ describe("keymap: graph snapshot", () => {
   })
 
   test("exposes registered layers, sequence nodes, commands, and bindings", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
 
     keymap.registerLayerFields({
       name(value, ctx) {
@@ -88,7 +88,7 @@ describe("keymap: graph snapshot", () => {
   })
 
   test("tracks focus-scoped layer and command reachability", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
     const target = createFocusableBox("graph-focus-target")
     renderer.root.add(target)
 
@@ -125,7 +125,7 @@ describe("keymap: graph snapshot", () => {
   })
 
   test("reports binding inactive reasons for disabled bindings and unavailable commands", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
 
     keymap.registerBindingFields({
       active(value, ctx) {
@@ -165,7 +165,7 @@ describe("keymap: graph snapshot", () => {
   })
 
   test("marks pending sequence paths and active continuation keys", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
 
     keymap.registerLayer({
       commands: [{ name: "top", run() {} }],
@@ -191,7 +191,7 @@ describe("keymap: graph snapshot", () => {
   })
 
   test("marks statically shadowed bindings while respecting fallthrough", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
 
     keymap.registerLayer({
       priority: 0,
@@ -212,7 +212,7 @@ describe("keymap: graph snapshot", () => {
     expect(lowBinding).toMatchObject({ active: true, reachable: false, shadowed: true })
     expect(lowBinding?.inactiveReasons).toContain("shadowed")
 
-    const fallthroughKeymap = getKeymap(renderer)
+    const fallthroughKeymap = getGraphKeymap(renderer)
     fallthroughKeymap.registerLayer({
       commands: [{ name: "low", run() {} }],
       bindings: [{ key: "x", cmd: "low" }],
@@ -229,7 +229,7 @@ describe("keymap: graph snapshot", () => {
   })
 
   test("can omit target references", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
     const target = createFocusableBox("graph-targetless")
     renderer.root.add(target)
     target.focus()
@@ -247,7 +247,7 @@ describe("keymap: graph snapshot", () => {
   })
 
   test("supports explicit focused projections without changing host focus", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
     const target = createFocusableBox("graph-explicit-focus")
     renderer.root.add(target)
 

@@ -1,21 +1,23 @@
 import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
-import { createOpenTuiKeymap, createDefaultOpenTuiKeymap } from "../opentui.js"
+import { createOpenTuiKeymap, createDefaultOpenTuiKeymap, createOpenTuiKeymapHost } from "../opentui.js"
 import * as addons from "../addons/index.js"
 import {
   type ActiveKey,
   type ActiveKeyOptions,
+  BaseKeymap,
   type BindingParser,
   type ErrorEvent,
   type EventMatchResolverContext,
   type KeyMatch,
-  type Keymap,
+  createLayerDiagnosticsFeature,
   type ReactiveMatcher,
   type WarningEvent,
 } from "../index.js"
+import { createGraphFeature } from "../features/graph.js"
 import { type TestRenderer } from "@opentui/core/testing"
 import { type DiagnosticHarness } from "./diagnostic-harness.js"
 
-export type OpenTuiKeymap = Keymap<Renderable, KeyEvent>
+export type OpenTuiKeymap = BaseKeymap<Renderable, KeyEvent>
 
 export interface ReactiveBoolean extends ReactiveMatcher {
   set(next: boolean): void
@@ -54,6 +56,18 @@ export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRende
 
   function getKeymap(renderer: TestRenderer): OpenTuiKeymap {
     const keymap: OpenTuiKeymap = createDefaultOpenTuiKeymap(renderer)
+    diagnostics.trackKeymap(keymap)
+    return keymap
+  }
+
+  function getGraphKeymap(renderer: TestRenderer): OpenTuiKeymap {
+    const keymap = new BaseKeymap(createOpenTuiKeymapHost(renderer), {
+      graph: createGraphFeature,
+      diagnostics: createLayerDiagnosticsFeature,
+    })
+    addons.registerDefaultKeys(keymap)
+    addons.registerEnabledFields(keymap)
+    addons.registerMetadataFields(keymap)
     diagnostics.trackKeymap(keymap)
     return keymap
   }
@@ -185,6 +199,7 @@ export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRende
     getActiveKeyNames,
     getParserKeymap,
     getKeymap,
+    getGraphKeymap,
     createBareKeymap,
     getCommand,
     getCommandEntry,

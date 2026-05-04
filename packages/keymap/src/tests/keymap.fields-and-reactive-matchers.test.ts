@@ -28,6 +28,7 @@ const {
   getActiveKeyNames,
   getParserKeymap,
   getKeymap,
+  getGraphKeymap,
   createBareKeymap,
   getCommand,
   getCommandEntry,
@@ -50,7 +51,7 @@ describe("keymap: fields and reactive matchers", () => {
     diagnostics.assertNoUnhandledDiagnostics()
   })
   test("supports typed binding fields through key intercepts", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
     const calls: string[] = []
 
     keymap.registerBindingFields({
@@ -794,7 +795,7 @@ describe("keymap: fields and reactive matchers", () => {
   })
 
   test("typed layer fields can emit attrs for graph projections", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
 
     keymap.registerLayerFields({
       name(value, ctx) {

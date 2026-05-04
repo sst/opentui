@@ -1,6 +1,9 @@
 import {
-  createDefaultHtmlKeymap,
+  BaseKeymap,
+  createHtmlKeymapHost,
   createHtmlKeymapEvent,
+  createLayerDiagnosticsFeature,
+  htmlEventMatchResolver,
   type ActiveKey,
   type DispatchEvent,
   type GraphBinding,
@@ -8,6 +11,7 @@ import {
   type HtmlKeymapEvent,
 } from "@opentui/keymap/html"
 import * as addons from "@opentui/keymap/addons"
+import { createGraphFeature } from "@opentui/keymap/features/graph"
 import { formatKeySequence } from "@opentui/keymap/extras"
 
 type HtmlGraphSnapshot = GraphSnapshot<HTMLElement, HtmlKeymapEvent>
@@ -71,7 +75,14 @@ if (
   throw new Error("HTML keymap example is missing required DOM nodes")
 }
 
-const keymap = createDefaultHtmlKeymap(keymapRoot)
+const keymap = new BaseKeymap(createHtmlKeymapHost(keymapRoot), {
+  graph: createGraphFeature,
+  diagnostics: createLayerDiagnosticsFeature,
+})
+addons.registerDefaultKeys(keymap)
+addons.registerEnabledFields(keymap)
+addons.registerMetadataFields(keymap)
+keymap.prependEventMatchResolver(htmlEventMatchResolver)
 const focusableTargets = [alphaPanel, betaPanel, notesField, draftField, logCard]
 
 let alphaValue = 0

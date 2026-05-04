@@ -47,7 +47,7 @@ import {
   type LayerDiagnosticsFeature,
   type LayerDiagnosticsFeatureContext,
 } from "./features/diagnostics.js"
-import { createGraphFeature, type GraphFeature, type GraphFeatureContext } from "./features/graph.js"
+import type { GraphFeature, GraphFeatureContext } from "./features/graph.js"
 import { createActivationService, type ActivationService } from "./services/activation.js"
 import { createCommandCatalogService, type CommandCatalogService } from "./services/command-catalog.js"
 import { createCommandExecutorService, type CommandExecutorService } from "./services/command-executor.js"
@@ -592,7 +592,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 > {
   constructor(host: KeymapHost<TTarget, TEvent>) {
     super(host, {
-      graph: createGraphFeature,
       diagnostics: createLayerDiagnosticsFeature,
     })
   }

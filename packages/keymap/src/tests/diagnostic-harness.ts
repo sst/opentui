@@ -1,5 +1,5 @@
 import { expect } from "bun:test"
-import type { ErrorEvent, Keymap, WarningEvent } from "../index.js"
+import type { BaseKeymap, ErrorEvent, WarningEvent } from "../index.js"
 
 export interface DiagnosticCapture {
   warnings: string[]
@@ -13,16 +13,16 @@ export interface DiagnosticCapture {
 }
 
 export interface DiagnosticHarness {
-  trackKeymap<TKeymap extends Keymap<any, any>>(keymap: TKeymap): TKeymap
-  captureDiagnostics<TKeymap extends Keymap<any, any>>(keymap: TKeymap): DiagnosticCapture
+  trackKeymap<TKeymap extends BaseKeymap<any, any>>(keymap: TKeymap): TKeymap
+  captureDiagnostics<TKeymap extends BaseKeymap<any, any>>(keymap: TKeymap): DiagnosticCapture
   assertNoUnhandledDiagnostics(): void
 }
 
 export function createDiagnosticHarness(): DiagnosticHarness {
-  const tracked = new WeakMap<Keymap<any, any>, DiagnosticCapture>()
+  const tracked = new WeakMap<BaseKeymap<any, any>, DiagnosticCapture>()
   const captures = new Set<DiagnosticCapture>()
 
-  const ensureCapture = <TKeymap extends Keymap<any, any>>(keymap: TKeymap): DiagnosticCapture => {
+  const ensureCapture = <TKeymap extends BaseKeymap<any, any>>(keymap: TKeymap): DiagnosticCapture => {
     const existing = tracked.get(keymap)
     if (existing) {
       return existing

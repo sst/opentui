@@ -28,6 +28,7 @@ const {
   getActiveKeyNames,
   getParserKeymap,
   getKeymap,
+  getGraphKeymap,
   createBareKeymap,
   getCommand,
   getCommandEntry,
@@ -50,7 +51,7 @@ describe("keymap: diagnostics and analyzers", () => {
     diagnostics.assertNoUnhandledDiagnostics()
   })
   test("skips bindings with conflicting requirements from typed fields", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
     const { takeErrors } = captureDiagnostics(keymap)
 
     keymap.registerBindingFields({
@@ -98,7 +99,7 @@ describe("keymap: diagnostics and analyzers", () => {
   })
 
   test("skips layers with conflicting attributes from typed layer fields", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
     const { takeErrors } = captureDiagnostics(keymap)
 
     keymap.registerLayerFields({
