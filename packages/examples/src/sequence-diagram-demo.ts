@@ -23,6 +23,7 @@ export const GROUP_SEQUENCE_DIAGRAM = `sequenceDiagram
     participant Email
   end
   Shopper->>Web: Submit order
+  Web->>Web: Validate order
   Web->>Cart: reserve inventory
   Cart-->>Web: reserved
   Web->>Payments: authorize card
