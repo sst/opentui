@@ -48,6 +48,12 @@ describe("TreeSitterClient", () => {
 
     const hasTypeScriptReact = await client.preloadParser("typescriptreact")
     expect(hasTypeScriptReact).toBe(true)
+
+    const hasGo = await client.preloadParser("go")
+    expect(hasGo).toBe(true)
+
+    const hasGolang = await client.preloadParser("golang")
+    expect(hasGolang).toBe(true)
   })
 
   test("should return false for unsupported filetypes", async () => {
@@ -265,6 +271,30 @@ describe("TreeSitterClient", () => {
     const groups = result.highlights!.map((hl) => hl[2])
     expect(groups.length).toBeGreaterThan(0)
     expect(groups).toContain("keyword")
+  })
+
+  test("should perform one-shot highlighting for go", async () => {
+    await client.initialize()
+
+    const goCode = `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("hi")
+}`
+    const result = await client.highlightOnce(goCode, "go")
+    const aliasResult = await client.highlightOnce(goCode, "golang")
+
+    expect(result.highlights).toBeDefined()
+    expect(aliasResult.highlights).toBeDefined()
+    expect(result.highlights!.length).toBeGreaterThan(0)
+    expect(aliasResult.highlights!.length).toBeGreaterThan(0)
+
+    const groups = result.highlights!.map((hl) => hl[2])
+    expect(groups).toContain("keyword")
+    expect(groups).toContain("string")
+    expect(groups).toContain("function")
   })
 
   test("should handle one-shot highlighting for unsupported filetype", async () => {
@@ -592,6 +622,48 @@ Some text here.`
       })
 
       expect(constHighlight).toBeDefined()
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should highlight go code blocks in markdown using language-specific injection", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Code Example
+
+\`\`\`go
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("hi")
+}
+\`\`\`
+
+Some text here.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+
+      const funcHighlight = result.highlights!.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        return text === "func" && hl[2] === "keyword"
+      })
+
+      const stringHighlight = result.highlights!.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        return text === '"hi"' && hl[2] === "string"
+      })
+
+      expect(funcHighlight).toBeDefined()
+      expect(stringHighlight).toBeDefined()
     } finally {
       await client.destroy()
     }

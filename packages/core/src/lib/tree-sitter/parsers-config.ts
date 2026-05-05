@@ -52,6 +52,8 @@ export default {
           ts: "typescript",
           tsx: "typescriptreact",
           typescriptreact: "typescriptreact",
+          go: "go",
+          golang: "go",
           markdown: "markdown",
           md: "markdown",
         },
@@ -74,6 +76,16 @@ export default {
       queries: {
         highlights: [
           "https://github.com/nvim-treesitter/nvim-treesitter/raw/refs/heads/master/queries/zig/highlights.scm",
+        ],
+      },
+    },
+    {
+      filetype: "go",
+      aliases: ["golang"],
+      wasm: "https://github.com/tree-sitter/tree-sitter-go/releases/download/v0.25.0/tree-sitter-go.wasm",
+      queries: {
+        highlights: [
+          "https://raw.githubusercontent.com/tree-sitter/tree-sitter-go/refs/heads/master/queries/highlights.scm",
         ],
       },
     },

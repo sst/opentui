@@ -191,7 +191,7 @@ ${queriesLines.join("\n")}
 // Run 'bun assets/update.ts' to regenerate this file
 // Last generated: ${new Date().toISOString()}
 
-import type { FiletypeParserOptions } from "./types"
+import type { FiletypeParserOptions } from "./types.js"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 
