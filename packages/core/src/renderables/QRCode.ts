@@ -8,12 +8,19 @@ import type { RenderContext } from "../types.js"
 const DEFAULT_FOREGROUND = RGBA.fromHex("#000000")
 const DEFAULT_BACKGROUND = RGBA.fromHex("#ffffff")
 const TRANSPARENT = RGBA.fromValues(0, 0, 0, 0)
+const QR_CODE_MINIMUM_QUIET_ZONE = 4
 
 export type QRCodeFitMode = "contain" | "none"
 
-export interface QRCodeOptions extends RenderableOptions<QRCodeRenderable> {
+interface EncodedQRCode<TVersion extends number> {
+  readonly version: TVersion
+  readonly size: number
+  toMatrix(): boolean[][]
+}
+
+interface QRCodeSharedOptions<TRenderable extends Renderable, TEcl> extends RenderableOptions<TRenderable> {
   content?: string
-  errorCorrectionLevel?: ErrorCorrectionLevel
+  errorCorrectionLevel?: TEcl
   quietZone?: number
   scale?: number
   fit?: QRCodeFitMode
@@ -23,21 +30,27 @@ export interface QRCodeOptions extends RenderableOptions<QRCodeRenderable> {
   fallbackColor?: ColorInput
 }
 
-export class QRCodeRenderable extends Renderable {
-  protected static readonly _defaultOptions = {
-    content: "",
-    errorCorrectionLevel: ErrorCorrectionLevel.M,
-    quietZone: 4,
-    scale: 1,
-    fit: "contain" as QRCodeFitMode,
-    foregroundColor: DEFAULT_FOREGROUND,
-    backgroundColor: DEFAULT_BACKGROUND,
-    fallbackContent: "",
-    fallbackColor: DEFAULT_BACKGROUND,
-  } satisfies Partial<QRCodeOptions>
+export interface QRCodeOptions extends QRCodeSharedOptions<QRCodeRenderable, ErrorCorrectionLevel> {}
 
+interface QRCodeRenderableDefaults<TEcl> {
+  content: string
+  errorCorrectionLevel: TEcl
+  quietZone: number
+  scale: number
+  fit: QRCodeFitMode
+  foregroundColor: RGBA
+  backgroundColor: RGBA
+  fallbackContent: string
+  fallbackColor: RGBA
+}
+
+abstract class BaseQRCodeRenderable<
+  TEcl,
+  TVersion extends number,
+  TEncoded extends EncodedQRCode<TVersion>,
+> extends Renderable {
   private _content: string
-  private _errorCorrectionLevel: ErrorCorrectionLevel
+  private _errorCorrectionLevel: TEcl
   private _quietZone: number
   private _scale: number
   private _fit: QRCodeFitMode
@@ -45,17 +58,22 @@ export class QRCodeRenderable extends Renderable {
   private _backgroundColor: RGBA
   private _fallbackContent: string
   private _fallbackColor: RGBA
-  private encoded: QRCode
+  private encoded: TEncoded
   private modules: boolean[][]
 
-  constructor(ctx: RenderContext, options: QRCodeOptions = {}) {
-    const defaults = QRCodeRenderable._defaultOptions
+  protected constructor(
+    ctx: RenderContext,
+    options: QRCodeSharedOptions<any, TEcl>,
+    defaults: QRCodeRenderableDefaults<TEcl>,
+    private readonly minimumQuietZone: number,
+    private readonly encodeContent: (content: string, errorCorrectionLevel: TEcl) => TEncoded,
+  ) {
     const content = options.content ?? defaults.content
     const errorCorrectionLevel = options.errorCorrectionLevel ?? defaults.errorCorrectionLevel
-    const quietZone = normalizeQuietZone(options.quietZone ?? defaults.quietZone!)
-    const scale = normalizeScale(options.scale ?? defaults.scale!)
+    const quietZone = normalizeQuietZone(options.quietZone ?? defaults.quietZone, minimumQuietZone)
+    const scale = normalizeScale(options.scale ?? defaults.scale)
     const fit = options.fit ?? defaults.fit
-    const encoded = QRCode.encodeText(content, errorCorrectionLevel)
+    const encoded = encodeContent(content, errorCorrectionLevel)
 
     super(ctx, {
       ...options,
@@ -89,11 +107,11 @@ export class QRCodeRenderable extends Renderable {
     this.rebuildMatrix()
   }
 
-  public get errorCorrectionLevel(): ErrorCorrectionLevel {
+  public get errorCorrectionLevel(): TEcl {
     return this._errorCorrectionLevel
   }
 
-  public set errorCorrectionLevel(value: ErrorCorrectionLevel) {
+  public set errorCorrectionLevel(value: TEcl) {
     if (value === this._errorCorrectionLevel) {
       return
     }
@@ -107,7 +125,7 @@ export class QRCodeRenderable extends Renderable {
   }
 
   public set quietZone(value: number) {
-    const nextQuietZone = normalizeQuietZone(value)
+    const nextQuietZone = normalizeQuietZone(value, this.minimumQuietZone)
     if (nextQuietZone === this._quietZone) {
       return
     }
@@ -183,7 +201,7 @@ export class QRCodeRenderable extends Renderable {
     this.requestRender()
   }
 
-  public get version(): number {
+  public get version(): TVersion {
     return this.encoded.version
   }
 
@@ -238,7 +256,7 @@ export class QRCodeRenderable extends Renderable {
   }
 
   private rebuildMatrix(): void {
-    this.encoded = QRCode.encodeText(this._content, this._errorCorrectionLevel)
+    this.encoded = this.encodeContent(this._content, this._errorCorrectionLevel)
     this.modules = this.encoded.toMatrix()
     this.remeasure()
   }
@@ -329,6 +347,26 @@ export class QRCodeRenderable extends Renderable {
   }
 }
 
+export class QRCodeRenderable extends BaseQRCodeRenderable<ErrorCorrectionLevel, number, QRCode> {
+  protected static readonly _defaultOptions = {
+    content: "",
+    errorCorrectionLevel: ErrorCorrectionLevel.M,
+    quietZone: QR_CODE_MINIMUM_QUIET_ZONE,
+    scale: 1,
+    fit: "contain" as QRCodeFitMode,
+    foregroundColor: DEFAULT_FOREGROUND,
+    backgroundColor: DEFAULT_BACKGROUND,
+    fallbackContent: "",
+    fallbackColor: DEFAULT_BACKGROUND,
+  } satisfies QRCodeRenderableDefaults<ErrorCorrectionLevel>
+
+  constructor(ctx: RenderContext, options: QRCodeOptions = {}) {
+    super(ctx, options, QRCodeRenderable._defaultOptions, QR_CODE_MINIMUM_QUIET_ZONE, (content, errorCorrectionLevel) =>
+      QRCode.encodeText(content, errorCorrectionLevel),
+    )
+  }
+}
+
 function getDimensionsForScale(
   moduleCount: number,
   quietZone: number,
@@ -362,12 +400,16 @@ function getFallbackWidth(content: string, width: number, widthMode: MeasureMode
   return Math.max(0, Math.min(content.length, Math.floor(width)))
 }
 
-function normalizeQuietZone(value: number): number {
+function normalizeQuietZone(value: number, minimumQuietZone: number): number {
   if (!Number.isFinite(value)) {
-    return 4
+    return minimumQuietZone
   }
 
-  return Math.max(0, Math.floor(value))
+  const quietZone = Math.floor(value)
+  if (quietZone < minimumQuietZone) {
+    throw new RangeError(`Quiet zone must be at least ${minimumQuietZone} modules`)
+  }
+  return quietZone
 }
 
 function normalizeScale(value: number): number {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { BoxRenderable } from "./Box.js"
-import { ErrorCorrectionLevel, MicroErrorCorrectionLevel, MicroQRCode, QRCode } from "../lib/qrcode.js"
+import { ErrorCorrectionLevel, QRCode, QrSegment } from "../lib/qrcode.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { QRCodeRenderable } from "./QRCode.js"
 
@@ -35,17 +35,6 @@ describe("QR code ISO-derived vectors", () => {
     expect(toBinaryString(readBottomLeftVersionBits(modules), 18)).toBe("000111110010010100")
   })
 
-  it("encodes Micro QR symbols", () => {
-    const micro = MicroQRCode.encodeText("01234567", MicroErrorCorrectionLevel.L, {
-      boostEcl: false,
-      maxVersion: 2,
-      minVersion: 2,
-    })
-
-    expect(micro.version).toBe(2)
-    expect(micro.errorCorrectionLevel).toBe(MicroErrorCorrectionLevel.L)
-    expect(micro.toMatrix()).toHaveLength(micro.size)
-  })
 })
 
 describe("QRCode", () => {
@@ -98,6 +87,15 @@ describe("QRCode", () => {
       }
     }
   })
+
+  it("rejects structured append headers with a single total symbol", () => {
+    expect(() => QrSegment.makeStructuredAppendHeader(1, 1, 0)).toThrow(RangeError)
+    expect(() =>
+      QRCode.encodeSegments([QrSegment.makeBytes([0])], ErrorCorrectionLevel.M, {
+        structuredAppend: { position: 1, total: 1, parity: 0 },
+      }),
+    ).toThrow(RangeError)
+  })
 })
 
 describe("QRCodeRenderable", () => {
@@ -130,10 +128,20 @@ describe("QRCodeRenderable", () => {
     expect(qr.height).toBe(15)
   })
 
+  it("rejects quiet zones smaller than the QR Code minimum", () => {
+    expect(
+      () =>
+        new QRCodeRenderable(testRenderer, {
+          content: "HELLO WORLD",
+          quietZone: 3,
+        }),
+    ).toThrow(RangeError)
+  })
+
   it("updates intrinsic dimensions when the scale changes", async () => {
     const qr = new QRCodeRenderable(testRenderer, {
       content: "HELLO WORLD",
-      quietZone: 2,
+      quietZone: 4,
       scale: 1,
     })
 
@@ -141,7 +149,7 @@ describe("QRCodeRenderable", () => {
     await renderOnce()
 
     expect(qr.width).toBe(80)
-    expect(qr.height).toBe(13)
+    expect(qr.height).toBe(15)
 
     const initialFrame = captureCharFrame()
     expect(initialFrame).toContain("█")
@@ -150,7 +158,7 @@ describe("QRCodeRenderable", () => {
     await renderOnce()
 
     expect(qr.width).toBe(80)
-    expect(qr.height).toBe(25)
+    expect(qr.height).toBe(29)
     expect(captureCharFrame()).not.toBe(initialFrame)
   })
 
@@ -181,7 +189,7 @@ describe("QRCodeRenderable", () => {
     })
     const qr = new QRCodeRenderable(testRenderer, {
       content: "https://opentui.com/docs/getting-started",
-      quietZone: 2,
+      quietZone: 4,
       scale: 2,
     })
 
@@ -203,7 +211,7 @@ describe("QRCodeRenderable", () => {
     })
     const qr = new QRCodeRenderable(testRenderer, {
       content: "https://opentui.com/docs/getting-started",
-      quietZone: 2,
+      quietZone: 4,
       scale: 2,
       fallbackContent: "Resize for QR",
       fallbackColor: "#94a3b8",
@@ -231,7 +239,7 @@ describe("QRCodeRenderable", () => {
     })
     const qr = new QRCodeRenderable(testRenderer, {
       content: "opentui.com",
-      quietZone: 2,
+      quietZone: 4,
       scale: 2,
       fallbackContent: "Resize for QR",
     })
@@ -240,8 +248,8 @@ describe("QRCodeRenderable", () => {
     testRenderer.root.add(container)
     await renderOnce()
 
-    expect(qr.getLayoutNode().getComputedLayout().width).toBe(50)
-    expect(qr.getLayoutNode().getComputedLayout().height).toBe(25)
+    expect(qr.getLayoutNode().getComputedLayout().width).toBe(58)
+    expect(qr.getLayoutNode().getComputedLayout().height).toBe(29)
 
     resize(20, 8)
     await renderOnce()
@@ -251,8 +259,8 @@ describe("QRCodeRenderable", () => {
     resize(80, 40)
     await renderOnce()
 
-    expect(qr.getLayoutNode().getComputedLayout().width).toBe(50)
-    expect(qr.getLayoutNode().getComputedLayout().height).toBe(25)
+    expect(qr.getLayoutNode().getComputedLayout().width).toBe(58)
+    expect(qr.getLayoutNode().getComputedLayout().height).toBe(29)
     expect(captureCharFrame()).toContain("█")
   })
 

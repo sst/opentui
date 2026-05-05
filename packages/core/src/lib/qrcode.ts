@@ -3,15 +3,14 @@
  *
  * Scope implemented by this package:
  * - QR Code Model 2, versions 1..40, ECC levels L/M/Q/H
- * - Micro QR Code, versions M1..M4, supported Micro ECC combinations
  * - Numeric, Alphanumeric, Byte, Kanji, ECI, Structured Append, and FNC1 signalling
  * - GS1/FNC1 helpers for separator handling
  * - Reed-Solomon error correction over GF(256)
  * - Data/ECC block interleaving for QR Code Model 2
  * - Function patterns, alignment/timing patterns, format and version information
- * - QR masks 0..7 and Micro QR masks 0..3 with automatic mask selection
- * - DP-based mixed-mode optimization for QR and Micro QR text inputs
- * - SVG rendering with ISO quiet-zone minimums: 4 modules for QR, 2 for Micro QR
+ * - QR masks 0..7 with automatic mask selection
+ * - DP-based mixed-mode optimization for QR text inputs
+ * - SVG rendering with ISO quiet-zone minimum: 4 modules for QR
  *
  * Notes:
  * - Model 1 QR Code is a legacy format and is not generated here.
@@ -45,16 +44,6 @@ export enum ErrorCorrectionLevel {
   /** Recovers about 30% data damage. QR format bits: 10. */
   H = "H",
 }
-
-export enum MicroErrorCorrectionLevel {
-  /** M1 only: error detection only, no correction. */
-  DETECTION_ONLY = "DETECTION_ONLY",
-  L = "L",
-  M = "M",
-  Q = "Q",
-}
-
-export type MicroVersion = 1 | 2 | 3 | 4
 
 export interface StructuredAppendInfo {
   /** 1-based position of this symbol in the structured append sequence. */
@@ -97,23 +86,6 @@ export interface EncodeOptions {
   structuredAppend?: StructuredAppendInfo
 }
 
-export interface MicroEncodeOptions {
-  /** Minimum Micro QR version, inclusive. Default: 1. */
-  minVersion?: MicroVersion
-  /** Maximum Micro QR version, inclusive. Default: 4. */
-  maxVersion?: MicroVersion
-  /** Force Micro QR mask reference 0..3. Default: auto-select by edge score. */
-  mask?: number
-  /** Upgrade ECC level if the data still fits in the selected version. Default: true. */
-  boostEcl?: boolean
-  /** Use DP mixed-mode optimization for text. Default: true. */
-  optimize?: boolean
-  /** Allow Kanji mode for characters encodable in Shift JIS Kanji ranges. Default: false. */
-  kanji?: boolean
-  /** Byte-segment character encoding for text fallback. Default: utf-8. Micro QR has no ECI. */
-  byteEncoding?: ByteEncoding
-}
-
 export interface Gs1Element {
   /** Application identifier, e.g. "01", "17", "10". Parentheses are not encoded. */
   ai: string
@@ -131,11 +103,6 @@ interface Block {
 interface QrMetadata {
   containsEci: boolean
   fnc1: "none" | "first" | "second"
-}
-
-interface MicroModeIndicator {
-  value: number
-  length: number
 }
 
 class BitBuffer {
@@ -165,10 +132,6 @@ class BitBuffer {
     return this.bits[index] ?? 0
   }
 
-  toBits(): number[] {
-    return this.bits.slice()
-  }
-
   toBytes(): number[] {
     const result: number[] = []
     for (let i = 0; i < this.bits.length; i += 8) {
@@ -186,14 +149,6 @@ class Mode {
     "NUMERIC",
     0x1,
     [10, 12, 14],
-    [null, 3, 4, 5, 6],
-    [
-      null,
-      { value: 0b0, length: 0 },
-      { value: 0b0, length: 1 },
-      { value: 0b00, length: 2 },
-      { value: 0b000, length: 3 },
-    ],
     true,
   )
 
@@ -201,8 +156,6 @@ class Mode {
     "ALPHANUMERIC",
     0x2,
     [9, 11, 13],
-    [null, null, 3, 4, 5],
-    [null, null, { value: 0b1, length: 1 }, { value: 0b01, length: 2 }, { value: 0b001, length: 3 }],
     true,
   )
 
@@ -210,8 +163,6 @@ class Mode {
     "BYTE",
     0x4,
     [8, 16, 16],
-    [null, null, null, 4, 5],
-    [null, null, null, { value: 0b10, length: 2 }, { value: 0b010, length: 3 }],
     true,
   )
 
@@ -219,8 +170,6 @@ class Mode {
     "KANJI",
     0x8,
     [8, 10, 12],
-    [null, null, null, 3, 4],
-    [null, null, null, { value: 0b11, length: 2 }, { value: 0b011, length: 3 }],
     true,
   )
 
@@ -228,32 +177,24 @@ class Mode {
     "ECI",
     0x7,
     [0, 0, 0],
-    [null, null, null, null, null],
-    [null, null, null, null, null],
     false,
   )
   static readonly STRUCTURED_APPEND = new Mode(
     "STRUCTURED_APPEND",
     0x3,
     [0, 0, 0],
-    [null, null, null, null, null],
-    [null, null, null, null, null],
     false,
   )
   static readonly FNC1_FIRST = new Mode(
     "FNC1_FIRST",
     0x5,
     [0, 0, 0],
-    [null, null, null, null, null],
-    [null, null, null, null, null],
     false,
   )
   static readonly FNC1_SECOND = new Mode(
     "FNC1_SECOND",
     0x9,
     [0, 0, 0],
-    [null, null, null, null, null],
-    [null, null, null, null, null],
     false,
   )
 
@@ -261,20 +202,6 @@ class Mode {
     readonly name: string,
     readonly modeBits: number,
     private readonly charCountBitsForVersionRange: readonly [number, number, number],
-    private readonly microCharCountBitsByVersion: readonly [
-      null,
-      number | null,
-      number | null,
-      number | null,
-      number | null,
-    ],
-    private readonly microModeIndicators: readonly [
-      null,
-      MicroModeIndicator | null,
-      MicroModeIndicator | null,
-      MicroModeIndicator | null,
-      MicroModeIndicator | null,
-    ],
     readonly hasCharacterCount: boolean,
   ) {}
 
@@ -284,26 +211,6 @@ class Mode {
     return this.charCountBitsForVersionRange[Math.floor((version + 7) / 17)]
   }
 
-  microCharCountBits(version: MicroVersion): number {
-    if (!this.hasCharacterCount) return 0
-    const result = this.microCharCountBitsByVersion[version]
-    if (result === null) throw new Error(`${this.name} mode is not available in Micro QR version M${version}`)
-    return result
-  }
-
-  microModeIndicator(version: MicroVersion): MicroModeIndicator {
-    const result = this.microModeIndicators[version]
-    if (result === null) throw new Error(`${this.name} mode is not available in Micro QR version M${version}`)
-    return result
-  }
-
-  isMicroAvailable(version: MicroVersion): boolean {
-    return this.microModeIndicators[version] !== null
-  }
-
-  isDataMode(): boolean {
-    return this === Mode.NUMERIC || this === Mode.ALPHANUMERIC || this === Mode.BYTE || this === Mode.KANJI
-  }
 }
 
 class ReedSolomon {
@@ -488,16 +395,7 @@ export class QrSegment {
     options: Pick<EncodeOptions, "eciForUtf8" | "kanji" | "byteEncoding" | "eciAssignment"> = {},
   ): QrSegment[] {
     QRCode.validateVersionPublic(version)
-    return QrSegment.makeOptimizedSegmentsInternal(text, { kind: "qr", version }, options)
-  }
-
-  static makeOptimizedMicroSegments(
-    text: string,
-    version: MicroVersion,
-    options: Pick<MicroEncodeOptions, "kanji" | "byteEncoding"> = {},
-  ): QrSegment[] {
-    validateMicroVersion(version)
-    return QrSegment.makeOptimizedSegmentsInternal(text, { kind: "micro", version }, options)
+    return QrSegment.makeOptimizedSegmentsInternal(text, version, options)
   }
 
   static makeEciSegmentsFromEscapedText(
@@ -548,15 +446,6 @@ export class QrSegment {
     return 4 + ccbits + this.data.length
   }
 
-  getTotalMicroBits(version: MicroVersion): number {
-    if (!this.mode.isDataMode()) return Infinity
-    if (!this.mode.isMicroAvailable(version)) return Infinity
-    const indicator = this.mode.microModeIndicator(version)
-    const ccbits = this.mode.microCharCountBits(version)
-    if (this.numChars >= 1 << ccbits) return Infinity
-    return indicator.length + ccbits + this.data.length
-  }
-
   private static addEciIfNeeded(
     segments: QrSegment[],
     encoding: ByteEncoding,
@@ -573,7 +462,7 @@ export class QrSegment {
 
   private static makeOptimizedSegmentsInternal(
     text: string,
-    target: { kind: "qr"; version: number } | { kind: "micro"; version: MicroVersion },
+    version: number,
     options: Pick<EncodeOptions, "eciForUtf8" | "kanji" | "byteEncoding" | "eciAssignment">,
   ): QrSegment[] {
     if (text.length === 0) return []
@@ -585,13 +474,11 @@ export class QrSegment {
 
     let eciBits = 0
     let eciAssignment: number | null = null
-    if (target.kind === "qr") {
-      if (options.eciAssignment !== undefined) eciAssignment = options.eciAssignment
-      else if (encoding === "utf-8") eciAssignment = options.eciForUtf8 === false ? null : EciAssignment.UTF_8
-      else if (encoding === "shift-jis") eciAssignment = EciAssignment.SHIFT_JIS
-      else eciAssignment = null
-      eciBits = eciAssignment === null ? 0 : QrSegment.makeEci(eciAssignment).getTotalBits(target.version)
-    }
+    if (options.eciAssignment !== undefined) eciAssignment = options.eciAssignment
+    else if (encoding === "utf-8") eciAssignment = options.eciForUtf8 === false ? null : EciAssignment.UTF_8
+    else if (encoding === "shift-jis") eciAssignment = EciAssignment.SHIFT_JIS
+    else eciAssignment = null
+    eciBits = eciAssignment === null ? 0 : QrSegment.makeEci(eciAssignment).getTotalBits(version)
 
     type Used = 0 | 1
     type Prev = { prevIndex: number; prevUsed: Used; mode: Mode }
@@ -604,17 +491,10 @@ export class QrSegment {
     dp[0][0] = 0
 
     const modeHeaderBits = (mode: Mode, count: number, byteCount: number): number => {
-      if (target.kind === "qr") {
-        const ccbits = mode.numCharCountBits(target.version)
-        const nChars = mode === Mode.BYTE ? byteCount : count
-        if (nChars >= 1 << ccbits) return inf
-        return 4 + ccbits
-      }
-      if (!mode.isMicroAvailable(target.version)) return inf
-      const ccbits = mode.microCharCountBits(target.version)
+      const ccbits = mode.numCharCountBits(version)
       const nChars = mode === Mode.BYTE ? byteCount : count
       if (nChars >= 1 << ccbits) return inf
-      return mode.microModeIndicator(target.version).length + ccbits
+      return 4 + ccbits
     }
 
     const dataBitsFor = (mode: Mode, count: number, byteCount: number): number => {
@@ -667,7 +547,7 @@ export class QrSegment {
           byteCount += byteParts[j].length
           const header = modeHeaderBits(Mode.BYTE, j - i + 1, byteCount)
           if (!Number.isFinite(header)) break
-          const eciOverhead = target.kind === "qr" && used === 0 && eciAssignment !== null ? eciBits : 0
+          const eciOverhead = used === 0 && eciAssignment !== null ? eciBits : 0
           update(i, used, j + 1, 1, Mode.BYTE, eciOverhead + header + dataBitsFor(Mode.BYTE, 0, byteCount))
         }
       }
@@ -688,8 +568,7 @@ export class QrSegment {
     runs.reverse()
 
     const segments: QrSegment[] = []
-    if (target.kind === "qr" && finalUsed === 1 && eciAssignment !== null)
-      segments.push(QrSegment.makeEci(eciAssignment))
+    if (finalUsed === 1 && eciAssignment !== null) segments.push(QrSegment.makeEci(eciAssignment))
     for (const run of runs) {
       const part = chars.slice(run.start, run.end).join("")
       if (run.mode === Mode.NUMERIC) segments.push(QrSegment.makeNumeric(part))
@@ -1360,322 +1239,12 @@ export class QRCode {
   }
 }
 
-export class MicroQRCode {
-  private static readonly MICRO_MASK_TO_QR_MASK: readonly number[] = [1, 4, 6, 7]
-  private static readonly RAW_DATA_MODULES: readonly number[] = [-1, 36, 80, 132, 192]
-
-  readonly size: number
-  readonly symbologyIdentifier = "]Q1"
-  private readonly modules: boolean[][]
-  private readonly functionModules: boolean[][]
-
-  private constructor(
-    readonly version: MicroVersion,
-    readonly errorCorrectionLevel: MicroErrorCorrectionLevel,
-    readonly mask: number,
-    dataBits: number[],
-  ) {
-    validateMicroVersion(version)
-    validateMicroMask(mask)
-    validateMicroEclForVersion(version, errorCorrectionLevel)
-    this.size = version * 2 + 9
-    this.modules = Array.from({ length: this.size }, () => Array<boolean>(this.size).fill(false))
-    this.functionModules = Array.from({ length: this.size }, () => Array<boolean>(this.size).fill(false))
-
-    this.drawFunctionPatterns()
-    const allBits = this.addEcc(dataBits)
-    this.drawCodewordBits(allBits)
-    this.applyMask(mask)
-    this.drawFormatBits(mask)
-  }
-
-  static encodeText(
-    text: string,
-    ecl: MicroErrorCorrectionLevel = MicroErrorCorrectionLevel.M,
-    options: MicroEncodeOptions = {},
-  ): MicroQRCode {
-    const optimize = options.optimize !== false
-    if (!optimize)
-      return MicroQRCode.encodeSegments(
-        QrSegment.makeSegments(text, { ...options, eciAssignment: null, eciForUtf8: false }),
-        ecl,
-        options,
-      )
-
-    const minVersion = options.minVersion ?? 1
-    const maxVersion = options.maxVersion ?? 4
-    validateMicroVersion(minVersion)
-    validateMicroVersion(maxVersion)
-    if (minVersion > maxVersion) throw new RangeError("minVersion cannot exceed maxVersion")
-
-    for (let version = minVersion; version <= maxVersion; version++) {
-      const mv = version as MicroVersion
-      if (!isMicroEclAvailable(mv, ecl)) continue
-      let segments: QrSegment[]
-      try {
-        segments = QrSegment.makeOptimizedMicroSegments(text, mv, options)
-      } catch {
-        continue
-      }
-      if (MicroQRCode.getTotalBits(segments, mv) <= getMicroDataCapacityBits(mv, ecl)) {
-        return MicroQRCode.encodeSegments(segments, ecl, { ...options, minVersion: mv, maxVersion: mv })
-      }
-    }
-    throw new Error("Data too long for requested Micro QR version range and error correction level")
-  }
-
-  static encodeBytes(
-    bytes: Uint8Array | number[],
-    ecl: MicroErrorCorrectionLevel = MicroErrorCorrectionLevel.L,
-    options: MicroEncodeOptions = {},
-  ): MicroQRCode {
-    return MicroQRCode.encodeSegments([QrSegment.makeBytes(bytes)], ecl, options)
-  }
-
-  static encodeSegments(
-    segments: QrSegment[],
-    ecl: MicroErrorCorrectionLevel = MicroErrorCorrectionLevel.M,
-    options: MicroEncodeOptions = {},
-  ): MicroQRCode {
-    const minVersion = options.minVersion ?? 1
-    const maxVersion = options.maxVersion ?? 4
-    const mask = options.mask ?? -1
-    const boostEcl = options.boostEcl !== false
-    validateMicroVersion(minVersion)
-    validateMicroVersion(maxVersion)
-    if (minVersion > maxVersion) throw new RangeError("minVersion cannot exceed maxVersion")
-    if (mask !== -1) validateMicroMask(mask)
-    MicroQRCode.validateMicroSegments(segments)
-
-    let version: MicroVersion | null = null
-    let dataUsedBits = 0
-    let selectedEcl = ecl
-    for (let v = minVersion; v <= maxVersion; v++) {
-      const mv = v as MicroVersion
-      if (!isMicroEclAvailable(mv, ecl)) continue
-      dataUsedBits = MicroQRCode.getTotalBits(segments, mv)
-      if (dataUsedBits <= getMicroDataCapacityBits(mv, ecl)) {
-        version = mv
-        selectedEcl = ecl
-        break
-      }
-    }
-    if (version === null)
-      throw new Error(
-        "Data too long or modes unavailable for requested Micro QR version range and error correction level",
-      )
-
-    if (boostEcl) {
-      for (const candidate of getMicroEclOrderForVersion(version)) {
-        if (
-          microEclRank(candidate) > microEclRank(selectedEcl) &&
-          dataUsedBits <= getMicroDataCapacityBits(version, candidate)
-        ) {
-          selectedEcl = candidate
-        }
-      }
-    }
-
-    const capacityBits = getMicroDataCapacityBits(version, selectedEcl)
-    const bb = new BitBuffer()
-    for (const seg of segments) {
-      if (!seg.mode.isDataMode()) throw new Error("ECI, FNC1, and structured append are not available in Micro QR Code")
-      const indicator = seg.mode.microModeIndicator(version)
-      bb.appendBits(indicator.value, indicator.length)
-      const ccbits = seg.mode.microCharCountBits(version)
-      if (seg.numChars >= 1 << ccbits) throw new Error("Segment too long for selected Micro QR version")
-      bb.appendBits(seg.numChars, ccbits)
-      bb.appendData(seg.data)
-    }
-
-    bb.appendBits(0, Math.min(getMicroTerminatorLength(version), capacityBits - bb.length))
-    const finalPartialBits = capacityBits % 8
-    while (
-      bb.length < capacityBits &&
-      bb.length % 8 !== 0 &&
-      !(finalPartialBits !== 0 && bb.length % 8 === finalPartialBits)
-    ) {
-      bb.appendBits(0, 1)
-    }
-    for (let padByte = 0xec; bb.length + 8 <= capacityBits; padByte ^= 0xec ^ 0x11) bb.appendBits(padByte, 8)
-    if (bb.length < capacityBits) bb.appendBits(0, capacityBits - bb.length)
-    if (bb.length !== capacityBits) throw new Error("Internal error: Micro QR data bit length mismatch")
-
-    const dataBits = bb.toBits()
-    return mask === -1
-      ? MicroQRCode.makeWithBestMask(version, selectedEcl, dataBits)
-      : new MicroQRCode(version, selectedEcl, mask, dataBits)
-  }
-
-  getModule(x: number, y: number): boolean {
-    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= this.size || y >= this.size) {
-      throw new RangeError("Module coordinates out of bounds")
-    }
-    return this.modules[y][x]
-  }
-
-  toMatrix(): boolean[][] {
-    return this.modules.map((row) => row.slice())
-  }
-
-  /** Render as SVG. The border is the quiet zone in modules; ISO Micro QR Code requires at least 2. */
-  toSvgString(options: { border?: number; moduleSize?: number; lightColor?: string; darkColor?: string } = {}): string {
-    const border = options.border ?? 2
-    return matrixToSvg(
-      this.modules,
-      border,
-      2,
-      options.moduleSize ?? 1,
-      options.lightColor ?? "#FFFFFF",
-      options.darkColor ?? "#000000",
-    )
-  }
-
-  /**
-   * Render as terminal text. Default quiet zone is 2 modules, matching the Micro QR Code minimum.
-   * Use { ansi: true } for scanner-facing terminal output with explicit black/white backgrounds.
-   */
-  toTerminalString(options: number | TerminalRenderOptions = {}): string {
-    const renderOptions = normalizeTerminalOptions(options, 2, 2)
-    return matrixToTerminal(this.modules, renderOptions)
-  }
-
-  private static makeWithBestMask(
-    version: MicroVersion,
-    ecl: MicroErrorCorrectionLevel,
-    dataBits: number[],
-  ): MicroQRCode {
-    let bestQr: MicroQRCode | null = null
-    let bestScore = -1
-    for (let mask = 0; mask < 4; mask++) {
-      const qr = new MicroQRCode(version, ecl, mask, dataBits)
-      const score = qr.getMaskScore()
-      if (score > bestScore) {
-        bestScore = score
-        bestQr = qr
-      }
-    }
-    if (bestQr === null) throw new Error("Internal error: no Micro QR mask selected")
-    return bestQr
-  }
-
-  private static validateMicroSegments(segments: readonly QrSegment[]): void {
-    for (const seg of segments) {
-      if (!seg.mode.isDataMode())
-        throw new Error("Micro QR Code supports only Numeric, Alphanumeric, Byte, and Kanji data modes")
-    }
-  }
-
-  private static getTotalBits(segments: readonly QrSegment[], version: MicroVersion): number {
-    let result = 0
-    for (const seg of segments) {
-      const n = seg.getTotalMicroBits(version)
-      if (!Number.isFinite(n)) return Infinity
-      result += n
-    }
-    return result
-  }
-
-  private drawFunctionPatterns(): void {
-    this.drawFinderPattern(3, 3)
-    for (let x = 8; x < this.size; x++) this.setFunctionModule(x, 0, x % 2 === 0)
-    for (let y = 8; y < this.size; y++) this.setFunctionModule(0, y, y % 2 === 0)
-    this.drawFormatBits(0)
-  }
-
-  private drawFinderPattern(cx: number, cy: number): void {
-    for (let dy = -4; dy <= 4; dy++) {
-      for (let dx = -4; dx <= 4; dx++) {
-        const x = cx + dx
-        const y = cy + dy
-        if (x < 0 || y < 0 || x >= this.size || y >= this.size) continue
-        const dist = Math.max(Math.abs(dx), Math.abs(dy))
-        this.setFunctionModule(x, y, dist !== 2 && dist !== 4)
-      }
-    }
-  }
-
-  private drawFormatBits(mask: number): void {
-    const symbolNumber = getMicroSymbolNumber(this.version, this.errorCorrectionLevel)
-    const data = (symbolNumber << 2) | mask
-    const bits = formatBits(data, 0x4445)
-    for (let i = 0; i <= 6; i++) this.setFunctionModule(8, i + 1, getBit(bits, i))
-    for (let i = 7; i <= 14; i++) this.setFunctionModule(15 - i, 8, getBit(bits, i))
-  }
-
-  private addEcc(dataBits: number[]): number[] {
-    const dataCodewords = bitsToCodewordsForMicroEcc(dataBits)
-    const expectedDataCodewords = getMicroDataCodewordsForEcc(this.version, this.errorCorrectionLevel)
-    if (dataCodewords.length !== expectedDataCodewords) {
-      throw new Error(
-        `Internal error: expected ${expectedDataCodewords} Micro QR data codewords, got ${dataCodewords.length}`,
-      )
-    }
-    const eccLen = getMicroEccCodewords(this.version, this.errorCorrectionLevel)
-    const ecc = ReedSolomon.computeRemainder(dataCodewords, ReedSolomon.computeDivisor(eccLen))
-    const result = dataBits.slice()
-    for (const b of ecc) for (let i = 7; i >= 0; i--) result.push((b >>> i) & 1)
-    if (result.length !== MicroQRCode.RAW_DATA_MODULES[this.version])
-      throw new Error("Internal error: Micro QR final bit length mismatch")
-    return result
-  }
-
-  private drawCodewordBits(bits: number[]): void {
-    let bitIndex = 0
-    for (let right = this.size - 1; right >= 1; right -= 2) {
-      for (let vert = 0; vert < this.size; vert++) {
-        for (let j = 0; j < 2; j++) {
-          const x = right - j
-          const upward = ((right + 1) & 2) === 0
-          const y = upward ? this.size - 1 - vert : vert
-          if (this.functionModules[y][x]) continue
-          this.modules[y][x] = bitIndex < bits.length ? bits[bitIndex] !== 0 : false
-          bitIndex++
-        }
-      }
-    }
-    if (bitIndex !== MicroQRCode.RAW_DATA_MODULES[this.version])
-      throw new Error("Internal error: Micro QR codeword placement mismatch")
-  }
-
-  private applyMask(mask: number): void {
-    validateMicroMask(mask)
-    const qrMask = MicroQRCode.MICRO_MASK_TO_QR_MASK[mask]
-    for (let y = 0; y < this.size; y++) {
-      for (let x = 0; x < this.size; x++) {
-        if (!this.functionModules[y][x] && QRCode.maskCondition(qrMask, x, y)) this.modules[y][x] = !this.modules[y][x]
-      }
-    }
-  }
-
-  private getMaskScore(): number {
-    let s1 = 0
-    let s2 = 0
-    for (let y = 1; y < this.size; y++) if (this.modules[y][this.size - 1]) s1++
-    for (let x = 1; x < this.size; x++) if (this.modules[this.size - 1][x]) s2++
-    return s1 <= s2 ? s1 * 16 + s2 : s2 * 16 + s1
-  }
-
-  private setFunctionModule(x: number, y: number, dark: boolean): void {
-    this.modules[y][x] = dark
-    this.functionModules[y][x] = true
-  }
-}
-
 export function createQrSvg(
   text: string,
   options: EncodeOptions & { ecl?: ErrorCorrectionLevel; border?: number; moduleSize?: number } = {},
 ): string {
   const qr = QRCode.encodeText(text, options.ecl ?? ErrorCorrectionLevel.M, options)
   return qr.toSvgString({ border: options.border ?? 4, moduleSize: options.moduleSize ?? 8 })
-}
-
-export function createMicroQrSvg(
-  text: string,
-  options: MicroEncodeOptions & { ecl?: MicroErrorCorrectionLevel; border?: number; moduleSize?: number } = {},
-): string {
-  const qr = MicroQRCode.encodeText(text, options.ecl ?? MicroErrorCorrectionLevel.M, options)
-  return qr.toSvgString({ border: options.border ?? 2, moduleSize: options.moduleSize ?? 8 })
 }
 
 function encodeFnc1SecondApplicationIndicator(applicationIndicator: string | number): number {
@@ -1691,8 +1260,8 @@ function encodeFnc1SecondApplicationIndicator(applicationIndicator: string | num
 }
 
 function validateStructuredAppend(position: number, total: number, parity: number): void {
-  if (!Number.isInteger(total) || total < 1 || total > 16)
-    throw new RangeError("Structured append total must be in 1..16")
+  if (!Number.isInteger(total) || total < 2 || total > 16)
+    throw new RangeError("Structured append total must be in 2..16")
   if (!Number.isInteger(position) || position < 1 || position > total)
     throw new RangeError("Structured append position must be in 1..total")
   if (!Number.isInteger(parity) || parity < 0 || parity > 0xff)
@@ -1707,104 +1276,6 @@ function buildGs1Payload(elements: readonly Gs1Element[]): string {
     const data = el.data.replace(/%/g, "%%")
     result += el.ai + data
     if (el.separatorAfter === true && i + 1 < elements.length) result += "%"
-  }
-  return result
-}
-
-function validateMicroVersion(version: number): asserts version is MicroVersion {
-  if (!Number.isInteger(version) || version < 1 || version > 4) throw new RangeError("Micro QR version must be in 1..4")
-}
-
-function validateMicroMask(mask: number): void {
-  if (!Number.isInteger(mask) || mask < 0 || mask > 3) throw new RangeError("Micro QR mask must be in 0..3")
-}
-
-function validateMicroEclForVersion(version: MicroVersion, ecl: MicroErrorCorrectionLevel): void {
-  if (!isMicroEclAvailable(version, ecl))
-    throw new Error(`Error correction level ${ecl} is not available for Micro QR M${version}`)
-}
-
-function isMicroEclAvailable(version: MicroVersion, ecl: MicroErrorCorrectionLevel): boolean {
-  if (version === 1) return ecl === MicroErrorCorrectionLevel.DETECTION_ONLY
-  if (version === 2 || version === 3) return ecl === MicroErrorCorrectionLevel.L || ecl === MicroErrorCorrectionLevel.M
-  return (
-    ecl === MicroErrorCorrectionLevel.L || ecl === MicroErrorCorrectionLevel.M || ecl === MicroErrorCorrectionLevel.Q
-  )
-}
-
-function getMicroEclOrderForVersion(version: MicroVersion): readonly MicroErrorCorrectionLevel[] {
-  if (version === 1) return [MicroErrorCorrectionLevel.DETECTION_ONLY]
-  if (version === 4) return [MicroErrorCorrectionLevel.L, MicroErrorCorrectionLevel.M, MicroErrorCorrectionLevel.Q]
-  return [MicroErrorCorrectionLevel.L, MicroErrorCorrectionLevel.M]
-}
-
-function microEclRank(ecl: MicroErrorCorrectionLevel): number {
-  switch (ecl) {
-    case MicroErrorCorrectionLevel.DETECTION_ONLY:
-      return 0
-    case MicroErrorCorrectionLevel.L:
-      return 1
-    case MicroErrorCorrectionLevel.M:
-      return 2
-    case MicroErrorCorrectionLevel.Q:
-      return 3
-    default:
-      throw new Error("Invalid Micro QR error correction level")
-  }
-}
-
-function getMicroDataCapacityBits(version: MicroVersion, ecl: MicroErrorCorrectionLevel): number {
-  validateMicroEclForVersion(version, ecl)
-  if (version === 1) return 20
-  if (version === 2) return ecl === MicroErrorCorrectionLevel.L ? 40 : 32
-  if (version === 3) return ecl === MicroErrorCorrectionLevel.L ? 84 : 68
-  if (ecl === MicroErrorCorrectionLevel.L) return 128
-  if (ecl === MicroErrorCorrectionLevel.M) return 112
-  return 80
-}
-
-function getMicroDataCodewordsForEcc(version: MicroVersion, ecl: MicroErrorCorrectionLevel): number {
-  validateMicroEclForVersion(version, ecl)
-  if (version === 1) return 3
-  if (version === 2) return ecl === MicroErrorCorrectionLevel.L ? 5 : 4
-  if (version === 3) return ecl === MicroErrorCorrectionLevel.L ? 11 : 9
-  if (ecl === MicroErrorCorrectionLevel.L) return 16
-  if (ecl === MicroErrorCorrectionLevel.M) return 14
-  return 10
-}
-
-function getMicroEccCodewords(version: MicroVersion, ecl: MicroErrorCorrectionLevel): number {
-  validateMicroEclForVersion(version, ecl)
-  if (version === 1) return 2
-  if (version === 2) return ecl === MicroErrorCorrectionLevel.L ? 5 : 6
-  if (version === 3) return ecl === MicroErrorCorrectionLevel.L ? 6 : 8
-  if (ecl === MicroErrorCorrectionLevel.L) return 8
-  if (ecl === MicroErrorCorrectionLevel.M) return 10
-  return 14
-}
-
-function getMicroTerminatorLength(version: MicroVersion): number {
-  return [0, 3, 5, 7, 9][version]
-}
-
-function getMicroSymbolNumber(version: MicroVersion, ecl: MicroErrorCorrectionLevel): number {
-  validateMicroEclForVersion(version, ecl)
-  if (version === 1) return 0
-  if (version === 2) return ecl === MicroErrorCorrectionLevel.L ? 1 : 2
-  if (version === 3) return ecl === MicroErrorCorrectionLevel.L ? 3 : 4
-  if (ecl === MicroErrorCorrectionLevel.L) return 5
-  if (ecl === MicroErrorCorrectionLevel.M) return 6
-  return 7
-}
-
-function bitsToCodewordsForMicroEcc(bits: readonly number[]): number[] {
-  const result: number[] = []
-  for (let i = 0; i < bits.length; i += 8) {
-    let value = 0
-    const n = Math.min(8, bits.length - i)
-    for (let j = 0; j < n; j++) value = (value << 1) | (bits[i + j] & 1)
-    value <<= 8 - n
-    result.push(value)
   }
   return result
 }

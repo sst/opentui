@@ -1,5 +1,5 @@
 export interface TerminalRenderOptions {
-  /** Quiet zone in modules. ISO requires at least 4 for QR Code and 2 for Micro QR Code. */
+  /** Quiet zone in modules. ISO requires at least 4 for QR Code. */
   border?: number
   /**
    * Render using ANSI background colors. Recommended when a real scanner will read the terminal.
