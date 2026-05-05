@@ -27,21 +27,23 @@ import {
 } from "react"
 
 const palette = {
-  bg: "#0f172a",
-  surface: "#1e293b",
-  surfaceFocus: "#24324d",
-  border: "#334155",
-  text: "#e2e8f0",
-  textDim: "#94a3b8",
-  textMuted: "#64748b",
-  title: "#f1f5f9",
-  alpha: "#38bdf8",
-  beta: "#34d399",
-  accent: "#a78bfa",
-  leader: "#fb923c",
-  key: "#fbbf24",
-  command: "#67e8f9",
-  separator: "#475569",
+  bg: "#1a1b26",
+  surface: "#16161e",
+  surfaceFocus: "#292e42",
+  panel: "#1f2335",
+  border: "#2f334d",
+  borderStrong: "#3b4261",
+  text: "#c0caf5",
+  textDim: "#a9b1d6",
+  textMuted: "#565f89",
+  title: "#c0caf5",
+  alpha: "#7dcfff",
+  beta: "#9ece6a",
+  accent: "#bb9af7",
+  leader: "#e0af68",
+  key: "#7dcfff",
+  command: "#9ece6a",
+  separator: "#3b4261",
 } as const
 
 const LEADER_TOKEN = "<leader>"
@@ -366,10 +368,11 @@ function CounterPanel(props: {
       id={`keymap-demo-${props.id}`}
       ref={combinedRef}
       border
-      borderStyle="rounded"
+      borderStyle="single"
       focusable
       borderColor={palette.border}
       focusedBorderColor={props.color}
+      backgroundColor={palette.panel}
       paddingX={1}
       flexDirection="column"
       flexGrow={1}
@@ -1017,8 +1020,9 @@ const AppContent = () => {
               key={spec.id}
               id={`keymap-demo-editor-frame-${spec.id}`}
               border
-              borderStyle="rounded"
+              borderStyle="single"
               borderColor={focusedEditorIndex === index ? spec.color : palette.border}
+              backgroundColor={palette.panel}
               flexDirection="column"
               flexGrow={1}
               flexBasis={0}
@@ -1038,8 +1042,8 @@ const AppContent = () => {
                 textColor={palette.text}
                 focusedTextColor={palette.title}
                 placeholderColor={palette.textMuted}
-                selectionBg="#264F78"
-                selectionFg="#FFFFFF"
+                selectionBg={palette.surfaceFocus}
+                selectionFg={palette.text}
                 wrapMode="word"
                 onContentChange={bumpStatus}
                 onCursorChange={bumpStatus}
@@ -1052,8 +1056,9 @@ const AppContent = () => {
       <box
         id="keymap-demo-footer"
         border
-        borderStyle="rounded"
+        borderStyle="single"
         borderColor={palette.border}
+        backgroundColor={palette.panel}
         paddingX={1}
         gap={2}
         flexDirection="row"
@@ -1209,9 +1214,9 @@ const AppContent = () => {
             width: EX_PROMPT_WIDTH,
             height: EX_PROMPT_CHROME_ROWS,
             border: true,
-            borderStyle: "rounded",
+            borderStyle: "single",
             borderColor: palette.accent,
-            backgroundColor: palette.bg,
+            backgroundColor: palette.surface,
             paddingX: 1,
             paddingY: 0,
             flexDirection: "column",
@@ -1251,7 +1256,7 @@ const AppContent = () => {
           style={{
             width: EX_PROMPT_WIDTH,
             height: commandPromptSuggestionRows,
-            backgroundColor: palette.bg,
+            backgroundColor: palette.surface,
             paddingX: 1,
             paddingY: 0,
             flexDirection: "column",
