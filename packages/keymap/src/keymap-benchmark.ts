@@ -27,6 +27,7 @@ interface BenchmarkArgs {
   minSampleMs: number
   scenarioNames?: Set<string>
   jsonPath?: string
+  listScenarios: boolean
 }
 
 interface ScenarioResources {
@@ -37,36 +38,67 @@ interface ScenarioResources {
 
 interface ScenarioInstance {
   resources: ScenarioResources
-  runIteration?: () => void
-  runIterationAsync?: () => Promise<void>
+  runIteration?: (iteration: number) => unknown
+  runIterationAsync?: (iteration: number) => Promise<unknown>
   cleanup: () => void
 }
 
 type OpenTuiKeymap = Keymap<Renderable, KeyEvent>
+type BenchmarkKind =
+  | "cache-hit"
+  | "cache-miss"
+  | "command-query"
+  | "compile"
+  | "dispatch"
+  | "formatting"
+  | "state-churn"
+  | "trace"
+  | "utility"
 
 interface BenchmarkScenario {
   name: string
   description: string
+  kind?: BenchmarkKind
   setup: () => Promise<ScenarioInstance>
 }
 
 interface BenchmarkSample {
   round: number
+  iterations: number
   durationMs: number
   opsPerSecond: number
+  nsPerOperation: number
 }
 
 interface BenchmarkResult {
   name: string
   description: string
+  kind: BenchmarkKind
   iterations: number
   warmupIterations: number
   rounds: number
-  measuredIterations: number
+  minSampleMs: number
+  batchIterations: number
+  totalMeasuredIterations: number
   medianDurationMs: number
   bestDurationMs: number
   medianOpsPerSecond: number
+  meanOpsPerSecond: number
+  medianNsPerOperation: number
+  p95NsPerOperation: number
+  stdDevNsPerOperation: number
+  rmePercent: number
   samples: BenchmarkSample[]
+}
+
+interface BenchmarkSinkState {
+  value: unknown
+  checksum: number
+}
+
+const blackhole: BenchmarkSinkState = {
+  value: undefined,
+  checksum: 0,
 }
 
 function parseNumberArg(value: string | undefined, fallback: number): number {
@@ -89,8 +121,14 @@ function parseArgs(argv: string[]): BenchmarkArgs {
   let minSampleMs = DEFAULT_MIN_SAMPLE_MS
   let scenarioNames: Set<string> | undefined
   let jsonPath: string | undefined
+  let listScenarios = false
 
   for (const arg of argv) {
+    if (arg === "--list-scenarios") {
+      listScenarios = true
+      continue
+    }
+
     if (arg.startsWith("--iterations=")) {
       iterations = parseNumberArg(arg.slice("--iterations=".length), DEFAULT_ITERATIONS)
       continue
@@ -134,6 +172,7 @@ function parseArgs(argv: string[]): BenchmarkArgs {
     minSampleMs,
     scenarioNames,
     jsonPath,
+    listScenarios,
   }
 }
 
@@ -163,6 +202,86 @@ function median(values: number[]): number {
   }
 
   return (previous + value) / 2
+}
+
+function mean(values: readonly number[]): number {
+  if (values.length === 0) {
+    return 0
+  }
+
+  let total = 0
+  for (const value of values) {
+    total += value
+  }
+
+  return total / values.length
+}
+
+function percentile(values: readonly number[], p: number): number {
+  if (values.length === 0) {
+    return 0
+  }
+
+  const sorted = [...values].sort((left, right) => left - right)
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))
+  return sorted[index] ?? 0
+}
+
+function sampleStdDev(values: readonly number[]): number {
+  if (values.length <= 1) {
+    return 0
+  }
+
+  const average = mean(values)
+  let total = 0
+  for (const value of values) {
+    const delta = value - average
+    total += delta * delta
+  }
+
+  return Math.sqrt(total / (values.length - 1))
+}
+
+function tCritical95(degreesOfFreedom: number): number {
+  const table = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228]
+  if (degreesOfFreedom <= 0) {
+    return 0
+  }
+
+  return table[degreesOfFreedom - 1] ?? 1.96
+}
+
+function relativeMarginOfError(values: readonly number[]): number {
+  if (values.length <= 1) {
+    return 0
+  }
+
+  const average = mean(values)
+  if (average === 0) {
+    return 0
+  }
+
+  const sem = sampleStdDev(values) / Math.sqrt(values.length)
+  return Math.abs((sem * tCritical95(values.length - 1) * 100) / average)
+}
+
+function consume(value: unknown): void {
+  blackhole.value = value
+
+  let contribution = 1
+  if (typeof value === "number") {
+    contribution = value | 0
+  } else if (typeof value === "string" || Array.isArray(value)) {
+    contribution = value.length
+  } else if (value instanceof Map || value instanceof Set) {
+    contribution = value.size
+  } else if (typeof value === "boolean") {
+    contribution = value ? 1 : 0
+  } else if (value === null || value === undefined) {
+    contribution = 0
+  }
+
+  blackhole.checksum = (blackhole.checksum + contribution) >>> 0
 }
 
 function roundIterations(value: number): number {
@@ -378,9 +497,14 @@ function registerExternalBindingFields(keymap: OpenTuiKeymap, store: FlagStore):
 function registerStateChangeNoopListener(keymap: OpenTuiKeymap): () => void {
   let events = 0
 
-  return keymap.on("state", () => {
+  const offState = keymap.on("state", () => {
     events += 1
   })
+
+  return () => {
+    offState()
+    consume(events)
+  }
 }
 
 function registerStateChangeReadListeners(keymap: OpenTuiKeymap): () => void {
@@ -396,7 +520,7 @@ function registerStateChangeReadListeners(keymap: OpenTuiKeymap): () => void {
   return () => {
     offPendingSequence()
     offActiveKeys()
-    void sink
+    consume(sink)
   }
 }
 
@@ -413,7 +537,7 @@ function registerStateChangeMetadataListeners(keymap: OpenTuiKeymap): () => void
   return () => {
     offPendingSequence()
     offActiveKeys()
-    void sink
+    consume(sink)
   }
 }
 
@@ -430,31 +554,31 @@ function registerStateChangeBindingListeners(keymap: OpenTuiKeymap): () => void 
   return () => {
     offPendingSequence()
     offActiveKeys()
-    void sink
+    consume(sink)
   }
 }
 
 function readActiveKeysRepeatedly(keymap: OpenTuiKeymap, count: number): void {
   for (let index = 0; index < count; index += 1) {
-    keymap.getActiveKeys()
+    consume(keymap.getActiveKeys())
   }
 }
 
 function readActiveKeysWithMetadataRepeatedly(keymap: OpenTuiKeymap, count: number): void {
   for (let index = 0; index < count; index += 1) {
-    keymap.getActiveKeys({ includeMetadata: true })
+    consume(keymap.getActiveKeys({ includeMetadata: true }))
   }
 }
 
 function readActiveKeysWithBindingsRepeatedly(keymap: OpenTuiKeymap, count: number): void {
   for (let index = 0; index < count; index += 1) {
-    keymap.getActiveKeys({ includeBindings: true })
+    consume(keymap.getActiveKeys({ includeBindings: true }))
   }
 }
 
 function readPendingSequencePartsRepeatedly(keymap: OpenTuiKeymap, count: number): void {
   for (let index = 0; index < count; index += 1) {
-    keymap.getPendingSequence()
+    consume(keymap.getPendingSequence())
   }
 }
 
@@ -601,6 +725,144 @@ function createFocusTree(resources: ScenarioResources, depth: number): BoxRender
 
   chain.at(-1)?.focus()
   return chain
+}
+
+function inferScenarioKind(name: string): BenchmarkKind {
+  if (name.startsWith("trace_")) {
+    return "trace"
+  }
+
+  if (name.startsWith("compile_") || name.startsWith("register_commands_")) {
+    return "compile"
+  }
+
+  if (name.startsWith("dispatch_") || name.startsWith("run_command_")) {
+    return "dispatch"
+  }
+
+  if (name.startsWith("get_commands_") || name.startsWith("get_command_")) {
+    return "command-query"
+  }
+
+  if (name.startsWith("format_") || name.startsWith("binding_sections_")) {
+    return "formatting"
+  }
+
+  if (name.startsWith("state_change_") || name.includes("_churn")) {
+    return "state-churn"
+  }
+
+  if (name.startsWith("active_keys_") || name.startsWith("pending_sequence_")) {
+    return name.includes("sparse_data_churn") ? "cache-miss" : "cache-hit"
+  }
+
+  return "utility"
+}
+
+function setupTraceTargets(resources: ScenarioResources, count: number): BoxRenderable[] {
+  const targets: BoxRenderable[] = []
+  for (let index = 0; index < count; index += 1) {
+    const target = createFocusableBox(resources.renderer, `trace-target-${index}`)
+    ;(target as BoxRenderable & { setMaxListeners?: (count: number) => void }).setMaxListeners?.(0)
+    resources.renderer.root.add(target)
+    targets.push(target)
+  }
+
+  targets[0]?.focus()
+  return targets
+}
+
+function setupTraceCommandCatalog(resources: ScenarioResources, count: number): void {
+  registerModeCommandFields(resources.keymap)
+  resources.keymap.registerLayer({
+    commands: Array.from({ length: count }, (_, index) => ({
+      name: `trace.command.${index}`,
+      namespace: index % 3 === 0 ? "editor" : index % 3 === 1 ? "palette" : "panel",
+      title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
+      desc: `Trace command ${index}`,
+      usage: index % 4 === 0 ? `:write trace-${index}.txt` : `:open trace-${index}.txt`,
+      tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
+      mode: index % 5 === 0 ? "normal" : undefined,
+      run(ctx) {
+        const current = Number(ctx.keymap.getData("trace.commandCount") ?? 0)
+        ctx.keymap.setData("trace.commandCount", current + 1)
+      },
+    })),
+  })
+}
+
+function setupTraceBindings(resources: ScenarioResources, targets: readonly BoxRenderable[]): void {
+  registerDigitPattern(resources.keymap)
+  registerModeBindingFields(resources.keymap)
+  registerModeLayerFields(resources.keymap)
+  addons.registerLeader(resources.keymap, { trigger: "space" })
+  addons.registerModBindings(resources.keymap)
+  addons.registerCommaBindings(resources.keymap)
+  addons.registerEscapeClearsPendingSequence(resources.keymap)
+  addons.registerBackspacePopsPendingSequence(resources.keymap)
+  resources.keymap.appendDisambiguationResolver((ctx) => ctx.continueSequence())
+  resources.keymap.setData("vim.mode", "normal")
+  resources.keymap.setData("vim.state", "idle")
+
+  resources.keymap.registerLayer({
+    priority: 4,
+    bindings: [
+      { key: "ctrl+p", cmd: "trace.command.1", desc: "Open palette", group: "Global" },
+      { key: "mod+s, ctrl+s", cmd: "trace.command.4", desc: "Save", group: "Global" },
+      { key: "<leader>f", cmd: "trace.command.8", desc: "Find file", group: "Global" },
+      { key: "<leader>b", cmd: "trace.command.12", desc: "Open buffer", group: "Global" },
+    ],
+  })
+
+  for (let index = 0; index < targets.length; index += 1) {
+    const target = targets[index]
+    if (!target) {
+      continue
+    }
+
+    resources.keymap.registerLayer({
+      target,
+      targetMode: "focus-within",
+      priority: 2,
+      mode: index % 2 === 0 ? "normal" : undefined,
+      bindings: [
+        { key: "j", cmd: `trace.command.${20 + index}`, desc: "Move down", group: `Pane ${index}` },
+        { key: "k", cmd: `trace.command.${24 + index}`, desc: "Move up", group: `Pane ${index}` },
+        { key: "dd", cmd: `trace.command.${28 + index}`, desc: "Delete line", group: `Pane ${index}` },
+        { key: "gg", cmd: `trace.command.${32 + index}`, desc: "Top", group: `Pane ${index}` },
+        { key: "{count}j", cmd: `trace.command.${36 + index}`, desc: "Move count", group: `Pane ${index}` },
+        { key: "x, y, z", cmd: `trace.command.${40 + index}`, desc: "Edit", group: `Pane ${index}` },
+      ],
+    })
+  }
+
+  for (let index = 0; index < 160; index += 1) {
+    const target = targets[index % targets.length]
+    if (!target) {
+      continue
+    }
+
+    resources.keymap.registerLayer({
+      target,
+      targetMode: index % 2 === 0 ? "focus" : "focus-within",
+      priority: index % 3,
+      bindings: [
+        {
+          key: createKey(index),
+          cmd: `trace.command.${index % 48}`,
+          desc: `Generated binding ${index}`,
+          group: "Generated",
+        },
+      ],
+    })
+  }
+}
+
+function setupTraceApp(resources: ScenarioResources): BoxRenderable[] {
+  const targets = setupTraceTargets(resources, 8)
+  setupTraceCommandCatalog(resources, 96)
+  setupTraceBindings(resources, targets)
+  return targets
 }
 
 const scenarios: BenchmarkScenario[] = [
@@ -933,7 +1195,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommands({
+          return resources.keymap.getCommands({
             search: "write",
             searchIn: ["name", "title", "usage", "label"],
             filter: {
@@ -974,7 +1236,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommands({
+          return resources.keymap.getCommands({
             namespace: "bench",
             filter: {
               tags: "file",
@@ -1013,7 +1275,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommands({
+          return resources.keymap.getCommands({
             search: "write",
             searchIn: ["name", "title", "usage", "label"],
             filter(command) {
@@ -1054,7 +1316,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommands({ visibility: "registered", namespace: "bench" })
+          return resources.keymap.getCommands({ visibility: "registered", namespace: "bench" })
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1093,7 +1355,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommandEntries({
+          return resources.keymap.getCommandEntries({
             search: "write",
             searchIn: ["name", "title", "usage", "label"],
             filter: {
@@ -1139,7 +1401,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommandEntries({ visibility: "registered", namespace: "bench" })
+          return resources.keymap.getCommandEntries({ visibility: "registered", namespace: "bench" })
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1173,7 +1435,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommandEntries({ visibility: "registered", filter: { name: commands } })
+          return resources.keymap.getCommandEntries({ visibility: "registered", filter: { name: commands } })
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1207,7 +1469,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommandBindings({ visibility: "registered", commands })
+          return resources.keymap.getCommandBindings({ visibility: "registered", commands })
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1254,7 +1516,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommandEntries()
+          return resources.keymap.getCommandEntries()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1302,7 +1564,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommandBindings({ commands })
+          return resources.keymap.getCommandBindings({ commands })
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1316,7 +1578,7 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
       const sections = ["app", "prompt_input", "dialog_select", "missing"] as const
-      const config = {
+      const config: Record<string, Record<string, BindingValue>> = {
         app: {
           " command.palette.show ": "ctrl+p",
           "app.exit": ["ctrl+c", "ctrl+d", "<leader>q"],
@@ -1344,7 +1606,7 @@ const scenarios: BenchmarkScenario[] = [
           sink += resolved.get("app", " app.exit ")?.length ?? 0
         },
         cleanup() {
-          void sink
+          consume(sink)
           resources.renderer.destroy()
         },
       }
@@ -1397,7 +1659,7 @@ const scenarios: BenchmarkScenario[] = [
           sink += resolved.get("section-3", "command-4")?.length ?? 0
         },
         cleanup() {
-          void sink
+          consume(sink)
           resources.renderer.destroy()
         },
       }
@@ -1426,7 +1688,7 @@ const scenarios: BenchmarkScenario[] = [
           sink += resolved.get("app", " command-7 ")?.length ?? 0
         },
         cleanup() {
-          void sink
+          consume(sink)
           resources.renderer.destroy()
         },
       }
@@ -1444,9 +1706,10 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           sink = formatKeySequence(sequence)
+          return sink
         },
         cleanup() {
-          void sink
+          consume(sink)
           resources.renderer.destroy()
         },
       }
@@ -1482,9 +1745,10 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           sink = formatKeySequence(sequence, options)
+          return sink
         },
         cleanup() {
-          void sink
+          consume(sink)
           resources.renderer.destroy()
         },
       }
@@ -1513,9 +1777,10 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           sink = formatCommandBindings(bindings)
+          return sink
         },
         cleanup() {
-          void sink
+          consume(sink)
           resources.renderer.destroy()
         },
       }
@@ -1549,9 +1814,10 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           sink = formatCommandBindings(bindings, options)
+          return sink
         },
         cleanup() {
-          void sink
+          consume(sink)
           resources.renderer.destroy()
         },
       }
@@ -1577,7 +1843,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.runCommand("bench-run-command")
+          return resources.keymap.runCommand("bench-run-command")
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1605,7 +1871,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.runCommand("bench-run-command", { includeCommand: true })
+          return resources.keymap.runCommand("bench-run-command", { includeCommand: true })
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1623,7 +1889,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getActiveKeys()
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1660,7 +1926,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getActiveKeys()
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2124,7 +2390,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getActiveKeys()
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2207,7 +2473,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getActiveKeys()
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2264,6 +2530,7 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated getActiveKeys while a late-registered token prefix is pending",
     async setup() {
       const resources = await createScenarioResources()
+      const offWarning = resources.keymap.on("warning", () => {})
 
       for (let index = 0; index < 320; index += 1) {
         resources.keymap.registerLayer({
@@ -2280,9 +2547,10 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getActiveKeys()
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
+          offWarning()
           resources.renderer.destroy()
         },
       }
@@ -2319,7 +2587,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getActiveKeys()
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2350,7 +2618,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getActiveKeys()
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2379,7 +2647,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getActiveKeys()
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2409,7 +2677,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommands()
+          return resources.keymap.getCommands()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2442,7 +2710,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getCommands()
+          return resources.keymap.getCommands()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2478,8 +2746,8 @@ const scenarios: BenchmarkScenario[] = [
           const key = createFlagKey(iteration % 320)
           const nextValue = iteration % 2 === 0
           resources.keymap.setData(key, nextValue)
-          resources.keymap.getActiveKeys()
           iteration += 1
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2510,8 +2778,8 @@ const scenarios: BenchmarkScenario[] = [
           const key = createFlagKey(iteration % 320)
           const nextValue = iteration % 2 === 0
           resources.keymap.setData(key, nextValue)
-          resources.keymap.getActiveKeys()
           iteration += 1
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2763,7 +3031,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.keymap.getActiveKeys()
+          return resources.keymap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -2838,53 +3106,252 @@ const scenarios: BenchmarkScenario[] = [
       }
     },
   },
+  {
+    name: "trace_editor_mixed_dispatch",
+    kind: "trace",
+    description: "Mixed editor-like dispatch trace with focus changes, sequences, patterns, commands, and unrelated layers",
+    async setup() {
+      const resources = await createScenarioResources()
+      const targets = setupTraceApp(resources)
+      const operations = [
+        () => resources.mockInput.pressKey("j"),
+        () => resources.mockInput.pressKey("k"),
+        () => resources.mockInput.pressKey("d"),
+        () => resources.mockInput.pressKey("d"),
+        () => resources.mockInput.pressKey("g"),
+        () => resources.mockInput.pressKey("g"),
+        () => resources.mockInput.pressKey("1"),
+        () => resources.mockInput.pressKey("2"),
+        () => resources.mockInput.pressKey("j"),
+        () => resources.mockInput.pressKey("p", { ctrl: true }),
+        () => resources.mockInput.pressKey("s", { ctrl: true }),
+        () => resources.mockInput.pressKey("space"),
+        () => resources.mockInput.pressKey("f"),
+        () => resources.keymap.setData("vim.mode", "insert"),
+        () => resources.mockInput.pressKey("x"),
+        () => resources.keymap.setData("vim.mode", "normal"),
+        () => resources.mockInput.pressKey("escape"),
+      ]
+
+      return {
+        resources,
+        runIteration(iteration) {
+          if (iteration % 11 === 0) {
+            targets[(iteration / 11) % targets.length]?.focus()
+          }
+
+          operations[iteration % operations.length]?.()
+          consume(resources.keymap.getPendingSequence())
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "trace_active_keys_subscribers",
+    kind: "trace",
+    description: "Which-key style trace: state/focus changes followed by active-key and pending-sequence subscriber reads",
+    async setup() {
+      const resources = await createScenarioResources()
+      const targets = setupTraceApp(resources)
+      let sink = 0
+
+      const offState = resources.keymap.on("state", () => {
+        sink += resources.keymap.getActiveKeys({ includeMetadata: true }).length
+        sink += resources.keymap.getPendingSequence().length
+      })
+      const offPending = resources.keymap.on("pendingSequence", (sequence) => {
+        sink += sequence.length
+      })
+
+      return {
+        resources,
+        runIteration(iteration) {
+          switch (iteration % 8) {
+            case 0:
+              targets[(iteration / 8) % targets.length]?.focus()
+              break
+            case 1:
+              resources.keymap.setData("vim.mode", iteration % 16 === 1 ? "visual" : "normal")
+              break
+            case 2:
+              resources.mockInput.pressKey("g")
+              break
+            case 3:
+              consume(resources.keymap.getActiveKeys({ includeBindings: true, includeMetadata: true }))
+              break
+            case 4:
+              resources.keymap.clearPendingSequence()
+              break
+            case 5:
+              consume(resources.keymap.getCommandEntries({ search: "write", searchIn: ["name", "title", "usage"] }))
+              break
+            case 6:
+              resources.mockInput.pressKey("space")
+              break
+            default:
+              consume(resources.keymap.getActiveKeys())
+              break
+          }
+        },
+        cleanup() {
+          offPending()
+          offState()
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "trace_command_palette_typing",
+    kind: "trace",
+    description: "Command-palette typing trace with varied searches, filters, entries, bindings, and formatting",
+    async setup() {
+      const resources = await createScenarioResources()
+      const targets = setupTraceTargets(resources, 4)
+      setupTraceCommandCatalog(resources, 768)
+      setupTraceBindings(resources, targets)
+      const searches = ["w", "wr", "write", "open", "buffer", "trace", "file", ""]
+
+      return {
+        resources,
+        runIteration(iteration) {
+          const search = searches[iteration % searches.length] ?? ""
+          const namespace = iteration % 3 === 0 ? "editor" : iteration % 3 === 1 ? "palette" : undefined
+          const entries = resources.keymap.getCommandEntries({
+            search,
+            searchIn: ["name", "title", "usage", "desc"],
+            namespace,
+            filter: iteration % 2 === 0 ? { tags: "file" } : undefined,
+          })
+
+          consume(entries)
+          const first = entries[0]
+          if (first) {
+            consume(formatCommandBindings(first.bindings))
+          }
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "trace_layer_mount_unmount",
+    kind: "trace",
+    description: "Component mount/unmount trace registering local commands and bindings, reading active keys, then disposing",
+    async setup() {
+      const resources = await createScenarioResources()
+      const targets = setupTraceTargets(resources, 12)
+      setupTraceCommandCatalog(resources, 128)
+      registerDigitPattern(resources.keymap)
+      resources.keymap.appendDisambiguationResolver((ctx) => ctx.continueSequence())
+
+      return {
+        resources,
+        runIteration(iteration) {
+          const target = targets[iteration % targets.length]
+          if (!target) {
+            return
+          }
+
+          target.focus()
+          const commandName = `trace.local.${iteration % 32}`
+          const off = resources.keymap.registerLayer({
+            target,
+            priority: iteration % 5,
+            commands: [
+              {
+                name: commandName,
+                title: `Local ${iteration % 32}`,
+                run() {},
+              },
+            ],
+            bindings: [
+              { key: createKey(iteration), cmd: commandName, desc: "Local action", group: "Local" },
+              { key: `g${createKey(iteration + 1)}`, cmd: commandName, desc: "Local sequence", group: "Local" },
+              { key: `{count}${createKey(iteration + 2)}`, cmd: commandName, desc: "Local count", group: "Local" },
+            ],
+          })
+
+          consume(resources.keymap.getActiveKeys({ includeMetadata: true }))
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
 ]
 
 async function runScenario(scenario: BenchmarkScenario, args: BenchmarkArgs): Promise<BenchmarkResult> {
   const instance = await scenario.setup()
 
   try {
-    await runIterations(instance, args.warmupIterations)
+    let nextIteration = 0
+    nextIteration = await runIterations(instance, args.warmupIterations, nextIteration)
 
-    let measuredIterations = args.iterations
-    const calibrationStart = nowNs()
-    await runIterations(instance, measuredIterations)
-    const calibrationDurationMs = nsToMs(nowNs() - calibrationStart)
+    let batchIterations = args.iterations
+    const calibration = await timeIterations(instance, batchIterations, nextIteration)
+    nextIteration = calibration.nextIteration
 
-    if (calibrationDurationMs > 0 && calibrationDurationMs < args.minSampleMs) {
-      const scaledIterations = (measuredIterations * args.minSampleMs) / calibrationDurationMs
-      measuredIterations = roundIterations(scaledIterations)
+    if (calibration.durationMs > 0 && calibration.durationMs < args.minSampleMs) {
+      const scaledIterations = (batchIterations * args.minSampleMs) / calibration.durationMs
+      batchIterations = roundIterations(scaledIterations)
     }
 
-    if (measuredIterations !== args.iterations) {
-      await runIterations(instance, Math.min(measuredIterations, args.warmupIterations))
+    if (batchIterations !== args.iterations) {
+      nextIteration = await runIterations(instance, Math.min(batchIterations, args.warmupIterations), nextIteration)
     }
 
     const samples: BenchmarkSample[] = []
     for (let round = 0; round < args.rounds; round += 1) {
       const start = nowNs()
-      await runIterations(instance, measuredIterations)
-      const durationMs = nsToMs(nowNs() - start)
+      let sampleIterations = 0
+      let durationMs = 0
+
+      do {
+        nextIteration = await runIterations(instance, batchIterations, nextIteration)
+        sampleIterations += batchIterations
+        durationMs = nsToMs(nowNs() - start)
+      } while (durationMs < args.minSampleMs)
+
       samples.push({
         round: round + 1,
+        iterations: sampleIterations,
         durationMs,
-        opsPerSecond: (measuredIterations * 1000) / durationMs,
+        opsPerSecond: (sampleIterations * 1000) / durationMs,
+        nsPerOperation: (durationMs * 1_000_000) / sampleIterations,
       })
     }
 
     const durations = samples.map((sample) => sample.durationMs)
     const opsPerSecond = samples.map((sample) => sample.opsPerSecond)
+    const nsPerOperation = samples.map((sample) => sample.nsPerOperation)
 
     return {
       name: scenario.name,
       description: scenario.description,
+      kind: scenario.kind ?? inferScenarioKind(scenario.name),
       iterations: args.iterations,
       warmupIterations: args.warmupIterations,
       rounds: args.rounds,
-      measuredIterations,
+      minSampleMs: args.minSampleMs,
+      batchIterations,
+      totalMeasuredIterations: samples.reduce((total, sample) => total + sample.iterations, 0),
       medianDurationMs: median(durations),
       bestDurationMs: Math.min(...durations),
       medianOpsPerSecond: median(opsPerSecond),
+      meanOpsPerSecond: mean(opsPerSecond),
+      medianNsPerOperation: median(nsPerOperation),
+      p95NsPerOperation: percentile(nsPerOperation, 95),
+      stdDevNsPerOperation: sampleStdDev(nsPerOperation),
+      rmePercent: relativeMarginOfError(nsPerOperation),
       samples,
     }
   } finally {
@@ -2892,17 +3359,30 @@ async function runScenario(scenario: BenchmarkScenario, args: BenchmarkArgs): Pr
   }
 }
 
-async function runIterations(instance: ScenarioInstance, count: number): Promise<void> {
+async function timeIterations(
+  instance: ScenarioInstance,
+  count: number,
+  startIteration: number,
+): Promise<{ durationMs: number; nextIteration: number }> {
+  const start = nowNs()
+  const nextIteration = await runIterations(instance, count, startIteration)
+  return {
+    durationMs: nsToMs(nowNs() - start),
+    nextIteration,
+  }
+}
+
+async function runIterations(instance: ScenarioInstance, count: number, startIteration: number): Promise<number> {
   if (count <= 0) {
-    return
+    return startIteration
   }
 
   const runIteration = instance.runIteration
   if (runIteration) {
     for (let iteration = 0; iteration < count; iteration += 1) {
-      runIteration()
+      consume(runIteration(startIteration + iteration))
     }
-    return
+    return startIteration + count
   }
 
   const runIterationAsync = instance.runIterationAsync
@@ -2911,8 +3391,10 @@ async function runIterations(instance: ScenarioInstance, count: number): Promise
   }
 
   for (let iteration = 0; iteration < count; iteration += 1) {
-    await runIterationAsync()
+    consume(await runIterationAsync(startIteration + iteration))
   }
+
+  return startIteration + count
 }
 
 function formatNumber(value: number): string {
@@ -2921,17 +3403,19 @@ function formatNumber(value: number): string {
 
 function printResults(results: BenchmarkResult[], args: BenchmarkArgs): void {
   console.log(
-    `keymap-benchmark iters=${args.iterations} warmup=${args.warmupIterations} rounds=${args.rounds} min_sample_ms=${args.minSampleMs} scenarios=${results.length}`,
+    `keymap-benchmark iters=${args.iterations} warmup=${args.warmupIterations} rounds=${args.rounds} min_sample_ms=${args.minSampleMs} scenarios=${results.length} checksum=${blackhole.checksum}`,
   )
   console.log("")
 
-  const header = ["scenario", "iters", "median ms", "best ms", "median ops/sec"]
+  const header = ["scenario", "kind", "batch", "median ns/op", "p95 ns/op", "median ops/sec", "rme %"]
   const rows = results.map((result) => [
     result.name,
-    String(result.measuredIterations),
-    formatNumber(result.medianDurationMs),
-    formatNumber(result.bestDurationMs),
+    result.kind,
+    String(result.batchIterations),
+    formatNumber(result.medianNsPerOperation),
+    formatNumber(result.p95NsPerOperation),
     formatNumber(result.medianOpsPerSecond),
+    formatNumber(result.rmePercent),
   ])
 
   const widths = header.map((title, index) => {
@@ -2955,7 +3439,7 @@ function printResults(results: BenchmarkResult[], args: BenchmarkArgs): void {
     console.log(`${result.name}: ${result.description}`)
     for (const sample of result.samples) {
       console.log(
-        `  round ${sample.round}: ${formatNumber(sample.durationMs)} ms (${formatNumber(sample.opsPerSecond)} ops/sec)`,
+        `  round ${sample.round}: ${sample.iterations} iters, ${formatNumber(sample.durationMs)} ms, ${formatNumber(sample.nsPerOperation)} ns/op (${formatNumber(sample.opsPerSecond)} ops/sec)`,
       )
     }
   }
@@ -2973,8 +3457,17 @@ function writeResults(results: BenchmarkResult[], args: BenchmarkArgs, jsonPath:
           iterations: args.iterations,
           warmupIterations: args.warmupIterations,
           rounds: args.rounds,
+          minSampleMs: args.minSampleMs,
           cwd: process.cwd(),
           args: process.argv.slice(2),
+          runtime: {
+            bun: typeof Bun !== "undefined" ? Bun.version : undefined,
+            node: process.versions.node,
+            v8: process.versions.v8,
+            platform: process.platform,
+            arch: process.arch,
+          },
+          blackholeChecksum: blackhole.checksum,
         },
         results,
       },
@@ -2987,6 +3480,13 @@ function writeResults(results: BenchmarkResult[], args: BenchmarkArgs, jsonPath:
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
   const results: BenchmarkResult[] = []
+
+  if (args.listScenarios) {
+    for (const scenario of scenarios) {
+      console.log(`${scenario.name}\t${scenario.kind ?? inferScenarioKind(scenario.name)}\t${scenario.description}`)
+    }
+    return
+  }
 
   const selectedScenarios = args.scenarioNames
     ? scenarios.filter((scenario) => args.scenarioNames!.has(scenario.name))
