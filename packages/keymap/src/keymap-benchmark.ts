@@ -14,10 +14,12 @@ import {
 import { type BindingParser, type Keymap, type ReactiveMatcher } from "./index.js"
 import { createDefaultOpenTuiKeymap as getKeymap } from "./opentui.js"
 
-const DEFAULT_ITERATIONS = 20_000
-const DEFAULT_WARMUP = 2_000
-const DEFAULT_ROUNDS = 5
-const DEFAULT_MIN_SAMPLE_MS = 250
+// Defaults favor stable baseline comparisons over quick local smoke runs.
+// Override these from the CLI when iterating on benchmark code.
+const DEFAULT_ITERATIONS = 1_000
+const DEFAULT_WARMUP = 1_000
+const DEFAULT_ROUNDS = 7
+const DEFAULT_MIN_SAMPLE_MS = 500
 const KEY_POOL = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 interface BenchmarkArgs {
@@ -561,24 +563,6 @@ function registerStateChangeBindingListeners(keymap: OpenTuiKeymap): () => void 
 function readActiveKeysRepeatedly(keymap: OpenTuiKeymap, count: number): void {
   for (let index = 0; index < count; index += 1) {
     consume(keymap.getActiveKeys())
-  }
-}
-
-function readActiveKeysWithMetadataRepeatedly(keymap: OpenTuiKeymap, count: number): void {
-  for (let index = 0; index < count; index += 1) {
-    consume(keymap.getActiveKeys({ includeMetadata: true }))
-  }
-}
-
-function readActiveKeysWithBindingsRepeatedly(keymap: OpenTuiKeymap, count: number): void {
-  for (let index = 0; index < count; index += 1) {
-    consume(keymap.getActiveKeys({ includeBindings: true }))
-  }
-}
-
-function readPendingSequencePartsRepeatedly(keymap: OpenTuiKeymap, count: number): void {
-  for (let index = 0; index < count; index += 1) {
-    consume(keymap.getPendingSequence())
   }
 }
 
@@ -1445,10 +1429,16 @@ const scenarios: BenchmarkScenario[] = [
   },
   {
     name: "get_command_bindings_registered_subset",
-    description: "Repeated registered command-binding grouping for a requested command set",
+    description: "Repeated registered command-binding grouping for varied requested command sets",
     async setup() {
       const resources = await createScenarioResources()
-      const commands = Array.from({ length: 64 }, (_, index) => `command-${index}-0`)
+      const commandSets = Array.from({ length: 8 }, (_, setIndex) =>
+        Array.from({ length: 64 }, (_, index) => {
+          const layerIndex = (index + setIndex * 7) % 64
+          const commandIndex = ((index + setIndex) % 4) * 2
+          return `command-${layerIndex}-${commandIndex}`
+        }),
+      )
 
       for (let layerIndex = 0; layerIndex < 64; layerIndex += 1) {
         resources.keymap.registerLayer({
@@ -1468,7 +1458,8 @@ const scenarios: BenchmarkScenario[] = [
 
       return {
         resources,
-        runIteration() {
+        runIteration(iteration) {
+          const commands = commandSets[iteration % commandSets.length] ?? commandSets[0]!
           return resources.keymap.getCommandBindings({ visibility: "registered", commands })
         },
         cleanup() {
@@ -1935,79 +1926,6 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
-    name: "active_keys_focus_tree_repeat_reads_5x",
-    description: "Repeated getActiveKeys five times against the same focus tree state",
-    async setup() {
-      const resources = await createScenarioResources()
-      const focusChain = createFocusTree(resources, 6)
-
-      for (let index = 0; index < focusChain.length; index += 1) {
-        const target = focusChain[index]
-        if (!target) {
-          continue
-        }
-
-        for (let layerIndex = 0; layerIndex < 6; layerIndex += 1) {
-          registerTargetLayer(resources.keymap, target, index * 10 + layerIndex)
-        }
-      }
-
-      for (let index = 0; index < 300; index += 1) {
-        const sibling = createFocusableBox(resources.renderer, `repeat-sibling-${index}`)
-        resources.renderer.root.add(sibling)
-        registerTargetLayer(resources.keymap, sibling, index + 3000)
-      }
-
-      registerGlobalLayers(resources.keymap, 150)
-
-      return {
-        resources,
-        runIteration() {
-          readActiveKeysRepeatedly(resources.keymap, 5)
-        },
-        cleanup() {
-          resources.renderer.destroy()
-        },
-      }
-    },
-  },
-  {
-    name: "active_keys_focus_tree_with_bindings_repeat_reads_5x",
-    description: "Repeated getActiveKeys with bindings five times against metadata-rich focus tree state",
-    async setup() {
-      const resources = await createScenarioResources()
-      setupMetadataFocusTree(resources)
-
-      return {
-        resources,
-        runIteration() {
-          readActiveKeysWithBindingsRepeatedly(resources.keymap, 5)
-        },
-        cleanup() {
-          resources.renderer.destroy()
-        },
-      }
-    },
-  },
-  {
-    name: "active_keys_focus_tree_with_metadata_repeat_reads_5x",
-    description: "Repeated getActiveKeys with metadata five times against metadata-rich focus tree state",
-    async setup() {
-      const resources = await createScenarioResources()
-      setupMetadataFocusTree(resources)
-
-      return {
-        resources,
-        runIteration() {
-          readActiveKeysWithMetadataRepeatedly(resources.keymap, 5)
-        },
-        cleanup() {
-          resources.renderer.destroy()
-        },
-      }
-    },
-  },
-  {
     name: "dispatch_focus_tree",
     description: "Repeated key dispatch with deep focus chain and many unrelated target layers",
     async setup() {
@@ -2399,47 +2317,6 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
-    name: "pending_sequence_parts_repeat_reads_5x",
-    description: "Repeated pending sequence part reads against the same pending state",
-    async setup() {
-      const resources = await createScenarioResources()
-      const focusChain = createFocusTree(resources, 5)
-
-      for (let index = 0; index < focusChain.length; index += 1) {
-        const target = focusChain[index]
-        if (!target) {
-          continue
-        }
-
-        for (let layerIndex = 0; layerIndex < 5; layerIndex += 1) {
-          registerTargetLayer(resources.keymap, target, index * 10 + layerIndex, createKey(layerIndex + 1))
-        }
-      }
-
-      registerGlobalLayers(resources.keymap, 120)
-      resources.keymap.registerLayer({
-        bindings: [
-          { key: "ga", cmd: "noop" },
-          { key: "gb", cmd: "noop" },
-          { key: "gc", cmd: "noop" },
-          { key: "gd", cmd: "noop" },
-        ],
-      })
-
-      resources.mockInput.pressKey("g")
-
-      return {
-        resources,
-        runIteration() {
-          readPendingSequencePartsRepeatedly(resources.keymap, 5)
-        },
-        cleanup() {
-          resources.renderer.destroy()
-        },
-      }
-    },
-  },
-  {
     name: "active_keys_pending_sequence_pattern",
     description: "Repeated getActiveKeys while a dynamic sequence pattern is pending",
     async setup() {
@@ -2474,50 +2351,6 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           return resources.keymap.getActiveKeys()
-        },
-        cleanup() {
-          resources.renderer.destroy()
-        },
-      }
-    },
-  },
-  {
-    name: "pending_sequence_pattern_parts_repeat_reads_5x",
-    description: "Repeated pending sequence part reads against captured pattern input",
-    async setup() {
-      const resources = await createScenarioResources()
-      const focusChain = createFocusTree(resources, 5)
-      registerDigitPattern(resources.keymap)
-
-      for (let index = 0; index < focusChain.length; index += 1) {
-        const target = focusChain[index]
-        if (!target) {
-          continue
-        }
-
-        for (let layerIndex = 0; layerIndex < 5; layerIndex += 1) {
-          registerTargetLayer(resources.keymap, target, index * 10 + layerIndex, createKey(layerIndex + 1))
-        }
-      }
-
-      registerGlobalLayers(resources.keymap, 120)
-      resources.keymap.registerLayer({
-        bindings: [
-          { key: "{count}a", cmd: "noop" },
-          { key: "{count}b", cmd: "noop" },
-          { key: "{count}c", cmd: "noop" },
-          { key: "{count}d", cmd: "noop" },
-        ],
-      })
-
-      resources.mockInput.pressKey("1")
-      resources.mockInput.pressKey("2")
-      resources.mockInput.pressKey("3")
-
-      return {
-        resources,
-        runIteration() {
-          readPendingSequencePartsRepeatedly(resources.keymap, 5)
         },
         cleanup() {
           resources.renderer.destroy()
