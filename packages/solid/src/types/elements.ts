@@ -87,7 +87,7 @@ export type GetNonStyledProperties<TConstructor> =
             : TConstructor extends RenderableConstructor<MarkdownRenderable>
               ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode"
               : TConstructor extends RenderableConstructor<QRCodeRenderable>
-                ? NonStyledProps | "content" | "errorCorrectionLevel" | "quietZone" | "scale"
+                ? NonStyledProps | "content" | "errorCorrectionLevel" | "quietZone" | "scale" | "fit"
                 : NonStyledProps
 
 // ============================================================================

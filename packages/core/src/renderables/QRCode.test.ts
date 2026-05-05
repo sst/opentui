@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { BoxRenderable } from "./Box.js"
 import {
   encodeQRCode,
   getQRCodeAlignmentPatternPositions,
@@ -12,6 +13,11 @@ import { QRCodeRenderable } from "./QRCode.js"
 let testRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureCharFrame: () => string
+let captureSpans: ReturnType<typeof createTestRenderer> extends Promise<infer T>
+  ? T extends { captureSpans: infer TCaptureSpans }
+    ? TCaptureSpans
+    : never
+  : never
 
 describe("QR code ISO-derived vectors", () => {
   it("matches published alignment pattern positions", () => {
@@ -84,6 +90,7 @@ describe("QRCodeRenderable", () => {
       renderer: testRenderer,
       renderOnce,
       captureCharFrame,
+      captureSpans,
     } = await createTestRenderer({
       width: 80,
       height: 40,
@@ -102,7 +109,7 @@ describe("QRCodeRenderable", () => {
     testRenderer.root.add(qr)
     await renderOnce()
 
-    expect(qr.width).toBe(29)
+    expect(qr.width).toBe(80)
     expect(qr.height).toBe(15)
   })
 
@@ -116,7 +123,7 @@ describe("QRCodeRenderable", () => {
     testRenderer.root.add(qr)
     await renderOnce()
 
-    expect(qr.width).toBe(25)
+    expect(qr.width).toBe(80)
     expect(qr.height).toBe(13)
 
     const initialFrame = captureCharFrame()
@@ -125,9 +132,52 @@ describe("QRCodeRenderable", () => {
     qr.scale = 2
     await renderOnce()
 
-    expect(qr.width).toBe(50)
+    expect(qr.width).toBe(80)
     expect(qr.height).toBe(25)
     expect(captureCharFrame()).not.toBe(initialFrame)
+  })
+
+  it("shrinks to fit a smaller parent height", async () => {
+    const container = new BoxRenderable(testRenderer, {
+      width: 60,
+      height: 20,
+      flexDirection: "column",
+    })
+    const qr = new QRCodeRenderable(testRenderer, {
+      content: "HELLO WORLD",
+      scale: 2,
+    })
+
+    container.add(qr)
+    testRenderer.root.add(container)
+    await renderOnce()
+
+    expect(qr.width).toBe(60)
+    expect(qr.height).toBe(15)
+  })
+
+  it("keeps the parent background outside the centered QR square when stretched", async () => {
+    const container = new BoxRenderable(testRenderer, {
+      width: 60,
+      height: 20,
+      backgroundColor: "#112233",
+      flexDirection: "column",
+    })
+    const qr = new QRCodeRenderable(testRenderer, {
+      content: "HELLO WORLD",
+      scale: 2,
+      backgroundColor: "#ffffff",
+    })
+
+    container.add(qr)
+    testRenderer.root.add(container)
+    await renderOnce()
+
+    const qrRow = captureSpans().lines[2]?.spans ?? []
+    expect(qrRow.length).toBeGreaterThan(1)
+    expect(qrRow[0]?.bg.equals(qr.backgroundColor)).toBe(false)
+    expect(qrRow.some((span) => span.bg.equals(qr.backgroundColor))).toBe(true)
+    expect(qrRow[qrRow.length - 1]?.bg.equals(qr.backgroundColor)).toBe(false)
   })
 })
 

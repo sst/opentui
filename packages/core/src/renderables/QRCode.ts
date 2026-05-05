@@ -1,3 +1,4 @@
+import { MeasureMode } from "yoga-layout"
 import type { OptimizedBuffer } from "../buffer.js"
 import { parseColor, RGBA, type ColorInput } from "../lib/RGBA.js"
 import { encodeQRCode, type EncodedQRCode, type QRErrorCorrectionLevel } from "../lib/qrcode.js"
@@ -7,11 +8,14 @@ import type { RenderContext } from "../types.js"
 const DEFAULT_FOREGROUND = RGBA.fromHex("#000000")
 const DEFAULT_BACKGROUND = RGBA.fromHex("#ffffff")
 
-export interface QRCodeOptions extends Omit<RenderableOptions<QRCodeRenderable>, "width" | "height"> {
+export type QRCodeFitMode = "contain" | "none"
+
+export interface QRCodeOptions extends RenderableOptions<QRCodeRenderable> {
   content?: string
   errorCorrectionLevel?: QRErrorCorrectionLevel
   quietZone?: number
   scale?: number
+  fit?: QRCodeFitMode
   foregroundColor?: ColorInput
   backgroundColor?: ColorInput
 }
@@ -22,6 +26,7 @@ export class QRCodeRenderable extends Renderable {
     errorCorrectionLevel: "medium" as QRErrorCorrectionLevel,
     quietZone: 4,
     scale: 1,
+    fit: "contain" as QRCodeFitMode,
     foregroundColor: DEFAULT_FOREGROUND,
     backgroundColor: DEFAULT_BACKGROUND,
   } satisfies Partial<QRCodeOptions>
@@ -30,6 +35,7 @@ export class QRCodeRenderable extends Renderable {
   private _errorCorrectionLevel: QRErrorCorrectionLevel
   private _quietZone: number
   private _scale: number
+  private _fit: QRCodeFitMode
   private _foregroundColor: RGBA
   private _backgroundColor: RGBA
   private encoded: EncodedQRCode
@@ -40,23 +46,23 @@ export class QRCodeRenderable extends Renderable {
     const errorCorrectionLevel = options.errorCorrectionLevel ?? defaults.errorCorrectionLevel
     const quietZone = normalizeQuietZone(options.quietZone ?? defaults.quietZone!)
     const scale = normalizeScale(options.scale ?? defaults.scale!)
+    const fit = options.fit ?? defaults.fit
     const encoded = encodeQRCode(content, errorCorrectionLevel)
-    const dimensions = getIntrinsicDimensions(encoded.size, quietZone, scale)
 
     super(ctx, {
-      flexShrink: 0,
       ...options,
-      width: dimensions.width,
-      height: dimensions.height,
     })
 
     this._content = content
     this._errorCorrectionLevel = errorCorrectionLevel
     this._quietZone = quietZone
     this._scale = scale
+    this._fit = fit
     this._foregroundColor = options.foregroundColor ? parseColor(options.foregroundColor) : defaults.foregroundColor
     this._backgroundColor = options.backgroundColor ? parseColor(options.backgroundColor) : defaults.backgroundColor
     this.encoded = encoded
+
+    this.setupMeasureFunc()
   }
 
   public get content(): string {
@@ -110,7 +116,20 @@ export class QRCodeRenderable extends Renderable {
     }
 
     this._scale = nextScale
-    this.updateIntrinsicSize()
+    this.remeasure()
+  }
+
+  public get fit(): QRCodeFitMode {
+    return this._fit
+  }
+
+  public set fit(value: QRCodeFitMode) {
+    if (value === this._fit) {
+      return
+    }
+
+    this._fit = value
+    this.remeasure()
   }
 
   public get foregroundColor(): RGBA {
@@ -144,21 +163,30 @@ export class QRCodeRenderable extends Renderable {
       return
     }
 
-    buffer.fillRect(this.x, this.y, this.width, this.height, this._backgroundColor)
-
     const totalModules = this.encoded.size + this._quietZone * 2
-    const renderWidth = totalModules * this._scale
-    const renderHeightPixels = totalModules * this._scale
+    const effectiveScale = this.resolveRenderScale(this.width, this.height)
+
+    if (effectiveScale <= 0) {
+      return
+    }
+
+    const renderWidth = totalModules * effectiveScale
+    const renderHeightPixels = totalModules * effectiveScale
     const xOffset = Math.max(0, Math.floor((this.width - renderWidth) / 2))
     const yOffsetPixels = Math.max(0, Math.floor((this.height * 2 - renderHeightPixels) / 2))
 
     for (let cellY = 0; cellY < this.height; cellY++) {
       const topPixel = cellY * 2 - yOffsetPixels
       const bottomPixel = topPixel + 1
+      const intersectsRenderY = bottomPixel >= 0 && topPixel < renderHeightPixels
+
+      if (intersectsRenderY) {
+        buffer.fillRect(this.x + xOffset, this.y + cellY, renderWidth, 1, this._backgroundColor)
+      }
 
       for (let cellX = 0; cellX < renderWidth; cellX++) {
-        const top = this.isDarkAtScaledPixel(cellX, topPixel)
-        const bottom = this.isDarkAtScaledPixel(cellX, bottomPixel)
+        const top = this.isDarkAtScaledPixel(cellX, topPixel, effectiveScale)
+        const bottom = this.isDarkAtScaledPixel(cellX, bottomPixel, effectiveScale)
 
         if (!top && !bottom) {
           continue
@@ -177,23 +205,72 @@ export class QRCodeRenderable extends Renderable {
 
   private rebuildMatrix(): void {
     this.encoded = encodeQRCode(this._content, this._errorCorrectionLevel)
-    this.updateIntrinsicSize()
+    this.remeasure()
   }
 
-  private updateIntrinsicSize(): void {
-    const dimensions = getIntrinsicDimensions(this.encoded.size, this._quietZone, this._scale)
-    this.width = dimensions.width
-    this.height = dimensions.height
+  private remeasure(): void {
+    this.yogaNode.markDirty()
     this.requestRender()
   }
 
-  private isDarkAtScaledPixel(renderPixelX: number, renderPixelY: number): boolean {
+  private setupMeasureFunc(): void {
+    this.yogaNode.setMeasureFunc((width, widthMode, height, heightMode) => {
+      const scale = this.resolveMeasuredScale(width, widthMode, height, heightMode)
+      if (scale > 0) {
+        return getDimensionsForScale(this.encoded.size, this._quietZone, scale)
+      }
+
+      const minimumDimensions = getDimensionsForScale(this.encoded.size, this._quietZone, 1)
+      return {
+        width:
+          widthMode === MeasureMode.Undefined || Number.isNaN(width)
+            ? minimumDimensions.width
+            : Math.min(Math.max(0, Math.floor(width)), minimumDimensions.width),
+        height:
+          heightMode === MeasureMode.Undefined || Number.isNaN(height)
+            ? minimumDimensions.height
+            : Math.min(Math.max(0, Math.floor(height)), minimumDimensions.height),
+      }
+    })
+  }
+
+  private resolveMeasuredScale(width: number, widthMode: MeasureMode, height: number, heightMode: MeasureMode): number {
+    const availableWidth = widthMode === MeasureMode.Undefined || Number.isNaN(width) ? undefined : Math.floor(width)
+    const availableHeight =
+      heightMode === MeasureMode.Undefined || Number.isNaN(height) ? undefined : Math.floor(height)
+    return this.resolveScaleForBounds(availableWidth, availableHeight)
+  }
+
+  private resolveRenderScale(width: number, height: number): number {
+    return this.resolveScaleForBounds(width, height)
+  }
+
+  private resolveScaleForBounds(availableWidth?: number, availableHeight?: number): number {
+    if (this._fit === "none") {
+      return this._scale
+    }
+
+    const totalModules = this.encoded.size + this._quietZone * 2
+    let scale = this._scale
+
+    if (availableWidth !== undefined) {
+      scale = Math.min(scale, Math.floor(availableWidth / totalModules))
+    }
+
+    if (availableHeight !== undefined) {
+      scale = Math.min(scale, Math.floor((availableHeight * 2) / totalModules))
+    }
+
+    return Math.max(0, scale)
+  }
+
+  private isDarkAtScaledPixel(renderPixelX: number, renderPixelY: number, scale: number): boolean {
     if (renderPixelX < 0 || renderPixelY < 0) {
       return false
     }
 
-    const moduleX = Math.floor(renderPixelX / this._scale) - this._quietZone
-    const moduleY = Math.floor(renderPixelY / this._scale) - this._quietZone
+    const moduleX = Math.floor(renderPixelX / scale) - this._quietZone
+    const moduleY = Math.floor(renderPixelY / scale) - this._quietZone
 
     if (moduleX < 0 || moduleY < 0 || moduleX >= this.encoded.size || moduleY >= this.encoded.size) {
       return false
@@ -203,7 +280,7 @@ export class QRCodeRenderable extends Renderable {
   }
 }
 
-function getIntrinsicDimensions(
+function getDimensionsForScale(
   moduleCount: number,
   quietZone: number,
   scale: number,
