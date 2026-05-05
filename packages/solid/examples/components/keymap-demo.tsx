@@ -799,6 +799,11 @@ function KeymapDemoContent() {
     return formatKeySequence(pendingSequence(), KEY_FORMAT_OPTIONS) || "<root>"
   })
 
+  const pendingSequenceLabel = createMemo(() => {
+    const pending = pendingSequence()
+    return pending.length === 0 ? "None" : formatKeySequence(pending, KEY_FORMAT_OPTIONS)
+  })
+
   useBindings<InputRenderable>(() => ({
     target: commandPromptTarget,
     enabled: () => commandPromptVisible(),
@@ -1025,6 +1030,11 @@ function KeymapDemoContent() {
                 style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}
               >{`armed (${LEADER_TRIGGER_LABEL})`}</span>
             </Show>
+          </text>
+
+          <text id="keymap-demo-status-pending" fg={palette.text} height={1}>
+            <span style={{ fg: palette.textDim }}>Pending: </span>
+            <span style={{ fg: palette.leader }}>{pendingSequenceLabel()}</span>
           </text>
 
           <text id="keymap-demo-status-last" fg={palette.text} height={1}>

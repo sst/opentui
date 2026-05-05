@@ -874,6 +874,10 @@ const AppContent = () => {
     return formatKeySequence(pendingSequence, KEY_FORMAT_OPTIONS) || "<root>"
   }, [pendingSequence])
 
+  const pendingSequenceLabel = useMemo(() => {
+    return pendingSequence.length === 0 ? "None" : formatKeySequence(pendingSequence, KEY_FORMAT_OPTIONS)
+  }, [pendingSequence])
+
   const commandPromptUsage = useMemo(() => {
     if (!selectedCommandPromptSuggestion) {
       return "No matching ex commands"
@@ -1110,6 +1114,11 @@ const AppContent = () => {
             ) : (
               <span style={{ fg: palette.textMuted }}>idle</span>
             )}
+          </text>
+
+          <text id="keymap-demo-status-pending" fg={palette.text} height={1}>
+            <span style={{ fg: palette.textDim }}>Pending: </span>
+            <span style={{ fg: palette.leader }}>{pendingSequenceLabel}</span>
           </text>
 
           <text id="keymap-demo-status-last" fg={palette.text} height={1}>

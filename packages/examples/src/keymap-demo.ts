@@ -111,6 +111,7 @@ let commandPromptSuggestionsText: TextRenderable | null = null
 let statusFocusedText: TextRenderable | null = null
 let statusInfoText: TextRenderable | null = null
 let statusLeaderText: TextRenderable | null = null
+let statusPendingText: TextRenderable | null = null
 let statusLastText: TextRenderable | null = null
 let helpBox: BoxRenderable | null = null
 let helpText: TextRenderable | null = null
@@ -699,6 +700,8 @@ function renderStatus(renderer: CliRenderer): void {
   const focusedLabel = getFocusedLabel(renderer)
   const focusedColor = getFocusedColor(renderer)
   const focusedEditor = renderer.currentFocusedEditor
+  const pendingSequence = keymap?.getPendingSequence() ?? []
+  const pendingLabel = pendingSequence.length === 0 ? "None" : formatKeySequence(pendingSequence, KEY_FORMAT_OPTIONS)
 
   if (statusFocusedText) {
     statusFocusedText.content = joinLines([
@@ -741,6 +744,10 @@ function renderStatus(renderer: CliRenderer): void {
         leaderArmed ? bold(fg(P.leader)(`armed (${LEADER_TRIGGER_LABEL})`)) : fg(P.textMuted)("idle"),
       ]),
     ])
+  }
+
+  if (statusPendingText) {
+    statusPendingText.content = joinLines([styledLine([fg(P.textDim)("Pending: "), fg(P.leader)(pendingLabel)])])
   }
 
   if (statusLastText) {
@@ -1236,6 +1243,14 @@ export function run(renderer: CliRenderer): void {
   })
   detailsColumn.add(statusLeaderText)
 
+  statusPendingText = new TextRenderable(renderer, {
+    id: "keymap-demo-status-pending",
+    content: "",
+    fg: P.text,
+    height: 1,
+  })
+  detailsColumn.add(statusPendingText)
+
   statusLastText = new TextRenderable(renderer, {
     id: "keymap-demo-status-last",
     content: "",
@@ -1436,6 +1451,7 @@ export function destroy(_renderer: CliRenderer): void {
   statusFocusedText = null
   statusInfoText = null
   statusLeaderText = null
+  statusPendingText = null
   statusLastText = null
   helpBox = null
   helpText = null
