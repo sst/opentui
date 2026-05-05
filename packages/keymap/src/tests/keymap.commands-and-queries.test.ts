@@ -635,10 +635,9 @@ describe("keymap: commands and queries", () => {
       ],
     })
 
-    expect(keymap.getCommandEntries({ visibility: "registered", limit: 2 }).map((entry) => entry.command.name)).toEqual([
-      "alpha",
-      "beta",
-    ])
+    expect(keymap.getCommandEntries({ visibility: "registered", limit: 2 }).map((entry) => entry.command.name)).toEqual(
+      ["alpha", "beta"],
+    )
     expect(keymap.getCommandEntries({ visibility: "registered", limit: 0 })).toEqual([])
   })
 

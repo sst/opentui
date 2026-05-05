@@ -138,9 +138,7 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
   let registeredBindingsCacheCommands: readonly string[] | undefined
   let registeredBindingsCache: ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]> | undefined
   let registeredBindingsByCommandVersion = -1
-  let registeredBindingsByCommand:
-    | ReadonlyMap<string, readonly BindingState<TTarget, TEvent>[]>
-    | undefined
+  let registeredBindingsByCommand: ReadonlyMap<string, readonly BindingState<TTarget, TEvent>[]> | undefined
   let registeredResolvedCacheVersion = -1
   let registeredResolvedCache = new Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[] | null>()
 
