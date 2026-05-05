@@ -19,11 +19,7 @@ import type {
   RuntimeMatcher,
 } from "../types.js"
 import { normalizeCommandName } from "./primitives/command-normalization.js"
-import {
-  getActiveLayersForFocused,
-  getFocusedTargetIfAvailable,
-  isLayerActiveForFocused,
-} from "./primitives/active-layers.js"
+import { getFocusedTargetIfAvailable, isLayerActiveForFocused } from "./primitives/active-layers.js"
 import { getActiveCommandView as createActiveCommandView, getRegisteredCommandView } from "./runtime-view.js"
 import type { ConditionService } from "./conditions.js"
 import { createFieldCompilerContext } from "./primitives/field-invariants.js"
@@ -34,6 +30,7 @@ import { getErrorMessage } from "./values.js"
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
 
 const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
+const commandSearchCache = new WeakMap<CommandState<any, any>, Map<string, string | undefined>>()
 
 interface NormalizeCommandsOptions<TTarget extends object, TEvent extends KeymapEvent> {
   commands: readonly Command<TTarget, TEvent>[]
@@ -140,6 +137,10 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
   let registeredBindingsCacheVersion = -1
   let registeredBindingsCacheCommands: readonly string[] | undefined
   let registeredBindingsCache: ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]> | undefined
+  let registeredBindingsByCommandVersion = -1
+  let registeredBindingsByCommand:
+    | ReadonlyMap<string, readonly BindingState<TTarget, TEvent>[]>
+    | undefined
   let registeredResolvedCacheVersion = -1
   let registeredResolvedCache = new Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[] | null>()
 
@@ -542,6 +543,32 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
     return getCommandView().entries
   }
 
+  const getRegisteredBindingsByCommand = (): ReadonlyMap<string, readonly BindingState<TTarget, TEvent>[]> => {
+    if (registeredBindingsByCommandVersion === state.derivedVersion && registeredBindingsByCommand) {
+      return registeredBindingsByCommand
+    }
+
+    const bindingsByCommand = new Map<string, BindingState<TTarget, TEvent>[]>()
+    for (const layer of state.layers) {
+      for (const binding of layer.bindings) {
+        if (typeof binding.command !== "string") {
+          continue
+        }
+
+        const bindings = bindingsByCommand.get(binding.command)
+        if (bindings) {
+          bindings.push(binding)
+        } else {
+          bindingsByCommand.set(binding.command, [binding])
+        }
+      }
+    }
+
+    registeredBindingsByCommandVersion = state.derivedVersion
+    registeredBindingsByCommand = bindingsByCommand
+    return bindingsByCommand
+  }
+
   const getCommandQueryContext = (
     query?: CommandQuery<TTarget, TEvent>,
   ): {
@@ -620,6 +647,17 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
       activeView?: ActiveCommandView<TTarget, TEvent>
     },
   ): void => {
+    if (context.visibility === "registered") {
+      const registeredBindings = getRegisteredBindingsByCommand()
+      for (const [command, bindings] of bindingsByCommand) {
+        const commandAttrs = getCommandView().chainsByName.get(command)?.[0]?.commandState.attrs
+        for (const binding of registeredBindings.get(command) ?? []) {
+          bindings.push(createActiveBinding(binding, commandAttrs))
+        }
+      }
+      return
+    }
+
     visitCommandQueryBindings(context, (binding) => {
       collectBindingForCommandBindings(bindingsByCommand, binding, context)
     })
@@ -645,7 +683,7 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
       return
     }
 
-    for (const layer of getActiveLayersForFocused(state.sortedLayers, host, context.focused)) {
+    for (const layer of activeView.layers) {
       if (layer.bindings.length === 0 || !conditions.matchesConditions(layer)) {
         continue
       }
@@ -1012,6 +1050,11 @@ function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapE
   options: QueryLayerCommandEntriesOptions<TTarget, TEvent>,
 ): LayerCommandEntry<TTarget, TEvent>[] {
   const namespace = options.query?.namespace
+  const limit = normalizeQueryLimit(options.query?.limit)
+  if (limit === 0) {
+    return []
+  }
+
   const normalizedSearch = options.query?.search?.trim().toLowerCase() ?? ""
   let searchKeys = DEFAULT_COMMAND_SEARCH_FIELDS as readonly string[]
   if (options.query?.searchIn && options.query.searchIn.length > 0) {
@@ -1088,9 +1131,25 @@ function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapE
     }
 
     results.push(entry)
+    if (limit !== undefined && results.length >= limit) {
+      break
+    }
   }
 
   return results
+}
+
+function normalizeQueryLimit(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  const limit = Math.floor(Number(value))
+  if (!Number.isFinite(limit) || limit <= 0) {
+    return 0
+  }
+
+  return limit
 }
 
 function commandMatchesSearch<TTarget extends object, TEvent extends KeymapEvent>(
@@ -1150,19 +1209,61 @@ function commandKeyMatchesSearch<TTarget extends object, TEvent extends KeymapEv
   key: string,
   search: string,
 ): boolean {
-  const command = commandState.command
+  return getCommandSearchText(commandState, key)?.includes(search) === true
+}
+
+function getCommandSearchText<TTarget extends object, TEvent extends KeymapEvent>(
+  commandState: CommandState<TTarget, TEvent>,
+  key: string,
+): string | undefined {
+  let cache = commandSearchCache.get(commandState)
+  if (!cache) {
+    cache = new Map<string, string | undefined>()
+    commandSearchCache.set(commandState, cache)
+  }
+
+  if (cache.has(key)) {
+    return cache.get(key)
+  }
+
   const fields = commandState.fields
   const attrs = commandState.attrs
-
-  if (key === "name" && valueMatchesSearch(command.name, search)) {
-    return true
+  let value: unknown
+  if (key === "name") {
+    value = commandState.command.name
+  } else if (Object.prototype.hasOwnProperty.call(fields, key)) {
+    value = fields[key]
+  } else if (attrs && Object.prototype.hasOwnProperty.call(attrs, key)) {
+    value = attrs[key]
   }
 
-  if (Object.prototype.hasOwnProperty.call(fields, key) && valueMatchesSearch(fields[key], search)) {
-    return true
+  const text = toSearchText(value)
+  cache.set(key, text)
+  return text
+}
+
+function toSearchText(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    const parts: string[] = []
+    for (const entry of value) {
+      const text = toSearchText(entry)
+      if (text !== undefined) {
+        parts.push(text)
+      }
+    }
+
+    return parts.length > 0 ? parts.join("\0") : undefined
   }
 
-  return !!attrs && Object.prototype.hasOwnProperty.call(attrs, key) && valueMatchesSearch(attrs[key], search)
+  if (typeof value === "string") {
+    return value.toLowerCase()
+  }
+
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value).toLowerCase()
+  }
+
+  return undefined
 }
 
 function runCommandQueryPredicate<TTarget extends object, TEvent extends KeymapEvent>(
@@ -1268,20 +1369,4 @@ function valueMatchesExact(value: unknown, expected: unknown): boolean {
   }
 
   return Object.is(value, expected)
-}
-
-function valueMatchesSearch(value: unknown, search: string): boolean {
-  if (Array.isArray(value)) {
-    return value.some((entry) => valueMatchesSearch(entry, search))
-  }
-
-  if (typeof value === "string") {
-    return value.toLowerCase().includes(search)
-  }
-
-  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-    return String(value).toLowerCase().includes(search)
-  }
-
-  return false
 }

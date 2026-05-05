@@ -57,7 +57,7 @@ function collectActiveCommands<TTarget extends object, TEvent extends KeymapEven
     }
   }
 
-  return { entries, reachable, reachableByName, chainsByName }
+  return { layers, entries, reachable, reachableByName, chainsByName }
 }
 
 export function getActiveCommandView<TTarget extends object, TEvent extends KeymapEvent>(

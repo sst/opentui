@@ -46,6 +46,7 @@ export interface ResolvedCommandEntry<TTarget extends object, TEvent extends Key
 }
 
 export interface ActiveCommandView<TTarget extends object, TEvent extends KeymapEvent> {
+  layers: readonly RegisteredLayer<TTarget, TEvent>[]
   entries: readonly LayerCommandEntry<TTarget, TEvent>[]
   reachable: readonly LayerCommandEntry<TTarget, TEvent>[]
   reachableByName: ReadonlyMap<string, LayerCommandEntry<TTarget, TEvent>>

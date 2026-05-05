@@ -180,6 +180,7 @@ export interface CommandQuery<TTarget extends object = object, TEvent extends Ke
   search?: string
   searchIn?: readonly string[]
   filter?: CommandFilter<TTarget, TEvent>
+  limit?: number
 }
 
 export interface CommandBindingsQuery<TTarget extends object = object> {

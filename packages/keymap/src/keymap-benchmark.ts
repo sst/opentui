@@ -3052,6 +3052,7 @@ const scenarios: BenchmarkScenario[] = [
             searchIn: ["name", "title", "usage", "desc"],
             namespace,
             filter: iteration % 2 === 0 ? { tags: "file" } : undefined,
+            limit: 50,
           })
 
           consume(entries)

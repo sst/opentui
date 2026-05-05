@@ -619,6 +619,29 @@ describe("keymap: commands and queries", () => {
     ])
   })
 
+  test("getCommandEntries supports result limits", () => {
+    const keymap = getParserKeymap()
+
+    keymap.registerLayer({
+      commands: [
+        { name: "alpha", run() {} },
+        { name: "beta", run() {} },
+        { name: "gamma", run() {} },
+      ],
+      bindings: [
+        { key: "a", cmd: "alpha" },
+        { key: "b", cmd: "beta" },
+        { key: "g", cmd: "gamma" },
+      ],
+    })
+
+    expect(keymap.getCommandEntries({ visibility: "registered", limit: 2 }).map((entry) => entry.command.name)).toEqual([
+      "alpha",
+      "beta",
+    ])
+    expect(keymap.getCommandEntries({ visibility: "registered", limit: 0 })).toEqual([])
+  })
+
   test("getCommands treats thrown filter predicates as errors and returns no matches", () => {
     const keymap = getKeymap(renderer)
     const { takeErrors } = captureDiagnostics(keymap)
