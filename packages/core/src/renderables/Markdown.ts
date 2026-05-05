@@ -10,6 +10,7 @@ import { CodeRenderable, type OnChunksCallback } from "./Code.js"
 import {
   TextTableRenderable,
   type TextTableCellContent,
+  type TextTableColumnAlignment,
   type TextTableColumnFitter,
   type TextTableColumnWidthMode,
   type TextTableContent,
@@ -124,6 +125,7 @@ export interface RenderNodeContext {
 interface TableContentCache {
   content: TextTableContent
   cellKeys: Uint32Array[]
+  columnAlignments: TextTableColumnAlignment[]
 }
 
 interface ResolvedTableRenderableOptions {
@@ -663,6 +665,32 @@ export class MarkdownRenderable extends Renderable {
     return table.rows
   }
 
+  private resolveTableColumnAlignment(value: Tokens.TableCell["align"] | undefined): TextTableColumnAlignment {
+    if (value === "center" || value === "right") {
+      return value
+    }
+
+    return "left"
+  }
+
+  private getTableColumnAlignments(table: Tokens.Table): TextTableColumnAlignment[] {
+    const alignments = Array.isArray(table.align) ? table.align : []
+    return table.header.map((cell, colIndex) => this.resolveTableColumnAlignment(alignments[colIndex] ?? cell.align))
+  }
+
+  private tableColumnAlignmentsEqual(
+    left: readonly TextTableColumnAlignment[],
+    right: readonly TextTableColumnAlignment[],
+  ): boolean {
+    if (left.length !== right.length) return false
+
+    for (let idx = 0; idx < left.length; idx += 1) {
+      if (left[idx] !== right[idx]) return false
+    }
+
+    return true
+  }
+
   private hashString(value: string, seed: number): number {
     let hash = seed >>> 0
     for (let i = 0; i < value.length; i += 1) {
@@ -759,9 +787,11 @@ export class MarkdownRenderable extends Renderable {
 
     const content: TextTableContent = []
     const cellKeys: Uint32Array[] = []
+    const columnAlignments = this.getTableColumnAlignments(table)
     const totalRows = rowsToRender.length + 1
 
-    let changed = forceRegenerate || !previous
+    let changed =
+      forceRegenerate || !previous || !this.tableColumnAlignmentsEqual(previous.columnAlignments, columnAlignments)
 
     for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
       const rowContent: TextTableCellContent[] = []
@@ -808,6 +838,7 @@ export class MarkdownRenderable extends Renderable {
       cache: {
         content,
         cellKeys,
+        columnAlignments,
       },
       changed,
     }
@@ -888,11 +919,13 @@ export class MarkdownRenderable extends Renderable {
     content: TextTableContent,
     id: string,
     marginBottom: number = 0,
+    columnAlignments: readonly TextTableColumnAlignment[] = [],
   ): TextTableRenderable {
     const options = this.resolveTableRenderableOptions()
     return new TextTableRenderable(this.ctx, {
       id,
       content,
+      columnAlignments,
       width: "100%",
       marginBottom,
       columnWidthMode: options.columnWidthMode,
@@ -925,7 +958,7 @@ export class MarkdownRenderable extends Renderable {
     }
 
     return {
-      renderable: this.createTextTableRenderable(cache.content, id, marginBottom),
+      renderable: this.createTextTableRenderable(cache.content, id, marginBottom, cache.columnAlignments),
       tableContentCache: cache,
     }
   }
@@ -1082,6 +1115,7 @@ export class MarkdownRenderable extends Renderable {
         if (changed) {
           state.renderable.content = cache.content
         }
+        state.renderable.columnAlignments = cache.columnAlignments
         this.applyTableRenderableOptions(state.renderable, this.resolveTableRenderableOptions())
         state.renderable.marginBottom = marginBottom
         state.tableContentCache = cache
@@ -1089,7 +1123,12 @@ export class MarkdownRenderable extends Renderable {
       }
 
       state.renderable.destroyRecursively()
-      const tableRenderable = this.createTextTableRenderable(cache.content, `${this.id}-block-${index}`, marginBottom)
+      const tableRenderable = this.createTextTableRenderable(
+        cache.content,
+        `${this.id}-block-${index}`,
+        marginBottom,
+        cache.columnAlignments,
+      )
       this.add(tableRenderable)
       state.renderable = tableRenderable
       state.tableContentCache = cache
@@ -1353,7 +1392,12 @@ export class MarkdownRenderable extends Renderable {
         }
 
         state.renderable.destroyRecursively()
-        const tableRenderable = this.createTextTableRenderable(cache.content, `${this.id}-block-${i}`, marginBottom)
+        const tableRenderable = this.createTextTableRenderable(
+          cache.content,
+          `${this.id}-block-${i}`,
+          marginBottom,
+          cache.columnAlignments,
+        )
         this.add(tableRenderable)
         state.renderable = tableRenderable
         state.tableContentCache = cache
