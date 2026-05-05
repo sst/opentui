@@ -103,6 +103,12 @@ const GRAPH_LAYER_WIDTH = 12
 const GRAPH_BINDING_WIDTH = 16
 const GRAPH_COMMAND_WIDTH = 24
 const GRAPH_MAX_ACTIVE_LAYER_CHIPS = 4
+const LOGO_OVERLAY_WIDTH = 56
+const LOGO_OVERLAY_HEIGHT = 11
+const OPENCODE_LOGO = {
+  left: ["                   ", "█▀▀█ █▀▀█ █▀▀█ █▀▀▄", "█__█ █__█ █^^^ █__█", "▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀~~▀"],
+  right: ["             ▄     ", "█▀▀▀ █▀▀█ █▀▀█ █▀▀█", "█___ █__█ █__█ █^^^", "▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀"],
+} as const
 
 type OpenTuiGraphSnapshot = GraphSnapshot<Renderable, KeyEvent>
 type OpenTuiGraphBinding = GraphBinding<Renderable, KeyEvent>
@@ -135,6 +141,7 @@ let commandPromptShell: BoxRenderable | null = null
 let commandPromptBox: BoxRenderable | null = null
 let commandPromptSuggestionsBox: BoxRenderable | null = null
 let commandPromptInput: InputRenderable | null = null
+let logoOverlayShell: BoxRenderable | null = null
 let commandPromptHintText: TextRenderable | null = null
 let commandPromptUsageText: TextRenderable | null = null
 let commandPromptSuggestionsText: TextRenderable | null = null
@@ -157,6 +164,7 @@ let alphaCount = 0
 let betaCount = 0
 let helpVisible = true
 let leaderArmed = false
+let logoOverlayVisible = false
 let commandPromptVisible = false
 let commandPromptValue = ":"
 let commandPromptSelection = 0
@@ -207,6 +215,45 @@ function getCountPayload(payload: unknown): number {
 
   const count = (payload as { count?: unknown }).count
   return typeof count === "number" && Number.isFinite(count) && count > 0 ? count : 1
+}
+
+function logoGlyphChunk(char: string, color: string, shadow: string, strong: boolean): TextChunk {
+  const base = strong ? bold(fg(color)(char)) : fg(color)(char)
+
+  switch (char) {
+    case "_":
+      return bg(shadow)(fg(color)(" "))
+    case "^":
+    case "~":
+      return strong ? bold(fg(char === "^" ? color : shadow)("▀")) : fg(char === "^" ? color : shadow)("▀")
+    case ",":
+      return fg(shadow)("▄")
+    default:
+      return base
+  }
+}
+
+function buildOpencodeLogoContent(): StyledText {
+  const lines: TextChunk[][] = []
+  const shadow = P.borderStrong
+
+  for (let index = 0; index < OPENCODE_LOGO.left.length; index += 1) {
+    const chunks: TextChunk[] = []
+    const left = OPENCODE_LOGO.left[index] ?? ""
+    const right = OPENCODE_LOGO.right[index] ?? ""
+
+    for (const char of left) {
+      chunks.push(logoGlyphChunk(char, P.textDim, shadow, false))
+    }
+    chunks.push(fg(P.separator)(" "))
+    for (const char of right) {
+      chunks.push(logoGlyphChunk(char, P.title, shadow, true))
+    }
+
+    lines.push(styledLine(chunks))
+  }
+
+  return joinLines(lines)
 }
 
 function getActiveKeyLabel(activeKey: ActiveKey): string {
@@ -942,6 +989,32 @@ function hideCommandPrompt(): void {
   commandPromptSelection = 0
 }
 
+function renderLogoOverlay(): void {
+  if (logoOverlayShell) {
+    logoOverlayShell.visible = logoOverlayVisible
+  }
+}
+
+function closeLogoOverlay(renderer: CliRenderer, message = "Closed opencode overlay"): void {
+  if (!logoOverlayVisible) {
+    return
+  }
+
+  logoOverlayVisible = false
+  renderLogoOverlay()
+  setStatus(renderer, message)
+}
+
+function toggleLogoOverlay(renderer: CliRenderer): void {
+  logoOverlayVisible = !logoOverlayVisible
+  if (logoOverlayVisible && commandPromptVisible) {
+    hideCommandPrompt()
+  }
+
+  renderLogoOverlay()
+  setStatus(renderer, logoOverlayVisible ? "Opened opencode overlay" : "Closed opencode overlay")
+}
+
 function closeCommandPrompt(renderer: CliRenderer, message: string): void {
   const restoreTarget = commandPromptRestoreTarget
   hideCommandPrompt()
@@ -1135,6 +1208,7 @@ function buildHelpContent(): StyledText {
       bold(fg(P.key)(":")),
       fg(P.textDim)(" opens the ex prompt."),
     ]),
+    styledLine([bold(fg(P.key)("ctrl+o")), fg(P.textDim)(": toggle the opencode logo overlay")]),
     styledLine([
       fg(P.textDim)("Editors use "),
       bold(fg(P.key)("g")),
@@ -1339,6 +1413,7 @@ function renderStatus(renderer: CliRenderer): void {
 
   if (helpText) {
     helpText.content = buildHelpContent()
+    helpText.height = 4
   }
 
   if (whichKeyHeaderText && keymap) {
@@ -1359,6 +1434,7 @@ function renderStatus(renderer: CliRenderer): void {
   }
 
   renderCommandPrompt()
+  renderLogoOverlay()
 }
 
 function renderAll(renderer: CliRenderer): void {
@@ -1416,6 +1492,24 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
           category: "Ex",
           run() {
             openCommandPrompt(renderer)
+          },
+        },
+        {
+          name: "toggle-logo-overlay",
+          title: "Toggle opencode overlay",
+          desc: "Toggle opencode overlay",
+          category: "View",
+          run() {
+            toggleLogoOverlay(renderer)
+          },
+        },
+        {
+          name: "close-logo-overlay",
+          title: "Close opencode overlay",
+          desc: "Close opencode overlay",
+          category: "View",
+          run() {
+            closeLogoOverlay(renderer)
           },
         },
         {
@@ -1568,11 +1662,12 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
 
   disposers.push(
     keymapInstance.registerLayer({
-      enabled: () => !commandPromptVisible,
+      enabled: () => !commandPromptVisible && !logoOverlayVisible,
       bindings: [
         { key: "tab", cmd: "focus-next", desc: "Next target" },
         { key: "shift+tab", cmd: "focus-prev", desc: "Previous target" },
         { key: "?", cmd: "toggle-help", desc: "Toggle help" },
+        { key: "ctrl+o", cmd: "toggle-logo-overlay", desc: "Toggle opencode overlay" },
         { key: "ctrl+r", cmd: ":reset", desc: "Reset counters" },
         { key: "<leader>", group: "Leader" },
         { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
@@ -1583,8 +1678,19 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
 
   disposers.push(
     keymapInstance.registerLayer({
-      enabled: () => !commandPromptVisible,
+      enabled: () => !commandPromptVisible && !logoOverlayVisible,
       bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }],
+    }),
+  )
+
+  disposers.push(
+    keymapInstance.registerLayer({
+      priority: 10_000,
+      enabled: () => logoOverlayVisible,
+      bindings: [
+        { key: "escape", cmd: "close-logo-overlay", desc: "Close opencode overlay" },
+        { key: "ctrl+o", cmd: "toggle-logo-overlay", desc: "Toggle opencode overlay" },
+      ],
     }),
   )
 
@@ -1592,7 +1698,7 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
     disposers.push(
       keymapInstance.registerLayer({
         target: commandPromptInput,
-        enabled: () => commandPromptVisible,
+        enabled: () => commandPromptVisible && !logoOverlayVisible,
         commands: [
           {
             name: "ex-prompt-close",
@@ -1645,7 +1751,7 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
 
   disposers.push(
     addons.registerManagedTextareaLayer(keymapInstance, renderer, {
-      enabled: () => !commandPromptVisible && renderer.currentFocusedEditor !== null,
+      enabled: () => !commandPromptVisible && !logoOverlayVisible && renderer.currentFocusedEditor !== null,
       bindings: [
         { key: "left", cmd: "input.move.left", desc: "Cursor left" },
         { key: "right", cmd: "input.move.right", desc: "Cursor right" },
@@ -1681,6 +1787,7 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
     disposers.push(
       keymapInstance.registerLayer({
         target: alphaPanel,
+        enabled: () => !logoOverlayVisible,
         bindings: [
           { key: "j", cmd: "alpha-down", desc: "Alpha -1" },
           { key: "k", cmd: "alpha-up", desc: "Alpha +1" },
@@ -1696,6 +1803,7 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
     disposers.push(
       keymapInstance.registerLayer({
         target: betaPanel,
+        enabled: () => !logoOverlayVisible,
         bindings: [
           { key: "j", cmd: "beta-down", desc: "Beta -5" },
           { key: "k", cmd: "beta-up", desc: "Beta +5" },
@@ -1715,6 +1823,7 @@ export function run(renderer: CliRenderer): void {
   betaCount = 0
   helpVisible = true
   leaderArmed = false
+  logoOverlayVisible = false
   commandPromptVisible = false
   commandPromptValue = ":"
   commandPromptSelection = 0
@@ -1907,7 +2016,7 @@ export function run(renderer: CliRenderer): void {
     id: "keymap-demo-help-text",
     content: buildHelpContent(),
     fg: P.text,
-    height: 3,
+    height: 4,
   })
   helpBox.add(helpText)
 
@@ -2068,6 +2177,77 @@ export function run(renderer: CliRenderer): void {
     renderAll(renderer)
   })
 
+  logoOverlayShell = new BoxRenderable(renderer, {
+    id: "keymap-demo-logo-overlay",
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: "100%",
+    height: "100%",
+    zIndex: 80,
+    visible: false,
+  })
+  root.add(logoOverlayShell)
+
+  const logoScrim = new BoxRenderable(renderer, {
+    id: "keymap-demo-logo-overlay-scrim",
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#080812",
+    opacity: 0.78,
+  })
+  logoOverlayShell.add(logoScrim)
+
+  const logoCard = new BoxRenderable(renderer, {
+    id: "keymap-demo-logo-overlay-card",
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: LOGO_OVERLAY_WIDTH,
+    height: LOGO_OVERLAY_HEIGHT,
+    marginLeft: -(LOGO_OVERLAY_WIDTH / 2),
+    marginTop: -Math.floor(LOGO_OVERLAY_HEIGHT / 2),
+    border: true,
+    borderStyle: "single",
+    borderColor: P.accent,
+    backgroundColor: P.panel,
+    paddingX: 2,
+    paddingY: 1,
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 1,
+    title: " opencode ",
+    titleAlignment: "center",
+  })
+  logoOverlayShell.add(logoCard)
+
+  const logoText = new TextRenderable(renderer, {
+    id: "keymap-demo-logo-overlay-logo",
+    content: buildOpencodeLogoContent(),
+    height: OPENCODE_LOGO.left.length,
+    width: 40,
+  })
+  logoCard.add(logoText)
+
+  const logoHint = new TextRenderable(renderer, {
+    id: "keymap-demo-logo-overlay-hint",
+    content: joinLines([
+      styledLine([
+        fg(P.textMuted)("press "),
+        bold(fg(P.key)("esc")),
+        fg(P.textMuted)(" or "),
+        bold(fg(P.key)("ctrl+o")),
+        fg(P.textMuted)(" to close"),
+      ]),
+    ]),
+    height: 1,
+  })
+  logoCard.add(logoHint)
+
   const keymapInstance = createDefaultOpenTuiKeymap(renderer)
 
   registerCommandLayers(renderer, keymapInstance)
@@ -2075,6 +2255,7 @@ export function run(renderer: CliRenderer): void {
   addLog(`${LEADER_TRIGGER_LABEL} arms the leader extension.`)
   addLog("Editors use g/gg/shift+g for Vim-style navigation.")
   addLog(": opens the centered ex prompt.")
+  addLog("Ctrl+O toggles the opencode overlay.")
   addLog("Runtime Graph shows active layers, reachable bindings, and dispatch pulses.")
   renderAll(renderer)
   alphaPanel.focus()
@@ -2104,6 +2285,7 @@ export function destroy(renderer: CliRenderer): void {
   commandPromptBox = null
   commandPromptSuggestionsBox = null
   commandPromptInput = null
+  logoOverlayShell = null
   commandPromptHintText = null
   commandPromptUsageText = null
   commandPromptSuggestionsText = null
@@ -2120,6 +2302,7 @@ export function destroy(renderer: CliRenderer): void {
   graphText = null
   logBox = null
   logText = null
+  logoOverlayVisible = false
   commandPromptVisible = false
   commandPromptValue = ":"
   commandPromptSelection = 0
