@@ -105,6 +105,9 @@ const GRAPH_COMMAND_WIDTH = 24
 const GRAPH_MAX_ACTIVE_LAYER_CHIPS = 4
 const LOGO_OVERLAY_WIDTH = 56
 const LOGO_OVERLAY_HEIGHT = 11
+const LOGO_PULSE_DURATION_MS = 1200
+const LOGO_PULSE_MIN_INTERVAL_MS = 520
+const LOGO_PULSE_MAX_INTERVAL_MS = 980
 const OPENCODE_LOGO = {
   left: ["                   ", "█▀▀█ █▀▀█ █▀▀█ █▀▀▄", "█__█ █__█ █^^^ █__█", "▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀~~▀"],
   right: ["             ▄     ", "█▀▀▀ █▀▀█ █▀▀█ █▀▀█", "█___ █__█ █__█ █^^^", "▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀"],
@@ -142,6 +145,7 @@ let commandPromptBox: BoxRenderable | null = null
 let commandPromptSuggestionsBox: BoxRenderable | null = null
 let commandPromptInput: InputRenderable | null = null
 let logoOverlayShell: BoxRenderable | null = null
+let logoOverlayLogoText: TextRenderable | null = null
 let commandPromptHintText: TextRenderable | null = null
 let commandPromptUsageText: TextRenderable | null = null
 let commandPromptSuggestionsText: TextRenderable | null = null
@@ -177,10 +181,62 @@ let graphAnimationLive = false
 let graphRefreshPending = false
 let graphLastRenderedHeight = -1
 let graphLastRenderedWidth = -1
+let logoAnimationTime = 0
+let logoPulseCountdownMs = 0
+let logoPulses: LogoPulse[] = []
 let disposers: Array<() => void> = []
+
+interface LogoCell {
+  x: number
+  y: number
+  char: string
+  strong: boolean
+}
+
+interface LogoPulse {
+  x: number
+  y: number
+  ageMs: number
+  durationMs: number
+  force: number
+}
 
 function styledLine(chunks: TextChunk[]): TextChunk[] {
   return chunks
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value))
+}
+
+function lerpNumber(left: number, right: number, amount: number): number {
+  return left + (right - left) * clamp01(amount)
+}
+
+function easeOut(value: number): number {
+  const t = clamp01(value)
+  return 1 - (1 - t) * (1 - t)
+}
+
+function hexToRgb(color: string): [number, number, number] {
+  const normalized = color.startsWith("#") ? color.slice(1) : color
+  const value = Number.parseInt(normalized, 16)
+  if (!Number.isFinite(value)) {
+    return [255, 255, 255]
+  }
+
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]
+}
+
+function rgbToHex(red: number, green: number, blue: number): string {
+  const value = ((Math.round(red) & 0xff) << 16) | ((Math.round(green) & 0xff) << 8) | (Math.round(blue) & 0xff)
+  return `#${value.toString(16).padStart(6, "0")}`
+}
+
+function mixColor(left: string, right: string, amount: number): string {
+  const [lr, lg, lb] = hexToRgb(left)
+  const [rr, rg, rb] = hexToRgb(right)
+  return rgbToHex(lerpNumber(lr, rr, amount), lerpNumber(lg, rg, amount), lerpNumber(lb, rb, amount))
 }
 
 function joinLines(lines: TextChunk[][]): StyledText {
@@ -233,21 +289,116 @@ function logoGlyphChunk(char: string, color: string, shadow: string, strong: boo
   }
 }
 
+function isLogoLit(char: string): boolean {
+  return char !== " " && char !== "_" && char !== "~" && char !== ","
+}
+
+function getLogoLine(index: number): LogoCell[] {
+  const cells: LogoCell[] = []
+  const left = OPENCODE_LOGO.left[index] ?? ""
+  const right = OPENCODE_LOGO.right[index] ?? ""
+
+  for (const [x, char] of Array.from(left).entries()) {
+    cells.push({ x, y: index, char, strong: false })
+  }
+  cells.push({ x: left.length, y: index, char: " ", strong: false })
+  for (const [x, char] of Array.from(right).entries()) {
+    cells.push({ x: left.length + 1 + x, y: index, char, strong: true })
+  }
+
+  return cells
+}
+
+function getLogoCells(): LogoCell[] {
+  const cells: LogoCell[] = []
+  for (let index = 0; index < OPENCODE_LOGO.left.length; index += 1) {
+    cells.push(...getLogoLine(index))
+  }
+
+  return cells
+}
+
+const LOGO_CELLS = getLogoCells()
+const LOGO_LIT_CELLS = LOGO_CELLS.filter((cell) => isLogoLit(cell.char))
+
+function randomLogoPulseInterval(): number {
+  return lerpNumber(LOGO_PULSE_MIN_INTERVAL_MS, LOGO_PULSE_MAX_INTERVAL_MS, Math.random())
+}
+
+function addRandomLogoPulse(): void {
+  const cell = LOGO_LIT_CELLS[Math.floor(Math.random() * LOGO_LIT_CELLS.length)]
+  if (!cell) {
+    return
+  }
+
+  logoPulses.push({
+    x: cell.x + 0.5,
+    y: cell.y + 0.5,
+    ageMs: 0,
+    durationMs: LOGO_PULSE_DURATION_MS,
+    force: lerpNumber(0.75, 1.25, Math.random()),
+  })
+}
+
+function getLogoPulseStrength(cell: LogoCell): number {
+  let strength = 0
+  for (const pulse of logoPulses) {
+    const progress = clamp01(pulse.ageMs / pulse.durationMs)
+    const radius = easeOut(progress) * 18
+    const distance = Math.hypot(cell.x + 0.5 - pulse.x, (cell.y + 0.5 - pulse.y) * 2.2)
+    const ring = Math.exp(-((distance - radius) ** 2) / 9) * (1 - progress) * pulse.force
+    const core = Math.exp(-(distance ** 2) / 10) * Math.max(0, 1 - progress * 1.8) * pulse.force
+    strength = Math.max(strength, ring + core)
+  }
+
+  const ambient = (Math.sin(logoAnimationTime * 0.004 + cell.x * 0.45 + cell.y * 1.7) + 1) * 0.08
+  return clamp01(strength + ambient)
+}
+
+function getLogoCellColor(cell: LogoCell): string {
+  const base = cell.strong ? P.title : P.textDim
+  const primary = cell.strong ? P.accent : P.key
+  const glow = getLogoPulseStrength(cell)
+  const primaryMix = Math.min(0.92, glow * 1.15)
+  const peakMix = Math.max(0, glow - 0.7) * 2
+  return mixColor(mixColor(base, primary, primaryMix), "#ffffff", peakMix)
+}
+
+function updateLogoAnimation(deltaTime: number): void {
+  logoAnimationTime += deltaTime
+  logoPulseCountdownMs -= deltaTime
+  for (const pulse of logoPulses) {
+    pulse.ageMs += deltaTime
+  }
+  logoPulses = logoPulses.filter((pulse) => pulse.ageMs < pulse.durationMs)
+
+  while (logoPulseCountdownMs <= 0) {
+    addRandomLogoPulse()
+    logoPulseCountdownMs += randomLogoPulseInterval()
+  }
+}
+
+function resetLogoAnimation(): void {
+  logoAnimationTime = 0
+  logoPulseCountdownMs = 0
+  logoPulses = []
+  addRandomLogoPulse()
+  logoPulseCountdownMs = randomLogoPulseInterval()
+}
+
 function buildOpencodeLogoContent(): StyledText {
   const lines: TextChunk[][] = []
   const shadow = P.borderStrong
 
   for (let index = 0; index < OPENCODE_LOGO.left.length; index += 1) {
     const chunks: TextChunk[] = []
-    const left = OPENCODE_LOGO.left[index] ?? ""
-    const right = OPENCODE_LOGO.right[index] ?? ""
+    for (const cell of getLogoLine(index)) {
+      if (cell.char === " ") {
+        chunks.push(fg(P.separator)(" "))
+        continue
+      }
 
-    for (const char of left) {
-      chunks.push(logoGlyphChunk(char, P.textDim, shadow, false))
-    }
-    chunks.push(fg(P.separator)(" "))
-    for (const char of right) {
-      chunks.push(logoGlyphChunk(char, P.title, shadow, true))
+      chunks.push(logoGlyphChunk(cell.char, getLogoCellColor(cell), shadow, cell.strong))
     }
 
     lines.push(styledLine(chunks))
@@ -745,7 +896,8 @@ function setupGraphAnimation(renderer: CliRenderer): void {
 
   graphFrameCallback = async (deltaTime) => {
     const sizeChanged = hasGraphSizeChanged()
-    if (graphPulses.length === 0 && !graphRefreshPending && !sizeChanged) {
+    const hasGraphWork = graphPulses.length > 0 || graphRefreshPending || sizeChanged
+    if (!hasGraphWork && !logoOverlayVisible) {
       stopGraphAnimation(renderer)
       return
     }
@@ -760,13 +912,20 @@ function setupGraphAnimation(renderer: CliRenderer): void {
     const keepRefreshPending =
       graphRefreshPending && (!keymap || !graphText || graphText.height <= 0 || graphText.width <= 0)
     graphRefreshPending = keepRefreshPending
-    renderGraph()
+    if (hasGraphWork) {
+      renderGraph()
+    }
+
+    if (logoOverlayVisible) {
+      updateLogoAnimation(deltaTime)
+      renderLogoOverlay()
+    }
 
     if (keepRefreshPending) {
       return
     }
 
-    if (graphPulses.length === 0) {
+    if (graphPulses.length === 0 && !logoOverlayVisible) {
       stopGraphAnimation(renderer)
     }
   }
@@ -993,6 +1152,10 @@ function renderLogoOverlay(): void {
   if (logoOverlayShell) {
     logoOverlayShell.visible = logoOverlayVisible
   }
+
+  if (logoOverlayLogoText) {
+    logoOverlayLogoText.content = buildOpencodeLogoContent()
+  }
 }
 
 function closeLogoOverlay(renderer: CliRenderer, message = "Closed opencode overlay"): void {
@@ -1002,6 +1165,9 @@ function closeLogoOverlay(renderer: CliRenderer, message = "Closed opencode over
 
   logoOverlayVisible = false
   renderLogoOverlay()
+  if (graphPulses.length === 0 && !graphRefreshPending) {
+    stopGraphAnimation(renderer)
+  }
   setStatus(renderer, message)
 }
 
@@ -1009,6 +1175,13 @@ function toggleLogoOverlay(renderer: CliRenderer): void {
   logoOverlayVisible = !logoOverlayVisible
   if (logoOverlayVisible && commandPromptVisible) {
     hideCommandPrompt()
+  }
+
+  if (logoOverlayVisible) {
+    resetLogoAnimation()
+    startGraphAnimation(renderer)
+  } else if (graphPulses.length === 0 && !graphRefreshPending) {
+    stopGraphAnimation(renderer)
   }
 
   renderLogoOverlay()
@@ -1832,6 +2005,9 @@ export function run(renderer: CliRenderer): void {
   logLines = []
   cleanupGraphAnimation(renderer)
   graphPulses = []
+  logoPulses = []
+  logoAnimationTime = 0
+  logoPulseCountdownMs = 0
   graphLastRenderedHeight = -1
   graphLastRenderedWidth = -1
   editorFrames = []
@@ -2225,13 +2401,13 @@ export function run(renderer: CliRenderer): void {
   })
   logoOverlayShell.add(logoCard)
 
-  const logoText = new TextRenderable(renderer, {
+  logoOverlayLogoText = new TextRenderable(renderer, {
     id: "keymap-demo-logo-overlay-logo",
     content: buildOpencodeLogoContent(),
     height: OPENCODE_LOGO.left.length,
     width: 40,
   })
-  logoCard.add(logoText)
+  logoCard.add(logoOverlayLogoText)
 
   const logoHint = new TextRenderable(renderer, {
     id: "keymap-demo-logo-overlay-hint",
@@ -2286,6 +2462,7 @@ export function destroy(renderer: CliRenderer): void {
   commandPromptSuggestionsBox = null
   commandPromptInput = null
   logoOverlayShell = null
+  logoOverlayLogoText = null
   commandPromptHintText = null
   commandPromptUsageText = null
   commandPromptSuggestionsText = null
@@ -2310,6 +2487,9 @@ export function destroy(renderer: CliRenderer): void {
   lastAction = "Click a panel or press Tab to start."
   logLines = []
   graphPulses = []
+  logoPulses = []
+  logoAnimationTime = 0
+  logoPulseCountdownMs = 0
   graphLastRenderedHeight = -1
   graphLastRenderedWidth = -1
 }
