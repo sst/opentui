@@ -98,7 +98,6 @@ const EX_PROMPT_CHROME_ROWS = 5
 const EX_PROMPT_MAX_HEIGHT = EX_PROMPT_CHROME_ROWS + EX_PROMPT_MAX_VISIBLE_SUGGESTIONS
 const GRAPH_MIN_PANEL_ROWS = 9
 const GRAPH_HEADER_ROWS = 4
-const GRAPH_PULSE_FRAME_MS = 80
 const GRAPH_PULSE_DURATION_MS = 650
 const GRAPH_REJECT_PULSE_DURATION_MS = 900
 const GRAPH_LAYER_WIDTH = 12
@@ -122,8 +121,8 @@ interface TerminalGraphPulse {
   bindingIndex?: number
   command?: string
   sequence: readonly SequencePartLike[]
-  startedAt: number
-  expiresAt: number
+  durationMs: number
+  remainingMs: number
 }
 
 let root: BoxRenderable | null = null
@@ -166,7 +165,8 @@ let commandPromptRestoreTarget: Renderable | null = null
 let lastAction = "Click a panel or press Tab to start."
 let logLines: string[] = []
 let graphPulses: TerminalGraphPulse[] = []
-let graphPulseTimer: ReturnType<typeof setTimeout> | null = null
+let graphFrameCallback: ((deltaTime: number) => Promise<void>) | null = null
+let graphAnimationLive = false
 let disposers: Array<() => void> = []
 
 function styledLine(chunks: TextChunk[]): TextChunk[] {
@@ -317,33 +317,28 @@ function sequenceMatchesExact(left: readonly SequencePartLike[], right: readonly
   return true
 }
 
-function getPulseValue(pulse: TerminalGraphPulse, now: number): number {
-  if (now >= pulse.expiresAt) {
+function getPulseValue(pulse: TerminalGraphPulse): number {
+  if (pulse.remainingMs <= 0 || pulse.durationMs <= 0) {
     return 0
   }
 
-  const duration = pulse.expiresAt - pulse.startedAt
-  if (duration <= 0) {
-    return 0
-  }
-
-  return Math.max(0, Math.min(1, (pulse.expiresAt - now) / duration))
+  return Math.max(0, Math.min(1, pulse.remainingMs / pulse.durationMs))
 }
 
-function getLayerPulse(layerOrder: number, now: number): number {
+function getLayerPulse(layerOrder: number): number {
   let pulseValue = 0
   for (const pulse of graphPulses) {
     if (pulse.layerOrder !== layerOrder) {
       continue
     }
 
-    pulseValue = Math.max(pulseValue, getPulseValue(pulse, now))
+    pulseValue = Math.max(pulseValue, getPulseValue(pulse))
   }
 
   return pulseValue
 }
 
-function getBindingPulse(binding: OpenTuiGraphBinding, now: number): number {
+function getBindingPulse(binding: OpenTuiGraphBinding): number {
   let pulseValue = 0
   for (const pulse of graphPulses) {
     if (pulse.bindingIndex !== undefined) {
@@ -358,40 +353,40 @@ function getBindingPulse(binding: OpenTuiGraphBinding, now: number): number {
       continue
     }
 
-    pulseValue = Math.max(pulseValue, getPulseValue(pulse, now))
+    pulseValue = Math.max(pulseValue, getPulseValue(pulse))
   }
 
   return pulseValue
 }
 
-function getCommandPulse(command: OpenTuiGraphSnapshot["commands"][number], now: number): number {
+function getCommandPulse(command: OpenTuiGraphSnapshot["commands"][number]): number {
   let pulseValue = 0
   for (const pulse of graphPulses) {
     if (pulse.command !== command.name) {
       continue
     }
 
-    pulseValue = Math.max(pulseValue, getPulseValue(pulse, now))
+    pulseValue = Math.max(pulseValue, getPulseValue(pulse))
   }
 
   return pulseValue
 }
 
-function getPendingSequencePulse(now: number): number {
+function getPendingSequencePulse(): number {
   let pulseValue = 0
   for (const pulse of graphPulses) {
     if (pulse.bindingIndex !== undefined) {
       continue
     }
 
-    pulseValue = Math.max(pulseValue, getPulseValue(pulse, now))
+    pulseValue = Math.max(pulseValue, getPulseValue(pulse))
   }
 
   return pulseValue
 }
 
-function pruneGraphPulses(now: number): void {
-  graphPulses = graphPulses.filter((pulse) => pulse.expiresAt > now)
+function pruneGraphPulses(): void {
+  graphPulses = graphPulses.filter((pulse) => pulse.remainingMs > 0)
 }
 
 function getPulsePhase(binding: OpenTuiGraphBinding): OpenTuiDispatchEvent["phase"] | undefined {
@@ -519,7 +514,6 @@ function getGraphLayerLabel(layer: OpenTuiGraphSnapshot["layers"][number]): stri
 function getGraphLayerRail(
   snapshot: OpenTuiGraphSnapshot,
   visibleBindings: readonly OpenTuiGraphBinding[],
-  now: number,
 ): TextChunk[] {
   const visibleLayerIds = new Set(visibleBindings.map((binding) => binding.layerId))
   const visibleLayers = snapshot.layers.filter((layer) => layer.active && visibleLayerIds.has(layer.id))
@@ -534,7 +528,7 @@ function getGraphLayerRail(
       chunks.push(fg(P.separator)(" "))
     }
 
-    const pulse = getLayerPulse(layer.order, now)
+    const pulse = getLayerPulse(layer.order)
     const label = trimCell(getGraphLayerLabel(layer), 10).trim()
     const colored = fg(pulse > 0 ? P.leader : P.command)(label)
     chunks.push(pulse > 0 ? bold(colored) : colored)
@@ -551,14 +545,12 @@ function getGraphPanelRows(): number {
   return Math.max(GRAPH_MIN_PANEL_ROWS, graphText?.height ?? GRAPH_MIN_PANEL_ROWS)
 }
 
-function getVisibleGraphBindings(snapshot: OpenTuiGraphSnapshot, now: number, limit: number): OpenTuiGraphBinding[] {
+function getVisibleGraphBindings(snapshot: OpenTuiGraphSnapshot, limit: number): OpenTuiGraphBinding[] {
   const pendingBindingIds = getPendingBindingIds(snapshot)
 
   return [...snapshot.bindings]
     .filter((binding) => {
-      return (
-        binding.active || binding.reachable || pendingBindingIds.has(binding.id) || getBindingPulse(binding, now) > 0
-      )
+      return binding.active || binding.reachable || pendingBindingIds.has(binding.id) || getBindingPulse(binding) > 0
     })
     .sort((left, right) => {
       const leftPending = pendingBindingIds.has(left.id)
@@ -573,13 +565,13 @@ function getVisibleGraphBindings(snapshot: OpenTuiGraphSnapshot, now: number, li
     .slice(0, limit)
 }
 
-function buildGraphBindingLine(binding: OpenTuiGraphBinding, snapshot: OpenTuiGraphSnapshot, now: number): TextChunk[] {
+function buildGraphBindingLine(binding: OpenTuiGraphBinding, snapshot: OpenTuiGraphSnapshot): TextChunk[] {
   const layer = snapshot.layers.find((candidate) => candidate.id === binding.layerId)
   const command = binding.commandIds
     .map((id) => snapshot.commands.find((candidate) => candidate.id === id))
     .find((candidate): candidate is OpenTuiGraphSnapshot["commands"][number] => !!candidate)
-  const bindingPulse = getBindingPulse(binding, now)
-  const commandPulse = command ? getCommandPulse(command, now) : 0
+  const bindingPulse = getBindingPulse(binding)
+  const commandPulse = command ? getCommandPulse(command) : 0
   const pending = isBindingPending(binding, snapshot)
   const rowCommandPulse = bindingPulse > 0 ? commandPulse : 0
   const pathPulse = Math.max(bindingPulse, rowCommandPulse)
@@ -590,7 +582,7 @@ function buildGraphBindingLine(binding: OpenTuiGraphBinding, snapshot: OpenTuiGr
   const bindingColor = pending ? P.leader : binding.reachable ? P.key : binding.active ? P.textDim : P.textMuted
   const commandColor = command?.reachable ? P.command : binding.commandResolved ? P.textDim : P.textMuted
   const edgeColor = pathPulse > 0 || pending ? P.leader : binding.reachable ? P.separator : P.textMuted
-  const bindingHighlightPulse = Math.max(bindingPulse, pending ? Math.max(getPendingSequencePulse(now), 0.45) : 0)
+  const bindingHighlightPulse = Math.max(bindingPulse, pending ? Math.max(getPendingSequencePulse(), 0.45) : 0)
 
   return styledLine([
     fg(markerColor)(marker),
@@ -614,15 +606,14 @@ function buildGraphContent(): StyledText {
     return joinLines([styledLine([fg(P.textMuted)("(graph unavailable)")])])
   }
 
-  const now = performance.now()
-  pruneGraphPulses(now)
+  pruneGraphPulses()
   const snapshot = getGraphSnapshot(keymap)
   const rowCount = getGraphPanelRows()
   const pending =
     snapshot.pendingSequence.length === 0 ? "<root>" : formatKeySequence(snapshot.pendingSequence, KEY_FORMAT_OPTIONS)
   const activeLayerCount = snapshot.layers.filter((layer) => layer.active).length
   const reachableBindingCount = snapshot.bindings.filter((binding) => binding.reachable).length
-  const bindings = getVisibleGraphBindings(snapshot, now, Math.max(1, rowCount - GRAPH_HEADER_ROWS))
+  const bindings = getVisibleGraphBindings(snapshot, Math.max(1, rowCount - GRAPH_HEADER_ROWS))
   const rows: TextChunk[][] = [
     styledLine([
       bold(fg(P.accent)("Keymap Graph")),
@@ -631,7 +622,7 @@ function buildGraphContent(): StyledText {
       fg(P.textMuted)(`bindings ${reachableBindingCount}/${snapshot.bindings.length}`),
     ]),
     styledLine([fg(P.textDim)("pending "), bold(fg(P.leader)(pending))]),
-    styledLine([fg(P.textDim)("shown   "), ...getGraphLayerRail(snapshot, bindings, now)]),
+    styledLine([fg(P.textDim)("shown   "), ...getGraphLayerRail(snapshot, bindings)]),
     styledLine([
       fg(P.textMuted)("  "),
       cell("layer", GRAPH_LAYER_WIDTH, P.textMuted),
@@ -646,7 +637,7 @@ function buildGraphContent(): StyledText {
     rows.push(styledLine([fg(P.textMuted)("  (no active bindings)")]))
   } else {
     for (const binding of bindings) {
-      rows.push(buildGraphBindingLine(binding, snapshot, now))
+      rows.push(buildGraphBindingLine(binding, snapshot))
     }
   }
 
@@ -665,26 +656,63 @@ function renderGraph(): void {
   graphText.content = buildGraphContent()
 }
 
-function scheduleGraphPulseFrame(): void {
-  if (graphPulseTimer !== null) {
+function stopGraphAnimation(renderer: CliRenderer): void {
+  if (!graphAnimationLive) {
     return
   }
 
-  graphPulseTimer = setTimeout(() => {
-    graphPulseTimer = null
-    renderGraph()
-
-    if (graphPulses.length > 0) {
-      scheduleGraphPulseFrame()
-    }
-  }, GRAPH_PULSE_FRAME_MS)
+  renderer.dropLive()
+  graphAnimationLive = false
 }
 
-function addGraphPulse(event: OpenTuiDispatchEvent): void {
-  const now = performance.now()
+function startGraphAnimation(renderer: CliRenderer): void {
+  if (graphAnimationLive) {
+    return
+  }
+
+  renderer.requestLive()
+  graphAnimationLive = true
+}
+
+function setupGraphAnimation(renderer: CliRenderer): void {
+  if (graphFrameCallback) {
+    return
+  }
+
+  graphFrameCallback = async (deltaTime) => {
+    if (graphPulses.length === 0) {
+      stopGraphAnimation(renderer)
+      return
+    }
+
+    for (const pulse of graphPulses) {
+      pulse.remainingMs -= deltaTime
+    }
+
+    pruneGraphPulses()
+    renderGraph()
+
+    if (graphPulses.length === 0) {
+      stopGraphAnimation(renderer)
+    }
+  }
+  renderer.setFrameCallback(graphFrameCallback)
+}
+
+function cleanupGraphAnimation(renderer: CliRenderer): void {
+  if (graphFrameCallback) {
+    renderer.removeFrameCallback(graphFrameCallback)
+    graphFrameCallback = null
+  }
+
+  stopGraphAnimation(renderer)
+}
+
+function addGraphPulse(renderer: CliRenderer, event: OpenTuiDispatchEvent): void {
   const command = typeof event.command === "string" ? event.command : undefined
+  const durationMs = event.phase === "binding-reject" ? GRAPH_REJECT_PULSE_DURATION_MS : GRAPH_PULSE_DURATION_MS
   graphPulses = [
-    ...graphPulses.filter((pulse) => pulse.expiresAt > now),
+    ...graphPulses.filter((pulse) => pulse.remainingMs > 0),
     {
       phase: event.phase,
       layerOrder: event.layer?.order,
@@ -695,12 +723,12 @@ function addGraphPulse(event: OpenTuiDispatchEvent): void {
         tokenName: part.tokenName,
         patternName: part.patternName,
       })),
-      startedAt: now,
-      expiresAt: now + (event.phase === "binding-reject" ? GRAPH_REJECT_PULSE_DURATION_MS : GRAPH_PULSE_DURATION_MS),
+      durationMs,
+      remainingMs: durationMs,
     },
   ]
   renderGraph()
-  scheduleGraphPulseFrame()
+  startGraphAnimation(renderer)
 }
 
 function normalizeExPromptName(name: string): string {
@@ -1617,7 +1645,7 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
 
   disposers.push(
     keymapInstance.on("dispatch", (event) => {
-      addGraphPulse(event)
+      addGraphPulse(renderer, event)
     }),
   )
 
@@ -1665,11 +1693,8 @@ export function run(renderer: CliRenderer): void {
   commandPromptRestoreTarget = null
   lastAction = "Click a panel or press Tab to start."
   logLines = []
+  cleanupGraphAnimation(renderer)
   graphPulses = []
-  if (graphPulseTimer !== null) {
-    clearTimeout(graphPulseTimer)
-    graphPulseTimer = null
-  }
   editorFrames = []
   editors = []
 
@@ -1904,6 +1929,8 @@ export function run(renderer: CliRenderer): void {
   })
   graphBox.add(graphText)
 
+  setupGraphAnimation(renderer)
+
   const whichKeyColumn = new BoxRenderable(renderer, {
     id: "keymap-demo-which-key-column",
     width: "40%",
@@ -2040,13 +2067,9 @@ export function run(renderer: CliRenderer): void {
   setStatus(renderer, "Focused Alpha panel")
 }
 
-export function destroy(_renderer: CliRenderer): void {
+export function destroy(renderer: CliRenderer): void {
   leaderArmed = false
-
-  if (graphPulseTimer !== null) {
-    clearTimeout(graphPulseTimer)
-    graphPulseTimer = null
-  }
+  cleanupGraphAnimation(renderer)
 
   while (disposers.length > 0) {
     const dispose = disposers.pop()
