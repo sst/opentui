@@ -12,6 +12,7 @@ import { QRCodeRenderable } from "./QRCode.js"
 
 let testRenderer: TestRenderer
 let renderOnce: () => Promise<void>
+let resize: (width: number, height: number) => void
 let captureCharFrame: () => string
 let captureSpans: ReturnType<typeof createTestRenderer> extends Promise<infer T>
   ? T extends { captureSpans: infer TCaptureSpans }
@@ -89,6 +90,7 @@ describe("QRCodeRenderable", () => {
     ;({
       renderer: testRenderer,
       renderOnce,
+      resize,
       captureCharFrame,
       captureSpans,
     } = await createTestRenderer({
@@ -176,6 +178,67 @@ describe("QRCodeRenderable", () => {
     expect(captureCharFrame()).not.toContain("█")
     expect(captureCharFrame()).not.toContain("▀")
     expect(captureCharFrame()).not.toContain("▄")
+  })
+
+  it("renders fallback content when the available size cannot fit scale 1", async () => {
+    const container = new BoxRenderable(testRenderer, {
+      width: 24,
+      height: 4,
+      flexDirection: "column",
+    })
+    const qr = new QRCodeRenderable(testRenderer, {
+      content: "https://opentui.com/docs/getting-started",
+      quietZone: 2,
+      scale: 2,
+      fallbackContent: "Resize for QR",
+      fallbackColor: "#94a3b8",
+    })
+
+    container.add(qr)
+    testRenderer.root.add(container)
+    await renderOnce()
+
+    expect(captureCharFrame()).toContain("Resize for QR")
+    expect(captureCharFrame()).not.toContain("█")
+    expect(captureCharFrame()).not.toContain("▀")
+    expect(captureCharFrame()).not.toContain("▄")
+  })
+
+  it("grows back to the preferred scale after being too small", async () => {
+    const container = new BoxRenderable(testRenderer, {
+      width: "100%",
+      height: "100%",
+      maxWidth: 72,
+      maxHeight: 38,
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+    })
+    const qr = new QRCodeRenderable(testRenderer, {
+      content: "opentui.com",
+      quietZone: 2,
+      scale: 2,
+      fallbackContent: "Resize for QR",
+    })
+
+    container.add(qr)
+    testRenderer.root.add(container)
+    await renderOnce()
+
+    expect(qr.getLayoutNode().getComputedLayout().width).toBe(50)
+    expect(qr.getLayoutNode().getComputedLayout().height).toBe(25)
+
+    resize(40, 16)
+    await renderOnce()
+
+    expect(captureCharFrame()).toContain("Resize for QR")
+
+    resize(80, 40)
+    await renderOnce()
+
+    expect(qr.getLayoutNode().getComputedLayout().width).toBe(50)
+    expect(qr.getLayoutNode().getComputedLayout().height).toBe(25)
+    expect(captureCharFrame()).toContain("█")
   })
 
   it("keeps the parent background outside the centered QR square when stretched", async () => {

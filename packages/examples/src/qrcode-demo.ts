@@ -10,6 +10,7 @@ import {
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js";
 
 const ROOT_ID = "qrcode-demo-root";
+const QR_CONTENT = "opentui.com";
 
 export function run(renderer: CliRenderer): void {
   renderer.start();
@@ -26,8 +27,10 @@ export function run(renderer: CliRenderer): void {
 
   const card = new BoxRenderable(renderer, {
     id: `${ROOT_ID}-card`,
-    width: "auto",
-    height: "auto",
+    width: "100%",
+    height: "100%",
+    maxWidth: 72,
+    maxHeight: 38,
     padding: 1,
     border: true,
     borderStyle: "rounded",
@@ -35,13 +38,14 @@ export function run(renderer: CliRenderer): void {
     backgroundColor: RGBA.fromHex("#111827"),
     flexDirection: "column",
     alignItems: "center",
+    justifyContent: "center",
   });
   root.add(card);
 
   card.add(
     new TextRenderable(renderer, {
       id: `${ROOT_ID}-title`,
-      content: "QR Code Renderable",
+      content: "Scan opentui.com",
       fg: "#f8fafc",
       attributes: TextAttributes.BOLD,
     }),
@@ -50,21 +54,14 @@ export function run(renderer: CliRenderer): void {
   card.add(
     new QRCodeRenderable(renderer, {
       id: `${ROOT_ID}-qr`,
-      content: "https://opentui.com/docs/getting-started",
+      content: QR_CONTENT,
       quietZone: 2,
       scale: 2,
       marginTop: 1,
       foregroundColor: "#000000",
       backgroundColor: "#ffffff",
-    }),
-  );
-
-  card.add(
-    new TextRenderable(renderer, {
-      id: `${ROOT_ID}-url`,
-      content: "https://opentui.com/docs/getting-started",
-      marginTop: 1,
-      fg: "#7dd3fc",
+      fallbackContent: "Resize terminal for QR",
+      fallbackColor: "#94a3b8",
     }),
   );
 }

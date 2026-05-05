@@ -7,6 +7,7 @@ import type { RenderContext } from "../types.js"
 
 const DEFAULT_FOREGROUND = RGBA.fromHex("#000000")
 const DEFAULT_BACKGROUND = RGBA.fromHex("#ffffff")
+const TRANSPARENT = RGBA.fromValues(0, 0, 0, 0)
 
 export type QRCodeFitMode = "contain" | "none"
 
@@ -18,6 +19,8 @@ export interface QRCodeOptions extends RenderableOptions<QRCodeRenderable> {
   fit?: QRCodeFitMode
   foregroundColor?: ColorInput
   backgroundColor?: ColorInput
+  fallbackContent?: string
+  fallbackColor?: ColorInput
 }
 
 export class QRCodeRenderable extends Renderable {
@@ -29,6 +32,8 @@ export class QRCodeRenderable extends Renderable {
     fit: "contain" as QRCodeFitMode,
     foregroundColor: DEFAULT_FOREGROUND,
     backgroundColor: DEFAULT_BACKGROUND,
+    fallbackContent: "",
+    fallbackColor: DEFAULT_BACKGROUND,
   } satisfies Partial<QRCodeOptions>
 
   private _content: string
@@ -38,6 +43,8 @@ export class QRCodeRenderable extends Renderable {
   private _fit: QRCodeFitMode
   private _foregroundColor: RGBA
   private _backgroundColor: RGBA
+  private _fallbackContent: string
+  private _fallbackColor: RGBA
   private encoded: EncodedQRCode
 
   constructor(ctx: RenderContext, options: QRCodeOptions = {}) {
@@ -60,6 +67,8 @@ export class QRCodeRenderable extends Renderable {
     this._fit = fit
     this._foregroundColor = options.foregroundColor ? parseColor(options.foregroundColor) : defaults.foregroundColor
     this._backgroundColor = options.backgroundColor ? parseColor(options.backgroundColor) : defaults.backgroundColor
+    this._fallbackContent = options.fallbackContent ?? defaults.fallbackContent
+    this._fallbackColor = options.fallbackColor ? parseColor(options.fallbackColor) : defaults.fallbackColor
     this.encoded = encoded
 
     this.setupMeasureFunc()
@@ -150,6 +159,28 @@ export class QRCodeRenderable extends Renderable {
     this.requestRender()
   }
 
+  public get fallbackContent(): string {
+    return this._fallbackContent
+  }
+
+  public set fallbackContent(value: string) {
+    if (value === this._fallbackContent) {
+      return
+    }
+
+    this._fallbackContent = value
+    this.remeasure()
+  }
+
+  public get fallbackColor(): RGBA {
+    return this._fallbackColor
+  }
+
+  public set fallbackColor(value: ColorInput) {
+    this._fallbackColor = parseColor(value)
+    this.requestRender()
+  }
+
   public get version(): number {
     return this.encoded.version
   }
@@ -167,6 +198,7 @@ export class QRCodeRenderable extends Renderable {
     const effectiveScale = this.resolveRenderScale(this.width, this.height)
 
     if (effectiveScale <= 0) {
+      this.renderFallback(buffer)
       return
     }
 
@@ -220,6 +252,13 @@ export class QRCodeRenderable extends Renderable {
         return getDimensionsForScale(this.encoded.size, this._quietZone, scale)
       }
 
+      if (this._fallbackContent.length > 0) {
+        return {
+          width: getFallbackWidth(this._fallbackContent, width, widthMode),
+          height: 1,
+        }
+      }
+
       return {
         width: 0,
         height: 0,
@@ -271,6 +310,20 @@ export class QRCodeRenderable extends Renderable {
 
     return this.encoded.modules[moduleY]![moduleX]!
   }
+
+  private renderFallback(buffer: OptimizedBuffer): void {
+    if (this._fallbackContent.length === 0 || this.width <= 0 || this.height <= 0) {
+      return
+    }
+
+    const content = this._fallbackContent.slice(0, this.width)
+    const xOffset = Math.max(0, Math.floor((this.width - content.length) / 2))
+    const yOffset = Math.max(0, Math.floor(this.height / 2))
+
+    for (let i = 0; i < content.length; i++) {
+      buffer.setCell(this.x + xOffset + i, this.y + yOffset, content[i]!, this._fallbackColor, TRANSPARENT)
+    }
+  }
 }
 
 function getDimensionsForScale(
@@ -296,6 +349,14 @@ function getBlockCharacter(top: boolean, bottom: boolean): string {
   }
 
   return "▄"
+}
+
+function getFallbackWidth(content: string, width: number, widthMode: MeasureMode): number {
+  if (widthMode === MeasureMode.Undefined || Number.isNaN(width)) {
+    return content.length
+  }
+
+  return Math.max(0, Math.min(content.length, Math.floor(width)))
 }
 
 function normalizeQuietZone(value: number): number {
