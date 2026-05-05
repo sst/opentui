@@ -30,8 +30,6 @@ const keymap = new Keymap(host as KeymapHost<object>)
 const graph = getGraphSnapshot(keymap)
 ```
 
-Warning/error reporting and layer analyzer registration are part of the core runtime because command, parser, matcher and analyzer failures use them.
-
 ## `KeymapHost`
 
 `KeymapHost` is the contract that built-in hosts and custom adapters implement. See [Hosts](/docs/keymap/hosts) for the built-in OpenTUI and HTML adapters.
