@@ -198,6 +198,7 @@ let logoTileStepAccumulatorMs = 0
 let logoTileStepIndex = 0
 let logoTileStates: LogoTileState[] = []
 let logoTilePattern: LogoTilePattern = createLogoTilePattern()
+let logoTilePatternVersion = 1
 let disposers: Array<() => void> = []
 
 interface LogoCell {
@@ -460,11 +461,9 @@ function createLogoTilePattern(): LogoTilePattern {
 
 function shuffleLogoTilePattern(renderer?: CliRenderer): void {
   logoTilePattern = createLogoTilePattern()
-  resetLogoTiles()
+  logoTilePatternVersion += 1
+  logoTileStepAccumulatorMs = 0
   renderLogoOverlay()
-  if (renderer) {
-    setStatus(renderer, "Shuffled logo beat tiles")
-  }
 }
 
 function triggerLogoTileBeat(step: number): void {
@@ -622,6 +621,7 @@ function buildLogoOverlayHint(): StyledText {
   return joinLines([
     styledLine([
       fg(P.textMuted)(`${logoAnimationBpm} BPM  `),
+      fg(P.textMuted)(`pat ${logoTilePatternVersion}  `),
       bold(fg(P.key)("up/down")),
       fg(P.textMuted)(" tempo  "),
       bold(fg(P.key)("r")),
@@ -2285,6 +2285,7 @@ export function run(renderer: CliRenderer): void {
   logoTileStepAccumulatorMs = 0
   logoTileStepIndex = 0
   logoTilePattern = createLogoTilePattern()
+  logoTilePatternVersion = 1
   logoTileStates = []
   graphLastRenderedHeight = -1
   graphLastRenderedWidth = -1
@@ -2810,6 +2811,7 @@ export function destroy(renderer: CliRenderer): void {
   logoTileStepAccumulatorMs = 0
   logoTileStepIndex = 0
   logoTilePattern = createLogoTilePattern()
+  logoTilePatternVersion = 1
   logoTileStates = []
   graphLastRenderedHeight = -1
   graphLastRenderedWidth = -1
