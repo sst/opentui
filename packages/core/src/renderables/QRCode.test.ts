@@ -228,7 +228,7 @@ describe("QRCodeRenderable", () => {
     expect(qr.getLayoutNode().getComputedLayout().width).toBe(50)
     expect(qr.getLayoutNode().getComputedLayout().height).toBe(25)
 
-    resize(40, 16)
+    resize(20, 8)
     await renderOnce()
 
     expect(captureCharFrame()).toContain("Resize for QR")
