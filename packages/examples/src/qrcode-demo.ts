@@ -1,0 +1,93 @@
+import {
+  BoxRenderable,
+  CliRenderer,
+  QRCodeRenderable,
+  RGBA,
+  TextAttributes,
+  TextRenderable,
+  createCliRenderer,
+} from "@opentui/core"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+
+const ROOT_ID = "qrcode-demo-root"
+
+export function run(renderer: CliRenderer): void {
+  renderer.start()
+  renderer.setBackgroundColor("#0f172a")
+
+  const root = new BoxRenderable(renderer, {
+    id: ROOT_ID,
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  })
+  renderer.root.add(root)
+
+  const card = new BoxRenderable(renderer, {
+    id: `${ROOT_ID}-card`,
+    width: "auto",
+    height: "auto",
+    padding: 1,
+    border: true,
+    borderStyle: "rounded",
+    borderColor: "#38bdf8",
+    backgroundColor: RGBA.fromHex("#111827"),
+    flexDirection: "column",
+    alignItems: "center",
+  })
+  root.add(card)
+
+  card.add(
+    new TextRenderable(renderer, {
+      id: `${ROOT_ID}-title`,
+      content: "QR Code Renderable",
+      fg: "#f8fafc",
+      attributes: TextAttributes.BOLD,
+    }),
+  )
+
+  card.add(
+    new TextRenderable(renderer, {
+      id: `${ROOT_ID}-subtitle`,
+      content: "Scan to open the getting started docs.",
+      marginTop: 1,
+      fg: "#94a3b8",
+    }),
+  )
+
+  card.add(
+    new QRCodeRenderable(renderer, {
+      id: `${ROOT_ID}-qr`,
+      content: "https://opentui.com/docs/getting-started",
+      quietZone: 2,
+      scale: 2,
+      marginTop: 1,
+      foregroundColor: "#000000",
+      backgroundColor: "#ffffff",
+    }),
+  )
+
+  card.add(
+    new TextRenderable(renderer, {
+      id: `${ROOT_ID}-url`,
+      content: "https://opentui.com/docs/getting-started",
+      marginTop: 1,
+      fg: "#7dd3fc",
+    }),
+  )
+}
+
+export function destroy(renderer: CliRenderer): void {
+  renderer.root.remove(ROOT_ID)
+  renderer.setCursorPosition(0, 0, false)
+}
+
+if (import.meta.main) {
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: true,
+  })
+
+  run(renderer)
+  setupCommonDemoKeys(renderer)
+}
