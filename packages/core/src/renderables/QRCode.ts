@@ -321,7 +321,13 @@ export class QRCodeRenderable extends Renderable {
     const yOffset = Math.max(0, Math.floor(this.height / 2))
 
     for (let i = 0; i < content.length; i++) {
-      buffer.setCell(this.x + xOffset + i, this.y + yOffset, content[i]!, this._fallbackColor, TRANSPARENT)
+      buffer.setCell(
+        this.x + xOffset + i,
+        this.y + yOffset,
+        content[i]!,
+        this._fallbackColor,
+        TRANSPARENT,
+      )
     }
   }
 }
