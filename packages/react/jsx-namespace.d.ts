@@ -14,6 +14,7 @@ import type {
   ScrollBoxProps,
   SelectProps,
   SequenceDiagramProps,
+  StateDiagramProps,
   SpanProps,
   TabSelectProps,
   TextareaProps,
@@ -45,6 +46,7 @@ export namespace JSX {
     diff: DiffProps
     markdown: MarkdownProps
     "sequence-diagram": SequenceDiagramProps
+    "state-diagram": StateDiagramProps
     input: InputProps
     textarea: TextareaProps
     select: SelectProps

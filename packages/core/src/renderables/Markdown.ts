@@ -20,6 +20,7 @@ import { parseMarkdownIncremental, type ParseState } from "./markdown-parser.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { detectLinks } from "../lib/detect-links.js"
 import { isMermaidSequenceDiagram, SequenceDiagramRenderable } from "./SequenceDiagram.js"
+import { isMermaidStateDiagram, StateDiagramRenderable } from "./StateDiagram.js"
 
 export type MarkdownTableStyle = "grid" | "columns"
 
@@ -518,6 +519,9 @@ export class MarkdownRenderable extends Renderable {
     if (this.isSequenceDiagramCode(token, filetype)) {
       return this.createSequenceDiagramRenderable(token.text, id, marginBottom)
     }
+    if (this.isStateDiagramCode(token, filetype)) {
+      return this.createStateDiagramRenderable(token.text, id, marginBottom)
+    }
 
     return new CodeRenderable(this.ctx, {
       id,
@@ -539,12 +543,27 @@ export class MarkdownRenderable extends Renderable {
     return filetype === "mermaid" && isMermaidSequenceDiagram(token.text)
   }
 
+  private isStateDiagramCode(token: Tokens.Code, filetype = infoStringToFiletype(token.lang ?? "")): boolean {
+    return filetype === "mermaid" && isMermaidStateDiagram(token.text)
+  }
+
   private createSequenceDiagramRenderable(
     content: string,
     id: string,
     marginBottom: number = 0,
   ): SequenceDiagramRenderable {
     return new SequenceDiagramRenderable(this.ctx, {
+      id,
+      content,
+      fg: this._fg,
+      bg: this._bg,
+      width: "100%",
+      marginBottom,
+    })
+  }
+
+  private createStateDiagramRenderable(content: string, id: string, marginBottom: number = 0): StateDiagramRenderable {
+    return new StateDiagramRenderable(this.ctx, {
       id,
       content,
       fg: this._fg,
@@ -571,6 +590,13 @@ export class MarkdownRenderable extends Renderable {
     content: string,
     marginBottom: number,
   ): void {
+    renderable.content = content
+    renderable.fg = this._fg
+    renderable.bg = this._bg
+    renderable.marginBottom = marginBottom
+  }
+
+  private applyStateDiagramRenderable(renderable: StateDiagramRenderable, content: string, marginBottom: number): void {
     renderable.content = content
     renderable.fg = this._fg
     renderable.bg = this._bg
@@ -1105,6 +1131,23 @@ export class MarkdownRenderable extends Renderable {
         return
       }
 
+      if (this.isStateDiagramCode(codeToken)) {
+        if (state.renderable instanceof StateDiagramRenderable) {
+          this.applyStateDiagramRenderable(state.renderable, codeToken.text, marginBottom)
+          return
+        }
+
+        state.renderable.destroyRecursively()
+        const diagramRenderable = this.createStateDiagramRenderable(
+          codeToken.text,
+          `${this.id}-block-${index}`,
+          marginBottom,
+        )
+        this.add(diagramRenderable)
+        state.renderable = diagramRenderable
+        return
+      }
+
       if (state.renderable instanceof CodeRenderable) {
         this.applyCodeBlockRenderable(state.renderable, codeToken, marginBottom)
         return
@@ -1388,6 +1431,22 @@ export class MarkdownRenderable extends Renderable {
           } else {
             state.renderable.destroyRecursively()
             const diagramRenderable = this.createSequenceDiagramRenderable(
+              codeToken.text,
+              `${this.id}-block-${i}`,
+              marginBottom,
+            )
+            this.add(diagramRenderable)
+            state.renderable = diagramRenderable
+          }
+          continue
+        }
+
+        if (this.isStateDiagramCode(codeToken)) {
+          if (state.renderable instanceof StateDiagramRenderable) {
+            this.applyStateDiagramRenderable(state.renderable, codeToken.text, marginBottom)
+          } else {
+            state.renderable.destroyRecursively()
+            const diagramRenderable = this.createStateDiagramRenderable(
               codeToken.text,
               `${this.id}-block-${i}`,
               marginBottom,

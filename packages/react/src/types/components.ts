@@ -23,6 +23,8 @@ import type {
   SelectRenderableOptions,
   SequenceDiagramOptions,
   SequenceDiagramRenderable,
+  StateDiagramOptions,
+  StateDiagramRenderable,
   TabSelectOption,
   TabSelectRenderable,
   TabSelectRenderableOptions,
@@ -103,7 +105,9 @@ export type GetNonStyledProperties<TConstructor> =
                 ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode"
                 : TConstructor extends RenderableConstructor<SequenceDiagramRenderable>
                   ? NonStyledProps | "content"
-                  : NonStyledProps
+                  : TConstructor extends RenderableConstructor<StateDiagramRenderable>
+                    ? NonStyledProps | "content"
+                    : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -162,6 +166,8 @@ export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
 export type MarkdownProps = ComponentProps<MarkdownOptions, MarkdownRenderable>
 
 export type SequenceDiagramProps = ComponentProps<SequenceDiagramOptions, SequenceDiagramRenderable>
+
+export type StateDiagramProps = ComponentProps<StateDiagramOptions, StateDiagramRenderable>
 
 export type DiffProps = ComponentProps<DiffRenderableOptions, DiffRenderable>
 

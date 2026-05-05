@@ -65,6 +65,7 @@ import * as keypressDebugDemo from "./keypress-debug-demo.js"
 import * as extmarksDemo from "./extmarks-demo.js"
 import * as markdownDemo from "./markdown-demo.js"
 import * as sequenceDiagramDemo from "./sequence-diagram-demo.js"
+import * as stateDiagramDemo from "./state-diagram-demo.js"
 import * as linkDemo from "./link-demo.js"
 import * as opacityExample from "./opacity-example.js"
 import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test.js"
@@ -241,6 +242,12 @@ const examples: Example[] = [
     description: "Mermaid sequenceDiagram rendered as terminal-native lifelines and arrows",
     run: sequenceDiagramDemo.run,
     destroy: sequenceDiagramDemo.destroy,
+  },
+  {
+    name: "State Diagram Demo",
+    description: "Mermaid stateDiagram-v2 rendered as terminal-native states and transitions",
+    run: stateDiagramDemo.run,
+    destroy: stateDiagramDemo.destroy,
   },
   {
     name: "Split Footer Streaming Demo",

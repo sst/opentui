@@ -3,6 +3,7 @@ import { Lexer } from "marked"
 import { MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
 import { CodeRenderable } from "../Code.js"
 import { SequenceDiagramRenderable } from "../SequenceDiagram.js"
+import { StateDiagramRenderable } from "../StateDiagram.js"
 import { TextRenderable } from "../Text.js"
 import { TextTableRenderable } from "../TextTable.js"
 import { SyntaxStyle } from "../../syntax-style.js"
@@ -174,6 +175,26 @@ test("updating mermaid sequenceDiagram fences reuses the diagram renderable", as
 
   expect(md._blockStates[0]?.renderable).toBe(diagram)
   expect(captureFrame()).toContain("second")
+})
+
+test("mermaid stateDiagram-v2 code fences render as state diagrams", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-state-diagram",
+    content: "```mermaid\nstateDiagram-v2\n  [*] --> Idle\n  Idle --> Loading: submit\n```",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const diagram = md._blockStates[0]?.renderable as StateDiagramRenderable
+  expect(diagram).toBeInstanceOf(StateDiagramRenderable)
+
+  const rendered = captureFrame()
+  expect(rendered).toContain("Idle")
+  expect(rendered).toContain("Loading")
+  expect(rendered).toContain("submit")
+  expect(rendered).toContain("▶")
 })
 
 test("tableOptions.widthMode configures markdown table layout", async () => {
