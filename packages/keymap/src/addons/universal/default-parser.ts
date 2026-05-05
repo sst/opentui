@@ -113,13 +113,87 @@ const namedSingleStrokeKeys = new Set<string>([
   "shift",
 ])
 
-const namedSingleStrokeKeyPrefixes = [...namedSingleStrokeKeys].sort((left, right) => right.length - left.length)
-
 const modifierKeyNames = new Set<string>(["ctrl", "control", "shift", "meta", "alt", "option", "super", "hyper"])
 
-const modifierKeyPrefixes = [...modifierKeyNames].sort((left, right) => right.length - left.length)
+const namedSingleStrokeKeyPrefixes = createPrefixBuckets(namedSingleStrokeKeys)
+const modifierKeyPrefixes = createPrefixBuckets(modifierKeyNames)
 
 type DefaultParserContext = Parameters<BindingParser>[0]
+
+function createPrefixBuckets(values: Iterable<string>): ReadonlyMap<number, readonly string[]> {
+  const buckets = new Map<number, string[]>()
+
+  for (const value of values) {
+    const first = value.charCodeAt(0)
+    if (Number.isNaN(first)) {
+      continue
+    }
+
+    let bucket = buckets.get(first)
+    if (!bucket) {
+      bucket = []
+      buckets.set(first, bucket)
+    }
+
+    bucket.push(value)
+  }
+
+  for (const bucket of buckets.values()) {
+    bucket.sort((left, right) => right.length - left.length)
+  }
+
+  return buckets
+}
+
+function toLowerAsciiCode(code: number): number {
+  return code >= 65 && code <= 90 ? code + 32 : code
+}
+
+function isDigitCode(code: number): boolean {
+  return code >= 48 && code <= 57
+}
+
+function startsWithAsciiInsensitive(input: string, prefix: string, index: number): boolean {
+  if (input.startsWith(prefix, index)) {
+    return true
+  }
+
+  if (index + prefix.length > input.length) {
+    return false
+  }
+
+  for (let offset = 0; offset < prefix.length; offset += 1) {
+    if (toLowerAsciiCode(input.charCodeAt(index + offset)) !== prefix.charCodeAt(offset)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function findBucketedPrefixMatch(
+  buckets: ReadonlyMap<number, readonly string[]>,
+  input: string,
+  index: number,
+): string | undefined {
+  const first = input.charCodeAt(index)
+  if (Number.isNaN(first)) {
+    return undefined
+  }
+
+  const candidates = buckets.get(toLowerAsciiCode(first))
+  if (!candidates) {
+    return undefined
+  }
+
+  for (const candidate of candidates) {
+    if (startsWithAsciiInsensitive(input, candidate, index)) {
+      return candidate
+    }
+  }
+
+  return undefined
+}
 
 function parseObjectKeyInput(
   ctx: DefaultParserContext,
@@ -226,28 +300,21 @@ function parseNamedKeyPart(name: string, ctx: DefaultParserContext): KeySequence
 }
 
 function findNamedSingleStrokeKey(input: string, index: number): string | undefined {
-  const remaining = input.slice(index).toLowerCase()
-
-  for (const key of namedSingleStrokeKeyPrefixes) {
-    if (remaining.startsWith(key)) {
-      return key
-    }
+  const namedKey = findBucketedPrefixMatch(namedSingleStrokeKeyPrefixes, input, index)
+  if (namedKey) {
+    return namedKey
   }
 
-  const functionKeyMatch = /^f\d{1,2}/i.exec(remaining)
-  return functionKeyMatch?.[0]
+  if (toLowerAsciiCode(input.charCodeAt(index)) !== 102 || !isDigitCode(input.charCodeAt(index + 1))) {
+    return undefined
+  }
+
+  const end = isDigitCode(input.charCodeAt(index + 2)) ? index + 3 : index + 2
+  return input.slice(index, end).toLowerCase()
 }
 
 function findModifierKey(input: string, index: number): string | undefined {
-  const remaining = input.slice(index).toLowerCase()
-
-  for (const modifier of modifierKeyPrefixes) {
-    if (remaining.startsWith(modifier)) {
-      return modifier
-    }
-  }
-
-  return undefined
+  return findBucketedPrefixMatch(modifierKeyPrefixes, input, index)
 }
 
 function parseModifiedKeyPart(
