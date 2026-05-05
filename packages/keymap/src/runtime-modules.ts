@@ -1,6 +1,5 @@
 import type { RuntimeModuleEntry } from "@opentui/core/runtime-plugin"
 import * as keymap from "@opentui/keymap"
-import * as keymapBase from "@opentui/keymap/base"
 import * as keymapExtras from "@opentui/keymap/extras"
 import * as keymapGraphExtra from "@opentui/keymap/extras/graph"
 import * as keymapAddons from "@opentui/keymap/addons"
@@ -12,7 +11,6 @@ import * as keymapSolid from "@opentui/keymap/solid"
 
 export const runtimeModules = {
   "@opentui/keymap": keymap,
-  "@opentui/keymap/base": keymapBase,
   "@opentui/keymap/extras": keymapExtras,
   "@opentui/keymap/extras/graph": keymapGraphExtra,
   "@opentui/keymap/addons": keymapAddons,

@@ -19,7 +19,6 @@ test("dist package exports resolve when dist exists", async () => {
   const distPackageJson = JSON.parse(readFileSync(distPackageJsonPath, "utf8")) as DistPackageJson
   const expectedExports = [
     ".",
-    "./base",
     "./extras",
     "./extras/graph",
     "./addons",

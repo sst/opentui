@@ -38,7 +38,6 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 ## Entry Points
 
 - `@opentui/keymap` — core API
-- `@opentui/keymap/base` — core `Keymap` entry without graph snapshot or layer-analyzer implementations
 - `@opentui/keymap/addons` — universal addons
 - `@opentui/keymap/addons/opentui` — universal + OpenTUI addons
 - `@opentui/keymap/extras/graph` — graph snapshot helpers for debug and graph UIs

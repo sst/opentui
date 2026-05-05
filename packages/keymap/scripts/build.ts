@@ -69,7 +69,6 @@ const externalDeps: string[] = [
 
 const keymapEntrypoints = [
   join(rootDir, packageJson.module),
-  join(rootDir, "src/base.ts"),
   join(rootDir, "src/extras/index.ts"),
   join(rootDir, "src/extras/graph.ts"),
   join(rootDir, "src/addons/index.ts"),
@@ -151,11 +150,6 @@ const exports = {
     types: "./src/index.d.ts",
     import: "./src/index.js",
     require: "./src/index.js",
-  },
-  "./base": {
-    types: "./src/base.d.ts",
-    import: "./src/base.js",
-    require: "./src/base.js",
   },
   "./extras": {
     types: "./src/extras/index.d.ts",
