@@ -113,6 +113,12 @@ const namedSingleStrokeKeys = new Set<string>([
   "shift",
 ])
 
+const namedSingleStrokeKeyPrefixes = [...namedSingleStrokeKeys].sort((left, right) => right.length - left.length)
+
+const modifierKeyNames = new Set<string>(["ctrl", "control", "shift", "meta", "alt", "option", "super", "hyper"])
+
+const modifierKeyPrefixes = [...modifierKeyNames].sort((left, right) => right.length - left.length)
+
 type DefaultParserContext = Parameters<BindingParser>[0]
 
 function parseObjectKeyInput(
@@ -127,39 +133,6 @@ function parseObjectKeyInput(
     match,
     tokenName,
   })
-}
-
-function isNamedSingleStrokeKey(input: string, extraNames?: ReadonlySet<string>): boolean {
-  const normalized = input.trim().toLowerCase()
-  if (!normalized) {
-    return false
-  }
-
-  if (namedSingleStrokeKeys.has(normalized)) {
-    return true
-  }
-
-  if (extraNames?.has(normalized)) {
-    return true
-  }
-
-  return /^f\d{1,2}$/i.test(normalized)
-}
-
-function isSingleStrokeString(input: string, extraNames?: ReadonlySet<string>): boolean {
-  if (input === " " || input === "+") {
-    return true
-  }
-
-  if (input.length === 1) {
-    return true
-  }
-
-  if (input.includes("+")) {
-    return true
-  }
-
-  return isNamedSingleStrokeKey(input, extraNames)
 }
 
 function parseStringKeyPart(input: string, ctx: DefaultParserContext): KeySequencePart {
@@ -247,17 +220,120 @@ function parseStringKeyPart(input: string, ctx: DefaultParserContext): KeySequen
   )
 }
 
+function parseNamedKeyPart(name: string, ctx: DefaultParserContext): KeySequencePart {
+  const normalized = name.trim().toLowerCase()
+  return ctx.parseObjectKey({ name: normalized }, { display: normalized })
+}
+
+function findNamedSingleStrokeKey(input: string, index: number): string | undefined {
+  const remaining = input.slice(index).toLowerCase()
+
+  for (const key of namedSingleStrokeKeyPrefixes) {
+    if (remaining.startsWith(key)) {
+      return key
+    }
+  }
+
+  const functionKeyMatch = /^f\d{1,2}/i.exec(remaining)
+  return functionKeyMatch?.[0]
+}
+
+function findModifierKey(input: string, index: number): string | undefined {
+  const remaining = input.slice(index).toLowerCase()
+
+  for (const modifier of modifierKeyPrefixes) {
+    if (remaining.startsWith(modifier)) {
+      return modifier
+    }
+  }
+
+  return undefined
+}
+
+function parseModifiedKeyPart(
+  input: string,
+  index: number,
+  ctx: DefaultParserContext,
+):
+  | {
+      part: KeySequencePart
+      nextIndex: number
+    }
+  | undefined {
+  let cursor = index
+  let ctrl = false
+  let shift = false
+  let meta = false
+  let superKey = false
+  let hyper = false
+
+  while (cursor < input.length) {
+    const modifier = findModifierKey(input, cursor)
+    if (!modifier) {
+      break
+    }
+
+    const plusIndex = cursor + modifier.length
+    if (input[plusIndex] !== "+") {
+      break
+    }
+
+    if (modifier === "ctrl" || modifier === "control") {
+      ctrl = true
+    } else if (modifier === "shift") {
+      shift = true
+    } else if (modifier === "meta" || modifier === "alt" || modifier === "option") {
+      meta = true
+    } else if (modifier === "super") {
+      superKey = true
+    } else if (modifier === "hyper") {
+      hyper = true
+    }
+
+    cursor = plusIndex + 1
+  }
+
+  if (cursor === index) {
+    return undefined
+  }
+
+  const char = input[cursor]
+  if (char === undefined) {
+    throw new Error(`Invalid key "${input.slice(index)}": missing key name`)
+  }
+
+  const name = findNamedSingleStrokeKey(input, cursor) ?? char
+  const displayName = name === " " ? "space" : name === "+" ? "+" : name.toLowerCase()
+  const displayParts: string[] = []
+  if (ctrl) displayParts.push("ctrl")
+  if (shift) displayParts.push("shift")
+  if (meta) displayParts.push("meta")
+  if (superKey) displayParts.push("super")
+  if (hyper) displayParts.push("hyper")
+  displayParts.push(displayName)
+
+  return {
+    part: ctx.parseObjectKey(
+      {
+        name: name === " " ? "space" : name,
+        ctrl,
+        shift,
+        meta,
+        super: superKey,
+        hyper: hyper || undefined,
+      },
+      {
+        display: displayParts.join("+"),
+      },
+    ),
+    nextIndex: cursor + name.length,
+  }
+}
+
 export const defaultBindingParser: BindingParser = (ctx) => {
   const { input, index, tokens, normalizeTokenName } = ctx
 
-  if (index === 0 && isSingleStrokeString(input)) {
-    if (input === " " || input === "+") {
-      return {
-        parts: [parseStringKeyPart(input, ctx)],
-        nextIndex: input.length,
-      }
-    }
-
+  if (index === 0 && input.includes("+") && /\s/.test(input)) {
     return {
       parts: [parseStringKeyPart(input, ctx)],
       nextIndex: input.length,
@@ -323,6 +399,22 @@ export const defaultBindingParser: BindingParser = (ctx) => {
       parts: [{ ...part, patternName: pattern.name, payloadKey: pattern.payloadKey }],
       nextIndex: end + 1,
       usedTokens: [patternName],
+    }
+  }
+
+  const modified = parseModifiedKeyPart(input, index, ctx)
+  if (modified) {
+    return {
+      parts: [modified.part],
+      nextIndex: modified.nextIndex,
+    }
+  }
+
+  const namedKey = findNamedSingleStrokeKey(input, index)
+  if (namedKey) {
+    return {
+      parts: [parseNamedKeyPart(namedKey, ctx)],
+      nextIndex: index + namedKey.length,
     }
   }
 
