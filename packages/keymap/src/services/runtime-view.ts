@@ -1,10 +1,7 @@
 import type { ConditionService } from "./conditions.js"
 import type { ActiveCommandView, CommandView, LayerCommandEntry, State } from "./state.js"
 import type { KeymapEvent, KeymapHost, RegisteredLayer } from "../types.js"
-import {
-  getActiveLayersForFocused,
-  getSortedLayers,
-} from "./primitives/active-layers.js"
+import { getActiveLayersForFocused } from "./primitives/active-layers.js"
 
 function pushCommandEntry<TTarget extends object, TEvent extends KeymapEvent>(
   target: Map<string, LayerCommandEntry<TTarget, TEvent>[]>,
@@ -22,7 +19,7 @@ export function getRegisteredCommandView<TTarget extends object, TEvent extends 
   const entries: LayerCommandEntry<TTarget, TEvent>[] = []
   const chainsByName = new Map<string, LayerCommandEntry<TTarget, TEvent>[]>()
 
-  for (const layer of getSortedLayers(state.layers)) {
+  for (const layer of state.layers) {
     for (const commandState of layer.commands) {
       const entry: LayerCommandEntry<TTarget, TEvent> = { layer, commandState }
       entries.push(entry)
@@ -69,5 +66,5 @@ export function getActiveCommandView<TTarget extends object, TEvent extends Keym
   conditions: ConditionService<TTarget, TEvent>,
   focused: TTarget | null,
 ): ActiveCommandView<TTarget, TEvent> {
-  return collectActiveCommands(getActiveLayersForFocused(state.layers, host, focused), conditions, true)
+  return collectActiveCommands(getActiveLayersForFocused(state.sortedLayers, host, focused), conditions, true)
 }

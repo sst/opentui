@@ -29,6 +29,14 @@ import { getErrorMessage, snapshotDataValue } from "./values.js"
 
 const NOOP = (): void => {}
 
+function compareLayers<TTarget extends object, TEvent extends KeymapEvent>(
+  left: RegisteredLayer<TTarget, TEvent>,
+  right: RegisteredLayer<TTarget, TEvent>,
+): number {
+  const priorityDiff = right.priority - left.priority
+  return priorityDiff || right.order - left.order
+}
+
 interface CompileLayerRuntimeStateResult {
   requires: readonly [name: string, value: unknown][]
   matchers: readonly RuntimeMatcher[]
@@ -141,6 +149,7 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
       }
 
       state.layers.add(registeredLayer)
+      state.sortedLayers = [...state.sortedLayers, registeredLayer].sort(compareLayers)
       attachReactiveMatchers(registeredLayer)
       for (const command of registeredLayer.commands) {
         attachReactiveMatchers(command)
@@ -415,6 +424,8 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
       if (!state.layers.delete(layer)) {
         return
       }
+
+      state.sortedLayers = state.sortedLayers.filter((candidate) => candidate !== layer)
 
       detachReactiveMatchers(layer)
       for (const command of layer.commands) {

@@ -97,6 +97,8 @@ export function createNotificationService<TTarget extends object, TEvent extends
       }
     },
     queueStateChange() {
+      state.derivedVersion += 1
+
       if (!hooks.has("state")) {
         return
       }

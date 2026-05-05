@@ -42,14 +42,17 @@ export function getActivationPath<TTarget extends object, TEvent extends KeymapE
 }
 
 export function getActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
-  layers: ReadonlySet<RegisteredLayer<TTarget, TEvent>>,
+  layers: readonly RegisteredLayer<TTarget, TEvent>[] | ReadonlySet<RegisteredLayer<TTarget, TEvent>>,
   host: KeymapHost<TTarget, TEvent>,
   focused: TTarget | null,
 ): readonly RegisteredLayer<TTarget, TEvent>[] {
   const activeLayers: RegisteredLayer<TTarget, TEvent>[] = []
   const activationPath = getActivationPath(host, focused)
+  const sortedLayers = Array.isArray(layers)
+    ? layers
+    : getSortedLayers(layers as ReadonlySet<RegisteredLayer<TTarget, TEvent>>)
 
-  for (const layer of getSortedLayers(layers)) {
+  for (const layer of sortedLayers) {
     if (isLayerActiveForFocused(host, layer, focused, activationPath)) {
       activeLayers.push(layer)
     }

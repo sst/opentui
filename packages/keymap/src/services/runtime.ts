@@ -26,6 +26,7 @@ export function createRuntimeService<TTarget extends object, TEvent extends Keym
           }
 
           delete state.data[name]
+          state.dataVersion += 1
           activation.ensureValidPendingSequence()
           notify.queueStateChange()
           return
@@ -36,12 +37,19 @@ export function createRuntimeService<TTarget extends object, TEvent extends Keym
         }
 
         state.data[name] = value
+        state.dataVersion += 1
         activation.ensureValidPendingSequence()
         notify.queueStateChange()
       })
     },
     getReadonlyData() {
-      return Object.freeze({ ...state.data })
+      if (state.readonlyDataVersion === state.dataVersion) {
+        return state.readonlyData
+      }
+
+      state.readonlyData = Object.freeze({ ...state.data })
+      state.readonlyDataVersion = state.dataVersion
+      return state.readonlyData
     },
   }
 }

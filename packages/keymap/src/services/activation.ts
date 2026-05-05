@@ -110,6 +110,12 @@ interface ActivationOptions<TTarget extends object, TEvent extends KeymapEvent> 
   ) => void
 }
 
+interface ActiveKeysCache<TTarget extends object, TEvent extends KeymapEvent> {
+  version: number
+  focused: TTarget | null | undefined
+  value: readonly ActiveKey<TTarget, TEvent>[]
+}
+
 export interface ActivationService<TTarget extends object, TEvent extends KeymapEvent> {
   getFocusedTarget(): TTarget | null
   getFocusedTargetIfAvailable(): TTarget | null
@@ -152,6 +158,21 @@ export function createActivationService<TTarget extends object, TEvent extends K
   catalog: CommandCatalogService<TTarget, TEvent>,
   options: ActivationOptions<TTarget, TEvent> = {},
 ): ActivationService<TTarget, TEvent> {
+  const createActiveKeysCache = (): ActiveKeysCache<TTarget, TEvent> => ({
+    version: -1,
+    focused: undefined,
+    value: [],
+  })
+  const activeKeysPlainCache = createActiveKeysCache()
+  const activeKeysBindingsCache = createActiveKeysCache()
+  const activeKeysMetadataCache = createActiveKeysCache()
+  const activeKeysBindingsAndMetadataCache = createActiveKeysCache()
+  let pendingSequenceCacheVersion = -1
+  let pendingSequenceCache: readonly KeySequencePart[] = []
+  let activeLayersCacheVersion = -1
+  let activeLayersCacheFocused: TTarget | null | undefined
+  let activeLayersCache: RegisteredLayer<TTarget, TEvent>[] = []
+
   const getFocusedTarget = (): TTarget | null => {
     return getLiveHost(host).getFocusedTarget()
   }
@@ -215,8 +236,18 @@ export function createActivationService<TTarget extends object, TEvent extends K
   }
 
   const getPendingSequence = (): readonly KeySequencePart[] => {
+    if (pendingSequenceCacheVersion === state.derivedVersion) {
+      return pendingSequenceCache
+    }
+
     const pending = ensureValidPendingSequence()
-    return pending ? collectSequencePartsFromPending(pending) : []
+    const sequence = pending ? collectSequencePartsFromPending(pending) : []
+    if (!pending || allRegisteredLayersCanCacheActiveKeys()) {
+      pendingSequenceCacheVersion = state.derivedVersion
+      pendingSequenceCache = sequence
+    }
+
+    return sequence
   }
 
   const popPendingSequence = (): boolean => {
@@ -254,15 +285,35 @@ export function createActivationService<TTarget extends object, TEvent extends K
   const getActiveKeys = (options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] => {
     const includeBindings = options?.includeBindings === true
     const includeMetadata = options?.includeMetadata === true
+    const cache = getActiveKeysCache(includeBindings, includeMetadata)
+
+    if (host.isDestroyed) {
+      getLiveHost(host)
+    }
+
+    if (cache.version === state.derivedVersion) {
+      return cache.value
+    }
 
     const focused = getFocusedTarget()
     const activeView = catalog.getActiveCommandView(focused)
     const pending = ensureValidPendingSequence()
     const activeLayers = pending ? [] : getActiveLayers(focused)
 
-    return pending
+    const activeKeys = pending
       ? collectActiveKeysFromPending(pending.captures, includeBindings, includeMetadata, focused, activeView)
       : collectActiveKeysAtRoot(activeLayers, includeBindings, includeMetadata, focused, activeView)
+
+    const canUseCache = pending
+      ? allRegisteredLayersCanCacheActiveKeys()
+      : activeLayersCanCacheActiveKeys(activeLayers)
+    if (canUseCache) {
+      cache.version = state.derivedVersion
+      cache.focused = focused
+      cache.value = activeKeys
+    }
+
+    return activeKeys
   }
 
   const getActiveKeysForCaptures = (
@@ -301,11 +352,74 @@ export function createActivationService<TTarget extends object, TEvent extends K
   }
 
   const getActiveLayers = (focused: TTarget | null): RegisteredLayer<TTarget, TEvent>[] => {
-    return getActiveLayersForFocused(state.layers, host, focused) as RegisteredLayer<TTarget, TEvent>[]
+    if (activeLayersCacheVersion === state.derivedVersion && activeLayersCacheFocused === focused) {
+      return activeLayersCache
+    }
+
+    activeLayersCacheVersion = state.derivedVersion
+    activeLayersCacheFocused = focused
+    activeLayersCache = getActiveLayersForFocused(state.sortedLayers, host, focused) as RegisteredLayer<TTarget, TEvent>[]
+    return activeLayersCache
   }
 
   const isActiveLayerForFocused = (layer: RegisteredLayer<TTarget, TEvent>, focused: TTarget | null): boolean => {
     return isLayerActiveForFocused(host, layer, focused)
+  }
+
+  const getActiveKeysCache = (includeBindings: boolean, includeMetadata: boolean): ActiveKeysCache<TTarget, TEvent> => {
+    if (includeBindings) {
+      return includeMetadata ? activeKeysBindingsAndMetadataCache : activeKeysBindingsCache
+    }
+
+    return includeMetadata ? activeKeysMetadataCache : activeKeysPlainCache
+  }
+
+  const layerCanCacheActiveKeys = (layer: RegisteredLayer<TTarget, TEvent>): boolean => {
+    if (layer.matchers.length > 0) {
+      return false
+    }
+
+    for (const command of layer.commands) {
+      if (command.matchers.length > 0) {
+        return false
+      }
+    }
+
+    for (const binding of layer.bindings) {
+      if (binding.matchers.length > 0) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  const activeLayersCanCacheActiveKeys = (activeLayers: readonly RegisteredLayer<TTarget, TEvent>[]): boolean => {
+    if (state.commandResolvers.has()) {
+      return false
+    }
+
+    for (const layer of activeLayers) {
+      if (!layerCanCacheActiveKeys(layer)) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  const allRegisteredLayersCanCacheActiveKeys = (): boolean => {
+    if (state.commandResolvers.has()) {
+      return false
+    }
+
+    for (const layer of state.sortedLayers) {
+      if (!layerCanCacheActiveKeys(layer)) {
+        return false
+      }
+    }
+
+    return true
   }
 
   const popCapture = (

@@ -30,6 +30,8 @@ import {
   type RuntimePriorityRegistry,
 } from "../lib/runtime-utils.js"
 
+const EMPTY_DATA: Readonly<EventData> = Object.freeze({})
+
 export interface LayerCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {
   layer: RegisteredLayer<TTarget, TEvent>
   commandState: CommandState<TTarget, TEvent>
@@ -76,9 +78,14 @@ export interface State<TTarget extends object, TEvent extends KeymapEvent> {
   >
   rawHooks: RuntimePriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>
   layers: Set<RegisteredLayer<TTarget, TEvent>>
+  sortedLayers: RegisteredLayer<TTarget, TEvent>[]
   commandResolvers: RuntimeOrderedRegistry<CommandResolver<TTarget, TEvent>>
   pending: PendingSequenceState<TTarget, TEvent> | null
   data: EventData
+  dataVersion: number
+  readonlyDataVersion: number
+  readonlyData: Readonly<EventData>
+  derivedVersion: number
   stateChangeDepth: number
   stateChangePending: boolean
   flushingStateChange: boolean
@@ -107,9 +114,14 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     >(),
     rawHooks: createRuntimePriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>(),
     layers: new Set<RegisteredLayer<TTarget, TEvent>>(),
+    sortedLayers: [],
     commandResolvers: createRuntimeOrderedRegistry<CommandResolver<TTarget, TEvent>>(),
     pending: null,
     data: {},
+    dataVersion: 0,
+    readonlyDataVersion: -1,
+    readonlyData: EMPTY_DATA,
+    derivedVersion: 0,
     stateChangeDepth: 0,
     stateChangePending: false,
     flushingStateChange: false,
