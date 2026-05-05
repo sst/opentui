@@ -197,6 +197,7 @@ let logoPulses: LogoPulse[] = []
 let logoTileStepAccumulatorMs = 0
 let logoTileStepIndex = 0
 let logoTileStates: LogoTileState[] = []
+let logoTilePattern: LogoTilePattern = createLogoTilePattern()
 let disposers: Array<() => void> = []
 
 interface LogoCell {
@@ -221,6 +222,19 @@ interface LogoTileState {
   hitMs: number
   color: string
   accent: number
+}
+
+interface LogoTilePoint {
+  x: number
+  y: number
+}
+
+interface LogoTilePattern {
+  kick: LogoTilePoint[][]
+  snareRows: number[]
+  hihatColumns: number[]
+  ghost: LogoTilePoint[]
+  fillColumns: number[]
 }
 
 function styledLine(chunks: TextChunk[]): TextChunk[] {
@@ -396,33 +410,92 @@ function triggerLogoTileRow(row: number, color: string, accent: number): void {
   }
 }
 
+function randomLogoTileIndex(max: number): number {
+  return Math.floor(Math.random() * max)
+}
+
+function randomLogoTilePoint(): LogoTilePoint {
+  return {
+    x: randomLogoTileIndex(LOGO_TILE_COLUMNS),
+    y: randomLogoTileIndex(LOGO_TILE_ROWS),
+  }
+}
+
+function createLogoTileCluster(size: number): LogoTilePoint[] {
+  const origin = randomLogoTilePoint()
+  const points: LogoTilePoint[] = []
+  const used = new Set<string>()
+  const addPoint = (point: LogoTilePoint) => {
+    const x = Math.max(0, Math.min(LOGO_TILE_COLUMNS - 1, point.x))
+    const y = Math.max(0, Math.min(LOGO_TILE_ROWS - 1, point.y))
+    const key = `${x}:${y}`
+    if (used.has(key)) {
+      return
+    }
+
+    used.add(key)
+    points.push({ x, y })
+  }
+
+  addPoint(origin)
+  while (points.length < size) {
+    addPoint({
+      x: origin.x + randomLogoTileIndex(3) - 1,
+      y: origin.y + randomLogoTileIndex(3) - 1,
+    })
+  }
+
+  return points
+}
+
+function createLogoTilePattern(): LogoTilePattern {
+  return {
+    kick: [createLogoTileCluster(3), createLogoTileCluster(3), createLogoTileCluster(3), createLogoTileCluster(3)],
+    snareRows: [randomLogoTileIndex(LOGO_TILE_ROWS), randomLogoTileIndex(LOGO_TILE_ROWS)],
+    hihatColumns: Array.from({ length: 8 }, () => randomLogoTileIndex(LOGO_TILE_COLUMNS)),
+    ghost: Array.from({ length: LOGO_TILE_STEPS }, () => randomLogoTilePoint()),
+    fillColumns: [randomLogoTileIndex(LOGO_TILE_COLUMNS), randomLogoTileIndex(LOGO_TILE_COLUMNS)],
+  }
+}
+
+function shuffleLogoTilePattern(renderer?: CliRenderer): void {
+  logoTilePattern = createLogoTilePattern()
+  resetLogoTiles()
+  renderLogoOverlay()
+  if (renderer) {
+    setStatus(renderer, "Shuffled logo beat tiles")
+  }
+}
+
 function triggerLogoTileBeat(step: number): void {
   const beat = Math.floor(step / 4)
   const subdivision = step % 4
 
   if (subdivision === 0) {
-    const center = beat % 2 === 0 ? 2 : 5
-    triggerLogoTile(center, 5, P.accent, 1.15)
-    triggerLogoTile(center + 1, 5, P.accent, 1)
-    triggerLogoTile(center, 6, P.leader, 0.92)
-    triggerLogoTile(center + 1, 6, P.leader, 0.86)
+    for (const [index, point] of logoTilePattern.kick[beat]?.entries() ?? []) {
+      triggerLogoTile(point.x, point.y, index === 0 ? P.accent : P.leader, index === 0 ? 1.15 : 0.9)
+    }
   }
 
   if (step === 4 || step === 12) {
-    triggerLogoTileRow(2, P.key, 0.96)
-    triggerLogoTileRow(3, P.alpha, 0.72)
+    const row = logoTilePattern.snareRows[step === 4 ? 0 : 1] ?? 0
+    triggerLogoTileRow(row, P.key, 0.96)
+    triggerLogoTileRow(row + 1, P.alpha, 0.62)
   }
 
   if (step % 2 === 2) {
-    triggerLogoTileColumn((step / 2 + 1) % LOGO_TILE_COLUMNS, P.command, 0.56)
+    triggerLogoTileColumn(logoTilePattern.hihatColumns[Math.floor(step / 2)] ?? 0, P.command, 0.56)
   }
 
   if (step % 2 === 1) {
-    triggerLogoTile((step * 3) % LOGO_TILE_COLUMNS, (step * 5 + beat) % LOGO_TILE_ROWS, P.textDim, 0.42)
+    const point = logoTilePattern.ghost[step] ?? { x: 0, y: 0 }
+    triggerLogoTile(point.x, point.y, P.textDim, 0.42)
   }
 
   if (step === 15) {
-    triggerLogoTileColumn(7, P.leader, 0.74)
+    for (const column of logoTilePattern.fillColumns) {
+      triggerLogoTileColumn(column, P.leader, 0.74)
+    }
   }
 }
 
@@ -553,6 +626,8 @@ function buildLogoOverlayHint(): StyledText {
       fg(P.textMuted)(" tempo  "),
       bold(fg(P.key)("r")),
       fg(P.textMuted)(" reset  "),
+      bold(fg(P.key)("s")),
+      fg(P.textMuted)(" shuffle  "),
       bold(fg(P.key)("esc")),
       fg(P.textMuted)(" or "),
       bold(fg(P.key)("ctrl+o")),
@@ -1871,6 +1946,15 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
           },
         },
         {
+          name: "logo-tiles-shuffle",
+          title: "Shuffle logo tiles",
+          desc: "Shuffle logo beat tiles",
+          category: "View",
+          run() {
+            shuffleLogoTilePattern(renderer)
+          },
+        },
+        {
           name: "alpha-up",
           title: "Alpha +1",
           desc: "Alpha +1",
@@ -2051,6 +2135,7 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
         { key: "up", cmd: "logo-bpm-up", desc: "Increase logo BPM" },
         { key: "down", cmd: "logo-bpm-down", desc: "Decrease logo BPM" },
         { key: "r", cmd: "logo-bpm-reset", desc: "Reset logo BPM" },
+        { key: "s", cmd: "logo-tiles-shuffle", desc: "Shuffle logo beat tiles" },
       ],
     }),
   )
@@ -2199,6 +2284,7 @@ export function run(renderer: CliRenderer): void {
   logoAnimationBpm = LOGO_DEFAULT_BPM
   logoTileStepAccumulatorMs = 0
   logoTileStepIndex = 0
+  logoTilePattern = createLogoTilePattern()
   logoTileStates = []
   graphLastRenderedHeight = -1
   graphLastRenderedWidth = -1
@@ -2723,6 +2809,7 @@ export function destroy(renderer: CliRenderer): void {
   logoAnimationBpm = LOGO_DEFAULT_BPM
   logoTileStepAccumulatorMs = 0
   logoTileStepIndex = 0
+  logoTilePattern = createLogoTilePattern()
   logoTileStates = []
   graphLastRenderedHeight = -1
   graphLastRenderedWidth = -1
