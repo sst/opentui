@@ -6,4 +6,4 @@ export {
   registerManagedTextareaLayer,
   registerTextareaMappingSuspension,
 } from "./edit-buffer-bindings.js"
-export type { EditBufferCommandName, EditBufferCommandOptions } from "./edit-buffer-bindings.js"
+export type { EditBufferCommandName, EditBufferCommandOptions, EditBufferFineGroup } from "./edit-buffer-bindings.js"

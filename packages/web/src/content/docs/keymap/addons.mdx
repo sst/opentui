@@ -155,10 +155,13 @@ Adds an event match resolver that falls back to `KeyEvent.baseCode` so bindings 
 
 `EditBufferCommandOptions`:
 
-| Field          | Type                                             | Description                             |
-| -------------- | ------------------------------------------------ | --------------------------------------- |
-| `commandNames` | `Partial<Record<EditBufferCommandName, string>>` | Override generated command names        |
-| `descriptions` | `Partial<Record<EditBufferCommandName, string>>` | Override generated command descriptions |
+| Field              | Type                                             | Description                                                                     |
+| ------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `category`         | `string`                                         | Override generated command category, defaulting to `Text Editing`               |
+| `group`            | `string`                                         | Override generated binding group, defaulting to `Text Editing`                  |
+| `includeFineGroup` | `boolean`                                        | Include hard-coded binding `fineGroup` fields for apps that register that field |
+| `commandNames`     | `Partial<Record<EditBufferCommandName, string>>` | Override generated command names                                                |
+| `descriptions`     | `Partial<Record<EditBufferCommandName, string>>` | Override generated command descriptions                                         |
 
 `registerEditBufferCommands()` and `registerTextareaMappingSuspension()` are reference-counted per keymap, so multiple integrations can safely share them.
 
