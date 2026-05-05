@@ -258,34 +258,26 @@ A pending sequence is the prefix the user has already typed, such as `g` while w
 
 `getActiveKeys()` is the companion query. It does not list every registered binding; it projects the next reachable strokes from the current focus and pending state. That makes it the right API for key hints, which-key style UIs and other live discovery surfaces.
 
-- [Hosts](/docs/keymap/hosts) - built-in OpenTUI and HTML adapters plus the `KeymapHost` contract
-- [Core](/docs/keymap/core) - bare `Keymap` and the shared runtime APIs
-- [React](/docs/keymap/react) - provider and hooks for a pre-created OpenTUI keymap
-- [Solid](/docs/keymap/solid) - provider and hooks for a pre-created OpenTUI keymap
-- [Built-in Addons](/docs/keymap/addons) - shipped universal and OpenTUI-specific addons
-- [Custom Addons](/docs/keymap/custom-addons) - public addon-authoring APIs, contexts and constraints
-
 ## Entry points
 
-| Package                                  | Description                                                                |
-| ---------------------------------------- | -------------------------------------------------------------------------- |
-| `@opentui/keymap`                        | Full engine: `Keymap`, key stringifiers and shared types for custom hosts  |
-| `@opentui/keymap/base`                   | Core `Keymap` entry without graph snapshot or layer-analyzer implementations |
-| `@opentui/keymap/addons`                 | Universal addons for parser stages, metadata, diagnostics and sequences    |
-| `@opentui/keymap/addons/opentui`         | Universal addons plus OpenTUI-specific base-layout and edit-buffer helpers |
-| `@opentui/keymap/extras/graph`           | Graph snapshot helpers for debug and graph UIs                             |
-| `@opentui/keymap/testing`                | Host-agnostic fake host and diagnostics for addon tests                    |
-| `@opentui/keymap/opentui`                | OpenTUI host adapter for terminal apps built on `@opentui/core`            |
-| `@opentui/keymap/html`                   | DOM host adapter for browser UIs rooted in an `HTMLElement`                |
-| `@opentui/keymap/react`                  | React provider and hooks for an OpenTUI keymap                             |
-| `@opentui/keymap/solid`                  | Solid provider and hooks for an OpenTUI keymap                             |
+| Package                          | Description                                                                |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| `@opentui/keymap`                | Main engine entry: `Keymap`, key stringifiers and shared types             |
+| `@opentui/keymap/base`           | Minimal export surface for `Keymap`, key stringifiers and shared types     |
+| `@opentui/keymap/addons`         | Universal addons for parser stages, metadata, diagnostics and sequences    |
+| `@opentui/keymap/addons/opentui` | Universal addons plus OpenTUI-specific base-layout and edit-buffer helpers |
+| `@opentui/keymap/extras/graph`   | Graph snapshot helpers for debug and graph UIs                             |
+| `@opentui/keymap/testing`        | Host-agnostic fake host and diagnostics for addon tests                    |
+| `@opentui/keymap/opentui`        | OpenTUI host adapter for terminal apps built on `@opentui/core`            |
+| `@opentui/keymap/html`           | DOM host adapter for browser UIs rooted in an `HTMLElement`                |
+| `@opentui/keymap/react`          | React provider and hooks for an OpenTUI keymap                             |
+| `@opentui/keymap/solid`          | Solid provider and hooks for an OpenTUI keymap                             |
 
 ## Bare vs default helpers
 
-| Helper                            | What it installs                                                                  |
+| Helper                            | What it creates                                                                   |
 | --------------------------------- | --------------------------------------------------------------------------------- |
-| `new Keymap(host)`                | Core runtime without graph snapshots or layer analyzers                           |
-| `getGraphSnapshot(keymap)`        | Opt-in graph/debug projection from `@opentui/keymap/extras/graph`                |
+| `new Keymap(host)`                | Bare keymap engine for a provided host                                            |
 | `createOpenTuiKeymap(renderer)`   | `Keymap` plus the OpenTUI host adapter                                            |
 | `createHtmlKeymap(root)`          | `Keymap` plus the HTML host adapter                                               |
 | `createDefaultOpenTuiKeymap(...)` | OpenTUI keymap plus default keys, enabled fields and metadata fields              |

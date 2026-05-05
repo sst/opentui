@@ -9,7 +9,7 @@ navTitle: Custom Addons
 
 An addon is usually a function that accepts a `Keymap`, registers one or more behaviors, and returns a disposer.
 
-The important constraint is that custom addons should stay on the public surface. The built-in addons are implemented that way too.
+The important constraint is that custom addons should stay on the public surface. The shipped addons use the same public registration APIs.
 
 If you want the shipped addon inventory instead, see [Built-in Addons](/docs/keymap/addons).
 
@@ -89,8 +89,6 @@ Guidelines:
 | `keymap.on(...)`                 | Subscribe to state, dispatch and diagnostic events                 |
 
 Every registration API above returns a disposer.
-
-Layer analyzers are built into `Keymap`, so analyzer-based addons can register directly with any keymap instance.
 
 ## Field compilers
 
@@ -208,8 +206,8 @@ interface ReactiveMatcher {
 | Surface | Field storage                                                                | Metadata output                                 |
 | ------- | ---------------------------------------------------------------------------- | ----------------------------------------------- |
 | Layer   | Extra layer fields feed layer compilers, parsers, expanders and transformers | `GraphLayer.attrs` in graph snapshots           |
-| Binding | Extra binding fields are compiler inputs only                                | `ActiveBinding.attrs`, `ActiveKey.bindingAttrs` |
-| Command | Extra command properties are compiler inputs and stay on the command object  | `commandAttrs` projections                      |
+| Binding | Extra binding fields are consumed by binding-field compilers                 | `ActiveBinding.attrs`, `ActiveKey.bindingAttrs` |
+| Command | Extra command properties stay on the command object and feed compilers       | `commandAttrs` projections                      |
 
 Layer attrs are intentionally exposed on graph snapshots, not active keys, active bindings or command queries. Use them for debug and visualization metadata such as layer names.
 
@@ -324,7 +322,7 @@ return {
 }
 ```
 
-Resolver results are resolved when command views, bindings, `runCommand()` or `dispatchCommand()` need them.
+Resolver results are resolved when command queries, bindings, `runCommand()` or `dispatchCommand()` need them.
 Programmatic `runCommand()` and `dispatchCommand()` resolve the supplied command string for each call.
 Put per-execution behavior in the returned `run(ctx)` handler.
 
@@ -334,7 +332,7 @@ Put per-execution behavior in the returned `run(ctx)` handler.
 (event, ctx) => readonly KeyMatch[] | undefined
 ```
 
-`EventMatchResolverContext` exposes `resolveKey(key)`, which lets a resolver map a host event to the same internal match keys the parser uses.
+`EventMatchResolverContext` exposes `resolveKey(key)`, which lets a resolver map a host event to the same matching representation used by parsed bindings.
 
 ### `KeyDisambiguationResolver`
 
@@ -429,6 +427,8 @@ Options:
 | `getActiveKeys()` / `getGraphSnapshot(keymap)`                             | Build hint, graph or debug UIs                                  |
 | `getCommands()` / `getCommandEntries()` / `getCommandBindings()`           | Inspect command metadata and binding projections                |
 
+`getGraphSnapshot()` is imported from `@opentui/keymap/extras/graph`; the other helpers are `Keymap` methods.
+
 ## Shared resources with `acquireResource()`
 
 `acquireResource(symbol, setup)` is the public way to share setup and teardown across multiple addon registrations on the same keymap.
@@ -503,8 +503,3 @@ The fake host supports press/release events, focus changes, parent traversal, ta
 - `intercept("raw", ...)` only works when the host implements `onRawInput()`.
 - Raw hosts must stop raw input propagation when an `onRawInput()` listener returns `true`.
 - After the host is destroyed, host-backed reads such as `getActiveKeys()` are unavailable, but metadata reads such as `getCommands()` and runtime data access remain usable.
-
-## Reference implementations
-
-- Universal addons: `packages/keymap/src/addons/universal/*.ts`
-- OpenTUI-specific addons: `packages/keymap/src/addons/opentui/*.ts`

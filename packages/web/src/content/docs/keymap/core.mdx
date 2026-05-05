@@ -20,16 +20,6 @@ const keymap = new Keymap(host as KeymapHost<object>)
 
 Bare keymaps do not parse string bindings until you install binding parsers and event match resolvers. In practice that usually means `registerDefaultKeys()` or one of the default host helpers.
 
-`Keymap` is the core runtime. Layer analyzers are built in. Graph snapshots are provided by an extra helper:
-
-```ts
-import { Keymap, type KeymapHost } from "@opentui/keymap"
-import { getGraphSnapshot } from "@opentui/keymap/extras/graph"
-
-const keymap = new Keymap(host as KeymapHost<object>)
-const graph = getGraphSnapshot(keymap)
-```
-
 ## `KeymapHost`
 
 `KeymapHost` is the contract that built-in hosts and custom adapters implement. See [Hosts](/docs/keymap/hosts) for the built-in OpenTUI and HTML adapters.
@@ -82,14 +72,14 @@ keymap.registerLayer({
 })
 ```
 
-| Field        | Description                                                                                         |
-| ------------ | --------------------------------------------------------------------------------------------------- |
-| `target`     | Optional local target. Omit it for a global layer                                                   |
-| `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present                |
-| `priority`   | Higher numbers win. Within the same priority, newer layers win                                      |
-| `bindings`   | `Binding[]`                                                                                         |
-| `commands`   | Named command definitions registered with the same layer                                            |
-| extra fields | Feed layer-field compilers and binding compilation. Compiled layer attrs surface in graph snapshots |
+| Field        | Description                                                                          |
+| ------------ | ------------------------------------------------------------------------------------ |
+| `target`     | Optional local target. Omit it for a global layer                                    |
+| `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present |
+| `priority`   | Higher numbers win. Within the same priority, newer layers win                       |
+| `bindings`   | `Binding[]`                                                                          |
+| `commands`   | Named command definitions registered with the same layer                             |
+| extra fields | Custom fields used by registered layer-field compilers and binding pipeline addons   |
 
 - Targetless layers are always active.
 - Active layers all use the same precedence rules: higher `priority` wins, then newer layers win.
@@ -109,7 +99,7 @@ The core engine only accepts full `Binding[]` arrays. If you want command-to-key
 
 `Binding` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 
-Binding custom fields are compile inputs. They are not exposed as a public `.fields` object. If a binding-field compiler calls `attr(...)`, the compiled metadata appears as `ActiveBinding.attrs` and, when selected, `ActiveKey.bindingAttrs`.
+Use `attr(...)` in a binding-field compiler when a custom binding field should appear in query metadata such as `ActiveBinding.attrs` or `ActiveKey.bindingAttrs`.
 
 `Binding` field defaults:
 
@@ -402,6 +392,8 @@ The returned map preserves the requested command order and includes every reques
 Layer custom fields remain available as raw `GraphLayer.fields`; compiled layer metadata published with `ctx.attr(...)` appears as `GraphLayer.attrs`. Use attrs for stable visualization metadata such as layer display names.
 
 ```ts
+import { getGraphSnapshot } from "@opentui/keymap/extras/graph"
+
 keymap.registerLayerFields({
   name(value, ctx) {
     ctx.attr("name", String(value).trim())
@@ -440,7 +432,7 @@ Diagnostic events are not batched through `state`; they are emitted when the war
 | `WarningEvent` | `code`, `message`, `warning` |
 | `ErrorEvent`   | `code`, `message`, `error`   |
 
-Diagnostic-event quirks:
+Diagnostic behavior:
 
 - If no `warning` listener is registered, the keymap falls back to `console.warn(...)` for warnings.
 - If no `error` listener is registered, the keymap falls back to `console.error(...)` for errors.
@@ -540,5 +532,3 @@ The handler may return a decision, a `Promise<decision>`, or nothing (no-op). Re
 - Runtime/data re-entry is supported during dispatch. Command handlers, intercepts and pending-sequence listeners can read and write runtime data.
 - Structural re-entry is not supported during dispatch. Do not register or unregister layers, parsers, resolvers, tokens, or similar environment-shaping state while a dispatch is in flight.
 - After the host is destroyed, host-backed reads such as `getActiveKeys()` are unavailable. Metadata reads such as `getCommands()` and runtime data access remain usable.
-
-Example host surface: `packages/keymap/src/tests/keymap.host.test.ts`

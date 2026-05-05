@@ -118,7 +118,7 @@ If you want to control the installed addons yourself, start from `createOpenTuiK
 
 ### Host behavior
 
-| Behavior                | OpenTUI adapter implementation                                                                                                                        |
+| Behavior                | OpenTUI adapter                                                                                                                                       |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Root target             | `renderer.root`                                                                                                                                       |
 | Focused target          | `renderer.currentFocusedRenderable` when still focused and not destroyed                                                                              |
@@ -216,7 +216,7 @@ The HTML matcher also adds an unshifted match candidate for shifted printable pu
 
 ### Host behavior
 
-| Behavior                | HTML adapter implementation                                                          |
+| Behavior                | HTML adapter                                                                         |
 | ----------------------- | ------------------------------------------------------------------------------------ |
 | Root target             | The `HTMLElement` passed to `createHtmlKeymapHost()` / `createHtmlKeymap()`          |
 | Focused target          | `document.activeElement` when it is the root or a descendant                         |
