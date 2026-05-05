@@ -2,6 +2,7 @@ import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:te
 import { Lexer } from "marked"
 import { MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
 import { CodeRenderable } from "../Code.js"
+import { LatexRenderable } from "../Latex.js"
 import { TextRenderable } from "../Text.js"
 import { TextTableRenderable } from "../TextTable.js"
 import { SyntaxStyle } from "../../syntax-style.js"
@@ -1327,6 +1328,136 @@ Paragraph text.`,
 
     Paragraph text."
   `)
+})
+
+test("math disabled leaves inline latex source unchanged", async () => {
+  const md = createMarkdownRenderable({
+    id: "math-disabled",
+    content: "Cost is $5 and math is $x^2$.",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("$x^2$")
+})
+
+test("inline math renders inside markdown paragraphs when enabled", async () => {
+  const md = createMarkdownRenderable({
+    id: "inline-math",
+    content: "Euler-ish: $x^2 + y_1$",
+    syntaxStyle,
+    math: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("Euler-ish: x² + y₁")
+  expect(frame).not.toContain("$x^2")
+})
+
+test("inline math preserves delimiters when conceal is false", async () => {
+  const md = createMarkdownRenderable({
+    id: "inline-math-unconcealed",
+    content: "Math: $x^2$",
+    syntaxStyle,
+    conceal: false,
+    math: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(captureFrame()).toContain("$x²$")
+})
+
+test("display math blocks render as LatexRenderable blocks", async () => {
+  const md = createMarkdownRenderable({
+    id: "display-math",
+    content: "Before\n\n$$\n\\frac{1}{2}\n$$\n\nAfter",
+    syntaxStyle,
+    math: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.some((state) => state.renderable instanceof LatexRenderable)).toBe(true)
+
+  const frame = captureFrame()
+  expect(frame).toContain("Before")
+  expect(frame).toContain("─")
+  expect(frame).toContain("After")
+})
+
+test("streaming display math stays raw until closed", async () => {
+  const md = createMarkdownRenderable({
+    id: "streaming-display-math",
+    content: "$$\n\\frac{1}{2}",
+    syntaxStyle,
+    streaming: true,
+    math: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.some((state) => state.renderable instanceof LatexRenderable)).toBe(false)
+  expect(captureFrame()).toContain("$$")
+
+  md.content = "$$\n\\frac{1}{2}\n$$"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.some((state) => state.renderable instanceof LatexRenderable)).toBe(true)
+  expect(captureFrame()).toContain("─")
+})
+
+test("table cells render inline math", async () => {
+  const md = createMarkdownRenderable({
+    id: "table-inline-math",
+    content: "| Expr |\n|---|\n| $x^2$ |",
+    syntaxStyle,
+    math: true,
+    tableOptions: { widthMode: "content" },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("x²")
+  expect(frame).not.toContain("$x^2$")
+})
+
+test("custom renderNode can override display math blocks", async () => {
+  const md = createMarkdownRenderable({
+    id: "custom-math",
+    content: "$$x^2$$",
+    syntaxStyle,
+    math: true,
+    renderNode: (node, ctx) => {
+      if (node.type === "latex_block") {
+        return new TextRenderable(renderer, {
+          id: "custom-math-text",
+          content: "CUSTOM MATH",
+          width: "100%",
+        })
+      }
+
+      return ctx.defaultRender()
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("CUSTOM MATH")
+  expect(frame).not.toContain("x²")
 })
 
 // Incomplete/invalid markdown tests

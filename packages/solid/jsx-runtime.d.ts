@@ -5,6 +5,7 @@ import type {
   CodeProps,
   ExtendedIntrinsicElements,
   InputProps,
+  LatexProps,
   LinkProps,
   MarkdownProps,
   OpenTUIComponents,
@@ -35,6 +36,7 @@ declare namespace JSX {
     code: CodeProps
     textarea: TextareaProps
     markdown: MarkdownProps
+    latex: LatexProps
 
     b: SpanProps
     strong: SpanProps

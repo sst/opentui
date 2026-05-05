@@ -1,9 +1,132 @@
-import { Lexer, type MarkedToken } from "marked"
+import { Lexer, Marked, type Token, type TokenizerAndRendererExtension, type Tokens } from "marked"
 
 export interface ParseState {
   content: string
-  tokens: MarkedToken[]
+  tokens: Token[]
   stableTokenCount?: number
+}
+
+export interface MarkdownParserMathOptions {
+  inline?: boolean
+  block?: boolean
+}
+
+export interface MarkdownParserOptions {
+  math?: MarkdownParserMathOptions | false
+}
+
+interface LatexMarkedToken extends Tokens.Generic {
+  type: "latex_block" | "latex_inline"
+  text: string
+  displayMode: boolean
+}
+
+const blockLatexExtension: TokenizerAndRendererExtension = {
+  name: "latex_block",
+  level: "block",
+  start(src: string): number | undefined {
+    const index = src.search(/^ {0,3}\$\$/m)
+    return index >= 0 ? index : undefined
+  },
+  tokenizer(src: string): LatexMarkedToken | undefined {
+    const multiline = src.match(/^ {0,3}\$\$[ \t]*\n([\s\S]*?)\n? {0,3}\$\$[ \t]*(?:\n+|$)/)
+    if (multiline) {
+      return {
+        type: "latex_block",
+        raw: multiline[0],
+        text: multiline[1].trim(),
+        displayMode: true,
+      } as LatexMarkedToken
+    }
+
+    const singleLine = src.match(/^ {0,3}\$\$([^\n]+?)\$\$[ \t]*(?:\n+|$)/)
+    if (!singleLine) return undefined
+
+    return {
+      type: "latex_block",
+      raw: singleLine[0],
+      text: singleLine[1].trim(),
+      displayMode: true,
+    } as LatexMarkedToken
+  },
+}
+
+function findClosingInlineDollar(src: string, startIndex: number): number {
+  for (let i = startIndex; i < src.length; i += 1) {
+    const char = src[i]
+    if (char === "\n" || char === "\r") return -1
+    if (char === "\\") {
+      i += 1
+      continue
+    }
+    if (char !== "$" || src[i + 1] === "$") continue
+    if (/\d/.test(src[i + 1] ?? "")) continue
+    return i
+  }
+
+  return -1
+}
+
+const inlineLatexExtension: TokenizerAndRendererExtension = {
+  name: "latex_inline",
+  level: "inline",
+  start(src: string): number | undefined {
+    const index = src.indexOf("$")
+    return index >= 0 ? index : undefined
+  },
+  tokenizer(src: string): LatexMarkedToken | undefined {
+    if (!src.startsWith("$") || src.startsWith("$$") || /\s/.test(src[1] ?? "")) return undefined
+
+    const closing = findClosingInlineDollar(src, 1)
+    if (closing === -1) return undefined
+
+    const text = src.slice(1, closing)
+    if (text.trim().length === 0 || /\s$/.test(text)) return undefined
+
+    return {
+      type: "latex_inline",
+      raw: src.slice(0, closing + 1),
+      text,
+      displayMode: false,
+    } as LatexMarkedToken
+  },
+}
+
+const lexerByMathMode = new Map<string, Marked>()
+
+function getMathMode(options?: MarkdownParserOptions): string {
+  const math = options?.math
+  if (!math) return "none"
+  const inline = math.inline ?? true
+  const block = math.block ?? true
+  if (inline && block) return "both"
+  if (inline) return "inline"
+  if (block) return "block"
+  return "none"
+}
+
+function getMarkedForMathMode(mode: string): Marked {
+  const existing = lexerByMathMode.get(mode)
+  if (existing) return existing
+
+  const marked = new Marked({ gfm: true })
+  const extensions: TokenizerAndRendererExtension[] = []
+  if (mode === "both" || mode === "block") extensions.push(blockLatexExtension)
+  if (mode === "both" || mode === "inline") extensions.push(inlineLatexExtension)
+  if (extensions.length > 0) {
+    marked.use({ extensions })
+  }
+  lexerByMathMode.set(mode, marked)
+  return marked
+}
+
+function lexMarkdown(content: string, options?: MarkdownParserOptions): Token[] {
+  const mode = getMathMode(options)
+  if (mode === "none") {
+    return Lexer.lex(content, { gfm: true }) as Token[]
+  }
+
+  return getMarkedForMathMode(mode).lexer(content) as Token[]
 }
 
 /**
@@ -14,10 +137,11 @@ export function parseMarkdownIncremental(
   newContent: string,
   prevState: ParseState | null,
   trailingUnstable: number = 2,
+  options?: MarkdownParserOptions,
 ): ParseState {
   if (!prevState || prevState.tokens.length === 0) {
     try {
-      const tokens = Lexer.lex(newContent, { gfm: true }) as MarkedToken[]
+      const tokens = lexMarkdown(newContent, options)
       return {
         content: newContent,
         tokens,
@@ -62,7 +186,7 @@ export function parseMarkdownIncremental(
   }
 
   try {
-    const newTokens = Lexer.lex(remainingContent, { gfm: true }) as MarkedToken[]
+    const newTokens = lexMarkdown(remainingContent, options)
     return {
       content: newContent,
       tokens: [...stableTokens, ...newTokens],
@@ -70,7 +194,7 @@ export function parseMarkdownIncremental(
     }
   } catch {
     try {
-      const fullTokens = Lexer.lex(newContent, { gfm: true }) as MarkedToken[]
+      const fullTokens = lexMarkdown(newContent, options)
       return { content: newContent, tokens: fullTokens, stableTokenCount: 0 }
     } catch {
       return { content: newContent, tokens: [], stableTokenCount: 0 }

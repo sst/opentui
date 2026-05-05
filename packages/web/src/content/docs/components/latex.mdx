@@ -1,0 +1,182 @@
+---
+title: LaTeX
+description: Render LaTeX math as selectable terminal text
+order: 12
+skill:
+  entry: true
+  intents: [latex, math, equation, equations, formula, formulas, markdown-math]
+---
+
+# LaTeX
+
+`LatexRenderable` renders LaTeX math expressions as terminal-native text. It uses KaTeX to produce MathML, converts that MathML into a small internal layout tree, then writes styled Unicode text into a text buffer.
+
+The output is selectable and copyable as rendered terminal text. This is a math expression renderer, not a full LaTeX document engine, and it does not rasterize equations or use terminal graphics.
+
+## Basic usage
+
+```typescript
+import { LatexRenderable, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const formula = new LatexRenderable(renderer, {
+  id: "formula",
+  content: "\\int_0^1 x^2 \\, dx = \\frac{1}{3}",
+  displayMode: true,
+  fg: "#E6EDF3",
+  errorFg: "#FF7B72",
+  selectable: true,
+})
+
+renderer.root.add(formula)
+```
+
+Update `content` or any LaTeX option to rerender the expression:
+
+```typescript
+formula.content = "\\lim_{x\\to 0} \\frac{\\sin x}{x} = 1"
+formula.displayMode = true
+formula.macros = { "\\RR": "\\mathbb{R}" }
+```
+
+## Common formulas
+
+These expressions are good examples of the renderer's V1 target: readable, compact terminal math.
+
+| LaTeX source                                    | Notes                                  |
+| ----------------------------------------------- | -------------------------------------- |
+| `x^2 + y_1`                                     | Unicode superscript and subscript text |
+| `\\frac{1}{\\sqrt{x+1}}`                        | Stacked fraction and square root       |
+| `\\int_0^1 x^2 \\, dx = \\frac{1}{3}`           | Definite integral with range           |
+| `\\lim_{x\\to 0} \\frac{\\sin x}{x} = 1`        | Limit with readable bound              |
+| `\\sum_{n=1}^{\\infty} \\frac{1}{n^2}`          | Summation with compact range           |
+| `\\prod_{k=1}^{n} k = n!`                       | Product operator with compact range    |
+| `\\frac{d}{dx}x^3 = 3x^2`                       | Derivative-style fraction              |
+| `\\begin{matrix}a&b\\\\c&d\\end{matrix}`        | Simple matrix/table layout             |
+| `\\RR^2 \\to \\RR` with `\\RR` macro configured | Per-render macro expansion             |
+
+For a runnable demo, use the `LaTeX Demo` entry in `packages/examples/src/index.ts` or run:
+
+```bash
+bun packages/examples/src/latex-demo.ts
+```
+
+## Markdown math
+
+`MarkdownRenderable` can opt into the same renderer for inline and block math. It is disabled by default so dollar amounts stay ordinary text.
+
+```typescript
+import { MarkdownRenderable, RGBA, SyntaxStyle, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const syntaxStyle = SyntaxStyle.fromStyles({
+  default: { fg: RGBA.fromHex("#E6EDF3") },
+})
+
+const markdown = new MarkdownRenderable(renderer, {
+  id: "markdown-with-math",
+  content: "Euler-ish: $x^2 + y_1$\n\n$$\\frac{1}{\\sqrt{x+1}}$$",
+  syntaxStyle,
+  math: true,
+})
+
+renderer.root.add(markdown)
+```
+
+Use `math.latexOptions` to pass the same engine options to Markdown math:
+
+```typescript
+const markdown = new MarkdownRenderable(renderer, {
+  id: "markdown-with-macros",
+  content: "Map: $\\RR^2 \\to \\RR$",
+  syntaxStyle,
+  math: {
+    latexOptions: {
+      macros: { "\\RR": "\\mathbb{R}" },
+      errorFg: "#FF7B72",
+    },
+  },
+})
+```
+
+See [Markdown math](/docs/components/markdown#math) for delimiter rules and streaming behavior.
+
+## React and Solid
+
+React exposes a `<latex>` intrinsic element:
+
+```tsx
+/** @jsxImportSource @opentui/react */
+
+export function Formula() {
+  return <latex content="x^2 + y_1" displayMode={false} fg="#E6EDF3" />
+}
+```
+
+Solid uses the same tag:
+
+```tsx
+/** @jsxImportSource @opentui/solid */
+
+export function Formula() {
+  return <latex content="\\lim_{x\\to 0} \\frac{\\sin x}{x} = 1" fg="#E6EDF3" />
+}
+```
+
+`LatexProps` excludes `content`, `displayMode`, `macros`, `throwOnError`, `errorFg`, `strict`, `maxSize`, and `maxExpand` from the `style` prop. Keep those as direct props.
+
+## Supported layout
+
+V1 focuses on readable terminal output across normal terminals:
+
+- Identifiers, numbers, operators, punctuation, and text nodes
+- Superscripts and subscripts using Unicode maps where possible
+- Fractions, square roots, rows, grouped expressions, and simple matrices/tables
+- Large operators and limits with compact bounds when stacked typography would be hard to read
+- Unsupported MathML nodes fall back to their text content
+
+This renderer intentionally does not try to match browser KaTeX pixel layout. Prefer it for selectable terminal output, logs, chat transcripts, REPLs, docs panes, and compact mathematical status views.
+
+## Error handling
+
+Invalid input renders as the original LaTeX source styled with `errorFg` by default:
+
+```typescript
+const formula = new LatexRenderable(renderer, {
+  id: "invalid-formula",
+  content: "\\definitelybad",
+  throwOnError: false,
+  errorFg: "#FF7B72",
+})
+```
+
+Set `throwOnError: true` when you want KaTeX parse errors to surface instead of rendering fallback text.
+
+## Properties
+
+| Property       | Type                                       | Default | Description                                                    |
+| -------------- | ------------------------------------------ | ------- | -------------------------------------------------------------- |
+| `content`      | `string`                                   | `""`    | LaTeX math expression to render                                |
+| `displayMode`  | `boolean`                                  | `true`  | Use display-style KaTeX parsing before terminal layout         |
+| `macros`       | `Record<string, string>`                   | -       | Per-render KaTeX macro definitions                             |
+| `throwOnError` | `boolean`                                  | `false` | Throw on invalid LaTeX instead of rendering styled source text |
+| `errorFg`      | `string \| RGBA`                           | `"red"` | Foreground color for invalid-input fallback text               |
+| `strict`       | `boolean \| "ignore" \| "warn" \| "error"` | -       | KaTeX strictness mode                                          |
+| `maxSize`      | `number`                                   | -       | Forwarded to KaTeX to limit user-specified sizing              |
+| `maxExpand`    | `number`                                   | -       | Forwarded to KaTeX to limit macro expansion                    |
+
+### Inherited from TextBufferRenderable
+
+`LatexRenderable` inherits text-buffer layout and selection options. Its `wrapMode` default is `"none"` so equations do not wrap unless you opt in.
+
+| Property       | Type                         | Default  | Description                    |
+| -------------- | ---------------------------- | -------- | ------------------------------ |
+| `fg`           | `string \| RGBA`             | -        | Default foreground color       |
+| `bg`           | `string \| RGBA`             | -        | Background color               |
+| `selectable`   | `boolean`                    | `true`   | Enable text selection          |
+| `selectionBg`  | `string \| RGBA`             | -        | Selection background color     |
+| `selectionFg`  | `string \| RGBA`             | -        | Selection foreground color     |
+| `wrapMode`     | `"none" \| "char" \| "word"` | `"none"` | Text wrapping mode             |
+| `tabIndicator` | `string \| number`           | -        | Tab display character or width |

@@ -1,12 +1,12 @@
 ---
 title: Markdown
-description: Render markdown with syntax-aware styling
+description: Render markdown with syntax-aware styling and optional math
 order: 11
 ---
 
 # Markdown
 
-Render markdown content with syntax-aware styling and optional Tree-sitter highlighting for code blocks.
+Render markdown content with syntax-aware styling, optional Tree-sitter highlighting for code blocks, tables, and opt-in LaTeX math.
 
 ## Basic usage
 
@@ -65,6 +65,61 @@ const markdown = new MarkdownRenderable(renderer, {
 ```
 
 Use `concealCode` to control concealment inside fenced code blocks independently (`false` by default).
+
+## Math
+
+Math rendering is opt-in because dollar signs are common in ordinary text and prices. Leave `math` unset or `false` to keep `$...$` content unchanged.
+
+```typescript
+import { MarkdownRenderable, RGBA, SyntaxStyle, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const syntaxStyle = SyntaxStyle.fromStyles({
+  default: { fg: RGBA.fromHex("#E6EDF3") },
+})
+
+const markdown = new MarkdownRenderable(renderer, {
+  id: "math-doc",
+  content: "Inline math: $x^2 + y_1$\n\n$$\\int_0^1 x^2 \\, dx = \\frac{1}{3}$$",
+  syntaxStyle,
+  math: true,
+})
+
+renderer.root.add(markdown)
+```
+
+Pass `MarkdownMathOptions` when you need finer control:
+
+```typescript
+const markdown = new MarkdownRenderable(renderer, {
+  id: "math-options",
+  content: "$\\RR^2 \\to \\RR$",
+  syntaxStyle,
+  math: {
+    inline: true,
+    block: true,
+    latexOptions: {
+      macros: { "\\RR": "\\mathbb{R}" },
+      errorFg: "#FF7B72",
+    },
+  },
+})
+```
+
+Inline math uses `$...$` and renders inside normal paragraphs, headings, list items, and table cells. The parser skips escaped dollars, code spans, fenced code blocks, incomplete spans, and a closing `$` followed by a digit to reduce currency false positives.
+
+Block math uses `$$...$$` or multiline blocks:
+
+```markdown
+$$
+\frac{a+b}{\sqrt{c+1}}
+$$
+```
+
+Display math is rendered as a [`LatexRenderable`](/docs/components/latex), participates in normal markdown block spacing, and can be overridden by `renderNode` when `token.type === "latex_block"`.
+
+When `conceal` is `false`, inline math preserves `$` delimiters around the rendered expression. For example, `$x^2$` renders as `$x²$`. When `math` is disabled, the original LaTeX source is left untouched.
 
 ## Streaming updates
 
@@ -191,6 +246,15 @@ const markdown = new MarkdownRenderable(renderer, {
 | `concealCode`       | `boolean`                                                                       | `false`       | Hide markers inside fenced code blocks                        |
 | `streaming`         | `boolean`                                                                       | `false`       | Incremental mode; set `false` to finalize                     |
 | `tableOptions`      | `MarkdownTableOptions`                                                          | -             | Options for markdown table rendering                          |
+| `math`              | `boolean \| MarkdownMathOptions`                                                | `false`       | Enable inline and/or display LaTeX math rendering             |
 | `internalBlockMode` | `"coalesced" \| "top-level"`                                                    | `"coalesced"` | Experimental: expose top-level blocks as separate renderables |
 | `treeSitterClient`  | `TreeSitterClient`                                                              | -             | Custom Tree-sitter client for code blocks                     |
 | `renderNode`        | `(token: Token, context: RenderNodeContext) => Renderable \| null \| undefined` | -             | Custom render hook per markdown block                         |
+
+### `MarkdownMathOptions`
+
+| Option         | Type                                                      | Default | Description                                     |
+| -------------- | --------------------------------------------------------- | ------- | ----------------------------------------------- |
+| `inline`       | `boolean`                                                 | `true`  | Enable `$...$` inline math                      |
+| `block`        | `boolean`                                                 | `true`  | Enable `$$...$$` display math blocks            |
+| `latexOptions` | `Partial<Omit<LatexOptions, "content" \| "displayMode">>` | -       | Options passed to the underlying LaTeX renderer |

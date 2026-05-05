@@ -64,6 +64,7 @@ import * as diffDemo from "./diff-demo.js"
 import * as keypressDebugDemo from "./keypress-debug-demo.js"
 import * as extmarksDemo from "./extmarks-demo.js"
 import * as markdownDemo from "./markdown-demo.js"
+import * as latexDemo from "./latex-demo.js"
 import * as linkDemo from "./link-demo.js"
 import * as opacityExample from "./opacity-example.js"
 import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test.js"
@@ -234,6 +235,12 @@ const examples: Example[] = [
     description: "Markdown rendering with table alignment, syntax highlighting, and theme switching",
     run: markdownDemo.run,
     destroy: markdownDemo.destroy,
+  },
+  {
+    name: "LaTeX Demo",
+    description: "Terminal-native math rendering with LatexRenderable and markdown math blocks",
+    run: latexDemo.run,
+    destroy: latexDemo.destroy,
   },
   {
     name: "Split Footer Streaming Demo",

@@ -5,7 +5,7 @@ import type { TextChunk } from "../text-buffer.js"
 import { createTextAttributes } from "../utils.js"
 import type { BorderStyle } from "../lib/border.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
-import { type MarkedToken, type Token, type Tokens } from "marked"
+import { type Token, type Tokens } from "marked"
 import { CodeRenderable, type OnChunksCallback } from "./Code.js"
 import {
   TextTableRenderable,
@@ -16,9 +16,11 @@ import {
 } from "./TextTable.js"
 import type { TreeSitterClient } from "../lib/tree-sitter/index.js"
 import { infoStringToFiletype } from "../lib/tree-sitter/resolve-ft.js"
-import { parseMarkdownIncremental, type ParseState } from "./markdown-parser.js"
+import { parseMarkdownIncremental, type MarkdownParserMathOptions, type ParseState } from "./markdown-parser.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { detectLinks } from "../lib/detect-links.js"
+import { LatexRenderable, type LatexOptions } from "./Latex.js"
+import { renderLatexToStyledText, replaceInlineLatex } from "./latex-renderer.js"
 
 export type MarkdownTableStyle = "grid" | "columns"
 
@@ -71,6 +73,12 @@ export interface MarkdownTableOptions {
   selectable?: boolean
 }
 
+export interface MarkdownMathOptions {
+  inline?: boolean
+  block?: boolean
+  latexOptions?: Partial<Omit<LatexOptions, "content" | "displayMode">>
+}
+
 export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
   content?: string
   syntaxStyle: SyntaxStyle
@@ -99,6 +107,7 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
    * Options for internally rendered markdown tables.
    */
   tableOptions?: MarkdownTableOptions
+  math?: boolean | MarkdownMathOptions
   /**
    * Custom node renderer. Return a Renderable to override default rendering,
    * or undefined/null to use default rendering.
@@ -149,7 +158,7 @@ function colorsEqual(left?: RGBA, right?: RGBA): boolean {
 }
 
 export interface BlockState {
-  token: MarkedToken
+  token: Token
   tokenRaw: string // Cache raw for comparison
   marginTop?: number
   renderable: Renderable
@@ -159,7 +168,7 @@ export interface BlockState {
 export type { ParseState }
 
 interface MarkdownRenderBlock {
-  token: MarkedToken
+  token: Token
   sourceTokenEnd: number
   marginTop: number
 }
@@ -173,6 +182,7 @@ export class MarkdownRenderable extends Renderable {
   private _concealCode: boolean
   private _treeSitterClient?: TreeSitterClient
   private _tableOptions?: MarkdownTableOptions
+  private _math?: boolean | MarkdownMathOptions
   private _renderNode?: MarkdownOptions["renderNode"]
   private _internalBlockMode: "coalesced" | "top-level"
 
@@ -210,6 +220,7 @@ export class MarkdownRenderable extends Renderable {
     this._content = options.content ?? this._contentDefaultOptions.content
     this._treeSitterClient = options.treeSitterClient
     this._tableOptions = options.tableOptions
+    this._math = options.math
     this._renderNode = options.renderNode
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
     this._internalBlockMode = options.internalBlockMode ?? this._contentDefaultOptions.internalBlockMode
@@ -311,6 +322,43 @@ export class MarkdownRenderable extends Renderable {
     this.applyTableOptionsToBlocks()
   }
 
+  get math(): boolean | MarkdownMathOptions | undefined {
+    return this._math
+  }
+
+  set math(value: boolean | MarkdownMathOptions | undefined) {
+    if (this._math !== value) {
+      this._math = value
+      this._parseState = null
+      this.updateBlocks(true)
+      this.requestRender()
+    }
+  }
+
+  private getMathOptions(): MarkdownMathOptions | null {
+    if (!this._math) return null
+    if (this._math === true) return {}
+    return this._math
+  }
+
+  private getParserMathOptions(): MarkdownParserMathOptions | false {
+    const options = this.getMathOptions()
+    if (!options) return false
+    return {
+      inline: options.inline ?? true,
+      block: options.block ?? true,
+    }
+  }
+
+  private getLatexOptions(): Partial<Omit<LatexOptions, "content" | "displayMode">> {
+    return this.getMathOptions()?.latexOptions ?? {}
+  }
+
+  private isInlineMathEnabled(): boolean {
+    const options = this.getMathOptions()
+    return !!options && (options.inline ?? true)
+  }
+
   private getStyle(group: string): StyleDefinition | undefined {
     // The solid reconciler applies props via setters in JSX declaration order.
     // If `content` is set before `syntaxStyle`, updateBlocks() runs before
@@ -349,11 +397,36 @@ export class MarkdownRenderable extends Renderable {
 
   private renderInlineContent(tokens: Token[], chunks: TextChunk[]): void {
     for (const token of tokens) {
-      this.renderInlineToken(token as MarkedToken, chunks)
+      this.renderInlineToken(token as Token, chunks)
     }
   }
 
-  private renderInlineToken(token: MarkedToken, chunks: TextChunk[]): void {
+  private renderLatexInlineToken(token: Token, chunks: TextChunk[]): void {
+    const latex = "text" in token && typeof token.text === "string" ? token.text : token.raw.replace(/^\$|\$$/g, "")
+
+    if (!this._conceal) {
+      chunks.push(this.createChunk("$", "conceal"))
+    }
+
+    const rendered = renderLatexToStyledText(latex, {
+      ...this.getLatexOptions(),
+      displayMode: false,
+    })
+
+    for (const chunk of rendered.chunks) {
+      if (chunk.fg || chunk.bg || chunk.attributes || chunk.link) {
+        chunks.push(chunk)
+      } else {
+        chunks.push(this.createDefaultChunk(chunk.text))
+      }
+    }
+
+    if (!this._conceal) {
+      chunks.push(this.createChunk("$", "conceal"))
+    }
+  }
+
+  private renderInlineToken(token: Token, chunks: TextChunk[]): void {
     switch (token.type) {
       case "text":
         chunks.push(this.createDefaultChunk(token.text))
@@ -377,8 +450,8 @@ export class MarkdownRenderable extends Renderable {
         if (!this._conceal) {
           chunks.push(this.createChunk("**", "markup.strong"))
         }
-        for (const child of token.tokens) {
-          this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.strong")
+        for (const child of token.tokens ?? []) {
+          this.renderInlineTokenWithStyle(child as Token, chunks, "markup.strong")
         }
         if (!this._conceal) {
           chunks.push(this.createChunk("**", "markup.strong"))
@@ -389,8 +462,8 @@ export class MarkdownRenderable extends Renderable {
         if (!this._conceal) {
           chunks.push(this.createChunk("*", "markup.italic"))
         }
-        for (const child of token.tokens) {
-          this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.italic")
+        for (const child of token.tokens ?? []) {
+          this.renderInlineTokenWithStyle(child as Token, chunks, "markup.italic")
         }
         if (!this._conceal) {
           chunks.push(this.createChunk("*", "markup.italic"))
@@ -401,8 +474,8 @@ export class MarkdownRenderable extends Renderable {
         if (!this._conceal) {
           chunks.push(this.createChunk("~~", "markup.strikethrough"))
         }
-        for (const child of token.tokens) {
-          this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.strikethrough")
+        for (const child of token.tokens ?? []) {
+          this.renderInlineTokenWithStyle(child as Token, chunks, "markup.strikethrough")
         }
         if (!this._conceal) {
           chunks.push(this.createChunk("~~", "markup.strikethrough"))
@@ -412,16 +485,16 @@ export class MarkdownRenderable extends Renderable {
       case "link": {
         const linkHref = { url: token.href }
         if (this._conceal) {
-          for (const child of token.tokens) {
-            this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
+          for (const child of token.tokens ?? []) {
+            this.renderInlineTokenWithStyle(child as Token, chunks, "markup.link.label", linkHref)
           }
           chunks.push(this.createChunk(" (", "markup.link", linkHref))
           chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
           chunks.push(this.createChunk(")", "markup.link", linkHref))
         } else {
           chunks.push(this.createChunk("[", "markup.link", linkHref))
-          for (const child of token.tokens) {
-            this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
+          for (const child of token.tokens ?? []) {
+            this.renderInlineTokenWithStyle(child as Token, chunks, "markup.link.label", linkHref)
           }
           chunks.push(this.createChunk("](", "markup.link", linkHref))
           chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
@@ -444,6 +517,10 @@ export class MarkdownRenderable extends Renderable {
         break
       }
 
+      case "latex_inline":
+        this.renderLatexInlineToken(token, chunks)
+        break
+
       case "br":
         chunks.push(this.createDefaultChunk("\n"))
         break
@@ -459,7 +536,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private renderInlineTokenWithStyle(
-    token: MarkedToken,
+    token: Token,
     chunks: TextChunk[],
     styleGroup: string,
     link?: { url: string },
@@ -494,10 +571,18 @@ export class MarkdownRenderable extends Renderable {
     renderable.marginBottom = marginBottom
   }
 
+  private renderMarkdownTextContent(content: string): string {
+    if (!this.isInlineMathEnabled()) return content
+    return replaceInlineLatex(content, {
+      ...this.getLatexOptions(),
+      conceal: this._conceal,
+    })
+  }
+
   private createMarkdownCodeRenderable(content: string, id: string, marginBottom: number = 0): CodeRenderable {
     return new CodeRenderable(this.ctx, {
       id,
-      content,
+      content: this.renderMarkdownTextContent(content),
       filetype: "markdown",
       syntaxStyle: this._syntaxStyle,
       fg: this._fg,
@@ -529,8 +614,25 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
+  private getLatexBlockText(token: Token): string {
+    return "text" in token && typeof token.text === "string"
+      ? token.text
+      : token.raw.replace(/^ {0,3}\$\$|\$\$[ \t]*(?:\n+|$)$/g, "").trim()
+  }
+
+  private createLatexBlockRenderable(token: Token, id: string, marginBottom: number = 0): LatexRenderable {
+    return new LatexRenderable(this.ctx, {
+      ...this.getLatexOptions(),
+      id,
+      content: this.getLatexBlockText(token),
+      displayMode: true,
+      width: "100%",
+      marginBottom,
+    })
+  }
+
   private applyMarkdownCodeRenderable(renderable: CodeRenderable, content: string, marginBottom: number): void {
-    renderable.content = content
+    renderable.content = this.renderMarkdownTextContent(content)
     renderable.filetype = "markdown"
     renderable.syntaxStyle = this._syntaxStyle
     renderable.fg = this._fg
@@ -538,6 +640,19 @@ export class MarkdownRenderable extends Renderable {
     renderable.conceal = this._conceal
     renderable.drawUnstyledText = false
     renderable.streaming = true
+    renderable.marginBottom = marginBottom
+  }
+
+  private applyLatexBlockRenderable(renderable: LatexRenderable, token: Token, marginBottom: number): void {
+    const latexOptions = this.getLatexOptions()
+    renderable.content = this.getLatexBlockText(token)
+    renderable.displayMode = true
+    renderable.macros = latexOptions.macros
+    renderable.throwOnError = latexOptions.throwOnError ?? false
+    renderable.errorFg = latexOptions.errorFg ?? "red"
+    renderable.strict = latexOptions.strict
+    renderable.maxSize = latexOptions.maxSize
+    renderable.maxExpand = latexOptions.maxExpand
     renderable.marginBottom = marginBottom
   }
 
@@ -553,22 +668,24 @@ export class MarkdownRenderable extends Renderable {
     renderable.marginBottom = marginBottom
   }
 
-  private shouldRenderSeparately(token: MarkedToken): boolean {
-    return token.type === "code" || token.type === "table" || token.type === "blockquote"
+  private shouldRenderSeparately(token: Token): boolean {
+    return (
+      token.type === "code" || token.type === "table" || token.type === "blockquote" || token.type === "latex_block"
+    )
   }
 
-  private getInterBlockMargin(token: MarkedToken, hasNextToken: boolean): number {
+  private getInterBlockMargin(token: Token, hasNextToken: boolean): number {
     if (!hasNextToken) return 0
     return this.shouldRenderSeparately(token) ? 1 : 0
   }
 
-  private createMarkdownBlockToken(raw: string): MarkedToken {
+  private createMarkdownBlockToken(raw: string): Token {
     return {
       type: "paragraph",
       raw,
       text: raw,
       tokens: [],
-    } as MarkedToken
+    } as Token
   }
 
   private normalizeMarkdownBlockRaw(raw: string): string {
@@ -579,12 +696,12 @@ export class MarkdownRenderable extends Renderable {
     return raw.replace(TRAILING_MARKDOWN_BLOCK_NEWLINES_RE, "")
   }
 
-  private buildRenderableTokens(tokens: MarkedToken[]): MarkedToken[] {
+  private buildRenderableTokens(tokens: Token[]): Token[] {
     if (this._renderNode) {
       return tokens.filter((token) => token.type !== "space")
     }
 
-    const renderTokens: MarkedToken[] = []
+    const renderTokens: Token[] = []
     let markdownRaw = ""
 
     const flushMarkdownRaw = (): void => {
@@ -630,7 +747,7 @@ export class MarkdownRenderable extends Renderable {
     return renderTokens
   }
 
-  private buildTopLevelRenderBlocks(tokens: MarkedToken[]): MarkdownRenderBlock[] {
+  private buildTopLevelRenderBlocks(tokens: Token[]): MarkdownRenderBlock[] {
     const blocks: MarkdownRenderBlock[] = []
     let gapBefore = ""
 
@@ -672,7 +789,7 @@ export class MarkdownRenderable extends Renderable {
     return hash >>> 0
   }
 
-  private hashTableToken(token: MarkedToken, seed: number, depth: number = 0): number {
+  private hashTableToken(token: Token, seed: number, depth: number = 0): number {
     let hash = this.hashString(token.type, seed)
 
     if ("raw" in token && typeof token.raw === "string") {
@@ -685,7 +802,7 @@ export class MarkdownRenderable extends Renderable {
 
     if (depth < 2 && "tokens" in token && Array.isArray(token.tokens)) {
       for (const child of token.tokens) {
-        hash = this.hashTableToken(child as MarkedToken, hash, depth + 1)
+        hash = this.hashTableToken(child as Token, hash, depth + 1)
       }
     }
 
@@ -705,7 +822,7 @@ export class MarkdownRenderable extends Renderable {
     if (Array.isArray(cell.tokens) && cell.tokens.length > 0) {
       let hash = seed ^ cell.tokens.length
       for (const token of cell.tokens) {
-        hash = this.hashTableToken(token as MarkedToken, hash)
+        hash = this.hashTableToken(token as Token, hash)
       }
       return hash >>> 0
     }
@@ -959,7 +1076,7 @@ export class MarkdownRenderable extends Renderable {
     state.tableContentCache = tableContentCache
   }
 
-  private getTopLevelBlockRaw(token: MarkedToken): string | undefined {
+  private getTopLevelBlockRaw(token: Token): string | undefined {
     if (!token.raw) {
       return undefined
     }
@@ -975,13 +1092,19 @@ export class MarkdownRenderable extends Renderable {
     const id = `${this.id}-block-${index}`
 
     if (token.type === "code") {
-      const renderable = this.createCodeRenderable(token, id)
+      const renderable = this.createCodeRenderable(token as Tokens.Code, id)
+      renderable.marginTop = marginTop
+      return { renderable }
+    }
+
+    if (token.type === "latex_block") {
+      const renderable = this.createLatexBlockRenderable(token, id)
       renderable.marginTop = marginTop
       return { renderable }
     }
 
     if (token.type === "table") {
-      const next = this.createTableBlock(token, id)
+      const next = this.createTableBlock(token as Tokens.Table, id)
       next.renderable.marginTop = marginTop
       return next
     }
@@ -1024,16 +1147,20 @@ export class MarkdownRenderable extends Renderable {
     return next ?? this.createTopLevelDefaultRenderable(block, index)
   }
 
-  private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
+  private createDefaultRenderable(token: Token, index: number, hasNextToken: boolean = false): Renderable | null {
     const id = `${this.id}-block-${index}`
     const marginBottom = this.getInterBlockMargin(token, hasNextToken)
 
     if (token.type === "code") {
-      return this.createCodeRenderable(token, id, marginBottom)
+      return this.createCodeRenderable(token as Tokens.Code, id, marginBottom)
+    }
+
+    if (token.type === "latex_block") {
+      return this.createLatexBlockRenderable(token, id, marginBottom)
     }
 
     if (token.type === "table") {
-      return this.createTableBlock(token, id, marginBottom).renderable
+      return this.createTableBlock(token as Tokens.Table, id, marginBottom).renderable
     }
 
     if (token.type === "space") {
@@ -1047,11 +1174,24 @@ export class MarkdownRenderable extends Renderable {
     return this.createMarkdownCodeRenderable(token.raw, id, marginBottom)
   }
 
-  private updateBlockRenderable(state: BlockState, token: MarkedToken, index: number, hasNextToken: boolean): void {
+  private updateBlockRenderable(state: BlockState, token: Token, index: number, hasNextToken: boolean): void {
     const marginBottom = this.getInterBlockMargin(token, hasNextToken)
 
     if (token.type === "code") {
       this.applyCodeBlockRenderable(state.renderable as CodeRenderable, token as Tokens.Code, marginBottom)
+      return
+    }
+
+    if (token.type === "latex_block") {
+      if (state.renderable instanceof LatexRenderable) {
+        this.applyLatexBlockRenderable(state.renderable, token, marginBottom)
+        return
+      }
+
+      state.renderable.destroyRecursively()
+      const latexRenderable = this.createLatexBlockRenderable(token, `${this.id}-block-${index}`, marginBottom)
+      this.add(latexRenderable)
+      state.renderable = latexRenderable
       return
     }
 
@@ -1107,7 +1247,7 @@ export class MarkdownRenderable extends Renderable {
     state.renderable = markdownRenderable
   }
 
-  private updateTopLevelBlocks(tokens: MarkedToken[], forceTableRefresh: boolean): void {
+  private updateTopLevelBlocks(tokens: Token[], forceTableRefresh: boolean): void {
     const blocks = this.buildTopLevelRenderBlocks(tokens)
     this._stableBlockCount = this.getStableBlockCount(blocks, this._parseState?.stableTokenCount ?? 0)
 
@@ -1173,7 +1313,9 @@ export class MarkdownRenderable extends Renderable {
     }
 
     const trailingUnstable = this._streaming ? 2 : 0
-    this._parseState = parseMarkdownIncremental(this._content, this._parseState, trailingUnstable)
+    this._parseState = parseMarkdownIncremental(this._content, this._parseState, trailingUnstable, {
+      math: this.getParserMathOptions(),
+    })
 
     const tokens = this._parseState.tokens
 
@@ -1184,7 +1326,7 @@ export class MarkdownRenderable extends Renderable {
       this.add(fallback)
       this._blockStates = [
         {
-          token: { type: "text", raw: this._content, text: this._content } as MarkedToken,
+          token: { type: "text", raw: this._content, text: this._content } as Token,
           tokenRaw: this._content,
           marginTop: 0,
           renderable: fallback,
@@ -1261,7 +1403,7 @@ export class MarkdownRenderable extends Renderable {
       if (!renderable) {
         if (token.type === "table") {
           const tableBlock = this.createTableBlock(
-            token,
+            token as Tokens.Table,
             `${this.id}-block-${blockIndex}`,
             this.getInterBlockMargin(token, hasNextToken),
           )
@@ -1320,6 +1462,19 @@ export class MarkdownRenderable extends Renderable {
 
       if (state.token.type === "code") {
         this.applyCodeBlockRenderable(state.renderable as CodeRenderable, state.token as Tokens.Code, marginBottom)
+        continue
+      }
+
+      if (state.token.type === "latex_block") {
+        if (state.renderable instanceof LatexRenderable) {
+          this.applyLatexBlockRenderable(state.renderable, state.token, marginBottom)
+          continue
+        }
+
+        state.renderable.destroyRecursively()
+        const latexRenderable = this.createLatexBlockRenderable(state.token, `${this.id}-block-${i}`, marginBottom)
+        this.add(latexRenderable)
+        state.renderable = latexRenderable
         continue
       }
 

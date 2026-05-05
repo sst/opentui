@@ -10,6 +10,8 @@ import type {
   DiffRenderableOptions,
   InputRenderable,
   InputRenderableOptions,
+  LatexOptions,
+  LatexRenderable,
   LineNumberOptions,
   LineNumberRenderable,
   MarkdownOptions,
@@ -98,8 +100,19 @@ export type GetNonStyledProperties<TConstructor> =
                   | "conceal"
                   | "drawUnstyledText"
               : TConstructor extends RenderableConstructor<MarkdownRenderable>
-                ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode"
-                : NonStyledProps
+                ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode" | "math"
+                : TConstructor extends RenderableConstructor<LatexRenderable>
+                  ?
+                      | NonStyledProps
+                      | "content"
+                      | "displayMode"
+                      | "macros"
+                      | "throwOnError"
+                      | "errorFg"
+                      | "strict"
+                      | "maxSize"
+                      | "maxExpand"
+                  : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -156,6 +169,8 @@ export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> 
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
 
 export type MarkdownProps = ComponentProps<MarkdownOptions, MarkdownRenderable>
+
+export type LatexProps = ComponentProps<LatexOptions, LatexRenderable>
 
 export type DiffProps = ComponentProps<DiffRenderableOptions, DiffRenderable>
 

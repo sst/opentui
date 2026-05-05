@@ -9,6 +9,8 @@ import type {
   InputRenderable,
   InputRenderableOptions,
   KeyEvent,
+  LatexOptions,
+  LatexRenderable,
   MarkdownOptions,
   MarkdownRenderable,
   RenderableOptions,
@@ -83,8 +85,19 @@ export type GetNonStyledProperties<TConstructor> =
           : TConstructor extends RenderableConstructor<CodeRenderable>
             ? NonStyledProps | "content" | "filetype" | "syntaxStyle" | "treeSitterClient"
             : TConstructor extends RenderableConstructor<MarkdownRenderable>
-              ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode"
-              : NonStyledProps
+              ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode" | "math"
+              : TConstructor extends RenderableConstructor<LatexRenderable>
+                ?
+                    | NonStyledProps
+                    | "content"
+                    | "displayMode"
+                    | "macros"
+                    | "throwOnError"
+                    | "errorFg"
+                    | "strict"
+                    | "maxSize"
+                    | "maxExpand"
+                : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -160,6 +173,8 @@ export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, Sc
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
 
 export type MarkdownProps = ComponentProps<MarkdownOptions, MarkdownRenderable>
+
+export type LatexProps = ComponentProps<LatexOptions, LatexRenderable>
 
 // ============================================================================
 // Extended/Dynamic Component System
