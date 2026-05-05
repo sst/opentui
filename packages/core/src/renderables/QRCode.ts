@@ -1,7 +1,7 @@
 import { MeasureMode } from "yoga-layout"
 import type { OptimizedBuffer } from "../buffer.js"
 import { parseColor, RGBA, type ColorInput } from "../lib/RGBA.js"
-import { encodeQRCode, type EncodedQRCode, type QRErrorCorrectionLevel } from "../lib/qrcode.js"
+import { ErrorCorrectionLevel, QRCode } from "../lib/qrcode.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { RenderContext } from "../types.js"
 
@@ -13,7 +13,7 @@ export type QRCodeFitMode = "contain" | "none"
 
 export interface QRCodeOptions extends RenderableOptions<QRCodeRenderable> {
   content?: string
-  errorCorrectionLevel?: QRErrorCorrectionLevel
+  errorCorrectionLevel?: ErrorCorrectionLevel
   quietZone?: number
   scale?: number
   fit?: QRCodeFitMode
@@ -26,7 +26,7 @@ export interface QRCodeOptions extends RenderableOptions<QRCodeRenderable> {
 export class QRCodeRenderable extends Renderable {
   protected static readonly _defaultOptions = {
     content: "",
-    errorCorrectionLevel: "medium" as QRErrorCorrectionLevel,
+    errorCorrectionLevel: ErrorCorrectionLevel.M,
     quietZone: 4,
     scale: 1,
     fit: "contain" as QRCodeFitMode,
@@ -37,7 +37,7 @@ export class QRCodeRenderable extends Renderable {
   } satisfies Partial<QRCodeOptions>
 
   private _content: string
-  private _errorCorrectionLevel: QRErrorCorrectionLevel
+  private _errorCorrectionLevel: ErrorCorrectionLevel
   private _quietZone: number
   private _scale: number
   private _fit: QRCodeFitMode
@@ -45,7 +45,8 @@ export class QRCodeRenderable extends Renderable {
   private _backgroundColor: RGBA
   private _fallbackContent: string
   private _fallbackColor: RGBA
-  private encoded: EncodedQRCode
+  private encoded: QRCode
+  private modules: boolean[][]
 
   constructor(ctx: RenderContext, options: QRCodeOptions = {}) {
     const defaults = QRCodeRenderable._defaultOptions
@@ -54,7 +55,7 @@ export class QRCodeRenderable extends Renderable {
     const quietZone = normalizeQuietZone(options.quietZone ?? defaults.quietZone!)
     const scale = normalizeScale(options.scale ?? defaults.scale!)
     const fit = options.fit ?? defaults.fit
-    const encoded = encodeQRCode(content, errorCorrectionLevel)
+    const encoded = QRCode.encodeText(content, errorCorrectionLevel)
 
     super(ctx, {
       ...options,
@@ -70,6 +71,7 @@ export class QRCodeRenderable extends Renderable {
     this._fallbackContent = options.fallbackContent ?? defaults.fallbackContent
     this._fallbackColor = options.fallbackColor ? parseColor(options.fallbackColor) : defaults.fallbackColor
     this.encoded = encoded
+    this.modules = encoded.toMatrix()
 
     this.setupMeasureFunc()
   }
@@ -87,11 +89,11 @@ export class QRCodeRenderable extends Renderable {
     this.rebuildMatrix()
   }
 
-  public get errorCorrectionLevel(): QRErrorCorrectionLevel {
+  public get errorCorrectionLevel(): ErrorCorrectionLevel {
     return this._errorCorrectionLevel
   }
 
-  public set errorCorrectionLevel(value: QRErrorCorrectionLevel) {
+  public set errorCorrectionLevel(value: ErrorCorrectionLevel) {
     if (value === this._errorCorrectionLevel) {
       return
     }
@@ -111,7 +113,7 @@ export class QRCodeRenderable extends Renderable {
     }
 
     this._quietZone = nextQuietZone
-    this.updateIntrinsicSize()
+    this.remeasure()
   }
 
   public get scale(): number {
@@ -236,7 +238,8 @@ export class QRCodeRenderable extends Renderable {
   }
 
   private rebuildMatrix(): void {
-    this.encoded = encodeQRCode(this._content, this._errorCorrectionLevel)
+    this.encoded = QRCode.encodeText(this._content, this._errorCorrectionLevel)
+    this.modules = this.encoded.toMatrix()
     this.remeasure()
   }
 
@@ -308,7 +311,7 @@ export class QRCodeRenderable extends Renderable {
       return false
     }
 
-    return this.encoded.modules[moduleY]![moduleX]!
+    return this.modules[moduleY]![moduleX]!
   }
 
   private renderFallback(buffer: OptimizedBuffer): void {
@@ -321,13 +324,7 @@ export class QRCodeRenderable extends Renderable {
     const yOffset = Math.max(0, Math.floor(this.height / 2))
 
     for (let i = 0; i < content.length; i++) {
-      buffer.setCell(
-        this.x + xOffset + i,
-        this.y + yOffset,
-        content[i]!,
-        this._fallbackColor,
-        TRANSPARENT,
-      )
+      buffer.setCell(this.x + xOffset + i, this.y + yOffset, content[i]!, this._fallbackColor, TRANSPARENT)
     }
   }
 }

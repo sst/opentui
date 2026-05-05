@@ -1,656 +1,8919 @@
-export type QRErrorCorrectionLevel = "low" | "medium" | "quartile" | "high"
+/*
+ * ISO/IEC 18004:2024-oriented QR Code encoder in TypeScript.
+ *
+ * Scope implemented by this package:
+ * - QR Code Model 2, versions 1..40, ECC levels L/M/Q/H
+ * - Micro QR Code, versions M1..M4, supported Micro ECC combinations
+ * - Numeric, Alphanumeric, Byte, Kanji, ECI, Structured Append, and FNC1 signalling
+ * - GS1/FNC1 helpers for separator handling
+ * - Reed-Solomon error correction over GF(256)
+ * - Data/ECC block interleaving for QR Code Model 2
+ * - Function patterns, alignment/timing patterns, format and version information
+ * - QR masks 0..7 and Micro QR masks 0..3 with automatic mask selection
+ * - DP-based mixed-mode optimization for QR and Micro QR text inputs
+ * - SVG rendering with ISO quiet-zone minimums: 4 modules for QR, 2 for Micro QR
+ *
+ * Notes:
+ * - Model 1 QR Code is a legacy format and is not generated here.
+ * - rMQR is outside ISO/IEC 18004:2024 and is not generated here.
+ * - Arbitrary non-character-set ECIs are signalled correctly, but payload conversion
+ *   for application-defined ECI transformations must be done by the caller.
+ */
 
-export interface EncodedQRCode {
-  version: number
-  size: number
-  mask: number
-  modules: boolean[][]
+export enum ErrorCorrectionLevel {
+  /** Recovers about 7% data damage. QR format bits: 01. */
+  L = "L",
+  /** Recovers about 15% data damage. QR format bits: 00. */
+  M = "M",
+  /** Recovers about 25% data damage. QR format bits: 11. */
+  Q = "Q",
+  /** Recovers about 30% data damage. QR format bits: 10. */
+  H = "H",
 }
 
-const BYTE_MODE_INDICATOR = 0b0100
-const MIN_VERSION = 1
-const MAX_VERSION = 40
-
-const ERROR_CORRECTION_LEVELS: Record<QRErrorCorrectionLevel, { ordinal: number; formatBits: number }> = {
-  low: { ordinal: 0, formatBits: 1 },
-  medium: { ordinal: 1, formatBits: 0 },
-  quartile: { ordinal: 2, formatBits: 3 },
-  high: { ordinal: 3, formatBits: 2 },
+export enum MicroErrorCorrectionLevel {
+  /** M1 only: error detection only, no correction. */
+  DETECTION_ONLY = "DETECTION_ONLY",
+  L = "L",
+  M = "M",
+  Q = "Q",
 }
 
-const ECC_CODEWORDS_PER_BLOCK: number[][] = [
-  [
-    -1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30,
-    30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
-  ],
-  [
-    -1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28,
-    28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28,
-  ],
-  [
-    -1, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30, 30, 30, 28, 30, 30,
-    30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
-  ],
-  [
-    -1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30,
-    30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
-  ],
-]
+export type ByteEncoding = "utf-8" | "iso-8859-1" | "shift-jis"
+export type MicroVersion = 1 | 2 | 3 | 4
 
-const NUM_ERROR_CORRECTION_BLOCKS: number[][] = [
-  [
-    -1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19,
-    19, 20, 21, 22, 24, 25,
-  ],
-  [
-    -1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31,
-    33, 35, 37, 38, 40, 43, 45, 47, 49,
-  ],
-  [
-    -1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43,
-    45, 48, 51, 53, 56, 59, 62, 65, 68,
-  ],
-  [
-    -1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48,
-    51, 54, 57, 60, 63, 66, 70, 74, 77, 81,
-  ],
-]
+export const EciAssignment = {
+  ISO_8859_1: 3,
+  SHIFT_JIS: 20,
+  UTF_8: 26,
+} as const
 
-export function encodeQRCode(content: string, errorCorrectionLevel: QRErrorCorrectionLevel = "medium"): EncodedQRCode {
-  const bytes = [...new TextEncoder().encode(content)]
-  const level = ERROR_CORRECTION_LEVELS[errorCorrectionLevel]
-  const version = findVersionThatFits(bytes.length, level.ordinal)
-  const dataCodewords = encodeDataCodewords(bytes, version, level.ordinal)
-  const { modules, mask } = buildMatrix(version, level, dataCodewords)
+export interface StructuredAppendInfo {
+  /** 1-based position of this symbol in the structured append sequence. */
+  position: number
+  /** Total number of symbols in the structured append sequence, 2..16. */
+  total: number
+  /** 8-bit parity value, normally computed with QRCode.computeStructuredAppendParity(). */
+  parity: number
+}
 
-  return {
-    version,
-    size: modules.length,
-    mask,
-    modules,
+export interface Fnc1SecondPositionInfo {
+  /** Two decimal digits, a number 0..99, or one Latin alphabetic character. */
+  applicationIndicator: string | number
+}
+
+export interface EncodeOptions {
+  /** Minimum QR Code Model 2 version, inclusive. Default: 1. */
+  minVersion?: number
+  /** Maximum QR Code Model 2 version, inclusive. Default: 40. */
+  maxVersion?: number
+  /** Force QR mask pattern 0..7. Default: auto-select by penalty score. */
+  mask?: number
+  /** Upgrade ECC level if the data still fits in the selected version. Default: true. */
+  boostEcl?: boolean
+  /** Use DP mixed-mode optimization for text. Default: true. */
+  optimize?: boolean
+  /** Allow Kanji mode for characters encodable in Shift JIS Kanji ranges. Default: false. */
+  kanji?: boolean
+  /** Byte-segment character encoding for text fallback. Default: utf-8. */
+  byteEncoding?: ByteEncoding
+  /** Prefix UTF-8 byte-mode text with ECI assignment 26. Default: true when byteEncoding is utf-8. */
+  eciForUtf8?: boolean
+  /** Override the ECI assignment emitted before byte segments; set null to suppress ECI. */
+  eciAssignment?: number | null
+  /** Insert FNC1 in first position immediately after any structured append/ECI header. */
+  fnc1First?: boolean
+  /** Insert FNC1 in second position immediately after any structured append/ECI header. */
+  fnc1Second?: Fnc1SecondPositionInfo
+  /** Insert a structured append header at the start of the symbol. */
+  structuredAppend?: StructuredAppendInfo
+}
+
+export interface MicroEncodeOptions {
+  /** Minimum Micro QR version, inclusive. Default: 1. */
+  minVersion?: MicroVersion
+  /** Maximum Micro QR version, inclusive. Default: 4. */
+  maxVersion?: MicroVersion
+  /** Force Micro QR mask reference 0..3. Default: auto-select by edge score. */
+  mask?: number
+  /** Upgrade ECC level if the data still fits in the selected version. Default: true. */
+  boostEcl?: boolean
+  /** Use DP mixed-mode optimization for text. Default: true. */
+  optimize?: boolean
+  /** Allow Kanji mode for characters encodable in Shift JIS Kanji ranges. Default: false. */
+  kanji?: boolean
+  /** Byte-segment character encoding for text fallback. Default: utf-8. Micro QR has no ECI. */
+  byteEncoding?: ByteEncoding
+}
+
+export interface TerminalRenderOptions {
+  /** Quiet zone in modules. ISO requires at least 4 for QR Code and 2 for Micro QR Code. */
+  border?: number
+  /**
+   * Render using ANSI background colors. Recommended when a real scanner will read the terminal.
+   * The ANSI renderer paints light modules white and dark modules black independent of terminal theme.
+   */
+  ansi?: boolean
+  /** Swap light and dark output. Leave false for normal black-on-white scanner-facing output. */
+  invert?: boolean
+}
+
+export interface Gs1Element {
+  /** Application identifier, e.g. "01", "17", "10". Parentheses are not encoded. */
+  ai: string
+  /** Element-string data. */
+  data: string
+  /** Add a FNC1 field separator after this element. Do not set on the last element. */
+  separatorAfter?: boolean
+}
+
+interface Block {
+  data: number[]
+  ecc: number[]
+}
+
+interface QrMetadata {
+  containsEci: boolean
+  fnc1: "none" | "first" | "second"
+}
+
+interface MicroModeIndicator {
+  value: number
+  length: number
+}
+
+class BitBuffer {
+  private readonly bits: number[] = []
+
+  get length(): number {
+    return this.bits.length
   }
-}
 
-export function getQRCodeAlignmentPatternPositions(version: number): number[] {
-  if (version < MIN_VERSION || version > MAX_VERSION) {
-    throw new RangeError(`QR version out of range: ${version}`)
-  }
-
-  return getAlignmentPatternPositions(version)
-}
-
-export function getQRCodeFormatBits(errorCorrectionLevel: QRErrorCorrectionLevel, mask: number): number {
-  if (!Number.isInteger(mask) || mask < 0 || mask > 7) {
-    throw new RangeError(`QR mask out of range: ${mask}`)
-  }
-
-  return computeFormatBits(ERROR_CORRECTION_LEVELS[errorCorrectionLevel].formatBits, mask)
-}
-
-export function getQRCodeVersionBits(version: number): number {
-  if (version < MIN_VERSION || version > MAX_VERSION) {
-    throw new RangeError(`QR version out of range: ${version}`)
-  }
-
-  if (version < 7) {
-    throw new RangeError(`QR version information is only defined for versions 7 and above, got ${version}`)
-  }
-
-  return computeVersionBits(version)
-}
-
-function findVersionThatFits(byteLength: number, errorCorrectionOrdinal: number): number {
-  for (let version = MIN_VERSION; version <= MAX_VERSION; version++) {
-    const capacityBits = getNumDataCodewords(version, errorCorrectionOrdinal) * 8
-    const requiredBits = 4 + getByteModeCharCountBits(version) + byteLength * 8
-
-    if (requiredBits <= capacityBits) {
-      return version
+  appendBits(value: number, bitCount: number): void {
+    if (!Number.isInteger(value) || !Number.isInteger(bitCount) || bitCount < 0 || bitCount > 31) {
+      throw new RangeError("Invalid bit append request")
+    }
+    if (bitCount < 31 && value >>> bitCount !== 0) {
+      throw new RangeError(`Value ${value} does not fit in ${bitCount} bits`)
+    }
+    for (let i = bitCount - 1; i >= 0; i--) {
+      this.bits.push((value >>> i) & 1)
     }
   }
 
-  throw new RangeError(`QR content is too long to encode (${byteLength} bytes)`)
-}
-
-function encodeDataCodewords(data: number[], version: number, errorCorrectionOrdinal: number): number[] {
-  const capacityBits = getNumDataCodewords(version, errorCorrectionOrdinal) * 8
-  const bits: number[] = []
-
-  appendBits(BYTE_MODE_INDICATOR, 4, bits)
-  appendBits(data.length, getByteModeCharCountBits(version), bits)
-
-  for (const byte of data) {
-    appendBits(byte, 8, bits)
+  appendData(other: BitBuffer): void {
+    for (let i = 0; i < other.length; i++) this.bits.push(other.getBit(i))
   }
 
-  appendBits(0, Math.min(4, capacityBits - bits.length), bits)
-  appendBits(0, (8 - (bits.length % 8)) % 8, bits)
-
-  for (let padByte = 0xec; bits.length < capacityBits; padByte = padByte === 0xec ? 0x11 : 0xec) {
-    appendBits(padByte, 8, bits)
+  getBit(index: number): number {
+    return this.bits[index] ?? 0
   }
 
-  const codewords = new Array<number>(bits.length / 8).fill(0)
-  for (let i = 0; i < bits.length; i++) {
-    codewords[i >>> 3] |= bits[i]! << (7 - (i & 7))
+  toBits(): number[] {
+    return this.bits.slice()
   }
 
-  return codewords
-}
-
-function buildMatrix(
-  version: number,
-  errorCorrectionLevel: { ordinal: number; formatBits: number },
-  dataCodewords: number[],
-): { modules: boolean[][]; mask: number } {
-  const size = version * 4 + 17
-  const modules = createSquareMatrix(size, false)
-  const functionModules = createSquareMatrix(size, false)
-
-  drawFunctionPatterns(modules, functionModules, version, errorCorrectionLevel.formatBits)
-  const allCodewords = addErrorCorrectionAndInterleave(dataCodewords, version, errorCorrectionLevel.ordinal)
-  drawCodewords(modules, functionModules, allCodewords)
-
-  let bestMask = 0
-  let bestPenalty = Number.POSITIVE_INFINITY
-
-  for (let mask = 0; mask < 8; mask++) {
-    applyMask(modules, functionModules, mask)
-    drawFormatBits(modules, functionModules, errorCorrectionLevel.formatBits, mask)
-
-    const penalty = calculatePenalty(modules)
-    if (penalty < bestPenalty) {
-      bestPenalty = penalty
-      bestMask = mask
+  toBytes(): number[] {
+    const result: number[] = []
+    for (let i = 0; i < this.bits.length; i += 8) {
+      let value = 0
+      for (let j = 0; j < 8 && i + j < this.bits.length; j++) value = (value << 1) | this.bits[i + j]
+      if (this.bits.length - i < 8) value <<= 8 - (this.bits.length - i)
+      result.push(value)
     }
-
-    applyMask(modules, functionModules, mask)
+    return result
   }
-
-  applyMask(modules, functionModules, bestMask)
-  drawFormatBits(modules, functionModules, errorCorrectionLevel.formatBits, bestMask)
-
-  return { modules, mask: bestMask }
 }
 
-function createSquareMatrix(size: number, value: boolean): boolean[][] {
-  return Array.from({ length: size }, () => new Array<boolean>(size).fill(value))
-}
+class Mode {
+  static readonly NUMERIC = new Mode(
+    "NUMERIC",
+    0x1,
+    [10, 12, 14],
+    [null, 3, 4, 5, 6],
+    [
+      null,
+      { value: 0b0, length: 0 },
+      { value: 0b0, length: 1 },
+      { value: 0b00, length: 2 },
+      { value: 0b000, length: 3 },
+    ],
+    true,
+  )
 
-function drawFunctionPatterns(
-  modules: boolean[][],
-  functionModules: boolean[][],
-  version: number,
-  formatBits: number,
-): void {
-  const size = modules.length
+  static readonly ALPHANUMERIC = new Mode(
+    "ALPHANUMERIC",
+    0x2,
+    [9, 11, 13],
+    [null, null, 3, 4, 5],
+    [null, null, { value: 0b1, length: 1 }, { value: 0b01, length: 2 }, { value: 0b001, length: 3 }],
+    true,
+  )
 
-  for (let i = 0; i < size; i++) {
-    setFunctionModule(modules, functionModules, 6, i, i % 2 === 0)
-    setFunctionModule(modules, functionModules, i, 6, i % 2 === 0)
+  static readonly BYTE = new Mode(
+    "BYTE",
+    0x4,
+    [8, 16, 16],
+    [null, null, null, 4, 5],
+    [null, null, null, { value: 0b10, length: 2 }, { value: 0b010, length: 3 }],
+    true,
+  )
+
+  static readonly KANJI = new Mode(
+    "KANJI",
+    0x8,
+    [8, 10, 12],
+    [null, null, null, 3, 4],
+    [null, null, null, { value: 0b11, length: 2 }, { value: 0b011, length: 3 }],
+    true,
+  )
+
+  static readonly ECI = new Mode(
+    "ECI",
+    0x7,
+    [0, 0, 0],
+    [null, null, null, null, null],
+    [null, null, null, null, null],
+    false,
+  )
+  static readonly STRUCTURED_APPEND = new Mode(
+    "STRUCTURED_APPEND",
+    0x3,
+    [0, 0, 0],
+    [null, null, null, null, null],
+    [null, null, null, null, null],
+    false,
+  )
+  static readonly FNC1_FIRST = new Mode(
+    "FNC1_FIRST",
+    0x5,
+    [0, 0, 0],
+    [null, null, null, null, null],
+    [null, null, null, null, null],
+    false,
+  )
+  static readonly FNC1_SECOND = new Mode(
+    "FNC1_SECOND",
+    0x9,
+    [0, 0, 0],
+    [null, null, null, null, null],
+    [null, null, null, null, null],
+    false,
+  )
+
+  private constructor(
+    readonly name: string,
+    readonly modeBits: number,
+    private readonly charCountBitsForVersionRange: readonly [number, number, number],
+    private readonly microCharCountBitsByVersion: readonly [
+      null,
+      number | null,
+      number | null,
+      number | null,
+      number | null,
+    ],
+    private readonly microModeIndicators: readonly [
+      null,
+      MicroModeIndicator | null,
+      MicroModeIndicator | null,
+      MicroModeIndicator | null,
+      MicroModeIndicator | null,
+    ],
+    readonly hasCharacterCount: boolean,
+  ) {}
+
+  numCharCountBits(version: number): number {
+    if (!this.hasCharacterCount) return 0
+    if (version < 1 || version > 40) throw new RangeError("Version must be in 1..40")
+    return this.charCountBitsForVersionRange[Math.floor((version + 7) / 17)]
   }
 
-  drawFinderPattern(modules, functionModules, 3, 3)
-  drawFinderPattern(modules, functionModules, size - 4, 3)
-  drawFinderPattern(modules, functionModules, 3, size - 4)
+  microCharCountBits(version: MicroVersion): number {
+    if (!this.hasCharacterCount) return 0
+    const result = this.microCharCountBitsByVersion[version]
+    if (result === null) throw new Error(`${this.name} mode is not available in Micro QR version M${version}`)
+    return result
+  }
 
-  const alignmentPositions = getAlignmentPatternPositions(version)
-  for (let y = 0; y < alignmentPositions.length; y++) {
-    for (let x = 0; x < alignmentPositions.length; x++) {
-      const overlapsFinderCorner =
-        (x === 0 && y === 0) ||
-        (x === 0 && y === alignmentPositions.length - 1) ||
-        (x === alignmentPositions.length - 1 && y === 0)
+  microModeIndicator(version: MicroVersion): MicroModeIndicator {
+    const result = this.microModeIndicators[version]
+    if (result === null) throw new Error(`${this.name} mode is not available in Micro QR version M${version}`)
+    return result
+  }
 
-      if (!overlapsFinderCorner) {
-        drawAlignmentPattern(modules, functionModules, alignmentPositions[x]!, alignmentPositions[y]!)
+  isMicroAvailable(version: MicroVersion): boolean {
+    return this.microModeIndicators[version] !== null
+  }
+
+  isDataMode(): boolean {
+    return this === Mode.NUMERIC || this === Mode.ALPHANUMERIC || this === Mode.BYTE || this === Mode.KANJI
+  }
+}
+
+class ReedSolomon {
+  static computeDivisor(degree: number): number[] {
+    if (!Number.isInteger(degree) || degree < 1 || degree > 255) throw new RangeError("Invalid Reed-Solomon degree")
+    const result = Array<number>(degree).fill(0)
+    result[degree - 1] = 1
+    let root = 1
+    for (let i = 0; i < degree; i++) {
+      for (let j = 0; j < degree; j++) {
+        result[j] = ReedSolomon.multiply(result[j], root)
+        if (j + 1 < degree) result[j] ^= result[j + 1]
       }
+      root = ReedSolomon.multiply(root, 0x02)
     }
+    return result
   }
 
-  drawFormatBits(modules, functionModules, formatBits, 0)
-  drawVersionBits(modules, functionModules, version)
+  static computeRemainder(data: readonly number[], divisor: readonly number[]): number[] {
+    const result = Array<number>(divisor.length).fill(0)
+    for (const b of data) {
+      if (!Number.isInteger(b) || b < 0 || b > 0xff) throw new RangeError("Data codeword out of range")
+      const factor = b ^ result.shift()!
+      result.push(0)
+      for (let i = 0; i < result.length; i++) result[i] ^= ReedSolomon.multiply(divisor[i], factor)
+    }
+    return result
+  }
+
+  static multiply(x: number, y: number): number {
+    if (x >>> 8 !== 0 || y >>> 8 !== 0) throw new RangeError("Reed-Solomon operands must be bytes")
+    let z = 0
+    for (let i = 7; i >= 0; i--) {
+      z = (z << 1) ^ ((z >>> 7) * 0x11d)
+      z ^= ((y >>> i) & 1) * x
+    }
+    return z & 0xff
+  }
 }
 
-function drawFinderPattern(modules: boolean[][], functionModules: boolean[][], centerX: number, centerY: number): void {
-  const size = modules.length
+export class QrSegment {
+  private static readonly ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
 
-  for (let dy = -4; dy <= 4; dy++) {
-    for (let dx = -4; dx <= 4; dx++) {
-      const x = centerX + dx
-      const y = centerY + dy
+  private constructor(
+    readonly mode: Mode,
+    readonly numChars: number,
+    readonly data: BitBuffer,
+    readonly parityBytes: readonly number[] = [],
+  ) {}
 
-      if (x < 0 || x >= size || y < 0 || y >= size) {
+  static makeNumeric(digits: string): QrSegment {
+    if (!/^[0-9]*$/.test(digits)) throw new Error("Numeric mode accepts digits only")
+    const bb = new BitBuffer()
+    for (let i = 0; i < digits.length; ) {
+      const n = Math.min(digits.length - i, 3)
+      bb.appendBits(Number(digits.substring(i, i + n)), n * 3 + 1)
+      i += n
+    }
+    return new QrSegment(Mode.NUMERIC, digits.length, bb, asciiBytes(digits))
+  }
+
+  static makeAlphanumeric(text: string): QrSegment {
+    if (!QrSegment.isAlphanumeric(text)) throw new Error("Alphanumeric mode accepts only: 0-9 A-Z space $%*+-./:")
+    const bb = new BitBuffer()
+    let i = 0
+    for (; i + 2 <= text.length; i += 2) {
+      const value =
+        QrSegment.ALPHANUMERIC_CHARSET.indexOf(text.charAt(i)) * 45 +
+        QrSegment.ALPHANUMERIC_CHARSET.indexOf(text.charAt(i + 1))
+      bb.appendBits(value, 11)
+    }
+    if (i < text.length) bb.appendBits(QrSegment.ALPHANUMERIC_CHARSET.indexOf(text.charAt(i)), 6)
+    return new QrSegment(Mode.ALPHANUMERIC, text.length, bb, asciiBytes(text))
+  }
+
+  static makeBytes(bytes: Uint8Array | number[]): QrSegment {
+    const bb = new BitBuffer()
+    const arr = validateBytes(Array.from(bytes))
+    for (const b of arr) bb.appendBits(b, 8)
+    return new QrSegment(Mode.BYTE, arr.length, bb, arr)
+  }
+
+  static makeBytesFromText(text: string, encoding: ByteEncoding = "utf-8"): QrSegment {
+    return QrSegment.makeBytes(encodeTextBytes(text, encoding))
+  }
+
+  static makeKanji(text: string): QrSegment {
+    const bytes: number[] = []
+    for (const ch of Array.from(text)) {
+      const sjis = shiftJisCodeForCharacter(ch)
+      if (!isKanjiModeShiftJisValue(sjis))
+        throw new Error(`Character ${JSON.stringify(ch)} is not encodable in QR Kanji mode`)
+      bytes.push(sjis >>> 8, sjis & 0xff)
+    }
+    return QrSegment.makeKanjiFromShiftJis(bytes)
+  }
+
+  static makeKanjiFromShiftJis(bytes: Uint8Array | number[]): QrSegment {
+    const arr = validateBytes(Array.from(bytes))
+    if (arr.length % 2 !== 0) throw new Error("Kanji mode requires an even number of Shift JIS bytes")
+    const bb = new BitBuffer()
+    for (let i = 0; i < arr.length; i += 2) {
+      const sjis = (arr[i] << 8) | arr[i + 1]
+      let subtracted: number
+      if (sjis >= 0x8140 && sjis <= 0x9ffc) subtracted = sjis - 0x8140
+      else if (sjis >= 0xe040 && sjis <= 0xebbf) subtracted = sjis - 0xc140
+      else throw new Error(`Shift JIS value 0x${sjis.toString(16).toUpperCase()} is outside QR Kanji-mode ranges`)
+      const encoded = (subtracted >>> 8) * 0xc0 + (subtracted & 0xff)
+      bb.appendBits(encoded, 13)
+    }
+    return new QrSegment(Mode.KANJI, arr.length / 2, bb, arr)
+  }
+
+  static makeEci(assignVal: number): QrSegment {
+    if (!Number.isInteger(assignVal) || assignVal < 0 || assignVal >= 1_000_000) {
+      throw new RangeError("ECI assignment value must be in 0..999999")
+    }
+    const bb = new BitBuffer()
+    if (assignVal < 128) bb.appendBits(assignVal, 8)
+    else if (assignVal < 16_384) bb.appendBits(0x8000 | assignVal, 16)
+    else bb.appendBits(0xc00000 | assignVal, 24)
+    return new QrSegment(Mode.ECI, 0, bb)
+  }
+
+  static makeStructuredAppendHeader(position: number, total: number, parity: number): QrSegment {
+    validateStructuredAppend(position, total, parity)
+    const bb = new BitBuffer()
+    bb.appendBits(((position - 1) << 4) | (total - 1), 8)
+    bb.appendBits(parity, 8)
+    return new QrSegment(Mode.STRUCTURED_APPEND, 0, bb)
+  }
+
+  static makeFnc1FirstPosition(): QrSegment {
+    return new QrSegment(Mode.FNC1_FIRST, 0, new BitBuffer())
+  }
+
+  static makeFnc1SecondPosition(applicationIndicator: string | number): QrSegment {
+    const bb = new BitBuffer()
+    bb.appendBits(encodeFnc1SecondApplicationIndicator(applicationIndicator), 8)
+    return new QrSegment(Mode.FNC1_SECOND, 0, bb)
+  }
+
+  static isNumeric(text: string): boolean {
+    return /^[0-9]*$/.test(text)
+  }
+
+  static isAlphanumeric(text: string): boolean {
+    return /^[0-9A-Z $%*+\-./:]*$/.test(text)
+  }
+
+  static isKanji(text: string): boolean {
+    if (text.length === 0) return true
+    for (const ch of Array.from(text)) {
+      const sjis = SHIFT_JIS_CODE_BY_CHAR[ch]
+      if (sjis === undefined || !isKanjiModeShiftJisValue(sjis)) return false
+    }
+    return true
+  }
+
+  static makeSegments(
+    text: string,
+    options: Pick<EncodeOptions, "eciForUtf8" | "kanji" | "byteEncoding" | "eciAssignment"> = {},
+  ): QrSegment[] {
+    if (text.length === 0) return []
+    if (QrSegment.isNumeric(text)) return [QrSegment.makeNumeric(text)]
+    if (QrSegment.isAlphanumeric(text)) return [QrSegment.makeAlphanumeric(text)]
+    if (options.kanji === true && QrSegment.isKanji(text)) return [QrSegment.makeKanji(text)]
+
+    const encoding = options.byteEncoding ?? "utf-8"
+    const segments = [QrSegment.makeBytesFromText(text, encoding)]
+    return QrSegment.addEciIfNeeded(segments, encoding, options)
+  }
+
+  static makeOptimizedSegments(
+    text: string,
+    version: number,
+    options: Pick<EncodeOptions, "eciForUtf8" | "kanji" | "byteEncoding" | "eciAssignment"> = {},
+  ): QrSegment[] {
+    QRCode.validateVersionPublic(version)
+    return QrSegment.makeOptimizedSegmentsInternal(text, { kind: "qr", version }, options)
+  }
+
+  static makeOptimizedMicroSegments(
+    text: string,
+    version: MicroVersion,
+    options: Pick<MicroEncodeOptions, "kanji" | "byteEncoding"> = {},
+  ): QrSegment[] {
+    validateMicroVersion(version)
+    return QrSegment.makeOptimizedSegmentsInternal(text, { kind: "micro", version }, options)
+  }
+
+  static makeEciSegmentsFromEscapedText(
+    escapedText: string,
+    options: { defaultEncoding?: ByteEncoding; defaultEci?: number | null } = {},
+  ): QrSegment[] {
+    const defaultEncoding = options.defaultEncoding ?? "iso-8859-1"
+    const result: QrSegment[] = []
+    let currentEci = options.defaultEci
+    let currentEncoding = defaultEncoding
+    let buffer = ""
+
+    const flush = (): void => {
+      if (buffer.length === 0) return
+      result.push(QrSegment.makeBytesFromText(buffer, currentEncoding))
+      buffer = ""
+    }
+
+    for (let i = 0; i < escapedText.length; ) {
+      if (escapedText.charAt(i) !== "\\") {
+        buffer += escapedText.charAt(i++)
         continue
       }
-
-      const distance = Math.max(Math.abs(dx), Math.abs(dy))
-      setFunctionModule(modules, functionModules, x, y, distance !== 2 && distance !== 4)
-    }
-  }
-}
-
-function drawAlignmentPattern(
-  modules: boolean[][],
-  functionModules: boolean[][],
-  centerX: number,
-  centerY: number,
-): void {
-  for (let dy = -2; dy <= 2; dy++) {
-    for (let dx = -2; dx <= 2; dx++) {
-      const distance = Math.max(Math.abs(dx), Math.abs(dy))
-      setFunctionModule(modules, functionModules, centerX + dx, centerY + dy, distance !== 1)
-    }
-  }
-}
-
-function drawFormatBits(
-  modules: boolean[][],
-  functionModules: boolean[][],
-  errorCorrectionFormatBits: number,
-  mask: number,
-): void {
-  const size = modules.length
-  const bits = computeFormatBits(errorCorrectionFormatBits, mask)
-
-  for (let i = 0; i <= 5; i++) {
-    setFunctionModule(modules, functionModules, 8, i, getBit(bits, i))
-  }
-
-  setFunctionModule(modules, functionModules, 8, 7, getBit(bits, 6))
-  setFunctionModule(modules, functionModules, 8, 8, getBit(bits, 7))
-  setFunctionModule(modules, functionModules, 7, 8, getBit(bits, 8))
-
-  for (let i = 9; i < 15; i++) {
-    setFunctionModule(modules, functionModules, 14 - i, 8, getBit(bits, i))
-  }
-
-  for (let i = 0; i < 8; i++) {
-    setFunctionModule(modules, functionModules, size - 1 - i, 8, getBit(bits, i))
-  }
-
-  for (let i = 8; i < 15; i++) {
-    setFunctionModule(modules, functionModules, 8, size - 15 + i, getBit(bits, i))
-  }
-
-  setFunctionModule(modules, functionModules, 8, size - 8, true)
-}
-
-function drawVersionBits(modules: boolean[][], functionModules: boolean[][], version: number): void {
-  if (version < 7) {
-    return
-  }
-
-  const size = modules.length
-  const bits = computeVersionBits(version)
-
-  for (let i = 0; i < 18; i++) {
-    const bit = getBit(bits, i)
-    const a = size - 11 + (i % 3)
-    const b = Math.floor(i / 3)
-    setFunctionModule(modules, functionModules, a, b, bit)
-    setFunctionModule(modules, functionModules, b, a, bit)
-  }
-}
-
-function setFunctionModule(
-  modules: boolean[][],
-  functionModules: boolean[][],
-  x: number,
-  y: number,
-  isDark: boolean,
-): void {
-  modules[y]![x] = isDark
-  functionModules[y]![x] = true
-}
-
-function addErrorCorrectionAndInterleave(
-  dataCodewords: number[],
-  version: number,
-  errorCorrectionOrdinal: number,
-): number[] {
-  const blockCount = NUM_ERROR_CORRECTION_BLOCKS[errorCorrectionOrdinal]![version]!
-  const eccLength = ECC_CODEWORDS_PER_BLOCK[errorCorrectionOrdinal]![version]!
-  const rawCodewords = Math.floor(getNumRawDataModules(version) / 8)
-  const shortBlockDataLength = Math.floor(rawCodewords / blockCount) - eccLength
-  const longBlockCount = rawCodewords % blockCount
-  const shortBlockCount = blockCount - longBlockCount
-  const divisor = computeReedSolomonDivisor(eccLength)
-
-  const dataBlocks: number[][] = []
-  const eccBlocks: number[][] = []
-
-  let offset = 0
-  for (let blockIndex = 0; blockIndex < blockCount; blockIndex++) {
-    const dataLength = shortBlockDataLength + (blockIndex >= shortBlockCount ? 1 : 0)
-    const blockData = dataCodewords.slice(offset, offset + dataLength)
-    offset += dataLength
-
-    dataBlocks.push(blockData)
-    eccBlocks.push(computeReedSolomonRemainder(blockData, divisor))
-  }
-
-  const result: number[] = []
-  const maxDataLength = shortBlockDataLength + (longBlockCount > 0 ? 1 : 0)
-
-  for (let i = 0; i < maxDataLength; i++) {
-    for (const block of dataBlocks) {
-      if (i < block.length) {
-        result.push(block[i]!)
-      }
-    }
-  }
-
-  for (let i = 0; i < eccLength; i++) {
-    for (const block of eccBlocks) {
-      result.push(block[i]!)
-    }
-  }
-
-  return result
-}
-
-function drawCodewords(modules: boolean[][], functionModules: boolean[][], codewords: number[]): void {
-  const size = modules.length
-  let bitIndex = 0
-
-  for (let right = size - 1; right >= 1; right -= 2) {
-    if (right === 6) {
-      right = 5
-    }
-
-    for (let vertical = 0; vertical < size; vertical++) {
-      const upward = ((right + 1) & 2) === 0
-      const y = upward ? size - 1 - vertical : vertical
-
-      for (let columnOffset = 0; columnOffset < 2; columnOffset++) {
-        const x = right - columnOffset
-        if (functionModules[y]![x] || bitIndex >= codewords.length * 8) {
-          continue
-        }
-
-        modules[y]![x] = getBit(codewords[bitIndex >>> 3]!, 7 - (bitIndex & 7))
-        bitIndex++
-      }
-    }
-  }
-}
-
-function applyMask(modules: boolean[][], functionModules: boolean[][], mask: number): void {
-  const size = modules.length
-
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      if (functionModules[y]![x]) {
+      if (escapedText.charAt(i + 1) === "\\") {
+        buffer += "\\"
+        i += 2
         continue
       }
-
-      let invert = false
-      switch (mask) {
-        case 0:
-          invert = (x + y) % 2 === 0
-          break
-        case 1:
-          invert = y % 2 === 0
-          break
-        case 2:
-          invert = x % 3 === 0
-          break
-        case 3:
-          invert = (x + y) % 3 === 0
-          break
-        case 4:
-          invert = (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0
-          break
-        case 5:
-          invert = ((x * y) % 2) + ((x * y) % 3) === 0
-          break
-        case 6:
-          invert = (((x * y) % 2) + ((x * y) % 3)) % 2 === 0
-          break
-        case 7:
-          invert = (((x + y) % 2) + ((x * y) % 3)) % 2 === 0
-          break
-        default:
-          throw new RangeError(`Unsupported QR mask ${mask}`)
+      const digits = escapedText.substring(i + 1, i + 7)
+      if (/^[0-9]{6}$/.test(digits)) {
+        flush()
+        currentEci = Number(digits)
+        result.push(QrSegment.makeEci(currentEci))
+        currentEncoding = encodingForKnownEci(currentEci) ?? currentEncoding
+        i += 7
+        continue
       }
+      throw new Error("Single backslash in ECI text must be followed by six digits or another backslash")
+    }
+    flush()
+    return result
+  }
 
-      if (invert) {
-        modules[y]![x] = !modules[y]![x]
+  getTotalBits(version: number): number {
+    if (!this.mode.hasCharacterCount) return 4 + this.data.length
+    const ccbits = this.mode.numCharCountBits(version)
+    if (this.numChars >= 1 << ccbits) return Infinity
+    return 4 + ccbits + this.data.length
+  }
+
+  getTotalMicroBits(version: MicroVersion): number {
+    if (!this.mode.isDataMode()) return Infinity
+    if (!this.mode.isMicroAvailable(version)) return Infinity
+    const indicator = this.mode.microModeIndicator(version)
+    const ccbits = this.mode.microCharCountBits(version)
+    if (this.numChars >= 1 << ccbits) return Infinity
+    return indicator.length + ccbits + this.data.length
+  }
+
+  private static addEciIfNeeded(
+    segments: QrSegment[],
+    encoding: ByteEncoding,
+    options: Pick<EncodeOptions, "eciForUtf8" | "eciAssignment">,
+  ): QrSegment[] {
+    if (!segments.some((seg) => seg.mode === Mode.BYTE)) return segments
+    let assignment: number | null
+    if (options.eciAssignment !== undefined) assignment = options.eciAssignment
+    else if (encoding === "utf-8") assignment = options.eciForUtf8 === false ? null : EciAssignment.UTF_8
+    else if (encoding === "shift-jis") assignment = EciAssignment.SHIFT_JIS
+    else assignment = null
+    return assignment === null ? segments : [QrSegment.makeEci(assignment), ...segments]
+  }
+
+  private static makeOptimizedSegmentsInternal(
+    text: string,
+    target: { kind: "qr"; version: number } | { kind: "micro"; version: MicroVersion },
+    options: Pick<EncodeOptions, "eciForUtf8" | "kanji" | "byteEncoding" | "eciAssignment">,
+  ): QrSegment[] {
+    if (text.length === 0) return []
+    const chars = Array.from(text)
+    const n = chars.length
+    const encoding = options.byteEncoding ?? "utf-8"
+    const allowKanji = options.kanji === true
+    const byteParts = chars.map((ch) => Array.from(encodeTextBytes(ch, encoding)))
+
+    let eciBits = 0
+    let eciAssignment: number | null = null
+    if (target.kind === "qr") {
+      if (options.eciAssignment !== undefined) eciAssignment = options.eciAssignment
+      else if (encoding === "utf-8") eciAssignment = options.eciForUtf8 === false ? null : EciAssignment.UTF_8
+      else if (encoding === "shift-jis") eciAssignment = EciAssignment.SHIFT_JIS
+      else eciAssignment = null
+      eciBits = eciAssignment === null ? 0 : QrSegment.makeEci(eciAssignment).getTotalBits(target.version)
+    }
+
+    type Used = 0 | 1
+    type Prev = { prevIndex: number; prevUsed: Used; mode: Mode }
+    const inf = Number.POSITIVE_INFINITY
+    const dp: [number[], number[]] = [Array<number>(n + 1).fill(inf), Array<number>(n + 1).fill(inf)]
+    const prev: [Array<Prev | null>, Array<Prev | null>] = [
+      Array<Prev | null>(n + 1).fill(null),
+      Array<Prev | null>(n + 1).fill(null),
+    ]
+    dp[0][0] = 0
+
+    const modeHeaderBits = (mode: Mode, count: number, byteCount: number): number => {
+      if (target.kind === "qr") {
+        const ccbits = mode.numCharCountBits(target.version)
+        const nChars = mode === Mode.BYTE ? byteCount : count
+        if (nChars >= 1 << ccbits) return inf
+        return 4 + ccbits
+      }
+      if (!mode.isMicroAvailable(target.version)) return inf
+      const ccbits = mode.microCharCountBits(target.version)
+      const nChars = mode === Mode.BYTE ? byteCount : count
+      if (nChars >= 1 << ccbits) return inf
+      return mode.microModeIndicator(target.version).length + ccbits
+    }
+
+    const dataBitsFor = (mode: Mode, count: number, byteCount: number): number => {
+      if (mode === Mode.NUMERIC) return Math.floor(count / 3) * 10 + (count % 3 === 1 ? 4 : count % 3 === 2 ? 7 : 0)
+      if (mode === Mode.ALPHANUMERIC) return Math.floor(count / 2) * 11 + (count % 2) * 6
+      if (mode === Mode.KANJI) return count * 13
+      return byteCount * 8
+    }
+
+    const update = (from: number, fromUsed: Used, to: number, toUsed: Used, mode: Mode, cost: number): void => {
+      const total = dp[fromUsed][from] + cost
+      if (total < dp[toUsed][to]) {
+        dp[toUsed][to] = total
+        prev[toUsed][to] = { prevIndex: from, prevUsed: fromUsed, mode }
       }
     }
+
+    for (let i = 0; i < n; i++) {
+      for (const used of [0, 1] as const) {
+        if (!Number.isFinite(dp[used][i])) continue
+
+        let count = 0
+        for (let j = i; j < n && /^[0-9]$/.test(chars[j]); j++) {
+          count++
+          const header = modeHeaderBits(Mode.NUMERIC, count, 0)
+          if (Number.isFinite(header))
+            update(i, used, j + 1, used, Mode.NUMERIC, header + dataBitsFor(Mode.NUMERIC, count, 0))
+        }
+
+        count = 0
+        for (let j = i; j < n && QrSegment.isAlphanumeric(chars[j]); j++) {
+          count++
+          const header = modeHeaderBits(Mode.ALPHANUMERIC, count, 0)
+          if (Number.isFinite(header))
+            update(i, used, j + 1, used, Mode.ALPHANUMERIC, header + dataBitsFor(Mode.ALPHANUMERIC, count, 0))
+        }
+
+        if (allowKanji) {
+          count = 0
+          for (let j = i; j < n && QrSegment.isKanji(chars[j]); j++) {
+            count++
+            const header = modeHeaderBits(Mode.KANJI, count, 0)
+            if (Number.isFinite(header))
+              update(i, used, j + 1, used, Mode.KANJI, header + dataBitsFor(Mode.KANJI, count, 0))
+          }
+        }
+
+        let byteCount = 0
+        for (let j = i; j < n; j++) {
+          byteCount += byteParts[j].length
+          const header = modeHeaderBits(Mode.BYTE, j - i + 1, byteCount)
+          if (!Number.isFinite(header)) break
+          const eciOverhead = target.kind === "qr" && used === 0 && eciAssignment !== null ? eciBits : 0
+          update(i, used, j + 1, 1, Mode.BYTE, eciOverhead + header + dataBitsFor(Mode.BYTE, 0, byteCount))
+        }
+      }
+    }
+
+    const finalUsed: Used = dp[0][n] <= dp[1][n] ? 0 : 1
+    if (!Number.isFinite(dp[finalUsed][n]))
+      throw new Error("Text cannot be represented in the requested symbol version/modes")
+
+    const runs: { start: number; end: number; mode: Mode }[] = []
+    for (let index = n, used: Used = finalUsed; index > 0; ) {
+      const p = prev[used][index]
+      if (p === null) throw new Error("Internal error reconstructing optimized segments")
+      runs.push({ start: p.prevIndex, end: index, mode: p.mode })
+      index = p.prevIndex
+      used = p.prevUsed
+    }
+    runs.reverse()
+
+    const segments: QrSegment[] = []
+    if (target.kind === "qr" && finalUsed === 1 && eciAssignment !== null)
+      segments.push(QrSegment.makeEci(eciAssignment))
+    for (const run of runs) {
+      const part = chars.slice(run.start, run.end).join("")
+      if (run.mode === Mode.NUMERIC) segments.push(QrSegment.makeNumeric(part))
+      else if (run.mode === Mode.ALPHANUMERIC) segments.push(QrSegment.makeAlphanumeric(part))
+      else if (run.mode === Mode.KANJI) segments.push(QrSegment.makeKanji(part))
+      else segments.push(QrSegment.makeBytesFromText(part, encoding))
+    }
+    return segments
   }
 }
 
-function calculatePenalty(modules: boolean[][]): number {
-  const size = modules.length
-  let penalty = 0
+export class QRCode {
+  private static readonly MIN_VERSION = 1
+  private static readonly MAX_VERSION = 40
 
-  for (let y = 0; y < size; y++) {
-    let runColor = false
-    let runLength = 0
-    const runHistory = [0, 0, 0, 0, 0, 0, 0]
+  // Indexed as [ECL index][version]. Leading -1 is a placeholder for index 0.
+  private static readonly ECC_CODEWORDS_PER_BLOCK: readonly number[][] = [
+    [
+      -1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30,
+      30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+    ],
+    [
+      -1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28,
+      28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28,
+    ],
+    [
+      -1, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30, 30, 30, 28, 30,
+      30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+    ],
+    [
+      -1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30,
+      30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+    ],
+  ]
 
-    for (let x = 0; x < size; x++) {
-      const cell = modules[y]![x]!
-      if (cell === runColor) {
-        runLength++
-        if (runLength === 5) {
-          penalty += 3
-        } else if (runLength > 5) {
-          penalty++
+  private static readonly NUM_ERROR_CORRECTION_BLOCKS: readonly number[][] = [
+    [
+      -1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18,
+      19, 19, 20, 21, 22, 24, 25,
+    ],
+    [
+      -1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31,
+      33, 35, 37, 38, 40, 43, 45, 47, 49,
+    ],
+    [
+      -1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40,
+      43, 45, 48, 51, 53, 56, 59, 62, 65, 68,
+    ],
+    [
+      -1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48,
+      51, 54, 57, 60, 63, 66, 70, 74, 77, 81,
+    ],
+  ]
+
+  private static readonly FORMAT_BITS_BY_ECL: Record<ErrorCorrectionLevel, number> = {
+    [ErrorCorrectionLevel.M]: 0b00,
+    [ErrorCorrectionLevel.L]: 0b01,
+    [ErrorCorrectionLevel.H]: 0b10,
+    [ErrorCorrectionLevel.Q]: 0b11,
+  }
+
+  private static readonly ECL_ORDER: readonly ErrorCorrectionLevel[] = [
+    ErrorCorrectionLevel.L,
+    ErrorCorrectionLevel.M,
+    ErrorCorrectionLevel.Q,
+    ErrorCorrectionLevel.H,
+  ]
+
+  readonly size: number
+  readonly symbologyIdentifier: string
+  readonly containsEci: boolean
+  readonly fnc1: "none" | "first" | "second"
+  private readonly modules: boolean[][]
+  private readonly functionModules: boolean[][]
+
+  private constructor(
+    readonly version: number,
+    readonly errorCorrectionLevel: ErrorCorrectionLevel,
+    readonly mask: number,
+    dataCodewords: number[],
+    metadata: QrMetadata,
+  ) {
+    QRCode.validateVersion(version)
+    QRCode.validateMask(mask)
+    this.containsEci = metadata.containsEci
+    this.fnc1 = metadata.fnc1
+    this.symbologyIdentifier = QRCode.makeSymbologyIdentifier(metadata)
+    this.size = version * 4 + 17
+    this.modules = Array.from({ length: this.size }, () => Array<boolean>(this.size).fill(false))
+    this.functionModules = Array.from({ length: this.size }, () => Array<boolean>(this.size).fill(false))
+
+    this.drawFunctionPatterns()
+    const allCodewords = this.addEccAndInterleave(dataCodewords)
+    this.drawCodewords(allCodewords)
+    this.applyMask(mask)
+    this.drawFormatBits(mask)
+    this.drawVersionBits()
+  }
+
+  static encodeText(
+    text: string,
+    ecl: ErrorCorrectionLevel = ErrorCorrectionLevel.M,
+    options: EncodeOptions = {},
+  ): QRCode {
+    const optimize = options.optimize !== false
+    if (!optimize) return QRCode.encodeSegments(QrSegment.makeSegments(text, options), ecl, options)
+
+    const minVersion = options.minVersion ?? QRCode.MIN_VERSION
+    const maxVersion = options.maxVersion ?? QRCode.MAX_VERSION
+    QRCode.validateVersion(minVersion)
+    QRCode.validateVersion(maxVersion)
+    if (minVersion > maxVersion) throw new RangeError("minVersion cannot exceed maxVersion")
+
+    const cache = new Map<number, QrSegment[]>()
+    for (let version = minVersion; version <= maxVersion; version++) {
+      const rangeKey = Math.floor((version + 7) / 17)
+      let segments = cache.get(rangeKey)
+      if (segments === undefined) {
+        segments = QrSegment.makeOptimizedSegments(text, version, options)
+        cache.set(rangeKey, segments)
+      }
+      const fullSegments = QRCode.applyPrefixSegments(segments, options)
+      if (QRCode.getTotalBits(fullSegments, version) <= QRCode.getNumDataCodewords(version, ecl) * 8) {
+        return QRCode.encodeSegments(segments, ecl, { ...options, minVersion: version, maxVersion: version })
+      }
+    }
+    throw new Error("Data too long for requested QR Code version range and error correction level")
+  }
+
+  static encodeBytes(
+    bytes: Uint8Array | number[],
+    ecl: ErrorCorrectionLevel = ErrorCorrectionLevel.M,
+    options: EncodeOptions = {},
+  ): QRCode {
+    return QRCode.encodeSegments([QrSegment.makeBytes(bytes)], ecl, options)
+  }
+
+  static encodeEciText(
+    escapedText: string,
+    ecl: ErrorCorrectionLevel = ErrorCorrectionLevel.M,
+    options: EncodeOptions = {},
+  ): QRCode {
+    return QRCode.encodeSegments(QrSegment.makeEciSegmentsFromEscapedText(escapedText), ecl, options)
+  }
+
+  static encodeGs1Text(
+    gs1Data: string | Gs1Element[],
+    ecl: ErrorCorrectionLevel = ErrorCorrectionLevel.M,
+    options: EncodeOptions = {},
+  ): QRCode {
+    const payload = typeof gs1Data === "string" ? gs1Data : buildGs1Payload(gs1Data)
+    const segments =
+      options.optimize === false
+        ? QrSegment.makeSegments(payload, { ...options, eciAssignment: null, eciForUtf8: false })
+        : QrSegment.makeOptimizedSegments(payload, options.minVersion ?? 1, {
+            ...options,
+            eciAssignment: null,
+            eciForUtf8: false,
+          })
+    return QRCode.encodeSegments(segments, ecl, { ...options, fnc1First: true, eciAssignment: null, eciForUtf8: false })
+  }
+
+  static encodeStructuredAppend(
+    parts: readonly (readonly QrSegment[])[],
+    ecl: ErrorCorrectionLevel = ErrorCorrectionLevel.M,
+    options: EncodeOptions = {},
+  ): QRCode[] {
+    if (parts.length < 2 || parts.length > 16) throw new RangeError("Structured append requires 2..16 symbols")
+    const parity = QRCode.computeStructuredAppendParity(parts.flat())
+    return parts.map((part, index) =>
+      QRCode.encodeSegments(Array.from(part), ecl, {
+        ...options,
+        structuredAppend: { position: index + 1, total: parts.length, parity },
+      }),
+    )
+  }
+
+  static computeStructuredAppendParity(segments: readonly QrSegment[]): number {
+    let result = 0
+    for (const seg of segments) for (const b of seg.parityBytes) result ^= b
+    return result
+  }
+
+  static encodeSegments(
+    segments: QrSegment[],
+    ecl: ErrorCorrectionLevel = ErrorCorrectionLevel.M,
+    options: EncodeOptions = {},
+  ): QRCode {
+    let minVersion = options.minVersion ?? QRCode.MIN_VERSION
+    let maxVersion = options.maxVersion ?? QRCode.MAX_VERSION
+    const mask = options.mask ?? -1
+    const boostEcl = options.boostEcl !== false
+
+    QRCode.validateVersion(minVersion)
+    QRCode.validateVersion(maxVersion)
+    if (minVersion > maxVersion) throw new RangeError("minVersion cannot exceed maxVersion")
+    if (mask !== -1) QRCode.validateMask(mask)
+    if (!(ecl in QRCode.FORMAT_BITS_BY_ECL)) throw new Error("Invalid error correction level")
+
+    segments = QRCode.applyPrefixSegments(segments, options)
+    QRCode.validateQrSegmentOrder(segments)
+    const metadata = QRCode.collectMetadata(segments)
+
+    let version = minVersion
+    let dataUsedBits = 0
+    for (; ; version++) {
+      const capacityBits = QRCode.getNumDataCodewords(version, ecl) * 8
+      dataUsedBits = QRCode.getTotalBits(segments, version)
+      if (dataUsedBits <= capacityBits) break
+      if (version >= maxVersion)
+        throw new Error("Data too long for requested QR Code version range and error correction level")
+    }
+
+    if (boostEcl) {
+      for (const candidate of QRCode.ECL_ORDER) {
+        if (
+          QRCode.eclIndex(candidate) > QRCode.eclIndex(ecl) &&
+          dataUsedBits <= QRCode.getNumDataCodewords(version, candidate) * 8
+        ) {
+          ecl = candidate
         }
-      } else {
-        addFinderPenaltyHistory(runHistory, runLength, size)
-        if (!runColor) {
-          penalty += countFinderLikePatterns(runHistory) * 40
-        }
-        runColor = cell
-        runLength = 1
       }
     }
 
-    penalty += terminateFinderPenalty(runHistory, runColor, runLength, size) * 40
+    const capacityBits = QRCode.getNumDataCodewords(version, ecl) * 8
+    const bb = new BitBuffer()
+    for (const seg of segments) {
+      bb.appendBits(seg.mode.modeBits, 4)
+      if (seg.mode.hasCharacterCount) {
+        const ccbits = seg.mode.numCharCountBits(version)
+        if (seg.numChars >= 1 << ccbits) throw new Error("Segment too long for selected version")
+        bb.appendBits(seg.numChars, ccbits)
+      }
+      bb.appendData(seg.data)
+    }
+
+    bb.appendBits(0, Math.min(4, capacityBits - bb.length))
+    bb.appendBits(0, (8 - (bb.length % 8)) % 8)
+    for (let padByte = 0xec; bb.length < capacityBits; padByte ^= 0xec ^ 0x11) bb.appendBits(padByte, 8)
+    if (bb.length !== capacityBits) throw new Error("Internal error: data bit length mismatch")
+
+    const dataCodewords = bb.toBytes()
+    return mask === -1
+      ? QRCode.makeWithBestMask(version, ecl, dataCodewords, metadata)
+      : new QRCode(version, ecl, mask, dataCodewords, metadata)
   }
 
-  for (let x = 0; x < size; x++) {
-    let runColor = false
-    let runLength = 0
-    const runHistory = [0, 0, 0, 0, 0, 0, 0]
+  getModule(x: number, y: number): boolean {
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= this.size || y >= this.size) {
+      throw new RangeError("Module coordinates out of bounds")
+    }
+    return this.modules[y][x]
+  }
+
+  /** Returns a deep copy of the QR module matrix. True is dark, false is light. */
+  toMatrix(): boolean[][] {
+    return this.modules.map((row) => row.slice())
+  }
+
+  /** Render as SVG. The border is the quiet zone in modules; ISO QR Code requires at least 4. */
+  toSvgString(options: { border?: number; moduleSize?: number; lightColor?: string; darkColor?: string } = {}): string {
+    const border = options.border ?? 4
+    return matrixToSvg(
+      this.modules,
+      border,
+      4,
+      options.moduleSize ?? 1,
+      options.lightColor ?? "#FFFFFF",
+      options.darkColor ?? "#000000",
+    )
+  }
+
+  /**
+   * Render as terminal text. Default quiet zone is 4 modules, matching the QR Code minimum.
+   * Use { ansi: true } for scanner-facing terminal output with explicit black/white backgrounds.
+   */
+  toTerminalString(options: number | TerminalRenderOptions = {}): string {
+    const renderOptions = normalizeTerminalOptions(options, 4, 4)
+    return matrixToTerminal(this.modules, renderOptions)
+  }
+
+  static validateVersionPublic(version: number): void {
+    QRCode.validateVersion(version)
+  }
+
+  private static applyPrefixSegments(segments: QrSegment[], options: EncodeOptions): QrSegment[] {
+    const result = segments.slice()
+    const prefix: QrSegment[] = []
+    if (options.structuredAppend !== undefined) {
+      if (result.some((seg) => seg.mode === Mode.STRUCTURED_APPEND))
+        throw new Error("Structured append header supplied both in options and segments")
+      prefix.push(
+        QrSegment.makeStructuredAppendHeader(
+          options.structuredAppend.position,
+          options.structuredAppend.total,
+          options.structuredAppend.parity,
+        ),
+      )
+    }
+
+    let insertAt = 0
+    while (insertAt < result.length && result[insertAt].mode === Mode.ECI) insertAt++
+
+    if (options.fnc1First === true && options.fnc1Second !== undefined)
+      throw new Error("Use either FNC1 first or second position, not both")
+    if (options.fnc1First === true) result.splice(insertAt, 0, QrSegment.makeFnc1FirstPosition())
+    if (options.fnc1Second !== undefined)
+      result.splice(insertAt, 0, QrSegment.makeFnc1SecondPosition(options.fnc1Second.applicationIndicator))
+    return [...prefix, ...result]
+  }
+
+  private static validateQrSegmentOrder(segments: readonly QrSegment[]): void {
+    let index = 0
+    if (segments[index]?.mode === Mode.STRUCTURED_APPEND) index++
+    while (segments[index]?.mode === Mode.ECI) index++
+    if (segments[index]?.mode === Mode.FNC1_FIRST || segments[index]?.mode === Mode.FNC1_SECOND) index++
+
+    let seenStructuredAppend = false
+    let seenFnc1 = false
+    for (let i = 0; i < segments.length; i++) {
+      const mode = segments[i].mode
+      if (mode === Mode.STRUCTURED_APPEND) {
+        if (seenStructuredAppend || i !== 0)
+          throw new Error("Structured append header must appear only once at the start")
+        seenStructuredAppend = true
+      } else if (mode === Mode.FNC1_FIRST || mode === Mode.FNC1_SECOND) {
+        if (seenFnc1 || i >= index)
+          throw new Error(
+            "FNC1 mode must appear only once before the first data segment, after structured append/ECI headers",
+          )
+        seenFnc1 = true
+      }
+    }
+  }
+
+  private static collectMetadata(segments: readonly QrSegment[]): QrMetadata {
+    let containsEci = false
+    let fnc1: "none" | "first" | "second" = "none"
+    for (const seg of segments) {
+      if (seg.mode === Mode.ECI) containsEci = true
+      else if (seg.mode === Mode.FNC1_FIRST) fnc1 = "first"
+      else if (seg.mode === Mode.FNC1_SECOND) fnc1 = "second"
+    }
+    return { containsEci, fnc1 }
+  }
+
+  private static makeSymbologyIdentifier(metadata: QrMetadata): string {
+    if (metadata.fnc1 === "first") return metadata.containsEci ? "]Q4" : "]Q3"
+    if (metadata.fnc1 === "second") return metadata.containsEci ? "]Q6" : "]Q5"
+    return metadata.containsEci ? "]Q2" : "]Q1"
+  }
+
+  private static makeWithBestMask(
+    version: number,
+    ecl: ErrorCorrectionLevel,
+    dataCodewords: number[],
+    metadata: QrMetadata,
+  ): QRCode {
+    let bestQr: QRCode | null = null
+    let bestPenalty = Infinity
+    for (let mask = 0; mask < 8; mask++) {
+      const qr = new QRCode(version, ecl, mask, dataCodewords, metadata)
+      const penalty = qr.getPenaltyScore()
+      if (penalty < bestPenalty) {
+        bestPenalty = penalty
+        bestQr = qr
+      }
+    }
+    if (bestQr === null) throw new Error("Internal error: no mask selected")
+    return bestQr
+  }
+
+  private drawFunctionPatterns(): void {
+    for (let i = 0; i < this.size; i++) {
+      if (!this.functionModules[6][i]) this.setFunctionModule(i, 6, i % 2 === 0)
+      if (!this.functionModules[i][6]) this.setFunctionModule(6, i, i % 2 === 0)
+    }
+
+    this.drawFinderPattern(3, 3)
+    this.drawFinderPattern(this.size - 4, 3)
+    this.drawFinderPattern(3, this.size - 4)
+
+    const align = this.getAlignmentPatternPositions()
+    for (const y of align) {
+      for (const x of align) {
+        if ((x === 6 && y === 6) || (x === 6 && y === this.size - 7) || (x === this.size - 7 && y === 6)) continue
+        this.drawAlignmentPattern(x, y)
+      }
+    }
+
+    this.drawFormatBits(0)
+    this.drawVersionBits()
+    this.setFunctionModule(8, this.size - 8, true)
+  }
+
+  private drawFinderPattern(cx: number, cy: number): void {
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const x = cx + dx
+        const y = cy + dy
+        if (x < 0 || y < 0 || x >= this.size || y >= this.size) continue
+        const dist = Math.max(Math.abs(dx), Math.abs(dy))
+        this.setFunctionModule(x, y, dist !== 2 && dist !== 4)
+      }
+    }
+  }
+
+  private drawAlignmentPattern(cx: number, cy: number): void {
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const dist = Math.max(Math.abs(dx), Math.abs(dy))
+        this.setFunctionModule(cx + dx, cy + dy, dist === 2 || dist === 0)
+      }
+    }
+  }
+
+  private drawFormatBits(mask: number): void {
+    const data = (QRCode.FORMAT_BITS_BY_ECL[this.errorCorrectionLevel] << 3) | mask
+    const bits = QRCode.formatBits(data, 0x5412)
+
+    for (let i = 0; i <= 5; i++) this.setFunctionModule(8, i, QRCode.getBit(bits, i))
+    this.setFunctionModule(8, 7, QRCode.getBit(bits, 6))
+    this.setFunctionModule(8, 8, QRCode.getBit(bits, 7))
+    this.setFunctionModule(7, 8, QRCode.getBit(bits, 8))
+    for (let i = 9; i < 15; i++) this.setFunctionModule(14 - i, 8, QRCode.getBit(bits, i))
+
+    for (let i = 0; i < 8; i++) this.setFunctionModule(this.size - 1 - i, 8, QRCode.getBit(bits, i))
+    for (let i = 8; i < 15; i++) this.setFunctionModule(8, this.size - 15 + i, QRCode.getBit(bits, i))
+    this.setFunctionModule(8, this.size - 8, true)
+  }
+
+  private drawVersionBits(): void {
+    if (this.version < 7) return
+    let rem = this.version
+    for (let i = 0; i < 12; i++) rem = (rem << 1) ^ (((rem >>> 11) & 1) * 0x1f25)
+    const bits = (this.version << 12) | rem
+    for (let i = 0; i < 18; i++) {
+      const bit = QRCode.getBit(bits, i)
+      const a = this.size - 11 + (i % 3)
+      const b = Math.floor(i / 3)
+      this.setFunctionModule(a, b, bit)
+      this.setFunctionModule(b, a, bit)
+    }
+  }
+
+  private drawCodewords(data: number[]): void {
+    let bitIndex = 0
+    for (let right = this.size - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5
+      for (let vert = 0; vert < this.size; vert++) {
+        for (let j = 0; j < 2; j++) {
+          const x = right - j
+          const upward = ((right + 1) & 2) === 0
+          const y = upward ? this.size - 1 - vert : vert
+          if (this.functionModules[y][x]) continue
+          const dark =
+            bitIndex < data.length * 8 ? QRCode.getBit(data[Math.floor(bitIndex / 8)], 7 - (bitIndex & 7)) : false
+          this.modules[y][x] = dark
+          bitIndex++
+        }
+      }
+    }
+    if (bitIndex !== QRCode.getNumRawDataModules(this.version))
+      throw new Error("Internal error: codeword placement mismatch")
+  }
+
+  private applyMask(mask: number): void {
+    QRCode.validateMask(mask)
+    for (let y = 0; y < this.size; y++) {
+      for (let x = 0; x < this.size; x++) {
+        if (!this.functionModules[y][x] && QRCode.maskCondition(mask, x, y)) this.modules[y][x] = !this.modules[y][x]
+      }
+    }
+  }
+
+  private getPenaltyScore(): number {
+    const size = this.size
+    let result = 0
 
     for (let y = 0; y < size; y++) {
-      const cell = modules[y]![x]!
-      if (cell === runColor) {
-        runLength++
-        if (runLength === 5) {
-          penalty += 3
-        } else if (runLength > 5) {
-          penalty++
+      let runColor = false
+      let runLength = 0
+      for (let x = 0; x < size; x++) {
+        const color = this.modules[y][x]
+        if (x === 0 || color !== runColor) {
+          runColor = color
+          runLength = 1
+        } else {
+          runLength++
+          if (runLength === 5) result += 3
+          else if (runLength > 5) result++
         }
-      } else {
-        addFinderPenaltyHistory(runHistory, runLength, size)
-        if (!runColor) {
-          penalty += countFinderLikePatterns(runHistory) * 40
+      }
+    }
+    for (let x = 0; x < size; x++) {
+      let runColor = false
+      let runLength = 0
+      for (let y = 0; y < size; y++) {
+        const color = this.modules[y][x]
+        if (y === 0 || color !== runColor) {
+          runColor = color
+          runLength = 1
+        } else {
+          runLength++
+          if (runLength === 5) result += 3
+          else if (runLength > 5) result++
         }
-        runColor = cell
-        runLength = 1
       }
     }
 
-    penalty += terminateFinderPenalty(runHistory, runColor, runLength, size) * 40
+    for (let y = 0; y < size - 1; y++) {
+      for (let x = 0; x < size - 1; x++) {
+        const color = this.modules[y][x]
+        if (
+          color === this.modules[y][x + 1] &&
+          color === this.modules[y + 1][x] &&
+          color === this.modules[y + 1][x + 1]
+        )
+          result += 3
+      }
+    }
+
+    for (let y = 0; y < size; y++) {
+      let bits = 0
+      for (let x = 0; x < size; x++) {
+        bits = ((bits << 1) & 0x7ff) | (this.modules[y][x] ? 1 : 0)
+        if (x >= 10 && (bits === 0x05d || bits === 0x5d0)) result += 40
+      }
+    }
+    for (let x = 0; x < size; x++) {
+      let bits = 0
+      for (let y = 0; y < size; y++) {
+        bits = ((bits << 1) & 0x7ff) | (this.modules[y][x] ? 1 : 0)
+        if (y >= 10 && (bits === 0x05d || bits === 0x5d0)) result += 40
+      }
+    }
+
+    let dark = 0
+    for (const row of this.modules) for (const module of row) if (module) dark++
+    const total = size * size
+    const k = Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1
+    result += k * 10
+    return result
   }
 
-  for (let y = 0; y < size - 1; y++) {
-    for (let x = 0; x < size - 1; x++) {
-      const cell = modules[y]![x]!
-      if (cell === modules[y]![x + 1]! && cell === modules[y + 1]![x]! && cell === modules[y + 1]![x + 1]!) {
-        penalty += 3
-      }
+  private addEccAndInterleave(data: number[]): number[] {
+    const version = this.version
+    const eclIndex = QRCode.eclIndex(this.errorCorrectionLevel)
+    const numBlocks = QRCode.NUM_ERROR_CORRECTION_BLOCKS[eclIndex][version]
+    const blockEccLen = QRCode.ECC_CODEWORDS_PER_BLOCK[eclIndex][version]
+    const rawCodewords = Math.floor(QRCode.getNumRawDataModules(version) / 8)
+    const numShortBlocks = numBlocks - (rawCodewords % numBlocks)
+    const shortBlockDataLen = Math.floor(rawCodewords / numBlocks) - blockEccLen
+
+    if (data.length !== QRCode.getNumDataCodewords(version, this.errorCorrectionLevel)) {
+      throw new Error("Internal error: unexpected number of data codewords")
+    }
+
+    const rsDivisor = ReedSolomon.computeDivisor(blockEccLen)
+    const blocks: Block[] = []
+    let offset = 0
+    for (let i = 0; i < numBlocks; i++) {
+      const dataLen = shortBlockDataLen + (i < numShortBlocks ? 0 : 1)
+      const dat = data.slice(offset, offset + dataLen)
+      offset += dataLen
+      blocks.push({ data: dat, ecc: ReedSolomon.computeRemainder(dat, rsDivisor) })
+    }
+    if (offset !== data.length) throw new Error("Internal error: data block split mismatch")
+
+    const result: number[] = []
+    const maxDataLen = Math.max(...blocks.map((b) => b.data.length))
+    for (let i = 0; i < maxDataLen; i++)
+      for (const block of blocks) if (i < block.data.length) result.push(block.data[i])
+    for (let i = 0; i < blockEccLen; i++) for (const block of blocks) result.push(block.ecc[i])
+    if (result.length !== rawCodewords) throw new Error("Internal error: interleaved codeword count mismatch")
+    return result
+  }
+
+  private getAlignmentPatternPositions(): number[] {
+    if (this.version === 1) return []
+    const numAlign = Math.floor(this.version / 7) + 2
+    const step = this.version === 32 ? 26 : Math.ceil((this.version * 4 + 4) / (numAlign * 2 - 2)) * 2
+    const result = [6]
+    for (let pos = this.size - 7; result.length < numAlign; pos -= step) result.splice(1, 0, pos)
+    return result
+  }
+
+  private setFunctionModule(x: number, y: number, dark: boolean): void {
+    this.modules[y][x] = dark
+    this.functionModules[y][x] = true
+  }
+
+  private static getTotalBits(segments: readonly QrSegment[], version: number): number {
+    let result = 0
+    for (const seg of segments) {
+      const n = seg.getTotalBits(version)
+      if (!Number.isFinite(n)) return Infinity
+      result += n
+    }
+    return result
+  }
+
+  private static getNumDataCodewords(version: number, ecl: ErrorCorrectionLevel): number {
+    QRCode.validateVersion(version)
+    const eclIndex = QRCode.eclIndex(ecl)
+    return (
+      Math.floor(QRCode.getNumRawDataModules(version) / 8) -
+      QRCode.ECC_CODEWORDS_PER_BLOCK[eclIndex][version] * QRCode.NUM_ERROR_CORRECTION_BLOCKS[eclIndex][version]
+    )
+  }
+
+  private static getNumRawDataModules(version: number): number {
+    QRCode.validateVersion(version)
+    let result = (16 * version + 128) * version + 64
+    if (version >= 2) {
+      const numAlign = Math.floor(version / 7) + 2
+      result -= (25 * numAlign - 10) * numAlign - 55
+      if (version >= 7) result -= 36
+    }
+    return result
+  }
+
+  static maskCondition(mask: number, x: number, y: number): boolean {
+    switch (mask) {
+      case 0:
+        return (x + y) % 2 === 0
+      case 1:
+        return y % 2 === 0
+      case 2:
+        return x % 3 === 0
+      case 3:
+        return (x + y) % 3 === 0
+      case 4:
+        return (Math.floor(y / 2) + Math.floor(x / 3)) % 2 === 0
+      case 5:
+        return ((x * y) % 2) + ((x * y) % 3) === 0
+      case 6:
+        return (((x * y) % 2) + ((x * y) % 3)) % 2 === 0
+      case 7:
+        return (((x + y) % 2) + ((x * y) % 3)) % 2 === 0
+      default:
+        throw new RangeError("Mask must be in 0..7")
     }
   }
 
-  let darkModules = 0
-  for (const row of modules) {
-    for (const cell of row) {
-      if (cell) {
-        darkModules++
-      }
+  private static getBit(x: number, i: number): boolean {
+    return ((x >>> i) & 1) !== 0
+  }
+
+  private static formatBits(data: number, xorMask: number): number {
+    let rem = data
+    for (let i = 0; i < 10; i++) rem = (rem << 1) ^ (((rem >>> 9) & 1) * 0x537)
+    return ((data << 10) | rem) ^ xorMask
+  }
+
+  private static eclIndex(ecl: ErrorCorrectionLevel): number {
+    switch (ecl) {
+      case ErrorCorrectionLevel.L:
+        return 0
+      case ErrorCorrectionLevel.M:
+        return 1
+      case ErrorCorrectionLevel.Q:
+        return 2
+      case ErrorCorrectionLevel.H:
+        return 3
+      default:
+        throw new Error("Invalid error correction level")
     }
   }
 
-  const totalModules = size * size
-  const balancePenalty = Math.ceil(Math.abs(darkModules * 20 - totalModules * 10) / totalModules) - 1
-  penalty += Math.max(0, balancePenalty) * 10
+  private static validateVersion(version: number): void {
+    if (!Number.isInteger(version) || version < QRCode.MIN_VERSION || version > QRCode.MAX_VERSION) {
+      throw new RangeError("Version must be in 1..40")
+    }
+  }
 
-  return penalty
+  private static validateMask(mask: number): void {
+    if (!Number.isInteger(mask) || mask < 0 || mask > 7) throw new RangeError("Mask must be in 0..7")
+  }
 }
 
-function addFinderPenaltyHistory(runHistory: number[], runLength: number, size: number): void {
-  if (runHistory[0] === 0) {
-    runLength += size
+export class MicroQRCode {
+  private static readonly MICRO_MASK_TO_QR_MASK: readonly number[] = [1, 4, 6, 7]
+  private static readonly RAW_DATA_MODULES: readonly number[] = [-1, 36, 80, 132, 192]
+
+  readonly size: number
+  readonly symbologyIdentifier = "]Q1"
+  private readonly modules: boolean[][]
+  private readonly functionModules: boolean[][]
+
+  private constructor(
+    readonly version: MicroVersion,
+    readonly errorCorrectionLevel: MicroErrorCorrectionLevel,
+    readonly mask: number,
+    dataBits: number[],
+  ) {
+    validateMicroVersion(version)
+    validateMicroMask(mask)
+    validateMicroEclForVersion(version, errorCorrectionLevel)
+    this.size = version * 2 + 9
+    this.modules = Array.from({ length: this.size }, () => Array<boolean>(this.size).fill(false))
+    this.functionModules = Array.from({ length: this.size }, () => Array<boolean>(this.size).fill(false))
+
+    this.drawFunctionPatterns()
+    const allBits = this.addEcc(dataBits)
+    this.drawCodewordBits(allBits)
+    this.applyMask(mask)
+    this.drawFormatBits(mask)
   }
 
-  runHistory.pop()
-  runHistory.unshift(runLength)
+  static encodeText(
+    text: string,
+    ecl: MicroErrorCorrectionLevel = MicroErrorCorrectionLevel.M,
+    options: MicroEncodeOptions = {},
+  ): MicroQRCode {
+    const optimize = options.optimize !== false
+    if (!optimize)
+      return MicroQRCode.encodeSegments(
+        QrSegment.makeSegments(text, { ...options, eciAssignment: null, eciForUtf8: false }),
+        ecl,
+        options,
+      )
+
+    const minVersion = options.minVersion ?? 1
+    const maxVersion = options.maxVersion ?? 4
+    validateMicroVersion(minVersion)
+    validateMicroVersion(maxVersion)
+    if (minVersion > maxVersion) throw new RangeError("minVersion cannot exceed maxVersion")
+
+    for (let version = minVersion; version <= maxVersion; version++) {
+      const mv = version as MicroVersion
+      if (!isMicroEclAvailable(mv, ecl)) continue
+      let segments: QrSegment[]
+      try {
+        segments = QrSegment.makeOptimizedMicroSegments(text, mv, options)
+      } catch {
+        continue
+      }
+      if (MicroQRCode.getTotalBits(segments, mv) <= getMicroDataCapacityBits(mv, ecl)) {
+        return MicroQRCode.encodeSegments(segments, ecl, { ...options, minVersion: mv, maxVersion: mv })
+      }
+    }
+    throw new Error("Data too long for requested Micro QR version range and error correction level")
+  }
+
+  static encodeBytes(
+    bytes: Uint8Array | number[],
+    ecl: MicroErrorCorrectionLevel = MicroErrorCorrectionLevel.L,
+    options: MicroEncodeOptions = {},
+  ): MicroQRCode {
+    return MicroQRCode.encodeSegments([QrSegment.makeBytes(bytes)], ecl, options)
+  }
+
+  static encodeSegments(
+    segments: QrSegment[],
+    ecl: MicroErrorCorrectionLevel = MicroErrorCorrectionLevel.M,
+    options: MicroEncodeOptions = {},
+  ): MicroQRCode {
+    const minVersion = options.minVersion ?? 1
+    const maxVersion = options.maxVersion ?? 4
+    const mask = options.mask ?? -1
+    const boostEcl = options.boostEcl !== false
+    validateMicroVersion(minVersion)
+    validateMicroVersion(maxVersion)
+    if (minVersion > maxVersion) throw new RangeError("minVersion cannot exceed maxVersion")
+    if (mask !== -1) validateMicroMask(mask)
+    MicroQRCode.validateMicroSegments(segments)
+
+    let version: MicroVersion | null = null
+    let dataUsedBits = 0
+    let selectedEcl = ecl
+    for (let v = minVersion; v <= maxVersion; v++) {
+      const mv = v as MicroVersion
+      if (!isMicroEclAvailable(mv, ecl)) continue
+      dataUsedBits = MicroQRCode.getTotalBits(segments, mv)
+      if (dataUsedBits <= getMicroDataCapacityBits(mv, ecl)) {
+        version = mv
+        selectedEcl = ecl
+        break
+      }
+    }
+    if (version === null)
+      throw new Error(
+        "Data too long or modes unavailable for requested Micro QR version range and error correction level",
+      )
+
+    if (boostEcl) {
+      for (const candidate of getMicroEclOrderForVersion(version)) {
+        if (
+          microEclRank(candidate) > microEclRank(selectedEcl) &&
+          dataUsedBits <= getMicroDataCapacityBits(version, candidate)
+        ) {
+          selectedEcl = candidate
+        }
+      }
+    }
+
+    const capacityBits = getMicroDataCapacityBits(version, selectedEcl)
+    const bb = new BitBuffer()
+    for (const seg of segments) {
+      if (!seg.mode.isDataMode()) throw new Error("ECI, FNC1, and structured append are not available in Micro QR Code")
+      const indicator = seg.mode.microModeIndicator(version)
+      bb.appendBits(indicator.value, indicator.length)
+      const ccbits = seg.mode.microCharCountBits(version)
+      if (seg.numChars >= 1 << ccbits) throw new Error("Segment too long for selected Micro QR version")
+      bb.appendBits(seg.numChars, ccbits)
+      bb.appendData(seg.data)
+    }
+
+    bb.appendBits(0, Math.min(getMicroTerminatorLength(version), capacityBits - bb.length))
+    const finalPartialBits = capacityBits % 8
+    while (
+      bb.length < capacityBits &&
+      bb.length % 8 !== 0 &&
+      !(finalPartialBits !== 0 && bb.length % 8 === finalPartialBits)
+    ) {
+      bb.appendBits(0, 1)
+    }
+    for (let padByte = 0xec; bb.length + 8 <= capacityBits; padByte ^= 0xec ^ 0x11) bb.appendBits(padByte, 8)
+    if (bb.length < capacityBits) bb.appendBits(0, capacityBits - bb.length)
+    if (bb.length !== capacityBits) throw new Error("Internal error: Micro QR data bit length mismatch")
+
+    const dataBits = bb.toBits()
+    return mask === -1
+      ? MicroQRCode.makeWithBestMask(version, selectedEcl, dataBits)
+      : new MicroQRCode(version, selectedEcl, mask, dataBits)
+  }
+
+  getModule(x: number, y: number): boolean {
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= this.size || y >= this.size) {
+      throw new RangeError("Module coordinates out of bounds")
+    }
+    return this.modules[y][x]
+  }
+
+  toMatrix(): boolean[][] {
+    return this.modules.map((row) => row.slice())
+  }
+
+  /** Render as SVG. The border is the quiet zone in modules; ISO Micro QR Code requires at least 2. */
+  toSvgString(options: { border?: number; moduleSize?: number; lightColor?: string; darkColor?: string } = {}): string {
+    const border = options.border ?? 2
+    return matrixToSvg(
+      this.modules,
+      border,
+      2,
+      options.moduleSize ?? 1,
+      options.lightColor ?? "#FFFFFF",
+      options.darkColor ?? "#000000",
+    )
+  }
+
+  /**
+   * Render as terminal text. Default quiet zone is 2 modules, matching the Micro QR Code minimum.
+   * Use { ansi: true } for scanner-facing terminal output with explicit black/white backgrounds.
+   */
+  toTerminalString(options: number | TerminalRenderOptions = {}): string {
+    const renderOptions = normalizeTerminalOptions(options, 2, 2)
+    return matrixToTerminal(this.modules, renderOptions)
+  }
+
+  private static makeWithBestMask(
+    version: MicroVersion,
+    ecl: MicroErrorCorrectionLevel,
+    dataBits: number[],
+  ): MicroQRCode {
+    let bestQr: MicroQRCode | null = null
+    let bestScore = -1
+    for (let mask = 0; mask < 4; mask++) {
+      const qr = new MicroQRCode(version, ecl, mask, dataBits)
+      const score = qr.getMaskScore()
+      if (score > bestScore) {
+        bestScore = score
+        bestQr = qr
+      }
+    }
+    if (bestQr === null) throw new Error("Internal error: no Micro QR mask selected")
+    return bestQr
+  }
+
+  private static validateMicroSegments(segments: readonly QrSegment[]): void {
+    for (const seg of segments) {
+      if (!seg.mode.isDataMode())
+        throw new Error("Micro QR Code supports only Numeric, Alphanumeric, Byte, and Kanji data modes")
+    }
+  }
+
+  private static getTotalBits(segments: readonly QrSegment[], version: MicroVersion): number {
+    let result = 0
+    for (const seg of segments) {
+      const n = seg.getTotalMicroBits(version)
+      if (!Number.isFinite(n)) return Infinity
+      result += n
+    }
+    return result
+  }
+
+  private drawFunctionPatterns(): void {
+    this.drawFinderPattern(3, 3)
+    for (let x = 8; x < this.size; x++) this.setFunctionModule(x, 0, x % 2 === 0)
+    for (let y = 8; y < this.size; y++) this.setFunctionModule(0, y, y % 2 === 0)
+    this.drawFormatBits(0)
+  }
+
+  private drawFinderPattern(cx: number, cy: number): void {
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const x = cx + dx
+        const y = cy + dy
+        if (x < 0 || y < 0 || x >= this.size || y >= this.size) continue
+        const dist = Math.max(Math.abs(dx), Math.abs(dy))
+        this.setFunctionModule(x, y, dist !== 2 && dist !== 4)
+      }
+    }
+  }
+
+  private drawFormatBits(mask: number): void {
+    const symbolNumber = getMicroSymbolNumber(this.version, this.errorCorrectionLevel)
+    const data = (symbolNumber << 2) | mask
+    const bits = QRCode["formatBits"](data, 0x4445) as number
+    for (let i = 0; i <= 6; i++) this.setFunctionModule(8, i + 1, getBit(bits, i))
+    for (let i = 7; i <= 14; i++) this.setFunctionModule(15 - i, 8, getBit(bits, i))
+  }
+
+  private addEcc(dataBits: number[]): number[] {
+    const dataCodewords = bitsToCodewordsForMicroEcc(dataBits)
+    const expectedDataCodewords = getMicroDataCodewordsForEcc(this.version, this.errorCorrectionLevel)
+    if (dataCodewords.length !== expectedDataCodewords) {
+      throw new Error(
+        `Internal error: expected ${expectedDataCodewords} Micro QR data codewords, got ${dataCodewords.length}`,
+      )
+    }
+    const eccLen = getMicroEccCodewords(this.version, this.errorCorrectionLevel)
+    const ecc = ReedSolomon.computeRemainder(dataCodewords, ReedSolomon.computeDivisor(eccLen))
+    const result = dataBits.slice()
+    for (const b of ecc) for (let i = 7; i >= 0; i--) result.push((b >>> i) & 1)
+    if (result.length !== MicroQRCode.RAW_DATA_MODULES[this.version])
+      throw new Error("Internal error: Micro QR final bit length mismatch")
+    return result
+  }
+
+  private drawCodewordBits(bits: number[]): void {
+    let bitIndex = 0
+    for (let right = this.size - 1; right >= 1; right -= 2) {
+      for (let vert = 0; vert < this.size; vert++) {
+        for (let j = 0; j < 2; j++) {
+          const x = right - j
+          const upward = ((right + 1) & 2) === 0
+          const y = upward ? this.size - 1 - vert : vert
+          if (this.functionModules[y][x]) continue
+          this.modules[y][x] = bitIndex < bits.length ? bits[bitIndex] !== 0 : false
+          bitIndex++
+        }
+      }
+    }
+    if (bitIndex !== MicroQRCode.RAW_DATA_MODULES[this.version])
+      throw new Error("Internal error: Micro QR codeword placement mismatch")
+  }
+
+  private applyMask(mask: number): void {
+    validateMicroMask(mask)
+    const qrMask = MicroQRCode.MICRO_MASK_TO_QR_MASK[mask]
+    for (let y = 0; y < this.size; y++) {
+      for (let x = 0; x < this.size; x++) {
+        if (!this.functionModules[y][x] && QRCode.maskCondition(qrMask, x, y)) this.modules[y][x] = !this.modules[y][x]
+      }
+    }
+  }
+
+  private getMaskScore(): number {
+    let s1 = 0
+    let s2 = 0
+    for (let y = 1; y < this.size; y++) if (this.modules[y][this.size - 1]) s1++
+    for (let x = 1; x < this.size; x++) if (this.modules[this.size - 1][x]) s2++
+    return s1 <= s2 ? s1 * 16 + s2 : s2 * 16 + s1
+  }
+
+  private setFunctionModule(x: number, y: number, dark: boolean): void {
+    this.modules[y][x] = dark
+    this.functionModules[y][x] = true
+  }
 }
 
-function countFinderLikePatterns(runHistory: number[]): number {
-  const n = runHistory[1]!
-  const corePattern =
-    n > 0 && runHistory[2] === n && runHistory[3] === n * 3 && runHistory[4] === n && runHistory[5] === n
+export function createQrSvg(
+  text: string,
+  options: EncodeOptions & { ecl?: ErrorCorrectionLevel; border?: number; moduleSize?: number } = {},
+): string {
+  const qr = QRCode.encodeText(text, options.ecl ?? ErrorCorrectionLevel.M, options)
+  return qr.toSvgString({ border: options.border ?? 4, moduleSize: options.moduleSize ?? 8 })
+}
 
+export function createMicroQrSvg(
+  text: string,
+  options: MicroEncodeOptions & { ecl?: MicroErrorCorrectionLevel; border?: number; moduleSize?: number } = {},
+): string {
+  const qr = MicroQRCode.encodeText(text, options.ecl ?? MicroErrorCorrectionLevel.M, options)
+  return qr.toSvgString({ border: options.border ?? 2, moduleSize: options.moduleSize ?? 8 })
+}
+
+export function encodeTextBytes(text: string, encoding: ByteEncoding = "utf-8"): Uint8Array {
+  switch (encoding) {
+    case "utf-8":
+      return new TextEncoder().encode(text)
+    case "iso-8859-1":
+      return new Uint8Array(encodeIso88591(text))
+    case "shift-jis":
+      return new Uint8Array(encodeShiftJis(text))
+    default:
+      throw new Error("Unsupported byte encoding")
+  }
+}
+
+function encodeIso88591(text: string): number[] {
+  const result: number[] = []
+  for (const ch of Array.from(text)) {
+    const cp = ch.codePointAt(0)!
+    if (cp > 0xff) throw new Error(`Character ${JSON.stringify(ch)} is not encodable in ISO-8859-1`)
+    result.push(cp)
+  }
+  return result
+}
+
+function encodeShiftJis(text: string): number[] {
+  const result: number[] = []
+  for (const ch of Array.from(text)) {
+    const code = shiftJisCodeForCharacter(ch)
+    if (code <= 0xff) result.push(code)
+    else result.push(code >>> 8, code & 0xff)
+  }
+  return result
+}
+
+function shiftJisCodeForCharacter(ch: string): number {
+  const cp = ch.codePointAt(0)!
+  if (cp <= 0x7f) return cp
+  const code = SHIFT_JIS_CODE_BY_CHAR[ch]
+  if (code === undefined) throw new Error(`Character ${JSON.stringify(ch)} is not encodable in Shift JIS`)
+  return code
+}
+
+function isKanjiModeShiftJisValue(value: number): boolean {
+  return (value >= 0x8140 && value <= 0x9ffc) || (value >= 0xe040 && value <= 0xebbf)
+}
+
+function encodingForKnownEci(eci: number): ByteEncoding | null {
+  if (eci === EciAssignment.ISO_8859_1) return "iso-8859-1"
+  if (eci === EciAssignment.SHIFT_JIS) return "shift-jis"
+  if (eci === EciAssignment.UTF_8) return "utf-8"
+  return null
+}
+
+function validateBytes(bytes: number[]): number[] {
+  for (const b of bytes) if (!Number.isInteger(b) || b < 0 || b > 0xff) throw new RangeError("Byte value out of range")
+  return bytes
+}
+
+function asciiBytes(text: string): number[] {
+  const result: number[] = []
+  for (let i = 0; i < text.length; i++) result.push(text.charCodeAt(i))
+  return result
+}
+
+function encodeFnc1SecondApplicationIndicator(applicationIndicator: string | number): number {
+  if (typeof applicationIndicator === "number") {
+    if (!Number.isInteger(applicationIndicator) || applicationIndicator < 0 || applicationIndicator > 99) {
+      throw new RangeError("FNC1 second-position numeric application indicator must be 0..99")
+    }
+    return applicationIndicator
+  }
+  if (/^[0-9]{2}$/.test(applicationIndicator)) return Number(applicationIndicator)
+  if (/^[A-Za-z]$/.test(applicationIndicator)) return applicationIndicator.charCodeAt(0) + 100
+  throw new Error("FNC1 second-position application indicator must be two digits or one Latin alphabetic character")
+}
+
+function validateStructuredAppend(position: number, total: number, parity: number): void {
+  if (!Number.isInteger(total) || total < 1 || total > 16)
+    throw new RangeError("Structured append total must be in 1..16")
+  if (!Number.isInteger(position) || position < 1 || position > total)
+    throw new RangeError("Structured append position must be in 1..total")
+  if (!Number.isInteger(parity) || parity < 0 || parity > 0xff)
+    throw new RangeError("Structured append parity must be an 8-bit value")
+}
+
+function buildGs1Payload(elements: readonly Gs1Element[]): string {
+  let result = ""
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i]
+    if (!/^[0-9A-Za-z]+$/.test(el.ai)) throw new Error("GS1 AI should contain only letters/digits without parentheses")
+    const data = el.data.replace(/%/g, "%%")
+    result += el.ai + data
+    if (el.separatorAfter === true && i + 1 < elements.length) result += "%"
+  }
+  return result
+}
+
+function validateMicroVersion(version: number): asserts version is MicroVersion {
+  if (!Number.isInteger(version) || version < 1 || version > 4) throw new RangeError("Micro QR version must be in 1..4")
+}
+
+function validateMicroMask(mask: number): void {
+  if (!Number.isInteger(mask) || mask < 0 || mask > 3) throw new RangeError("Micro QR mask must be in 0..3")
+}
+
+function validateMicroEclForVersion(version: MicroVersion, ecl: MicroErrorCorrectionLevel): void {
+  if (!isMicroEclAvailable(version, ecl))
+    throw new Error(`Error correction level ${ecl} is not available for Micro QR M${version}`)
+}
+
+function isMicroEclAvailable(version: MicroVersion, ecl: MicroErrorCorrectionLevel): boolean {
+  if (version === 1) return ecl === MicroErrorCorrectionLevel.DETECTION_ONLY
+  if (version === 2 || version === 3) return ecl === MicroErrorCorrectionLevel.L || ecl === MicroErrorCorrectionLevel.M
   return (
-    Number(corePattern && runHistory[0]! >= n * 4 && runHistory[6]! >= n) +
-    Number(corePattern && runHistory[6]! >= n * 4 && runHistory[0]! >= n)
+    ecl === MicroErrorCorrectionLevel.L || ecl === MicroErrorCorrectionLevel.M || ecl === MicroErrorCorrectionLevel.Q
   )
 }
 
-function terminateFinderPenalty(runHistory: number[], runColor: boolean, runLength: number, size: number): number {
-  if (runColor) {
-    addFinderPenaltyHistory(runHistory, runLength, size)
-    runLength = 0
-  }
-
-  addFinderPenaltyHistory(runHistory, runLength + size, size)
-  return countFinderLikePatterns(runHistory)
+function getMicroEclOrderForVersion(version: MicroVersion): readonly MicroErrorCorrectionLevel[] {
+  if (version === 1) return [MicroErrorCorrectionLevel.DETECTION_ONLY]
+  if (version === 4) return [MicroErrorCorrectionLevel.L, MicroErrorCorrectionLevel.M, MicroErrorCorrectionLevel.Q]
+  return [MicroErrorCorrectionLevel.L, MicroErrorCorrectionLevel.M]
 }
 
-function computeReedSolomonDivisor(degree: number): number[] {
-  const result = new Array<number>(degree).fill(0)
-  result[result.length - 1] = 1
+function microEclRank(ecl: MicroErrorCorrectionLevel): number {
+  switch (ecl) {
+    case MicroErrorCorrectionLevel.DETECTION_ONLY:
+      return 0
+    case MicroErrorCorrectionLevel.L:
+      return 1
+    case MicroErrorCorrectionLevel.M:
+      return 2
+    case MicroErrorCorrectionLevel.Q:
+      return 3
+    default:
+      throw new Error("Invalid Micro QR error correction level")
+  }
+}
 
-  let root = 1
-  for (let i = 0; i < degree; i++) {
-    for (let j = 0; j < result.length; j++) {
-      result[j] = reedSolomonMultiply(result[j]!, root)
-      if (j + 1 < result.length) {
-        result[j] ^= result[j + 1]!
+function getMicroDataCapacityBits(version: MicroVersion, ecl: MicroErrorCorrectionLevel): number {
+  validateMicroEclForVersion(version, ecl)
+  if (version === 1) return 20
+  if (version === 2) return ecl === MicroErrorCorrectionLevel.L ? 40 : 32
+  if (version === 3) return ecl === MicroErrorCorrectionLevel.L ? 84 : 68
+  if (ecl === MicroErrorCorrectionLevel.L) return 128
+  if (ecl === MicroErrorCorrectionLevel.M) return 112
+  return 80
+}
+
+function getMicroDataCodewordsForEcc(version: MicroVersion, ecl: MicroErrorCorrectionLevel): number {
+  validateMicroEclForVersion(version, ecl)
+  if (version === 1) return 3
+  if (version === 2) return ecl === MicroErrorCorrectionLevel.L ? 5 : 4
+  if (version === 3) return ecl === MicroErrorCorrectionLevel.L ? 11 : 9
+  if (ecl === MicroErrorCorrectionLevel.L) return 16
+  if (ecl === MicroErrorCorrectionLevel.M) return 14
+  return 10
+}
+
+function getMicroEccCodewords(version: MicroVersion, ecl: MicroErrorCorrectionLevel): number {
+  validateMicroEclForVersion(version, ecl)
+  if (version === 1) return 2
+  if (version === 2) return ecl === MicroErrorCorrectionLevel.L ? 5 : 6
+  if (version === 3) return ecl === MicroErrorCorrectionLevel.L ? 6 : 8
+  if (ecl === MicroErrorCorrectionLevel.L) return 8
+  if (ecl === MicroErrorCorrectionLevel.M) return 10
+  return 14
+}
+
+function getMicroTerminatorLength(version: MicroVersion): number {
+  return [0, 3, 5, 7, 9][version]
+}
+
+function getMicroSymbolNumber(version: MicroVersion, ecl: MicroErrorCorrectionLevel): number {
+  validateMicroEclForVersion(version, ecl)
+  if (version === 1) return 0
+  if (version === 2) return ecl === MicroErrorCorrectionLevel.L ? 1 : 2
+  if (version === 3) return ecl === MicroErrorCorrectionLevel.L ? 3 : 4
+  if (ecl === MicroErrorCorrectionLevel.L) return 5
+  if (ecl === MicroErrorCorrectionLevel.M) return 6
+  return 7
+}
+
+function bitsToCodewordsForMicroEcc(bits: readonly number[]): number[] {
+  const result: number[] = []
+  for (let i = 0; i < bits.length; i += 8) {
+    let value = 0
+    const n = Math.min(8, bits.length - i)
+    for (let j = 0; j < n; j++) value = (value << 1) | (bits[i + j] & 1)
+    value <<= 8 - n
+    result.push(value)
+  }
+  return result
+}
+
+function getBit(x: number, i: number): boolean {
+  return ((x >>> i) & 1) !== 0
+}
+
+function matrixToSvg(
+  matrix: boolean[][],
+  border: number,
+  minimumBorder: number,
+  moduleSize: number,
+  lightColor: string,
+  darkColor: string,
+): string {
+  if (!Number.isInteger(border) || border < minimumBorder)
+    throw new RangeError(`Border/quiet zone must be at least ${minimumBorder} modules`)
+  if (moduleSize <= 0) throw new RangeError("moduleSize must be positive")
+  const size = matrix.length
+  const dimension = (size + border * 2) * moduleSize
+  const parts: string[] = []
+  parts.push(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dimension} ${dimension}" width="${dimension}" height="${dimension}" shape-rendering="crispEdges">`,
+  )
+  parts.push(`<rect width="100%" height="100%" fill="${escapeXml(lightColor)}"/>`)
+  const path: string[] = []
+  for (let y = 0; y < size; y++) {
+    let x = 0
+    while (x < size) {
+      if (!matrix[y][x]) {
+        x++
+        continue
       }
+      const startX = x
+      while (x < size && matrix[y][x]) x++
+      const rectX = (startX + border) * moduleSize
+      const rectY = (y + border) * moduleSize
+      const rectW = (x - startX) * moduleSize
+      path.push(`M${rectX},${rectY}h${rectW}v${moduleSize}h-${rectW}z`)
     }
-    root = reedSolomonMultiply(root, 0x02)
   }
+  parts.push(`<path d="${path.join("")}" fill="${escapeXml(darkColor)}"/>`)
+  parts.push("</svg>")
+  return parts.join("")
+}
 
+interface NormalizedTerminalRenderOptions {
+  border: number
+  ansi: boolean
+  invert: boolean
+}
+
+function normalizeTerminalOptions(
+  options: number | TerminalRenderOptions,
+  defaultBorder: number,
+  minimumBorder: number,
+): NormalizedTerminalRenderOptions {
+  const result: NormalizedTerminalRenderOptions =
+    typeof options === "number"
+      ? { border: options, ansi: false, invert: false }
+      : { border: options.border ?? defaultBorder, ansi: options.ansi === true, invert: options.invert === true }
+  if (!Number.isInteger(result.border) || result.border < minimumBorder) {
+    throw new RangeError(`Terminal border/quiet zone must be at least ${minimumBorder} modules`)
+  }
   return result
 }
 
-function computeReedSolomonRemainder(data: number[], divisor: number[]): number[] {
-  const result = new Array<number>(divisor.length).fill(0)
-
-  for (const value of data) {
-    const factor = value ^ result.shift()!
-    result.push(0)
-
-    for (let i = 0; i < divisor.length; i++) {
-      result[i] ^= reedSolomonMultiply(divisor[i]!, factor)
+function matrixToTerminal(matrix: boolean[][], options: NormalizedTerminalRenderOptions): string {
+  const size = matrix.length
+  const darkText = options.invert ? "  " : "██"
+  const lightText = options.invert ? "██" : "  "
+  const darkAnsi = options.invert ? "[47m  " : "[40m  "
+  const lightAnsi = options.invert ? "[40m  " : "[47m  "
+  const lines: string[] = []
+  for (let y = -options.border; y < size + options.border; y++) {
+    let line = ""
+    for (let x = -options.border; x < size + options.border; x++) {
+      const dark = x >= 0 && y >= 0 && x < size && y < size && matrix[y][x]
+      line += options.ansi ? (dark ? darkAnsi : lightAnsi) : dark ? darkText : lightText
     }
+    lines.push(options.ansi ? `${line}[0m` : line)
   }
-
-  return result
+  return lines.join("\n")
 }
 
-function reedSolomonMultiply(left: number, right: number): number {
-  let result = 0
-
-  for (let bit = 7; bit >= 0; bit--) {
-    result = (result << 1) ^ (((result >>> 7) & 1) * 0x11d)
-    if (((right >>> bit) & 1) !== 0) {
-      result ^= left
-    }
-  }
-
-  return result
-}
-
-function getAlignmentPatternPositions(version: number): number[] {
-  if (version === 1) {
-    return []
-  }
-
-  const count = Math.floor(version / 7) + 2
-  const step = Math.floor((version * 8 + count * 3 + 5) / (count * 4 - 4)) * 2
-  const positions = [6]
-
-  for (let position = version * 4 + 10; positions.length < count; position -= step) {
-    positions.splice(1, 0, position)
-  }
-
-  return positions
-}
-
-function computeFormatBits(errorCorrectionFormatBits: number, mask: number): number {
-  const data = (errorCorrectionFormatBits << 3) | mask
-  let remainder = data
-
-  for (let i = 0; i < 10; i++) {
-    remainder = (remainder << 1) ^ (((remainder >>> 9) & 1) * 0x537)
-  }
-
-  return ((data << 10) | remainder) ^ 0x5412
-}
-
-function computeVersionBits(version: number): number {
-  let remainder = version
-
-  for (let i = 0; i < 12; i++) {
-    remainder = (remainder << 1) ^ (((remainder >>> 11) & 1) * 0x1f25)
-  }
-
-  return (version << 12) | remainder
-}
-
-function getNumRawDataModules(version: number): number {
-  let count = (16 * version + 128) * version + 64
-
-  if (version >= 2) {
-    const alignmentPatternCount = Math.floor(version / 7) + 2
-    count -= (25 * alignmentPatternCount - 10) * alignmentPatternCount - 55
-
-    if (version >= 7) {
-      count -= 36
-    }
-  }
-
-  return count
-}
-
-function getNumDataCodewords(version: number, errorCorrectionOrdinal: number): number {
-  return (
-    Math.floor(getNumRawDataModules(version) / 8) -
-    ECC_CODEWORDS_PER_BLOCK[errorCorrectionOrdinal]![version]! *
-      NUM_ERROR_CORRECTION_BLOCKS[errorCorrectionOrdinal]![version]!
+function escapeXml(value: string): string {
+  return value.replace(
+    /[&<>'"]/g,
+    (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&apos;", '"': "&quot;" })[ch]!,
   )
 }
 
-function getByteModeCharCountBits(version: number): number {
-  return version <= 9 ? 8 : 16
-}
-
-function appendBits(value: number, bitCount: number, bits: number[]): void {
-  for (let i = bitCount - 1; i >= 0; i--) {
-    bits.push((value >>> i) & 1)
-  }
-}
-
-function getBit(value: number, bitIndex: number): boolean {
-  return ((value >>> bitIndex) & 1) !== 0
+const SHIFT_JIS_CODE_BY_CHAR: Record<string, number> = {
+  "¢": 33169,
+  "£": 33170,
+  "¥": 92,
+  "§": 33176,
+  "¨": 33102,
+  "¬": 33226,
+  "°": 33163,
+  "±": 33149,
+  "´": 33100,
+  "¶": 33271,
+  "×": 33150,
+  "÷": 33152,
+  Α: 33695,
+  Β: 33696,
+  Γ: 33697,
+  Δ: 33698,
+  Ε: 33699,
+  Ζ: 33700,
+  Η: 33701,
+  Θ: 33702,
+  Ι: 33703,
+  Κ: 33704,
+  Λ: 33705,
+  Μ: 33706,
+  Ν: 33707,
+  Ξ: 33708,
+  Ο: 33709,
+  Π: 33710,
+  Ρ: 33711,
+  Σ: 33712,
+  Τ: 33713,
+  Υ: 33714,
+  Φ: 33715,
+  Χ: 33716,
+  Ψ: 33717,
+  Ω: 33718,
+  α: 33727,
+  β: 33728,
+  γ: 33729,
+  δ: 33730,
+  ε: 33731,
+  ζ: 33732,
+  η: 33733,
+  θ: 33734,
+  ι: 33735,
+  κ: 33736,
+  λ: 33737,
+  μ: 33738,
+  ν: 33739,
+  ξ: 33740,
+  ο: 33741,
+  π: 33742,
+  ρ: 33743,
+  σ: 33744,
+  τ: 33745,
+  υ: 33746,
+  φ: 33747,
+  χ: 33748,
+  ψ: 33749,
+  ω: 33750,
+  Ё: 33862,
+  А: 33856,
+  Б: 33857,
+  В: 33858,
+  Г: 33859,
+  Д: 33860,
+  Е: 33861,
+  Ж: 33863,
+  З: 33864,
+  И: 33865,
+  Й: 33866,
+  К: 33867,
+  Л: 33868,
+  М: 33869,
+  Н: 33870,
+  О: 33871,
+  П: 33872,
+  Р: 33873,
+  С: 33874,
+  Т: 33875,
+  У: 33876,
+  Ф: 33877,
+  Х: 33878,
+  Ц: 33879,
+  Ч: 33880,
+  Ш: 33881,
+  Щ: 33882,
+  Ъ: 33883,
+  Ы: 33884,
+  Ь: 33885,
+  Э: 33886,
+  Ю: 33887,
+  Я: 33888,
+  а: 33904,
+  б: 33905,
+  в: 33906,
+  г: 33907,
+  д: 33908,
+  е: 33909,
+  ж: 33911,
+  з: 33912,
+  и: 33913,
+  й: 33914,
+  к: 33915,
+  л: 33916,
+  м: 33917,
+  н: 33918,
+  о: 33920,
+  п: 33921,
+  р: 33922,
+  с: 33923,
+  т: 33924,
+  у: 33925,
+  ф: 33926,
+  х: 33927,
+  ц: 33928,
+  ч: 33929,
+  ш: 33930,
+  щ: 33931,
+  ъ: 33932,
+  ы: 33933,
+  ь: 33934,
+  э: 33935,
+  ю: 33936,
+  я: 33937,
+  ё: 33910,
+  "‐": 33117,
+  "―": 33116,
+  "‖": 33121,
+  "‘": 33125,
+  "’": 33126,
+  "“": 33127,
+  "”": 33128,
+  "†": 33269,
+  "‡": 33270,
+  "‥": 33124,
+  "…": 33123,
+  "‰": 33265,
+  "′": 33164,
+  "″": 33165,
+  "※": 33190,
+  "‾": 126,
+  "℃": 33166,
+  Å: 33264,
+  "←": 33193,
+  "↑": 33194,
+  "→": 33192,
+  "↓": 33195,
+  "⇒": 33227,
+  "⇔": 33228,
+  "∀": 33229,
+  "∂": 33245,
+  "∃": 33230,
+  "∇": 33246,
+  "∈": 33208,
+  "∋": 33209,
+  "−": 33148,
+  "√": 33251,
+  "∝": 33253,
+  "∞": 33159,
+  "∠": 33242,
+  "∧": 33224,
+  "∨": 33225,
+  "∩": 33215,
+  "∪": 33214,
+  "∫": 33255,
+  "∬": 33256,
+  "∴": 33160,
+  "∵": 33254,
+  "∽": 33252,
+  "≒": 33248,
+  "≠": 33154,
+  "≡": 33247,
+  "≦": 33157,
+  "≧": 33158,
+  "≪": 33249,
+  "≫": 33250,
+  "⊂": 33212,
+  "⊃": 33213,
+  "⊆": 33210,
+  "⊇": 33211,
+  "⊥": 33243,
+  "⌒": 33244,
+  "─": 33951,
+  "━": 33962,
+  "│": 33952,
+  "┃": 33963,
+  "┌": 33953,
+  "┏": 33964,
+  "┐": 33954,
+  "┓": 33965,
+  "└": 33956,
+  "┗": 33967,
+  "┘": 33955,
+  "┛": 33966,
+  "├": 33957,
+  "┝": 33978,
+  "┠": 33973,
+  "┣": 33968,
+  "┤": 33959,
+  "┥": 33980,
+  "┨": 33975,
+  "┫": 33970,
+  "┬": 33958,
+  "┯": 33974,
+  "┰": 33979,
+  "┳": 33969,
+  "┴": 33960,
+  "┷": 33976,
+  "┸": 33981,
+  "┻": 33971,
+  "┼": 33961,
+  "┿": 33977,
+  "╂": 33982,
+  "╋": 33972,
+  "■": 33185,
+  "□": 33184,
+  "▲": 33187,
+  "△": 33186,
+  "▼": 33189,
+  "▽": 33188,
+  "◆": 33183,
+  "◇": 33182,
+  "○": 33179,
+  "◎": 33181,
+  "●": 33180,
+  "◯": 33276,
+  "★": 33178,
+  "☆": 33177,
+  "♀": 33162,
+  "♂": 33161,
+  "♪": 33268,
+  "♭": 33267,
+  "♯": 33266,
+  "　": 33088,
+  "、": 33089,
+  "。": 33090,
+  "〃": 33110,
+  々: 33112,
+  〆: 33113,
+  〇: 33114,
+  "〈": 33137,
+  "〉": 33138,
+  "《": 33139,
+  "》": 33140,
+  "「": 33141,
+  "」": 33142,
+  "『": 33143,
+  "』": 33144,
+  "【": 33145,
+  "】": 33146,
+  "〒": 33191,
+  "〓": 33196,
+  "〔": 33131,
+  "〕": 33132,
+  "〜": 33120,
+  ぁ: 33439,
+  あ: 33440,
+  ぃ: 33441,
+  い: 33442,
+  ぅ: 33443,
+  う: 33444,
+  ぇ: 33445,
+  え: 33446,
+  ぉ: 33447,
+  お: 33448,
+  か: 33449,
+  が: 33450,
+  き: 33451,
+  ぎ: 33452,
+  く: 33453,
+  ぐ: 33454,
+  け: 33455,
+  げ: 33456,
+  こ: 33457,
+  ご: 33458,
+  さ: 33459,
+  ざ: 33460,
+  し: 33461,
+  じ: 33462,
+  す: 33463,
+  ず: 33464,
+  せ: 33465,
+  ぜ: 33466,
+  そ: 33467,
+  ぞ: 33468,
+  た: 33469,
+  だ: 33470,
+  ち: 33471,
+  ぢ: 33472,
+  っ: 33473,
+  つ: 33474,
+  づ: 33475,
+  て: 33476,
+  で: 33477,
+  と: 33478,
+  ど: 33479,
+  な: 33480,
+  に: 33481,
+  ぬ: 33482,
+  ね: 33483,
+  の: 33484,
+  は: 33485,
+  ば: 33486,
+  ぱ: 33487,
+  ひ: 33488,
+  び: 33489,
+  ぴ: 33490,
+  ふ: 33491,
+  ぶ: 33492,
+  ぷ: 33493,
+  へ: 33494,
+  べ: 33495,
+  ぺ: 33496,
+  ほ: 33497,
+  ぼ: 33498,
+  ぽ: 33499,
+  ま: 33500,
+  み: 33501,
+  む: 33502,
+  め: 33503,
+  も: 33504,
+  ゃ: 33505,
+  や: 33506,
+  ゅ: 33507,
+  ゆ: 33508,
+  ょ: 33509,
+  よ: 33510,
+  ら: 33511,
+  り: 33512,
+  る: 33513,
+  れ: 33514,
+  ろ: 33515,
+  ゎ: 33516,
+  わ: 33517,
+  ゐ: 33518,
+  ゑ: 33519,
+  を: 33520,
+  ん: 33521,
+  ゛: 33098,
+  ゜: 33099,
+  ゝ: 33108,
+  ゞ: 33109,
+  ァ: 33600,
+  ア: 33601,
+  ィ: 33602,
+  イ: 33603,
+  ゥ: 33604,
+  ウ: 33605,
+  ェ: 33606,
+  エ: 33607,
+  ォ: 33608,
+  オ: 33609,
+  カ: 33610,
+  ガ: 33611,
+  キ: 33612,
+  ギ: 33613,
+  ク: 33614,
+  グ: 33615,
+  ケ: 33616,
+  ゲ: 33617,
+  コ: 33618,
+  ゴ: 33619,
+  サ: 33620,
+  ザ: 33621,
+  シ: 33622,
+  ジ: 33623,
+  ス: 33624,
+  ズ: 33625,
+  セ: 33626,
+  ゼ: 33627,
+  ソ: 33628,
+  ゾ: 33629,
+  タ: 33630,
+  ダ: 33631,
+  チ: 33632,
+  ヂ: 33633,
+  ッ: 33634,
+  ツ: 33635,
+  ヅ: 33636,
+  テ: 33637,
+  デ: 33638,
+  ト: 33639,
+  ド: 33640,
+  ナ: 33641,
+  ニ: 33642,
+  ヌ: 33643,
+  ネ: 33644,
+  ノ: 33645,
+  ハ: 33646,
+  バ: 33647,
+  パ: 33648,
+  ヒ: 33649,
+  ビ: 33650,
+  ピ: 33651,
+  フ: 33652,
+  ブ: 33653,
+  プ: 33654,
+  ヘ: 33655,
+  ベ: 33656,
+  ペ: 33657,
+  ホ: 33658,
+  ボ: 33659,
+  ポ: 33660,
+  マ: 33661,
+  ミ: 33662,
+  ム: 33664,
+  メ: 33665,
+  モ: 33666,
+  ャ: 33667,
+  ヤ: 33668,
+  ュ: 33669,
+  ユ: 33670,
+  ョ: 33671,
+  ヨ: 33672,
+  ラ: 33673,
+  リ: 33674,
+  ル: 33675,
+  レ: 33676,
+  ロ: 33677,
+  ヮ: 33678,
+  ワ: 33679,
+  ヰ: 33680,
+  ヱ: 33681,
+  ヲ: 33682,
+  ン: 33683,
+  ヴ: 33684,
+  ヵ: 33685,
+  ヶ: 33686,
+  "・": 33093,
+  ー: 33115,
+  ヽ: 33106,
+  ヾ: 33107,
+  一: 35050,
+  丁: 37530,
+  七: 36533,
+  万: 38556,
+  丈: 36836,
+  三: 36431,
+  上: 36835,
+  下: 35258,
+  不: 38259,
+  与: 38750,
+  丐: 39072,
+  丑: 35150,
+  且: 35470,
+  丕: 39073,
+  世: 37026,
+  丗: 39360,
+  丘: 35701,
+  丙: 38328,
+  丞: 36837,
+  両: 38844,
+  並: 38336,
+  个: 39074,
+  中: 37510,
+  丱: 39075,
+  串: 35832,
+  丶: 39076,
+  丸: 35547,
+  丹: 37455,
+  主: 36581,
+  丼: 39077,
+  丿: 39078,
+  乂: 39079,
+  乃: 37972,
+  久: 35702,
+  之: 37974,
+  乍: 37857,
+  乎: 36033,
+  乏: 38482,
+  乕: 58728,
+  乖: 39080,
+  乗: 36838,
+  乘: 39081,
+  乙: 35251,
+  九: 35811,
+  乞: 36078,
+  也: 38631,
+  乢: 39844,
+  乱: 38800,
+  乳: 37883,
+  乾: 35491,
+  亀: 35668,
+  亂: 39082,
+  亅: 39083,
+  了: 38841,
+  予: 38748,
+  争: 37256,
+  亊: 39085,
+  事: 36502,
+  二: 37873,
+  于: 39088,
+  云: 35165,
+  互: 36061,
+  五: 36060,
+  井: 35044,
+  亘: 39018,
+  亙: 39017,
+  些: 36273,
+  亜: 34975,
+  亞: 39089,
+  亟: 39090,
+  亠: 39091,
+  亡: 38483,
+  亢: 39092,
+  交: 36080,
+  亥: 35045,
+  亦: 38546,
+  亨: 35740,
+  享: 35741,
+  京: 35742,
+  亭: 37600,
+  亮: 38842,
+  亰: 39093,
+  亳: 39094,
+  亶: 39095,
+  人: 36972,
+  什: 36697,
+  仁: 36973,
+  仂: 39100,
+  仄: 39098,
+  仆: 39099,
+  仇: 35703,
+  今: 36257,
+  介: 35310,
+  仍: 39097,
+  从: 39096,
+  仏: 38311,
+  仔: 36453,
+  仕: 36452,
+  他: 37308,
+  仗: 39101,
+  付: 38260,
+  仙: 37093,
+  仝: 33111,
+  仞: 39102,
+  仟: 39104,
+  代: 37347,
+  令: 38879,
+  以: 35016,
+  仭: 39103,
+  仮: 35260,
+  仰: 35778,
+  仲: 37511,
+  件: 35983,
+  价: 39105,
+  任: 37955,
+  企: 35561,
+  伉: 39106,
+  伊: 35017,
+  伍: 36062,
+  伎: 35562,
+  伏: 38298,
+  伐: 38064,
+  休: 35704,
+  会: 35311,
+  伜: 39141,
+  伝: 37728,
+  伯: 38028,
+  估: 39108,
+  伴: 38074,
+  伶: 38880,
+  伸: 36940,
+  伺: 36454,
+  似: 36503,
+  伽: 35262,
+  佃: 37583,
+  但: 37441,
+  佇: 39112,
+  位: 35018,
+  低: 37601,
+  住: 36698,
+  佐: 36274,
+  佑: 38723,
+  体: 37324,
+  何: 35261,
+  佗: 39111,
+  余: 38749,
+  佚: 39107,
+  佛: 39109,
+  作: 36332,
+  佝: 39110,
+  佞: 39747,
+  佩: 39118,
+  佯: 39121,
+  佰: 39119,
+  佳: 35264,
+  併: 38329,
+  佶: 39113,
+  佻: 39117,
+  佼: 36081,
+  使: 36455,
+  侃: 35492,
+  來: 39122,
+  侈: 39114,
+  例: 38881,
+  侍: 36504,
+  侏: 39115,
+  侑: 39120,
+  侖: 39123,
+  侘: 39116,
+  供: 35743,
+  依: 35019,
+  侠: 35744,
+  価: 35263,
+  侫: 39748,
+  侭: 38553,
+  侮: 38286,
+  侯: 36082,
+  侵: 36942,
+  侶: 38837,
+  便: 38358,
+  係: 35927,
+  促: 37283,
+  俄: 35298,
+  俊: 36722,
+  俎: 39127,
+  俐: 39132,
+  俑: 39130,
+  俔: 39125,
+  俗: 37293,
+  俘: 39128,
+  俚: 39131,
+  俛: 39129,
+  保: 38363,
+  俟: 39126,
+  信: 36941,
+  俣: 38547,
+  俤: 39133,
+  俥: 39134,
+  修: 36675,
+  俯: 39147,
+  俳: 37999,
+  俵: 38229,
+  俶: 39142,
+  俸: 38382,
+  俺: 35252,
+  俾: 39146,
+  倅: 39140,
+  倆: 39149,
+  倉: 37233,
+  個: 36034,
+  倍: 38011,
+  倏: 57541,
+  們: 39148,
+  倒: 37756,
+  倔: 39137,
+  倖: 36084,
+  候: 36083,
+  倚: 39135,
+  借: 36568,
+  倡: 39143,
+  倣: 38381,
+  値: 37484,
+  倥: 39139,
+  倦: 35985,
+  倨: 39136,
+  倩: 39144,
+  倪: 39138,
+  倫: 38863,
+  倬: 39145,
+  倭: 39008,
+  倶: 35812,
+  倹: 35984,
+  偃: 39150,
+  假: 39151,
+  偈: 39155,
+  偉: 35020,
+  偏: 38350,
+  偐: 39154,
+  偕: 39153,
+  偖: 39157,
+  做: 39156,
+  停: 37602,
+  健: 35986,
+  偬: 39158,
+  偲: 36547,
+  側: 37284,
+  偵: 37603,
+  偶: 35828,
+  偸: 39159,
+  偽: 35669,
+  傀: 39160,
+  傅: 39162,
+  傍: 38484,
+  傑: 35974,
+  傘: 36432,
+  備: 38133,
+  傚: 39161,
+  催: 36291,
+  傭: 38754,
+  傲: 39164,
+  傳: 39234,
+  傴: 39163,
+  債: 36290,
+  傷: 36765,
+  傾: 35928,
+  僂: 39235,
+  僅: 35789,
+  僉: 39232,
+  僊: 39233,
+  働: 37805,
+  像: 37276,
+  僑: 35745,
+  僕: 38508,
+  僖: 39236,
+  僚: 38843,
+  僞: 39237,
+  僣: 39240,
+  僥: 39238,
+  僧: 37229,
+  僭: 39239,
+  僮: 39241,
+  僵: 39243,
+  價: 39242,
+  僻: 38342,
+  儀: 35670,
+  儁: 39245,
+  儂: 39246,
+  億: 35245,
+  儉: 39244,
+  儒: 36594,
+  儔: 39249,
+  儕: 39248,
+  儖: 39247,
+  儘: 39124,
+  儚: 39250,
+  償: 36766,
+  儡: 39251,
+  優: 38724,
+  儲: 38615,
+  儷: 39253,
+  儺: 39252,
+  儻: 39255,
+  儼: 39254,
+  儿: 39256,
+  兀: 39257,
+  允: 35058,
+  元: 36019,
+  兄: 35930,
+  充: 36699,
+  兆: 37531,
+  兇: 35746,
+  先: 37094,
+  光: 36085,
+  克: 36238,
+  兌: 39259,
+  免: 38598,
+  兎: 37733,
+  児: 36505,
+  兒: 39258,
+  兔: 39260,
+  党: 37757,
+  兜: 35477,
+  兢: 39261,
+  入: 37884,
+  全: 37203,
+  兩: 39263,
+  兪: 39264,
+  八: 38058,
+  公: 36086,
+  六: 39002,
+  兮: 39265,
+  共: 35748,
+  兵: 38330,
+  其: 37300,
+  具: 35823,
+  典: 37716,
+  兼: 35987,
+  冀: 39266,
+  冂: 39267,
+  内: 37856,
+  円: 35198,
+  冉: 39270,
+  冊: 36347,
+  册: 39269,
+  再: 36292,
+  冏: 39271,
+  冐: 58348,
+  冑: 39272,
+  冒: 38496,
+  冓: 39273,
+  冕: 39274,
+  冖: 39275,
+  冗: 36839,
+  写: 36554,
+  冠: 35493,
+  冢: 39278,
+  冤: 39276,
+  冥: 38587,
+  冦: 39277,
+  冨: 38265,
+  冩: 39279,
+  冪: 39280,
+  冫: 39281,
+  冬: 37758,
+  冰: 39285,
+  冱: 39283,
+  冲: 39284,
+  决: 39282,
+  冴: 36321,
+  况: 39286,
+  冶: 38632,
+  冷: 38882,
+  冽: 39287,
+  凄: 37030,
+  凅: 39288,
+  准: 36729,
+  凉: 39289,
+  凋: 37532,
+  凌: 38845,
+  凍: 37760,
+  凖: 39363,
+  凛: 39290,
+  凜: 60067,
+  凝: 35779,
+  几: 39291,
+  凡: 38525,
+  処: 36744,
+  凧: 37370,
+  凩: 39293,
+  凪: 37858,
+  凭: 39294,
+  凰: 39296,
+  凱: 35405,
+  凵: 39297,
+  凶: 35749,
+  凸: 37834,
+  凹: 35226,
+  出: 36719,
+  函: 38047,
+  凾: 39298,
+  刀: 37761,
+  刃: 36974,
+  刄: 39299,
+  分: 38314,
+  切: 37080,
+  刈: 35488,
+  刊: 35495,
+  刋: 39300,
+  刎: 39302,
+  刑: 35929,
+  刔: 39301,
+  列: 38897,
+  初: 36745,
+  判: 38075,
+  別: 38346,
+  刧: 39303,
+  利: 38808,
+  刪: 39304,
+  刮: 39305,
+  到: 37790,
+  刳: 39306,
+  制: 37031,
+  刷: 36348,
+  券: 35988,
+  刹: 39307,
+  刺: 36456,
+  刻: 36239,
+  剃: 37604,
+  剄: 39309,
+  則: 37285,
+  削: 36333,
+  剋: 39310,
+  剌: 39311,
+  前: 37199,
+  剏: 39308,
+  剔: 39313,
+  剖: 38485,
+  剛: 36228,
+  剞: 39312,
+  剣: 35989,
+  剤: 36316,
+  剥: 38029,
+  剩: 39316,
+  剪: 39314,
+  副: 38299,
+  剰: 36840,
+  剱: 39323,
+  割: 35460,
+  剳: 39317,
+  剴: 39315,
+  創: 37230,
+  剽: 39319,
+  剿: 39318,
+  劃: 35427,
+  劇: 35968,
+  劈: 39324,
+  劉: 38827,
+  劍: 39320,
+  劑: 39325,
+  劒: 39322,
+  劔: 39321,
+  力: 38861,
+  功: 36087,
+  加: 35265,
+  劣: 38898,
+  助: 36757,
+  努: 37751,
+  劫: 36229,
+  劬: 39328,
+  劭: 39329,
+  励: 38883,
+  労: 38986,
+  劵: 39331,
+  効: 36088,
+  劼: 39330,
+  劾: 35406,
+  勁: 39332,
+  勃: 38517,
+  勅: 37562,
+  勇: 38725,
+  勉: 38359,
+  勍: 39333,
+  勒: 59603,
+  動: 37806,
+  勗: 39334,
+  勘: 35496,
+  務: 38577,
+  勝: 36767,
+  勞: 39335,
+  募: 38373,
+  勠: 39339,
+  勢: 37032,
+  勣: 39336,
+  勤: 35790,
+  勦: 39337,
+  勧: 35497,
+  勲: 35917,
+  勳: 39340,
+  勵: 39341,
+  勸: 39342,
+  勹: 39343,
+  勺: 36569,
+  勾: 36089,
+  勿: 38620,
+  匁: 38630,
+  匂: 37877,
+  包: 38383,
+  匆: 39344,
+  匈: 39345,
+  匍: 39347,
+  匏: 39349,
+  匐: 39348,
+  匕: 39350,
+  化: 35259,
+  北: 38507,
+  匙: 36346,
+  匚: 39351,
+  匝: 37240,
+  匠: 36768,
+  匡: 35751,
+  匣: 39352,
+  匪: 38105,
+  匯: 39353,
+  匱: 39354,
+  匳: 39355,
+  匸: 39356,
+  匹: 38211,
+  区: 35814,
+  医: 35043,
+  匿: 37821,
+  區: 39357,
+  十: 36700,
+  千: 37095,
+  卅: 39359,
+  卆: 39358,
+  升: 36769,
+  午: 36063,
+  卉: 39361,
+  半: 38076,
+  卍: 39362,
+  卑: 38106,
+  卒: 37298,
+  卓: 37356,
+  協: 35750,
+  南: 37868,
+  単: 37456,
+  博: 38030,
+  卜: 38509,
+  卞: 39364,
+  占: 37096,
+  卦: 35924,
+  卩: 39365,
+  卮: 39366,
+  卯: 35147,
+  印: 35059,
+  危: 35563,
+  即: 37286,
+  却: 35696,
+  卵: 38801,
+  卷: 39369,
+  卸: 35253,
+  卻: 39368,
+  卿: 35752,
+  厂: 39370,
+  厄: 38639,
+  厖: 39371,
+  厘: 38864,
+  厚: 36090,
+  原: 36020,
+  厠: 39372,
+  厥: 39374,
+  厦: 39373,
+  厨: 36990,
+  厩: 35160,
+  厭: 35197,
+  厮: 39375,
+  厰: 39376,
+  厳: 36021,
+  厶: 39377,
+  去: 35726,
+  参: 36433,
+  參: 39378,
+  又: 38548,
+  叉: 36275,
+  及: 35705,
+  友: 38726,
+  双: 37231,
+  反: 38077,
+  収: 36603,
+  叔: 36710,
+  取: 36582,
+  受: 36595,
+  叙: 36758,
+  叛: 38078,
+  叟: 39381,
+  叡: 35170,
+  叢: 37232,
+  口: 36091,
+  古: 36035,
+  句: 35813,
+  叨: 39385,
+  叩: 37440,
+  只: 37372,
+  叫: 35753,
+  召: 36770,
+  叭: 39386,
+  叮: 39384,
+  可: 35266,
+  台: 37348,
+  叱: 36534,
+  史: 36458,
+  右: 35141,
+  叶: 35472,
+  号: 36230,
+  司: 36457,
+  叺: 39387,
+  吁: 39388,
+  吃: 35688,
+  各: 35429,
+  合: 36231,
+  吉: 35687,
+  吊: 37597,
+  吋: 35140,
+  同: 37807,
+  名: 38588,
+  后: 36160,
+  吏: 38809,
+  吐: 37734,
+  向: 36092,
+  君: 35918,
+  吝: 39397,
+  吟: 35809,
+  吠: 38505,
+  否: 38107,
+  吩: 39396,
+  含: 35548,
+  听: 39391,
+  吭: 39392,
+  吮: 39394,
+  吶: 39395,
+  吸: 35706,
+  吹: 36993,
+  吻: 38315,
+  吼: 39393,
+  吽: 39389,
+  吾: 36065,
+  呀: 39390,
+  呂: 38979,
+  呆: 38384,
+  呈: 37606,
+  呉: 36064,
+  告: 36240,
+  呎: 39398,
+  呑: 37851,
+  呟: 39402,
+  周: 36604,
+  呪: 36596,
+  呰: 39405,
+  呱: 39403,
+  味: 38561,
+  呵: 39400,
+  呶: 39409,
+  呷: 39404,
+  呻: 39407,
+  呼: 36036,
+  命: 38589,
+  咀: 39408,
+  咄: 39410,
+  咆: 39412,
+  咋: 36334,
+  和: 39009,
+  咎: 39401,
+  咏: 39399,
+  咐: 39411,
+  咒: 39406,
+  咢: 39414,
+  咤: 39490,
+  咥: 39416,
+  咨: 39420,
+  咫: 39488,
+  咬: 39417,
+  咯: 39517,
+  咲: 36327,
+  咳: 35408,
+  咸: 39415,
+  咼: 39492,
+  咽: 35060,
+  咾: 39491,
+  哀: 34979,
+  品: 38249,
+  哂: 39489,
+  哄: 39418,
+  哇: 39413,
+  哈: 39419,
+  哉: 36294,
+  哘: 39493,
+  員: 35061,
+  哢: 39502,
+  哥: 39494,
+  哦: 39495,
+  哨: 36771,
+  哩: 38537,
+  哭: 39500,
+  哮: 39499,
+  哲: 37710,
+  哺: 39501,
+  哽: 39498,
+  唄: 35155,
+  唆: 36276,
+  唇: 36943,
+  唏: 39496,
+  唐: 37762,
+  唔: 39497,
+  唖: 34976,
+  售: 39507,
+  唯: 38722,
+  唱: 36773,
+  唳: 39513,
+  唸: 39512,
+  唹: 39503,
+  唾: 37313,
+  啀: 39504,
+  啄: 37357,
+  啅: 39509,
+  商: 36772,
+  啌: 39506,
+  問: 38626,
+  啓: 35931,
+  啖: 39510,
+  啗: 39511,
+  啜: 39508,
+  啝: 39514,
+  啣: 39505,
+  啻: 39520,
+  啼: 39525,
+  啾: 39521,
+  喀: 39516,
+  喃: 39526,
+  善: 37200,
+  喇: 39528,
+  喉: 36161,
+  喊: 39518,
+  喋: 37533,
+  喘: 39522,
+  喙: 39515,
+  喚: 35499,
+  喜: 35564,
+  喝: 35461,
+  喞: 39523,
+  喟: 39519,
+  喧: 35990,
+  喨: 39529,
+  喩: 39527,
+  喪: 37234,
+  喫: 35689,
+  喬: 35754,
+  單: 39524,
+  喰: 35826,
+  営: 35171,
+  嗄: 39533,
+  嗅: 39531,
+  嗇: 39589,
+  嗔: 39536,
+  嗚: 39530,
+  嗜: 39534,
+  嗟: 39532,
+  嗣: 36459,
+  嗤: 39535,
+  嗷: 39538,
+  嗹: 39543,
+  嗽: 39541,
+  嗾: 39540,
+  嘆: 37457,
+  嘉: 35267,
+  嘔: 39537,
+  嘖: 39539,
+  嘗: 36774,
+  嘘: 35154,
+  嘛: 39542,
+  嘩: 35292,
+  嘯: 39554,
+  嘱: 36858,
+  嘲: 39549,
+  嘴: 39547,
+  嘶: 39548,
+  嘸: 39550,
+  噂: 35164,
+  噌: 37208,
+  噎: 39544,
+  噐: 39545,
+  噛: 35482,
+  噤: 39553,
+  器: 35565,
+  噪: 39556,
+  噫: 39552,
+  噬: 39555,
+  噴: 38316,
+  噸: 37843,
+  噺: 38070,
+  嚀: 39558,
+  嚆: 39557,
+  嚇: 35428,
+  嚊: 39559,
+  嚏: 39562,
+  嚔: 39561,
+  嚠: 39560,
+  嚢: 37976,
+  嚥: 39563,
+  嚮: 39564,
+  嚴: 39566,
+  嚶: 39565,
+  嚼: 39568,
+  囀: 39571,
+  囁: 39569,
+  囂: 39567,
+  囃: 39570,
+  囈: 39572,
+  囎: 39573,
+  囑: 39574,
+  囓: 39575,
+  囗: 39576,
+  囘: 39268,
+  囚: 36602,
+  四: 36460,
+  回: 35313,
+  因: 35062,
+  団: 37475,
+  囮: 39577,
+  困: 36258,
+  囲: 35021,
+  図: 36989,
+  囹: 39578,
+  固: 36037,
+  国: 36241,
+  囿: 39580,
+  圀: 39579,
+  圃: 38366,
+  圄: 39581,
+  圈: 39583,
+  圉: 39582,
+  國: 39584,
+  圍: 39585,
+  圏: 35991,
+  園: 35200,
+  圓: 39586,
+  圖: 39588,
+  團: 39587,
+  圜: 39590,
+  土: 37753,
+  圦: 39591,
+  圧: 34995,
+  在: 36317,
+  圭: 35932,
+  地: 37486,
+  圷: 39592,
+  圸: 39593,
+  圻: 39595,
+  址: 39596,
+  坂: 36322,
+  均: 35791,
+  坊: 38486,
+  坎: 39594,
+  坏: 39597,
+  坐: 36287,
+  坑: 36162,
+  坡: 39601,
+  坤: 36259,
+  坦: 37458,
+  坩: 39598,
+  坪: 37592,
+  坿: 39602,
+  垂: 36994,
+  垈: 39600,
+  垉: 39603,
+  型: 35934,
+  垓: 39604,
+  垠: 39605,
+  垢: 36163,
+  垣: 35423,
+  垤: 39607,
+  垪: 39608,
+  垰: 39609,
+  垳: 39606,
+  埀: 39599,
+  埃: 39610,
+  埆: 39611,
+  埋: 38532,
+  城: 36841,
+  埒: 39613,
+  埓: 39614,
+  埔: 39612,
+  埖: 39616,
+  埜: 37975,
+  域: 35046,
+  埠: 38261,
+  埣: 39617,
+  埴: 36859,
+  執: 36535,
+  培: 38012,
+  基: 35566,
+  埼: 36329,
+  堀: 38520,
+  堂: 37808,
+  堅: 35992,
+  堆: 37325,
+  堊: 39615,
+  堋: 39618,
+  堕: 37314,
+  堙: 39619,
+  堝: 39620,
+  堡: 39622,
+  堤: 37607,
+  堪: 35500,
+  堯: 60063,
+  堰: 35201,
+  報: 38385,
+  場: 36842,
+  堵: 37735,
+  堺: 36324,
+  堽: 39628,
+  塀: 38331,
+  塁: 38875,
+  塊: 35314,
+  塋: 39624,
+  塑: 37209,
+  塒: 39627,
+  塔: 37763,
+  塗: 37736,
+  塘: 37764,
+  塙: 38071,
+  塚: 37579,
+  塞: 36295,
+  塢: 39623,
+  塩: 35222,
+  填: 37717,
+  塰: 39625,
+  塲: 39621,
+  塵: 36975,
+  塹: 39629,
+  塾: 36717,
+  境: 35755,
+  墅: 39630,
+  墓: 38374,
+  増: 37277,
+  墜: 37572,
+  墟: 39632,
+  墨: 38510,
+  墫: 39633,
+  墮: 39638,
+  墳: 38317,
+  墸: 39637,
+  墹: 39631,
+  墺: 39634,
+  墻: 39636,
+  墾: 36260,
+  壁: 38343,
+  壅: 39639,
+  壇: 37476,
+  壊: 35315,
+  壌: 36843,
+  壑: 39641,
+  壓: 39640,
+  壕: 36232,
+  壗: 39642,
+  壘: 39644,
+  壙: 39643,
+  壜: 39646,
+  壞: 39635,
+  壟: 39648,
+  壤: 39647,
+  壥: 39645,
+  士: 36461,
+  壬: 36976,
+  壮: 37235,
+  壯: 39649,
+  声: 37050,
+  壱: 35051,
+  売: 38020,
+  壷: 37593,
+  壹: 39651,
+  壺: 39650,
+  壻: 39652,
+  壼: 39653,
+  壽: 39654,
+  夂: 39655,
+  変: 38351,
+  夊: 39656,
+  夏: 35268,
+  夐: 39657,
+  夕: 38747,
+  外: 35407,
+  夘: 39367,
+  夙: 36711,
+  多: 37309,
+  夛: 39658,
+  夜: 38633,
+  夢: 38578,
+  夥: 39660,
+  大: 37349,
+  天: 37718,
+  太: 37310,
+  夫: 38262,
+  夬: 39661,
+  夭: 39662,
+  央: 35227,
+  失: 36536,
+  夲: 39663,
+  夷: 35022,
+  夸: 39664,
+  夾: 39665,
+  奄: 35202,
+  奇: 35567,
+  奈: 37854,
+  奉: 38386,
+  奎: 39669,
+  奏: 37236,
+  奐: 39668,
+  契: 35935,
+  奔: 38522,
+  奕: 39667,
+  套: 37765,
+  奘: 39671,
+  奚: 39670,
+  奠: 39673,
+  奢: 39672,
+  奥: 35228,
+  奧: 39674,
+  奨: 36775,
+  奩: 39676,
+  奪: 37444,
+  奬: 39675,
+  奮: 38321,
+  女: 36759,
+  奴: 37754,
+  奸: 39744,
+  好: 36164,
+  妁: 39745,
+  如: 37952,
+  妃: 38108,
+  妄: 38607,
+  妊: 37956,
+  妍: 39754,
+  妓: 35671,
+  妖: 38756,
+  妙: 38573,
+  妛: 39850,
+  妝: 39746,
+  妣: 39749,
+  妥: 37315,
+  妨: 38487,
+  妬: 37737,
+  妲: 39750,
+  妹: 38533,
+  妻: 36296,
+  妾: 36776,
+  姆: 39751,
+  姉: 36463,
+  始: 36462,
+  姐: 34999,
+  姑: 36038,
+  姓: 37033,
+  委: 35023,
+  姙: 39755,
+  姚: 39756,
+  姜: 39753,
+  姥: 35159,
+  姦: 35501,
+  姨: 39752,
+  姪: 38595,
+  姫: 38224,
+  姶: 34982,
+  姻: 35063,
+  姿: 36464,
+  威: 35024,
+  娃: 34977,
+  娉: 39761,
+  娑: 39759,
+  娘: 38586,
+  娚: 39762,
+  娜: 39760,
+  娟: 39758,
+  娠: 36944,
+  娥: 39757,
+  娩: 38360,
+  娯: 36066,
+  娵: 39766,
+  娶: 39767,
+  娼: 36777,
+  婀: 39763,
+  婁: 38987,
+  婆: 37995,
+  婉: 39765,
+  婚: 36261,
+  婢: 39768,
+  婦: 38263,
+  婪: 39769,
+  婬: 39764,
+  婿: 38585,
+  媒: 38013,
+  媚: 39770,
+  媛: 38225,
+  媼: 39771,
+  媽: 39775,
+  媾: 39772,
+  嫁: 35269,
+  嫂: 39774,
+  嫉: 36537,
+  嫋: 39773,
+  嫌: 35993,
+  嫐: 39787,
+  嫖: 39780,
+  嫗: 39777,
+  嫡: 37508,
+  嫣: 39776,
+  嫦: 39778,
+  嫩: 39779,
+  嫺: 39781,
+  嫻: 39782,
+  嬉: 35568,
+  嬋: 39784,
+  嬌: 39783,
+  嬖: 39785,
+  嬢: 36844,
+  嬪: 39788,
+  嬬: 37594,
+  嬰: 35172,
+  嬲: 39786,
+  嬶: 39789,
+  嬾: 39790,
+  孀: 39793,
+  孃: 39791,
+  孅: 39792,
+  子: 36465,
+  孑: 39794,
+  孔: 36165,
+  孕: 39795,
+  字: 36506,
+  存: 37302,
+  孚: 39796,
+  孛: 39797,
+  孜: 36473,
+  孝: 36166,
+  孟: 38608,
+  季: 35655,
+  孤: 36039,
+  孥: 39798,
+  学: 35447,
+  孩: 39799,
+  孫: 37303,
+  孰: 39800,
+  孱: 39841,
+  孳: 39801,
+  孵: 39802,
+  學: 39803,
+  孺: 39805,
+  宀: 39806,
+  它: 39808,
+  宅: 37358,
+  宇: 35142,
+  守: 36583,
+  安: 35008,
+  宋: 37238,
+  完: 35502,
+  宍: 36531,
+  宏: 36167,
+  宕: 37766,
+  宗: 36672,
+  官: 35503,
+  宙: 37512,
+  定: 37608,
+  宛: 34998,
+  宜: 35672,
+  宝: 38387,
+  実: 36544,
+  客: 35697,
+  宣: 37097,
+  室: 36538,
+  宥: 38727,
+  宦: 39809,
+  宮: 35707,
+  宰: 36297,
+  害: 35409,
+  宴: 35203,
+  宵: 36778,
+  家: 35270,
+  宸: 39810,
+  容: 38757,
+  宿: 36712,
+  寂: 36578,
+  寃: 39811,
+  寄: 35569,
+  寅: 37840,
+  密: 38567,
+  寇: 39812,
+  寉: 39813,
+  富: 38264,
+  寐: 39815,
+  寒: 35494,
+  寓: 35829,
+  寔: 39814,
+  寛: 35504,
+  寝: 36945,
+  寞: 39819,
+  察: 36416,
+  寡: 35271,
+  寢: 39818,
+  寤: 39816,
+  寥: 39820,
+  實: 39817,
+  寧: 37962,
+  寨: 40651,
+  審: 36946,
+  寫: 39821,
+  寮: 38846,
+  寰: 39822,
+  寳: 39824,
+  寵: 37534,
+  寶: 39823,
+  寸: 37025,
+  寺: 36507,
+  対: 37326,
+  寿: 36597,
+  封: 38293,
+  専: 37098,
+  射: 36555,
+  尅: 39825,
+  将: 36779,
+  將: 39826,
+  專: 39827,
+  尉: 35025,
+  尊: 37304,
+  尋: 36977,
+  對: 39828,
+  導: 37809,
+  小: 36780,
+  少: 36781,
+  尓: 39829,
+  尖: 37099,
+  尚: 36782,
+  尠: 39830,
+  尢: 39831,
+  尤: 38622,
+  尨: 39832,
+  尭: 35780,
+  就: 36673,
+  尸: 39833,
+  尹: 39834,
+  尺: 36570,
+  尻: 36939,
+  尼: 37874,
+  尽: 36979,
+  尾: 38134,
+  尿: 37953,
+  局: 35783,
+  屁: 39835,
+  居: 35727,
+  屆: 39836,
+  屈: 35836,
+  届: 37837,
+  屋: 35246,
+  屍: 36466,
+  屎: 39837,
+  屏: 39840,
+  屐: 39839,
+  屑: 35835,
+  屓: 39838,
+  展: 37719,
+  属: 37294,
+  屠: 37738,
+  屡: 36550,
+  層: 37239,
+  履: 38810,
+  屬: 39842,
+  屮: 39843,
+  屯: 37844,
+  山: 36434,
+  屶: 39845,
+  屹: 39846,
+  岌: 39847,
+  岐: 35570,
+  岑: 39848,
+  岔: 39849,
+  岡: 35242,
+  岨: 37210,
+  岩: 35554,
+  岫: 39851,
+  岬: 38566,
+  岱: 37328,
+  岳: 35448,
+  岶: 39853,
+  岷: 39855,
+  岸: 35549,
+  岻: 39852,
+  岼: 39854,
+  岾: 39857,
+  峅: 39856,
+  峇: 39858,
+  峙: 39859,
+  峠: 37819,
+  峡: 35756,
+  峨: 35299,
+  峩: 39860,
+  峪: 39865,
+  峭: 39863,
+  峯: 38389,
+  峰: 38388,
+  島: 37767,
+  峺: 39862,
+  峻: 36723,
+  峽: 39861,
+  崇: 37010,
+  崋: 39866,
+  崎: 36328,
+  崑: 39872,
+  崔: 39873,
+  崕: 39867,
+  崖: 35410,
+  崗: 39868,
+  崘: 39877,
+  崙: 39876,
+  崚: 39875,
+  崛: 39871,
+  崟: 39870,
+  崢: 39874,
+  崩: 38390,
+  嵋: 39881,
+  嵌: 39878,
+  嵎: 39880,
+  嵐: 38802,
+  嵒: 39879,
+  嵜: 39869,
+  嵩: 37011,
+  嵬: 39882,
+  嵯: 36277,
+  嵳: 39883,
+  嵶: 39884,
+  嶂: 39887,
+  嶄: 39886,
+  嶇: 39885,
+  嶋: 37768,
+  嶌: 39864,
+  嶐: 39893,
+  嶝: 39889,
+  嶢: 39888,
+  嶬: 39890,
+  嶮: 39891,
+  嶷: 39894,
+  嶺: 38884,
+  嶼: 39895,
+  嶽: 39892,
+  巉: 39896,
+  巌: 35550,
+  巍: 39897,
+  巒: 39899,
+  巓: 39898,
+  巖: 39900,
+  巛: 39901,
+  川: 37100,
+  州: 36674,
+  巡: 36740,
+  巣: 37251,
+  工: 36168,
+  左: 36278,
+  巧: 36169,
+  巨: 35728,
+  巫: 39902,
+  差: 36279,
+  己: 36040,
+  已: 39903,
+  巳: 38564,
+  巴: 37986,
+  巵: 39904,
+  巷: 36170,
+  巻: 35498,
+  巽: 37446,
+  巾: 35792,
+  市: 36467,
+  布: 38266,
+  帆: 38079,
+  帋: 39905,
+  希: 35571,
+  帑: 39908,
+  帖: 37535,
+  帙: 39907,
+  帚: 39906,
+  帛: 39909,
+  帝: 37609,
+  帥: 36995,
+  師: 36468,
+  席: 37064,
+  帯: 37329,
+  帰: 35649,
+  帳: 37536,
+  帶: 39910,
+  帷: 39911,
+  常: 36845,
+  帽: 38488,
+  幀: 39914,
+  幃: 39913,
+  幄: 39912,
+  幅: 38301,
+  幇: 39921,
+  幌: 38521,
+  幎: 39915,
+  幔: 39917,
+  幕: 38539,
+  幗: 39916,
+  幟: 39918,
+  幡: 38054,
+  幢: 39919,
+  幣: 38332,
+  幤: 39920,
+  干: 35505,
+  平: 38333,
+  年: 37966,
+  幵: 39922,
+  并: 39923,
+  幸: 36171,
+  幹: 35506,
+  幺: 39924,
+  幻: 36022,
+  幼: 38755,
+  幽: 38728,
+  幾: 35572,
+  广: 39926,
+  庁: 37537,
+  広: 36172,
+  庄: 36783,
+  庇: 38109,
+  床: 36784,
+  序: 36760,
+  底: 37610,
+  庖: 38391,
+  店: 37720,
+  庚: 36173,
+  府: 38267,
+  庠: 39927,
+  度: 37752,
+  座: 36288,
+  庫: 36041,
+  庭: 37611,
+  庵: 35009,
+  庶: 36750,
+  康: 36174,
+  庸: 38758,
+  廁: 39928,
+  廂: 39929,
+  廃: 38000,
+  廈: 39930,
+  廉: 38901,
+  廊: 38988,
+  廏: 39932,
+  廐: 39931,
+  廓: 35430,
+  廖: 40000,
+  廚: 40003,
+  廛: 40004,
+  廝: 40002,
+  廟: 38239,
+  廠: 36785,
+  廡: 40006,
+  廢: 40005,
+  廣: 40001,
+  廨: 40007,
+  廩: 40008,
+  廬: 40009,
+  廰: 40012,
+  廱: 40010,
+  廳: 40011,
+  廴: 40013,
+  延: 35204,
+  廷: 37612,
+  廸: 40014,
+  建: 35994,
+  廻: 35316,
+  廼: 37973,
+  廾: 40015,
+  廿: 37881,
+  弁: 38361,
+  弃: 40016,
+  弄: 38989,
+  弉: 40017,
+  弊: 38334,
+  弋: 40020,
+  弌: 39071,
+  弍: 39087,
+  式: 36526,
+  弐: 37875,
+  弑: 40021,
+  弓: 35708,
+  弔: 37538,
+  引: 35064,
+  弖: 40022,
+  弗: 38308,
+  弘: 36175,
+  弛: 37487,
+  弟: 37613,
+  弥: 38637,
+  弦: 36023,
+  弧: 36042,
+  弩: 40023,
+  弭: 40024,
+  弯: 40030,
+  弱: 36579,
+  張: 37539,
+  強: 35757,
+  弸: 40025,
+  弼: 38218,
+  弾: 37477,
+  彁: 40026,
+  彈: 40027,
+  彊: 35758,
+  彌: 40028,
+  彎: 40029,
+  彑: 40031,
+  当: 37782,
+  彖: 40032,
+  彗: 40033,
+  彙: 40034,
+  彜: 40019,
+  彝: 40018,
+  彡: 40035,
+  形: 35936,
+  彦: 38214,
+  彩: 36298,
+  彪: 38230,
+  彫: 37540,
+  彬: 38250,
+  彭: 40036,
+  彰: 36786,
+  影: 35173,
+  彳: 40037,
+  彷: 40038,
+  役: 38640,
+  彼: 38110,
+  彿: 40041,
+  往: 35229,
+  征: 37034,
+  徂: 40040,
+  徃: 40039,
+  径: 35937,
+  待: 37330,
+  徇: 40045,
+  很: 40043,
+  徊: 40042,
+  律: 38821,
+  後: 36067,
+  徐: 36761,
+  徑: 40044,
+  徒: 37739,
+  従: 36701,
+  得: 37822,
+  徘: 40048,
+  徙: 40047,
+  從: 40046,
+  徠: 40049,
+  御: 36068,
+  徨: 40050,
+  復: 38300,
+  循: 36730,
+  徭: 40051,
+  微: 38135,
+  徳: 37823,
+  徴: 37541,
+  徹: 37711,
+  徼: 40052,
+  徽: 35658,
+  心: 36947,
+  必: 38219,
+  忌: 35573,
+  忍: 37957,
+  忖: 40053,
+  志: 36469,
+  忘: 38489,
+  忙: 38490,
+  応: 35230,
+  忝: 40058,
+  忠: 37513,
+  忤: 40055,
+  快: 35317,
+  忰: 40107,
+  忱: 40057,
+  念: 37967,
+  忸: 40056,
+  忻: 40054,
+  忽: 36250,
+  忿: 40060,
+  怎: 40067,
+  怏: 40073,
+  怐: 40065,
+  怒: 37755,
+  怕: 40070,
+  怖: 38268,
+  怙: 40064,
+  怛: 40069,
+  怜: 38885,
+  思: 36470,
+  怠: 37331,
+  怡: 40061,
+  急: 35709,
+  怦: 40072,
+  性: 37035,
+  怨: 35205,
+  怩: 40066,
+  怪: 35318,
+  怫: 40071,
+  怯: 35759,
+  怱: 40068,
+  怺: 40074,
+  恁: 40076,
+  恂: 40086,
+  恃: 40084,
+  恆: 40081,
+  恊: 40080,
+  恋: 38902,
+  恍: 40082,
+  恐: 35760,
+  恒: 36176,
+  恕: 36762,
+  恙: 40089,
+  恚: 40075,
+  恟: 40079,
+  恠: 40062,
+  恢: 35320,
+  恣: 40083,
+  恤: 40085,
+  恥: 37488,
+  恨: 36262,
+  恩: 35254,
+  恪: 40077,
+  恫: 40088,
+  恬: 40087,
+  恭: 35761,
+  息: 37287,
+  恰: 35462,
+  恵: 35938,
+  恷: 40078,
+  悁: 40090,
+  悃: 40093,
+  悄: 40095,
+  悉: 36539,
+  悋: 40101,
+  悌: 37614,
+  悍: 40091,
+  悒: 40099,
+  悔: 35319,
+  悖: 40097,
+  悗: 40098,
+  悚: 40094,
+  悛: 40096,
+  悟: 36069,
+  悠: 38729,
+  患: 35507,
+  悦: 35192,
+  悧: 40100,
+  悩: 37977,
+  悪: 34987,
+  悲: 38111,
+  悳: 40059,
+  悴: 40106,
+  悵: 40110,
+  悶: 38627,
+  悸: 40103,
+  悼: 37769,
+  悽: 40108,
+  情: 36846,
+  惆: 40109,
+  惇: 37845,
+  惑: 39014,
+  惓: 40105,
+  惘: 40111,
+  惚: 36251,
+  惜: 37065,
+  惟: 35026,
+  惠: 40104,
+  惡: 40102,
+  惣: 37241,
+  惧: 40092,
+  惨: 36435,
+  惰: 37316,
+  惱: 40123,
+  想: 37242,
+  惴: 40118,
+  惶: 40115,
+  惷: 40116,
+  惹: 36580,
+  惺: 40119,
+  惻: 40122,
+  愀: 40117,
+  愁: 36676,
+  愃: 40120,
+  愆: 40114,
+  愈: 38650,
+  愉: 38649,
+  愍: 40124,
+  愎: 40125,
+  意: 35027,
+  愕: 40113,
+  愚: 35824,
+  愛: 34980,
+  感: 35508,
+  愡: 40121,
+  愧: 40129,
+  愨: 40128,
+  愬: 40133,
+  愴: 40134,
+  愼: 40132,
+  愽: 40135,
+  愾: 40127,
+  愿: 40131,
+  慂: 40136,
+  慄: 40137,
+  慇: 40126,
+  慈: 36508,
+  慊: 40130,
+  態: 37332,
+  慌: 36177,
+  慍: 40112,
+  慎: 36948,
+  慓: 40150,
+  慕: 38375,
+  慘: 40140,
+  慙: 40141,
+  慚: 40142,
+  慝: 40149,
+  慟: 40148,
+  慢: 38557,
+  慣: 35509,
+  慥: 40146,
+  慧: 35940,
+  慨: 35411,
+  慫: 40143,
+  慮: 38838,
+  慯: 40145,
+  慰: 35028,
+  慱: 40147,
+  慳: 40138,
+  慴: 40144,
+  慵: 40151,
+  慶: 35939,
+  慷: 40139,
+  慾: 38780,
+  憂: 38730,
+  憇: 40154,
+  憊: 40158,
+  憎: 37278,
+  憐: 38903,
+  憑: 40159,
+  憔: 40156,
+  憖: 40153,
+  憙: 40152,
+  憚: 40157,
+  憤: 38318,
+  憧: 37810,
+  憩: 35941,
+  憫: 40160,
+  憬: 40155,
+  憮: 40161,
+  憲: 35995,
+  憶: 35247,
+  憺: 40169,
+  憾: 35510,
+  懃: 40167,
+  懆: 40168,
+  懇: 36263,
+  懈: 40166,
+  應: 40164,
+  懊: 40163,
+  懋: 40170,
+  懌: 40162,
+  懍: 40172,
+  懐: 35321,
+  懣: 40174,
+  懦: 40173,
+  懲: 37542,
+  懴: 40177,
+  懶: 40175,
+  懷: 40165,
+  懸: 35996,
+  懺: 40176,
+  懼: 40180,
+  懽: 40179,
+  懾: 40181,
+  懿: 40178,
+  戀: 40182,
+  戈: 40183,
+  戉: 40184,
+  戊: 38376,
+  戌: 40186,
+  戍: 40185,
+  戎: 36702,
+  成: 37036,
+  我: 35300,
+  戒: 35322,
+  戔: 40187,
+  或: 35005,
+  戚: 37066,
+  戛: 40188,
+  戝: 59073,
+  戞: 40256,
+  戟: 35969,
+  戡: 40257,
+  戦: 37101,
+  截: 40258,
+  戮: 40259,
+  戯: 35673,
+  戰: 40260,
+  戲: 40261,
+  戳: 40262,
+  戴: 37333,
+  戸: 36043,
+  戻: 38623,
+  房: 38491,
+  所: 36746,
+  扁: 40263,
+  扇: 37102,
+  扈: 59323,
+  扉: 38112,
+  手: 36584,
+  才: 36299,
+  扎: 40264,
+  打: 37317,
+  払: 38309,
+  托: 37359,
+  扛: 40267,
+  扞: 40265,
+  扠: 40268,
+  扣: 40266,
+  扨: 40269,
+  扮: 38319,
+  扱: 34997,
+  扶: 38269,
+  批: 38113,
+  扼: 40270,
+  找: 40273,
+  承: 36787,
+  技: 35674,
+  抂: 40271,
+  抃: 40278,
+  抄: 36788,
+  抉: 40272,
+  把: 37987,
+  抑: 38781,
+  抒: 40274,
+  抓: 40275,
+  抔: 40279,
+  投: 37770,
+  抖: 40276,
+  抗: 36178,
+  折: 37084,
+  抛: 40293,
+  抜: 38066,
+  択: 37360,
+  披: 38114,
+  抬: 40363,
+  抱: 38392,
+  抵: 37615,
+  抹: 38549,
+  抻: 40282,
+  押: 35231,
+  抽: 37514,
+  拂: 40291,
+  担: 37459,
+  拆: 40285,
+  拇: 40292,
+  拈: 40287,
+  拉: 40294,
+  拊: 40290,
+  拌: 40289,
+  拍: 38031,
+  拏: 40283,
+  拐: 35323,
+  拑: 40281,
+  拒: 35729,
+  拓: 37361,
+  拔: 40277,
+  拗: 40280,
+  拘: 36179,
+  拙: 37081,
+  招: 36789,
+  拜: 40288,
+  拝: 38001,
+  拠: 35730,
+  拡: 35431,
+  括: 35463,
+  拭: 36928,
+  拮: 40296,
+  拯: 40301,
+  拱: 40297,
+  拳: 35997,
+  拵: 40302,
+  拶: 36417,
+  拷: 36233,
+  拾: 36677,
+  拿: 40284,
+  持: 36509,
+  挂: 40299,
+  指: 36471,
+  挈: 40300,
+  按: 35010,
+  挌: 40295,
+  挑: 37543,
+  挙: 35731,
+  挟: 35762,
+  挧: 40298,
+  挨: 34981,
+  挫: 36289,
+  振: 36949,
+  挺: 37616,
+  挽: 38098,
+  挾: 40304,
+  挿: 37245,
+  捉: 37288,
+  捌: 36426,
+  捍: 40305,
+  捏: 40307,
+  捐: 40303,
+  捕: 38367,
+  捗: 37563,
+  捜: 37243,
+  捧: 38393,
+  捨: 36556,
+  捩: 40320,
+  捫: 40318,
+  据: 37016,
+  捲: 35998,
+  捶: 40312,
+  捷: 36791,
+  捺: 37862,
+  捻: 37968,
+  掀: 40310,
+  掃: 37244,
+  授: 36598,
+  掉: 40315,
+  掌: 36790,
+  掎: 40309,
+  掏: 40314,
+  排: 38002,
+  掖: 40308,
+  掘: 35904,
+  掛: 35452,
+  掟: 40316,
+  掠: 38825,
+  採: 36300,
+  探: 37460,
+  掣: 40313,
+  接: 37082,
+  控: 36180,
+  推: 36996,
+  掩: 35206,
+  措: 37211,
+  掫: 40311,
+  掬: 35684,
+  掲: 35942,
+  掴: 37581,
+  掵: 40317,
+  掻: 37246,
+  掾: 40321,
+  揀: 40323,
+  揃: 37301,
+  揄: 40329,
+  揆: 40324,
+  揉: 40326,
+  描: 38240,
+  提: 37617,
+  插: 40327,
+  揖: 38731,
+  揚: 38759,
+  換: 35511,
+  握: 34988,
+  揣: 40325,
+  揩: 40322,
+  揮: 35574,
+  援: 35207,
+  揶: 40328,
+  揺: 38760,
+  搆: 40332,
+  損: 37305,
+  搏: 40339,
+  搓: 40333,
+  搖: 40330,
+  搗: 40337,
+  搜: 40306,
+  搦: 40334,
+  搨: 40338,
+  搬: 38080,
+  搭: 37771,
+  搴: 40331,
+  搶: 40335,
+  携: 35943,
+  搾: 36335,
+  摂: 37083,
+  摎: 40343,
+  摘: 37701,
+  摧: 40340,
+  摩: 38528,
+  摯: 40341,
+  摶: 40342,
+  摸: 38604,
+  摺: 37024,
+  撃: 35970,
+  撈: 40349,
+  撒: 36436,
+  撓: 40346,
+  撕: 40345,
+  撚: 37969,
+  撞: 37811,
+  撤: 37712,
+  撥: 40347,
+  撩: 40348,
+  撫: 38287,
+  播: 37988,
+  撮: 36418,
+  撰: 37103,
+  撲: 38511,
+  撹: 35432,
+  撻: 40355,
+  撼: 40350,
+  擁: 38761,
+  擂: 40357,
+  擅: 40353,
+  擇: 40354,
+  操: 37248,
+  擒: 40352,
+  擔: 40286,
+  擘: 40356,
+  據: 40351,
+  擠: 40361,
+  擡: 40362,
+  擢: 37702,
+  擣: 40364,
+  擦: 36419,
+  擧: 40359,
+  擬: 35675,
+  擯: 40365,
+  擱: 40358,
+  擲: 40369,
+  擴: 40368,
+  擶: 40367,
+  擺: 40370,
+  擽: 40372,
+  擾: 36847,
+  攀: 40371,
+  攅: 40375,
+  攘: 40373,
+  攜: 40374,
+  攝: 40336,
+  攣: 40377,
+  攤: 40376,
+  攪: 40344,
+  攫: 40378,
+  攬: 40366,
+  支: 36472,
+  攴: 40379,
+  攵: 40380,
+  收: 40382,
+  攷: 40381,
+  攸: 40383,
+  改: 35324,
+  攻: 36181,
+  放: 38394,
+  政: 37037,
+  故: 36044,
+  效: 40385,
+  敍: 40388,
+  敏: 38257,
+  救: 35710,
+  敕: 40387,
+  敖: 40386,
+  敗: 38003,
+  敘: 40389,
+  教: 35763,
+  敝: 40391,
+  敞: 40390,
+  敢: 35512,
+  散: 36437,
+  敦: 37846,
+  敬: 35944,
+  数: 37012,
+  敲: 40392,
+  整: 37038,
+  敵: 37703,
+  敷: 38270,
+  數: 40393,
+  斂: 40394,
+  斃: 40395,
+  文: 38326,
+  斈: 39804,
+  斉: 37060,
+  斌: 38251,
+  斎: 36310,
+  斐: 38115,
+  斑: 38081,
+  斗: 37740,
+  料: 38847,
+  斛: 40397,
+  斜: 36558,
+  斟: 40398,
+  斡: 34996,
+  斤: 35794,
+  斥: 37067,
+  斧: 38272,
+  斫: 40399,
+  斬: 36449,
+  断: 37478,
+  斯: 36474,
+  新: 36950,
+  斷: 40400,
+  方: 38395,
+  於: 35223,
+  施: 36475,
+  旁: 40403,
+  旃: 40401,
+  旄: 40404,
+  旅: 38839,
+  旆: 40402,
+  旋: 37113,
+  旌: 40405,
+  族: 37296,
+  旒: 40406,
+  旗: 35576,
+  旙: 40408,
+  旛: 40407,
+  无: 40409,
+  旡: 40410,
+  既: 35577,
+  日: 37882,
+  旦: 37461,
+  旧: 35724,
+  旨: 36476,
+  早: 37249,
+  旬: 36731,
+  旭: 34990,
+  旱: 40411,
+  旺: 35232,
+  旻: 40415,
+  昂: 36182,
+  昃: 40414,
+  昆: 36265,
+  昇: 36792,
+  昊: 40413,
+  昌: 36793,
+  明: 38590,
+  昏: 36264,
+  易: 35029,
+  昔: 37068,
+  昜: 40420,
+  星: 37039,
+  映: 35174,
+  春: 36724,
+  昧: 38534,
+  昨: 36336,
+  昭: 36794,
+  是: 37029,
+  昴: 40419,
+  昵: 40417,
+  昶: 40418,
+  昼: 37515,
+  昿: 40517,
+  晁: 40424,
+  時: 36510,
+  晃: 36183,
+  晄: 40422,
+  晉: 40423,
+  晋: 36951,
+  晏: 40421,
+  晒: 36430,
+  晝: 40426,
+  晞: 40425,
+  晟: 40430,
+  晢: 40431,
+  晤: 40427,
+  晦: 35393,
+  晧: 40428,
+  晨: 40429,
+  晩: 38099,
+  普: 38273,
+  景: 35945,
+  晰: 40432,
+  晴: 37040,
+  晶: 36795,
+  智: 37489,
+  暁: 35781,
+  暃: 40433,
+  暄: 40437,
+  暇: 35273,
+  暈: 40434,
+  暉: 40436,
+  暎: 40435,
+  暑: 36747,
+  暖: 37479,
+  暗: 35011,
+  暘: 40438,
+  暝: 40439,
+  暢: 37544,
+  暦: 38895,
+  暫: 36450,
+  暮: 38377,
+  暴: 38492,
+  暸: 40513,
+  暹: 40441,
+  暼: 40444,
+  暾: 40443,
+  曁: 40440,
+  曄: 40512,
+  曇: 37852,
+  曉: 40442,
+  曖: 40514,
+  曙: 36748,
+  曚: 40515,
+  曜: 38762,
+  曝: 38040,
+  曠: 40516,
+  曦: 40518,
+  曩: 40519,
+  曰: 40520,
+  曲: 35784,
+  曳: 35175,
+  更: 36184,
+  曵: 40521,
+  曷: 40522,
+  書: 36753,
+  曹: 37250,
+  曼: 39382,
+  曽: 37213,
+  曾: 37212,
+  替: 37334,
+  最: 36293,
+  會: 39152,
+  月: 35982,
+  有: 38732,
+  朋: 38396,
+  服: 38302,
+  朏: 40523,
+  朔: 36337,
+  朕: 37565,
+  朖: 40524,
+  朗: 38990,
+  望: 38493,
+  朝: 37545,
+  朞: 40525,
+  期: 35578,
+  朦: 40526,
+  朧: 40527,
+  木: 38616,
+  未: 38562,
+  末: 38550,
+  本: 38523,
+  札: 36420,
+  朮: 40529,
+  朱: 36585,
+  朴: 38512,
+  朶: 40531,
+  朷: 40534,
+  朸: 40533,
+  机: 35575,
+  朽: 35712,
+  朿: 40530,
+  杁: 40532,
+  杆: 40535,
+  杉: 37017,
+  李: 38811,
+  杏: 35015,
+  材: 36318,
+  村: 37306,
+  杓: 36571,
+  杖: 36849,
+  杙: 40538,
+  杜: 37741,
+  杞: 40536,
+  束: 37289,
+  杠: 40537,
+  条: 36848,
+  杢: 38619,
+  杣: 40539,
+  杤: 40540,
+  来: 38792,
+  杪: 40545,
+  杭: 36185,
+  杯: 38004,
+  杰: 40542,
+  東: 37772,
+  杲: 40412,
+  杳: 40416,
+  杵: 35694,
+  杷: 37990,
+  杼: 40544,
+  松: 36796,
+  板: 38082,
+  枅: 40550,
+  枇: 38136,
+  枉: 40541,
+  枋: 40547,
+  枌: 40546,
+  析: 37069,
+  枕: 38541,
+  林: 38865,
+  枚: 38535,
+  果: 35274,
+  枝: 36477,
+  枠: 39015,
+  枡: 40549,
+  枢: 37013,
+  枦: 40548,
+  枩: 40543,
+  枯: 36045,
+  枳: 40555,
+  枴: 40553,
+  架: 35275,
+  枷: 40551,
+  枸: 40557,
+  枹: 40563,
+  柁: 37318,
+  柄: 38335,
+  柆: 40565,
+  柊: 38209,
+  柎: 40564,
+  柏: 38032,
+  某: 38494,
+  柑: 35513,
+  染: 37109,
+  柔: 36703,
+  柘: 37585,
+  柚: 38733,
+  柝: 40560,
+  柞: 40559,
+  柢: 40561,
+  柤: 40558,
+  柧: 40566,
+  柩: 40556,
+  柬: 40554,
+  柮: 40562,
+  柯: 40552,
+  柱: 37516,
+  柳: 38646,
+  柴: 36548,
+  柵: 36338,
+  査: 36280,
+  柾: 38543,
+  柿: 35424,
+  栂: 37580,
+  栃: 37832,
+  栄: 35176,
+  栓: 37104,
+  栖: 37042,
+  栗: 35913,
+  栞: 40568,
+  校: 36186,
+  栢: 35484,
+  栩: 40570,
+  株: 35476,
+  栫: 40577,
+  栲: 40573,
+  栴: 37105,
+  核: 35434,
+  根: 36266,
+  格: 35433,
+  栽: 36301,
+  桀: 40571,
+  桁: 35973,
+  桂: 35946,
+  桃: 37773,
+  框: 40569,
+  案: 35012,
+  桍: 40572,
+  桎: 40574,
+  桐: 35787,
+  桑: 35915,
+  桓: 35514,
+  桔: 35690,
+  桙: 40578,
+  桜: 36343,
+  桝: 38545,
+  桟: 36438,
+  档: 40579,
+  桧: 38223,
+  桴: 40591,
+  桶: 35249,
+  桷: 40580,
+  桾: 40597,
+  桿: 40581,
+  梁: 38848,
+  梃: 40588,
+  梅: 38014,
+  梍: 40596,
+  梏: 40583,
+  梓: 34994,
+  梔: 40585,
+  梗: 36187,
+  梛: 40587,
+  條: 40586,
+  梟: 40582,
+  梠: 40593,
+  梢: 36797,
+  梦: 39659,
+  梧: 36070,
+  梨: 38812,
+  梭: 40584,
+  梯: 37618,
+  械: 35394,
+  梱: 36267,
+  梳: 40576,
+  梵: 40592,
+  梶: 35457,
+  梹: 40590,
+  梺: 40594,
+  梼: 37774,
+  棄: 35580,
+  棆: 40624,
+  棉: 38599,
+  棊: 40599,
+  棋: 35579,
+  棍: 40606,
+  棒: 38495,
+  棔: 40607,
+  棕: 40609,
+  棗: 40613,
+  棘: 40601,
+  棚: 37449,
+  棟: 37775,
+  棠: 40617,
+  棡: 40604,
+  棣: 40614,
+  棧: 40608,
+  森: 36952,
+  棯: 40618,
+  棲: 37041,
+  棹: 40616,
+  棺: 35515,
+  椀: 39023,
+  椁: 40598,
+  椄: 40612,
+  椅: 35030,
+  椈: 40600,
+  椋: 38584,
+  椌: 40605,
+  植: 36929,
+  椎: 37573,
+  椏: 40595,
+  椒: 40611,
+  椙: 37018,
+  椚: 40621,
+  椛: 35473,
+  検: 35999,
+  椡: 40623,
+  椢: 40602,
+  椣: 40622,
+  椥: 40615,
+  椦: 40603,
+  椨: 40619,
+  椪: 40620,
+  椰: 40637,
+  椴: 37836,
+  椶: 40610,
+  椹: 40633,
+  椽: 40635,
+  椿: 37590,
+  楊: 38763,
+  楓: 38294,
+  楔: 40630,
+  楕: 37320,
+  楙: 40636,
+  楚: 37214,
+  楜: 40627,
+  楝: 40640,
+  楞: 40639,
+  楠: 37869,
+  楡: 40638,
+  楢: 37864,
+  楪: 40642,
+  楫: 40629,
+  業: 35782,
+  楮: 40632,
+  楯: 36732,
+  楳: 38016,
+  楴: 40634,
+  極: 35785,
+  楷: 40626,
+  楸: 40628,
+  楹: 40625,
+  楼: 38991,
+  楽: 35449,
+  楾: 40631,
+  榁: 40641,
+  概: 35412,
+  榊: 36325,
+  榎: 35196,
+  榑: 40658,
+  榔: 38992,
+  榕: 40661,
+  榛: 36953,
+  榜: 40660,
+  榠: 40659,
+  榧: 40656,
+  榮: 40644,
+  榱: 40673,
+  榲: 40643,
+  榴: 40662,
+  榻: 40654,
+  榾: 40649,
+  榿: 40646,
+  槁: 40647,
+  槃: 40655,
+  槇: 60064,
+  槊: 40652,
+  構: 36188,
+  槌: 37574,
+  槍: 37252,
+  槎: 40650,
+  槐: 40645,
+  槓: 40648,
+  様: 38764,
+  槙: 38538,
+  槝: 40653,
+  槞: 40663,
+  槧: 40671,
+  槨: 40664,
+  槫: 40677,
+  槭: 40675,
+  槲: 40670,
+  槹: 40669,
+  槻: 37582,
+  槽: 37253,
+  槿: 40667,
+  樂: 40665,
+  樅: 40672,
+  樊: 40678,
+  樋: 38131,
+  樌: 40684,
+  樒: 40679,
+  樓: 40682,
+  樔: 40676,
+  樗: 37524,
+  標: 38231,
+  樛: 40666,
+  樞: 40674,
+  樟: 36798,
+  模: 38605,
+  樢: 40694,
+  樣: 40681,
+  権: 36000,
+  横: 35233,
+  樫: 35454,
+  樮: 40657,
+  樵: 36799,
+  樶: 40686,
+  樸: 40693,
+  樹: 36599,
+  樺: 35474,
+  樽: 37453,
+  橄: 40683,
+  橇: 40688,
+  橈: 40692,
+  橋: 35764,
+  橘: 35691,
+  橙: 40690,
+  機: 35648,
+  橡: 37833,
+  橢: 40689,
+  橦: 40691,
+  橲: 40685,
+  橸: 40687,
+  橿: 35456,
+  檀: 37480,
+  檄: 40698,
+  檍: 40696,
+  檎: 36071,
+  檐: 40695,
+  檗: 40768,
+  檜: 40567,
+  檠: 40697,
+  檢: 40699,
+  檣: 40700,
+  檪: 40779,
+  檬: 40775,
+  檮: 40589,
+  檳: 40774,
+  檸: 40773,
+  檻: 40770,
+  櫁: 40680,
+  櫂: 40772,
+  櫃: 40771,
+  櫑: 40777,
+  櫓: 38981,
+  櫚: 40780,
+  櫛: 35833,
+  櫞: 40776,
+  櫟: 40778,
+  櫨: 38053,
+  櫪: 40781,
+  櫺: 40785,
+  櫻: 40782,
+  欄: 38803,
+  欅: 40783,
+  權: 40668,
+  欒: 40786,
+  欖: 40787,
+  欝: 35156,
+  欟: 40789,
+  欠: 35975,
+  次: 36511,
+  欣: 35795,
+  欧: 35234,
+  欲: 38782,
+  欷: 40791,
+  欸: 40790,
+  欹: 40793,
+  欺: 35676,
+  欽: 35796,
+  款: 35516,
+  歃: 40796,
+  歇: 40795,
+  歉: 40797,
+  歌: 35276,
+  歎: 37462,
+  歐: 40798,
+  歓: 35517,
+  歔: 40800,
+  歙: 40799,
+  歛: 40801,
+  歟: 40802,
+  歡: 40803,
+  止: 36478,
+  正: 37043,
+  此: 36255,
+  武: 38288,
+  歩: 38368,
+  歪: 39011,
+  歯: 36501,
+  歳: 36302,
+  歴: 38896,
+  歸: 40804,
+  歹: 40805,
+  死: 36480,
+  歿: 40806,
+  殀: 40807,
+  殃: 40809,
+  殄: 40808,
+  殆: 38519,
+  殉: 36733,
+  殊: 36586,
+  残: 36451,
+  殍: 40810,
+  殕: 40812,
+  殖: 36930,
+  殘: 40811,
+  殞: 40813,
+  殤: 40814,
+  殪: 40815,
+  殫: 40816,
+  殯: 40817,
+  殱: 40819,
+  殲: 40818,
+  殳: 40820,
+  殴: 35235,
+  段: 37481,
+  殷: 40821,
+  殺: 36421,
+  殻: 35435,
+  殼: 40822,
+  殿: 37729,
+  毀: 39626,
+  毅: 35650,
+  毆: 40823,
+  毋: 40824,
+  母: 38378,
+  毎: 38536,
+  毒: 37829,
+  毓: 40825,
+  比: 38116,
+  毘: 38137,
+  毛: 38609,
+  毟: 40826,
+  毫: 40828,
+  毬: 40827,
+  毯: 40830,
+  毳: 40829,
+  氈: 40833,
+  氏: 36481,
+  民: 38575,
+  氓: 40834,
+  气: 40835,
+  気: 35651,
+  氛: 40836,
+  氣: 40838,
+  氤: 40837,
+  水: 36997,
+  氷: 38232,
+  永: 35177,
+  氾: 38083,
+  汀: 37619,
+  汁: 36704,
+  求: 35713,
+  汎: 38084,
+  汐: 36524,
+  汕: 40840,
+  汗: 35518,
+  汚: 35224,
+  汝: 37872,
+  汞: 40839,
+  江: 36189,
+  池: 37490,
+  汢: 40841,
+  汨: 40849,
+  汪: 40842,
+  汰: 37311,
+  汲: 35714,
+  汳: 40850,
+  決: 35976,
+  汽: 35652,
+  汾: 40848,
+  沁: 40846,
+  沂: 40843,
+  沃: 38784,
+  沈: 37566,
+  沌: 37847,
+  沍: 40844,
+  沐: 40852,
+  沒: 40851,
+  沓: 35906,
+  沖: 35243,
+  沙: 36281,
+  沚: 40845,
+  沛: 40847,
+  没: 38518,
+  沢: 37362,
+  沫: 38551,
+  沮: 40860,
+  沱: 40861,
+  河: 35277,
+  沸: 38310,
+  油: 38651,
+  沺: 40863,
+  治: 36513,
+  沼: 36800,
+  沽: 40856,
+  沾: 40862,
+  沿: 35208,
+  況: 35765,
+  泄: 40853,
+  泅: 40858,
+  泉: 37106,
+  泊: 38033,
+  泌: 38117,
+  泓: 40855,
+  法: 38464,
+  泗: 40857,
+  泙: 40866,
+  泛: 40864,
+  泝: 40859,
+  泡: 38465,
+  波: 37991,
+  泣: 35715,
+  泥: 37700,
+  注: 37517,
+  泪: 40867,
+  泯: 40865,
+  泰: 37335,
+  泱: 40854,
+  泳: 35178,
+  洋: 38765,
+  洌: 40878,
+  洒: 40877,
+  洗: 37108,
+  洙: 40874,
+  洛: 38796,
+  洞: 37812,
+  洟: 40868,
+  津: 37571,
+  洩: 35179,
+  洪: 36190,
+  洫: 40871,
+  洲: 36678,
+  洳: 40876,
+  洵: 40875,
+  洶: 40870,
+  洸: 40873,
+  活: 35464,
+  洽: 40872,
+  派: 37992,
+  流: 38828,
+  浄: 36850,
+  浅: 37107,
+  浙: 40884,
+  浚: 40882,
+  浜: 38252,
+  浣: 40879,
+  浤: 40881,
+  浦: 35161,
+  浩: 36191,
+  浪: 38993,
+  浬: 35420,
+  浮: 38274,
+  浴: 38785,
+  海: 35395,
+  浸: 36954,
+  浹: 40883,
+  涅: 40888,
+  消: 36801,
+  涌: 38735,
+  涎: 40885,
+  涓: 40880,
+  涕: 40886,
+  涙: 38876,
+  涛: 37779,
+  涜: 37824,
+  涯: 35413,
+  液: 35188,
+  涵: 40892,
+  涸: 40895,
+  涼: 38849,
+  淀: 38788,
+  淅: 40902,
+  淆: 40896,
+  淇: 40893,
+  淋: 38866,
+  淌: 40899,
+  淑: 36713,
+  淒: 40901,
+  淕: 40906,
+  淘: 37777,
+  淙: 40904,
+  淞: 40898,
+  淡: 37463,
+  淤: 40905,
+  淦: 40894,
+  淨: 40900,
+  淪: 40907,
+  淫: 35066,
+  淬: 40897,
+  淮: 40908,
+  深: 36955,
+  淳: 36734,
+  淵: 38307,
+  混: 36268,
+  淹: 40889,
+  淺: 40903,
+  添: 37721,
+  清: 37044,
+  渇: 35465,
+  済: 36303,
+  渉: 36802,
+  渊: 40891,
+  渋: 36705,
+  渓: 35947,
+  渕: 40890,
+  渙: 40912,
+  渚: 36749,
+  減: 36024,
+  渝: 40927,
+  渟: 40921,
+  渠: 35732,
+  渡: 37742,
+  渣: 40916,
+  渤: 40925,
+  渥: 34989,
+  渦: 35153,
+  温: 35255,
+  渫: 40918,
+  測: 37290,
+  渭: 40909,
+  渮: 40911,
+  港: 36192,
+  游: 40928,
+  渺: 40923,
+  渾: 40915,
+  湃: 40922,
+  湊: 38569,
+  湍: 40920,
+  湎: 40924,
+  湖: 36046,
+  湘: 36803,
+  湛: 37464,
+  湟: 40914,
+  湧: 38734,
+  湫: 40917,
+  湮: 40910,
+  湯: 37778,
+  湲: 40913,
+  湶: 40919,
+  湾: 39024,
+  湿: 36540,
+  満: 38558,
+  溂: 40929,
+  溌: 38060,
+  溏: 40941,
+  源: 36025,
+  準: 36736,
+  溘: 40931,
+  溜: 38829,
+  溝: 36193,
+  溟: 40944,
+  溢: 35052,
+  溥: 40942,
+  溪: 40930,
+  溯: 40936,
+  溲: 40938,
+  溶: 38766,
+  溷: 40933,
+  溺: 37709,
+  溽: 40935,
+  滂: 40943,
+  滄: 40937,
+  滅: 38597,
+  滉: 40932,
+  滋: 36512,
+  滌: 40956,
+  滑: 35466,
+  滓: 40934,
+  滔: 40939,
+  滕: 40940,
+  滝: 37354,
+  滞: 37336,
+  滬: 40948,
+  滯: 40954,
+  滲: 40952,
+  滴: 37704,
+  滷: 57410,
+  滸: 40949,
+  滾: 40950,
+  滿: 40926,
+  漁: 35737,
+  漂: 38233,
+  漆: 36541,
+  漉: 36247,
+  漏: 38994,
+  漑: 40946,
+  漓: 57409,
+  演: 35209,
+  漕: 37254,
+  漠: 38041,
+  漢: 35519,
+  漣: 38904,
+  漫: 38559,
+  漬: 37584,
+  漱: 40953,
+  漲: 40955,
+  漸: 37201,
+  漾: 57408,
+  漿: 40951,
+  潁: 40945,
+  潅: 35521,
+  潔: 35977,
+  潘: 57422,
+  潛: 57417,
+  潜: 37110,
+  潟: 35459,
+  潤: 36737,
+  潦: 57426,
+  潭: 57419,
+  潮: 37546,
+  潯: 57416,
+  潰: 37591,
+  潴: 57451,
+  潸: 57413,
+  潺: 57412,
+  潼: 57421,
+  澀: 57415,
+  澁: 57414,
+  澂: 57420,
+  澄: 37023,
+  澆: 57411,
+  澎: 57423,
+  澑: 57424,
+  澗: 35520,
+  澡: 57429,
+  澣: 57428,
+  澤: 57430,
+  澪: 57433,
+  澱: 37730,
+  澳: 57427,
+  澹: 57431,
+  激: 35971,
+  濁: 37367,
+  濂: 57425,
+  濃: 37978,
+  濆: 57432,
+  濔: 57437,
+  濕: 57435,
+  濘: 57438,
+  濛: 57441,
+  濟: 57434,
+  濠: 36234,
+  濡: 37959,
+  濤: 40887,
+  濫: 38804,
+  濬: 57436,
+  濮: 57440,
+  濯: 37363,
+  濱: 57439,
+  濳: 57418,
+  濶: 59529,
+  濺: 57444,
+  濾: 57448,
+  瀁: 57446,
+  瀉: 57442,
+  瀋: 57443,
+  瀏: 57447,
+  瀑: 57445,
+  瀕: 38253,
+  瀘: 57453,
+  瀚: 57450,
+  瀛: 57449,
+  瀝: 57452,
+  瀞: 37842,
+  瀟: 57454,
+  瀦: 37525,
+  瀧: 37355,
+  瀬: 37027,
+  瀰: 57455,
+  瀲: 57457,
+  瀾: 57456,
+  灌: 40947,
+  灑: 57458,
+  灘: 37861,
+  灣: 57459,
+  火: 35278,
+  灯: 37780,
+  灰: 35396,
+  灸: 35716,
+  灼: 36572,
+  災: 36304,
+  炉: 38982,
+  炊: 36998,
+  炎: 35210,
+  炒: 57461,
+  炙: 57460,
+  炬: 57464,
+  炭: 37465,
+  炮: 57467,
+  炯: 57462,
+  炳: 57466,
+  炸: 57465,
+  点: 37727,
+  為: 35031,
+  烈: 38899,
+  烋: 57469,
+  烏: 35143,
+  烙: 57472,
+  烝: 57470,
+  烟: 57468,
+  烱: 57463,
+  烹: 38466,
+  烽: 57474,
+  焉: 57473,
+  焔: 35211,
+  焙: 57476,
+  焚: 38320,
+  焜: 57475,
+  無: 38579,
+  焦: 36805,
+  然: 37202,
+  焼: 36804,
+  煉: 38905,
+  煌: 57482,
+  煎: 37111,
+  煕: 57478,
+  煖: 57483,
+  煙: 35212,
+  煢: 57481,
+  煤: 38017,
+  煥: 57477,
+  煦: 57480,
+  照: 36806,
+  煩: 38095,
+  煬: 57484,
+  煮: 36559,
+  煽: 37112,
+  熄: 57487,
+  熈: 57479,
+  熊: 35910,
+  熏: 57485,
+  熔: 38767,
+  熕: 57488,
+  熙: 60068,
+  熟: 36718,
+  熨: 57489,
+  熬: 57490,
+  熱: 37965,
+  熹: 57492,
+  熾: 57493,
+  燃: 37970,
+  燈: 37781,
+  燉: 57495,
+  燎: 57497,
+  燐: 38867,
+  燒: 57494,
+  燔: 57496,
+  燕: 35213,
+  燗: 57491,
+  營: 39546,
+  燠: 57498,
+  燥: 37255,
+  燦: 36439,
+  燧: 57500,
+  燬: 57499,
+  燭: 36931,
+  燮: 39383,
+  燵: 57501,
+  燹: 57503,
+  燻: 57486,
+  燼: 57502,
+  燿: 57504,
+  爆: 38042,
+  爍: 57505,
+  爐: 57506,
+  爛: 57507,
+  爨: 57508,
+  爪: 37596,
+  爬: 57510,
+  爭: 57509,
+  爰: 57511,
+  爲: 57512,
+  爵: 36573,
+  父: 38275,
+  爺: 38634,
+  爻: 57513,
+  爼: 57514,
+  爽: 37237,
+  爾: 36514,
+  爿: 57515,
+  牀: 57516,
+  牆: 57517,
+  片: 38352,
+  版: 38085,
+  牋: 57518,
+  牌: 38006,
+  牒: 37547,
+  牘: 57519,
+  牙: 35301,
+  牛: 35725,
+  牝: 38596,
+  牟: 38580,
+  牡: 35250,
+  牢: 38995,
+  牧: 38513,
+  物: 38312,
+  牲: 37045,
+  牴: 57520,
+  特: 37825,
+  牽: 36001,
+  牾: 57521,
+  犀: 36306,
+  犁: 57523,
+  犂: 57522,
+  犇: 57524,
+  犒: 57525,
+  犖: 57526,
+  犠: 35677,
+  犢: 57527,
+  犧: 57528,
+  犬: 36002,
+  犯: 38086,
+  犲: 57530,
+  状: 36851,
+  犹: 57529,
+  狂: 35766,
+  狃: 57531,
+  狄: 57533,
+  狆: 57532,
+  狎: 57534,
+  狐: 36047,
+  狒: 57535,
+  狗: 35815,
+  狙: 37215,
+  狛: 36253,
+  狠: 57537,
+  狡: 57538,
+  狢: 57536,
+  狩: 36587,
+  独: 37830,
+  狭: 35767,
+  狷: 57540,
+  狸: 37451,
+  狹: 57539,
+  狼: 38996,
+  狽: 38018,
+  猊: 57543,
+  猖: 57545,
+  猗: 57542,
+  猛: 38610,
+  猜: 57544,
+  猝: 57546,
+  猟: 38850,
+  猥: 57550,
+  猩: 57549,
+  猪: 37526,
+  猫: 37964,
+  献: 36003,
+  猯: 57548,
+  猴: 57547,
+  猶: 38736,
+  猷: 38737,
+  猾: 57551,
+  猿: 35214,
+  獄: 36246,
+  獅: 36482,
+  獎: 57552,
+  獏: 57553,
+  獗: 57555,
+  獣: 36706,
+  獨: 57557,
+  獪: 57556,
+  獰: 57558,
+  獲: 35436,
+  獵: 57560,
+  獸: 57559,
+  獺: 57562,
+  獻: 57561,
+  玄: 36026,
+  率: 38822,
+  玉: 35786,
+  王: 35236,
+  玖: 35816,
+  玩: 35551,
+  玲: 38886,
+  玳: 57564,
+  玻: 57566,
+  珀: 57567,
+  珂: 35279,
+  珈: 57563,
+  珊: 36440,
+  珍: 37567,
+  珎: 57565,
+  珞: 57570,
+  珠: 36588,
+  珥: 57568,
+  珪: 35933,
+  班: 38087,
+  珮: 57569,
+  珱: 57596,
+  珸: 57575,
+  現: 36027,
+  球: 35717,
+  琅: 57572,
+  理: 38813,
+  琉: 38830,
+  琢: 37364,
+  琥: 57574,
+  琲: 57576,
+  琳: 38868,
+  琴: 35797,
+  琵: 38138,
+  琶: 37993,
+  琺: 57577,
+  琿: 57579,
+  瑁: 57582,
+  瑕: 57578,
+  瑙: 57581,
+  瑚: 36072,
+  瑛: 35180,
+  瑜: 57583,
+  瑞: 37008,
+  瑟: 57580,
+  瑠: 38874,
+  瑣: 57586,
+  瑤: 60066,
+  瑩: 57584,
+  瑪: 57587,
+  瑯: 57573,
+  瑰: 57585,
+  瑳: 36282,
+  瑶: 57588,
+  瑾: 57589,
+  璃: 38814,
+  璋: 57590,
+  璞: 57591,
+  璢: 57571,
+  璧: 57592,
+  環: 35522,
+  璽: 36515,
+  瓊: 57593,
+  瓏: 57594,
+  瓔: 57595,
+  瓜: 35162,
+  瓠: 57664,
+  瓢: 38234,
+  瓣: 57665,
+  瓦: 35490,
+  瓧: 57666,
+  瓩: 57667,
+  瓮: 57668,
+  瓰: 57670,
+  瓱: 57671,
+  瓲: 57669,
+  瓶: 38258,
+  瓷: 57673,
+  瓸: 57672,
+  甃: 57675,
+  甄: 57674,
+  甅: 57676,
+  甌: 57677,
+  甍: 57679,
+  甎: 57678,
+  甑: 36249,
+  甓: 57681,
+  甕: 57680,
+  甘: 35523,
+  甚: 36978,
+  甜: 37723,
+  甞: 57682,
+  生: 37046,
+  産: 36441,
+  甥: 35225,
+  甦: 57683,
+  用: 38768,
+  甫: 38369,
+  甬: 57684,
+  田: 37731,
+  由: 38738,
+  甲: 36194,
+  申: 36956,
+  男: 37482,
+  甸: 39346,
+  町: 37548,
+  画: 35302,
+  甼: 57685,
+  畄: 57686,
+  畆: 57691,
+  畉: 57689,
+  畊: 57688,
+  畋: 40384,
+  界: 35397,
+  畍: 57687,
+  畏: 35032,
+  畑: 38056,
+  畔: 38088,
+  留: 38831,
+  畚: 57692,
+  畛: 57690,
+  畜: 37499,
+  畝: 37028,
+  畠: 38057,
+  畢: 38220,
+  畤: 57694,
+  略: 38826,
+  畦: 35948,
+  畧: 57695,
+  畩: 57693,
+  番: 38100,
+  畫: 57696,
+  畭: 57697,
+  異: 35033,
+  畳: 36852,
+  畴: 57702,
+  當: 57699,
+  畷: 37867,
+  畸: 57698,
+  畿: 35653,
+  疂: 57705,
+  疆: 57700,
+  疇: 57701,
+  疉: 57704,
+  疊: 57703,
+  疋: 38212,
+  疎: 37217,
+  疏: 37216,
+  疑: 35678,
+  疔: 57706,
+  疚: 57707,
+  疝: 57708,
+  疣: 57710,
+  疥: 57709,
+  疫: 35189,
+  疱: 57718,
+  疲: 38118,
+  疳: 57712,
+  疵: 57714,
+  疸: 57716,
+  疹: 36957,
+  疼: 57717,
+  疽: 57715,
+  疾: 36542,
+  痂: 57711,
+  痃: 57713,
+  病: 38241,
+  症: 36807,
+  痊: 57720,
+  痍: 57719,
+  痒: 57721,
+  痔: 36516,
+  痕: 36269,
+  痘: 37783,
+  痙: 57722,
+  痛: 37577,
+  痞: 57724,
+  痢: 38815,
+  痣: 57723,
+  痩: 37257,
+  痰: 57730,
+  痲: 57732,
+  痳: 57733,
+  痴: 37491,
+  痺: 57731,
+  痼: 57728,
+  痾: 57725,
+  痿: 57726,
+  瘁: 57729,
+  瘉: 57736,
+  瘋: 57734,
+  瘍: 57735,
+  瘟: 57737,
+  瘠: 57739,
+  瘡: 57740,
+  瘢: 57741,
+  瘤: 57742,
+  瘧: 57738,
+  瘰: 57744,
+  瘴: 57743,
+  瘻: 57745,
+  療: 38851,
+  癆: 57748,
+  癇: 57746,
+  癈: 57747,
+  癌: 35552,
+  癒: 38652,
+  癖: 38344,
+  癘: 57750,
+  癜: 57749,
+  癡: 57751,
+  癢: 57752,
+  癧: 57756,
+  癨: 57753,
+  癩: 57754,
+  癪: 57755,
+  癬: 57757,
+  癰: 57758,
+  癲: 57759,
+  癶: 57760,
+  癸: 57761,
+  発: 38061,
+  登: 37743,
+  發: 57762,
+  白: 38034,
+  百: 38227,
+  皀: 57763,
+  皃: 57764,
+  的: 37705,
+  皆: 35398,
+  皇: 36195,
+  皈: 57765,
+  皋: 57766,
+  皎: 57767,
+  皐: 36424,
+  皓: 57769,
+  皖: 57768,
+  皙: 57770,
+  皚: 57771,
+  皮: 38119,
+  皰: 57772,
+  皴: 57773,
+  皷: 60041,
+  皸: 57774,
+  皹: 57775,
+  皺: 57776,
+  皿: 36429,
+  盂: 57777,
+  盃: 38005,
+  盆: 38526,
+  盈: 35181,
+  益: 35190,
+  盍: 57778,
+  盒: 57780,
+  盖: 57779,
+  盗: 37776,
+  盛: 37047,
+  盜: 40792,
+  盞: 57781,
+  盟: 38591,
+  盡: 57782,
+  監: 35524,
+  盤: 38101,
+  盥: 57783,
+  盧: 57784,
+  盪: 57785,
+  目: 38618,
+  盲: 38611,
+  直: 37564,
+  相: 37258,
+  盻: 57787,
+  盾: 36738,
+  省: 36808,
+  眄: 57790,
+  眇: 57789,
+  眈: 57788,
+  眉: 38139,
+  看: 35525,
+  県: 36007,
+  眛: 57796,
+  眞: 57793,
+  真: 36958,
+  眠: 38576,
+  眤: 57792,
+  眥: 57794,
+  眦: 57795,
+  眩: 57791,
+  眷: 57797,
+  眸: 57798,
+  眺: 37549,
+  眼: 35553,
+  着: 37509,
+  睇: 57799,
+  睚: 57800,
+  睛: 57803,
+  睡: 36999,
+  督: 37826,
+  睥: 57804,
+  睦: 38514,
+  睨: 57801,
+  睫: 57802,
+  睹: 57807,
+  睾: 57806,
+  睿: 57805,
+  瞋: 57809,
+  瞎: 57808,
+  瞑: 57810,
+  瞞: 57812,
+  瞠: 57811,
+  瞥: 38347,
+  瞬: 36725,
+  瞭: 38852,
+  瞰: 57813,
+  瞳: 37813,
+  瞶: 57814,
+  瞹: 57815,
+  瞻: 57819,
+  瞼: 57817,
+  瞽: 57818,
+  瞿: 57816,
+  矇: 57820,
+  矍: 57821,
+  矗: 57822,
+  矚: 57823,
+  矛: 38581,
+  矜: 57824,
+  矢: 38638,
+  矣: 57825,
+  知: 37485,
+  矧: 38026,
+  矩: 35817,
+  短: 37466,
+  矮: 57826,
+  矯: 35768,
+  石: 37070,
+  矼: 57827,
+  砂: 36283,
+  砌: 57828,
+  砒: 57829,
+  研: 36004,
+  砕: 36307,
+  砠: 57831,
+  砥: 37749,
+  砦: 36308,
+  砧: 35693,
+  砲: 38467,
+  破: 37994,
+  砺: 37750,
+  砿: 36219,
+  硅: 57833,
+  硝: 36809,
+  硫: 38832,
+  硬: 36196,
+  硯: 36005,
+  硲: 38049,
+  硴: 57835,
+  硼: 57837,
+  碁: 36073,
+  碆: 57836,
+  碇: 37620,
+  碌: 57839,
+  碍: 35414,
+  碎: 57834,
+  碑: 38120,
+  碓: 35151,
+  碕: 36330,
+  碗: 39025,
+  碚: 57838,
+  碣: 57840,
+  碧: 38345,
+  碩: 37079,
+  碪: 57842,
+  碯: 57843,
+  碵: 57841,
+  確: 35437,
+  碼: 57849,
+  碾: 57848,
+  磁: 36517,
+  磅: 57850,
+  磆: 57845,
+  磊: 57851,
+  磋: 57846,
+  磐: 38102,
+  磑: 57844,
+  磔: 57847,
+  磚: 57921,
+  磧: 57920,
+  磨: 38529,
+  磬: 57852,
+  磯: 35049,
+  磴: 57923,
+  磽: 57922,
+  礁: 36810,
+  礇: 57924,
+  礎: 37218,
+  礑: 57926,
+  礒: 57925,
+  礙: 57927,
+  礦: 57830,
+  礪: 57832,
+  礫: 57929,
+  礬: 57928,
+  示: 36518,
+  礼: 38887,
+  社: 36560,
+  祀: 57930,
+  祁: 35926,
+  祇: 35679,
+  祈: 35654,
+  祉: 36483,
+  祐: 38739,
+  祓: 57936,
+  祕: 57935,
+  祖: 37219,
+  祗: 57932,
+  祚: 57934,
+  祝: 36714,
+  神: 36959,
+  祟: 57933,
+  祠: 57931,
+  祢: 37961,
+  祥: 36811,
+  票: 38235,
+  祭: 36309,
+  祷: 37784,
+  祺: 57937,
+  祿: 57938,
+  禀: 57960,
+  禁: 35798,
+  禄: 39004,
+  禅: 37204,
+  禊: 57939,
+  禍: 35280,
+  禎: 37621,
+  福: 38303,
+  禝: 57940,
+  禦: 35738,
+  禧: 57941,
+  禪: 57943,
+  禮: 57944,
+  禰: 37960,
+  禳: 57945,
+  禹: 57946,
+  禺: 57947,
+  禽: 35799,
+  禾: 35281,
+  禿: 37827,
+  秀: 36679,
+  私: 36484,
+  秉: 57948,
+  秋: 36680,
+  科: 35272,
+  秒: 38242,
+  秕: 57949,
+  秘: 38121,
+  租: 37220,
+  秡: 57952,
+  秣: 57953,
+  秤: 38025,
+  秦: 36960,
+  秧: 57950,
+  秩: 37505,
+  秬: 57951,
+  称: 36812,
+  移: 35034,
+  稀: 35656,
+  稈: 57954,
+  程: 37622,
+  稍: 57955,
+  税: 37061,
+  稔: 38571,
+  稗: 38210,
+  稘: 57956,
+  稙: 57957,
+  稚: 37492,
+  稜: 38853,
+  稟: 57959,
+  稠: 57958,
+  種: 36589,
+  稱: 57961,
+  稲: 35054,
+  稷: 57964,
+  稻: 57962,
+  稼: 35282,
+  稽: 35949,
+  稾: 57963,
+  稿: 36197,
+  穀: 36242,
+  穂: 38372,
+  穃: 57965,
+  穆: 38515,
+  穉: 57967,
+  積: 37071,
+  穎: 35182,
+  穏: 35256,
+  穐: 34986,
+  穗: 57966,
+  穡: 57968,
+  穢: 57969,
+  穣: 36853,
+  穩: 57970,
+  穫: 35438,
+  穰: 57972,
+  穴: 35978,
+  究: 35718,
+  穹: 57973,
+  空: 35827,
+  穽: 57974,
+  穿: 37114,
+  突: 37835,
+  窃: 37086,
+  窄: 36339,
+  窈: 57975,
+  窒: 37506,
+  窓: 37259,
+  窕: 57977,
+  窖: 57979,
+  窗: 57976,
+  窘: 57978,
+  窟: 35905,
+  窩: 57980,
+  窪: 35909,
+  窮: 35719,
+  窯: 38769,
+  窰: 57982,
+  窶: 57984,
+  窺: 35149,
+  窿: 57987,
+  竃: 35478,
+  竄: 57986,
+  竅: 57985,
+  竇: 57989,
+  竈: 57981,
+  竊: 57990,
+  立: 38823,
+  竍: 57991,
+  竏: 57992,
+  竒: 39666,
+  竓: 57994,
+  竕: 57993,
+  站: 57995,
+  竚: 57996,
+  竜: 38835,
+  竝: 57997,
+  竟: 59629,
+  章: 36813,
+  竡: 57998,
+  竢: 57999,
+  竣: 36726,
+  童: 37814,
+  竦: 58000,
+  竪: 37447,
+  竭: 58001,
+  端: 37467,
+  竰: 58002,
+  競: 35747,
+  竸: 39262,
+  竹: 37500,
+  竺: 36529,
+  竿: 35526,
+  笂: 58003,
+  笄: 58016,
+  笆: 58006,
+  笈: 35720,
+  笊: 58005,
+  笋: 58018,
+  笏: 58004,
+  笑: 36814,
+  笘: 58008,
+  笙: 58009,
+  笛: 37706,
+  笞: 58010,
+  笠: 35453,
+  笥: 36985,
+  符: 38276,
+  笨: 58012,
+  第: 37350,
+  笳: 58007,
+  笵: 58011,
+  笶: 58013,
+  笹: 36345,
+  筅: 58020,
+  筆: 38221,
+  筈: 38052,
+  等: 37785,
+  筋: 35800,
+  筌: 58019,
+  筍: 58017,
+  筏: 38067,
+  筐: 58014,
+  筑: 37501,
+  筒: 37787,
+  答: 37786,
+  策: 36340,
+  筝: 58038,
+  筥: 58022,
+  筧: 58024,
+  筬: 58027,
+  筮: 58028,
+  筰: 58025,
+  筱: 58026,
+  筴: 58023,
+  筵: 58021,
+  筺: 58015,
+  箆: 38349,
+  箇: 35283,
+  箋: 58035,
+  箍: 58032,
+  箏: 58037,
+  箒: 58036,
+  箔: 38035,
+  箕: 38565,
+  算: 36442,
+  箘: 58030,
+  箙: 58039,
+  箚: 58034,
+  箜: 58033,
+  箝: 58029,
+  箟: 58031,
+  管: 35527,
+  箪: 37468,
+  箭: 37115,
+  箱: 38048,
+  箴: 58044,
+  箸: 38050,
+  節: 37087,
+  篁: 58041,
+  範: 38093,
+  篆: 58045,
+  篇: 38353,
+  築: 37498,
+  篋: 58040,
+  篌: 58042,
+  篏: 58043,
+  篝: 58046,
+  篠: 36546,
+  篤: 37828,
+  篥: 58051,
+  篦: 58050,
+  篩: 58047,
+  篭: 38997,
+  篳: 58056,
+  篶: 58060,
+  篷: 58057,
+  簀: 58053,
+  簇: 58054,
+  簍: 58059,
+  簑: 58048,
+  簒: 39379,
+  簓: 58055,
+  簔: 58049,
+  簗: 58058,
+  簟: 58064,
+  簡: 35528,
+  簣: 58061,
+  簧: 58062,
+  簪: 58063,
+  簫: 58066,
+  簷: 58065,
+  簸: 38132,
+  簽: 58067,
+  簾: 38906,
+  簿: 38379,
+  籀: 58072,
+  籃: 58069,
+  籌: 58068,
+  籍: 37072,
+  籏: 58071,
+  籐: 58073,
+  籔: 58070,
+  籖: 58077,
+  籘: 58074,
+  籟: 58075,
+  籠: 58052,
+  籤: 58076,
+  籥: 58078,
+  籬: 58079,
+  米: 38340,
+  籵: 58080,
+  籾: 38624,
+  粁: 35788,
+  粂: 35912,
+  粃: 58081,
+  粉: 38322,
+  粋: 37000,
+  粍: 38574,
+  粐: 58082,
+  粒: 38833,
+  粕: 38036,
+  粗: 37221,
+  粘: 37971,
+  粛: 36716,
+  粟: 35006,
+  粡: 58087,
+  粢: 58085,
+  粤: 58083,
+  粥: 35487,
+  粧: 36815,
+  粨: 58088,
+  粫: 58086,
+  粭: 58084,
+  粮: 58092,
+  粱: 58091,
+  粲: 58090,
+  粳: 58089,
+  粹: 58093,
+  粽: 58094,
+  精: 37048,
+  糀: 58095,
+  糂: 58097,
+  糅: 58096,
+  糊: 36048,
+  糎: 37207,
+  糒: 58099,
+  糖: 37788,
+  糘: 58098,
+  糜: 58100,
+  糞: 38323,
+  糟: 37260,
+  糠: 36198,
+  糢: 58101,
+  糧: 38854,
+  糯: 58103,
+  糲: 58104,
+  糴: 58105,
+  糶: 58106,
+  糸: 36485,
+  糺: 58107,
+  系: 35950,
+  糾: 35722,
+  紀: 35657,
+  紂: 58176,
+  約: 38641,
+  紅: 36199,
+  紆: 58108,
+  紊: 58179,
+  紋: 38628,
+  納: 37979,
+  紐: 38226,
+  純: 36739,
+  紕: 58178,
+  紗: 36561,
+  紘: 36200,
+  紙: 36486,
+  級: 35721,
+  紛: 38324,
+  紜: 58177,
+  素: 37222,
+  紡: 38497,
+  索: 36341,
+  紫: 36487,
+  紬: 37595,
+  紮: 58182,
+  累: 38877,
+  細: 36311,
+  紲: 58183,
+  紳: 36961,
+  紵: 58185,
+  紹: 36816,
+  紺: 36270,
+  紿: 58184,
+  終: 36681,
+  絃: 36028,
+  組: 37223,
+  絅: 58180,
+  絆: 58186,
+  絋: 58181,
+  経: 35951,
+  絎: 58189,
+  絏: 58193,
+  結: 35979,
+  絖: 58188,
+  絛: 58197,
+  絞: 36201,
+  絡: 38797,
+  絢: 35002,
+  絣: 58194,
+  給: 35723,
+  絨: 58191,
+  絮: 58192,
+  統: 37789,
+  絲: 58190,
+  絳: 58187,
+  絵: 35399,
+  絶: 37090,
+  絹: 36006,
+  絽: 58199,
+  綉: 58196,
+  綏: 58198,
+  經: 58195,
+  継: 35952,
+  続: 37297,
+  綛: 58200,
+  綜: 37262,
+  綟: 58213,
+  綢: 58209,
+  綣: 58203,
+  綫: 58207,
+  綬: 36600,
+  維: 35035,
+  綮: 58202,
+  綯: 58210,
+  綰: 58214,
+  綱: 36202,
+  網: 38612,
+  綴: 37588,
+  綵: 58204,
+  綸: 58212,
+  綺: 58201,
+  綻: 37469,
+  綽: 58206,
+  綾: 35003,
+  綿: 38600,
+  緇: 58205,
+  緊: 35801,
+  緋: 38122,
+  総: 37261,
+  緑: 38862,
+  緒: 36751,
+  緕: 58254,
+  緘: 58215,
+  線: 37116,
+  緜: 58211,
+  緝: 58216,
+  緞: 58218,
+  締: 37623,
+  緡: 58221,
+  緤: 58217,
+  編: 38354,
+  緩: 35529,
+  緬: 38601,
+  緯: 35036,
+  緲: 58220,
+  練: 38907,
+  緻: 58219,
+  縁: 35215,
+  縄: 37866,
+  縅: 58222,
+  縉: 58229,
+  縊: 58223,
+  縋: 58230,
+  縒: 58226,
+  縛: 38043,
+  縞: 36552,
+  縟: 58228,
+  縡: 58225,
+  縢: 58231,
+  縣: 58224,
+  縦: 36707,
+  縫: 38468,
+  縮: 36715,
+  縱: 58227,
+  縲: 58240,
+  縵: 58235,
+  縷: 58238,
+  縹: 58236,
+  縺: 58241,
+  縻: 58234,
+  總: 58208,
+  績: 37073,
+  繁: 38089,
+  繃: 58237,
+  繆: 58232,
+  繊: 37184,
+  繋: 35953,
+  繍: 36682,
+  織: 36932,
+  繕: 37205,
+  繖: 58244,
+  繙: 58246,
+  繚: 58247,
+  繝: 58243,
+  繞: 58245,
+  繦: 58233,
+  繧: 58242,
+  繩: 58250,
+  繪: 58249,
+  繭: 38554,
+  繰: 35914,
+  繹: 58248,
+  繻: 58252,
+  繼: 58251,
+  繽: 58255,
+  繿: 58257,
+  纂: 36443,
+  纃: 58253,
+  纈: 58258,
+  纉: 58259,
+  續: 58260,
+  纎: 58266,
+  纏: 37722,
+  纐: 58262,
+  纒: 58261,
+  纓: 58263,
+  纔: 58264,
+  纖: 58265,
+  纛: 58267,
+  纜: 58268,
+  缶: 35530,
+  缸: 58269,
+  缺: 58270,
+  罅: 58271,
+  罌: 58272,
+  罍: 58273,
+  罎: 58274,
+  罐: 58275,
+  网: 58276,
+  罔: 58278,
+  罕: 58277,
+  罘: 58279,
+  罟: 58280,
+  罠: 58281,
+  罧: 58284,
+  罨: 58282,
+  罩: 58283,
+  罪: 36319,
+  罫: 35954,
+  置: 37493,
+  罰: 38065,
+  署: 36752,
+  罵: 37996,
+  罷: 38123,
+  罸: 58285,
+  罹: 40171,
+  羂: 58286,
+  羃: 58288,
+  羅: 38789,
+  羆: 58287,
+  羇: 58290,
+  羈: 58289,
+  羊: 38770,
+  羌: 58291,
+  美: 38140,
+  羔: 58292,
+  羚: 58295,
+  羝: 58294,
+  羞: 58293,
+  羣: 58296,
+  群: 35921,
+  羨: 37185,
+  義: 35680,
+  羮: 58300,
+  羯: 58297,
+  羲: 58298,
+  羶: 58301,
+  羸: 58302,
+  羹: 58299,
+  羽: 35144,
+  翁: 35237,
+  翅: 58304,
+  翆: 58305,
+  翊: 58306,
+  翌: 38786,
+  習: 36683,
+  翔: 58308,
+  翕: 58307,
+  翠: 37001,
+  翡: 58309,
+  翦: 58310,
+  翩: 58311,
+  翫: 35555,
+  翰: 35531,
+  翳: 58312,
+  翹: 58313,
+  翻: 38524,
+  翼: 38787,
+  耀: 38771,
+  老: 38998,
+  考: 36204,
+  耄: 58316,
+  者: 36562,
+  耆: 58315,
+  耋: 58317,
+  而: 36519,
+  耐: 37327,
+  耒: 58318,
+  耕: 36203,
+  耗: 38613,
+  耘: 58319,
+  耙: 58320,
+  耜: 58321,
+  耡: 58322,
+  耨: 58323,
+  耳: 36520,
+  耶: 38635,
+  耻: 58325,
+  耽: 37470,
+  耿: 58324,
+  聆: 58327,
+  聊: 58326,
+  聒: 58328,
+  聖: 37049,
+  聘: 58329,
+  聚: 58330,
+  聞: 38327,
+  聟: 58331,
+  聡: 37263,
+  聢: 58332,
+  聨: 58333,
+  聯: 38908,
+  聰: 58336,
+  聲: 58335,
+  聳: 58334,
+  聴: 37550,
+  聶: 58337,
+  職: 36933,
+  聹: 58338,
+  聽: 58339,
+  聾: 38999,
+  聿: 58340,
+  肄: 58341,
+  肅: 58343,
+  肆: 58342,
+  肇: 38051,
+  肉: 37879,
+  肋: 39005,
+  肌: 38055,
+  肓: 58345,
+  肖: 36817,
+  肘: 38217,
+  肚: 58346,
+  肛: 58344,
+  肝: 35532,
+  股: 36050,
+  肢: 36488,
+  肥: 38124,
+  肩: 36008,
+  肪: 38498,
+  肬: 58349,
+  肭: 58347,
+  肯: 36205,
+  肱: 36206,
+  育: 35047,
+  肴: 36326,
+  肺: 38008,
+  胃: 35037,
+  胄: 58354,
+  胆: 37471,
+  背: 38007,
+  胎: 37337,
+  胖: 58356,
+  胙: 58352,
+  胚: 58355,
+  胛: 58350,
+  胝: 58353,
+  胞: 38469,
+  胡: 36051,
+  胤: 35067,
+  胥: 58351,
+  胯: 58358,
+  胱: 58359,
+  胴: 37815,
+  胸: 35769,
+  胼: 58437,
+  能: 37980,
+  脂: 36489,
+  脅: 35770,
+  脆: 37062,
+  脇: 39013,
+  脈: 38572,
+  脉: 58357,
+  脊: 37074,
+  脚: 35698,
+  脛: 58360,
+  脣: 58362,
+  脩: 58361,
+  脯: 58363,
+  脱: 37445,
+  脳: 37981,
+  脹: 37551,
+  脾: 58434,
+  腆: 58433,
+  腋: 58364,
+  腎: 36980,
+  腐: 38277,
+  腑: 58436,
+  腓: 58435,
+  腔: 36207,
+  腕: 39026,
+  腟: 58452,
+  腥: 58440,
+  腦: 58441,
+  腫: 36590,
+  腮: 58439,
+  腰: 36248,
+  腱: 58438,
+  腴: 58442,
+  腸: 37552,
+  腹: 38304,
+  腺: 37186,
+  腿: 37338,
+  膀: 58446,
+  膂: 58447,
+  膃: 58443,
+  膈: 58444,
+  膊: 58445,
+  膏: 36208,
+  膓: 58453,
+  膕: 58449,
+  膚: 38278,
+  膜: 38540,
+  膝: 38215,
+  膠: 58448,
+  膣: 58451,
+  膤: 58450,
+  膨: 38499,
+  膩: 58454,
+  膰: 58455,
+  膳: 37206,
+  膵: 58456,
+  膸: 58458,
+  膺: 58462,
+  膽: 58459,
+  膾: 58457,
+  膿: 37982,
+  臀: 58460,
+  臂: 58461,
+  臆: 35248,
+  臈: 58468,
+  臉: 58463,
+  臍: 58464,
+  臑: 58465,
+  臓: 37279,
+  臘: 58467,
+  臙: 58466,
+  臚: 58469,
+  臟: 58470,
+  臠: 58471,
+  臣: 36962,
+  臥: 35303,
+  臧: 58472,
+  臨: 38869,
+  自: 36521,
+  臭: 36684,
+  至: 36490,
+  致: 37494,
+  臺: 58473,
+  臻: 58474,
+  臼: 35152,
+  臾: 58475,
+  舁: 58476,
+  舂: 58477,
+  舅: 58478,
+  與: 58479,
+  興: 35771,
+  舉: 40360,
+  舊: 58480,
+  舌: 37091,
+  舍: 58481,
+  舎: 36553,
+  舐: 58482,
+  舒: 39086,
+  舖: 58483,
+  舗: 38364,
+  舘: 35546,
+  舛: 37187,
+  舜: 36727,
+  舞: 38289,
+  舟: 36685,
+  舩: 58484,
+  航: 36209,
+  舫: 58485,
+  般: 38090,
+  舮: 58500,
+  舳: 58487,
+  舵: 37319,
+  舶: 38037,
+  舷: 36029,
+  舸: 58486,
+  船: 37188,
+  艀: 58488,
+  艇: 37624,
+  艘: 58490,
+  艙: 58489,
+  艚: 58492,
+  艝: 58491,
+  艟: 58493,
+  艢: 58496,
+  艤: 58494,
+  艦: 35533,
+  艨: 58497,
+  艪: 58498,
+  艫: 58499,
+  艮: 36271,
+  良: 38855,
+  艱: 58501,
+  色: 36934,
+  艶: 35216,
+  艷: 58502,
+  艸: 58503,
+  艾: 58504,
+  芋: 35056,
+  芍: 58505,
+  芒: 58506,
+  芙: 38279,
+  芝: 36549,
+  芟: 58508,
+  芥: 35400,
+  芦: 34992,
+  芫: 58507,
+  芬: 58510,
+  芭: 37997,
+  芯: 36963,
+  花: 35284,
+  芳: 38470,
+  芸: 35964,
+  芹: 35802,
+  芻: 58509,
+  芽: 35304,
+  苅: 35489,
+  苑: 35217,
+  苒: 58514,
+  苓: 38888,
+  苔: 37339,
+  苗: 38243,
+  苙: 58526,
+  苛: 35285,
+  苜: 58524,
+  苞: 58522,
+  苟: 58513,
+  苡: 58511,
+  苣: 58512,
+  若: 36577,
+  苦: 35818,
+  苧: 37527,
+  苫: 37839,
+  英: 35184,
+  苳: 58516,
+  苴: 58515,
+  苹: 58521,
+  苺: 58517,
+  苻: 58520,
+  茂: 38606,
+  范: 58519,
+  茄: 35286,
+  茅: 35485,
+  茆: 58523,
+  茉: 58525,
+  茎: 35955,
+  茖: 58529,
+  茗: 58538,
+  茘: 58539,
+  茜: 34985,
+  茣: 58546,
+  茨: 35055,
+  茫: 58537,
+  茯: 58536,
+  茱: 58531,
+  茲: 58530,
+  茴: 58528,
+  茵: 58527,
+  茶: 37507,
+  茸: 37369,
+  茹: 58533,
+  荀: 58532,
+  荅: 58535,
+  草: 37264,
+  荊: 35956,
+  荏: 35168,
+  荐: 58534,
+  荒: 36210,
+  荘: 37265,
+  荳: 58552,
+  荵: 58553,
+  荷: 35287,
+  荻: 35244,
+  荼: 58550,
+  莅: 58540,
+  莇: 58548,
+  莉: 58555,
+  莊: 58549,
+  莎: 58547,
+  莓: 58518,
+  莖: 58545,
+  莚: 58541,
+  莞: 35534,
+  莟: 58543,
+  莠: 58554,
+  莢: 58544,
+  莨: 58556,
+  莪: 58542,
+  莫: 38044,
+  莱: 38793,
+  莵: 58551,
+  莽: 58573,
+  菁: 58565,
+  菅: 37019,
+  菊: 35685,
+  菌: 35803,
+  菎: 58560,
+  菓: 35289,
+  菖: 36818,
+  菘: 58563,
+  菜: 36312,
+  菟: 37744,
+  菠: 58568,
+  菩: 38380,
+  菫: 58559,
+  華: 35288,
+  菰: 36052,
+  菱: 38216,
+  菲: 58569,
+  菴: 58557,
+  菷: 58566,
+  菻: 58576,
+  菽: 58561,
+  萃: 58562,
+  萄: 37816,
+  萇: 58567,
+  萋: 58564,
+  萌: 38471,
+  萍: 58570,
+  萎: 35038,
+  萓: 58558,
+  萠: 58572,
+  萢: 58571,
+  萩: 38027,
+  萪: 58578,
+  萬: 58589,
+  萱: 35486,
+  萵: 58592,
+  萸: 58574,
+  萼: 58579,
+  落: 38798,
+  葆: 58588,
+  葉: 38772,
+  葎: 38824,
+  著: 37528,
+  葛: 35467,
+  葡: 38290,
+  葢: 58594,
+  董: 37791,
+  葦: 34991,
+  葩: 58587,
+  葫: 58583,
+  葬: 37266,
+  葭: 58577,
+  葮: 58585,
+  葯: 58590,
+  葱: 37963,
+  葵: 34984,
+  葷: 58582,
+  葹: 58591,
+  葺: 38296,
+  蒂: 58586,
+  蒄: 58581,
+  蒋: 36819,
+  蒐: 36686,
+  蒔: 36522,
+  蒙: 38614,
+  蒜: 38246,
+  蒟: 58597,
+  蒡: 58606,
+  蒭: 58584,
+  蒲: 35479,
+  蒸: 36854,
+  蒹: 58595,
+  蒻: 58600,
+  蒼: 37267,
+  蒿: 58596,
+  蓁: 58603,
+  蓄: 37502,
+  蓆: 58604,
+  蓉: 38773,
+  蓊: 58593,
+  蓋: 35415,
+  蓍: 58599,
+  蓐: 58602,
+  蓑: 38570,
+  蓖: 58605,
+  蓙: 58598,
+  蓚: 58601,
+  蓬: 38472,
+  蓮: 38976,
+  蓴: 58609,
+  蓼: 58616,
+  蓿: 58608,
+  蔀: 36545,
+  蔆: 58575,
+  蔑: 38348,
+  蔓: 38560,
+  蔔: 58615,
+  蔕: 58614,
+  蔗: 58610,
+  蔘: 58611,
+  蔚: 35157,
+  蔟: 58613,
+  蔡: 58607,
+  蔦: 37587,
+  蔬: 58612,
+  蔭: 35068,
+  蔵: 37280,
+  蔽: 38337,
+  蕀: 58617,
+  蕁: 58688,
+  蕃: 38103,
+  蕈: 58620,
+  蕉: 36820,
+  蕊: 36551,
+  蕋: 58690,
+  蕎: 35772,
+  蕕: 58691,
+  蕗: 38297,
+  蕘: 58619,
+  蕚: 58580,
+  蕣: 58618,
+  蕨: 39022,
+  蕩: 37792,
+  蕪: 38291,
+  蕭: 58698,
+  蕷: 58704,
+  蕾: 58705,
+  薀: 58692,
+  薄: 38038,
+  薇: 58702,
+  薈: 58694,
+  薊: 58696,
+  薐: 58706,
+  薑: 58695,
+  薔: 58699,
+  薗: 35218,
+  薙: 37859,
+  薛: 58700,
+  薜: 58703,
+  薤: 58693,
+  薦: 37189,
+  薨: 58697,
+  薩: 36422,
+  薪: 36964,
+  薫: 35919,
+  薬: 38642,
+  薮: 38647,
+  薯: 36754,
+  薹: 58710,
+  薺: 58708,
+  藁: 39021,
+  藉: 58707,
+  藍: 38805,
+  藏: 58709,
+  藐: 58711,
+  藕: 58712,
+  藜: 58715,
+  藝: 58713,
+  藤: 37793,
+  藥: 58714,
+  藩: 38091,
+  藪: 58701,
+  藷: 36755,
+  藹: 58716,
+  藺: 58721,
+  藻: 37268,
+  藾: 58720,
+  蘂: 58689,
+  蘆: 58722,
+  蘇: 37224,
+  蘊: 58717,
+  蘋: 58719,
+  蘓: 58718,
+  蘖: 40784,
+  蘗: 40769,
+  蘚: 58724,
+  蘢: 58723,
+  蘭: 38806,
+  蘯: 57786,
+  蘰: 58725,
+  蘿: 58726,
+  虍: 58727,
+  虎: 36053,
+  虐: 35699,
+  虔: 58729,
+  處: 39292,
+  虚: 35733,
+  虜: 38840,
+  虞: 35825,
+  號: 58730,
+  虧: 58731,
+  虫: 37518,
+  虱: 58732,
+  虹: 37880,
+  虻: 35000,
+  蚊: 35297,
+  蚋: 58737,
+  蚌: 58738,
+  蚓: 58733,
+  蚕: 36444,
+  蚣: 58734,
+  蚤: 37985,
+  蚩: 58735,
+  蚪: 58736,
+  蚫: 58746,
+  蚯: 58740,
+  蚰: 58743,
+  蚶: 58739,
+  蛄: 58741,
+  蛆: 58742,
+  蛇: 36566,
+  蛉: 58744,
+  蛋: 37472,
+  蛍: 35957,
+  蛎: 35425,
+  蛔: 58747,
+  蛙: 35422,
+  蛛: 58753,
+  蛞: 58748,
+  蛟: 58752,
+  蛤: 38072,
+  蛩: 58749,
+  蛬: 58750,
+  蛭: 38247,
+  蛮: 38104,
+  蛯: 58754,
+  蛸: 37371,
+  蛹: 58764,
+  蛻: 58760,
+  蛾: 35305,
+  蜀: 58758,
+  蜂: 38473,
+  蜃: 58759,
+  蜆: 58756,
+  蜈: 58757,
+  蜉: 58762,
+  蜊: 58765,
+  蜍: 58763,
+  蜑: 58761,
+  蜒: 58755,
+  蜘: 37495,
+  蜚: 58772,
+  蜜: 38568,
+  蜥: 58770,
+  蜩: 58771,
+  蜴: 58766,
+  蜷: 58768,
+  蜻: 58769,
+  蜿: 58767,
+  蝉: 37092,
+  蝋: 39000,
+  蝌: 58776,
+  蝎: 58777,
+  蝓: 58783,
+  蝕: 36937,
+  蝗: 58779,
+  蝙: 58782,
+  蝟: 58774,
+  蝠: 58773,
+  蝣: 58784,
+  蝦: 35290,
+  蝨: 58780,
+  蝪: 58785,
+  蝮: 58781,
+  蝴: 58778,
+  蝶: 37553,
+  蝸: 58775,
+  蝿: 38024,
+  螂: 58789,
+  融: 38746,
+  螟: 58788,
+  螢: 58787,
+  螫: 58796,
+  螯: 58790,
+  螳: 58798,
+  螺: 38790,
+  螻: 58801,
+  螽: 58792,
+  蟀: 58793,
+  蟄: 58797,
+  蟆: 58800,
+  蟇: 58799,
+  蟋: 58791,
+  蟐: 58794,
+  蟒: 58811,
+  蟠: 58804,
+  蟯: 58802,
+  蟲: 58803,
+  蟶: 58808,
+  蟷: 58809,
+  蟹: 35401,
+  蟻: 35681,
+  蟾: 58807,
+  蠅: 58786,
+  蠍: 58806,
+  蠎: 58810,
+  蠏: 58805,
+  蠑: 58812,
+  蠕: 58814,
+  蠖: 58813,
+  蠡: 58816,
+  蠢: 58815,
+  蠣: 58745,
+  蠧: 58820,
+  蠱: 58817,
+  蠶: 58818,
+  蠹: 58819,
+  蠻: 58821,
+  血: 35980,
+  衂: 58823,
+  衄: 58822,
+  衆: 36687,
+  行: 36211,
+  衍: 40869,
+  衒: 58824,
+  術: 36720,
+  街: 35416,
+  衙: 58825,
+  衛: 35185,
+  衝: 36821,
+  衞: 58826,
+  衡: 36212,
+  衢: 58827,
+  衣: 35039,
+  表: 38236,
+  衫: 58828,
+  衰: 37002,
+  衲: 58835,
+  衵: 58832,
+  衷: 37519,
+  衽: 58833,
+  衾: 58830,
+  衿: 35804,
+  袁: 58829,
+  袂: 58836,
+  袈: 35925,
+  袋: 37340,
+  袍: 58842,
+  袒: 58838,
+  袖: 37299,
+  袗: 58837,
+  袙: 58840,
+  袞: 58831,
+  袢: 58841,
+  袤: 58843,
+  被: 38125,
+  袮: 58839,
+  袰: 58844,
+  袱: 58846,
+  袴: 36049,
+  袵: 58834,
+  袷: 35007,
+  袿: 58845,
+  裁: 36313,
+  裂: 38900,
+  裃: 58847,
+  裄: 58848,
+  装: 37269,
+  裏: 38816,
+  裔: 58849,
+  裕: 38740,
+  裘: 58850,
+  裙: 58851,
+  補: 38370,
+  裝: 58852,
+  裟: 36286,
+  裡: 38817,
+  裨: 58857,
+  裲: 58858,
+  裳: 36822,
+  裴: 58856,
+  裸: 38791,
+  裹: 58853,
+  裼: 58855,
+  製: 37051,
+  裾: 37022,
+  褂: 58854,
+  褄: 58859,
+  複: 38305,
+  褊: 58861,
+  褌: 58860,
+  褐: 35468,
+  褒: 38474,
+  褓: 58862,
+  褝: 58874,
+  褞: 58864,
+  褥: 58865,
+  褪: 58866,
+  褫: 58867,
+  褶: 58871,
+  褸: 58872,
+  褻: 58870,
+  襁: 58868,
+  襃: 58863,
+  襄: 58869,
+  襌: 58873,
+  襍: 59573,
+  襖: 35238,
+  襞: 58876,
+  襟: 35805,
+  襠: 58875,
+  襤: 58945,
+  襦: 58944,
+  襪: 58947,
+  襭: 58946,
+  襯: 58948,
+  襲: 36688,
+  襴: 58949,
+  襷: 58950,
+  襾: 58951,
+  西: 37052,
+  要: 38774,
+  覃: 58952,
+  覆: 38306,
+  覇: 37989,
+  覈: 58953,
+  覊: 58954,
+  見: 36009,
+  規: 35659,
+  覓: 58955,
+  視: 36491,
+  覗: 37984,
+  覘: 58956,
+  覚: 35439,
+  覡: 58957,
+  覦: 58959,
+  覧: 38807,
+  覩: 58958,
+  親: 36965,
+  覬: 58960,
+  覯: 58961,
+  覲: 58962,
+  観: 35535,
+  覺: 58963,
+  覽: 58964,
+  覿: 58965,
+  觀: 58966,
+  角: 35440,
+  觚: 58967,
+  觜: 58968,
+  觝: 58969,
+  解: 35312,
+  触: 36935,
+  觧: 58970,
+  觴: 58971,
+  觸: 58972,
+  言: 36030,
+  訂: 37625,
+  訃: 58973,
+  計: 35958,
+  訊: 36981,
+  訌: 58976,
+  討: 37794,
+  訐: 58975,
+  訓: 35920,
+  訖: 58974,
+  託: 37365,
+  記: 35660,
+  訛: 58977,
+  訝: 58978,
+  訟: 36823,
+  訣: 35981,
+  訥: 58979,
+  訪: 38475,
+  設: 37085,
+  許: 35734,
+  訳: 38643,
+  訴: 37225,
+  訶: 58980,
+  診: 36966,
+  註: 37520,
+  証: 36824,
+  詁: 58981,
+  詆: 58984,
+  詈: 58985,
+  詐: 36284,
+  詑: 37312,
+  詒: 58983,
+  詔: 36825,
+  評: 38237,
+  詛: 58982,
+  詞: 36492,
+  詠: 35186,
+  詢: 58989,
+  詣: 35959,
+  試: 36494,
+  詩: 36493,
+  詫: 39020,
+  詬: 58988,
+  詭: 58987,
+  詮: 37190,
+  詰: 35692,
+  話: 39010,
+  該: 35417,
+  詳: 36826,
+  詼: 58986,
+  誂: 58991,
+  誄: 58992,
+  誅: 58990,
+  誇: 36054,
+  誉: 38751,
+  誌: 36495,
+  認: 37958,
+  誑: 58995,
+  誓: 37054,
+  誕: 37473,
+  誘: 38741,
+  誚: 58998,
+  語: 36074,
+  誠: 37053,
+  誡: 58994,
+  誣: 58999,
+  誤: 36075,
+  誥: 58996,
+  誦: 58997,
+  誨: 58993,
+  説: 37088,
+  読: 37831,
+  誰: 37454,
+  課: 35291,
+  誹: 38126,
+  誼: 35682,
+  調: 37554,
+  諂: 59002,
+  諄: 59000,
+  談: 37483,
+  請: 37055,
+  諌: 35536,
+  諍: 59001,
+  諏: 36986,
+  諒: 38856,
+  論: 39007,
+  諚: 59003,
+  諛: 59015,
+  諜: 37555,
+  諞: 59014,
+  諠: 59011,
+  諡: 59019,
+  諢: 59012,
+  諤: 59008,
+  諦: 37626,
+  諧: 59006,
+  諫: 59004,
+  諭: 38720,
+  諮: 36496,
+  諱: 59009,
+  諳: 59005,
+  諷: 59013,
+  諸: 36756,
+  諺: 36031,
+  諾: 37368,
+  謀: 38500,
+  謁: 35193,
+  謂: 35040,
+  謄: 37795,
+  謇: 59017,
+  謌: 59016,
+  謎: 37860,
+  謐: 59021,
+  謔: 59010,
+  謖: 59020,
+  謗: 59022,
+  謙: 36010,
+  謚: 59018,
+  講: 36213,
+  謝: 36563,
+  謠: 59023,
+  謡: 38775,
+  謦: 59026,
+  謨: 59029,
+  謫: 59027,
+  謬: 38228,
+  謳: 59024,
+  謹: 35806,
+  謾: 59028,
+  譁: 59030,
+  證: 59034,
+  譌: 59031,
+  譎: 59033,
+  譏: 59032,
+  譖: 59035,
+  識: 36527,
+  譚: 59037,
+  譛: 59036,
+  譜: 38280,
+  譟: 59039,
+  警: 35960,
+  譫: 59038,
+  譬: 59040,
+  譯: 59041,
+  議: 35683,
+  譱: 58303,
+  譲: 36855,
+  譴: 59042,
+  護: 36076,
+  譽: 59043,
+  讀: 59044,
+  讃: 36445,
+  變: 40396,
+  讌: 59045,
+  讎: 59046,
+  讐: 36689,
+  讒: 59047,
+  讓: 59048,
+  讖: 59049,
+  讙: 59050,
+  讚: 59051,
+  谷: 37450,
+  谺: 59052,
+  谿: 59054,
+  豁: 59053,
+  豆: 37796,
+  豈: 59055,
+  豊: 38476,
+  豌: 59056,
+  豎: 59057,
+  豐: 59058,
+  豕: 59059,
+  豚: 37848,
+  象: 36827,
+  豢: 59060,
+  豪: 36235,
+  豫: 39084,
+  豬: 59061,
+  豸: 59062,
+  豹: 38238,
+  豺: 59063,
+  豼: 59071,
+  貂: 59064,
+  貅: 59066,
+  貉: 59065,
+  貊: 59067,
+  貌: 38501,
+  貍: 59068,
+  貎: 59069,
+  貔: 59070,
+  貘: 59072,
+  貝: 35404,
+  貞: 37605,
+  負: 38281,
+  財: 36320,
+  貢: 36214,
+  貧: 38254,
+  貨: 35293,
+  販: 38092,
+  貪: 59075,
+  貫: 35537,
+  責: 37075,
+  貭: 59074,
+  貮: 59079,
+  貯: 37529,
+  貰: 38625,
+  貲: 59077,
+  貳: 59078,
+  貴: 35661,
+  貶: 59080,
+  買: 38019,
+  貸: 37341,
+  費: 38127,
+  貼: 37724,
+  貽: 59076,
+  貿: 38502,
+  賀: 35306,
+  賁: 59082,
+  賂: 38983,
+  賃: 37568,
+  賄: 39012,
+  資: 36497,
+  賈: 59081,
+  賊: 37295,
+  賍: 59098,
+  賎: 37191,
+  賑: 37878,
+  賓: 38255,
+  賚: 59085,
+  賛: 36446,
+  賜: 36498,
+  賞: 36828,
+  賠: 38021,
+  賢: 36011,
+  賣: 59084,
+  賤: 59083,
+  賦: 38282,
+  質: 36543,
+  賭: 37745,
+  賺: 59087,
+  賻: 59088,
+  購: 36215,
+  賽: 59086,
+  贄: 59089,
+  贅: 59090,
+  贇: 59092,
+  贈: 37281,
+  贊: 59091,
+  贋: 35556,
+  贍: 59094,
+  贏: 59093,
+  贐: 59095,
+  贓: 59097,
+  贔: 59099,
+  贖: 59100,
+  赤: 37076,
+  赦: 36557,
+  赧: 59101,
+  赫: 35441,
+  赭: 59102,
+  走: 37270,
+  赱: 59103,
+  赳: 59104,
+  赴: 38283,
+  起: 35662,
+  趁: 59105,
+  超: 37556,
+  越: 35194,
+  趙: 59106,
+  趣: 36591,
+  趨: 37014,
+  足: 37291,
+  趺: 59109,
+  趾: 59108,
+  跂: 59107,
+  跋: 59115,
+  跌: 59113,
+  跏: 59110,
+  跖: 59112,
+  跚: 59111,
+  跛: 59114,
+  距: 35735,
+  跟: 59118,
+  跡: 37077,
+  跣: 59119,
+  跨: 36055,
+  跪: 59116,
+  跫: 59117,
+  路: 38984,
+  跳: 37557,
+  践: 37192,
+  跼: 59120,
+  跿: 59123,
+  踈: 59121,
+  踉: 59122,
+  踊: 38776,
+  踏: 37797,
+  踐: 59126,
+  踝: 59124,
+  踞: 59125,
+  踟: 59127,
+  踪: 59208,
+  踰: 59130,
+  踴: 59131,
+  踵: 59129,
+  蹂: 59128,
+  蹄: 37627,
+  蹇: 59200,
+  蹈: 59204,
+  蹉: 59201,
+  蹊: 59132,
+  蹌: 59202,
+  蹐: 59203,
+  蹕: 59210,
+  蹙: 59205,
+  蹟: 37078,
+  蹠: 59207,
+  蹣: 59209,
+  蹤: 59206,
+  蹲: 59212,
+  蹴: 36690,
+  蹶: 59211,
+  蹼: 59213,
+  躁: 59214,
+  躄: 59217,
+  躅: 59216,
+  躇: 59215,
+  躊: 59219,
+  躋: 59218,
+  躍: 38644,
+  躑: 59221,
+  躓: 59220,
+  躔: 59222,
+  躙: 59223,
+  躡: 59225,
+  躪: 59224,
+  身: 36967,
+  躬: 59226,
+  躯: 35819,
+  躰: 59227,
+  躱: 59229,
+  躾: 59230,
+  軅: 59231,
+  軆: 59228,
+  軈: 59232,
+  車: 36564,
+  軋: 59233,
+  軌: 35663,
+  軍: 35922,
+  軒: 36012,
+  軛: 59234,
+  軟: 37870,
+  転: 37725,
+  軣: 59235,
+  軫: 59238,
+  軸: 36530,
+  軻: 59237,
+  軼: 59236,
+  軽: 35961,
+  軾: 59239,
+  較: 35442,
+  輅: 59241,
+  載: 36314,
+  輊: 59240,
+  輌: 59249,
+  輒: 59243,
+  輓: 59245,
+  輔: 38371,
+  輕: 59242,
+  輙: 59244,
+  輛: 59248,
+  輜: 59246,
+  輝: 35664,
+  輟: 59247,
+  輦: 59250,
+  輩: 38009,
+  輪: 38870,
+  輯: 36691,
+  輳: 59251,
+  輸: 38721,
+  輹: 59253,
+  輻: 59252,
+  輾: 59256,
+  輿: 38752,
+  轂: 59255,
+  轄: 35469,
+  轅: 59254,
+  轆: 59259,
+  轉: 59258,
+  轌: 59257,
+  轍: 37713,
+  轎: 59260,
+  轗: 59261,
+  轜: 59262,
+  轟: 36236,
+  轡: 35908,
+  轢: 59264,
+  轣: 59265,
+  轤: 59266,
+  辛: 36968,
+  辜: 59267,
+  辞: 36523,
+  辟: 59268,
+  辣: 59269,
+  辧: 39327,
+  辨: 39326,
+  辭: 59270,
+  辮: 58256,
+  辯: 59271,
+  辰: 37443,
+  辱: 36938,
+  農: 37983,
+  辷: 59272,
+  辺: 38355,
+  辻: 37586,
+  込: 36254,
+  辿: 37448,
+  迂: 35145,
+  迄: 38552,
+  迅: 36982,
+  迎: 35965,
+  近: 35807,
+  返: 38356,
+  迚: 59273,
+  迢: 59275,
+  迥: 59274,
+  迦: 35294,
+  迩: 37876,
+  迪: 59276,
+  迫: 38039,
+  迭: 37714,
+  迯: 59277,
+  述: 36721,
+  迴: 59279,
+  迷: 38592,
+  迸: 59294,
+  迹: 59281,
+  迺: 59282,
+  追: 37575,
+  退: 37342,
+  送: 37271,
+  逃: 37798,
+  逅: 59280,
+  逆: 35700,
+  逋: 59289,
+  逍: 59286,
+  逎: 59299,
+  透: 37799,
+  逐: 37504,
+  逑: 59283,
+  逓: 37628,
+  途: 37746,
+  逕: 59284,
+  逖: 59288,
+  逗: 36992,
+  這: 38023,
+  通: 37578,
+  逝: 37056,
+  逞: 59287,
+  速: 37292,
+  造: 37282,
+  逡: 59285,
+  逢: 34983,
+  連: 38977,
+  逧: 59290,
+  逮: 37343,
+  週: 36692,
+  進: 36969,
+  逵: 59292,
+  逶: 59291,
+  逸: 35053,
+  逹: 59293,
+  逼: 38222,
+  逾: 59301,
+  遁: 37849,
+  遂: 37003,
+  遅: 37496,
+  遇: 35830,
+  遉: 59300,
+  遊: 38742,
+  運: 35166,
+  遍: 38357,
+  過: 35295,
+  遏: 59295,
+  遐: 59296,
+  遑: 59297,
+  遒: 59298,
+  道: 37817,
+  達: 37442,
+  違: 35041,
+  遖: 59302,
+  遘: 59303,
+  遙: 60065,
+  遜: 37307,
+  遞: 59304,
+  遠: 35219,
+  遡: 37227,
+  遣: 36013,
+  遥: 38777,
+  遨: 59305,
+  適: 37707,
+  遭: 37272,
+  遮: 36565,
+  遯: 59306,
+  遲: 59309,
+  遵: 36741,
+  遶: 59307,
+  遷: 37194,
+  選: 37193,
+  遺: 35042,
+  遼: 38857,
+  遽: 59311,
+  避: 38128,
+  邀: 59313,
+  邁: 59312,
+  邂: 59310,
+  邃: 57988,
+  還: 35538,
+  邇: 59278,
+  邉: 59315,
+  邊: 59314,
+  邏: 59316,
+  邑: 38743,
+  那: 37855,
+  邦: 38477,
+  邨: 59317,
+  邪: 36567,
+  邯: 59318,
+  邱: 59319,
+  邵: 59320,
+  邸: 37696,
+  郁: 35048,
+  郊: 36216,
+  郎: 39001,
+  郛: 59324,
+  郡: 35923,
+  郢: 59321,
+  郤: 59322,
+  部: 38292,
+  郭: 35443,
+  郵: 38744,
+  郷: 35773,
+  都: 37747,
+  鄂: 59325,
+  鄒: 59326,
+  鄙: 59327,
+  鄭: 37697,
+  鄰: 59329,
+  鄲: 59328,
+  酉: 37841,
+  酊: 59330,
+  酋: 36693,
+  酌: 36574,
+  配: 38010,
+  酎: 37521,
+  酒: 36592,
+  酔: 37004,
+  酖: 59331,
+  酘: 59332,
+  酢: 36988,
+  酣: 59333,
+  酥: 59334,
+  酩: 59335,
+  酪: 38799,
+  酬: 36694,
+  酲: 59337,
+  酳: 59336,
+  酵: 36217,
+  酷: 36243,
+  酸: 36447,
+  醂: 59340,
+  醇: 36742,
+  醉: 59339,
+  醋: 59338,
+  醍: 37351,
+  醐: 36077,
+  醒: 37057,
+  醗: 38062,
+  醜: 36696,
+  醢: 59341,
+  醤: 36829,
+  醪: 59344,
+  醫: 59342,
+  醯: 59343,
+  醴: 59346,
+  醵: 59345,
+  醸: 36856,
+  醺: 59347,
+  釀: 59348,
+  釁: 59349,
+  釆: 38094,
+  采: 36305,
+  釈: 36575,
+  釉: 59350,
+  釋: 59351,
+  里: 38818,
+  重: 36708,
+  野: 38636,
+  量: 38858,
+  釐: 59352,
+  金: 35808,
+  釖: 59353,
+  釘: 37698,
+  釛: 59356,
+  釜: 35480,
+  針: 36970,
+  釟: 59354,
+  釡: 59355,
+  釣: 37598,
+  釦: 38516,
+  釧: 35834,
+  釵: 59358,
+  釶: 59359,
+  釼: 59357,
+  釿: 59361,
+  鈍: 37853,
+  鈎: 35426,
+  鈑: 59365,
+  鈔: 59362,
+  鈕: 59364,
+  鈞: 59360,
+  鈩: 59502,
+  鈬: 59363,
+  鈴: 38889,
+  鈷: 36056,
+  鈿: 59373,
+  鉄: 37715,
+  鉅: 59368,
+  鉈: 59371,
+  鉉: 59369,
+  鉋: 59374,
+  鉐: 59375,
+  鉗: 59367,
+  鉚: 59380,
+  鉛: 35220,
+  鉞: 59366,
+  鉢: 38059,
+  鉤: 59370,
+  鉦: 36830,
+  鉱: 36218,
+  鉾: 38503,
+  銀: 35810,
+  銃: 36709,
+  銅: 37818,
+  銑: 37196,
+  銓: 59378,
+  銕: 59372,
+  銖: 59377,
+  銘: 38593,
+  銚: 37558,
+  銛: 59379,
+  銜: 59376,
+  銭: 37195,
+  銷: 59383,
+  銹: 59382,
+  鋏: 59381,
+  鋒: 38478,
+  鋤: 36763,
+  鋩: 59384,
+  鋪: 38365,
+  鋭: 35187,
+  鋲: 38245,
+  鋳: 37522,
+  鋸: 35736,
+  鋺: 59386,
+  鋼: 36220,
+  錆: 36427,
+  錏: 59385,
+  錐: 37005,
+  錘: 37006,
+  錙: 59456,
+  錚: 59458,
+  錠: 36857,
+  錢: 59457,
+  錣: 59459,
+  錦: 35793,
+  錨: 38244,
+  錫: 36576,
+  錬: 38978,
+  錮: 59388,
+  錯: 36342,
+  録: 39006,
+  錵: 59461,
+  錺: 59460,
+  錻: 59462,
+  鍄: 59387,
+  鍋: 37863,
+  鍍: 37748,
+  鍔: 37589,
+  鍖: 59467,
+  鍛: 37474,
+  鍜: 59463,
+  鍠: 59464,
+  鍬: 35916,
+  鍮: 59466,
+  鍵: 36014,
+  鍼: 59465,
+  鍾: 36831,
+  鎌: 35481,
+  鎔: 59471,
+  鎖: 36285,
+  鎗: 37273,
+  鎚: 37576,
+  鎧: 35418,
+  鎬: 59469,
+  鎭: 59470,
+  鎮: 37569,
+  鎰: 59468,
+  鎹: 59472,
+  鏃: 59478,
+  鏈: 59481,
+  鏐: 59480,
+  鏑: 37708,
+  鏖: 59473,
+  鏗: 59474,
+  鏘: 59477,
+  鏝: 59479,
+  鏡: 35774,
+  鏤: 59482,
+  鏥: 59476,
+  鏨: 59475,
+  鐃: 59486,
+  鐇: 59487,
+  鐐: 59488,
+  鐓: 59485,
+  鐔: 59484,
+  鐘: 36832,
+  鐙: 37800,
+  鐚: 59483,
+  鐡: 59492,
+  鐫: 59490,
+  鐵: 59491,
+  鐶: 59489,
+  鐸: 37366,
+  鐺: 59493,
+  鑁: 59494,
+  鑄: 59496,
+  鑑: 35539,
+  鑒: 59495,
+  鑓: 38648,
+  鑚: 59507,
+  鑛: 59497,
+  鑞: 59500,
+  鑠: 59498,
+  鑢: 59499,
+  鑪: 59501,
+  鑰: 59503,
+  鑵: 59504,
+  鑷: 59505,
+  鑼: 59508,
+  鑽: 59506,
+  鑾: 59509,
+  鑿: 59511,
+  钁: 59510,
+  長: 37559,
+  門: 38629,
+  閂: 59512,
+  閃: 37197,
+  閇: 59513,
+  閉: 38338,
+  閊: 59514,
+  開: 35402,
+  閏: 35163,
+  閑: 35541,
+  間: 35540,
+  閔: 59515,
+  閖: 59516,
+  閘: 59517,
+  閙: 59518,
+  閠: 59520,
+  関: 35542,
+  閣: 35444,
+  閤: 36221,
+  閥: 38068,
+  閧: 59522,
+  閨: 59521,
+  閭: 59523,
+  閲: 35195,
+  閹: 59526,
+  閻: 59525,
+  閼: 59524,
+  閾: 59527,
+  闃: 59530,
+  闇: 35013,
+  闊: 59528,
+  闌: 59532,
+  闍: 59531,
+  闔: 59534,
+  闕: 59533,
+  闖: 59535,
+  闘: 37804,
+  關: 59536,
+  闡: 59537,
+  闢: 59539,
+  闥: 59538,
+  阜: 38284,
+  阡: 59540,
+  阨: 59541,
+  阪: 36323,
+  阮: 59542,
+  阯: 59543,
+  防: 38504,
+  阻: 37226,
+  阿: 34978,
+  陀: 37321,
+  陂: 59544,
+  附: 38285,
+  陋: 59547,
+  陌: 59545,
+  降: 36222,
+  陏: 59546,
+  限: 36032,
+  陛: 38339,
+  陜: 59549,
+  陝: 59551,
+  陞: 59550,
+  陟: 59552,
+  院: 35136,
+  陣: 36983,
+  除: 36764,
+  陥: 35543,
+  陦: 59553,
+  陪: 38022,
+  陬: 59555,
+  陰: 35137,
+  陲: 59554,
+  陳: 37570,
+  陵: 38859,
+  陶: 37801,
+  陷: 59548,
+  陸: 38820,
+  険: 36015,
+  陽: 38778,
+  隅: 35831,
+  隆: 38834,
+  隈: 35911,
+  隊: 37344,
+  隋: 58432,
+  隍: 59556,
+  階: 35403,
+  随: 37007,
+  隔: 35445,
+  隕: 59558,
+  隗: 59559,
+  隘: 59557,
+  隙: 35972,
+  際: 36315,
+  障: 36833,
+  隠: 35138,
+  隣: 38871,
+  隧: 59561,
+  隨: 59308,
+  險: 59560,
+  隰: 59564,
+  隱: 59562,
+  隲: 59563,
+  隴: 59565,
+  隶: 59566,
+  隷: 38890,
+  隸: 59567,
+  隹: 59568,
+  隻: 37063,
+  隼: 38073,
+  雀: 37021,
+  雁: 35557,
+  雄: 38745,
+  雅: 35307,
+  集: 36695,
+  雇: 36057,
+  雉: 59571,
+  雋: 59570,
+  雌: 36499,
+  雍: 59572,
+  雎: 59569,
+  雑: 36423,
+  雕: 59576,
+  雖: 58795,
+  雙: 39380,
+  雛: 37015,
+  雜: 59574,
+  離: 38819,
+  難: 37871,
+  雨: 35146,
+  雪: 37089,
+  雫: 36532,
+  雰: 38325,
+  雲: 35167,
+  零: 38891,
+  雷: 38795,
+  雹: 59577,
+  電: 37732,
+  需: 36601,
+  霄: 59578,
+  霆: 59579,
+  震: 36971,
+  霈: 59580,
+  霊: 38892,
+  霍: 59575,
+  霎: 59582,
+  霏: 59584,
+  霑: 59583,
+  霓: 59581,
+  霖: 59585,
+  霙: 59586,
+  霜: 37274,
+  霞: 35296,
+  霤: 59587,
+  霧: 38582,
+  霪: 59588,
+  霰: 59589,
+  露: 38985,
+  霸: 40528,
+  霹: 59590,
+  霽: 59591,
+  霾: 59592,
+  靂: 59596,
+  靄: 59593,
+  靆: 59594,
+  靈: 59595,
+  靉: 59597,
+  青: 37058,
+  靖: 38645,
+  静: 37059,
+  靜: 59598,
+  非: 38129,
+  靠: 59599,
+  靡: 60018,
+  面: 38602,
+  靤: 59600,
+  靦: 59601,
+  靨: 59602,
+  革: 35446,
+  靫: 59604,
+  靭: 36984,
+  靱: 59605,
+  靴: 35907,
+  靹: 59606,
+  靺: 59610,
+  靼: 59608,
+  鞁: 59609,
+  鞄: 35475,
+  鞅: 59607,
+  鞆: 59611,
+  鞋: 59612,
+  鞍: 35014,
+  鞏: 59613,
+  鞐: 59614,
+  鞘: 36834,
+  鞜: 59615,
+  鞠: 35686,
+  鞣: 59618,
+  鞦: 59617,
+  鞨: 59616,
+  鞫: 59025,
+  鞭: 38362,
+  鞳: 59619,
+  鞴: 59620,
+  韃: 59621,
+  韆: 59622,
+  韈: 59623,
+  韋: 59624,
+  韓: 35544,
+  韜: 59625,
+  韭: 59626,
+  韮: 37954,
+  韲: 59628,
+  音: 35257,
+  韵: 59631,
+  韶: 59630,
+  韻: 35139,
+  響: 35775,
+  頁: 38341,
+  頂: 37560,
+  頃: 36256,
+  項: 36224,
+  順: 36743,
+  須: 36987,
+  頌: 59633,
+  頏: 59632,
+  預: 38753,
+  頑: 35558,
+  頒: 38096,
+  頓: 37850,
+  頗: 37020,
+  領: 38860,
+  頚: 35962,
+  頡: 59636,
+  頤: 59635,
+  頬: 38506,
+  頭: 37802,
+  頴: 35183,
+  頷: 59637,
+  頸: 59634,
+  頻: 38256,
+  頼: 38794,
+  頽: 59638,
+  顆: 59639,
+  顋: 59641,
+  題: 37352,
+  額: 35450,
+  顎: 35451,
+  顏: 59640,
+  顔: 35559,
+  顕: 36016,
+  願: 35560,
+  顛: 37726,
+  類: 38878,
+  顧: 36058,
+  顫: 59642,
+  顯: 59643,
+  顰: 59644,
+  顱: 59712,
+  顳: 59714,
+  顴: 59713,
+  風: 38295,
+  颪: 59715,
+  颯: 59716,
+  颱: 59717,
+  颶: 59718,
+  飃: 59720,
+  飄: 59719,
+  飆: 59721,
+  飛: 38130,
+  飜: 58314,
+  食: 36936,
+  飢: 35665,
+  飩: 59722,
+  飫: 59723,
+  飭: 39338,
+  飮: 40794,
+  飯: 38097,
+  飲: 35065,
+  飴: 35001,
+  飼: 36500,
+  飽: 38479,
+  飾: 36860,
+  餃: 59724,
+  餅: 38621,
+  餉: 59725,
+  養: 38779,
+  餌: 35169,
+  餐: 36448,
+  餒: 59726,
+  餓: 35308,
+  餔: 59727,
+  餘: 59728,
+  餝: 59730,
+  餞: 59731,
+  餠: 59733,
+  餡: 59729,
+  餤: 59732,
+  館: 35545,
+  餬: 59734,
+  餮: 59735,
+  餽: 59736,
+  餾: 59737,
+  饂: 59738,
+  饅: 59740,
+  饉: 59739,
+  饋: 59742,
+  饌: 59745,
+  饐: 59741,
+  饑: 59743,
+  饒: 59744,
+  饕: 59746,
+  饗: 35776,
+  首: 36593,
+  馗: 59747,
+  馘: 59748,
+  香: 36225,
+  馥: 59749,
+  馨: 35421,
+  馬: 37998,
+  馭: 59750,
+  馮: 59751,
+  馳: 37497,
+  馴: 37865,
+  馼: 59752,
+  駁: 38045,
+  駄: 37322,
+  駅: 35191,
+  駆: 35820,
+  駈: 35821,
+  駐: 37523,
+  駑: 59757,
+  駒: 35822,
+  駕: 35309,
+  駘: 59756,
+  駛: 59754,
+  駝: 59755,
+  駟: 59753,
+  駢: 59767,
+  駭: 59758,
+  駮: 59759,
+  駱: 59760,
+  駲: 59761,
+  駸: 59763,
+  駻: 59762,
+  駿: 36728,
+  騁: 59764,
+  騅: 59766,
+  騎: 35666,
+  騏: 59765,
+  騒: 37275,
+  験: 36017,
+  騙: 59768,
+  騨: 37323,
+  騫: 59769,
+  騰: 37803,
+  騷: 59770,
+  騾: 59776,
+  驀: 59773,
+  驂: 59772,
+  驃: 59774,
+  驅: 59771,
+  驍: 59778,
+  驕: 59777,
+  驗: 59780,
+  驚: 35777,
+  驛: 59779,
+  驟: 59781,
+  驢: 59782,
+  驤: 59784,
+  驥: 59783,
+  驩: 59785,
+  驪: 59787,
+  驫: 59786,
+  骨: 36252,
+  骭: 59788,
+  骰: 59789,
+  骸: 35419,
+  骼: 59790,
+  髀: 59791,
+  髄: 37009,
+  髏: 59792,
+  髑: 59793,
+  髓: 59794,
+  體: 59795,
+  高: 36226,
+  髞: 59796,
+  髟: 59797,
+  髢: 59798,
+  髣: 59799,
+  髦: 59800,
+  髪: 38063,
+  髫: 59802,
+  髭: 38213,
+  髮: 59803,
+  髯: 59801,
+  髱: 59805,
+  髴: 59804,
+  髷: 59806,
+  髻: 59807,
+  鬆: 59808,
+  鬘: 59809,
+  鬚: 59810,
+  鬟: 59811,
+  鬢: 59812,
+  鬣: 59813,
+  鬥: 59814,
+  鬧: 59815,
+  鬨: 59816,
+  鬩: 59817,
+  鬪: 59818,
+  鬮: 59819,
+  鬯: 59820,
+  鬱: 40788,
+  鬲: 59821,
+  鬻: 58102,
+  鬼: 35667,
+  魁: 35392,
+  魂: 36272,
+  魃: 59823,
+  魄: 59822,
+  魅: 38563,
+  魍: 59825,
+  魎: 59826,
+  魏: 59824,
+  魑: 59827,
+  魔: 38530,
+  魘: 59828,
+  魚: 35739,
+  魯: 38980,
+  魴: 59829,
+  鮃: 59831,
+  鮎: 35004,
+  鮑: 59832,
+  鮒: 38313,
+  鮓: 59830,
+  鮖: 59833,
+  鮗: 59834,
+  鮟: 59835,
+  鮠: 59836,
+  鮨: 59837,
+  鮪: 38542,
+  鮫: 36428,
+  鮭: 36344,
+  鮮: 37198,
+  鮴: 59838,
+  鮹: 59841,
+  鯀: 59839,
+  鯆: 59842,
+  鯉: 36079,
+  鯊: 59840,
+  鯏: 59843,
+  鯑: 59844,
+  鯒: 59845,
+  鯔: 59849,
+  鯖: 36425,
+  鯛: 37346,
+  鯡: 59850,
+  鯢: 59847,
+  鯣: 59846,
+  鯤: 59848,
+  鯨: 35966,
+  鯰: 59854,
+  鯱: 59853,
+  鯲: 59852,
+  鯵: 34993,
+  鰄: 59864,
+  鰆: 59860,
+  鰈: 59861,
+  鰉: 59857,
+  鰊: 59863,
+  鰌: 59859,
+  鰍: 35458,
+  鰐: 39019,
+  鰒: 59862,
+  鰓: 59858,
+  鰔: 59856,
+  鰕: 59855,
+  鰛: 59866,
+  鰡: 59869,
+  鰤: 59868,
+  鰥: 59867,
+  鰭: 38248,
+  鰮: 59865,
+  鰯: 35057,
+  鰰: 59870,
+  鰲: 59872,
+  鰹: 35471,
+  鰺: 59851,
+  鰻: 35158,
+  鰾: 59874,
+  鱆: 59873,
+  鱇: 59871,
+  鱈: 37452,
+  鱒: 38544,
+  鱗: 38872,
+  鱚: 59875,
+  鱠: 59876,
+  鱧: 59877,
+  鱶: 59878,
+  鱸: 59879,
+  鳥: 37561,
+  鳧: 59880,
+  鳩: 38069,
+  鳫: 59885,
+  鳬: 59881,
+  鳰: 59882,
+  鳳: 38480,
+  鳴: 38594,
+  鳶: 37838,
+  鴃: 59886,
+  鴆: 59887,
+  鴇: 37820,
+  鴈: 59884,
+  鴉: 59883,
+  鴎: 35240,
+  鴒: 59895,
+  鴕: 59894,
+  鴛: 35221,
+  鴟: 59892,
+  鴣: 59891,
+  鴦: 59889,
+  鴨: 35483,
+  鴪: 59888,
+  鴫: 36528,
+  鴬: 35239,
+  鴻: 36227,
+  鴾: 59898,
+  鴿: 59897,
+  鵁: 59896,
+  鵄: 59893,
+  鵆: 59899,
+  鵈: 59900,
+  鵐: 59972,
+  鵑: 59971,
+  鵙: 59973,
+  鵜: 35148,
+  鵝: 59968,
+  鵞: 59969,
+  鵠: 36244,
+  鵡: 38583,
+  鵤: 59970,
+  鵬: 38481,
+  鵯: 59978,
+  鵲: 59974,
+  鵺: 59979,
+  鶇: 59976,
+  鶉: 59975,
+  鶏: 35963,
+  鶚: 59980,
+  鶤: 59981,
+  鶩: 59982,
+  鶫: 59977,
+  鶯: 59890,
+  鶲: 59983,
+  鶴: 37599,
+  鶸: 59987,
+  鶺: 59988,
+  鶻: 59986,
+  鷁: 59985,
+  鷂: 59991,
+  鷄: 59984,
+  鷆: 59989,
+  鷏: 59990,
+  鷓: 59993,
+  鷙: 59992,
+  鷦: 59995,
+  鷭: 59996,
+  鷯: 59997,
+  鷲: 39016,
+  鷸: 59994,
+  鷹: 37353,
+  鷺: 36331,
+  鷽: 59998,
+  鸚: 59999,
+  鸛: 60000,
+  鸞: 60001,
+  鹵: 60002,
+  鹸: 36018,
+  鹹: 60003,
+  鹽: 60004,
+  鹿: 36525,
+  麁: 60005,
+  麈: 60006,
+  麋: 60007,
+  麌: 60008,
+  麑: 60011,
+  麒: 60009,
+  麓: 39003,
+  麕: 60010,
+  麗: 38893,
+  麝: 60012,
+  麟: 38873,
+  麥: 60013,
+  麦: 38046,
+  麩: 60014,
+  麪: 60016,
+  麭: 60017,
+  麸: 60015,
+  麹: 36237,
+  麺: 38603,
+  麻: 38531,
+  麼: 39925,
+  麾: 40832,
+  麿: 38555,
+  黄: 35241,
+  黌: 60019,
+  黍: 35695,
+  黎: 60020,
+  黏: 60021,
+  黐: 60022,
+  黒: 36245,
+  黔: 60023,
+  默: 57554,
+  黙: 38617,
+  黛: 37345,
+  黜: 60024,
+  黝: 60026,
+  點: 60025,
+  黠: 60027,
+  黥: 60028,
+  黨: 60029,
+  黯: 60030,
+  黴: 60032,
+  黶: 60033,
+  黷: 60034,
+  黹: 60035,
+  黻: 60036,
+  黼: 60037,
+  黽: 60038,
+  鼇: 60039,
+  鼈: 60040,
+  鼎: 37699,
+  鼓: 36059,
+  鼕: 60042,
+  鼠: 37228,
+  鼡: 60043,
+  鼬: 60044,
+  鼻: 38208,
+  鼾: 60045,
+  齊: 60046,
+  齋: 57942,
+  齎: 59096,
+  齏: 59627,
+  齒: 60047,
+  齔: 60048,
+  齟: 60050,
+  齠: 60051,
+  齡: 60052,
+  齢: 38894,
+  齣: 60049,
+  齦: 60053,
+  齧: 60054,
+  齪: 60056,
+  齬: 60055,
+  齲: 60058,
+  齶: 60059,
+  齷: 60057,
+  龍: 38836,
+  龕: 60060,
+  龜: 60061,
+  龝: 57971,
+  龠: 60062,
+  "！": 33097,
+  "＃": 33172,
+  "＄": 33168,
+  "％": 33171,
+  "＆": 33173,
+  "（": 33129,
+  "）": 33130,
+  "＊": 33174,
+  "＋": 33147,
+  "，": 33091,
+  "．": 33092,
+  "／": 33118,
+  "０": 33359,
+  "１": 33360,
+  "２": 33361,
+  "３": 33362,
+  "４": 33363,
+  "５": 33364,
+  "６": 33365,
+  "７": 33366,
+  "８": 33367,
+  "９": 33368,
+  "：": 33094,
+  "；": 33095,
+  "＜": 33155,
+  "＝": 33153,
+  "＞": 33156,
+  "？": 33096,
+  "＠": 33175,
+  Ａ: 33376,
+  Ｂ: 33377,
+  Ｃ: 33378,
+  Ｄ: 33379,
+  Ｅ: 33380,
+  Ｆ: 33381,
+  Ｇ: 33382,
+  Ｈ: 33383,
+  Ｉ: 33384,
+  Ｊ: 33385,
+  Ｋ: 33386,
+  Ｌ: 33387,
+  Ｍ: 33388,
+  Ｎ: 33389,
+  Ｏ: 33390,
+  Ｐ: 33391,
+  Ｑ: 33392,
+  Ｒ: 33393,
+  Ｓ: 33394,
+  Ｔ: 33395,
+  Ｕ: 33396,
+  Ｖ: 33397,
+  Ｗ: 33398,
+  Ｘ: 33399,
+  Ｙ: 33400,
+  Ｚ: 33401,
+  "［": 33133,
+  "＼": 33119,
+  "］": 33134,
+  "＾": 33103,
+  "＿": 33105,
+  "｀": 33101,
+  ａ: 33409,
+  ｂ: 33410,
+  ｃ: 33411,
+  ｄ: 33412,
+  ｅ: 33413,
+  ｆ: 33414,
+  ｇ: 33415,
+  ｈ: 33416,
+  ｉ: 33417,
+  ｊ: 33418,
+  ｋ: 33419,
+  ｌ: 33420,
+  ｍ: 33421,
+  ｎ: 33422,
+  ｏ: 33423,
+  ｐ: 33424,
+  ｑ: 33425,
+  ｒ: 33426,
+  ｓ: 33427,
+  ｔ: 33428,
+  ｕ: 33429,
+  ｖ: 33430,
+  ｗ: 33431,
+  ｘ: 33432,
+  ｙ: 33433,
+  ｚ: 33434,
+  "｛": 33135,
+  "｜": 33122,
+  "｝": 33136,
+  "｡": 161,
+  "｢": 162,
+  "｣": 163,
+  "､": 164,
+  "･": 165,
+  ｦ: 166,
+  ｧ: 167,
+  ｨ: 168,
+  ｩ: 169,
+  ｪ: 170,
+  ｫ: 171,
+  ｬ: 172,
+  ｭ: 173,
+  ｮ: 174,
+  ｯ: 175,
+  ｰ: 176,
+  ｱ: 177,
+  ｲ: 178,
+  ｳ: 179,
+  ｴ: 180,
+  ｵ: 181,
+  ｶ: 182,
+  ｷ: 183,
+  ｸ: 184,
+  ｹ: 185,
+  ｺ: 186,
+  ｻ: 187,
+  ｼ: 188,
+  ｽ: 189,
+  ｾ: 190,
+  ｿ: 191,
+  ﾀ: 192,
+  ﾁ: 193,
+  ﾂ: 194,
+  ﾃ: 195,
+  ﾄ: 196,
+  ﾅ: 197,
+  ﾆ: 198,
+  ﾇ: 199,
+  ﾈ: 200,
+  ﾉ: 201,
+  ﾊ: 202,
+  ﾋ: 203,
+  ﾌ: 204,
+  ﾍ: 205,
+  ﾎ: 206,
+  ﾏ: 207,
+  ﾐ: 208,
+  ﾑ: 209,
+  ﾒ: 210,
+  ﾓ: 211,
+  ﾔ: 212,
+  ﾕ: 213,
+  ﾖ: 214,
+  ﾗ: 215,
+  ﾘ: 216,
+  ﾙ: 217,
+  ﾚ: 218,
+  ﾛ: 219,
+  ﾜ: 220,
+  ﾝ: 221,
+  ﾞ: 222,
+  ﾟ: 223,
+  "￣": 33104,
+  "￥": 33167,
 }

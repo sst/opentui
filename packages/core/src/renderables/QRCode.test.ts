@@ -1,12 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { BoxRenderable } from "./Box.js"
-import {
-  encodeQRCode,
-  getQRCodeAlignmentPatternPositions,
-  getQRCodeFormatBits,
-  getQRCodeVersionBits,
-  type EncodedQRCode,
-} from "../lib/qrcode.js"
+import { ErrorCorrectionLevel, MicroErrorCorrectionLevel, MicroQRCode, QRCode } from "../lib/qrcode.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { QRCodeRenderable } from "./QRCode.js"
 
@@ -21,55 +15,76 @@ let captureSpans: ReturnType<typeof createTestRenderer> extends Promise<infer T>
   : never
 
 describe("QR code ISO-derived vectors", () => {
-  it("matches published alignment pattern positions", () => {
-    expect(getQRCodeAlignmentPatternPositions(2)).toEqual([6, 18])
-    expect(getQRCodeAlignmentPatternPositions(7)).toEqual([6, 22, 38])
-    expect(getQRCodeAlignmentPatternPositions(32)).toEqual([6, 34, 60, 86, 112, 138])
-    expect(getQRCodeAlignmentPatternPositions(40)).toEqual([6, 30, 58, 86, 114, 142, 170])
+  it("places the published format-string example for L mask 4", () => {
+    const qr = QRCode.encodeText("HELLO WORLD", ErrorCorrectionLevel.L, {
+      boostEcl: false,
+      eciForUtf8: false,
+      mask: 4,
+    })
+    const modules = qr.toMatrix()
+
+    expect(toBinaryString(readPrimaryFormatBits(modules), 15)).toBe("110011000101111")
+    expect(toBinaryString(readSecondaryFormatBits(modules), 15)).toBe("110011000101111")
   })
 
-  it("matches the published format-string example for L mask 4", () => {
-    expect(toBinaryString(getQRCodeFormatBits("low", 4), 15)).toBe("110011000101111")
+  it("places the published version-7 information example", () => {
+    const qr = encodeExactVersionQRCode(7)
+    const modules = qr.toMatrix()
+
+    expect(toBinaryString(readTopRightVersionBits(modules), 18)).toBe("000111110010010100")
+    expect(toBinaryString(readBottomLeftVersionBits(modules), 18)).toBe("000111110010010100")
   })
 
-  it("matches the published version-7 information example", () => {
-    expect(toBinaryString(getQRCodeVersionBits(7), 18)).toBe("000111110010010100")
-  })
+  it("encodes Micro QR symbols", () => {
+    const micro = MicroQRCode.encodeText("01234567", MicroErrorCorrectionLevel.L, {
+      boostEcl: false,
+      maxVersion: 2,
+      minVersion: 2,
+    })
 
-  it("throws when version information is requested below version 7", () => {
-    expect(() => getQRCodeVersionBits(6)).toThrow(
-      "QR version information is only defined for versions 7 and above, got 6",
-    )
+    expect(micro.version).toBe(2)
+    expect(micro.errorCorrectionLevel).toBe(MicroErrorCorrectionLevel.L)
+    expect(micro.toMatrix()).toHaveLength(micro.size)
   })
 })
 
-describe("encodeQRCode", () => {
+describe("QRCode", () => {
   it("writes the dark module at the ISO-defined coordinate", () => {
-    const qr = encodeQRCode("HELLO WORLD")
+    const qr = QRCode.encodeText("HELLO WORLD", ErrorCorrectionLevel.M, {
+      boostEcl: false,
+      eciForUtf8: false,
+    })
+    const modules = qr.toMatrix()
 
     expect(qr.version).toBe(1)
     expect(qr.size).toBe(21)
-    expect(qr.modules[4 * qr.version + 9]![8]).toBe(true)
+    expect(modules[4 * qr.version + 9]![8]).toBe(true)
   })
 
   it("places the selected format bits in both format information regions", () => {
-    const qr = encodeQRCode("HELLO WORLD", "medium")
-    const expectedFormatBits = getQRCodeFormatBits("medium", qr.mask)
+    const qr = QRCode.encodeText("HELLO WORLD", ErrorCorrectionLevel.M, {
+      boostEcl: false,
+      eciForUtf8: false,
+    })
+    const modules = qr.toMatrix()
+    const expectedFormatBits = computeQRCodeFormatBits(qr.errorCorrectionLevel, qr.mask)
 
-    expect(readPrimaryFormatBits(qr.modules)).toBe(expectedFormatBits)
-    expect(readSecondaryFormatBits(qr.modules)).toBe(expectedFormatBits)
+    expect(readPrimaryFormatBits(modules)).toBe(expectedFormatBits)
+    expect(readSecondaryFormatBits(modules)).toBe(expectedFormatBits)
   })
 
   it("places version information correctly for version 7 and above", () => {
     const qr = encodeExactVersionQRCode(7)
-    const expectedVersionBits = getQRCodeVersionBits(qr.version)
+    const modules = qr.toMatrix()
+    const expectedVersionBits = computeQRCodeVersionBits(qr.version)
 
-    expect(readTopRightVersionBits(qr.modules)).toBe(expectedVersionBits)
-    expect(readBottomLeftVersionBits(qr.modules)).toBe(expectedVersionBits)
+    expect(readTopRightVersionBits(modules)).toBe(expectedVersionBits)
+    expect(readBottomLeftVersionBits(modules)).toBe(expectedVersionBits)
   })
 
   it("draws alignment patterns at the published coordinates", () => {
     const qr = encodeExactVersionQRCode(7)
+    const modules = qr.toMatrix()
     const positions = getQRCodeAlignmentPatternPositions(qr.version)
 
     for (let y = 0; y < positions.length; y++) {
@@ -78,7 +93,7 @@ describe("encodeQRCode", () => {
           (x === 0 && y === 0) || (x === 0 && y === positions.length - 1) || (x === positions.length - 1 && y === 0)
 
         if (!overlapsFinderCorner) {
-          expectAlignmentPattern(qr.modules, positions[x]!, positions[y]!)
+          expectAlignmentPattern(modules, positions[x]!, positions[y]!)
         }
       }
     }
@@ -266,15 +281,58 @@ describe("QRCodeRenderable", () => {
   })
 })
 
-function encodeExactVersionQRCode(targetVersion: number): EncodedQRCode {
-  for (let length = 1; length <= 600; length++) {
-    const qr = encodeQRCode("A".repeat(length), "high")
-    if (qr.version === targetVersion) {
-      return qr
-    }
+function encodeExactVersionQRCode(targetVersion: number): QRCode {
+  return QRCode.encodeText("A", ErrorCorrectionLevel.H, {
+    boostEcl: false,
+    eciForUtf8: false,
+    mask: 0,
+    maxVersion: targetVersion,
+    minVersion: targetVersion,
+  })
+}
+
+function getQRCodeAlignmentPatternPositions(version: number): number[] {
+  if (version === 1) {
+    return []
   }
 
-  throw new Error(`Could not generate a QR code at version ${targetVersion}`)
+  const size = version * 4 + 17
+  const count = Math.floor(version / 7) + 2
+  const step = version === 32 ? 26 : Math.ceil((version * 4 + 4) / (count * 2 - 2)) * 2
+  const positions = [6]
+
+  for (let position = size - 7; positions.length < count; position -= step) {
+    positions.splice(1, 0, position)
+  }
+
+  return positions
+}
+
+function computeQRCodeFormatBits(errorCorrectionLevel: ErrorCorrectionLevel, mask: number): number {
+  const formatBitsByEcl: Record<ErrorCorrectionLevel, number> = {
+    [ErrorCorrectionLevel.M]: 0b00,
+    [ErrorCorrectionLevel.L]: 0b01,
+    [ErrorCorrectionLevel.H]: 0b10,
+    [ErrorCorrectionLevel.Q]: 0b11,
+  }
+  const data = (formatBitsByEcl[errorCorrectionLevel] << 3) | mask
+  let remainder = data
+
+  for (let i = 0; i < 10; i++) {
+    remainder = (remainder << 1) ^ (((remainder >>> 9) & 1) * 0x537)
+  }
+
+  return ((data << 10) | remainder) ^ 0x5412
+}
+
+function computeQRCodeVersionBits(version: number): number {
+  let remainder = version
+
+  for (let i = 0; i < 12; i++) {
+    remainder = (remainder << 1) ^ (((remainder >>> 11) & 1) * 0x1f25)
+  }
+
+  return (version << 12) | remainder
 }
 
 function readPrimaryFormatBits(modules: boolean[][]): number {
