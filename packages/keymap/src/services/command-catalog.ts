@@ -736,7 +736,7 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
     }
 
     if (context.visibility === "registered") {
-      return getCommandEntry(binding.command)?.commandState.attrs
+      return getCommandView().chainsByName.get(binding.command)?.[0]?.commandState.attrs
     }
 
     const activeView = context.activeView
@@ -1072,13 +1072,11 @@ function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapE
       continue
     }
 
-    const command = options.getCommand(commandState)
-
     if (filterPredicate) {
       let matches = false
 
       try {
-        matches = filterPredicate(command)
+        matches = filterPredicate(options.getCommand(commandState))
       } catch (error) {
         options.onFilterError(error)
         continue

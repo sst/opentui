@@ -2559,7 +2559,7 @@ const scenarios: BenchmarkScenario[] = [
       registerNamedBindingFields(resources.keymap)
 
       for (let index = 0; index < 320; index += 1) {
-        resources.keymap.setData(createFlagKey(index), true)
+        resources.keymap.setData(createFlagKey(index), false)
         resources.keymap.registerLayer({
           bindings: [
             {
@@ -2571,15 +2571,12 @@ const scenarios: BenchmarkScenario[] = [
         })
       }
 
-      let iteration = 0
-
       return {
         resources,
-        runIteration() {
+        runIteration(iteration) {
           const key = createFlagKey(iteration % 320)
-          const nextValue = iteration % 2 === 0
+          const nextValue = Math.floor(iteration / 320) % 2 === 0
           resources.keymap.setData(key, nextValue)
-          iteration += 1
           return resources.keymap.getActiveKeys()
         },
         cleanup() {
@@ -2596,22 +2593,19 @@ const scenarios: BenchmarkScenario[] = [
       registerNamedLayerFields(resources.keymap)
 
       for (let index = 0; index < 320; index += 1) {
-        resources.keymap.setData(createFlagKey(index), true)
+        resources.keymap.setData(createFlagKey(index), false)
         resources.keymap.registerLayer({
           activeWhen: createFlagKey(index),
           bindings: [{ key: createKey(index), cmd: "noop" }],
         })
       }
 
-      let iteration = 0
-
       return {
         resources,
-        runIteration() {
+        runIteration(iteration) {
           const key = createFlagKey(iteration % 320)
-          const nextValue = iteration % 2 === 0
+          const nextValue = Math.floor(iteration / 320) % 2 === 0
           resources.keymap.setData(key, nextValue)
-          iteration += 1
           return resources.keymap.getActiveKeys()
         },
         cleanup() {
@@ -2816,7 +2810,7 @@ const scenarios: BenchmarkScenario[] = [
 
       for (let index = 0; index < 320; index += 1) {
         const key = createFlagKey(index)
-        store.flags[key] = true
+        store.flags[key] = false
         resources.keymap.registerLayer({
           bindings: [
             {
@@ -2828,14 +2822,11 @@ const scenarios: BenchmarkScenario[] = [
         })
       }
 
-      let iteration = 0
-
       return {
         resources,
-        runIteration() {
+        runIteration(iteration) {
           const key = createFlagKey(iteration % 320)
-          store.set(key, iteration % 2 === 0)
-          iteration += 1
+          store.set(key, Math.floor(iteration / 320) % 2 === 0)
         },
         cleanup() {
           offStateChange()

@@ -59,7 +59,6 @@ import { createNotificationService, type NotificationService } from "./services/
 import { resolveKeyMatch } from "./services/keys.js"
 import { createRuntimeService, type RuntimeService } from "./services/runtime.js"
 import { KEYMAP_EXTENSION_CONTEXT, type KeymapExtensionContext } from "./services/extension-context.js"
-import { createKeymapProjections } from "./services/projections.js"
 import { createKeymapState } from "./services/state.js"
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
@@ -165,9 +164,8 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       this.#layers,
       this.#hooks,
     )
-    const projections = createKeymapProjections(this.#state, this.#activation)
-    this.getPendingSequence = projections.getPendingSequence
-    this.getActiveKeys = projections.getActiveKeys
+    this.getPendingSequence = this.#activation.getPendingSequence
+    this.getActiveKeys = this.#activation.getActiveKeys
     this.#keypressListener = (event) => {
       this.#dispatch.handleKeyEvent(event, false)
     }
