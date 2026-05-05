@@ -47,6 +47,7 @@ const palette = {
 } as const
 
 const LEADER_TOKEN = "<leader>"
+const COUNT_PATTERN = "count"
 const KEY_FORMAT_OPTIONS = {
   tokenDisplay: {
     [LEADER_TOKEN]: "ctrl+x",
@@ -266,6 +267,15 @@ function getMetadataText(value: unknown): string | undefined {
   return trimmed || undefined
 }
 
+function getCountPayload(payload: unknown): number {
+  if (!payload || typeof payload !== "object") {
+    return 1
+  }
+
+  const count = (payload as { count?: unknown }).count
+  return typeof count === "number" && Number.isFinite(count) && count > 0 ? count : 1
+}
+
 function getActiveKeyLabel(activeKey: ActiveKey): string {
   if (activeKey.continues) {
     const group = getMetadataText(activeKey.bindingAttrs?.group)
@@ -307,6 +317,8 @@ function CounterPanel(props: {
 
   const incrementCommand = useMemo(() => `${props.id}-up`, [props.id])
   const decrementCommand = useMemo(() => `${props.id}-down`, [props.id])
+  const incrementCountCommand = useMemo(() => `${props.id}-up-count`, [props.id])
+  const decrementCountCommand = useMemo(() => `${props.id}-down-count`, [props.id])
 
   const commands = useMemo<Command<Renderable, KeyEvent>[]>(
     () => [
@@ -324,6 +336,20 @@ function CounterPanel(props: {
         },
       },
       {
+        name: incrementCountCommand,
+        title: `${props.label} +count`,
+        desc: `${props.label} +count`,
+        category: props.label,
+        run({ payload }) {
+          props.setCount((value) => {
+            const amount = getCountPayload(payload) * props.step
+            const next = value + amount
+            props.announce(`${props.label} increased by ${amount} to ${next}`)
+            return next
+          })
+        },
+      },
+      {
         name: decrementCommand,
         title: `${props.label} -${props.step}`,
         desc: `${props.label} -${props.step}`,
@@ -336,8 +362,31 @@ function CounterPanel(props: {
           })
         },
       },
+      {
+        name: decrementCountCommand,
+        title: `${props.label} -count`,
+        desc: `${props.label} -count`,
+        category: props.label,
+        run({ payload }) {
+          props.setCount((value) => {
+            const amount = getCountPayload(payload) * props.step
+            const next = value - amount
+            props.announce(`${props.label} decreased by ${amount} to ${next}`)
+            return next
+          })
+        },
+      },
     ],
-    [decrementCommand, incrementCommand, props.announce, props.label, props.setCount, props.step],
+    [
+      decrementCommand,
+      decrementCountCommand,
+      incrementCommand,
+      incrementCountCommand,
+      props.announce,
+      props.label,
+      props.setCount,
+      props.step,
+    ],
   )
 
   useEffect(() => {
@@ -350,10 +399,20 @@ function CounterPanel(props: {
       bindings: [
         { key: "j", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
         { key: "k", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
+        { key: "{count}j", cmd: decrementCountCommand, desc: `${props.label} -count` },
+        { key: "{count}k", cmd: incrementCountCommand, desc: `${props.label} +count` },
         { key: "return", cmd: `:w ${props.saveTarget}`, desc: `Write ${props.label.toLowerCase()} panel` },
       ] satisfies Binding[],
     }),
-    [decrementCommand, incrementCommand, props.label, props.saveTarget, props.step],
+    [
+      decrementCommand,
+      decrementCountCommand,
+      incrementCommand,
+      incrementCountCommand,
+      props.label,
+      props.saveTarget,
+      props.step,
+    ],
   )
   const combinedRef = useCallback(
     (value: Renderable | null) => {
@@ -764,6 +823,19 @@ const AppContent = () => {
       addons.registerNeovimDisambiguation(manager),
       addons.registerEscapeClearsPendingSequence(manager),
       addons.registerBackspacePopsPendingSequence(manager),
+      manager.registerSequencePattern({
+        name: COUNT_PATTERN,
+        match(event) {
+          if (!/^\d$/.test(event.name)) {
+            return undefined
+          }
+
+          return { value: event.name, display: event.name }
+        },
+        finalize(values) {
+          return Number(values.join(""))
+        },
+      }),
       addons.registerManagedTextareaLayer(manager, renderer, {
         enabled: () => !commandPromptVisibleRef.current && renderer.currentFocusedEditor !== null,
         bindings: [

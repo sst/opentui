@@ -43,6 +43,7 @@ const P = {
 } as const
 
 const LEADER_TOKEN = "<leader>"
+const COUNT_PATTERN = "count"
 const KEY_FORMAT_OPTIONS = {
   tokenDisplay: {
     [LEADER_TOKEN]: "ctrl+x",
@@ -161,6 +162,15 @@ function getMetadataText(value: unknown): string | undefined {
 
   const trimmed = value.trim()
   return trimmed || undefined
+}
+
+function getCountPayload(payload: unknown): number {
+  if (!payload || typeof payload !== "object") {
+    return 1
+  }
+
+  const count = (payload as { count?: unknown }).count
+  return typeof count === "number" && Number.isFinite(count) && count > 0 ? count : 1
 }
 
 function getActiveKeyLabel(activeKey: ActiveKey): string {
@@ -848,6 +858,17 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
           },
         },
         {
+          name: "alpha-up-count",
+          title: "Alpha +count",
+          desc: "Alpha +count",
+          category: "Alpha",
+          run({ payload }) {
+            const amount = getCountPayload(payload)
+            alphaCount += amount
+            setStatus(renderer, `Alpha increased by ${amount} to ${alphaCount}`)
+          },
+        },
+        {
           name: "alpha-down",
           title: "Alpha -1",
           desc: "Alpha -1",
@@ -855,6 +876,17 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
           run() {
             alphaCount -= 1
             setStatus(renderer, `Alpha decreased to ${alphaCount}`)
+          },
+        },
+        {
+          name: "alpha-down-count",
+          title: "Alpha -count",
+          desc: "Alpha -count",
+          category: "Alpha",
+          run({ payload }) {
+            const amount = getCountPayload(payload)
+            alphaCount -= amount
+            setStatus(renderer, `Alpha decreased by ${amount} to ${alphaCount}`)
           },
         },
         {
@@ -868,6 +900,17 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
           },
         },
         {
+          name: "beta-up-count",
+          title: "Beta +count",
+          desc: "Beta +count",
+          category: "Beta",
+          run({ payload }) {
+            const amount = getCountPayload(payload) * 5
+            betaCount += amount
+            setStatus(renderer, `Beta increased by ${amount} to ${betaCount}`)
+          },
+        },
+        {
           name: "beta-down",
           title: "Beta -5",
           desc: "Beta -5",
@@ -875,6 +918,17 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
           run() {
             betaCount -= 5
             setStatus(renderer, `Beta decreased to ${betaCount}`)
+          },
+        },
+        {
+          name: "beta-down-count",
+          title: "Beta -count",
+          desc: "Beta -count",
+          category: "Beta",
+          run({ payload }) {
+            const amount = getCountPayload(payload) * 5
+            betaCount -= amount
+            setStatus(renderer, `Beta decreased by ${amount} to ${betaCount}`)
           },
         },
         {
@@ -925,6 +979,21 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
   disposers.push(addons.registerNeovimDisambiguation(keymapInstance))
   disposers.push(addons.registerEscapeClearsPendingSequence(keymapInstance))
   disposers.push(addons.registerBackspacePopsPendingSequence(keymapInstance))
+  disposers.push(
+    keymapInstance.registerSequencePattern({
+      name: COUNT_PATTERN,
+      match(event) {
+        if (!/^\d$/.test(event.name)) {
+          return undefined
+        }
+
+        return { value: event.name, display: event.name }
+      },
+      finalize(values) {
+        return Number(values.join(""))
+      },
+    }),
+  )
 
   disposers.push(
     keymapInstance.registerLayer({
@@ -1038,6 +1107,8 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
         bindings: [
           { key: "j", cmd: "alpha-down", desc: "Alpha -1" },
           { key: "k", cmd: "alpha-up", desc: "Alpha +1" },
+          { key: "{count}j", cmd: "alpha-down-count", desc: "Alpha -count" },
+          { key: "{count}k", cmd: "alpha-up-count", desc: "Alpha +count" },
           { key: "return", cmd: ":w alpha-panel.txt", desc: "Write alpha panel" },
         ],
       }),
@@ -1051,6 +1122,8 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
         bindings: [
           { key: "j", cmd: "beta-down", desc: "Beta -5" },
           { key: "k", cmd: "beta-up", desc: "Beta +5" },
+          { key: "{count}j", cmd: "beta-down-count", desc: "Beta -count" },
+          { key: "{count}k", cmd: "beta-up-count", desc: "Beta +count" },
           { key: "return", cmd: ":w beta-panel.txt", desc: "Write beta panel" },
         ],
       }),
