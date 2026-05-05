@@ -66,8 +66,8 @@ export function getActiveCommandView<TTarget extends object, TEvent extends Keym
   conditions: ConditionService<TTarget, TEvent>,
   focused: TTarget | null,
 ): ActiveCommandView<TTarget, TEvent> {
-  if (state.activeLayersCacheVersion !== state.derivedVersion || state.activeLayersCacheFocused !== focused) {
-    state.activeLayersCacheVersion = state.derivedVersion
+  if (state.activeLayersCacheVersion !== state.cacheVersion || state.activeLayersCacheFocused !== focused) {
+    state.activeLayersCacheVersion = state.cacheVersion
     state.activeLayersCacheFocused = focused
     state.activeLayersCache = getActiveLayersForFocused(state.sortedLayers, host, focused) as RegisteredLayer<
       TTarget,

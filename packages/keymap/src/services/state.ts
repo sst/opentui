@@ -90,6 +90,7 @@ export interface State<TTarget extends object, TEvent extends KeymapEvent> {
   dataVersion: number
   readonlyDataVersion: number
   readonlyData: Readonly<EventData>
+  cacheVersion: number
   derivedVersion: number
   stateChangeDepth: number
   stateChangePending: boolean
@@ -131,6 +132,7 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     dataVersion: 0,
     readonlyDataVersion: -1,
     readonlyData: EMPTY_DATA,
+    cacheVersion: 0,
     derivedVersion: 0,
     stateChangeDepth: 0,
     stateChangePending: false,

@@ -89,6 +89,16 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   #dispatch: DispatchService<TTarget, TEvent>
   #layers: LayerService<TTarget, TEvent>
   #layerDiagnostics: LayerDiagnosticsCore<TTarget, TEvent>
+  #pendingSequenceCacheVersion = -1
+  #pendingSequenceCache: readonly KeySequencePart[] = []
+  #activeKeysPlainCacheVersion = -1
+  #activeKeysPlainCache: readonly ActiveKey<TTarget, TEvent>[] = []
+  #activeKeysBindingsCacheVersion = -1
+  #activeKeysBindingsCache: readonly ActiveKey<TTarget, TEvent>[] = []
+  #activeKeysMetadataCacheVersion = -1
+  #activeKeysMetadataCache: readonly ActiveKey<TTarget, TEvent>[] = []
+  #activeKeysBindingsAndMetadataCacheVersion = -1
+  #activeKeysBindingsAndMetadataCache: readonly ActiveKey<TTarget, TEvent>[] = []
 
   #keypressListener: (event: TEvent) => void
   #keyreleaseListener: (event: TEvent) => void
@@ -237,7 +247,17 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   }
 
   public getPendingSequence(): readonly KeySequencePart[] {
-    return this.#activation.getPendingSequence()
+    if (this.#pendingSequenceCacheVersion === this.#state.cacheVersion) {
+      return this.#pendingSequenceCache
+    }
+
+    const sequence = this.#activation.getPendingSequence()
+    if (!this.#state.pending || (!this.#state.commandResolvers.has() && this.#state.activeKeyCacheBlockers === 0)) {
+      this.#pendingSequenceCacheVersion = this.#state.cacheVersion
+      this.#pendingSequenceCache = sequence
+    }
+
+    return sequence
   }
 
   public createKeyMatcher(key: KeyLike): (input: KeyStringifyInput | null | undefined) => boolean {
@@ -269,6 +289,50 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   }
 
   public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] {
+    if (this.#canCacheActiveKeys()) {
+      if (options === undefined) {
+        if (this.#activeKeysPlainCacheVersion === this.#state.derivedVersion) return this.#activeKeysPlainCache
+        const activeKeys = this.#activation.getActiveKeys()
+        this.#activeKeysPlainCacheVersion = this.#state.derivedVersion
+        this.#activeKeysPlainCache = activeKeys
+        return activeKeys
+      }
+
+      const includeBindings = options.includeBindings === true
+      const includeMetadata = options.includeMetadata === true
+      if (includeBindings) {
+        if (includeMetadata) {
+          if (this.#activeKeysBindingsAndMetadataCacheVersion === this.#state.derivedVersion) {
+            return this.#activeKeysBindingsAndMetadataCache
+          }
+          const activeKeys = this.#activation.getActiveKeys(options)
+          this.#activeKeysBindingsAndMetadataCacheVersion = this.#state.derivedVersion
+          this.#activeKeysBindingsAndMetadataCache = activeKeys
+          return activeKeys
+        }
+
+        if (this.#activeKeysBindingsCacheVersion === this.#state.derivedVersion) return this.#activeKeysBindingsCache
+        const activeKeys = this.#activation.getActiveKeys(options)
+        this.#activeKeysBindingsCacheVersion = this.#state.derivedVersion
+        this.#activeKeysBindingsCache = activeKeys
+        return activeKeys
+      }
+
+      if (includeMetadata) {
+        if (this.#activeKeysMetadataCacheVersion === this.#state.derivedVersion) return this.#activeKeysMetadataCache
+        const activeKeys = this.#activation.getActiveKeys(options)
+        this.#activeKeysMetadataCacheVersion = this.#state.derivedVersion
+        this.#activeKeysMetadataCache = activeKeys
+        return activeKeys
+      }
+
+      if (this.#activeKeysPlainCacheVersion === this.#state.derivedVersion) return this.#activeKeysPlainCache
+      const activeKeys = this.#activation.getActiveKeys(options)
+      this.#activeKeysPlainCacheVersion = this.#state.derivedVersion
+      this.#activeKeysPlainCache = activeKeys
+      return activeKeys
+    }
+
     return this.#activation.getActiveKeys(options)
   }
 
@@ -512,7 +576,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       // against the state that started it, and changing focus can change the
       // active bindings and their precedence.
       this.#activation.setPendingSequence(null)
-      this.#notify.queueStateChange()
+      this.#notify.queueStateChange({ invalidateCaches: false })
     })
   }
 
@@ -532,6 +596,10 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       { token, sequence },
       `[Keymap] Unknown token "${token}" in key sequence "${sequence}" was ignored`,
     )
+  }
+
+  #canCacheActiveKeys(): boolean {
+    return !this.#state.commandResolvers.has() && this.#state.activeKeyCacheBlockers === 0
   }
 
   #releaseResource(key: symbol, resource: { count: number; dispose: () => void }): void {

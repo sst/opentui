@@ -11,7 +11,7 @@ export const MAX_STATE_CHANGE_FLUSH_ITERATIONS = 1000
 
 export interface NotificationService<TTarget extends object, TEvent extends KeymapEvent> {
   runWithStateChangeBatch<T>(fn: () => T): T
-  queueStateChange(): void
+  queueStateChange(options?: { invalidateCaches?: boolean }): void
   emitWarning(code: string, warning: unknown, message: string): void
   emitError(code: string, error: unknown, message: string): void
   reportListenerError(name: HookName, error: unknown): void
@@ -96,8 +96,11 @@ export function createNotificationService<TTarget extends object, TEvent extends
         }
       }
     },
-    queueStateChange() {
+    queueStateChange(options) {
       state.derivedVersion += 1
+      if (options?.invalidateCaches !== false) {
+        state.cacheVersion += 1
+      }
 
       if (!hooks.has("state")) {
         return

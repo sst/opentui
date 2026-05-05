@@ -113,8 +113,11 @@ interface ActivationOptions<TTarget extends object, TEvent extends KeymapEvent> 
 
 interface ActiveKeysCache<TTarget extends object, TEvent extends KeymapEvent> {
   version: number
+  notifyVersion: number
   focused: TTarget | null | undefined
   value: readonly ActiveKey<TTarget, TEvent>[]
+  targets: WeakMap<TTarget, { version: number; value: readonly ActiveKey<TTarget, TEvent>[] }>
+  nullTarget?: { version: number; value: readonly ActiveKey<TTarget, TEvent>[] }
 }
 
 export interface ActivationService<TTarget extends object, TEvent extends KeymapEvent> {
@@ -161,8 +164,10 @@ export function createActivationService<TTarget extends object, TEvent extends K
 ): ActivationService<TTarget, TEvent> {
   const createActiveKeysCache = (): ActiveKeysCache<TTarget, TEvent> => ({
     version: -1,
+    notifyVersion: -1,
     focused: undefined,
     value: [],
+    targets: new WeakMap<TTarget, { version: number; value: readonly ActiveKey<TTarget, TEvent>[] }>(),
   })
   const activeKeysPlainCache = createActiveKeysCache()
   const activeKeysBindingsCache = createActiveKeysCache()
@@ -234,14 +239,14 @@ export function createActivationService<TTarget extends object, TEvent extends K
   }
 
   const getPendingSequence = (): readonly KeySequencePart[] => {
-    if (pendingSequenceCacheVersion === state.derivedVersion) {
+    if (pendingSequenceCacheVersion === state.cacheVersion) {
       return pendingSequenceCache
     }
 
     const pending = ensureValidPendingSequence()
     const sequence = pending ? collectSequencePartsFromPending(pending) : []
     if (!pending || allRegisteredLayersCanCacheActiveKeys()) {
-      pendingSequenceCacheVersion = state.derivedVersion
+      pendingSequenceCacheVersion = state.cacheVersion
       pendingSequenceCache = sequence
     }
 
@@ -282,7 +287,7 @@ export function createActivationService<TTarget extends object, TEvent extends K
 
   const getActiveKeys = (options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] => {
     if (options === undefined) {
-      if (activeKeysPlainCache.version === state.derivedVersion) {
+      if (activeKeysPlainCache.notifyVersion === state.derivedVersion) {
         return activeKeysPlainCache.value
       }
 
@@ -299,7 +304,7 @@ export function createActivationService<TTarget extends object, TEvent extends K
         ? activeKeysMetadataCache
         : activeKeysPlainCache
 
-    if (cache.version === state.derivedVersion) {
+    if (cache.notifyVersion === state.derivedVersion) {
       return cache.value
     }
 
@@ -316,6 +321,15 @@ export function createActivationService<TTarget extends object, TEvent extends K
     }
 
     const focused = getFocusedTarget()
+    const cached = getFocusedActiveKeysCache(cache, focused)
+    if (cached) {
+      cache.notifyVersion = state.derivedVersion
+      cache.version = state.cacheVersion
+      cache.focused = focused
+      cache.value = cached.value
+      return cached.value
+    }
+
     const activeView = catalog.getActiveCommandView(focused)
     const pending = ensureValidPendingSequence()
     const activeLayers = pending ? [] : getActiveLayers(focused)
@@ -328,12 +342,35 @@ export function createActivationService<TTarget extends object, TEvent extends K
       ? allRegisteredLayersCanCacheActiveKeys()
       : activeLayersCanCacheActiveKeys(activeLayers)
     if (canUseCache) {
-      cache.version = state.derivedVersion
+      cache.version = state.cacheVersion
+      cache.notifyVersion = state.derivedVersion
       cache.focused = focused
       cache.value = activeKeys
+      setFocusedActiveKeysCache(cache, focused, activeKeys)
     }
 
     return activeKeys
+  }
+
+  const getFocusedActiveKeysCache = (
+    cache: ActiveKeysCache<TTarget, TEvent>,
+    focused: TTarget | null,
+  ): { version: number; value: readonly ActiveKey<TTarget, TEvent>[] } | undefined => {
+    const cached = focused ? cache.targets.get(focused) : cache.nullTarget
+    return cached?.version === state.cacheVersion ? cached : undefined
+  }
+
+  const setFocusedActiveKeysCache = (
+    cache: ActiveKeysCache<TTarget, TEvent>,
+    focused: TTarget | null,
+    value: readonly ActiveKey<TTarget, TEvent>[],
+  ): void => {
+    const cached = { version: state.cacheVersion, value }
+    if (focused) {
+      cache.targets.set(focused, cached)
+    } else {
+      cache.nullTarget = cached
+    }
   }
 
   const getActiveKeysForCaptures = (
@@ -372,11 +409,11 @@ export function createActivationService<TTarget extends object, TEvent extends K
   }
 
   const getActiveLayers = (focused: TTarget | null): RegisteredLayer<TTarget, TEvent>[] => {
-    if (state.activeLayersCacheVersion === state.derivedVersion && state.activeLayersCacheFocused === focused) {
+    if (state.activeLayersCacheVersion === state.cacheVersion && state.activeLayersCacheFocused === focused) {
       return state.activeLayersCache
     }
 
-    state.activeLayersCacheVersion = state.derivedVersion
+    state.activeLayersCacheVersion = state.cacheVersion
     state.activeLayersCacheFocused = focused
     state.activeLayersCache = getActiveLayersForFocused(state.sortedLayers, host, focused) as RegisteredLayer<
       TTarget,
