@@ -252,7 +252,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     }
 
     const sequence = this.#activation.getPendingSequence()
-    if (!this.#state.pending || (!this.#state.commandResolvers.has() && this.#state.activeKeyCacheBlockers === 0)) {
+    if (!this.#state.pending || this.#canCacheActiveKeys()) {
       this.#pendingSequenceCacheVersion = this.#state.cacheVersion
       this.#pendingSequenceCache = sequence
     }
@@ -424,7 +424,11 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     options?: KeyInterceptOptions | RawInterceptOptions,
   ): () => void {
     if (name === "key") {
-      return this.#dispatch.intercept(name, fn as (ctx: KeyInputContext<TEvent>) => void, options as KeyInterceptOptions)
+      return this.#dispatch.intercept(
+        name,
+        fn as (ctx: KeyInputContext<TEvent>) => void,
+        options as KeyInterceptOptions,
+      )
     }
 
     if (name === "key:after") {

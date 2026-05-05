@@ -8,20 +8,11 @@ import type { LayerService } from "./layers.js"
 import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
 import type { State } from "./state.js"
-import { cloneKeySequence, cloneKeyStroke, createKeySequencePart, stringifyKeySequence } from "./keys.js"
-import {
-  captureHasContinuations,
-  captureIsExact,
-} from "./primitives/pending-captures.js"
-import {
-  advanceSequenceCapture,
-  capturePriority,
-  collectRootSequenceCaptures,
-} from "./sequence-index.js"
+import { cloneKeySequence, cloneKeyStroke, stringifyKeySequence } from "./keys.js"
+import { captureHasContinuations, captureIsExact } from "./primitives/pending-captures.js"
+import { advanceSequenceCapture, capturePriority, collectRootSequenceCaptures } from "./sequence-index.js"
 import { isPromiseLike } from "./values.js"
 import {
-  KEY_DEFERRED_DISAMBIGUATION_DECISION,
-  KEY_DISAMBIGUATION_DECISION,
   type ActiveBinding,
   type ActiveKey,
   type EventMatchResolverContext,
@@ -48,28 +39,23 @@ import {
   type DispatchEvent,
   type KeySequencePart,
   type RegisteredLayer,
-  type SequencePatternMatch,
 } from "../types.js"
 import type { PriorityRegistration } from "../lib/registry.js"
-
-type SyncDecisionAction = "run-exact" | "continue-sequence" | "clear" | "defer"
-type DeferredDecisionAction = "run-exact" | "continue-sequence" | "clear"
-
-interface InternalDisambiguationDecision extends KeyDisambiguationDecision {
-  readonly action: SyncDecisionAction
-  readonly handler?: KeyDeferredDisambiguationHandler<any, any>
-}
-
-interface InternalDeferredDisambiguationDecision extends KeyDeferredDisambiguationDecision {
-  readonly action: DeferredDecisionAction
-}
-
-interface PendingDisambiguation<TTarget extends object, TEvent extends KeymapEvent> {
-  id: number
-  controller: AbortController
-  captures: readonly PendingSequenceCapture<TTarget, TEvent>[]
-  apply: (decision: InternalDeferredDisambiguationDecision | void) => void
-}
+import {
+  createDeferredDecision,
+  createSyncDecision,
+  isDeferredDecision,
+  isSyncDecision,
+  sleepWithSignal,
+  type InternalDeferredDisambiguationDecision,
+  type InternalDisambiguationDecision,
+  type PendingDisambiguation,
+} from "./dispatch-decisions.js"
+import {
+  createPatternEventPart as createPatternEventPartFromPattern,
+  createSequencePayload as createSequencePayloadFromPattern,
+  matchSequencePattern,
+} from "./dispatch-patterns.js"
 
 interface KeyDispatchOutcome {
   handled: boolean
@@ -82,40 +68,6 @@ type KeyAfterHook<TTarget extends object, TEvent extends KeymapEvent> = Priority
   (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
   { priority: number; release: boolean }
 >
-
-function createSyncDecision(
-  action: SyncDecisionAction,
-  handler?: KeyDeferredDisambiguationHandler<any, any>,
-): InternalDisambiguationDecision {
-  return {
-    [KEY_DISAMBIGUATION_DECISION]: true,
-    action,
-    handler,
-  }
-}
-
-function createDeferredDecision(action: DeferredDecisionAction): InternalDeferredDisambiguationDecision {
-  return {
-    [KEY_DEFERRED_DISAMBIGUATION_DECISION]: true,
-    action,
-  }
-}
-
-function isSyncDecision(value: unknown): value is InternalDisambiguationDecision {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    (value as { [KEY_DISAMBIGUATION_DECISION]?: unknown })[KEY_DISAMBIGUATION_DECISION] === true
-  )
-}
-
-function isDeferredDecision(value: unknown): value is InternalDeferredDisambiguationDecision {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    (value as { [KEY_DEFERRED_DISAMBIGUATION_DECISION]?: unknown })[KEY_DEFERRED_DISAMBIGUATION_DECISION] === true
-  )
-}
 
 export interface DispatchService<TTarget extends object, TEvent extends KeymapEvent> {
   intercept(name: "key", fn: (ctx: KeyInputContext<TEvent>) => void, options?: KeyInterceptOptions): () => void
@@ -210,17 +162,11 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
   }
 
   function prependDisambiguationResolver(resolver: KeyDisambiguationResolver<TTarget, TEvent>): () => void {
-    return mutateDisambiguationResolvers(
-      () => state.disambiguationResolvers.prepend(resolver),
-      resolver,
-    )
+    return mutateDisambiguationResolvers(() => state.disambiguationResolvers.prepend(resolver), resolver)
   }
 
   function appendDisambiguationResolver(resolver: KeyDisambiguationResolver<TTarget, TEvent>): () => void {
-    return mutateDisambiguationResolvers(
-      () => state.disambiguationResolvers.append(resolver),
-      resolver,
-    )
+    return mutateDisambiguationResolvers(() => state.disambiguationResolvers.append(resolver), resolver)
   }
 
   function clearDisambiguationResolvers(): void {
@@ -638,7 +584,14 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
     const advancedCaptures: PendingSequenceCapture<TTarget, TEvent>[] = []
 
     for (const capture of pending.captures) {
-      const advanced = advanceSequenceCapture(capture, matchKeys, event, state.patterns, matchPattern, createPatternEventPart)
+      const advanced = advanceSequenceCapture(
+        capture,
+        matchKeys,
+        event,
+        state.patterns,
+        matchPattern,
+        createPatternEventPart,
+      )
       if (!advanced) {
         continue
       }
@@ -650,9 +603,14 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
       (best, capture) => Math.min(best, capturePriority(capture, matchKeys)),
       Number.POSITIVE_INFINITY,
     )
-    const prioritizedCaptures = advancedCaptures.filter((capture) => capturePriority(capture, matchKeys) === bestPriority)
+    const prioritizedCaptures = advancedCaptures.filter(
+      (capture) => capturePriority(capture, matchKeys) === bestPriority,
+    )
 
-    if (prioritizedCaptures.length === 0 || !prioritizedCaptures.some((capture) => captureIsReachable(capture, focused, activeView))) {
+    if (
+      prioritizedCaptures.length === 0 ||
+      !prioritizedCaptures.some((capture) => captureIsReachable(capture, focused, activeView))
+    ) {
       const outcome = createSequenceOutcome("sequence-miss", pending.captures)
       emitSequenceDispatch("sequence-clear", pending.captures, focused)
       activation.setPendingSequence(null)
@@ -920,15 +878,7 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
       return continueSequence()
     }
 
-    return applySyncDecision(
-      decision,
-      continuationCaptures,
-      runExact,
-      continueSequence,
-      clear,
-      focused,
-      getSequence,
-    )
+    return applySyncDecision(decision, continuationCaptures, runExact, continueSequence, clear, focused, getSequence)
   }
 
   function applySyncDecision(
@@ -953,29 +903,23 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
     }
 
     const outcome = continueSequence()
-    scheduleDeferredDisambiguation(
-      continuationCaptures,
-      decision.handler!,
-      focused,
-      getSequence(),
-      (nextDecision) => {
-        if (!nextDecision) {
-          return
-        }
+    scheduleDeferredDisambiguation(continuationCaptures, decision.handler!, focused, getSequence(), (nextDecision) => {
+      if (!nextDecision) {
+        return
+      }
 
-        if (nextDecision.action === "run-exact") {
-          runExact()
-          return
-        }
+      if (nextDecision.action === "run-exact") {
+        runExact()
+        return
+      }
 
-        if (nextDecision.action === "continue-sequence") {
-          continueSequence()
-          return
-        }
+      if (nextDecision.action === "continue-sequence") {
+        continueSequence()
+        return
+      }
 
-        clear()
-      },
-    )
+      clear()
+    })
     return outcome
   }
 
@@ -1130,11 +1074,7 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
       result = handler(ctx)
     } catch (error) {
       if (isPendingDisambiguationCurrent(pending)) {
-        notify.emitError(
-          "deferred-disambiguation-error",
-          error,
-          "[Keymap] Error in deferred disambiguation handler:",
-        )
+        notify.emitError("deferred-disambiguation-error", error, "[Keymap] Error in deferred disambiguation handler:")
         finishPendingDisambiguation(pending)
       }
       return
@@ -1150,11 +1090,7 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
             return
           }
 
-          notify.emitError(
-            "deferred-disambiguation-error",
-            error,
-            "[Keymap] Error in deferred disambiguation handler:",
-          )
+          notify.emitError("deferred-disambiguation-error", error, "[Keymap] Error in deferred disambiguation handler:")
           finishPendingDisambiguation(pending)
         })
       return
@@ -1205,30 +1141,6 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
 
   function isPendingDisambiguationCurrent(pending: PendingDisambiguation<TTarget, TEvent>): boolean {
     return pendingDisambiguation === pending
-  }
-
-  function sleepWithSignal(ms: number, signal: AbortSignal): Promise<boolean> {
-    if (signal.aborted) {
-      return Promise.resolve(false)
-    }
-
-    return new Promise<boolean>((resolve) => {
-      const timeout = setTimeout(
-        () => {
-          signal.removeEventListener("abort", onAbort)
-          resolve(true)
-        },
-        Math.max(0, ms),
-      )
-
-      const onAbort = () => {
-        clearTimeout(timeout)
-        signal.removeEventListener("abort", onAbort)
-        resolve(false)
-      }
-
-      signal.addEventListener("abort", onAbort, { once: true })
-    })
   }
 
   function warnUnresolvedAmbiguity(
@@ -1391,47 +1303,16 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
     return { handled, stop: false, outcome }
   }
 
-  function matchPattern(
-    patternName: string,
-    event: TEvent,
-  ): SequencePatternMatch | undefined {
-    const pattern = state.patterns.get(patternName)
-    if (!pattern) {
-      return undefined
-    }
-
-    try {
-      return pattern.matcher(event)
-    } catch (error) {
-      notify.emitError(
-        "sequence-pattern-match-error",
-        error,
-        `[Keymap] Error matching sequence pattern "${pattern.name}":`,
-      )
-      return undefined
-    }
+  function matchPattern(patternName: string, event: TEvent) {
+    return matchSequencePattern(state.patterns, notify, patternName, event)
   }
 
   function createPatternEventPart(
     event: TEvent,
     patternName: string,
-    match: SequencePatternMatch,
-  ): KeySequencePart {
-    const pattern = state.patterns.get(patternName)
-    const payloadKey = pattern?.payloadKey ?? patternName
-    const part = createKeySequencePart(
-      {
-        name: event.name,
-        ctrl: event.ctrl,
-        shift: event.shift,
-        meta: event.meta,
-        super: event.super ?? false,
-        hyper: event.hyper || undefined,
-      },
-      { display: match.display ?? String(match.value ?? event.name) },
-    )
-
-    return { ...part, patternName, payloadKey }
+    match: NonNullable<ReturnType<typeof matchPattern>>,
+  ) {
+    return createPatternEventPartFromPattern(state.patterns, event, patternName, match)
   }
 
   function collectRootCaptures(
@@ -1446,43 +1327,7 @@ export function createDispatchService<TTarget extends object, TEvent extends Key
   }
 
   function createSequencePayload(capture?: PendingSequenceCapture<TTarget, TEvent>): unknown {
-    if (!capture?.patterns || capture.patterns.length === 0) {
-      return undefined
-    }
-
-    const payload: Record<string, unknown> = {}
-    let hasPayload = false
-    for (const captured of capture.patterns) {
-      const pattern = state.patterns.get(captured.name)
-      let value: unknown
-
-      try {
-        value = pattern?.finalize
-          ? pattern.finalize(captured.values)
-          : captured.values.length === 1
-            ? captured.values[0]
-            : [...captured.values]
-      } catch (error) {
-        notify.emitError(
-          "sequence-pattern-finalize-error",
-          error,
-          `[Keymap] Error finalizing sequence pattern "${captured.name}":`,
-        )
-        continue
-      }
-
-      const existing = payload[captured.payloadKey]
-      if (existing === undefined) {
-        payload[captured.payloadKey] = value
-        hasPayload = true
-      } else if (Array.isArray(existing)) {
-        existing.push(value)
-      } else {
-        payload[captured.payloadKey] = [existing, value]
-      }
-    }
-
-    return hasPayload ? payload : undefined
+    return createSequencePayloadFromPattern(state.patterns, notify, capture)
   }
 
   function bindingMatchesRuntimeState(
