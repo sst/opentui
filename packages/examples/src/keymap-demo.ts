@@ -110,6 +110,12 @@ const LOGO_MIN_BPM = 30
 const LOGO_MAX_BPM = 240
 const LOGO_BPM_STEP = 8
 const LOGO_PULSE_DURATION_MS = 1200
+const LOGO_TILE_ROWS = 8
+const LOGO_TILE_COLUMNS = 8
+const LOGO_TILE_STEPS = 16
+const LOGO_TILE_DECAY_MS = 280
+const LOGO_TILE_BASE_OPACITY = 0.42
+const LOGO_TILE_HIT_OPACITY = 0.86
 const OPENCODE_LOGO = {
   left: ["                   ", "█▀▀█ █▀▀█ █▀▀█ █▀▀▄", "█__█ █__█ █^^^ █__█", "▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀~~▀"],
   right: ["             ▄     ", "█▀▀▀ █▀▀█ █▀▀█ █▀▀█", "█___ █__█ █__█ █^^^", "▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀"],
@@ -188,6 +194,9 @@ let logoAnimationTime = 0
 let logoPulseCountdownMs = 0
 let logoAnimationBpm = LOGO_DEFAULT_BPM
 let logoPulses: LogoPulse[] = []
+let logoTileStepAccumulatorMs = 0
+let logoTileStepIndex = 0
+let logoTileStates: LogoTileState[] = []
 let disposers: Array<() => void> = []
 
 interface LogoCell {
@@ -203,6 +212,15 @@ interface LogoPulse {
   ageMs: number
   durationMs: number
   force: number
+}
+
+interface LogoTileState {
+  x: number
+  y: number
+  renderable: BoxRenderable
+  hitMs: number
+  color: string
+  accent: number
 }
 
 function styledLine(chunks: TextChunk[]): TextChunk[] {
@@ -329,6 +347,10 @@ function getLogoPulseIntervalMs(): number {
   return 60_000 / logoAnimationBpm
 }
 
+function getLogoTileStepIntervalMs(): number {
+  return getLogoPulseIntervalMs() / 4
+}
+
 function addRandomLogoPulse(): void {
   const cell = LOGO_LIT_CELLS[Math.floor(Math.random() * LOGO_LIT_CELLS.length)]
   if (!cell) {
@@ -342,6 +364,98 @@ function addRandomLogoPulse(): void {
     durationMs: LOGO_PULSE_DURATION_MS,
     force: lerpNumber(0.75, 1.25, Math.random()),
   })
+}
+
+function getLogoTileBaseColor(x: number, y: number): string {
+  const diagonal = (x + y) / Math.max(1, LOGO_TILE_COLUMNS + LOGO_TILE_ROWS - 2)
+  return mixColor("#070711", "#16162a", diagonal)
+}
+
+function triggerLogoTile(x: number, y: number, color: string, accent = 1): void {
+  const tile = logoTileStates.find((candidate) => candidate.x === x && candidate.y === y)
+  if (!tile) {
+    return
+  }
+
+  tile.hitMs = LOGO_TILE_DECAY_MS
+  tile.color = color
+  tile.accent = Math.max(tile.accent, accent)
+}
+
+function triggerLogoTileColumn(column: number, color: string, accent: number): void {
+  const x = ((column % LOGO_TILE_COLUMNS) + LOGO_TILE_COLUMNS) % LOGO_TILE_COLUMNS
+  for (let y = 0; y < LOGO_TILE_ROWS; y += 1) {
+    triggerLogoTile(x, y, color, accent * (0.72 + (y / Math.max(1, LOGO_TILE_ROWS - 1)) * 0.28))
+  }
+}
+
+function triggerLogoTileRow(row: number, color: string, accent: number): void {
+  const y = ((row % LOGO_TILE_ROWS) + LOGO_TILE_ROWS) % LOGO_TILE_ROWS
+  for (let x = 0; x < LOGO_TILE_COLUMNS; x += 1) {
+    triggerLogoTile(x, y, color, accent * (0.78 + Math.sin((x / LOGO_TILE_COLUMNS) * Math.PI) * 0.22))
+  }
+}
+
+function triggerLogoTileBeat(step: number): void {
+  const beat = Math.floor(step / 4)
+  const subdivision = step % 4
+
+  if (subdivision === 0) {
+    const center = beat % 2 === 0 ? 2 : 5
+    triggerLogoTile(center, 5, P.accent, 1.15)
+    triggerLogoTile(center + 1, 5, P.accent, 1)
+    triggerLogoTile(center, 6, P.leader, 0.92)
+    triggerLogoTile(center + 1, 6, P.leader, 0.86)
+  }
+
+  if (step === 4 || step === 12) {
+    triggerLogoTileRow(2, P.key, 0.96)
+    triggerLogoTileRow(3, P.alpha, 0.72)
+  }
+
+  if (step % 2 === 2) {
+    triggerLogoTileColumn((step / 2 + 1) % LOGO_TILE_COLUMNS, P.command, 0.56)
+  }
+
+  if (step % 2 === 1) {
+    triggerLogoTile((step * 3) % LOGO_TILE_COLUMNS, (step * 5 + beat) % LOGO_TILE_ROWS, P.textDim, 0.42)
+  }
+
+  if (step === 15) {
+    triggerLogoTileColumn(7, P.leader, 0.74)
+  }
+}
+
+function updateLogoTiles(deltaTime: number): void {
+  const stepMs = getLogoTileStepIntervalMs()
+  logoTileStepAccumulatorMs += deltaTime
+  while (logoTileStepAccumulatorMs >= stepMs) {
+    logoTileStepAccumulatorMs -= stepMs
+    triggerLogoTileBeat(logoTileStepIndex)
+    logoTileStepIndex = (logoTileStepIndex + 1) % LOGO_TILE_STEPS
+  }
+
+  for (const tile of logoTileStates) {
+    tile.hitMs = Math.max(0, tile.hitMs - deltaTime)
+    const strength = clamp01(tile.hitMs / LOGO_TILE_DECAY_MS) * tile.accent
+    const base = getLogoTileBaseColor(tile.x, tile.y)
+    tile.renderable.backgroundColor = mixColor(base, tile.color, Math.min(0.88, strength))
+    tile.renderable.opacity = lerpNumber(LOGO_TILE_BASE_OPACITY, LOGO_TILE_HIT_OPACITY, Math.min(1, strength))
+    tile.accent = strength > 0 ? tile.accent : 0
+  }
+}
+
+function resetLogoTiles(): void {
+  logoTileStepAccumulatorMs = 0
+  logoTileStepIndex = 0
+  for (const tile of logoTileStates) {
+    tile.hitMs = 0
+    tile.color = getLogoTileBaseColor(tile.x, tile.y)
+    tile.accent = 0
+    tile.renderable.backgroundColor = tile.color
+    tile.renderable.opacity = LOGO_TILE_BASE_OPACITY
+  }
+  triggerLogoTileBeat(0)
 }
 
 function getLogoPulseStrength(cell: LogoCell): number {
@@ -370,6 +484,7 @@ function getLogoCellColor(cell: LogoCell): string {
 
 function updateLogoAnimation(deltaTime: number): void {
   logoAnimationTime += deltaTime
+  updateLogoTiles(deltaTime)
   logoPulseCountdownMs -= deltaTime
   for (const pulse of logoPulses) {
     pulse.ageMs += deltaTime
@@ -386,6 +501,7 @@ function resetLogoAnimation(): void {
   logoAnimationTime = 0
   logoPulseCountdownMs = 0
   logoPulses = []
+  resetLogoTiles()
   addRandomLogoPulse()
   logoPulseCountdownMs = getLogoPulseIntervalMs()
 }
@@ -2081,6 +2197,9 @@ export function run(renderer: CliRenderer): void {
   logoAnimationTime = 0
   logoPulseCountdownMs = 0
   logoAnimationBpm = LOGO_DEFAULT_BPM
+  logoTileStepAccumulatorMs = 0
+  logoTileStepIndex = 0
+  logoTileStates = []
   graphLastRenderedHeight = -1
   graphLastRenderedWidth = -1
   editorFrames = []
@@ -2450,6 +2569,50 @@ export function run(renderer: CliRenderer): void {
   })
   logoOverlayShell.add(logoScrim)
 
+  const logoTileGrid = new BoxRenderable(renderer, {
+    id: "keymap-demo-logo-overlay-tile-grid",
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: "100%",
+    height: "100%",
+    flexDirection: "column",
+    zIndex: 1,
+  })
+  logoOverlayShell.add(logoTileGrid)
+
+  for (let y = 0; y < LOGO_TILE_ROWS; y += 1) {
+    const row = new BoxRenderable(renderer, {
+      id: `keymap-demo-logo-overlay-tile-row-${y}`,
+      flexDirection: "row",
+      flexGrow: 1,
+      flexBasis: 0,
+      minHeight: 0,
+    })
+    logoTileGrid.add(row)
+
+    for (let x = 0; x < LOGO_TILE_COLUMNS; x += 1) {
+      const tile = new BoxRenderable(renderer, {
+        id: `keymap-demo-logo-overlay-tile-${x}-${y}`,
+        flexGrow: 1,
+        flexBasis: 0,
+        minWidth: 0,
+        backgroundColor: getLogoTileBaseColor(x, y),
+        opacity: LOGO_TILE_BASE_OPACITY,
+      })
+      row.add(tile)
+      logoTileStates.push({
+        x,
+        y,
+        renderable: tile,
+        hitMs: 0,
+        color: getLogoTileBaseColor(x, y),
+        accent: 0,
+      })
+    }
+  }
+  resetLogoTiles()
+
   const logoCard = new BoxRenderable(renderer, {
     id: "keymap-demo-logo-overlay-card",
     position: "absolute",
@@ -2466,6 +2629,7 @@ export function run(renderer: CliRenderer): void {
     paddingX: 2,
     paddingY: 1,
     flexDirection: "column",
+    zIndex: 4,
     alignItems: "center",
     justifyContent: "center",
     gap: 1,
@@ -2557,6 +2721,9 @@ export function destroy(renderer: CliRenderer): void {
   logoAnimationTime = 0
   logoPulseCountdownMs = 0
   logoAnimationBpm = LOGO_DEFAULT_BPM
+  logoTileStepAccumulatorMs = 0
+  logoTileStepIndex = 0
+  logoTileStates = []
   graphLastRenderedHeight = -1
   graphLastRenderedWidth = -1
 }
