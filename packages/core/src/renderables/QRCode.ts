@@ -220,16 +220,9 @@ export class QRCodeRenderable extends Renderable {
         return getDimensionsForScale(this.encoded.size, this._quietZone, scale)
       }
 
-      const minimumDimensions = getDimensionsForScale(this.encoded.size, this._quietZone, 1)
       return {
-        width:
-          widthMode === MeasureMode.Undefined || Number.isNaN(width)
-            ? minimumDimensions.width
-            : Math.min(Math.max(0, Math.floor(width)), minimumDimensions.width),
-        height:
-          heightMode === MeasureMode.Undefined || Number.isNaN(height)
-            ? minimumDimensions.height
-            : Math.min(Math.max(0, Math.floor(height)), minimumDimensions.height),
+        width: 0,
+        height: 0,
       }
     })
   }

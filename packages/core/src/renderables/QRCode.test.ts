@@ -156,6 +156,28 @@ describe("QRCodeRenderable", () => {
     expect(qr.height).toBe(15)
   })
 
+  it("collapses when the available height cannot fit scale 1", async () => {
+    const container = new BoxRenderable(testRenderer, {
+      width: 33,
+      height: 16,
+      flexDirection: "column",
+    })
+    const qr = new QRCodeRenderable(testRenderer, {
+      content: "https://opentui.com/docs/getting-started",
+      quietZone: 2,
+      scale: 2,
+    })
+
+    container.add(qr)
+    testRenderer.root.add(container)
+    await renderOnce()
+
+    expect(qr.getLayoutNode().getComputedLayout().height).toBe(0)
+    expect(captureCharFrame()).not.toContain("█")
+    expect(captureCharFrame()).not.toContain("▀")
+    expect(captureCharFrame()).not.toContain("▄")
+  })
+
   it("keeps the parent background outside the centered QR square when stretched", async () => {
     const container = new BoxRenderable(testRenderer, {
       width: 60,
