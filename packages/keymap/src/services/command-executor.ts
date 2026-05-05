@@ -115,7 +115,9 @@ export function createCommandExecutorService<TTarget extends object, TEvent exte
     if (result === false) {
       return {
         status: "rejected",
-        result: resultCommand ? { ok: false, reason: "rejected", command: resultCommand } : { ok: false, reason: "rejected" },
+        result: resultCommand
+          ? { ok: false, reason: "rejected", command: resultCommand }
+          : { ok: false, reason: "rejected" },
       }
     }
 

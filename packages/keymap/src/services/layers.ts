@@ -97,7 +97,7 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
   activation: ActivationService<TTarget, TEvent>,
   options: LayersOptions<TTarget, TEvent>,
 ): LayerService<TTarget, TEvent> {
-  const registerLayer = (layer: Layer<TTarget, TEvent>): () => void => {
+  const registerLayer = (layer: Layer<TTarget, TEvent>): (() => void) => {
     return notify.runWithStateChangeBatch(() => {
       const target = layer.target
       if (target && options.host.isTargetDestroyed(target)) {
@@ -129,13 +129,7 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
       }
 
       const order = state.order++
-      const bindingStates = options.compiler.compileBindings(
-        sourceBindings,
-        state.tokens,
-        target,
-        order,
-        fields,
-      )
+      const bindingStates = options.compiler.compileBindings(sourceBindings, state.tokens, target, order, fields)
 
       if (bindingStates.bindings.length === 0 && !bindingStates.hasTokenBindings && commands.length === 0) {
         return NOOP
@@ -404,13 +398,7 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
     layer: RegisteredLayer<TTarget, TEvent>,
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
   ): BindingCompilationResult<TTarget, TEvent> => {
-    return options.compiler.compileBindings(
-      layer.sourceBindings,
-      tokens,
-      layer.target,
-      layer.order,
-      layer.fields,
-    )
+    return options.compiler.compileBindings(layer.sourceBindings, tokens, layer.target, layer.order, layer.fields)
   }
 
   const applyBindingStates = (

@@ -164,10 +164,10 @@ Compiled metadata is exposed through projections such as `GraphLayer.attrs`, `Ac
 
 Both gate activation. They differ in where the condition comes from.
 
-| Method                 | Use when                                      | Evaluation model                                           |
-| ---------------------- | --------------------------------------------- | ---------------------------------------------------------- |
-| `require(name, value)` | The condition is equality against keymap data | Checks `Object.is(keymap.getData(name), value)`            |
-| `activeWhen(callback)` | The condition is arbitrary code               | Calls the callback whenever the record is evaluated        |
+| Method                 | Use when                                      | Evaluation model                                                                     |
+| ---------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `require(name, value)` | The condition is equality against keymap data | Checks `Object.is(keymap.getData(name), value)`                                      |
+| `activeWhen(callback)` | The condition is arbitrary code               | Calls the callback whenever the record is evaluated                                  |
 | `activeWhen(reactive)` | External state can notify when it changed     | Calls `reactive.get()` on reads and dispatch; `subscribe()` notifies state listeners |
 
 Use `require(...)` for keymap-owned state such as modes:

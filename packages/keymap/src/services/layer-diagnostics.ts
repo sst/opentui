@@ -4,16 +4,12 @@ import type { NotificationService } from "./notify.js"
 import { createRuntimeOrderedRegistry } from "../lib/runtime-utils.js"
 import { cloneKeySequence } from "./keys.js"
 import { snapshotParsedBinding } from "./primitives/bindings.js"
-import type {
-  BindingState,
-  KeymapEvent,
-  LayerAnalysisContext,
-  LayerAnalyzer,
-  LayerBindingAnalysis,
-} from "../types.js"
+import type { BindingState, KeymapEvent, LayerAnalysisContext, LayerAnalyzer, LayerBindingAnalysis } from "../types.js"
 
-export interface LayerDiagnosticsCore<TTarget extends object, TEvent extends KeymapEvent>
-  extends LayerDiagnostics<TTarget, TEvent> {
+export interface LayerDiagnosticsCore<TTarget extends object, TEvent extends KeymapEvent> extends LayerDiagnostics<
+  TTarget,
+  TEvent
+> {
   prependLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void
   appendLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void
   clearLayerAnalyzers(): void
@@ -98,12 +94,18 @@ function sameSequence<TTarget extends object, TEvent extends KeymapEvent>(
   left: BindingState<TTarget, TEvent>,
   right: BindingState<TTarget, TEvent>,
 ): boolean {
-  return left.sequence.length === right.sequence.length && left.sequence.every((part, index) => part.match === right.sequence[index]?.match)
+  return (
+    left.sequence.length === right.sequence.length &&
+    left.sequence.every((part, index) => part.match === right.sequence[index]?.match)
+  )
 }
 
 function isPrefix<TTarget extends object, TEvent extends KeymapEvent>(
   left: BindingState<TTarget, TEvent>,
   right: BindingState<TTarget, TEvent>,
 ): boolean {
-  return left.sequence.length < right.sequence.length && left.sequence.every((part, index) => part.match === right.sequence[index]?.match)
+  return (
+    left.sequence.length < right.sequence.length &&
+    left.sequence.every((part, index) => part.match === right.sequence[index]?.match)
+  )
 }

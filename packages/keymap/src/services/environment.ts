@@ -89,7 +89,11 @@ export function registerToken<TTarget extends object, TEvent extends KeymapEvent
   }
 
   if (state.tokens.has(normalizedToken) || state.patterns.has(normalizedToken)) {
-    notify.emitError("duplicate-token", { token: normalizedToken }, `Keymap token "${normalizedToken}" is already registered`)
+    notify.emitError(
+      "duplicate-token",
+      { token: normalizedToken },
+      `Keymap token "${normalizedToken}" is already registered`,
+    )
     return NOOP
   }
 
@@ -216,11 +220,7 @@ export function registerFields<TTarget extends object, TEvent extends KeymapEven
   const reservedFields =
     kind === "layer" ? RESERVED_LAYER_FIELDS : kind === "binding" ? RESERVED_BINDING_FIELDS : RESERVED_COMMAND_FIELDS
   const registeredFields =
-    kind === "layer"
-      ? state.layerFields
-      : kind === "binding"
-        ? state.bindingFields
-        : state.commandFields
+    kind === "layer" ? state.layerFields : kind === "binding" ? state.bindingFields : state.commandFields
 
   return registerFieldCompilers(fields, {
     kind,

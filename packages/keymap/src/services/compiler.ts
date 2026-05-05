@@ -274,11 +274,7 @@ export function createCompilerService<TTarget extends object, TEvent extends Key
 
             bindingStates.push(compiledBinding)
           } catch (error) {
-            notify.emitError(
-              "binding-compile-error",
-              error,
-              getErrorMessage(error, "Failed to compile keymap binding"),
-            )
+            notify.emitError("binding-compile-error", error, getErrorMessage(error, "Failed to compile keymap binding"))
           }
         }
       }
@@ -399,7 +395,9 @@ function validateExactPrefixAmbiguity<TTarget extends object, TEvent extends Key
       (existing.command !== undefined && sequenceMatchesPrefix(existing.sequence, next.sequence)) ||
       (next.command !== undefined && sequenceMatchesPrefix(next.sequence, existing.sequence))
     ) {
-      throw new Error("Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer")
+      throw new Error(
+        "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
+      )
     }
   }
 }

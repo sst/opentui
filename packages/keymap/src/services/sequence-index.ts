@@ -267,7 +267,12 @@ export function advanceSequenceBinding<TTarget extends object, TEvent extends Ke
     }
 
     const eventPart = createPatternPart(event, part.patternName, patternMatch)
-    return appendPatternCapture({ layer, binding, index, parts, patterns }, index, eventPart, patternMatch.value ?? event.name)
+    return appendPatternCapture(
+      { layer, binding, index, parts, patterns },
+      index,
+      eventPart,
+      patternMatch.value ?? event.name,
+    )
   }
 
   if (!matchKeys.includes(part.match)) {
@@ -340,7 +345,17 @@ export function collectRootSequenceCaptures<TTarget extends object, TEvent exten
       continue
     }
 
-    const capture = advanceSequenceBinding(layer, binding, 0, [], undefined, matchKeys, event, matchPattern, createPatternPart)
+    const capture = advanceSequenceBinding(
+      layer,
+      binding,
+      0,
+      [],
+      undefined,
+      matchKeys,
+      event,
+      matchPattern,
+      createPatternPart,
+    )
     if (!capture) {
       continue
     }

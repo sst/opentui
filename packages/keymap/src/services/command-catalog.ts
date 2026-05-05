@@ -28,13 +28,7 @@ import { getActiveCommandView as createActiveCommandView, getRegisteredCommandVi
 import type { ConditionService } from "./conditions.js"
 import { createFieldCompilerContext } from "./primitives/field-invariants.js"
 import type { NotificationService } from "./notify.js"
-import type {
-  ActiveCommandView,
-  LayerCommandEntry,
-  CommandView,
-  ResolvedCommandEntry,
-  State,
-} from "./state.js"
+import type { ActiveCommandView, LayerCommandEntry, CommandView, ResolvedCommandEntry, State } from "./state.js"
 import { getErrorMessage } from "./values.js"
 
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
@@ -86,7 +80,9 @@ export interface CommandCatalogService<TTarget extends object, TEvent extends Ke
   clearCommandResolvers(): void
   getCommands(query?: CommandQuery<TTarget, TEvent>): readonly Command<TTarget, TEvent>[]
   getCommandEntries(query?: CommandQuery<TTarget, TEvent>): readonly CommandEntry<TTarget, TEvent>[]
-  getCommandBindings(query: CommandBindingsQuery<TTarget>): ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]>
+  getCommandBindings(
+    query: CommandBindingsQuery<TTarget>,
+  ): ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]>
   getResolvedCommandChain(
     command: string,
     focused: TTarget | null,
@@ -97,7 +93,10 @@ export interface CommandCatalogService<TTarget extends object, TEvent extends Ke
     command: string,
     focused: TTarget | null,
   ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined
-  resolveRegisteredResolverFallback(command: string, execution?: CommandExecutionFields): ResolvedCommandLookup<TTarget, TEvent>
+  resolveRegisteredResolverFallback(
+    command: string,
+    execution?: CommandExecutionFields,
+  ): ResolvedCommandLookup<TTarget, TEvent>
   resolveActiveResolverFallback(
     command: string,
     focused: TTarget | null,
@@ -155,11 +154,11 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
     })
   }
 
-  const prependCommandResolver = (resolver: CommandResolver<TTarget, TEvent>): () => void => {
+  const prependCommandResolver = (resolver: CommandResolver<TTarget, TEvent>): (() => void) => {
     return mutateCommandResolvers(() => state.commandResolvers.prepend(resolver), resolver)
   }
 
-  const appendCommandResolver = (resolver: CommandResolver<TTarget, TEvent>): () => void => {
+  const appendCommandResolver = (resolver: CommandResolver<TTarget, TEvent>): (() => void) => {
     return mutateCommandResolvers(() => state.commandResolvers.append(resolver), resolver)
   }
 
@@ -291,7 +290,9 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
     return { entries: resolved.length > 0 ? resolved : undefined, hadError: fallback.hadError }
   }
 
-  const getRegisteredResolvedEntries = (command: string): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined => {
+  const getRegisteredResolvedEntries = (
+    command: string,
+  ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined => {
     if (registeredResolvedCacheVersion !== state.derivedVersion) {
       registeredResolvedCacheVersion = state.derivedVersion
       registeredResolvedCache = new Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[] | null>()
@@ -457,7 +458,10 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
     return "unresolved"
   }
 
-  const mutateCommandResolvers = (register: () => () => void, resolver: CommandResolver<TTarget, TEvent>): () => void => {
+  const mutateCommandResolvers = (
+    register: () => () => void,
+    resolver: CommandResolver<TTarget, TEvent>,
+  ): (() => void) => {
     return notify.runWithStateChangeBatch(() => {
       const off = register()
       options.onCommandResolversChanged()
@@ -538,7 +542,9 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
     return getCommandView().entries
   }
 
-  const getCommandQueryContext = (query?: CommandQuery<TTarget, TEvent>): {
+  const getCommandQueryContext = (
+    query?: CommandQuery<TTarget, TEvent>,
+  ): {
     visibility: "reachable" | "active" | "registered"
     focused: TTarget | null
     activeView?: ActiveCommandView<TTarget, TEvent>

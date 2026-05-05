@@ -28,7 +28,11 @@ export function createConditionService<TTarget extends object, TEvent extends Ke
     try {
       return matcher.match()
     } catch (error) {
-      notify.emitError("runtime-matcher-error", error, `[Keymap] Error evaluating runtime matcher from ${matcher.source}:`)
+      notify.emitError(
+        "runtime-matcher-error",
+        error,
+        `[Keymap] Error evaluating runtime matcher from ${matcher.source}:`,
+      )
       return false
     }
   }

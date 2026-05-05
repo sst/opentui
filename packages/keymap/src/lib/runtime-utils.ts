@@ -19,14 +19,18 @@ export function createRuntimeEmitter<TEvents extends Record<string, unknown>>(
   const off = <TName extends keyof TEvents>(name: TName, listener: RuntimeEmitterListener<TEvents[TName]>): void => {
     const current = listeners[name]
     if (!current) return
-    const next = current.filter((candidate) => candidate !== listener) as readonly RuntimeEmitterListener<TEvents[TName]>[]
+    const next = current.filter((candidate) => candidate !== listener) as readonly RuntimeEmitterListener<
+      TEvents[TName]
+    >[]
     if (next.length === 0) delete listeners[name]
     else if (next.length !== current.length) listeners[name] = next
   }
 
   return {
     hook(name, listener) {
-      listeners[name] = [...(listeners[name] ?? []), listener] as readonly RuntimeEmitterListener<TEvents[typeof name]>[]
+      listeners[name] = [...(listeners[name] ?? []), listener] as readonly RuntimeEmitterListener<
+        TEvents[typeof name]
+      >[]
       return () => off(name, listener)
     },
     has(name) {
@@ -100,10 +104,10 @@ export function createRuntimeOrderedRegistry<TValue>(): RuntimeOrderedRegistry<T
   }
 }
 
-export function createRuntimePriorityRegistry<TListener, TOptions extends { priority: number }>(): RuntimePriorityRegistry<
+export function createRuntimePriorityRegistry<
   TListener,
-  TOptions
-> {
+  TOptions extends { priority: number },
+>(): RuntimePriorityRegistry<TListener, TOptions> {
   const items = createItems<RuntimePriorityRegistration<TListener, TOptions>>()
   let order = 0
   return {

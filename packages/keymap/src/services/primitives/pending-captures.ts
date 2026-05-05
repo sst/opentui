@@ -39,7 +39,9 @@ export function captureHasContinuations<TTarget extends object, TEvent extends K
     }
   }
 
-  return captureHasMinimum(capture, patterns, missingPatternMinimum) && capture.index + 1 < capture.binding.sequence.length
+  return (
+    captureHasMinimum(capture, patterns, missingPatternMinimum) && capture.index + 1 < capture.binding.sequence.length
+  )
 }
 
 export function captureIsExact<TTarget extends object, TEvent extends KeymapEvent>(

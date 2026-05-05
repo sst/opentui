@@ -3109,7 +3109,8 @@ const scenarios: BenchmarkScenario[] = [
   {
     name: "trace_editor_mixed_dispatch",
     kind: "trace",
-    description: "Mixed editor-like dispatch trace with focus changes, sequences, patterns, commands, and unrelated layers",
+    description:
+      "Mixed editor-like dispatch trace with focus changes, sequences, patterns, commands, and unrelated layers",
     async setup() {
       const resources = await createScenarioResources()
       const targets = setupTraceApp(resources)
@@ -3152,7 +3153,8 @@ const scenarios: BenchmarkScenario[] = [
   {
     name: "trace_active_keys_subscribers",
     kind: "trace",
-    description: "Which-key style trace: state/focus changes followed by active-key and pending-sequence subscriber reads",
+    description:
+      "Which-key style trace: state/focus changes followed by active-key and pending-sequence subscriber reads",
     async setup() {
       const resources = await createScenarioResources()
       const targets = setupTraceApp(resources)
@@ -3243,7 +3245,8 @@ const scenarios: BenchmarkScenario[] = [
   {
     name: "trace_layer_mount_unmount",
     kind: "trace",
-    description: "Component mount/unmount trace registering local commands and bindings, reading active keys, then disposing",
+    description:
+      "Component mount/unmount trace registering local commands and bindings, reading active keys, then disposing",
     async setup() {
       const resources = await createScenarioResources()
       const targets = setupTraceTargets(resources, 12)

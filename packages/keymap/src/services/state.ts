@@ -113,7 +113,10 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     commandFields: new Map<string, CommandFieldCompiler>(),
     eventMatchResolvers: createRuntimeOrderedRegistry<EventMatchResolver<TEvent>>(),
     disambiguationResolvers: createRuntimeOrderedRegistry<KeyDisambiguationResolver<TTarget, TEvent>>(),
-    keyHooks: createRuntimePriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>(),
+    keyHooks: createRuntimePriorityRegistry<
+      (ctx: KeyInputContext<TEvent>) => void,
+      { priority: number; release: boolean }
+    >(),
     keyAfterHooks: createRuntimePriorityRegistry<
       (ctx: KeyAfterInputContext<TTarget, TEvent>) => void,
       { priority: number; release: boolean }
