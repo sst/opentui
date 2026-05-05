@@ -2,11 +2,9 @@ import {
   createHtmlKeymapHost,
   createHtmlKeymapEvent,
   htmlEventMatchResolver,
-  Keymap,
-  type ActiveKey,
-  type DispatchEvent,
   type HtmlKeymapEvent,
 } from "@opentui/keymap/html"
+import { Keymap, type ActiveKey, type DispatchEvent } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons"
 import { getGraphSnapshot, type GraphBinding, type GraphSnapshot } from "@opentui/keymap/extras/graph"
 import { formatKeySequence } from "@opentui/keymap/extras"

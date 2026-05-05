@@ -1,7 +1,5 @@
-import { registerDefaultKeys } from "./addons/universal/default-parser.js"
-import { registerEnabledFields } from "./addons/universal/enabled.js"
-import { registerMetadataFields } from "./addons/universal/metadata.js"
-import { Keymap } from "./keymap.js"
+import { Keymap } from "@opentui/keymap"
+import { registerDefaultKeys, registerEnabledFields, registerMetadataFields } from "@opentui/keymap/addons"
 import type {
   EventMatchResolver,
   HostMetadata,
@@ -9,9 +7,7 @@ import type {
   KeyStrokeInput,
   KeymapEvent,
   KeymapHost,
-} from "./types.js"
-
-export * from "./index.js"
+} from "@opentui/keymap"
 
 export interface HtmlKeymapEvent extends KeymapEvent {
   readonly originalEvent?: KeyboardEvent

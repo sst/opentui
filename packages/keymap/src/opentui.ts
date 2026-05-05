@@ -1,11 +1,6 @@
 import { CliRenderEvents, KeyEvent, RenderableEvents, type CliRenderer, type Renderable } from "@opentui/core"
-import { registerDefaultKeys } from "./addons/universal/default-parser.js"
-import { registerEnabledFields } from "./addons/universal/enabled.js"
-import { registerMetadataFields } from "./addons/universal/metadata.js"
-import { Keymap } from "./keymap.js"
-import type { HostMetadata, HostPlatform, KeymapHost } from "./types.js"
-
-export * from "./index.js"
+import { Keymap, type HostMetadata, type HostPlatform, type KeymapHost } from "@opentui/keymap"
+import { registerDefaultKeys, registerEnabledFields, registerMetadataFields } from "@opentui/keymap/addons"
 
 function createSyntheticCommandEvent(): KeyEvent {
   return new KeyEvent({

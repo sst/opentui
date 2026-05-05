@@ -116,7 +116,14 @@ const buildResult = await Bun.build({
   target: "bun",
   format: "esm",
   outdir: distDir,
+  splitting: true,
   external: externalDeps,
+  packages: "external",
+  naming: {
+    entry: "[dir]/[name].[ext]",
+    chunk: "chunks/[name]-[hash].[ext]",
+    asset: "assets/[name]-[hash].[ext]",
+  },
 })
 
 if (!buildResult.success) {

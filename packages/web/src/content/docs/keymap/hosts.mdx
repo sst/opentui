@@ -71,7 +71,7 @@ If your host implements `onRawInput()`, it must call each listener before key pa
 
 ## Built-in host helpers
 
-Both built-in host packages re-export the shared `@opentui/keymap` API and add the same three layers of helpers:
+Both built-in host packages export adapter-specific helpers. Import the shared `Keymap`, stringifiers and core types from `@opentui/keymap`.
 
 | Package                   | Host adapter                        | Bare keymap helper              | Default helper                         |
 | ------------------------- | ----------------------------------- | ------------------------------- | -------------------------------------- |

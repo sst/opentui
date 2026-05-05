@@ -1,6 +1,6 @@
-import { Keymap } from "../keymap.js"
-import { registerDefaultKeys } from "../addons/universal/index.js"
-import type { ErrorEvent, HostMetadata, KeymapEvent, KeymapHost, WarningEvent } from "../types.js"
+import { Keymap } from "@opentui/keymap"
+import { registerDefaultKeys } from "@opentui/keymap/addons"
+import type { ErrorEvent, HostMetadata, KeymapEvent, KeymapHost, WarningEvent } from "@opentui/keymap"
 
 export type TestKeyModifierOptions = Partial<Pick<KeymapEvent, "ctrl" | "shift" | "meta" | "super" | "hyper">>
 

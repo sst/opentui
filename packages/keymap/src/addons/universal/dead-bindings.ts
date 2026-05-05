@@ -1,5 +1,5 @@
-import type { Keymap, KeymapEvent, LayerBindingAnalysis, LayerAnalysisContext } from "../../index.js"
-import { stringifyKeySequence, stringifyKeyStroke } from "../../index.js"
+import { stringifyKeySequence, stringifyKeyStroke } from "@opentui/keymap"
+import type { Keymap, KeymapEvent, LayerBindingAnalysis, LayerAnalysisContext } from "@opentui/keymap"
 
 const DEAD_BINDING_WARNINGS_RESOURCE = Symbol("keymap:dead-binding-warnings")
 

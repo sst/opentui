@@ -1,4 +1,4 @@
-export * from "../universal/index.js"
+export * from "@opentui/keymap/addons"
 export { registerBaseLayoutFallback } from "./base-layout.js"
 export {
   createTextareaBindings,

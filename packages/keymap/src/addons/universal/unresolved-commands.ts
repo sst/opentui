@@ -1,5 +1,5 @@
-import type { Keymap, KeymapEvent, LayerAnalysisContext, ParsedBinding } from "../../index.js"
-import { stringifyKeySequence, stringifyKeyStroke } from "../../index.js"
+import { stringifyKeySequence, stringifyKeyStroke } from "@opentui/keymap"
+import type { Keymap, KeymapEvent, LayerAnalysisContext, ParsedBinding } from "@opentui/keymap"
 
 const UNRESOLVED_COMMAND_WARNINGS_RESOURCE = Symbol("keymap:unresolved-command-warnings")
 

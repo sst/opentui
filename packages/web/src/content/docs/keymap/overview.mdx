@@ -200,7 +200,7 @@ keymap.registerLayer({
 })
 ```
 
-All entry points use the same registration, dispatch and query model. They only differ in how they provide targets, focus and input events.
+All host helpers use the same registration, dispatch and query model. They only differ in how they provide targets, focus and input events.
 
 ## Fields and metadata
 
@@ -271,6 +271,8 @@ A pending sequence is the prefix the user has already typed, such as `g` while w
 | `@opentui/keymap/html`           | DOM host adapter for browser UIs rooted in an `HTMLElement`                |
 | `@opentui/keymap/react`          | React provider and hooks for an OpenTUI keymap                             |
 | `@opentui/keymap/solid`          | Solid provider and hooks for an OpenTUI keymap                             |
+
+Adapter entry points intentionally export adapter-specific helpers. Import the shared `Keymap`, stringifiers and core types from `@opentui/keymap`.
 
 ## Bare vs default helpers
 
