@@ -82,6 +82,8 @@ export interface State<TTarget extends object, TEvent extends KeymapEvent> {
   activeLayersCacheVersion: number
   activeLayersCacheFocused: TTarget | null | undefined
   activeLayersCache: RegisteredLayer<TTarget, TEvent>[]
+  activeKeyCacheBlockers: number
+  activeCommandViewCacheBlockers: number
   commandResolvers: RuntimeOrderedRegistry<CommandResolver<TTarget, TEvent>>
   pending: PendingSequenceState<TTarget, TEvent> | null
   data: EventData
@@ -121,6 +123,8 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     activeLayersCacheVersion: -1,
     activeLayersCacheFocused: undefined,
     activeLayersCache: [],
+    activeKeyCacheBlockers: 0,
+    activeCommandViewCacheBlockers: 0,
     commandResolvers: createRuntimeOrderedRegistry<CommandResolver<TTarget, TEvent>>(),
     pending: null,
     data: {},

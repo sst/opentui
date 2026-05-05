@@ -389,52 +389,12 @@ export function createActivationService<TTarget extends object, TEvent extends K
     return isLayerActiveForFocused(host, layer, focused)
   }
 
-  const layerCanCacheActiveKeys = (layer: RegisteredLayer<TTarget, TEvent>): boolean => {
-    if (layer.matchers.length > 0) {
-      return false
-    }
-
-    for (const command of layer.commands) {
-      if (command.matchers.length > 0) {
-        return false
-      }
-    }
-
-    for (const binding of layer.bindings) {
-      if (binding.matchers.length > 0) {
-        return false
-      }
-    }
-
-    return true
-  }
-
   const activeLayersCanCacheActiveKeys = (activeLayers: readonly RegisteredLayer<TTarget, TEvent>[]): boolean => {
-    if (state.commandResolvers.has()) {
-      return false
-    }
-
-    for (const layer of activeLayers) {
-      if (!layerCanCacheActiveKeys(layer)) {
-        return false
-      }
-    }
-
-    return true
+    return !state.commandResolvers.has() && state.activeKeyCacheBlockers === 0
   }
 
   const allRegisteredLayersCanCacheActiveKeys = (): boolean => {
-    if (state.commandResolvers.has()) {
-      return false
-    }
-
-    for (const layer of state.sortedLayers) {
-      if (!layerCanCacheActiveKeys(layer)) {
-        return false
-      }
-    }
-
-    return true
+    return !state.commandResolvers.has() && state.activeKeyCacheBlockers === 0
   }
 
   const popCapture = (

@@ -400,23 +400,7 @@ export function createCommandCatalogService<TTarget extends object, TEvent exten
   }
 
   const activeCommandViewCanCache = (): boolean => {
-    for (const layer of state.sortedLayers) {
-      if (layer.commands.length === 0) {
-        continue
-      }
-
-      if (layer.matchers.length > 0) {
-        return false
-      }
-
-      for (const command of layer.commands) {
-        if (command.matchers.length > 0) {
-          return false
-        }
-      }
-    }
-
-    return true
+    return state.activeCommandViewCacheBlockers === 0
   }
 
   const isBindingVisible = (

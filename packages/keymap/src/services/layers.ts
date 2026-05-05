@@ -37,6 +37,24 @@ function compareLayers<TTarget extends object, TEvent extends KeymapEvent>(
   return priorityDiff || right.order - left.order
 }
 
+function layerBlocksActiveKeyCache<TTarget extends object, TEvent extends KeymapEvent>(
+  layer: RegisteredLayer<TTarget, TEvent>,
+): boolean {
+  if (layer.matchers.length > 0) return true
+  for (const command of layer.commands) if (command.matchers.length > 0) return true
+  for (const binding of layer.bindings) if (binding.matchers.length > 0) return true
+  return false
+}
+
+function layerBlocksActiveCommandViewCache<TTarget extends object, TEvent extends KeymapEvent>(
+  layer: RegisteredLayer<TTarget, TEvent>,
+): boolean {
+  if (layer.commands.length === 0) return false
+  if (layer.matchers.length > 0) return true
+  for (const command of layer.commands) if (command.matchers.length > 0) return true
+  return false
+}
+
 interface CompileLayerRuntimeStateResult {
   requires: readonly [name: string, value: unknown][]
   matchers: readonly RuntimeMatcher[]
@@ -146,7 +164,11 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
         bindings: bindingStates.bindings,
         root: buildSequenceTree(bindingStates.bindings, state.patterns),
         hasTokenBindings: bindingStates.hasTokenBindings,
+        activeKeyCacheBlocked: false,
+        activeCommandViewCacheBlocked: false,
       }
+
+      updateCacheBlockers(registeredLayer)
 
       state.layers.add(registeredLayer)
       state.sortedLayers = [...state.sortedLayers, registeredLayer].sort(compareLayers)
@@ -395,15 +417,16 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
     layer: RegisteredLayer<TTarget, TEvent>,
     compilation: BindingCompilationResult<TTarget, TEvent>,
   ): boolean => {
-      options.diagnostics?.analyzeLayer({
-        target: layer.target,
-        order: layer.order,
-        commands: layer.commands,
-        sourceBindings: layer.sourceBindings,
-        bindings: compilation.bindings,
-        hasTokenBindings: compilation.hasTokenBindings,
-      })
+    options.diagnostics?.analyzeLayer({
+      target: layer.target,
+      order: layer.order,
+      commands: layer.commands,
+      sourceBindings: layer.sourceBindings,
+      bindings: compilation.bindings,
+      hasTokenBindings: compilation.hasTokenBindings,
+    })
 
+    untrackCacheBlockers(layer)
     for (const binding of layer.bindings) {
       detachReactiveMatchers(binding)
     }
@@ -411,6 +434,7 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
     layer.bindings = compilation.bindings
     layer.root = buildSequenceTree(compilation.bindings, state.patterns)
     layer.hasTokenBindings = compilation.hasTokenBindings
+    updateCacheBlockers(layer)
 
     for (const binding of layer.bindings) {
       attachReactiveMatchers(binding)
@@ -426,6 +450,7 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
       }
 
       state.sortedLayers = state.sortedLayers.filter((candidate) => candidate !== layer)
+      untrackCacheBlockers(layer)
 
       detachReactiveMatchers(layer)
       for (const command of layer.commands) {
@@ -473,6 +498,28 @@ export function createLayerService<TTarget extends object, TEvent extends Keymap
           getErrorMessage(error, `Failed to subscribe to reactive matcher from ${matcher.source}`),
         )
       }
+    }
+  }
+
+  const updateCacheBlockers = (layer: RegisteredLayer<TTarget, TEvent>): void => {
+    const activeKeyBlocked = layerBlocksActiveKeyCache(layer)
+    const activeCommandViewBlocked = layerBlocksActiveCommandViewCache(layer)
+
+    layer.activeKeyCacheBlocked = activeKeyBlocked
+    layer.activeCommandViewCacheBlocked = activeCommandViewBlocked
+    if (activeKeyBlocked) state.activeKeyCacheBlockers += 1
+    if (activeCommandViewBlocked) state.activeCommandViewCacheBlockers += 1
+  }
+
+  const untrackCacheBlockers = (layer: RegisteredLayer<TTarget, TEvent>): void => {
+    if (layer.activeKeyCacheBlocked) {
+      state.activeKeyCacheBlockers -= 1
+      layer.activeKeyCacheBlocked = false
+    }
+
+    if (layer.activeCommandViewCacheBlocked) {
+      state.activeCommandViewCacheBlockers -= 1
+      layer.activeCommandViewCacheBlocked = false
     }
   }
 
