@@ -15,6 +15,7 @@ import type {
   NormalizedKeyStroke,
   PendingSequenceState,
   RegisteredLayer,
+  SequenceNode,
 } from "../types.js"
 import {
   getActiveLayersForFocused,
@@ -27,7 +28,7 @@ import { cloneKeyStroke, createKeySequencePart, stringifyKeyStroke } from "./key
 import type { ConditionService } from "./conditions.js"
 import type { NotificationService } from "./notify.js"
 import type { ActiveCommandView, State } from "./state.js"
-import { activeOptionsForBindings, activeOptionsForCaptures, type SequenceActiveOption } from "./sequence-index.js"
+import { activeOptionsForCaptures, type SequenceActiveOption } from "./sequence-index.js"
 
 function getLiveHost<TTarget extends object, TEvent extends KeymapEvent>(
   host: KeymapHost<TTarget, TEvent>,
@@ -169,9 +170,6 @@ export function createActivationService<TTarget extends object, TEvent extends K
   const activeKeysBindingsAndMetadataCache = createActiveKeysCache()
   let pendingSequenceCacheVersion = -1
   let pendingSequenceCache: readonly KeySequencePart[] = []
-  let activeLayersCacheVersion = -1
-  let activeLayersCacheFocused: TTarget | null | undefined
-  let activeLayersCache: RegisteredLayer<TTarget, TEvent>[] = []
 
   const getFocusedTarget = (): TTarget | null => {
     return getLiveHost(host).getFocusedTarget()
@@ -283,16 +281,38 @@ export function createActivationService<TTarget extends object, TEvent extends K
   }
 
   const getActiveKeys = (options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] => {
-    const includeBindings = options?.includeBindings === true
-    const includeMetadata = options?.includeMetadata === true
-    const cache = getActiveKeysCache(includeBindings, includeMetadata)
+    if (options === undefined) {
+      if (activeKeysPlainCache.version === state.derivedVersion) {
+        return activeKeysPlainCache.value
+      }
 
-    if (host.isDestroyed) {
-      getLiveHost(host)
+      return collectActiveKeysForCache(activeKeysPlainCache, false, false)
     }
+
+    const includeBindings = options.includeBindings === true
+    const includeMetadata = options.includeMetadata === true
+    const cache = includeBindings
+      ? includeMetadata
+        ? activeKeysBindingsAndMetadataCache
+        : activeKeysBindingsCache
+      : includeMetadata
+        ? activeKeysMetadataCache
+        : activeKeysPlainCache
 
     if (cache.version === state.derivedVersion) {
       return cache.value
+    }
+
+    return collectActiveKeysForCache(cache, includeBindings, includeMetadata)
+  }
+
+  const collectActiveKeysForCache = (
+    cache: ActiveKeysCache<TTarget, TEvent>,
+    includeBindings: boolean,
+    includeMetadata: boolean,
+  ): readonly ActiveKey<TTarget, TEvent>[] => {
+    if (host.isDestroyed) {
+      getLiveHost(host)
     }
 
     const focused = getFocusedTarget()
@@ -352,26 +372,21 @@ export function createActivationService<TTarget extends object, TEvent extends K
   }
 
   const getActiveLayers = (focused: TTarget | null): RegisteredLayer<TTarget, TEvent>[] => {
-    if (activeLayersCacheVersion === state.derivedVersion && activeLayersCacheFocused === focused) {
-      return activeLayersCache
+    if (state.activeLayersCacheVersion === state.derivedVersion && state.activeLayersCacheFocused === focused) {
+      return state.activeLayersCache
     }
 
-    activeLayersCacheVersion = state.derivedVersion
-    activeLayersCacheFocused = focused
-    activeLayersCache = getActiveLayersForFocused(state.sortedLayers, host, focused) as RegisteredLayer<TTarget, TEvent>[]
-    return activeLayersCache
+    state.activeLayersCacheVersion = state.derivedVersion
+    state.activeLayersCacheFocused = focused
+    state.activeLayersCache = getActiveLayersForFocused(state.sortedLayers, host, focused) as RegisteredLayer<
+      TTarget,
+      TEvent
+    >[]
+    return state.activeLayersCache
   }
 
   const isActiveLayerForFocused = (layer: RegisteredLayer<TTarget, TEvent>, focused: TTarget | null): boolean => {
     return isLayerActiveForFocused(host, layer, focused)
-  }
-
-  const getActiveKeysCache = (includeBindings: boolean, includeMetadata: boolean): ActiveKeysCache<TTarget, TEvent> => {
-    if (includeBindings) {
-      return includeMetadata ? activeKeysBindingsAndMetadataCache : activeKeysBindingsCache
-    }
-
-    return includeMetadata ? activeKeysMetadataCache : activeKeysPlainCache
   }
 
   const layerCanCacheActiveKeys = (layer: RegisteredLayer<TTarget, TEvent>): boolean => {
@@ -620,23 +635,110 @@ export function createActivationService<TTarget extends object, TEvent extends K
     const stopped = new Set<KeyMatch>()
 
     for (const layer of activeLayers) {
-      if (!conditions.matchesConditions(layer)) {
+      if ((layer.root.children.size === 0 && layer.root.patternChildren.length === 0) || !conditions.matchesConditions(layer)) {
         continue
       }
 
-      const bindingOptions: BindingState<TTarget, TEvent>[] = []
-      for (const binding of layer.bindings) {
-        if (binding.event !== "press" || !bindingMatchesRuntimeState(binding, focused, activeView)) {
-          continue
-        }
-
-        bindingOptions.push(binding)
-      }
-
-      collectActiveKeyOptions(activeOptionsForBindings(bindingOptions), activeKeys, stopped, includeBindings, focused, activeView)
+      collectActiveKeyNodes(layer.root.children.values(), activeKeys, stopped, includeBindings, focused, activeView)
+      collectActiveKeyNodes(layer.root.patternChildren, activeKeys, stopped, includeBindings, focused, activeView)
     }
 
     return materializeActiveKeys(activeKeys, includeBindings, includeMetadata, focused, activeView)
+  }
+
+  const collectActiveKeyNodes = (
+    nodes: Iterable<SequenceNode<TTarget, TEvent>>,
+    activeKeys: Map<KeyMatch, ActiveKeyState<TTarget, TEvent>>,
+    stopped: Set<KeyMatch>,
+    includeBindings: boolean,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): void => {
+    for (const node of nodes) {
+      const bindingKey = node.match
+      if (!bindingKey || stopped.has(bindingKey) || !node.stroke) {
+        continue
+      }
+
+      const selection = selectActiveKeyNode(node, includeBindings, focused, activeView)
+      if (!selection) {
+        continue
+      }
+
+      const existing = activeKeys.get(bindingKey)
+      if (!existing) {
+        activeKeys.set(bindingKey, createActiveKeyState(node.stroke, selection, includeBindings))
+      } else {
+        updateActiveKeyState(existing, selection, includeBindings)
+      }
+
+      if (selection.stop) {
+        stopped.add(bindingKey)
+      }
+    }
+  }
+
+  const selectActiveKeyNode = (
+    node: SequenceNode<TTarget, TEvent>,
+    includeBindings: boolean,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): ActiveKeySelection<TTarget, TEvent> | undefined => {
+    const continues = node.children.size > 0 || node.patternChildren.length > 0
+    if (!continues) {
+      const selected = selectActiveBindings(
+        nodeExactBindingsNeedPrefilter(node) ? collectMatchingBindings(node.bindings, focused, activeView) : node.bindings,
+        focused,
+        activeView,
+      )
+      if (!selected) {
+        return undefined
+      }
+
+      const presentation = getPartPresentation(selected.bindings, node.depth - 1)
+
+      return {
+        display: presentation.display,
+        tokenName: presentation.tokenName,
+        continues: false,
+        firstBinding: selected.bindings[0],
+        commandBinding: selected.commandBinding,
+        bindings: includeBindings ? [...selected.bindings] : undefined,
+        stop: selected.stop,
+      }
+    }
+
+    const reachableBindings = collectMatchingBindings(node.reachableBindings, focused, activeView)
+    if (reachableBindings.length === 0) {
+      return undefined
+    }
+
+    const selected = selectActiveBindings(node.bindings, focused, activeView)
+    const presentation = getPartPresentation(reachableBindings, node.depth - 1)
+
+    return {
+      display: presentation.display,
+      tokenName: presentation.tokenName,
+      continues: true,
+      firstBinding: selected?.bindings[0],
+      commandBinding: selected?.commandBinding,
+      bindings: includeBindings && selected ? [...selected.bindings] : undefined,
+      stop: true,
+    }
+  }
+
+  const nodeExactBindingsNeedPrefilter = (node: SequenceNode<TTarget, TEvent>): boolean => {
+    if (state.commandResolvers.has()) {
+      return true
+    }
+
+    for (const binding of node.bindings) {
+      if (binding.matchers.length > 0) {
+        return true
+      }
+    }
+
+    return false
   }
 
   const collectActiveKeysFromPending = (

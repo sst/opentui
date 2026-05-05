@@ -79,6 +79,9 @@ export interface State<TTarget extends object, TEvent extends KeymapEvent> {
   rawHooks: RuntimePriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>
   layers: Set<RegisteredLayer<TTarget, TEvent>>
   sortedLayers: RegisteredLayer<TTarget, TEvent>[]
+  activeLayersCacheVersion: number
+  activeLayersCacheFocused: TTarget | null | undefined
+  activeLayersCache: RegisteredLayer<TTarget, TEvent>[]
   commandResolvers: RuntimeOrderedRegistry<CommandResolver<TTarget, TEvent>>
   pending: PendingSequenceState<TTarget, TEvent> | null
   data: EventData
@@ -115,6 +118,9 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     rawHooks: createRuntimePriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>(),
     layers: new Set<RegisteredLayer<TTarget, TEvent>>(),
     sortedLayers: [],
+    activeLayersCacheVersion: -1,
+    activeLayersCacheFocused: undefined,
+    activeLayersCache: [],
     commandResolvers: createRuntimeOrderedRegistry<CommandResolver<TTarget, TEvent>>(),
     pending: null,
     data: {},
