@@ -105,9 +105,11 @@ const GRAPH_COMMAND_WIDTH = 24
 const GRAPH_MAX_ACTIVE_LAYER_CHIPS = 4
 const LOGO_OVERLAY_WIDTH = 56
 const LOGO_OVERLAY_HEIGHT = 11
+const LOGO_DEFAULT_BPM = 92
+const LOGO_MIN_BPM = 30
+const LOGO_MAX_BPM = 240
+const LOGO_BPM_STEP = 8
 const LOGO_PULSE_DURATION_MS = 1200
-const LOGO_PULSE_MIN_INTERVAL_MS = 520
-const LOGO_PULSE_MAX_INTERVAL_MS = 980
 const OPENCODE_LOGO = {
   left: ["                   ", "█▀▀█ █▀▀█ █▀▀█ █▀▀▄", "█__█ █__█ █^^^ █__█", "▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀~~▀"],
   right: ["             ▄     ", "█▀▀▀ █▀▀█ █▀▀█ █▀▀█", "█___ █__█ █__█ █^^^", "▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀"],
@@ -146,6 +148,7 @@ let commandPromptSuggestionsBox: BoxRenderable | null = null
 let commandPromptInput: InputRenderable | null = null
 let logoOverlayShell: BoxRenderable | null = null
 let logoOverlayLogoText: TextRenderable | null = null
+let logoOverlayHintText: TextRenderable | null = null
 let commandPromptHintText: TextRenderable | null = null
 let commandPromptUsageText: TextRenderable | null = null
 let commandPromptSuggestionsText: TextRenderable | null = null
@@ -183,6 +186,7 @@ let graphLastRenderedHeight = -1
 let graphLastRenderedWidth = -1
 let logoAnimationTime = 0
 let logoPulseCountdownMs = 0
+let logoAnimationBpm = LOGO_DEFAULT_BPM
 let logoPulses: LogoPulse[] = []
 let disposers: Array<() => void> = []
 
@@ -321,8 +325,8 @@ function getLogoCells(): LogoCell[] {
 const LOGO_CELLS = getLogoCells()
 const LOGO_LIT_CELLS = LOGO_CELLS.filter((cell) => isLogoLit(cell.char))
 
-function randomLogoPulseInterval(): number {
-  return lerpNumber(LOGO_PULSE_MIN_INTERVAL_MS, LOGO_PULSE_MAX_INTERVAL_MS, Math.random())
+function getLogoPulseIntervalMs(): number {
+  return 60_000 / logoAnimationBpm
 }
 
 function addRandomLogoPulse(): void {
@@ -374,7 +378,7 @@ function updateLogoAnimation(deltaTime: number): void {
 
   while (logoPulseCountdownMs <= 0) {
     addRandomLogoPulse()
-    logoPulseCountdownMs += randomLogoPulseInterval()
+    logoPulseCountdownMs += getLogoPulseIntervalMs()
   }
 }
 
@@ -383,7 +387,25 @@ function resetLogoAnimation(): void {
   logoPulseCountdownMs = 0
   logoPulses = []
   addRandomLogoPulse()
-  logoPulseCountdownMs = randomLogoPulseInterval()
+  logoPulseCountdownMs = getLogoPulseIntervalMs()
+}
+
+function setLogoAnimationBpm(value: number): void {
+  logoAnimationBpm = Math.max(LOGO_MIN_BPM, Math.min(LOGO_MAX_BPM, Math.round(value)))
+  logoPulseCountdownMs = Math.min(logoPulseCountdownMs, getLogoPulseIntervalMs())
+}
+
+function adjustLogoAnimationBpm(renderer: CliRenderer, delta: number): void {
+  setLogoAnimationBpm(logoAnimationBpm + delta)
+  renderLogoOverlay()
+  setStatus(renderer, `Logo rhythm ${logoAnimationBpm} BPM`)
+}
+
+function resetLogoAnimationBpm(renderer: CliRenderer): void {
+  setLogoAnimationBpm(LOGO_DEFAULT_BPM)
+  resetLogoAnimation()
+  renderLogoOverlay()
+  setStatus(renderer, `Logo rhythm reset to ${logoAnimationBpm} BPM`)
 }
 
 function buildOpencodeLogoContent(): StyledText {
@@ -405,6 +427,22 @@ function buildOpencodeLogoContent(): StyledText {
   }
 
   return joinLines(lines)
+}
+
+function buildLogoOverlayHint(): StyledText {
+  return joinLines([
+    styledLine([
+      fg(P.textMuted)(`${logoAnimationBpm} BPM  `),
+      bold(fg(P.key)("up/down")),
+      fg(P.textMuted)(" tempo  "),
+      bold(fg(P.key)("r")),
+      fg(P.textMuted)(" reset  "),
+      bold(fg(P.key)("esc")),
+      fg(P.textMuted)(" or "),
+      bold(fg(P.key)("ctrl+o")),
+      fg(P.textMuted)(" close"),
+    ]),
+  ])
 }
 
 function getActiveKeyLabel(activeKey: ActiveKey): string {
@@ -1156,6 +1194,10 @@ function renderLogoOverlay(): void {
   if (logoOverlayLogoText) {
     logoOverlayLogoText.content = buildOpencodeLogoContent()
   }
+
+  if (logoOverlayHintText) {
+    logoOverlayHintText.content = buildLogoOverlayHint()
+  }
 }
 
 function closeLogoOverlay(renderer: CliRenderer, message = "Closed opencode overlay"): void {
@@ -1686,6 +1728,33 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
           },
         },
         {
+          name: "logo-bpm-up",
+          title: "Logo BPM up",
+          desc: "Logo BPM up",
+          category: "View",
+          run() {
+            adjustLogoAnimationBpm(renderer, LOGO_BPM_STEP)
+          },
+        },
+        {
+          name: "logo-bpm-down",
+          title: "Logo BPM down",
+          desc: "Logo BPM down",
+          category: "View",
+          run() {
+            adjustLogoAnimationBpm(renderer, -LOGO_BPM_STEP)
+          },
+        },
+        {
+          name: "logo-bpm-reset",
+          title: "Reset logo BPM",
+          desc: "Reset logo BPM",
+          category: "View",
+          run() {
+            resetLogoAnimationBpm(renderer)
+          },
+        },
+        {
           name: "alpha-up",
           title: "Alpha +1",
           desc: "Alpha +1",
@@ -1863,6 +1932,9 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
       bindings: [
         { key: "escape", cmd: "close-logo-overlay", desc: "Close opencode overlay" },
         { key: "ctrl+o", cmd: "toggle-logo-overlay", desc: "Toggle opencode overlay" },
+        { key: "up", cmd: "logo-bpm-up", desc: "Increase logo BPM" },
+        { key: "down", cmd: "logo-bpm-down", desc: "Decrease logo BPM" },
+        { key: "r", cmd: "logo-bpm-reset", desc: "Reset logo BPM" },
       ],
     }),
   )
@@ -2008,6 +2080,7 @@ export function run(renderer: CliRenderer): void {
   logoPulses = []
   logoAnimationTime = 0
   logoPulseCountdownMs = 0
+  logoAnimationBpm = LOGO_DEFAULT_BPM
   graphLastRenderedHeight = -1
   graphLastRenderedWidth = -1
   editorFrames = []
@@ -2409,20 +2482,12 @@ export function run(renderer: CliRenderer): void {
   })
   logoCard.add(logoOverlayLogoText)
 
-  const logoHint = new TextRenderable(renderer, {
+  logoOverlayHintText = new TextRenderable(renderer, {
     id: "keymap-demo-logo-overlay-hint",
-    content: joinLines([
-      styledLine([
-        fg(P.textMuted)("press "),
-        bold(fg(P.key)("esc")),
-        fg(P.textMuted)(" or "),
-        bold(fg(P.key)("ctrl+o")),
-        fg(P.textMuted)(" to close"),
-      ]),
-    ]),
+    content: buildLogoOverlayHint(),
     height: 1,
   })
-  logoCard.add(logoHint)
+  logoCard.add(logoOverlayHintText)
 
   const keymapInstance = createDefaultOpenTuiKeymap(renderer)
 
@@ -2463,6 +2528,7 @@ export function destroy(renderer: CliRenderer): void {
   commandPromptInput = null
   logoOverlayShell = null
   logoOverlayLogoText = null
+  logoOverlayHintText = null
   commandPromptHintText = null
   commandPromptUsageText = null
   commandPromptSuggestionsText = null
@@ -2490,6 +2556,7 @@ export function destroy(renderer: CliRenderer): void {
   logoPulses = []
   logoAnimationTime = 0
   logoPulseCountdownMs = 0
+  logoAnimationBpm = LOGO_DEFAULT_BPM
   graphLastRenderedHeight = -1
   graphLastRenderedWidth = -1
 }
