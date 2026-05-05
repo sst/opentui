@@ -59,6 +59,7 @@ import { createNotificationService, type NotificationService } from "./services/
 import { resolveKeyMatch } from "./services/keys.js"
 import { createRuntimeService, type RuntimeService } from "./services/runtime.js"
 import { KEYMAP_EXTENSION_CONTEXT, type KeymapExtensionContext } from "./services/extension-context.js"
+import { createKeymapProjections } from "./services/projections.js"
 import { createKeymapState } from "./services/state.js"
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
@@ -89,16 +90,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   #dispatch: DispatchService<TTarget, TEvent>
   #layers: LayerService<TTarget, TEvent>
   #layerDiagnostics: LayerDiagnosticsCore<TTarget, TEvent>
-  #pendingSequenceCacheVersion = -1
-  #pendingSequenceCache: readonly KeySequencePart[] = []
-  #activeKeysPlainCacheVersion = -1
-  #activeKeysPlainCache: readonly ActiveKey<TTarget, TEvent>[] = []
-  #activeKeysBindingsCacheVersion = -1
-  #activeKeysBindingsCache: readonly ActiveKey<TTarget, TEvent>[] = []
-  #activeKeysMetadataCacheVersion = -1
-  #activeKeysMetadataCache: readonly ActiveKey<TTarget, TEvent>[] = []
-  #activeKeysBindingsAndMetadataCacheVersion = -1
-  #activeKeysBindingsAndMetadataCache: readonly ActiveKey<TTarget, TEvent>[] = []
 
   #keypressListener: (event: TEvent) => void
   #keyreleaseListener: (event: TEvent) => void
@@ -106,6 +97,9 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   #focusedTargetListener: (focused: TTarget | null) => void
 
   #host: KeymapHost<TTarget, TEvent>
+
+  public getPendingSequence: () => readonly KeySequencePart[]
+  public getActiveKeys: (options?: ActiveKeyOptions) => readonly ActiveKey<TTarget, TEvent>[]
 
   constructor(host: KeymapHost<TTarget, TEvent>) {
     this.#host = host
@@ -171,6 +165,9 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       this.#layers,
       this.#hooks,
     )
+    const projections = createKeymapProjections(this.#state, this.#activation)
+    this.getPendingSequence = projections.getPendingSequence
+    this.getActiveKeys = projections.getActiveKeys
     this.#keypressListener = (event) => {
       this.#dispatch.handleKeyEvent(event, false)
     }
@@ -246,20 +243,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     return this.#activation.ensureValidPendingSequence() !== undefined
   }
 
-  public getPendingSequence(): readonly KeySequencePart[] {
-    if (this.#pendingSequenceCacheVersion === this.#state.cacheVersion) {
-      return this.#pendingSequenceCache
-    }
-
-    const sequence = this.#activation.getPendingSequence()
-    if (!this.#state.pending || this.#canCacheActiveKeys()) {
-      this.#pendingSequenceCacheVersion = this.#state.cacheVersion
-      this.#pendingSequenceCache = sequence
-    }
-
-    return sequence
-  }
-
   public createKeyMatcher(key: KeyLike): (input: KeyStringifyInput | null | undefined) => boolean {
     const match = this.#compiler.parseTokenKey(key).match
 
@@ -286,54 +269,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public popPendingSequence(): boolean {
     return this.#activation.popPendingSequence()
-  }
-
-  public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] {
-    if (this.#canCacheActiveKeys()) {
-      if (options === undefined) {
-        if (this.#activeKeysPlainCacheVersion === this.#state.derivedVersion) return this.#activeKeysPlainCache
-        const activeKeys = this.#activation.getActiveKeys()
-        this.#activeKeysPlainCacheVersion = this.#state.derivedVersion
-        this.#activeKeysPlainCache = activeKeys
-        return activeKeys
-      }
-
-      const includeBindings = options.includeBindings === true
-      const includeMetadata = options.includeMetadata === true
-      if (includeBindings) {
-        if (includeMetadata) {
-          if (this.#activeKeysBindingsAndMetadataCacheVersion === this.#state.derivedVersion) {
-            return this.#activeKeysBindingsAndMetadataCache
-          }
-          const activeKeys = this.#activation.getActiveKeys(options)
-          this.#activeKeysBindingsAndMetadataCacheVersion = this.#state.derivedVersion
-          this.#activeKeysBindingsAndMetadataCache = activeKeys
-          return activeKeys
-        }
-
-        if (this.#activeKeysBindingsCacheVersion === this.#state.derivedVersion) return this.#activeKeysBindingsCache
-        const activeKeys = this.#activation.getActiveKeys(options)
-        this.#activeKeysBindingsCacheVersion = this.#state.derivedVersion
-        this.#activeKeysBindingsCache = activeKeys
-        return activeKeys
-      }
-
-      if (includeMetadata) {
-        if (this.#activeKeysMetadataCacheVersion === this.#state.derivedVersion) return this.#activeKeysMetadataCache
-        const activeKeys = this.#activation.getActiveKeys(options)
-        this.#activeKeysMetadataCacheVersion = this.#state.derivedVersion
-        this.#activeKeysMetadataCache = activeKeys
-        return activeKeys
-      }
-
-      if (this.#activeKeysPlainCacheVersion === this.#state.derivedVersion) return this.#activeKeysPlainCache
-      const activeKeys = this.#activation.getActiveKeys(options)
-      this.#activeKeysPlainCacheVersion = this.#state.derivedVersion
-      this.#activeKeysPlainCache = activeKeys
-      return activeKeys
-    }
-
-    return this.#activation.getActiveKeys(options)
   }
 
   public getCommands(query?: CommandQuery<TTarget, TEvent>): readonly Command<TTarget, TEvent>[] {
@@ -600,10 +535,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       { token, sequence },
       `[Keymap] Unknown token "${token}" in key sequence "${sequence}" was ignored`,
     )
-  }
-
-  #canCacheActiveKeys(): boolean {
-    return !this.#state.commandResolvers.has() && this.#state.activeKeyCacheBlockers === 0
   }
 
   #releaseResource(key: symbol, resource: { count: number; dispose: () => void }): void {
