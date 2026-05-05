@@ -893,7 +893,7 @@ function KeymapDemoContent() {
         Original Alpha/Beta panels, three switchable textareas, and a centered : prompt.
       </text>
 
-      <box id="keymap-demo-panels" flexDirection="row" gap={1} height={4}>
+      <box id="keymap-demo-panels" flexDirection="row" height={4}>
         <CounterPanel
           id="alpha"
           label="Alpha"
@@ -922,7 +922,7 @@ function KeymapDemoContent() {
         />
       </box>
 
-      <box id="keymap-demo-editors" flexDirection="row" gap={1} height={5}>
+      <box id="keymap-demo-editors" flexDirection="row" height={5}>
         <For each={editorSpecs}>
           {(spec, index) => (
             <box

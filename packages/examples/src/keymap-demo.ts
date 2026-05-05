@@ -1096,7 +1096,6 @@ export function run(renderer: CliRenderer): void {
   const panelsRow = new BoxRenderable(renderer, {
     id: "keymap-demo-panels",
     flexDirection: "row",
-    gap: 1,
     height: 4,
   })
   root.add(panelsRow)
@@ -1150,7 +1149,6 @@ export function run(renderer: CliRenderer): void {
   const editorsRow = new BoxRenderable(renderer, {
     id: "keymap-demo-editors",
     flexDirection: "row",
-    gap: 1,
     height: 5,
   })
   root.add(editorsRow)
