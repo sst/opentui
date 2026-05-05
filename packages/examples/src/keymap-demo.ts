@@ -166,6 +166,9 @@ let logLines: string[] = []
 let graphPulses: TerminalGraphPulse[] = []
 let graphFrameCallback: ((deltaTime: number) => Promise<void>) | null = null
 let graphAnimationLive = false
+let graphRefreshPending = false
+let graphLastRenderedHeight = -1
+let graphLastRenderedWidth = -1
 let disposers: Array<() => void> = []
 
 function styledLine(chunks: TextChunk[]): TextChunk[] {
@@ -652,7 +655,17 @@ function renderGraph(): void {
     return
   }
 
+  graphLastRenderedHeight = graphText.height
+  graphLastRenderedWidth = graphText.width
   graphText.content = buildGraphContent()
+}
+
+function hasGraphSizeChanged(): boolean {
+  if (!graphText) {
+    return false
+  }
+
+  return graphText.height !== graphLastRenderedHeight || graphText.width !== graphLastRenderedWidth
 }
 
 function stopGraphAnimation(renderer: CliRenderer): void {
@@ -673,23 +686,38 @@ function startGraphAnimation(renderer: CliRenderer): void {
   graphAnimationLive = true
 }
 
+function scheduleGraphRefresh(renderer: CliRenderer): void {
+  graphRefreshPending = true
+  startGraphAnimation(renderer)
+}
+
 function setupGraphAnimation(renderer: CliRenderer): void {
   if (graphFrameCallback) {
     return
   }
 
   graphFrameCallback = async (deltaTime) => {
-    if (graphPulses.length === 0) {
+    const sizeChanged = hasGraphSizeChanged()
+    if (graphPulses.length === 0 && !graphRefreshPending && !sizeChanged) {
       stopGraphAnimation(renderer)
       return
     }
 
-    for (const pulse of graphPulses) {
-      pulse.remainingMs -= deltaTime
+    if (graphPulses.length > 0) {
+      for (const pulse of graphPulses) {
+        pulse.remainingMs -= deltaTime
+      }
+      pruneGraphPulses()
     }
 
-    pruneGraphPulses()
+    const keepRefreshPending =
+      graphRefreshPending && (!keymap || !graphText || graphText.height <= 0 || graphText.width <= 0)
+    graphRefreshPending = keepRefreshPending
     renderGraph()
+
+    if (keepRefreshPending) {
+      return
+    }
 
     if (graphPulses.length === 0) {
       stopGraphAnimation(renderer)
@@ -704,6 +732,7 @@ function cleanupGraphAnimation(renderer: CliRenderer): void {
     graphFrameCallback = null
   }
 
+  graphRefreshPending = false
   stopGraphAnimation(renderer)
 }
 
@@ -1694,6 +1723,8 @@ export function run(renderer: CliRenderer): void {
   logLines = []
   cleanupGraphAnimation(renderer)
   graphPulses = []
+  graphLastRenderedHeight = -1
+  graphLastRenderedWidth = -1
   editorFrames = []
   editors = []
 
@@ -1906,12 +1937,13 @@ export function run(renderer: CliRenderer): void {
     minHeight: GRAPH_MIN_PANEL_ROWS,
     width: "100%",
     onSizeChange() {
-      renderGraph()
+      scheduleGraphRefresh(renderer)
     },
   })
   graphBox.add(graphText)
 
   setupGraphAnimation(renderer)
+  scheduleGraphRefresh(renderer)
 
   const whichKeyColumn = new BoxRenderable(renderer, {
     id: "keymap-demo-which-key-column",
@@ -2095,6 +2127,8 @@ export function destroy(renderer: CliRenderer): void {
   lastAction = "Click a panel or press Tab to start."
   logLines = []
   graphPulses = []
+  graphLastRenderedHeight = -1
+  graphLastRenderedWidth = -1
 }
 
 if (import.meta.main) {
