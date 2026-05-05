@@ -116,6 +116,7 @@ const buildResult = await Bun.build({
   target: "bun",
   format: "esm",
   outdir: distDir,
+  sourcemap: "linked",
   splitting: true,
   external: externalDeps,
   packages: "external",

@@ -55,6 +55,24 @@ test("dist package exports resolve when dist exists", async () => {
   }
 })
 
+test("dist package exports include linked sourcemaps when dist exists", () => {
+  const dist = readDistPackage()
+  if (!dist) {
+    return
+  }
+
+  for (const entry of Object.values(dist.packageJson.exports ?? {})) {
+    expect(entry.import).toBeDefined()
+
+    const filePath = resolve(dist.distDir, entry.import!)
+    const text = readFileSync(filePath, "utf8")
+    const sourceMapUrl = text.match(/\/\/# sourceMappingURL=(.+)$/m)?.[1]
+
+    expect(sourceMapUrl).toBe(`${entry.import!.split("/").pop()}.map`)
+    expect(existsSync(`${filePath}.map`)).toBe(true)
+  }
+})
+
 test("dist adapter and addon entrypoints stay isolated when dist exists", () => {
   const dist = readDistPackage()
   if (!dist) {
