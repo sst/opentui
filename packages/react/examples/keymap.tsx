@@ -141,11 +141,11 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function getExPromptCommandFieldText(command: Command, fieldName: string): string | undefined {
+function getExPromptCommandFieldText(command: Command<Renderable, KeyEvent>, fieldName: string): string | undefined {
   return getMetadataText(command[fieldName])
 }
 
-function getExPromptCommandNargs(command: Command): ExArgCount | undefined {
+function getExPromptCommandNargs(command: Command<Renderable, KeyEvent>): ExArgCount | undefined {
   const value = command.nargs
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
@@ -154,7 +154,7 @@ function getExPromptCommandNargs(command: Command): ExArgCount | undefined {
   return undefined
 }
 
-function buildExPromptSuggestions(commands: readonly Command[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly Command<Renderable, KeyEvent>[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {
@@ -171,7 +171,10 @@ function buildExPromptSuggestions(commands: readonly Command[]): ExPromptSuggest
   return suggestions
 }
 
-function getExPromptSuggestions(commands: readonly Command[], value: string): ExPromptSuggestion[] {
+function getExPromptSuggestions(
+  commands: readonly Command<Renderable, KeyEvent>[],
+  value: string,
+): ExPromptSuggestion[] {
   const normalized = normalizeExPromptName(value)
   const spaceIndex = normalized.indexOf(" ")
   const query = spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
@@ -187,7 +190,7 @@ function getExPromptSuggestions(commands: readonly Command[], value: string): Ex
 }
 
 function getSelectedExPromptSuggestion(
-  commands: readonly Command[],
+  commands: readonly Command<Renderable, KeyEvent>[],
   value: string,
   selection: number,
 ): ExPromptSuggestion | null {
@@ -200,7 +203,7 @@ function getSelectedExPromptSuggestion(
 }
 
 function moveExPromptSelection(
-  commands: readonly Command[],
+  commands: readonly Command<Renderable, KeyEvent>[],
   value: string,
   selection: number,
   direction: 1 | -1,
@@ -215,7 +218,7 @@ function moveExPromptSelection(
 }
 
 function applyExPromptSuggestion(
-  commands: readonly Command[],
+  commands: readonly Command<Renderable, KeyEvent>[],
   value: string,
   selection: number,
   direction?: 1 | -1,
@@ -451,6 +454,14 @@ const AppContent = () => {
     input.cursorOffset = value.length
   }, [])
 
+  const hideCommandPrompt = useCallback(() => {
+    commandPromptVisibleRef.current = false
+    commandPromptValueRef.current = ":"
+    setCommandPromptVisible(false)
+    setCommandPromptValue(":")
+    setCommandPromptSelection(0)
+  }, [])
+
   const setAlphaPanelRef = useCallback((value: Renderable | null) => {
     alphaPanelRef.current = value
   }, [])
@@ -527,13 +538,24 @@ const AppContent = () => {
 
   const closeCommandPrompt = useCallback(
     (message: string) => {
-      setCommandPromptVisible(false)
-      setCommandPromptValue(":")
-      setCommandPromptSelection(0)
+      hideCommandPrompt()
       restoreCommandPromptFocus()
       announce(message)
     },
-    [announce, restoreCommandPromptFocus],
+    [announce, hideCommandPrompt, restoreCommandPromptFocus],
+  )
+
+  const dismissCommandPromptForFocusChange = useCallback(
+    (focused: Renderable | null) => {
+      if (!commandPromptVisibleRef.current || focused === commandInputRef.current) {
+        return
+      }
+
+      hideCommandPrompt()
+      commandPromptRestoreTargetRef.current = null
+      announce("Closed ex prompt")
+    },
+    [announce, hideCommandPrompt],
   )
 
   const openCommandPrompt = useCallback(() => {
@@ -542,6 +564,8 @@ const AppContent = () => {
     }
 
     commandPromptRestoreTargetRef.current = renderer.currentFocusedRenderable
+    commandPromptVisibleRef.current = true
+    commandPromptValueRef.current = ":"
     setCommandPromptVisible(true)
     setCommandPromptValue(":")
     setCommandPromptSelection(0)
@@ -718,11 +742,9 @@ const AppContent = () => {
       return
     }
 
-    setCommandPromptVisible(false)
-    setCommandPromptValue(":")
-    setCommandPromptSelection(0)
+    hideCommandPrompt()
     restoreCommandPromptFocus()
-  }, [announce, closeCommandPrompt, manager, renderer, restoreCommandPromptFocus])
+  }, [announce, closeCommandPrompt, hideCommandPrompt, manager, renderer, restoreCommandPromptFocus])
 
   useEffect(() => {
     return composeDisposers([
@@ -912,7 +934,8 @@ const AppContent = () => {
   )
 
   useEffect(() => {
-    const onFocusedRenderable = () => {
+    const onFocusedRenderable = (focused: Renderable | null) => {
+      dismissCommandPromptForFocusChange(focused)
       bumpStatus()
     }
 
@@ -927,7 +950,7 @@ const AppContent = () => {
       renderer.off(CliRenderEvents.FOCUSED_RENDERABLE, onFocusedRenderable)
       renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
     }
-  }, [bumpStatus, renderer])
+  }, [bumpStatus, dismissCommandPromptForFocusChange, renderer])
 
   useEffect(() => {
     if (!commandPromptVisible) {

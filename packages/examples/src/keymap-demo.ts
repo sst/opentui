@@ -1,5 +1,6 @@
 import {
   BoxRenderable,
+  CliRenderEvents,
   InputRenderable,
   InputRenderableEvents,
   ScrollBoxRenderable,
@@ -116,7 +117,7 @@ let whichKeyScrollBox: ScrollBoxRenderable | null = null
 let whichKeyEntriesText: TextRenderable | null = null
 let logBox: BoxRenderable | null = null
 let logText: TextRenderable | null = null
-let keymap: Keymap | null = null
+let keymap: Keymap<Renderable, KeyEvent> | null = null
 
 let alphaCount = 0
 let betaCount = 0
@@ -204,11 +205,11 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function getExPromptCommandFieldText(command: Command, fieldName: string): string | undefined {
+function getExPromptCommandFieldText(command: Command<Renderable, KeyEvent>, fieldName: string): string | undefined {
   return getMetadataText(command[fieldName])
 }
 
-function getExPromptCommandNargs(command: Command): ExArgCount | undefined {
+function getExPromptCommandNargs(command: Command<Renderable, KeyEvent>): ExArgCount | undefined {
   const value = command["nargs"]
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
@@ -217,11 +218,11 @@ function getExPromptCommandNargs(command: Command): ExArgCount | undefined {
   return undefined
 }
 
-function getExPromptCommands(): readonly Command[] {
+function getExPromptCommands(): readonly Command<Renderable, KeyEvent>[] {
   return keymap?.getCommands({ namespace: "excommands" }) ?? []
 }
 
-function buildExPromptSuggestions(commands: readonly Command[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly Command<Renderable, KeyEvent>[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {
@@ -365,6 +366,16 @@ function closeCommandPrompt(renderer: CliRenderer, message: string): void {
   commandPromptRestoreTarget = null
   restoreCommandPromptFocus(restoreTarget)
   setStatus(renderer, message)
+}
+
+function dismissCommandPromptForFocusChange(renderer: CliRenderer, focused: Renderable | null): void {
+  if (!commandPromptVisible || focused === commandPromptInput) {
+    return
+  }
+
+  hideCommandPrompt()
+  commandPromptRestoreTarget = null
+  setStatus(renderer, "Closed ex prompt")
 }
 
 function applyCommandPromptSuggestion(renderer: CliRenderer, direction?: 1 | -1): void {
@@ -768,6 +779,14 @@ function renderAll(renderer: CliRenderer): void {
 function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Renderable, KeyEvent>): void {
   keymap = keymapInstance
   disposers.push(addons.registerExCommands(keymapInstance))
+
+  const onFocusedRenderable = (focused: Renderable | null) => {
+    dismissCommandPromptForFocusChange(renderer, focused)
+  }
+  renderer.on(CliRenderEvents.FOCUSED_RENDERABLE, onFocusedRenderable)
+  disposers.push(() => {
+    renderer.off(CliRenderEvents.FOCUSED_RENDERABLE, onFocusedRenderable)
+  })
 
   disposers.push(
     keymapInstance.registerLayer({
