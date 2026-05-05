@@ -5,7 +5,6 @@ import {
   InputRenderableEvents,
   ScrollBoxRenderable,
   TextRenderable,
-  TextAttributes,
   TextareaRenderable,
   StyledText,
   createCliRenderer,
@@ -1706,23 +1705,6 @@ export function run(renderer: CliRenderer): void {
     backgroundColor: P.bg,
   })
   renderer.root.add(root)
-
-  const title = new TextRenderable(renderer, {
-    id: "keymap-demo-title",
-    content: "Keymap Demo",
-    fg: P.title,
-    attributes: TextAttributes.BOLD,
-    height: 1,
-  })
-  root.add(title)
-
-  const subtitle = new TextRenderable(renderer, {
-    id: "keymap-demo-subtitle",
-    content: "Alpha/Beta panels, three switchable textareas, a centered : prompt, and a live keymap graph.",
-    fg: P.textMuted,
-    height: 1,
-  })
-  root.add(subtitle)
 
   const panelsRow = new BoxRenderable(renderer, {
     id: "keymap-demo-panels",

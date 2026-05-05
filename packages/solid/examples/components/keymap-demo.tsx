@@ -943,13 +943,6 @@ function KeymapDemoContent() {
 
   return (
     <box id="keymap-demo-root" flexDirection="column" flexGrow={1} padding={1} backgroundColor={palette.bg}>
-      <text id="keymap-demo-title" style={{ fg: palette.title, attributes: TextAttributes.BOLD }} height={1}>
-        Keymap Demo
-      </text>
-      <text id="keymap-demo-subtitle" fg={palette.textMuted} height={1}>
-        Original Alpha/Beta panels, three switchable textareas, and a centered : prompt.
-      </text>
-
       <box id="keymap-demo-panels" flexDirection="row" height={4}>
         <CounterPanel
           id="alpha"
