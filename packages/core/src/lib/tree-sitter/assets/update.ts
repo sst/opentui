@@ -207,18 +207,22 @@ ${queriesLines.join("\n")}
 import type { FiletypeParserOptions } from "./types.js"
 import { resolveBundledFilePath } from "../../platform/runtime.js"
 
-${assetPaths}
-
 // Cached parsers to avoid re-resolving paths on every call
-let _cachedParsers: FiletypeParserOptions[] | undefined
+let _cachedParsers: Promise<FiletypeParserOptions[]> | undefined
 
-export function getParsers(): FiletypeParserOptions[] {
+export function getParsers(): Promise<FiletypeParserOptions[]> {
   if (!_cachedParsers) {
-    _cachedParsers = [
-${parserDefinitions},
-    ]
+    _cachedParsers = loadParsers()
   }
   return _cachedParsers
+}
+
+async function loadParsers(): Promise<FiletypeParserOptions[]> {
+${assetPaths}
+
+  return [
+${parserDefinitions},
+  ]
 }
 `
 

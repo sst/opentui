@@ -42,12 +42,12 @@ type TreeSitterWorkerHandle = Pick<
   "onerror" | "onmessage" | "postMessage" | "terminate"
 >
 
-let DEFAULT_PARSERS: FiletypeParserOptions[] = getParsers()
+let DEFAULT_PARSER_OVERRIDES: FiletypeParserOptions[] = []
 
 export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
   for (const parser of parsers) {
-    DEFAULT_PARSERS = [
-      ...DEFAULT_PARSERS.filter((existingParser) => existingParser.filetype !== parser.filetype),
+    DEFAULT_PARSER_OVERRIDES = [
+      ...DEFAULT_PARSER_OVERRIDES.filter((existingParser) => existingParser.filetype !== parser.filetype),
       parser,
     ]
   }
@@ -185,7 +185,13 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   private async registerDefaultParsers(): Promise<void> {
-    for (const parser of DEFAULT_PARSERS) {
+    const defaultParsers = await getParsers()
+    const overriddenFiletypes = new Set(DEFAULT_PARSER_OVERRIDES.map((parser) => parser.filetype))
+
+    for (const parser of [
+      ...defaultParsers.filter((parser) => !overriddenFiletypes.has(parser.filetype)),
+      ...DEFAULT_PARSER_OVERRIDES,
+    ]) {
       this.addFiletypeParser(parser)
     }
   }
