@@ -1,15 +1,14 @@
 import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
-import { createOpenTuiKeymap, createDefaultOpenTuiKeymap } from "../opentui.js"
+import { createOpenTuiKeymap, createDefaultOpenTuiKeymap, createOpenTuiKeymapHost } from "../opentui.js"
 import * as addons from "../addons/index.js"
 import {
   type ActiveKey,
   type ActiveKeyOptions,
   type BindingParser,
-  type CommandRecord,
   type ErrorEvent,
   type EventMatchResolverContext,
+  Keymap,
   type KeyMatch,
-  type Keymap,
   type ReactiveMatcher,
   type WarningEvent,
 } from "../index.js"
@@ -55,6 +54,15 @@ export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRende
 
   function getKeymap(renderer: TestRenderer): OpenTuiKeymap {
     const keymap: OpenTuiKeymap = createDefaultOpenTuiKeymap(renderer)
+    diagnostics.trackKeymap(keymap)
+    return keymap
+  }
+
+  function getGraphKeymap(renderer: TestRenderer): OpenTuiKeymap {
+    const keymap = new Keymap(createOpenTuiKeymapHost(renderer))
+    addons.registerDefaultKeys(keymap)
+    addons.registerEnabledFields(keymap)
+    addons.registerMetadataFields(keymap)
     diagnostics.trackKeymap(keymap)
     return keymap
   }
@@ -114,7 +122,7 @@ export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRende
         throw new Error(`Invalid key sequence "${input}": unterminated token`)
       }
 
-      const tokenName = input.slice(index, end + 1).trim()
+      const tokenName = input.slice(index + 1, end).trim()
       const normalizedTokenName = normalizeTokenName(tokenName)
       const token = tokens.get(normalizedTokenName)
       if (!token) {
@@ -128,7 +136,7 @@ export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRende
       return {
         parts: [
           parseObjectKey(token.stroke, {
-            display: options?.preserveDisplayCase ? tokenName : normalizedTokenName,
+            display: options?.preserveDisplayCase ? `[${tokenName}]` : `[${normalizedTokenName}]`,
             match: token.match,
             tokenName: normalizedTokenName,
           }),
@@ -186,6 +194,7 @@ export function createKeymapTestHelpers(diagnostics: DiagnosticHarness, getRende
     getActiveKeyNames,
     getParserKeymap,
     getKeymap,
+    getGraphKeymap,
     createBareKeymap,
     getCommand,
     getCommandEntry,

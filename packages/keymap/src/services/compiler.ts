@@ -6,59 +6,42 @@ import type {
   Attributes,
   BindingCommand,
   BindingEvent,
+  BindingExpansion,
   BindingExpander,
   BindingExpanderContext,
-  BindingInput,
+  Binding,
   BindingParser,
   BindingParserContext,
   EventData,
-  ParsedBindingInput,
+  ParsedBinding,
   ReactiveMatcher,
-  CompiledBinding,
-  CompiledBindingsResult,
+  BindingState,
+  BindingCompilationResult,
   KeyLike,
   KeyMatch,
   KeymapEvent,
   KeyStrokeInput,
   KeySequencePart,
   ResolvedKeyToken,
+  ResolvedSequencePattern,
   RuntimeMatcher,
-  SequenceNode,
   StringifyOptions,
 } from "../types.js"
 import { RESERVED_BINDING_FIELDS } from "../schema.js"
 import {
   cloneKeySequence,
-  cloneKeySequencePart,
   createKeySequencePart,
   createTextKeyMatch,
   normalizeBindingTokenName,
   stringifyKeySequence,
 } from "./keys.js"
-import { snapshotParsedBindingInput } from "./primitives/binding-inputs.js"
-import { mergeAttribute, mergeRequirement } from "./primitives/field-invariants.js"
+import { snapshotParsedBinding } from "./primitives/bindings.js"
+import { createFieldCompilerContext } from "./primitives/field-invariants.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
 
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 const EMPTY_REQUIRES: readonly [name: string, value: unknown][] = []
 const EMPTY_MATCHERS: readonly RuntimeMatcher[] = []
-const EMPTY_CONDITION_KEYS: readonly string[] = []
-
-function createSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
-  parent: SequenceNode<TTarget, TEvent> | null,
-  stroke: KeySequencePart["stroke"] | null,
-  match: KeySequencePart["match"] | null,
-): SequenceNode<TTarget, TEvent> {
-  return {
-    parent,
-    depth: parent ? parent.depth + 1 : 0,
-    stroke,
-    match,
-    children: new Map(),
-    bindings: [],
-    reachableBindings: [],
-  }
-}
 
 function snapshotAttributes(attrs: Attributes): Readonly<Attributes> | undefined {
   if (Object.keys(attrs).length === 0) {
@@ -75,98 +58,118 @@ interface ParsedBindingSequenceResult {
   hasTokenBindings: boolean
 }
 
+interface ExpandedBindingKey {
+  key: KeyLike
+  displays?: readonly string[]
+}
+
 export interface CompilerOptions {
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
   warnUnknownToken: (token: string, sequence: string) => void
 }
 
-export class CompilerService<TTarget extends object, TEvent extends KeymapEvent> {
-  constructor(
-    private readonly state: State<TTarget, TEvent>,
-    private readonly notify: NotificationService<TTarget, TEvent>,
-    private readonly conditions: ConditionService<TTarget, TEvent>,
-    private readonly options: CompilerOptions,
-  ) {}
+export interface CompilerService<TTarget extends object, TEvent extends KeymapEvent> {
+  parseTokenKey(key: KeyLike): KeySequencePart
+  parseKeySequence(key: KeyLike): KeySequencePart[]
+  formatKey(key: KeyLike, options?: StringifyOptions): string
+  compileBindings(
+    bindings: readonly Binding<TTarget, TEvent>[],
+    tokens: ReadonlyMap<string, ResolvedKeyToken>,
+    sourceTarget: TTarget | undefined,
+    sourceLayerOrder: number,
+    fields?: Readonly<Record<string, unknown>>,
+  ): BindingCompilationResult<TTarget, TEvent>
+}
 
-  public parseTokenKey(key: KeyLike): KeySequencePart {
-    return parseSingleKeyPartWithParsers(key, this.state.environment.bindingParsers.values(), {
-      tokens: this.state.environment.tokens,
+export function createCompilerService<TTarget extends object, TEvent extends KeymapEvent>(
+  state: State<TTarget, TEvent>,
+  notify: NotificationService<TTarget, TEvent>,
+  conditions: ConditionService<TTarget, TEvent>,
+  options: CompilerOptions,
+): CompilerService<TTarget, TEvent> {
+  const parseTokenKey = (key: KeyLike): KeySequencePart => {
+    return parseSingleKeyPartWithParsers(key, state.bindingParsers.values(), {
+      tokens: state.tokens,
+      patterns: state.patterns,
       layer: EMPTY_COMPILE_FIELDS,
-      parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
+      parseObjectKey: (value, options) => parseObjectKeyPart(value, options),
     })
   }
 
-  public parseKeySequence(key: KeyLike): KeySequencePart[] {
+  const parseKeySequence = (key: KeyLike): KeySequencePart[] => {
     if (typeof key !== "string") {
-      return [this.parseObjectKeyPart(key)]
+      return [parseObjectKeyPart(key)]
     }
 
-    const parsed = parseBindingSequenceWithParsers(key, this.state.environment.bindingParsers.values(), {
-      tokens: this.state.environment.tokens,
+    const parsed = parseBindingSequenceWithParsers(key, state.bindingParsers.values(), {
+      tokens: state.tokens,
+      patterns: state.patterns,
       layer: EMPTY_COMPILE_FIELDS,
-      parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
+      parseObjectKey: (value, options) => parseObjectKeyPart(value, options),
     })
 
     for (const tokenName of parsed.unknownTokens) {
-      this.options.warnUnknownToken(tokenName, key)
+      options.warnUnknownToken(tokenName, key)
     }
 
     return parsed.parts
   }
 
-  public formatKey(key: KeyLike, options?: StringifyOptions): string {
-    return stringifyKeySequence(this.parseKeySequence(key), options)
+  const formatKey = (key: KeyLike, options?: StringifyOptions): string => {
+    return stringifyKeySequence(parseKeySequence(key), options)
   }
 
-  public compileBindings(
-    bindings: readonly BindingInput<TTarget, TEvent>[],
+  const compileBindings = (
+    bindings: readonly Binding<TTarget, TEvent>[],
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
     sourceTarget: TTarget | undefined,
     sourceLayerOrder: number,
     compileFields?: Readonly<Record<string, unknown>>,
-  ): CompiledBindingsResult<TTarget, TEvent> {
-    const root = createSequenceNode<TTarget, TEvent>(null, null, null)
-    const compiledBindings: CompiledBinding<TTarget, TEvent>[] = []
+  ): BindingCompilationResult<TTarget, TEvent> => {
+    const bindingStates: BindingState<TTarget, TEvent>[] = []
     let hasTokenBindings = false
-    const bindingExpanders = this.state.environment.bindingExpanders.values()
-    const bindingParsers = this.state.environment.bindingParsers.values()
-    const bindingFieldCompilers = this.state.environment.bindingFields
-    const allowExactPrefixAmbiguity = this.state.dispatch.disambiguationResolvers.has()
-    const warnUnknownField = this.options.warnUnknownField
-    const warnUnknownToken = this.options.warnUnknownToken
-    const conditions = this.conditions
+    const bindingExpanders = state.bindingExpanders.values()
+    const bindingParsers = state.bindingParsers.values()
+    const bindingFieldCompilers = state.bindingFields
+    const allowExactPrefixAmbiguity = state.disambiguationResolvers.has()
+    const warnUnknownField = options.warnUnknownField
+    const warnUnknownToken = options.warnUnknownToken
 
     for (const [bindingIndex, binding] of bindings.entries()) {
-      let expandedBindingKeys: readonly KeyLike[]
+      let expandedBindingKeys: readonly ExpandedBindingKey[]
 
       try {
-        expandedBindingKeys = expandBindingInputWithExpanders(binding.key, bindingExpanders, {
+        expandedBindingKeys = expandBindingKeyWithExpanders(binding.key, bindingExpanders, {
           layer: compileFields,
         })
       } catch (error) {
-        this.notify.emitError("binding-expand-error", error, getErrorMessage(error, "Failed to expand keymap binding"))
+        notify.emitError("binding-expand-error", error, getErrorMessage(error, "Failed to expand keymap binding"))
         continue
       }
 
       for (const expandedBindingKey of expandedBindingKeys) {
+        const expandedKey = expandedBindingKey.key
         let parsed: ParsedBindingSequenceResult | undefined
 
         try {
           parsed =
-            typeof expandedBindingKey === "string"
-              ? parseBindingSequenceWithParsers(expandedBindingKey, bindingParsers, {
+            typeof expandedKey === "string"
+              ? parseBindingSequenceWithParsers(expandedKey, bindingParsers, {
                   tokens,
+                  patterns: state.patterns,
                   layer: compileFields,
-                  parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
+                  parseObjectKey: (value, options) => parseObjectKeyPart(value, options),
                 })
               : {
-                  parts: [this.parseObjectKeyPart(expandedBindingKey)],
+                  parts: [parseObjectKeyPart(expandedKey)],
                   usedTokens: [] as readonly string[],
                   unknownTokens: [] as readonly string[],
                   hasTokenBindings: false,
                 }
+
+          parsed = applyExpansionDisplays(parsed, expandedBindingKey)
         } catch (error) {
-          this.notify.emitError("binding-parse-error", error, getErrorMessage(error, "Failed to parse keymap binding"))
+          notify.emitError("binding-parse-error", error, getErrorMessage(error, "Failed to parse keymap binding"))
           continue
         }
 
@@ -174,13 +177,10 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
         hasTokenBindings ||= parsed.hasTokenBindings
 
         for (const tokenName of parsed.unknownTokens) {
-          warnUnknownToken(
-            tokenName,
-            typeof expandedBindingKey === "string" ? expandedBindingKey : String(expandedBindingKey.name),
-          )
+          warnUnknownToken(tokenName, typeof expandedKey === "string" ? expandedKey : String(expandedKey.name))
         }
 
-        for (const compiledInput of this.applyBindingTransformers(
+        for (const compiledInput of applyBindingTransformers(
           binding,
           sequence,
           tokens,
@@ -188,13 +188,11 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
           compileFields,
         )) {
           try {
-            const event = this.normalizeBindingEvent(compiledInput.event)
+            const event = normalizeBindingEvent(compiledInput.event)
             const compiledSequence = compiledInput.sequence
-            let mergedRequires: EventData | undefined
-            let mergedAttrs: Attributes | undefined
-            let matchers: RuntimeMatcher[] | undefined
-            let conditionKeys: Set<string> | undefined
-            let hasUnkeyedMatchers = false
+            const mergedRequires: EventData = {}
+            const mergedAttrs: Attributes = {}
+            const matchers: RuntimeMatcher[] = []
 
             for (const fieldName in compiledInput) {
               if (fieldName === "sequence") {
@@ -205,7 +203,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
                 continue
               }
 
-              const value = compiledInput[fieldName as keyof ParsedBindingInput]
+              const value = compiledInput[fieldName as keyof ParsedBinding]
 
               if (value === undefined) {
                 continue
@@ -217,51 +215,31 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
                 continue
               }
 
-              compiler(value, {
-                require(name, requiredValue) {
-                  if (!mergedRequires) {
-                    mergedRequires = {}
-                  }
-                  mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
-                  if (!conditionKeys) {
-                    conditionKeys = new Set<string>()
-                  }
-                  conditionKeys.add(name)
-                },
-                attr(name, attributeValue) {
-                  if (!mergedAttrs) {
-                    mergedAttrs = {}
-                  }
-                  mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
-                },
-                activeWhen: (matcher) => {
-                  const runtimeMatcher = conditions.buildRuntimeMatcher(matcher, `field ${fieldName}`)
-                  if (!runtimeMatcher.cacheable) {
-                    hasUnkeyedMatchers = true
-                  }
-                  if (!matchers) {
-                    matchers = []
-                  }
-                  matchers.push(runtimeMatcher)
-                },
-              })
+              compiler(
+                value,
+                createFieldCompilerContext({
+                  fieldName,
+                  conditions,
+                  requirements: mergedRequires,
+                  matchers,
+                  attrs: mergedAttrs,
+                }),
+              )
             }
 
-            const attrs = mergedAttrs ? snapshotAttributes(mergedAttrs) : undefined
+            const attrs = Object.keys(mergedAttrs).length > 0 ? snapshotAttributes(mergedAttrs) : undefined
             const command = normalizeBindingCommand(compiledInput.cmd)
-            const compiledBinding: CompiledBinding<TTarget, TEvent> = {
+            const compiledBinding: BindingState<TTarget, TEvent> = {
+              binding,
               sequence: compiledSequence,
               command,
               event,
-              sourceBinding: snapshotParsedBindingInput(compiledInput),
+              parsedBinding: snapshotParsedBinding(compiledInput),
               sourceTarget,
               sourceLayerOrder,
-              sourceBindingIndex: bindingIndex,
-              requires: mergedRequires ? Object.entries(mergedRequires) : EMPTY_REQUIRES,
-              matchers: matchers ?? EMPTY_MATCHERS,
-              conditionKeys: conditionKeys ? [...conditionKeys] : EMPTY_CONDITION_KEYS,
-              hasUnkeyedMatchers,
-              matchCacheDirty: true,
+              bindingIndex: bindingIndex,
+              requires: Object.keys(mergedRequires).length > 0 ? Object.entries(mergedRequires) : EMPTY_REQUIRES,
+              matchers: matchers.length > 0 ? matchers : EMPTY_MATCHERS,
               preventDefault: compiledInput.preventDefault !== false,
               fallthrough: compiledInput.fallthrough ?? false,
             }
@@ -282,41 +260,44 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
               throw new Error("Keymap release bindings only support a single key stroke")
             }
 
-            if (event === "press") {
-              this.insertBinding(root, compiledBinding, allowExactPrefixAmbiguity)
+            const terminalPattern = compiledSequence.at(-1)
+            if (terminalPattern?.patternName) {
+              const pattern = state.patterns.get(terminalPattern.patternName)
+              if (pattern && pattern.max !== pattern.min) {
+                throw new Error("Keymap unbounded sequence patterns must be followed by a concrete continuation")
+              }
             }
 
-            compiledBindings.push(compiledBinding)
+            if (event === "press" && !allowExactPrefixAmbiguity) {
+              validateExactPrefixAmbiguity(bindingStates, compiledBinding)
+            }
+
+            bindingStates.push(compiledBinding)
           } catch (error) {
-            this.notify.emitError(
-              "binding-compile-error",
-              error,
-              getErrorMessage(error, "Failed to compile keymap binding"),
-            )
+            notify.emitError("binding-compile-error", error, getErrorMessage(error, "Failed to compile keymap binding"))
           }
         }
       }
     }
 
     return {
-      root,
-      bindings: compiledBindings,
+      bindings: bindingStates,
       hasTokenBindings,
     }
   }
 
-  private parseObjectKeyPart(
+  const parseObjectKeyPart = (
     key: KeyStrokeInput,
     options?: {
       display?: string
       match?: KeyMatch
       tokenName?: string
     },
-  ): KeySequencePart {
+  ): KeySequencePart => {
     return createKeySequencePart(key, options)
   }
 
-  private normalizeBindingEvent(event: unknown): BindingEvent {
+  const normalizeBindingEvent = (event: unknown): BindingEvent => {
     if (event === undefined || event === "press") {
       return "press"
     }
@@ -328,24 +309,24 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     throw new Error(`Invalid keymap binding event "${String(event)}": expected "press" or "release"`)
   }
 
-  private applyBindingTransformers(
-    binding: BindingInput<TTarget, TEvent>,
+  const applyBindingTransformers = (
+    binding: Binding<TTarget, TEvent>,
     sequence: KeySequencePart[],
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
     bindingParsers: readonly BindingParser[],
     compileFields?: Readonly<Record<string, unknown>>,
-  ): ParsedBindingInput<TTarget, TEvent>[] {
-    const bindingTransformers = this.state.environment.bindingTransformers.values()
+  ): ParsedBinding<TTarget, TEvent>[] => {
+    const bindingTransformers = state.bindingTransformers.values()
 
     if (bindingTransformers.length === 0) {
       return [{ ...binding, sequence: cloneKeySequence(sequence) }]
     }
 
-    const parsedBinding: ParsedBindingInput<TTarget, TEvent> = {
+    const parsedBinding: ParsedBinding<TTarget, TEvent> = {
       ...binding,
       sequence: cloneKeySequence(sequence),
     }
-    const extraBindings: ParsedBindingInput<TTarget, TEvent>[] = []
+    const extraBindings: ParsedBinding<TTarget, TEvent>[] = []
     let keepOriginal = true
     const layer = compileFields ?? EMPTY_COMPILE_FIELDS
 
@@ -356,19 +337,20 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
           parseKey: (key) => {
             return parseSingleKeyPartWithParsers(key, bindingParsers, {
               tokens,
+              patterns: state.patterns,
               layer,
-              parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
+              parseObjectKey: (value, options) => parseObjectKeyPart(value, options),
             })
           },
           add: (nextBinding) => {
-            extraBindings.push(snapshotParsedBindingInput(nextBinding))
+            extraBindings.push(snapshotParsedBinding(nextBinding))
           },
           skipOriginal: () => {
             keepOriginal = false
           },
         })
       } catch (error) {
-        this.notify.emitError("binding-transformer-error", error, "[Keymap] Error in binding transformer:")
+        notify.emitError("binding-transformer-error", error, "[Keymap] Error in binding transformer:")
       }
     }
 
@@ -383,115 +365,95 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     return [parsedBinding, ...extraBindings]
   }
 
-  private insertBinding(
-    root: SequenceNode<TTarget, TEvent>,
-    binding: CompiledBinding<TTarget, TEvent>,
-    allowExactPrefixAmbiguity: boolean,
-  ): void {
-    let node = root
-    const touchedNodes: SequenceNode<TTarget, TEvent>[] = []
-    const createdNodes: Array<{ parent: SequenceNode<TTarget, TEvent>; key: KeyMatch }> = []
+  return { parseTokenKey, parseKeySequence, formatKey, compileBindings }
+}
 
-    try {
-      for (const part of binding.sequence) {
-        if (!allowExactPrefixAmbiguity && node.bindings.some((candidate) => candidate.command !== undefined)) {
-          throw new Error(
-            "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
-          )
-        }
+function sequenceMatchesPrefix(left: readonly KeySequencePart[], right: readonly KeySequencePart[]): boolean {
+  if (left.length >= right.length) {
+    return false
+  }
 
-        const bindingKey = part.match
-        let child = node.children.get(bindingKey)
-        if (!child) {
-          child = createSequenceNode<TTarget, TEvent>(node, cloneKeySequencePart(part).stroke, part.match)
-          node.children.set(bindingKey, child)
-          createdNodes.push({ parent: node, key: bindingKey })
-        }
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index]?.match !== right[index]?.match) {
+      return false
+    }
+  }
 
-        child.reachableBindings.push(binding)
-        touchedNodes.push(child)
-        node = child
-      }
+  return true
+}
 
-      if (!allowExactPrefixAmbiguity && binding.command !== undefined && node.children.size > 0) {
-        throw new Error(
-          "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
-        )
-      }
+function validateExactPrefixAmbiguity<TTarget extends object, TEvent extends KeymapEvent>(
+  bindings: readonly BindingState<TTarget, TEvent>[],
+  next: BindingState<TTarget, TEvent>,
+): void {
+  for (const existing of bindings) {
+    if (existing.event !== "press") {
+      continue
+    }
 
-      node.bindings = [...node.bindings, binding]
-    } catch (error) {
-      for (let index = touchedNodes.length - 1; index >= 0; index -= 1) {
-        const touchedNode = touchedNodes[index]
-        if (!touchedNode) {
-          continue
-        }
-
-        if (touchedNode.reachableBindings.at(-1) === binding) {
-          touchedNode.reachableBindings.pop()
-          continue
-        }
-
-        touchedNode.reachableBindings = touchedNode.reachableBindings.filter((candidate) => candidate !== binding)
-      }
-
-      for (let index = createdNodes.length - 1; index >= 0; index -= 1) {
-        const createdNode = createdNodes[index]
-        if (!createdNode) {
-          continue
-        }
-
-        const child = createdNode.parent.children.get(createdNode.key)
-        if (!child) {
-          continue
-        }
-
-        if (child.children.size > 0 || child.reachableBindings.length > 0 || child.bindings.length > 0) {
-          continue
-        }
-
-        createdNode.parent.children.delete(createdNode.key)
-      }
-
-      throw error
+    if (
+      (existing.command !== undefined && sequenceMatchesPrefix(existing.sequence, next.sequence)) ||
+      (next.command !== undefined && sequenceMatchesPrefix(next.sequence, existing.sequence))
+    ) {
+      throw new Error(
+        "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
+      )
     }
   }
 }
 
-function expandBindingInputWithExpanders(
+function expandBindingKeyWithExpanders(
   key: KeyLike,
   expanders: readonly BindingExpander[],
   options?: {
     layer?: Readonly<Record<string, unknown>>
   },
-): readonly KeyLike[] {
+): readonly ExpandedBindingKey[] {
   if (typeof key !== "string" || expanders.length === 0) {
-    return [key]
+    return [{ key }]
   }
 
   const layer = options?.layer ?? EMPTY_COMPILE_FIELDS
-  let candidates = [key]
+  let candidates: BindingExpansion[] = [{ key }]
 
   for (const expander of expanders) {
-    const nextCandidates: string[] = []
+    const nextCandidates: BindingExpansion[] = []
 
-    for (const input of candidates) {
-      const result = expander({ input, layer } satisfies BindingExpanderContext)
+    for (const candidate of candidates) {
+      const result = expander({
+        input: candidate.key,
+        displays: candidate.displays,
+        layer,
+      } satisfies BindingExpanderContext)
       if (!result) {
-        nextCandidates.push(input)
+        nextCandidates.push(candidate)
         continue
       }
 
       if (result.length === 0) {
-        throw new Error(`Keymap binding expander must return at least one key sequence for "${input}"`)
+        throw new Error(`Keymap binding expander must return at least one key sequence for "${candidate.key}"`)
       }
 
-      for (const expandedInput of result) {
-        if (typeof expandedInput !== "string") {
-          throw new Error(`Keymap binding expander must return string key sequences for "${input}"`)
+      for (const expanded of result) {
+        if (!expanded || typeof expanded !== "object" || Array.isArray(expanded) || typeof expanded.key !== "string") {
+          throw new Error(
+            `Keymap binding expander must return expansion objects with string keys for "${candidate.key}"`,
+          )
         }
 
-        nextCandidates.push(expandedInput)
+        if (expanded.displays !== undefined) {
+          if (!Array.isArray(expanded.displays)) {
+            throw new Error(`Keymap binding expander displays must be an array of strings for "${candidate.key}"`)
+          }
+
+          for (const display of expanded.displays) {
+            if (typeof display !== "string") {
+              throw new Error(`Keymap binding expander displays must be an array of strings for "${candidate.key}"`)
+            }
+          }
+        }
+
+        nextCandidates.push(expanded)
       }
     }
 
@@ -501,11 +463,35 @@ function expandBindingInputWithExpanders(
   return candidates
 }
 
+function applyExpansionDisplays(
+  parsed: ParsedBindingSequenceResult,
+  expansion: ExpandedBindingKey,
+): ParsedBindingSequenceResult {
+  if (!expansion.displays) {
+    return parsed
+  }
+
+  if (expansion.displays.length !== parsed.parts.length) {
+    throw new Error(
+      `Keymap binding expansion displays length must match parsed sequence length for "${String(expansion.key)}"`,
+    )
+  }
+
+  return {
+    ...parsed,
+    parts: parsed.parts.map((part, index) => ({
+      ...part,
+      display: expansion.displays![index]!,
+    })),
+  }
+}
+
 function parseBindingSequenceWithParsers(
   key: string,
   parsers: readonly BindingParser[],
   options: {
     tokens?: ReadonlyMap<string, ResolvedKeyToken>
+    patterns?: ReadonlyMap<string, ResolvedSequencePattern>
     layer?: Readonly<Record<string, unknown>>
     parseObjectKey: (
       key: KeyStrokeInput,
@@ -522,6 +508,7 @@ function parseBindingSequenceWithParsers(
   }
 
   const tokens = options.tokens ?? new Map<string, ResolvedKeyToken>()
+  const patterns = options.patterns ?? new Map<string, ResolvedSequencePattern>()
   const layer = options.layer ?? EMPTY_COMPILE_FIELDS
   const parseObjectKey = options.parseObjectKey
   const parts: KeySequencePart[] = []
@@ -538,6 +525,7 @@ function parseBindingSequenceWithParsers(
         index,
         layer,
         tokens,
+        patterns,
         normalizeTokenName: normalizeBindingTokenName,
         createMatch: createTextKeyMatch,
         parseObjectKey,
@@ -581,6 +569,7 @@ function parseSingleKeyPartWithParsers(
   parsers: readonly BindingParser[],
   options: {
     tokens?: ReadonlyMap<string, ResolvedKeyToken>
+    patterns?: ReadonlyMap<string, ResolvedSequencePattern>
     layer?: Readonly<Record<string, unknown>>
     parseObjectKey: (
       key: KeyStrokeInput,

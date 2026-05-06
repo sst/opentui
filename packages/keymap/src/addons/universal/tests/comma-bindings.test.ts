@@ -50,6 +50,38 @@ describe("comma bindings addon", () => {
     expect(calls).toEqual(["command", "command"])
   })
 
+  test("preserves display metadata from earlier expanders", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.appendBindingExpander(({ input }) => {
+      if (input !== "alias") {
+        return undefined
+      }
+
+      return [{ key: "ctrl+x, ctrl+y", displays: ["alias-x, alias-y"] }]
+    })
+    registerCommaBindings(keymap)
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "command",
+          run() {
+            calls.push("command")
+          },
+        },
+      ],
+      bindings: [{ key: "alias", cmd: "command" }],
+    })
+
+    expect(keymap.getActiveKeys().map((key) => key.display)).toEqual(["alias-x", "alias-y"])
+
+    mockInput.pressKey("x", { ctrl: true })
+    mockInput.pressKey("y", { ctrl: true })
+
+    expect(calls).toEqual(["command", "command"])
+  })
+
   test("skips bindings when a comma-delimited key string contains empty entries", () => {
     const keymap = getKeymap(renderer)
     const { takeErrors } = diagnostics.captureDiagnostics(keymap)

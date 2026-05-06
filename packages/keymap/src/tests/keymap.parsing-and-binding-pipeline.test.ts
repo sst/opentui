@@ -9,7 +9,6 @@ import {
   type ActiveKey,
   type ActiveKeyOptions,
   type BindingParser,
-  type CommandRecord,
   type ErrorEvent,
   type EventMatchResolverContext,
   type Keymap,
@@ -133,7 +132,7 @@ describe("keymap: parsing and binding pipeline", () => {
 
     keymap.prependBindingParser(createBracketTokenParser())
 
-    keymap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
       commands: [
         {
@@ -161,7 +160,7 @@ describe("keymap: parsing and binding pipeline", () => {
     keymap.clearBindingParsers()
     keymap.appendBindingParser(createBracketTokenParser())
 
-    keymap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
       commands: [
         {
@@ -201,11 +200,9 @@ describe("keymap: parsing and binding pipeline", () => {
       bindings: [{ key: "[Leader]d", cmd: "case-token" }],
     })
 
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "[leader]" in key sequence "[Leader]d" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "[Leader]d" was ignored'])
 
-    keymap.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
 
     const matchesLeader = keymap.createKeyMatcher("[Leader]")
 
@@ -383,6 +380,7 @@ describe("keymap: parsing and binding pipeline", () => {
         .split(",")
         .map((candidate) => candidate.trim())
         .filter(Boolean)
+        .map((key) => ({ key }))
     })
 
     keymap.registerLayer({
@@ -408,6 +406,62 @@ describe("keymap: parsing and binding pipeline", () => {
     expect(calls).toEqual(["split", "split"])
   })
 
+  test("binding expanders can preserve display metadata", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.appendBindingExpander(({ input }) => {
+      if (input !== "alias-x") {
+        return undefined
+      }
+
+      return [{ key: "ctrl+x", displays: ["alias-x"] }]
+    })
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "alias-command",
+          run() {
+            calls.push("alias")
+          },
+        },
+      ],
+      bindings: [{ key: "alias-x", cmd: "alias-command" }],
+    })
+
+    const activeKey = getActiveKey(keymap, "x")
+    expect(activeKey?.stroke.ctrl).toBe(true)
+    expect(activeKey?.display).toBe("alias-x")
+
+    mockInput.pressKey("x", { ctrl: true })
+    expect(calls).toEqual(["alias"])
+  })
+
+  test("skips bindings when expansion display count does not match the parsed sequence", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors } = captureDiagnostics(keymap)
+
+    keymap.appendBindingExpander(({ input }) => {
+      if (input !== "alias") {
+        return undefined
+      }
+
+      return [{ key: "xy", displays: ["alias"] }]
+    })
+
+    expect(() => {
+      keymap.registerLayer({
+        bindings: [{ key: "alias", cmd() {} }],
+      })
+    }).not.toThrow()
+
+    expect(takeErrors().errors).toEqual([
+      'Keymap binding expansion displays length must match parsed sequence length for "xy"',
+    ])
+    expect(keymap.getActiveKeys()).toEqual([])
+  })
+
   test("supports prepending binding expanders ahead of appended expanders", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
@@ -421,13 +475,14 @@ describe("keymap: parsing and binding pipeline", () => {
         .split(",")
         .map((candidate) => candidate.trim())
         .filter(Boolean)
+        .map((key) => ({ key }))
     })
     keymap.prependBindingExpander(({ input }) => {
       if (!input.includes("~")) {
         return undefined
       }
 
-      return [input.replaceAll("~", "")]
+      return [{ key: input.replaceAll("~", "") }]
     })
 
     keymap.registerLayer({
@@ -526,6 +581,98 @@ describe("keymap: parsing and binding pipeline", () => {
     expect(calls).toEqual(["submit"])
   })
 
+  test("prependCommandTransformer runs before appended command transformers", () => {
+    const keymap = getKeymap(renderer)
+    const transformerOrder: string[] = []
+
+    keymap.appendCommandTransformer(() => {
+      transformerOrder.push("append")
+    })
+    keymap.prependCommandTransformer(() => {
+      transformerOrder.push("prepend")
+    })
+
+    keymap.registerLayer({ commands: [{ name: "submit", run() {} }] })
+
+    expect(transformerOrder).toEqual(["prepend", "append"])
+  })
+
+  test("command transformers can add commands and skip the original before command fields compile", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.registerCommandFields({
+      summary(value, ctx) {
+        ctx.attr("desc", value)
+      },
+    })
+
+    keymap.appendCommandTransformer((command, ctx) => {
+      if (command.alias !== "alias-submit") {
+        return
+      }
+
+      ctx.add({ ...command, name: "alias-submit", summary: "Alias submit" })
+      ctx.skipOriginal()
+    })
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "submit",
+          alias: "alias-submit",
+          run() {
+            calls.push("submit")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "alias-submit" }],
+    })
+
+    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.name)).toEqual(["alias-submit"])
+    expect(getActiveKey(keymap, "x", { includeMetadata: true })?.commandAttrs).toEqual({ desc: "Alias submit" })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["submit"])
+  })
+
+  test("clearCommandTransformers removes registered command transformers", () => {
+    const keymap = getKeymap(renderer)
+
+    keymap.appendCommandTransformer((command, ctx) => {
+      ctx.add({ ...command, name: "alias-submit" })
+      ctx.skipOriginal()
+    })
+    keymap.clearCommandTransformers()
+
+    keymap.registerLayer({ commands: [{ name: "submit", run() {} }] })
+
+    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.name)).toEqual(["submit"])
+  })
+
+  test("can dispose command transformers to stop transforming future layer registrations", () => {
+    const keymap = getKeymap(renderer)
+
+    const offTransformer = keymap.appendCommandTransformer((command, ctx) => {
+      if (command.alias !== "alias-submit") {
+        return
+      }
+
+      ctx.add({ ...command, name: "alias-submit" })
+      ctx.skipOriginal()
+    })
+
+    keymap.registerLayer({ commands: [{ name: "submit", alias: "alias-submit", run() {} }] })
+    offTransformer()
+    keymap.registerLayer({ commands: [{ name: "save", alias: "alias-save", run() {} }] })
+
+    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.name)).toEqual([
+      "alias-submit",
+      "save",
+    ])
+  })
+
   test("clearLayerBindingsTransformers removes registered layer binding transformers", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
@@ -590,11 +737,11 @@ describe("keymap: parsing and binding pipeline", () => {
         tokenized.push(`<c-${match[1].toLowerCase()}>`)
       }
 
-      return [tokenized.join("")]
+      return [{ key: tokenized.join("") }]
     })
 
-    keymap.registerToken({ name: "<c-x>", key: { name: "x", ctrl: true } })
-    keymap.registerToken({ name: "<c-s>", key: { name: "s", ctrl: true } })
+    keymap.registerToken({ name: "c-x", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "c-s", key: { name: "s", ctrl: true } })
     keymap.registerLayer({
       commands: [
         {
@@ -638,6 +785,7 @@ describe("keymap: parsing and binding pipeline", () => {
         .split(",")
         .map((candidate) => candidate.trim())
         .filter(Boolean)
+        .map((key) => ({ key }))
     })
     keymap.clearBindingExpanders()
 
@@ -650,6 +798,7 @@ describe("keymap: parsing and binding pipeline", () => {
         .split("|")
         .map((candidate) => candidate.trim())
         .filter(Boolean)
+        .map((key) => ({ key }))
     })
 
     keymap.registerLayer({
@@ -703,12 +852,10 @@ describe("keymap: parsing and binding pipeline", () => {
 
     expect(runs).toBe(1)
 
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
 
     expect(runs).toBe(1)
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored'])
   })
 
   test("can dispose binding transformers to stop transforming future layer registrations", () => {
@@ -809,7 +956,7 @@ describe("keymap: parsing and binding pipeline", () => {
       ctx.skipOriginal()
     })
 
-    keymap.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
+    keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
       commands: [
         {
@@ -828,8 +975,8 @@ describe("keymap: parsing and binding pipeline", () => {
     const activeKey = getActiveKey(keymap, "x", { includeBindings: true })
 
     expect(activeKey?.display).toBe("[Leader]")
-    expect(activeKey?.tokenName).toBe("[leader]")
-    expect(activeKey?.bindings?.[0]?.sequence[0]?.tokenName).toBe("[leader]")
+    expect(activeKey?.tokenName).toBe("leader")
+    expect(activeKey?.bindings?.[0]?.sequence[0]?.tokenName).toBe("leader")
 
     mockInput.pressKey("x", { ctrl: true })
 
@@ -1001,7 +1148,7 @@ describe("keymap: parsing and binding pipeline", () => {
       return [ctx.resolveKey("[Leader]")]
     })
 
-    keymap.registerToken({ name: "[Leader]", key: { name: "z" } })
+    keymap.registerToken({ name: "leader", key: { name: "z" } })
     keymap.registerLayer({
       commands: [
         {
@@ -1053,6 +1200,113 @@ describe("keymap: parsing and binding pipeline", () => {
     mockInput.pressKey("x")
 
     expect(calls).toEqual(["hyper", "plain"])
+  })
+
+  test("treats unterminated token and pattern openers as literal sequence keys", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors, takeWarnings } = captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "literal-left-angle",
+          run() {
+            calls.push("x<")
+          },
+        },
+        {
+          name: "literal-left-brace",
+          run() {
+            calls.push("x{")
+          },
+        },
+        {
+          name: "literal-openers",
+          run() {
+            calls.push("openers")
+          },
+        },
+      ],
+      bindings: [
+        { key: "x<", cmd: "literal-left-angle" },
+        { key: "x{", cmd: "literal-left-brace" },
+        { key: "<{", cmd: "literal-openers" },
+      ],
+    })
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("<")
+    mockInput.pressKey("x")
+    mockInput.pressKey("{")
+    mockInput.pressKey("<")
+    mockInput.pressKey("{")
+
+    expect(calls).toEqual(["x<", "x{", "openers"])
+    expect(takeErrors().errors).toEqual([])
+    expect(takeWarnings().warnings).toEqual([])
+  })
+
+  test("treats modified angle and brace openers as literal single-stroke bindings", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors, takeWarnings } = captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "ctrl-left-angle",
+          run() {
+            calls.push("ctrl+<")
+          },
+        },
+        {
+          name: "ctrl-left-brace",
+          run() {
+            calls.push("ctrl+{")
+          },
+        },
+      ],
+      bindings: [
+        { key: "ctrl+<", cmd: "ctrl-left-angle" },
+        { key: "ctrl+{", cmd: "ctrl-left-brace" },
+      ],
+    })
+
+    renderer.keyInput.emit(
+      "keypress",
+      new KeyEvent({
+        name: "<",
+        ctrl: true,
+        meta: false,
+        shift: false,
+        option: false,
+        sequence: "<",
+        number: false,
+        raw: "<",
+        eventType: "press",
+        source: "raw",
+      }),
+    )
+    renderer.keyInput.emit(
+      "keypress",
+      new KeyEvent({
+        name: "{",
+        ctrl: true,
+        meta: false,
+        shift: false,
+        option: false,
+        sequence: "{",
+        number: false,
+        raw: "{",
+        eventType: "press",
+        source: "raw",
+      }),
+    )
+
+    expect(calls).toEqual(["ctrl+<", "ctrl+{"])
+    expect(takeErrors().errors).toEqual([])
+    expect(takeWarnings().warnings).toEqual([])
   })
 
   test("passes lock-state flags to command handlers", async () => {

@@ -9,7 +9,6 @@ import {
   type ActiveKey,
   type ActiveKeyOptions,
   type BindingParser,
-  type CommandRecord,
   type ErrorEvent,
   type EventMatchResolverContext,
   type Keymap,
@@ -370,6 +369,7 @@ describe("keymap: layers and dispatch", () => {
       }
 
       return {
+        name: command,
         run() {
           calls.push("external")
         },

@@ -6,18 +6,18 @@ export type PriorityRegistration<TListener, TOptions extends { priority: number 
 >
 
 abstract class CopyOnWriteRegistry<TValue> {
-  private items: readonly TValue[] = []
+  #items: readonly TValue[] = []
 
   protected getItems(): readonly TValue[] {
-    return this.items
+    return this.#items
   }
 
   protected setItems(items: readonly TValue[]): void {
-    this.items = items
+    this.#items = items
   }
 
   protected removeItem(value: TValue): boolean {
-    const current = this.items
+    const current = this.#items
     if (current.length === 0) {
       return false
     }
@@ -27,16 +27,16 @@ abstract class CopyOnWriteRegistry<TValue> {
       return false
     }
 
-    this.items = next
+    this.#items = next
     return true
   }
 
   public has(): boolean {
-    return this.items.length > 0
+    return this.#items.length > 0
   }
 
   public clear(): void {
-    this.items = []
+    this.#items = []
   }
 }
 
@@ -69,10 +69,10 @@ export class OrderedRegistry<TValue> extends CopyOnWriteRegistry<TValue> {
 export class PriorityRegistry<TListener, TOptions extends { priority: number }> extends CopyOnWriteRegistry<
   PriorityRegistration<TListener, TOptions>
 > {
-  private order = 0
+  #order = 0
 
   public register(listener: TListener, options: TOptions): () => void {
-    const registered = { ...options, listener, order: this.order++ } as PriorityRegistration<TListener, TOptions>
+    const registered = { ...options, listener, order: this.#order++ } as PriorityRegistration<TListener, TOptions>
 
     this.setItems(
       [...this.getItems(), registered].sort((left, right) => {

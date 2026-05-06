@@ -1,5 +1,7 @@
 import type { Keymap, KeymapEvent, ReactiveMatcher } from "../../index.js"
 
+const ENABLED_FIELDS_RESOURCE = Symbol("keymap:enabled-fields")
+
 /**
  * Accepted `enabled` values: boolean, raw `() => boolean`, or an
  * `ReactiveMatcher` for subscription-driven invalidation.
@@ -38,40 +40,42 @@ function normalizeEnabledValue(fieldName: string, value: unknown): Enabled {
 export function registerEnabledFields<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
-  const offLayerFields = keymap.registerLayerFields({
-    enabled(value, ctx) {
-      const normalized = normalizeEnabledValue("enabled", value)
-      if (normalized === true) {
-        return
-      }
+  return keymap.acquireResource(ENABLED_FIELDS_RESOURCE, () => {
+    const offLayerFields = keymap.registerLayerFields({
+      enabled(value, ctx) {
+        const normalized = normalizeEnabledValue("enabled", value)
+        if (normalized === true) {
+          return
+        }
 
-      if (normalized === false) {
-        ctx.activeWhen(() => false)
-        return
-      }
+        if (normalized === false) {
+          ctx.activeWhen(() => false)
+          return
+        }
 
-      ctx.activeWhen(normalized)
-    },
+        ctx.activeWhen(normalized)
+      },
+    })
+
+    const offCommandFields = keymap.registerCommandFields({
+      enabled(value, ctx) {
+        const normalized = normalizeEnabledValue("enabled", value)
+        if (normalized === true) {
+          return
+        }
+
+        if (normalized === false) {
+          ctx.activeWhen(() => false)
+          return
+        }
+
+        ctx.activeWhen(normalized)
+      },
+    })
+
+    return () => {
+      offCommandFields()
+      offLayerFields()
+    }
   })
-
-  const offCommandFields = keymap.registerCommandFields({
-    enabled(value, ctx) {
-      const normalized = normalizeEnabledValue("enabled", value)
-      if (normalized === true) {
-        return
-      }
-
-      if (normalized === false) {
-        ctx.activeWhen(() => false)
-        return
-      }
-
-      ctx.activeWhen(normalized)
-    },
-  })
-
-  return () => {
-    offCommandFields()
-    offLayerFields()
-  }
 }

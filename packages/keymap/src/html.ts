@@ -1,10 +1,13 @@
-import { registerDefaultKeys } from "./addons/universal/default-parser.js"
-import { registerEnabledFields } from "./addons/universal/enabled.js"
-import { registerMetadataFields } from "./addons/universal/metadata.js"
-import { Keymap } from "./keymap.js"
-import type { EventMatchResolver, KeyStrokeInput, KeymapEvent, KeymapHost } from "./types.js"
-
-export * from "./index.js"
+import { Keymap } from "@opentui/keymap"
+import { registerDefaultKeys, registerEnabledFields, registerMetadataFields } from "@opentui/keymap/addons"
+import type {
+  EventMatchResolver,
+  HostMetadata,
+  HostPlatform,
+  KeyStrokeInput,
+  KeymapEvent,
+  KeymapHost,
+} from "@opentui/keymap"
 
 export interface HtmlKeymapEvent extends KeymapEvent {
   readonly originalEvent?: KeyboardEvent
@@ -57,6 +60,56 @@ const HTML_KEY_NAME_ALIASES = new Map<string, string>([
   ["Control", "control"],
   ["Shift", "shift"],
 ])
+
+function normalizeHostPlatform(value: string | undefined): HostPlatform {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) {
+    return "unknown"
+  }
+
+  if (normalized.includes("mac") || normalized.includes("darwin")) {
+    return "macos"
+  }
+
+  if (normalized.includes("win")) {
+    return "windows"
+  }
+
+  if (normalized.includes("linux") || normalized.includes("x11")) {
+    return "linux"
+  }
+
+  return "unknown"
+}
+
+function detectBrowserPlatform(): HostPlatform {
+  const navigatorLike = globalThis.navigator as
+    | (Navigator & { userAgentData?: { platform?: string }; userAgent?: string })
+    | undefined
+  const userAgentPlatform = navigatorLike?.userAgentData?.platform
+  const platform = normalizeHostPlatform(userAgentPlatform)
+  if (platform !== "unknown") {
+    return platform
+  }
+
+  return normalizeHostPlatform(navigatorLike?.platform ?? navigatorLike?.userAgent)
+}
+
+function createHtmlHostMetadata(): HostMetadata {
+  const platform = detectBrowserPlatform()
+
+  return {
+    platform,
+    primaryModifier: platform === "macos" ? "super" : platform === "unknown" ? "unknown" : "ctrl",
+    modifiers: {
+      ctrl: "supported",
+      shift: "supported",
+      meta: "supported",
+      super: "supported",
+      hyper: "unsupported",
+    },
+  }
+}
 
 function isPrintableSymbol(name: string): boolean {
   return name.length === 1 && !/^[a-z0-9]$/i.test(name)
@@ -152,6 +205,7 @@ export function createHtmlKeymapEvent(event?: KeyboardEvent | HtmlKeyboardEventL
 }
 
 class HtmlKeymapHost implements KeymapHost<HTMLElement, HtmlKeymapEvent> {
+  public readonly metadata = createHtmlHostMetadata()
   public readonly rootTarget: HTMLElement
   public readonly isDestroyed = false
 
@@ -315,7 +369,7 @@ export function createHtmlKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKey
 }
 
 export function createDefaultHtmlKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKeymapEvent> {
-  const keymap = createHtmlKeymap(root)
+  const keymap = new Keymap(createHtmlKeymapHost(root))
   registerDefaultKeys(keymap)
   registerEnabledFields(keymap)
   registerMetadataFields(keymap)

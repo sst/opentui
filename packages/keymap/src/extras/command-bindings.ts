@@ -1,4 +1,4 @@
-import type { BindingInput, KeyLike, KeymapEvent } from "../types.js"
+import type { Binding, KeyLike, KeymapEvent } from "../types.js"
 
 export type CommandBindingMap = Record<string, KeyLike>
 
@@ -28,8 +28,8 @@ function isCommandBindingKey(value: unknown): value is KeyLike {
 export function commandBindings<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>(
   bindings: Readonly<CommandBindingMap>,
   options?: CommandBindingsOptions,
-): BindingInput<TTarget, TEvent>[] {
-  const normalized: BindingInput<TTarget, TEvent>[] = []
+): Binding<TTarget, TEvent>[] {
+  const normalized: Binding<TTarget, TEvent>[] = []
   const indexesByCommand = new Map<string, number>()
 
   for (const [command, key] of Object.entries(bindings)) {
@@ -52,7 +52,7 @@ export function commandBindings<TTarget extends object = object, TEvent extends 
     const nextBinding = {
       key: typeof key === "string" ? key : { ...key },
       cmd: normalizedCommand,
-    } satisfies BindingInput<TTarget, TEvent>
+    } satisfies Binding<TTarget, TEvent>
 
     const existingIndex = indexesByCommand.get(normalizedCommand)
     if (existingIndex !== undefined) {

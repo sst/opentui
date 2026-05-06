@@ -75,45 +75,80 @@ describe("formatting helpers", () => {
 
   test("uses preserved token display by default and supports token overrides", () => {
     const keymap = getKeymap(renderer)
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
     const leaderSequence = keymap.parseKeySequence("<leader>s")
 
     expect(formatKeySequence(leaderSequence)).toBe("<leader> s")
     expect(
       formatKeySequence(leaderSequence, {
         tokenDisplay: {
-          "<leader>": "space",
+          leader: "space",
         },
       }),
     ).toBe("space s")
     expect(
       formatKeySequence(leaderSequence, {
         tokenDisplay(tokenName) {
-          return tokenName === "<leader>" ? "ctrl+x" : undefined
+          return tokenName === "leader" ? "ctrl+x" : undefined
         },
       }),
     ).toBe("ctrl+x s")
-    expect(formatKeySequence(leaderSequence, { tokenDisplay: { "<leader>": "" } })).toBe(" s")
+    expect(formatKeySequence(leaderSequence, { tokenDisplay: { leader: "" } })).toBe(" s")
     expect(
       formatKeySequence(leaderSequence, {
         tokenDisplay(tokenName, part) {
-          expect(tokenName).toBe("<leader>")
-          expect(part.tokenName).toBe("<leader>")
+          expect(tokenName).toBe("leader")
+          expect(part.tokenName).toBe("leader")
           return ""
         },
       }),
     ).toBe(" s")
   })
 
+  test("uses preserved pattern display by default and supports pattern overrides", () => {
+    const keymap = getKeymap(renderer)
+    keymap.registerSequencePattern({
+      name: "count",
+      match(event) {
+        return /^\d$/.test(event.name) ? { value: event.name } : undefined
+      },
+    })
+    const countSequence = keymap.parseKeySequence("{count}j")
+
+    expect(formatKeySequence(countSequence)).toBe("{count} j")
+    expect(formatKeySequence(countSequence, { patternDisplay: { count: "N" } })).toBe("N j")
+    expect(
+      formatKeySequence(countSequence, {
+        patternDisplay(patternName, part) {
+          expect(patternName).toBe("count")
+          expect(part.patternName).toBe("count")
+          expect(part.tokenName).toBeUndefined()
+          return "repeat"
+        },
+      }),
+    ).toBe("repeat j")
+  })
+
+  test("uses generic parser-preserved display for non-token and non-pattern parts", () => {
+    expect(
+      formatKeySequence([
+        {
+          stroke: { name: "x", ctrl: false, shift: false, meta: false, super: false },
+          display: "custom-x",
+        },
+      ]),
+    ).toBe("custom-x")
+  })
+
   test("formats active-key shaped parts", () => {
     const keymap = getKeymap(renderer)
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
     keymap.registerLayer({ commands: [{ name: "save", run() {} }], bindings: [{ key: "<leader>s", cmd: "save" }] })
 
     const activeKey = keymap.getActiveKeys()[0]
 
     expect(formatKeySequence(activeKey ? [activeKey] : [])).toBe("<leader>")
-    expect(formatKeySequence(activeKey ? [activeKey] : [], { tokenDisplay: { "<leader>": "ctrl+x" } })).toBe("ctrl+x")
+    expect(formatKeySequence(activeKey ? [activeKey] : [], { tokenDisplay: { leader: "ctrl+x" } })).toBe("ctrl+x")
   })
 
   test("supports empty separators", () => {
@@ -124,7 +159,7 @@ describe("formatting helpers", () => {
 
   test("formats command binding lists with dedupe by default", () => {
     const keymap = getKeymap(renderer)
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
 
     keymap.registerLayer({
       commands: [{ name: "save-file", run() {} }],
@@ -172,7 +207,7 @@ describe("formatting helpers", () => {
       .getCommandBindings({ visibility: "registered", commands: ["alias-duplicate"] })
       .get("alias-duplicate")
 
-    expect(formatCommandBindings(bindings)).toBe("enter")
+    expect(formatCommandBindings(bindings)).toBe("enter, return")
     expect(formatCommandBindings(bindings, { keyNameAliases: { enter: "ret" } })).toBe("ret")
     expect(formatCommandBindings(bindings, { dedupe: false, keyNameAliases: { enter: "ret" } })).toBe("ret, ret")
   })

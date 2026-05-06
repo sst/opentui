@@ -2,7 +2,7 @@ import type { KeyEvent, Renderable } from "@opentui/core"
 import {
   type ActiveKey,
   type ActiveKeyOptions,
-  type LayerFields,
+  type Layer,
   type Keymap,
   type ReactiveMatcher,
   type KeySequencePart,
@@ -39,36 +39,13 @@ export interface UseBindingsTargetRef<TRenderable extends Renderable = Renderabl
   current: TRenderable | null
 }
 
-type UseBindingsLayerBase = LayerFields<Renderable, KeyEvent>
-
-export interface UseGlobalBindingsLayer extends UseBindingsLayerBase {
-  targetRef?: undefined
+export interface UseBindingsLayer<TRenderable extends Renderable = Renderable> extends Omit<
+  Layer<Renderable, KeyEvent>,
+  "target" | "targetMode"
+> {
+  targetRef?: UseBindingsTargetRef<TRenderable>
+  targetMode?: TargetMode
 }
-
-export interface UseFocusBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
-  targetMode: "focus"
-  targetRef: UseBindingsTargetRef<TRenderable>
-}
-
-export interface UseFocusWithinBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
-  targetMode?: "focus-within"
-  targetRef: UseBindingsTargetRef<TRenderable>
-}
-
-export interface UseInferredFocusWithinBindingsLayer<
-  TRenderable extends Renderable = Renderable,
-> extends UseBindingsLayerBase {
-  targetRef: UseBindingsTargetRef<TRenderable>
-}
-
-export type UseTargetBindingsLayer<TRenderable extends Renderable = Renderable> =
-  | UseFocusBindingsLayer<TRenderable>
-  | UseFocusWithinBindingsLayer<TRenderable>
-  | UseInferredFocusWithinBindingsLayer<TRenderable>
-
-export type UseBindingsLayer<TRenderable extends Renderable = Renderable> =
-  | UseGlobalBindingsLayer
-  | UseTargetBindingsLayer<TRenderable>
 
 function resolveBindingsTarget(targetRef: UseBindingsTargetRef | undefined): Renderable | undefined {
   return targetRef?.current ?? undefined
@@ -122,14 +99,6 @@ export const usePendingSequence = (): readonly KeySequencePart[] => {
   }, [keymap, version])
 }
 
-export function useBindings<TRenderable extends Renderable = Renderable>(
-  createLayer: () => UseGlobalBindingsLayer,
-  deps?: DependencyList,
-): void
-export function useBindings<TRenderable extends Renderable = Renderable>(
-  createLayer: () => UseTargetBindingsLayer<TRenderable>,
-  deps?: DependencyList,
-): void
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseBindingsLayer<TRenderable>,
   deps: DependencyList = [],

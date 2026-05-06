@@ -88,9 +88,7 @@ describe("leader addon", () => {
 
     mockInput.pressKey("a")
 
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>a" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>a" was ignored'])
     expect(calls).toEqual(["leader"])
 
     registerLeader(keymap, {
@@ -136,9 +134,7 @@ describe("leader addon", () => {
 
     offLeader()
 
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>" was ignored'])
 
     mockInput.pressKey("x", { ctrl: true })
     expect(calls).toEqual(["leader"])

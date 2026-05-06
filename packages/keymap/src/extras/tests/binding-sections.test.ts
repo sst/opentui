@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import { resolveBindingSections, type BindingValue } from "../index.js"
-import type { BindingInput } from "../../index.js"
+import type { Binding } from "../../index.js"
 import { createDefaultOpenTuiKeymap } from "../../opentui.js"
 import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"
 
@@ -72,7 +72,7 @@ describe("resolveBindingSections helper", () => {
   test("includes requested sections that are missing from sparse config", () => {
     const sectionNames = ["app", "prompt", "dialog_select"] as const
     type SectionName = (typeof sectionNames)[number]
-    type KeymapSections = Record<SectionName, BindingInput[]>
+    type KeymapSections = Record<SectionName, Binding[]>
 
     const resolved = resolveBindingSections(
       {

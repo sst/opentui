@@ -83,6 +83,8 @@ export function cloneKeySequencePart(part: KeySequencePart): KeySequencePart {
     display: part.display,
     match: part.match,
     tokenName: part.tokenName,
+    patternName: part.patternName,
+    payloadKey: part.payloadKey,
   }
 }
 

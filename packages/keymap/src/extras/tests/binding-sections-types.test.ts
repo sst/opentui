@@ -1,9 +1,9 @@
 import { resolveBindingSections, type BindingSectionsConfig } from "../binding-sections.js"
-import type { BindingInput } from "../../types.js"
+import type { Binding } from "../../types.js"
 
 const sectionNames = ["app", "prompt", "dialog_select"] as const
 type SectionName = (typeof sectionNames)[number]
-type KeymapSections = Record<SectionName, BindingInput[]>
+type KeymapSections = Record<SectionName, Binding[]>
 
 const resolvedFromLiteral = resolveBindingSections(
   {
@@ -20,7 +20,7 @@ const resolvedFromLiteral = resolveBindingSections(
 )
 
 const sectionsFromLiteral: KeymapSections = resolvedFromLiteral.sections
-const customFromLiteral: BindingInput[] = resolvedFromLiteral.sections.custom
+const customFromLiteral: Binding[] = resolvedFromLiteral.sections.custom
 
 if (sectionsFromLiteral.prompt.length !== 0) {
   throw new Error("Expected prompt section to be empty")
@@ -36,7 +36,7 @@ const resolvedFromSparseConfig = resolveBindingSections(config, {
 
 const sectionsFromSparseConfig: KeymapSections = resolvedFromSparseConfig.sections
 // @ts-expect-error Unknown sections are not guaranteed by the literal sections option.
-const missingFromSparseConfig: BindingInput[] = resolvedFromSparseConfig.sections.missing
+const missingFromSparseConfig: Binding[] = resolvedFromSparseConfig.sections.missing
 
 if (sectionsFromSparseConfig.app.length !== 0) {
   throw new Error("Expected app section to be empty")

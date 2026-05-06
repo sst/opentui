@@ -49,16 +49,20 @@ describe("ex commands addon", () => {
       ],
     })
 
-    registerExCommands(keymap, [
-      {
-        name: "write",
-        aliases: ["w"],
-        nargs: "1",
-        run({ args }) {
-          calls.push(`write:${args.join(",")}`)
+    registerExCommands(keymap)
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "write",
+          namespace: "excommands",
+          aliases: ["w"],
+          nargs: "1",
+          run({ payload }) {
+            calls.push(`write:${payload.args.join(",")}`)
+          },
         },
-      },
-    ])
+      ],
+    })
 
     const target = createFocusableBox("ex-target")
     renderer.root.add(target)
@@ -87,42 +91,49 @@ describe("ex commands addon", () => {
     const calls: string[] = []
     let passthroughCount = 0
 
-    registerExCommands(keymap, [
-      {
-        name: ":quit",
-        nargs: "0",
-        run() {
-          calls.push("quit")
+    registerExCommands(keymap)
+    keymap.registerLayer({
+      commands: [
+        {
+          name: ":quit",
+          nargs: "0",
+          run() {
+            calls.push("quit")
+          },
         },
-      },
-      {
-        name: "maybe",
-        nargs: "?",
-        run({ args }) {
-          calls.push(`maybe:${args.join(",")}`)
+        {
+          name: "maybe",
+          namespace: "excommands",
+          nargs: "?",
+          run({ payload }) {
+            calls.push(`maybe:${payload.args.join(",")}`)
+          },
         },
-      },
-      {
-        name: "many",
-        nargs: "*",
-        run({ args }) {
-          calls.push(`many:${args.join(",")}`)
+        {
+          name: "many",
+          namespace: "excommands",
+          nargs: "*",
+          run({ payload }) {
+            calls.push(`many:${payload.args.join(",")}`)
+          },
         },
-      },
-      {
-        name: "plus",
-        nargs: "+",
-        run({ args }) {
-          calls.push(`plus:${args.join(",")}`)
+        {
+          name: "plus",
+          namespace: "excommands",
+          nargs: "+",
+          run({ payload }) {
+            calls.push(`plus:${payload.args.join(",")}`)
+          },
         },
-      },
-      {
-        name: "free",
-        run({ args }) {
-          calls.push(`free:${args.join(",")}`)
+        {
+          name: "free",
+          namespace: "excommands",
+          run({ payload }) {
+            calls.push(`free:${payload.args.join(",")}`)
+          },
         },
-      },
-    ])
+      ],
+    })
 
     const target = createFocusableBox("nargs-target")
     target.onKeyDown = () => {
@@ -166,17 +177,21 @@ describe("ex commands addon", () => {
   test("forwards extra command fields into registered ex commands", () => {
     const keymap = getKeymap(renderer)
 
-    registerExCommands(keymap, [
-      {
-        name: "write",
-        aliases: ["w"],
-        nargs: "1",
-        desc: "Write the current buffer",
-        title: "Write Buffer",
-        category: "File",
-        run() {},
-      },
-    ])
+    registerExCommands(keymap)
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "write",
+          namespace: "excommands",
+          aliases: ["w"],
+          nargs: "1",
+          desc: "Write the current buffer",
+          title: "Write Buffer",
+          category: "File",
+          run() {},
+        },
+      ],
+    })
 
     keymap.registerLayer({
       bindings: [{ key: "x", cmd: ":w file.txt" }],
@@ -190,40 +205,91 @@ describe("ex commands addon", () => {
       category: "File",
     })
 
-    expect(keymap.getCommands({ filter: { namespace: "excommands" } })).toEqual([
+    expect(keymap.getCommands({ filter: { namespace: "excommands" } })).toMatchObject([
       {
         name: ":write",
-        fields: {
-          aliases: ["w"],
-          nargs: "1",
-          desc: "Write the current buffer",
-          title: "Write Buffer",
-          category: "File",
-          namespace: "excommands",
-        },
-        attrs: {
-          desc: "Write the current buffer",
-          title: "Write Buffer",
-          category: "File",
-        },
+        aliases: ["w"],
+        nargs: "1",
+        desc: "Write the current buffer",
+        title: "Write Buffer",
+        category: "File",
+        namespace: "excommands",
       },
       {
         name: ":w",
-        fields: {
-          aliases: ["w"],
-          nargs: "1",
-          desc: "Write the current buffer",
-          title: "Write Buffer",
-          category: "File",
-          namespace: "excommands",
-        },
-        attrs: {
-          desc: "Write the current buffer",
-          title: "Write Buffer",
-          category: "File",
-        },
+        aliases: ["w"],
+        nargs: "1",
+        desc: "Write the current buffer",
+        title: "Write Buffer",
+        category: "File",
+        namespace: "excommands",
       },
     ])
+  })
+
+  test("forces colon-prefixed commands into the excommands namespace", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    registerExCommands(keymap)
+    keymap.registerLayer({
+      commands: [
+        {
+          name: ":write",
+          namespace: "custom",
+          aliases: ["w"],
+          run() {
+            calls.push("write")
+          },
+        },
+        {
+          name: "plain",
+          aliases: ["p"],
+          run() {
+            calls.push("plain")
+          },
+        },
+      ],
+    })
+
+    expect(
+      keymap.getCommands({ namespace: "excommands", visibility: "registered" }).map((command) => command.name),
+    ).toEqual([":write", ":w"])
+    expect(keymap.getCommands({ namespace: "custom", visibility: "registered" })).toEqual([])
+    expect(keymap.runCommand(":write")).toEqual({ ok: true })
+    expect(keymap.runCommand("p")).toEqual({ ok: false, reason: "not-found" })
+    expect(calls).toEqual(["write"])
+  })
+
+  test("reports invalid ex command aliases and nargs", () => {
+    const keymap = getKeymap(renderer)
+    const capture = diagnostics.captureDiagnostics(keymap)
+
+    registerExCommands(keymap)
+    keymap.registerLayer({
+      commands: [
+        {
+          name: ":bad-alias",
+          aliases: [1],
+          run() {},
+        },
+        {
+          name: ":bad-nargs",
+          nargs: "2",
+          run() {},
+        },
+      ],
+    })
+
+    const { errors, errorEvents } = capture.takeErrors()
+    expect(errors).toEqual(["[Keymap] Error in command transformer:", "[Keymap] Error in command transformer:"])
+    expect(
+      errorEvents.map((event) => (event.error instanceof Error ? event.error.message : String(event.error))),
+    ).toEqual([
+      'Keymap ex-command field "aliases" must only contain command names',
+      'Keymap ex-command field "nargs" must be "0", "1", "?", "*", or "+"',
+    ])
+    expect(keymap.getCommands({ visibility: "registered" })).toEqual([])
   })
 
   test("can be disposed to remove ex-command resolution", () => {
@@ -245,15 +311,19 @@ describe("ex commands addon", () => {
       bindings: [{ key: "x", cmd: "fallback" }],
     })
 
-    const offExCommands = registerExCommands(keymap, [
-      {
-        name: "write",
-        aliases: ["w"],
-        run({ args }) {
-          calls.push(`write:${args.join(",")}`)
+    const offExCommands = registerExCommands(keymap)
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "write",
+          namespace: "excommands",
+          aliases: ["w"],
+          run({ payload }) {
+            calls.push(`write:${payload.args.join(",")}`)
+          },
         },
-      },
-    ])
+      ],
+    })
 
     keymap.registerLayer({
       bindings: [{ key: "x", cmd: ":w file.txt" }],
@@ -272,51 +342,59 @@ describe("ex commands addon", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
-    registerExCommands(keymap, [
-      {
-        name: "write",
-        aliases: ["w"],
-        nargs: "1",
-        usage: ":write <file>",
-        run({ raw, args }) {
-          calls.push(`${raw}:${args.join(",")}`)
+    registerExCommands(keymap)
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "write",
+          namespace: "excommands",
+          aliases: ["w"],
+          nargs: "1",
+          usage: ":write <file>",
+          run({ payload }) {
+            calls.push(`${payload.raw}:${payload.args.join(",")}`)
+          },
         },
-      },
-    ])
+        {
+          name: "free",
+          namespace: "excommands",
+          run({ payload }) {
+            calls.push(`${payload.raw}:${payload.args.join(",")}:${payload.payload ?? ""}`)
+          },
+        },
+      ],
+    })
 
     expect(keymap.runCommand(":w file.txt")).toEqual({
       ok: true,
     })
-    expect(keymap.runCommand(":w file.txt", { includeCommand: true })).toEqual({
+    expect(keymap.runCommand(":w file.txt", { includeCommand: true })).toMatchObject({
       ok: true,
       command: {
         name: ":w",
-        fields: {
-          aliases: ["w"],
-          nargs: "1",
-          usage: ":write <file>",
-          namespace: "excommands",
-        },
+        aliases: ["w"],
+        nargs: "1",
+        usage: ":write <file>",
+        namespace: "excommands",
       },
     })
     expect(keymap.runCommand(":w")).toEqual({
       ok: false,
       reason: "invalid-args",
     })
-    expect(keymap.runCommand(":w", { includeCommand: true })).toEqual({
+    expect(keymap.runCommand(":w", { includeCommand: true })).toMatchObject({
       ok: false,
       reason: "invalid-args",
       command: {
         name: ":w",
-        fields: {
-          aliases: ["w"],
-          nargs: "1",
-          usage: ":write <file>",
-          namespace: "excommands",
-        },
+        aliases: ["w"],
+        nargs: "1",
+        usage: ":write <file>",
+        namespace: "excommands",
       },
     })
+    expect(keymap.runCommand(":free one", { payload: "explicit" })).toEqual({ ok: true })
     expect(keymap.runCommand(":missing")).toEqual({ ok: false, reason: "not-found" })
-    expect(calls).toEqual([":w file.txt:file.txt", ":w file.txt:file.txt"])
+    expect(calls).toEqual([":w file.txt:file.txt", ":w file.txt:file.txt", ":free one:one:explicit"])
   })
 })
