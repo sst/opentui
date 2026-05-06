@@ -148,7 +148,7 @@ export default module.default
 `
     writeFileSync(join(nativeDir, "index.bun.js"), indexBunJsContent)
 
-    writeFileSync(join(nativeDir, "index.d.ts"), 'declare const path: string\nexport default path\n')
+    writeFileSync(join(nativeDir, "index.d.ts"), "declare const path: string\nexport default path\n")
 
     writeFileSync(
       join(nativeDir, "package.json"),
@@ -157,25 +157,26 @@ export default module.default
           name: nativeName,
           version: packageJson.version,
           description: `Prebuilt ${platform}-${arch} binaries for ${packageJson.name}`,
-            main: "index.js",
-            module: "index.js",
-            types: "index.d.ts",
-            license: packageJson.license,
-            author: packageJson.author,
-            homepage: packageJson.homepage,
-            repository: packageJson.repository,
-            bugs: packageJson.bugs,
-            keywords: [...(packageJson.keywords ?? []), "prebuild", "prebuilt"],
-            exports: {
-              ".": {
-                bun: "./index.bun.js",
-                import: "./index.js",
-                types: "./index.d.ts",
-              },
+          type: "module",
+          main: "index.js",
+          module: "index.js",
+          types: "index.d.ts",
+          license: packageJson.license,
+          author: packageJson.author,
+          homepage: packageJson.homepage,
+          repository: packageJson.repository,
+          bugs: packageJson.bugs,
+          keywords: [...(packageJson.keywords ?? []), "prebuild", "prebuilt"],
+          exports: {
+            ".": {
+              bun: "./index.bun.js",
+              import: "./index.js",
+              types: "./index.d.ts",
             },
-            os: [platform],
-            cpu: [arch],
           },
+          os: [platform],
+          cpu: [arch],
+        },
         null,
         2,
       ),

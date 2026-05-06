@@ -34,6 +34,51 @@ describe("TreeSitterClient", () => {
     expect(client.isInitialized()).toBe(true)
   })
 
+  test("should wait for default parsers before resolving concurrent initialization", async () => {
+    let resolveRegistrationStarted!: () => void
+    let resolveRegistration!: () => void
+    let registrationCompleted = false
+
+    const registrationStarted = new Promise<void>((resolve) => {
+      resolveRegistrationStarted = resolve
+    })
+    const registrationGate = new Promise<void>((resolve) => {
+      resolveRegistration = resolve
+    })
+
+    const clientInternals = client as unknown as { registerDefaultParsers: () => Promise<void> }
+    const registerDefaultParsers = clientInternals.registerDefaultParsers.bind(client)
+
+    clientInternals.registerDefaultParsers = async () => {
+      resolveRegistrationStarted()
+      await registrationGate
+      await registerDefaultParsers()
+      registrationCompleted = true
+    }
+
+    const firstInitialize = client.initialize()
+    const secondInitialize = client.initialize()
+
+    await registrationStarted
+
+    let secondResolved = false
+    const observedSecondInitialize = secondInitialize.then(() => {
+      secondResolved = true
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 25))
+
+    expect(secondResolved).toBe(false)
+    expect(client.isInitialized()).toBe(false)
+
+    resolveRegistration()
+
+    await Promise.all([firstInitialize, observedSecondInitialize])
+
+    expect(registrationCompleted).toBe(true)
+    expect(client.isInitialized()).toBe(true)
+  })
+
   test("should preload parsers for supported filetypes", async () => {
     await client.initialize()
 

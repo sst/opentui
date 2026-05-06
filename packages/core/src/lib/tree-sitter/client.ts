@@ -152,6 +152,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.buffers.clear()
     this.stopWorker()
     this.startWorker()
+    this.initialized = false
     this.initializePromise = undefined
     this.initializeResolvers = undefined
     return this.initialize()
@@ -162,7 +163,13 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return this.initializePromise
     }
 
-    this.initializePromise = new Promise((resolve, reject) => {
+    this.initializePromise = this.initializeClient()
+
+    return this.initializePromise
+  }
+
+  private async initializeClient(): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
       const timeoutMs = this.options.initTimeout ?? 10000 // Default to 10 seconds
       const timeoutId = setTimeout(() => {
         const error = new Error("Worker initialization timed out")
@@ -178,10 +185,8 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       })
     })
 
-    await this.initializePromise
     await this.registerDefaultParsers()
-
-    return this.initializePromise
+    this.initialized = true
   }
 
   private async registerDefaultParsers(): Promise<void> {
@@ -276,7 +281,6 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
           console.error("TreeSitter client initialization failed:", error)
           this.initializeResolvers.reject(new Error(error))
         } else {
-          this.initialized = true
           this.initializeResolvers.resolve()
         }
         this.initializeResolvers = undefined
