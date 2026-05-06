@@ -177,6 +177,23 @@ describe("html keymap adapter", () => {
     expect(first).not.toBe(second)
   })
 
+  test("HTML host exposes platform and modifier metadata", () => {
+    const keymap = createBareHtmlKeymap(root as unknown as HTMLElement)
+    const metadata = keymap.getHostMetadata()
+
+    expect(["macos", "windows", "linux", "unknown"]).toContain(metadata.platform)
+    expect(metadata.primaryModifier).toBe(
+      metadata.platform === "macos" ? "super" : metadata.platform === "unknown" ? "unknown" : "ctrl",
+    )
+    expect(metadata.modifiers).toEqual({
+      ctrl: "supported",
+      shift: "supported",
+      meta: "supported",
+      super: "supported",
+      hyper: "unsupported",
+    })
+  })
+
   test("createHtmlKeymap stays bare until addons are installed", () => {
     const keymap = createBareHtmlKeymap(root as unknown as HTMLElement)
     const { takeErrors } = diagnostics.captureDiagnostics(keymap)

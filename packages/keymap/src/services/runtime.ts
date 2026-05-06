@@ -1,55 +1,55 @@
 import type { EventData, KeymapEvent } from "../types.js"
 import type { ActivationService } from "./activation.js"
-import type { ConditionService } from "./conditions.js"
 import type { NotificationService } from "./notify.js"
 import type { State } from "./state.js"
 
-export class RuntimeService<TTarget extends object, TEvent extends KeymapEvent> {
-  constructor(
-    private readonly state: State<TTarget, TEvent>,
-    private readonly notify: NotificationService<TTarget, TEvent>,
-    private readonly conditions: ConditionService<TTarget, TEvent>,
-    private readonly activation: ActivationService<TTarget, TEvent>,
-  ) {}
+export interface RuntimeService<TTarget extends object, TEvent extends KeymapEvent> {
+  getData(name: string): unknown
+  setData(name: string, value: unknown): void
+  getReadonlyData(): Readonly<EventData>
+}
 
-  public getData(name: string): unknown {
-    return this.state.runtime.data[name]
-  }
+export function createRuntimeService<TTarget extends object, TEvent extends KeymapEvent>(
+  state: State<TTarget, TEvent>,
+  notify: NotificationService<TTarget, TEvent>,
+  activation: ActivationService<TTarget, TEvent>,
+): RuntimeService<TTarget, TEvent> {
+  return {
+    getData(name) {
+      return state.data[name]
+    },
+    setData(name, value) {
+      notify.runWithStateChangeBatch(() => {
+        if (value === undefined) {
+          if (!(name in state.data)) {
+            return
+          }
 
-  public setData(name: string, value: unknown): void {
-    this.notify.runWithStateChangeBatch(() => {
-      if (value === undefined) {
-        if (!(name in this.state.runtime.data)) {
+          delete state.data[name]
+          state.dataVersion += 1
+          activation.ensureValidPendingSequence()
+          notify.queueStateChange()
           return
         }
 
-        delete this.state.runtime.data[name]
-        this.state.runtime.dataVersion += 1
-        this.conditions.invalidateRuntimeConditionKey(name)
-        this.activation.ensureValidPendingSequence()
-        this.notify.queueStateChange()
-        return
+        if (Object.is(state.data[name], value)) {
+          return
+        }
+
+        state.data[name] = value
+        state.dataVersion += 1
+        activation.ensureValidPendingSequence()
+        notify.queueStateChange()
+      })
+    },
+    getReadonlyData() {
+      if (state.readonlyDataVersion === state.dataVersion) {
+        return state.readonlyData
       }
 
-      if (Object.is(this.state.runtime.data[name], value)) {
-        return
-      }
-
-      this.state.runtime.data[name] = value
-      this.state.runtime.dataVersion += 1
-      this.conditions.invalidateRuntimeConditionKey(name)
-      this.activation.ensureValidPendingSequence()
-      this.notify.queueStateChange()
-    })
-  }
-
-  public getReadonlyData(): Readonly<EventData> {
-    if (this.state.runtime.readonlyDataVersion === this.state.runtime.dataVersion) {
-      return this.state.runtime.readonlyData
-    }
-
-    this.state.runtime.readonlyData = Object.freeze({ ...this.state.runtime.data })
-    this.state.runtime.readonlyDataVersion = this.state.runtime.dataVersion
-    return this.state.runtime.readonlyData
+      state.readonlyData = Object.freeze({ ...state.data })
+      state.readonlyDataVersion = state.dataVersion
+      return state.readonlyData
+    },
   }
 }

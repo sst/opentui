@@ -2,63 +2,38 @@ import { RESERVED_COMMAND_FIELDS } from "../schema.js"
 import type {
   ActiveBinding,
   Attributes,
+  Command,
   CommandEntry,
-  CommandContext,
-  CommandDefinition,
   CommandBindingsQuery,
   CommandFieldCompiler,
-  CommandFieldContext,
   CommandResolutionStatus,
   CommandQuery,
   CommandQueryValue,
-  CommandRecord,
   CommandResolver,
   CommandResolverContext,
-  CommandResult,
-  CompiledBinding,
+  BindingState,
   EventData,
   KeymapEvent,
   KeymapHost,
-  RegisteredCommand,
-  ResolvedBindingCommand,
+  CommandState,
   RuntimeMatcher,
 } from "../types.js"
 import { normalizeCommandName } from "./primitives/command-normalization.js"
-import {
-  getActiveLayersForFocused,
-  getFocusedTargetIfAvailable,
-  isLayerActiveForFocused,
-} from "./primitives/active-layers.js"
+import { getFocusedTargetIfAvailable, isLayerActiveForFocused } from "./primitives/active-layers.js"
+import { getActiveCommandView as createActiveCommandView, getRegisteredCommandView } from "./runtime-view.js"
 import type { ConditionService } from "./conditions.js"
-import { mergeAttribute, mergeRequirement } from "./primitives/field-invariants.js"
+import { createFieldCompilerContext } from "./primitives/field-invariants.js"
 import type { NotificationService } from "./notify.js"
-import type {
-  ActiveCommandView,
-  CommandChainCacheState,
-  LayerCommandEntry,
-  RegisteredCommandView,
-  ResolvedCommandEntry,
-  State,
-} from "./state.js"
-import { getErrorMessage, snapshotDataValue } from "./values.js"
+import type { ActiveCommandView, LayerCommandEntry, CommandView, ResolvedCommandEntry, State } from "./state.js"
+import { getErrorMessage } from "./values.js"
 
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
 
-const SNAPSHOT_COMMAND_METADATA_OPTIONS = Object.freeze({
-  deep: true,
-  preserveNonPlainObjects: true,
-})
-
-const SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS = Object.freeze({
-  deep: true,
-  freeze: true,
-  preserveNonPlainObjects: true,
-})
-
 const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
+const commandSearchCache = new WeakMap<CommandState<any, any>, Map<string, string | undefined>>()
 
-interface NormalizeRegisteredCommandsOptions<TTarget extends object, TEvent extends KeymapEvent> {
-  commands: readonly CommandDefinition<TTarget, TEvent>[]
+interface NormalizeCommandsOptions<TTarget extends object, TEvent extends KeymapEvent> {
+  commands: readonly Command<TTarget, TEvent>[]
   commandFields: ReadonlyMap<string, CommandFieldCompiler>
   conditions: ConditionService<TTarget, TEvent>
   onError(code: string, error: unknown, message: string): void
@@ -66,13 +41,13 @@ interface NormalizeRegisteredCommandsOptions<TTarget extends object, TEvent exte
 
 interface QueryLayerCommandEntriesOptions<TTarget extends object, TEvent extends KeymapEvent> {
   entries: Iterable<LayerCommandEntry<TTarget, TEvent>>
-  query?: CommandQuery<TTarget>
-  getCommandRecord(command: RegisteredCommand<TTarget, TEvent>): CommandRecord
+  query?: CommandQuery<TTarget, TEvent>
+  getCommand(command: CommandState<TTarget, TEvent>): Command<TTarget, TEvent>
   onFilterError(error: unknown): void
 }
 
 interface CommandQueryMatchOptions<TTarget extends object, TEvent extends KeymapEvent> {
-  getCommandRecord(command: RegisteredCommand<TTarget, TEvent>): CommandRecord
+  getCommand(command: CommandState<TTarget, TEvent>): Command<TTarget, TEvent>
   onFilterError(error: unknown): void
 }
 
@@ -81,81 +56,138 @@ interface CommandCatalogOptions {
 }
 
 interface ResolvedCommandLookup<TTarget extends object, TEvent extends KeymapEvent> {
-  resolved?: ResolvedBindingCommand<TTarget, TEvent>
+  resolved?: ResolvedCommandEntry<TTarget, TEvent>
   hadError: boolean
 }
 
-function createCommandChainCacheState<TTarget extends object, TEvent extends KeymapEvent>(): CommandChainCacheState<
-  TTarget,
-  TEvent
-> {
-  return {
-    resolvedWithoutRecordChains: new Map(),
-    resolvedWithRecordChains: new Map(),
-    fallbackWithoutRecord: new Map(),
-    fallbackWithRecord: new Map(),
-    fallbackWithoutRecordErrors: new Set(),
-    fallbackWithRecordErrors: new Set(),
-  }
+interface CommandExecutionFields {
+  input: string
+  payload?: unknown
 }
 
-export class CommandCatalogService<TTarget extends object, TEvent extends KeymapEvent> {
-  constructor(
-    private readonly state: State<TTarget, TEvent>,
-    private readonly host: KeymapHost<TTarget, TEvent>,
-    private readonly notify: NotificationService<TTarget, TEvent>,
-    private readonly conditions: ConditionService<TTarget, TEvent>,
-    private readonly options: CommandCatalogOptions,
-  ) {}
+interface CommandResolverAttempt<TTarget extends object, TEvent extends KeymapEvent> {
+  context: CommandResolverContext<TTarget, TEvent>
+  getExecutionFields(): CommandExecutionFields
+}
 
-  public normalizeCommands(
-    commands: readonly CommandDefinition<TTarget, TEvent>[],
-  ): RegisteredCommand<TTarget, TEvent>[] {
-    return normalizeRegisteredCommands({
+export interface CommandCatalogService<TTarget extends object, TEvent extends KeymapEvent> {
+  normalizeCommands(commands: readonly Command<TTarget, TEvent>[]): CommandState<TTarget, TEvent>[]
+  prependCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void
+  appendCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void
+  clearCommandResolvers(): void
+  getCommands(query?: CommandQuery<TTarget, TEvent>): readonly Command<TTarget, TEvent>[]
+  getCommandEntries(query?: CommandQuery<TTarget, TEvent>): readonly CommandEntry<TTarget, TEvent>[]
+  getCommandBindings(
+    query: CommandBindingsQuery<TTarget>,
+  ): ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]>
+  getResolvedCommandChain(
+    command: string,
+    focused: TTarget | null,
+    execution?: CommandExecutionFields,
+  ): { entries?: readonly ResolvedCommandEntry<TTarget, TEvent>[]; hadError: boolean }
+  getRegisteredResolvedEntries(command: string): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined
+  getActiveRegisteredResolvedEntries(
+    command: string,
+    focused: TTarget | null,
+  ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined
+  resolveRegisteredResolverFallback(
+    command: string,
+    execution?: CommandExecutionFields,
+  ): ResolvedCommandLookup<TTarget, TEvent>
+  resolveActiveResolverFallback(
+    command: string,
+    focused: TTarget | null,
+    execution?: CommandExecutionFields,
+  ): ResolvedCommandLookup<TTarget, TEvent>
+  getTopCommand(command: string, focused: TTarget | null): Command<TTarget, TEvent> | undefined
+  getDispatchUnavailableCommandState(
+    command: string,
+    focused: TTarget | null,
+    includeCommand: boolean,
+  ): { reason: "inactive" | "disabled"; command?: Command<TTarget, TEvent> } | undefined
+  getActiveCommandView(focused: TTarget | null): ActiveCommandView<TTarget, TEvent>
+  isBindingVisible(
+    binding: BindingState<TTarget, TEvent>,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): boolean
+  getBindingCommandAttrs(
+    binding: BindingState<TTarget, TEvent>,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): Readonly<Attributes> | undefined
+  getCommandResolutionStatus(
+    command: string,
+    layerCommands?: readonly CommandState<TTarget, TEvent>[],
+  ): CommandResolutionStatus
+}
+
+export function createCommandCatalogService<TTarget extends object, TEvent extends KeymapEvent>(
+  state: State<TTarget, TEvent>,
+  host: KeymapHost<TTarget, TEvent>,
+  notify: NotificationService<TTarget, TEvent>,
+  conditions: ConditionService<TTarget, TEvent>,
+  options: CommandCatalogOptions,
+): CommandCatalogService<TTarget, TEvent> {
+  let registeredViewVersion = -1
+  let registeredView: CommandView<TTarget, TEvent> | undefined
+  let activeViewVersion = -1
+  let activeViewFocused: TTarget | null | undefined
+  let activeView: ActiveCommandView<TTarget, TEvent> | undefined
+  let registeredBindingsCacheVersion = -1
+  let registeredBindingsCacheCommands: readonly string[] | undefined
+  let registeredBindingsCache: ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]> | undefined
+  let registeredBindingsByCommandVersion = -1
+  let registeredBindingsByCommand: ReadonlyMap<string, readonly BindingState<TTarget, TEvent>[]> | undefined
+  let registeredResolvedCacheVersion = -1
+  let registeredResolvedCache = new Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[] | null>()
+
+  const normalizeLayerCommands = (commands: readonly Command<TTarget, TEvent>[]): CommandState<TTarget, TEvent>[] => {
+    return normalizeCommands({
       commands,
-      commandFields: this.state.environment.commandFields,
-      conditions: this.conditions,
+      commandFields: state.commandFields,
+      conditions: conditions,
       onError: (code, error, message) => {
-        this.notify.emitError(code, error, message)
+        notify.emitError(code, error, message)
       },
     })
   }
 
-  public prependCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
-    return this.mutateCommandResolvers(() => this.state.commands.commandResolvers.prepend(resolver), resolver)
+  const prependCommandResolver = (resolver: CommandResolver<TTarget, TEvent>): (() => void) => {
+    return mutateCommandResolvers(() => state.commandResolvers.prepend(resolver), resolver)
   }
 
-  public appendCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
-    return this.mutateCommandResolvers(() => this.state.commands.commandResolvers.append(resolver), resolver)
+  const appendCommandResolver = (resolver: CommandResolver<TTarget, TEvent>): (() => void) => {
+    return mutateCommandResolvers(() => state.commandResolvers.append(resolver), resolver)
   }
 
-  public clearCommandResolvers(): void {
-    if (!this.state.commands.commandResolvers.has()) {
+  const clearCommandResolvers = (): void => {
+    if (!state.commandResolvers.has()) {
       return
     }
 
-    this.notify.runWithStateChangeBatch(() => {
-      this.state.commands.commandResolvers.clear()
-      this.state.commands.commandMetadataVersion += 1
-      this.options.onCommandResolversChanged()
-      this.notify.queueStateChange()
+    notify.runWithStateChangeBatch(() => {
+      state.commandResolvers.clear()
+      options.onCommandResolversChanged()
+      notify.queueStateChange()
     })
   }
 
-  public getCommands(query?: CommandQuery<TTarget>): readonly CommandRecord[] {
-    return this.getFilteredCommandEntries(query).map((entry) => getRegisteredCommandRecord(entry.command))
+  const getCommands = (query?: CommandQuery<TTarget, TEvent>): readonly Command<TTarget, TEvent>[] => {
+    return getFilteredCommandEntries(query).map((entry) => getCommand(entry.commandState))
   }
 
-  public getCommandEntries(query?: CommandQuery<TTarget>): readonly CommandEntry<TTarget, TEvent>[] {
-    const context = this.getCommandQueryContext(query)
-    const filteredEntries = this.getFilteredCommandEntries(query, context)
+  const getCommandEntries = (query?: CommandQuery<TTarget, TEvent>): readonly CommandEntry<TTarget, TEvent>[] => {
+    const context = getCommandQueryContext(query)
+    const filteredEntries = getFilteredCommandEntries(query, context)
     if (filteredEntries.length === 0) {
       return []
     }
 
     const grouped = filteredEntries.map((entry) => ({
       entry,
-      command: getRegisteredCommandRecord(entry.command),
+      command: getCommand(entry.commandState),
+      commandAttrs: entry.commandState.attrs,
       bindings: [] as ActiveBinding<TTarget, TEvent>[],
     }))
     const indexesByName = new Map<string, number[]>()
@@ -170,7 +202,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     }
 
     if (indexesByName.size > 0) {
-      this.collectCommandEntryBindings(grouped, indexesByName, context)
+      collectCommandEntryBindings(grouped, indexesByName, context)
     }
 
     return grouped.map((item) => ({
@@ -179,9 +211,18 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     }))
   }
 
-  public getCommandBindings(
+  const getCommandBindings = (
     query: CommandBindingsQuery<TTarget>,
-  ): ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]> {
+  ): ReadonlyMap<string, readonly ActiveBinding<TTarget, TEvent>[]> => {
+    if (
+      query.visibility === "registered" &&
+      registeredBindingsCacheVersion === state.derivedVersion &&
+      registeredBindingsCacheCommands === query.commands &&
+      registeredBindingsCache
+    ) {
+      return registeredBindingsCache
+    }
+
     const bindingsByCommand = new Map<string, ActiveBinding<TTarget, TEvent>[]>()
     for (const command of query.commands) {
       if (!bindingsByCommand.has(command)) {
@@ -193,116 +234,116 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       return bindingsByCommand
     }
 
-    this.collectCommandBindings(bindingsByCommand, this.getCommandQueryContext(query))
+    collectCommandBindings(bindingsByCommand, getCommandQueryContext(query))
+    if (query.visibility === "registered") {
+      registeredBindingsCacheVersion = state.derivedVersion
+      registeredBindingsCacheCommands = query.commands
+      registeredBindingsCache = bindingsByCommand
+    }
+
     return bindingsByCommand
   }
 
-  public getResolvedCommandChain(
+  const getResolvedCommandChain = (
     command: string,
     focused: TTarget | null,
-    includeRecord: boolean,
-  ): { entries?: readonly ResolvedCommandEntry<TTarget, TEvent>[]; hadError: boolean } {
-    const view = this.getActiveCommandView(focused)
-    const entries = this.getResolvedCommandChainFromView(
-      view,
-      command,
-      focused,
-      includeRecord,
-      "active",
-      view.chainsByName.get(command),
-    )
-    const hadError = (includeRecord ? view.fallbackWithRecordErrors : view.fallbackWithoutRecordErrors).has(command)
+    execution?: CommandExecutionFields,
+  ): { entries?: readonly ResolvedCommandEntry<TTarget, TEvent>[]; hadError: boolean } => {
+    const view = getActiveCommandView(focused)
+    if (execution) {
+      const resolved: ResolvedCommandEntry<TTarget, TEvent>[] = []
+      const chain = view.chainsByName.get(command)
+      if (chain) {
+        for (const entry of chain) {
+          resolved.push({
+            target: entry.layer.target,
+            command: entry.commandState.command,
+            attrs: entry.commandState.attrs,
+            payload: execution.payload,
+          })
+        }
+      }
 
-    return { entries, hadError }
-  }
+      const fallback = resolveCommandWithResolversForMode(command, focused, { mode: "active", execution })
+      if (fallback.resolved) {
+        resolved.push(fallback.resolved)
+      }
 
-  public getRegisteredResolvedEntries(
-    command: string,
-    includeRecord: boolean,
-  ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined {
-    const view = this.getRegisteredCommandView()
-    const cache = includeRecord ? view.resolvedWithRecordChains : view.resolvedWithoutRecordChains
-    const cached = cache.get(command)
-    if (cached) {
-      return cached.length > 0 ? cached : undefined
-    }
-
-    const chain = view.chainsByName.get(command)
-    if (!chain || chain.length === 0) {
-      cache.set(command, [])
-      return undefined
+      return { entries: resolved.length > 0 ? resolved : undefined, hadError: fallback.hadError }
     }
 
     const resolved: ResolvedCommandEntry<TTarget, TEvent>[] = []
-    for (const entry of chain) {
+    for (const entry of view.chainsByName.get(command) ?? []) {
       resolved.push({
         target: entry.layer.target,
-        resolved: resolveRegisteredCommand(entry.command, { includeRecord }),
+        command: entry.commandState.command,
+        attrs: entry.commandState.attrs,
       })
     }
 
-    cache.set(command, resolved)
+    const fallback = resolveCommandWithResolversForMode(command, focused, { mode: "active" })
+    if (fallback.resolved) {
+      resolved.push(fallback.resolved)
+    }
+
+    return { entries: resolved.length > 0 ? resolved : undefined, hadError: fallback.hadError }
+  }
+
+  const getRegisteredResolvedEntries = (
+    command: string,
+  ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined => {
+    if (registeredResolvedCacheVersion !== state.derivedVersion) {
+      registeredResolvedCacheVersion = state.derivedVersion
+      registeredResolvedCache = new Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[] | null>()
+    }
+
+    if (registeredResolvedCache.has(command)) {
+      return registeredResolvedCache.get(command) ?? undefined
+    }
+
+    const resolved = resolveRegisteredEntries(getRegisteredCommandChain(command))
+    registeredResolvedCache.set(command, resolved ?? null)
     return resolved
   }
 
-  public getActiveRegisteredResolvedEntries(
+  const getActiveRegisteredResolvedEntries = (
     command: string,
     focused: TTarget | null,
-    includeRecord: boolean,
-  ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined {
-    const view = this.getActiveCommandView(focused)
-    const chain = view.chainsByName.get(command)
-    if (!chain || chain.length === 0) {
-      return undefined
-    }
-
-    const resolved: ResolvedCommandEntry<TTarget, TEvent>[] = []
-    for (const entry of chain) {
-      resolved.push({
-        target: entry.layer.target,
-        resolved: resolveRegisteredCommand(entry.command, { includeRecord }),
-      })
-    }
-
-    return resolved
+  ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined => {
+    return resolveRegisteredEntries(getActiveCommandView(focused).chainsByName.get(command))
   }
 
-  public resolveRegisteredResolverFallback(
+  const resolveRegisteredResolverFallback = (
     command: string,
-    includeRecord: boolean,
-  ): { resolved?: ResolvedBindingCommand<TTarget, TEvent>; hadError: boolean } {
-    return this.resolveCommandWithResolvers(command, null, { includeRecord, mode: "registered" })
+    execution?: CommandExecutionFields,
+  ): ResolvedCommandLookup<TTarget, TEvent> => {
+    return resolveCommandWithResolversForMode(command, null, { mode: "registered", execution })
   }
 
-  public resolveActiveResolverFallback(
+  const resolveActiveResolverFallback = (
     command: string,
     focused: TTarget | null,
-    includeRecord: boolean,
-  ): { resolved?: ResolvedBindingCommand<TTarget, TEvent>; hadError: boolean } {
-    return this.resolveCommandWithResolvers(command, focused, { includeRecord, mode: "active" })
+    execution?: CommandExecutionFields,
+  ): ResolvedCommandLookup<TTarget, TEvent> => {
+    return resolveCommandWithResolversForMode(command, focused, { mode: "active", execution })
   }
 
-  public getCommandAttrs(command: string, focused: TTarget | null): Readonly<Attributes> | undefined {
-    const top = this.getTopResolvedCommand(command, focused, false)
-    return top?.resolved.attrs
+  const getTopCommand = (command: string, focused: TTarget | null): Command<TTarget, TEvent> | undefined => {
+    const top = getTopResolvedCommand(command, focused)
+    return top?.command
   }
 
-  public getTopCommandRecord(command: string, focused: TTarget | null): CommandRecord | undefined {
-    const top = this.getTopResolvedCommand(command, focused, true)
-    return top?.resolved.record
+  const getCommandByName = (command: string): Command<TTarget, TEvent> | undefined => {
+    const top = getCommandEntry(command)
+    return top?.commandState.command
   }
 
-  public getTopRegisteredCommandRecord(command: string): CommandRecord | undefined {
-    const top = this.getTopRegisteredCommand(command)
-    return top ? getRegisteredCommandRecord(top.command) : undefined
-  }
-
-  public getDispatchUnavailableCommandState(
+  const getDispatchUnavailableCommandState = (
     command: string,
     focused: TTarget | null,
-    includeRecord: boolean,
-  ): { reason: "inactive" | "disabled"; command?: CommandRecord } | undefined {
-    const view = this.getRegisteredCommandView()
+    includeCommand: boolean,
+  ): { reason: "inactive" | "disabled"; command?: Command<TTarget, TEvent> } | undefined => {
+    const view = getCommandView()
     const chain = view.chainsByName.get(command)
     if (!chain || chain.length === 0) {
       return undefined
@@ -312,12 +353,12 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     let disabledEntry: LayerCommandEntry<TTarget, TEvent> | undefined
 
     for (const entry of chain) {
-      if (!isLayerActiveForFocused(this.host, entry.layer, focused)) {
+      if (!isLayerActiveForFocused(host, entry.layer, focused)) {
         inactiveEntry ??= entry
         continue
       }
 
-      if (!this.conditions.layerMatchesRuntimeState(entry.layer) || !this.conditions.matchesConditions(entry.command)) {
+      if (!conditions.matchesConditions(entry.layer) || !conditions.matchesConditions(entry.commandState)) {
         disabledEntry ??= entry
       }
     }
@@ -329,128 +370,44 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
 
     return {
       reason: disabledEntry ? "disabled" : "inactive",
-      command: includeRecord ? getRegisteredCommandRecord(unavailableEntry.command) : undefined,
+      command: includeCommand ? unavailableEntry.commandState.command : undefined,
     }
   }
 
-  public getActiveCommandView(focused: TTarget | null): ActiveCommandView<TTarget, TEvent> {
-    const currentFocused = getFocusedTargetIfAvailable(this.host)
-    const derivedStateVersion = this.state.notify.derivedStateVersion
-
-    if (
-      focused === currentFocused &&
-      this.state.commands.activeCommandViewVersion === derivedStateVersion &&
-      this.state.commands.activeCommandView?.cacheable
-    ) {
-      return this.state.commands.activeCommandView
+  const getActiveCommandView = (focused: TTarget | null): ActiveCommandView<TTarget, TEvent> => {
+    if (activeViewVersion === state.derivedVersion && activeViewFocused === focused && activeView) {
+      return activeView
     }
 
-    const entries: LayerCommandEntry<TTarget, TEvent>[] = []
-    const reachable: LayerCommandEntry<TTarget, TEvent>[] = []
-    const reachableByName = new Map<string, LayerCommandEntry<TTarget, TEvent>>()
-    const chainsByName = new Map<string, LayerCommandEntry<TTarget, TEvent>[]>()
-    let cacheable = true
-
-    if (this.state.layers.layersWithCommands > 0) {
-      for (const layer of getActiveLayersForFocused(this.state.layers, this.host, focused)) {
-        if (layer.commands.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
-          continue
-        }
-
-        if (layer.hasUnkeyedMatchers) {
-          cacheable = false
-        }
-
-        for (const command of layer.commands) {
-          if (command.hasUnkeyedMatchers) {
-            cacheable = false
-          }
-
-          if (!this.conditions.matchesConditions(command)) {
-            continue
-          }
-
-          const entry: LayerCommandEntry<TTarget, TEvent> = { layer, command }
-          entries.push(entry)
-
-          const existing = chainsByName.get(command.name)
-          if (existing) {
-            existing.push(entry)
-          } else {
-            chainsByName.set(command.name, [entry])
-          }
-
-          if (!reachableByName.has(command.name)) {
-            reachableByName.set(command.name, entry)
-            reachable.push(entry)
-          }
-        }
-      }
-    }
-
-    const view: ActiveCommandView<TTarget, TEvent> = {
-      cacheable,
-      entries,
-      reachable,
-      reachableByName,
-      chainsByName,
-      ...createCommandChainCacheState(),
-    }
-
-    if (focused === currentFocused && view.cacheable) {
-      this.state.commands.activeCommandViewVersion = derivedStateVersion
-      this.state.commands.activeCommandView = view
+    const view = createActiveCommandView(state, host, conditions, focused)
+    if (activeCommandViewCanCache()) {
+      activeViewVersion = state.derivedVersion
+      activeViewFocused = focused
+      activeView = view
     }
 
     return view
   }
 
-  public getRegisteredCommandView(): RegisteredCommandView<TTarget, TEvent> {
-    const cacheVersion = this.state.commands.commandMetadataVersion
-    if (
-      this.state.commands.registeredCommandViewVersion === cacheVersion &&
-      this.state.commands.registeredCommandView
-    ) {
-      return this.state.commands.registeredCommandView
+  const getCommandView = (): CommandView<TTarget, TEvent> => {
+    if (registeredViewVersion === state.derivedVersion && registeredView) {
+      return registeredView
     }
 
-    const entries: LayerCommandEntry<TTarget, TEvent>[] = []
-    const chainsByName = new Map<string, LayerCommandEntry<TTarget, TEvent>[]>()
-
-    for (const layer of this.state.layers.sortedLayers) {
-      if (layer.commands.length === 0) {
-        continue
-      }
-
-      for (const command of layer.commands) {
-        const entry: LayerCommandEntry<TTarget, TEvent> = { layer, command }
-        entries.push(entry)
-
-        const existing = chainsByName.get(command.name)
-        if (existing) {
-          existing.push(entry)
-        } else {
-          chainsByName.set(command.name, [entry])
-        }
-      }
-    }
-
-    const view: RegisteredCommandView<TTarget, TEvent> = {
-      entries,
-      chainsByName,
-      ...createCommandChainCacheState(),
-    }
-
-    this.state.commands.registeredCommandViewVersion = cacheVersion
-    this.state.commands.registeredCommandView = view
-    return view
+    registeredViewVersion = state.derivedVersion
+    registeredView = getRegisteredCommandView(state)
+    return registeredView
   }
 
-  public isBindingVisible(
-    binding: CompiledBinding<TTarget, TEvent>,
+  const activeCommandViewCanCache = (): boolean => {
+    return state.activeCommandViewCacheBlockers === 0
+  }
+
+  const isBindingVisible = (
+    binding: BindingState<TTarget, TEvent>,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
-  ): boolean {
+  ): boolean => {
     if (binding.command === undefined || binding.run) {
       return true
     }
@@ -463,36 +420,36 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       return true
     }
 
-    return this.getFallbackResolvedCommand(activeView, binding.command, focused, false, "active") !== undefined
+    return getFallbackResolvedCommand(binding.command, focused, "active") !== undefined
   }
 
-  public getBindingCommandAttrs(
-    binding: CompiledBinding<TTarget, TEvent>,
+  const getBindingCommandAttrs = (
+    binding: BindingState<TTarget, TEvent>,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
-  ): Readonly<Attributes> | undefined {
+  ): Readonly<Attributes> | undefined => {
     if (typeof binding.command !== "string") {
       return undefined
     }
 
     const active = activeView.reachableByName.get(binding.command)
     if (active) {
-      return active.command.attrs
+      return active.commandState.attrs
     }
 
-    const fallback = this.getFallbackResolvedCommand(activeView, binding.command, focused, false, "active")
-    return fallback?.resolved.attrs
+    const fallback = getFallbackResolvedCommand(binding.command, focused, "active")
+    return fallback?.attrs
   }
 
-  public getCommandResolutionStatus(
+  const getCommandResolutionStatus = (
     command: string,
-    layerCommands?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>,
-  ): CommandResolutionStatus {
-    if (layerCommands?.has(command) || this.state.commands.registeredNames.has(command)) {
+    layerCommands?: readonly CommandState<TTarget, TEvent>[],
+  ): CommandResolutionStatus => {
+    if (layerCommands?.some((state) => state.command.name === command) || getCommandView().chainsByName.has(command)) {
       return "resolved"
     }
 
-    const lookup = this.resolveCommandWithResolvers(command, getFocusedTargetIfAvailable(this.host))
+    const lookup = resolveCommandWithResolversForMode(command, getFocusedTargetIfAvailable(host))
     if (lookup.resolved || lookup.hadError) {
       return lookup.resolved ? "resolved" : "error"
     }
@@ -500,142 +457,128 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return "unresolved"
   }
 
-  private mutateCommandResolvers(register: () => () => void, resolver: CommandResolver<TTarget, TEvent>): () => void {
-    return this.notify.runWithStateChangeBatch(() => {
+  const mutateCommandResolvers = (
+    register: () => () => void,
+    resolver: CommandResolver<TTarget, TEvent>,
+  ): (() => void) => {
+    return notify.runWithStateChangeBatch(() => {
       const off = register()
-      this.state.commands.commandMetadataVersion += 1
-      this.options.onCommandResolversChanged()
-      this.notify.queueStateChange()
+      options.onCommandResolversChanged()
+      notify.queueStateChange()
 
       return () => {
-        this.notify.runWithStateChangeBatch(() => {
+        notify.runWithStateChangeBatch(() => {
           off()
-          if (this.state.commands.commandResolvers.values().includes(resolver)) {
+          if (state.commandResolvers.values().includes(resolver)) {
             return
           }
 
-          this.state.commands.commandMetadataVersion += 1
-          this.options.onCommandResolversChanged()
-          this.notify.queueStateChange()
+          options.onCommandResolversChanged()
+          notify.queueStateChange()
         })
       }
     })
   }
 
-  private getTopResolvedCommand(
+  const getTopResolvedCommand = (
     command: string,
     focused: TTarget | null,
-    includeRecord: boolean,
-  ): ResolvedCommandEntry<TTarget, TEvent> | undefined {
-    const activeView = this.getActiveCommandView(focused)
+  ): ResolvedCommandEntry<TTarget, TEvent> | undefined => {
+    const activeView = getActiveCommandView(focused)
     const active = activeView.reachableByName.get(command)
     if (active) {
       return {
         target: active.layer.target,
-        resolved: resolveRegisteredCommand(active.command, { includeRecord }),
+        command: active.commandState.command,
+        attrs: active.commandState.attrs,
       }
     }
 
-    return this.getFallbackResolvedCommand(activeView, command, focused, includeRecord, "active")
+    return getFallbackResolvedCommand(command, focused, "active")
   }
 
-  private getTopRegisteredCommand(command: string): LayerCommandEntry<TTarget, TEvent> | undefined {
-    const view = this.getRegisteredCommandView()
-    return view.chainsByName.get(command)?.[0]
+  const getCommandEntry = (command: string): LayerCommandEntry<TTarget, TEvent> | undefined => {
+    return getRegisteredCommandChain(command)?.[0]
   }
 
-  private getFallbackResolvedCommand(
-    view: CommandChainCacheState<TTarget, TEvent>,
-    command: string,
-    focused: TTarget | null,
-    includeRecord: boolean,
-    mode: "active" | "registered",
-  ): ResolvedCommandEntry<TTarget, TEvent> | undefined {
-    const cache = includeRecord ? view.fallbackWithRecord : view.fallbackWithoutRecord
-    const errorCache = includeRecord ? view.fallbackWithRecordErrors : view.fallbackWithoutRecordErrors
-    if (cache.has(command)) {
-      const cached = cache.get(command)
-      return cached ? { resolved: cached } : undefined
+  const getRegisteredCommandChain = (command: string): readonly LayerCommandEntry<TTarget, TEvent>[] | undefined => {
+    const entries: LayerCommandEntry<TTarget, TEvent>[] = []
+    for (const layer of state.sortedLayers) {
+      for (const commandState of layer.commands) {
+        if (commandState.command.name === command) {
+          entries.push({ layer, commandState })
+        }
+      }
     }
 
-    const lookup = this.resolveCommandWithResolvers(command, focused, { includeRecord, mode })
-    cache.set(command, lookup.resolved ?? null)
-    if (lookup.hadError) {
-      errorCache.add(command)
-    }
+    return entries.length > 0 ? entries : undefined
+  }
 
-    if (!lookup.resolved) {
+  const resolveRegisteredEntries = (
+    chain: readonly LayerCommandEntry<TTarget, TEvent>[] | undefined,
+  ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined => {
+    if (!chain?.length) {
       return undefined
     }
 
-    return { resolved: lookup.resolved }
+    return chain.map((entry) => ({
+      target: entry.layer.target,
+      command: entry.commandState.command,
+      attrs: entry.commandState.attrs,
+    }))
   }
 
-  private getResolvedCommandChainFromView(
-    view: CommandChainCacheState<TTarget, TEvent>,
+  const getFallbackResolvedCommand = (
     command: string,
     focused: TTarget | null,
-    includeRecord: boolean,
     mode: "active" | "registered",
-    activeChain?: readonly LayerCommandEntry<TTarget, TEvent>[],
-  ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined {
-    const cache = includeRecord ? view.resolvedWithRecordChains : view.resolvedWithoutRecordChains
-    const cached = cache.get(command)
-    if (cached) {
-      return cached.length > 0 ? cached : undefined
+  ): ResolvedCommandEntry<TTarget, TEvent> | undefined => {
+    const lookup = resolveCommandWithResolversForMode(command, focused, { mode })
+    return lookup.resolved
+  }
+
+  const getRegisteredLayerCommandEntries = (): readonly LayerCommandEntry<TTarget, TEvent>[] => {
+    return getCommandView().entries
+  }
+
+  const getRegisteredBindingsByCommand = (): ReadonlyMap<string, readonly BindingState<TTarget, TEvent>[]> => {
+    if (registeredBindingsByCommandVersion === state.derivedVersion && registeredBindingsByCommand) {
+      return registeredBindingsByCommand
     }
 
-    const resolved: ResolvedCommandEntry<TTarget, TEvent>[] = []
-    const chain = activeChain
-    if (chain) {
-      for (const entry of chain) {
-        resolved.push({
-          target: entry.layer.target,
-          resolved: resolveRegisteredCommand(entry.command, { includeRecord }),
-        })
+    const bindingsByCommand = new Map<string, BindingState<TTarget, TEvent>[]>()
+    for (const layer of state.layers) {
+      for (const binding of layer.bindings) {
+        if (typeof binding.command !== "string") {
+          continue
+        }
+
+        const bindings = bindingsByCommand.get(binding.command)
+        if (bindings) {
+          bindings.push(binding)
+        } else {
+          bindingsByCommand.set(binding.command, [binding])
+        }
       }
     }
 
-    const fallback = this.getFallbackResolvedCommand(view, command, focused, includeRecord, mode)
-    if (fallback) {
-      resolved.push(fallback)
-    }
-
-    cache.set(command, resolved)
-    return resolved.length > 0 ? resolved : undefined
+    registeredBindingsByCommandVersion = state.derivedVersion
+    registeredBindingsByCommand = bindingsByCommand
+    return bindingsByCommand
   }
 
-  private getRegisteredLayerCommandEntries(): readonly LayerCommandEntry<TTarget, TEvent>[] {
-    const cacheVersion = this.state.commands.commandMetadataVersion
-    if (this.state.commands.registeredCommandEntriesCacheVersion === cacheVersion) {
-      return this.state.commands.registeredCommandEntriesCache
-    }
-
-    const layers = [...this.state.layers.layers]
-    layers.sort((left, right) => left.order - right.order)
-
-    const entries: LayerCommandEntry<TTarget, TEvent>[] = []
-    for (const layer of layers) {
-      for (const command of layer.commands) {
-        entries.push({ layer, command })
-      }
-    }
-
-    this.state.commands.registeredCommandEntriesCacheVersion = cacheVersion
-    this.state.commands.registeredCommandEntriesCache = entries
-    return entries
-  }
-
-  private getCommandQueryContext(query?: CommandQuery<TTarget>): {
+  const getCommandQueryContext = (
+    query?: CommandQuery<TTarget, TEvent>,
+  ): {
     visibility: "reachable" | "active" | "registered"
     focused: TTarget | null
     activeView?: ActiveCommandView<TTarget, TEvent>
-  } {
+  } => {
     const visibility = query?.visibility ?? "reachable"
     const focused =
       query && Object.prototype.hasOwnProperty.call(query, "focused")
         ? (query.focused ?? null)
-        : getFocusedTargetIfAvailable(this.host)
+        : getFocusedTargetIfAvailable(host)
 
     if (visibility === "registered") {
       return { visibility, focused }
@@ -644,21 +587,21 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return {
       visibility,
       focused,
-      activeView: this.getActiveCommandView(focused),
+      activeView: getActiveCommandView(focused),
     }
   }
 
-  private getFilteredCommandEntries(
-    query?: CommandQuery<TTarget>,
+  const getFilteredCommandEntries = (
+    query?: CommandQuery<TTarget, TEvent>,
     context: {
       visibility: "reachable" | "active" | "registered"
       focused: TTarget | null
       activeView?: ActiveCommandView<TTarget, TEvent>
-    } = this.getCommandQueryContext(query),
-  ): LayerCommandEntry<TTarget, TEvent>[] {
+    } = getCommandQueryContext(query),
+  ): LayerCommandEntry<TTarget, TEvent>[] => {
     let entries: readonly LayerCommandEntry<TTarget, TEvent>[]
     if (context.visibility === "registered") {
-      entries = this.getRegisteredLayerCommandEntries()
+      entries = getRegisteredLayerCommandEntries()
     } else if (context.visibility === "active") {
       entries = context.activeView?.entries ?? []
     } else {
@@ -668,17 +611,18 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return queryLayerCommandEntries({
       entries,
       query,
-      getCommandRecord: (command) => getRegisteredCommandRecord(command),
+      getCommand: (command) => getCommand(command),
       onFilterError: (error) => {
-        this.notify.emitError("command-query-filter-error", error, "[Keymap] Error in command query filter:")
+        notify.emitError("command-query-filter-error", error, "[Keymap] Error in command query filter:")
       },
     })
   }
 
-  private collectCommandEntryBindings(
+  const collectCommandEntryBindings = (
     grouped: Array<{
       entry: LayerCommandEntry<TTarget, TEvent>
-      command: CommandRecord
+      command: Command<TTarget, TEvent>
+      commandAttrs: Readonly<Attributes> | undefined
       bindings: ActiveBinding<TTarget, TEvent>[]
     }>,
     indexesByName: ReadonlyMap<string, readonly number[]>,
@@ -687,56 +631,47 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       focused: TTarget | null
       activeView?: ActiveCommandView<TTarget, TEvent>
     },
-  ): void {
-    if (context.visibility === "registered") {
-      const layers = [...this.state.layers.layers]
-      layers.sort((left, right) => left.order - right.order)
-
-      for (const layer of layers) {
-        for (const binding of layer.compiledBindings) {
-          this.collectBindingForCommandEntries(grouped, indexesByName, binding)
-        }
-      }
-      return
-    }
-
-    const activeView = context.activeView
-    if (!activeView) {
-      return
-    }
-
-    for (const layer of getActiveLayersForFocused(this.state.layers, this.host, context.focused)) {
-      if (layer.compiledBindings.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
-        continue
-      }
-
-      for (const binding of layer.compiledBindings) {
-        if (
-          !this.conditions.matchesConditions(binding) ||
-          !this.isBindingVisible(binding, context.focused, activeView)
-        ) {
-          continue
-        }
-
-        this.collectBindingForCommandEntries(grouped, indexesByName, binding)
-      }
-    }
+  ): void => {
+    visitCommandQueryBindings(context, (binding) => {
+      collectBindingForCommandEntries(grouped, indexesByName, binding)
+    })
   }
 
-  private collectCommandBindings(
+  const collectCommandBindings = (
     bindingsByCommand: Map<string, ActiveBinding<TTarget, TEvent>[]>,
     context: {
       visibility: "reachable" | "active" | "registered"
       focused: TTarget | null
       activeView?: ActiveCommandView<TTarget, TEvent>
     },
-  ): void {
+  ): void => {
     if (context.visibility === "registered") {
-      // Layer Set iteration is registration order, which matches ascending layer order.
-      for (const layer of this.state.layers.layers) {
-        for (const binding of layer.compiledBindings) {
-          this.collectBindingForCommandBindings(bindingsByCommand, binding, context)
+      const registeredBindings = getRegisteredBindingsByCommand()
+      for (const [command, bindings] of bindingsByCommand) {
+        const commandAttrs = getCommandView().chainsByName.get(command)?.[0]?.commandState.attrs
+        for (const binding of registeredBindings.get(command) ?? []) {
+          bindings.push(createActiveBinding(binding, commandAttrs))
         }
+      }
+      return
+    }
+
+    visitCommandQueryBindings(context, (binding) => {
+      collectBindingForCommandBindings(bindingsByCommand, binding, context)
+    })
+  }
+
+  const visitCommandQueryBindings = (
+    context: {
+      visibility: "reachable" | "active" | "registered"
+      focused: TTarget | null
+      activeView?: ActiveCommandView<TTarget, TEvent>
+    },
+    visit: (binding: BindingState<TTarget, TEvent>) => void,
+  ): void => {
+    if (context.visibility === "registered") {
+      for (const layer of state.layers) {
+        for (const binding of layer.bindings) visit(binding)
       }
       return
     }
@@ -746,33 +681,29 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       return
     }
 
-    for (const layer of getActiveLayersForFocused(this.state.layers, this.host, context.focused)) {
-      if (layer.compiledBindings.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
+    for (const layer of activeView.layers) {
+      if (layer.bindings.length === 0 || !conditions.matchesConditions(layer)) {
         continue
       }
 
-      for (const binding of layer.compiledBindings) {
-        if (
-          !this.conditions.matchesConditions(binding) ||
-          !this.isBindingVisible(binding, context.focused, activeView)
-        ) {
-          continue
+      for (const binding of layer.bindings) {
+        if (conditions.matchesConditions(binding) && isBindingVisible(binding, context.focused, activeView)) {
+          visit(binding)
         }
-
-        this.collectBindingForCommandBindings(bindingsByCommand, binding, context)
       }
     }
   }
 
-  private collectBindingForCommandEntries(
+  const collectBindingForCommandEntries = (
     grouped: Array<{
       entry: LayerCommandEntry<TTarget, TEvent>
-      command: CommandRecord
+      command: Command<TTarget, TEvent>
+      commandAttrs: Readonly<Attributes> | undefined
       bindings: ActiveBinding<TTarget, TEvent>[]
     }>,
     indexesByName: ReadonlyMap<string, readonly number[]>,
-    binding: CompiledBinding<TTarget, TEvent>,
-  ): void {
+    binding: BindingState<TTarget, TEvent>,
+  ): void => {
     if (typeof binding.command !== "string") {
       return
     }
@@ -788,19 +719,19 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
         continue
       }
 
-      item.bindings.push(this.createActiveBinding(binding, item.command.attrs))
+      item.bindings.push(createActiveBinding(binding, item.commandAttrs))
     }
   }
 
-  private collectBindingForCommandBindings(
+  const collectBindingForCommandBindings = (
     bindingsByCommand: Map<string, ActiveBinding<TTarget, TEvent>[]>,
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
     context: {
       visibility: "reachable" | "active" | "registered"
       focused: TTarget | null
       activeView?: ActiveCommandView<TTarget, TEvent>
     },
-  ): void {
+  ): void => {
     if (typeof binding.command !== "string") {
       return
     }
@@ -810,13 +741,13 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       return
     }
 
-    bindings.push(this.createActiveBinding(binding, this.getCommandBindingAttrs(binding, context)))
+    bindings.push(createActiveBinding(binding, getCommandBindingAttrsForQuery(binding, context)))
   }
 
-  private createActiveBinding(
-    binding: CompiledBinding<TTarget, TEvent>,
+  const createActiveBinding = (
+    binding: BindingState<TTarget, TEvent>,
     commandAttrs: Readonly<Attributes> | undefined,
-  ): ActiveBinding<TTarget, TEvent> {
+  ): ActiveBinding<TTarget, TEvent> => {
     return {
       sequence: binding.sequence,
       command: binding.command,
@@ -828,20 +759,20 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     }
   }
 
-  private getCommandBindingAttrs(
-    binding: CompiledBinding<TTarget, TEvent>,
+  const getCommandBindingAttrsForQuery = (
+    binding: BindingState<TTarget, TEvent>,
     context: {
       visibility: "reachable" | "active" | "registered"
       focused: TTarget | null
       activeView?: ActiveCommandView<TTarget, TEvent>
     },
-  ): Readonly<Attributes> | undefined {
+  ): Readonly<Attributes> | undefined => {
     if (typeof binding.command !== "string") {
       return undefined
     }
 
     if (context.visibility === "registered") {
-      return this.getTopRegisteredCommand(binding.command)?.command.attrs
+      return getCommandView().chainsByName.get(binding.command)?.[0]?.commandState.attrs
     }
 
     const activeView = context.activeView
@@ -849,137 +780,146 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       return undefined
     }
 
-    return this.getBindingCommandAttrs(binding, context.focused, activeView)
+    return getBindingCommandAttrs(binding, context.focused, activeView)
   }
 
-  private resolveCommandWithResolvers(
+  const resolveCommandWithResolversForMode = (
     command: string,
     focused: TTarget | null,
-    options?: { includeRecord?: boolean; mode?: "active" | "registered" },
-  ): ResolvedCommandLookup<TTarget, TEvent> {
-    const includeRecord = options?.includeRecord === true
-    const context = this.createCommandResolverContext(includeRecord, focused, options?.mode ?? "active")
+    options?: { mode?: "active" | "registered"; execution?: CommandExecutionFields },
+  ): ResolvedCommandLookup<TTarget, TEvent> => {
+    const mode = options?.mode ?? "active"
+    const execution = options?.execution ?? { input: command }
 
-    return resolveCommandWithResolvers(command, this.state.commands.commandResolvers.values(), context, (error) => {
-      this.notify.emitError("command-resolver-error", error, `[Keymap] Error in command resolver for "${command}":`)
-    })
+    const lookup = resolveCommandWithResolvers(
+      command,
+      state.commandResolvers.values(),
+      () => createCommandResolverContext(focused, mode, execution),
+      (error) => {
+        notify.emitError("command-resolver-error", error, `[Keymap] Error in command resolver for "${command}":`)
+      },
+    )
+    let resolved = lookup.resolved
+    if (resolved) {
+      const entry = getCommandEntryForMode(resolved.command.name, focused, mode)
+      if (entry?.commandState.command === resolved.command && resolved.target === undefined) {
+        resolved = { ...resolved, target: entry.layer.target }
+        lookup.resolved = resolved
+      }
+    }
+
+    if (resolved && !resolved.attrs) {
+      const attrs =
+        getCommandStateAttrs(resolved.command.name, focused, mode) ?? getResolverCommandAttrs(resolved.command)
+      if (attrs) {
+        lookup.resolved = { ...resolved, attrs }
+      }
+    }
+
+    return lookup
   }
 
-  private createCommandResolverContext(
-    includeRecord: boolean,
+  const getCommandStateAttrs = (
+    command: string,
     focused: TTarget | null,
     mode: "active" | "registered",
-  ): CommandResolverContext {
+  ): Readonly<Attributes> | undefined => {
+    if (mode === "registered") {
+      return getCommandEntry(command)?.commandState.attrs
+    }
+
+    return getActiveCommandView(focused).reachableByName.get(command)?.commandState.attrs
+  }
+
+  const getCommandEntryForMode = (
+    command: string,
+    focused: TTarget | null,
+    mode: "active" | "registered",
+  ): LayerCommandEntry<TTarget, TEvent> | undefined => {
+    if (mode === "registered") {
+      return getCommandEntry(command)
+    }
+
+    return getActiveCommandView(focused).reachableByName.get(command)
+  }
+
+  const createCommandResolverContext = (
+    focused: TTarget | null,
+    mode: "active" | "registered",
+    execution: CommandExecutionFields,
+  ): CommandResolverAttempt<TTarget, TEvent> => {
+    let input = execution.input
+    let payload = execution.payload
+
     return {
-      getCommandAttrs: (name: string) => {
-        if (mode === "registered") {
-          return this.getTopRegisteredCommand(name)?.command.attrs
-        }
+      context: {
+        get input() {
+          return input
+        },
+        get payload() {
+          return payload
+        },
+        setInput(nextInput) {
+          input = nextInput
+        },
+        setPayload(nextPayload) {
+          payload = nextPayload
+        },
+        getCommand: (name: string) => {
+          if (mode === "registered") {
+            return getCommandByName(name)
+          }
 
-        return this.getCommandAttrs(name, focused)
+          return getTopCommand(name, focused)
+        },
       },
-      getCommandRecord: (name: string) => {
-        if (!includeRecord) {
-          return undefined
-        }
-
-        if (mode === "registered") {
-          return this.getTopRegisteredCommandRecord(name)
-        }
-
-        return this.getTopCommandRecord(name, focused)
+      getExecutionFields() {
+        return { input, payload }
       },
     }
   }
+
+  return {
+    normalizeCommands: normalizeLayerCommands,
+    prependCommandResolver,
+    appendCommandResolver,
+    clearCommandResolvers,
+    getCommands,
+    getCommandEntries,
+    getCommandBindings,
+    getResolvedCommandChain,
+    getRegisteredResolvedEntries,
+    getActiveRegisteredResolvedEntries,
+    resolveRegisteredResolverFallback,
+    resolveActiveResolverFallback,
+    getTopCommand,
+    getDispatchUnavailableCommandState,
+    getActiveCommandView,
+    isBindingVisible,
+    getBindingCommandAttrs,
+    getCommandResolutionStatus,
+  }
 }
 
-export function getRegisteredCommandRecord<TTarget extends object, TEvent extends KeymapEvent>(
-  command: RegisteredCommand<TTarget, TEvent>,
-): CommandRecord {
-  if (command.record) {
-    return command.record
-  }
-
-  let fields = EMPTY_COMMAND_FIELDS
-  if (command.fields !== EMPTY_COMMAND_FIELDS && Object.keys(command.fields).length > 0) {
-    fields = snapshotDataValue(command.fields, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<
-      Record<string, unknown>
-    >
-  }
-
-  const record = command.attrs
-    ? Object.freeze({
-        name: command.name,
-        fields,
-        attrs: snapshotDataValue(command.attrs, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<Attributes>,
-      })
-    : Object.freeze({
-        name: command.name,
-        fields,
-      })
-
-  command.record = record
-  return record
+export function getCommand<TTarget extends object, TEvent extends KeymapEvent>(
+  state: CommandState<TTarget, TEvent>,
+): Command<TTarget, TEvent> {
+  return state.command
 }
 
-export function resolveRegisteredCommand<TTarget extends object, TEvent extends KeymapEvent>(
-  command: RegisteredCommand<TTarget, TEvent>,
-  options?: { includeRecord?: boolean },
-): ResolvedBindingCommand<TTarget, TEvent> {
-  const includeRecord = options?.includeRecord === true
-  if (includeRecord) {
-    const existing = command.resolvedWithRecord
-    if (existing) {
-      return existing
-    }
-
-    const resolved: ResolvedBindingCommand<TTarget, TEvent> = {
-      run: createRegisteredCommandRunner(command),
-    }
-
-    if (command.attrs) {
-      resolved.attrs = command.attrs
-    }
-
-    resolved.record = getRegisteredCommandRecord(command)
-    command.resolvedWithRecord = resolved
-    return resolved
-  }
-
-  const existing = command.resolved
-  if (existing) {
-    return existing
-  }
-
-  const resolved: ResolvedBindingCommand<TTarget, TEvent> = {
-    run: createRegisteredCommandRunner(command),
-  }
-
-  if (command.attrs) {
-    resolved.attrs = command.attrs
-  }
-
-  command.resolved = resolved
-  return resolved
-}
-
-function normalizeRegisteredCommands<TTarget extends object, TEvent extends KeymapEvent>(
-  options: NormalizeRegisteredCommandsOptions<TTarget, TEvent>,
-): RegisteredCommand<TTarget, TEvent>[] {
-  const normalizedCommands: RegisteredCommand<TTarget, TEvent>[] = []
+function normalizeCommands<TTarget extends object, TEvent extends KeymapEvent>(
+  options: NormalizeCommandsOptions<TTarget, TEvent>,
+): CommandState<TTarget, TEvent>[] {
+  const normalizedCommands: CommandState<TTarget, TEvent>[] = []
   const seen = new Set<string>()
 
   for (const command of options.commands) {
-    let normalizedCommand: RegisteredCommand<TTarget, TEvent> | undefined
-
     try {
-      const mergedAttrs: Attributes = {}
-      const mergedFields: Record<string, unknown> = {}
       const mergedRequires: EventData = {}
       const matchers: RuntimeMatcher[] = []
-      const conditionKeys = new Set<string>()
-      let hasUnkeyedMatchers = false
       const normalizedName = normalizeCommandName(command.name)
+      const fields = getCommandFields(command)
+      const attrs: Attributes = {}
 
       if (seen.has(normalizedName)) {
         options.onError(
@@ -990,12 +930,12 @@ function normalizeRegisteredCommands<TTarget extends object, TEvent extends Keym
         continue
       }
 
-      for (const [fieldName, value] of Object.entries(command)) {
-        if (RESERVED_COMMAND_FIELDS.has(fieldName) || value === undefined) {
+      command.name = normalizedName
+
+      for (const [fieldName, value] of Object.entries(fields)) {
+        if (value === undefined) {
           continue
         }
-
-        mergedFields[fieldName] = snapshotDataValue(value, SNAPSHOT_COMMAND_METADATA_OPTIONS)
 
         const compiler = options.commandFields.get(fieldName)
         if (!compiler) {
@@ -1004,39 +944,26 @@ function normalizeRegisteredCommands<TTarget extends object, TEvent extends Keym
 
         compiler(
           value,
-          createCommandFieldContext(
-            mergedAttrs,
-            mergedRequires,
-            conditionKeys,
-            matchers,
-            options.conditions,
+          createFieldCompilerContext({
             fieldName,
-            {
-              onUnkeyedMatcher() {
-                hasUnkeyedMatchers = true
-              },
-            },
-          ),
+            conditions: options.conditions,
+            requirements: mergedRequires,
+            matchers,
+            attrs,
+          }),
         )
       }
 
-      const attrs = Object.keys(mergedAttrs).length === 0 ? undefined : Object.freeze(mergedAttrs)
-      const fields = Object.keys(mergedFields).length === 0 ? EMPTY_COMMAND_FIELDS : Object.freeze(mergedFields)
-
-      normalizedCommand = {
-        name: normalizedName,
+      const commandState: CommandState<TTarget, TEvent> = {
+        command,
         fields,
-        run: command.run,
+        attrs: Object.keys(attrs).length === 0 ? undefined : attrs,
         requires: Object.entries(mergedRequires),
         matchers,
-        conditionKeys: [...conditionKeys],
-        hasUnkeyedMatchers,
-        matchCacheDirty: true,
       }
 
-      if (attrs) {
-        normalizedCommand.attrs = attrs
-      }
+      seen.add(commandState.command.name)
+      normalizedCommands.push(commandState)
     } catch (error) {
       options.onError(
         "register-command-failed",
@@ -1045,70 +972,15 @@ function normalizeRegisteredCommands<TTarget extends object, TEvent extends Keym
       )
       continue
     }
-
-    seen.add(normalizedCommand.name)
-    normalizedCommands.push(normalizedCommand)
   }
 
   return normalizedCommands
 }
 
-function createCommandFieldContext<TTarget extends object, TEvent extends KeymapEvent>(
-  mergedAttrs: Attributes,
-  mergedRequires: EventData,
-  conditionKeys: Set<string>,
-  matchers: RuntimeMatcher[],
-  conditions: ConditionService<TTarget, TEvent>,
-  fieldName: string,
-  options: {
-    onUnkeyedMatcher(): void
-  },
-): CommandFieldContext {
-  return {
-    require(name, requiredValue) {
-      mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
-      conditionKeys.add(name)
-    },
-    attr(name, attributeValue) {
-      mergeAttribute(
-        mergedAttrs,
-        name,
-        snapshotDataValue(attributeValue, SNAPSHOT_COMMAND_METADATA_OPTIONS),
-        `field ${fieldName}`,
-      )
-    },
-    activeWhen(matcher) {
-      const runtimeMatcher = conditions.buildRuntimeMatcher(matcher, `field ${fieldName}`)
-      if (!runtimeMatcher.cacheable) {
-        options.onUnkeyedMatcher()
-      }
-      matchers.push(runtimeMatcher)
-    },
-  }
-}
-
-function createRegisteredCommandRunner<TTarget extends object, TEvent extends KeymapEvent>(
-  command: RegisteredCommand<TTarget, TEvent>,
-): (ctx: CommandContext<TTarget, TEvent>) => CommandResult {
-  if (command.runner) {
-    return command.runner
-  }
-
-  const runner = (ctx: CommandContext<TTarget, TEvent>) => {
-    return command.run({
-      ...ctx,
-      command: getRegisteredCommandRecord(command),
-    })
-  }
-
-  command.runner = runner
-  return runner
-}
-
 function resolveCommandWithResolvers<TTarget extends object, TEvent extends KeymapEvent>(
   command: string,
   resolvers: readonly CommandResolver<TTarget, TEvent>[],
-  context: CommandResolverContext,
+  createContext: () => CommandResolverAttempt<TTarget, TEvent>,
   onResolverError: (error: unknown) => void,
 ): ResolvedCommandLookup<TTarget, TEvent> {
   if (resolvers.length === 0) {
@@ -1118,28 +990,69 @@ function resolveCommandWithResolvers<TTarget extends object, TEvent extends Keym
   let hadError = false
 
   for (const resolver of resolvers) {
-    let resolved: ResolvedBindingCommand<TTarget, TEvent> | undefined
+    let resolvedCommand: Command<TTarget, TEvent> | undefined
+    const attempt = createContext()
 
     try {
-      resolved = resolver(command, context)
+      resolvedCommand = resolver(command, attempt.context)
     } catch (error) {
       hadError = true
       onResolverError(error)
       continue
     }
 
-    if (resolved) {
-      return { hadError, resolved }
+    if (resolvedCommand) {
+      return { hadError, resolved: getResolverCommandEntry(resolvedCommand, attempt.getExecutionFields()) }
     }
   }
 
   return { hadError }
 }
 
+function isCommandMetadataRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function getCommandFields<TTarget extends object, TEvent extends KeymapEvent>(
+  command: Command<TTarget, TEvent>,
+): Readonly<Record<string, unknown>> {
+  const fields: Record<string, unknown> = {}
+  for (const [name, value] of Object.entries(command)) {
+    if (!RESERVED_COMMAND_FIELDS.has(name) && value !== undefined) {
+      fields[name] = value
+    }
+  }
+
+  return Object.keys(fields).length === 0 ? EMPTY_COMMAND_FIELDS : fields
+}
+
+function getResolverCommandEntry<TTarget extends object, TEvent extends KeymapEvent>(
+  command: Command<TTarget, TEvent>,
+  execution: CommandExecutionFields,
+): ResolvedCommandEntry<TTarget, TEvent> {
+  return {
+    command,
+    input: execution.input,
+    payload: execution.payload,
+  }
+}
+
+function getResolverCommandAttrs<TTarget extends object, TEvent extends KeymapEvent>(
+  command: Command<TTarget, TEvent>,
+): Readonly<Attributes> | undefined {
+  const fields = getCommandFields(command)
+  return fields === EMPTY_COMMAND_FIELDS ? undefined : fields
+}
+
 function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapEvent>(
   options: QueryLayerCommandEntriesOptions<TTarget, TEvent>,
 ): LayerCommandEntry<TTarget, TEvent>[] {
   const namespace = options.query?.namespace
+  const limit = normalizeQueryLimit(options.query?.limit)
+  if (limit === 0) {
+    return []
+  }
+
   const normalizedSearch = options.query?.search?.trim().toLowerCase() ?? ""
   let searchKeys = DEFAULT_COMMAND_SEARCH_FIELDS as readonly string[]
   if (options.query?.searchIn && options.query.searchIn.length > 0) {
@@ -1147,16 +1060,15 @@ function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapE
   }
 
   const filter = options.query?.filter
-  let filterEntries: readonly [string, CommandQueryValue][] | undefined
-  let filterPredicate: ((command: CommandRecord) => boolean) | undefined
+  let filterEntries: readonly [string, CommandQueryValue<TTarget, TEvent>][] | undefined
+  let filterPredicate: ((command: Command<TTarget, TEvent>) => boolean) | undefined
   let exactNameFilter: ReadonlySet<string> | undefined
 
   if (typeof filter === "function") {
     filterPredicate = filter
   } else if (filter) {
     const entries = Object.entries(filter)
-    const remainingEntries: [string, CommandQueryValue][] = []
-
+    const remainingEntries: [string, CommandQueryValue<TTarget, TEvent>][] = []
     for (const [key, matcher] of entries) {
       if (key === "name") {
         if (typeof matcher === "string") {
@@ -1178,60 +1090,34 @@ function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapE
 
       remainingEntries.push([key, matcher])
     }
-
     filterEntries = remainingEntries.length > 0 ? remainingEntries : undefined
   }
 
   const results: LayerCommandEntry<TTarget, TEvent>[] = []
-
-  if (exactNameFilter) {
-    for (const entry of options.entries) {
-      const command = entry.command
-
-      if (!commandMatchesNamespace(command, namespace)) {
-        continue
-      }
-
-      if (!commandMatchesSearch(command, normalizedSearch, searchKeys)) {
-        continue
-      }
-
-      if (!exactNameFilter.has(command.name)) {
-        continue
-      }
-
-      if (!commandMatchesFilters(command, filterEntries, options)) {
-        continue
-      }
-
-      results.push(entry)
-    }
-
-    return results
-  }
-
   for (const entry of options.entries) {
-    const command = entry.command
+    const commandState = entry.commandState
 
-    if (!commandMatchesNamespace(command, namespace)) {
+    if (!commandMatchesNamespace(commandState, namespace)) {
       continue
     }
 
-    if (!commandMatchesSearch(command, normalizedSearch, searchKeys)) {
+    if (!commandMatchesSearch(commandState, normalizedSearch, searchKeys)) {
       continue
     }
 
-    if (!commandMatchesFilters(command, filterEntries, options)) {
+    if (exactNameFilter && !exactNameFilter.has(commandState.command.name)) {
       continue
     }
 
-    const record = options.getCommandRecord(command)
+    if (!commandMatchesFilters(commandState, filterEntries, options)) {
+      continue
+    }
 
     if (filterPredicate) {
       let matches = false
 
       try {
-        matches = filterPredicate(record)
+        matches = filterPredicate(options.getCommand(commandState))
       } catch (error) {
         options.onFilterError(error)
         continue
@@ -1243,13 +1129,29 @@ function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapE
     }
 
     results.push(entry)
+    if (limit !== undefined && results.length >= limit) {
+      break
+    }
   }
 
   return results
 }
 
+function normalizeQueryLimit(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  const limit = Math.floor(Number(value))
+  if (!Number.isFinite(limit) || limit <= 0) {
+    return 0
+  }
+
+  return limit
+}
+
 function commandMatchesSearch<TTarget extends object, TEvent extends KeymapEvent>(
-  command: RegisteredCommand<TTarget, TEvent>,
+  commandState: CommandState<TTarget, TEvent>,
   search: string,
   searchKeys: readonly string[],
 ): boolean {
@@ -1258,7 +1160,7 @@ function commandMatchesSearch<TTarget extends object, TEvent extends KeymapEvent
   }
 
   for (const key of searchKeys) {
-    if (commandKeyMatchesSearch(command, key, search)) {
+    if (commandKeyMatchesSearch(commandState, key, search)) {
       return true
     }
   }
@@ -1267,23 +1169,24 @@ function commandMatchesSearch<TTarget extends object, TEvent extends KeymapEvent
 }
 
 function commandMatchesNamespace<TTarget extends object, TEvent extends KeymapEvent>(
-  command: RegisteredCommand<TTarget, TEvent>,
+  commandState: CommandState<TTarget, TEvent>,
   namespace: string | readonly string[] | undefined,
 ): boolean {
   if (namespace === undefined) {
     return true
   }
 
-  if (!Object.prototype.hasOwnProperty.call(command.fields, "namespace")) {
+  const fields = commandState.fields
+  if (!Object.prototype.hasOwnProperty.call(fields, "namespace")) {
     return false
   }
 
-  return commandValueMatchesFilter(command.fields.namespace, namespace)
+  return valueMatchesFilter(fields.namespace, namespace)
 }
 
 function commandMatchesFilters<TTarget extends object, TEvent extends KeymapEvent>(
-  command: RegisteredCommand<TTarget, TEvent>,
-  filters: readonly [string, CommandQueryValue][] | undefined,
+  commandState: CommandState<TTarget, TEvent>,
+  filters: readonly [string, CommandQueryValue<TTarget, TEvent>][] | undefined,
   options: CommandQueryMatchOptions<TTarget, TEvent>,
 ): boolean {
   if (!filters) {
@@ -1291,7 +1194,7 @@ function commandMatchesFilters<TTarget extends object, TEvent extends KeymapEven
   }
 
   for (const [key, matcher] of filters) {
-    if (!commandKeyMatchesQuery(command, key, matcher, options)) {
+    if (!commandKeyMatchesQuery(commandState, key, matcher, options)) {
       return false
     }
   }
@@ -1300,167 +1203,168 @@ function commandMatchesFilters<TTarget extends object, TEvent extends KeymapEven
 }
 
 function commandKeyMatchesSearch<TTarget extends object, TEvent extends KeymapEvent>(
-  command: RegisteredCommand<TTarget, TEvent>,
+  commandState: CommandState<TTarget, TEvent>,
   key: string,
   search: string,
 ): boolean {
-  if (key === "name" && commandValueMatchesSearch(command.name, search)) {
-    return true
-  }
-
-  if (
-    Object.prototype.hasOwnProperty.call(command.fields, key) &&
-    commandValueMatchesSearch(command.fields[key], search)
-  ) {
-    return true
-  }
-
-  if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
-    return commandValueMatchesSearch(command.attrs[key], search)
-  }
-
-  return false
+  return getCommandSearchText(commandState, key)?.includes(search) === true
 }
 
-function commandKeyMatchesQuery<TTarget extends object, TEvent extends KeymapEvent>(
-  command: RegisteredCommand<TTarget, TEvent>,
+function getCommandSearchText<TTarget extends object, TEvent extends KeymapEvent>(
+  commandState: CommandState<TTarget, TEvent>,
   key: string,
-  matcher: CommandQueryValue,
-  options: CommandQueryMatchOptions<TTarget, TEvent>,
-): boolean {
-  if (typeof matcher === "function") {
-    let record: CommandRecord | undefined
-    const getRecord = () => {
-      if (!record) {
-        record = options.getCommandRecord(command)
-      }
-
-      return record
-    }
-    let foundValue = false
-
-    if (key === "name") {
-      foundValue = true
-      try {
-        if (matcher(command.name, getRecord())) {
-          return true
-        }
-      } catch (error) {
-        options.onFilterError(error)
-        return false
-      }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(command.fields, key)) {
-      foundValue = true
-
-      try {
-        if (matcher(command.fields[key], getRecord())) {
-          return true
-        }
-      } catch (error) {
-        options.onFilterError(error)
-        return false
-      }
-    }
-
-    if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
-      foundValue = true
-
-      try {
-        if (matcher(command.attrs[key], getRecord())) {
-          return true
-        }
-      } catch (error) {
-        options.onFilterError(error)
-        return false
-      }
-    }
-
-    if (!foundValue) {
-      try {
-        return matcher(undefined, getRecord())
-      } catch (error) {
-        options.onFilterError(error)
-        return false
-      }
-    }
-
-    return false
+): string | undefined {
+  let cache = commandSearchCache.get(commandState)
+  if (!cache) {
+    cache = new Map<string, string | undefined>()
+    commandSearchCache.set(commandState, cache)
   }
 
-  return commandKeyMatchesExact(command, key, matcher)
+  if (cache.has(key)) {
+    return cache.get(key)
+  }
+
+  const fields = commandState.fields
+  const attrs = commandState.attrs
+  let value: unknown
+  if (key === "name") {
+    value = commandState.command.name
+  } else if (Object.prototype.hasOwnProperty.call(fields, key)) {
+    value = fields[key]
+  } else if (attrs && Object.prototype.hasOwnProperty.call(attrs, key)) {
+    value = attrs[key]
+  }
+
+  const text = toSearchText(value)
+  cache.set(key, text)
+  return text
 }
 
-function commandKeyMatchesExact<TTarget extends object, TEvent extends KeymapEvent>(
-  command: RegisteredCommand<TTarget, TEvent>,
-  key: string,
-  matcher: unknown | readonly unknown[],
-): boolean {
-  if (key === "name" && commandValueMatchesFilter(command.name, matcher)) {
-    return true
-  }
-
-  if (
-    Object.prototype.hasOwnProperty.call(command.fields, key) &&
-    commandValueMatchesFilter(command.fields[key], matcher)
-  ) {
-    return true
-  }
-
-  if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
-    return commandValueMatchesFilter(command.attrs[key], matcher)
-  }
-
-  return false
-}
-
-function commandValueMatchesFilter(value: unknown, matcher: unknown | readonly unknown[]): boolean {
-  if (Array.isArray(matcher)) {
-    for (const expected of matcher) {
-      if (commandValueMatchesExact(value, expected)) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  return commandValueMatchesExact(value, matcher)
-}
-
-function commandValueMatchesExact(value: unknown, expected: unknown): boolean {
+function toSearchText(value: unknown): string | undefined {
   if (Array.isArray(value)) {
+    const parts: string[] = []
     for (const entry of value) {
-      if (commandValueMatchesExact(entry, expected)) {
-        return true
+      const text = toSearchText(entry)
+      if (text !== undefined) {
+        parts.push(text)
       }
     }
 
-    return false
-  }
-
-  return Object.is(value, expected)
-}
-
-function commandValueMatchesSearch(value: unknown, search: string): boolean {
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      if (commandValueMatchesSearch(entry, search)) {
-        return true
-      }
-    }
-
-    return false
+    return parts.length > 0 ? parts.join("\0") : undefined
   }
 
   if (typeof value === "string") {
-    return value.toLowerCase().includes(search)
+    return value.toLowerCase()
   }
 
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-    return String(value).toLowerCase().includes(search)
+    return String(value).toLowerCase()
   }
 
-  return false
+  return undefined
+}
+
+function runCommandQueryPredicate<TTarget extends object, TEvent extends KeymapEvent>(
+  matcher: (value: unknown, command: Command<TTarget, TEvent>) => boolean,
+  value: unknown,
+  command: Command<TTarget, TEvent>,
+  onFilterError: (error: unknown) => void,
+): boolean {
+  try {
+    return matcher(value, command)
+  } catch (error) {
+    onFilterError(error)
+    return false
+  }
+}
+
+function commandKeyMatchesQuery<TTarget extends object, TEvent extends KeymapEvent>(
+  commandState: CommandState<TTarget, TEvent>,
+  key: string,
+  matcher: CommandQueryValue<TTarget, TEvent>,
+  options: CommandQueryMatchOptions<TTarget, TEvent>,
+): boolean {
+  if (typeof matcher === "function") {
+    return commandKeyMatchesPredicate(
+      commandState,
+      key,
+      matcher as (value: unknown, command: Command<TTarget, TEvent>) => boolean,
+      options,
+    )
+  }
+
+  return commandKeyMatchesExact(commandState, key, matcher)
+}
+
+function commandKeyMatchesPredicate<TTarget extends object, TEvent extends KeymapEvent>(
+  commandState: CommandState<TTarget, TEvent>,
+  key: string,
+  matcher: (value: unknown, command: Command<TTarget, TEvent>) => boolean,
+  options: CommandQueryMatchOptions<TTarget, TEvent>,
+): boolean {
+  const command = commandState.command
+  const fields = commandState.fields
+  const attrs = commandState.attrs
+  let commandView: Command<TTarget, TEvent> | undefined
+  let foundValue = false
+  const getCommandView = () => (commandView ??= options.getCommand(commandState))
+
+  if (key === "name") {
+    foundValue = true
+    if (runCommandQueryPredicate(matcher, command.name, getCommandView(), options.onFilterError)) {
+      return true
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(fields, key)) {
+    foundValue = true
+    if (runCommandQueryPredicate(matcher, fields[key], getCommandView(), options.onFilterError)) {
+      return true
+    }
+  }
+
+  if (attrs && Object.prototype.hasOwnProperty.call(attrs, key)) {
+    foundValue = true
+    if (runCommandQueryPredicate(matcher, attrs[key], getCommandView(), options.onFilterError)) {
+      return true
+    }
+  }
+
+  return !foundValue && runCommandQueryPredicate(matcher, undefined, getCommandView(), options.onFilterError)
+}
+
+function commandKeyMatchesExact<TTarget extends object, TEvent extends KeymapEvent>(
+  commandState: CommandState<TTarget, TEvent>,
+  key: string,
+  matcher: unknown | readonly unknown[],
+): boolean {
+  const command = commandState.command
+  const fields = commandState.fields
+  const attrs = commandState.attrs
+
+  if (key === "name" && valueMatchesFilter(command.name, matcher)) {
+    return true
+  }
+
+  if (Object.prototype.hasOwnProperty.call(fields, key) && valueMatchesFilter(fields[key], matcher)) {
+    return true
+  }
+
+  return !!attrs && Object.prototype.hasOwnProperty.call(attrs, key) && valueMatchesFilter(attrs[key], matcher)
+}
+
+function valueMatchesFilter(value: unknown, matcher: unknown | readonly unknown[]): boolean {
+  if (Array.isArray(matcher)) {
+    return matcher.some((expected) => valueMatchesExact(value, expected))
+  }
+
+  return valueMatchesExact(value, matcher)
+}
+
+function valueMatchesExact(value: unknown, expected: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some((entry) => valueMatchesExact(entry, expected))
+  }
+
+  return Object.is(value, expected)
 }

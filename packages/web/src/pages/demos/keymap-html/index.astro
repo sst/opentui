@@ -8,6 +8,7 @@ import demoStylesUrl from "../../../styles/keymap-html-demo.css?url"
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HTML Keymap Demo</title>
+    <link rel="icon" href="/favicon.svg" />
     <link rel="stylesheet" href={demoStylesUrl} />
   </head>
   <body>
@@ -36,7 +37,7 @@ import demoStylesUrl from "../../../styles/keymap-html-demo.css?url"
                 <span class="panel-badge">Panel</span>
                 <h2>Alpha</h2>
               </div>
-              <p class="panel-copy">Focused panel bindings: <kbd>j</kbd>, <kbd>k</kbd>, <kbd>Enter</kbd>.</p>
+              <p class="panel-copy">Focused panel bindings: <kbd>j</kbd>, <kbd>k</kbd>, <kbd>3</kbd><kbd>k</kbd>, <kbd>Enter</kbd>.</p>
               <div id="alpha-count" class="counter">0</div>
             </section>
 
@@ -45,7 +46,7 @@ import demoStylesUrl from "../../../styles/keymap-html-demo.css?url"
                 <span class="panel-badge">Panel</span>
                 <h2>Beta</h2>
               </div>
-              <p class="panel-copy">Focused panel bindings: <kbd>j</kbd>, <kbd>k</kbd>, <kbd>Enter</kbd>.</p>
+              <p class="panel-copy">Focused panel bindings: <kbd>j</kbd>, <kbd>k</kbd>, <kbd>3</kbd><kbd>k</kbd>, <kbd>Enter</kbd>.</p>
               <div id="beta-count" class="counter">0</div>
             </section>
           </div>
@@ -73,6 +74,17 @@ This example runs against the built dist bundle.</textarea
             </section>
           </div>
 
+          <section id="graph-card" class="graph-card">
+            <div class="graph-header">
+              <div>
+                <p class="graph-eyebrow">runtime graph</p>
+                <h2>Keymap State</h2>
+              </div>
+              <span>Live projection from the graph feature via <code>keymap.getGraphSnapshot()</code></span>
+            </div>
+            <div id="keymap-graph" class="keymap-graph"></div>
+          </section>
+
           <section id="help-card" class="help-card">
             <h2>Quick Help</h2>
             <div id="help-copy" class="help-copy"></div>
@@ -80,9 +92,9 @@ This example runs against the built dist bundle.</textarea
         </section>
 
         <aside class="sidebar">
-          <section id="active-keys-card" class="sidebar-card" tabindex="0" data-focusable="true">
-            <h2>Active Keys</h2>
-            <div id="active-keys" class="active-keys"></div>
+          <section id="graph-canvas-card" class="sidebar-card graph-canvas-card">
+            <h2>Graph View</h2>
+            <canvas id="graph-canvas" class="graph-canvas" aria-label="Abstract keymap graph visualization"></canvas>
           </section>
 
           <section id="log-card" class="sidebar-card" tabindex="0" data-focusable="true">

@@ -9,7 +9,6 @@ import {
   type ActiveKey,
   type ActiveKeyOptions,
   type BindingParser,
-  type CommandRecord,
   type ErrorEvent,
   type EventMatchResolverContext,
   type Keymap,
@@ -17,6 +16,7 @@ import {
   type WarningEvent,
 } from "../index.js"
 import { createDefaultOpenTuiKeymap, createOpenTuiKeymap } from "../opentui.js"
+import { getGraphSnapshot } from "../extras/graph.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 import { createKeymapTestHelpers, type OpenTuiKeymap } from "./keymap.test-support.js"
 
@@ -29,6 +29,7 @@ const {
   getActiveKeyNames,
   getParserKeymap,
   getKeymap,
+  getGraphKeymap,
   createBareKeymap,
   getCommand,
   getCommandEntry,
@@ -51,7 +52,7 @@ describe("keymap: diagnostics and analyzers", () => {
     diagnostics.assertNoUnhandledDiagnostics()
   })
   test("skips bindings with conflicting requirements from typed fields", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
     const { takeErrors } = captureDiagnostics(keymap)
 
     keymap.registerBindingFields({
@@ -96,6 +97,32 @@ describe("keymap: diagnostics and analyzers", () => {
 
     expect(takeErrors().errors).toEqual(['Conflicting keymap requirement for "vim.mode" from field state'])
     expect(getActiveKey(keymap, "x")).toBeUndefined()
+  })
+
+  test("skips layers with conflicting attributes from typed layer fields", () => {
+    const keymap = getGraphKeymap(renderer)
+    const { takeErrors } = captureDiagnostics(keymap)
+
+    keymap.registerLayerFields({
+      desc(value, ctx) {
+        ctx.attr("label", value)
+      },
+      title(value, ctx) {
+        ctx.attr("label", value)
+      },
+    })
+
+    expect(() => {
+      keymap.registerLayer({
+        desc: "Navigation",
+        title: "Navigate",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).not.toThrow()
+
+    expect(takeErrors().errors).toEqual(['Conflicting keymap attribute for "label" from field title'])
+    expect(getActiveKey(keymap, "x")).toBeUndefined()
+    expect(getGraphSnapshot(keymap).layers).toHaveLength(0)
   })
 
   test("skips bindings with conflicting attributes from typed binding fields", () => {
@@ -206,13 +233,11 @@ describe("keymap: diagnostics and analyzers", () => {
       bindings: [{ key: "x", cmd: "save-file" }],
     })
 
-    expect(getCommand(keymap, "save-file")).toEqual({
+    expect(getCommand(keymap, "save-file")).toMatchObject({
       name: "save-file",
-      fields: {
-        desc: "Save the current file",
-        usage: ":write <file>",
-        tags: ["file", "write"],
-      },
+      desc: "Save the current file",
+      usage: ":write <file>",
+      tags: ["file", "write"],
     })
 
     expect(getActiveKey(keymap, "x")).toBeDefined()
@@ -268,12 +293,12 @@ describe("keymap: diagnostics and analyzers", () => {
     })
 
     const { warnings, warningEvents } = capture.takeWarnings()
-    expect(warnings).toEqual(['[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored'])
+    expect(warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored'])
     expect(warningEvents).toEqual([
       {
         code: "unknown-token",
-        message: '[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored',
-        warning: { token: "<leader>", sequence: "<leader>x" },
+        message: '[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored',
+        warning: { token: "leader", sequence: "<leader>x" },
       },
     ])
   })
@@ -357,11 +382,9 @@ describe("keymap: diagnostics and analyzers", () => {
       bindings: [{ key: "<leader>x", cmd: () => {} }],
     })
 
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored'])
 
-    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerToken({ name: "leader", key: { name: "space" } })
 
     expect(calls).toEqual(["0:x", "0:<leader>"])
   })

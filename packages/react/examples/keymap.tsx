@@ -4,11 +4,13 @@ import {
   TextAttributes,
   type CliRenderer,
   type InputRenderable,
+  type KeyEvent,
   type Renderable,
   type TextareaRenderable,
 } from "@opentui/core"
-import { type ActiveKey, type BindingInput, type CommandDefinition, type CommandRecord } from "@opentui/keymap"
+import { type ActiveKey, type Binding, type Command } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
+import type { ExCommandPayload } from "@opentui/keymap/addons/opentui"
 import { formatKeySequence } from "@opentui/keymap/extras"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider, useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/react"
@@ -25,24 +27,27 @@ import {
 } from "react"
 
 const palette = {
-  bg: "#0f172a",
-  surface: "#1e293b",
-  surfaceFocus: "#24324d",
-  border: "#334155",
-  text: "#e2e8f0",
-  textDim: "#94a3b8",
-  textMuted: "#64748b",
-  title: "#f1f5f9",
-  alpha: "#38bdf8",
-  beta: "#34d399",
-  accent: "#a78bfa",
-  leader: "#fb923c",
-  key: "#fbbf24",
-  command: "#67e8f9",
-  separator: "#475569",
+  bg: "#1a1b26",
+  surface: "#16161e",
+  surfaceFocus: "#292e42",
+  panel: "#1f2335",
+  border: "#2f334d",
+  borderStrong: "#3b4261",
+  text: "#c0caf5",
+  textDim: "#a9b1d6",
+  textMuted: "#565f89",
+  title: "#c0caf5",
+  alpha: "#7dcfff",
+  beta: "#9ece6a",
+  accent: "#bb9af7",
+  leader: "#e0af68",
+  key: "#7dcfff",
+  command: "#9ece6a",
+  separator: "#3b4261",
 } as const
 
 const LEADER_TOKEN = "<leader>"
+const COUNT_PATTERN = "count"
 const KEY_FORMAT_OPTIONS = {
   tokenDisplay: {
     [LEADER_TOKEN]: "ctrl+x",
@@ -88,7 +93,7 @@ const editorSpecs: readonly EditorSpec[] = [
 
 type ExArgCount = "0" | "1" | "?" | "*" | "+"
 
-interface DemoExCommand {
+interface DemoExCommand extends Command<Renderable, KeyEvent, ExCommandPayload> {
   name: string
   aliases?: string[]
   nargs?: ExArgCount
@@ -96,7 +101,6 @@ interface DemoExCommand {
   desc: string
   category: string
   usage: string
-  run: (ctx: { raw: string; args: string[] }) => void
 }
 
 interface ExPromptSuggestion {
@@ -140,12 +144,12 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function getExPromptCommandFieldText(command: CommandRecord, fieldName: string): string | undefined {
-  return getMetadataText(command.fields[fieldName])
+function getExPromptCommandFieldText(command: Command<Renderable, KeyEvent>, fieldName: string): string | undefined {
+  return getMetadataText(command[fieldName])
 }
 
-function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined {
-  const value = command.fields.nargs
+function getExPromptCommandNargs(command: Command<Renderable, KeyEvent>): ExArgCount | undefined {
+  const value = command.nargs
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
   }
@@ -153,7 +157,7 @@ function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined
   return undefined
 }
 
-function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly Command<Renderable, KeyEvent>[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {
@@ -170,7 +174,10 @@ function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptS
   return suggestions
 }
 
-function getExPromptSuggestions(commands: readonly CommandRecord[], value: string): ExPromptSuggestion[] {
+function getExPromptSuggestions(
+  commands: readonly Command<Renderable, KeyEvent>[],
+  value: string,
+): ExPromptSuggestion[] {
   const normalized = normalizeExPromptName(value)
   const spaceIndex = normalized.indexOf(" ")
   const query = spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
@@ -186,7 +193,7 @@ function getExPromptSuggestions(commands: readonly CommandRecord[], value: strin
 }
 
 function getSelectedExPromptSuggestion(
-  commands: readonly CommandRecord[],
+  commands: readonly Command<Renderable, KeyEvent>[],
   value: string,
   selection: number,
 ): ExPromptSuggestion | null {
@@ -199,7 +206,7 @@ function getSelectedExPromptSuggestion(
 }
 
 function moveExPromptSelection(
-  commands: readonly CommandRecord[],
+  commands: readonly Command<Renderable, KeyEvent>[],
   value: string,
   selection: number,
   direction: 1 | -1,
@@ -214,7 +221,7 @@ function moveExPromptSelection(
 }
 
 function applyExPromptSuggestion(
-  commands: readonly CommandRecord[],
+  commands: readonly Command<Renderable, KeyEvent>[],
   value: string,
   selection: number,
   direction?: 1 | -1,
@@ -260,6 +267,15 @@ function getMetadataText(value: unknown): string | undefined {
   return trimmed || undefined
 }
 
+function getCountPayload(payload: unknown): number {
+  if (!payload || typeof payload !== "object") {
+    return 1
+  }
+
+  const count = (payload as { count?: unknown }).count
+  return typeof count === "number" && Number.isFinite(count) && count > 0 ? count : 1
+}
+
 function getActiveKeyLabel(activeKey: ActiveKey): string {
   if (activeKey.continues) {
     const group = getMetadataText(activeKey.bindingAttrs?.group)
@@ -301,8 +317,10 @@ function CounterPanel(props: {
 
   const incrementCommand = useMemo(() => `${props.id}-up`, [props.id])
   const decrementCommand = useMemo(() => `${props.id}-down`, [props.id])
+  const incrementCountCommand = useMemo(() => `${props.id}-up-count`, [props.id])
+  const decrementCountCommand = useMemo(() => `${props.id}-down-count`, [props.id])
 
-  const commands = useMemo<CommandDefinition[]>(
+  const commands = useMemo<Command<Renderable, KeyEvent>[]>(
     () => [
       {
         name: incrementCommand,
@@ -313,6 +331,20 @@ function CounterPanel(props: {
           props.setCount((value) => {
             const next = value + props.step
             props.announce(`${props.label} increased to ${next}`)
+            return next
+          })
+        },
+      },
+      {
+        name: incrementCountCommand,
+        title: `${props.label} +count`,
+        desc: `${props.label} +count`,
+        category: props.label,
+        run({ payload }) {
+          props.setCount((value) => {
+            const amount = getCountPayload(payload) * props.step
+            const next = value + amount
+            props.announce(`${props.label} increased by ${amount} to ${next}`)
             return next
           })
         },
@@ -330,8 +362,31 @@ function CounterPanel(props: {
           })
         },
       },
+      {
+        name: decrementCountCommand,
+        title: `${props.label} -count`,
+        desc: `${props.label} -count`,
+        category: props.label,
+        run({ payload }) {
+          props.setCount((value) => {
+            const amount = getCountPayload(payload) * props.step
+            const next = value - amount
+            props.announce(`${props.label} decreased by ${amount} to ${next}`)
+            return next
+          })
+        },
+      },
     ],
-    [decrementCommand, incrementCommand, props.announce, props.label, props.setCount, props.step],
+    [
+      decrementCommand,
+      decrementCountCommand,
+      incrementCommand,
+      incrementCountCommand,
+      props.announce,
+      props.label,
+      props.setCount,
+      props.step,
+    ],
   )
 
   useEffect(() => {
@@ -344,10 +399,20 @@ function CounterPanel(props: {
       bindings: [
         { key: "j", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
         { key: "k", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
+        { key: "{count}j", cmd: decrementCountCommand, desc: `${props.label} -count` },
+        { key: "{count}k", cmd: incrementCountCommand, desc: `${props.label} +count` },
         { key: "return", cmd: `:w ${props.saveTarget}`, desc: `Write ${props.label.toLowerCase()} panel` },
-      ] satisfies BindingInput[],
+      ] satisfies Binding[],
     }),
-    [decrementCommand, incrementCommand, props.label, props.saveTarget, props.step],
+    [
+      decrementCommand,
+      decrementCountCommand,
+      incrementCommand,
+      incrementCountCommand,
+      props.label,
+      props.saveTarget,
+      props.step,
+    ],
   )
   const combinedRef = useCallback(
     (value: Renderable | null) => {
@@ -362,10 +427,11 @@ function CounterPanel(props: {
       id={`keymap-demo-${props.id}`}
       ref={combinedRef}
       border
-      borderStyle="rounded"
+      borderStyle="single"
       focusable
       borderColor={palette.border}
       focusedBorderColor={props.color}
+      backgroundColor={palette.panel}
       paddingX={1}
       flexDirection="column"
       flexGrow={1}
@@ -450,6 +516,14 @@ const AppContent = () => {
     input.cursorOffset = value.length
   }, [])
 
+  const hideCommandPrompt = useCallback(() => {
+    commandPromptVisibleRef.current = false
+    commandPromptValueRef.current = ":"
+    setCommandPromptVisible(false)
+    setCommandPromptValue(":")
+    setCommandPromptSelection(0)
+  }, [])
+
   const setAlphaPanelRef = useCallback((value: Renderable | null) => {
     alphaPanelRef.current = value
   }, [])
@@ -526,13 +600,24 @@ const AppContent = () => {
 
   const closeCommandPrompt = useCallback(
     (message: string) => {
-      setCommandPromptVisible(false)
-      setCommandPromptValue(":")
-      setCommandPromptSelection(0)
+      hideCommandPrompt()
       restoreCommandPromptFocus()
       announce(message)
     },
-    [announce, restoreCommandPromptFocus],
+    [announce, hideCommandPrompt, restoreCommandPromptFocus],
+  )
+
+  const dismissCommandPromptForFocusChange = useCallback(
+    (focused: Renderable | null) => {
+      if (!commandPromptVisibleRef.current || focused === commandInputRef.current) {
+        return
+      }
+
+      hideCommandPrompt()
+      commandPromptRestoreTargetRef.current = null
+      announce("Closed ex prompt")
+    },
+    [announce, hideCommandPrompt],
   )
 
   const openCommandPrompt = useCallback(() => {
@@ -541,13 +626,15 @@ const AppContent = () => {
     }
 
     commandPromptRestoreTargetRef.current = renderer.currentFocusedRenderable
+    commandPromptVisibleRef.current = true
+    commandPromptValueRef.current = ":"
     setCommandPromptVisible(true)
     setCommandPromptValue(":")
     setCommandPromptSelection(0)
     announce("Opened ex prompt")
   }, [announce, renderer])
 
-  const commands = useMemo<CommandDefinition[]>(
+  const commands = useMemo<Command<Renderable, KeyEvent>[]>(
     () => [
       {
         name: "focus-next",
@@ -621,20 +708,23 @@ const AppContent = () => {
         desc: "Write file",
         category: "File",
         usage: ":write <file>",
-        run({ args }) {
-          announce(`Wrote ${args[0]}`)
+        run({ payload }) {
+          announce(`Wrote ${payload.args[0]}`)
         },
       },
     ],
     [announce],
   )
 
-  const registeredExCommands = useMemo(() => {
-    return exCommands.map(({ usage: _usage, ...command }) => command)
+  const registeredExCommands = useMemo<Command<Renderable, KeyEvent, ExCommandPayload>[]>(() => {
+    return exCommands.map((command) => ({ ...command, namespace: "excommands" }))
   }, [exCommands])
 
   useEffect(() => {
-    return addons.registerExCommands(manager, registeredExCommands)
+    return composeDisposers([
+      addons.registerExCommands(manager),
+      manager.registerLayer({ commands: registeredExCommands }),
+    ])
   }, [manager, registeredExCommands])
 
   const discoveredExCommands = useMemo(() => {
@@ -714,11 +804,9 @@ const AppContent = () => {
       return
     }
 
-    setCommandPromptVisible(false)
-    setCommandPromptValue(":")
-    setCommandPromptSelection(0)
+    hideCommandPrompt()
     restoreCommandPromptFocus()
-  }, [announce, closeCommandPrompt, manager, renderer, restoreCommandPromptFocus])
+  }, [announce, closeCommandPrompt, hideCommandPrompt, manager, renderer, restoreCommandPromptFocus])
 
   useEffect(() => {
     return composeDisposers([
@@ -735,24 +823,37 @@ const AppContent = () => {
       addons.registerNeovimDisambiguation(manager),
       addons.registerEscapeClearsPendingSequence(manager),
       addons.registerBackspacePopsPendingSequence(manager),
+      manager.registerSequencePattern({
+        name: COUNT_PATTERN,
+        match(event) {
+          if (!/^\d$/.test(event.name)) {
+            return undefined
+          }
+
+          return { value: event.name, display: event.name }
+        },
+        finalize(values) {
+          return Number(values.join(""))
+        },
+      }),
       addons.registerManagedTextareaLayer(manager, renderer, {
         enabled: () => !commandPromptVisibleRef.current && renderer.currentFocusedEditor !== null,
         bindings: [
-          { key: "left", cmd: "move-left", desc: "Cursor left" },
-          { key: "right", cmd: "move-right", desc: "Cursor right" },
-          { key: "up", cmd: "move-up", desc: "Cursor up" },
-          { key: "down", cmd: "move-down", desc: "Cursor down" },
-          { key: "backspace", cmd: "backspace", desc: "Delete backward" },
-          { key: "delete", cmd: "delete", desc: "Delete forward" },
-          { key: "return", cmd: "newline", desc: "New line" },
-          { key: "ctrl+a", cmd: "line-home", desc: "Line start" },
-          { key: "ctrl+e", cmd: "line-end", desc: "Line end" },
+          { key: "left", cmd: "input.move.left", desc: "Cursor left" },
+          { key: "right", cmd: "input.move.right", desc: "Cursor right" },
+          { key: "up", cmd: "input.move.up", desc: "Cursor up" },
+          { key: "down", cmd: "input.move.down", desc: "Cursor down" },
+          { key: "backspace", cmd: "input.backspace", desc: "Delete backward" },
+          { key: "delete", cmd: "input.delete", desc: "Delete forward" },
+          { key: "return", cmd: "input.newline", desc: "New line" },
+          { key: "ctrl+a", cmd: "input.line.home", desc: "Line start" },
+          { key: "ctrl+e", cmd: "input.line.end", desc: "Line end" },
           { key: "d", group: "Delete" },
-          { key: "dd", cmd: "delete-line", desc: "Delete line" },
-          { key: "g", cmd: "line-home", desc: "Line start", group: "Go" },
-          { key: "gg", cmd: "buffer-home", desc: "Buffer start", group: "Go" },
-          { key: "shift+g", cmd: "buffer-end", desc: "Buffer end", group: "Go" },
-        ] satisfies BindingInput[],
+          { key: "dd", cmd: "input.delete.line", desc: "Delete line" },
+          { key: "g", cmd: "input.line.home", desc: "Line start", group: "Go" },
+          { key: "gg", cmd: "input.buffer.home", desc: "Buffer start", group: "Go" },
+          { key: "shift+g", cmd: "input.buffer.end", desc: "Buffer end", group: "Go" },
+        ] satisfies Binding[],
       }),
       manager.registerLayer({
         enabled: () => !commandPromptVisibleRef.current,
@@ -764,11 +865,11 @@ const AppContent = () => {
           { key: "<leader>", group: "Leader" },
           { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
           { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
-        ] satisfies BindingInput[],
+        ] satisfies Binding[],
       }),
       manager.registerLayer({
         enabled: () => !commandPromptVisibleRef.current,
-        bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }] satisfies BindingInput[],
+        bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }] satisfies Binding[],
       }),
     ])
   }, [announce, manager, renderer])
@@ -845,6 +946,10 @@ const AppContent = () => {
     return formatKeySequence(pendingSequence, KEY_FORMAT_OPTIONS) || "<root>"
   }, [pendingSequence])
 
+  const pendingSequenceLabel = useMemo(() => {
+    return pendingSequence.length === 0 ? "None" : formatKeySequence(pendingSequence, KEY_FORMAT_OPTIONS)
+  }, [pendingSequence])
+
   const commandPromptUsage = useMemo(() => {
     if (!selectedCommandPromptSuggestion) {
       return "No matching ex commands"
@@ -902,13 +1007,14 @@ const AppContent = () => {
         { key: "tab", cmd: "ex-prompt-complete", desc: "Complete suggestion" },
         { key: "shift+tab", cmd: "ex-prompt-complete-prev", desc: "Previous completion" },
         { key: "return", cmd: "ex-prompt-submit", desc: "Run ex command" },
-      ] satisfies BindingInput[],
+      ] satisfies Binding[],
     }),
     [applyCommandPromptSuggestion, closeCommandPrompt, executeCommandPrompt, moveCommandPromptSelection],
   )
 
   useEffect(() => {
-    const onFocusedRenderable = () => {
+    const onFocusedRenderable = (focused: Renderable | null) => {
+      dismissCommandPromptForFocusChange(focused)
       bumpStatus()
     }
 
@@ -923,7 +1029,7 @@ const AppContent = () => {
       renderer.off(CliRenderEvents.FOCUSED_RENDERABLE, onFocusedRenderable)
       renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
     }
-  }, [bumpStatus, renderer])
+  }, [bumpStatus, dismissCommandPromptForFocusChange, renderer])
 
   useEffect(() => {
     if (!commandPromptVisible) {
@@ -951,14 +1057,7 @@ const AppContent = () => {
 
   return (
     <box id="keymap-demo-root" flexDirection="column" flexGrow={1} padding={1} backgroundColor={palette.bg}>
-      <text id="keymap-demo-title" style={{ fg: palette.title, attributes: TextAttributes.BOLD }} height={1}>
-        Keymap Demo
-      </text>
-      <text id="keymap-demo-subtitle" fg={palette.textMuted} height={1}>
-        Original Alpha/Beta panels, three switchable textareas, and a centered : prompt.
-      </text>
-
-      <box id="keymap-demo-panels" flexDirection="row" gap={1} height={4}>
+      <box id="keymap-demo-panels" flexDirection="row" height={4}>
         <CounterPanel
           id="alpha"
           label="Alpha"
@@ -983,15 +1082,16 @@ const AppContent = () => {
         />
       </box>
 
-      <box id="keymap-demo-editors" flexDirection="row" gap={1} height={5}>
+      <box id="keymap-demo-editors" flexDirection="row" height={5}>
         {editorSpecs.map((spec, index) => {
           return (
             <box
               key={spec.id}
               id={`keymap-demo-editor-frame-${spec.id}`}
               border
-              borderStyle="rounded"
+              borderStyle="single"
               borderColor={focusedEditorIndex === index ? spec.color : palette.border}
+              backgroundColor={palette.panel}
               flexDirection="column"
               flexGrow={1}
               flexBasis={0}
@@ -1011,8 +1111,8 @@ const AppContent = () => {
                 textColor={palette.text}
                 focusedTextColor={palette.title}
                 placeholderColor={palette.textMuted}
-                selectionBg="#264F78"
-                selectionFg="#FFFFFF"
+                selectionBg={palette.surfaceFocus}
+                selectionFg={palette.text}
                 wrapMode="word"
                 onContentChange={bumpStatus}
                 onCursorChange={bumpStatus}
@@ -1025,8 +1125,9 @@ const AppContent = () => {
       <box
         id="keymap-demo-footer"
         border
-        borderStyle="rounded"
+        borderStyle="single"
         borderColor={palette.border}
+        backgroundColor={palette.panel}
         paddingX={1}
         gap={2}
         flexDirection="row"
@@ -1078,6 +1179,11 @@ const AppContent = () => {
             ) : (
               <span style={{ fg: palette.textMuted }}>idle</span>
             )}
+          </text>
+
+          <text id="keymap-demo-status-pending" fg={palette.text} height={1}>
+            <span style={{ fg: palette.textDim }}>Pending: </span>
+            <span style={{ fg: palette.leader }}>{pendingSequenceLabel}</span>
           </text>
 
           <text id="keymap-demo-status-last" fg={palette.text} height={1}>
@@ -1182,9 +1288,9 @@ const AppContent = () => {
             width: EX_PROMPT_WIDTH,
             height: EX_PROMPT_CHROME_ROWS,
             border: true,
-            borderStyle: "rounded",
+            borderStyle: "single",
             borderColor: palette.accent,
-            backgroundColor: palette.bg,
+            backgroundColor: palette.surface,
             paddingX: 1,
             paddingY: 0,
             flexDirection: "column",
@@ -1224,7 +1330,7 @@ const AppContent = () => {
           style={{
             width: EX_PROMPT_WIDTH,
             height: commandPromptSuggestionRows,
-            backgroundColor: palette.bg,
+            backgroundColor: palette.surface,
             paddingX: 1,
             paddingY: 0,
             flexDirection: "column",

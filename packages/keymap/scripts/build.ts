@@ -70,8 +70,10 @@ const externalDeps: string[] = [
 const keymapEntrypoints = [
   join(rootDir, packageJson.module),
   join(rootDir, "src/extras/index.ts"),
+  join(rootDir, "src/extras/graph.ts"),
   join(rootDir, "src/addons/index.ts"),
   join(rootDir, "src/addons/opentui/index.ts"),
+  join(rootDir, "src/testing/index.ts"),
   join(rootDir, "src/html.ts"),
   join(rootDir, "src/opentui.ts"),
   join(rootDir, "src/react/index.ts"),
@@ -114,7 +116,15 @@ const buildResult = await Bun.build({
   target: "bun",
   format: "esm",
   outdir: distDir,
+  sourcemap: "linked",
+  splitting: true,
   external: externalDeps,
+  packages: "external",
+  naming: {
+    entry: "[dir]/[name].[ext]",
+    chunk: "chunks/[name]-[hash].[ext]",
+    asset: "assets/[name]-[hash].[ext]",
+  },
 })
 
 if (!buildResult.success) {
@@ -154,6 +164,11 @@ const exports = {
     import: "./src/extras/index.js",
     require: "./src/extras/index.js",
   },
+  "./extras/graph": {
+    types: "./src/extras/graph.d.ts",
+    import: "./src/extras/graph.js",
+    require: "./src/extras/graph.js",
+  },
   "./addons": {
     types: "./src/addons/index.d.ts",
     import: "./src/addons/index.js",
@@ -163,6 +178,11 @@ const exports = {
     types: "./src/addons/opentui/index.d.ts",
     import: "./src/addons/opentui/index.js",
     require: "./src/addons/opentui/index.js",
+  },
+  "./testing": {
+    types: "./src/testing/index.d.ts",
+    import: "./src/testing/index.js",
+    require: "./src/testing/index.js",
   },
   "./html": {
     types: "./src/html.d.ts",

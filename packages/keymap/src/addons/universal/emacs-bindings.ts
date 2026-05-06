@@ -1,5 +1,7 @@
 import type { BindingParser, BindingParserContext, Keymap, KeymapEvent, KeySequencePart } from "../../index.js"
 
+const EMACS_BINDINGS_RESOURCE = Symbol("keymap:emacs-bindings")
+
 /**
  * Example Emacs-style chord parsing.
  *
@@ -96,17 +98,19 @@ function parseEmacsSequence(
 export function registerEmacsBindings<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
-  const parseEmacsBinding: BindingParser = ({ input, index, parseObjectKey }) => {
-    const parsed = parseEmacsSequence(input, parseObjectKey)
-    if (!parsed || index !== 0) {
-      return undefined
+  return keymap.acquireResource(EMACS_BINDINGS_RESOURCE, () => {
+    const parseEmacsBinding: BindingParser = ({ input, index, parseObjectKey }) => {
+      const parsed = parseEmacsSequence(input, parseObjectKey)
+      if (!parsed || index !== 0) {
+        return undefined
+      }
+
+      return {
+        parts: parsed,
+        nextIndex: input.length,
+      }
     }
 
-    return {
-      parts: parsed,
-      nextIndex: input.length,
-    }
-  }
-
-  return keymap.prependBindingParser(parseEmacsBinding)
+    return keymap.prependBindingParser(parseEmacsBinding)
+  })
 }

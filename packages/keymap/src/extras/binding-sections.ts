@@ -1,10 +1,10 @@
 // Opinionated config-to-keymap transformation helper. Treat this as one
 // practical shape you can copy and adjust for application-specific needs.
-import type { BindingInput, KeyLike, KeymapEvent } from "../types.js"
+import type { Binding, KeyLike, KeymapEvent } from "../types.js"
 
 export type BindingSectionItem<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
   | KeyLike
-  | BindingInput<TTarget, TEvent>
+  | Binding<TTarget, TEvent>
 
 export type BindingValue<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
   | false
@@ -29,8 +29,8 @@ export interface ResolvedBindingSections<
   TEvent extends KeymapEvent = KeymapEvent,
   TSection extends string = string,
 > {
-  sections: Record<TSection, BindingInput<TTarget, TEvent>[]>
-  get(section: string, cmd: string): readonly BindingInput<TTarget, TEvent>[] | undefined
+  sections: Record<TSection, Binding<TTarget, TEvent>[]>
+  get(section: string, cmd: string): readonly Binding<TTarget, TEvent>[] | undefined
 }
 
 export interface ResolveBindingSectionsOptions<TSection extends string = string> {
@@ -65,7 +65,7 @@ function resolveBindingItem<TTarget extends object, TEvent extends KeymapEvent>(
   command: string,
   item: BindingSectionItem<TTarget, TEvent>,
   index?: number,
-): BindingInput<TTarget, TEvent> {
+): Binding<TTarget, TEvent> {
   if (!isKeyLike(item)) {
     throw invalidBindingValue(section, command, index)
   }
@@ -93,7 +93,7 @@ function resolveBindingValue<TTarget extends object, TEvent extends KeymapEvent>
   section: string,
   command: string,
   value: BindingValue<TTarget, TEvent>,
-): BindingInput<TTarget, TEvent>[] | undefined {
+): Binding<TTarget, TEvent>[] | undefined {
   if (value === false || value === "none") {
     return undefined
   }
@@ -104,7 +104,7 @@ function resolveBindingValue<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     const items = value as readonly BindingSectionItem<TTarget, TEvent>[]
-    const bindings = new Array<BindingInput<TTarget, TEvent>>(items.length)
+    const bindings = new Array<Binding<TTarget, TEvent>>(items.length)
     for (let index = 0; index < items.length; index += 1) {
       bindings[index] = resolveBindingItem(section, command, items[index]!, index)
     }
@@ -132,8 +132,8 @@ export function resolveBindingSections<TTarget extends object = object, TEvent e
   config: BindingSectionsConfig<TTarget, TEvent>,
   options?: ResolveBindingSectionsOptions,
 ): ResolvedBindingSections<TTarget, TEvent> {
-  const sections: Record<string, BindingInput<TTarget, TEvent>[]> = {}
-  const lookups = new Map<string, Map<string, BindingInput<TTarget, TEvent>[]>>()
+  const sections: Record<string, Binding<TTarget, TEvent>[]> = {}
+  const lookups = new Map<string, Map<string, Binding<TTarget, TEvent>[]>>()
 
   for (const section of options?.sections ?? []) {
     sections[section] = []
@@ -151,7 +151,7 @@ export function resolveBindingSections<TTarget extends object = object, TEvent e
       throw new Error(`Invalid binding section "${section}": expected an object`)
     }
 
-    const sectionLookup = new Map<string, BindingInput<TTarget, TEvent>[]>()
+    const sectionLookup = new Map<string, Binding<TTarget, TEvent>[]>()
 
     for (const rawCommand in sectionConfig) {
       if (!hasOwn.call(sectionConfig, rawCommand)) {
@@ -175,7 +175,7 @@ export function resolveBindingSections<TTarget extends object = object, TEvent e
       sectionBindingCount += bindings.length
     }
 
-    const sectionBindings = new Array<BindingInput<TTarget, TEvent>>(sectionBindingCount)
+    const sectionBindings = new Array<Binding<TTarget, TEvent>>(sectionBindingCount)
     let bindingIndex = 0
     for (const bindings of sectionLookup.values()) {
       for (let index = 0; index < bindings.length; index += 1) {

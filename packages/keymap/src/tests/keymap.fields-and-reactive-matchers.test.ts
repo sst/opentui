@@ -9,7 +9,6 @@ import {
   type ActiveKey,
   type ActiveKeyOptions,
   type BindingParser,
-  type CommandRecord,
   type ErrorEvent,
   type EventMatchResolverContext,
   type Keymap,
@@ -17,6 +16,7 @@ import {
   type WarningEvent,
 } from "../index.js"
 import { createDefaultOpenTuiKeymap, createOpenTuiKeymap } from "../opentui.js"
+import { getGraphSnapshot } from "../extras/graph.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 import { createKeymapTestHelpers, type OpenTuiKeymap } from "./keymap.test-support.js"
 
@@ -29,6 +29,7 @@ const {
   getActiveKeyNames,
   getParserKeymap,
   getKeymap,
+  getGraphKeymap,
   createBareKeymap,
   getCommand,
   getCommandEntry,
@@ -51,7 +52,7 @@ describe("keymap: fields and reactive matchers", () => {
     diagnostics.assertNoUnhandledDiagnostics()
   })
   test("supports typed binding fields through key intercepts", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getGraphKeymap(renderer)
     const calls: string[] = []
 
     keymap.registerBindingFields({
@@ -337,23 +338,21 @@ describe("keymap: fields and reactive matchers", () => {
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
-    // First read warms the cache.
     expect(getActiveKeyNames(keymap)).toEqual([])
     expect(evaluations).toBe(1)
 
     expect(getActiveKeyNames(keymap)).toEqual([])
-    expect(evaluations).toBe(1)
+    expect(evaluations).toBe(2)
 
-    // Unrelated `setData` invalidation should not touch a purely reactive matcher.
     keymap.setData("unrelated", true)
 
     expect(getActiveKeyNames(keymap)).toEqual([])
-    expect(evaluations).toBe(1)
+    expect(evaluations).toBe(3)
 
     enabled.set(true)
 
     expect(getActiveKeyNames(keymap)).toEqual(["x"])
-    expect(evaluations).toBe(2)
+    expect(evaluations).toBeGreaterThan(3)
 
     mockInput.pressKey("x")
 
@@ -362,7 +361,7 @@ describe("keymap: fields and reactive matchers", () => {
     enabled.set(false)
 
     expect(getActiveKeyNames(keymap)).toEqual([])
-    expect(evaluations).toBe(3)
+    expect(evaluations).toBeGreaterThan(4)
   })
 
   test("reactive matchers: subscribe at layer register, dispose at unregister", () => {
@@ -419,7 +418,7 @@ describe("keymap: fields and reactive matchers", () => {
     expect(enabled.subscriptions).toBe(0)
   })
 
-  test("reactive matchers: only invalidate their own target, not other layers", () => {
+  test("reactive matchers: recompute when active keys are queried", () => {
     const keymap = getKeymap(renderer)
     const firstEnabled = createReactiveBoolean(false)
     const secondEnabled = createReactiveBoolean(false)
@@ -465,12 +464,12 @@ describe("keymap: fields and reactive matchers", () => {
     firstEnabled.set(true)
     expect(getActiveKeyNames(keymap)).toEqual(["a"])
     expect(firstEvals).toBe(2)
-    expect(secondEvals).toBe(1)
+    expect(secondEvals).toBe(2)
 
     secondEnabled.set(true)
     expect(getActiveKeyNames(keymap)).toEqual(["a", "b"])
-    expect(firstEvals).toBe(2)
-    expect(secondEvals).toBe(2)
+    expect(firstEvals).toBe(3)
+    expect(secondEvals).toBe(3)
   })
 
   test("reactive matchers: errors in subscribe are routed to error channel and registration continues", () => {
@@ -617,7 +616,7 @@ describe("keymap: fields and reactive matchers", () => {
     expect(getActiveKeyNames(keymap)).toEqual([])
   })
 
-  test("reactive matchers: raw callback matchers still work (non-cacheable path)", () => {
+  test("reactive matchers: raw callback matchers still work", () => {
     const keymap = getKeymap(renderer)
     let enabled = false
     let evaluations = 0
@@ -686,7 +685,7 @@ describe("keymap: fields and reactive matchers", () => {
 
     keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
 
-    const offToken = keymap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+    const offToken = keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
       bindings: [{ key: "<leader>a", active: true, cmd: "noop" }],
     })
@@ -699,9 +698,7 @@ describe("keymap: fields and reactive matchers", () => {
     // re-subscribe.
     offToken()
 
-    expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>a" was ignored',
-    ])
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>a" was ignored'])
     expect(enabled.disposeCalls).toBe(disposesBefore + 1)
     expect(enabled.subscribeCalls).toBe(subscribesBefore + 1)
     expect(enabled.subscriptions).toBe(1)
@@ -798,6 +795,41 @@ describe("keymap: fields and reactive matchers", () => {
     expect(getActiveKeyNames(keymap)).toEqual([])
   })
 
+  test("typed layer fields can emit attrs for graph projections", () => {
+    const keymap = getGraphKeymap(renderer)
+
+    keymap.registerLayerFields({
+      name(value, ctx) {
+        if (typeof value !== "string") {
+          throw new Error("name must be a string")
+        }
+
+        ctx.attr("name", value.trim())
+      },
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+        ctx.attr("mode", value)
+      },
+    })
+
+    keymap.registerLayer({
+      name: " Normal Mode ",
+      mode: "normal",
+      bindings: [{ key: "x", cmd: () => {} }],
+    })
+
+    const [layer] = getGraphSnapshot(keymap).layers
+    expect(layer?.fields).toEqual({ name: " Normal Mode ", mode: "normal" })
+    expect(layer?.attrs).toEqual({ name: "Normal Mode", mode: "normal" })
+    expect(layer?.active).toBe(false)
+
+    keymap.setData("vim.mode", "normal")
+
+    const [activeLayer] = getGraphSnapshot(keymap).layers
+    expect(activeLayer?.attrs).toEqual({ name: "Normal Mode", mode: "normal" })
+    expect(activeLayer?.active).toBe(true)
+  })
+
   test("typed layer field matchers clear pending sequences when they stop matching", () => {
     const keymap = getKeymap(renderer)
     let enabled = true
@@ -875,7 +907,7 @@ describe("keymap: fields and reactive matchers", () => {
           name: "save-file",
           mode: "normal",
           run(ctx) {
-            calls.push(String(ctx.command?.attrs?.mode))
+            calls.push(String(ctx.command?.mode))
           },
         },
       ],
@@ -889,10 +921,9 @@ describe("keymap: fields and reactive matchers", () => {
     keymap.setData("vim.mode", "normal")
 
     expect(keymap.getCommands().map((command) => command.name)).toEqual(["save-file"])
-    expect(getCommand(keymap, "save-file")).toEqual({
+    expect(getCommand(keymap, "save-file")).toMatchObject({
       name: "save-file",
-      fields: { mode: "normal" },
-      attrs: { mode: "normal" },
+      mode: "normal",
     })
     expect(getActiveKeyNames(keymap)).toEqual(["x"])
 
@@ -1006,12 +1037,12 @@ describe("keymap: fields and reactive matchers", () => {
     expect(getActiveKey(keymap, "y")).toBeUndefined()
     expect(keymap.dispatchCommand("submit")).toEqual({ ok: true })
     expect(keymap.dispatchCommand("hidden-local")).toEqual({ ok: false, reason: "disabled" })
-    expect(keymap.dispatchCommand("hidden-local", { includeCommand: true })).toEqual({
+    expect(keymap.dispatchCommand("hidden-local", { includeCommand: true })).toMatchObject({
       ok: false,
       reason: "disabled",
       command: {
         name: "hidden-local",
-        fields: { enabled: false },
+        enabled: false,
       },
     })
     expect(keymap.runCommand("submit")).toEqual({ ok: true })

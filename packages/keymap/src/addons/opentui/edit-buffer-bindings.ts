@@ -9,7 +9,7 @@ import {
   type Renderable,
   type TextareaAction,
 } from "@opentui/core"
-import type { BindingInput, Bindings, CommandDefinition, Keymap, Layer } from "../../index.js"
+import type { Binding, Bindings, Command, Keymap, Layer } from "../../index.js"
 
 interface KeyBindingLike {
   name: string
@@ -72,6 +72,10 @@ const editBufferActions = [
 ] as const satisfies readonly TextareaAction[]
 
 export type EditBufferCommandName = (typeof editBufferActions)[number]
+
+export type EditBufferFineGroup = "Cursor" | "Selection" | "Delete" | "History" | "Insert" | "Submit"
+
+const DEFAULT_EDIT_BUFFER_METADATA_GROUP = "Text Editing"
 
 const editBufferCommandNames = {
   "move-left": "input.move.left",
@@ -151,7 +155,55 @@ const editBufferCommandDescriptions = {
   submit: "Submit",
 } as const satisfies Record<EditBufferCommandName, string>
 
+const editBufferFineGroups = {
+  "move-left": "Cursor",
+  "move-right": "Cursor",
+  "move-up": "Cursor",
+  "move-down": "Cursor",
+  "select-left": "Selection",
+  "select-right": "Selection",
+  "select-up": "Selection",
+  "select-down": "Selection",
+  "line-home": "Cursor",
+  "line-end": "Cursor",
+  "select-line-home": "Selection",
+  "select-line-end": "Selection",
+  "visual-line-home": "Cursor",
+  "visual-line-end": "Cursor",
+  "select-visual-line-home": "Selection",
+  "select-visual-line-end": "Selection",
+  "buffer-home": "Cursor",
+  "buffer-end": "Cursor",
+  "select-buffer-home": "Selection",
+  "select-buffer-end": "Selection",
+  "delete-line": "Delete",
+  "delete-to-line-end": "Delete",
+  "delete-to-line-start": "Delete",
+  backspace: "Delete",
+  delete: "Delete",
+  newline: "Insert",
+  undo: "History",
+  redo: "History",
+  "word-forward": "Cursor",
+  "word-backward": "Cursor",
+  "select-word-forward": "Selection",
+  "select-word-backward": "Selection",
+  "delete-word-forward": "Delete",
+  "delete-word-backward": "Delete",
+  "select-all": "Selection",
+  submit: "Submit",
+} as const satisfies Record<EditBufferCommandName, EditBufferFineGroup>
+
+interface EditBufferMetadataOptions {
+  category: string
+  group: string
+  includeFineGroup: boolean
+}
+
 export interface EditBufferCommandOptions {
+  category?: string
+  group?: string
+  includeFineGroup?: boolean
   commandNames?: Partial<Record<EditBufferCommandName, string>>
   descriptions?: Partial<Record<EditBufferCommandName, string>>
 }
@@ -193,6 +245,23 @@ function resolveEditBufferCommandDescriptions(
   }
 
   return descriptions
+}
+
+function normalizeEditBufferMetadataField(fieldName: "category" | "group", value: string | undefined): string {
+  const normalized = (value ?? DEFAULT_EDIT_BUFFER_METADATA_GROUP).trim()
+  if (!normalized) {
+    throw new Error(`Edit buffer metadata field "${fieldName}" cannot be empty`)
+  }
+
+  return normalized
+}
+
+function resolveEditBufferMetadataOptions(options?: EditBufferCommandOptions): EditBufferMetadataOptions {
+  return {
+    category: normalizeEditBufferMetadataField("category", options?.category),
+    group: normalizeEditBufferMetadataField("group", options?.group),
+    includeFineGroup: options?.includeFineGroup === true,
+  }
 }
 
 function resolveEditBufferCommandNames(options?: EditBufferCommandOptions): Record<EditBufferCommandName, string> {
@@ -246,12 +315,22 @@ function setTextareaSuspend(editor: TextareaRenderable, suspended: boolean): voi
 function createDefaultTextareaBindings(
   commandNames: Readonly<Record<EditBufferCommandName, string>>,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): BindingInput[] {
-  return defaultTextareaKeyBindings.map((binding) => ({
-    key: keyBindingToString(binding),
-    cmd: commandNames[binding.action],
-    desc: descriptions[binding.action],
-  }))
+  metadata: Readonly<EditBufferMetadataOptions>,
+): Binding[] {
+  return defaultTextareaKeyBindings.map((binding) => {
+    const generated: Binding = {
+      key: keyBindingToString(binding),
+      cmd: commandNames[binding.action],
+      desc: descriptions[binding.action],
+      group: metadata.group,
+    }
+
+    if (metadata.includeFineGroup) {
+      generated.fineGroup = editBufferFineGroups[binding.action]
+    }
+
+    return generated
+  })
 }
 
 /**
@@ -259,24 +338,23 @@ function createDefaultTextareaBindings(
  * take precedence. Prefer `registerManagedTextareaLayer` unless you are
  * composing a custom textarea integration.
  */
-export function createTextareaBindings(
-  overrides?: readonly BindingInput[],
-  options?: EditBufferCommandOptions,
-): BindingInput[] {
+export function createTextareaBindings(overrides?: readonly Binding[], options?: EditBufferCommandOptions): Binding[] {
   return createTextareaBindingsWithResolvedOptions(
     overrides,
     resolveEditBufferCommandNames(options),
     resolveEditBufferCommandDescriptions(options),
+    resolveEditBufferMetadataOptions(options),
   )
 }
 
 function createTextareaBindingsWithResolvedOptions(
-  overrides: readonly BindingInput[] | undefined,
+  overrides: readonly Binding[] | undefined,
   commandNames: Readonly<Record<EditBufferCommandName, string>>,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): BindingInput[] {
+  metadata: Readonly<EditBufferMetadataOptions>,
+): Binding[] {
   const overrideBindings = overrides ?? []
-  return [...overrideBindings, ...createDefaultTextareaBindings(commandNames, descriptions)]
+  return [...overrideBindings, ...createDefaultTextareaBindings(commandNames, descriptions, metadata)]
 }
 
 function getLiveRenderer(renderer: CliRenderer): CliRenderer {
@@ -416,10 +494,12 @@ function createEditBufferCommand(
   commandNames: Readonly<Record<EditBufferCommandName, string>>,
   run: (editor: EditBufferRenderable) => boolean,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): CommandDefinition<Renderable, KeyEvent> {
+  metadata: Readonly<EditBufferMetadataOptions>,
+): Command<Renderable, KeyEvent> {
   return {
     name: commandNames[action],
     desc: descriptions[action],
+    category: metadata.category,
     run() {
       return withFocusedEditor(renderer, run)
     },
@@ -430,9 +510,10 @@ function createEditBufferCommands(
   renderer: CliRenderer,
   commandNames: Readonly<Record<EditBufferCommandName, string>>,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): CommandDefinition<Renderable, KeyEvent>[] {
+  metadata: Readonly<EditBufferMetadataOptions>,
+): Command<Renderable, KeyEvent>[] {
   return editBufferActions.map((action) =>
-    createEditBufferCommand(renderer, action, commandNames, editBufferCommandHandlers[action], descriptions),
+    createEditBufferCommand(renderer, action, commandNames, editBufferCommandHandlers[action], descriptions, metadata),
   )
 }
 
@@ -449,10 +530,11 @@ export function registerEditBufferCommands(
 ): () => void {
   const commandNames = resolveEditBufferCommandNames(options)
   const descriptions = resolveEditBufferCommandDescriptions(options)
+  const metadata = resolveEditBufferMetadataOptions(options)
 
   return keymap.acquireResource(EDIT_BUFFER_COMMANDS_RESOURCE, () => {
     return keymap.registerLayer({
-      commands: createEditBufferCommands(renderer, commandNames, descriptions),
+      commands: createEditBufferCommands(renderer, commandNames, descriptions, metadata),
     })
   })
 }
@@ -471,6 +553,7 @@ export function registerManagedTextareaLayer(
 ): () => void {
   const commandNames = resolveEditBufferCommandNames(options)
   const descriptions = resolveEditBufferCommandDescriptions(options)
+  const metadata = resolveEditBufferMetadataOptions(options)
   const offCommands = registerEditBufferCommands(keymap, renderer, options)
   const offSuspension = registerTextareaMappingSuspension(keymap, renderer)
 
@@ -478,7 +561,7 @@ export function registerManagedTextareaLayer(
     const { bindings, target: _ignoredTarget, targetMode: _ignoredTargetMode, ...rest } = layer
     const offLayer = keymap.registerLayer({
       ...rest,
-      bindings: createTextareaBindingsWithResolvedOptions(bindings, commandNames, descriptions),
+      bindings: createTextareaBindingsWithResolvedOptions(bindings, commandNames, descriptions, metadata),
     })
 
     return () => {

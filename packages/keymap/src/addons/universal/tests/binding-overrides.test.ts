@@ -87,6 +87,7 @@ describe("bindingOverrides addon", () => {
       }
 
       return {
+        name: command,
         run() {
           calls.push("write")
         },

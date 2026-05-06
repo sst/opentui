@@ -1,9 +1,11 @@
-import type { Keymap, KeymapEvent, LayerAnalysisContext, ParsedBindingInput } from "../../index.js"
-import { stringifyKeySequence, stringifyKeyStroke } from "../../index.js"
+import { stringifyKeySequence, stringifyKeyStroke } from "@opentui/keymap"
+import type { Keymap, KeymapEvent, LayerAnalysisContext, ParsedBinding } from "@opentui/keymap"
+
+const UNRESOLVED_COMMAND_WARNINGS_RESOURCE = Symbol("keymap:unresolved-command-warnings")
 
 interface UnresolvedCommandWarning<TTarget extends object, TEvent extends KeymapEvent> {
   command: string
-  binding: ParsedBindingInput<TTarget, TEvent>
+  binding: ParsedBinding<TTarget, TEvent>
   target?: TTarget
 }
 
@@ -19,19 +21,19 @@ function warnUnresolvedCommand<TTarget extends object, TEvent extends KeymapEven
     return
   }
 
-  const sequence = stringifyKeySequence(binding.sourceBinding.sequence, { preferDisplay: true })
+  const sequence = stringifyKeySequence(binding.parsedBinding.sequence, { preferDisplay: true })
   const sourceKey =
-    typeof binding.sourceBinding.key === "string"
-      ? binding.sourceBinding.key
-      : stringifyKeyStroke(binding.sourceBinding.key)
+    typeof binding.parsedBinding.key === "string"
+      ? binding.parsedBinding.key
+      : stringifyKeyStroke(binding.parsedBinding.key)
   const warning: UnresolvedCommandWarning<TTarget, TEvent> = {
     command: binding.command,
-    binding: binding.sourceBinding,
+    binding: binding.parsedBinding,
     target: binding.sourceTarget,
   }
 
   ctx.warnOnce(
-    `unresolved:${binding.sourceLayerOrder}:${binding.sourceBindingIndex}:${binding.command}:${sourceKey}`,
+    `unresolved:${binding.sourceLayerOrder}:${binding.bindingIndex}:${binding.command}:${sourceKey}`,
     "unresolved-command",
     warning,
     `[Keymap] Unresolved command "${binding.command}" for binding "${sequence}"`,
@@ -45,9 +47,11 @@ function warnUnresolvedCommand<TTarget extends object, TEvent extends KeymapEven
 export function registerUnresolvedCommandWarnings<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
-  return keymap.appendLayerAnalyzer((ctx) => {
-    for (const binding of ctx.bindings) {
-      warnUnresolvedCommand(ctx, binding)
-    }
+  return keymap.acquireResource(UNRESOLVED_COMMAND_WARNINGS_RESOURCE, () => {
+    return keymap.appendLayerAnalyzer((ctx) => {
+      for (const binding of ctx.bindings) {
+        warnUnresolvedCommand(ctx, binding)
+      }
+    })
   })
 }

@@ -1,17 +1,11 @@
-import type {
-  BindingInput,
-  BindingInputsValidationResult,
-  Bindings,
-  KeymapEvent,
-  ParsedBindingInput,
-} from "../../types.js"
+import type { Binding, BindingsValidationResult, Bindings, KeymapEvent, ParsedBinding } from "../../types.js"
 import { cloneKeySequence } from "../keys.js"
 
 function isKeyLike(value: unknown): boolean {
   return typeof value === "string" || (!!value && typeof value === "object" && !Array.isArray(value))
 }
 
-export function validateBindingInputs(bindings: unknown): BindingInputsValidationResult {
+export function validateBindings(bindings: unknown): BindingsValidationResult {
   if (!Array.isArray(bindings)) {
     return { ok: false, reason: "Invalid keymap bindings: expected an array of binding objects" }
   }
@@ -21,7 +15,7 @@ export function validateBindingInputs(bindings: unknown): BindingInputsValidatio
       return { ok: false, reason: `Invalid keymap binding at index ${index}: expected a binding object` }
     }
 
-    if (!isKeyLike((binding as BindingInput).key)) {
+    if (!isKeyLike((binding as Binding).key)) {
       return {
         ok: false,
         reason: `Invalid keymap binding at index ${index}: expected "key" to be a string or keystroke object`,
@@ -32,10 +26,10 @@ export function validateBindingInputs(bindings: unknown): BindingInputsValidatio
   return { ok: true }
 }
 
-export function snapshotBindingInputs<TTarget extends object, TEvent extends KeymapEvent>(
+export function snapshotBindings<TTarget extends object, TEvent extends KeymapEvent>(
   bindings: Bindings<TTarget, TEvent>,
-): BindingInput<TTarget, TEvent>[] {
-  const validation = validateBindingInputs(bindings)
+): Binding<TTarget, TEvent>[] {
+  const validation = validateBindings(bindings)
   if (!validation.ok) {
     throw new Error(validation.reason)
   }
@@ -46,9 +40,9 @@ export function snapshotBindingInputs<TTarget extends object, TEvent extends Key
   }))
 }
 
-export function snapshotParsedBindingInput<TTarget extends object, TEvent extends KeymapEvent>(
-  binding: ParsedBindingInput<TTarget, TEvent>,
-): ParsedBindingInput<TTarget, TEvent> {
+export function snapshotParsedBinding<TTarget extends object, TEvent extends KeymapEvent>(
+  binding: ParsedBinding<TTarget, TEvent>,
+): ParsedBinding<TTarget, TEvent> {
   return {
     ...binding,
     sequence: cloneKeySequence(binding.sequence),
