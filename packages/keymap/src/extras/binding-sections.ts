@@ -24,10 +24,7 @@ type LiteralStringKeys<T> = string extends Extract<keyof T, string> ? never : Ex
 
 const hasOwn = Object.prototype.hasOwnProperty
 
-export interface BindingDefaultsContext<
-  TTarget extends object = object,
-  TEvent extends KeymapEvent = KeymapEvent,
-> {
+export interface BindingDefaultsContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   section: string
   command: string
   binding: Readonly<Binding<TTarget, TEvent>>

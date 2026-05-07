@@ -1776,7 +1776,8 @@ const scenarios: BenchmarkScenario[] = [
   },
   {
     name: "binding_sections_large_mixed_defaults",
-    description: "Repeated binding-section resolution with binding defaults for many sections and mixed binding value shapes",
+    description:
+      "Repeated binding-section resolution with binding defaults for many sections and mixed binding value shapes",
     async setup() {
       const resources = await createScenarioResources()
       const config: Record<string, Record<string, BindingValue>> = Object.create(null)

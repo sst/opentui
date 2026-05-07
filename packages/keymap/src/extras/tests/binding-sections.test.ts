@@ -138,11 +138,7 @@ describe("resolveBindingSections helper", () => {
         exact: "4",
       },
     })
-    const section = [
-      ...resolved.sections.app,
-      { key: "f", cmd: fn },
-      { key: "x" },
-    ] satisfies Binding[]
+    const section = [...resolved.sections.app, { key: "f", cmd: fn }, { key: "x" }] satisfies Binding[]
     resolved.sections.app = section
 
     expect(resolved.omit("app", ["second", "missing", " exact "])).toEqual([
@@ -306,10 +302,7 @@ describe("resolveBindingSections helper", () => {
       },
     ])
     expect(resolved.pick("app", ["multi"]).map((item) => item.group)).toEqual(["Default group", "Explicit multi group"])
-    expect(resolved.omit("app", ["multi"]).map((item) => item.group)).toEqual([
-      "Explicit group",
-      "Default group",
-    ])
+    expect(resolved.omit("app", ["multi"]).map((item) => item.group)).toEqual(["Explicit group", "Default group"])
   })
 
   test("lets false, none, and empty arrays disable a command and lets later normalized entries replace earlier ones", () => {

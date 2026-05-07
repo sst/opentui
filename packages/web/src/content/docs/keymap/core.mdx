@@ -248,11 +248,11 @@ Command queries search and filter across top-level command fields and compiled c
 
 Pure extra exported from `@opentui/keymap/extras`:
 
-| Helper                           | Description                                                                                                          |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `commandBindings(map)`           | Converts a command-to-key object map into `Binding[]`, trimming command keys before emitting them                    |
-| `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                                      |
-| `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default                                 |
+| Helper                           | Description                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `commandBindings(map)`           | Converts a command-to-key object map into `Binding[]`, trimming command keys before emitting them                   |
+| `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                                     |
+| `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default                                |
 | `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)`, `pick(...)` and `omit(...)` helpers |
 
 `commandBindings()` accepts optional `onWarning` and `onError` callbacks. `onWarning` reports trimmed-command overrides such as `" save-file "` and `"save-file"`; invalid key values are skipped by default, and `onError` lets callers observe them or throw if they want strict behavior.
@@ -328,11 +328,11 @@ resolved.omit("app", ["app.exit"])
 
 The resolved object exposes three views:
 
-| API                       | Description                                                                                                       |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `sections[section]`       | All enabled bindings for the section, preserving section config order                                             |
-| `get(section, command)`   | Bindings for one command, or `undefined` when the section or command is missing/disabled                          |
-| `pick(section, commands)` | Bindings for the listed commands in caller command order; missing or disabled commands are skipped                |
+| API                       | Description                                                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `sections[section]`       | All enabled bindings for the section, preserving section config order                                            |
+| `get(section, command)`   | Bindings for one command, or `undefined` when the section or command is missing/disabled                         |
+| `pick(section, commands)` | Bindings for the listed commands in caller command order; missing or disabled commands are skipped               |
 | `omit(section, commands)` | All section bindings except matching string-command bindings, preserving section order; missing commands ignored |
 
 Use `bindingDefaults` to add app-level fields to every emitted binding without mutating the original config. Defaults are spread before the resolved binding, so explicit binding fields win. `pick()` and `omit()` use exact command names and do not trim. They are meant for hard-coded application command lists. Use them when one semantic config section feeds multiple activation layers.
