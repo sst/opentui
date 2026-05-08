@@ -1,4 +1,5 @@
 import { EventEmitter } from "events"
+import { readFile } from "node:fs/promises"
 import type { Pointer } from "./platform/ffi.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
 import type { AudioStats } from "./zig-structs.js"
@@ -104,9 +105,10 @@ export class Audio extends EventEmitter<AudioEvents> {
       options.sampleRate == null && options.playbackChannels == null
         ? undefined
         : {
-          sampleRate: options.sampleRate == null ? undefined : Math.max(0, Math.trunc(options.sampleRate)),
-          playbackChannels: options.playbackChannels == null ? undefined : Math.max(0, Math.trunc(options.playbackChannels)),
-        }
+            sampleRate: options.sampleRate == null ? undefined : Math.max(0, Math.trunc(options.sampleRate)),
+            playbackChannels:
+              options.playbackChannels == null ? undefined : Math.max(0, Math.trunc(options.playbackChannels)),
+          }
     this.engine = this.lib.createAudioEngine(createOptions)
     if (!this.engine) {
       this.emitError("createAudioEngine", undefined, "Audio createAudioEngine returned null")
@@ -178,7 +180,7 @@ export class Audio extends EventEmitter<AudioEvents> {
   }
 
   async loadSoundFile(filePath: string): Promise<AudioSound | null> {
-    const bytes = await Bun.file(filePath).arrayBuffer().catch((err) => {
+    const bytes = await readFile(filePath).catch((err) => {
       this.emitError("loadSoundFile", undefined, `Failed to read file '${filePath}': ${err.message}`, err)
       return null
     })
@@ -210,11 +212,11 @@ export class Audio extends EventEmitter<AudioEvents> {
   play(sound: AudioSound, options?: AudioPlayOptions): AudioVoice | null {
     const rawOptions = options
       ? {
-        volume: options.volume,
-        pan: options.pan,
-        loop: options.loop,
-        groupId: options.groupId ?? 0,
-      }
+          volume: options.volume,
+          pan: options.pan,
+          loop: options.loop,
+          groupId: options.groupId ?? 0,
+        }
       : undefined
 
     const engine = this.engine
@@ -396,7 +398,11 @@ export class Audio extends EventEmitter<AudioEvents> {
   clearPlaybackDeviceSelection(): void {
     const engine = this.engine
     if (!engine) {
-      this.emitError("clearPlaybackDeviceSelection", undefined, "Audio engine unavailable during clearPlaybackDeviceSelection")
+      this.emitError(
+        "clearPlaybackDeviceSelection",
+        undefined,
+        "Audio engine unavailable during clearPlaybackDeviceSelection",
+      )
       return
     }
     this.lib.audioClearPlaybackDeviceSelection(engine)
