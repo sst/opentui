@@ -65,14 +65,14 @@ const LIFECYCLE_WARMUP_ITERATIONS = Number(process.env.AUDIO_BENCH_LIFECYCLE_WAR
 const BURST_ITERATIONS = Number(process.env.AUDIO_BENCH_BURST_ITERS ?? 8000)
 const BURST_WARMUP_ITERATIONS = Number(process.env.AUDIO_BENCH_BURST_WARMUP ?? 200)
 const SAMPLE_RATE = 48_000
+const MAX_AUDIO_VOICES = 32
 
 const mixScenarios: MixScenario[] = [
   { name: "idle", activeVoices: 0, frameCount: 256, channels: 2 },
   { name: "playback_1_voice", activeVoices: 1, frameCount: 256, channels: 2 },
   { name: "playback_8_voices", activeVoices: 8, frameCount: 256, channels: 2 },
-  { name: "playback_32_voices", activeVoices: 32, frameCount: 256, channels: 2 },
-  { name: "playback_64_voices", activeVoices: 64, frameCount: 256, channels: 2 },
-  { name: "playback_128_voices", activeVoices: 128, frameCount: 256, channels: 2 },
+  { name: "playback_16_voices", activeVoices: 16, frameCount: 256, channels: 2 },
+  { name: "playback_32_voices", activeVoices: MAX_AUDIO_VOICES, frameCount: 256, channels: 2 },
 ]
 
 const lifecycleScenarios: VoiceLifecycleScenario[] = [
@@ -89,7 +89,12 @@ const burstScenarios: BurstScenario[] = [
   { name: "burst_32", startsPerTick: 32, frameCount: 256, channels: 2 },
 ]
 
-function buildMonoPcm16Wav(options: { frequency: number; durationMs: number; amplitude: number; decay: number }): Uint8Array {
+function buildMonoPcm16Wav(options: {
+  frequency: number
+  durationMs: number
+  amplitude: number
+  decay: number
+}): Uint8Array {
   const sampleCount = Math.max(1, Math.floor((SAMPLE_RATE * options.durationMs) / 1000))
   const channels = 1
   const bitsPerSample = 16
@@ -188,7 +193,11 @@ function runMixScenario(audio: Audio, soundId: number, scenario: MixScenario): M
   }
 }
 
-function runVoiceLifecycleScenario(audio: Audio, soundId: number, scenario: VoiceLifecycleScenario): VoiceLifecycleResult {
+function runVoiceLifecycleScenario(
+  audio: Audio,
+  soundId: number,
+  scenario: VoiceLifecycleScenario,
+): VoiceLifecycleResult {
   for (let i = 0; i < LIFECYCLE_WARMUP_ITERATIONS; i += 1) {
     for (let j = 0; j < scenario.operations; j += 1) {
       const voice = audio.play(soundId, { volume: 0.5, pan: 0, loop: false })
@@ -321,7 +330,9 @@ function main(): void {
   console.log(`Audio mix benchmark (${MIX_ITERATIONS} iterations, ${MIX_WARMUP_ITERATIONS} warmup)`)
   console.table(mixResults)
 
-  console.log(`Audio voice lifecycle benchmark (${LIFECYCLE_ITERATIONS} iterations, ${LIFECYCLE_WARMUP_ITERATIONS} warmup)`)
+  console.log(
+    `Audio voice lifecycle benchmark (${LIFECYCLE_ITERATIONS} iterations, ${LIFECYCLE_WARMUP_ITERATIONS} warmup)`,
+  )
   console.table(lifecycleResults)
 
   console.log(`Audio burst benchmark (${BURST_ITERATIONS} iterations, ${BURST_WARMUP_ITERATIONS} warmup)`)
