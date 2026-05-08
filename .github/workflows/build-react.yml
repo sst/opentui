@@ -5,11 +5,6 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  # Workaround for bug in Zig 0.15.2 (fixed in next version)
-  # https://github.com/ziglang/zig/issues/25805
-  ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.zig-global-cache
-
 jobs:
   test:
     name: Test (${{ matrix.os }})
@@ -30,7 +25,7 @@ jobs:
           bun-version: latest
 
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
 

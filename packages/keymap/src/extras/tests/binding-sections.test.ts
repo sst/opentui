@@ -101,6 +101,66 @@ describe("resolveBindingSections helper", () => {
     expect(resolved.get("custom", "run")).toEqual([{ key: "r", cmd: "run" }])
   })
 
+  test("picks command bindings from a section in caller order", () => {
+    const resolved = resolveBindingSections({
+      app: {
+        first: "1",
+        second: ["2a", { key: "2b", preventDefault: false }],
+        disabled: false,
+        third: "3",
+      },
+    })
+
+    expect(resolved.sections.app).toEqual([
+      { key: "1", cmd: "first" },
+      { key: "2a", cmd: "second" },
+      { key: "2b", cmd: "second", preventDefault: false },
+      { key: "3", cmd: "third" },
+    ])
+    expect(resolved.pick("app", ["third", "missing", "second", "disabled", "first"])).toEqual([
+      { key: "3", cmd: "third" },
+      { key: "2a", cmd: "second" },
+      { key: "2b", cmd: "second", preventDefault: false },
+      { key: "1", cmd: "first" },
+    ])
+    expect(resolved.pick("app", [" third "])).toEqual([])
+    expect(resolved.pick("missing", ["first"])).toEqual([])
+    expect(resolved.pick("app", [])).toEqual([])
+  })
+
+  test("omits command bindings from a section while preserving section order", () => {
+    const fn = () => {}
+    const resolved = resolveBindingSections({
+      app: {
+        first: "1",
+        second: ["2a", { key: "2b", preventDefault: false }],
+        third: "3",
+        exact: "4",
+      },
+    })
+    const section = [...resolved.sections.app, { key: "f", cmd: fn }, { key: "x" }] satisfies Binding[]
+    resolved.sections.app = section
+
+    expect(resolved.omit("app", ["second", "missing", " exact "])).toEqual([
+      { key: "1", cmd: "first" },
+      { key: "3", cmd: "third" },
+      { key: "4", cmd: "exact" },
+      { key: "f", cmd: fn },
+      { key: "x" },
+    ])
+    expect(resolved.omit("app", ["exact"])).toEqual([
+      { key: "1", cmd: "first" },
+      { key: "2a", cmd: "second" },
+      { key: "2b", cmd: "second", preventDefault: false },
+      { key: "3", cmd: "third" },
+      { key: "f", cmd: fn },
+      { key: "x" },
+    ])
+    expect(resolved.omit("app", [])).toEqual(section)
+    expect(resolved.omit("app", [])).not.toBe(section)
+    expect(resolved.omit("missing", ["first"])).toEqual([])
+  })
+
   test("can return a complete empty section shape for empty config", () => {
     const resolved = resolveBindingSections(
       {},
@@ -159,6 +219,90 @@ describe("resolveBindingSections helper", () => {
     expect(resolvedBinding).not.toBe(binding)
     expect(resolvedBinding?.key).not.toBe(key)
     expect(binding.cmd).toBe("ignored.command")
+  })
+
+  test("applies binding defaults without overriding explicit binding fields", () => {
+    const key = { name: "s", ctrl: true }
+    const binding = {
+      key,
+      desc: "Explicit description",
+      group: "Explicit group",
+      preventDefault: true,
+    }
+    const calls: string[] = []
+
+    const resolved = resolveBindingSections(
+      {
+        app: {
+          save: binding,
+          open: "o",
+          multi: ["m", { key: "shift+m", group: "Explicit multi group" }],
+          disabled: false,
+          empty: [],
+        },
+      },
+      {
+        bindingDefaults({ section, command, binding }) {
+          calls.push(`${section}.${command}.${String(binding.key)}`)
+          return {
+            key: "ignored-key",
+            cmd: "ignored-command",
+            desc: "Default description",
+            group: "Default group",
+            preventDefault: false,
+          }
+        },
+      },
+    )
+
+    expect(calls).toEqual(["app.save.[object Object]", "app.open.o", "app.multi.m", "app.multi.shift+m"])
+    expect(resolved.sections.app).toEqual([
+      {
+        key: { name: "s", ctrl: true },
+        cmd: "save",
+        desc: "Explicit description",
+        group: "Explicit group",
+        preventDefault: true,
+      },
+      {
+        key: "o",
+        cmd: "open",
+        desc: "Default description",
+        group: "Default group",
+        preventDefault: false,
+      },
+      {
+        key: "m",
+        cmd: "multi",
+        desc: "Default description",
+        group: "Default group",
+        preventDefault: false,
+      },
+      {
+        key: "shift+m",
+        cmd: "multi",
+        desc: "Default description",
+        group: "Explicit multi group",
+        preventDefault: false,
+      },
+    ])
+    expect(binding).toEqual({
+      key,
+      desc: "Explicit description",
+      group: "Explicit group",
+      preventDefault: true,
+    })
+    expect(resolved.get("app", "open")).toEqual([
+      {
+        key: "o",
+        cmd: "open",
+        desc: "Default description",
+        group: "Default group",
+        preventDefault: false,
+      },
+    ])
+    expect(resolved.pick("app", ["multi"]).map((item) => item.group)).toEqual(["Default group", "Explicit multi group"])
+    expect(resolved.omit("app", ["multi"]).map((item) => item.group)).toEqual(["Explicit group", "Default group"])
   })
 
   test("lets false, none, and empty arrays disable a command and lets later normalized entries replace earlier ones", () => {

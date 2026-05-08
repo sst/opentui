@@ -7,9 +7,6 @@ on:
 
 env:
   ZIG_VERSION: 0.15.2
-  # Workaround for bug in Zig 0.15.2 (fixed in next version)
-  # https://github.com/ziglang/zig/issues/25805
-  ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.zig-global-cache
 
 jobs:
   build:
@@ -25,7 +22,7 @@ jobs:
           bun-version: latest
 
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
 
@@ -70,7 +67,7 @@ jobs:
           bun-version: latest
 
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
 

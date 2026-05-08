@@ -248,12 +248,12 @@ Command queries search and filter across top-level command fields and compiled c
 
 Pure extra exported from `@opentui/keymap/extras`:
 
-| Helper                           | Description                                                                                       |
-| -------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `commandBindings(map)`           | Converts a command-to-key object map into `Binding[]`, trimming command keys before emitting them |
-| `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                   |
-| `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default              |
-| `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)` lookup             |
+| Helper                           | Description                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `commandBindings(map)`           | Converts a command-to-key object map into `Binding[]`, trimming command keys before emitting them                   |
+| `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                                     |
+| `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default                                |
+| `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)`, `pick(...)` and `omit(...)` helpers |
 
 `commandBindings()` accepts optional `onWarning` and `onError` callbacks. `onWarning` reports trimmed-command overrides such as `" save-file "` and `"save-file"`; invalid key values are skipped by default, and `onError` lets callers observe them or throw if they want strict behavior.
 
@@ -289,26 +289,53 @@ formatKeySequence(keymap.parseKeySequence("<leader>s"), {
 formatCommandBindings(keymap.getCommandBindings({ visibility: "registered", commands: ["save-file"] }).get("save-file"))
 ```
 
-`resolveBindingSections()` is an opinionated config-to-keymap transformation for app-level config split by real registration site. It is one practical shape; copy and adjust it if your app needs different rules. Values can be `false`, `"none"`, a key, a full binding object, or arrays of keys/binding objects. `false`, `"none"`, and empty arrays emit no bindings. The command name comes from the record key.
+`resolveBindingSections()` is an opinionated config-to-keymap transformation for app-level config split into named sections. It is one practical shape; copy and adjust it if your app needs different rules. Values can be `false`, `"none"`, a key, a full binding object, or arrays of keys/binding objects. `false`, `"none"`, and empty arrays emit no bindings. The command name comes from the record key.
 
 ```ts
 import { resolveBindingSections } from "@opentui/keymap/extras"
 
-const resolved = resolveBindingSections({
-  app: {
-    "command.palette.show": "ctrl+p",
-    "app.exit": ["ctrl+c", "<leader>q"],
+const sectionGroups = {
+  app: "Global",
+  prompt_input: "Prompt",
+}
+
+const resolved = resolveBindingSections(
+  {
+    app: {
+      "command.palette.show": "ctrl+p",
+      "app.exit": ["ctrl+c", "<leader>q"],
+      "app.debug": "none",
+    },
+    prompt_input: {
+      "prompt.paste": { key: "ctrl+v", preventDefault: false },
+      "prompt.history.previous": "up",
+      "prompt.history.next": "down",
+    },
   },
-  prompt_input: {
-    "prompt.paste": { key: "ctrl+v", preventDefault: false },
-    "prompt.history.previous": "up",
-    "prompt.history.next": "down",
+  {
+    bindingDefaults({ section, binding }) {
+      if (binding.group !== undefined) return
+      return { group: sectionGroups[section as keyof typeof sectionGroups] }
+    },
   },
-})
+)
 
 keymap.registerLayer({ bindings: resolved.sections.app })
 resolved.get("app", "app.exit")
+resolved.pick("prompt_input", ["prompt.history.previous", "prompt.history.next"])
+resolved.omit("app", ["app.exit"])
 ```
+
+The resolved object exposes three views:
+
+| API                       | Description                                                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `sections[section]`       | All enabled bindings for the section, preserving section config order                                            |
+| `get(section, command)`   | Bindings for one command, or `undefined` when the section or command is missing/disabled                         |
+| `pick(section, commands)` | Bindings for the listed commands in caller command order; missing or disabled commands are skipped               |
+| `omit(section, commands)` | All section bindings except matching string-command bindings, preserving section order; missing commands ignored |
+
+Use `bindingDefaults` to add app-level fields to every emitted binding without mutating the original config. Defaults are spread before the resolved binding, so explicit binding fields win. `pick()` and `omit()` use exact command names and do not trim. They are meant for hard-coded application command lists. Use them when one semantic config section feeds multiple activation layers.
 
 Tokens such as `leader` are still registered through the normal keymap token APIs and referenced by parser syntax such as `<leader>`.
 

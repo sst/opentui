@@ -1389,6 +1389,87 @@ describe("StdinParser", () => {
       }
     })
 
+    test("aborting a pending startup cursor CPR swallows a reply that finishes later", () => {
+      const parser = createParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[24;80"))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("R"))
+        expect(snap(parser)).toEqual([])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR swallows a reply split after the CSI introducer", () => {
+      const parser = createParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b["))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        parser.push(Buffer.from("24;80R"))
+        expect(snap(parser)).toEqual([])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR preserves explicit-width CPR replies", () => {
+      const parser = createParser({
+        protocolContext: {
+          startupCursorCprActive: true,
+          explicitWidthCprActive: true,
+        },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b["))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        parser.push(Buffer.from("1;2R"))
+        expect(snap(parser)).toEqual([resp("cpr", "\x1b[1;2R")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR preserves later non-CPR input", () => {
+      const parser = createParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[24;80"))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        parser.push(Buffer.from("a"))
+        expect(snap(parser)).toEqual([k("a")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
     test("deferred explicit-width CPR flushes when probe context is cleared", () => {
       const { parser, clock } = createTimedParser({
         protocolContext: { explicitWidthCprActive: true },

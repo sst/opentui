@@ -7,12 +7,19 @@ pub const SplitScrollback = struct {
         self.tail_column = 0;
     }
 
-    pub fn renderOffset(self: *const SplitScrollback, pinned_render_offset: u32) u32 {
-        if (pinned_render_offset == 0) {
+    pub fn renderOffset(self: *const SplitScrollback, surface_offset: u32) u32 {
+        if (surface_offset == 0) {
             return 0;
         }
 
-        return @min(self.published_rows, pinned_render_offset);
+        return @min(self.published_rows, surface_offset);
+    }
+
+    pub fn noteViewportScroll(self: *SplitScrollback, lines: u32) void {
+        self.published_rows = self.published_rows - @min(lines, self.published_rows);
+        if (self.published_rows == 0) {
+            self.tail_column = 0;
+        }
     }
 
     pub fn noteNewline(self: *SplitScrollback) void {

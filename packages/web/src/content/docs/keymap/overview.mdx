@@ -252,6 +252,32 @@ That data also drives activation. Layer, binding and command fields can depend o
 
 `activeWhen(matcher)` is an arbitrary runtime predicate or `ReactiveMatcher`. Use it for derived or external state, such as whether an editor has a selection.
 
+### Application modes
+
+Runtime data is useful for application-specific modes that only exist to control keymap activation. Put that state on the keymap, expose it through a custom field, and let layers declare when they are active.
+
+```ts
+keymap.registerLayerFields({
+  appMode(value, ctx) {
+    ctx.require("app.mode", value)
+  },
+})
+
+keymap.setData("app.mode", "base")
+
+keymap.registerLayer({
+  appMode: "base",
+  bindings: [{ key: "ctrl+p", cmd: "palette.open" }],
+})
+
+keymap.registerLayer({
+  appMode: "palette",
+  bindings: [{ key: "escape", cmd: "palette.close" }],
+})
+```
+
+Changing `app.mode` recomputes active layers immediately. This keeps keymap-only state out of framework context or component props, while still letting normal layer ordering handle conflicts inside the active mode. If several independent overlays can be open at once, model that explicitly with a stack, depth counter or distinct mode values before writing the runtime data back.
+
 ## Pending sequences and active keys
 
 A pending sequence is the prefix the user has already typed, such as `g` while waiting to see whether the next key completes `gg` or `gd`. `getPendingSequence()` exposes that prefix, and `clearPendingSequence()` / `popPendingSequence()` let addons or app code manage it explicitly.
@@ -265,6 +291,7 @@ A pending sequence is the prefix the user has already typed, such as `g` while w
 | `@opentui/keymap`                | Main engine entry: `Keymap`, key stringifiers and shared types             |
 | `@opentui/keymap/addons`         | Universal addons for parser stages, metadata, diagnostics and sequences    |
 | `@opentui/keymap/addons/opentui` | Universal addons plus OpenTUI-specific base-layout and edit-buffer helpers |
+| `@opentui/keymap/extras`         | Pure config and formatting helpers                                         |
 | `@opentui/keymap/extras/graph`   | Graph snapshot helpers for debug and graph UIs                             |
 | `@opentui/keymap/testing`        | Host-agnostic fake host and diagnostics for addon tests                    |
 | `@opentui/keymap/opentui`        | OpenTUI host adapter for terminal apps built on `@opentui/core`            |
