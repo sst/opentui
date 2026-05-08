@@ -76,6 +76,35 @@ test("Audio loads wav and mixes frames", () => {
   expect(audio.getStats()?.soundsLoaded).toBe(1)
 })
 
+test("Audio unloads sounds and invalidates old handles", () => {
+  const audio = Audio.create({ autoStart: false })
+  audio.on("error", () => {})
+  instances.push(audio)
+
+  const first = audio.loadSound(buildMonoPcm16Wav([0, 0.25, -0.25, 0.5, -0.5, 0]))
+  expect(first).not.toBeNull()
+  if (first == null) return
+
+  expect(audio.start()).toBe(true)
+  const firstVoice = audio.play(first, { volume: 1, pan: 0, loop: true })
+  expect(firstVoice).not.toBeNull()
+  expect(audio.getStats()?.voicesActive).toBeGreaterThan(0)
+
+  expect(audio.unloadSound(first)).toBe(true)
+  expect(audio.getStats()?.soundsLoaded).toBe(0)
+  expect(audio.getStats()?.voicesActive).toBe(0)
+  expect(audio.play(first, { volume: 1 })).toBeNull()
+  expect(audio.unloadSound(first)).toBe(false)
+
+  const second = audio.loadSound(buildMonoPcm16Wav([0.6, -0.2, 0.4, -0.4, 0.3, -0.1]))
+  expect(second).not.toBeNull()
+  if (second == null) return
+  expect(second).not.toBe(first)
+
+  const secondVoice = audio.play(second, { volume: 1, pan: 0, loop: false })
+  expect(secondVoice).not.toBeNull()
+})
+
 test("Audio mixes into mono and multichannel output buffers", () => {
   const audio = Audio.create({ autoStart: false })
   instances.push(audio)

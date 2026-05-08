@@ -141,6 +141,66 @@ test "audio - load valid wav returns sound id" {
     try testing.expectEqual(@as(u32, 1), stats.sounds_loaded);
 }
 
+test "audio - unload frees loaded sound and invalidates handle" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    const mono_samples = [_]i16{ 0, 8000, -8000, 12_000, -12_000, 0 };
+    const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
+
+    try expectStatusOk(audio.unload(engine, sound_id));
+
+    var stats: audio.Stats = undefined;
+    try expectStatusOk(audio.getStats(engine, &stats));
+    try testing.expectEqual(@as(u32, 0), stats.sounds_loaded);
+
+    var voice_id: u32 = 0;
+    const options = audio.VoiceOptions{ .volume = 1, .pan = 0, .loop = false, .group_id = 0 };
+    try testing.expectEqual(audio.Status.err_not_found, audio.play(engine, sound_id, &options, &voice_id));
+    try testing.expectEqual(audio.Status.err_not_found, audio.unload(engine, sound_id));
+}
+
+test "audio - unload stops active voices for sound" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    const mono_samples = [_]i16{ 2000, -2000, 4000, -4000, 2000, -2000 };
+    const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
+    try expectStatusOk(audio.start(engine, null));
+
+    const voice_id = try playLoop(engine, sound_id, 0, 0);
+    try testing.expect(engine.voices[voice_id - 1].active);
+
+    try expectStatusOk(audio.unload(engine, sound_id));
+    try testing.expect(!engine.voices[voice_id - 1].active);
+
+    var stats: audio.Stats = undefined;
+    try expectStatusOk(audio.getStats(engine, &stats));
+    try testing.expectEqual(@as(u32, 0), stats.sounds_loaded);
+    try testing.expectEqual(@as(u32, 0), stats.voices_active);
+}
+
+test "audio - unloaded sound id is not reused by later loads" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    const first_samples = [_]i16{ 0, 8000, -8000, 0 };
+    const first_sound_id = try loadSoundFromSamples(engine, 1, &first_samples);
+    try expectStatusOk(audio.unload(engine, first_sound_id));
+
+    const second_samples = [_]i16{ 1000, -1000, 5000, -5000 };
+    const second_sound_id = try loadSoundFromSamples(engine, 1, &second_samples);
+    try testing.expect(second_sound_id != first_sound_id);
+
+    try expectStatusOk(audio.start(engine, null));
+
+    var voice_id: u32 = 0;
+    const options = audio.VoiceOptions{ .volume = 1, .pan = 0, .loop = false, .group_id = 0 };
+    try testing.expectEqual(audio.Status.err_not_found, audio.play(engine, first_sound_id, &options, &voice_id));
+    try expectStatusOk(audio.play(engine, second_sound_id, &options, &voice_id));
+    try testing.expect(voice_id > 0);
+}
+
 test "audio - createGroup creates and deduplicates group" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);

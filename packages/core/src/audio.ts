@@ -52,6 +52,7 @@ export type AudioAction =
   | "stop"
   | "loadSound"
   | "loadSoundFile"
+  | "unloadSound"
   | "group"
   | "play"
   | "stopVoice"
@@ -186,6 +187,21 @@ export class Audio extends EventEmitter<AudioEvents> {
     })
     if (bytes == null) return null
     return this.loadSound(bytes)
+  }
+
+  unloadSound(sound: AudioSound): boolean {
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("unloadSound", undefined, "Audio engine unavailable during unloadSound")
+      return false
+    }
+
+    const status = this.lib.audioUnload(engine, sound)
+    if (status !== 0) {
+      this.emitError("unloadSound", status)
+      return false
+    }
+    return true
   }
 
   group(name: string): AudioGroup | null {

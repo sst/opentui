@@ -56,6 +56,7 @@ pub const Stats = extern struct {
 };
 
 const Sound = struct {
+    loaded: bool = true,
     channels: u16,
     sample_rate: u32,
     samples: []f32,
@@ -169,7 +170,9 @@ pub const Engine = struct {
         }
 
         for (self.sounds.items) |sound| {
-            self.allocator.free(sound.samples);
+            if (sound.loaded) {
+                self.allocator.free(sound.samples);
+            }
         }
 
         self.sounds.deinit(self.allocator);
@@ -198,6 +201,14 @@ pub const Engine = struct {
             if (voice.active) active += 1;
         }
         self.stats.voices_active = active;
+    }
+
+    fn updateLoadedSoundCount(self: *Engine) void {
+        var loaded: u32 = 0;
+        for (self.sounds.items) |sound| {
+            if (sound.loaded) loaded += 1;
+        }
+        self.stats.sounds_loaded = loaded;
     }
 };
 
@@ -413,6 +424,7 @@ fn decodeSoundUnknownLength(allocator: std.mem.Allocator, data_source: *c.ma_dat
     }
 
     return .{
+        .loaded = true,
         .channels = channels,
         .sample_rate = sample_rate,
         .samples = try samples.toOwnedSlice(allocator),
@@ -717,7 +729,38 @@ pub fn load(engine: *Engine, data_ptr: ?[*]const u8, data_len: usize, out_sound_
     };
 
     out_sound_id.?.* = @intCast(e.sounds.items.len);
-    e.stats.sounds_loaded = @intCast(e.sounds.items.len);
+    e.updateLoadedSoundCount();
+    return Status.ok;
+}
+
+pub fn unload(engine: *Engine, sound_id: u32) i32 {
+    if (sound_id == 0) return Status.err_invalid;
+    const e = engine;
+
+    e.lock.lock();
+    defer e.lock.unlock();
+
+    const sound_index: usize = @intCast(sound_id - 1);
+    if (sound_index >= e.sounds.items.len) return Status.err_not_found;
+
+    const sound = &e.sounds.items[sound_index];
+    if (!sound.loaded) return Status.err_not_found;
+
+    for (&e.voices) |*voice| {
+        if (voice.active and voice.sound_index == sound_index) {
+            clearVoice(voice);
+        }
+    }
+
+    const empty_samples = sound.samples[0..0];
+    e.allocator.free(sound.samples);
+    sound.samples = empty_samples;
+    sound.loaded = false;
+    sound.channels = 0;
+    sound.sample_rate = 0;
+
+    e.updateActiveVoiceCount();
+    e.updateLoadedSoundCount();
     return Status.ok;
 }
 
@@ -793,6 +836,7 @@ pub fn play(engine: *Engine, sound_id: u32, options_ptr: ?*const VoiceOptions, o
     clearVoice(slot);
 
     const sound = e.sounds.items[@intCast(sound_id - 1)];
+    if (!sound.loaded) return Status.err_not_found;
     const frame_count: usize = sound.samples.len / @as(usize, sound.channels);
 
     if (c.ma_audio_buffer_ref_init(c.ma_format_f32, sound.channels, sound.samples.ptr, @intCast(frame_count), &slot.buffer_ref) != c.MA_SUCCESS) {

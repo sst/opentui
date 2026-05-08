@@ -1,4 +1,12 @@
-import { dlopen, ffiBool, ptr, toArrayBuffer, toPointer, type FFICallbackInstance, type Pointer } from "./platform/ffi.js"
+import {
+  dlopen,
+  ffiBool,
+  ptr,
+  toArrayBuffer,
+  toPointer,
+  type FFICallbackInstance,
+  type Pointer,
+} from "./platform/ffi.js"
 import { writeFile } from "./platform/runtime.js"
 import { existsSync, writeFileSync } from "fs"
 import { EventEmitter } from "events"
@@ -1183,6 +1191,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "u64", "ptr"],
       returns: "i32",
     },
+    audioUnload: {
+      args: ["ptr", "u32"],
+      returns: "i32",
+    },
     audioPlay: {
       args: ["ptr", "u32", "ptr", "ptr"],
       returns: "i32",
@@ -1532,7 +1544,12 @@ export interface AudioEngineLib {
   audioStart: (engine: Pointer, options?: AudioStartOptions | null) => number
   audioStop: (engine: Pointer) => number
   audioLoad: (engine: Pointer, data: Uint8Array) => { status: number; soundId: number | null }
-  audioPlay: (engine: Pointer, soundId: number, options?: AudioVoiceOptions) => { status: number; voiceId: number | null }
+  audioUnload: (engine: Pointer, soundId: number) => number
+  audioPlay: (
+    engine: Pointer,
+    soundId: number,
+    options?: AudioVoiceOptions,
+  ) => { status: number; voiceId: number | null }
   audioStopVoice: (engine: Pointer, voiceId: number) => number
   audioSetVoiceGroup: (engine: Pointer, voiceId: number, groupId: number) => number
   audioCreateGroup: (engine: Pointer, name: string) => { status: number; groupId: number | null }
@@ -4029,7 +4046,9 @@ class FFIRenderLib implements RenderLib {
 
   public audioGetPlaybackDeviceName(engine: Pointer, index: number): string {
     const outBuffer = new Uint8Array(512)
-    const bytesWritten = toNumber(this.opentui.symbols.audioGetPlaybackDeviceName(engine, index, ptr(outBuffer), outBuffer.length))
+    const bytesWritten = toNumber(
+      this.opentui.symbols.audioGetPlaybackDeviceName(engine, index, ptr(outBuffer), outBuffer.length),
+    )
     const safeBytesWritten = Math.max(0, Math.min(outBuffer.length, bytesWritten))
     return this.decoder.decode(outBuffer.subarray(0, safeBytesWritten))
   }
@@ -4065,10 +4084,23 @@ class FFIRenderLib implements RenderLib {
     return { status, soundId: view[0] }
   }
 
-  public audioPlay(engine: Pointer, soundId: number, options?: AudioVoiceOptions): { status: number; voiceId: number | null } {
+  public audioUnload(engine: Pointer, soundId: number): number {
+    return this.opentui.symbols.audioUnload(engine, soundId)
+  }
+
+  public audioPlay(
+    engine: Pointer,
+    soundId: number,
+    options?: AudioVoiceOptions,
+  ): { status: number; voiceId: number | null } {
     const outBuffer = new ArrayBuffer(4)
     const optionsBuffer = options ? AudioVoiceOptionsStruct.pack(options) : null
-    const status = this.opentui.symbols.audioPlay(engine, soundId, optionsBuffer ? ptr(optionsBuffer) : null, ptr(outBuffer))
+    const status = this.opentui.symbols.audioPlay(
+      engine,
+      soundId,
+      optionsBuffer ? ptr(optionsBuffer) : null,
+      ptr(outBuffer),
+    )
     if (status !== 0) {
       return { status, voiceId: null }
     }
@@ -4118,7 +4150,13 @@ class FFIRenderLib implements RenderLib {
     channels: number,
   ): { status: number; framesRead: number } {
     const outFramesReadBuffer = new ArrayBuffer(4)
-    const status = this.opentui.symbols.audioReadTap(engine, ptr(outBuffer), frameCount, channels, ptr(outFramesReadBuffer))
+    const status = this.opentui.symbols.audioReadTap(
+      engine,
+      ptr(outBuffer),
+      frameCount,
+      channels,
+      ptr(outFramesReadBuffer),
+    )
     if (status !== 0) {
       return { status, framesRead: 0 }
     }
