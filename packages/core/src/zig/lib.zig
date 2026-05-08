@@ -252,6 +252,10 @@ export fn syncSplitScrollback(rendererPtr: *renderer.CliRenderer, pinnedRenderOf
     return rendererPtr.syncSplitScrollback(pinnedRenderOffset);
 }
 
+export fn getSplitOutputOffset(rendererPtr: *renderer.CliRenderer, surfaceOffset: u32) u32 {
+    return rendererPtr.getSplitOutputOffset(surfaceOffset);
+}
+
 export fn setPendingSplitFooterTransition(
     rendererPtr: *renderer.CliRenderer,
     mode: u8,
@@ -259,6 +263,7 @@ export fn setPendingSplitFooterTransition(
     sourceHeight: u32,
     targetTopLine: u32,
     targetHeight: u32,
+    scrollLines: u32,
 ) void {
     rendererPtr.setPendingSplitFooterTransition(
         @enumFromInt(mode),
@@ -266,6 +271,7 @@ export fn setPendingSplitFooterTransition(
         sourceHeight,
         targetTopLine,
         targetHeight,
+        scrollLines,
     );
 }
 

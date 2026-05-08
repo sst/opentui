@@ -1,5 +1,4 @@
 import type { KeymapEvent, KeymapHost, RegisteredLayer } from "../../types.js"
-import type { LayersState } from "../state.js"
 
 export function getFocusedTargetIfAvailable<TTarget extends object, TEvent extends KeymapEvent>(
   host: KeymapHost<TTarget, TEvent>,
@@ -43,35 +42,32 @@ export function getActivationPath<TTarget extends object, TEvent extends KeymapE
 }
 
 export function getActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
-  state: LayersState<TTarget, TEvent>,
+  layers: readonly RegisteredLayer<TTarget, TEvent>[] | ReadonlySet<RegisteredLayer<TTarget, TEvent>>,
   host: KeymapHost<TTarget, TEvent>,
   focused: TTarget | null,
 ): readonly RegisteredLayer<TTarget, TEvent>[] {
-  if (state.activeLayersCacheVersion === state.activeLayersVersion && state.activeLayersCacheFocused === focused) {
-    return state.activeLayersCache
-  }
-
   const activeLayers: RegisteredLayer<TTarget, TEvent>[] = []
   const activationPath = getActivationPath(host, focused)
+  const sortedLayers = Array.isArray(layers)
+    ? layers
+    : getSortedLayers(layers as ReadonlySet<RegisteredLayer<TTarget, TEvent>>)
 
-  for (const layer of state.sortedLayers) {
+  for (const layer of sortedLayers) {
     if (isLayerActiveForFocused(host, layer, focused, activationPath)) {
       activeLayers.push(layer)
     }
   }
 
-  state.activeLayersCacheVersion = state.activeLayersVersion
-  state.activeLayersCacheFocused = focused
-  state.activeLayersCache = activeLayers
   return activeLayers
 }
 
-export function invalidateCachedActiveLayers<TTarget extends object, TEvent extends KeymapEvent>(
-  state: LayersState<TTarget, TEvent>,
-): void {
-  state.activeLayersCacheVersion = -1
-  state.activeLayersCacheFocused = undefined
-  state.activeLayersCache = []
+export function getSortedLayers<TTarget extends object, TEvent extends KeymapEvent>(
+  layers: ReadonlySet<RegisteredLayer<TTarget, TEvent>>,
+): RegisteredLayer<TTarget, TEvent>[] {
+  return [...layers].sort((left, right) => {
+    const priorityDiff = right.priority - left.priority
+    return priorityDiff || right.order - left.order
+  })
 }
 
 export function isLayerActiveForFocused<TTarget extends object, TEvent extends KeymapEvent>(

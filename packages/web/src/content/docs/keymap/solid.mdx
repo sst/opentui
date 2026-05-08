@@ -76,7 +76,7 @@ await render(
 
 ## `useBindings`
 
-`useBindings()` registers a full `LayerFields<Renderable, KeyEvent>` object. The returned layer can include `priority`, `enabled`, `bindings`, `commands` and any custom addon fields.
+`useBindings()` registers a layer-like object. The returned layer can include `priority`, `enabled`, `bindings`, `commands` and any custom addon fields.
 
 Solid runs `createLayer()` inside a reactive `createEffect`. Any tracked signals or memos you read inside the factory become dependencies, so the hook will unregister and re-register the layer when those values change. If the factory does not read reactive values, the layer stays stable.
 
@@ -89,7 +89,7 @@ Solid-specific layer shapes:
 | Local exact-focus layer    | Set `target` accessor and `targetMode: "focus"` |
 
 - When `target` is present and `targetMode` is omitted, `focus-within` is used.
-- If the target accessor returns `undefined`, registration waits until it resolves.
+- If the target accessor returns `null` or `undefined`, registration waits until it resolves.
 - Passing a local `targetMode` without `target` throws.
 
 ## `useKeymapSelector()`

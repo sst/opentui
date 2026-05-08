@@ -1642,7 +1642,7 @@ test "renderer - repaintSplitFooter applies pending viewport scroll transition i
 
     _ = cli_renderer.resetSplitScrollback(4, 4);
     cli_renderer.setRenderOffset(3);
-    cli_renderer.setPendingSplitFooterTransition(.viewport_scroll, 4, 2, 5, 1);
+    cli_renderer.setPendingSplitFooterTransition(.viewport_scroll, 4, 2, 5, 1, 1);
 
     const next_buffer = cli_renderer.getNextBuffer();
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
@@ -1668,6 +1668,39 @@ test "renderer - repaintSplitFooter applies pending viewport scroll transition i
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncReset));
 }
 
+test "renderer - repaintSplitFooter viewport scroll uses explicit split scroll delta when gap already exists" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        8,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(6, 6);
+    cli_renderer.splitScrollback.noteViewportScroll(2);
+    cli_renderer.setRenderOffset(6);
+    cli_renderer.setPendingSplitFooterTransition(.viewport_scroll, 7, 4, 3, 8, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    _ = cli_renderer.repaintSplitFooter(2, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[2S") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[4S") == null);
+    try std.testing.expectEqual(@as(u32, 2), cli_renderer.getSplitOutputOffset(2));
+}
+
 test "renderer - repaintSplitFooter applies pending stale row clear transition in one frame" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1684,7 +1717,7 @@ test "renderer - repaintSplitFooter applies pending stale row clear transition i
     defer cli_renderer.destroy();
 
     _ = cli_renderer.resetSplitScrollback(1, 7);
-    cli_renderer.setPendingSplitFooterTransition(.clear_stale_rows, 2, 4, 2, 3);
+    cli_renderer.setPendingSplitFooterTransition(.clear_stale_rows, 2, 4, 2, 3, 0);
 
     const next_buffer = cli_renderer.getNextBuffer();
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);

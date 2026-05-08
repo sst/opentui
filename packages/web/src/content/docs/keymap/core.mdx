@@ -26,6 +26,7 @@ Bare keymaps do not parse string bindings until you install binding parsers and 
 
 | Member                        | Required | Description                                                                                                      |
 | ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| `metadata`                    | yes      | Platform, primary shortcut modifier and modifier capability metadata                                             |
 | `rootTarget`                  | yes      | Root target for the host hierarchy                                                                               |
 | `isDestroyed`                 | yes      | Host lifetime flag                                                                                               |
 | `getFocusedTarget()`          | yes      | Returns the currently focused target or `null`                                                                   |
@@ -71,14 +72,14 @@ keymap.registerLayer({
 })
 ```
 
-| Field        | Description                                                                                  |
-| ------------ | -------------------------------------------------------------------------------------------- |
-| `target`     | Optional local target. Omit it for a global layer                                            |
-| `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present         |
-| `priority`   | Higher numbers win. Within the same priority, newer layers win                               |
-| `bindings`   | `BindingInput[]`                                                                             |
-| `commands`   | Named command definitions registered with the same layer                                     |
-| extra fields | Feed layer-field compilers and binding compilation. Layer fields do not surface public attrs |
+| Field        | Description                                                                          |
+| ------------ | ------------------------------------------------------------------------------------ |
+| `target`     | Optional local target. Omit it for a global layer                                    |
+| `targetMode` | `"focus-within"` or `"focus"`. Defaults to `"focus-within"` when `target` is present |
+| `priority`   | Higher numbers win. Within the same priority, newer layers win                       |
+| `bindings`   | `Binding[]`                                                                          |
+| `commands`   | Named command definitions registered with the same layer                             |
+| extra fields | Custom fields used by registered layer-field compilers and binding pipeline addons   |
 
 - Targetless layers are always active.
 - Active layers all use the same precedence rules: higher `priority` wins, then newer layers win.
@@ -90,15 +91,17 @@ keymap.registerLayer({
 | Form            | Example                              | Notes                                         |
 | --------------- | ------------------------------------ | --------------------------------------------- |
 | String stroke   | `"x"`, `"ctrl+x"`, `"enter"`         | Requires a registered binding parser          |
-| String sequence | `"dd"`, `"<leader>s"`                | Concatenated multi-stroke sequence            |
+| String sequence | `"dd"`, `"<leader>s"`, `"{count}j"`  | Concatenated multi-stroke sequence            |
 | Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly  |
 | Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only |
 
-The core engine only accepts full `BindingInput[]` arrays. If you want command-to-key config sugar, use `commandBindings(map)` from `@opentui/keymap/extras` to build the array before calling `registerLayer()`.
+The core engine only accepts full `Binding[]` arrays. If you want command-to-key config sugar, use `commandBindings(map)` from `@opentui/keymap/extras` to build the array before calling `registerLayer()`.
 
-`BindingInput` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
+`Binding` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 
-`BindingInput` field defaults:
+Use `attr(...)` in a binding-field compiler when a custom binding field should appear in query metadata such as `ActiveBinding.attrs` or `ActiveKey.bindingAttrs`.
+
+`Binding` field defaults:
 
 | Field            | Default   | Description                                                                                  |
 | ---------------- | --------- | -------------------------------------------------------------------------------------------- |
@@ -108,27 +111,45 @@ The core engine only accepts full `BindingInput[]` arrays. If you want command-t
 
 Release bindings dispatch on key release, but they do not appear in `getActiveKeys()` because active-key discovery is based on press/pending-sequence state.
 
-The shared default parser understands single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key and `<token>` segments. Spaced Emacs-style sequences such as `ctrl+x ctrl+s` are not part of the default parser.
+The shared default parser understands single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key, `<token>` aliases, and `{pattern}` runtime captures. Spaced Emacs-style sequences such as `ctrl+x ctrl+s` are not part of the default parser.
+
+Token and pattern registration names are syntax-free. The default parser maps `<leader>` to the token named `"leader"` and `{count}` to the sequence pattern named `"count"`. Parser-preserved display keeps the original syntax for UIs, while the engine stores semantic names.
+
+Sequence patterns can capture repeated runtime input and pass finalized values to command payloads:
+
+| Pattern field | Description                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------- |
+| `name`        | Semantic pattern name, also the default command payload key                                  |
+| `display`     | Optional parser-facing display override for structural graph/help UI                         |
+| `payloadKey`  | Optional override when the command payload field should differ from `name`                   |
+| `min` / `max` | Optional capture limits. Defaults to at least one input and no practical maximum             |
+| `match`       | Runtime event predicate that returns a captured value/display or `undefined` for no match    |
+| `finalize`    | Optional conversion from captured values to the final payload value, e.g. digits to a number |
+
+Patterns with the default unbounded `max` must be followed by a concrete continuation, such as `{count}j`; terminal unbounded patterns are rejected.
 
 ## State and discovery
 
-| Method                    | Description                                                                                                                      |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `setData(name, value)`    | Write runtime data                                                                                                               |
-| `getData(name)`           | Read runtime data                                                                                                                |
-| `hasPendingSequence()`    | `true` when a multi-stroke prefix is active                                                                                      |
-| `getPendingSequence()`    | Current pending sequence as `KeySequencePart[]`                                                                                  |
-| `clearPendingSequence()`  | Clears the pending sequence                                                                                                      |
-| `popPendingSequence()`    | Removes the last pending stroke. Returns `true` when a stroke was removed                                                        |
-| `getActiveKeys(options?)` | Returns the currently reachable keys for the current focus and pending state                                                     |
-| `createKeyMatcher(key)`   | Parses one `KeyLike` and returns a single-stroke predicate for any `KeyStringifyInput`. It does not match multi-stroke sequences |
+| Method                     | Description                                                                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `setData(name, value)`     | Write runtime data                                                                                                               |
+| `getData(name)`            | Read runtime data                                                                                                                |
+| `hasPendingSequence()`     | `true` when a multi-stroke prefix is active                                                                                      |
+| `getPendingSequence()`     | Current pending sequence as `KeySequencePart[]`                                                                                  |
+| `clearPendingSequence()`   | Clears the pending sequence                                                                                                      |
+| `popPendingSequence()`     | Removes the last pending stroke. Returns `true` when a stroke was removed                                                        |
+| `getActiveKeys(options?)`  | Returns the currently reachable keys for the current focus and pending state                                                     |
+| `parseKeySequence(key)`    | Parses a `KeyLike` with the current parser/token/pattern environment                                                             |
+| `formatKey(key, options?)` | Parses and stringifies a `KeyLike` with the current environment                                                                  |
+| `createKeyMatcher(key)`    | Parses one `KeyLike` and returns a single-stroke predicate for any `KeyStringifyInput`. It does not match multi-stroke sequences |
+| `getHostMetadata()`        | Returns the host metadata used by addons such as `registerModBindings()`                                                         |
 
 `getActiveKeys()` accepts `ActiveKeyOptions`:
 
-| Option            | Default | Description                                                                    |
-| ----------------- | ------- | ------------------------------------------------------------------------------ |
-| `includeBindings` | `false` | Include per-key `bindings` arrays with full binding views                      |
-| `includeMetadata` | `false` | Include `bindingAttrs` and `commandAttrs` on active keys and returned bindings |
+| Option            | Default | Description                                                        |
+| ----------------- | ------- | ------------------------------------------------------------------ |
+| `includeBindings` | `false` | Include per-key `bindings` arrays with full binding views          |
+| `includeMetadata` | `false` | Include top-level `bindingAttrs` and `commandAttrs` on active keys |
 
 `ActiveKey` shape:
 
@@ -136,7 +157,7 @@ The shared default parser understands single-stroke named keys, modifier chords,
 | -------------- | ----------------------- | ------------------------------------------------------------------------------------------ |
 | `stroke`       | `NormalizedKeyStroke`   | Normalized stroke (name plus modifier flags)                                               |
 | `display`      | `string`                | Display string for the stroke, including the preserved token form when one was used        |
-| `tokenName`    | `string?`               | Token name when this key resolved through a registered token such as `<leader>`            |
+| `tokenName`    | `string?`               | Token name when this key resolved through a registered token such as `leader`              |
 | `continues`    | `boolean`               | `true` when at least one binding continues the sequence past this key                      |
 | `command`      | `BindingCommand?`       | Command at this exact sequence, if any                                                     |
 | `bindings`     | `ActiveBinding[]?`      | Per-key bindings; populated only when `includeBindings: true`                              |
@@ -155,6 +176,37 @@ The shared default parser understands single-stroke named keys, modifier chords,
 | `attrs`          | `Readonly<Attributes>?` | Compiled binding-field attrs                           |
 | `commandAttrs`   | `Readonly<Attributes>?` | Compiled command-field attrs for the bound command     |
 
+## Field and metadata model
+
+Custom fields are raw config. Compiled metadata is published by field compilers with `attr(...)`.
+
+| Surface | Custom fields                                                          | Metadata output                                 |
+| ------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
+| Layer   | Extra layer properties feed layer-field compilers and binding pipeline | `GraphLayer.attrs` in graph snapshots           |
+| Binding | Extra binding properties feed binding-field compilers                  | `ActiveBinding.attrs`, `ActiveKey.bindingAttrs` |
+| Command | Extra command properties feed command-field compilers                  | `commandAttrs` on active keys and bindings      |
+
+Field compilers can validate and normalize values before publishing attrs. They can also keep behavior-only fields out of public metadata.
+
+```ts
+keymap.registerLayerFields({
+  name(value, ctx) {
+    ctx.attr("name", String(value).trim())
+  },
+})
+
+keymap.registerCommandFields({
+  enabled(value, ctx) {
+    ctx.activeWhen(() => value === true)
+  },
+  title(value, ctx) {
+    ctx.attr("title", String(value).trim())
+  },
+})
+```
+
+In that example, layer `name` exposes metadata for graph/debug UIs. Command `enabled` controls availability but exposes no metadata, while command `title` exposes normalized metadata for command palettes and help UIs.
+
 Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical formatting renders `return` as `enter`; `preferDisplay: true` keeps preserved token displays such as `<leader>`. Both are exported from `@opentui/keymap`:
 
 ```ts
@@ -162,6 +214,30 @@ import { stringifyKeyStroke, stringifyKeySequence } from "@opentui/keymap"
 ```
 
 ## Commands and queries
+
+Commands reserve only `name` and `run`. Other top-level properties are custom command fields.
+
+```ts
+keymap.registerLayer({
+  commands: [
+    {
+      name: "save-file",
+      namespace: "file",
+      title: "Save File",
+      run() {},
+    },
+  ],
+})
+
+// getCommands()[0] is the same command object:
+// { name: "save-file", namespace: "file", title: "Save File", run }
+```
+
+Command field compilers can publish metadata, add requirements or attach runtime matchers. Unknown command fields stay on the command object; they do not warn just because no compiler is registered.
+
+Return `{ ok: false, reason: "invalid-args" }` from `run()` when a command wants to reject with a specific programmatic result.
+
+Command queries search and filter across top-level command fields and compiled command metadata. The `namespace` shortcut reads the top-level `namespace` field.
 
 ### Execution
 
@@ -172,12 +248,12 @@ import { stringifyKeyStroke, stringifyKeySequence } from "@opentui/keymap"
 
 Pure extra exported from `@opentui/keymap/extras`:
 
-| Helper                           | Description                                                                                            |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `commandBindings(map)`           | Converts a command-to-key object map into `BindingInput[]`, trimming command keys before emitting them |
-| `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                        |
-| `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default                   |
-| `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)` lookup                  |
+| Helper                           | Description                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `commandBindings(map)`           | Converts a command-to-key object map into `Binding[]`, trimming command keys before emitting them                   |
+| `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                                     |
+| `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default                                |
+| `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)`, `pick(...)` and `omit(...)` helpers |
 
 `commandBindings()` accepts optional `onWarning` and `onError` callbacks. `onWarning` reports trimmed-command overrides such as `" save-file "` and `"save-file"`; invalid key values are skipped by default, and `onError` lets callers observe them or throw if they want strict behavior.
 
@@ -205,7 +281,7 @@ keymap.registerLayer({ bindings })
 import { formatCommandBindings, formatKeySequence } from "@opentui/keymap/extras"
 
 formatKeySequence(keymap.parseKeySequence("<leader>s"), {
-  tokenDisplay: { "<leader>": "space" },
+  tokenDisplay: { leader: "space" },
   modifierAliases: { meta: "alt" },
   keyNameAliases: { pageup: "pgup", pagedown: "pgdn", delete: "del" },
 })
@@ -213,28 +289,55 @@ formatKeySequence(keymap.parseKeySequence("<leader>s"), {
 formatCommandBindings(keymap.getCommandBindings({ visibility: "registered", commands: ["save-file"] }).get("save-file"))
 ```
 
-`resolveBindingSections()` is an opinionated config-to-keymap transformation for app-level config split by real registration site. It is one practical shape; copy and adjust it if your app needs different rules. Values can be `false`, `"none"`, a key, a full binding object, or arrays of keys/binding objects. `false`, `"none"`, and empty arrays emit no bindings. The command name comes from the record key.
+`resolveBindingSections()` is an opinionated config-to-keymap transformation for app-level config split into named sections. It is one practical shape; copy and adjust it if your app needs different rules. Values can be `false`, `"none"`, a key, a full binding object, or arrays of keys/binding objects. `false`, `"none"`, and empty arrays emit no bindings. The command name comes from the record key.
 
 ```ts
 import { resolveBindingSections } from "@opentui/keymap/extras"
 
-const resolved = resolveBindingSections({
-  app: {
-    "command.palette.show": "ctrl+p",
-    "app.exit": ["ctrl+c", "<leader>q"],
+const sectionGroups = {
+  app: "Global",
+  prompt_input: "Prompt",
+}
+
+const resolved = resolveBindingSections(
+  {
+    app: {
+      "command.palette.show": "ctrl+p",
+      "app.exit": ["ctrl+c", "<leader>q"],
+      "app.debug": "none",
+    },
+    prompt_input: {
+      "prompt.paste": { key: "ctrl+v", preventDefault: false },
+      "prompt.history.previous": "up",
+      "prompt.history.next": "down",
+    },
   },
-  prompt_input: {
-    "prompt.paste": { key: "ctrl+v", preventDefault: false },
-    "prompt.history.previous": "up",
-    "prompt.history.next": "down",
+  {
+    bindingDefaults({ section, binding }) {
+      if (binding.group !== undefined) return
+      return { group: sectionGroups[section as keyof typeof sectionGroups] }
+    },
   },
-})
+)
 
 keymap.registerLayer({ bindings: resolved.sections.app })
 resolved.get("app", "app.exit")
+resolved.pick("prompt_input", ["prompt.history.previous", "prompt.history.next"])
+resolved.omit("app", ["app.exit"])
 ```
 
-Tokens such as `<leader>` are still registered through the normal keymap token APIs.
+The resolved object exposes three views:
+
+| API                       | Description                                                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `sections[section]`       | All enabled bindings for the section, preserving section config order                                            |
+| `get(section, command)`   | Bindings for one command, or `undefined` when the section or command is missing/disabled                         |
+| `pick(section, commands)` | Bindings for the listed commands in caller command order; missing or disabled commands are skipped               |
+| `omit(section, commands)` | All section bindings except matching string-command bindings, preserving section order; missing commands ignored |
+
+Use `bindingDefaults` to add app-level fields to every emitted binding without mutating the original config. Defaults are spread before the resolved binding, so explicit binding fields win. `pick()` and `omit()` use exact command names and do not trim. They are meant for hard-coded application command lists. Use them when one semantic config section feeds multiple activation layers.
+
+Tokens such as `leader` are still registered through the normal keymap token APIs and referenced by parser syntax such as `<leader>`.
 
 `dispatchCommand()` respects current activation and can return `inactive` or `disabled` when the command exists but is not currently dispatchable. `runCommand()` walks the registered chain directly, so it can execute command-only layers programmatically even when they do not have an active binding.
 
@@ -249,43 +352,44 @@ Tokens such as `<leader>` are still registered through the normal keymap token A
 | `rejected`     | Every candidate's handler returned synchronous `false`                                                |
 | `error`        | A resolver, runtime matcher, or handler threw synchronously                                           |
 
-`command` is included on rejected results when `includeCommand: true` is set and the keymap could resolve a record for the name.
+`command` is included on rejected results when `includeCommand: true` is set and the keymap could resolve a command for the name.
 
-Command handlers may be sync or async. Only a synchronous `false` rejects the candidate and lets lower-precedence handlers continue. A returned promise is treated as handled immediately; async rejection is reported through the `error` diagnostic event.
+Command handlers may be sync or async. A synchronous `false` rejects the candidate and lets lower-precedence handlers continue. A handler may also return an explicit `RunCommandResult`, such as `{ ok: false, reason: "invalid-args" }`. A returned promise is treated as handled immediately; async rejection is reported through the `error` diagnostic event.
 
 `RunCommandOptions`:
 
-| Option           | Description                                                                    |
-| ---------------- | ------------------------------------------------------------------------------ |
-| `event`          | Event object passed into the command. Defaults to `host.createCommandEvent()`  |
-| `focused`        | Focus context used for active-layer resolution                                 |
-| `target`         | Explicit `ctx.target` override                                                 |
-| `includeCommand` | When `true`, successful and rejected results include the resolved command view |
+| Option           | Description                                                                      |
+| ---------------- | -------------------------------------------------------------------------------- |
+| `event`          | Event object passed into the command. Defaults to `host.createCommandEvent()`    |
+| `focused`        | Focus context used for active-layer resolution                                   |
+| `target`         | Explicit `ctx.target` override                                                   |
+| `includeCommand` | When `true`, successful and rejected results include the resolved command object |
+| `payload`        | Per-invocation payload exposed as `ctx.payload`                                  |
 
 ### Queries
 
 | Method                      | Description                                                                    |
 | --------------------------- | ------------------------------------------------------------------------------ |
-| `getCommands(query?)`       | Returns command metadata records                                               |
-| `getCommandEntries(query?)` | Returns command metadata plus bindings for command discovery UIs               |
+| `getCommands(query?)`       | Returns command objects                                                        |
+| `getCommandEntries(query?)` | Returns command objects plus bindings for command discovery UIs                |
 | `getCommandBindings(query)` | Returns bindings grouped by requested command name for known-command label UIs |
 
 `CommandQuery` fields:
 
-| Field        | Description                                                      |
-| ------------ | ---------------------------------------------------------------- |
-| `visibility` | `"reachable"` (default), `"active"`, or `"registered"`           |
-| `focused`    | Override the focus context used by the query                     |
-| `namespace`  | Filter by one or more namespace values                           |
-| `search`     | Text search over command names by default                        |
-| `searchIn`   | Additional fields/attrs to search                                |
-| `filter`     | Object or predicate filter against raw fields and compiled attrs |
+| Field        | Description                                                    |
+| ------------ | -------------------------------------------------------------- |
+| `visibility` | `"reachable"` (default), `"active"`, or `"registered"`         |
+| `focused`    | Override the focus context used by the query                   |
+| `namespace`  | Filter by one or more namespace values                         |
+| `search`     | Text search over command names by default                      |
+| `searchIn`   | Additional command fields or compiled metadata to search       |
+| `filter`     | Object or predicate filter against command fields and metadata |
 
 - `reachable` dedupes by command name using the current dispatch winner.
 - `active` keeps every active candidate in precedence order, including same-name duplicates.
 - `registered` ignores focus and returns all registered commands.
 
-Use `getCommandEntries()` for command palettes, searchable help screens and other discovery surfaces that need command records plus their bindings. It runs the full `CommandQuery`, materializes command metadata and attaches matching bindings, so it is the heavier query.
+Use `getCommandEntries()` for command palettes, searchable help screens and other discovery surfaces that need commands plus their bindings. It runs the full `CommandQuery` and attaches matching bindings, so it is the heavier query.
 
 Use `getCommandBindings()` when a UI already knows the commands it wants to label and only needs their bindings:
 
@@ -308,6 +412,30 @@ The returned map preserves the requested command order and includes every reques
 | `visibility` | `"reachable"` (default), `"active"`, or `"registered"` |
 | `focused`    | Override the focus context used by the query           |
 
+## Graph snapshots
+
+`getGraphSnapshot(keymap, options?)` from `@opentui/keymap/extras/graph` returns a diagnostic projection for graph visualizers and debug UIs. It includes layers, commands, bindings, sequence nodes, active keys and the current pending sequence.
+
+Layer custom fields remain available as raw `GraphLayer.fields`; compiled layer metadata published with `ctx.attr(...)` appears as `GraphLayer.attrs`. Use attrs for stable visualization metadata such as layer display names.
+
+```ts
+import { getGraphSnapshot } from "@opentui/keymap/extras/graph"
+
+keymap.registerLayerFields({
+  name(value, ctx) {
+    ctx.attr("name", String(value).trim())
+  },
+})
+
+keymap.registerLayer({
+  name: "Global",
+  bindings: [{ key: "?", cmd: "toggle-help" }],
+})
+
+const snapshot = getGraphSnapshot(keymap)
+snapshot.layers[0]?.attrs?.name // "Global"
+```
+
 ## Events and intercepts
 
 `keymap.on(...)`:
@@ -316,8 +444,11 @@ The returned map preserves the requested command order and includes every reques
 | ----------------- | ------------------- | ----------------------------------------------------- |
 | `state`           | `void`              | Batched "derived state may have changed" signal       |
 | `pendingSequence` | `KeySequencePart[]` | Synchronous pending-sequence updates, including clear |
+| `dispatch`        | `DispatchEvent`     | Sequence and binding execution trace events           |
 | `warning`         | `WarningEvent`      | Validation or analyzer warning                        |
 | `error`           | `ErrorEvent`        | Registration, query, resolver, or listener error      |
+
+`DispatchEvent` exposes `phase`, `event`, `focused`, `sequence` and optional `layer`, `binding` and `command`. Phases are `sequence-start`, `sequence-advance`, `sequence-clear`, `binding-execute` and `binding-reject`.
 
 Diagnostic events are not batched through `state`; they are emitted when the warning or error is reported.
 
@@ -328,41 +459,46 @@ Diagnostic events are not batched through `state`; they are emitted when the war
 | `WarningEvent` | `code`, `message`, `warning` |
 | `ErrorEvent`   | `code`, `message`, `error`   |
 
-Diagnostic-event quirks:
+Diagnostic behavior:
 
 - If no `warning` listener is registered, the keymap falls back to `console.warn(...)` for warnings.
 - If no `error` listener is registered, the keymap falls back to `console.error(...)` for errors.
 - Console fallback is per event type. Registering a `warning` listener suppresses warning console output but does not affect `error`, and vice versa.
 - Console fallback prefixes the message with `[code]`. If the underlying cause is an `Error`, it is passed as the second console argument.
 - Throwing `warning` or `error` listeners do not stop remaining diagnostic listeners from running, and they do not recursively emit another keymap error event.
-- `warning` commonly covers analyzer and validation warnings such as unknown fields or unknown tokens.
-- `error` covers more than registration failures: it also reports resolver failures, command-query failures, runtime matcher failures, and thrown `state` / `pendingSequence` listeners.
+- `warning` commonly covers analyzer and validation warnings such as unknown fields, tokens or sequence patterns.
+- `error` covers more than registration failures: it also reports resolver failures, command-query failures, runtime matcher failures, and thrown `state`, `pendingSequence` or `dispatch` listeners.
 
 `keymap.intercept(...)`:
 
-| Form                   | Description                                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| `intercept("key", fn)` | Runs before binding dispatch. Context exposes `event`, `setData`, `getData` and `consume()` |
-| `intercept("raw", fn)` | Runs on raw host input before key parsing. Context exposes `sequence` and `stop()`          |
+| Form                         | Description                                                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `intercept("key", fn)`       | Runs before binding dispatch. Context exposes `event`, `setData`, `getData` and `consume()`                                 |
+| `intercept("key:after", fn)` | Runs after binding dispatch. Context exposes `handled`, `reason`, `sequence`, `event`, `setData`, `getData` and `consume()` |
+| `intercept("raw", fn)`       | Runs on raw host input before key parsing. Context exposes `sequence` and `stop()`                                          |
 
 Intercept options:
 
 | Option     | Applies to | Description                               |
 | ---------- | ---------- | ----------------------------------------- |
-| `priority` | both       | Higher numbers run first                  |
-| `release`  | key only   | Listen to release events instead of press |
+| `priority` | all        | Higher numbers run first                  |
+| `release`  | key forms  | Listen to release events instead of press |
+
+`key:after` listeners are delivered once per key event that reaches the keymap listener, including no-match, rejected-binding, pending-sequence, and pre-intercept-consumed outcomes. Delivery is not gated by `preventDefault()` or `stopPropagation()`; those methods only affect host propagation/default behavior. The after context is only constructed when a matching `key:after` listener is registered.
 
 ## Extension points
 
 | API                                        | Use for                                                                       |
 | ------------------------------------------ | ----------------------------------------------------------------------------- |
-| `registerToken(token)`                     | Define named single-stroke aliases such as `<leader>`                         |
-| `registerLayerFields(fields)`              | Add custom layer fields with `require(...)` / `activeWhen(...)`               |
+| `registerToken(token)`                     | Define named single-stroke aliases such as `leader`                           |
+| `registerSequencePattern(pattern)`         | Define named runtime sequence captures such as `count`                        |
+| `registerLayerFields(fields)`              | Add custom layer fields with `require(...)`, `attr(...)`, `activeWhen(...)`   |
 | `registerBindingFields(fields)`            | Add custom binding fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 | `registerCommandFields(fields)`            | Add custom command fields with `require(...)`, `attr(...)`, `activeWhen(...)` |
 | `prepend/appendBindingParser(parser)`      | Add new key string syntaxes                                                   |
-| `prepend/appendBindingExpander(expander)`  | Expand one key string into multiple binding strings                           |
+| `prepend/appendBindingExpander(expander)`  | Expand one key string into expansion objects, optionally preserving displays  |
 | `prepend/appendBindingTransformer(fn)`     | Rewrite parsed bindings or add derived bindings                               |
+| `prepend/appendCommandTransformer(fn)`     | Rewrite registered commands or add derived commands before command fields     |
 | `prepend/appendCommandResolver(resolver)`  | Resolve string commands dynamically                                           |
 | `prepend/appendLayerAnalyzer(analyzer)`    | Emit warnings or errors while layers compile                                  |
 | `prepend/appendEventMatchResolver(fn)`     | Add alternate event-to-stroke matching                                        |
@@ -423,5 +559,3 @@ The handler may return a decision, a `Promise<decision>`, or nothing (no-op). Re
 - Runtime/data re-entry is supported during dispatch. Command handlers, intercepts and pending-sequence listeners can read and write runtime data.
 - Structural re-entry is not supported during dispatch. Do not register or unregister layers, parsers, resolvers, tokens, or similar environment-shaping state while a dispatch is in flight.
 - After the host is destroyed, host-backed reads such as `getActiveKeys()` are unavailable. Metadata reads such as `getCommands()` and runtime data access remain usable.
-
-Example host surface: `packages/keymap/src/tests/keymap.host.test.ts`

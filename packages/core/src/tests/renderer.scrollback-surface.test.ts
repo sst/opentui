@@ -245,7 +245,7 @@ test("ScrollbackSurface commitRows respects top-level block margins from custom 
 })
 
 test("ScrollbackSurface captures inline first-line offset at creation", async () => {
-  const { renderer } = await createSplitFooterRenderer({
+  const { renderer, renderOnce } = await createSplitFooterRenderer({
     width: 10,
     height: 6,
     footerHeight: 3,
@@ -271,8 +271,7 @@ test("ScrollbackSurface captures inline first-line offset at creation", async ()
     }
   })
 
-  const seededCommits = claimCommits(renderer)
-  destroyClaimedCommits(seededCommits)
+  await renderOnce()
 
   const surface = renderer.createScrollbackSurface({ startOnNewLine: false })
   const text = new TextRenderable(surface.renderContext, {
@@ -288,8 +287,48 @@ test("ScrollbackSurface captures inline first-line offset at creation", async ()
   expect(text.height).toBe(2)
 })
 
-test("ScrollbackSurface preserves inline first-line offset when the first markdown block is replaced", async () => {
+test("ScrollbackSurface.commitRows defaults to closing committed row chunks", async () => {
   const { renderer } = await createSplitFooterRenderer({
+    width: 20,
+    height: 6,
+    footerHeight: 3,
+  })
+
+  const surface = renderer.createScrollbackSurface()
+  const text = new TextRenderable(surface.renderContext, {
+    id: "surface-default-newline",
+    content: "closed-row",
+    width: "100%",
+  })
+
+  surface.root.add(text)
+  surface.render()
+  surface.commitRows(0, 1)
+
+  let tailColumn = -1
+  renderer.writeToScrollback((ctx) => {
+    tailColumn = ctx.tailColumn
+    const root = new TextRenderable(ctx.renderContext, {
+      id: "tail-column-probe",
+      content: "next",
+      width: 4,
+      height: 1,
+    })
+
+    return {
+      root,
+      width: 4,
+      height: 1,
+    }
+  })
+
+  expect(tailColumn).toBe(0)
+
+  destroyClaimedCommits(claimCommits(renderer))
+})
+
+test("ScrollbackSurface preserves inline first-line offset when the first markdown block is replaced", async () => {
+  const { renderer, renderOnce } = await createSplitFooterRenderer({
     width: 10,
     height: 6,
     footerHeight: 3,
@@ -315,7 +354,7 @@ test("ScrollbackSurface preserves inline first-line offset when the first markdo
     }
   })
 
-  destroyClaimedCommits(claimCommits(renderer))
+  await renderOnce()
 
   const surface = renderer.createScrollbackSurface({ startOnNewLine: false })
   const mockTreeSitterClient = new MockTreeSitterClient({ autoResolveTimeout: 0 })

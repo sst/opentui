@@ -9,7 +9,6 @@ import {
   type ActiveKey,
   type ActiveKeyOptions,
   type BindingParser,
-  type CommandRecord,
   type ErrorEvent,
   type EventMatchResolverContext,
   type Keymap,
@@ -757,14 +756,14 @@ describe("keymap: disambiguation", () => {
     })
 
     expect(takeWarnings().warnings).toEqual([
-      '[Keymap] Unknown token "<leader>" in key sequence "<leader>ab" was ignored',
+      '[Keymap] Unknown token "leader" in key sequence "<leader>ab" was ignored',
     ])
 
     mockInput.pressKey("a")
     expect(stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true })).toBe("a")
 
     keymap.registerToken({
-      name: "<leader>",
+      name: "leader",
       key: { name: "x", ctrl: true },
     })
     await Bun.sleep(20)

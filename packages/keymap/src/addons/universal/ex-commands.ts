@@ -1,26 +1,39 @@
-import type {
-  CommandDefinition,
-  CommandContext,
-  CommandRecord,
-  Keymap,
-  KeymapEvent,
-  ParsedCommand,
-} from "../../index.js"
+import type { CommandContext, Command, CommandResult, Keymap, KeymapEvent, ParsedCommand } from "../../index.js"
 
-const EMPTY_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
+const EX_COMMANDS_RESOURCE = Symbol("keymap:ex-commands")
+
+export interface ExCommandPayload {
+  raw: string
+  args: readonly string[]
+  payload?: unknown
+}
 
 export interface ExCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   name: string
   aliases?: string[]
   nargs?: "0" | "1" | "?" | "*" | "+"
-  run: (ctx: CommandContext<TTarget, TEvent> & { raw: string; args: string[] }) => void | Promise<void>
+  run: (ctx: CommandContext<TTarget, TEvent, ExCommandPayload>) => CommandResult<TTarget, TEvent>
   [key: string]: unknown
 }
 
-function normalizeExCommandName<TTarget extends object, TEvent extends KeymapEvent>(
-  _keymap: Keymap<TTarget, TEvent>,
-  name: string,
-): string {
+function isExCommandPayload(value: unknown): value is ExCommandPayload {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+
+  const candidate = value as { raw?: unknown; args?: unknown }
+  return typeof candidate.raw === "string" && Array.isArray(candidate.args)
+}
+
+function getExCommandPayload(input: string, payload: unknown): ExCommandPayload {
+  if (isExCommandPayload(payload)) {
+    return payload
+  }
+
+  return { raw: input, args: [], payload }
+}
+
+function normalizeExCommandName(name: string): string {
   const normalized = name.trim()
   if (!normalized) {
     throw new Error("Invalid keymap command name: name cannot be empty")
@@ -35,6 +48,46 @@ function normalizeExCommandName<TTarget extends object, TEvent extends KeymapEve
   }
 
   return `:${normalized}`
+}
+
+function normalizeExCommandAliases(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error('Keymap ex-command field "aliases" must be an array of command names')
+  }
+
+  const aliases: string[] = []
+  for (const alias of value) {
+    if (typeof alias !== "string") {
+      throw new Error('Keymap ex-command field "aliases" must only contain command names')
+    }
+
+    aliases.push(alias)
+  }
+
+  return aliases
+}
+
+function normalizeExCommandNargs(value: unknown): ExCommand["nargs"] {
+  if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
+    return value
+  }
+
+  throw new Error('Keymap ex-command field "nargs" must be "0", "1", "?", "*", or "+"')
+}
+
+function getExCommandAliases<TTarget extends object, TEvent extends KeymapEvent>(
+  command: Command<TTarget, TEvent>,
+): readonly string[] {
+  const aliases = command.aliases
+  if (aliases === undefined) {
+    return []
+  }
+
+  return normalizeExCommandAliases(aliases)
+}
+
+function isExCommand<TTarget extends object, TEvent extends KeymapEvent>(command: Command<TTarget, TEvent>): boolean {
+  return command.name.trim().startsWith(":") || command.namespace === "excommands"
 }
 
 function parseCommandInput(input: string): ParsedCommand {
@@ -57,133 +110,121 @@ function parseCommandInput(input: string): ParsedCommand {
 }
 
 function validateCommandArgs<TTarget extends object, TEvent extends KeymapEvent>(
-  command: ExCommand<TTarget, TEvent>,
-  args: string[],
+  command: Command<TTarget, TEvent>,
+  args: readonly unknown[],
 ): boolean {
-  if (!command.nargs) {
+  if (command.nargs === undefined) {
     return true
   }
 
+  const nargs = normalizeExCommandNargs(command.nargs)
   const count = args.length
-  if (command.nargs === "0") {
+  if (nargs === "0") {
     return count === 0
   }
 
-  if (command.nargs === "1") {
+  if (nargs === "1") {
     return count === 1
   }
 
-  if (command.nargs === "?") {
+  if (nargs === "?") {
     return count <= 1
   }
 
-  if (command.nargs === "*") {
+  if (nargs === "*") {
     return true
   }
 
-  if (command.nargs === "+") {
+  if (nargs === "+") {
     return count >= 1
   }
 
   return true
 }
 
+function createExCommandRegistration<TTarget extends object, TEvent extends KeymapEvent>(
+  command: Command<TTarget, TEvent>,
+  name: string,
+): Command<TTarget, TEvent, ExCommandPayload> {
+  const run = command.run
+
+  return {
+    ...command,
+    name,
+    namespace: "excommands",
+    run(ctx) {
+      const payload = getExCommandPayload(ctx.input, ctx.payload)
+
+      if (!validateCommandArgs(command, payload.args)) {
+        return { ok: false, reason: "invalid-args" }
+      }
+
+      return run({
+        ...ctx,
+        command: ctx.command!,
+        payload,
+      })
+    },
+  }
+}
+
 /**
- * Resolves `:name ...args` strings against the provided Ex commands and
- * validated argument lists.
+ * Installs Ex command support. Ex commands are registered through normal
+ * keymap layers by using a colon-prefixed command name or
+ * `namespace: "excommands"`.
  */
 export function registerExCommands<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
-  commands: ExCommand<TTarget, TEvent>[],
 ): () => void {
-  const registrations: CommandDefinition<TTarget, TEvent>[] = []
-  const commandMap = new Map<string, ExCommand<TTarget, TEvent>>()
-
-  for (const command of commands) {
-    const { name, aliases, run, ...fields } = command
-    const names = [name, ...(aliases ?? [])]
-    const registrationFields = {
-      ...fields,
-      aliases,
-      namespace: fields.namespace ?? "excommands",
-    }
-
-    for (const name of names) {
-      const normalizedName = normalizeExCommandName(keymap, name)
-      commandMap.set(normalizedName, command)
-
-      registrations.push({
-        ...registrationFields,
-        name: normalizedName,
-        run(ctx) {
-          const rawInput = (ctx as { raw?: unknown }).raw
-          const raw: string = typeof rawInput === "string" ? rawInput : normalizedName
-          const args = Array.isArray((ctx as { args?: unknown }).args) ? ((ctx as { args?: string[] }).args ?? []) : []
-
-          if (!validateCommandArgs(command, args)) {
-            return false
-          }
-
-          return run({
-            ...ctx,
-            command: ctx.command ?? { name: normalizedName, fields: EMPTY_FIELDS },
-            raw,
-            args,
-          })
-        },
-      })
-    }
-  }
-
-  const offCommands = keymap.registerLayer({ commands: registrations })
-  const offResolver = keymap.appendCommandResolver((input, ctx) => {
-    if (!input.startsWith(":")) {
-      return undefined
-    }
-
-    const parsed = parseCommandInput(input)
-    const normalizedName = normalizeExCommandName(keymap, parsed.name)
-    const command = commandMap.get(normalizedName)
-    if (!command) {
-      return undefined
-    }
-
-    const attrs = ctx.getCommandAttrs(normalizedName)
-    const record = ctx.getCommandRecord(normalizedName)
-    if (!validateCommandArgs(command, parsed.args)) {
-      return {
-        attrs,
-        record,
-        rejectedResult: record
-          ? { ok: false, reason: "invalid-args", command: record }
-          : { ok: false, reason: "invalid-args" },
-        run() {
-          return false
-        },
-      }
-    }
-
-    return {
-      attrs,
-      record,
-      run(baseCtx) {
-        const commandView: CommandRecord =
-          record ??
-          (attrs
-            ? { name: normalizedName, fields: EMPTY_FIELDS, attrs }
-            : { name: normalizedName, fields: EMPTY_FIELDS })
-        return command.run({
-          ...baseCtx,
-          command: commandView,
-          raw: parsed.input,
-          args: parsed.args,
-        })
+  return keymap.acquireResource(EX_COMMANDS_RESOURCE, () => {
+    const offFields = keymap.registerCommandFields({
+      aliases(value) {
+        normalizeExCommandAliases(value)
       },
+      nargs(value) {
+        normalizeExCommandNargs(value)
+      },
+    })
+
+    const offTransformer = keymap.appendCommandTransformer((command, ctx) => {
+      if (!isExCommand(command)) {
+        return
+      }
+
+      ctx.skipOriginal()
+
+      if (command.nargs !== undefined) {
+        normalizeExCommandNargs(command.nargs)
+      }
+
+      const names = [command.name, ...getExCommandAliases(command)].map((name) => normalizeExCommandName(name))
+      for (const name of names) {
+        ctx.add(createExCommandRegistration(command, name))
+      }
+    })
+
+    const offResolver = keymap.appendCommandResolver((input, ctx) => {
+      if (!input.startsWith(":")) {
+        return undefined
+      }
+
+      const parsed = parseCommandInput(input)
+      const normalizedName = normalizeExCommandName(parsed.name)
+      const command = ctx.getCommand(normalizedName)
+
+      if (!command) {
+        return undefined
+      }
+
+      ctx.setInput(parsed.input)
+      ctx.setPayload({ raw: parsed.input, args: parsed.args, payload: ctx.payload } satisfies ExCommandPayload)
+      return command
+    })
+
+    return () => {
+      offResolver()
+      offTransformer()
+      offFields()
     }
   })
-
-  return () => {
-    offResolver()
-    offCommands()
-  }
 }

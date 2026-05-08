@@ -80,7 +80,7 @@ createRoot(renderer).render(
 
 ## `useBindings`
 
-`useBindings()` registers a full `LayerFields<Renderable, KeyEvent>` object. The returned layer can include `priority`, `enabled`, `bindings`, `commands` and any custom addon fields.
+`useBindings()` registers a layer-like object. The returned layer can include `priority`, `enabled`, `bindings`, `commands` and any custom addon fields.
 
 React memoizes `createLayer` with `useMemo(createLayer, deps)`. If you omit `deps`, the hook treats the layer factory as static after mount because the default is `[]`. If the layer shape depends on props or React state, include those values in `deps`.
 

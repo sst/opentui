@@ -47,6 +47,20 @@ function textScrollbackWrite(data: string) {
   }
 }
 
+function blockSplitStartupCursorSeed(target: TestRenderer): () => void {
+  ;(target as any).pendingSplitStartupCursorSeed = true
+  ;(target as any).splitStartupSeedTimeoutId = setTimeout(() => {}, 10)
+
+  return () => {
+    if ((target as any).splitStartupSeedTimeoutId !== null) {
+      clearTimeout((target as any).splitStartupSeedTimeoutId)
+      ;(target as any).splitStartupSeedTimeoutId = null
+    }
+
+    ;(target as any).pendingSplitStartupCursorSeed = false
+  }
+}
+
 beforeEach(() => {
   previousShowConsole = process.env.SHOW_CONSOLE
   previousUseAlternateScreen = process.env.OTUI_USE_ALTERNATE_SCREEN
@@ -442,6 +456,7 @@ test("CliRenderer flushes captured output before switching to passthrough in spl
   })
 
   renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
   const lib = (renderer as any).lib
   const splitCommitSpy = spyOn(lib, "commitSplitFooterSnapshot")
   const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
@@ -463,6 +478,163 @@ test("CliRenderer flushes captured output before switching to passthrough in spl
   expect((renderer as any).externalOutputQueue.size).toBe(0)
   lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
   splitCommitSpy.mockRestore()
+})
+
+test("CliRenderer drains all pending split commits before switching to passthrough", async () => {
+  const result = await createTestRenderer({
+    screenMode: "split-footer",
+    footerHeight: 6,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  const lib = (renderer as any).lib
+  const splitCommitSpy = spyOn(lib, "commitSplitFooterSnapshot")
+
+  for (let i = 0; i < 10; i += 1) {
+    ;(renderer as any).stdout.write(`pending-${i}\n`)
+  }
+
+  expect((renderer as any).externalOutputQueue.size).toBe(10)
+
+  renderer.externalOutputMode = "passthrough"
+
+  expect(splitCommitSpy).toHaveBeenCalledTimes(10)
+  expect((renderer as any).externalOutputQueue.size).toBe(0)
+
+  splitCommitSpy.mockRestore()
+})
+
+test("CliRenderer keeps stdout captured until a deferred passthrough switch drains", async () => {
+  const result = await createTestRenderer({
+    screenMode: "split-footer",
+    footerHeight: 6,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  const unblockStartupSeed = blockSplitStartupCursorSeed(renderer)
+
+  const committedOutput: string[] = []
+  const lib = (renderer as any).lib
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
+
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
+    committedOutput.push(new TextDecoder().decode(args[1].getRealCharBytes(true)))
+    return originalCommitSplitFooterSnapshot(...args)
+  }
+
+  try {
+    ;(renderer as any).stdout.write("older\n")
+    renderer.externalOutputMode = "passthrough"
+
+    expect(renderer.externalOutputMode).toBe("capture-stdout")
+
+    ;(renderer as any).stdout.write("newer\n")
+
+    expect((renderer as any).externalOutputQueue.size).toBe(2)
+
+    unblockStartupSeed()
+    await result.renderOnce()
+
+    expect(committedOutput[0]).toContain("older")
+    expect(committedOutput[1]).toContain("newer")
+    expect((renderer as any).externalOutputQueue.size).toBe(0)
+    expect(renderer.externalOutputMode).toBe("passthrough")
+  } finally {
+    unblockStartupSeed()
+    lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
+  }
+})
+
+test("CliRenderer drains deferred passthrough output before leaving split-footer", async () => {
+  const result = await createTestRenderer({
+    screenMode: "split-footer",
+    footerHeight: 6,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  const unblockStartupSeed = blockSplitStartupCursorSeed(renderer)
+
+  const lib = (renderer as any).lib
+  const splitCommitSpy = spyOn(lib, "commitSplitFooterSnapshot")
+
+  try {
+    ;(renderer as any).stdout.write("before-leave\n")
+    renderer.externalOutputMode = "passthrough"
+
+    expect(renderer.externalOutputMode).toBe("capture-stdout")
+
+    renderer.screenMode = "main-screen"
+
+    expect(splitCommitSpy).toHaveBeenCalledTimes(1)
+    expect((renderer as any).externalOutputQueue.size).toBe(0)
+    expect(renderer.externalOutputMode).toBe("passthrough")
+    expect(renderer.screenMode).toBe("main-screen")
+  } finally {
+    unblockStartupSeed()
+    splitCommitSpy.mockRestore()
+  }
+})
+
+test("CliRenderer leaving split-footer aborts an in-flight startup CPR reply", async () => {
+  const clock = new ManualClock()
+  const result = await createTestRenderer({
+    screenMode: "split-footer",
+    footerHeight: 6,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+    clock,
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  ;(renderer as any).pendingSplitStartupCursorSeed = true
+  ;(renderer as any).splitStartupSeedTimeoutId = clock.setTimeout(() => {}, 120)
+  ;(renderer as any).capabilityTimeoutId = clock.setTimeout(() => {}, 5000)
+  ;(renderer as any).updateStdinParserProtocolContext({ startupCursorCprActive: true })
+
+  const keypresses: string[] = []
+  renderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event.name)
+  })
+
+  try {
+    renderer.stdin.emit("data", Buffer.from("\x1b["))
+
+    ;(renderer as any).stdout.write("before-leave\n")
+    renderer.externalOutputMode = "passthrough"
+
+    expect(renderer.externalOutputMode).toBe("capture-stdout")
+
+    renderer.screenMode = "main-screen"
+
+    expect((renderer as any).pendingSplitStartupCursorSeed).toBe(false)
+    expect((renderer as any).splitStartupSeedTimeoutId).toBeNull()
+    expect((renderer as any).stdinParser.protocolContext.startupCursorCprActive).toBe(false)
+
+    renderer.stdin.emit("data", Buffer.from("24;80R"))
+    clock.advance(20)
+
+    expect(keypresses).toEqual([])
+  } finally {
+    if ((renderer as any).capabilityTimeoutId !== null) {
+      clock.clearTimeout((renderer as any).capabilityTimeoutId)
+      ;(renderer as any).capabilityTimeoutId = null
+    }
+
+    if ((renderer as any).splitStartupSeedTimeoutId !== null) {
+      clock.clearTimeout((renderer as any).splitStartupSeedTimeoutId)
+      ;(renderer as any).splitStartupSeedTimeoutId = null
+    }
+  }
 })
 
 test("CliRenderer preserves split render offset when switching to passthrough", async () => {
@@ -639,6 +811,92 @@ test("CliRenderer split-footer resume forces the next footer repaint", async () 
   repaintSpy.mockRestore()
 })
 
+test("CliRenderer applies suspended screen mode changes on resume", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "main-screen",
+    externalOutputMode: "passthrough",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  const lib = (renderer as any).lib
+  const originalSetupTerminal = lib.setupTerminal.bind(lib)
+  const originalResumeRenderer = lib.resumeRenderer.bind(lib)
+  const setupTerminalCalls: any[][] = []
+  let resumeRendererCalls = 0
+
+  lib.setupTerminal = (...args: any[]) => {
+    setupTerminalCalls.push(args)
+  }
+  lib.resumeRenderer = (...args: any[]) => {
+    resumeRendererCalls += 1
+    return originalResumeRenderer(...args)
+  }
+
+  try {
+    renderer.suspend()
+    const setupCallsAfterSuspend = setupTerminalCalls.length
+    renderer.screenMode = "alternate-screen"
+
+    expect(setupTerminalCalls.length).toBe(setupCallsAfterSuspend)
+
+    renderer.resume()
+
+    expect(setupTerminalCalls.length).toBe(setupCallsAfterSuspend + 1)
+    expect(setupTerminalCalls.at(-1)?.[1]).toBe(true)
+    expect(resumeRendererCalls).toBe(0)
+  } finally {
+    lib.setupTerminal = originalSetupTerminal
+    lib.resumeRenderer = originalResumeRenderer
+  }
+})
+
+test("CliRenderer resumes preserved split-footer reservation after suspended screen roundtrip", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "passthrough",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  const lib = (renderer as any).lib
+  const originalSetupTerminal = lib.setupTerminal.bind(lib)
+  const originalResumeRenderer = lib.resumeRenderer.bind(lib)
+  let setupTerminalCalls = 0
+  let resumeRendererCalls = 0
+
+  lib.setupTerminal = (...args: any[]) => {
+    setupTerminalCalls += 1
+    return originalSetupTerminal(...args)
+  }
+  lib.resumeRenderer = (...args: any[]) => {
+    resumeRendererCalls += 1
+    return originalResumeRenderer(...args)
+  }
+
+  try {
+    renderer.suspend()
+    renderer.screenMode = "alternate-screen"
+    renderer.screenMode = "split-footer"
+    renderer.resume()
+
+    expect(setupTerminalCalls).toBe(0)
+    expect(resumeRendererCalls).toBe(1)
+  } finally {
+    lib.setupTerminal = originalSetupTerminal
+    lib.resumeRenderer = originalResumeRenderer
+  }
+})
+
 test("CliRenderer does not flush captured split output during resize while suspended", async () => {
   const result = await createTestRenderer({
     width: 40,
@@ -661,6 +919,165 @@ test("CliRenderer does not flush captured split output during resize while suspe
   expect(splitCommitSpy).toHaveBeenCalledTimes(0)
 
   splitCommitSpy.mockRestore()
+})
+
+test("CliRenderer recomputes queued split tail after a blocked resize", async () => {
+  const result = await createTestRenderer({
+    width: 10,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  const unblockStartupSeed = blockSplitStartupCursorSeed(renderer)
+
+  try {
+    ;(renderer as any).stdout.write("123456789012345")
+    ;(renderer as any).processResize(20, 10)
+
+    let tailColumn = -1
+    renderer.writeToScrollback((ctx) => {
+      tailColumn = ctx.tailColumn
+      const root = new TextRenderable(ctx.renderContext, {
+        id: "tail-after-resize-probe",
+        content: "x",
+        width: 1,
+        height: 1,
+      })
+
+      return {
+        root,
+        width: 1,
+        height: 1,
+        startOnNewLine: false,
+        trailingNewline: false,
+      }
+    })
+
+    expect(tailColumn).toBe(15)
+  } finally {
+    unblockStartupSeed()
+  }
+})
+
+test("CliRenderer preserves captured split output when switching output mode while suspended", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  const splitCommitSpy = spyOn((renderer as any).lib, "commitSplitFooterSnapshot")
+
+  renderer.suspend()
+  const commitCallsAfterSuspend = splitCommitSpy.mock.calls.length
+  ;(renderer as any).stdout.write("during-suspend\n")
+  renderer.externalOutputMode = "passthrough"
+
+  expect(splitCommitSpy.mock.calls.length).toBe(commitCallsAfterSuspend)
+  expect((renderer as any).externalOutputQueue.size).toBe(1)
+  expect(renderer.externalOutputMode).toBe("capture-stdout")
+
+  renderer.resume()
+
+  expect(splitCommitSpy.mock.calls.length).toBe(commitCallsAfterSuspend + 1)
+  expect((renderer as any).externalOutputQueue.size).toBe(0)
+  expect(renderer.externalOutputMode).toBe("passthrough")
+
+  splitCommitSpy.mockRestore()
+})
+
+test("CliRenderer preserves captured split output until startup cursor seed unblocks passthrough switch", async () => {
+  const clock = new ManualClock()
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+    clock,
+  })
+
+  renderer = result.renderer
+  const lib = (renderer as any).lib
+  const originalSetupTerminal = lib.setupTerminal.bind(lib)
+  lib.setupTerminal = () => {}
+
+  const splitCommitSpy = spyOn(lib, "commitSplitFooterSnapshot")
+
+  try {
+    await renderer.setupTerminal()
+
+    ;(renderer as any).stdout.write("during-startup\n")
+    renderer.externalOutputMode = "passthrough"
+
+    expect(splitCommitSpy).toHaveBeenCalledTimes(0)
+    expect((renderer as any).externalOutputQueue.size).toBe(1)
+    expect(renderer.externalOutputMode).toBe("capture-stdout")
+
+    clock.advance(120)
+
+    expect(splitCommitSpy).toHaveBeenCalledTimes(1)
+    expect((renderer as any).externalOutputQueue.size).toBe(0)
+    expect(renderer.externalOutputMode).toBe("passthrough")
+  } finally {
+    lib.setupTerminal = originalSetupTerminal
+    splitCommitSpy.mockRestore()
+  }
+})
+
+test("CliRenderer flushes pending split output on suspend even when startup cursor seeding is pending", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  const unblockStartupSeed = blockSplitStartupCursorSeed(renderer)
+
+  const order: string[] = []
+  const lib = (renderer as any).lib
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
+  const originalSuspendRenderer = lib.suspendRenderer.bind(lib)
+
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
+    order.push("split-commit")
+    return originalCommitSplitFooterSnapshot(...args)
+  }
+  lib.suspendRenderer = (...args: any[]) => {
+    order.push("suspend")
+    return originalSuspendRenderer(...args)
+  }
+
+  try {
+    ;(renderer as any).stdout.write("before-suspend\n")
+    renderer.suspend()
+
+    expect(order.indexOf("split-commit")).toBeGreaterThanOrEqual(0)
+    expect(order.indexOf("suspend")).toBeGreaterThanOrEqual(0)
+    expect(order.indexOf("split-commit")).toBeLessThan(order.indexOf("suspend"))
+    expect((renderer as any).externalOutputQueue.size).toBe(0)
+  } finally {
+    unblockStartupSeed()
+    lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
+    lib.suspendRenderer = originalSuspendRenderer
+  }
 })
 
 test("CliRenderer flushes pending writeToScrollback output before suspend", async () => {
@@ -980,22 +1397,21 @@ test("CliRenderer split-footer defers first native frame while startup cursor se
   })
 
   renderer = result.renderer
-  ;(renderer as any).pendingSplitStartupCursorSeed = true
-  ;(renderer as any).splitStartupSeedTimeoutId = setTimeout(() => {}, 10)
+  const unblockStartupSeed = blockSplitStartupCursorSeed(renderer)
 
   const repaintSpy = spyOn((renderer as any).lib, "repaintSplitFooter")
   const commitSpy = spyOn((renderer as any).lib, "commitSplitFooterSnapshot")
 
-  await result.renderOnce()
+  try {
+    await result.renderOnce()
 
-  expect(repaintSpy).toHaveBeenCalledTimes(0)
-  expect(commitSpy).toHaveBeenCalledTimes(0)
-
-  clearTimeout((renderer as any).splitStartupSeedTimeoutId)
-  ;(renderer as any).splitStartupSeedTimeoutId = null
-
-  repaintSpy.mockRestore()
-  commitSpy.mockRestore()
+    expect(repaintSpy).toHaveBeenCalledTimes(0)
+    expect(commitSpy).toHaveBeenCalledTimes(0)
+  } finally {
+    unblockStartupSeed()
+    repaintSpy.mockRestore()
+    commitSpy.mockRestore()
+  }
 })
 
 test("CliRenderer split-footer starts in settling phase and then pins as output grows", async () => {
@@ -1090,7 +1506,35 @@ test("CliRenderer split-footer footerHeight changes coalesce while settling befo
   repaintSpy.mockRestore()
 })
 
-test("CliRenderer split-footer footerHeight changes defer pinned viewport transitions to the next native frame", async () => {
+test("CliRenderer split-footer grow then shrink back before frame keeps grown top line", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  ;(renderer as any).stdout.write("a\n")
+  await result.renderOnce()
+  ;(renderer as any).stdout.write("b\n")
+  await result.renderOnce()
+
+  expect((renderer as any).renderOffset).toBe(3)
+
+  renderer.footerHeight = 8
+  renderer.footerHeight = 4
+
+  await result.renderOnce()
+
+  expect((renderer as any).renderOffset).toBe(2)
+})
+
+test("CliRenderer split-footer pinned footerHeight shrink defers clear-stale-row cleanup to the next native frame", async () => {
   const result = await createTestRenderer({
     width: 40,
     height: 10,
@@ -1115,16 +1559,109 @@ test("CliRenderer split-footer footerHeight changes defer pinned viewport transi
 
   renderer.footerHeight = 3
 
+  expect((renderer as any).renderOffset).toBe(6)
+  expect((renderer as any).pendingSplitFooterTransition).toEqual({
+    mode: "clear-stale-rows",
+    sourceTopLine: 7,
+    sourceHeight: 4,
+    targetTopLine: 7,
+    targetHeight: 3,
+    scrollLines: 0,
+  })
   expect(writeOutSpy).toHaveBeenCalledTimes(0)
 
   await result.renderOnce()
 
+  expect((renderer as any).renderOffset).toBe(6)
   expect(repaintSpy).toHaveBeenCalledTimes(1)
   expect(repaintSpy.mock.calls[0]?.[1]).toBe(7)
   expect(repaintSpy.mock.calls[0]?.[2]).toBe(true)
 
   writeOutSpy.mockRestore()
   repaintSpy.mockRestore()
+})
+
+test("CliRenderer split-footer reuses the reserved gap when reopening the footer before new output arrives", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  for (let i = 0; i < 12; i += 1) {
+    ;(renderer as any).stdout.write(`line-${i}\n`)
+    await result.renderOnce()
+  }
+
+  expect((renderer as any).renderOffset).toBe(6)
+
+  renderer.footerHeight = 8
+
+  expect((renderer as any).pendingSplitFooterTransition).toEqual({
+    mode: "viewport-scroll",
+    sourceTopLine: 7,
+    sourceHeight: 4,
+    targetTopLine: 3,
+    targetHeight: 8,
+    scrollLines: 4,
+  })
+
+  await result.renderOnce()
+
+  renderer.footerHeight = 4
+
+  expect((renderer as any).pendingSplitFooterTransition).toEqual({
+    mode: "clear-stale-rows",
+    sourceTopLine: 3,
+    sourceHeight: 8,
+    targetTopLine: 3,
+    targetHeight: 4,
+    scrollLines: 0,
+  })
+
+  await result.renderOnce()
+
+  expect((renderer as any).renderOffset).toBe(2)
+
+  renderer.footerHeight = 7
+
+  expect((renderer as any).pendingSplitFooterTransition).toEqual({
+    mode: "clear-stale-rows",
+    sourceTopLine: 3,
+    sourceHeight: 4,
+    targetTopLine: 3,
+    targetHeight: 7,
+    scrollLines: 0,
+  })
+})
+
+test("CliRenderer split-footer passthrough footerHeight shrink clears stale rows without reverse scrolling", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "passthrough",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  const writeOutSpy = spyOn(renderer as any, "writeOut")
+
+  renderer.footerHeight = 3
+
+  expect(writeOutSpy).toHaveBeenCalledTimes(1)
+  expect(writeOutSpy.mock.calls[0]?.[0]).toBe(`${ANSI.moveCursor(7, 1)}\x1b[2K`)
+
+  writeOutSpy.mockRestore()
 })
 
 test("CliRenderer split-footer resize cleanup uses the visible footer surface while a deferred footer transition is pending", async () => {
@@ -1150,6 +1687,7 @@ test("CliRenderer split-footer resize cleanup uses the visible footer surface wh
     sourceHeight: 4,
     targetTopLine: 2,
     targetHeight: 3,
+    scrollLines: 0,
   })
 
   result.resize(20, 10)
@@ -1184,6 +1722,7 @@ test("CliRenderer split-footer resize cleanup uses the visible source top line a
     sourceHeight: 4,
     targetTopLine: 2,
     targetHeight: 3,
+    scrollLines: 0,
   })
 
   result.resize(20, 12)
@@ -1231,8 +1770,7 @@ test("CliRenderer split-footer footerHeight changes do not queue deferred transi
 
   renderer = result.renderer
   ;(renderer as any)._terminalIsSetup = true
-  ;(renderer as any).pendingSplitStartupCursorSeed = true
-  ;(renderer as any).splitStartupSeedTimeoutId = setTimeout(() => {}, 10)
+  const unblockStartupSeed = blockSplitStartupCursorSeed(renderer)
 
   const setPendingTransitionSpy = spyOn((renderer as any).lib, "setPendingSplitFooterTransition")
 
@@ -1243,8 +1781,7 @@ test("CliRenderer split-footer footerHeight changes do not queue deferred transi
     expect((renderer as any).pendingSplitFooterTransition).toBeNull()
     expect((renderer as any).forceFullRepaintRequested).toBe(true)
   } finally {
-    clearTimeout((renderer as any).splitStartupSeedTimeoutId)
-    ;(renderer as any).splitStartupSeedTimeoutId = null
+    unblockStartupSeed()
     setPendingTransitionSpy.mockRestore()
   }
 })
@@ -1266,6 +1803,39 @@ test("CliRenderer entering split capture seeds from current terminal cursor row"
   renderer.externalOutputMode = "capture-stdout"
 
   expect((renderer as any).renderOffset).toBe(4)
+})
+
+test("CliRenderer entering split capture after a committed main-screen frame clears the old pinned footer surface", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  await result.renderOnce()
+
+  renderer.externalOutputMode = "passthrough"
+  renderer.screenMode = "main-screen"
+  await result.renderOnce()
+
+  renderer.screenMode = "split-footer"
+  renderer.externalOutputMode = "capture-stdout"
+
+  expect((renderer as any).pendingSplitFooterTransition).toEqual({
+    mode: "clear-stale-rows",
+    sourceTopLine: 7,
+    sourceHeight: 4,
+    targetTopLine: 2,
+    targetHeight: 4,
+    scrollLines: 0,
+  })
+  expect((renderer as any).forceFullRepaintRequested).toBe(true)
 })
 
 test("CliRenderer reseeds split startup offset from non-home CPR capability response", async () => {

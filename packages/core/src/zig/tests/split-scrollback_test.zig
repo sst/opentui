@@ -22,6 +22,21 @@ test "split scrollback reset seeds pinned rows" {
     try std.testing.expectEqual(@as(u32, 1), scrollback.tail_column);
 }
 
+test "split scrollback render offset preserves growth-created gap until output fills it" {
+    var scrollback: split_scrollback.SplitScrollback = .{};
+
+    scrollback.reset(7);
+    scrollback.noteViewportScroll(5);
+
+    try std.testing.expectEqual(@as(u32, 2), scrollback.renderOffset(2));
+    try std.testing.expectEqual(@as(u32, 2), scrollback.renderOffset(7));
+
+    scrollback.noteNewline();
+    scrollback.noteNewline();
+
+    try std.testing.expectEqual(@as(u32, 4), scrollback.renderOffset(7));
+}
+
 test "split scrollback snapshot rows start at line boundary" {
     var scrollback: split_scrollback.SplitScrollback = .{};
 

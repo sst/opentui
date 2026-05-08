@@ -1,12 +1,13 @@
 import type { Keymap } from "../keymap.js"
 import type {
   BindingCommand,
+  Command,
   CommandContext,
+  CommandHandler,
   CommandResult,
-  CompiledBinding,
+  BindingState,
   KeymapEvent,
   RegisteredLayer,
-  ResolvedBindingCommand,
   RunCommandOptions,
   RunCommandResult,
 } from "../types.js"
@@ -17,9 +18,9 @@ import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
 import { isPromiseLike } from "./values.js"
 
-interface CommandExecutionResult {
+interface CommandExecutionResult<TTarget extends object, TEvent extends KeymapEvent> {
   status: "handled" | "rejected" | "error"
-  result: RunCommandResult
+  result: RunCommandResult<TTarget, TEvent>
 }
 
 interface CommandExecutorOptions<TTarget extends object, TEvent extends KeymapEvent> {
@@ -27,310 +28,294 @@ interface CommandExecutorOptions<TTarget extends object, TEvent extends KeymapEv
   createCommandEvent: () => TEvent
 }
 
-export class CommandExecutorService<TTarget extends object, TEvent extends KeymapEvent> {
-  constructor(
-    private readonly notify: NotificationService<TTarget, TEvent>,
-    private readonly runtime: RuntimeService<TTarget, TEvent>,
-    private readonly activation: ActivationService<TTarget, TEvent>,
-    private readonly catalog: CommandCatalogService<TTarget, TEvent>,
-    private readonly options: CommandExecutorOptions<TTarget, TEvent>,
-  ) {}
-
-  public runCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult {
-    let normalized: BindingCommand<TTarget, TEvent> | undefined
-
-    try {
-      normalized = normalizeBindingCommand(cmd)
-    } catch {
-      return { ok: false, reason: "invalid-args" }
-    }
-
-    if (typeof normalized !== "string") {
-      return { ok: false, reason: "not-found" }
-    }
-
-    const includeRecord = options?.includeCommand === true
-    const focused = options?.focused ?? this.activation.getFocusedTargetIfAvailable()
-    const event = options?.event ?? this.options.createCommandEvent()
-    const data = this.runtime.getReadonlyData()
-    const chain = this.catalog.getRegisteredResolvedEntries(normalized, includeRecord)
-    let rejectedResult: RunCommandResult | undefined
-
-    // Kept inline across command execution paths: abstracting this chain walk
-    // measurably slowed the benchmarked hot path.
-    if (chain?.length === 1) {
-      const [entry] = chain
-      if (entry) {
-        const execution = this.executeResolvedCommand(normalized, entry.resolved, {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: options?.target ?? entry.target ?? null,
-          data,
-        })
-
-        if (execution.status === "handled" || execution.status === "error") {
-          return execution.result
-        }
-
-        rejectedResult = execution.result
-      }
-    } else if (chain) {
-      for (const entry of chain) {
-        const context: CommandContext<TTarget, TEvent> = {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: options?.target ?? entry.target ?? null,
-          data,
-        }
-
-        const execution = this.executeResolvedCommand(normalized, entry.resolved, context)
-        if (execution.status === "handled" || execution.status === "error") {
-          return execution.result
-        }
-
-        rejectedResult = execution.result
-      }
-    }
-
-    const fallback = this.catalog.resolveRegisteredResolverFallback(normalized, includeRecord)
-    if (fallback.resolved) {
-      const execution = this.executeResolvedCommand(normalized, fallback.resolved, {
-        keymap: this.options.keymap,
-        event,
-        focused,
-        target: options?.target ?? null,
-        data,
-      })
-
-      if (execution.status === "handled" || execution.status === "error") {
-        return execution.result
-      }
-
-      rejectedResult = execution.result
-    }
-
-    if (fallback.hadError) {
-      return { ok: false, reason: "error" }
-    }
-
-    return rejectedResult ?? { ok: false, reason: "not-found" }
-  }
-
-  public dispatchCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult {
-    let normalized: BindingCommand<TTarget, TEvent> | undefined
-
-    try {
-      normalized = normalizeBindingCommand(cmd)
-    } catch {
-      return { ok: false, reason: "invalid-args" }
-    }
-
-    if (typeof normalized !== "string") {
-      return { ok: false, reason: "not-found" }
-    }
-
-    const includeRecord = options?.includeCommand === true
-    const focused = options?.focused ?? this.activation.getFocusedTargetIfAvailable()
-    const event = options?.event ?? this.options.createCommandEvent()
-    const data = this.runtime.getReadonlyData()
-    const chain = this.catalog.getActiveRegisteredResolvedEntries(normalized, focused, includeRecord)
-    let rejectedResult: RunCommandResult | undefined
-
-    if (chain?.length === 1) {
-      const [entry] = chain
-      if (entry) {
-        const execution = this.executeResolvedCommand(normalized, entry.resolved, {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: options?.target ?? entry.target ?? null,
-          data,
-        })
-
-        if (execution.status === "handled" || execution.status === "error") {
-          return execution.result
-        }
-
-        rejectedResult = execution.result
-      }
-    } else if (chain) {
-      for (const entry of chain) {
-        const context: CommandContext<TTarget, TEvent> = {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: options?.target ?? entry.target ?? null,
-          data,
-        }
-
-        const execution = this.executeResolvedCommand(normalized, entry.resolved, context)
-        if (execution.status === "handled" || execution.status === "error") {
-          return execution.result
-        }
-
-        rejectedResult = execution.result
-      }
-    }
-
-    const fallback = this.catalog.resolveActiveResolverFallback(normalized, focused, includeRecord)
-    if (fallback.resolved) {
-      const execution = this.executeResolvedCommand(normalized, fallback.resolved, {
-        keymap: this.options.keymap,
-        event,
-        focused,
-        target: options?.target ?? null,
-        data,
-      })
-
-      if (execution.status === "handled" || execution.status === "error") {
-        return execution.result
-      }
-
-      rejectedResult = execution.result
-    }
-
-    if (fallback.hadError) {
-      return { ok: false, reason: "error" }
-    }
-
-    const unavailable = this.catalog.getDispatchUnavailableCommandState(normalized, focused, includeRecord)
-    if (unavailable) {
-      return unavailable.command
-        ? { ok: false, reason: unavailable.reason, command: unavailable.command }
-        : { ok: false, reason: unavailable.reason }
-    }
-
-    return rejectedResult ?? { ok: false, reason: "not-found" }
-  }
-
-  public runBinding(
+export interface CommandExecutorService<TTarget extends object, TEvent extends KeymapEvent> {
+  runCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult<TTarget, TEvent>
+  dispatchCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult<TTarget, TEvent>
+  runBinding(
     bindingLayer: RegisteredLayer<TTarget, TEvent>,
-    binding: CompiledBinding<TTarget, TEvent>,
+    binding: BindingState<TTarget, TEvent>,
     event: TEvent,
     focused: TTarget | null,
-  ): boolean {
-    const data = this.runtime.getReadonlyData()
+    payload?: unknown,
+  ): boolean
+}
 
-    if (binding.run) {
-      const result = this.executeResolvedCommand(
-        typeof binding.command === "string" ? binding.command : "<function>",
-        { run: binding.run },
-        {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: bindingLayer.target ?? null,
-          data,
-        },
-      )
+export function createCommandExecutorService<TTarget extends object, TEvent extends KeymapEvent>(
+  notify: NotificationService<TTarget, TEvent>,
+  runtime: RuntimeService<TTarget, TEvent>,
+  activation: ActivationService<TTarget, TEvent>,
+  catalog: CommandCatalogService<TTarget, TEvent>,
+  options: CommandExecutorOptions<TTarget, TEvent>,
+): CommandExecutorService<TTarget, TEvent> {
+  const createCommandContext = (
+    event: TEvent,
+    focused: TTarget | null,
+    target: TTarget | null,
+    data: Readonly<Record<string, unknown>>,
+    input: string,
+    payload: unknown,
+  ): CommandContext<TTarget, TEvent> => {
+    return {
+      keymap: options.keymap,
+      event,
+      focused,
+      target,
+      data,
+      input,
+      payload,
+    }
+  }
 
-      if (result.status === "rejected") {
-        return false
+  const executeResolvedCommand = (
+    commandName: string,
+    command: Command<TTarget, TEvent> | CommandHandler<TTarget, TEvent>,
+    context: CommandContext<TTarget, TEvent>,
+    includeCommand: boolean,
+  ): CommandExecutionResult<TTarget, TEvent> => {
+    const commandView = typeof command === "function" ? undefined : command
+    const run = typeof command === "function" ? command : command.run
+    const resultCommand = includeCommand ? commandView : undefined
+    let result: CommandResult<TTarget, TEvent>
+
+    try {
+      result = run(commandView ? { ...context, command: commandView } : context)
+    } catch (error) {
+      notify.emitError("command-execution-error", error, `[Keymap] Error running command "${commandName}":`)
+      return {
+        status: "error",
+        result: resultCommand ? { ok: false, reason: "error", command: resultCommand } : { ok: false, reason: "error" },
+      }
+    }
+
+    if (isPromiseLike(result)) {
+      result.catch((error) => {
+        notify.emitError("async-command-error", error, `[Keymap] Async error in command "${commandName}":`)
+      })
+
+      return {
+        status: "handled",
+        result: resultCommand ? { ok: true, command: resultCommand } : { ok: true },
+      }
+    }
+
+    if (isRunCommandResult(result)) {
+      let commandResult: RunCommandResult<TTarget, TEvent> = result
+      if (!result.ok && result.reason !== "not-found" && includeCommand && commandView && !result.command) {
+        commandResult = { ...result, command: commandView }
+      } else if (result.ok && includeCommand && commandView && !result.command) {
+        commandResult = { ...result, command: commandView }
       }
 
-      applyBindingEventEffects(binding, event)
-      return true
+      return {
+        status: result.ok ? "handled" : "rejected",
+        result: commandResult,
+      }
     }
 
-    if (typeof binding.command !== "string") {
-      return false
+    if (result === false) {
+      return {
+        status: "rejected",
+        result: resultCommand
+          ? { ok: false, reason: "rejected", command: resultCommand }
+          : { ok: false, reason: "rejected" },
+      }
     }
 
-    const chain = this.catalog.getResolvedCommandChain(binding.command, focused, false).entries
-    if (chain?.length === 1) {
-      const [entry] = chain
-      if (entry) {
-        const execution = this.executeResolvedCommand(binding.command, entry.resolved, {
-          keymap: this.options.keymap,
+    return {
+      status: "handled",
+      result: resultCommand ? { ok: true, command: resultCommand } : { ok: true },
+    }
+  }
+
+  const executeCommandChain = (
+    commandName: string,
+    chain: readonly { target?: TTarget; command: Command<TTarget, TEvent> }[] | undefined,
+    event: TEvent,
+    focused: TTarget | null,
+    target: TTarget | null | undefined,
+    data: Readonly<Record<string, unknown>>,
+    payload: unknown,
+    includeCommand: boolean,
+  ): [RunCommandResult<TTarget, TEvent> | undefined, RunCommandResult<TTarget, TEvent> | undefined] => {
+    let rejected: RunCommandResult<TTarget, TEvent> | undefined
+    for (const entry of chain ?? []) {
+      const executed = executeResolvedCommand(
+        commandName,
+        entry.command,
+        createCommandContext(event, focused, target ?? entry.target ?? null, data, commandName, payload),
+        includeCommand,
+      )
+
+      if (executed.status === "handled" || executed.status === "error") {
+        return [executed.result, rejected]
+      }
+
+      rejected = executed.result
+    }
+
+    return [undefined, rejected]
+  }
+
+  const executeProgrammaticCommand = (
+    cmd: string,
+    commandOptions: RunCommandOptions<TTarget, TEvent> | undefined,
+    mode: "registered" | "active",
+  ): RunCommandResult<TTarget, TEvent> => {
+    let normalized: BindingCommand<TTarget, TEvent> | undefined
+
+    try {
+      normalized = normalizeBindingCommand(cmd)
+    } catch {
+      return { ok: false, reason: "invalid-args" }
+    }
+
+    if (typeof normalized !== "string") {
+      return { ok: false, reason: "not-found" }
+    }
+
+    const includeCommand = commandOptions?.includeCommand === true
+    const focused = commandOptions?.focused ?? activation.getFocusedTargetIfAvailable()
+    const event = commandOptions?.event ?? options.createCommandEvent()
+    const data = runtime.getReadonlyData()
+    const payload = commandOptions?.payload
+    const chain =
+      mode === "registered"
+        ? catalog.getRegisteredResolvedEntries(normalized)
+        : catalog.getActiveRegisteredResolvedEntries(normalized, focused)
+    const [done, rejected] = executeCommandChain(
+      normalized,
+      chain,
+      event,
+      focused,
+      commandOptions?.target,
+      data,
+      payload,
+      includeCommand,
+    )
+    if (done) {
+      return done
+    }
+
+    let rejectedResult = rejected
+    const fallback =
+      mode === "registered"
+        ? catalog.resolveRegisteredResolverFallback(normalized, { input: normalized, payload })
+        : catalog.resolveActiveResolverFallback(normalized, focused, { input: normalized, payload })
+    if (fallback.resolved) {
+      const result = executeResolvedCommand(
+        normalized,
+        fallback.resolved.command,
+        createCommandContext(
           event,
           focused,
-          target: entry.target ?? bindingLayer.target ?? null,
+          commandOptions?.target ?? fallback.resolved.target ?? null,
           data,
-        })
-        if (execution.status === "rejected") {
+          fallback.resolved.input ?? normalized,
+          fallback.resolved.payload,
+        ),
+        includeCommand,
+      )
+
+      if (result.status === "handled" || result.status === "error") {
+        return result.result
+      }
+
+      rejectedResult = result.result
+    }
+
+    if (fallback.hadError) {
+      return { ok: false, reason: "error" }
+    }
+
+    if (mode === "active") {
+      const unavailable = catalog.getDispatchUnavailableCommandState(normalized, focused, includeCommand)
+      if (unavailable) {
+        return unavailable.command
+          ? { ok: false, reason: unavailable.reason, command: unavailable.command }
+          : { ok: false, reason: unavailable.reason }
+      }
+    }
+
+    return rejectedResult ?? { ok: false, reason: "not-found" }
+  }
+
+  return {
+    runCommand(cmd, commandOptions) {
+      return executeProgrammaticCommand(cmd, commandOptions, "registered")
+    },
+    dispatchCommand(cmd, commandOptions) {
+      return executeProgrammaticCommand(cmd, commandOptions, "active")
+    },
+    runBinding(bindingLayer, binding, event, focused, payload) {
+      const data = runtime.getReadonlyData()
+
+      if (binding.run) {
+        const result = executeResolvedCommand(
+          typeof binding.command === "string" ? binding.command : "<function>",
+          binding.run,
+          createCommandContext(
+            event,
+            focused,
+            bindingLayer.target ?? null,
+            data,
+            typeof binding.command === "string" ? binding.command : "<function>",
+            payload,
+          ),
+          false,
+        )
+
+        if (result.status === "rejected") {
           return false
         }
 
         applyBindingEventEffects(binding, event)
         return true
       }
-    } else if (chain) {
-      for (const entry of chain) {
-        const context: CommandContext<TTarget, TEvent> = {
-          keymap: this.options.keymap,
-          event,
-          focused,
-          target: entry.target ?? bindingLayer.target ?? null,
-          data,
-        }
 
-        const execution = this.executeResolvedCommand(binding.command, entry.resolved, context)
-        if (execution.status === "rejected") {
+      if (typeof binding.command !== "string") {
+        return false
+      }
+
+      const chain = catalog.getResolvedCommandChain(
+        binding.command,
+        focused,
+        payload === undefined ? undefined : { input: binding.command, payload },
+      ).entries
+      for (const entry of chain ?? []) {
+        const result = executeResolvedCommand(
+          binding.command,
+          entry.command,
+          createCommandContext(
+            event,
+            focused,
+            entry.target ?? bindingLayer.target ?? null,
+            data,
+            entry.input ?? binding.command,
+            entry.payload,
+          ),
+          false,
+        )
+        if (result.status === "rejected") {
           continue
         }
 
         applyBindingEventEffects(binding, event)
         return true
       }
-    }
 
-    return false
-  }
-
-  private executeResolvedCommand(
-    commandName: string,
-    resolved: ResolvedBindingCommand<TTarget, TEvent>,
-    context: CommandContext<TTarget, TEvent>,
-  ): CommandExecutionResult {
-    const command = resolved.record
-    let result: CommandResult
-
-    try {
-      result = resolved.run(context)
-    } catch (error) {
-      this.notify.emitError("command-execution-error", error, `[Keymap] Error running command "${commandName}":`)
-      return {
-        status: "error",
-        result: { ok: false, reason: "error", command },
-      }
-    }
-
-    if (isPromiseLike(result)) {
-      result.catch((error) => {
-        this.notify.emitError("async-command-error", error, `[Keymap] Async error in command "${commandName}":`)
-      })
-
-      return {
-        status: "handled",
-        result: { ok: true, command },
-      }
-    }
-
-    if (result === false) {
-      if (resolved.rejectedResult) {
-        return {
-          status: "rejected",
-          result: resolved.rejectedResult,
-        }
-      }
-
-      return {
-        status: "rejected",
-        result: { ok: false, reason: "rejected", command },
-      }
-    }
-
-    return {
-      status: "handled",
-      result: { ok: true, command },
-    }
+      return false
+    },
   }
 }
 
+function isRunCommandResult<TTarget extends object, TEvent extends KeymapEvent>(
+  value: CommandResult<TTarget, TEvent>,
+): value is RunCommandResult<TTarget, TEvent> {
+  return typeof value === "object" && value !== null && "ok" in value
+}
+
 function applyBindingEventEffects<TTarget extends object, TEvent extends KeymapEvent>(
-  binding: CompiledBinding<TTarget, TEvent>,
+  binding: BindingState<TTarget, TEvent>,
   event: TEvent,
 ): void {
   if (!binding.preventDefault) {

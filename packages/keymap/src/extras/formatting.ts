@@ -7,14 +7,20 @@ export interface KeySequenceFormatPart {
   display: string
   match?: KeySequencePart["match"]
   tokenName?: string
+  patternName?: string
 }
 
 export type TokenDisplayResolver =
   | Readonly<Record<string, string>>
   | ((tokenName: string, part: KeySequenceFormatPart) => string | undefined)
 
+export type PatternDisplayResolver =
+  | Readonly<Record<string, string>>
+  | ((patternName: string, part: KeySequenceFormatPart) => string | undefined)
+
 export interface FormatKeySequenceOptions {
   tokenDisplay?: TokenDisplayResolver
+  patternDisplay?: PatternDisplayResolver
   keyNameAliases?: Readonly<Record<string, string>>
   modifierAliases?: Partial<Record<KeyModifierName, string>>
   separator?: string
@@ -36,6 +42,15 @@ function formatStroke(part: KeySequenceFormatPart, options: FormatKeySequenceOpt
     if (typeof tokenDisplay === "function") return tokenDisplay(part.tokenName, part) ?? part.display
     return tokenDisplay[part.tokenName] ?? part.display
   }
+
+  if (part.patternName) {
+    const patternDisplay = options.patternDisplay
+    if (!patternDisplay) return part.display
+    if (typeof patternDisplay === "function") return patternDisplay(part.patternName, part) ?? part.display
+    return patternDisplay[part.patternName] ?? part.display
+  }
+
+  if (!options.keyNameAliases && !options.modifierAliases) return part.display
 
   // This is on the command-palette hot path; build directly to avoid per-stroke arrays.
   const stroke = part.stroke

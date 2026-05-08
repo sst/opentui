@@ -30,7 +30,7 @@ import * as opentuiAddons from "@opentui/keymap/addons/opentui"
 | `registerDefaultEventMatchResolver()` | Appends `defaultEventMatchResolver`                   |
 | `registerDefaultKeys()`               | Installs both default stages together                 |
 
-The shared default parser accepts single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key and `<token>` segments. It parses concatenated multi-stroke sequences such as `dd` or `<leader>s`.
+The shared default parser accepts single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key, `<token>` aliases, and `{pattern}` runtime captures. It parses concatenated multi-stroke sequences such as `dd`, `<leader>s`, or `{count}j`.
 
 Recognized modifier prefixes (case-insensitive, joined with `+`):
 
@@ -48,32 +48,37 @@ Recognized modifier prefixes (case-insensitive, joined with `+`):
 | ---------------------------- | ---------------------------------------------------------------------------------- |
 | `registerBindingOverrides()` | Layer-local `bindingOverrides` field for replacing bindings by string command name |
 | `registerEnabledFields()`    | Layer and command `enabled` fields                                                 |
-| `registerMetadataFields()`   | Binding `desc` / `group` and command `desc` / `title` / `category` attrs           |
+| `registerMetadataFields()`   | Binding `desc` / `group` and command `desc` / `title` / `category` metadata        |
 | `registerAliasesField()`     | Layer-local `aliases` field for remapping single-key binding names                 |
 
-`registerBindingOverrides()` expects `bindingOverrides` to already be a `BindingInput[]` array. It rewrites that layer's binding array once at registration time. Matching string commands are replaced by the override binding and unmatched bindings stay in place.
+`registerBindingOverrides()` expects `bindingOverrides` to already be a `Binding[]` array. It rewrites that layer's binding array once at registration time. Matching string commands are replaced by the override binding and unmatched bindings stay in place.
 
-`registerEnabledFields()` accepts `boolean`, `() => boolean`, or `ReactiveMatcher` values. It applies to layers and commands, not bindings.
+`registerEnabledFields()` accepts `boolean`, `() => boolean`, or `ReactiveMatcher` values. It applies to layers and commands, not bindings. It controls activation only; it does not publish attrs.
+
+`registerMetadataFields()` validates and trims metadata fields before exposing them in projections. Binding `desc` / `group` become binding metadata. Command `desc` / `title` / `category` become command metadata in `commandAttrs`.
+
+Layer metadata is app-specific. Register layer fields directly with `registerLayerFields()` and call `ctx.attr(...)` when graph/debug visualizations need layer labels or grouping metadata.
 
 `registerAliasesField()` adds bindings instead of replacing the originals and aliases stay local to the layer that declared them.
 
 ### Syntax and sequence addons
 
-| Export                                   | Description                                                                |
-| ---------------------------------------- | -------------------------------------------------------------------------- |
-| `registerCommaBindings()`                | Expands `x, y` into multiple bindings                                      |
-| `registerEmacsBindings()`                | Parses Emacs-style spaced chords such as `ctrl+x ctrl+s`                   |
-| `registerLeader()`                       | Defines a token such as `<leader>` that expands to a chosen trigger stroke |
-| `registerTimedLeader()`                  | Defines a leader token and clears it after a timeout                       |
-| `registerBackspacePopsPendingSequence()` | Lets Backspace step back through the current pending sequence              |
-| `registerEscapeClearsPendingSequence()`  | Lets Escape cancel the current pending sequence                            |
-| `registerNeovimDisambiguation()`         | Timeout-based exact-vs-prefix disambiguation                               |
+| Export                                   | Description                                                             |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| `registerCommaBindings()`                | Expands `x, y` into multiple bindings                                   |
+| `registerEmacsBindings()`                | Parses Emacs-style spaced chords such as `ctrl+x ctrl+s`                |
+| `registerLeader()`                       | Defines a token such as `leader` that `<leader>` syntax expands through |
+| `registerModBindings()`                  | Adds platform-aware `mod+...` bindings using host metadata              |
+| `registerTimedLeader()`                  | Defines a leader token and clears it after a timeout                    |
+| `registerBackspacePopsPendingSequence()` | Lets Backspace step back through the current pending sequence           |
+| `registerEscapeClearsPendingSequence()`  | Lets Escape cancel the current pending sequence                         |
+| `registerNeovimDisambiguation()`         | Timeout-based exact-vs-prefix disambiguation                            |
 
 Options:
 
 | API                                      | Options                                                                              |
 | ---------------------------------------- | ------------------------------------------------------------------------------------ |
-| `registerLeader()`                       | `LeaderOptions`: `trigger`, optional `name` (default `"<leader>"`)                   |
+| `registerLeader()`                       | `LeaderOptions`: `trigger`, optional semantic `name` (default `"leader"`)            |
 | `registerTimedLeader()`                  | `TimedLeaderOptions`: `LeaderOptions` plus `timeoutMs`, `onArm`, `onDisarm`          |
 | `registerBackspacePopsPendingSequence()` | `BackspacePopsPendingSequenceOptions`: `preventDefault` (default `true`), `priority` |
 | `registerEscapeClearsPendingSequence()`  | `EscapeClearsPendingSequenceOptions`: `preventDefault` (default `true`), `priority`  |
@@ -90,34 +95,39 @@ Register disambiguation addons before registering same-layer exact/prefix bindin
 
 ## Ex commands
 
-`registerExCommands()` installs a command layer plus a command resolver for `:name ...args` strings.
+`registerExCommands()` installs ex-command field compilers, a command transformer and a resolver for `:name ...args` strings. Register ex commands through normal keymap layers by using a colon-prefixed command name or `namespace: "excommands"`.
 
 ```ts
 import { registerExCommands } from "@opentui/keymap/addons"
 
-registerExCommands(keymap, [
-  {
-    name: "write",
-    aliases: ["w"],
-    nargs: "1",
-    desc: "Write file",
-    run({ raw, args }) {
-      // raw === ":write session.log"
-      // args === ["session.log"]
+registerExCommands(keymap)
+
+keymap.registerLayer({
+  commands: [
+    {
+      name: "write",
+      namespace: "excommands",
+      aliases: ["w"],
+      nargs: "1",
+      desc: "Write file",
+      run({ payload }) {
+        // payload.raw === ":write session.log"
+        // payload.args === ["session.log"]
+      },
     },
-  },
-])
+  ],
+})
 ```
 
 `ExCommand` fields:
 
-| Field        | Type                                                                               | Required | Description                                                                       |
-| ------------ | ---------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------- |
-| `name`       | `string`                                                                           | yes      | Command name. `:name` and `name` both normalize to `:name`                        |
-| `aliases`    | `string[]`                                                                         | no       | Additional names                                                                  |
-| `nargs`      | `"0"`, `"1"`, `"?"`, `"*"`, `"+"`                                                  | no       | Argument-count validation                                                         |
-| `run`        | `(ctx: CommandContext & { raw: string; args: string[] }) => void \| Promise<void>` | yes      | `ctx` is the base `CommandContext` plus the trimmed `raw` input and parsed `args` |
-| extra fields | `unknown`                                                                          | no       | Forwarded into the registered command fields/attrs                                |
+| Field        | Type                                                                        | Required | Description                                                      |
+| ------------ | --------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------- |
+| `name`       | `string`                                                                    | yes      | Command name. `:name` and `name` both normalize to `:name`       |
+| `aliases`    | `string[]`                                                                  | no       | Additional names                                                 |
+| `nargs`      | `"0"`, `"1"`, `"?"`, `"*"`, `"+"`                                           | no       | Argument-count validation                                        |
+| `run`        | `(ctx: CommandContext<TTarget, TEvent, ExCommandPayload>) => CommandResult` | yes      | `ctx.payload` contains the trimmed `raw` input and parsed `args` |
+| extra fields | `unknown`                                                                   | no       | Added as top-level fields on the registered command              |
 
 - Registered ex commands default `namespace` to `excommands`.
 - Aliases produce additional registered commands, for example `:write` and `:w`.
@@ -145,10 +155,13 @@ Adds an event match resolver that falls back to `KeyEvent.baseCode` so bindings 
 
 `EditBufferCommandOptions`:
 
-| Field          | Type                                             | Description                             |
-| -------------- | ------------------------------------------------ | --------------------------------------- |
-| `commandNames` | `Partial<Record<EditBufferCommandName, string>>` | Override generated command names        |
-| `descriptions` | `Partial<Record<EditBufferCommandName, string>>` | Override generated command descriptions |
+| Field              | Type                                             | Description                                                                     |
+| ------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `category`         | `string`                                         | Override generated command category, defaulting to `Text Editing`               |
+| `group`            | `string`                                         | Override generated binding group, defaulting to `Text Editing`                  |
+| `includeFineGroup` | `boolean`                                        | Include hard-coded binding `fineGroup` fields for apps that register that field |
+| `commandNames`     | `Partial<Record<EditBufferCommandName, string>>` | Override generated command names                                                |
+| `descriptions`     | `Partial<Record<EditBufferCommandName, string>>` | Override generated command descriptions                                         |
 
 `registerEditBufferCommands()` and `registerTextareaMappingSuspension()` are reference-counted per keymap, so multiple integrations can safely share them.
 

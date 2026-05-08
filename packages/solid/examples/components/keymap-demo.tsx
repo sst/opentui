@@ -3,12 +3,14 @@ import {
   ConsolePosition,
   type CliRenderer,
   type InputRenderable,
+  type KeyEvent,
   TextAttributes,
   type Renderable,
   type TextareaRenderable,
 } from "@opentui/core"
-import { type ActiveKey, type CommandRecord } from "@opentui/keymap"
+import { type ActiveKey, type Command } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
+import type { ExCommandPayload } from "@opentui/keymap/addons/opentui"
 import { formatKeySequence } from "@opentui/keymap/extras"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider, useBindings, useKeymap, useKeymapSelector } from "@opentui/keymap/solid"
@@ -16,24 +18,27 @@ import { render, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 
 const palette = {
-  bg: "#0f172a",
-  surface: "#1e293b",
-  surfaceFocus: "#24324d",
-  border: "#334155",
-  text: "#e2e8f0",
-  textDim: "#94a3b8",
-  textMuted: "#64748b",
-  title: "#f1f5f9",
-  alpha: "#38bdf8",
-  beta: "#34d399",
-  accent: "#a78bfa",
-  key: "#fbbf24",
-  command: "#67e8f9",
-  leader: "#fb923c",
-  separator: "#475569",
+  bg: "#1a1b26",
+  surface: "#16161e",
+  surfaceFocus: "#292e42",
+  panel: "#1f2335",
+  border: "#2f334d",
+  borderStrong: "#3b4261",
+  text: "#c0caf5",
+  textDim: "#a9b1d6",
+  textMuted: "#565f89",
+  title: "#c0caf5",
+  alpha: "#7dcfff",
+  beta: "#9ece6a",
+  accent: "#bb9af7",
+  key: "#7dcfff",
+  command: "#9ece6a",
+  leader: "#e0af68",
+  separator: "#3b4261",
 } as const
 
 const LEADER_TOKEN = "<leader>"
+const COUNT_PATTERN = "count"
 const KEY_FORMAT_OPTIONS = {
   tokenDisplay: {
     [LEADER_TOKEN]: "ctrl+x",
@@ -79,7 +84,7 @@ const editorSpecs: readonly EditorSpec[] = [
 
 type ExArgCount = "0" | "1" | "?" | "*" | "+"
 
-interface DemoExCommand {
+interface DemoExCommand extends Command<Renderable, KeyEvent, ExCommandPayload> {
   name: string
   aliases?: string[]
   nargs?: ExArgCount
@@ -87,7 +92,6 @@ interface DemoExCommand {
   desc: string
   category: string
   usage: string
-  run: (ctx: { raw: string; args: string[] }) => void
 }
 
 interface ExPromptSuggestion {
@@ -131,12 +135,12 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function getExPromptCommandFieldText(command: CommandRecord, fieldName: string): string | undefined {
-  return getMetadataText(command.fields[fieldName])
+function getExPromptCommandFieldText(command: Command<Renderable, KeyEvent>, fieldName: string): string | undefined {
+  return getMetadataText(command[fieldName])
 }
 
-function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined {
-  const value = command.fields.nargs
+function getExPromptCommandNargs(command: Command<Renderable, KeyEvent>): ExArgCount | undefined {
+  const value = command.nargs
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
   }
@@ -144,7 +148,7 @@ function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined
   return undefined
 }
 
-function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly Command<Renderable, KeyEvent>[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {
@@ -161,7 +165,10 @@ function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptS
   return suggestions
 }
 
-function getExPromptSuggestions(commands: readonly CommandRecord[], value: string): ExPromptSuggestion[] {
+function getExPromptSuggestions(
+  commands: readonly Command<Renderable, KeyEvent>[],
+  value: string,
+): ExPromptSuggestion[] {
   const normalized = normalizeExPromptName(value)
   const spaceIndex = normalized.indexOf(" ")
   const query = spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
@@ -177,7 +184,7 @@ function getExPromptSuggestions(commands: readonly CommandRecord[], value: strin
 }
 
 function getSelectedExPromptSuggestion(
-  commands: readonly CommandRecord[],
+  commands: readonly Command<Renderable, KeyEvent>[],
   value: string,
   selection: number,
 ): ExPromptSuggestion | null {
@@ -190,7 +197,7 @@ function getSelectedExPromptSuggestion(
 }
 
 function moveExPromptSelection(
-  commands: readonly CommandRecord[],
+  commands: readonly Command<Renderable, KeyEvent>[],
   value: string,
   selection: number,
   direction: 1 | -1,
@@ -205,7 +212,7 @@ function moveExPromptSelection(
 }
 
 function applyExPromptSuggestion(
-  commands: readonly CommandRecord[],
+  commands: readonly Command<Renderable, KeyEvent>[],
   value: string,
   selection: number,
   direction?: 1 | -1,
@@ -251,6 +258,15 @@ function getMetadataText(value: unknown): string | undefined {
   return trimmed || undefined
 }
 
+function getCountPayload(payload: unknown): number {
+  if (!payload || typeof payload !== "object") {
+    return 1
+  }
+
+  const count = (payload as { count?: unknown }).count
+  return typeof count === "number" && Number.isFinite(count) && count > 0 ? count : 1
+}
+
 function getActiveKeyLabel(activeKey: ActiveKey): string {
   if (activeKey.continues) {
     const group = getMetadataText(activeKey.bindingAttrs?.group)
@@ -285,6 +301,8 @@ function CounterPanel(props: {
   const [target, setTarget] = createSignal<Renderable | undefined>(undefined)
   const incrementCommand = `${props.id}-up`
   const decrementCommand = `${props.id}-down`
+  const incrementCountCommand = `${props.id}-up-count`
+  const decrementCountCommand = `${props.id}-down-count`
 
   const offCommands = manager.registerLayer({
     commands: [
@@ -300,6 +318,18 @@ function CounterPanel(props: {
         },
       },
       {
+        name: incrementCountCommand,
+        title: `${props.label} +count`,
+        desc: `${props.label} +count`,
+        category: props.label,
+        run({ payload }) {
+          const amount = getCountPayload(payload) * props.step
+          const next = props.count() + amount
+          props.setCount(next)
+          props.announce(`${props.label} increased by ${amount} to ${next}`)
+        },
+      },
+      {
         name: decrementCommand,
         title: `${props.label} -${props.step}`,
         desc: `${props.label} -${props.step}`,
@@ -310,6 +340,18 @@ function CounterPanel(props: {
           props.announce(`${props.label} decreased to ${next}`)
         },
       },
+      {
+        name: decrementCountCommand,
+        title: `${props.label} -count`,
+        desc: `${props.label} -count`,
+        category: props.label,
+        run({ payload }) {
+          const amount = getCountPayload(payload) * props.step
+          const next = props.count() - amount
+          props.setCount(next)
+          props.announce(`${props.label} decreased by ${amount} to ${next}`)
+        },
+      },
     ],
   })
 
@@ -318,6 +360,8 @@ function CounterPanel(props: {
     bindings: [
       { key: "j", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
       { key: "k", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
+      { key: "{count}j", cmd: decrementCountCommand, desc: `${props.label} -count` },
+      { key: "{count}k", cmd: incrementCountCommand, desc: `${props.label} +count` },
       { key: "return", cmd: `:w ${props.saveTarget}`, desc: `Write ${props.label.toLowerCase()} panel` },
     ],
   }))
@@ -334,10 +378,11 @@ function CounterPanel(props: {
         props.setRef?.(value)
       }}
       border
-      borderStyle="rounded"
+      borderStyle="single"
       focusable
       borderColor={palette.border}
       focusedBorderColor={props.color}
+      backgroundColor={palette.panel}
       paddingX={1}
       flexDirection="column"
       flexGrow={1}
@@ -469,12 +514,26 @@ function KeymapDemoContent() {
     alphaPanelRef?.focus()
   }
 
-  const closeCommandPrompt = (message: string) => {
+  const hideCommandPrompt = () => {
     setCommandPromptVisible(false)
     setCommandPromptValue(":")
     setCommandPromptSelection(0)
+  }
+
+  const closeCommandPrompt = (message: string) => {
+    hideCommandPrompt()
     restoreCommandPromptFocus()
     announce(message)
+  }
+
+  const dismissCommandPromptForFocusChange = (focused: Renderable | null) => {
+    if (!commandPromptVisible() || focused === commandInputRef) {
+      return
+    }
+
+    hideCommandPrompt()
+    commandPromptRestoreTarget = undefined
+    announce("Closed ex prompt")
   }
 
   const openCommandPrompt = () => {
@@ -559,18 +618,16 @@ function KeymapDemoContent() {
       desc: "Write file",
       category: "File",
       usage: ":write <file>",
-      run({ args }) {
-        announce(`Wrote ${args[0]}`)
+      run({ payload }) {
+        announce(`Wrote ${payload.args[0]}`)
       },
     },
   ]
 
-  const offEx = addons.registerExCommands(
-    manager,
-    exCommands.map(({ usage: _usage, ...command }) => {
-      return command
-    }),
-  )
+  const offEx = addons.registerExCommands(manager)
+  const offExCommands = manager.registerLayer({
+    commands: exCommands.map((command) => ({ ...command, namespace: "excommands" })),
+  })
 
   const discoveredExCommands = createMemo(() => {
     commandPromptVisible()
@@ -653,9 +710,7 @@ function KeymapDemoContent() {
       return
     }
 
-    setCommandPromptVisible(false)
-    setCommandPromptValue(":")
-    setCommandPromptSelection(0)
+    hideCommandPrompt()
     restoreCommandPromptFocus()
   }
 
@@ -672,24 +727,37 @@ function KeymapDemoContent() {
   const offNeovimDisambiguation = addons.registerNeovimDisambiguation(manager)
   const offEscapePending = addons.registerEscapeClearsPendingSequence(manager)
   const offBackspacePending = addons.registerBackspacePopsPendingSequence(manager)
+  const offCountPattern = manager.registerSequencePattern({
+    name: COUNT_PATTERN,
+    match(event) {
+      if (!/^\d$/.test(event.name)) {
+        return undefined
+      }
+
+      return { value: event.name, display: event.name }
+    },
+    finalize(values) {
+      return Number(values.join(""))
+    },
+  })
 
   const offManagedTextareas = addons.registerManagedTextareaLayer(manager, renderer, {
     enabled: () => !commandPromptVisible() && renderer.currentFocusedEditor !== null,
     bindings: [
-      { key: "left", cmd: "move-left", desc: "Cursor left" },
-      { key: "right", cmd: "move-right", desc: "Cursor right" },
-      { key: "up", cmd: "move-up", desc: "Cursor up" },
-      { key: "down", cmd: "move-down", desc: "Cursor down" },
-      { key: "backspace", cmd: "backspace", desc: "Delete backward" },
-      { key: "delete", cmd: "delete", desc: "Delete forward" },
-      { key: "return", cmd: "newline", desc: "New line" },
-      { key: "ctrl+a", cmd: "line-home", desc: "Line start" },
-      { key: "ctrl+e", cmd: "line-end", desc: "Line end" },
+      { key: "left", cmd: "input.move.left", desc: "Cursor left" },
+      { key: "right", cmd: "input.move.right", desc: "Cursor right" },
+      { key: "up", cmd: "input.move.up", desc: "Cursor up" },
+      { key: "down", cmd: "input.move.down", desc: "Cursor down" },
+      { key: "backspace", cmd: "input.backspace", desc: "Delete backward" },
+      { key: "delete", cmd: "input.delete", desc: "Delete forward" },
+      { key: "return", cmd: "input.newline", desc: "New line" },
+      { key: "ctrl+a", cmd: "input.line.home", desc: "Line start" },
+      { key: "ctrl+e", cmd: "input.line.end", desc: "Line end" },
       { key: "d", group: "Delete" },
-      { key: "dd", cmd: "delete-line", desc: "Delete line" },
-      { key: "g", cmd: "line-home", desc: "Line start", group: "Go" },
-      { key: "gg", cmd: "buffer-home", desc: "Buffer start", group: "Go" },
-      { key: "shift+g", cmd: "buffer-end", desc: "Buffer end", group: "Go" },
+      { key: "dd", cmd: "input.delete.line", desc: "Delete line" },
+      { key: "g", cmd: "input.line.home", desc: "Line start", group: "Go" },
+      { key: "gg", cmd: "input.buffer.home", desc: "Buffer start", group: "Go" },
+      { key: "shift+g", cmd: "input.buffer.end", desc: "Buffer end", group: "Go" },
     ],
   })
 
@@ -782,6 +850,11 @@ function KeymapDemoContent() {
     return formatKeySequence(pendingSequence(), KEY_FORMAT_OPTIONS) || "<root>"
   })
 
+  const pendingSequenceLabel = createMemo(() => {
+    const pending = pendingSequence()
+    return pending.length === 0 ? "None" : formatKeySequence(pending, KEY_FORMAT_OPTIONS)
+  })
+
   useBindings<InputRenderable>(() => ({
     target: commandPromptTarget,
     enabled: () => commandPromptVisible(),
@@ -833,7 +906,8 @@ function KeymapDemoContent() {
     ],
   }))
 
-  const onFocusedRenderable = () => {
+  const onFocusedRenderable = (focused: Renderable | null) => {
+    dismissCommandPromptForFocusChange(focused)
     bumpStatus()
   }
 
@@ -861,20 +935,15 @@ function KeymapDemoContent() {
     offNeovimDisambiguation()
     offEscapePending()
     offBackspacePending()
+    offCountPattern()
     offEx()
+    offExCommands()
     offCommands()
   })
 
   return (
     <box id="keymap-demo-root" flexDirection="column" flexGrow={1} padding={1} backgroundColor={palette.bg}>
-      <text id="keymap-demo-title" style={{ fg: palette.title, attributes: TextAttributes.BOLD }} height={1}>
-        Keymap Demo
-      </text>
-      <text id="keymap-demo-subtitle" fg={palette.textMuted} height={1}>
-        Original Alpha/Beta panels, three switchable textareas, and a centered : prompt.
-      </text>
-
-      <box id="keymap-demo-panels" flexDirection="row" gap={1} height={4}>
+      <box id="keymap-demo-panels" flexDirection="row" height={4}>
         <CounterPanel
           id="alpha"
           label="Alpha"
@@ -903,14 +972,15 @@ function KeymapDemoContent() {
         />
       </box>
 
-      <box id="keymap-demo-editors" flexDirection="row" gap={1} height={5}>
+      <box id="keymap-demo-editors" flexDirection="row" height={5}>
         <For each={editorSpecs}>
           {(spec, index) => (
             <box
               id={`keymap-demo-editor-frame-${spec.id}`}
               border
-              borderStyle="rounded"
+              borderStyle="single"
               borderColor={focusedEditorIndex() === index() ? spec.color : palette.border}
+              backgroundColor={palette.panel}
               flexDirection="column"
               flexGrow={1}
               flexBasis={0}
@@ -932,8 +1002,8 @@ function KeymapDemoContent() {
                 textColor={palette.text}
                 focusedTextColor={palette.title}
                 placeholderColor={palette.textMuted}
-                selectionBg="#264F78"
-                selectionFg="#FFFFFF"
+                selectionBg={palette.surfaceFocus}
+                selectionFg={palette.text}
                 wrapMode="word"
                 onContentChange={() => {
                   bumpStatus()
@@ -950,8 +1020,9 @@ function KeymapDemoContent() {
       <box
         id="keymap-demo-footer"
         border
-        borderStyle="rounded"
+        borderStyle="single"
         borderColor={palette.border}
+        backgroundColor={palette.panel}
         paddingX={1}
         gap={2}
         flexDirection="row"
@@ -1004,6 +1075,11 @@ function KeymapDemoContent() {
                 style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}
               >{`armed (${LEADER_TRIGGER_LABEL})`}</span>
             </Show>
+          </text>
+
+          <text id="keymap-demo-status-pending" fg={palette.text} height={1}>
+            <span style={{ fg: palette.textDim }}>Pending: </span>
+            <span style={{ fg: palette.leader }}>{pendingSequenceLabel()}</span>
           </text>
 
           <text id="keymap-demo-status-last" fg={palette.text} height={1}>
@@ -1097,9 +1173,9 @@ function KeymapDemoContent() {
           width={EX_PROMPT_WIDTH}
           height={EX_PROMPT_CHROME_ROWS}
           border
-          borderStyle="rounded"
+          borderStyle="single"
           borderColor={palette.accent}
-          backgroundColor={palette.bg}
+          backgroundColor={palette.surface}
           paddingX={1}
           paddingY={0}
           flexDirection="column"
@@ -1140,7 +1216,7 @@ function KeymapDemoContent() {
           id="keymap-demo-ex-prompt-list"
           width={EX_PROMPT_WIDTH}
           height={commandPromptSuggestionRows()}
-          backgroundColor={palette.bg}
+          backgroundColor={palette.surface}
           paddingX={1}
           paddingY={0}
           flexDirection="column"

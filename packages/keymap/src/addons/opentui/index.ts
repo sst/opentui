@@ -1,4 +1,4 @@
-export * from "../universal/index.js"
+export * from "@opentui/keymap/addons"
 export { registerBaseLayoutFallback } from "./base-layout.js"
 export {
   createTextareaBindings,
@@ -6,4 +6,4 @@ export {
   registerManagedTextareaLayer,
   registerTextareaMappingSuspension,
 } from "./edit-buffer-bindings.js"
-export type { EditBufferCommandName, EditBufferCommandOptions } from "./edit-buffer-bindings.js"
+export type { EditBufferCommandName, EditBufferCommandOptions, EditBufferFineGroup } from "./edit-buffer-bindings.js"

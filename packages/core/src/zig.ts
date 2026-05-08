@@ -1,4 +1,5 @@
 import { dlopen, ffiBool, toArrayBuffer, ptr, type FFICallbackInstance, type Pointer } from "./platform/ffi.js"
+import { writeFile } from "./platform/runtime.js"
 import { existsSync, writeFileSync } from "fs"
 import { EventEmitter } from "events"
 import {
@@ -168,8 +169,12 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32"],
       returns: "u32",
     },
+    getSplitOutputOffset: {
+      args: ["ptr", "u32"],
+      returns: "u32",
+    },
     setPendingSplitFooterTransition: {
-      args: ["ptr", "u8", "u32", "u32", "u32", "u32"],
+      args: ["ptr", "u8", "u32", "u32", "u32", "u32", "u32"],
       returns: "void",
     },
     clearPendingSplitFooterTransition: {
@@ -1370,7 +1375,9 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
           const now = new Date()
           const timestamp = now.toISOString().replace(/[:.]/g, "-").replace(/T/, "_").split("Z")[0]
           const traceFilePath = `ffi_otui_trace_${timestamp}.log`
-          Bun.write(traceFilePath, output)
+          void writeFile(traceFilePath, output).catch((error) => {
+            console.error("Failed to write FFI trace file:", error)
+          })
         } catch (e) {
           console.error("Failed to write FFI trace file:", e)
         }
@@ -1430,6 +1437,7 @@ export interface RenderLib {
   setRenderOffset: (renderer: Pointer, offset: number) => void
   resetSplitScrollback: (renderer: Pointer, seedRows: number, pinnedRenderOffset: number) => number
   syncSplitScrollback: (renderer: Pointer, pinnedRenderOffset: number) => number
+  getSplitOutputOffset: (renderer: Pointer, surfaceOffset: number) => number
   setPendingSplitFooterTransition: (
     renderer: Pointer,
     mode: number,
@@ -1437,6 +1445,7 @@ export interface RenderLib {
     sourceHeight: number,
     targetTopLine: number,
     targetHeight: number,
+    scrollLines: number,
   ) => void
   clearPendingSplitFooterTransition: (renderer: Pointer) => void
   updateStats: (renderer: Pointer, time: number, fps: number, frameCallbackTime: number) => void
@@ -2117,6 +2126,10 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.syncSplitScrollback(renderer, pinnedRenderOffset)
   }
 
+  public getSplitOutputOffset(renderer: Pointer, surfaceOffset: number): number {
+    return this.opentui.symbols.getSplitOutputOffset(renderer, surfaceOffset)
+  }
+
   public setPendingSplitFooterTransition(
     renderer: Pointer,
     mode: number,
@@ -2124,6 +2137,7 @@ class FFIRenderLib implements RenderLib {
     sourceHeight: number,
     targetTopLine: number,
     targetHeight: number,
+    scrollLines: number,
   ): void {
     this.opentui.symbols.setPendingSplitFooterTransition(
       renderer,
@@ -2132,6 +2146,7 @@ class FFIRenderLib implements RenderLib {
       sourceHeight,
       targetTopLine,
       targetHeight,
+      scrollLines,
     )
   }
 

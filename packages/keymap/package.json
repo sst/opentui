@@ -1,6 +1,6 @@
 {
   "name": "@opentui/keymap",
-  "version": "0.2.2",
+  "version": "0.2.5",
   "description": "Standalone keymap package for OpenTUI",
   "license": "MIT",
   "repository": {
@@ -21,6 +21,10 @@
       "import": "./src/extras/index.ts",
       "types": "./src/extras/index.ts"
     },
+    "./extras/graph": {
+      "import": "./src/extras/graph.ts",
+      "types": "./src/extras/graph.ts"
+    },
     "./addons": {
       "import": "./src/addons/index.ts",
       "types": "./src/addons/index.ts"
@@ -28,6 +32,10 @@
     "./addons/opentui": {
       "import": "./src/addons/opentui/index.ts",
       "types": "./src/addons/opentui/index.ts"
+    },
+    "./testing": {
+      "import": "./src/testing/index.ts",
+      "types": "./src/testing/index.ts"
     },
     "./html": {
       "import": "./src/html.ts",
