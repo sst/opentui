@@ -271,3 +271,81 @@ export const ReserveInfoStruct = defineStruct(
     }),
   },
 )
+
+export type AudioCreateOptions = {
+  sampleRate?: number
+  playbackChannels?: number
+}
+
+export type AudioStartOptions = {
+  periodSizeInFrames?: number
+  periodSizeInMilliseconds?: number
+  periods?: number
+  performanceProfile?: number
+  shareMode?: number
+  noPreSilencedOutputBuffer?: boolean
+  noClip?: boolean
+  noDisableDenormals?: boolean
+  noFixedSizedCallback?: boolean
+  wasapiNoAutoConvertSrc?: boolean
+  wasapiNoDefaultQualitySrc?: boolean
+  alsaNoMMap?: boolean
+  alsaNoAutoFormat?: boolean
+  alsaNoAutoChannels?: boolean
+  alsaNoAutoResample?: boolean
+}
+
+export type AudioVoiceOptions = {
+  volume?: number
+  pan?: number
+  loop?: boolean
+  groupId?: number
+}
+
+export type AudioStats = {
+  soundsLoaded: number
+  voicesActive: number
+  framesMixed: bigint
+  lockMisses: number
+  lastPeak: number
+  lastRms: number
+}
+
+export const AudioCreateOptionsStruct = defineStruct([
+  ["sampleRate", "u32", { default: 48_000 }],
+  ["playbackChannels", "u32", { default: 2 }],
+])
+
+export const AudioStartOptionsStruct = defineStruct([
+  ["periodSizeInFrames", "u32", { default: 0 }],
+  ["periodSizeInMilliseconds", "u32", { default: 0 }],
+  ["periods", "u32", { default: 0 }],
+  ["performanceProfile", "u8", { default: 0 }],
+  ["shareMode", "u8", { default: 0 }],
+  ["noPreSilencedOutputBuffer", "bool_u8", { default: false }],
+  ["noClip", "bool_u8", { default: false }],
+  ["noDisableDenormals", "bool_u8", { default: false }],
+  ["noFixedSizedCallback", "bool_u8", { default: false }],
+  ["wasapiNoAutoConvertSrc", "bool_u8", { default: false }],
+  ["wasapiNoDefaultQualitySrc", "bool_u8", { default: false }],
+  ["alsaNoMMap", "bool_u8", { default: false }],
+  ["alsaNoAutoFormat", "bool_u8", { default: false }],
+  ["alsaNoAutoChannels", "bool_u8", { default: false }],
+  ["alsaNoAutoResample", "bool_u8", { default: false }],
+])
+
+export const AudioVoiceOptionsStruct = defineStruct([
+  ["volume", "f32", { default: 1 }],
+  ["pan", "f32", { default: 0 }],
+  ["loop", "bool_u8", { default: false }],
+  ["groupId", "u32", { default: 0 }],
+])
+
+export const AudioStatsStruct = defineStruct([
+  ["soundsLoaded", "u32"],
+  ["voicesActive", "u32"],
+  ["framesMixed", "u64"],
+  ["lockMisses", "u32"],
+  ["lastPeak", "f32"],
+  ["lastRms", "f32"],
+])

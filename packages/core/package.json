@@ -38,6 +38,8 @@
   "dependencies": {
     "bun-ffi-structs": "0.2.2",
     "diff": "9.0.0",
+    "bun-ffi-structs": "0.1.2",
+    "diff": "8.0.2",
     "marked": "17.0.1",
     "string-width": "7.2.0",
     "strip-ansi": "7.1.2",

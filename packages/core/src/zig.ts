@@ -33,6 +33,10 @@ import {
   NativeSpanFeedOptionsStruct,
   NativeSpanFeedStatsStruct,
   ReserveInfoStruct,
+  AudioCreateOptionsStruct,
+  AudioStartOptionsStruct,
+  AudioVoiceOptionsStruct,
+  AudioStatsStruct,
   BuildOptionsStruct,
   AllocatorStatsStruct,
 } from "./zig-structs.js"
@@ -40,6 +44,10 @@ import type {
   NativeSpanFeedOptions,
   NativeSpanFeedStats,
   ReserveInfo,
+  AudioCreateOptions,
+  AudioStartOptions,
+  AudioVoiceOptions,
+  AudioStats,
   BuildOptions,
   AllocatorStats,
 } from "./zig-structs.js"
@@ -100,7 +108,6 @@ registerEnvVar({
 const CURSOR_STYLE_TO_ID = { block: 0, line: 1, underline: 2, default: 3 } as const
 const CURSOR_ID_TO_STYLE = ["block", "line", "underline", "default"] as const
 const MOUSE_STYLE_TO_ID = { default: 0, pointer: 1, text: 2, crosshair: 3, move: 4, "not-allowed": 5 } as const
-
 // Global singleton state for FFI tracing to prevent duplicate exit handlers
 let globalTraceSymbols: Record<string, number[]> | null = null
 let globalFFILogPath: string | null = null
@@ -1131,6 +1138,92 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
 
+    // Audio
+    createAudioEngine: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    destroyAudioEngine: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    audioRefreshPlaybackDevices: {
+      args: ["ptr"],
+      returns: "i32",
+    },
+    audioGetPlaybackDeviceCount: {
+      args: ["ptr"],
+      returns: "u32",
+    },
+    audioGetPlaybackDeviceName: {
+      args: ["ptr", "u32", "ptr", "usize"],
+      returns: "usize",
+    },
+    audioIsPlaybackDeviceDefault: {
+      args: ["ptr", "u32"],
+      returns: "bool",
+    },
+    audioSelectPlaybackDevice: {
+      args: ["ptr", "u32"],
+      returns: "i32",
+    },
+    audioClearPlaybackDeviceSelection: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    audioStart: {
+      args: ["ptr", "ptr"],
+      returns: "i32",
+    },
+    audioStop: {
+      args: ["ptr"],
+      returns: "i32",
+    },
+    audioLoad: {
+      args: ["ptr", "ptr", "u64", "ptr"],
+      returns: "i32",
+    },
+    audioPlay: {
+      args: ["ptr", "u32", "ptr", "ptr"],
+      returns: "i32",
+    },
+    audioStopVoice: {
+      args: ["ptr", "u32"],
+      returns: "i32",
+    },
+    audioSetVoiceGroup: {
+      args: ["ptr", "u32", "u32"],
+      returns: "i32",
+    },
+    audioCreateGroup: {
+      args: ["ptr", "ptr", "u64", "ptr"],
+      returns: "i32",
+    },
+    audioSetGroupVolume: {
+      args: ["ptr", "u32", "f32"],
+      returns: "i32",
+    },
+    audioSetMasterVolume: {
+      args: ["ptr", "f32"],
+      returns: "i32",
+    },
+    audioMixToBuffer: {
+      args: ["ptr", "ptr", "u32", "u8"],
+      returns: "i32",
+    },
+    audioEnableTap: {
+      args: ["ptr", "bool", "u32"],
+      returns: "i32",
+    },
+    audioReadTap: {
+      args: ["ptr", "ptr", "u32", "u8", "ptr"],
+      returns: "i32",
+    },
+    audioGetStats: {
+      args: ["ptr", "ptr"],
+      returns: "i32",
+    },
+
     // NativeSpanFeed
     createNativeSpanFeed: {
       args: ["ptr"],
@@ -1427,7 +1520,36 @@ export interface CursorState {
 
 export type NativeSpanFeedEventHandler = (eventId: number, arg0: Pointer, arg1: number | bigint) => void
 
-export interface RenderLib {
+export interface AudioEngineLib {
+  createAudioEngine: (options?: AudioCreateOptions | null) => Pointer | null
+  destroyAudioEngine: (engine: Pointer) => void
+  audioRefreshPlaybackDevices: (engine: Pointer) => number
+  audioGetPlaybackDeviceCount: (engine: Pointer) => number
+  audioGetPlaybackDeviceName: (engine: Pointer, index: number) => string
+  audioIsPlaybackDeviceDefault: (engine: Pointer, index: number) => boolean
+  audioSelectPlaybackDevice: (engine: Pointer, index: number) => number
+  audioClearPlaybackDeviceSelection: (engine: Pointer) => void
+  audioStart: (engine: Pointer, options?: AudioStartOptions | null) => number
+  audioStop: (engine: Pointer) => number
+  audioLoad: (engine: Pointer, data: Uint8Array) => { status: number; soundId: number | null }
+  audioPlay: (engine: Pointer, soundId: number, options?: AudioVoiceOptions) => { status: number; voiceId: number | null }
+  audioStopVoice: (engine: Pointer, voiceId: number) => number
+  audioSetVoiceGroup: (engine: Pointer, voiceId: number, groupId: number) => number
+  audioCreateGroup: (engine: Pointer, name: string) => { status: number; groupId: number | null }
+  audioSetGroupVolume: (engine: Pointer, groupId: number, volume: number) => number
+  audioSetMasterVolume: (engine: Pointer, volume: number) => number
+  audioMixToBuffer: (engine: Pointer, outBuffer: Float32Array, frameCount: number, channels: number) => number
+  audioEnableTap: (engine: Pointer, enabled: boolean, capacityFrames: number) => number
+  audioReadTap: (
+    engine: Pointer,
+    outBuffer: Float32Array,
+    frameCount: number,
+    channels: number,
+  ) => { status: number; framesRead: number }
+  audioGetStats: (engine: Pointer) => AudioStats | null
+}
+
+export interface RenderLib extends AudioEngineLib {
   createRenderer: (width: number, height: number, options?: { testing?: boolean; remote?: boolean }) => Pointer | null
   setTerminalEnvVar: (renderer: Pointer, key: string, value: string) => boolean
   destroyRenderer: (renderer: Pointer) => void
@@ -3885,6 +4007,140 @@ class FFIRenderLib implements RenderLib {
     attributes: number = 0,
   ): void {
     this.opentui.symbols.bufferDrawChar(buffer, char, x, y, rgbaPtr(fg), rgbaPtr(bg), attributes)
+  }
+
+  public createAudioEngine(options?: AudioCreateOptions | null): Pointer | null {
+    const optionsBuffer = options == null ? null : AudioCreateOptionsStruct.pack(options)
+    const enginePtr = this.opentui.symbols.createAudioEngine(optionsBuffer ? ptr(optionsBuffer) : null)
+    return enginePtr ? toPointer(enginePtr) : null
+  }
+
+  public destroyAudioEngine(engine: Pointer): void {
+    this.opentui.symbols.destroyAudioEngine(engine)
+  }
+
+  public audioRefreshPlaybackDevices(engine: Pointer): number {
+    return this.opentui.symbols.audioRefreshPlaybackDevices(engine)
+  }
+
+  public audioGetPlaybackDeviceCount(engine: Pointer): number {
+    return this.opentui.symbols.audioGetPlaybackDeviceCount(engine)
+  }
+
+  public audioGetPlaybackDeviceName(engine: Pointer, index: number): string {
+    const outBuffer = new Uint8Array(512)
+    const bytesWritten = toNumber(this.opentui.symbols.audioGetPlaybackDeviceName(engine, index, ptr(outBuffer), outBuffer.length))
+    const safeBytesWritten = Math.max(0, Math.min(outBuffer.length, bytesWritten))
+    return this.decoder.decode(outBuffer.subarray(0, safeBytesWritten))
+  }
+
+  public audioIsPlaybackDeviceDefault(engine: Pointer, index: number): boolean {
+    return this.opentui.symbols.audioIsPlaybackDeviceDefault(engine, index)
+  }
+
+  public audioSelectPlaybackDevice(engine: Pointer, index: number): number {
+    return this.opentui.symbols.audioSelectPlaybackDevice(engine, index)
+  }
+
+  public audioClearPlaybackDeviceSelection(engine: Pointer): void {
+    this.opentui.symbols.audioClearPlaybackDeviceSelection(engine)
+  }
+
+  public audioStart(engine: Pointer, options?: AudioStartOptions | null): number {
+    const optionsBuffer = options == null ? null : AudioStartOptionsStruct.pack(options)
+    return this.opentui.symbols.audioStart(engine, optionsBuffer ? ptr(optionsBuffer) : null)
+  }
+
+  public audioStop(engine: Pointer): number {
+    return this.opentui.symbols.audioStop(engine)
+  }
+
+  public audioLoad(engine: Pointer, data: Uint8Array): { status: number; soundId: number | null } {
+    const outBuffer = new ArrayBuffer(4)
+    const status = this.opentui.symbols.audioLoad(engine, ptr(data), data.length, ptr(outBuffer))
+    if (status !== 0) {
+      return { status, soundId: null }
+    }
+    const view = new Uint32Array(outBuffer)
+    return { status, soundId: view[0] }
+  }
+
+  public audioPlay(engine: Pointer, soundId: number, options?: AudioVoiceOptions): { status: number; voiceId: number | null } {
+    const outBuffer = new ArrayBuffer(4)
+    const optionsBuffer = options ? AudioVoiceOptionsStruct.pack(options) : null
+    const status = this.opentui.symbols.audioPlay(engine, soundId, optionsBuffer ? ptr(optionsBuffer) : null, ptr(outBuffer))
+    if (status !== 0) {
+      return { status, voiceId: null }
+    }
+    const view = new Uint32Array(outBuffer)
+    return { status, voiceId: view[0] }
+  }
+
+  public audioStopVoice(engine: Pointer, voiceId: number): number {
+    return this.opentui.symbols.audioStopVoice(engine, voiceId)
+  }
+
+  public audioSetVoiceGroup(engine: Pointer, voiceId: number, groupId: number): number {
+    return this.opentui.symbols.audioSetVoiceGroup(engine, voiceId, groupId)
+  }
+
+  public audioCreateGroup(engine: Pointer, name: string): { status: number; groupId: number | null } {
+    const outBuffer = new ArrayBuffer(4)
+    const nameBytes = this.encoder.encode(name)
+    const status = this.opentui.symbols.audioCreateGroup(engine, ptr(nameBytes), nameBytes.length, ptr(outBuffer))
+    if (status !== 0) {
+      return { status, groupId: null }
+    }
+    const view = new Uint32Array(outBuffer)
+    return { status, groupId: view[0] }
+  }
+
+  public audioSetGroupVolume(engine: Pointer, groupId: number, volume: number): number {
+    return this.opentui.symbols.audioSetGroupVolume(engine, groupId, volume)
+  }
+
+  public audioSetMasterVolume(engine: Pointer, volume: number): number {
+    return this.opentui.symbols.audioSetMasterVolume(engine, volume)
+  }
+
+  public audioMixToBuffer(engine: Pointer, outBuffer: Float32Array, frameCount: number, channels: number): number {
+    return this.opentui.symbols.audioMixToBuffer(engine, ptr(outBuffer), frameCount, channels)
+  }
+
+  public audioEnableTap(engine: Pointer, enabled: boolean, capacityFrames: number): number {
+    return this.opentui.symbols.audioEnableTap(engine, enabled, capacityFrames)
+  }
+
+  public audioReadTap(
+    engine: Pointer,
+    outBuffer: Float32Array,
+    frameCount: number,
+    channels: number,
+  ): { status: number; framesRead: number } {
+    const outFramesReadBuffer = new ArrayBuffer(4)
+    const status = this.opentui.symbols.audioReadTap(engine, ptr(outBuffer), frameCount, channels, ptr(outFramesReadBuffer))
+    if (status !== 0) {
+      return { status, framesRead: 0 }
+    }
+    const view = new Uint32Array(outFramesReadBuffer)
+    return { status, framesRead: view[0] ?? 0 }
+  }
+
+  public audioGetStats(engine: Pointer): AudioStats | null {
+    const statsBuffer = new ArrayBuffer(AudioStatsStruct.size)
+    const status = this.opentui.symbols.audioGetStats(engine, ptr(statsBuffer))
+    if (status !== 0) {
+      return null
+    }
+    const stats = AudioStatsStruct.unpack(statsBuffer)
+    return {
+      soundsLoaded: stats.soundsLoaded,
+      voicesActive: stats.voicesActive,
+      framesMixed: typeof stats.framesMixed === "bigint" ? stats.framesMixed : BigInt(stats.framesMixed),
+      lockMisses: stats.lockMisses,
+      lastPeak: stats.lastPeak,
+      lastRms: stats.lastRms,
+    }
   }
 
   public registerNativeSpanFeedStream(stream: Pointer, handler: NativeSpanFeedEventHandler): void {

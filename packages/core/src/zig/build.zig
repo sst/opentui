@@ -18,13 +18,15 @@ const SupportedTarget = struct {
 };
 
 const SUPPORTED_TARGETS = [_]SupportedTarget{
-    .{ .zig_target = "x86_64-linux", .output_name = "x86_64-linux", .description = "Linux x86_64" },
-    .{ .zig_target = "aarch64-linux", .output_name = "aarch64-linux", .description = "Linux aarch64" },
+    .{ .zig_target = "x86_64-linux-gnu", .output_name = "x86_64-linux", .description = "Linux x86_64" },
+    .{ .zig_target = "aarch64-linux-gnu", .output_name = "aarch64-linux", .description = "Linux aarch64" },
     .{ .zig_target = "x86_64-macos", .output_name = "x86_64-macos", .description = "macOS x86_64 (Intel)" },
     .{ .zig_target = "aarch64-macos", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
     .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
     .{ .zig_target = "aarch64-windows-gnu", .output_name = "aarch64-windows", .description = "Windows aarch64" },
 };
+
+const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
 
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
@@ -122,11 +124,42 @@ pub fn build(b: *std.Build) void {
         .optimize = .Debug,
     });
     applyDependencies(b, test_mod, .Debug, native_target, build_options);
-    const run_test = b.addRunArtifact(b.addTest(.{
+    const test_artifact = b.addTest(.{
         .root_module = test_mod,
         .filters = if (b.option([]const u8, "test-filter", "Skip tests that do not match filter")) |f| &.{f} else &.{},
         .use_llvm = debug_use_llvm,
-    }));
+    });
+
+    const test_c_flags: []const []const u8 = if (native_target.result.os.tag == .macos)
+        &.{ "-std=c99", "-DMA_NO_RUNTIME_LINKING" }
+    else
+        &.{"-std=c99"};
+
+    test_artifact.addIncludePath(b.path("."));
+    test_artifact.linkLibC();
+    test_artifact.addCSourceFile(.{
+        .file = b.path("miniaudio_shim.c"),
+        .flags = test_c_flags,
+    });
+
+    switch (native_target.result.os.tag) {
+        .macos => {
+            test_artifact.linkFramework("CoreFoundation");
+            test_artifact.linkFramework("CoreAudio");
+            test_artifact.linkFramework("AudioToolbox");
+            test_artifact.linkSystemLibrary("pthread");
+            test_artifact.addFrameworkPath(.{ .cwd_relative = DEFAULT_MACOS_SDK_PATH });
+            test_artifact.addFrameworkPath(.{ .cwd_relative = b.fmt("{s}/System/Library/Frameworks", .{DEFAULT_MACOS_SDK_PATH}) });
+            test_artifact.addLibraryPath(.{ .cwd_relative = b.fmt("{s}/usr/lib", .{DEFAULT_MACOS_SDK_PATH}) });
+        },
+        .linux => {
+            test_artifact.linkSystemLibrary("dl");
+            test_artifact.linkSystemLibrary("pthread");
+        },
+        else => {},
+    }
+
+    const run_test = b.addRunArtifact(test_artifact);
     test_step.dependOn(&run_test.step);
 
     // Bench step (native only)
@@ -258,6 +291,10 @@ fn buildTarget(
 ) !void {
     const target_query = try std.Target.Query.parse(.{ .arch_os_abi = zig_target });
     const target = b.resolveTargetQuery(target_query);
+    const c_flags: []const []const u8 = if (target.result.os.tag == .macos)
+        &.{ "-std=c99", "-DMA_NO_RUNTIME_LINKING" }
+    else
+        &.{"-std=c99"};
 
     const module = b.createModule(.{
         .root_source_file = b.path(ROOT_SOURCE_FILE),
@@ -272,6 +309,30 @@ fn buildTarget(
         .root_module = module,
         .linkage = .dynamic,
     });
+
+    lib.addIncludePath(b.path("."));
+    lib.linkLibC();
+    lib.addCSourceFile(.{
+        .file = b.path("miniaudio_shim.c"),
+        .flags = c_flags,
+    });
+
+    switch (target.result.os.tag) {
+        .macos => {
+            lib.linkFramework("CoreFoundation");
+            lib.linkFramework("CoreAudio");
+            lib.linkFramework("AudioToolbox");
+            lib.linkSystemLibrary("pthread");
+            lib.addFrameworkPath(.{ .cwd_relative = DEFAULT_MACOS_SDK_PATH });
+            lib.addFrameworkPath(.{ .cwd_relative = b.fmt("{s}/System/Library/Frameworks", .{DEFAULT_MACOS_SDK_PATH}) });
+            lib.addLibraryPath(.{ .cwd_relative = b.fmt("{s}/usr/lib", .{DEFAULT_MACOS_SDK_PATH}) });
+        },
+        .linux => {
+            lib.linkSystemLibrary("dl");
+            lib.linkSystemLibrary("pthread");
+        },
+        else => {},
+    }
 
     const install_dir = b.addInstallArtifact(lib, .{
         .dest_dir = .{
