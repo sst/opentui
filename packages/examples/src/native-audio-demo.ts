@@ -164,6 +164,8 @@ const fftBackgroundPostProcess = (buffer: OptimizedBuffer, deltaTime: number): v
   const bg = buffer.buffers.bg
   const barWidth = Math.max(1, Math.floor(width / VIS_BARS))
   const spacing = 1
+  const totalBarWidth = VIS_BARS * barWidth - spacing
+  const barOffsetX = Math.max(0, Math.floor((width - totalBarWidth) / 2))
   const usableHeight = Math.max(4, Math.floor(height * 0.62))
   const baseY = height - 1
 
@@ -178,7 +180,7 @@ const fftBackgroundPostProcess = (buffer: OptimizedBuffer, deltaTime: number): v
     fftVizPeak[i] = Math.max(0, peak)
     const peakY = baseY - Math.floor(Math.max(0, Math.min(1, peak)) * usableHeight)
 
-    const xStart = i * barWidth
+    const xStart = barOffsetX + i * barWidth
     const xEnd = Math.min(width, xStart + barWidth - spacing)
 
     for (let x = xStart; x < xEnd; x += 1) {
