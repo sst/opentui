@@ -1,15 +1,17 @@
-export { resolveBindingSections } from "./binding-sections.js"
+export { createBindingLookup } from "./binding-lookup.js"
 export { commandBindings } from "./command-bindings.js"
 export { formatCommandBindings, formatKeySequence } from "./formatting.js"
 
 export type {
-  BindingSectionConfig,
-  BindingSectionItem,
-  BindingSectionsConfig,
+  BindingConfig,
+  BindingConfigItem,
+  BindingCommandMap,
+  BindingDefaults,
+  BindingDefaultsContext,
+  BindingLookup,
   BindingValue,
-  ResolveBindingSectionsOptions,
-  ResolvedBindingSections,
-} from "./binding-sections.js"
+  CreateBindingLookupOptions,
+} from "./binding-lookup.js"
 
 export type {
   FormatCommandBindingsOptions,

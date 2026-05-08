@@ -36,6 +36,47 @@ pub const Cursor = struct {
 
 const CursorCoords = struct { row: u32, col: u32 };
 
+const CursorMeta = struct {
+    row: u32,
+    col: u32,
+    desired_col: u32,
+
+    fn fromCursor(cursor: Cursor) CursorMeta {
+        return .{
+            .row = cursor.row,
+            .col = cursor.col,
+            .desired_col = cursor.desired_col,
+        };
+    }
+
+    fn encode(self: CursorMeta, out_buffer: []u8) ![]const u8 {
+        return std.fmt.bufPrint(out_buffer, "cursor:{d}:{d}:{d}", .{ self.row, self.col, self.desired_col });
+    }
+
+    fn decode(bytes: []const u8) ?CursorMeta {
+        const prefix = "cursor:";
+        if (!std.mem.startsWith(u8, bytes, prefix)) {
+            return null;
+        }
+
+        var parts = std.mem.splitScalar(u8, bytes[prefix.len..], ':');
+
+        const row = std.fmt.parseInt(u32, parts.next() orelse return null, 10) catch return null;
+        const col = std.fmt.parseInt(u32, parts.next() orelse return null, 10) catch return null;
+        const desired_col = std.fmt.parseInt(u32, parts.next() orelse return null, 10) catch return null;
+
+        if (parts.next() != null) {
+            return null;
+        }
+
+        return .{
+            .row = row,
+            .col = col,
+            .desired_col = desired_col,
+        };
+    }
+};
+
 const AddBuffer = struct {
     mem_id: u8,
     ptr: [*]u8,
@@ -602,15 +643,39 @@ pub const EditBuffer = struct {
         self.tb.debugLogRope();
     }
 
+    fn encodeCurrentCursorMeta(self: *const EditBuffer, out_buffer: []u8) ![]const u8 {
+        return CursorMeta.fromCursor(self.getPrimaryCursor()).encode(out_buffer);
+    }
+
+    fn restoreCursorFromMeta(self: *EditBuffer, meta: []const u8) !bool {
+        const decodedMeta = CursorMeta.decode(meta) orelse return false;
+
+        try self.setCursor(decodedMeta.row, decodedMeta.col);
+
+        if (self.cursors.items.len > 0) {
+            self.cursors.items[0].desired_col = decodedMeta.desired_col;
+        }
+
+        return true;
+    }
+
     fn autoStoreUndo(self: *EditBuffer) !void {
-        try self.tb.rope().store_undo("edit");
+        var meta_buffer: [64]u8 = undefined;
+        const meta = try self.encodeCurrentCursorMeta(meta_buffer[0..]);
+        try self.tb.rope().store_undo(meta);
     }
 
     pub fn undo(self: *EditBuffer) ![]const u8 {
-        const prev_meta = try self.tb.rope().undo("current");
+        var current_meta_buffer: [64]u8 = undefined;
+        const current_meta = try self.encodeCurrentCursorMeta(current_meta_buffer[0..]);
+        const prev_meta = try self.tb.rope().undo(current_meta);
 
-        const cursor = self.getPrimaryCursor();
-        try self.setCursor(cursor.row, cursor.col);
+        const restored = try self.restoreCursorFromMeta(prev_meta);
+
+        if (!restored) {
+            const cursor = self.getPrimaryCursor();
+            try self.setCursor(cursor.row, cursor.col);
+        }
 
         self.tb.markViewsDirty();
         self.events.emit(.cursorChanged);
@@ -622,8 +687,12 @@ pub const EditBuffer = struct {
     pub fn redo(self: *EditBuffer) ![]const u8 {
         const next_meta = try self.tb.rope().redo();
 
-        const cursor = self.getPrimaryCursor();
-        try self.setCursor(cursor.row, cursor.col);
+        const restored = try self.restoreCursorFromMeta(next_meta);
+
+        if (!restored) {
+            const cursor = self.getPrimaryCursor();
+            try self.setCursor(cursor.row, cursor.col);
+        }
 
         self.tb.markViewsDirty();
         self.events.emit(.cursorChanged);

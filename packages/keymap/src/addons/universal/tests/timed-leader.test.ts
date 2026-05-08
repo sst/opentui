@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import { registerTimedLeader } from "@opentui/keymap/addons"
+import { createBindingLookup } from "@opentui/keymap/extras"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { createDiagnosticHarness } from "../../../tests/diagnostic-harness.js"
 
@@ -42,6 +43,36 @@ describe("timed leader addon", () => {
 
     registerTimedLeader(keymap, {
       trigger: { name: "x", ctrl: true },
+    })
+
+    keymap.registerLayer({
+      bindings: [{ key: "<leader>a", cmd: "leader-action" }],
+    })
+
+    mockInput.pressKey("x", { ctrl: true })
+    mockInput.pressKey("a")
+
+    expect(calls).toEqual(["leader"])
+  })
+
+  test("accepts a single binding lookup result as the trigger", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+    const bindings = createBindingLookup({ leader: { name: "x", ctrl: true } })
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "leader-action",
+          run() {
+            calls.push("leader")
+          },
+        },
+      ],
+    })
+
+    registerTimedLeader(keymap, {
+      trigger: bindings.get("leader"),
     })
 
     keymap.registerLayer({

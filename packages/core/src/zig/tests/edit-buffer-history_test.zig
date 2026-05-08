@@ -22,14 +22,42 @@ test "EditBuffer - basic undo/redo with insertText" {
     try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
 
     const meta = try eb.undo();
-    try std.testing.expectEqualStrings("edit", meta);
+    try std.testing.expect(std.mem.startsWith(u8, meta, "cursor:"));
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello", out_buffer[0..written]);
 
     const meta2 = try eb.redo();
-    try std.testing.expectEqualStrings("current", meta2);
+    try std.testing.expect(std.mem.startsWith(u8, meta2, "cursor:"));
     written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
+}
+
+test "EditBuffer - undo and redo restore cursor for mid-line edits" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    try eb.setText("hello world");
+    try eb.setCursor(0, 8);
+
+    try eb.insertText("X");
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 9), cursor.col);
+
+    _ = try eb.undo();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 8), cursor.col);
+
+    _ = try eb.redo();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.row);
+    try std.testing.expectEqual(@as(u32, 9), cursor.col);
 }
 
 test "EditBuffer - canUndo/canRedo" {

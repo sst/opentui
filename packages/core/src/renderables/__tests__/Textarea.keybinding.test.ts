@@ -1027,10 +1027,10 @@ describe("Textarea - Keybinding Tests", () => {
 
       currentMockInput.pressKey("z")
       expect(editor.plainText).toBe("Hello World")
+      expect(editor.logicalCursor.col).toBe(6)
 
-      for (let i = 0; i < 6; i++) {
-        editor.moveCursorRight()
-      }
+      editor.moveCursorLeft()
+      editor.moveCursorRight()
       expect(editor.logicalCursor.col).toBe(6)
 
       currentMockInput.pressKey("u", { ctrl: true })

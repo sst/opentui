@@ -46,7 +46,7 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 - `@opentui/keymap/opentui` — OpenTUI adapter
 - `@opentui/keymap/react` — `KeymapProvider`, `useKeymap`, `useBindings`, `useActiveKeys`, `usePendingSequence`, `reactiveMatcherFromStore`
 - `@opentui/keymap/solid` — `KeymapProvider`, `useKeymap`, `useKeymapSelector`, `useBindings`, `reactiveMatcherFromSignal`
-- `@opentui/keymap/extras` — helpers for cheat-sheet UIs (`resolveBindingSections`, `commandBindings`, `formatCommandBindings`)
+- `@opentui/keymap/extras` — helpers for cheat-sheet UIs (`createBindingLookup`, `commandBindings`, `formatCommandBindings`)
 
 ## Usage
 

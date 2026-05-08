@@ -248,12 +248,12 @@ Command queries search and filter across top-level command fields and compiled c
 
 Pure extra exported from `@opentui/keymap/extras`:
 
-| Helper                           | Description                                                                                                         |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `commandBindings(map)`           | Converts a command-to-key object map into `Binding[]`, trimming command keys before emitting them                   |
-| `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                                     |
-| `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default                                |
-| `resolveBindingSections(config)` | Converts sectioned command config into binding arrays plus `get(section, cmd)`, `pick(...)` and `omit(...)` helpers |
+| Helper                           | Description                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `commandBindings(map)`           | Converts a command-to-key object map into `Binding[]`, trimming command keys before emitting them |
+| `createBindingLookup(config)`    | Resolves flat command config into command lookups and lazy cached gathered binding groups         |
+| `formatKeySequence(parts, opts)` | Formats parsed key sequences with optional token, key-name and modifier aliases                   |
+| `formatCommandBindings(...)`     | Formats command binding lists, reusing `formatKeySequence()` and deduping by default              |
 
 `commandBindings()` accepts optional `onWarning` and `onError` callbacks. `onWarning` reports trimmed-command overrides such as `" save-file "` and `"save-file"`; invalid key values are skipped by default, and `onError` lets callers observe them or throw if they want strict behavior.
 
@@ -289,53 +289,58 @@ formatKeySequence(keymap.parseKeySequence("<leader>s"), {
 formatCommandBindings(keymap.getCommandBindings({ visibility: "registered", commands: ["save-file"] }).get("save-file"))
 ```
 
-`resolveBindingSections()` is an opinionated config-to-keymap transformation for app-level config split into named sections. It is one practical shape; copy and adjust it if your app needs different rules. Values can be `false`, `"none"`, a key, a full binding object, or arrays of keys/binding objects. `false`, `"none"`, and empty arrays emit no bindings. The command name comes from the record key.
+`createBindingLookup()` is an opinionated config-to-keymap transformation for flat command config. Keys are command names and become `binding.cmd`. Values can be `false`, `"none"`, a key, a full binding object, or arrays of keys/binding objects. `false`, `"none"`, and empty arrays emit no bindings.
+
+It deliberately keeps command identity separate from UI/layer grouping. Which bindings a component needs is a use-site concern, not part of the command name, so components gather named binding groups from plain command names when registering layers.
+
+Use `commandMap` when user-facing config names should differ from internal command names. Mapping happens when the lookup is created or updated; runtime lookups use internal command names.
 
 ```ts
-import { resolveBindingSections } from "@opentui/keymap/extras"
+import { createBindingLookup } from "@opentui/keymap/extras"
 
-const sectionGroups = {
-  app: "Global",
-  prompt_input: "Prompt",
-}
-
-const resolved = resolveBindingSections(
+const bindings = createBindingLookup(
   {
-    app: {
-      "command.palette.show": "ctrl+p",
-      "app.exit": ["ctrl+c", "<leader>q"],
-      "app.debug": "none",
-    },
-    prompt_input: {
-      "prompt.paste": { key: "ctrl+v", preventDefault: false },
-      "prompt.history.previous": "up",
-      "prompt.history.next": "down",
-    },
+    show_palette: "ctrl+p",
+    exit_app: ["ctrl+c", "<leader>q"],
+    debug_app: "none",
+    paste_prompt: { key: "ctrl+v", preventDefault: false },
+    prompt_history_previous: "up",
+    prompt_history_next: "down",
   },
   {
-    bindingDefaults({ section, binding }) {
+    bindingDefaults({ binding }) {
       if (binding.group !== undefined) return
-      return { group: sectionGroups[section as keyof typeof sectionGroups] }
+      return { group: "App" }
+    },
+    commandMap: {
+      show_palette: "app.palette.show",
+      exit_app: "app.exit",
     },
   },
 )
 
-keymap.registerLayer({ bindings: resolved.sections.app })
-resolved.get("app", "app.exit")
-resolved.pick("prompt_input", ["prompt.history.previous", "prompt.history.next"])
-resolved.omit("app", ["app.exit"])
+keymap.registerLayer({ bindings: bindings.gather("app", ["app.palette.show", "app.exit"]) })
+bindings.get("app.exit")
+bindings.has("app.exit")
+bindings.pick("app", ["app.exit"])
+bindings.omit("app", ["app.palette.show"])
+bindings.invalidate("app")
 ```
 
-The resolved object exposes three views:
+The lookup exposes these views:
 
-| API                       | Description                                                                                                      |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `sections[section]`       | All enabled bindings for the section, preserving section config order                                            |
-| `get(section, command)`   | Bindings for one command, or `undefined` when the section or command is missing/disabled                         |
-| `pick(section, commands)` | Bindings for the listed commands in caller command order; missing or disabled commands are skipped               |
-| `omit(section, commands)` | All section bindings except matching string-command bindings, preserving section order; missing commands ignored |
+| API                      | Description                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `bindings`               | All enabled bindings, preserving config order                                                            |
+| `get(command)`           | Bindings for one exact command name, or an empty array when the command is missing/disabled              |
+| `has(command)`           | Whether the exact internal command has enabled bindings                                                  |
+| `gather(name, commands)` | Builds and caches a named binding group on first use; later calls with the same name return the cache    |
+| `pick(name, commands)`   | Bindings from an existing gathered group in caller command order; missing groups or commands are skipped |
+| `omit(name, commands)`   | All gathered bindings except matching string-command bindings, preserving group order                    |
+| `invalidate(name?)`      | Clears one gathered group, or all gathered groups when `name` is omitted                                 |
+| `update(config?)`        | Rebuilds command lookups from new or current config and clears gathered groups                           |
 
-Use `bindingDefaults` to add app-level fields to every emitted binding without mutating the original config. Defaults are spread before the resolved binding, so explicit binding fields win. `pick()` and `omit()` use exact command names and do not trim. They are meant for hard-coded application command lists. Use them when one semantic config section feeds multiple activation layers.
+Use `bindingDefaults` to add app-level fields to every emitted binding without mutating the original config. Defaults are spread before the resolved binding, so explicit binding fields win. Command names are exact and are not trimmed. `get()`, `gather()`, `pick()` and `omit()` return cached binding arrays directly when possible instead of defensive copies.
 
 Tokens such as `leader` are still registered through the normal keymap token APIs and referenced by parser syntax such as `<leader>`.
 
