@@ -1,9 +1,13 @@
 #!/usr/bin/env bun
 
+import { readdir, stat } from "node:fs/promises"
+import { basename, dirname, join, resolve } from "node:path"
 import {
+  Audio,
   BoxRenderable,
   CliRenderer,
-  Audio,
+  SelectRenderable,
+  SelectRenderableEvents,
   type AudioPlaybackDevice,
   type AudioGroup,
   type AudioSound,
@@ -11,6 +15,7 @@ import {
   TextRenderable,
   createCliRenderer,
   type KeyEvent,
+  type SelectOption,
 } from "@opentui/core"
 import FFT from "fft.js"
 import type { OptimizedBuffer } from "@opentui/core"
@@ -26,6 +31,17 @@ type SoundPreset = {
 }
 
 type MixTarget = "effects" | "master" | "bgm"
+type FilePickerEntryType = "parent" | "directory" | "file" | "empty"
+
+interface FilePickerEntry {
+  type: FilePickerEntryType
+  path: string
+  name: string
+}
+
+interface FilePickerOption extends SelectOption {
+  value: FilePickerEntry
+}
 
 const PRESETS: SoundPreset[] = [
   { name: "Jump", frequency: 540, durationMs: 120, volume: 0.8, groupName: "sfx", decay: 0.82 },
@@ -61,6 +77,8 @@ const KICK_MIN_RATIO = 0.24
 const KICK_MIN_FLUX = 0.008
 const KICK_THRESHOLD_STD = 1.4
 const DEVICE_MENU_MAX_ROWS = 3
+const FILE_PICKER_HEIGHT = 18
+const FILE_PICKER_WIDTH = 76
 
 const fft = new FFT(FFT_SIZE)
 const fftInput = new Float32Array(FFT_SIZE)
@@ -82,8 +100,12 @@ let mixText: TextRenderable | null = null
 let deviceText: TextRenderable | null = null
 let statsText: TextRenderable | null = null
 let meterText: TextRenderable | null = null
+let bgmFileText: TextRenderable | null = null
 let controlsText: TextRenderable | null = null
 let outputText: TextRenderable | null = null
+let filePickerContainer: BoxRenderable | null = null
+let filePickerTitleText: TextRenderable | null = null
+let filePickerSelect: SelectRenderable | null = null
 
 let keyHandler: ((event: KeyEvent) => void) | null = null
 
@@ -107,7 +129,10 @@ let activeSampleRate = SAMPLE_RATE_OPTIONS[selectedSampleRateIndex] ?? DEFAULT_S
 let selectedPlaybackChannelIndex = Math.max(0, PLAYBACK_CHANNEL_OPTIONS.indexOf(DEFAULT_PLAYBACK_CHANNELS))
 let activePlaybackChannels = PLAYBACK_CHANNEL_OPTIONS[selectedPlaybackChannelIndex] ?? DEFAULT_PLAYBACK_CHANNELS
 let reconfiguringOutputConfig = false
-let bgmBytes: ArrayBuffer | null = null
+let selectedBgmPath: string | null = null
+let filePickerDirectory = resolve(process.cwd())
+let filePickerVisible = false
+let filePickerRequestId = 0
 
 let lastAction = "Ready"
 let fourHundredBandLevel = 0
@@ -120,6 +145,15 @@ let kickVisibleUntilMs = 0
 let kickCount = 0
 let vizClockSeconds = 0
 let bgVizIntensity = 0
+
+function writeMaxNormalizedChannel(buffer: Uint16Array, index: number, value: number): void {
+  const existing = buffer[index] ?? 0
+  const existingChannel = existing & 0xff
+  const nextChannel = Math.round(Math.max(0, Math.min(1, value)) * 255)
+  if (nextChannel > existingChannel) {
+    buffer[index] = (existing & 0xff00) | nextChannel
+  }
+}
 
 const fftBackgroundPostProcess = (buffer: OptimizedBuffer, deltaTime: number): void => {
   vizClockSeconds += deltaTime / 1000
@@ -154,22 +188,27 @@ const fftBackgroundPostProcess = (buffer: OptimizedBuffer, deltaTime: number): v
         const r = Math.min(1, 0.12 + t * 1.05 + pulse * 0.2)
         const g = Math.min(1, 0.22 + (1 - Math.abs(t - 0.35) * 1.4) * 0.95 + pulse)
         const b = Math.min(1, 0.1 + (1 - t) * 0.24)
-        bg[idx] = Math.max(bg[idx], r * bgVizIntensity)
-        bg[idx + 1] = Math.max(bg[idx + 1], g * bgVizIntensity)
-        bg[idx + 2] = Math.max(bg[idx + 2], b * bgVizIntensity)
+        writeMaxNormalizedChannel(bg, idx, r * bgVizIntensity)
+        writeMaxNormalizedChannel(bg, idx + 1, g * bgVizIntensity)
+        writeMaxNormalizedChannel(bg, idx + 2, b * bgVizIntensity)
       }
 
       if (peakY >= 0 && peakY < height) {
         const idx = (peakY * width + x) * 4
-        bg[idx] = Math.max(bg[idx], 0.95 * bgVizIntensity)
-        bg[idx + 1] = Math.max(bg[idx + 1], 0.95 * bgVizIntensity)
-        bg[idx + 2] = Math.max(bg[idx + 2], 0.85 * bgVizIntensity)
+        writeMaxNormalizedChannel(bg, idx, 0.95 * bgVizIntensity)
+        writeMaxNormalizedChannel(bg, idx + 1, 0.95 * bgVizIntensity)
+        writeMaxNormalizedChannel(bg, idx + 2, 0.85 * bgVizIntensity)
       }
     }
   }
 }
 
-function buildMonoPcm16Wav(options: { frequency: number; durationMs: number; amplitude: number; decay: number }): Uint8Array {
+function buildMonoPcm16Wav(options: {
+  frequency: number
+  durationMs: number
+  amplitude: number
+  decay: number
+}): Uint8Array {
   const sampleRate = activeSampleRate
   const sampleCount = Math.max(1, Math.floor((sampleRate * options.durationMs) / 1000))
   const channels = 1
@@ -345,7 +384,7 @@ function computeSpectrum(pcm: Float32Array, channels: number): string {
     const sampleIndex = i * stride
     const left = pcm[sampleIndex] ?? 0
     const right = channels > 1 ? (pcm[sampleIndex + 1] ?? left) : left
-    fftInput[i] = ((left + right) * 0.5) * fftWindow[i]
+    fftInput[i] = (left + right) * 0.5 * fftWindow[i]
   }
 
   fft.realTransform(fftOut, fftInput)
@@ -506,22 +545,211 @@ function formatPlaybackChannels(channels: number): string {
   return `${channels} ch`
 }
 
-async function ensureBgmBytesLoaded(): Promise<ArrayBuffer | null> {
-  if (bgmBytes) return bgmBytes
+function formatBgmPath(filePath: string): string {
+  const name = basename(filePath)
+  return name.length > 32 ? `${name.slice(0, 29)}...` : name
+}
 
-  const bgmUrl = new URL("../../dev/bgm2.wav", import.meta.url)
+function updateBgmFileText(): void {
+  if (!bgmFileText) return
+
+  const loadedFile = selectedBgmPath ? formatBgmPath(selectedBgmPath) : "none selected"
+  bgmFileText.content = `BGM file: ${loadedFile} | F choose audio file | B play/stop selected file`
+}
+
+function getFilePickerOption(option: SelectOption): FilePickerOption {
+  return option as FilePickerOption
+}
+
+function updateFilePickerTitle(message?: string): void {
+  if (!filePickerTitleText) return
+
+  const status = message ? `\n${message}` : ""
+  filePickerTitleText.content = `Choose BGM audio file | Enter open/load | Backspace parent | Esc close\n${filePickerDirectory}${status}`
+}
+
+async function classifyFilePickerEntry(
+  directory: string,
+  name: string,
+  isDirectory: boolean,
+  isFile: boolean,
+): Promise<FilePickerEntry | null> {
+  const entryPath = join(directory, name)
+  if (isDirectory) return { type: "directory", path: entryPath, name }
+  if (isFile) return { type: "file", path: entryPath, name }
+
   try {
-    bgmBytes = await Bun.file(bgmUrl).arrayBuffer()
-    return bgmBytes
+    const stats = await stat(entryPath)
+    if (stats.isDirectory()) return { type: "directory", path: entryPath, name }
+    if (stats.isFile()) return { type: "file", path: entryPath, name }
   } catch {
     return null
   }
+
+  return null
 }
 
-async function initializeAudioForOutputConfig(sampleRate: number, playbackChannels: number, resumeBgm: boolean): Promise<boolean> {
+function entryToOption(entry: FilePickerEntry): FilePickerOption {
+  const prefix = entry.type === "directory" ? "/" : ""
+  const description = entry.type === "directory" ? "Directory" : "File, decoded by the native audio loader"
+
+  return {
+    name: `${entry.name}${prefix}`,
+    description,
+    value: entry,
+  }
+}
+
+async function refreshFilePicker(directory: string = filePickerDirectory): Promise<void> {
+  const requestId = ++filePickerRequestId
+  filePickerDirectory = resolve(directory)
+  updateFilePickerTitle("Loading...")
+
+  try {
+    const dirents = await readdir(filePickerDirectory, { withFileTypes: true })
+    if (requestId !== filePickerRequestId) return
+
+    const entries = (
+      await Promise.all(
+        dirents.map((dirent) =>
+          classifyFilePickerEntry(filePickerDirectory, dirent.name, dirent.isDirectory(), dirent.isFile()),
+        ),
+      )
+    )
+      .filter((entry): entry is FilePickerEntry => entry != null)
+      .sort((a, b) => {
+        if (a.type !== b.type) return a.type === "directory" ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+
+    const parentDirectory = dirname(filePickerDirectory)
+    const options: FilePickerOption[] =
+      parentDirectory === filePickerDirectory
+        ? []
+        : [
+            {
+              name: "../",
+              description: `Parent: ${parentDirectory}`,
+              value: { type: "parent", path: parentDirectory, name: ".." },
+            },
+          ]
+
+    options.push(...entries.map(entryToOption))
+
+    if (options.length === 0) {
+      options.push({
+        name: "(empty)",
+        description: "No directories or files in this directory",
+        value: { type: "empty", path: filePickerDirectory, name: "" },
+      })
+    }
+
+    if (filePickerSelect) {
+      filePickerSelect.options = options
+      filePickerSelect.setSelectedIndex(0)
+    }
+    updateFilePickerTitle()
+  } catch (error) {
+    if (requestId !== filePickerRequestId) return
+
+    const message = error instanceof Error ? error.message : "Unknown error"
+    if (filePickerSelect) {
+      filePickerSelect.options = [
+        {
+          name: "(unreadable)",
+          description: message,
+          value: { type: "empty", path: filePickerDirectory, name: "" },
+        },
+      ]
+      filePickerSelect.setSelectedIndex(0)
+    }
+    updateFilePickerTitle(`Error: ${message}`)
+  }
+}
+
+function showFilePicker(): void {
+  if (!filePickerContainer || !filePickerSelect) return
+
+  filePickerVisible = true
+  filePickerContainer.visible = true
+  filePickerSelect.focus()
+  void refreshFilePicker(filePickerDirectory)
+}
+
+function hideFilePicker(): void {
+  if (!filePickerContainer || !filePickerSelect) return
+
+  filePickerVisible = false
+  filePickerSelect.blur()
+  filePickerContainer.visible = false
+}
+
+async function loadBgmFile(filePath: string): Promise<void> {
+  if (!audio) {
+    lastAction = "Audio engine unavailable"
+    updateHeader()
+    return
+  }
+
+  const displayName = formatBgmPath(filePath)
+  const previousVoice = musicVoice
+  lastAction = `Loading BGM ${displayName}...`
+  updateHeader()
+
+  const nextSound = await audio.loadSoundFile(filePath)
+  if (nextSound == null) {
+    lastAction = `BGM load failed: ${displayName}`
+    updateHeader()
+    return
+  }
+
+  if (previousVoice != null) {
+    audio.stopVoice(previousVoice)
+  }
+
+  selectedBgmPath = filePath
+  musicSound = nextSound
+  musicVoice = null
+
+  if (groups && audio.isStarted()) {
+    playBgmVoice()
+    lastAction = musicVoice ? `BGM playing ${displayName}` : `BGM loaded ${displayName}`
+  } else {
+    lastAction = `BGM loaded ${displayName}`
+  }
+
+  updateHeader()
+}
+
+async function handleFilePickerOption(option: SelectOption): Promise<void> {
+  const entry = getFilePickerOption(option).value
+  if (entry.type === "empty") return
+
+  if (entry.type === "parent" || entry.type === "directory") {
+    await refreshFilePicker(entry.path)
+    return
+  }
+
+  hideFilePicker()
+  await loadBgmFile(entry.path)
+}
+
+function attachAudioErrorHandler(nextAudio: Audio): void {
+  nextAudio.on("error", (error, context) => {
+    lastAction = `${context.action}: ${error.message}`
+    updateHeader()
+  })
+}
+
+async function initializeAudioForOutputConfig(
+  sampleRate: number,
+  playbackChannels: number,
+  resumeBgm: boolean,
+): Promise<boolean> {
   const preferredDeviceIndex = selectedPlaybackDeviceIndex ?? activePlaybackDeviceIndex
   const previousAudio = audio
   const nextAudio = Audio.create({ autoStart: false, sampleRate, playbackChannels })
+  attachAudioErrorHandler(nextAudio)
 
   audio = nextAudio
   activeSampleRate = sampleRate
@@ -572,9 +800,12 @@ async function initializeAudioForOutputConfig(sampleRate: number, playbackChanne
   const sfxGroup = nextAudio.group("sfx")
   const musicGroup = nextAudio.group("music")
   const uiGroup = nextAudio.group("ui")
-  groups = sfxGroup != null && musicGroup != null && uiGroup != null ? { sfx: sfxGroup, music: musicGroup, ui: uiGroup } : null
+  groups =
+    sfxGroup != null && musicGroup != null && uiGroup != null ? { sfx: sfxGroup, music: musicGroup, ui: uiGroup } : null
 
-  nextAudio.enableTap(8192)
+  if (!nextAudio.enableTap(8192)) {
+    lastAction = "Audio tap unavailable; visualization disabled"
+  }
   nextAudio.setMasterVolume(masterVolume)
   applyGroupVolumes()
 
@@ -588,8 +819,10 @@ async function initializeAudioForOutputConfig(sampleRate: number, playbackChanne
     return nextAudio.loadSound(wav)
   })
 
-  const bytes = await ensureBgmBytesLoaded()
-  musicSound = bytes ? nextAudio.loadSound(bytes) : null
+  musicSound = selectedBgmPath ? await nextAudio.loadSoundFile(selectedBgmPath) : null
+  if (selectedBgmPath && musicSound == null) {
+    lastAction = `BGM unavailable: ${formatBgmPath(selectedBgmPath)}`
+  }
 
   if (resumeBgm && musicSound && groups && nextAudio.isStarted()) {
     playBgmVoice()
@@ -692,7 +925,11 @@ function refreshPlaybackDevices(keepSelection: boolean = true): boolean {
 
   const defaultDevice = playbackDevices.find((device) => device.isDefault) ?? playbackDevices[0]
 
-  if (keepSelection && previousSelected != null && playbackDevices.some((device) => device.index === previousSelected)) {
+  if (
+    keepSelection &&
+    previousSelected != null &&
+    playbackDevices.some((device) => device.index === previousSelected)
+  ) {
     selectedPlaybackDeviceIndex = previousSelected
   } else {
     selectedPlaybackDeviceIndex = defaultDevice?.index ?? null
@@ -778,8 +1015,7 @@ function updateDeviceMenu(): void {
   const selectedRate = selectedSampleRate()
   const rateHeader = `Rate n/m select | g apply (${formatSampleRate(selectedRate)} -> ${formatSampleRate(activeSampleRate)})`
   const selectedChannels = selectedPlaybackChannels()
-  const channelsHeader =
-    `Channels y/i select | t apply (${formatPlaybackChannels(selectedChannels)} -> ${formatPlaybackChannels(activePlaybackChannels)})`
+  const channelsHeader = `Channels y/i select | t apply (${formatPlaybackChannels(selectedChannels)} -> ${formatPlaybackChannels(activePlaybackChannels)})`
 
   if (playbackDevices.length === 0) {
     deviceText.content = `${rateHeader}\n${channelsHeader}\nDevices u/o select | p apply | r refresh\n(no playback devices found)`
@@ -823,10 +1059,10 @@ function updateHeader(): void {
   if (outputText && audio) {
     const activeDevice = activePlaybackDevice()
     const activeDeviceLabel = activeDevice ? truncateDeviceName(activeDevice.name, 18) : "default/auto"
-    outputText.content =
-      `Output: ${audio.isStarted() ? "ON (miniaudio)" : "OFF"} | ${formatSampleRate(activeSampleRate)} ${formatPlaybackChannels(activePlaybackChannels)} | Device ${activeDeviceLabel} | 400=${(fourHundredBandLevel * 100).toFixed(0)}% 12k=${(twelveKBandLevel * 100).toFixed(0)}% | Kick ${isKickVisible() ? "HIT" : "-"}`
+    outputText.content = `Output: ${audio.isStarted() ? "ON (miniaudio)" : "OFF"} | ${formatSampleRate(activeSampleRate)} ${formatPlaybackChannels(activePlaybackChannels)} | Device ${activeDeviceLabel} | 400=${(fourHundredBandLevel * 100).toFixed(0)}% 12k=${(twelveKBandLevel * 100).toFixed(0)}% | Kick ${isKickVisible() ? "HIT" : "-"}`
   }
 
+  updateBgmFileText()
   updateDeviceMenu()
 }
 
@@ -863,14 +1099,17 @@ function updateAudioView(deltaMs: number = 16): void {
 
   const peak = stats.lastPeak
   const rms = stats.lastRms
-  const spectrum = analysis && analysis.framesRead > 0 ? computeSpectrum(analysis.frames, 2) : "[------][------][------][------][------][------][------][------]"
+  const tapFrames = analysis?.framesRead ?? 0
+  const spectrum =
+    tapFrames > 0 && analysis
+      ? computeSpectrum(analysis.frames, 2)
+      : "[------][------][------][------][------][------][------][------]"
   updateKickDetector(deltaMs)
   bgVizIntensity = Math.max(0.2, Math.min(1, fourHundredBandLevel * 1.35))
 
   meterText.content = `Peak ${meterBar(peak)} ${peak.toFixed(3)}\nRMS  ${meterBar(rms)} ${rms.toFixed(3)}\nFFT  ${spectrum}\nBand   63    160    400    1k    2.5k    6k    12k    16k`
 
-  statsText.content =
-    `sounds=${stats.soundsLoaded} voices=${stats.voicesActive} frames=${stats.framesMixed.toString()} lockMisses=${stats.lockMisses} kicks=${kickCount}`
+  statsText.content = `sounds=${stats.soundsLoaded} voices=${stats.voicesActive} tap=${tapFrames} frames=${stats.framesMixed.toString()} lockMisses=${stats.lockMisses} kicks=${kickCount}`
 
   updateHeader()
 }
@@ -967,19 +1206,79 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   root.add(outputText)
 
+  bgmFileText = new TextRenderable(renderer, {
+    id: "native-audio-demo-bgm-file",
+    content: "BGM file: none selected | F choose audio file | B play/stop selected file",
+    fg: "#FDE68A",
+    height: 1,
+    marginTop: 1,
+  })
+  root.add(bgmFileText)
+
   controlsText = new TextRenderable(renderer, {
     id: "native-audio-demo-controls",
     content:
-      "1/2/3 trigger effects | B bgm on/off | J/K mix target | H/L vol | Shift+H/Shift+L pan\nU/O device cursor | P apply device | R refresh devices | N/M sample rate | G apply rate | Y/I channels | T apply channels | Esc back",
+      "1/2/3 trigger effects | F choose BGM file | B bgm on/off | J/K mix target | H/L vol | Shift+H/Shift+L pan\nU/O device cursor | P apply device | R refresh devices | N/M sample rate | G apply rate | Y/I channels | T apply channels | Esc back",
     fg: "#9CA3AF",
     height: 2,
     marginTop: 1,
   })
   root.add(controlsText)
 
+  filePickerContainer = new BoxRenderable(renderer, {
+    id: "native-audio-demo-file-picker",
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: FILE_PICKER_WIDTH,
+    height: FILE_PICKER_HEIGHT,
+    marginLeft: -(FILE_PICKER_WIDTH / 2),
+    marginTop: -(FILE_PICKER_HEIGHT / 2),
+    zIndex: 200,
+    border: true,
+    borderStyle: "rounded",
+    borderColor: "#FDE68A",
+    backgroundColor: "#111827",
+    flexDirection: "column",
+    padding: 1,
+    visible: false,
+  })
+
+  filePickerTitleText = new TextRenderable(renderer, {
+    id: "native-audio-demo-file-picker-title",
+    content: "Choose BGM audio file",
+    fg: "#FDE68A",
+    height: 3,
+  })
+  filePickerContainer.add(filePickerTitleText)
+
+  filePickerSelect = new SelectRenderable(renderer, {
+    id: "native-audio-demo-file-picker-select",
+    width: "100%",
+    height: FILE_PICKER_HEIGHT - 5,
+    options: [],
+    backgroundColor: "#111827",
+    focusedBackgroundColor: "#1F2937",
+    textColor: "#E5E7EB",
+    focusedTextColor: "#F9FAFB",
+    selectedBackgroundColor: "#92400E",
+    selectedTextColor: "#FFFFFF",
+    descriptionColor: "#9CA3AF",
+    selectedDescriptionColor: "#FDE68A",
+    showDescription: true,
+    showScrollIndicator: true,
+    wrapSelection: false,
+    fastScrollStep: 5,
+  })
+  filePickerSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_index: number, option: SelectOption) => {
+    void handleFilePickerOption(option)
+  })
+  filePickerContainer.add(filePickerSelect)
+  root.add(filePickerContainer)
+
   updateHeader()
 
-  if (musicSound && groups && audio.isStarted()) {
+  if (musicSound && groups && audio?.isStarted()) {
     playBgmVoice()
     lastAction = "BGM auto start"
     updateHeader()
@@ -988,6 +1287,23 @@ export async function run(renderer: CliRenderer): Promise<void> {
   updateAudioView()
 
   keyHandler = (event: KeyEvent) => {
+    if (filePickerVisible) {
+      switch (event.name) {
+        case "escape":
+          hideFilePicker()
+          lastAction = "File picker closed"
+          updateHeader()
+          break
+        case "backspace":
+          void refreshFilePicker(dirname(filePickerDirectory))
+          break
+        case "r":
+          void refreshFilePicker(filePickerDirectory)
+          break
+      }
+      return
+    }
+
     if (!audio) return
     switch (event.name) {
       case "1":
@@ -998,6 +1314,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
         break
       case "3":
         triggerSound(2)
+        break
+      case "f":
+        showFilePicker()
+        lastAction = "Choose a BGM audio file"
+        updateHeader()
         break
       case "j":
         selectMixTarget(1)
@@ -1017,7 +1338,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
       case "r":
         if (refreshPlaybackDevices(true)) {
           lastAction =
-            playbackDevices.length > 0 ? `Device list refreshed (${playbackDevices.length})` : "No playback devices found"
+            playbackDevices.length > 0
+              ? `Device list refreshed (${playbackDevices.length})`
+              : "No playback devices found"
         } else {
           lastAction = "Failed to refresh playback devices"
         }
@@ -1052,7 +1375,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
         break
       }
       case "b":
-        if (!musicSound) break
+        if (!musicSound) {
+          lastAction = "Choose a BGM file first"
+          updateHeader()
+          break
+        }
         if (musicVoice) {
           audio.stopVoice(musicVoice)
           musicVoice = null
@@ -1094,7 +1421,11 @@ export function destroy(renderer: CliRenderer): void {
   statsText = null
   outputText = null
   meterText = null
+  bgmFileText = null
   controlsText = null
+  filePickerTitleText = null
+  filePickerSelect = null
+  filePickerContainer = null
 
   audio?.dispose()
   audio = null
@@ -1117,7 +1448,10 @@ export function destroy(renderer: CliRenderer): void {
   selectedPlaybackChannelIndex = Math.max(0, PLAYBACK_CHANNEL_OPTIONS.indexOf(DEFAULT_PLAYBACK_CHANNELS))
   activePlaybackChannels = PLAYBACK_CHANNEL_OPTIONS[selectedPlaybackChannelIndex] ?? DEFAULT_PLAYBACK_CHANNELS
   reconfiguringOutputConfig = false
-  bgmBytes = null
+  selectedBgmPath = null
+  filePickerDirectory = resolve(process.cwd())
+  filePickerVisible = false
+  filePickerRequestId += 1
   fourHundredBandLevel = 0
   twelveKBandLevel = 0
   fftDisplay.fill(0)
