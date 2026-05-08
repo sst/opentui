@@ -1,5 +1,5 @@
-import type { Pointer } from "bun:ffi"
 import { EventEmitter } from "events"
+import type { Pointer } from "./platform/ffi.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
 import type { AudioStats } from "./zig-structs.js"
 

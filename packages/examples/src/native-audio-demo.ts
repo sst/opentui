@@ -11,9 +11,9 @@ import {
   TextRenderable,
   createCliRenderer,
   type KeyEvent,
-} from "../index.js"
+} from "@opentui/core"
 import FFT from "fft.js"
-import type { OptimizedBuffer } from "../buffer.js"
+import type { OptimizedBuffer } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 type SoundPreset = {

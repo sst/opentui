@@ -22,6 +22,7 @@
     "@opentui/keymap": "workspace:*",
     "@opentui/three": "workspace:*",
     "bun-webgpu": "0.1.7",
+    "fft.js": "^4.0.4",
     "planck": "^1.4.2",
     "three": "0.177.0",
     "web-tree-sitter": "0.25.10"
