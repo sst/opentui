@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { readdir, stat } from "node:fs/promises"
-import { basename, dirname, join, resolve } from "node:path"
+import { basename, dirname, extname, join, resolve } from "node:path"
 import {
   Audio,
   BoxRenderable,
@@ -77,8 +77,11 @@ const KICK_MIN_RATIO = 0.24
 const KICK_MIN_FLUX = 0.008
 const KICK_THRESHOLD_STD = 1.4
 const DEVICE_MENU_MAX_ROWS = 3
-const FILE_PICKER_HEIGHT = 18
-const FILE_PICKER_WIDTH = 76
+const FILE_PICKER_HEIGHT = 24
+const FILE_PICKER_WIDTH = 92
+const FILE_PICKER_TITLE_HEIGHT = 3
+const FILE_PICKER_SELECT_HEIGHT = FILE_PICKER_HEIGHT - FILE_PICKER_TITLE_HEIGHT - 4
+const SUPPORTED_AUDIO_FILE_EXTENSIONS = new Set([".flac", ".mp3", ".wav", ".wave"])
 
 const fft = new FFT(FFT_SIZE)
 const fftInput = new Float32Array(FFT_SIZE)
@@ -563,6 +566,14 @@ function getFilePickerOption(option: SelectOption): FilePickerOption {
   return option as FilePickerOption
 }
 
+function isSupportedAudioFileName(fileName: string): boolean {
+  return SUPPORTED_AUDIO_FILE_EXTENSIONS.has(extname(fileName).toLowerCase())
+}
+
+function isVisibleFilePickerName(name: string): boolean {
+  return !name.startsWith(".")
+}
+
 function updateFilePickerTitle(message?: string): void {
   if (!filePickerTitleText) return
 
@@ -576,14 +587,16 @@ async function classifyFilePickerEntry(
   isDirectory: boolean,
   isFile: boolean,
 ): Promise<FilePickerEntry | null> {
+  if (!isVisibleFilePickerName(name)) return null
+
   const entryPath = join(directory, name)
   if (isDirectory) return { type: "directory", path: entryPath, name }
-  if (isFile) return { type: "file", path: entryPath, name }
+  if (isFile) return isSupportedAudioFileName(name) ? { type: "file", path: entryPath, name } : null
 
   try {
     const stats = await stat(entryPath)
     if (stats.isDirectory()) return { type: "directory", path: entryPath, name }
-    if (stats.isFile()) return { type: "file", path: entryPath, name }
+    if (stats.isFile()) return isSupportedAudioFileName(name) ? { type: "file", path: entryPath, name } : null
   } catch {
     return null
   }
@@ -593,11 +606,10 @@ async function classifyFilePickerEntry(
 
 function entryToOption(entry: FilePickerEntry): FilePickerOption {
   const prefix = entry.type === "directory" ? "/" : ""
-  const description = entry.type === "directory" ? "Directory" : "File, decoded by the native audio loader"
 
   return {
     name: `${entry.name}${prefix}`,
-    description,
+    description: "",
     value: entry,
   }
 }
@@ -641,7 +653,7 @@ async function refreshFilePicker(directory: string = filePickerDirectory): Promi
     if (options.length === 0) {
       options.push({
         name: "(empty)",
-        description: "No directories or files in this directory",
+        description: "No supported audio files or visible directories in this directory",
         value: { type: "empty", path: filePickerDirectory, name: "" },
       })
     }
@@ -1250,14 +1262,14 @@ export async function run(renderer: CliRenderer): Promise<void> {
     id: "native-audio-demo-file-picker-title",
     content: "Choose BGM audio file",
     fg: "#FDE68A",
-    height: 3,
+    height: FILE_PICKER_TITLE_HEIGHT,
   })
   filePickerContainer.add(filePickerTitleText)
 
   filePickerSelect = new SelectRenderable(renderer, {
     id: "native-audio-demo-file-picker-select",
     width: "100%",
-    height: FILE_PICKER_HEIGHT - 5,
+    height: FILE_PICKER_SELECT_HEIGHT,
     options: [],
     backgroundColor: "#111827",
     focusedBackgroundColor: "#1F2937",
@@ -1267,7 +1279,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     selectedTextColor: "#FFFFFF",
     descriptionColor: "#9CA3AF",
     selectedDescriptionColor: "#FDE68A",
-    showDescription: true,
+    showDescription: false,
     showScrollIndicator: true,
     wrapSelection: false,
     fastScrollStep: 5,
