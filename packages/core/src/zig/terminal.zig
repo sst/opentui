@@ -118,6 +118,10 @@ state: struct {
     mouse: bool = false,
     mouse_movement: bool = true,
     mouse_was_enabled: bool = false,
+    // Effective mouse mode. `mouse` and `mouse_movement` above remain a
+    // backward-compatible projection (`.none` => mouse=false; `.motion` =>
+    // mouse_movement=true; everything else => mouse=true, movement=false).
+    mouse_level: MouseLevel = .none,
     pixel_mouse: bool = false,
     color_scheme_updates: bool = false,
     theme_queries_sent: bool = false,
@@ -569,38 +573,71 @@ fn writeMouseDisableSequences(tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.disableSGRMouseMode);
 }
 
-// TODO: Allow pixel mouse mode to be enabled,
-// currently does not make sense and is not supported by higher levels
-pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement: bool) !void {
-    if (enable) {
-        if (self.state.mouse and self.state.mouse_movement == enable_movement) return;
-    } else if (!self.state.mouse) {
+// Set mouse tracking to the requested level.
+//
+//   .none    - all tracking off (?1000l ?1002l ?1003l ?1006l)
+//   .basic   - press/release only      (?1000h ?1006h)
+//   .drag    - clicks + drag           (?1000h ?1002h ?1006h)
+//   .motion  - clicks + drag + motion  (?1000h ?1002h ?1003h ?1006h)
+//   .pixels  - reserved for future; currently treated as .drag
+//
+// The legacy two-bool API (`enable`, `enable_movement`) maps onto this via
+// `setMouseModeLegacy`, which preserves the prior default (drag tracking on
+// when mouse is enabled and movement is off).
+//
+// Some terminals treat ?1000 / ?1002 / ?1003 as one family and let the last
+// sequence win — when downgrading to a lower level we explicitly emit the
+// disable sequences for the higher tiers before re-arming.
+//
+// TODO: pixel-coordinate mouse mode (?1016h) is not yet decoded by higher
+// layers; once decoding lands, .pixels will gain a distinct emit path.
+pub fn setMouseMode(self: *Terminal, tty: anytype, level: MouseLevel) !void {
+    if (self.state.mouse_level == level) return;
+
+    self.state.mouse_level = level;
+    self.state.mouse = (level != .none);
+    self.state.mouse_movement = (level == .motion);
+
+    if (level == .none) {
+        self.state.pixel_mouse = false;
+        try writeMouseDisableSequences(tty);
         return;
     }
 
-    if (enable) {
-        self.state.mouse = true;
-        self.state.mouse_movement = enable_movement;
-        // Arms the shutdown cleanup path so resetState() will still emit mouse
-        // disable sequences even if a later best-effort disable silently fails.
-        self.state.mouse_was_enabled = true;
-        if (!enable_movement) {
-            // Some terminals treat ?1000/?1002/?1003 as one family and let the
-            // last sequence win. Reset any-event tracking first, then enable
-            // click/drag modes so they remain active.
-            try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
-        }
-        try tty.writeAll(ansi.ANSI.enableMouseTracking);
-        try tty.writeAll(ansi.ANSI.enableButtonEventTracking);
-        if (enable_movement) {
-            try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
-        }
-        try tty.writeAll(ansi.ANSI.enableSGRMouseMode);
-    } else {
-        self.state.mouse = false;
-        self.state.pixel_mouse = false;
-        try writeMouseDisableSequences(tty);
+    // Arms the shutdown cleanup path so resetState() will still emit mouse
+    // disable sequences even if a later best-effort disable silently fails.
+    self.state.mouse_was_enabled = true;
+
+    // Downgrade higher tiers before re-arming the requested ones.
+    if (level != .motion) {
+        try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
     }
+    if (level == .basic) {
+        try tty.writeAll(ansi.ANSI.disableButtonEventTracking);
+    }
+
+    try tty.writeAll(ansi.ANSI.enableMouseTracking);
+    if (level == .drag or level == .motion or level == .pixels) {
+        try tty.writeAll(ansi.ANSI.enableButtonEventTracking);
+    }
+    if (level == .motion) {
+        try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+    }
+    try tty.writeAll(ansi.ANSI.enableSGRMouseMode);
+}
+
+// Backward-compat shim for the old two-bool signature. Maps to:
+//   enable=false        => .none
+//   enable=true, mv=false => .drag   (preserves the prior default)
+//   enable=true, mv=true  => .motion
+pub fn setMouseModeLegacy(self: *Terminal, tty: anytype, enable: bool, enable_movement: bool) !void {
+    const level: MouseLevel = if (!enable)
+        .none
+    else if (enable_movement)
+        .motion
+    else
+        .drag;
+    return self.setMouseMode(tty, level);
 }
 
 // Best-effort shutdown path: emit the reset sequences even if tracked state

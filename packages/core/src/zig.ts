@@ -489,6 +489,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "bool"],
       returns: "void",
     },
+    setMouseLevel: {
+      args: ["ptr", "u8"],
+      returns: "void",
+    },
     disableMouse: {
       args: ["ptr"],
       returns: "void",
@@ -1634,6 +1638,7 @@ export interface RenderLib {
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
   restoreTerminalModes: (renderer: Pointer) => void
   enableMouse: (renderer: Pointer, enableMovement: boolean) => void
+  setMouseLevel: (renderer: Pointer, level: number) => void
   disableMouse: (renderer: Pointer) => void
   enableKittyKeyboard: (renderer: Pointer, flags: number) => void
   disableKittyKeyboard: (renderer: Pointer) => void
@@ -2726,6 +2731,10 @@ class FFIRenderLib implements RenderLib {
 
   public enableMouse(renderer: Pointer, enableMovement: boolean): void {
     this.opentui.symbols.enableMouse(renderer, ffiBool(enableMovement))
+  }
+
+  public setMouseLevel(renderer: Pointer, level: number): void {
+    this.opentui.symbols.setMouseLevel(renderer, level)
   }
 
   public disableMouse(renderer: Pointer): void {

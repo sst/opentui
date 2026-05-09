@@ -844,12 +844,12 @@ test "enableDetectedFeatures - sends initial theme queries" {
     try testing.expect(term.state.theme_queries_sent);
 }
 
-test "setMouseMode - enable without movement keeps click/drag only" {
+test "setMouseMode - .drag emits ?1000h ?1002h ?1006h, no any-event" {
     var term = Terminal.init(.{});
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
 
-    try term.setMouseMode(&writer, true, false);
+    try term.setMouseMode(&writer, .drag);
 
     const output = writer.getWritten();
     const idx_disable_any = std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking).?;
@@ -861,16 +861,17 @@ test "setMouseMode - enable without movement keeps click/drag only" {
     try testing.expect(idx_enable_mouse < idx_enable_button);
     try testing.expect(idx_enable_button < idx_enable_sgr);
 
+    try testing.expectEqual(Terminal.MouseLevel.drag, term.state.mouse_level);
     try testing.expect(term.state.mouse);
     try testing.expect(!term.state.mouse_movement);
 }
 
-test "setMouseMode - enable with movement enables any-event tracking" {
+test "setMouseMode - .motion emits any-event tracking" {
     var term = Terminal.init(.{});
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
 
-    try term.setMouseMode(&writer, true, true);
+    try term.setMouseMode(&writer, .motion);
 
     const output = writer.getWritten();
     const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
@@ -882,8 +883,108 @@ test "setMouseMode - enable with movement enables any-event tracking" {
     try testing.expect(idx_enable_any < idx_enable_sgr);
     try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking) == null);
 
+    try testing.expectEqual(Terminal.MouseLevel.motion, term.state.mouse_level);
     try testing.expect(term.state.mouse);
     try testing.expect(term.state.mouse_movement);
+}
+
+test "setMouseMode - .basic emits ?1000h + ?1006h only, drag disabled" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseMode(&writer, .basic);
+
+    const output = writer.getWritten();
+    // basic must downgrade button-event tracking — emit ?1002l before
+    // re-arming click tracking.
+    const idx_disable_button = std.mem.indexOf(u8, output, ansi.ANSI.disableButtonEventTracking).?;
+    const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
+    const idx_enable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.enableSGRMouseMode).?;
+    try testing.expect(idx_disable_button < idx_enable_mouse);
+    try testing.expect(idx_enable_mouse < idx_enable_sgr);
+    // Drag and motion must NOT be enabled.
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking) == null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) == null);
+
+    try testing.expectEqual(Terminal.MouseLevel.basic, term.state.mouse_level);
+    try testing.expect(term.state.mouse);
+    try testing.expect(!term.state.mouse_movement);
+}
+
+test "setMouseMode - .none disables all tracking" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    // Drive into a non-none state first so the disable path is exercised.
+    try term.setMouseMode(&writer, .drag);
+    writer.reset();
+
+    try term.setMouseMode(&writer, .none);
+
+    const output = writer.getWritten();
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking) != null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableButtonEventTracking) != null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableMouseTracking) != null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableSGRMouseMode) != null);
+
+    try testing.expectEqual(Terminal.MouseLevel.none, term.state.mouse_level);
+    try testing.expect(!term.state.mouse);
+}
+
+test "setMouseMode - same-level call is a no-op" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseMode(&writer, .drag);
+    writer.reset();
+    try term.setMouseMode(&writer, .drag);
+
+    try testing.expectEqual(@as(usize, 0), writer.getWritten().len);
+}
+
+test "setMouseModeLegacy - maps (true, false) to .drag" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseModeLegacy(&writer, true, false);
+
+    try testing.expectEqual(Terminal.MouseLevel.drag, term.state.mouse_level);
+    try testing.expect(term.state.mouse);
+    try testing.expect(!term.state.mouse_movement);
+    const output = writer.getWritten();
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking) != null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) == null);
+}
+
+test "setMouseModeLegacy - maps (true, true) to .motion" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseModeLegacy(&writer, true, true);
+
+    try testing.expectEqual(Terminal.MouseLevel.motion, term.state.mouse_level);
+    try testing.expect(term.state.mouse);
+    try testing.expect(term.state.mouse_movement);
+    const output = writer.getWritten();
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) != null);
+}
+
+test "setMouseModeLegacy - maps (false, _) to .none" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseModeLegacy(&writer, true, true);
+    writer.reset();
+    try term.setMouseModeLegacy(&writer, false, true);
+
+    try testing.expectEqual(Terminal.MouseLevel.none, term.state.mouse_level);
+    try testing.expect(!term.state.mouse);
 }
 
 test "restoreTerminalModes - respects mouse movement setting" {
