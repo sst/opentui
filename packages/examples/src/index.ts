@@ -50,6 +50,7 @@ import * as asciiFontSelectionExample from "./ascii-font-selection-demo.js"
 import * as splitModeExample from "./split-mode-demo.js"
 import * as splitFooterStreamingDemo from "./split-footer-streaming-demo.js"
 import * as consoleExample from "./console-demo.js"
+import * as notificationDemo from "./notification-demo.js"
 import * as vnodeCompositionDemo from "./vnode-composition-demo.js"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo.js"
 import * as codeDemo from "./code-demo.js"
@@ -179,6 +180,12 @@ const examples: Example[] = [
     description: "Interactive console logging with clickable buttons for different log levels",
     run: consoleExample.run,
     destroy: consoleExample.destroy,
+  },
+  {
+    name: "Notification Demo",
+    description: "Standalone OSC terminal notification demo with capability detection and interactive triggers",
+    run: notificationDemo.run,
+    destroy: notificationDemo.destroy,
   },
   {
     name: "Styled Text Demo",
