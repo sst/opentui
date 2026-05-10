@@ -548,7 +548,15 @@ function unsupportedNodeFFIType(type: never): never {
 }
 
 function toBigIntPointer(pointer: Pointer): bigint {
-  return typeof pointer === "bigint" ? pointer : BigInt(pointer)
+  if (typeof pointer === "bigint") {
+    if (pointer < 0n) {
+      throw new Error(POINTER_NEGATIVE)
+    }
+
+    return pointer
+  }
+
+  return toSafeBigIntPointer(pointer)
 }
 
 export const dlopen = backend.dlopen

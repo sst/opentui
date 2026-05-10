@@ -1,4 +1,4 @@
-import { dlopen, ffiBool, toArrayBuffer, ptr, type FFICallbackInstance, type Pointer } from "./platform/ffi.js"
+import { dlopen, ffiBool, toArrayBuffer, ptr, toPointer, type FFICallbackInstance, type Pointer } from "./platform/ffi.js"
 import { writeFile } from "./platform/runtime.js"
 import { existsSync, writeFileSync } from "fs"
 import { EventEmitter } from "events"
@@ -3856,7 +3856,7 @@ class FFIRenderLib implements RenderLib {
     const outPtrView = new BigUint64Array(outPtrBuffer)
     const outLenView = new BigUint64Array(outLenBuffer)
 
-    const resultPtr = Number(outPtrView[0]) as Pointer
+    const resultPtr = toPointer(outPtrView[0])
     const resultLen = Number(outLenView[0])
 
     if (resultLen === 0) {

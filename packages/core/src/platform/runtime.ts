@@ -35,7 +35,7 @@ export const writeFile: (
   options?: WriteFileOptions,
 ) => Promise<number> = bun?.write ?? writeFilePortable
 
-// Bun only discovers bundled file assets from the literal import expression at the call site.
+// Bun only discovers bundled file-like assets from the literal import expression at the call site.
 export async function resolveBundledFilePath(
   loadBundledFile: () => Promise<FileImportModule>,
   relativePath: string,
