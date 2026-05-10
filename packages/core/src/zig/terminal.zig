@@ -27,8 +27,18 @@ pub const Capabilities = struct {
     bracketed_paste: bool = false,
     hyperlinks: bool = false,
     osc52: bool = false,
+    notifications: bool = false,
     explicit_cursor_positioning: bool = false,
 };
+
+pub const NotificationProtocol = enum {
+    none,
+    osc9,
+    osc777,
+    osc99,
+};
+
+const NOTIFICATION_QUERY_ID = "opentui-notifications";
 
 pub const MouseLevel = enum {
     none,
@@ -137,6 +147,9 @@ state: struct {
 } = .{},
 
 term_info: TerminalInfo = .{},
+notification_protocol: NotificationProtocol = .none,
+notification_protocol_authoritative: bool = false,
+notification_id_counter: u64 = 0,
 
 pub fn init(opts: Options) Terminal {
     var term: Terminal = .{
@@ -355,6 +368,145 @@ pub fn queryThemeColors(_: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.oscThemeQueries);
 }
 
+fn setNotificationProtocol(self: *Terminal, protocol: NotificationProtocol, force: bool) void {
+    if (protocol == .none) return;
+    if (!force and self.notification_protocol_authoritative) return;
+    if (force and self.notification_protocol_authoritative and notificationProtocolPriority(protocol) < notificationProtocolPriority(self.notification_protocol)) return;
+
+    self.notification_protocol = protocol;
+    self.notification_protocol_authoritative = force;
+    self.caps.notifications = true;
+}
+
+fn notificationProtocolPriority(protocol: NotificationProtocol) u8 {
+    return switch (protocol) {
+        .none => 0,
+        .osc9 => 1,
+        .osc777 => 2,
+        .osc99 => 3,
+    };
+}
+
+fn applyNotificationHeuristic(self: *Terminal, value: []const u8) void {
+    if (detectNotificationProtocol(value)) |protocol| {
+        self.setNotificationProtocol(protocol, false);
+    }
+}
+
+fn detectNotificationProtocol(value: []const u8) ?NotificationProtocol {
+    // OSC 99 is explicitly documented by kitty and supported by foot. Prefer it
+    // where the terminal family is known because it has the only real queryable
+    // notification protocol and robust text encoding.
+    if (std.ascii.indexOfIgnoreCase(value, "kitty") != null) return .osc99;
+
+    // OSC 777 is documented by foot, WezTerm, Warp, hterm/Blink, and is the
+    // rxvt/VTE-style title+body notification sequence. Use it where sources
+    // document support, or where the terminal is clearly VTE/rxvt-derived.
+    if (std.ascii.indexOfIgnoreCase(value, "ghostty") != null or
+        std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "foot") != null or
+        std.ascii.indexOfIgnoreCase(value, "warp") != null or
+        std.ascii.indexOfIgnoreCase(value, "hterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "blink") != null or
+        std.ascii.indexOfIgnoreCase(value, "contour") != null or
+        std.ascii.indexOfIgnoreCase(value, "vte") != null or
+        std.ascii.indexOfIgnoreCase(value, "gnome") != null or
+        std.ascii.indexOfIgnoreCase(value, "tilix") != null or
+        std.ascii.indexOfIgnoreCase(value, "terminator") != null or
+        std.ascii.indexOfIgnoreCase(value, "xfce") != null or
+        std.ascii.indexOfIgnoreCase(value, "urxvt") != null or
+        std.ascii.indexOfIgnoreCase(value, "rxvt") != null or
+        std.ascii.indexOfIgnoreCase(value, "windows terminal") != null or
+        std.ascii.indexOfIgnoreCase(value, "windows_terminal") != null)
+    {
+        return .osc777;
+    }
+
+    // OSC 9 is the iTerm2 notification sequence. ConEmu also uses OSC 9 for
+    // multiple extensions, so use it only for terminal families with documented
+    // notification support rather than as a generic fallback.
+    if (std.ascii.indexOfIgnoreCase(value, "iterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "Apple_Terminal") != null or
+        std.ascii.indexOfIgnoreCase(value, "Terminal.app") != null or
+        std.ascii.indexOfIgnoreCase(value, "conemu") != null)
+    {
+        return .osc9;
+    }
+
+    return null;
+}
+
+fn termFeaturesHasCode(features: []const u8, code: []const u8) bool {
+    var i: usize = 0;
+    while (i < features.len) {
+        const c = features[i];
+        if (!std.ascii.isAlphanumeric(c)) break;
+        if (!std.ascii.isUpper(c)) {
+            i += 1;
+            continue;
+        }
+
+        const start = i;
+        i += 1;
+        while (i < features.len and std.ascii.isLower(features[i])) : (i += 1) {}
+        if (std.mem.eql(u8, features[start..i], code)) return true;
+        while (i < features.len and std.ascii.isDigit(features[i])) : (i += 1) {}
+    }
+
+    return false;
+}
+
+fn findOscTerminator(payload: []const u8) usize {
+    const bel_end = std.mem.indexOfScalar(u8, payload, '\x07');
+    const st_end = std.mem.indexOf(u8, payload, "\x1b\\");
+
+    if (bel_end) |bel| {
+        if (st_end) |st| return @min(bel, st);
+        return bel;
+    }
+
+    if (st_end) |st| return st;
+    return payload.len;
+}
+
+fn parseItermCapabilities(self: *Terminal, response: []const u8) void {
+    var search_start: usize = 0;
+    const prefix = "\x1b]1337;Capabilities=";
+    while (std.mem.indexOf(u8, response[search_start..], prefix)) |rel_pos| {
+        const start = search_start + rel_pos + prefix.len;
+        const end = start + findOscTerminator(response[start..]);
+
+        if (termFeaturesHasCode(response[start..end], "No")) {
+            self.setNotificationProtocol(.osc9, true);
+            return;
+        }
+
+        search_start = end;
+    }
+}
+
+fn parseOsc99NotificationQuery(self: *Terminal, response: []const u8) void {
+    var search_start: usize = 0;
+    const prefix = "\x1b]99;";
+    while (std.mem.indexOf(u8, response[search_start..], prefix)) |rel_pos| {
+        const start = search_start + rel_pos;
+        const payload_start = start + prefix.len;
+        const end = payload_start + findOscTerminator(response[payload_start..]);
+        const payload = response[payload_start..end];
+
+        if (std.mem.indexOf(u8, payload, "i=" ++ NOTIFICATION_QUERY_ID) != null and
+            std.mem.indexOf(u8, payload, "p=?") != null and
+            std.mem.indexOf(u8, payload, "p=") != null and
+            std.mem.indexOf(u8, payload, "title") != null)
+        {
+            self.setNotificationProtocol(.osc99, true);
+            return;
+        }
+
+        search_start = end;
+    }
+}
+
 fn checkEnvironmentOverrides(self: *Terminal) void {
     self.in_tmux = self.isXtversionTmux();
     self.skip_graphics_query = false;
@@ -413,6 +565,13 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         if (std.ascii.indexOfIgnoreCase(term, "256color") != null) {
             self.caps.ansi256 = true;
         }
+        self.applyNotificationHeuristic(term);
+    }
+
+    if (env_map.get("TERM_FEATURES")) |features| {
+        if (termFeaturesHasCode(features, "No")) {
+            self.setNotificationProtocol(.osc9, true);
+        }
     }
 
     if (env_map.get("OPENTUI_GRAPHICS")) |val| {
@@ -434,6 +593,8 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
                 self.caps.unicode = .wcwidth;
                 self.caps.explicit_cursor_positioning = true;
             }
+
+            self.applyNotificationHeuristic(prog);
 
             if (env_map.get("TERM_PROGRAM_VERSION")) |ver| {
                 const ver_len = @min(ver.len, self.term_info.version.len);
@@ -476,6 +637,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     if (env_map.get("WT_SESSION") != null) {
         self.caps.rgb = true;
         self.caps.ansi256 = true;
+        self.setNotificationProtocol(.osc777, false);
     }
 
     if (!self.term_info.from_xtversion) {
@@ -720,6 +882,9 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
 ///
 /// Parsing these is not complete yet
 pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
+    self.parseOsc99NotificationQuery(response);
+    self.parseItermCapabilities(response);
+
     // DECRPM responses
     if (std.mem.indexOf(u8, response, "1016;2$y")) |_| {
         self.caps.sgr_pixels = true;
@@ -960,6 +1125,120 @@ pub fn setTerminalTitle(_: *Terminal, tty: anytype, title: []const u8) void {
     ansi.ANSI.setTerminalTitleOutput(tty, title) catch {};
 }
 
+fn writePassthroughSequence(self: *Terminal, tty: anytype, sequence: []const u8) !void {
+    const is_tmux = self.in_tmux or self.isXtversionTmux();
+    if (is_tmux) {
+        try tty.writeAll(ansi.ANSI.tmuxDcsStart);
+        for (sequence) |c| {
+            if (c == '\x1b') try tty.writeByte('\x1b');
+            try tty.writeByte(c);
+        }
+        try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
+        return;
+    }
+
+    if (!self.opts.remote) {
+        var env_map_storage: ?std.process.EnvMap = null;
+        const env_map: ?*const std.process.EnvMap = self.opts.env_map orelse blk: {
+            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch null;
+            break :blk if (env_map_storage) |*map| map else null;
+        };
+        defer if (env_map_storage) |*map| map.deinit();
+
+        if (env_map) |map| {
+            if (map.get("STY") != null) {
+                try tty.writeAll(ansi.ANSI.screenDcsStart);
+                for (sequence) |c| {
+                    if (c == '\x1b') try tty.writeByte('\x1b');
+                    try tty.writeByte(c);
+                }
+                try tty.writeAll(ansi.ANSI.screenDcsEnd);
+                return;
+            }
+        }
+    }
+
+    try tty.writeAll(sequence);
+}
+
+fn writeSanitizedNotificationText(writer: anytype, text: []const u8, replace_semicolon: bool) !void {
+    for (text) |c| {
+        if (c < 0x20 or c == 0x7f or c == '\x1b' or (replace_semicolon and c == ';')) {
+            try writer.writeByte(' ');
+        } else {
+            try writer.writeByte(c);
+        }
+    }
+}
+
+fn writeOsc99Payload(allocator: std.mem.Allocator, writer: anytype, id: []const u8, payload_type: []const u8, payload: []const u8, done: bool) !void {
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    const encoded_buf = try allocator.alloc(u8, encoded_len);
+    defer allocator.free(encoded_buf);
+    const encoded = std.base64.standard.Encoder.encode(encoded_buf, payload);
+
+    try writer.print("\x1b]99;i={s}:p={s}:e=1:d={d};", .{ id, payload_type, @intFromBool(done) });
+    try writer.writeAll(encoded);
+    try writer.writeAll("\x1b\\");
+}
+
+pub fn writeNotification(self: *Terminal, allocator: std.mem.Allocator, tty: anytype, message: []const u8, title: ?[]const u8) !bool {
+    if (!self.caps.notifications or self.notification_protocol == .none) {
+        return false;
+    }
+
+    self.notification_id_counter +%= 1;
+
+    var buffer: std.ArrayListUnmanaged(u8) = .{};
+    defer buffer.deinit(allocator);
+    const writer = buffer.writer(allocator);
+
+    switch (self.notification_protocol) {
+        .none => return false,
+        .osc99 => {
+            const id = try std.fmt.allocPrint(allocator, "opentui-{d}", .{self.notification_id_counter});
+            defer allocator.free(id);
+
+            if (title) |notification_title| {
+                if (notification_title.len > 0) {
+                    try writeOsc99Payload(allocator, writer, id, "title", notification_title, false);
+                    try writeOsc99Payload(allocator, writer, id, "body", message, true);
+                } else {
+                    try writeOsc99Payload(allocator, writer, id, "body", message, true);
+                }
+            } else {
+                try writeOsc99Payload(allocator, writer, id, "body", message, true);
+            }
+        },
+        .osc777 => {
+            try writer.writeAll("\x1b]777;notify;");
+            if (title) |notification_title| {
+                try writeSanitizedNotificationText(writer, notification_title, true);
+                try writer.writeByte(';');
+                try writeSanitizedNotificationText(writer, message, true);
+            } else {
+                try writeSanitizedNotificationText(writer, message, true);
+                try writer.writeByte(';');
+            }
+            try writer.writeAll("\x1b\\");
+        },
+        .osc9 => {
+            try writer.writeAll("\x1b]9;");
+            if (title) |notification_title| {
+                if (notification_title.len > 0) {
+                    try writeSanitizedNotificationText(writer, notification_title, false);
+                    try writer.writeAll(": ");
+                }
+            }
+            try writeSanitizedNotificationText(writer, message, false);
+            try writer.writeAll("\x1b\\");
+        },
+    }
+
+    try self.writePassthroughSequence(tty, buffer.items);
+    return true;
+}
+
 /// Write OSC 52 clipboard sequence to the terminal
 /// Supports tmux/screen passthrough, including nested tmux sessions
 pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, payload: []const u8) !void {
@@ -1080,6 +1359,7 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     }
 
     self.term_info.from_xtversion = true;
+    self.applyNotificationHeuristic(self.getTerminalName());
     if (std.mem.eql(u8, self.getTerminalName(), "tmux")) {
         self.in_tmux = true;
     }

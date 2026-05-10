@@ -72,6 +72,70 @@ test "parseXtversion - full ghostty response" {
     try testing.expect(term.term_info.from_xtversion);
 }
 
+test "notifications - OSC99 query response enables OSC99 protocol" {
+    var term = Terminal.init(.{});
+
+    term.processCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body:o=always:u=0,1,2\x1b\\");
+
+    try testing.expect(term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.osc99, term.notification_protocol);
+}
+
+test "notifications - OSC99 query response ignores mismatched identifier" {
+    var term = Terminal.init(.{ .remote = true });
+
+    term.processCapabilityResponse("\x1b]99;i=other:p=?;p=title,body\x1b\\");
+
+    try testing.expect(!term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.none, term.notification_protocol);
+}
+
+test "notifications - iTerm2 feature reporting enables OSC9 protocol" {
+    var term = Terminal.init(.{});
+
+    term.processCapabilityResponse("\x1b]1337;Capabilities=T2NoH\x1b\\");
+
+    try testing.expect(term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.osc9, term.notification_protocol);
+}
+
+test "notifications - iTerm2 feature reporting without No leaves disabled" {
+    var term = Terminal.init(.{ .remote = true });
+
+    term.processCapabilityResponse("\x1b]1337;Capabilities=T2H\x1b\\");
+
+    try testing.expect(!term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.none, term.notification_protocol);
+}
+
+test "notifications - xtversion heuristics prefer documented protocols" {
+    var kitty = Terminal.init(.{});
+    kitty.processCapabilityResponse("\x1bP>|kitty(0.46.2)\x1b\\");
+    try testing.expect(kitty.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.osc99, kitty.notification_protocol);
+
+    var ghostty = Terminal.init(.{});
+    ghostty.processCapabilityResponse("\x1bP>|ghostty 1.3.1\x1b\\");
+    try testing.expect(ghostty.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.osc777, ghostty.notification_protocol);
+
+    var iterm = Terminal.init(.{});
+    iterm.processCapabilityResponse("\x1bP>|iTerm2 3.6.9\x1b\\");
+    try testing.expect(iterm.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.osc9, iterm.notification_protocol);
+}
+
+test "notifications - TERM_FEATURES enables OSC9 protocol" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM_FEATURES", "T2NoH");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.osc9, term.notification_protocol);
+}
+
 test "processCapabilityResponse captures startup cursor report before home probes" {
     var term = Terminal.init(.{});
     term.startup_cursor_query_pending = true;
@@ -612,6 +676,85 @@ test "writeClipboard - generates basic OSC52 sequence" {
     const output = writer.getWritten();
     // Should be: ESC]52;c;aGVsbG8=ESC\
     try testing.expectEqualStrings("\x1b]52;c;aGVsbG8=\x1b\\", output);
+}
+
+test "writeNotification - returns false when unsupported" {
+    var term = Terminal.init(.{ .remote = true });
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const ok = try term.writeNotification(testing.allocator, &writer, "Hello", null);
+
+    try testing.expect(!ok);
+    try testing.expectEqual(@as(usize, 0), writer.getWritten().len);
+}
+
+test "writeNotification - writes OSC99 title and body with base64 payloads" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.notifications = true;
+    term.notification_protocol = .osc99;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const ok = try term.writeNotification(testing.allocator, &writer, "Body", "Title");
+
+    try testing.expect(ok);
+    try testing.expectEqualStrings("\x1b]99;i=opentui-1:p=title:e=1:d=0;VGl0bGU=\x1b\\\x1b]99;i=opentui-1:p=body:e=1:d=1;Qm9keQ==\x1b\\", writer.getWritten());
+}
+
+test "writeNotification - writes OSC777 and sanitizes semicolons and controls" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.notifications = true;
+    term.notification_protocol = .osc777;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const ok = try term.writeNotification(testing.allocator, &writer, "Bo;dy\n", "Ti;tle");
+
+    try testing.expect(ok);
+    try testing.expectEqualStrings("\x1b]777;notify;Ti tle;Bo dy \x1b\\", writer.getWritten());
+}
+
+test "writeNotification - writes OSC9 combined title and message" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.notifications = true;
+    term.notification_protocol = .osc9;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const ok = try term.writeNotification(testing.allocator, &writer, "Body\n", "Title");
+
+    try testing.expect(ok);
+    try testing.expectEqualStrings("\x1b]9;Title: Body \x1b\\", writer.getWritten());
+}
+
+test "writeNotification - wraps OSC777 in tmux passthrough" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.notifications = true;
+    term.notification_protocol = .osc777;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const ok = try term.writeNotification(testing.allocator, &writer, "Body", "Title");
+
+    try testing.expect(ok);
+    try testing.expect(std.mem.startsWith(u8, writer.getWritten(), "\x1bPtmux;"));
+    try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b\x1b]777;notify;Title;Body") != null);
+    try testing.expect(std.mem.endsWith(u8, writer.getWritten(), "\x1b\\"));
 }
 
 test "writeClipboard - supports different targets" {

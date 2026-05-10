@@ -448,6 +448,7 @@ const DEFAULT_FORWARDED_ENV_KEYS = [
   "OPENTUI_GRAPHICS",
   "TERM_PROGRAM",
   "TERM_PROGRAM_VERSION",
+  "TERM_FEATURES",
   "ALACRITTY_SOCKET",
   "ALACRITTY_LOG",
   "COLORTERM",
@@ -1539,6 +1540,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get capabilities(): any | null {
     return this._capabilities
+  }
+
+  public triggerNotification(message: string, title?: string): boolean {
+    if (this._isDestroyed) return false
+    return this.lib.triggerNotification(this.rendererPtr, message, title)
   }
 
   public get themeMode(): ThemeMode | null {

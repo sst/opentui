@@ -1986,6 +1986,16 @@ pub const CliRenderer = struct {
         return true;
     }
 
+    pub fn triggerNotification(self: *CliRenderer, message: []const u8, title: ?[]const u8) bool {
+        var stream: std.ArrayListUnmanaged(u8) = .{};
+        defer stream.deinit(self.allocator);
+
+        const ok = self.terminal.writeNotification(self.allocator, stream.writer(self.allocator), message, title) catch return false;
+        if (!ok) return false;
+        self.writeOut(stream.items);
+        return true;
+    }
+
     fn renderDebugOverlay(self: *CliRenderer) void {
         if (!self.debugOverlay.enabled) return;
 

@@ -435,6 +435,7 @@ pub const ExternalCapabilities = extern struct {
     bracketed_paste: bool,
     hyperlinks: bool,
     osc52: bool,
+    notifications: bool,
     explicit_cursor_positioning: bool,
     in_tmux: bool,
     term_name_ptr: [*]const u8,
@@ -464,6 +465,7 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .bracketed_paste = caps.bracketed_paste,
         .hyperlinks = caps.hyperlinks,
         .osc52 = caps.osc52,
+        .notifications = caps.notifications,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .in_tmux = term.in_tmux,
         .term_name_ptr = &term.term_info.name,
@@ -593,6 +595,12 @@ export fn copyToClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8, p
 export fn clearClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8) bool {
     const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
     return rendererPtr.clearClipboardOSC52(targetEnum);
+}
+
+export fn triggerNotification(rendererPtr: *renderer.CliRenderer, messagePtr: [*]const u8, messageLen: usize, titlePtr: ?[*]const u8, titleLen: usize) bool {
+    const message = messagePtr[0..messageLen];
+    const title = if (titlePtr) |ptr| ptr[0..titleLen] else null;
+    return rendererPtr.triggerNotification(message, title);
 }
 
 // Buffer functions

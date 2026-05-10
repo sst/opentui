@@ -103,6 +103,7 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["bracketed_paste", "bool_u8"],
   ["hyperlinks", "bool_u8"],
   ["osc52", "bool_u8"],
+  ["notifications", "bool_u8"],
   ["explicit_cursor_positioning", "bool_u8"],
   ["in_tmux", "bool_u8"],
   ["term_name", "char*"],

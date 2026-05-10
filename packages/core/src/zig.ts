@@ -383,6 +383,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u8"],
       returns: "bool",
     },
+    triggerNotification: {
+      args: ["ptr", "ptr", "usize", "ptr", "usize"],
+      returns: "bool",
+    },
 
     bufferDrawSuperSampleBuffer: {
       args: ["ptr", "u32", "u32", "ptr", "usize", "u8", "u32"],
@@ -1614,6 +1618,7 @@ export interface RenderLib {
   setTerminalTitle: (renderer: Pointer, title: string) => void
   copyToClipboardOSC52: (renderer: Pointer, target: number, payload: Uint8Array) => boolean
   clearClipboardOSC52: (renderer: Pointer, target: number) => boolean
+  triggerNotification: (renderer: Pointer, message: string, title?: string) => boolean
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
   clearCurrentHitGrid: (renderer: Pointer) => void
   hitGridPushScissorRect: (renderer: Pointer, x: number, y: number, width: number, height: number) => void
@@ -2665,6 +2670,18 @@ class FFIRenderLib implements RenderLib {
 
   public clearClipboardOSC52(renderer: Pointer, target: number): boolean {
     return this.opentui.symbols.clearClipboardOSC52(renderer, target)
+  }
+
+  public triggerNotification(renderer: Pointer, message: string, title?: string): boolean {
+    const messageBytes = this.encoder.encode(message)
+    const titleBytes = title === undefined ? null : this.encoder.encode(title)
+    return this.opentui.symbols.triggerNotification(
+      renderer,
+      messageBytes,
+      messageBytes.length,
+      titleBytes,
+      titleBytes?.length ?? 0,
+    )
   }
 
   public addToHitGrid(renderer: Pointer, x: number, y: number, width: number, height: number, id: number) {
@@ -3816,6 +3833,7 @@ class FFIRenderLib implements RenderLib {
       bracketed_paste: caps.bracketed_paste,
       hyperlinks: caps.hyperlinks,
       osc52: caps.osc52,
+      notifications: caps.notifications,
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
       in_tmux: caps.in_tmux,
       terminal: {
