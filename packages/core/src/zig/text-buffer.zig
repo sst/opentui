@@ -84,6 +84,7 @@ pub const UnifiedTextBuffer = struct {
     // Maps line_idx to highlights for that line
     line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)),
     line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)),
+    internal_highlight_count: usize,
     highlight_batch_depth: u32,
     dirty_span_lines: std.AutoHashMap(usize, void),
 
@@ -218,6 +219,7 @@ pub const UnifiedTextBuffer = struct {
             .content_epoch = 0,
             .line_highlights = .{},
             .line_spans = .{},
+            .internal_highlight_count = 0,
             .highlight_batch_depth = 0,
             .dirty_span_lines = dirty_span_lines,
             .styled_text_mem_id = null,
@@ -364,6 +366,7 @@ pub const UnifiedTextBuffer = struct {
             hl_list.deinit(self.global_allocator);
         }
         self.line_highlights.clearRetainingCapacity();
+        self.internal_highlight_count = 0;
 
         for (self.line_spans.items) |*span_list| {
             span_list.deinit(self.global_allocator);
@@ -758,6 +761,9 @@ pub const UnifiedTextBuffer = struct {
         };
 
         try self.line_highlights.items[line_idx].append(self.global_allocator, hl);
+        if (internal) {
+            self.internal_highlight_count += 1;
+        }
 
         if (self.highlight_batch_depth == 0) {
             try self.rebuildLineSpans(line_idx);
@@ -969,12 +975,16 @@ pub const UnifiedTextBuffer = struct {
     }
 
     fn clearInternalHighlights(self: *Self) void {
+        if (self.internal_highlight_count == 0) return;
+
+        var remaining = self.internal_highlight_count;
         for (self.line_highlights.items, 0..) |*hl_list, line_idx| {
             var i: usize = 0;
             var changed = false;
             while (i < hl_list.items.len) {
                 if (hl_list.items[i].internal) {
                     _ = hl_list.orderedRemove(i);
+                    remaining -= 1;
                     changed = true;
                     continue;
                 }
@@ -987,7 +997,10 @@ pub const UnifiedTextBuffer = struct {
                     self.markLineSpansDirty(line_idx);
                 }
             }
+            if (remaining == 0) break;
         }
+
+        self.internal_highlight_count = 0;
     }
 
     /// Remove all highlights with a specific reference ID
@@ -997,6 +1010,9 @@ pub const UnifiedTextBuffer = struct {
             var changed = false;
             while (i < hl_list.items.len) {
                 if (hl_list.items[i].hl_ref == hl_ref) {
+                    if (hl_list.items[i].internal and self.internal_highlight_count > 0) {
+                        self.internal_highlight_count -= 1;
+                    }
                     _ = hl_list.orderedRemove(i);
                     changed = true;
                     continue;
@@ -1016,6 +1032,11 @@ pub const UnifiedTextBuffer = struct {
     /// Clear all highlights from a specific line
     pub fn clearLineHighlights(self: *Self, line_idx: usize) void {
         if (line_idx < self.line_highlights.items.len) {
+            for (self.line_highlights.items[line_idx].items) |hl| {
+                if (hl.internal and self.internal_highlight_count > 0) {
+                    self.internal_highlight_count -= 1;
+                }
+            }
             self.line_highlights.items[line_idx].clearRetainingCapacity();
         }
         if (line_idx < self.line_spans.items.len) {
@@ -1028,6 +1049,7 @@ pub const UnifiedTextBuffer = struct {
         for (self.line_highlights.items) |*hl_list| {
             hl_list.clearRetainingCapacity();
         }
+        self.internal_highlight_count = 0;
         for (self.line_spans.items) |*span_list| {
             span_list.clearRetainingCapacity();
         }
