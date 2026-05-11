@@ -36,17 +36,10 @@ For reliable cleanup, keep renderer teardown in the same control flow as your ap
 ```typescript
 import { createCliRenderer } from "@opentui/core"
 
-async function runApp() {
-  // ... your application code ...
-}
-
 const renderer = await createCliRenderer()
 
 try {
-  await runApp()
-} catch (error) {
-  console.error("OpenTUI app failed:", error)
-  process.exitCode = 1
+  // ... your application code ...
 } finally {
   renderer.destroy()
 }
