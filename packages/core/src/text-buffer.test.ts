@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { TextBuffer } from "./text-buffer.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
+import { SyntaxStyle } from "./syntax-style.js"
 
 describe("TextBuffer", () => {
   let buffer: TextBuffer
@@ -202,6 +203,47 @@ describe("TextBuffer", () => {
       buffer.setText("New Text")
       expect(buffer.length).toBe(8)
       expect(buffer.getPlainText()).toBe("New Text")
+    })
+
+    it("setText should clear styled text chunk highlights", () => {
+      const syntaxStyle = SyntaxStyle.create()
+      buffer.setSyntaxStyle(syntaxStyle)
+      buffer.setStyledText(
+        new StyledText([
+          {
+            __isChunk: true,
+            text: "Styled",
+            fg: RGBA.fromValues(1, 0, 0, 1),
+          },
+        ]),
+      )
+
+      expect(buffer.getHighlightCount()).toBe(1)
+
+      buffer.setText("Plain")
+
+      expect(buffer.getPlainText()).toBe("Plain")
+      expect(buffer.getHighlightCount()).toBe(0)
+
+      syntaxStyle.destroy()
+    })
+
+    it("setText should preserve user highlights including max hlRef", () => {
+      const syntaxStyle = SyntaxStyle.create()
+      const styleId = syntaxStyle.registerStyle("user-highlight", { fg: RGBA.fromValues(0, 1, 0, 1) })
+      buffer.setSyntaxStyle(syntaxStyle)
+      buffer.setText("Hello World")
+      buffer.addHighlight(0, { start: 0, end: 5, styleId, priority: 0, hlRef: 65535 })
+
+      expect(buffer.getHighlightCount()).toBe(1)
+
+      buffer.setText("New Text")
+
+      expect(buffer.getPlainText()).toBe("New Text")
+      expect(buffer.getHighlightCount()).toBe(1)
+      expect(buffer.getLineHighlights(0)[0]?.hlRef).toBe(65535)
+
+      syntaxStyle.destroy()
     })
 
     it("setStyledText should preserve content across calls", () => {

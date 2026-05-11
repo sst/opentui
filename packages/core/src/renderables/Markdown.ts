@@ -555,7 +555,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private getBlockquoteContent(token: MarkedToken): string {
-    return token.text || " "
+    return "text" in token && typeof token.text === "string" && token.text ? token.text : " "
   }
 
   private getBlockquoteBorderColor(): ColorInput {
