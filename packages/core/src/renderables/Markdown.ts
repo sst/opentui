@@ -6,7 +6,7 @@ import { createTextAttributes } from "../utils.js"
 import type { BorderStyle } from "../lib/border.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { type MarkedToken, type Token, type Tokens } from "marked"
-import { CodeRenderable, type OnChunksCallback } from "./Code.js"
+import { CodeRenderable, type OnChunksCallback, type OnHighlightCallback } from "./Code.js"
 import { BoxRenderable } from "./Box.js"
 import {
   TextTableRenderable,
@@ -534,6 +534,7 @@ export class MarkdownRenderable extends Renderable {
     id: string,
     marginBottom: number = 0,
     onChunks: OnChunksCallback = this._linkifyMarkdownChunks,
+    onHighlight?: OnHighlightCallback,
   ): CodeRenderable {
     return new CodeRenderable(this.ctx, {
       id,
@@ -545,6 +546,7 @@ export class MarkdownRenderable extends Renderable {
       conceal: this._conceal,
       drawUnstyledText: false,
       streaming: true,
+      onHighlight,
       onChunks,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
@@ -552,59 +554,41 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
-  private renderBlockquoteBar(chunks: TextChunk[]): TextChunk[] {
-    let lineStart = true
-    let spaces = 0
-    let replaced = false
-    let skipWhitespace = false
-
-    return chunks.flatMap((chunk) => {
-      const result: TextChunk[] = []
-      let next = ""
-      const flush = () => {
-        if (!next) return
-        result.push(next === chunk.text ? chunk : { ...chunk, text: next })
-        next = ""
-      }
-
-      for (const char of chunk.text) {
-        if (skipWhitespace && (char === " " || char === "\t")) {
-          skipWhitespace = false
-          continue
-        }
-        skipWhitespace = false
-        if (lineStart && !replaced && char === " " && spaces < 3) {
-          spaces++
-          next += char
-          continue
-        }
-        if (lineStart && !replaced && char === ">") {
-          flush()
-          result.push(this.createChunk("│ ", "conceal"))
-          replaced = true
-          skipWhitespace = true
-          continue
-        }
-        next += char
-        if (char === "\n") {
-          lineStart = true
-          spaces = 0
-          replaced = false
-          skipWhitespace = false
-          continue
-        }
-        lineStart = false
-      }
-
-      flush()
-      return result
-    })
+  private getBlockquoteContent(token: MarkedToken): string {
+    return token.text || " "
   }
 
-  private createBlockquoteRenderable(token: MarkedToken, id: string, marginBottom: number = 0): CodeRenderable {
-    return this.createMarkdownCodeRenderable(token.raw, id, marginBottom, async (chunks, context) =>
-      this.renderBlockquoteBar((await this._linkifyMarkdownChunks(chunks, context)) ?? chunks),
+  private getBlockquoteBorderColor(): ColorInput {
+    return this.getStyle("conceal")?.fg ?? this.getStyle("default")?.fg ?? this._fg ?? "#FFFFFF"
+  }
+
+  private createBlockquoteHighlight: OnHighlightCallback = (highlights, context) => {
+    if (!context.content) return highlights
+    return [[0, context.content.length, "markup.quote"], ...highlights]
+  }
+
+  private createBlockquoteRenderable(token: MarkedToken, id: string, marginBottom: number = 0): BoxRenderable {
+    const renderable = new BoxRenderable(this.ctx, {
+      id,
+      width: "100%",
+      border: ["left"],
+      borderColor: this.getBlockquoteBorderColor(),
+      paddingLeft: 1,
+      flexShrink: 0,
+      marginBottom,
+    })
+
+    renderable.add(
+      this.createMarkdownCodeRenderable(
+        this.getBlockquoteContent(token),
+        `${id}-content`,
+        0,
+        this._linkifyMarkdownChunks,
+        this.createBlockquoteHighlight,
+      ),
     )
+
+    return renderable
   }
 
   private createHorizontalRuleRenderable(id: string, marginBottom: number = 0): BoxRenderable {
@@ -646,6 +630,33 @@ export class MarkdownRenderable extends Renderable {
     renderable.drawUnstyledText = false
     renderable.streaming = true
     renderable.marginBottom = marginBottom
+  }
+
+  private applyBlockquoteRenderable(renderable: Renderable, token: MarkedToken, marginBottom: number): void {
+    if (!(renderable instanceof BoxRenderable)) return
+
+    renderable.borderColor = this.getBlockquoteBorderColor()
+    renderable.marginBottom = marginBottom
+
+    const child = renderable.getChildren()[0]
+    if (child instanceof CodeRenderable) {
+      child.onHighlight = this.createBlockquoteHighlight
+      this.applyMarkdownCodeRenderable(child, this.getBlockquoteContent(token), 0)
+      return
+    }
+
+    for (const existing of renderable.getChildren()) {
+      existing.destroyRecursively()
+    }
+    renderable.add(
+      this.createMarkdownCodeRenderable(
+        this.getBlockquoteContent(token),
+        `${renderable.id}-content`,
+        0,
+        this._linkifyMarkdownChunks,
+        this.createBlockquoteHighlight,
+      ),
+    )
   }
 
   private applyCodeBlockRenderable(renderable: Renderable, token: Tokens.Code, marginBottom: number): void {
@@ -1196,11 +1207,7 @@ export class MarkdownRenderable extends Renderable {
     }
 
     if (token.type === "blockquote") {
-      if (state.renderable instanceof CodeRenderable) {
-        this.applyMarkdownCodeRenderable(state.renderable, token.raw, marginBottom)
-        state.renderable.onChunks = async (chunks, context) =>
-          this.renderBlockquoteBar((await this._linkifyMarkdownChunks(chunks, context)) ?? chunks)
-      }
+      this.applyBlockquoteRenderable(state.renderable, token, marginBottom)
       return
     }
 
@@ -1342,7 +1349,7 @@ export class MarkdownRenderable extends Renderable {
     if (token.type === "code") return renderable instanceof CodeRenderable
 
     if (token.type === "table") return renderable instanceof TextTableRenderable
-    if (token.type === "blockquote") return renderable instanceof CodeRenderable
+    if (token.type === "blockquote") return renderable instanceof BoxRenderable
     if (token.type === "hr") return renderable instanceof BoxRenderable
     return renderable instanceof CodeRenderable
   }
@@ -1508,11 +1515,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       if (state.token.type === "blockquote") {
-        if (state.renderable instanceof CodeRenderable) {
-          this.applyMarkdownCodeRenderable(state.renderable, state.token.raw, marginBottom)
-          state.renderable.onChunks = async (chunks, context) =>
-            this.renderBlockquoteBar((await this._linkifyMarkdownChunks(chunks, context)) ?? chunks)
-        }
+        this.applyBlockquoteRenderable(state.renderable, state.token, marginBottom)
         continue
       }
 

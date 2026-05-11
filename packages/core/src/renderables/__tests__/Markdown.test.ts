@@ -65,10 +65,19 @@ function createMarkdownRenderable(options: MarkdownOptions): MarkdownRenderable 
 }
 
 async function renderMarkdownRenderable(md: MarkdownRenderable, timeoutMs: number = 2000): Promise<void> {
-  const hasPendingMarkdownParagraphHighlights = (): boolean =>
-    md
-      .getChildren()
-      .some((child) => child instanceof CodeRenderable && child.filetype === "markdown" && child.isHighlighting)
+  const hasPendingMarkdownParagraphHighlights = (): boolean => {
+    const children = [...md.getChildren()]
+
+    while (children.length > 0) {
+      const child = children.pop()!
+      if (child instanceof CodeRenderable && child.filetype === "markdown" && child.isHighlighting) {
+        return true
+      }
+      children.push(...child.getChildren())
+    }
+
+    return false
+  }
 
   const startedAt = Date.now()
 
@@ -1127,7 +1136,7 @@ Then continue with prose immediately after the code block.
     Quote, Table, Diff
     
     │ Quoted note after the list. It should preserve quote
-    styling.
+    │ styling.
 
     ┌──────────┬─────────────────────────────┐
     │ Feature  │ Stress                      │
@@ -1210,6 +1219,30 @@ test("simple blockquote", async () => {
     │ This is a quote
     │ spanning multiple lines"
   `)
+})
+
+test("blockquote uses markup.quote style for text and conceal style for bar", async () => {
+  const quoteColor = RGBA.fromValues(0.25, 0.5, 0.75, 1)
+  const concealColor = RGBA.fromValues(0.1, 0.2, 0.3, 1)
+  const md = createMarkdownRenderable({
+    id: "markdown-blockquote-style",
+    content: "> Quote text",
+    syntaxStyle: SyntaxStyle.fromStyles({
+      default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+      conceal: { fg: concealColor },
+      "markup.quote": { fg: quoteColor, italic: true },
+    }),
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const spans = captureSpans()
+  expect(findSpanContaining(spans, "│")?.fg?.toInts()).toEqual(concealColor.toInts())
+
+  const textSpan = findSpanContaining(spans, "Quote text")
+  expect(textSpan?.fg?.toInts()).toEqual(quoteColor.toInts())
+  expect((textSpan?.attributes ?? 0) & TextAttributes.ITALIC).toBe(TextAttributes.ITALIC)
 })
 
 test("fenced diff blocks color added and removed lines", async () => {
