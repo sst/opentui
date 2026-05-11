@@ -163,13 +163,9 @@ async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath
   const parserDefinitions = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
-      const queriesLines = [
-        `          highlights: [toFilePath(${safeFiletype}_highlights)],`,
-      ]
+      const queriesLines = [`          highlights: [toFilePath(${safeFiletype}_highlights)],`]
       if (parser.injectionsPath) {
-        queriesLines.push(
-          `          injections: [toFilePath(${safeFiletype}_injections)],`,
-        )
+        queriesLines.push(`          injections: [toFilePath(${safeFiletype}_injections)],`)
       }
 
       const injectionMappingLine = parser.injectionMapping
