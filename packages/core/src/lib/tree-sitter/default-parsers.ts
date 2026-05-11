@@ -3,20 +3,23 @@
 // Last generated: 2026-03-20T21:07:24.696Z
 
 import type { FiletypeParserOptions } from "./types.js"
-import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 
-import javascript_highlights from "./assets/javascript/highlights.scm" with { type: "file" }
-import javascript_language from "./assets/javascript/tree-sitter-javascript.wasm" with { type: "file" }
-import typescript_highlights from "./assets/typescript/highlights.scm" with { type: "file" }
-import typescript_language from "./assets/typescript/tree-sitter-typescript.wasm" with { type: "file" }
-import markdown_highlights from "./assets/markdown/highlights.scm" with { type: "file" }
-import markdown_language from "./assets/markdown/tree-sitter-markdown.wasm" with { type: "file" }
-import markdown_injections from "./assets/markdown/injections.scm" with { type: "file" }
-import markdown_inline_highlights from "./assets/markdown_inline/highlights.scm" with { type: "file" }
-import markdown_inline_language from "./assets/markdown_inline/tree-sitter-markdown_inline.wasm" with { type: "file" }
-import zig_highlights from "./assets/zig/highlights.scm" with { type: "file" }
-import zig_language from "./assets/zig/tree-sitter-zig.wasm" with { type: "file" }
+const javascript_highlights = new URL("./assets/javascript/highlights.scm", import.meta.url)
+const javascript_language = new URL("./assets/javascript/tree-sitter-javascript.wasm", import.meta.url)
+const typescript_highlights = new URL("./assets/typescript/highlights.scm", import.meta.url)
+const typescript_language = new URL("./assets/typescript/tree-sitter-typescript.wasm", import.meta.url)
+const markdown_highlights = new URL("./assets/markdown/highlights.scm", import.meta.url)
+const markdown_language = new URL("./assets/markdown/tree-sitter-markdown.wasm", import.meta.url)
+const markdown_injections = new URL("./assets/markdown/injections.scm", import.meta.url)
+const markdown_inline_highlights = new URL("./assets/markdown_inline/highlights.scm", import.meta.url)
+const markdown_inline_language = new URL("./assets/markdown_inline/tree-sitter-markdown_inline.wasm", import.meta.url)
+const zig_highlights = new URL("./assets/zig/highlights.scm", import.meta.url)
+const zig_language = new URL("./assets/zig/tree-sitter-zig.wasm", import.meta.url)
+
+function toFilePath(url: URL): string {
+  return fileURLToPath(url)
+}
 
 // Cached parsers to avoid re-resolving paths on every call
 let _cachedParsers: FiletypeParserOptions[] | undefined
@@ -28,25 +31,25 @@ export function getParsers(): FiletypeParserOptions[] {
         filetype: "javascript",
         aliases: ["javascriptreact"],
         queries: {
-          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), javascript_highlights)],
+          highlights: [toFilePath(javascript_highlights)],
         },
-        wasm: resolve(dirname(fileURLToPath(import.meta.url)), javascript_language),
+        wasm: toFilePath(javascript_language),
       },
       {
         filetype: "typescript",
         aliases: ["typescriptreact"],
         queries: {
-          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), typescript_highlights)],
+          highlights: [toFilePath(typescript_highlights)],
         },
-        wasm: resolve(dirname(fileURLToPath(import.meta.url)), typescript_language),
+        wasm: toFilePath(typescript_language),
       },
       {
         filetype: "markdown",
         queries: {
-          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), markdown_highlights)],
-          injections: [resolve(dirname(fileURLToPath(import.meta.url)), markdown_injections)],
+          highlights: [toFilePath(markdown_highlights)],
+          injections: [toFilePath(markdown_injections)],
         },
-        wasm: resolve(dirname(fileURLToPath(import.meta.url)), markdown_language),
+        wasm: toFilePath(markdown_language),
         injectionMapping: {
           "nodeTypes": {
                     "inline": "markdown_inline",
@@ -69,16 +72,16 @@ export function getParsers(): FiletypeParserOptions[] {
       {
         filetype: "markdown_inline",
         queries: {
-          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), markdown_inline_highlights)],
+          highlights: [toFilePath(markdown_inline_highlights)],
         },
-        wasm: resolve(dirname(fileURLToPath(import.meta.url)), markdown_inline_language),
+        wasm: toFilePath(markdown_inline_language),
       },
       {
         filetype: "zig",
         queries: {
-          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), zig_highlights)],
+          highlights: [toFilePath(zig_highlights)],
         },
-        wasm: resolve(dirname(fileURLToPath(import.meta.url)), zig_language),
+        wasm: toFilePath(zig_language),
       },
     ]
   }

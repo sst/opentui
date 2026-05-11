@@ -136,9 +136,9 @@ if (buildNative) {
       continue
     }
 
-    const indexTsContent = `const module = await import("./${libraryFileName}", { with: { type: "file" } })
-const path = module.default
-export default path;
+    const indexTsContent = `import { fileURLToPath } from "node:url"
+const module = new URL("./${libraryFileName}", import.meta.url)
+export default fileURLToPath(module)
 `
     writeFileSync(join(nativeDir, "index.ts"), indexTsContent)
 
