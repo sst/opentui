@@ -316,6 +316,43 @@ describe("TextTableRenderable", () => {
     expect(borderXs).toEqual([0, 11, 23])
   })
 
+  test("applies column alignments when drawing cells", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      columnWidthMode: "content",
+      columnAlignments: ["left", "center", "right"],
+      content: [
+        [cell("Left"), cell("Center"), cell("Right")],
+        [cell("A"), cell("B"), cell("C")],
+        [cell("Long text"), cell("X"), cell("Y")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    let rendered = captureFrame()
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+
+    expect(rendered).toContain("│A        │  B   │    C│")
+    expect(rendered).toContain("│Long text│  X   │    Y│")
+    expect(table.columnAlignments).toEqual(["left", "center", "right"])
+
+    table.columnAlignments = ["right", "left", "center"]
+    await renderOnce()
+
+    rendered = captureFrame()
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+
+    expect(rendered).toContain("│        A│B     │  C  │")
+    expect(rendered).toContain("│Long text│X     │  Y  │")
+  })
+
   test("preserves bordered layout when border glyphs are hidden", async () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,

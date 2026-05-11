@@ -365,11 +365,37 @@ test("table with alignment markers (left, center, right)", async () => {
     ┌─────────┬──────┬─────┐
     │Left     │Center│Right│
     ├─────────┼──────┼─────┤
-    │A        │B     │C    │
+    │A        │  B   │    C│
     ├─────────┼──────┼─────┤
-    │Long text│X     │Y    │
+    │Long text│  X   │    Y│
     └─────────┴──────┴─────┘"
   `)
+})
+
+test("full-width table with alignment markers positions text within expanded columns", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-full-width-table-alignment",
+    content: `| L | C | R |
+|:---|:---:|---:|
+| a | b | c |`,
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const dataRow = captureFrame()
+    .split("\n")
+    .find((line) => line.includes("a") && line.includes("b") && line.includes("c"))
+
+  expect(dataRow).toBeDefined()
+
+  const borderXs = [...dataRow!].map((char, index) => (char === "│" ? index : -1)).filter((index) => index >= 0)
+  const centerColumnWidth = borderXs[2]! - borderXs[1]! - 1
+
+  expect(dataRow!.indexOf("a")).toBe(borderXs[0]! + 1)
+  expect(dataRow!.indexOf("b")).toBe(borderXs[1]! + 1 + Math.floor((centerColumnWidth - 1) / 2))
+  expect(dataRow!.indexOf("c")).toBe(borderXs[3]! - 1)
 })
 
 test("table with empty cells", async () => {

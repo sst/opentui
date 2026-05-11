@@ -19,6 +19,7 @@ export type TextTableCellContent = TextChunk[] | null | undefined
 export type TextTableContent = TextTableCellContent[][]
 export type TextTableColumnWidthMode = "content" | "full"
 export type TextTableColumnFitter = "proportional" | "balanced"
+export type TextTableColumnAlignment = "left" | "center" | "right"
 
 interface ResolvedTableBorderLayout {
   left: boolean
@@ -76,6 +77,7 @@ export interface TextTableOptions extends RenderableOptions<TextTableRenderable>
   wrapMode?: "none" | "char" | "word"
   columnWidthMode?: TextTableColumnWidthMode
   columnFitter?: TextTableColumnFitter
+  columnAlignments?: readonly TextTableColumnAlignment[]
   cellPadding?: number
   columnGap?: number
   showBorders?: boolean
@@ -98,6 +100,7 @@ export class TextTableRenderable extends Renderable {
   private _wrapMode: "none" | "char" | "word"
   private _columnWidthMode: TextTableColumnWidthMode
   private _columnFitter: TextTableColumnFitter
+  private _columnAlignments: TextTableColumnAlignment[]
   private _cellPadding: number
   private _columnGap: number
   private _showBorders: boolean
@@ -133,6 +136,7 @@ export class TextTableRenderable extends Renderable {
     wrapMode: "word" as "none" | "char" | "word",
     columnWidthMode: "full" as TextTableColumnWidthMode,
     columnFitter: "proportional" as TextTableColumnFitter,
+    columnAlignments: [] as TextTableColumnAlignment[],
     cellPadding: 0,
     columnGap: 0,
     showBorders: true,
@@ -157,6 +161,7 @@ export class TextTableRenderable extends Renderable {
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
     this._columnWidthMode = options.columnWidthMode ?? this._defaultOptions.columnWidthMode
     this._columnFitter = this.resolveColumnFitter(options.columnFitter)
+    this._columnAlignments = this.resolveColumnAlignments(options.columnAlignments)
     this._cellPadding = this.resolveCellPadding(options.cellPadding)
     this._columnGap = this.resolveColumnGap(options.columnGap)
     this._showBorders = options.showBorders ?? this._defaultOptions.showBorders
@@ -223,6 +228,18 @@ export class TextTableRenderable extends Renderable {
     if (this._columnFitter === next) return
     this._columnFitter = next
     this.invalidateLayoutAndRaster()
+  }
+
+  public get columnAlignments(): TextTableColumnAlignment[] {
+    return [...this._columnAlignments]
+  }
+
+  public set columnAlignments(value: readonly TextTableColumnAlignment[] | undefined) {
+    const next = this.resolveColumnAlignments(value)
+    if (this.columnAlignmentsEqual(this._columnAlignments, next)) return
+
+    this._columnAlignments = next
+    this.invalidateRasterOnly()
   }
 
   public get cellPadding(): number {
@@ -1031,18 +1048,55 @@ export class TextTableRenderable extends Renderable {
 
   private drawCellRange(buffer: OptimizedBuffer, firstRow: number, lastRow: number): void {
     const colOffsets = this._layout.columnOffsets
+    const colWidths = this._layout.columnWidths
     const rowOffsets = this._layout.rowOffsets
+    const rowHeights = this._layout.rowHeights
     const cellPadding = this._cellPadding
+    const horizontalPadding = this.getHorizontalCellPadding()
+    const verticalPadding = this.getVerticalCellPadding()
 
     for (let rowIdx = firstRow; rowIdx <= lastRow; rowIdx++) {
       const cellY = (rowOffsets[rowIdx] ?? 0) + 1 + cellPadding
+      const rowHeight = rowHeights[rowIdx] ?? 1
+      const contentHeight = Math.max(1, rowHeight - verticalPadding)
 
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cell = this._cells[rowIdx]?.[colIdx]
         if (!cell) continue
-        buffer.drawTextBuffer(cell.textBufferView, (colOffsets[colIdx] ?? 0) + 1 + cellPadding, cellY)
+
+        const colWidth = colWidths[colIdx] ?? 1
+        const contentWidth = Math.max(1, colWidth - horizontalPadding)
+        const cellX = (colOffsets[colIdx] ?? 0) + 1 + cellPadding
+        const alignment = this.getColumnAlignment(colIdx)
+        this.drawCell(buffer, cell, cellX, cellY, contentWidth, contentHeight, alignment)
       }
     }
+  }
+
+  private drawCell(
+    buffer: OptimizedBuffer,
+    cell: TextTableCellState,
+    cellX: number,
+    cellY: number,
+    contentWidth: number,
+    contentHeight: number,
+    alignment: TextTableColumnAlignment,
+  ): void {
+    if (alignment === "left") {
+      buffer.drawTextBuffer(cell.textBufferView, cellX, cellY)
+      return
+    }
+
+    const lineWidths = cell.textBufferView.lineInfo.lineWidthCols
+    const visibleLineCount = Math.min(contentHeight, lineWidths.length)
+
+    for (let lineIdx = 0; lineIdx < visibleLineCount; lineIdx += 1) {
+      const offset = this.getAlignmentOffset(alignment, contentWidth, lineWidths[lineIdx] ?? 0)
+      cell.textBufferView.setViewport(0, lineIdx, contentWidth, 1)
+      buffer.drawTextBuffer(cell.textBufferView, cellX + offset, cellY + lineIdx)
+    }
+
+    cell.textBufferView.setViewport(0, 0, contentWidth, contentHeight)
   }
 
   private redrawSelectionRows(firstRow: number, lastRow: number): void {
@@ -1366,6 +1420,53 @@ export class TextTableRenderable extends Renderable {
     }
 
     return value === "balanced" ? "balanced" : "proportional"
+  }
+
+  private resolveColumnAlignments(value: readonly TextTableColumnAlignment[] | undefined): TextTableColumnAlignment[] {
+    if (!value) {
+      return this._defaultOptions.columnAlignments
+    }
+
+    return value.map((alignment) => this.resolveColumnAlignment(alignment))
+  }
+
+  private resolveColumnAlignment(value: string | undefined): TextTableColumnAlignment {
+    if (value === "center" || value === "right") {
+      return value
+    }
+
+    return "left"
+  }
+
+  private columnAlignmentsEqual(
+    left: readonly TextTableColumnAlignment[],
+    right: readonly TextTableColumnAlignment[],
+  ): boolean {
+    if (left.length !== right.length) return false
+
+    for (let idx = 0; idx < left.length; idx += 1) {
+      if (left[idx] !== right[idx]) return false
+    }
+
+    return true
+  }
+
+  private getColumnAlignment(colIdx: number): TextTableColumnAlignment {
+    return this._columnAlignments[colIdx] ?? "left"
+  }
+
+  private getAlignmentOffset(alignment: TextTableColumnAlignment, contentWidth: number, lineWidth: number): number {
+    const availableWidth = Math.max(0, contentWidth - Math.max(0, Math.floor(lineWidth)))
+
+    if (alignment === "right") {
+      return availableWidth
+    }
+
+    if (alignment === "center") {
+      return Math.floor(availableWidth / 2)
+    }
+
+    return 0
   }
 
   private resolveCellPadding(value: number | undefined): number {
