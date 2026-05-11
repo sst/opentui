@@ -35,7 +35,13 @@ interface EditQueueItem {
   isReset?: boolean
 }
 
-let DEFAULT_PARSERS: FiletypeParserOptions[] = getParsers()
+let DEFAULT_PARSERS: FiletypeParserOptions[] = []
+
+async function loadDefaultParsers() {
+  DEFAULT_PARSERS = await getParsers()
+}
+
+loadDefaultParsers()
 
 export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
   for (const parser of parsers) {
