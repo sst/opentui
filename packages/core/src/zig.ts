@@ -1,4 +1,12 @@
-import { dlopen, ffiBool, toArrayBuffer, ptr, toPointer, type FFICallbackInstance, type Pointer } from "./platform/ffi.js"
+import {
+  dlopen,
+  ffiBool,
+  toArrayBuffer,
+  ptr,
+  toPointer,
+  type FFICallbackInstance,
+  type Pointer,
+} from "./platform/ffi.js"
 import { writeFile } from "./platform/runtime.js"
 import { existsSync, writeFileSync } from "fs"
 import { EventEmitter } from "events"
