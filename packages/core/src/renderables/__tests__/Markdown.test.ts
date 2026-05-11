@@ -1057,6 +1057,87 @@ test("list with inline formatting", async () => {
   `)
 })
 
+test("task lists render checkbox and text on the same line", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-structured-task-list",
+    content: `- [x] Done
+- [ ] Todo`,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    - Done
+    - Todo"
+  `)
+})
+
+test("top-level structured lists align nested fenced code under nested content", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-structured-list-code",
+    content: `1. First ordered item with \`inline code\`.
+2. Second ordered item before a nested list:
+   - Nested bullet before fenced code:
+
+     \`\`\`ts
+     const nested = true
+     \`\`\`
+
+3. Third ordered item after the nested fence.`,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    1. First ordered item with inline code.
+    2. Second ordered item before a nested list:
+       - Nested bullet before fenced code:
+    
+         const nested = true
+    
+    3. Third ordered item after the nested fence."
+  `)
+})
+
+test("top-level structured ordered lists align multi-digit markers", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-structured-list-numbering",
+    content: `9. nine
+10. ten
+11. eleven`,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+     9. nine
+    10. ten
+    11. eleven"
+  `)
+})
+
 test("assistant-style top-level markdown layout", async () => {
   const md = createMarkdownRenderable({
     id: "assistant-style-layout",

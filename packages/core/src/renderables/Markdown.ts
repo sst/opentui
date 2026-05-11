@@ -8,6 +8,8 @@ import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { type MarkedToken, type Token, type Tokens } from "marked"
 import { CodeRenderable, type OnChunksCallback } from "./Code.js"
 import { BoxRenderable } from "./Box.js"
+import { StyledText } from "../lib/styled-text.js"
+import { TextRenderable } from "./Text.js"
 import {
   TextTableRenderable,
   type TextTableCellContent,
@@ -586,6 +588,97 @@ export class MarkdownRenderable extends Renderable {
     return renderable
   }
 
+  private createListRenderable(token: Tokens.List, id: string, marginBottom: number = 0): BoxRenderable {
+    const items = token.items ?? []
+    const start = token.start === "" || token.start === undefined || token.start === null ? 1 : Number(token.start)
+    const markerWidth = Math.max(1, ...items.map((_, index) => (token.ordered ? `${start + index}.` : "-").length))
+    const list = new BoxRenderable(this.ctx, {
+      id,
+      width: "100%",
+      flexDirection: "column",
+      flexShrink: 0,
+      marginBottom,
+    })
+
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index]
+      if (!item) continue
+      list.add(
+        this.createListItemRenderable({
+          item,
+          marker: token.ordered ? `${start + index}.` : "-",
+          markerWidth,
+          id: `${id}-item-${index}`,
+        }),
+      )
+    }
+
+    return list
+  }
+
+  private createListItemRenderable(input: {
+    item: Tokens.ListItem
+    marker: string
+    markerWidth: number
+    id: string
+  }): BoxRenderable {
+    const row = new BoxRenderable(this.ctx, {
+      id: input.id,
+      width: "100%",
+      flexDirection: "row",
+      flexShrink: 0,
+      marginBottom: /\n[ \t]*\n$/.test(input.item.raw) ? 1 : 0,
+    })
+    row.add(
+      new TextRenderable(this.ctx, {
+        id: `${input.id}-marker`,
+        content: new StyledText([this.createChunk(input.marker.padStart(input.markerWidth) + " ", "markup.list")]),
+        width: input.markerWidth + 1,
+        flexShrink: 0,
+      }),
+    )
+
+    const content = new BoxRenderable(this.ctx, {
+      id: `${input.id}-content`,
+      flexDirection: "column",
+      flexGrow: 1,
+      flexShrink: 1,
+    })
+    row.add(content)
+
+    let pendingMarginTop = 0
+    for (let index = 0; index < input.item.tokens.length; index += 1) {
+      const child = input.item.tokens[index] as MarkedToken | undefined
+      if (!child) continue
+      if (child.type === "checkbox") continue
+      if (child.type === "space") {
+        pendingMarginTop = Math.max(pendingMarginTop, 1)
+        continue
+      }
+      const renderable = this.createListChildRenderable(child, `${input.id}-child-${index}`)
+      if (!renderable) continue
+      if (pendingMarginTop > 0) {
+        renderable.marginTop = pendingMarginTop
+        pendingMarginTop = 0
+      }
+      content.add(renderable)
+    }
+
+    return row
+  }
+
+  private createListChildRenderable(token: MarkedToken, id: string): Renderable | null {
+    if (token.type === "text") return this.createMarkdownCodeRenderable(token.raw, id)
+    if (token.type === "paragraph")
+      return this.createMarkdownCodeRenderable(this.normalizeScrollbackMarkdownBlockRaw(token.raw), id)
+    if (token.type === "list") return this.createListRenderable(token as Tokens.List, id)
+    if (token.type === "code") return this.createCodeRenderable(token as Tokens.Code, id)
+    if (token.type === "blockquote") return this.createBlockquoteRenderable(token, id)
+    if (token.type === "hr") return this.createHorizontalRuleRenderable(id)
+    if (token.type === "table") return this.createTableBlock(token as Tokens.Table, id).renderable
+    return token.raw ? this.createMarkdownCodeRenderable(token.raw, id) : null
+  }
+
   private createHorizontalRuleRenderable(id: string, marginBottom: number = 0): BoxRenderable {
     return new BoxRenderable(this.ctx, {
       id,
@@ -1121,6 +1214,12 @@ export class MarkdownRenderable extends Renderable {
       return { renderable }
     }
 
+    if (token.type === "list") {
+      const renderable = this.createListRenderable(token, id)
+      renderable.marginTop = marginTop
+      return { renderable }
+    }
+
     if (token.type === "hr") {
       const renderable = this.createHorizontalRuleRenderable(id)
       renderable.marginTop = marginTop
@@ -1179,6 +1278,10 @@ export class MarkdownRenderable extends Renderable {
       return this.createBlockquoteRenderable(token, id, marginBottom)
     }
 
+    if (token.type === "list") {
+      return this.createListRenderable(token as Tokens.List, id, marginBottom)
+    }
+
     if (token.type === "hr") {
       return this.createHorizontalRuleRenderable(id, marginBottom)
     }
@@ -1211,6 +1314,13 @@ export class MarkdownRenderable extends Renderable {
       return
     }
 
+    if (token.type === "list") {
+      state.renderable.destroyRecursively()
+      state.renderable = this.createListRenderable(token as Tokens.List, `${this.id}-block-${index}`, marginBottom)
+      this.add(state.renderable, index)
+      return
+    }
+
     if (token.type === "hr") {
       state.renderable.marginBottom = marginBottom
       return
@@ -1233,7 +1343,7 @@ export class MarkdownRenderable extends Renderable {
           `${this.id}-block-${index}`,
           marginBottom,
         )
-        this.add(fallbackRenderable)
+        this.add(fallbackRenderable, index)
         state.renderable = fallbackRenderable
         state.tableContentCache = undefined
         return
@@ -1251,7 +1361,7 @@ export class MarkdownRenderable extends Renderable {
 
       state.renderable.destroyRecursively()
       const tableRenderable = this.createTextTableRenderable(cache.content, `${this.id}-block-${index}`, marginBottom)
-      this.add(tableRenderable)
+      this.add(tableRenderable, index)
       state.renderable = tableRenderable
       state.tableContentCache = cache
       return
@@ -1350,6 +1460,7 @@ export class MarkdownRenderable extends Renderable {
 
     if (token.type === "table") return renderable instanceof TextTableRenderable
     if (token.type === "blockquote") return renderable instanceof BoxRenderable
+    if (token.type === "list") return false
     if (token.type === "hr") return renderable instanceof BoxRenderable
     return renderable instanceof CodeRenderable
   }
@@ -1516,6 +1627,13 @@ export class MarkdownRenderable extends Renderable {
 
       if (state.token.type === "blockquote") {
         this.applyBlockquoteRenderable(state.renderable, state.token, marginBottom)
+        continue
+      }
+
+      if (state.token.type === "list") {
+        state.renderable.destroyRecursively()
+        state.renderable = this.createListRenderable(state.token as Tokens.List, `${this.id}-block-${i}`, marginBottom)
+        this.add(state.renderable, i)
         continue
       }
 
