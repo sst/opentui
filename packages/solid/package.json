@@ -11,6 +11,9 @@
   "type": "module",
   "private": true,
   "main": "index.ts",
+  "imports": {
+    "#solid-js-shim": "solid-js"
+  },
   "license": "MIT",
   "scripts": {
     "build": "bun scripts/build.ts",
@@ -37,8 +40,14 @@
       "types": "./scripts/runtime-plugin-support-configure.ts",
       "import": "./scripts/runtime-plugin-support-configure.ts"
     },
-    "./jsx-runtime": "./jsx-runtime.d.ts",
-    "./jsx-dev-runtime": "./jsx-runtime.d.ts"
+    "./jsx-runtime": {
+      "types": "./jsx-runtime.d.ts",
+      "import": "./jsx-runtime.ts"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./jsx-runtime.d.ts",
+      "import": "./jsx-runtime.ts"
+    }
   },
   "devDependencies": {
     "@opentui/keymap": "workspace:*",

@@ -16,11 +16,10 @@ import { resolve, isAbsolute, parse } from "path"
 import { existsSync } from "fs"
 import { registerEnvVar, env } from "../env.js"
 import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
-import { Worker as PlatformWorker } from "../../platform/worker.js"
 
 registerEnvVar({
   name: "OTUI_TREE_SITTER_WORKER_PATH",
-  description: "Path to the TreeSitter worker entry script",
+  description: "Path to the TreeSitter worker",
   type: "string",
   default: "",
 })
@@ -36,18 +35,12 @@ interface EditQueueItem {
   isReset?: boolean
 }
 
-type TreeSitterWorkerPath = string | URL
-type TreeSitterWorkerHandle = Pick<
-  InstanceType<typeof PlatformWorker>,
-  "onerror" | "onmessage" | "postMessage" | "terminate"
->
-
-let DEFAULT_PARSER_OVERRIDES: FiletypeParserOptions[] = []
+let DEFAULT_PARSERS: FiletypeParserOptions[] = getParsers()
 
 export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
   for (const parser of parsers) {
-    DEFAULT_PARSER_OVERRIDES = [
-      ...DEFAULT_PARSER_OVERRIDES.filter((existingParser) => existingParser.filetype !== parser.filetype),
+    DEFAULT_PARSERS = [
+      ...DEFAULT_PARSERS.filter((existingParser) => existingParser.filetype !== parser.filetype),
       parser,
     ]
   }
@@ -59,7 +52,7 @@ const isUrl = (path: string) => path.startsWith("http://") || path.startsWith("h
 // TODO: TreeSitterClient should have a setOptions method, passing it on to the worker etc.
 export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   private initialized = false
-  private worker: TreeSitterWorkerHandle | undefined
+  private worker: Worker | undefined
   private buffers: Map<number, BufferState> = new Map()
   private initializePromise: Promise<void> | undefined
   private initializeResolvers:
@@ -95,13 +88,29 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return
     }
 
-    const workerPath = this.resolveWorkerPath()
+    let worker_path: string | URL
 
-    this.worker = new PlatformWorker(workerPath)
+    if (env.OTUI_TREE_SITTER_WORKER_PATH) {
+      worker_path = env.OTUI_TREE_SITTER_WORKER_PATH
+    } else if (typeof OTUI_TREE_SITTER_WORKER_PATH !== "undefined") {
+      worker_path = OTUI_TREE_SITTER_WORKER_PATH
+    } else if (this.options.workerPath) {
+      worker_path = this.options.workerPath
+    } else {
+      worker_path = new URL("./parser.worker.js", import.meta.url).href
+      if (!existsSync(resolve(import.meta.dirname, "parser.worker.js"))) {
+        worker_path = new URL("./parser.worker.ts", import.meta.url).href
+      }
+    }
 
+    this.worker = new Worker(worker_path, { type: "module" })
+
+    // @ts-ignore - onmessage exists
     this.worker.onmessage = this.handleWorkerMessage.bind(this)
 
+    // @ts-ignore - onerror exists
     this.worker.onerror = (error: ErrorEvent) => {
+      error.preventDefault()
       console.error("TreeSitter worker error:", error.message)
 
       // If we're still initializing, reject the init promise
@@ -113,29 +122,6 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
       this.emitError(`Worker error: ${error.message}`)
     }
-  }
-
-  // Path resolution stays in the client for now; runtime-specific Worker construction lives in platform/worker.
-  private resolveWorkerPath(): TreeSitterWorkerPath {
-    if (env.OTUI_TREE_SITTER_WORKER_PATH) {
-      return env.OTUI_TREE_SITTER_WORKER_PATH
-    }
-
-    if (typeof OTUI_TREE_SITTER_WORKER_PATH !== "undefined") {
-      return OTUI_TREE_SITTER_WORKER_PATH
-    }
-
-    if (this.options.workerPath) {
-      return this.options.workerPath
-    }
-
-    let workerPath = new URL("./parser.worker.js", import.meta.url).href
-
-    if (!existsSync(resolve(import.meta.dirname, "parser.worker.js"))) {
-      workerPath = new URL("./parser.worker.ts", import.meta.url).href
-    }
-
-    return workerPath
   }
 
   private stopWorker() {
@@ -152,7 +138,6 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.buffers.clear()
     this.stopWorker()
     this.startWorker()
-    this.initialized = false
     this.initializePromise = undefined
     this.initializeResolvers = undefined
     return this.initialize()
@@ -163,13 +148,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return this.initializePromise
     }
 
-    this.initializePromise = this.initializeClient()
-
-    return this.initializePromise
-  }
-
-  private async initializeClient(): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
+    this.initializePromise = new Promise((resolve, reject) => {
       const timeoutMs = this.options.initTimeout ?? 10000 // Default to 10 seconds
       const timeoutId = setTimeout(() => {
         const error = new Error("Worker initialization timed out")
@@ -185,18 +164,14 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       })
     })
 
+    await this.initializePromise
     await this.registerDefaultParsers()
-    this.initialized = true
+
+    return this.initializePromise
   }
 
   private async registerDefaultParsers(): Promise<void> {
-    const defaultParsers = await getParsers()
-    const overriddenFiletypes = new Set(DEFAULT_PARSER_OVERRIDES.map((parser) => parser.filetype))
-
-    for (const parser of [
-      ...defaultParsers.filter((parser) => !overriddenFiletypes.has(parser.filetype)),
-      ...DEFAULT_PARSER_OVERRIDES,
-    ]) {
+    for (const parser of DEFAULT_PARSERS) {
       this.addFiletypeParser(parser)
     }
   }
@@ -262,6 +237,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   private handleWorkerMessage(event: MessageEvent) {
+    if (!this.worker) return
     const { type, bufferId, error, highlights, warning, messageId, hasParser, performance, version } = event.data
 
     if (type === "HIGHLIGHT_RESPONSE") {
@@ -281,6 +257,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
           console.error("TreeSitter client initialization failed:", error)
           this.initializeResolvers.reject(new Error(error))
         } else {
+          this.initialized = true
           this.initializeResolvers.resolve()
         }
         this.initializeResolvers = undefined
@@ -497,7 +474,6 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     if (this.worker) {
       await new Promise<boolean>((resolve) => {
         const messageId = `dispose_${bufferId}`
-        this.messageCallbacks.set(messageId, resolve)
         try {
           this.worker!.postMessage({
             type: "DISPOSE_BUFFER",
@@ -506,16 +482,21 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         } catch (error) {
           console.error("Error disposing buffer", error)
           resolve(false)
+          return
         }
 
-        // Add a timeout in case the worker doesn't respond
-        setTimeout(() => {
+        const disposeTimeout = setTimeout(() => {
           if (this.messageCallbacks.has(messageId)) {
             this.messageCallbacks.delete(messageId)
             console.warn({ bufferId }, "Timed out waiting for buffer to be disposed")
             resolve(false)
           }
         }, 3000)
+
+        this.messageCallbacks.set(messageId, (response: any) => {
+          clearTimeout(disposeTimeout)
+          resolve(response)
+        })
       })
     }
 
@@ -525,10 +506,11 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   public async destroy(): Promise<void> {
     if (this.initializeResolvers) {
       clearTimeout(this.initializeResolvers.timeoutId)
-      // Reject pending initialization promise to prevent hanging awaits
       this.initializeResolvers.reject(new Error("Client destroyed during initialization"))
       this.initializeResolvers = undefined
     }
+
+    this.stopWorker()
 
     for (const [messageId, callback] of this.messageCallbacks.entries()) {
       if (typeof callback === "function") {
@@ -546,8 +528,6 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     this.editQueues.clear()
     this.buffers.clear()
-
-    this.stopWorker()
 
     this.initialized = false
     this.initializePromise = undefined

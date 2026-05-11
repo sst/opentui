@@ -1,4 +1,3 @@
-import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 
 declare const pointerBrand: unique symbol
@@ -186,21 +185,29 @@ const isBun =
   process.versions !== null &&
   typeof process.versions.bun === "string"
 
-const requireModule = createRequire(import.meta.url)
-const backend = loadBackend()
+const backend = await loadBackend()
 
-function loadBackend(): FfiBackend {
+function importModule<T>(specifier: string): Promise<T> {
+  return import(specifier) as Promise<T>
+}
+
+async function loadBackend(): Promise<FfiBackend> {
   // Keep the Bun module import behind the runtime check so Node does not
   // resolve bun:ffi during import.
   if (isBun) {
-    return createBunBackend(requireModule("bun:ffi") as BunFfiBackend)
+    return createBunBackend(await importModule<BunFfiBackend>("bun:ffi"))
   }
 
   try {
-    const nodeFfi = requireModule("node:ffi") as NodeFfiBackend & { default?: NodeFfiBackend }
+    const nodeFfi = await importModule<NodeFfiBackend & { default?: NodeFfiBackend }>("node:ffi")
     return createNodeBackend(nodeFfi.default ?? nodeFfi)
-  } catch (error) {
-    return createUnsupportedBackend(error)
+  } catch {
+    // bun-compat provides bun:ffi for non-Bun runtimes (e.g. Deno)
+    try {
+      return createBunBackend(await importModule<BunFfiBackend>("bun:ffi"))
+    } catch (error) {
+      return createUnsupportedBackend(error)
+    }
   }
 }
 
@@ -548,15 +555,7 @@ function unsupportedNodeFFIType(type: never): never {
 }
 
 function toBigIntPointer(pointer: Pointer): bigint {
-  if (typeof pointer === "bigint") {
-    if (pointer < 0n) {
-      throw new Error(POINTER_NEGATIVE)
-    }
-
-    return pointer
-  }
-
-  return toSafeBigIntPointer(pointer)
+  return typeof pointer === "bigint" ? pointer : BigInt(pointer)
 }
 
 export const dlopen = backend.dlopen

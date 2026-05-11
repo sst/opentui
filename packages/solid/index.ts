@@ -1,10 +1,35 @@
 import { CliRenderer, createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
+import { createContext, createRenderEffect, getOwner } from "solid-js"
 import type { JSX } from "./jsx-runtime"
 import { RendererContext } from "./src/elements/index.js"
 import { _render as renderInternal, createComponent } from "./src/reconciler.js"
 
 type DisposeFn = () => void
+
+export function createLazyProvider<T>(context: ReturnType<typeof createContext<T>>) {
+  return function LazyProvider(props: { value: T; children: JSX.Element }) {
+    const owner = getOwner()
+
+    if (owner) {
+      if (!owner.context) owner.context = {}
+      owner.context[context.id] = props.value
+    }
+
+    const children = props.children
+    const result = typeof children === "function" ? children() : children
+
+    if (owner) {
+      createRenderEffect(() => {
+        owner.context[context.id] = props.value
+      })
+    }
+
+    return result
+  }
+}
+
+const LazyRendererProvider = createLazyProvider(RendererContext)
 
 const mountSolidRoot = (renderer: CliRenderer, node: () => JSX.Element) => {
   let dispose: DisposeFn | undefined

@@ -1,4 +1,13 @@
-import { createRoot, createRenderEffect, createMemo, createComponent, untrack, mergeProps } from "solid-js"
+import {
+  createRoot,
+  createRenderEffect,
+  createMemo,
+  createComponent,
+  untrack,
+  mergeProps,
+  getOwner,
+  runWithOwner,
+} from "solid-js"
 
 const memo = (fn) => createMemo(() => fn())
 
@@ -18,13 +27,17 @@ export function createRenderer({
   function insert(parent, accessor, marker, initial) {
     if (marker !== undefined && !initial) initial = []
     if (typeof accessor !== "function") return insertExpression(parent, accessor, initial, marker)
-    createRenderEffect((current) => insertExpression(parent, accessor(), current, marker), initial)
+    const m = createMemo(accessor)
+    createRenderEffect((current) => {
+      let val = m()
+      while (typeof val === "function") val = untrack(val)
+      return untrack(() => insertExpression(parent, val, current, marker))
+    }, initial)
   }
   function insertExpression(parent, value, current, marker, unwrapArray) {
-    while (typeof current === "function") current = current()
     if (value === current) return current
-    const t = typeof value,
-      multi = marker !== undefined
+    const t = typeof value
+    const multi = marker !== undefined
     if (t === "string" || t === "number") {
       if (t === "number") value = value.toString()
       if (multi) {
@@ -43,13 +56,6 @@ export function createRenderer({
       }
     } else if (value == null || t === "boolean") {
       current = cleanChildren(parent, current, marker)
-    } else if (t === "function") {
-      createRenderEffect(() => {
-        let v = value()
-        while (typeof v === "function") v = v()
-        current = insertExpression(parent, v, current, marker)
-      })
-      return () => current
     } else if (Array.isArray(value)) {
       const array = []
       if (normalizeIncomingArray(array, value, unwrapArray)) {
@@ -210,7 +216,9 @@ export function createRenderer({
       let disposer
       createRoot((dispose) => {
         disposer = dispose
-        insert(element, code())
+        let result = code()
+        while (typeof result === "function") result = result()
+        insertExpression(element, result, undefined, undefined)
       })
       return disposer
     },
@@ -230,7 +238,10 @@ export function createRenderer({
     mergeProps,
     effect: createRenderEffect,
     memo,
-    createComponent,
+    createComponent: (Comp, props) => {
+      const owner = getOwner()
+      return untrack(() => runWithOwner(owner, () => Comp(props || {})))
+    },
     use(fn, element, arg) {
       return untrack(() => fn(element, arg))
     },
