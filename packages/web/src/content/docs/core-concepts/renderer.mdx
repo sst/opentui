@@ -445,6 +445,16 @@ renderer.copyToClipboardOSC52("both", "clipboard-primary")
 
 `ClipboardTarget` values are `"clipboard"`, `"primary"`, or `"clipboard-primary"`. Both methods return `false` if the renderer cannot write to stdout — for example, after you destroy it.
 
+### Notifications
+
+Trigger a terminal-mediated desktop notification:
+
+```typescript
+renderer.triggerNotification("Build finished", "OpenTUI")
+```
+
+The method returns `false` when no OSC notification protocol was detected. See [Notifications](/docs/core-concepts/notifications) for details.
+
 ### Raw OSC sequences
 
 Subscribe to raw OSC sequences the terminal emits — palette queries, cursor position reports, custom escape codes. Use this when you integrate OpenTUI with a terminal feature that does not have a dedicated API yet.
