@@ -1,0 +1,7 @@
+{
+  "unstable": ["sloppy-imports"],
+  "tasks": {
+    "test:core": "deno test --allow-all packages/core/src/",
+    "test:solid": "deno test --allow-all packages/solid/tests/"
+  }
+}

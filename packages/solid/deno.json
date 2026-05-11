@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "solid-js"
+  },
+  "imports": {
+    "#solid-js-shim": "solid-js",
+    "solid-js": "npm:solid-js",
+    "solid-js/store": "npm:solid-js/store",
+    "solid-js/web": "npm:solid-js/web",
+    "bun:test": "../core/shims/bun-test.ts",
+    "bun-compat": "jsr:@lu-zero/bun-compat@^0.4.2",
+    "@opentui/core": "../core/src/index.ts",
+    "@opentui/core/testing": "../core/src/testing/index.ts",
+    "@opentui/core/runtime-plugin": "../core/src/runtime-plugin.ts",
+    "@opentui/solid": "./index.ts"
+  }
+}

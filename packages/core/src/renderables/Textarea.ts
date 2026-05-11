@@ -280,7 +280,6 @@ export class TextareaRenderable extends EditBufferRenderable {
 
       if (key.sequence) {
         const firstCharCode = key.sequence.charCodeAt(0)
-
         if (firstCharCode < 32) {
           return false
         }

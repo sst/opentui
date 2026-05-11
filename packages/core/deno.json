@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/solid",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true
+  },
+  "lint": { "rules": { "exclude": ["no-sloppy-imports"] } },
+  "imports": {
+    "bun:ffi": "jsr:@lu-zero/bun-compat@^0.4.2/ffi",
+    "bun-ffi-structs": "jsr:@lu-zero/bun-compat@^0.4.2/ffi-structs",
+    "bun-compat": "jsr:@lu-zero/bun-compat@^0.4.2",
+    "bun:test": "./shims/bun-test.ts",
+    "@opentui/core-darwin-arm64": "./shims/platform.ts",
+    "@opentui/core-darwin-arm64/index.ts": "./shims/platform.ts",
+    "@opentui/core": "./src/index.ts",
+    "@opentui/core/testing": "./src/testing/index.ts",
+    "@opentui/core/runtime-plugin": "./src/runtime-plugin.ts",
+    "@opentui/solid": "../solid/index.ts",
+    "events": "node:events",
+    "fs": "node:fs",
+    "fs/promises": "node:fs/promises",
+    "os": "node:os",
+    "path": "node:path",
+    "process": "node:process",
+    "stream": "node:stream",
+    "stream/promises": "node:stream/promises",
+    "tty": "node:tty",
+    "url": "node:url",
+    "util": "node:util",
+    "worker_threads": "node:worker_threads"
+  }
+}
