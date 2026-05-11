@@ -8,10 +8,6 @@ import { registerEnvVar, env } from "./env.js"
 
 registerEnvVar({ name: "OTUI_TS_STYLE_WARN", default: false, description: "Enable warnings for missing syntax styles" })
 
-interface ConcealOptions {
-  enabled: boolean
-}
-
 interface TextChunkOptions {
   enabled?: boolean
   baseHighlight?: string
@@ -284,7 +280,7 @@ export function treeSitterToTextChunks(
 }
 
 export interface TreeSitterToStyledTextOptions {
-  conceal?: ConcealOptions
+  conceal?: Pick<TextChunkOptions, "enabled">
   baseHighlight?: string
 }
 
