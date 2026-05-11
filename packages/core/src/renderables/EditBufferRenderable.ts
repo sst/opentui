@@ -647,7 +647,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     if (this.hasSelection()) {
       this.deleteSelectedText()
     }
-
     this.editBuffer.insertText(text)
     this.requestRender()
   }

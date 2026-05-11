@@ -134,42 +134,35 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
 export class InternalKeyHandler extends KeyHandler {
   private renderableHandlers: Map<keyof KeyHandlerEventMap, Set<Function>> = new Map()
 
-  public emit<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
+  public override emit<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
     return this.emitWithPriority(event, ...args)
   }
 
   private emitWithPriority<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
     let hasGlobalListeners = false
+    let hasRenderableListeners = false
 
-    // Check if we should emit to global handlers
-    // Global handlers are emitted using the parent EventEmitter which calls all listeners
-    // We need to manually iterate to check for stopPropagation between handlers
     const globalListeners = this.listeners(event as any)
     if (globalListeners.length > 0) {
       hasGlobalListeners = true
-
-      for (const listener of globalListeners) {
+      for (let gi = 0; gi < globalListeners.length; gi++) {
         try {
-          listener(...args)
+          ;(globalListeners[gi] as Function)(...args)
         } catch (error) {
           console.error(`[KeyHandler] Error in global ${event} handler:`, error)
         }
 
-        // Check if propagation was stopped after this handler
         if (event === "keypress" || event === "keyrelease" || event === "paste") {
           const keyEvent = args[0]
           if (keyEvent.propagationStopped) {
-            return hasGlobalListeners
+            return hasGlobalListeners || hasRenderableListeners
           }
         }
       }
     }
 
     const renderableSet = this.renderableHandlers.get(event)
-    // Snapshot the handler list so listeners added during dispatch (e.g., via focus changes)
-    // do not receive the in-flight key event.
     const renderableHandlers = renderableSet && renderableSet.size > 0 ? [...renderableSet] : []
-    let hasRenderableListeners = false
 
     if (renderableSet && renderableSet.size > 0) {
       hasRenderableListeners = true
@@ -187,7 +180,6 @@ export class InternalKeyHandler extends KeyHandler {
           console.error(`[KeyHandler] Error in renderable ${event} handler:`, error)
         }
 
-        // Check if propagation was stopped after this handler
         if (event === "keypress" || event === "keyrelease" || event === "paste") {
           const keyEvent = args[0]
           if (keyEvent.propagationStopped) {
