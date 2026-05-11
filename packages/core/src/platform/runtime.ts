@@ -21,6 +21,8 @@ interface FileImportModule {
   default: string
 }
 
+type FilePathFallback = string | URL | (() => string | URL)
+
 type GlobalWithBun = typeof globalThis & { Bun?: BunLike }
 
 const TEXT_ENCODER = new TextEncoder()
@@ -38,11 +40,12 @@ export const writeFile: (
 // Bun only discovers bundled file-like assets from the literal import expression at the call site.
 export async function resolveBundledFilePath(
   loadBundledFile: () => Promise<FileImportModule>,
-  relativePath: string,
+  fallbackPath: FilePathFallback,
   metaUrl: string,
 ): Promise<string> {
   if (!bun) {
-    return fileURLToPath(new URL(relativePath, metaUrl))
+    const path = typeof fallbackPath === "function" ? fallbackPath() : fallbackPath
+    return fileURLToPath(path instanceof URL ? path : new URL(path, metaUrl))
   }
 
   const loadedPath = (await loadBundledFile()).default

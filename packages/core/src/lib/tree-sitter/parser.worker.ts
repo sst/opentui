@@ -91,7 +91,7 @@ class ParserWorker {
 
       let treeWasm = await resolveBundledFilePath(
         () => import("web-tree-sitter/tree-sitter.wasm" as string, { with: { type: "wasm" } }),
-        import.meta.resolve("web-tree-sitter/tree-sitter.wasm"),
+        () => import.meta.resolve("web-tree-sitter/tree-sitter.wasm"),
         import.meta.url,
       )
 
