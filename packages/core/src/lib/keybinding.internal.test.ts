@@ -47,7 +47,7 @@ describe("keybinding.internal", () => {
     it("should fall back to baseCode when the parsed name differs", () => {
       const map = buildKeyBindingsMap([{ name: "c", ctrl: true, action: "copy" as const }])
 
-      const action = getKeyBindingAction(map, { name: "ㅊ", baseCode: 99, ctrl: true })
+      const action = getKeyBindingAction(map, {}, { name: "ㅊ", baseCode: 99, ctrl: true })
 
       expect(action).toBe("copy")
     })
@@ -58,15 +58,27 @@ describe("keybinding.internal", () => {
         { name: "ㅊ", ctrl: true, action: "insert" as const },
       ])
 
-      const action = getKeyBindingAction(map, { name: "ㅊ", baseCode: 99, ctrl: true })
+      const action = getKeyBindingAction(map, {}, { name: "ㅊ", baseCode: 99, ctrl: true })
 
       expect(action).toBe("insert")
+    })
+
+    it("should match keypad aliases during lookup", () => {
+      const map = buildKeyBindingsMap([{ name: "+", action: "grow" as const }], defaultKeyAliases)
+
+      const action = getKeyBindingAction(map, defaultKeyAliases, { name: "kpplus" })
+
+      expect(action).toBe("grow")
     })
   })
 
   describe("matchesKeyBinding", () => {
     it("should match a binding by baseCode when available", () => {
-      expect(matchesKeyBinding({ name: "ㅊ", baseCode: 99, ctrl: true }, { name: "c", ctrl: true })).toBe(true)
+      expect(matchesKeyBinding({ name: "ㅊ", baseCode: 99, ctrl: true }, {}, { name: "c", ctrl: true })).toBe(true)
+    })
+
+    it("should match chained keypad aliases during lookup", () => {
+      expect(matchesKeyBinding({ name: "kpenter" }, defaultKeyAliases, { name: "return" })).toBe(true)
     })
   })
 

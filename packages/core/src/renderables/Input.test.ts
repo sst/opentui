@@ -858,6 +858,47 @@ describe("InputRenderable", () => {
     expect(input.value).toBe("initialb")
   })
 
+  it("should handle Kitty keypad digits, operators, and enter", async () => {
+    const { renderer: kittyRenderer } = await createTestRenderer({ kittyKeyboard: true })
+
+    const pressKittyKey = async (sequence: string): Promise<void> => {
+      await new Promise<void>((resolve) => {
+        kittyRenderer.keyInput.once("keypress", () => {
+          resolve()
+        })
+
+        kittyRenderer.stdin.emit("data", Buffer.from(sequence))
+      })
+
+      await Promise.resolve()
+    }
+
+    const input = new InputRenderable(kittyRenderer, {
+      width: 20,
+      height: 1,
+    })
+
+    let enterEventCount = 0
+    input.on(InputRenderableEvents.ENTER, () => {
+      enterEventCount += 1
+    })
+
+    kittyRenderer.root.add(input)
+    input.focus()
+
+    await pressKittyKey("\x1b[57400u")
+    await pressKittyKey("\x1b[57413u")
+
+    expect(input.value).toBe("1+")
+
+    await pressKittyKey("\x1b[57414u")
+
+    expect(enterEventCount).toBe(1)
+
+    input.destroyRecursively()
+    kittyRenderer.destroy()
+  })
+
   describe("Shift+Space Key Handling with modifyOtherKeys", () => {
     let modRenderer: any
     let modMockInput: any

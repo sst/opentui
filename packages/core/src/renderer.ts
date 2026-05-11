@@ -1016,7 +1016,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._keyHandler.on("keypress", (event) => {
       // Use the shared matcher here too. Kitty can report a non-Latin
       // character plus a base-layout `c`, and Ctrl+C should still exit.
-      if (this.exitOnCtrlC && matchesKeyBinding(event, { name: "c", ctrl: true })) {
+      if (this.exitOnCtrlC && matchesKeyBinding(event, {}, { name: "c", ctrl: true })) {
         process.nextTick(() => {
           this.destroy()
         })

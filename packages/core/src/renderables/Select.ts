@@ -329,7 +329,7 @@ export class SelectRenderable extends Renderable {
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
-    const action = getKeyBindingAction(this._keyBindingsMap, key)
+    const action = getKeyBindingAction(this._keyBindingsMap, this._keyAliasMap, key)
 
     if (action) {
       switch (action) {

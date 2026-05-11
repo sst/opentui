@@ -262,7 +262,7 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public handleKeyPress(key: KeyEvent): boolean {
     if (this.traits.suspend !== true) {
-      const action = getKeyBindingAction(this._keyBindingsMap, key)
+      const action = getKeyBindingAction(this._keyBindingsMap, this._keyAliasMap, key)
 
       if (action) {
         const handler = this._actionHandlers.get(action)
@@ -273,6 +273,14 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
 
     if (!key.ctrl && !key.meta && !key.super && !key.hyper) {
+      // map kp keypad keys to their non-keypad equivalents, since they often send the same sequences but with different names.
+      const aliasText = this._keyAliasMap[key.name];
+
+      if(aliasText && aliasText.length === 1) {
+        this.insertText(aliasText)
+        return true
+      }
+
       if (key.name === "space") {
         this.insertText(" ")
         return true
