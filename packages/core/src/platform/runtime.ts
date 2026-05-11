@@ -27,6 +27,7 @@ type GlobalWithBun = typeof globalThis & { Bun?: BunLike }
 
 const TEXT_ENCODER = new TextEncoder()
 const bun = (globalThis as GlobalWithBun).Bun
+const isBunRuntime = typeof process !== "undefined" && typeof process.versions === "object" && typeof process.versions.bun === "string"
 
 export const sleep: (msOrDate: number | Date) => Promise<void> = bun?.sleep ?? standardSleep
 export const stringWidth: (text: string) => number = bun?.stringWidth ?? stringWidthLib
@@ -43,7 +44,7 @@ export async function resolveBundledFilePath(
   fallbackPath: FilePathFallback,
   metaUrl: string,
 ): Promise<string> {
-  if (!bun) {
+  if (!isBunRuntime) {
     const path = typeof fallbackPath === "function" ? fallbackPath() : fallbackPath
     return fileURLToPath(path instanceof URL ? path : new URL(path, metaUrl))
   }
