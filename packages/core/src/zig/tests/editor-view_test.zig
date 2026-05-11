@@ -4,6 +4,7 @@ const edit_buffer = @import("../edit-buffer.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const opt_buffer_mod = @import("../buffer.zig");
+const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 
@@ -1073,7 +1074,7 @@ test "EditorView - viewport scrolling with wrapped lines: down + edit + up" {
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
+    ev.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1128,7 +1129,7 @@ test "EditorView - viewport scrolling with wrapped lines: aggressive down + edit
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
+    ev.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1180,7 +1181,7 @@ test "EditorView - viewport scrolling with wrapped lines: multiple edits and mov
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 }, true);
+    ev.setViewport(.{ .x = 0, .y = 0, .width = 15, .height = 8 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV");
 
@@ -1226,7 +1227,7 @@ test "EditorView - viewport scrolling with wrapped lines: verify viewport consis
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
+    ev.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1283,7 +1284,7 @@ test "EditorView - viewport scrolling with wrapped lines: backspace after scroll
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
+    ev.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1322,7 +1323,7 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 5 }, true);
+    ev.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 5 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1382,7 +1383,7 @@ test "EditorView - wrapped lines: specific scenario with insert and deletions" {
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
+    ev.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1444,7 +1445,7 @@ test "EditorView - wrapped lines: many small edits with viewport scrolling" {
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 }, true);
+    ev.setViewport(.{ .x = 0, .y = 0, .width = 15, .height = 8 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV");
 
@@ -2010,8 +2011,8 @@ test "EditorView - placeholder with styled text renders with correct highlights"
     const text_part2 = "something";
     const text_part3 = " here";
 
-    const fg_gray = [4]f32{ 0.5, 0.5, 0.5, 1.0 };
-    const fg_blue = [4]f32{ 0.3, 0.5, 0.9, 1.0 };
+    const fg_gray = ansi.rgbaFromFloats(0.5, 0.5, 0.5, 1.0);
+    const fg_blue = ansi.rgbaFromFloats(0.3, 0.5, 0.9, 1.0);
 
     const chunks = [_]text_buffer.StyledChunk{
         .{
@@ -2055,8 +2056,8 @@ test "EditorView - placeholder with styled text renders with correct highlights"
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(tbv_ptr, 0, 0);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawTextBuffer(tbv_ptr, 0, 0);
 
     const epsilon: f32 = 0.01;
 
@@ -2070,19 +2071,19 @@ test "EditorView - placeholder with styled text renders with correct highlights"
     try std.testing.expectEqual(@as(u32, ' '), cell_15.char);
 
     const fg_0 = opt_buffer.buffer.fg[0];
-    try std.testing.expect(@abs(fg_0[0] - fg_gray[0]) < epsilon);
-    try std.testing.expect(@abs(fg_0[1] - fg_gray[1]) < epsilon);
-    try std.testing.expect(@abs(fg_0[2] - fg_gray[2]) < epsilon);
+    try std.testing.expect(@abs(ansi.redF(fg_0) - ansi.redF(fg_gray)) < epsilon);
+    try std.testing.expect(@abs(ansi.greenF(fg_0) - ansi.greenF(fg_gray)) < epsilon);
+    try std.testing.expect(@abs(ansi.blueF(fg_0) - ansi.blueF(fg_gray)) < epsilon);
 
     const fg_6 = opt_buffer.buffer.fg[6];
-    try std.testing.expect(@abs(fg_6[0] - fg_blue[0]) < epsilon);
-    try std.testing.expect(@abs(fg_6[1] - fg_blue[1]) < epsilon);
-    try std.testing.expect(@abs(fg_6[2] - fg_blue[2]) < epsilon);
+    try std.testing.expect(@abs(ansi.redF(fg_6) - ansi.redF(fg_blue)) < epsilon);
+    try std.testing.expect(@abs(ansi.greenF(fg_6) - ansi.greenF(fg_blue)) < epsilon);
+    try std.testing.expect(@abs(ansi.blueF(fg_6) - ansi.blueF(fg_blue)) < epsilon);
 
     const fg_15 = opt_buffer.buffer.fg[15];
-    try std.testing.expect(@abs(fg_15[0] - fg_gray[0]) < epsilon);
-    try std.testing.expect(@abs(fg_15[1] - fg_gray[1]) < epsilon);
-    try std.testing.expect(@abs(fg_15[2] - fg_gray[2]) < epsilon);
+    try std.testing.expect(@abs(ansi.redF(fg_15) - ansi.redF(fg_gray)) < epsilon);
+    try std.testing.expect(@abs(ansi.greenF(fg_15) - ansi.greenF(fg_gray)) < epsilon);
+    try std.testing.expect(@abs(ansi.blueF(fg_15) - ansi.blueF(fg_gray)) < epsilon);
 }
 
 test "EditorView - getNextWordBoundary returns VisualCursor" {
@@ -2528,7 +2529,7 @@ test "EditorView - word wrapping with space insertion maintains cursor sync" {
     defer ev.deinit();
 
     ev.setWrapMode(.word);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 10 }, true);
+    ev.setViewport(.{ .x = 0, .y = 0, .width = 15, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAAAAAAAAAAA");
     try eb.setCursor(0, 7);
@@ -2621,7 +2622,7 @@ test "EditorView - placeholder shows when empty" {
     defer ev.deinit();
 
     const text = "Enter text here...";
-    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0 };
+    const gray_color = ansi.rgbaFromFloats(0.4, 0.4, 0.4, 1.0);
     const chunks = [_]text_buffer.StyledChunk{.{
         .text_ptr = text.ptr,
         .text_len = text.len,
@@ -2653,7 +2654,7 @@ test "EditorView - placeholder cleared when set to empty" {
     defer ev.deinit();
 
     const text = "Placeholder";
-    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0 };
+    const gray_color = ansi.rgbaFromFloats(0.4, 0.4, 0.4, 1.0);
     const chunks = [_]text_buffer.StyledChunk{.{
         .text_ptr = text.ptr,
         .text_len = text.len,
@@ -2665,7 +2666,7 @@ test "EditorView - placeholder cleared when set to empty" {
 
     try std.testing.expect(ev.placeholder_buffer != null);
 
-    const empty_chunks = [_]text_buffer.StyledChunk{};
+    const empty_chunks: [0]text_buffer.StyledChunk = .{};
     try ev.setPlaceholderStyledText(&empty_chunks);
 
     try std.testing.expect(ev.placeholder_buffer == null);
@@ -2685,8 +2686,8 @@ test "EditorView - placeholder with styled text" {
 
     const text1 = "Hello ";
     const text2 = "World";
-    const red_color = text_buffer.RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const blue_color = text_buffer.RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    const red_color = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const blue_color = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
 
     const chunks = [_]text_buffer.StyledChunk{
         .{
@@ -2725,7 +2726,7 @@ test "EditorView - placeholder renders to buffer when empty" {
     defer ev.deinit();
 
     const placeholder_text = "Type something...";
-    const gray_color = text_buffer.RGBA{ 0.5, 0.5, 0.5, 1.0 };
+    const gray_color = ansi.rgbaFromFloats(0.5, 0.5, 0.5, 1.0);
     const placeholder_chunks = [_]text_buffer.StyledChunk{.{
         .text_ptr = placeholder_text.ptr,
         .text_len = placeholder_text.len,
@@ -2746,8 +2747,8 @@ test "EditorView - placeholder renders to buffer when empty" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
 
     var out_buffer: [1000]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -2757,8 +2758,8 @@ test "EditorView - placeholder renders to buffer when empty" {
 
     try eb.insertText("Hello");
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
     try std.testing.expect(!ev.placeholder_active);
 
     const written2 = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -2782,8 +2783,8 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
 
     const long_text = "Ask anything... \"Fix a TODO in the codebase\"";
     const short_text = "Run a command... \"pwd\"";
-    const fg = text_buffer.RGBA{ 0.6, 0.6, 0.6, 1.0 };
-    const panel_bg = text_buffer.RGBA{ 0.14, 0.14, 0.16, 1.0 };
+    const fg = ansi.rgbaFromFloats(0.6, 0.6, 0.6, 1.0);
+    const panel_bg = ansi.rgbaFromFloats(0.14, 0.14, 0.16, 1.0);
 
     const long_chunks = [_]text_buffer.StyledChunk{.{
         .text_ptr = long_text.ptr,
@@ -2808,7 +2809,7 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
 
     var x: u32 = 0;
     while (x < 80) : (x += 1) {
@@ -2816,7 +2817,7 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
     }
 
     try ev.setPlaceholderStyledText(&long_chunks);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.drawEditorView(ev, 0, 0);
 
     x = 0;
     while (x < 80) : (x += 1) {
@@ -2824,7 +2825,7 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
     }
 
     try ev.setPlaceholderStyledText(&short_chunks);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.drawEditorView(ev, 0, 0);
 
     var out_buffer: [1600]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -2836,10 +2837,95 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
 
     const tail = opt_buffer.get(35, 0) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqual(@as(u32, 32), tail.char);
-    try std.testing.expectEqual(@as(f32, panel_bg[0]), tail.bg[0]);
-    try std.testing.expectEqual(@as(f32, panel_bg[1]), tail.bg[1]);
-    try std.testing.expectEqual(@as(f32, panel_bg[2]), tail.bg[2]);
-    try std.testing.expectEqual(@as(f32, panel_bg[3]), tail.bg[3]);
+    try std.testing.expectEqual(panel_bg, tail.bg);
+}
+
+test "EditorView - translucent default background fills viewport without double blending" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 6, 2);
+    defer ev.deinit();
+
+    try eb.setText("abc");
+    eb.tb.setDefaultBg(ansi.rgbaFromFloats(1.0, 0.0, 0.0, 0.5));
+
+    var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        2,
+        .{ .pool = pool, .width_method = .wcwidth },
+    );
+    defer opt_buffer.deinit();
+
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
+
+    const text_cell = opt_buffer.get(0, 0).?;
+    const trailing_cell = opt_buffer.get(3, 0).?;
+    const blank_row_cell = opt_buffer.get(0, 1).?;
+
+    try std.testing.expectEqual(@as(u32, 'a'), text_cell.char);
+    try std.testing.expectEqual(@as(u32, 32), trailing_cell.char);
+    try std.testing.expectEqual(@as(u32, 32), blank_row_cell.char);
+    try std.testing.expectEqual(text_cell.bg, trailing_cell.bg);
+    try std.testing.expectEqual(trailing_cell.bg, blank_row_cell.bg);
+}
+
+test "EditorView - placeholder uses original default background fill" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 6, 2);
+    defer ev.deinit();
+
+    const placeholder_text = "hint";
+    const placeholder_fg = ansi.rgbaFromFloats(0.5, 0.5, 0.5, 1.0);
+    const placeholder_chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = placeholder_text.ptr,
+        .text_len = placeholder_text.len,
+        .fg_ptr = @ptrCast(&placeholder_fg),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+
+    eb.tb.setDefaultBg(ansi.indexedColor(254, 228, 228, 228));
+    try ev.setPlaceholderStyledText(&placeholder_chunks);
+
+    var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        2,
+        .{ .pool = pool, .width_method = .wcwidth },
+    );
+    defer opt_buffer.deinit();
+
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
+
+    const text_cell = opt_buffer.get(0, 0).?;
+    const trailing_cell = opt_buffer.get(4, 0).?;
+    const blank_row_cell = opt_buffer.get(0, 1).?;
+
+    try std.testing.expectEqual(@as(u32, 'h'), text_cell.char);
+    try std.testing.expectEqual(@as(u32, 32), trailing_cell.char);
+    try std.testing.expectEqual(@as(u32, 32), blank_row_cell.char);
+    try std.testing.expectEqual(ansi.ColorIntent.indexed, ansi.intent(text_cell.bg));
+    try std.testing.expectEqual(ansi.ColorIntent.indexed, ansi.intent(trailing_cell.bg));
+    try std.testing.expectEqual(ansi.ColorIntent.indexed, ansi.intent(blank_row_cell.bg));
+    try std.testing.expectEqual(@as(u8, 254), ansi.slot(text_cell.bg));
+    try std.testing.expectEqual(@as(u8, 255), ansi.alpha(text_cell.bg));
+    try std.testing.expectEqual(@as(u8, 255), ansi.alpha(blank_row_cell.bg));
 }
 
 test "EditorView - tab indicator set and get" {
@@ -2858,10 +2944,10 @@ test "EditorView - tab indicator set and get" {
     try std.testing.expect(ev.getTabIndicatorColor() == null);
 
     ev.setTabIndicator('·');
-    ev.setTabIndicatorColor(.{ 0.5, 0.5, 0.5, 1.0 });
+    ev.setTabIndicatorColor(ansi.rgbaFromFloats(0.5, 0.5, 0.5, 1.0));
 
     try std.testing.expectEqual(@as(u32, '·'), ev.getTabIndicator().?);
-    try std.testing.expectEqual(@as(f32, 0.5), ev.getTabIndicatorColor().?[0]);
+    try std.testing.expectEqual(@as(u8, 128), ansi.red(ev.getTabIndicatorColor().?));
 }
 
 test "EditorView - tab indicator renders in buffer" {
@@ -2880,7 +2966,7 @@ test "EditorView - tab indicator renders in buffer" {
     try eb.insertText("A\tB");
 
     ev.setTabIndicator('→');
-    ev.setTabIndicatorColor(.{ 0.3, 0.3, 0.3, 1.0 });
+    ev.setTabIndicatorColor(ansi.rgbaFromFloats(0.3, 0.3, 0.3, 1.0));
 
     var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
         std.testing.allocator,
@@ -2890,8 +2976,8 @@ test "EditorView - tab indicator renders in buffer" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawEditorView(ev, 0, 0);
+    opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    opt_buffer.drawEditorView(ev, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0);
     try std.testing.expect(cell_0 != null);
@@ -2900,7 +2986,7 @@ test "EditorView - tab indicator renders in buffer" {
     const cell_1 = opt_buffer.get(1, 0);
     try std.testing.expect(cell_1 != null);
     try std.testing.expectEqual(@as(u32, '→'), cell_1.?.char);
-    try std.testing.expectEqual(@as(f32, 0.3), cell_1.?.fg[0]);
+    try std.testing.expectEqual(@as(u8, 77), ansi.red(cell_1.?.fg));
 
     const cell_2 = opt_buffer.get(2, 0);
     try std.testing.expect(cell_2 != null);

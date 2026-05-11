@@ -91,7 +91,7 @@ test "encodeUnicode - cleanup on mid-operation failure" {
 
     const simulateEncodeUnicode = struct {
         fn run(pool: *GraphemePool, should_fail: bool) SimulateResult {
-            var result = SimulateResult{
+            var result: SimulateResult = .{
                 .success = false,
                 .captured_ids = undefined,
                 .captured_count = 0,

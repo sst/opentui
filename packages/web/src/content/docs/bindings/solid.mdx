@@ -2,6 +2,9 @@
 title: Solid.js
 description: Build terminal UIs with Solid.js and OpenTUI
 order: 1
+skill:
+  entry: true
+  intents: [solid, jsx, signals, hooks, keyboard, animation, testing]
 ---
 
 # Solid.js bindings
@@ -145,6 +148,44 @@ Returns the current component catalogue that powers JSX tag lookup.
 
 For plugin slots, see [Plugin Slots overview](/docs/plugins/slots) and [Solid slots](/docs/plugins/solid).
 
+## Scrollback writers
+
+In [`split-footer`](/docs/core-concepts/renderer#split-footer) mode with `externalOutputMode: "capture-stdout"`, the Solid binding provides helpers that append JSX-rendered output above the footer. They wrap [`renderer.writeToScrollback`](/docs/core-concepts/renderer#writing-to-scrollback) so you can write scrollback content with signals and components.
+
+### `writeSolidToScrollback(renderer, node, options?)`
+
+Render a JSX node once and append it as a scrollback commit.
+
+```tsx
+import { writeSolidToScrollback } from "@opentui/solid"
+
+writeSolidToScrollback(renderer, () => <text fg="#8BD5CA">api responded in 12ms</text>)
+```
+
+### `createScrollbackWriter(node, options?)`
+
+If you need to pass the same JSX rendering to multiple `writeToScrollback` calls (or hold onto the writer inside your own code), use the lower-level factory:
+
+```tsx
+import { createScrollbackWriter } from "@opentui/solid"
+
+const writer = createScrollbackWriter(() => <text>logged at {new Date().toISOString()}</text>, { startOnNewLine: true })
+
+renderer.writeToScrollback(writer)
+```
+
+### Options
+
+| Option            | Type      | Default        | Description                                                              |
+| ----------------- | --------- | -------------- | ------------------------------------------------------------------------ |
+| `width`           | `number`  | renderer width | Override the snapshot width in columns                                   |
+| `height`          | `number`  | measured auto  | Override the snapshot height in rows (otherwise measured from layout)    |
+| `rowColumns`      | `number`  | snapshot width | Explicit last-row column count for tail tracking                         |
+| `startOnNewLine`  | `boolean` | `true`         | Insert a newline before this commit if the previous commit ended mid-row |
+| `trailingNewline` | `boolean` | -              | Append a newline after the final row                                     |
+
+The writer returns a `ScrollbackSnapshot` whose teardown disposes the inner Solid subtree after the snapshot renders. Use the core [`ScrollbackSurface`](/docs/core-concepts/renderer#writing-to-scrollback) APIs directly if you need streaming commits that re-render the same tree over time.
+
 ## Hooks
 
 ### `useRenderer()`
@@ -172,16 +213,18 @@ const App = () => {
 Subscribe to keyboard events.
 
 ```tsx
-import { useKeyboard } from "@opentui/solid"
+import { useKeyboard, useRenderer } from "@opentui/solid"
 
 const App = () => {
+  const renderer = useRenderer()
+
   useKeyboard((key) => {
     if (key.name === "escape") {
-      process.exit(0)
+      renderer.destroy()
     }
   })
 
-  return <text>Press ESC to exit</text>
+  return <text>Press ESC to close</text>
 }
 ```
 
@@ -227,6 +270,40 @@ const App = () => {
   return <text>Resize-aware component</text>
 }
 ```
+
+### `onFocus(callback)`
+
+Run side effects when the terminal window gains focus.
+
+```tsx
+import { onFocus } from "@opentui/solid"
+
+const App = () => {
+  onFocus(() => {
+    console.log("Terminal focused")
+  })
+
+  return <text>Switch away and back to trigger focus events</text>
+}
+```
+
+### `onBlur(callback)`
+
+Run side effects when the terminal window loses focus.
+
+```tsx
+import { onBlur } from "@opentui/solid"
+
+const App = () => {
+  onBlur(() => {
+    console.log("Terminal blurred")
+  })
+
+  return <text>Switch away and back to trigger blur events</text>
+}
+```
+
+These hooks listen for terminal focus-in/focus-out events when the terminal emulator supports them.
 
 ### `useTerminalDimensions()`
 
@@ -385,22 +462,23 @@ If that executable loads external plugins/modules at runtime, keep `import "@ope
 ## Example: counter
 
 ```tsx
-import { render, useKeyboard } from "@opentui/solid"
+import { render, useKeyboard, useRenderer } from "@opentui/solid"
 import { createSignal } from "solid-js"
 
 const App = () => {
   const [count, setCount] = createSignal(0)
+  const renderer = useRenderer()
 
   useKeyboard((key) => {
     if (key.name === "up") setCount((c) => c + 1)
     if (key.name === "down") setCount((c) => c - 1)
-    if (key.name === "escape") process.exit(0)
+    if (key.name === "escape") renderer.destroy()
   })
 
   return (
     <box border padding={2}>
       <text>Count: {count()}</text>
-      <text fg="#888">Up/Down to change, ESC to exit</text>
+      <text fg="#888">Up/Down to change, ESC to close</text>
     </box>
   )
 }
@@ -410,13 +488,13 @@ render(App)
 
 ## Differences from React bindings
 
-| Aspect             | Solid                                | React                                  |
-| ------------------ | ------------------------------------ | -------------------------------------- |
-| Render function    | `render(() => <App />)`              | `createRoot(renderer).render(<App />)` |
-| Component naming   | snake_case (`ascii_font`)            | kebab-case (`ascii-font`)              |
-| State              | `createSignal`                       | `useState`                             |
-| Effects            | `onMount`, `onCleanup`               | `useEffect`                            |
-| Resize hook        | `onResize(callback)`                 | `useOnResize(callback)`                |
-| Dimensions         | Returns signal: `dimensions().width` | Returns object: `dimensions.width`     |
-| Extra hooks        | `usePaste`, `useSelectionHandler`    | -                                      |
-| Special components | `Portal`, `Dynamic`                  | -                                      |
+| Aspect             | Solid                                                  | React                                  |
+| ------------------ | ------------------------------------------------------ | -------------------------------------- |
+| Render function    | `render(() => <App />)`                                | `createRoot(renderer).render(<App />)` |
+| Component naming   | snake_case (`ascii_font`)                              | kebab-case (`ascii-font`)              |
+| State              | `createSignal`                                         | `useState`                             |
+| Effects            | `onMount`, `onCleanup`                                 | `useEffect`                            |
+| Resize hook        | `onResize(callback)`                                   | `useOnResize(callback)`                |
+| Dimensions         | Returns signal: `dimensions().width`                   | Returns object: `dimensions.width`     |
+| Extra hooks        | `onFocus`, `onBlur`, `usePaste`, `useSelectionHandler` | -                                      |
+| Special components | `Portal`, `Dynamic`                                    | -                                      |

@@ -1,4 +1,5 @@
 const std = @import("std");
+const ansi = @import("../ansi.zig");
 const bench_utils = @import("../bench-utils.zig");
 const buffer = @import("../buffer.zig");
 const text_buffer = @import("../text-buffer.zig");
@@ -15,6 +16,12 @@ const BenchStats = bench_utils.BenchStats;
 const MemStat = bench_utils.MemStat;
 
 pub const benchName = "Buffer drawTextBuffer";
+
+const CLEAR_BG = ansi.rgbColor(0, 0, 0, 255);
+
+fn rgba(r: f32, g: f32, b: f32, a: f32) buffer.RGBA {
+    return ansi.rgbaFromFloats(r, g, b, a);
+}
 
 fn generateText(allocator: std.mem.Allocator, lines: u32, avg_line_len: u32) ![]u8 {
     var buf: std.ArrayListUnmanaged(u8) = .{};
@@ -38,7 +45,7 @@ fn generateText(allocator: std.mem.Allocator, lines: u32, avg_line_len: u32) ![]
         try buf.append(allocator, '\n');
     }
 
-    return try buf.toOwnedSlice(allocator);
+    return buf.toOwnedSlice(allocator);
 }
 
 fn generateManySmallChunks(allocator: std.mem.Allocator, chunks: u32) ![]u8 {
@@ -50,7 +57,7 @@ fn generateManySmallChunks(allocator: std.mem.Allocator, chunks: u32) ![]u8 {
         if (i % 20 == 19) try buf.append(allocator, '\n');
     }
 
-    return try buf.toOwnedSlice(allocator);
+    return buf.toOwnedSlice(allocator);
 }
 
 fn setupTextBuffer(
@@ -89,12 +96,12 @@ fn benchRenderColdCache(
     errdefer results.deinit(allocator);
 
     const name = "COLD: 120x40 render (500 lines, wrap=120, includes setup)";
-    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return try results.toOwnedSlice(allocator);
+    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return results.toOwnedSlice(allocator);
 
     const text = try generateText(allocator, 500, 100);
     defer allocator.free(text);
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
@@ -105,10 +112,10 @@ fn benchRenderColdCache(
         const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
         defer buf.deinit();
 
-        try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -122,7 +129,7 @@ fn benchRenderColdCache(
         break :blk mem_stat_slice;
     } else null;
 
-    try results.append(allocator, BenchResult{
+    try results.append(allocator, .{
         .name = name,
         .min_ns = stats.min_ns,
         .avg_ns = stats.avg(),
@@ -132,7 +139,7 @@ fn benchRenderColdCache(
         .mem_stats = mem_stats,
     });
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchWrapAndRender(
@@ -146,12 +153,12 @@ fn benchWrapAndRender(
     errdefer results.deinit(allocator);
 
     const name = "WRAP+RENDER: 120x40 render (500 lines, wrap=120)";
-    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return try results.toOwnedSlice(allocator);
+    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return results.toOwnedSlice(allocator);
 
     const text = try generateText(allocator, 500, 100);
     defer allocator.free(text);
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     var final_tb_mem: usize = 0;
     var final_view_mem: usize = 0;
     var final_buf_mem: usize = 0;
@@ -164,10 +171,10 @@ fn benchWrapAndRender(
         const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
         defer buf.deinit();
 
-        try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -185,7 +192,7 @@ fn benchWrapAndRender(
         break :blk mem_stat_slice;
     } else null;
 
-    try results.append(allocator, BenchResult{
+    try results.append(allocator, .{
         .name = name,
         .min_ns = stats.min_ns,
         .avg_ns = stats.avg(),
@@ -195,7 +202,7 @@ fn benchWrapAndRender(
         .mem_stats = mem_stats,
     });
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchRenderWarmCache(
@@ -212,7 +219,7 @@ fn benchRenderWarmCache(
     const hot_name = "HOT:  120x40 render (500 lines, reused buffer, pure render)";
     const run_warm = bench_utils.matchesBenchFilter(warm_name, bench_filter);
     const run_hot = bench_utils.matchesBenchFilter(hot_name, bench_filter);
-    if (!run_warm and !run_hot) return try results.toOwnedSlice(allocator);
+    if (!run_warm and !run_hot) return results.toOwnedSlice(allocator);
 
     const text = try generateText(allocator, 500, 100);
     defer allocator.free(text);
@@ -222,17 +229,17 @@ fn benchRenderWarmCache(
         defer tb.deinit();
         defer view.deinit();
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         var final_buf_mem: usize = 0;
 
         for (0..iterations) |i| {
             const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
             defer buf.deinit();
 
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
 
             if (i == iterations - 1 and show_mem) {
@@ -246,7 +253,7 @@ fn benchRenderWarmCache(
             break :blk mem_stat_slice;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = warm_name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -265,17 +272,17 @@ fn benchRenderWarmCache(
         const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
         defer buf.deinit();
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = hot_name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -286,7 +293,7 @@ fn benchRenderWarmCache(
         });
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchRenderSmallResolution(
@@ -303,7 +310,7 @@ fn benchRenderSmallResolution(
     const wrap_name = "80x24 render (100 lines, wrap=40)";
     const run_no_wrap = bench_utils.matchesBenchFilter(no_wrap_name, bench_filter);
     const run_wrap = bench_utils.matchesBenchFilter(wrap_name, bench_filter);
-    if (!run_no_wrap and !run_wrap) return try results.toOwnedSlice(allocator);
+    if (!run_no_wrap and !run_wrap) return results.toOwnedSlice(allocator);
 
     const text = try generateText(allocator, 100, 80);
     defer allocator.free(text);
@@ -316,14 +323,14 @@ fn benchRenderSmallResolution(
         const buf = try OptimizedBuffer.init(allocator, 80, 24, .{ .pool = pool });
         defer buf.deinit();
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         var final_buf_mem: usize = 0;
 
         for (0..iterations) |i| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
 
             if (i == iterations - 1 and show_mem) {
@@ -337,7 +344,7 @@ fn benchRenderSmallResolution(
             break :blk mem_stat_slice;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = no_wrap_name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -356,17 +363,17 @@ fn benchRenderSmallResolution(
         const buf = try OptimizedBuffer.init(allocator, 80, 24, .{ .pool = pool });
         defer buf.deinit();
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = wrap_name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -377,7 +384,7 @@ fn benchRenderSmallResolution(
         });
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchRenderMediumResolution(
@@ -391,7 +398,7 @@ fn benchRenderMediumResolution(
     errdefer results.deinit(allocator);
 
     const name = "200x60 render (1000 lines, wrap=200)";
-    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return try results.toOwnedSlice(allocator);
+    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return results.toOwnedSlice(allocator);
 
     const text = try generateText(allocator, 1000, 120);
     defer allocator.free(text);
@@ -403,14 +410,14 @@ fn benchRenderMediumResolution(
     const buf = try OptimizedBuffer.init(allocator, 200, 60, .{ .pool = pool });
     defer buf.deinit();
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
-        try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -424,7 +431,7 @@ fn benchRenderMediumResolution(
         break :blk mem_stat_slice;
     } else null;
 
-    try results.append(allocator, BenchResult{
+    try results.append(allocator, .{
         .name = name,
         .min_ns = stats.min_ns,
         .avg_ns = stats.avg(),
@@ -434,7 +441,7 @@ fn benchRenderMediumResolution(
         .mem_stats = mem_stats,
     });
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchRenderMassiveResolution(
@@ -448,7 +455,7 @@ fn benchRenderMassiveResolution(
     errdefer results.deinit(allocator);
 
     const name = "400x200 render (10k lines, wrap=400)";
-    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return try results.toOwnedSlice(allocator);
+    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return results.toOwnedSlice(allocator);
 
     const text = try generateText(allocator, 10000, 200);
     defer allocator.free(text);
@@ -460,14 +467,14 @@ fn benchRenderMassiveResolution(
     const buf = try OptimizedBuffer.init(allocator, 400, 200, .{ .pool = pool });
     defer buf.deinit();
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
-        try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -481,7 +488,7 @@ fn benchRenderMassiveResolution(
         break :blk mem_stat_slice;
     } else null;
 
-    try results.append(allocator, BenchResult{
+    try results.append(allocator, .{
         .name = name,
         .min_ns = stats.min_ns,
         .avg_ns = stats.avg(),
@@ -491,7 +498,7 @@ fn benchRenderMassiveResolution(
         .mem_stats = mem_stats,
     });
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchRenderMassiveLines(
@@ -505,7 +512,7 @@ fn benchRenderMassiveLines(
     errdefer results.deinit(allocator);
 
     const name = "120x40 render (50k lines, viewport first 40)";
-    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return try results.toOwnedSlice(allocator);
+    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return results.toOwnedSlice(allocator);
 
     const text = try generateText(allocator, 50000, 60);
     defer allocator.free(text);
@@ -517,14 +524,14 @@ fn benchRenderMassiveLines(
     const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
     defer buf.deinit();
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
-        try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -538,7 +545,7 @@ fn benchRenderMassiveLines(
         break :blk mem_stat_slice;
     } else null;
 
-    try results.append(allocator, BenchResult{
+    try results.append(allocator, .{
         .name = name,
         .min_ns = stats.min_ns,
         .avg_ns = stats.avg(),
@@ -548,7 +555,7 @@ fn benchRenderMassiveLines(
         .mem_stats = mem_stats,
     });
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchRenderOneMassiveLine(
@@ -562,7 +569,7 @@ fn benchRenderOneMassiveLine(
     errdefer results.deinit(allocator);
 
     const name = "80x30 render (1 massive line 500KB, wrap=80)";
-    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return try results.toOwnedSlice(allocator);
+    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return results.toOwnedSlice(allocator);
 
     var buf_builder: std.ArrayListUnmanaged(u8) = .{};
     defer buf_builder.deinit(allocator);
@@ -580,14 +587,14 @@ fn benchRenderOneMassiveLine(
     const buf = try OptimizedBuffer.init(allocator, 80, 30, .{ .pool = pool });
     defer buf.deinit();
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
-        try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -601,7 +608,7 @@ fn benchRenderOneMassiveLine(
         break :blk mem_stat_slice;
     } else null;
 
-    try results.append(allocator, BenchResult{
+    try results.append(allocator, .{
         .name = name,
         .min_ns = stats.min_ns,
         .avg_ns = stats.avg(),
@@ -611,7 +618,7 @@ fn benchRenderOneMassiveLine(
         .mem_stats = mem_stats,
     });
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchRenderManySmallChunks(
@@ -625,7 +632,7 @@ fn benchRenderManySmallChunks(
     errdefer results.deinit(allocator);
 
     const name = "80x30 render (10k tiny chunks)";
-    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return try results.toOwnedSlice(allocator);
+    if (!bench_utils.matchesBenchFilter(name, bench_filter)) return results.toOwnedSlice(allocator);
 
     const text = try generateManySmallChunks(allocator, 10000);
     defer allocator.free(text);
@@ -637,14 +644,14 @@ fn benchRenderManySmallChunks(
     const buf = try OptimizedBuffer.init(allocator, 80, 30, .{ .pool = pool });
     defer buf.deinit();
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     var final_buf_mem: usize = 0;
 
     for (0..iterations) |i| {
-        try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
-        try buf.drawTextBuffer(view, 0, 0);
+        buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
@@ -658,7 +665,7 @@ fn benchRenderManySmallChunks(
         break :blk mem_stat_slice;
     } else null;
 
-    try results.append(allocator, BenchResult{
+    try results.append(allocator, .{
         .name = name,
         .min_ns = stats.min_ns,
         .avg_ns = stats.avg(),
@@ -668,7 +675,7 @@ fn benchRenderManySmallChunks(
         .mem_stats = mem_stats,
     });
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchRenderWithViewport(
@@ -686,7 +693,7 @@ fn benchRenderWithViewport(
     const no_viewport_name = "100x30 render (10k lines, no viewport)";
     const run_viewport = bench_utils.matchesBenchFilter(viewport_name, bench_filter);
     const run_no_viewport = bench_utils.matchesBenchFilter(no_viewport_name, bench_filter);
-    if (!run_viewport and !run_no_viewport) return try results.toOwnedSlice(allocator);
+    if (!run_viewport and !run_no_viewport) return results.toOwnedSlice(allocator);
 
     const text = try generateText(allocator, 10000, 100);
     defer allocator.free(text);
@@ -701,17 +708,17 @@ fn benchRenderWithViewport(
         const buf = try OptimizedBuffer.init(allocator, 100, 30, .{ .pool = pool });
         defer buf.deinit();
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = viewport_name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -730,17 +737,17 @@ fn benchRenderWithViewport(
         const buf = try OptimizedBuffer.init(allocator, 100, 30, .{ .pool = pool });
         defer buf.deinit();
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = no_viewport_name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -751,7 +758,7 @@ fn benchRenderWithViewport(
         });
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchRenderWithSelection(
@@ -769,7 +776,7 @@ fn benchRenderWithSelection(
     const no_selection_name = "120x40 render (500 lines, no selection)";
     const run_selection = bench_utils.matchesBenchFilter(selection_name, bench_filter);
     const run_no_selection = bench_utils.matchesBenchFilter(no_selection_name, bench_filter);
-    if (!run_selection and !run_no_selection) return try results.toOwnedSlice(allocator);
+    if (!run_selection and !run_no_selection) return results.toOwnedSlice(allocator);
 
     const text = try generateText(allocator, 500, 100);
     defer allocator.free(text);
@@ -779,22 +786,22 @@ fn benchRenderWithSelection(
         defer tb.deinit();
         defer view.deinit();
 
-        view.setSelection(500, 1500, .{ 0.2, 0.4, 0.8, 1.0 }, .{ 1.0, 1.0, 1.0, 1.0 });
+        view.setSelection(500, 1500, rgba(0.2, 0.4, 0.8, 1.0), rgba(1.0, 1.0, 1.0, 1.0));
 
         const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
         defer buf.deinit();
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = selection_name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -813,17 +820,17 @@ fn benchRenderWithSelection(
         const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
         defer buf.deinit();
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
 
         for (0..iterations) |_| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
-            try buf.drawTextBuffer(view, 0, 0);
+            buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = no_selection_name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -834,7 +841,7 @@ fn benchRenderWithSelection(
         });
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 pub fn run(
@@ -883,5 +890,5 @@ pub fn run(
     const selection_results = try benchRenderWithSelection(allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, selection_results);
 
-    return try all_results.toOwnedSlice(allocator);
+    return all_results.toOwnedSlice(allocator);
 }

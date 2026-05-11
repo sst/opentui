@@ -1,0 +1,38 @@
+{
+  "name": "@opentui/examples",
+  "version": "0.2.6",
+  "private": true,
+  "description": "OpenTUI examples and standalone examples executable",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anomalyco/opentui",
+    "directory": "packages/examples"
+  },
+  "type": "module",
+  "module": "src/index.ts",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "build": "bun scripts/build.ts"
+  },
+  "dependencies": {
+    "@dimforge/rapier2d-simd-compat": "^0.17.3",
+    "@opentui/core": "workspace:*",
+    "@opentui/keymap": "workspace:*",
+    "@opentui/three": "workspace:*",
+    "bun-webgpu": "0.1.7",
+    "planck": "^1.4.2",
+    "three": "0.177.0",
+    "web-tree-sitter": "0.25.10"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^24.0.0",
+    "@types/three": "0.177.0",
+    "typescript": "^5"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  }
+}

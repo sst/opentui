@@ -236,8 +236,9 @@ describe("OptimizedBuffer", () => {
       buffer.drawChar(65, 0, 0, fg, bg) // 'A'
 
       const fgBuffer = buffer.buffers.fg
-      // Should have blended the color
-      expect(fgBuffer[0]).toBeLessThan(1.0)
+      // Source-over into a transparent destination keeps the source channel and alpha.
+      expect(fgBuffer[0] & 0xff).toBe(255)
+      expect(fgBuffer[3] & 0xff).toBe(128)
     })
 
     it("should blend semi-transparent background", () => {
@@ -250,7 +251,7 @@ describe("OptimizedBuffer", () => {
 
       const bgBuffer = buffer.buffers.bg
       // Background should reflect the alpha
-      expect(bgBuffer[3]).toBeLessThan(1.0)
+      expect(bgBuffer[3] & 0xff).toBeLessThan(255)
     })
   })
 

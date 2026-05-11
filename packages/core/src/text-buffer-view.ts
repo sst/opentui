@@ -1,6 +1,6 @@
 import { RGBA } from "./lib/RGBA.js"
 import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig.js"
-import { type Pointer } from "bun:ffi"
+import { type Pointer } from "./platform/ffi.js"
 import type { TextBuffer } from "./text-buffer.js"
 
 export class TextBufferView {
@@ -109,6 +109,11 @@ export class TextBufferView {
   public setWrapMode(mode: "none" | "char" | "word"): void {
     this.guard()
     this.lib.textBufferViewSetWrapMode(this.viewPtr, mode)
+  }
+
+  public setFirstLineOffset(offset: number): void {
+    this.guard()
+    this.lib.textBufferViewSetFirstLineOffset(this.viewPtr, offset)
   }
 
   public setViewportSize(width: number, height: number): void {

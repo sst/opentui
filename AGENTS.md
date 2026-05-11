@@ -46,7 +46,7 @@ FROM THE `packages/core` DIRECTORY.
 ## Typescript Code Style
 
 - **Runtime**: Bun with TypeScript
-- **Formatting**: Prettier (semi: false, printWidth: 120)
+- **Formatting**: oxfmt (semi: false, printWidth: 120)
 - **Imports**: Use explicit imports, group by: built-ins, external deps, internal modules
 - **Types**: Strict TypeScript, use interfaces for options/configs, explicit return types for public APIs
 - **Naming**: camelCase for variables/functions, PascalCase for classes/interfaces, UPPER_CASE for constants

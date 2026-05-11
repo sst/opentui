@@ -1,9 +1,12 @@
-const std = @import("std");
+const ansi = @import("ansi.zig");
 
-/// RGBA color type (4 f32 values)
-pub const RGBA = @Vector(4, f32);
+/// Re-exported from ansi.zig so modules that only need the type don't depend
+/// on the full ANSI module.
+pub const RGBA = ansi.RGBA;
 
-/// Convert a pointer to 4 f32 values into an RGBA color
-pub fn f32PtrToRGBA(ptr: [*]const f32) RGBA {
+/// Read 4 consecutive u16 values from a raw pointer into an RGBA color.
+/// Used to unpack colors from the FFI boundary where TypeScript passes
+/// packed u16 arrays (see StyledChunk.fg_ptr / bg_ptr).
+pub fn ptrToRGBA(ptr: [*]const u16) RGBA {
     return .{ ptr[0], ptr[1], ptr[2], ptr[3] };
 }

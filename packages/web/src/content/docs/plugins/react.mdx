@@ -31,6 +31,31 @@ const mod = await import(pathToFileURL(pluginPath).href)
 registry.register(mod.loadExternalPlugin())
 ```
 
+If plugins need additional host-resolved modules, configure runtime support before the side-effect import is loaded:
+
+```ts
+import { ensureRuntimePluginSupport } from "@opentui/react/runtime-plugin-support/configure"
+
+ensureRuntimePluginSupport({
+  additional: {
+    "my-runtime-module": { marker: "ok" },
+  },
+})
+```
+
+First-party packages expose side-effect-free runtime module maps. For plugins that import `@opentui/three`, install `@opentui/three` in the host app and pass its runtime modules explicitly:
+
+```ts
+import { runtimeModules as threeRuntimeModules } from "@opentui/three/runtime-modules"
+import { ensureRuntimePluginSupport } from "@opentui/react/runtime-plugin-support/configure"
+
+ensureRuntimePluginSupport({
+  additional: threeRuntimeModules,
+})
+```
+
+The side-effect import and configurable entrypoint install the same runtime plugin. Late additions throw with a clear error instead of being ignored.
+
 ## What React adds
 
 - `createReactSlotRegistry(renderer, context, options?)` — create a registry typed for `ReactNode`. Accepts the same [`SlotRegistryOptions`](/docs/plugins/slots#registry-options) as `createSlotRegistry`.
@@ -38,6 +63,7 @@ registry.register(mod.loadExternalPlugin())
 - `createSlot(registry, options?)` — optional convenience helper that returns a registry-bound `<Slot />` component
 - `ReactPlugin<TSlots, TContext>` — convenience type alias for a plugin that returns `ReactNode`
 - `@opentui/react/runtime-plugin-support` — one-line runtime support for external plugin/module loading
+- `@opentui/react/runtime-plugin-support/configure` — configurable runtime support without import-time side effects
 
 Register plugins directly with `registry.register()` — no wrapper function is needed (unlike core's `registerCorePlugin`).
 

@@ -58,6 +58,7 @@ pub const LinkPool = struct {
 
         self.slots.deinit(self.allocator);
         self.free_list.deinit(self.allocator);
+        self.* = undefined;
     }
 
     fn grow(self: *LinkPool) LinkPoolError!void {
@@ -165,7 +166,7 @@ pub const LinkPool = struct {
         const data_ptr = @as([*]u8, @ptrCast(p)) + @sizeOf(SlotHeader);
         @memcpy(data_ptr[0..url.len], url);
 
-        return try packId(slot_index, new_generation);
+        return packId(slot_index, new_generation);
     }
 
     pub fn incref(self: *LinkPool, id: IdPayload) LinkPoolError!void {
@@ -271,6 +272,7 @@ pub const LinkTracker = struct {
     pub fn deinit(self: *LinkTracker) void {
         self.decRefAll();
         self.used_ids.deinit();
+        self.* = undefined;
     }
 
     pub fn clear(self: *LinkTracker) void {

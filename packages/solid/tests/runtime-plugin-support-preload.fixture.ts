@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import * as coreRuntime from "@opentui/core"
 import * as solidJsRuntime from "solid-js"
-import * as solidRuntime from "../index"
+import * as solidRuntime from "../index.js"
 
 type FixtureState = typeof globalThis & {
   __solidRuntimeHost__?: {
@@ -48,7 +48,7 @@ state.__solidRuntimeHost__ = {
 }
 
 try {
-  await import("../scripts/runtime-plugin-support")
+  await import("../scripts/runtime-plugin-support.js")
   await import(entryPath)
 } finally {
   delete state.__solidRuntimeHost__

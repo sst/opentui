@@ -61,7 +61,7 @@ fn createRope(allocator: std.mem.Allocator, text_count: u32, marker_every: u32) 
         }
     }
 
-    return try RopeType.from_slice(allocator, tokens.items);
+    return RopeType.from_slice(allocator, tokens.items);
 }
 
 fn benchRebuildMarkerIndex(
@@ -76,7 +76,7 @@ fn benchRebuildMarkerIndex(
     {
         const name = "Create rope with markers: 1k tokens, marker every 10 (~100 markers)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -87,7 +87,7 @@ fn benchRebuildMarkerIndex(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -103,7 +103,7 @@ fn benchRebuildMarkerIndex(
     {
         const name = "Rebuild index: 1k tokens, marker every 100 (~10 markers)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -114,7 +114,7 @@ fn benchRebuildMarkerIndex(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -130,7 +130,7 @@ fn benchRebuildMarkerIndex(
     {
         const name = "Rebuild index: 10k tokens, marker every 10 (~1k markers)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -141,7 +141,7 @@ fn benchRebuildMarkerIndex(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -157,7 +157,7 @@ fn benchRebuildMarkerIndex(
     {
         const name = "Rebuild index: 10k tokens, marker every 100 (~100 markers)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -168,7 +168,7 @@ fn benchRebuildMarkerIndex(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -184,7 +184,7 @@ fn benchRebuildMarkerIndex(
     {
         const name = "Rebuild index: 50k tokens, marker every 50 (~1k markers, text-editor-like)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -195,7 +195,7 @@ fn benchRebuildMarkerIndex(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -211,7 +211,7 @@ fn benchRebuildMarkerIndex(
     {
         const name = "Rebuild index: 100k tokens, marker every 200 (~500 markers)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -222,7 +222,7 @@ fn benchRebuildMarkerIndex(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -234,7 +234,7 @@ fn benchRebuildMarkerIndex(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchMarkerLookup(
@@ -249,7 +249,7 @@ fn benchMarkerLookup(
     {
         const name = "O(1) lookup: 100 random marker accesses, ~100 markers";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -264,7 +264,7 @@ fn benchMarkerLookup(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -280,7 +280,7 @@ fn benchMarkerLookup(
     {
         const name = "O(1) lookup: 1k random marker accesses, ~200 markers";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -295,7 +295,7 @@ fn benchMarkerLookup(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -311,7 +311,7 @@ fn benchMarkerLookup(
     {
         const name = "O(1) lookup: 10k random line jumps, ~1k lines (text-editor)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -331,7 +331,7 @@ fn benchMarkerLookup(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -347,7 +347,7 @@ fn benchMarkerLookup(
     {
         const name = "O(1) lookup: Sequential access to all ~200 markers";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -363,7 +363,7 @@ fn benchMarkerLookup(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -375,7 +375,7 @@ fn benchMarkerLookup(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchMarkerCount(
@@ -390,7 +390,7 @@ fn benchMarkerCount(
     {
         const name = "markerCount: 100k calls (should be ~O(1))";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -405,7 +405,7 @@ fn benchMarkerCount(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -417,7 +417,7 @@ fn benchMarkerCount(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchDepthVsPerformance(
@@ -432,7 +432,7 @@ fn benchDepthVsPerformance(
     {
         const name = "Create BALANCED tree with markers: 10k tokens, ~200 markers";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -443,7 +443,7 @@ fn benchDepthVsPerformance(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -459,7 +459,7 @@ fn benchDepthVsPerformance(
     {
         const name = "Rebuild on UNBALANCED tree: 10k tokens, ~200 markers";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -478,7 +478,7 @@ fn benchDepthVsPerformance(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -490,7 +490,7 @@ fn benchDepthVsPerformance(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchEditThenRebuild(
@@ -505,7 +505,7 @@ fn benchEditThenRebuild(
     {
         const name = "Edit workflow: 3 inserts + rebuild (~200 markers)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -528,7 +528,7 @@ fn benchEditThenRebuild(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -544,7 +544,7 @@ fn benchEditThenRebuild(
     {
         const name = "Insert newline: insert marker + rebuild (~200 markers)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -559,7 +559,7 @@ fn benchEditThenRebuild(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -575,7 +575,7 @@ fn benchEditThenRebuild(
     {
         const name = "Delete line: remove marker + rebuild (~200 markers)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -591,7 +591,7 @@ fn benchEditThenRebuild(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -603,7 +603,7 @@ fn benchEditThenRebuild(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchMemoryUsage(
@@ -618,7 +618,7 @@ fn benchMemoryUsage(
     {
         const name = "Memory: 50k tokens WITHOUT marker index";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -631,7 +631,7 @@ fn benchMemoryUsage(
                 stats.record(elapsed);
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -646,7 +646,7 @@ fn benchMemoryUsage(
     {
         const name = "Memory: 50k tokens WITH marker index (~1k markers)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -658,7 +658,7 @@ fn benchMemoryUsage(
                 stats.record(elapsed);
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -670,7 +670,7 @@ fn benchMemoryUsage(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 pub fn run(
@@ -709,5 +709,5 @@ pub fn run(
     const memory_results = try benchMemoryUsage(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, memory_results);
 
-    return try all_results.toOwnedSlice(allocator);
+    return all_results.toOwnedSlice(allocator);
 }

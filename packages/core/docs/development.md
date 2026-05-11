@@ -24,13 +24,16 @@ bun run build
 ## Running Examples
 
 ```bash
-cd packages/core
-bun run src/examples/index.ts
+cd packages/examples
+bun run dev
 ```
 
 ## Testing
 
 ```bash
+# Build native dependencies first
+bun run build
+
 # TypeScript tests
 cd packages/core
 bun test

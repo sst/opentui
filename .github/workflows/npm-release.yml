@@ -24,7 +24,7 @@ jobs:
           bun-version: latest
 
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
 
@@ -57,8 +57,10 @@ jobs:
           cd packages/core
           bun run build:native --all
           bun run build:lib
+          cd ../three && bun run build
           cd ../solid && bun run build
           cd ../react && bun run build
+          cd ../keymap && bun run build
 
       - name: Publish packages
         run: bun run publish

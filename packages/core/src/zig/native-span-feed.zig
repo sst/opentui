@@ -399,7 +399,7 @@ pub const Stream = struct {
     pub fn commitLocked(self: *Stream, notify: *bool) StreamError!void {
         if (self.pending_len == 0) return;
         const chunk = self.chunks.items[self.pending_chunk_index];
-        const info = SpanInfo{
+        const info: SpanInfo = .{
             .chunk_ptr = @intFromPtr(chunk.ptr),
             .offset = @intCast(self.pending_offset),
             .len = @intCast(self.pending_len),
@@ -471,7 +471,7 @@ pub const Stream = struct {
 
         const mem = self.allocator.alloc(u8, chunk_size) catch return StreamError.OutOfMemory;
         errdefer self.allocator.free(mem);
-        const chunk = Chunk{ .ptr = mem.ptr, .len = chunk_size };
+        const chunk: Chunk = .{ .ptr = mem.ptr, .len = chunk_size };
         self.chunks.append(self.allocator, chunk) catch return StreamError.OutOfMemory;
         self.stats.chunks = @intCast(self.chunks.items.len);
         if (self.attached and self.callback != null) {

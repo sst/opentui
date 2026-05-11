@@ -51,7 +51,7 @@ pub fn walkLines(
         else
             line_start_weight - i;
 
-        callback(ctx, LineInfo{
+        callback(ctx, .{
             .line_idx = i,
             .col_offset = col_offset,
             .width_cols = width_cols,
@@ -91,7 +91,7 @@ pub fn walkLinesAndSegments(
                 walk_ctx.chunk_idx_in_line += 1;
                 walk_ctx.line_width_cols += chunk.width;
             } else if (seg.isBreak()) {
-                walk_ctx.line_callback(walk_ctx.user_ctx, LineInfo{
+                walk_ctx.line_callback(walk_ctx.user_ctx, .{
                     .line_idx = walk_ctx.current_line_idx,
                     .col_offset = walk_ctx.current_col_offset,
                     .width_cols = walk_ctx.line_width_cols,
@@ -111,7 +111,7 @@ pub fn walkLinesAndSegments(
         }
     };
 
-    var walk_ctx = WalkContext{
+    var walk_ctx: WalkContext = .{
         .user_ctx = ctx,
         .seg_callback = segment_callback,
         .line_callback = line_end_callback,
@@ -124,7 +124,7 @@ pub fn walkLinesAndSegments(
     const has_content_after_break = walk_ctx.line_start_seg < walk_ctx.current_seg_idx;
 
     if (has_content_after_break or had_breaks) {
-        line_end_callback(ctx, LineInfo{
+        line_end_callback(ctx, .{
             .line_idx = walk_ctx.current_line_idx,
             .col_offset = walk_ctx.current_col_offset,
             .width_cols = walk_ctx.line_width_cols,
@@ -198,7 +198,7 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
             // Offset belongs to this line if it's before the next line starts
             // (newline offset at end of non-final line maps to col==line_width)
             if (offset < next_line_start_weight or (offset == total_weight and mid + 1 == linestart_count)) {
-                return Coords{
+                return .{
                     .row = mid,
                     .col = offset - line_start_weight,
                 };
@@ -481,7 +481,7 @@ pub fn extractTextBetweenOffsets(
         }
     };
 
-    var ctx = Context{
+    var ctx: Context = .{
         .rope = rope,
         .mem_registry = mem_registry,
         .tab_width = tab_width,

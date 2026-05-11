@@ -1,9 +1,9 @@
-import { toArrayBuffer, type Pointer } from "bun:ffi"
-import { resolveRenderLib } from "./zig"
-import { SpanInfoStruct } from "./zig-structs"
-import type { GrowthPolicy, NativeSpanFeedOptions, NativeSpanFeedStats } from "./zig-structs"
+import { toArrayBuffer, type Pointer } from "./platform/ffi.js"
+import { resolveRenderLib } from "./zig.js"
+import { SpanInfoStruct } from "./zig-structs.js"
+import type { GrowthPolicy, NativeSpanFeedOptions, NativeSpanFeedStats } from "./zig-structs.js"
 
-export type { GrowthPolicy, NativeSpanFeedOptions, NativeSpanFeedStats } from "./zig-structs"
+export type { GrowthPolicy, NativeSpanFeedOptions, NativeSpanFeedStats } from "./zig-structs.js"
 
 const enum EventId {
   ChunkAdded = 2,
@@ -11,16 +11,6 @@ const enum EventId {
   Error = 6,
   DataAvailable = 7,
   StateBuffer = 8,
-}
-
-function toPointer(value: number | bigint): Pointer {
-  if (typeof value === "bigint") {
-    if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new Error("Pointer exceeds safe integer range")
-    }
-    return Number(value) as Pointer
-  }
-  return value as Pointer
 }
 
 function toNumber(value: number | bigint): number {
@@ -52,16 +42,15 @@ export class NativeSpanFeed {
     return stream
   }
 
-  static attach(streamPtr: bigint | number, _options?: NativeSpanFeedOptions): NativeSpanFeed {
+  static attach(streamPtr: Pointer, _options?: NativeSpanFeedOptions): NativeSpanFeed {
     const lib = resolveRenderLib()
-    const ptr = toPointer(streamPtr)
-    const stream = new NativeSpanFeed(ptr)
+    const stream = new NativeSpanFeed(streamPtr)
 
-    lib.registerNativeSpanFeedStream(ptr, stream.eventHandler)
+    lib.registerNativeSpanFeedStream(streamPtr, stream.eventHandler)
 
-    const status = lib.attachNativeSpanFeed(ptr)
+    const status = lib.attachNativeSpanFeed(streamPtr)
     if (status !== 0) {
-      lib.unregisterNativeSpanFeedStream(ptr)
+      lib.unregisterNativeSpanFeedStream(streamPtr)
       throw new Error(`Failed to attach stream: ${status}`)
     }
 
@@ -200,7 +189,7 @@ export class NativeSpanFeed {
           break
         }
         case EventId.Error: {
-          const code = arg0
+          const code = toNumber(arg0)
           for (const handler of this.errorHandlers) handler(code)
           break
         }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import { resolveExternalPluginCandidates } from "./external-plugin-path"
+import { resolveExternalPluginCandidates } from "./external-plugin-path.js"
 
 describe("external plugin path", () => {
   it("prefers the dist sibling plugin before the source plugin", () => {

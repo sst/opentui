@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { act, type ReactNode } from "react"
-import { createReactSlotRegistry, createSlot, Slot, type ReactPlugin } from "../src/plugins/slot"
-import { useKeyboard } from "../src/hooks/use-keyboard"
-import { createRoot, type Root } from "../src/reconciler/renderer"
+import { createReactSlotRegistry, createSlot, Slot, type ReactPlugin } from "../src/plugins/slot.js"
+import { useKeyboard } from "../src/hooks/use-keyboard.js"
+import { createRoot, type Root } from "../src/reconciler/renderer.js"
 
 interface AppSlots {
   statusbar: { user: string }
@@ -30,27 +30,27 @@ async function setupSlotTest(
   let root: Root | null = null
   setIsReactActEnvironment(true)
 
-  const setup = await createTestRenderer({
-    ...options,
-    onDestroy() {
-      act(() => {
-        if (root) {
-          root.unmount()
-          root = null
-        }
-      })
-      options.onDestroy?.()
-      setIsReactActEnvironment(false)
-    },
-  })
+  let setup!: Awaited<ReturnType<typeof createTestRenderer>>
+  let registry!: ReturnType<typeof createReactSlotRegistry<AppSlots>>
 
-  const registry = createReactSlotRegistry<AppSlots>(setup.renderer, hostContext)
-  root = createRoot(setup.renderer)
+  await act(async () => {
+    setup = await createTestRenderer({
+      ...options,
+      onDestroy() {
+        act(() => {
+          if (root) {
+            root.unmount()
+            root = null
+          }
+        })
+        options.onDestroy?.()
+        setIsReactActEnvironment(false)
+      },
+    })
 
-  act(() => {
-    if (root) {
-      root.render(createNode(registry))
-    }
+    registry = createReactSlotRegistry<AppSlots>(setup.renderer, hostContext)
+    root = createRoot(setup.renderer)
+    root.render(createNode(registry))
   })
 
   return { setup, registry }
@@ -59,13 +59,17 @@ async function setupSlotTest(
 describe("React Slot System", () => {
   beforeEach(() => {
     if (testSetup) {
-      testSetup.renderer.destroy()
+      act(() => {
+        testSetup.renderer.destroy()
+      })
     }
   })
 
   afterEach(() => {
     if (testSetup) {
-      testSetup.renderer.destroy()
+      act(() => {
+        testSetup.renderer.destroy()
+      })
     }
   })
 

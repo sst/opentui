@@ -4,10 +4,8 @@ const tb = @import("text-buffer.zig");
 const tbv = @import("text-buffer-view.zig");
 const eb = @import("edit-buffer.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
-const gp = @import("grapheme.zig");
 const ss = @import("syntax-style.zig");
 const event_emitter = @import("event-emitter.zig");
-const logger = @import("logger.zig");
 
 const EditBuffer = eb.EditBuffer;
 
@@ -90,7 +88,7 @@ pub const EditorView = struct {
 
         edit_buffer.events.on(.cursorChanged, self.cursor_changed_listener) catch return EditorViewError.OutOfMemory;
 
-        text_buffer_view.setViewport(tbv.Viewport{
+        text_buffer_view.setViewport(.{
             .x = 0,
             .y = 0,
             .width = viewport_width,
@@ -101,6 +99,9 @@ pub const EditorView = struct {
     }
 
     pub fn deinit(self: *EditorView) void {
+        const global_allocator = self.global_allocator;
+        defer global_allocator.destroy(self);
+
         self.edit_buffer.events.off(.cursorChanged, self.cursor_changed_listener);
 
         if (self.placeholder_syntax_style) |style| {
@@ -112,7 +113,7 @@ pub const EditorView = struct {
         }
 
         self.text_buffer_view.deinit();
-        self.global_allocator.destroy(self);
+        self.* = undefined;
     }
 
     /// Set the viewport. If wrapping is enabled and viewport width differs from current wrap width,
@@ -234,7 +235,7 @@ pub const EditorView = struct {
         }
 
         if (new_offset_y != vp.y or new_offset_x != vp.x) {
-            self.text_buffer_view.setViewport(tbv.Viewport{
+            self.text_buffer_view.setViewport(.{
                 .x = new_offset_x,
                 .y = new_offset_y,
                 .width = vp.width,
@@ -312,7 +313,7 @@ pub const EditorView = struct {
         const changed = self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
 
         if (changed and updateCursor) {
-            self.updateCursorToSelectionFocus(focusX, focusY);
+            self.syncCursorToSelectionFocus();
         }
 
         return changed;
@@ -322,7 +323,7 @@ pub const EditorView = struct {
         const changed = self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
 
         if (changed and updateCursor) {
-            self.updateCursorToSelectionFocus(focusX, focusY);
+            self.syncCursorToSelectionFocus();
         }
 
         return changed;
@@ -334,7 +335,7 @@ pub const EditorView = struct {
 
     /// Updates the cursor position to match the selection focus position.
     /// Does NOT trigger viewport scrolling - TypeScript layer handles that.
-    fn updateCursorToSelectionFocus(self: *EditorView, _: i32, _: i32) void {
+    pub fn syncCursorToSelectionFocus(self: *EditorView) void {
         const selection = self.text_buffer_view.getSelection() orelse return;
 
         const focus_offset = if (self.text_buffer_view.selection_anchor_offset) |anchor| blk: {
@@ -393,7 +394,7 @@ pub const EditorView = struct {
         }
 
         if (vp.y > max_offset_y or new_offset_x != vp.x) {
-            self.text_buffer_view.setViewport(tbv.Viewport{
+            self.text_buffer_view.setViewport(.{
                 .x = new_offset_x,
                 .y = @min(vp.y, max_offset_y),
                 .width = vp.width,
@@ -446,7 +447,7 @@ pub const EditorView = struct {
         else
             vcursor.visual_col;
 
-        return VisualCursor{
+        return .{
             .visual_row = viewport_relative_row,
             .visual_col = viewport_relative_col,
             .logical_row = vcursor.logical_row,
@@ -471,7 +472,7 @@ pub const EditorView = struct {
         if (vlines.len == 0 or visual_row_idx >= vlines.len) {
             // Fallback for edge cases
             const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), clamped_row, clamped_col) orelse 0;
-            return VisualCursor{
+            return .{
                 .visual_row = 0,
                 .visual_col = 0,
                 .logical_row = clamped_row,
@@ -491,7 +492,7 @@ pub const EditorView = struct {
 
         const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), clamped_row, clamped_col) orelse 0;
 
-        return VisualCursor{
+        return .{
             .visual_row = visual_row_idx,
             .visual_col = visual_col,
             .logical_row = clamped_row,
@@ -515,7 +516,7 @@ pub const EditorView = struct {
 
         const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), logical_row, logical_col) orelse 0;
 
-        return VisualCursor{
+        return .{
             .visual_row = visual_row,
             .visual_col = clamped_visual_col,
             .logical_row = logical_row,
@@ -603,12 +604,12 @@ pub const EditorView = struct {
             return;
         };
 
-        const start_cursor = eb.Cursor{
+        const start_cursor: eb.Cursor = .{
             .row = start_coords.row,
             .col = start_coords.col,
             .desired_col = start_coords.col,
         };
-        const end_cursor = eb.Cursor{
+        const end_cursor: eb.Cursor = .{
             .row = end_coords.row,
             .col = end_coords.col,
             .desired_col = end_coords.col,
@@ -651,7 +652,7 @@ pub const EditorView = struct {
         if (vcursor.visual_row >= vlines.len) {
             // Fallback: return cursor at column 0 of current logical line
             const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), cursor.row, 0) orelse 0;
-            return VisualCursor{
+            return .{
                 .visual_row = vcursor.visual_row,
                 .visual_col = 0,
                 .logical_row = cursor.row,
@@ -665,7 +666,7 @@ pub const EditorView = struct {
         const logical_row = @as(u32, @intCast(vline.source_line));
         const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), logical_row, logical_col) orelse 0;
 
-        return VisualCursor{
+        return .{
             .visual_row = vcursor.visual_row,
             .visual_col = 0,
             .logical_row = logical_row,

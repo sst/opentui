@@ -709,7 +709,7 @@ describe("Textarea - Scroll Tests", () => {
         for (let y = editor.y; y < editor.y + editor.height; y++) {
           for (let x = editor.x; x < editor.x + editor.width; x++) {
             const bufferIdx = y * bufferWidth + x
-            const bgG = frame.buffers.bg[bufferIdx * 4 + 1]
+            const bgG = (frame.buffers.bg[bufferIdx * 4 + 1] & 0xff) / 255
             if (Math.abs(bgG - 1.0) < 0.01) {
               selectedCells++
             }

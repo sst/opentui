@@ -31,7 +31,7 @@ jobs:
           bun-version: latest
 
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
 
@@ -43,9 +43,13 @@ jobs:
           cd packages/core
           bun run build:native --all
           bun run build:lib
+          cd ../three
+          bun run build
           cd ../react
           bun run build
           cd ../solid
+          bun run build
+          cd ../keymap
           bun run build
 
       - name: Verify build outputs
@@ -69,8 +73,16 @@ jobs:
           echo "Verifying dist packages exist..."
           test -d packages/core/dist || (echo "❌ core dist missing!" && exit 1)
           test -f packages/core/dist/package.json || (echo "❌ core dist/package.json missing!" && exit 1)
+          test -d packages/three/dist || (echo "❌ three dist missing!" && exit 1)
+          test -f packages/three/dist/package.json || (echo "❌ three dist/package.json missing!" && exit 1)
+          test -d packages/react/dist || (echo "❌ react dist missing!" && exit 1)
+          test -f packages/react/dist/package.json || (echo "❌ react dist/package.json missing!" && exit 1)
+          test -d packages/solid/dist || (echo "❌ solid dist missing!" && exit 1)
+          test -f packages/solid/dist/package.json || (echo "❌ solid dist/package.json missing!" && exit 1)
+          test -d packages/keymap/dist || (echo "❌ keymap dist missing!" && exit 1)
+          test -f packages/keymap/dist/package.json || (echo "❌ keymap dist/package.json missing!" && exit 1)
 
-          echo "✅ All required build outputs verified (6 platforms)"
+          echo "✅ All required build outputs verified (6 native platforms, 5 package dists)"
 
       # Create separate zips for each platform's native binaries
       - name: Package native binaries - darwin-x64
@@ -150,11 +162,23 @@ jobs:
           cp -r packages/core/dist artifacts/npm-packages/core-dist
           test -f artifacts/npm-packages/core-dist/package.json || (echo "❌ core dist/package.json missing after copy!" && exit 1)
 
+          echo "Packaging three dist..."
+          cp -r packages/three/dist artifacts/npm-packages/three-dist
+          test -f artifacts/npm-packages/three-dist/package.json || (echo "❌ three dist/package.json missing after copy!" && exit 1)
+
           echo "Packaging core native packages..."
-          cp -r packages/core/node_modules/@opentui artifacts/npm-packages/core-native-packages
+          mkdir -p artifacts/npm-packages/core-native-packages
+          cp -r \
+            packages/core/node_modules/@opentui/core-darwin-x64 \
+            packages/core/node_modules/@opentui/core-darwin-arm64 \
+            packages/core/node_modules/@opentui/core-linux-x64 \
+            packages/core/node_modules/@opentui/core-linux-arm64 \
+            packages/core/node_modules/@opentui/core-win32-x64 \
+            packages/core/node_modules/@opentui/core-win32-arm64 \
+            artifacts/npm-packages/core-native-packages
 
           # Copy other package dists (optional - don't fail if missing)
-          echo "Packaging other packages..."
+          echo "Packaging remaining package dists..."
           if [ -d packages/react/dist ]; then
             cp -r packages/react/dist artifacts/npm-packages/react-dist
             echo "✅ React dist packaged"
@@ -167,6 +191,13 @@ jobs:
             echo "✅ Solid dist packaged"
           else
             echo "⚠️  Solid dist not found (skipping)"
+          fi
+
+          if [ -d packages/keymap/dist ]; then
+            cp -r packages/keymap/dist artifacts/npm-packages/keymap-dist
+            echo "✅ Keymap dist packaged"
+          else
+            echo "⚠️  Keymap dist not found (skipping)"
           fi
 
           cd artifacts

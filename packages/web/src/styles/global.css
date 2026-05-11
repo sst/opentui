@@ -1087,6 +1087,12 @@ pre {
   font-size: 13px;
 }
 
+.content h1 code,
+.content h2 code,
+.content h3 code {
+  font-size: inherit;
+}
+
 .content pre code {
   background: none;
   padding: 0;

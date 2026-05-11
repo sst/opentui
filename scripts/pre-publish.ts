@@ -37,6 +37,12 @@ const ALL_PACKAGES: PackageConfig[] = [
     distDir: join(rootDir, "packages", "core", "dist"),
   },
   {
+    name: "@opentui/three",
+    rootDir: join(rootDir, "packages", "three"),
+    distDir: join(rootDir, "packages", "three", "dist"),
+    requiresCore: true,
+  },
+  {
     name: "@opentui/react",
     rootDir: join(rootDir, "packages", "react"),
     distDir: join(rootDir, "packages", "react", "dist"),
@@ -46,6 +52,12 @@ const ALL_PACKAGES: PackageConfig[] = [
     name: "@opentui/solid",
     rootDir: join(rootDir, "packages", "solid"),
     distDir: join(rootDir, "packages", "solid", "dist"),
+    requiresCore: true,
+  },
+  {
+    name: "@opentui/keymap",
+    rootDir: join(rootDir, "packages", "keymap"),
+    distDir: join(rootDir, "packages", "keymap", "dist"),
     requiresCore: true,
   },
 ]
@@ -189,7 +201,7 @@ function validatePackage(config: PackageConfig): void {
     console.log(`SUCCESS: All optional dependencies versions match`)
   }
 
-  // For react/solid packages, check @opentui/core dependency version
+  // For packages that publish an @opentui/core dependency, check the version.
   if (config.requiresCore) {
     const coreDependencyVersion = distPackageJson.dependencies?.["@opentui/core"]
     if (coreDependencyVersion !== packageJson.version) {

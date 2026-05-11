@@ -1,7 +1,6 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
-const buffer = @import("../buffer.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 

@@ -30,7 +30,7 @@ fn verifyInvariants(rope: *const rope_mod.Rope(TestItem)) !void {
         }
     };
 
-    var ctx = Context{ .count = &walked_count };
+    var ctx: Context = .{ .count = &walked_count };
     try rope.walk(&ctx, Context.walker);
 
     try std.testing.expectEqual(count, walked_count);
@@ -186,7 +186,7 @@ test "Rope fuzz - stress test with many items" {
 
     const depth = rope.root.depth();
     const count = rope.count();
-    const max_expected_depth: u32 = @as(u32, @intFromFloat(@ceil(@log2(@as(f64, @floatFromInt(count)))) * 4.0));
+    const max_expected_depth: u32 = @intFromFloat(@ceil(@log2(@as(f64, @floatFromInt(count)))) * 4.0);
     try std.testing.expect(depth <= max_expected_depth);
 }
 

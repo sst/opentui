@@ -134,6 +134,13 @@ if (existsSync(join(rootDir, "scripts", "runtime-plugin-support.ts"))) {
   )
 }
 
+if (existsSync(join(rootDir, "scripts", "runtime-plugin-support-configure.ts"))) {
+  copyFileSync(
+    join(rootDir, "scripts", "runtime-plugin-support-configure.ts"),
+    join(distDir, "scripts", "runtime-plugin-support-configure.ts"),
+  )
+}
+
 const exports = {
   ".": {
     types: "./src/index.d.ts",
@@ -153,6 +160,10 @@ const exports = {
   "./runtime-plugin-support": {
     types: "./scripts/runtime-plugin-support.d.ts",
     import: "./scripts/runtime-plugin-support.ts",
+  },
+  "./runtime-plugin-support/configure": {
+    types: "./scripts/runtime-plugin-support-configure.d.ts",
+    import: "./scripts/runtime-plugin-support-configure.ts",
   },
   "./jsx-runtime": {
     types: "./jsx-runtime.d.ts",

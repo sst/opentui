@@ -1,4 +1,4 @@
-import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach, spyOn } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer.js"
 import { RendererControlState } from "../renderer.js"
 import { Renderable } from "../Renderable.js"
@@ -21,6 +21,25 @@ beforeEach(async () => {
 afterEach(() => {
   renderer.destroy()
 })
+
+async function expectStartedResumeForcesNextRender(screenMode: "main-screen" | "alternate-screen"): Promise<void> {
+  renderer.destroy()
+  ;({ renderer, mockInput, mockMouse, renderOnce } = await createTestRenderer({ screenMode }))
+  ;(renderer as any)._terminalIsSetup = true
+
+  renderer.start()
+  renderer.suspend()
+
+  const renderSpy = spyOn((renderer as any).lib, "render")
+  renderer.resume()
+  renderer.pause()
+
+  const lastCall = renderSpy.mock.calls[renderSpy.mock.calls.length - 1]
+  expect(lastCall?.[1]).toBe(true)
+  expect((renderer as any).forceFullRepaintRequested).toBe(false)
+
+  renderSpy.mockRestore()
+}
 
 test("initial renderer state is IDLE", () => {
   expect(renderer.controlState).toBe(RendererControlState.IDLE)
@@ -114,6 +133,14 @@ test("resume() restores previous AUTO_STARTED state and restarts rendering", () 
   renderer.resume()
   expect(renderer.controlState).toBe(RendererControlState.AUTO_STARTED)
   expect(renderer.isRunning).toBe(true)
+})
+
+test("resume() forces the next main-screen render to fully repaint", async () => {
+  await expectStartedResumeForcesNextRender("main-screen")
+})
+
+test("resume() forces the next alternate-screen render to fully repaint", async () => {
+  await expectStartedResumeForcesNextRender("alternate-screen")
 })
 
 test("stop() transitions to EXPLICIT_STOPPED and stops rendering", () => {
@@ -277,7 +304,7 @@ test("multiple suspend/resume cycles work correctly", () => {
   expect(renderer.controlState).toBe(RendererControlState.EXPLICIT_PAUSED)
 })
 
-test("keyboard input is suspended when renderer is suspended", async () => {
+test("keyboard input is suspended when renderer is suspended", () => {
   renderer.start()
 
   let keyEventReceived = false
@@ -295,8 +322,6 @@ test("keyboard input is suspended when renderer is suspended", async () => {
   mockInput.pressKey("b")
   expect(keyEventReceived).toBe(false)
   renderer.resume()
-  // Wait for renderer to consume stale input and re-register listeners
-  await new Promise((r) => setImmediate(r))
   mockInput.pressKey("c")
   expect(keyEventReceived).toBe(true)
   renderer.keyInput.off("keypress", onKeypress)
@@ -335,7 +360,7 @@ test("mouse input is suspended when renderer is suspended", async () => {
   renderer.root.remove(testRenderable.id)
 })
 
-test("paste input is suspended when renderer is suspended", async () => {
+test("paste input is suspended when renderer is suspended", () => {
   renderer.start()
 
   let pasteEventReceived = false
@@ -354,11 +379,74 @@ test("paste input is suspended when renderer is suspended", async () => {
   expect(pasteEventReceived).toBe(false)
 
   renderer.resume()
-  // Wait for renderer to consume stale input and re-register listeners
-  await new Promise((r) => setImmediate(r))
 
   mockInput.pasteBracketedText("pasted text 3")
   expect(pasteEventReceived).toBe(true)
 
   renderer.keyInput.off("paste", onPaste)
+})
+
+test("keystrokes received immediately after resume() without yielding", () => {
+  renderer.start()
+
+  const received: string[] = []
+  const onKeypress = (e: { name: string }) => received.push(e.name)
+  renderer.keyInput.on("keypress", onKeypress)
+
+  renderer.suspend()
+  renderer.resume()
+  mockInput.pressKey("a")
+  mockInput.pressKey("b")
+
+  expect(received).toEqual(["a", "b"])
+  renderer.keyInput.off("keypress", onKeypress)
+})
+
+test("keystrokes survive multiple rapid suspend/resume cycles", () => {
+  renderer.start()
+
+  const received: string[] = []
+  const onKeypress = (e: { name: string }) => received.push(e.name)
+  renderer.keyInput.on("keypress", onKeypress)
+
+  for (let i = 0; i < 5; i++) {
+    renderer.suspend()
+    renderer.resume()
+  }
+  mockInput.pressKey("a")
+
+  expect(received).toEqual(["a"])
+  renderer.keyInput.off("keypress", onKeypress)
+})
+
+test("input buffered during suspension is drained on resume", () => {
+  renderer.start()
+
+  const received: string[] = []
+  const onKeypress = (e: { name: string }) => received.push(e.name)
+  renderer.keyInput.on("keypress", onKeypress)
+
+  renderer.suspend()
+  // Simulate stale input accumulating in stdin's internal buffer during
+  // suspension (e.g. from a child process or kernel line buffer).
+  // push() writes to the Readable's internal buffer without emitting.
+  renderer.stdin.push(Buffer.from("x"))
+  renderer.resume()
+  mockInput.pressKey("a")
+
+  // "x" should have been drained — only "a" received
+  expect(received).toEqual(["a"])
+  renderer.keyInput.off("keypress", onKeypress)
+})
+
+test("suspend/resume does not leak stdin listeners", () => {
+  renderer.start()
+  const baseline = renderer.stdin.listenerCount("data")
+
+  for (let i = 0; i < 10; i++) {
+    renderer.suspend()
+    renderer.resume()
+  }
+
+  expect(renderer.stdin.listenerCount("data")).toBe(baseline)
 })

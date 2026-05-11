@@ -1,7 +1,7 @@
 ---
 title: Lifecycle and cleanup
 description: Managing renderer lifecycle and terminal cleanup
-order: 6
+order: 9
 ---
 
 # Lifecycle and cleanup
@@ -31,22 +31,25 @@ const renderer = await createCliRenderer()
 renderer.destroy()
 ```
 
-For reliable cleanup, handle errors and signals in your app:
+For reliable cleanup, keep renderer teardown in the same control flow as your app startup:
 
 ```typescript
+import { createCliRenderer } from "@opentui/core"
+
+async function runApp() {
+  // ... your application code ...
+}
+
 const renderer = await createCliRenderer()
 
-process.on("uncaughtException", (error) => {
-  console.error("Uncaught exception:", error)
+try {
+  await runApp()
+} catch (error) {
+  console.error("OpenTUI app failed:", error)
+  process.exitCode = 1
+} finally {
   renderer.destroy()
-  process.exit(1)
-})
-
-process.on("unhandledRejection", (reason) => {
-  console.error("Unhandled rejection:", reason)
-  renderer.destroy()
-  process.exit(1)
-})
+}
 ```
 
 ## Signal handling
@@ -63,7 +66,6 @@ OpenTUI listens for common exit signals and calls `destroy()` when it receives t
 | `SIGBREAK` | Ctrl+Break on Windows    |
 | `SIGPIPE`  | Broken pipe              |
 | `SIGBUS`   | Bus error                |
-| `SIGFPE`   | Floating point exception |
 
 You can customize which signals trigger cleanup:
 
@@ -86,7 +88,7 @@ By default, Ctrl+C calls `destroy()`. If you want to handle Ctrl+C yourself, dis
 ```typescript
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,
-  exitSignals: ["SIGTERM", "SIGQUIT", "SIGABRT", "SIGHUP", "SIGBREAK", "SIGPIPE", "SIGBUS", "SIGFPE"],
+  exitSignals: ["SIGTERM", "SIGQUIT", "SIGABRT", "SIGHUP", "SIGBREAK", "SIGPIPE", "SIGBUS"],
 })
 
 renderer.keyInput.on("keypress", (key) => {

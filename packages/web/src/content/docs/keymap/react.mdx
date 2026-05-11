@@ -1,0 +1,129 @@
+---
+title: React (OpenTUI)
+description: React provider and hooks for a pre-created OpenTUI keymap
+order: 4
+navTitle: React (OpenTUI)
+---
+
+# React keymap bindings (OpenTUI)
+
+This page covers `@opentui/keymap/react`.
+
+These bindings are for OpenTUI React apps. They consume a pre-created `Keymap<Renderable, KeyEvent>` from `@opentui/keymap/opentui`; they do not wrap the DOM/HTML adapter used in browser React apps.
+
+If you have not read the shared model yet, start with [Keymap overview](/docs/keymap/overview). For keymap construction, see [Keymap hosts](/docs/keymap/hosts).
+
+## What React adds
+
+- `KeymapProvider` - React context provider for an existing OpenTUI keymap
+- `useKeymap()` - returns the current OpenTUI keymap from context
+- `useBindings(createLayer, deps?)` - registers a keymap layer for the component lifecycle
+- `useActiveKeys(options?)` - derived active key list
+- `usePendingSequence()` - derived pending sequence
+- `reactiveMatcherFromStore(subscribe, getSnapshot, predicate?)` - adapts an external store to `ReactiveMatcher`
+
+## Basic usage
+
+```tsx
+/** @jsxImportSource @opentui/react */
+
+import { createCliRenderer } from "@opentui/core"
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { KeymapProvider, useBindings } from "@opentui/keymap/react"
+import { createRoot } from "@opentui/react"
+
+const renderer = await createCliRenderer()
+const keymap = createDefaultOpenTuiKeymap(renderer)
+
+function App() {
+  useBindings(
+    () => ({
+      commands: [
+        {
+          name: "quit",
+          run() {
+            renderer.destroy()
+          },
+        },
+      ],
+      bindings: [{ key: "q", cmd: "quit" }],
+    }),
+    [],
+  )
+
+  return <text>Press q to quit</text>
+}
+
+createRoot(renderer).render(
+  <KeymapProvider keymap={keymap}>
+    <App />
+  </KeymapProvider>,
+)
+```
+
+## Provider
+
+| Prop       | Type                           | Required | Description                 |
+| ---------- | ------------------------------ | -------- | --------------------------- |
+| `keymap`   | `Keymap<Renderable, KeyEvent>` | yes      | The OpenTUI keymap instance |
+| `children` | `ReactNode`                    | no       | Descendant React tree       |
+
+## Hooks
+
+| Hook                              | Description                                                                             |
+| --------------------------------- | --------------------------------------------------------------------------------------- |
+| `useKeymap()`                     | Returns the current keymap or throws if the provider is missing                         |
+| `useBindings(createLayer, deps?)` | Memoizes the layer factory with `deps`, registers the layer, and disposes it on unmount |
+| `useActiveKeys(options?)`         | Re-renders on batched keymap state changes and returns `getActiveKeys(...)`             |
+| `usePendingSequence()`            | Re-renders on batched keymap state changes and returns `getPendingSequence()`           |
+| `reactiveMatcherFromStore(...)`   | Builds a `ReactiveMatcher` from any subscribe/getSnapshot store                         |
+
+## `useBindings`
+
+`useBindings()` registers a layer-like object. The returned layer can include `priority`, `enabled`, `bindings`, `commands` and any custom addon fields.
+
+React memoizes `createLayer` with `useMemo(createLayer, deps)`. If you omit `deps`, the hook treats the layer factory as static after mount because the default is `[]`. If the layer shape depends on props or React state, include those values in `deps`.
+
+React-specific layer shapes:
+
+| Shape                      | Description                               |
+| -------------------------- | ----------------------------------------- |
+| Global layer               | Omit `targetRef`                          |
+| Local `focus-within` layer | Set `targetRef` and omit `targetMode`     |
+| Local exact-focus layer    | Set `targetRef` and `targetMode: "focus"` |
+
+- When `targetRef` is present and `targetMode` is omitted, `focus-within` is used.
+- If `targetRef.current` is `null`, registration waits until the ref resolves.
+- Passing a local `targetMode` without `targetRef` throws.
+- `deps` controls when the layer factory is re-evaluated.
+- Local layers follow `targetRef.current`, so they can wait for a ref to mount and retarget if that ref later points at a different renderable.
+
+## `useActiveKeys()` and `usePendingSequence()`
+
+```tsx
+const activeKeys = useActiveKeys({ includeMetadata: true })
+const pendingSequence = usePendingSequence()
+```
+
+Use these hooks for command palettes, key hint UIs, leader prompts and status bars.
+
+## `reactiveMatcherFromStore()`
+
+Use this when an addon field expects a `ReactiveMatcher`, for example the shipped `enabled` field:
+
+```tsx
+const matcher = useMemo(
+  () => reactiveMatcherFromStore(store.subscribe, store.getSnapshot, (mode) => mode === "normal"),
+  [store],
+)
+
+useBindings(
+  () => ({
+    enabled: matcher,
+    bindings: [{ key: "x", cmd: "delete-line" }],
+  }),
+  [matcher],
+)
+```
+
+Example: `packages/react/examples/keymap.tsx`

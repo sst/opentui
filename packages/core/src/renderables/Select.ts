@@ -7,12 +7,13 @@ import type { RenderContext } from "../types.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
-  getKeyBindingKey,
   buildKeyBindingsMap,
-  type KeyAliasMap,
+  getKeyBindingAction,
   defaultKeyAliases,
   mergeKeyAliases,
-} from "../lib/keymapping.js"
+} from "../lib/keybinding.internal.js"
+
+type KeyAliasMap = Record<string, string>
 
 export interface SelectOption {
   name: string
@@ -163,10 +164,11 @@ export class SelectRenderable extends Renderable {
   }
 
   private refreshFrameBuffer(): void {
-    if (!this.frameBuffer || this._options.length === 0) return
+    if (!this.frameBuffer) return
 
     const bgColor = this._focused ? this._focusedBackgroundColor : this._backgroundColor
     this.frameBuffer.clear(bgColor)
+    if (this._options.length === 0) return
 
     const contentX = 0
     const contentY = 0
@@ -327,16 +329,7 @@ export class SelectRenderable extends Renderable {
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
-    const bindingKey = getKeyBindingKey({
-      name: key.name,
-      ctrl: key.ctrl,
-      shift: key.shift,
-      meta: key.meta,
-      super: key.super,
-      action: "move-up" as SelectAction,
-    })
-
-    const action = this._keyBindingsMap.get(bindingKey)
+    const action = getKeyBindingAction(this._keyBindingsMap, key)
 
     if (action) {
       switch (action) {

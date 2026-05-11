@@ -105,15 +105,23 @@ describe("TestRecorder", () => {
 
     const text = new TextRenderable(renderer, { content: "Initial" })
     renderer.root.add(text)
-    await Bun.sleep(10)
+    await renderer.idle()
 
     text.content = "Changed"
-    await Bun.sleep(10)
+    await renderer.idle()
     recorder.stop()
 
-    // NOTE: Should this fail, make sure the Bun.sleeps are in sync with maxFps of the renderer
-    const frame1 = recorder.recordedFrames[0].frame
-    const frame2 = recorder.recordedFrames[1].frame
+    const frames = recorder.recordedFrames
+    const initialFrameIndex = frames.findIndex(({ frame }) => frame.includes("Initial"))
+    const changedFrameIndex = frames.findIndex(
+      ({ frame }, index) => index > initialFrameIndex && frame.includes("Changed"),
+    )
+
+    expect(initialFrameIndex).toBeGreaterThanOrEqual(0)
+    expect(changedFrameIndex).toBeGreaterThan(initialFrameIndex)
+
+    const frame1 = frames[initialFrameIndex].frame
+    const frame2 = frames[changedFrameIndex].frame
 
     expect(frame1).toContain("Initial")
     expect(frame2).toContain("Changed")
@@ -292,7 +300,7 @@ describe("TestRecorder", () => {
     const frames = recorderWithFg.recordedFrames
     expect(frames.length).toBe(1)
     expect(frames[0].buffers).toBeDefined()
-    expect(frames[0].buffers?.fg).toBeInstanceOf(Float32Array)
+    expect(frames[0].buffers?.fg).toBeInstanceOf(Uint16Array)
     expect(frames[0].buffers?.bg).toBeUndefined()
     expect(frames[0].buffers?.attributes).toBeUndefined()
 
@@ -310,7 +318,7 @@ describe("TestRecorder", () => {
     const frames = recorderWithBg.recordedFrames
     expect(frames.length).toBe(1)
     expect(frames[0].buffers).toBeDefined()
-    expect(frames[0].buffers?.bg).toBeInstanceOf(Float32Array)
+    expect(frames[0].buffers?.bg).toBeInstanceOf(Uint16Array)
     expect(frames[0].buffers?.fg).toBeUndefined()
     expect(frames[0].buffers?.attributes).toBeUndefined()
 
@@ -348,8 +356,8 @@ describe("TestRecorder", () => {
     const frames = recorderWithAll.recordedFrames
     expect(frames.length).toBe(1)
     expect(frames[0].buffers).toBeDefined()
-    expect(frames[0].buffers?.fg).toBeInstanceOf(Float32Array)
-    expect(frames[0].buffers?.bg).toBeInstanceOf(Float32Array)
+    expect(frames[0].buffers?.fg).toBeInstanceOf(Uint16Array)
+    expect(frames[0].buffers?.bg).toBeInstanceOf(Uint16Array)
     expect(frames[0].buffers?.attributes).toBeInstanceOf(Uint8Array)
 
     recorderWithAll.stop()

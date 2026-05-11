@@ -5,7 +5,7 @@ import { KeyEvent } from "../lib/KeyHandler.js"
 
 // Helper function to create a KeyEvent from a string or object
 function createKeyEvent(
-  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean },
+  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean; baseCode?: number },
 ): KeyEvent {
   if (typeof input === "string") {
     return new KeyEvent({
@@ -28,6 +28,7 @@ function createKeyEvent(
       meta: input.meta ?? false,
       shift: input.shift ?? false,
       super: input.super ?? false,
+      baseCode: input.baseCode,
       option: false,
       number: false,
       raw: input.name,
@@ -40,6 +41,7 @@ function createKeyEvent(
 let currentRenderer: TestRenderer
 let currentMockInput: MockInput
 let renderOnce: () => Promise<void>
+let captureCharFrame: () => string
 
 const sampleOptions: SelectOption[] = [
   { name: "Option 1", description: "First option" },
@@ -61,7 +63,12 @@ async function createSelectRenderable(
 }
 
 beforeEach(async () => {
-  ;({ renderer: currentRenderer, mockInput: currentMockInput, renderOnce } = await createTestRenderer({}))
+  ;({
+    renderer: currentRenderer,
+    mockInput: currentMockInput,
+    renderOnce,
+    captureCharFrame,
+  } = await createTestRenderer({}))
 })
 
 afterEach(() => {
@@ -174,6 +181,23 @@ describe("SelectRenderable", () => {
       expect(select.options).toEqual([])
       expect(select.getSelectedIndex()).toBe(0)
       expect(select.getSelectedOption()).toBe(null)
+    })
+
+    test("should clear rendered option text when options are set to empty", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 24,
+        height: 6,
+        options: sampleOptions,
+      })
+
+      await renderOnce()
+      expect(captureCharFrame()).toContain("Option 1")
+
+      select.options = []
+      await renderOnce()
+
+      expect(captureCharFrame()).not.toContain("Option 1")
+      expect(captureCharFrame()).not.toContain("Option 2")
     })
 
     test("should preserve valid selected index when options change", async () => {
@@ -395,6 +419,23 @@ describe("SelectRenderable", () => {
       const kHandled = select.handleKeyPress(createKeyEvent("k"))
       expect(kHandled).toBe(true)
       expect(select.getSelectedIndex()).toBe(1)
+    })
+
+    test("should use baseCode for custom bindings from alternate layouts", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        selectedIndex: 1,
+        keyBindings: [{ name: "j", action: "move-down" }],
+      })
+
+      select.focus()
+
+      const handled = select.handleKeyPress(createKeyEvent({ name: "ㅓ", baseCode: 106 }))
+
+      expect(handled).toBe(true)
+      expect(select.getSelectedIndex()).toBe(2)
     })
 
     test("should handle enter key", async () => {

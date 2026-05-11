@@ -1,5 +1,5 @@
 import { OptimizedBuffer, RGBA, type RenderContext } from "@opentui/core"
-import { ThreeRenderable, THREE } from "@opentui/core/3d"
+import { ThreeRenderable, THREE } from "@opentui/three"
 import { extend, type SolidPlugin } from "@opentui/solid"
 import { ExternalSidebarPanel, ExternalStatusCard } from "./slot-components.tsx"
 
@@ -13,7 +13,7 @@ export type ExternalPluginContext = {
   version: string
 }
 
-const CAPABILITIES = ["statusbar extension", "sidebar extension", "external jsx components", "core 3d entrypoint"]
+const CAPABILITIES = ["statusbar extension", "sidebar extension", "external jsx components", "three entrypoint"]
 
 class ExternalCubeRenderable extends ThreeRenderable {
   private cube: THREE.Mesh
@@ -90,7 +90,7 @@ export function loadExternalPlugin(): SolidPlugin<ExternalPluginSlots, ExternalP
           <box flexDirection="column">
             <ExternalSidebarPanel section={props.section} capabilities={CAPABILITIES} />
             <box marginTop={1} border borderStyle="single" borderColor="#334155" flexDirection="column">
-              <text fg="#93c5fd">3D cube from @opentui/core/3d</text>
+              <text fg="#93c5fd">3D cube from @opentui/three</text>
               <external_cube width="100%" height={16} />
             </box>
           </box>

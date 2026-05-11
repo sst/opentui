@@ -1293,9 +1293,9 @@ describe("TextRenderable Selection", () => {
       const bufferWidth = buffer.width
 
       const ellipsisIdx = text.y * bufferWidth + text.x + 3
-      const ellipsisBgR = bg[ellipsisIdx * 4 + 0]
-      const ellipsisBgG = bg[ellipsisIdx * 4 + 1]
-      const ellipsisBgB = bg[ellipsisIdx * 4 + 2]
+      const ellipsisBgR = (bg[ellipsisIdx * 4] & 0xff) / 255
+      const ellipsisBgG = (bg[ellipsisIdx * 4 + 1] & 0xff) / 255
+      const ellipsisBgB = (bg[ellipsisIdx * 4 + 2] & 0xff) / 255
 
       expect(Math.abs(ellipsisBgR - 1.0)).toBeLessThan(0.05)
       expect(Math.abs(ellipsisBgG - 0.0)).toBeLessThan(0.05)
@@ -1323,9 +1323,9 @@ describe("TextRenderable Selection", () => {
       const bufferWidth = buffer.width
 
       const ellipsisIdx = (text.y + 1) * bufferWidth + text.x + 3
-      const ellipsisBgR = bg[ellipsisIdx * 4 + 0]
-      const ellipsisBgG = bg[ellipsisIdx * 4 + 1]
-      const ellipsisBgB = bg[ellipsisIdx * 4 + 2]
+      const ellipsisBgR = (bg[ellipsisIdx * 4] & 0xff) / 255
+      const ellipsisBgG = (bg[ellipsisIdx * 4 + 1] & 0xff) / 255
+      const ellipsisBgB = (bg[ellipsisIdx * 4 + 2] & 0xff) / 255
 
       expect(Math.abs(ellipsisBgR - 1.0)).toBeGreaterThan(0.05)
       expect(Math.abs(ellipsisBgG - 0.0)).toBeLessThan(0.05)

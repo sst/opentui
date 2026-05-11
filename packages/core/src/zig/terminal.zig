@@ -15,6 +15,7 @@ pub const Capabilities = struct {
     kitty_keyboard: bool = false,
     kitty_graphics: bool = false,
     rgb: bool = false,
+    ansi256: bool = false,
     unicode: WidthMethod = .unicode,
     sgr_pixels: bool = false,
     color_scheme_updates: bool = false,
@@ -106,6 +107,8 @@ skip_graphics_query: bool = false,
 skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
 capability_queries_pending: bool = false,
+startup_cursor_query_pending: bool = false,
+startup_cursor_query_captured: bool = false,
 
 state: struct {
     alt_screen: bool = false,
@@ -114,8 +117,10 @@ state: struct {
     bracketed_paste: bool = false,
     mouse: bool = false,
     mouse_movement: bool = true,
+    mouse_was_enabled: bool = false,
     pixel_mouse: bool = false,
     color_scheme_updates: bool = false,
+    theme_queries_sent: bool = false,
     focus_tracking: bool = false,
     modify_other_keys: bool = false,
     mouse_pointer: MousePointerStyle = .default,
@@ -127,7 +132,7 @@ state: struct {
         visible: bool = true,
         style: CursorStyle = .default,
         blinking: bool = false,
-        color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 }, // RGBA
+        color: ansi.RGBA = ansi.rgbColor(255, 255, 255, 255),
     } = .{},
 } = .{},
 
@@ -148,6 +153,7 @@ pub fn deinit(self: *Terminal) void {
         self.host_env_map = null;
     }
     self.opts.env_map = null;
+    self.* = undefined;
 }
 
 pub fn setHostEnvVar(self: *Terminal, allocator: std.mem.Allocator, key: []const u8, value: []const u8) !void {
@@ -175,8 +181,8 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
         try self.setModifyOtherKeys(tty, false);
     }
 
-    if (self.state.mouse) {
-        try self.setMouseMode(tty, false, self.state.mouse_movement);
+    if (self.state.mouse_was_enabled) {
+        try self.forceDisableMouseMode(tty);
     }
 
     if (self.state.bracketed_paste) {
@@ -208,6 +214,12 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
     }
 
     self.setTerminalTitle(tty, "");
+
+    // OSC 111 is intentionally disabled for now. In Ghostty, sending the
+    // reset alone is enough to poison later OSC 11 background reporting for
+    // system light/dark theme changes, which breaks theme detection on the
+    // next app startup even though the immediate reset appears to work.
+    // try tty.writeAll(ansi.ANSI.resetTerminalBgColor);
 }
 
 pub fn enterAltScreen(self: *Terminal, tty: anytype) !void {
@@ -224,11 +236,24 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
     self.graphics_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
+    self.startup_cursor_query_pending = true;
+    self.startup_cursor_query_captured = false;
+
+    // We intentionally do not send CSI ?996n here. Terminals disagree on the
+    // meaning and reliability of the ?997 reply, so startup theme detection is
+    // derived from fresh OSC 10/11 fg/bg colors instead.
+    try self.setColorSchemeUpdates(tty, true);
+
+    try self.queryThemeColors(tty);
+    self.state.theme_queries_sent = true;
 
     // Send xtversion first (doesn't need DCS wrapping - used for tmux detection)
     try tty.writeAll(ansi.ANSI.xtversion ++
         ansi.ANSI.hideCursor ++
         ansi.ANSI.saveCursorState);
+
+    // Capture the current cursor position before temporary home-position queries.
+    try tty.writeAll(ansi.ANSI.cursorPositionRequest);
 
     if (self.in_tmux) {
         try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
@@ -281,6 +306,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
     if (builtin.os.tag == .windows) {
         // Windows-specific defaults for ConPTY
         self.caps.rgb = true;
+        self.caps.ansi256 = true;
         self.caps.bracketed_paste = true;
     }
 
@@ -309,14 +335,28 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
         try self.setFocusTracking(tty, true);
     }
 
+    // queryTerminalSend already enabled mode 2031 during normal startup.
     if (!self.state.color_scheme_updates) {
         try self.setColorSchemeUpdates(tty, true);
-        try tty.writeAll(ansi.ANSI.colorSchemeRequest);
+    }
+
+    if (!self.state.theme_queries_sent) {
+        try self.queryThemeColors(tty);
+        self.state.theme_queries_sent = true;
     }
 }
 
+pub fn queryThemeColors(_: *Terminal, tty: anytype) !void {
+    // We only use the ?997 notification as a refresh trigger. The actual theme
+    // mode is derived from the returned OSC 10/11 fg/bg colors, so callers
+    // should query those colors directly instead of sending CSI ?996n.
+    // tmux handles OSC 10/11 as plain OSC; DCS passthrough replies are not
+    // routed back to the pane that asked.
+    try tty.writeAll(ansi.ANSI.oscThemeQueries);
+}
+
 fn checkEnvironmentOverrides(self: *Terminal) void {
-    self.in_tmux = false;
+    self.in_tmux = self.isXtversionTmux();
     self.skip_graphics_query = false;
     self.skip_explicit_width_query = false;
 
@@ -324,15 +364,16 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     self.caps.bracketed_paste = true;
 
     if (self.caps.rgb) {
+        self.caps.ansi256 = true;
         self.caps.hyperlinks = true;
     }
 
-    if (self.opts.remote) {
-        return;
-    }
-
     var env_map_storage: ?std.process.EnvMap = null;
-    const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
+    const maybe_env_map: ?*const std.process.EnvMap = self.opts.env_map orelse blk: {
+        if (self.opts.remote) {
+            break :blk null;
+        }
+
         env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
             logger.err("Failed to get environment map: {}", .{err});
             return;
@@ -340,6 +381,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         break :blk &env_map_storage.?;
     };
     defer if (env_map_storage) |*map| map.deinit();
+
+    if (maybe_env_map == null) {
+        return;
+    }
+
+    const env_map = maybe_env_map.?;
 
     if (!self.term_info.from_xtversion) {
         if (env_map.get("TMUX")) |_| {
@@ -362,6 +409,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
+    if (env_map.get("TERM")) |term| {
+        if (std.ascii.indexOfIgnoreCase(term, "256color") != null) {
+            self.caps.ansi256 = true;
+        }
+    }
+
     if (env_map.get("OPENTUI_GRAPHICS")) |val| {
         if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) {
             self.skip_graphics_query = true;
@@ -375,6 +428,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             const copy_len = @min(prog.len, self.term_info.name.len);
             @memcpy(self.term_info.name[0..copy_len], prog[0..copy_len]);
             self.term_info.name_len = copy_len;
+
+            if (std.mem.eql(u8, prog, "tmux")) {
+                self.in_tmux = true;
+                self.caps.unicode = .wcwidth;
+                self.caps.explicit_cursor_positioning = true;
+            }
 
             if (env_map.get("TERM_PROGRAM_VERSION")) |ver| {
                 const ver_len = @min(ver.len, self.term_info.version.len);
@@ -410,7 +469,13 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             std.mem.eql(u8, colorterm, "24bit"))
         {
             self.caps.rgb = true;
+            self.caps.ansi256 = true;
         }
+    }
+
+    if (env_map.get("WT_SESSION") != null) {
+        self.caps.rgb = true;
+        self.caps.ansi256 = true;
     }
 
     if (!self.term_info.from_xtversion) {
@@ -458,6 +523,18 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
+    if (!self.caps.hyperlinks and !self.term_info.from_xtversion) {
+        const is_wsl = env_map.get("WSL_DISTRO_NAME") != null or env_map.get("WSL_INTEROP") != null;
+        const has_wt_session = env_map.get("WT_SESSION") != null;
+        if (is_wsl and has_wt_session) {
+            if (env_map.get("TERM")) |term| {
+                if (std.mem.startsWith(u8, term, "xterm")) {
+                    self.caps.hyperlinks = true;
+                }
+            }
+        }
+    }
+
     if (!self.caps.osc52 and !self.term_info.from_xtversion) {
         if (env_map.get("WT_SESSION") != null) {
             self.caps.osc52 = true;
@@ -485,6 +562,13 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
 }
 
+fn writeMouseDisableSequences(tty: anytype) !void {
+    try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
+    try tty.writeAll(ansi.ANSI.disableButtonEventTracking);
+    try tty.writeAll(ansi.ANSI.disableMouseTracking);
+    try tty.writeAll(ansi.ANSI.disableSGRMouseMode);
+}
+
 // TODO: Allow pixel mouse mode to be enabled,
 // currently does not make sense and is not supported by higher levels
 pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement: bool) !void {
@@ -497,6 +581,9 @@ pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement
     if (enable) {
         self.state.mouse = true;
         self.state.mouse_movement = enable_movement;
+        // Arms the shutdown cleanup path so resetState() will still emit mouse
+        // disable sequences even if a later best-effort disable silently fails.
+        self.state.mouse_was_enabled = true;
         if (!enable_movement) {
             // Some terminals treat ?1000/?1002/?1003 as one family and let the
             // last sequence win. Reset any-event tracking first, then enable
@@ -512,11 +599,16 @@ pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement
     } else {
         self.state.mouse = false;
         self.state.pixel_mouse = false;
-        try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
-        try tty.writeAll(ansi.ANSI.disableButtonEventTracking);
-        try tty.writeAll(ansi.ANSI.disableMouseTracking);
-        try tty.writeAll(ansi.ANSI.disableSGRMouseMode);
+        try writeMouseDisableSequences(tty);
     }
+}
+
+// Best-effort shutdown path: emit the reset sequences even if tracked state
+// already drifted to false because earlier writes failed.
+pub fn forceDisableMouseMode(self: *Terminal, tty: anytype) !void {
+    self.state.mouse = false;
+    self.state.pixel_mouse = false;
+    try writeMouseDisableSequences(tty);
 }
 
 pub fn setBracketedPaste(self: *Terminal, tty: anytype, enable: bool) !void {
@@ -648,24 +740,55 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.bracketed_paste = true;
     }
 
-    // Explicit width detection - cursor position report [1;NR where N >= 2 means explicit width supported
-    // We look for ESC[1; followed by a digit >= 2
-    // This handles cases where the cursor isn't at exact home position when queries are sent
-    if (std.mem.indexOf(u8, response, "\x1b[1;")) |pos| {
-        const after = response[pos + 4 ..];
-        if (after.len > 0) {
-            var end: usize = 0;
-            while (end < after.len and after[end] >= '0' and after[end] <= '9') : (end += 1) {}
-            if (end > 0 and end < after.len and after[end] == 'R') {
-                const col = std.fmt.parseInt(u16, after[0..end], 10) catch 0;
-                if (col >= 2) {
-                    self.caps.explicit_width = true;
-                }
-                if (col >= 3) {
-                    self.caps.scaled_text = true;
-                }
+    // Parse cursor position reports: ESC[row;colR
+    // The first report after queryTerminalSend is the pre-home cursor position.
+    var scan_pos: usize = 0;
+    while (scan_pos < response.len) {
+        const esc_rel = std.mem.indexOf(u8, response[scan_pos..], "\x1b[") orelse break;
+        const esc = scan_pos + esc_rel;
+        var pos = esc + 2;
+
+        const row_start = pos;
+        while (pos < response.len and response[pos] >= '0' and response[pos] <= '9') : (pos += 1) {}
+        if (pos == row_start or pos >= response.len or response[pos] != ';') {
+            scan_pos = esc + 2;
+            continue;
+        }
+
+        const row = std.fmt.parseInt(u16, response[row_start..pos], 10) catch {
+            scan_pos = pos + 1;
+            continue;
+        };
+
+        pos += 1;
+        const col_start = pos;
+        while (pos < response.len and response[pos] >= '0' and response[pos] <= '9') : (pos += 1) {}
+        if (pos == col_start or pos >= response.len or response[pos] != 'R') {
+            scan_pos = col_start;
+            continue;
+        }
+
+        const col = std.fmt.parseInt(u16, response[col_start..pos], 10) catch {
+            scan_pos = pos + 1;
+            continue;
+        };
+
+        if (self.startup_cursor_query_pending and !self.startup_cursor_query_captured and row >= 1 and col >= 1) {
+            self.setCursorPosition(col, row, self.state.cursor.visible);
+            self.startup_cursor_query_captured = true;
+            self.startup_cursor_query_pending = false;
+        }
+
+        if (row == 1) {
+            if (col >= 2) {
+                self.caps.explicit_width = true;
+            }
+            if (col >= 3) {
+                self.caps.scaled_text = true;
             }
         }
+
+        scan_pos = pos + 1;
     }
 
     // Parse xtversion response: ESC P > | name version ESC \
@@ -684,6 +807,7 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.kitty_graphics = true;
         self.caps.unicode = .unicode;
         self.caps.rgb = true;
+        self.caps.ansi256 = true;
         self.caps.sixel = true;
         self.caps.bracketed_paste = true;
         self.caps.hyperlinks = true;
@@ -803,7 +927,7 @@ pub fn setCursorStyle(self: *Terminal, style: CursorStyle, blinking: bool) void 
     self.state.cursor.blinking = blinking;
 }
 
-pub fn setCursorColor(self: *Terminal, color: [4]f32) void {
+pub fn setCursorColor(self: *Terminal, color: ansi.RGBA) void {
     self.state.cursor.color = color;
 }
 
@@ -822,7 +946,7 @@ pub fn getCursorStyle(self: *Terminal) struct { style: CursorStyle, blinking: bo
     };
 }
 
-pub fn getCursorColor(self: *Terminal) [4]f32 {
+pub fn getCursorColor(self: *Terminal) ansi.RGBA {
     return self.state.cursor.color;
 }
 
@@ -956,6 +1080,9 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     }
 
     self.term_info.from_xtversion = true;
+    if (std.mem.eql(u8, self.getTerminalName(), "tmux")) {
+        self.in_tmux = true;
+    }
 }
 
 pub fn isXtversionTmux(self: *Terminal) bool {

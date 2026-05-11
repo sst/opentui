@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
-import { ManualClock } from "../testing/manual-clock"
+import { ManualClock } from "../testing/manual-clock.js"
+import type { Clock, TimerHandle } from "./clock.js"
 import type { ScrollInfo } from "./parse.mouse"
-import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser"
+import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser.js"
 
 type KeySnap = {
   type: "key"
@@ -19,6 +20,7 @@ type RespSnap = { type: "response"; protocol: string; sequence: string }
 type Snap = KeySnap | MouseSnap | PasteSnap | RespSnap
 
 const K_DEFAULTS = { ctrl: false, meta: false, shift: false, eventType: "press" }
+const TEST_TIMEOUT_MS = 10
 type KOpts = { raw?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; eventType?: string }
 
 function k(name: string, opts: KOpts = {}): KeySnap {
@@ -77,7 +79,7 @@ function createParser(options: StdinParserOptions = {}): StdinParser {
 
 function createTimedParser(options: StdinParserOptions = {}): { parser: StdinParser; clock: ManualClock } {
   const clock = new ManualClock()
-  return { parser: new StdinParser({ armTimeouts: true, clock, ...options }), clock }
+  return { parser: new StdinParser({ armTimeouts: true, clock, timeoutMs: TEST_TIMEOUT_MS, ...options }), clock }
 }
 
 function snapshotEvent(event: StdinEvent): Snap {
@@ -866,7 +868,7 @@ describe("StdinParser", () => {
       // DA (Device Attributes)
       ["DA1", "\x1b[?62;1;2;6;7;8;9;15;22c", [resp("csi", "\x1b[?62;1;2;6;7;8;9;15;22c")]],
       // CPR (Cursor Position Report)
-      ["CPR", "\x1b[24;80R", [resp("csi", "\x1b[24;80R")]],
+      ["CPR", "\x1b[24;80R", [resp("cpr", "\x1b[24;80R")]],
       // Window/cell size
       ["window size", "\x1b[4;600;800t", [resp("csi", "\x1b[4;600;800t")]],
       // Mode report
@@ -991,6 +993,21 @@ describe("StdinParser", () => {
 
         parser.push(Buffer.from("2u"))
         expect(snap(parser)).toEqual([k("a", { shift: true, raw: "\x1b[97;2u" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial kitty alternate-key CSI stays pending after timeout", () => {
+      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
+      try {
+        parser.push(Buffer.from("\x1b[97:65;"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("6:1u"))
+        expect(snap(parser)).toEqual([k("a", { raw: "\x1b[97:65;6:1u", ctrl: true, shift: true })])
       } finally {
         parser.destroy()
       }
@@ -1211,7 +1228,7 @@ describe("StdinParser", () => {
         expect(snap(parser)).toEqual([])
 
         parser.push(Buffer.from("R"))
-        expect(snap(parser)).toEqual([resp("csi", "\x1b[1;2R")])
+        expect(snap(parser)).toEqual([resp("cpr", "\x1b[1;2R")])
       } finally {
         parser.destroy()
       }
@@ -1287,6 +1304,37 @@ describe("StdinParser", () => {
       }
     })
 
+    test("theme mode replies are emitted as CSI responses", () => {
+      const parser = createParser({
+        protocolContext: { privateCapabilityRepliesActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[?997;1n"))
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[?997;1n")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial theme mode reply stays pending after timeout while capability probe is active", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { privateCapabilityRepliesActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[?997;1"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("n"))
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[?997;1n")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
     test("timed-out modified CSI key still flushes before later final byte", () => {
       const { parser, clock } = createTimedParser({
         protocolContext: { explicitWidthCprActive: true },
@@ -1323,6 +1371,105 @@ describe("StdinParser", () => {
       }
     })
 
+    test("generic row/col CPR stays pending after timeout while startup cursor probe is active", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[24;80"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("R"))
+        expect(snap(parser)).toEqual([resp("cpr", "\x1b[24;80R")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR swallows a reply that finishes later", () => {
+      const parser = createParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[24;80"))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("R"))
+        expect(snap(parser)).toEqual([])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR swallows a reply split after the CSI introducer", () => {
+      const parser = createParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b["))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        parser.push(Buffer.from("24;80R"))
+        expect(snap(parser)).toEqual([])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR preserves explicit-width CPR replies", () => {
+      const parser = createParser({
+        protocolContext: {
+          startupCursorCprActive: true,
+          explicitWidthCprActive: true,
+        },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b["))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        parser.push(Buffer.from("1;2R"))
+        expect(snap(parser)).toEqual([resp("cpr", "\x1b[1;2R")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR preserves later non-CPR input", () => {
+      const parser = createParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[24;80"))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        parser.push(Buffer.from("a"))
+        expect(snap(parser)).toEqual([k("a")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
     test("deferred explicit-width CPR flushes when probe context is cleared", () => {
       const { parser, clock } = createTimedParser({
         protocolContext: { explicitWidthCprActive: true },
@@ -1348,6 +1495,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         protocolContext: { explicitWidthCprActive: true },
         onTimeoutFlush: () => {
           timeoutFlushes += 1
@@ -1379,6 +1527,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         protocolContext: { privateCapabilityRepliesActive: true },
         onTimeoutFlush: () => {
           timeoutFlushes += 1
@@ -1659,13 +1808,42 @@ describe("StdinParser", () => {
   })
 
   describe("timeout behavior", () => {
-    test("timeout at exact boundary (9ms no fire, 10ms fires)", () => {
+    test("default timeout at exact boundary (19ms no fire, 20ms fires)", () => {
+      const clock = new ManualClock()
+      const parser = new StdinParser({ armTimeouts: true, clock })
+      try {
+        parser.push(Buffer.from("\x1b"))
+        clock.advance(19)
+        expect(snap(parser)).toEqual([])
+        clock.advance(1)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("configured timeout at exact boundary (9ms no fire, 10ms fires)", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b"))
         clock.advance(9)
         expect(snap(parser)).toEqual([])
         clock.advance(1)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("flushTimeout() only flushes when caller reports elapsed timeout", () => {
+      const parser = createParser({ timeoutMs: TEST_TIMEOUT_MS })
+      try {
+        parser.push(Buffer.from("\x1b"))
+
+        parser.flushTimeout(TEST_TIMEOUT_MS - 1)
+        expect(snap(parser)).toEqual([])
+
+        parser.flushTimeout(TEST_TIMEOUT_MS)
         expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
       } finally {
         parser.destroy()
@@ -1695,6 +1873,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         protocolContext: { kittyKeyboardEnabled: true },
         onTimeoutFlush: () => {
           timeoutFlushes += 1
@@ -1726,6 +1905,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         onTimeoutFlush: () => {
           timeoutFlushes += 1
           parser.drain(() => {})
@@ -2180,6 +2360,60 @@ describe("StdinParser", () => {
         expect(snap(p)).toEqual([paste("\x1b[20".repeat(100))])
       } finally {
         p.destroy()
+      }
+    })
+  })
+
+  describe("timer/clock disagreement race condition", () => {
+    test("timeout callback flushes even when now() reports slightly less elapsed time than timeoutMs", () => {
+      const inner = new ManualClock()
+      let insideTimerCallback = false
+
+      // Wraps ManualClock so that now() returns pendingSinceMs + timeoutMs - 1
+      // during the timeout callback, simulating runtime behavior where timer
+      // scheduling and now() sampling disagree by a small amount.
+      const disagreeingClock: Clock = {
+        now(): number {
+          if (insideTimerCallback) {
+            // Report 1ms less than the timeout requires — this is the
+            // race condition that kept bytes stuck before the fix.
+            return TEST_TIMEOUT_MS - 1
+          }
+          return inner.now()
+        },
+        setTimeout(fn: () => void, delayMs: number): TimerHandle {
+          return inner.setTimeout(() => {
+            insideTimerCallback = true
+            try {
+              fn()
+            } finally {
+              insideTimerCallback = false
+            }
+          }, delayMs)
+        },
+        clearTimeout(handle: TimerHandle): void {
+          inner.clearTimeout(handle)
+        },
+        setInterval(fn: () => void, delayMs: number): TimerHandle {
+          return inner.setInterval(fn, delayMs)
+        },
+        clearInterval(handle: TimerHandle): void {
+          inner.clearInterval(handle)
+        },
+      }
+
+      const parser = new StdinParser({ armTimeouts: true, clock: disagreeingClock, timeoutMs: TEST_TIMEOUT_MS })
+      try {
+        parser.push(Buffer.from("\x1b"))
+        expect(snap(parser)).toEqual([])
+
+        // Fire the timer — now() will report timeoutMs - 1 elapsed, but the
+        // timeout callback still force-flushes without re-checking elapsed time.
+        inner.advance(TEST_TIMEOUT_MS)
+
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+      } finally {
+        parser.destroy()
       }
     })
   })

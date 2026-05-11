@@ -1057,7 +1057,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
       code += `Line ${i}\n`
     }
 
-    const { LineNumberRenderable } = await import("../renderables/LineNumberRenderable")
+    const { LineNumberRenderable } = await import("../renderables/LineNumberRenderable.js")
     const codeRenderable = new CodeRenderable(testRenderer, {
       content: code,
       filetype: "javascript",

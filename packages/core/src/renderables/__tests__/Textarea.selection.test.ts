@@ -341,9 +341,9 @@ describe("Textarea - Selection Tests", () => {
 
       for (let cellX = editor.x; cellX < editor.x + 5; cellX++) {
         const bufferIdx = editor.y * bufferWidth + cellX
-        const bgR = bg[bufferIdx * 4 + 0]
-        const bgG = bg[bufferIdx * 4 + 1]
-        const bgB = bg[bufferIdx * 4 + 2]
+        const bgR = (bg[bufferIdx * 4] & 0xff) / 255
+        const bgG = (bg[bufferIdx * 4 + 1] & 0xff) / 255
+        const bgB = (bg[bufferIdx * 4 + 2] & 0xff) / 255
 
         expect(Math.abs(bgR - 1.0)).toBeLessThan(0.01)
         expect(Math.abs(bgG - 0.0)).toBeLessThan(0.01)
@@ -381,9 +381,9 @@ describe("Textarea - Selection Tests", () => {
 
       for (let cellX = 0; cellX < 4; cellX++) {
         const bufferIdx = 2 * bufferWidth + cellX
-        const bgR = bg[bufferIdx * 4 + 0]
-        const bgG = bg[bufferIdx * 4 + 1]
-        const bgB = bg[bufferIdx * 4 + 2]
+        const bgR = (bg[bufferIdx * 4] & 0xff) / 255
+        const bgG = (bg[bufferIdx * 4 + 1] & 0xff) / 255
+        const bgB = (bg[bufferIdx * 4 + 2] & 0xff) / 255
 
         expect(Math.abs(bgR - 1.0)).toBeLessThan(0.01)
         expect(Math.abs(bgG - 0.0)).toBeLessThan(0.01)
@@ -912,7 +912,7 @@ describe("Textarea - Selection Tests", () => {
     })
 
     it("should handle cross-renderable selection from bottom-left text to top-right text", async () => {
-      const { BoxRenderable } = await import("../Box")
+      const { BoxRenderable } = await import("../Box.js")
 
       const bottomText = new TextRenderable(currentRenderer, {
         id: "bottom-instructions",
@@ -1025,7 +1025,7 @@ describe("Textarea - Selection Tests", () => {
       for (let y = 0; y < editor.height; y++) {
         for (let x = 0; x < editor.width; x++) {
           const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
-          const bgG = bgBefore[bufferIdx * 4 + 1]
+          const bgG = (bgBefore[bufferIdx * 4 + 1] & 0xff) / 255
           if (Math.abs(bgG - 1.0) < 0.01) {
             selectedCellsBefore.push({ x, y })
           }
@@ -1056,7 +1056,7 @@ describe("Textarea - Selection Tests", () => {
       for (let y = 0; y < editor.height; y++) {
         for (let x = 0; x < editor.width; x++) {
           const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
-          const bgG = bgAfter[bufferIdx * 4 + 1]
+          const bgG = (bgAfter[bufferIdx * 4 + 1] & 0xff) / 255
           if (Math.abs(bgG - 1.0) < 0.01) {
             selectedCellsAfter.push({ x, y })
           }
@@ -1117,8 +1117,8 @@ describe("Textarea - Selection Tests", () => {
       for (let y = 0; y < editor.height; y++) {
         for (let x = 0; x < editor.width; x++) {
           const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
-          const bgR = bgNarrow[bufferIdx * 4 + 0]
-          const bgB = bgNarrow[bufferIdx * 4 + 2]
+          const bgR = (bgNarrow[bufferIdx * 4 + 0] & 0xff) / 255
+          const bgB = (bgNarrow[bufferIdx * 4 + 2] & 0xff) / 255
           if (Math.abs(bgR - 1.0) < 0.01 && Math.abs(bgB - 1.0) < 0.01) {
             selectedCellsNarrow++
           }
@@ -1149,8 +1149,8 @@ describe("Textarea - Selection Tests", () => {
       for (let y = 0; y < editor.height; y++) {
         for (let x = 0; x < editor.width; x++) {
           const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
-          const bgR = bgWide[bufferIdx * 4 + 0]
-          const bgB = bgWide[bufferIdx * 4 + 2]
+          const bgR = (bgWide[bufferIdx * 4 + 0] & 0xff) / 255
+          const bgB = (bgWide[bufferIdx * 4 + 2] & 0xff) / 255
           if (Math.abs(bgR - 1.0) < 0.01 && Math.abs(bgB - 1.0) < 0.01) {
             selectedCellsWide++
           }
@@ -1206,8 +1206,8 @@ describe("Textarea - Selection Tests", () => {
       for (let y = 0; y < editor.height; y++) {
         for (let x = 0; x < editor.width; x++) {
           const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
-          const bgG = bgAfterResize[bufferIdx * 4 + 1]
-          const bgB = bgAfterResize[bufferIdx * 4 + 2]
+          const bgG = (bgAfterResize[bufferIdx * 4 + 1] & 0xff) / 255
+          const bgB = (bgAfterResize[bufferIdx * 4 + 2] & 0xff) / 255
           if (Math.abs(bgG - 1.0) < 0.01 && Math.abs(bgB - 1.0) < 0.01) {
             selectedCellsAfterResize++
           }
@@ -1578,9 +1578,9 @@ function countSelectedCells(
   for (let y = 0; y < editor.height; y++) {
     for (let x = 0; x < editor.width; x++) {
       const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
-      const bgR = bg[bufferIdx * 4 + 0]
-      const bgG = bg[bufferIdx * 4 + 1]
-      const bgB = bg[bufferIdx * 4 + 2]
+      const bgR = (bg[bufferIdx * 4] & 0xff) / 255
+      const bgG = (bg[bufferIdx * 4 + 1] & 0xff) / 255
+      const bgB = (bg[bufferIdx * 4 + 2] & 0xff) / 255
       if (Math.abs(bgR - r) < 0.01 && Math.abs(bgG - g) < 0.01 && Math.abs(bgB - b) < 0.01) {
         count++
       }

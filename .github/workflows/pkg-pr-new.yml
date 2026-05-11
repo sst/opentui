@@ -28,7 +28,7 @@ jobs:
           bun-version: latest
 
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
 
@@ -38,6 +38,10 @@ jobs:
       - name: Build core (all platforms via cross-compilation)
         run: bun scripts/build.ts --native --all && bun scripts/build.ts --lib
         working-directory: packages/core
+
+      - name: Build three
+        run: bun run build --ci
+        working-directory: packages/three
 
       - name: Get native package directories
         id: native-packages
@@ -59,5 +63,6 @@ jobs:
           npx pkg-pr-new publish --no-template --commentWithSha --bun \
             './packages/core/dist' \
             ${{ steps.native-packages.outputs.dirs }} \
+            './packages/three/dist' \
             './packages/react/dist' \
             './packages/solid/dist'

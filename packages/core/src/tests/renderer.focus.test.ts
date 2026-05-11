@@ -1,7 +1,10 @@
-import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { CliRenderEvents } from "../renderer.js"
 import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
 import { BoxRenderable } from "../renderables/Box.js"
+import { InputRenderable } from "../renderables/Input.js"
+import { TextareaRenderable } from "../renderables/Textarea.js"
 import { TextRenderable } from "../renderables/Text.js"
 
 let testRenderer: TestRenderer
@@ -248,4 +251,79 @@ test("autoFocus=false prevents click focus changes", async () => {
   } finally {
     renderer.destroy()
   }
+})
+
+test("focused_editor event emits on editor focus changes", async () => {
+  const events: Array<[string | null, string | null]> = []
+  const box = new BoxRenderable(testRenderer, {
+    id: "plain-box",
+    width: 10,
+    height: 2,
+    focusable: true,
+  })
+  const textarea = new TextareaRenderable(testRenderer, {
+    id: "editor-a",
+    width: 20,
+    height: 3,
+  })
+  const input = new InputRenderable(testRenderer, {
+    id: "editor-b",
+    width: 20,
+  })
+
+  testRenderer.on(CliRenderEvents.FOCUSED_EDITOR, (current, previous) => {
+    events.push([current?.id ?? null, previous?.id ?? null])
+  })
+
+  testRenderer.root.add(box)
+  testRenderer.root.add(textarea)
+  testRenderer.root.add(input)
+  await testRenderer.idle()
+
+  textarea.focus()
+  box.focus()
+  input.focus()
+  input.focus()
+
+  expect(events).toEqual([
+    ["editor-a", null],
+    [null, "editor-a"],
+    ["editor-b", null],
+  ])
+  expect(testRenderer.currentFocusedEditor?.id).toBe("editor-b")
+})
+
+test("focused_renderable event emits once per focus change and direct blur", async () => {
+  const events: Array<[string | null, string | null]> = []
+  const first = new BoxRenderable(testRenderer, {
+    id: "first-box",
+    width: 10,
+    height: 2,
+    focusable: true,
+  })
+  const second = new BoxRenderable(testRenderer, {
+    id: "second-box",
+    width: 10,
+    height: 2,
+    focusable: true,
+  })
+
+  testRenderer.on(CliRenderEvents.FOCUSED_RENDERABLE, (current, previous) => {
+    events.push([current?.id ?? null, previous?.id ?? null])
+  })
+
+  testRenderer.root.add(first)
+  testRenderer.root.add(second)
+  await testRenderer.idle()
+
+  first.focus()
+  second.focus()
+  second.blur()
+
+  expect(events).toEqual([
+    ["first-box", null],
+    ["second-box", "first-box"],
+    [null, "second-box"],
+  ])
+  expect(testRenderer.currentFocusedRenderable).toBeNull()
 })

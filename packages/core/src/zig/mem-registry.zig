@@ -35,6 +35,7 @@ pub const MemRegistry = struct {
         }
         self.buffers.deinit(self.allocator);
         self.free_slots.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn register(self: *MemRegistry, data: []const u8, owned: bool) MemRegistryError!u8 {
@@ -55,7 +56,7 @@ pub const MemRegistry = struct {
             return MemRegistryError.OutOfMemory;
         }
         const id: u8 = @intCast(self.buffers.items.len);
-        try self.buffers.append(self.allocator, MemBuffer{
+        try self.buffers.append(self.allocator, .{
             .data = data,
             .owned = owned,
             .active = true,

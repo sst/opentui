@@ -12,7 +12,6 @@ describe("useMouse configuration", () => {
     const { renderer } = await createTestRenderer({
       useMouse: true,
       exitOnCtrlC: false,
-      useAlternateScreen: false,
     })
 
     expect(renderer.useMouse).toBe(true)
@@ -23,7 +22,6 @@ describe("useMouse configuration", () => {
     const { renderer } = await createTestRenderer({
       useMouse: false,
       exitOnCtrlC: false,
-      useAlternateScreen: false,
     })
 
     expect(renderer.useMouse).toBe(false)
@@ -34,7 +32,6 @@ describe("useMouse configuration", () => {
     const { renderer } = await createTestRenderer({
       useMouse: false,
       exitOnCtrlC: false,
-      useAlternateScreen: false,
     })
 
     expect(renderer.useMouse).toBe(false)
@@ -46,5 +43,19 @@ describe("useMouse configuration", () => {
     expect(renderer.useMouse).toBe(false)
 
     renderer.destroy()
+  })
+
+  test("destroy disables mouse tracking", async () => {
+    const { renderer } = await createTestRenderer({
+      useMouse: true,
+      exitOnCtrlC: false,
+      useAlternateScreen: false,
+    })
+
+    expect(renderer.useMouse).toBe(true)
+
+    renderer.destroy()
+
+    expect(renderer.useMouse).toBe(false)
   })
 })

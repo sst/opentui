@@ -1,8 +1,8 @@
 import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
 import { Buffer } from "node:buffer"
-import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer"
-import { Renderable } from "../Renderable"
-import { ManualClock } from "../testing/manual-clock"
+import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer.js"
+import { Renderable } from "../Renderable.js"
+import { ManualClock } from "../testing/manual-clock.js"
 
 class TestRenderable extends Renderable {
   constructor(renderer: TestRenderer, options: any) {
@@ -128,6 +128,35 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
     clock.advance(15)
 
     expect(events).toEqual(["focus", "blur"])
+  })
+
+  test("duplicate focus and blur sequences only emit transitions once", async () => {
+    const events: string[] = []
+
+    renderer.on("focus", () => {
+      events.push("focus")
+    })
+
+    renderer.on("blur", () => {
+      events.push("blur")
+    })
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    clock.advance(15)
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+
+    expect(events).toEqual(["blur", "focus", "blur"])
   })
 
   test("focus events do not trigger keypress events", async () => {

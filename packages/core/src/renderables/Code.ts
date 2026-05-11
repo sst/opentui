@@ -98,6 +98,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._highlightSnapshotId++
 
       if (this._streaming && !this._drawUnstyledText && this._filetype) {
+        this.requestRender()
         return
       }
 
@@ -252,6 +253,7 @@ export class CodeRenderable extends TextBufferRenderable {
       const result = await this._treeSitterClient.highlightOnce(content, filetype)
 
       if (snapshotId !== this._highlightSnapshotId) {
+        this.requestRender()
         return
       }
 
@@ -272,6 +274,7 @@ export class CodeRenderable extends TextBufferRenderable {
       }
 
       if (snapshotId !== this._highlightSnapshotId) {
+        this.requestRender()
         return
       }
 
@@ -298,6 +301,7 @@ export class CodeRenderable extends TextBufferRenderable {
         chunks = await this.transformChunks(chunks, context)
 
         if (snapshotId !== this._highlightSnapshotId) {
+          this.requestRender()
           return
         }
 
@@ -316,6 +320,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this.requestRender()
     } catch (error) {
       if (snapshotId !== this._highlightSnapshotId) {
+        this.requestRender()
         return
       }
 

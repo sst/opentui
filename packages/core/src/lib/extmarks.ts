@@ -1,5 +1,6 @@
 import type { EditBuffer } from "../edit-buffer.js"
 import type { EditorView } from "../editor-view.js"
+import { stringWidth } from "../platform/runtime.js"
 import { ExtmarksHistory, type ExtmarksSnapshot } from "./extmarks-history.js"
 
 export interface Extmark {
@@ -614,7 +615,7 @@ export class ExtmarksController {
           j++
         }
         const chunk = text.substring(i, j)
-        const chunkWidth = Bun.stringWidth(chunk)
+        const chunkWidth = stringWidth(chunk)
 
         if (displayWidthSoFar + chunkWidth < offset) {
           // Entire chunk fits before offset
@@ -624,7 +625,7 @@ export class ExtmarksController {
           // Offset is within this chunk - need to find exact position
           // Walk character by character
           for (let k = i; k < j && displayWidthSoFar < offset; k++) {
-            const charWidth = Bun.stringWidth(text[k])
+            const charWidth = stringWidth(text[k])
             displayWidthSoFar += charWidth
           }
           break

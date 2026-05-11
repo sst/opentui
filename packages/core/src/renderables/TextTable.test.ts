@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { OptimizedBuffer } from "../buffer"
-import { RGBA } from "../lib/RGBA"
-import { bold, green, red, yellow } from "../lib/styled-text"
-import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
-import type { CapturedFrame } from "../types"
-import { BoxRenderable } from "./Box"
-import { ScrollBoxRenderable } from "./ScrollBox"
-import { TextRenderable } from "./Text"
-import { TextTableRenderable, type TextTableCellContent, type TextTableContent } from "./TextTable"
+import { OptimizedBuffer } from "../buffer.js"
+import { RGBA } from "../lib/RGBA.js"
+import { bold, green, red, yellow } from "../lib/styled-text.js"
+import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer.js"
+import type { CapturedFrame } from "../types.js"
+import { BoxRenderable } from "./Box.js"
+import { ScrollBoxRenderable } from "./ScrollBox.js"
+import { TextRenderable } from "./Text.js"
+import { TextTableRenderable, type TextTableCellContent, type TextTableContent } from "./TextTable.js"
 
 const VERTICAL_BORDER_CP = "│".codePointAt(0)!
 const BORDER_CHAR_PATTERN = /[┌┐└┘├┤┬┴┼│─]/
@@ -25,22 +25,12 @@ function getCharAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: nu
 
 function getFgAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: number): RGBA {
   const index = (y * buffer.width + x) * 4
-  return RGBA.fromValues(
-    buffer.buffers.fg[index] ?? 0,
-    buffer.buffers.fg[index + 1] ?? 0,
-    buffer.buffers.fg[index + 2] ?? 0,
-    buffer.buffers.fg[index + 3] ?? 0,
-  )
+  return RGBA.fromArray(buffer.buffers.fg.slice(index, index + 4))
 }
 
 function getBgAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: number): RGBA {
   const index = (y * buffer.width + x) * 4
-  return RGBA.fromValues(
-    buffer.buffers.bg[index] ?? 0,
-    buffer.buffers.bg[index + 1] ?? 0,
-    buffer.buffers.bg[index + 2] ?? 0,
-    buffer.buffers.bg[index + 3] ?? 0,
-  )
+  return RGBA.fromArray(buffer.buffers.bg.slice(index, index + 4))
 }
 
 function findVerticalBorderXs(buffer: TestRenderer["currentRenderBuffer"], y: number): number[] {
@@ -891,7 +881,7 @@ describe("TextTableRenderable", () => {
 
   test("selection colors reset when drag retracts back to the anchor", async () => {
     const defaultFg = RGBA.fromHex("#111111")
-    const defaultBg = RGBA.fromValues(0, 0, 0, 0)
+    const defaultBg = RGBA.fromValues(0, 0, 0, 1)
     const selectionFg = RGBA.fromHex("#fefefe")
     const selectionBg = RGBA.fromHex("#cc5500")
 
@@ -899,7 +889,7 @@ describe("TextTableRenderable", () => {
       left: 0,
       top: 0,
       fg: defaultFg,
-      bg: "transparent",
+      bg: defaultBg,
       selectionFg,
       selectionBg,
       columnWidthMode: "content",
@@ -948,11 +938,11 @@ describe("TextTableRenderable", () => {
         const cp = getCharAt(frameBuffer, x, y)
         if (cp === 0 || cp === VERTICAL_BORDER_CP) continue
 
-        if (!getFgAt(frameBuffer, x, y).equals(defaultFg)) {
+        if (getFgAt(frameBuffer, x, y).toInts().join(",") !== defaultFg.toInts().join(",")) {
           mismatches.push(`fg@${x},${y}`)
         }
 
-        if (!getBgAt(frameBuffer, x, y).equals(defaultBg)) {
+        if (getBgAt(frameBuffer, x, y).toInts().join(",") !== defaultBg.toInts().join(",")) {
           mismatches.push(`bg@${x},${y}`)
         }
       }

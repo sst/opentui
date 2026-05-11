@@ -7,14 +7,14 @@ const UnifiedRope = seg_mod.UnifiedRope;
 const TextChunk = seg_mod.TextChunk;
 
 test "Segment.measure - text chunk" {
-    const chunk = TextChunk{
+    const chunk: TextChunk = .{
         .mem_id = 0,
         .byte_start = 0,
         .byte_end = 10,
         .width = 10,
         .flags = TextChunk.Flags.ASCII_ONLY,
     };
-    const seg = Segment{ .text = chunk };
+    const seg: Segment = .{ .text = chunk };
     const metrics = seg.measure();
 
     try testing.expectEqual(@as(u32, 10), metrics.total_width);
@@ -23,7 +23,7 @@ test "Segment.measure - text chunk" {
 }
 
 test "Segment.measure - break" {
-    const seg = Segment{ .brk = {} };
+    const seg: Segment = .{ .brk = {} };
     const metrics = seg.measure();
 
     try testing.expectEqual(@as(u32, 0), metrics.total_width);
@@ -37,7 +37,7 @@ test "Segment.empty and is_empty" {
 }
 
 test "Segment.isBreak and isText" {
-    const text_seg = Segment{
+    const text_seg: Segment = .{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -49,36 +49,36 @@ test "Segment.isBreak and isText" {
     try testing.expect(text_seg.isText());
     try testing.expect(!text_seg.isBreak());
 
-    const brk_seg = Segment{ .brk = {} };
+    const brk_seg: Segment = .{ .brk = {} };
     try testing.expect(brk_seg.isBreak());
     try testing.expect(!brk_seg.isText());
 }
 
 test "Segment.asText" {
-    const chunk = TextChunk{
+    const chunk: TextChunk = .{
         .mem_id = 0,
         .byte_start = 0,
         .byte_end = 10,
         .width = 10,
         .flags = 0,
     };
-    const text_seg = Segment{ .text = chunk };
+    const text_seg: Segment = .{ .text = chunk };
     const retrieved = text_seg.asText();
     try testing.expect(retrieved != null);
     try testing.expectEqual(@as(u32, 10), retrieved.?.width);
 
-    const brk_seg = Segment{ .brk = {} };
+    const brk_seg: Segment = .{ .brk = {} };
     try testing.expect(brk_seg.asText() == null);
 }
 
 test "Metrics.add - two text segments" {
-    var left = Segment.Metrics{
+    var left: Segment.Metrics = .{
         .total_width = 10,
         .max_line_width = 10,
         .ascii_only = true,
     };
 
-    const right = Segment.Metrics{
+    const right: Segment.Metrics = .{
         .total_width = 5,
         .max_line_width = 5,
         .ascii_only = true,
@@ -92,13 +92,13 @@ test "Metrics.add - two text segments" {
 }
 
 test "Metrics.add - text, break, text" {
-    var left = Segment.Metrics{
+    var left: Segment.Metrics = .{
         .total_width = 10,
         .max_line_width = 10,
         .ascii_only = true,
     };
 
-    const middle = Segment.Metrics{
+    const middle: Segment.Metrics = .{
         .total_width = 0,
         .max_line_width = 0,
         .ascii_only = true,
@@ -109,7 +109,7 @@ test "Metrics.add - text, break, text" {
     try testing.expectEqual(@as(u32, 10), left.total_width);
     try testing.expectEqual(@as(u32, 10), left.max_line_width);
 
-    const right = Segment.Metrics{
+    const right: Segment.Metrics = .{
         .total_width = 5,
         .max_line_width = 5,
         .ascii_only = true,
@@ -122,19 +122,19 @@ test "Metrics.add - text, break, text" {
 }
 
 test "Metrics.add - multiple breaks" {
-    var metrics = Segment.Metrics{
+    var metrics: Segment.Metrics = .{
         .total_width = 10,
         .max_line_width = 10,
         .ascii_only = true,
     };
 
-    metrics.add(Segment.Metrics{
+    metrics.add(.{
         .total_width = 0,
         .max_line_width = 0,
         .ascii_only = true,
     });
 
-    metrics.add(Segment.Metrics{
+    metrics.add(.{
         .total_width = 20,
         .max_line_width = 20,
         .ascii_only = true,
@@ -143,13 +143,13 @@ test "Metrics.add - multiple breaks" {
     try testing.expectEqual(@as(u32, 30), metrics.total_width);
     try testing.expectEqual(@as(u32, 20), metrics.max_line_width);
 
-    metrics.add(Segment.Metrics{
+    metrics.add(.{
         .total_width = 0,
         .max_line_width = 0,
         .ascii_only = true,
     });
 
-    metrics.add(Segment.Metrics{
+    metrics.add(.{
         .total_width = 5,
         .max_line_width = 5,
         .ascii_only = true,
@@ -160,13 +160,13 @@ test "Metrics.add - multiple breaks" {
 }
 
 test "Metrics.add - non-ASCII propagation" {
-    var left = Segment.Metrics{
+    var left: Segment.Metrics = .{
         .total_width = 10,
         .max_line_width = 10,
         .ascii_only = true,
     };
 
-    const right = Segment.Metrics{
+    const right: Segment.Metrics = .{
         .total_width = 5,
         .max_line_width = 5,
         .ascii_only = false,
@@ -183,7 +183,7 @@ test "UnifiedRope - basic operations" {
 
     var rope = try UnifiedRope.init(allocator);
 
-    const text1 = Segment{
+    const text1: Segment = .{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -194,10 +194,10 @@ test "UnifiedRope - basic operations" {
     };
     try rope.append(text1);
 
-    const brk = Segment{ .brk = {} };
+    const brk: Segment = .{ .brk = {} };
     try rope.append(brk);
 
-    const text2 = Segment{
+    const text2: Segment = .{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
@@ -232,7 +232,7 @@ test "UnifiedRope - single text segment" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    try rope.append(Segment{
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -255,7 +255,7 @@ test "UnifiedRope - multiple lines with varying widths" {
 
     var rope = try UnifiedRope.init(allocator);
 
-    try rope.append(Segment{
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -264,9 +264,9 @@ test "UnifiedRope - multiple lines with varying widths" {
             .flags = 0,
         },
     });
-    try rope.append(Segment{ .brk = {} });
+    try rope.append(.{ .brk = {} });
 
-    try rope.append(Segment{
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
@@ -275,9 +275,9 @@ test "UnifiedRope - multiple lines with varying widths" {
             .flags = 0,
         },
     });
-    try rope.append(Segment{ .brk = {} });
+    try rope.append(.{ .brk = {} });
 
-    try rope.append(Segment{
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 40,
@@ -300,13 +300,13 @@ fn combineMetrics(left: Segment.Metrics, right: Segment.Metrics) Segment.Metrics
 }
 
 test "combineMetrics helper function" {
-    const left = Segment.Metrics{
+    const left: Segment.Metrics = .{
         .total_width = 10,
         .max_line_width = 10,
         .ascii_only = true,
     };
 
-    const right = Segment.Metrics{
+    const right: Segment.Metrics = .{
         .total_width = 5,
         .max_line_width = 5,
         .ascii_only = true,

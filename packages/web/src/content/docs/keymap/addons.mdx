@@ -1,0 +1,213 @@
+---
+title: Built-in Addons
+description: Shipped universal and OpenTUI-specific keymap addons
+order: 6
+navTitle: Built-in Addons
+---
+
+# Built-in keymap addons
+
+`@opentui/keymap` keeps the engine bare. The built-in addon packages install parser stages, field compilers, diagnostics, disambiguation and host-specific helpers on top of the public registration APIs.
+
+If you want to build your own addon, see [Custom Addons](/docs/keymap/custom-addons).
+
+Every addon returns a disposer.
+
+```ts
+import * as addons from "@opentui/keymap/addons"
+import * as opentuiAddons from "@opentui/keymap/addons/opentui"
+```
+
+## Universal addons
+
+### Defaults
+
+| Export                                | Description                                           |
+| ------------------------------------- | ----------------------------------------------------- |
+| `defaultBindingParser`                | Shared parser for string key syntax                   |
+| `defaultEventMatchResolver`           | Shared event matcher for canonical normalized strokes |
+| `registerDefaultBindingParser()`      | Appends `defaultBindingParser`                        |
+| `registerDefaultEventMatchResolver()` | Appends `defaultEventMatchResolver`                   |
+| `registerDefaultKeys()`               | Installs both default stages together                 |
+
+The shared default parser accepts single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key, `<token>` aliases, and `{pattern}` runtime captures. It parses concatenated multi-stroke sequences such as `dd`, `<leader>s`, or `{count}j`.
+
+Recognized modifier prefixes (case-insensitive, joined with `+`):
+
+| Modifier | Aliases         |
+| -------- | --------------- |
+| `ctrl`   | `control`       |
+| `shift`  | -               |
+| `meta`   | `alt`, `option` |
+| `super`  | -               |
+| `hyper`  | -               |
+
+### Field addons
+
+| Export                       | Adds                                                                               |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| `registerBindingOverrides()` | Layer-local `bindingOverrides` field for replacing bindings by string command name |
+| `registerEnabledFields()`    | Layer and command `enabled` fields                                                 |
+| `registerMetadataFields()`   | Binding `desc` / `group` and command `desc` / `title` / `category` metadata        |
+| `registerAliasesField()`     | Layer-local `aliases` field for remapping single-key binding names                 |
+
+`registerBindingOverrides()` expects `bindingOverrides` to already be a `Binding[]` array. It rewrites that layer's binding array once at registration time. Matching string commands are replaced by the override binding and unmatched bindings stay in place.
+
+`registerEnabledFields()` accepts `boolean`, `() => boolean`, or `ReactiveMatcher` values. It applies to layers and commands, not bindings. It controls activation only; it does not publish attrs.
+
+`registerMetadataFields()` validates and trims metadata fields before exposing them in projections. Binding `desc` / `group` become binding metadata. Command `desc` / `title` / `category` become command metadata in `commandAttrs`.
+
+Layer metadata is app-specific. Register layer fields directly with `registerLayerFields()` and call `ctx.attr(...)` when graph/debug visualizations need layer labels or grouping metadata.
+
+`registerAliasesField()` adds bindings instead of replacing the originals and aliases stay local to the layer that declared them.
+
+### Syntax and sequence addons
+
+| Export                                   | Description                                                             |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| `registerCommaBindings()`                | Expands `x, y` into multiple bindings                                   |
+| `registerEmacsBindings()`                | Parses Emacs-style spaced chords such as `ctrl+x ctrl+s`                |
+| `registerLeader()`                       | Defines a token such as `leader` that `<leader>` syntax expands through |
+| `registerModBindings()`                  | Adds platform-aware `mod+...` bindings using host metadata              |
+| `registerTimedLeader()`                  | Defines a leader token and clears it after a timeout                    |
+| `registerBackspacePopsPendingSequence()` | Lets Backspace step back through the current pending sequence           |
+| `registerEscapeClearsPendingSequence()`  | Lets Escape cancel the current pending sequence                         |
+| `registerNeovimDisambiguation()`         | Timeout-based exact-vs-prefix disambiguation                            |
+
+Options:
+
+| API                                      | Options                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| `registerLeader()`                       | `LeaderOptions`: `trigger`, optional semantic `name` (default `"leader"`)            |
+| `registerTimedLeader()`                  | `TimedLeaderOptions`: `LeaderOptions` plus `timeoutMs`, `onArm`, `onDisarm`          |
+| `registerBackspacePopsPendingSequence()` | `BackspacePopsPendingSequenceOptions`: `preventDefault` (default `true`), `priority` |
+| `registerEscapeClearsPendingSequence()`  | `EscapeClearsPendingSequenceOptions`: `preventDefault` (default `true`), `priority`  |
+| `registerNeovimDisambiguation()`         | `NeovimDisambiguationOptions`: `timeoutMs` (default `300`)                           |
+
+Register disambiguation addons before registering same-layer exact/prefix bindings such as `g` and `gg`.
+
+Leader `trigger` accepts a key string, key object, binding-like `{ key }`, or a single binding lookup result from `createBindingLookup().get(...)`.
+
+### Diagnostics
+
+| Export                                | Description                                                       |
+| ------------------------------------- | ----------------------------------------------------------------- |
+| `registerDeadBindingWarnings()`       | Warns when a binding has no command and no reachable continuation |
+| `registerUnresolvedCommandWarnings()` | Warns when a string command cannot be resolved                    |
+
+## Ex commands
+
+`registerExCommands()` installs ex-command field compilers, a command transformer and a resolver for `:name ...args` strings. Register ex commands through normal keymap layers by using a colon-prefixed command name or `namespace: "excommands"`.
+
+```ts
+import { registerExCommands } from "@opentui/keymap/addons"
+
+registerExCommands(keymap)
+
+keymap.registerLayer({
+  commands: [
+    {
+      name: "write",
+      namespace: "excommands",
+      aliases: ["w"],
+      nargs: "1",
+      desc: "Write file",
+      run({ payload }) {
+        // payload.raw === ":write session.log"
+        // payload.args === ["session.log"]
+      },
+    },
+  ],
+})
+```
+
+`ExCommand` fields:
+
+| Field        | Type                                                                        | Required | Description                                                      |
+| ------------ | --------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------- |
+| `name`       | `string`                                                                    | yes      | Command name. `:name` and `name` both normalize to `:name`       |
+| `aliases`    | `string[]`                                                                  | no       | Additional names                                                 |
+| `nargs`      | `"0"`, `"1"`, `"?"`, `"*"`, `"+"`                                           | no       | Argument-count validation                                        |
+| `run`        | `(ctx: CommandContext<TTarget, TEvent, ExCommandPayload>) => CommandResult` | yes      | `ctx.payload` contains the trimmed `raw` input and parsed `args` |
+| extra fields | `unknown`                                                                   | no       | Added as top-level fields on the registered command              |
+
+- Registered ex commands default `namespace` to `excommands`.
+- Aliases produce additional registered commands, for example `:write` and `:w`.
+- Extra fields are preserved on `getCommands()` / `getCommandEntries()` results and compiled through command-field addons.
+- `runCommand(":write file.txt")` and `dispatchCommand(":write file.txt")` both go through the installed resolver.
+
+## OpenTUI addons
+
+`@opentui/keymap/addons/opentui` re-exports every universal addon and adds the OpenTUI-specific helpers below.
+
+### `registerBaseLayoutFallback()`
+
+Adds an event match resolver that falls back to `KeyEvent.baseCode` so bindings can ignore active keyboard layout changes when Kitty base-layout reporting is available. Direct stroke matches still win ahead of the fallback.
+
+### Edit buffer helpers
+
+| Export                                | Description                                                                              |
+| ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `createTextareaBindings()`            | Returns generated textarea bindings with overrides prepended                             |
+| `registerEditBufferCommands()`        | Registers the shared edit-buffer command set against `renderer.currentFocusedEditor`     |
+| `registerTextareaMappingSuspension()` | Suspends focused `TextareaRenderable` mapped shortcuts while keeping plain typing intact |
+| `registerManagedTextareaLayer()`      | High-level textarea integration: commands, suspension, default bindings and overrides    |
+
+`registerManagedTextareaLayer()` accepts a global `Layer` shape plus optional `bindings`, but it intentionally excludes `target` and `targetMode`. The helper is global and follows `renderer.currentFocusedEditor`.
+
+`EditBufferCommandOptions`:
+
+| Field              | Type                                             | Description                                                                     |
+| ------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `category`         | `string`                                         | Override generated command category, defaulting to `Text Editing`               |
+| `group`            | `string`                                         | Override generated binding group, defaulting to `Text Editing`                  |
+| `includeFineGroup` | `boolean`                                        | Include hard-coded binding `fineGroup` fields for apps that register that field |
+| `commandNames`     | `Partial<Record<EditBufferCommandName, string>>` | Override generated command names                                                |
+| `descriptions`     | `Partial<Record<EditBufferCommandName, string>>` | Override generated command descriptions                                         |
+
+`registerEditBufferCommands()` and `registerTextareaMappingSuspension()` are reference-counted per keymap, so multiple integrations can safely share them.
+
+### `EditBufferCommandName`
+
+| Action                    | Default command                 | Default description         |
+| ------------------------- | ------------------------------- | --------------------------- |
+| `move-left`               | `input.move.left`               | Cursor left                 |
+| `move-right`              | `input.move.right`              | Cursor right                |
+| `move-up`                 | `input.move.up`                 | Cursor up                   |
+| `move-down`               | `input.move.down`               | Cursor down                 |
+| `select-left`             | `input.select.left`             | Select left                 |
+| `select-right`            | `input.select.right`            | Select right                |
+| `select-up`               | `input.select.up`               | Select up                   |
+| `select-down`             | `input.select.down`             | Select down                 |
+| `line-home`               | `input.line.home`               | Line start                  |
+| `line-end`                | `input.line.end`                | Line end                    |
+| `select-line-home`        | `input.select.line.home`        | Select to line start        |
+| `select-line-end`         | `input.select.line.end`         | Select to line end          |
+| `visual-line-home`        | `input.visual.line.home`        | Visual line start           |
+| `visual-line-end`         | `input.visual.line.end`         | Visual line end             |
+| `select-visual-line-home` | `input.select.visual.line.home` | Select to visual line start |
+| `select-visual-line-end`  | `input.select.visual.line.end`  | Select to visual line end   |
+| `buffer-home`             | `input.buffer.home`             | Buffer start                |
+| `buffer-end`              | `input.buffer.end`              | Buffer end                  |
+| `select-buffer-home`      | `input.select.buffer.home`      | Select to buffer start      |
+| `select-buffer-end`       | `input.select.buffer.end`       | Select to buffer end        |
+| `delete-line`             | `input.delete.line`             | Delete line                 |
+| `delete-to-line-end`      | `input.delete.to.line.end`      | Delete to line end          |
+| `delete-to-line-start`    | `input.delete.to.line.start`    | Delete to line start        |
+| `backspace`               | `input.backspace`               | Delete backward             |
+| `delete`                  | `input.delete`                  | Delete forward              |
+| `newline`                 | `input.newline`                 | New line                    |
+| `undo`                    | `input.undo`                    | Undo                        |
+| `redo`                    | `input.redo`                    | Redo                        |
+| `word-forward`            | `input.word.forward`            | Next word                   |
+| `word-backward`           | `input.word.backward`           | Previous word               |
+| `select-word-forward`     | `input.select.word.forward`     | Select next word            |
+| `select-word-backward`    | `input.select.word.backward`    | Select previous word        |
+| `delete-word-forward`     | `input.delete.word.forward`     | Delete next word            |
+| `delete-word-backward`    | `input.delete.word.backward`    | Delete previous word        |
+| `select-all`              | `input.select.all`              | Select all                  |
+| `submit`                  | `input.submit`                  | Submit                      |
+
+The generated textarea bindings come from the shared `defaultTextareaKeyBindings` in `@opentui/core`. `createTextareaBindings()` prepends overrides before those defaults so custom bindings win by order.
+
+See [Custom Addons](/docs/keymap/custom-addons) for the public addon-authoring APIs, lifecycle rules, callback contexts and extension-point quirks.

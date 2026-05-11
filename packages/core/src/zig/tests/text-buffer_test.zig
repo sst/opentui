@@ -583,7 +583,7 @@ test "TextBuffer line iteration - walkLines callback" {
         }
     };
 
-    var ctx = Context{ .lines = .{}, .allocator = std.testing.allocator };
+    var ctx: Context = .{ .lines = .{}, .allocator = std.testing.allocator };
     defer ctx.lines.deinit(std.testing.allocator);
 
     iter_mod.walkLines(tb.rope(), &ctx, Context.callback, true);

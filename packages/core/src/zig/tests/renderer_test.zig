@@ -85,7 +85,7 @@ test "renderer - simple text rendering to currentRenderBuffer" {
     defer cli_renderer.destroy();
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawTextBuffer(view, 0, 0);
+    next_buffer.drawTextBuffer(view, 0, 0);
 
     cli_renderer.render(false);
 
@@ -128,7 +128,7 @@ test "renderer - multi-line text rendering" {
     defer cli_renderer.destroy();
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawTextBuffer(view, 0, 0);
+    next_buffer.drawTextBuffer(view, 0, 0);
     cli_renderer.render(false);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
@@ -170,7 +170,7 @@ test "renderer - emoji (wide grapheme) rendering" {
     defer cli_renderer.destroy();
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawTextBuffer(view, 0, 0);
+    next_buffer.drawTextBuffer(view, 0, 0);
     cli_renderer.render(false);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
@@ -228,7 +228,7 @@ test "renderer - CJK characters rendering" {
     defer cli_renderer.destroy();
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawTextBuffer(view, 0, 0);
+    next_buffer.drawTextBuffer(view, 0, 0);
     cli_renderer.render(false);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
@@ -282,7 +282,7 @@ test "renderer - mixed ASCII, emoji, and CJK" {
     defer cli_renderer.destroy();
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawTextBuffer(view, 0, 0);
+    next_buffer.drawTextBuffer(view, 0, 0);
     cli_renderer.render(false);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
@@ -355,10 +355,37 @@ test "renderer - background color setting" {
     );
     defer cli_renderer.destroy();
 
-    const bg_color = RGBA{ 0.1, 0.2, 0.3, 1.0 };
+    const bg_color = ansi.rgbaFromFloats(0.1, 0.2, 0.3, 1.0);
     cli_renderer.setBackgroundColor(bg_color);
 
     try std.testing.expectEqual(bg_color, cli_renderer.backgroundColor);
+    try std.testing.expectEqual(bg_color, cli_renderer.getNextBuffer().getBlendBackdropColor().?);
+
+    const transparent_bg = ansi.rgbaFromFloats(0.25, 0.5, 0.75, 0.0);
+    cli_renderer.setBackgroundColor(transparent_bg);
+
+    try std.testing.expectEqual(transparent_bg, cli_renderer.backgroundColor);
+    try std.testing.expectEqual(ansi.rgbaFromFloats(0.25, 0.5, 0.75, 1.0), cli_renderer.getNextBuffer().getBlendBackdropColor().?);
+}
+
+test "renderer - theme color query tracks pending background restore" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.setBackgroundColor(ansi.rgbaFromFloats(0.1, 0.2, 0.3, 1.0));
+    cli_renderer.queryThemeColors();
+    try std.testing.expectEqual(ansi.rgbaFromFloats(0.1, 0.2, 0.3, 1.0), cli_renderer.backgroundColor);
 }
 
 test "renderer - empty text buffer renders correctly" {
@@ -385,7 +412,7 @@ test "renderer - empty text buffer renders correctly" {
     defer cli_renderer.destroy();
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawTextBuffer(view, 0, 0);
+    next_buffer.drawTextBuffer(view, 0, 0);
     cli_renderer.render(false);
 }
 
@@ -412,7 +439,7 @@ test "renderer - multiple renders update currentRenderBuffer" {
 
     try tb.setText("Hello");
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawTextBuffer(view, 0, 0);
+    next_buffer.drawTextBuffer(view, 0, 0);
     cli_renderer.render(false);
 
     var current_buffer = cli_renderer.getCurrentBuffer();
@@ -422,7 +449,7 @@ test "renderer - multiple renders update currentRenderBuffer" {
 
     try tb.setText("World");
     const next_buffer2 = cli_renderer.getNextBuffer();
-    try next_buffer2.drawTextBuffer(view, 0, 0);
+    next_buffer2.drawTextBuffer(view, 0, 0);
     cli_renderer.render(false);
 
     current_buffer = cli_renderer.getCurrentBuffer();
@@ -471,8 +498,8 @@ test "renderer - 1000 frame render loop with setStyledText" {
         "Mixed 😀 世",
     };
 
-    const fg_color = [4]f32{ 1.0, 0.8, 0.6, 1.0 };
-    const bg_color = [4]f32{ 0.1, 0.1, 0.2, 1.0 };
+    const fg_color = ansi.rgbaFromFloats(1.0, 0.8, 0.6, 1.0);
+    const bg_color = ansi.rgbaFromFloats(0.1, 0.1, 0.2, 1.0);
 
     var frame: u32 = 0;
     while (frame < 1000) : (frame += 1) {
@@ -488,11 +515,11 @@ test "renderer - 1000 frame render loop with setStyledText" {
         }};
 
         try tb.setStyledText(&chunks);
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-        try opt_buffer.drawTextBuffer(view, 0, 0);
+        opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+        opt_buffer.drawTextBuffer(view, 0, 0);
 
         const next_buffer = cli_renderer.getNextBuffer();
-        try next_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        next_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         next_buffer.drawFrameBuffer(0, 0, opt_buffer, null, null, null, null);
 
         cli_renderer.render(false);
@@ -548,8 +575,8 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     );
     defer frame_buffer.deinit();
 
-    const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-    const bg_color = [4]f32{ 0.0, 0.0, 0.0, 0.0 };
+    const fg_color = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg_color = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
 
     const text_with_emoji = "👋";
     const chunks = [_]text_buffer.StyledChunk{.{
@@ -560,16 +587,16 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
         .attributes = 0,
     }};
     try tb.setStyledText(&chunks);
-    try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try frame_buffer.drawTextBuffer(view, 0, 0);
+    frame_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
+    frame_buffer.drawTextBuffer(view, 0, 0);
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.setRespectAlpha(false);
-    try next_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    next_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
 
     next_buffer.drawFrameBuffer(0, 0, frame_buffer, null, null, null, null);
 
-    try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    frame_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
 
     var i: usize = 0;
     while (i < 10) : (i += 1) {
@@ -582,8 +609,8 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
             .attributes = 0,
         }};
         try tb.setStyledText(&new_chunks);
-        try frame_buffer.drawTextBuffer(view, 0, 0);
-        try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        frame_buffer.drawTextBuffer(view, 0, 0);
+        frame_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     }
 
     cli_renderer.render(false);
@@ -608,8 +635,8 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
     );
     defer cli_renderer.destroy();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
 
     const first_next_buffer = cli_renderer.getNextBuffer();
     try first_next_buffer.drawText("👋", 0, 0, fg, bg, 0);
@@ -666,8 +693,8 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
 
     const next_buffer = cli_renderer.getNextBuffer();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
 
     cli_renderer.render(false);
@@ -714,8 +741,8 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
 
     const next_buffer = cli_renderer.getNextBuffer();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
 
     cli_renderer.render(false);
@@ -754,8 +781,8 @@ test "renderer - link transition mid-line" {
     const attr1 = ansi.TextAttributes.setLinkId(0, link_id1);
     const attr2 = ansi.TextAttributes.setLinkId(0, link_id2);
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
 
     // Draw first link
     try next_buffer.drawText("First", 0, 0, fg, bg, attr1);
@@ -808,8 +835,8 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
     const link_id = try link_pool.alloc("https://example.com/long-url");
     const attributes = ansi.TextAttributes.setLinkId(0, link_id);
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
 
     // Fill entire row 0 with linked text so link is never interrupted by empty cells
     try next_buffer.drawText("01234567890123456789012345678901234567890123456789012345678901234567890123456789", 0, 0, fg, bg, attributes);
@@ -832,6 +859,215 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
     // Should appear exactly once: the link stays open across rows without
     // close/reopen at row boundaries, so terminals treat it as one contiguous link.
     try std.testing.expectEqual(@as(usize, 1), count);
+}
+
+test "renderer - explicit default and indexed tags use ANSI default/indexed output" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        4,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = true;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    next_buffer.set(0, 0, .{
+        .char = 'A',
+        .fg = ansi.defaultColor(255, 255, 255, 255),
+        .bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0),
+        .attributes = 0,
+    });
+    next_buffer.set(1, 0, .{
+        .char = 'B',
+        .fg = ansi.indexedColor(6, 51, 179, 230),
+        .bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0),
+        .attributes = 0,
+    });
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[39m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") != null);
+}
+
+test "renderer - indexed snapshots fall back to rgb and explicit bg default resets without ansi256" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = true;
+    cli_renderer.terminal.caps.ansi256 = false;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    next_buffer.set(0, 0, .{
+        .char = 'A',
+        .fg = ansi.indexedColor(6, 51, 102, 153),
+        .bg = ansi.defaultColor(0, 0, 0, 255),
+        .attributes = 0,
+    });
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;51;102;153m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
+}
+
+test "renderer - rgb colors fall back to ANSI256 mapping when rgb is unavailable" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = false;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, ansi.rgbaFromFloats(0.95, 0.1, 0.1, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;") == null);
+}
+
+test "renderer - rgb fallback uses published palette state" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = false;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const target = ansi.rgbaFromFloats(0.3, 0.6, 0.9, 1.0);
+    var palette = [_]RGBA{ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0)} ** 256;
+    palette[42] = target;
+    cli_renderer.setPaletteState(palette[0..], ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 1);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, target, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;42m") != null);
+}
+
+test "renderer - palette epoch changes force repaint and use new palette mapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = false;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const target = ansi.rgbaFromFloats(0.3, 0.6, 0.9, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+
+    var palette_a = [_]RGBA{ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0)} ** 256;
+    palette_a[42] = target;
+    cli_renderer.setPaletteState(palette_a[0..], ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), bg, 1);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, target, bg, 0);
+    cli_renderer.render(false);
+
+    const first_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, first_output, "\x1b[38;5;42m") != null);
+
+    try next_buffer.drawText("A", 0, 0, target, bg, 0);
+    cli_renderer.render(false);
+
+    const second_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, second_output, "A") == null);
+
+    var palette_b = [_]RGBA{ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0)} ** 256;
+    palette_b[77] = target;
+    cli_renderer.setPaletteState(palette_b[0..], ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), bg, 2);
+
+    try next_buffer.drawText("A", 0, 0, target, bg, 0);
+    cli_renderer.render(false);
+
+    const third_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, third_output, "A") != null);
+    try std.testing.expect(std.mem.indexOf(u8, third_output, "\x1b[38;5;77m") != null);
+}
+
+test "renderer - transparent rgb backgrounds still emit 49 reset" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
 }
 
 // ============================================================================
@@ -889,7 +1125,7 @@ test "renderer - explicit_cursor_positioning emits cursor move after wide graphe
     cli_renderer.terminal.caps.explicit_width = false;
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawTextBuffer(view, 0, 0);
+    next_buffer.drawTextBuffer(view, 0, 0);
 
     cli_renderer.render(false);
 
@@ -924,7 +1160,7 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
     cli_renderer1.terminal.caps.explicit_width = false;
 
     const next_buffer1 = cli_renderer1.getNextBuffer();
-    try next_buffer1.drawTextBuffer(view, 0, 0);
+    next_buffer1.drawTextBuffer(view, 0, 0);
     cli_renderer1.render(false);
     const output_without = cli_renderer1.getLastOutputForTest();
 
@@ -941,7 +1177,7 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
     cli_renderer2.terminal.caps.explicit_width = false;
 
     const next_buffer2 = cli_renderer2.getNextBuffer();
-    try next_buffer2.drawTextBuffer(view, 0, 0);
+    next_buffer2.drawTextBuffer(view, 0, 0);
     cli_renderer2.render(false);
     const output_with = cli_renderer2.getLastOutputForTest();
 
@@ -1000,11 +1236,753 @@ test "renderer - explicit_cursor_positioning with CJK characters" {
     cli_renderer.terminal.caps.explicit_width = false;
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawTextBuffer(view, 0, 0);
+    next_buffer.drawTextBuffer(view, 0, 0);
 
     cli_renderer.render(false);
 
     const output = cli_renderer.getLastOutputForTest();
 
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
+}
+
+test "renderer - commitSplitFooterSnapshot writes append before footer repaint in one output" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        3,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    var snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        11,
+        1,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer snapshot.deinit();
+
+    snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try snapshot.drawText("append-line", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    const appended = "append-line";
+    // This test documents the critical ordering contract:
+    // 1) append payload is emitted in the same sync frame as repaint
+    // 2) DECSTBM is active only during append when pinned
+    // 3) footer repaint cursor move happens after append payload
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 11, false, true, 2, false, true, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    const append_index = std.mem.indexOf(u8, output, appended);
+    const scroll_region_set_index = std.mem.indexOf(u8, output, "\x1b[1;2r");
+    const scroll_region_reset_index = std.mem.indexOf(u8, output, "\x1b[r");
+    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
+    const footer_move_after_sync = if (sync_index) |sync_start|
+        std.mem.indexOf(u8, output[sync_start + ansi.ANSI.syncSet.len ..], "\x1b[3;1H")
+    else
+        null;
+
+    try std.testing.expect(append_index != null);
+    try std.testing.expect(scroll_region_set_index != null);
+    try std.testing.expect(scroll_region_reset_index != null);
+    try std.testing.expect(sync_index != null);
+    try std.testing.expect(footer_move_after_sync != null);
+    try std.testing.expect(sync_index.? < append_index.?);
+    try std.testing.expect(scroll_region_set_index.? < append_index.?);
+    try std.testing.expect(append_index.? < scroll_region_reset_index.?);
+
+    var sync_count: usize = 0;
+    var pos: usize = 0;
+    while (std.mem.indexOf(u8, output[pos..], ansi.ANSI.syncSet)) |found| {
+        sync_count += 1;
+        pos += found + ansi.ANSI.syncSet.len;
+    }
+
+    try std.testing.expectEqual(@as(usize, 1), sync_count);
+}
+
+test "renderer - commitSplitFooterSnapshot settling phase moves footer downward" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        3,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(0, 3);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    var snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        1,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer snapshot.deinit();
+
+    snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try snapshot.drawText("settle", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    const appended = "settle";
+    // During settling we intentionally avoid bounded DECSTBM and instead clear rows
+    // that transition from footer surface to scrollback before append.
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 6, false, true, 3, false, true, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    const settling_clear_index = std.mem.indexOf(u8, output, "\x1b[1;1H\x1b[J");
+    const stale_footer_clear_top_index = std.mem.indexOf(u8, output, "\x1b[1;1H\x1b[2K");
+    const stale_footer_clear_next_index = std.mem.indexOf(u8, output, "\x1b[2;1H\x1b[2K");
+    const append_index = std.mem.indexOf(u8, output, appended);
+    const scroll_region_reset_index = std.mem.indexOf(u8, output, "\x1b[r");
+    const footer_clear_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[2K");
+    const footer_erase_below_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[J");
+    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
+
+    try std.testing.expectEqual(@as(u32, 2), cli_renderer.renderOffset);
+    try std.testing.expect(settling_clear_index == null);
+    try std.testing.expect(stale_footer_clear_top_index != null);
+    try std.testing.expect(stale_footer_clear_next_index != null);
+    try std.testing.expect(append_index != null);
+    try std.testing.expect(scroll_region_reset_index == null);
+    try std.testing.expect(footer_clear_index == null);
+    try std.testing.expect(footer_erase_below_index == null);
+    try std.testing.expect(sync_index != null);
+    try std.testing.expect(sync_index.? < append_index.?);
+    try std.testing.expect(stale_footer_clear_top_index.? < append_index.?);
+}
+
+test "renderer - commitSplitFooterSnapshot multiline settling enables bounded scroll at pin" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        3,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(1, 3);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    var snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        2,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer snapshot.deinit();
+
+    snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try snapshot.drawText("line-a", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try snapshot.drawText("line-b", 0, 1, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 6, false, true, 3, false, true, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    const expanded_region_index = std.mem.indexOf(u8, output, "\x1b[1;3r");
+    const collapsed_region_index = std.mem.indexOf(u8, output, "\x1b[r");
+
+    try std.testing.expectEqual(@as(u32, 3), cli_renderer.renderOffset);
+    try std.testing.expect(expanded_region_index != null);
+    try std.testing.expect(collapsed_region_index != null);
+    try std.testing.expect(expanded_region_index.? < collapsed_region_index.?);
+}
+
+test "renderer - commitSplitFooterSnapshot multiline short final row keeps continuation column" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        20,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    var first_snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        16,
+        3,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer first_snapshot.deinit();
+
+    first_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try first_snapshot.drawText("1234567890123456", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try first_snapshot.drawText("short", 0, 2, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(first_snapshot, 16, false, false, 2, false, true, true);
+
+    try std.testing.expectEqual(@as(u32, 5), cli_renderer.splitScrollback.tail_column);
+
+    var second_snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        1,
+        1,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer second_snapshot.deinit();
+
+    second_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try second_snapshot.drawText(",", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(second_snapshot, 1, false, false, 2, false, true, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    const move_index = std.mem.indexOf(u8, output, "\x1b[2;6H");
+    const comma_index = std.mem.indexOf(u8, output, ",");
+
+    try std.testing.expect(move_index != null);
+    try std.testing.expect(comma_index != null);
+    try std.testing.expect(move_index.? < comma_index.?);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[2;17H") == null);
+}
+
+test "renderer - commitSplitFooterSnapshot exact-width continuation preserves autowrap" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        20,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    var first_snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        1,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer first_snapshot.deinit();
+
+    first_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try first_snapshot.drawText("12345678901234567890", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(first_snapshot, 20, false, false, 2, false, true, true);
+
+    var second_snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        8,
+        1,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer second_snapshot.deinit();
+
+    second_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try second_snapshot.drawText(" letters", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(second_snapshot, 8, false, false, 2, false, true, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    const wrap_index = std.mem.indexOf(u8, output, "\x1b[2;20H\r\n");
+    const text_index = std.mem.indexOf(u8, output, " letters");
+
+    try std.testing.expectEqual(@as(u32, 8), cli_renderer.splitScrollback.tail_column);
+    try std.testing.expect(wrap_index != null);
+    try std.testing.expect(text_index != null);
+    try std.testing.expect(wrap_index.? < text_index.?);
+}
+
+test "renderer - commitSplitFooterSnapshot does not emit continuation spaces for wide graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    var snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        2,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer snapshot.deinit();
+
+    snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try snapshot.drawText("│甲│乙│丙│", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try snapshot.drawText("│😀│🚀│🧪│", 0, 1, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 10, false, false, 2, false, true, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "│甲│乙│丙│") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "│😀│🚀│🧪│") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "甲 ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "乙 ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "丙 ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "😀 ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "🚀 ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "🧪 ") == null);
+}
+
+test "renderer - repaintSplitFooter repaints footer without append payload" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        3,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    _ = cli_renderer.repaintSplitFooter(2, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    const footer_text_index = std.mem.indexOf(u8, output, "FOOT");
+    const footer_clear_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[2K");
+    const footer_erase_below_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[J");
+    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
+
+    try std.testing.expect(footer_text_index != null);
+    try std.testing.expect(footer_clear_index == null);
+    try std.testing.expect(footer_erase_below_index == null);
+    try std.testing.expect(sync_index != null);
+    try std.testing.expect(sync_index.? < footer_text_index.?);
+}
+
+test "renderer - repaintSplitFooter applies pending viewport scroll transition in one frame" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(4, 4);
+    cli_renderer.setRenderOffset(3);
+    cli_renderer.setPendingSplitFooterTransition(.viewport_scroll, 4, 2, 5, 1, 1);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    _ = cli_renderer.repaintSplitFooter(4, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
+    const scroll_index = std.mem.indexOf(u8, output, "\x1b[1T");
+    const footer_move_index = std.mem.indexOf(u8, output, "\x1b[5;1H");
+    const footer_text_index = std.mem.indexOf(u8, output, "FOOT");
+
+    try std.testing.expect(sync_index != null);
+    try std.testing.expect(scroll_index != null);
+    try std.testing.expect(footer_move_index != null);
+    try std.testing.expect(footer_text_index != null);
+    try std.testing.expect(sync_index.? < scroll_index.?);
+    try std.testing.expect(scroll_index.? < footer_move_index.?);
+    try std.testing.expect(footer_move_index.? < footer_text_index.?);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncSet));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncReset));
+}
+
+test "renderer - repaintSplitFooter viewport scroll uses explicit split scroll delta when gap already exists" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        8,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(6, 6);
+    cli_renderer.splitScrollback.noteViewportScroll(2);
+    cli_renderer.setRenderOffset(6);
+    cli_renderer.setPendingSplitFooterTransition(.viewport_scroll, 7, 4, 3, 8, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    _ = cli_renderer.repaintSplitFooter(2, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[2S") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[4S") == null);
+    try std.testing.expectEqual(@as(u32, 2), cli_renderer.getSplitOutputOffset(2));
+}
+
+test "renderer - repaintSplitFooter applies pending stale row clear transition in one frame" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        3,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(1, 7);
+    cli_renderer.setPendingSplitFooterTransition(.clear_stale_rows, 2, 4, 2, 3, 0);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    _ = cli_renderer.repaintSplitFooter(7, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
+    const clear_index = std.mem.indexOf(u8, output, "\x1b[5;1H\x1b[2K");
+    const footer_text_index = std.mem.indexOf(u8, output, "FOOT");
+
+    try std.testing.expect(sync_index != null);
+    try std.testing.expect(clear_index != null);
+    try std.testing.expect(footer_text_index != null);
+    try std.testing.expect(sync_index.? < clear_index.?);
+    try std.testing.expect(clear_index.? < footer_text_index.?);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncSet));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncReset));
+}
+
+test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer repaint" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        16,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = true;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    var snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        8,
+        2,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer snapshot.deinit();
+
+    snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try snapshot.drawText("SNAP", 0, 0, ansi.rgbaFromFloats(1.0, 0.5, 0.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), ansi.TextAttributes.BOLD);
+    try snapshot.drawText("SHOT", 0, 1, ansi.rgbaFromFloats(0.2, 0.8, 0.9, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 8, true, true, 2, false, true, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    const snapshot_text_index = std.mem.indexOf(u8, output, "SNAP");
+    const orange_fg_index = std.mem.indexOf(u8, output, "\x1b[38;2;255;128;0m");
+    const bold_index = std.mem.indexOf(u8, output, "\x1b[1m");
+    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
+    const footer_clear_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[2K");
+
+    try std.testing.expect(snapshot_text_index != null);
+    try std.testing.expect(orange_fg_index != null);
+    try std.testing.expect(bold_index != null);
+    try std.testing.expect(sync_index != null);
+    try std.testing.expect(sync_index.? < snapshot_text_index.?);
+    try std.testing.expect(footer_clear_index == null);
+}
+
+test "renderer - commitSplitFooterSnapshot preserves indexed and default color tags" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        8,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = true;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    var snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        2,
+        1,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer snapshot.deinit();
+
+    snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    snapshot.set(0, 0, .{
+        .char = 'A',
+        .fg = ansi.defaultColor(255, 255, 255, 255),
+        .bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0),
+        .attributes = 0,
+    });
+    snapshot.set(1, 0, .{
+        .char = 'B',
+        .fg = ansi.indexedColor(6, 51, 102, 153),
+        .bg = ansi.defaultColor(0, 0, 0, 255),
+        .attributes = 0,
+    });
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 2, true, false, 2, false, true, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "A") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "B") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[39m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;51;102;153m") == null);
+}
+
+test "renderer - commitSplitFooterSnapshot does not emit NUL padding for short rows" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        20,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    var snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        16,
+        2,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer snapshot.deinit();
+
+    snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try snapshot.drawText("[tool:bash] Shell", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try snapshot.drawText("$ pwd", 0, 1, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 16, true, true, 2, false, true, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOfScalar(u8, output, 0) == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.eraseToEndOfLine) != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\r\n\x1b[0m\x1b[K") != null);
+}
+
+test "renderer - batched split commits share single sync frame" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        16,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    var first_snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer first_snapshot.deinit();
+    first_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try first_snapshot.drawText("FIRST", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    var second_snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer second_snapshot.deinit();
+    second_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try second_snapshot.drawText("SECOND", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(
+        first_snapshot,
+        10,
+        true,
+        true,
+        2,
+        false,
+        true,
+        false,
+    );
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(
+        second_snapshot,
+        10,
+        true,
+        true,
+        2,
+        false,
+        false,
+        true,
+    );
+
+    const output = cli_renderer.getLastOutputForTest();
+    // Batching should keep both commits inside one synchronized update envelope.
+    try std.testing.expect(std.mem.indexOf(u8, output, "FIRST") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "SECOND") != null);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncSet));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncReset));
+}
+
+test "renderer - unchanged frame with unchanged cursor emits no output" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.setCursorPosition(3, 2, true);
+    cli_renderer.render(false);
+
+    cli_renderer.render(false);
+    const output = cli_renderer.getLastOutputForTest();
+
+    // No-op frames must be byte-empty; otherwise repeated sync/cursor toggles can
+    // produce visible shimmer in terminals that animate cursor or repaint eagerly.
+    try std.testing.expectEqual(@as(usize, 0), output.len);
 }

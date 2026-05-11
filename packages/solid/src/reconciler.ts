@@ -111,12 +111,24 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 function _removeNode(parent: DomNode, node: DomNode): void {
   log("Removing node:", logId(node), "from parent:", logId(parent))
 
+  let slotParent: SlotRenderable | undefined
+
   if (node instanceof SlotRenderable) {
-    node.parent = null
-    node = node.getSlotChild(parent)
+    slotParent = node
+    const slotChild = slotParent.getSlotChildForRemoval(parent)
+    if (!slotChild) {
+      if (slotParent.parent === parent) {
+        slotParent.parent = null
+      }
+      return
+    }
+
+    node = slotChild
   }
 
   parent.remove(node.id)
+
+  slotParent?.didRemoveSlotChild(parent, node)
 
   process.nextTick(() => {
     if (node instanceof BaseRenderable && !node.parent) {

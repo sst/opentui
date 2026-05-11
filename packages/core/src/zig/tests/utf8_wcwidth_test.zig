@@ -6,7 +6,7 @@ test "findGraphemeInfo wcwidth: empty string" {
     var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("", 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo(testing.allocator, "", 4, false, .wcwidth, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
@@ -14,7 +14,7 @@ test "findGraphemeInfo wcwidth: ASCII-only returns empty" {
     var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("hello world", 4, true, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo(testing.allocator, "hello world", 4, true, .wcwidth, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
@@ -22,7 +22,7 @@ test "findGraphemeInfo wcwidth: ASCII with tab" {
     var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("hello\tworld", 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo(testing.allocator, "hello\tworld", 4, false, .wcwidth, &result);
 
     // Should have one entry for the tab
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -37,7 +37,7 @@ test "findGraphemeInfo wcwidth: CJK characters" {
     defer result.deinit(testing.allocator);
 
     const text = "hello世界";
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result);
 
     // Should have two entries for the CJK characters (each codepoint separately)
     try testing.expectEqual(@as(usize, 2), result.items.len);
@@ -60,7 +60,7 @@ test "findGraphemeInfo wcwidth: emoji with skin tone - single grapheme cluster" 
     defer result.deinit(testing.allocator);
 
     const text = "👋🏿"; // Wave + skin tone modifier
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
@@ -74,7 +74,7 @@ test "findGraphemeInfo wcwidth: emoji with ZWJ - single grapheme cluster" {
     defer result.deinit(testing.allocator);
 
     const text = "👩‍🚀"; // Woman + ZWJ + Rocket (11 bytes total)
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
@@ -87,7 +87,7 @@ test "findGraphemeInfo wcwidth: combining mark - part of base grapheme" {
     defer result.deinit(testing.allocator);
 
     const text = "e\u{0301}test"; // e + combining acute accent + test
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
     try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
@@ -103,8 +103,8 @@ test "findGraphemeInfo wcwidth vs unicode: emoji with skin tone" {
 
     const text = "Hi👋🏿Bye";
 
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result_wcwidth);
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result_wcwidth);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result_unicode);
 
     try testing.expectEqual(@as(usize, 1), result_wcwidth.items.len);
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);
@@ -127,8 +127,8 @@ test "findGraphemeInfo wcwidth vs unicode: flag emoji" {
 
     const text = "🇺🇸"; // US flag (two regional indicators)
 
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result_wcwidth);
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result_wcwidth);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result_unicode);
 
     try testing.expectEqual(@as(usize, 1), result_wcwidth.items.len);
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);

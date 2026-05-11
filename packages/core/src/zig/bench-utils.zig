@@ -76,7 +76,7 @@ pub const BenchRunner = struct {
         stats: BenchStats,
         mem_stats: ?[]const MemStat,
     ) !void {
-        try self.results.append(self.allocator, BenchResult{
+        try self.results.append(self.allocator, .{
             .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -95,7 +95,7 @@ pub const BenchRunner = struct {
         comptime benchFn: anytype,
         args: anytype,
     ) !void {
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
@@ -107,7 +107,7 @@ pub const BenchRunner = struct {
 
     /// Get the results slice (caller owns memory via arena)
     pub fn finish(self: *BenchRunner) ![]BenchResult {
-        return try self.results.toOwnedSlice(self.allocator);
+        return self.results.toOwnedSlice(self.allocator);
     }
 
     /// Append results from another runner or slice
@@ -122,7 +122,7 @@ pub const StdoutWriter = struct {
     writer: std.fs.File.Writer = undefined,
 
     pub fn init() StdoutWriter {
-        var self = StdoutWriter{};
+        var self: StdoutWriter = .{};
         self.writer = std.fs.File.stdout().writer(&self.buffer);
         return self;
     }
@@ -422,7 +422,7 @@ const BenchResultsJson = struct {
 };
 
 pub fn printResultsJson(writer: anytype, results: []const BenchResult, bench_name: []const u8) !void {
-    const output = BenchResultsJson{
+    const output: BenchResultsJson = .{
         .benchmark = bench_name,
         .results = results,
     };

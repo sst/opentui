@@ -90,7 +90,93 @@ const textarea = new TextareaRenderable(renderer, {
 
 ## Useful properties
 
-| Property       | Type     | Description                 |
-| -------------- | -------- | --------------------------- |
-| `plainText`    | `string` | Current text content        |
-| `cursorOffset` | `number` | Cursor offset in the buffer |
+| Property                | Type                       | Description                                                     |
+| ----------------------- | -------------------------- | --------------------------------------------------------------- |
+| `plainText`             | `string`                   | Current text content                                            |
+| `cursorOffset`          | `number`                   | Cursor offset in the buffer                                     |
+| `cursorCharacterOffset` | `number \| undefined`      | Offset of the character under the cursor (skips trailing blank) |
+| `logicalCursor`         | `{ row, col }`             | Logical line/column of the cursor                               |
+| `visualCursor`          | `{ row, col, visualLine }` | Visual (post-wrap) cursor position                              |
+| `traits`                | `EditorTraits`             | Editor traits published to hosting UI (see [Traits](#traits))   |
+
+## Cursor and selection control
+
+`TextareaRenderable` (and its base `EditBufferRenderable`) exposes a programmatic API. You can move the cursor, edit text, and drive selections from your own keybindings or commands. All selection-aware movement methods accept `{ select: true }` to extend the current selection instead of moving the cursor.
+
+### Cursor movement
+
+```typescript
+textarea.setCursor(row, col)
+textarea.moveCursorLeft()
+textarea.moveCursorRight({ select: true })
+textarea.moveCursorUp()
+textarea.moveCursorDown()
+
+textarea.moveWordForward({ select: true })
+textarea.moveWordBackward()
+
+textarea.gotoLine(0)
+textarea.gotoLineStart()
+textarea.gotoLineTextEnd()
+textarea.gotoLineHome({ select: true }) // Emacs-style smart home
+textarea.gotoLineEnd()
+textarea.gotoVisualLineHome()
+textarea.gotoVisualLineEnd()
+textarea.gotoBufferHome()
+textarea.gotoBufferEnd({ select: true })
+```
+
+### Selection
+
+```typescript
+textarea.setSelection(start, end) // half-open offsets
+textarea.setSelectionInclusive(start, end) // inclusive end
+textarea.selectAll()
+textarea.clearSelection()
+textarea.deleteSelection()
+```
+
+### Editing
+
+```typescript
+textarea.insertChar("a")
+textarea.insertText("\ninserted")
+textarea.deleteChar() // forward delete
+textarea.deleteCharBackward() // backspace
+textarea.deleteWordForward()
+textarea.deleteWordBackward()
+textarea.deleteToLineEnd()
+textarea.deleteToLineStart()
+textarea.deleteLine()
+textarea.newLine()
+textarea.undo()
+textarea.redo()
+```
+
+These methods update the cursor, clear any active global selection, and call `requestRender()` for you.
+
+## Traits
+
+The `traits` property lets an editor advertise intent to a host UI — which built-in keys it wants to capture, whether it wants the chrome to visually suspend, and a short status label for a footer or status bar. Assigning a new `EditorTraits` object emits the `traits-changed` event when the value differs from the previous one.
+
+```typescript
+import { EditBufferRenderableEvents, type EditorTraits } from "@opentui/core"
+
+textarea.traits = {
+  capture: ["escape", "submit"], // consume these before host binds
+  suspend: false,
+  status: "Composing reply",
+} satisfies EditorTraits
+
+textarea.on(EditBufferRenderableEvents.TRAITS_CHANGED, (traits) => {
+  updateFooter(traits.status ?? "")
+})
+```
+
+| Field     | Type              | Description                                                                     |
+| --------- | ----------------- | ------------------------------------------------------------------------------- |
+| `capture` | `EditorCapture[]` | Keys the editor wants to capture: `"escape"`, `"navigate"`, `"submit"`, `"tab"` |
+| `suspend` | `boolean`         | Hint to the host to suspend ambient UI (dim borders, hide hints, etc.)          |
+| `status`  | `string`          | Optional short label surfacing editor mode in a status bar                      |
+
+Traits reset to an empty object when you destroy the renderable. Use `isEditBufferRenderable(renderable)` if you need to distinguish editor renderables from plain text renderables in a generic tree.

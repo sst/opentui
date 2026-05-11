@@ -1,9 +1,10 @@
 import { defineStruct, defineEnum } from "bun-ffi-structs"
-import { ptr, toArrayBuffer, type Pointer } from "bun:ffi"
-import { RGBA } from "./lib/RGBA.js"
+import { ptr, toArrayBuffer, type Pointer } from "./platform/ffi.js"
+import { RGBA, normalizeColorValue } from "./lib/RGBA.js"
 
 const rgbaPackTransform = (rgba?: RGBA) => (rgba ? ptr(rgba.buffer) : null)
-const rgbaUnpackTransform = (ptr?: Pointer) => (ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr))) : undefined)
+const rgbaUnpackTransform = (ptr?: Pointer) =>
+  ptr ? RGBA.fromArray(new Uint16Array(toArrayBuffer(ptr, 0, 8))) : undefined
 
 type StyledChunkInput = {
   text: string
@@ -41,12 +42,21 @@ export const StyledChunkStruct = defineStruct(
   ],
   {
     mapValue: (chunk: StyledChunkInput): StyledChunkInput => {
+      const normalizedFg = normalizeColorValue(chunk.fg ?? null)
+      const normalizedBg = normalizeColorValue(chunk.bg ?? null)
+
       if (!chunk.link || typeof chunk.link === "string") {
-        return chunk
+        return {
+          ...chunk,
+          fg: normalizedFg?.rgba ?? null,
+          bg: normalizedBg?.rgba ?? null,
+        }
       }
 
       return {
         ...chunk,
+        fg: normalizedFg?.rgba ?? null,
+        bg: normalizedBg?.rgba ?? null,
         link: chunk.link.url,
       }
     },
@@ -81,6 +91,7 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["kitty_keyboard", "bool_u8"],
   ["kitty_graphics", "bool_u8"],
   ["rgb", "bool_u8"],
+  ["ansi256", "bool_u8"],
   ["unicode", UnicodeMethodEnum],
   ["sgr_pixels", "bool_u8"],
   ["color_scheme_updates", "bool_u8"],
@@ -93,6 +104,7 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["hyperlinks", "bool_u8"],
   ["osc52", "bool_u8"],
   ["explicit_cursor_positioning", "bool_u8"],
+  ["in_tmux", "bool_u8"],
   ["term_name", "char*"],
   ["term_name_len", "u64", { lengthOf: "term_name" }],
   ["term_version", "char*"],

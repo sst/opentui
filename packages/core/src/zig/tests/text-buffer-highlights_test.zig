@@ -1,5 +1,6 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
+const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 const ss = @import("../syntax-style.zig");
@@ -261,9 +262,9 @@ test "TextBuffer highlights - integration with SyntaxStyle" {
     var syntax_style = try ss.SyntaxStyle.init(std.testing.allocator);
     defer syntax_style.deinit();
 
-    const keyword_id = try syntax_style.registerStyle("keyword", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
-    const string_id = try syntax_style.registerStyle("string", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
-    const comment_id = try syntax_style.registerStyle("comment", RGBA{ 0.5, 0.5, 0.5, 1.0 }, null, 0);
+    const keyword_id = try syntax_style.registerStyle("keyword", ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0), null, 0);
+    const string_id = try syntax_style.registerStyle("string", ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0), null, 0);
+    const comment_id = try syntax_style.registerStyle("comment", ansi.rgbaFromFloats(0.5, 0.5, 0.5, 1.0), null, 0);
 
     try tb.setText("function hello() // comment");
     tb.setSyntaxStyle(syntax_style);
