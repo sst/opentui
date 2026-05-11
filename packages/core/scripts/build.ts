@@ -136,11 +136,19 @@ if (buildNative) {
       continue
     }
 
-    const indexTsContent = `const module = await import("./${libraryFileName}", { with: { type: "file" } })
-const path = module.default
-export default path;
+    const indexJsContent = `import { fileURLToPath } from "node:url"
+
+export default fileURLToPath(new URL("./${libraryFileName}", import.meta.url))
 `
-    writeFileSync(join(nativeDir, "index.ts"), indexTsContent)
+    writeFileSync(join(nativeDir, "index.js"), indexJsContent)
+
+    const indexBunJsContent = `const module = await import("./${libraryFileName}", { with: { type: "file" } })
+
+export default module.default
+`
+    writeFileSync(join(nativeDir, "index.bun.js"), indexBunJsContent)
+
+    writeFileSync(join(nativeDir, "index.d.ts"), "declare const path: string\nexport default path\n")
 
     writeFileSync(
       join(nativeDir, "package.json"),
@@ -149,14 +157,23 @@ export default path;
           name: nativeName,
           version: packageJson.version,
           description: `Prebuilt ${platform}-${arch} binaries for ${packageJson.name}`,
-          main: "index.ts",
-          types: "index.ts",
+          type: "module",
+          main: "index.js",
+          module: "index.js",
+          types: "index.d.ts",
           license: packageJson.license,
           author: packageJson.author,
           homepage: packageJson.homepage,
           repository: packageJson.repository,
           bugs: packageJson.bugs,
           keywords: [...(packageJson.keywords ?? []), "prebuild", "prebuilt"],
+          exports: {
+            ".": {
+              bun: "./index.bun.js",
+              import: "./index.js",
+              types: "./index.d.ts",
+            },
+          },
           os: [platform],
           cpu: [arch],
         },

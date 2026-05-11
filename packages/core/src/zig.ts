@@ -1,8 +1,8 @@
 import {
   dlopen,
   ffiBool,
-  ptr,
   toArrayBuffer,
+  ptr,
   toPointer,
   type FFICallbackInstance,
   type Pointer,
@@ -61,8 +61,8 @@ import type {
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
 
-const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
-let targetLibPath = module.default
+const nativePackage = await import(`@opentui/core-${process.platform}-${process.arch}`)
+let targetLibPath = nativePackage.default
 
 if (isBunfsPath(targetLibPath)) {
   targetLibPath = targetLibPath.replace("../", "")
@@ -3995,7 +3995,7 @@ class FFIRenderLib implements RenderLib {
     const outPtrView = new BigUint64Array(outPtrBuffer)
     const outLenView = new BigUint64Array(outLenBuffer)
 
-    const resultPtr = Number(outPtrView[0]) as Pointer
+    const resultPtr = toPointer(outPtrView[0])
     const resultLen = Number(outLenView[0])
 
     if (resultLen === 0) {
