@@ -1245,6 +1245,40 @@ test("blockquote uses markup.quote style for text and conceal style for bar", as
   expect((textSpan?.attributes ?? 0) & TextAttributes.ITALIC).toBe(TextAttributes.ITALIC)
 })
 
+test("blockquote updates quote text and bar colors when syntaxStyle changes", async () => {
+  const quoteColor1 = RGBA.fromValues(0.25, 0.5, 0.75, 1)
+  const quoteColor2 = RGBA.fromValues(0.75, 0.5, 0.25, 1)
+  const concealColor1 = RGBA.fromValues(0.1, 0.2, 0.3, 1)
+  const concealColor2 = RGBA.fromValues(0.3, 0.2, 0.1, 1)
+  const theme1 = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    conceal: { fg: concealColor1 },
+    "markup.quote": { fg: quoteColor1, italic: true },
+  })
+  const theme2 = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    conceal: { fg: concealColor2 },
+    "markup.quote": { fg: quoteColor2, italic: true },
+  })
+  const md = createMarkdownRenderable({
+    id: "markdown-blockquote-style-update",
+    content: "> Quote text",
+    syntaxStyle: theme1,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  expect(findSpanContaining(captureSpans(), "│")?.fg?.toInts()).toEqual(concealColor1.toInts())
+  expect(findSpanContaining(captureSpans(), "Quote text")?.fg?.toInts()).toEqual(quoteColor1.toInts())
+
+  md.syntaxStyle = theme2
+  renderer.requestRender()
+  await renderMarkdownRenderable(md)
+
+  expect(findSpanContaining(captureSpans(), "│")?.fg?.toInts()).toEqual(concealColor2.toInts())
+  expect(findSpanContaining(captureSpans(), "Quote text")?.fg?.toInts()).toEqual(quoteColor2.toInts())
+})
+
 test("fenced diff blocks color added and removed lines", async () => {
   const mockTreeSitterClient = new MockTreeSitterClient()
   mockTreeSitterClient.setMockResult({

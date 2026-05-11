@@ -6,7 +6,7 @@ import { createTextAttributes } from "../utils.js"
 import type { BorderStyle } from "../lib/border.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { type MarkedToken, type Token, type Tokens } from "marked"
-import { CodeRenderable, type OnChunksCallback, type OnHighlightCallback } from "./Code.js"
+import { CodeRenderable, type OnChunksCallback } from "./Code.js"
 import { BoxRenderable } from "./Box.js"
 import {
   TextTableRenderable,
@@ -534,7 +534,7 @@ export class MarkdownRenderable extends Renderable {
     id: string,
     marginBottom: number = 0,
     onChunks: OnChunksCallback = this._linkifyMarkdownChunks,
-    onHighlight?: OnHighlightCallback,
+    baseHighlight?: string,
   ): CodeRenderable {
     return new CodeRenderable(this.ctx, {
       id,
@@ -546,7 +546,7 @@ export class MarkdownRenderable extends Renderable {
       conceal: this._conceal,
       drawUnstyledText: false,
       streaming: true,
-      onHighlight,
+      baseHighlight,
       onChunks,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
@@ -560,11 +560,6 @@ export class MarkdownRenderable extends Renderable {
 
   private getBlockquoteBorderColor(): ColorInput {
     return this.getStyle("conceal")?.fg ?? this.getStyle("default")?.fg ?? this._fg ?? "#FFFFFF"
-  }
-
-  private createBlockquoteHighlight: OnHighlightCallback = (highlights, context) => {
-    if (!context.content) return highlights
-    return [[0, context.content.length, "markup.quote"], ...highlights]
   }
 
   private createBlockquoteRenderable(token: MarkedToken, id: string, marginBottom: number = 0): BoxRenderable {
@@ -584,7 +579,7 @@ export class MarkdownRenderable extends Renderable {
         `${id}-content`,
         0,
         this._linkifyMarkdownChunks,
-        this.createBlockquoteHighlight,
+        "markup.quote",
       ),
     )
 
@@ -620,7 +615,12 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
-  private applyMarkdownCodeRenderable(renderable: CodeRenderable, content: string, marginBottom: number): void {
+  private applyMarkdownCodeRenderable(
+    renderable: CodeRenderable,
+    content: string,
+    marginBottom: number,
+    baseHighlight?: string,
+  ): void {
     renderable.content = content
     renderable.filetype = "markdown"
     renderable.syntaxStyle = this._syntaxStyle
@@ -629,6 +629,7 @@ export class MarkdownRenderable extends Renderable {
     renderable.conceal = this._conceal
     renderable.drawUnstyledText = false
     renderable.streaming = true
+    renderable.baseHighlight = baseHighlight
     renderable.marginBottom = marginBottom
   }
 
@@ -640,8 +641,7 @@ export class MarkdownRenderable extends Renderable {
 
     const child = renderable.getChildren()[0]
     if (child instanceof CodeRenderable) {
-      child.onHighlight = this.createBlockquoteHighlight
-      this.applyMarkdownCodeRenderable(child, this.getBlockquoteContent(token), 0)
+      this.applyMarkdownCodeRenderable(child, this.getBlockquoteContent(token), 0, "markup.quote")
       return
     }
 
@@ -654,7 +654,7 @@ export class MarkdownRenderable extends Renderable {
         `${renderable.id}-content`,
         0,
         this._linkifyMarkdownChunks,
-        this.createBlockquoteHighlight,
+        "markup.quote",
       ),
     )
   }

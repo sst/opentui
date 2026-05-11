@@ -6,10 +6,12 @@ import { createTestRenderer, type TestRenderer, MockTreeSitterClient, type MockM
 import { TreeSitterClient } from "../lib/tree-sitter/index.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 import { BoxRenderable } from "./Box.js"
+import { TextAttributes, type CapturedFrame } from "../types.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
+let captureSpans: () => CapturedFrame
 let mockMouse: MockMouse
 let resize: (width: number, height: number) => void
 
@@ -18,9 +20,24 @@ beforeEach(async () => {
   currentRenderer = testRenderer.renderer
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
+  captureSpans = testRenderer.captureSpans
   mockMouse = testRenderer.mockMouse
   resize = testRenderer.resize
 })
+
+function findSpanContaining(frame: CapturedFrame, text: string) {
+  for (const line of frame.lines) {
+    const span = line.spans.find((candidate) => candidate.text.includes(text))
+    if (span) return span
+  }
+}
+
+async function resolveMockHighlights(mockClient: MockTreeSitterClient): Promise<void> {
+  await renderOnce()
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+}
 
 afterEach(async () => {
   if (currentRenderer) {
@@ -46,6 +63,7 @@ test("CodeRenderable - basic construction", async () => {
   expect(codeRenderable.content).toBe('const message = "Hello, world!";')
   expect(codeRenderable.filetype).toBe("javascript")
   expect(codeRenderable.syntaxStyle).toBe(syntaxStyle)
+  expect(codeRenderable.baseHighlight).toBeUndefined()
 })
 
 test("CodeRenderable - content updates", async () => {
@@ -1157,6 +1175,128 @@ test("CodeRenderable - onChunks callback can transform chunks when highlights ar
 
   expect(callbackInvoked).toBe(true)
   expect(codeRenderable.plainText).toBe("HELLO")
+})
+
+test("CodeRenderable - baseHighlight applies a style when parser highlights are empty", async () => {
+  const quoteColor = RGBA.fromValues(0.25, 0.5, 0.75, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    "markup.quote": { fg: quoteColor, italic: true },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [] })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-base-highlight-empty",
+    content: "hello world",
+    filetype: "plaintext",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    baseHighlight: "markup.quote",
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await resolveMockHighlights(mockClient)
+
+  const span = findSpanContaining(captureSpans(), "hello world")
+  expect(span?.fg?.toInts()).toEqual(quoteColor.toInts())
+  expect((span?.attributes ?? 0) & TextAttributes.ITALIC).toBe(TextAttributes.ITALIC)
+})
+
+test("CodeRenderable - parser highlights override baseHighlight properties and inherit unspecified ones", async () => {
+  const quoteColor = RGBA.fromValues(0.25, 0.5, 0.75, 1)
+  const keywordColor = RGBA.fromValues(1, 0, 0, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    "markup.quote": { fg: quoteColor, italic: true },
+    keyword: { fg: keywordColor },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-base-highlight-precedence",
+    content: "const value",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    baseHighlight: "markup.quote",
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await resolveMockHighlights(mockClient)
+
+  const keywordSpan = findSpanContaining(captureSpans(), "const")
+  expect(keywordSpan?.fg?.toInts()).toEqual(keywordColor.toInts())
+  expect((keywordSpan?.attributes ?? 0) & TextAttributes.ITALIC).toBe(TextAttributes.ITALIC)
+
+  const baseSpan = findSpanContaining(captureSpans(), "value")
+  expect(baseSpan?.fg?.toInts()).toEqual(quoteColor.toInts())
+  expect((baseSpan?.attributes ?? 0) & TextAttributes.ITALIC).toBe(TextAttributes.ITALIC)
+})
+
+test("CodeRenderable - onHighlight receives parser highlights without baseHighlight", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    "markup.quote": { fg: RGBA.fromValues(0.25, 0.5, 0.75, 1) },
+    keyword: { fg: RGBA.fromValues(1, 0, 0, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
+  })
+
+  let receivedHighlights: SimpleHighlight[] | undefined
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-base-highlight-callback",
+    content: "const value",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    baseHighlight: "markup.quote",
+    onHighlight: (highlights) => {
+      receivedHighlights = [...highlights]
+      return highlights
+    },
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await resolveMockHighlights(mockClient)
+
+  expect(receivedHighlights).toEqual([[0, 5, "keyword"]])
+})
+
+test("CodeRenderable - changing baseHighlight re-highlights content", async () => {
+  const quoteColor = RGBA.fromValues(0.25, 0.5, 0.75, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    "markup.quote": { fg: quoteColor },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [] })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-base-highlight-update",
+    content: "hello world",
+    filetype: "plaintext",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    baseHighlight: "markup.quote",
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await resolveMockHighlights(mockClient)
+  expect(findSpanContaining(captureSpans(), "hello world")?.fg?.toInts()).toEqual(quoteColor.toInts())
+
+  codeRenderable.baseHighlight = undefined
+  await resolveMockHighlights(mockClient)
+  expect(findSpanContaining(captureSpans(), "hello world")?.fg?.toInts()).toEqual(RGBA.fromValues(1, 1, 1, 1).toInts())
 })
 
 test("CodeRenderable - onHighlight callback receives highlights and context", async () => {

@@ -36,6 +36,7 @@ export interface CodeOptions extends TextBufferOptions {
   conceal?: boolean
   drawUnstyledText?: boolean
   streaming?: boolean
+  baseHighlight?: string
   onHighlight?: OnHighlightCallback
   onChunks?: OnChunksCallback
 }
@@ -54,6 +55,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private _streaming: boolean
   private _hadInitialContent: boolean = false
   private _lastHighlights: SimpleHighlight[] = []
+  private _baseHighlight?: string
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
   private _highlightingPromise: Promise<void> = Promise.resolve()
@@ -75,11 +77,12 @@ export class CodeRenderable extends TextBufferRenderable {
     this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
     this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
+    this._baseHighlight = options.baseHighlight
     this._onHighlight = options.onHighlight
     this._onChunks = options.onChunks
 
     if (this._content.length > 0) {
-      this.textBuffer.setText(this._content)
+      this.setPlainText(this._content)
       this.updateTextInfo()
       this._shouldRenderTextBuffer = this._drawUnstyledText || !this._filetype
     }
@@ -102,7 +105,7 @@ export class CodeRenderable extends TextBufferRenderable {
         return
       }
 
-      this.textBuffer.setText(value)
+      this.setPlainText(value)
       this.updateTextInfo()
     }
   }
@@ -179,6 +182,17 @@ export class CodeRenderable extends TextBufferRenderable {
     return this._onHighlight
   }
 
+  get baseHighlight(): string | undefined {
+    return this._baseHighlight
+  }
+
+  set baseHighlight(value: string | undefined) {
+    if (this._baseHighlight !== value) {
+      this._baseHighlight = value
+      this._highlightsDirty = true
+    }
+  }
+
   set onHighlight(value: OnHighlightCallback | undefined) {
     if (this._onHighlight !== value) {
       this._onHighlight = value
@@ -212,6 +226,20 @@ export class CodeRenderable extends TextBufferRenderable {
     return modified ?? chunks
   }
 
+  private setPlainText(content: string): void {
+    this.textBuffer.setStyledText(
+      new StyledText([
+        {
+          __isChunk: true,
+          text: content,
+          fg: this._defaultFg,
+          bg: this._defaultBg,
+          attributes: this._defaultAttributes,
+        },
+      ]),
+    )
+  }
+
   private ensureVisibleTextBeforeHighlight(): void {
     if (this.isDestroyed) return
 
@@ -228,7 +256,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._streaming && !isInitialContent) {
       this._shouldRenderTextBuffer = true
     } else if (shouldDrawUnstyledNow) {
-      this.textBuffer.setText(content)
+      this.setPlainText(content)
       this._shouldRenderTextBuffer = true
     } else {
       this._shouldRenderTextBuffer = false
@@ -286,7 +314,7 @@ export class CodeRenderable extends TextBufferRenderable {
         }
       }
 
-      if (highlights.length > 0 || this._onChunks) {
+      if (highlights.length > 0 || this._onChunks || this._baseHighlight) {
         const context: ChunkRenderContext = {
           content,
           filetype,
@@ -296,6 +324,7 @@ export class CodeRenderable extends TextBufferRenderable {
 
         let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
           enabled: this._conceal,
+          baseHighlight: this._baseHighlight,
         })
 
         chunks = await this.transformChunks(chunks, context)
@@ -310,7 +339,7 @@ export class CodeRenderable extends TextBufferRenderable {
         const styledText = new StyledText(chunks)
         this.textBuffer.setStyledText(styledText)
       } else {
-        this.textBuffer.setText(content)
+        this.setPlainText(content)
       }
 
       this._shouldRenderTextBuffer = true
@@ -326,7 +355,7 @@ export class CodeRenderable extends TextBufferRenderable {
 
       console.warn("Code highlighting failed, falling back to plain text:", error)
       if (this.isDestroyed) return
-      this.textBuffer.setText(content)
+      this.setPlainText(content)
       this._shouldRenderTextBuffer = true
       this._isHighlighting = false
       this._highlightsDirty = false
