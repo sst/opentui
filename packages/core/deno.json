@@ -14,7 +14,7 @@
     "@opentui/core-darwin-arm64": "./shims/platform.ts",
     "@opentui/core-darwin-arm64/index.ts": "./shims/platform.ts",
     "@opentui/core": "./src/index.ts",
-    "@opentui/core/testing": "./src/testing/index.ts",
+    "@opentui/core/testing": "./src/testing.ts",
     "@opentui/core/runtime-plugin": "./src/runtime-plugin.ts",
     "@opentui/solid": "../solid/index.ts",
     "events": "node:events",

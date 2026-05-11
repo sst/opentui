@@ -27,7 +27,8 @@ type GlobalWithBun = typeof globalThis & { Bun?: BunLike }
 
 const TEXT_ENCODER = new TextEncoder()
 const bun = (globalThis as GlobalWithBun).Bun
-const isBunRuntime = typeof process !== "undefined" && typeof process.versions === "object" && typeof process.versions.bun === "string"
+const isBunRuntime =
+  typeof process !== "undefined" && typeof process.versions === "object" && typeof process.versions.bun === "string"
 
 export const sleep: (msOrDate: number | Date) => Promise<void> = bun?.sleep ?? standardSleep
 export const stringWidth: (text: string) => number = bun?.stringWidth ?? stringWidthLib
