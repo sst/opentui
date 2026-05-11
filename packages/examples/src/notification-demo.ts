@@ -1,6 +1,7 @@
 import {
   BoxRenderable,
   CliRenderEvents,
+  ScrollBoxRenderable,
   TextAttributes,
   TextRenderable,
   createCliRenderer,
@@ -78,13 +79,14 @@ const actions: NotificationAction[] = [
 let renderer: CliRenderer | null = null
 let root: BoxRenderable | null = null
 let statusText: TextRenderable | null = null
-let logText: TextRenderable | null = null
-let hintText: TextRenderable | null = null
+let logList: ScrollBoxRenderable | null = null
 let keyHandler: ((key: KeyEvent) => void) | null = null
 let capabilityHandler: ((capabilities: any) => void) | null = null
 let pendingTimer: ReturnType<typeof setTimeout> | null = null
 let cards: NotificationCard[] = []
-let logEntries: string[] = []
+let logRows: TextRenderable[] = []
+let logEntryId = 0
+const MAX_LOG_ENTRIES = 80
 
 class NotificationCard extends BoxRenderable {
   private hovered = false
@@ -176,16 +178,28 @@ function notificationSupported(): boolean {
 }
 
 function addLog(message: string, color = P.muted): void {
+  if (!renderer || !logList) return
+
   const stamp = new Date().toLocaleTimeString()
-  logEntries = [`${stamp}  ${message}`, ...logEntries].slice(0, 6)
-  if (logText) {
-    logText.fg = color
-    logText.content = logEntries.join("\n")
+  const row = new TextRenderable(renderer, {
+    id: `notification-demo-log-entry-${logEntryId++}`,
+    content: `${stamp}  ${message}`,
+    fg: color,
+    flexGrow: 0,
+    flexShrink: 0,
+  })
+
+  logList.add(row)
+  logRows.push(row)
+
+  while (logRows.length > MAX_LOG_ENTRIES) {
+    const oldRow = logRows.shift()
+    oldRow?.destroyRecursively()
   }
 }
 
 function updateStatus(): void {
-  if (!renderer || !statusText || !hintText) return
+  if (!renderer || !statusText) return
 
   const caps = renderer.capabilities
   const terminalName = caps?.terminal?.name || "detecting"
@@ -196,10 +210,6 @@ function updateStatus(): void {
 
   statusText.content = t`${bold(fg(P.text)("Terminal notifications"))}: ${status}
 ${fg(P.muted)("Terminal:")} ${fg(P.cyan)(`${terminalName}${terminalVersion}`)}  ${fg(P.muted)("Transport:")} ${transport}`
-
-  hintText.content = supported
-    ? t`${fg(P.muted)("Tip:")} trigger one, switch away from the terminal, and let your OS notification center show it.`
-    : t`${fg(P.rose)("No notification protocol detected yet.")} ${fg(P.muted)("This demo stays safe and reports false instead of falling back to native tools.")}`
 }
 
 function triggerAction(action: NotificationAction): void {
@@ -245,7 +255,7 @@ function buildLayout(rendererInstance: CliRenderer): void {
   const header = new BoxRenderable(renderer, {
     id: "notification-demo-header",
     width: "100%",
-    height: 7,
+    height: 6,
     flexDirection: "column",
     flexGrow: 0,
     flexShrink: 0,
@@ -277,15 +287,6 @@ function buildLayout(rendererInstance: CliRenderer): void {
     flexShrink: 0,
   })
   header.add(statusText)
-
-  hintText = new TextRenderable(renderer, {
-    id: "notification-demo-hint",
-    content: "",
-    fg: P.muted,
-    flexGrow: 0,
-    flexShrink: 0,
-  })
-  header.add(hintText)
 
   root.add(header)
 
@@ -319,7 +320,7 @@ function buildLayout(rendererInstance: CliRenderer): void {
   const footer = new BoxRenderable(renderer, {
     id: "notification-demo-footer",
     width: "100%",
-    height: 9,
+    height: 16,
     flexGrow: 0,
     flexShrink: 0,
     flexDirection: "row",
@@ -369,12 +370,35 @@ ${fg(P.muted)("Esc")} Return to menu`,
     borderColor: P.border,
     title: " Activity ",
   })
-  logText = new TextRenderable(renderer, {
-    id: "notification-demo-log-text",
-    content: "Waiting for a notification trigger...",
-    fg: P.muted,
+  logList = new ScrollBoxRenderable(renderer, {
+    id: "notification-demo-log-list",
+    stickyScroll: true,
+    stickyStart: "bottom",
+    rootOptions: {
+      backgroundColor: P.panel,
+      border: false,
+    },
+    wrapperOptions: {
+      backgroundColor: P.panel,
+    },
+    viewportOptions: {
+      backgroundColor: P.panel,
+    },
+    contentOptions: {
+      backgroundColor: P.panel,
+    },
+    scrollbarOptions: {
+      trackOptions: {
+        foregroundColor: P.cyan,
+        backgroundColor: P.border,
+      },
+    },
+    height: "100%",
+    width: "auto",
+    flexGrow: 1,
+    flexShrink: 1,
   })
-  log.add(logText)
+  log.add(logList)
   footer.add(log)
 
   updateStatus()
@@ -416,11 +440,11 @@ export function destroy(rendererInstance: CliRenderer): void {
 
   root = null
   statusText = null
-  logText = null
-  hintText = null
+  logList = null
   renderer = null
   cards = []
-  logEntries = []
+  logRows = []
+  logEntryId = 0
 }
 
 if (import.meta.main) {
