@@ -1841,11 +1841,18 @@ pub const EncodedChar = extern struct {
 export fn encodeUnicode(
     textPtr: [*]const u8,
     textLen: usize,
-    outPtr: *[*]EncodedChar,
+    outPtr: *?[*]EncodedChar,
     outLenPtr: *usize,
     widthMethod: u8,
 ) bool {
     const text = textPtr[0..textLen];
+
+    if (text.len == 0) {
+        outPtr.* = @ptrFromInt(0);
+        outLenPtr.* = 0;
+        return true;
+    }
+
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
@@ -1960,8 +1967,12 @@ export fn encodeUnicode(
     return true;
 }
 
-export fn freeUnicode(charsPtr: [*]const EncodedChar, charsLen: usize) void {
-    const chars = charsPtr[0..charsLen];
+export fn freeUnicode(charsPtr: ?[*]const EncodedChar, charsLen: usize) void {
+    if (charsLen == 0 or charsPtr == null) {
+        return;
+    }
+
+    const chars = charsPtr.?[0..charsLen];
     const pool = gp.initGlobalPool(globalArena);
 
     for (chars) |encoded_char| {
