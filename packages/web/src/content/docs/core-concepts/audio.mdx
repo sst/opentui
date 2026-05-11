@@ -34,28 +34,28 @@ Use `setupAudio(options?)` when you prefer a function wrapper around `Audio.crea
 
 ## Engine options
 
-| Option             | Default  | Description                                      |
-| ------------------ | -------- | ------------------------------------------------ |
-| `autoStart`        | `true`   | Call `start()` during creation                    |
-| `sampleRate`       | `48000`  | Engine sample rate                               |
-| `playbackChannels` | `2`      | Requested playback channel count                 |
-| `startOptions`     | defaults | Options passed to `start()` when auto-starting    |
+| Option             | Default  | Description                                    |
+| ------------------ | -------- | ---------------------------------------------- |
+| `autoStart`        | `true`   | Call `start()` during creation                 |
+| `sampleRate`       | `48000`  | Engine sample rate                             |
+| `playbackChannels` | `2`      | Requested playback channel count               |
+| `startOptions`     | defaults | Options passed to `start()` when auto-starting |
 
 Create a new `Audio` instance to change `sampleRate` or `playbackChannels`.
 
 ## Sounds and voices
 
-| Method                                 | Description                                                   |
-| -------------------------------------- | ------------------------------------------------------------- |
-| `loadSound(data)`                      | Decode `Uint8Array` or `ArrayBuffer`; returns `AudioSound`    |
-| `loadSoundFile(path)`                  | Read and decode a file; returns `Promise<AudioSound \| null>` |
-| `unloadSound(sound)`                   | Free a loaded sound and stop voices using it                  |
-| `play(sound, options?)`                | Start a voice; returns `AudioVoice \| null`                   |
-| `stopVoice(voice)`                     | Stop one active voice                                         |
-| `group(name)`                          | Create or reuse a named group; group `0` is the default group |
-| `setVoiceGroup(voice, group)`          | Move a voice to another group                                 |
-| `setGroupVolume(group, volume)`        | Set group volume                                              |
-| `setMasterVolume(volume)`              | Set master volume                                             |
+| Method                          | Description                                                   |
+| ------------------------------- | ------------------------------------------------------------- |
+| `loadSound(data)`               | Decode `Uint8Array` or `ArrayBuffer`; returns `AudioSound`    |
+| `loadSoundFile(path)`           | Read and decode a file; returns `Promise<AudioSound \| null>` |
+| `unloadSound(sound)`            | Free a loaded sound and stop voices using it                  |
+| `play(sound, options?)`         | Start a voice; returns `AudioVoice \| null`                   |
+| `stopVoice(voice)`              | Stop one active voice                                         |
+| `group(name)`                   | Create or reuse a named group; group `0` is the default group |
+| `setVoiceGroup(voice, group)`   | Move a voice to another group                                 |
+| `setGroupVolume(group, volume)` | Set group volume                                              |
+| `setMasterVolume(volume)`       | Set master volume                                             |
 
 `play()` accepts `{ volume, pan, loop, groupId }`. Native playback clamps `volume` to `0..4` and `pan` to `-1..1`. The engine has 32 voice slots.
 
@@ -79,13 +79,13 @@ audio.start()
 
 ## Mixing and analysis
 
-| Method                              | Description                                                                      |
-| ----------------------------------- | -------------------------------------------------------------------------------- |
-| `mixFrames(frameCount, channels=2)` | Mix into a `Float32Array`; mono downmixes, channels above stereo keep extras zero |
-| `getStats()`                        | Returns `soundsLoaded`, `voicesActive`, `framesMixed`, `lockMisses`, `lastPeak`, `lastRms` |
-| `enableTap(capacityFrames=8192)`    | Enable a fixed-size native ring buffer of recent mixed frames                     |
-| `readTapFrames(frameCount, channels=2)` | Copy the latest tapped frames; returns `{ frames, framesRead }`               |
-| `disableTap()`                      | Free the tap buffer                                                              |
+| Method                                  | Description                                                                                |
+| --------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `mixFrames(frameCount, channels=2)`     | Mix into a `Float32Array`; mono downmixes, channels above stereo keep extras zero          |
+| `getStats()`                            | Returns `soundsLoaded`, `voicesActive`, `framesMixed`, `lockMisses`, `lastPeak`, `lastRms` |
+| `enableTap(capacityFrames=8192)`        | Enable a fixed-size native ring buffer of recent mixed frames                              |
+| `readTapFrames(frameCount, channels=2)` | Copy the latest tapped frames; returns `{ frames, framesRead }`                            |
+| `disableTap()`                          | Free the tap buffer                                                                        |
 
 The tap is disabled by default. When enabled, it stores the latest frames and overwrites old data; reads do not drain it. OpenTUI does not compute FFT natively. For spectrum visualization, read tap frames and run FFT in TypeScript.
 
