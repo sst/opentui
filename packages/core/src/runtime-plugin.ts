@@ -493,6 +493,12 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
           return cachedAnalysis
         }
 
+        if (!existsSync(normalizedPath)) {
+          const analysis = { importSpecifiers: [], needsRuntimeSpecifierRewrite: false }
+          sourceAnalysisByPath.set(normalizedPath, analysis)
+          return analysis
+        }
+
         const contents = readFileSync(normalizedPath, "utf8")
         const importSpecifiers = collectImportSpecifiers(contents)
         const analysis = {
