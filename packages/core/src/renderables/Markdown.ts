@@ -646,7 +646,7 @@ export class MarkdownRenderable extends Renderable {
       if (
         existing instanceof BoxRenderable &&
         previousItems[index] &&
-        this.getListItemReuseKey(previousItems[index]) === this.getListItemReuseKey(input.item)
+        this.canReuseListItem(previousItems[index], input.item)
       ) {
         this.applyListItemMarker(existing, input)
         continue
@@ -661,6 +661,10 @@ export class MarkdownRenderable extends Renderable {
     }
 
     return true
+  }
+
+  private canReuseListItem(previous: Tokens.ListItem, next: Tokens.ListItem): boolean {
+    return previous.raw === next.raw || this.getListItemReuseKey(previous) === this.getListItemReuseKey(next)
   }
 
   private getListItemReuseKey(item: Tokens.ListItem): string {
@@ -716,9 +720,15 @@ export class MarkdownRenderable extends Renderable {
   private applyListItemMarker(row: BoxRenderable, input: ListItemRenderInput): void {
     const marker = row.getChildren()[0]
     if (!(marker instanceof TextRenderable)) return
-    row.marginBottom = /\n[ \t]*\n$/.test(input.item.raw) ? 1 : 0
-    marker.content = new StyledText([this.createChunk(input.marker.padStart(input.markerWidth) + " ", "markup.list")])
-    marker.width = input.markerWidth + 1
+    const marginBottom = /\n[ \t]*\n$/.test(input.item.raw) ? 1 : 0
+    const markerWidth = input.markerWidth + 1
+    const markerText = input.marker.padStart(input.markerWidth) + " "
+
+    if (row.marginBottom !== marginBottom) row.marginBottom = marginBottom
+    if (marker.width !== markerWidth) marker.width = markerWidth
+    if (marker.chunks[0]?.text !== markerText) {
+      marker.content = new StyledText([this.createChunk(markerText, "markup.list")])
+    }
   }
 
   private createListChildRenderable(token: MarkedToken, id: string): Renderable | null {
@@ -1355,7 +1365,13 @@ export class MarkdownRenderable extends Renderable {
     return this.createMarkdownCodeRenderable(token.raw, id, marginBottom)
   }
 
-  private updateBlockRenderable(state: BlockState, token: MarkedToken, index: number, hasNextToken: boolean): void {
+  private updateBlockRenderable(
+    state: BlockState,
+    token: MarkedToken,
+    index: number,
+    hasNextToken: boolean,
+    forceListRefresh: boolean = false,
+  ): void {
     const marginBottom = this.getInterBlockMargin(token, hasNextToken)
 
     if (token.type === "code") {
@@ -1373,7 +1389,7 @@ export class MarkdownRenderable extends Renderable {
         !this.applyListRenderable(
           state.renderable,
           token as Tokens.List,
-          state.token as Tokens.List,
+          forceListRefresh ? undefined : (state.token as Tokens.List),
           `${this.id}-block-${index}`,
           marginBottom,
         )
@@ -1695,7 +1711,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       if (state.token.type === "list") {
-        this.updateBlockRenderable(state, state.token, i, hasNextToken)
+        this.updateBlockRenderable(state, state.token, i, hasNextToken, true)
         continue
       }
 

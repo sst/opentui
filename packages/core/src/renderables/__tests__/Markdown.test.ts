@@ -2,6 +2,7 @@ import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:te
 import { Lexer } from "marked"
 import { MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
 import { CodeRenderable } from "../Code.js"
+import { BoxRenderable } from "../Box.js"
 import { TextRenderable } from "../Text.js"
 import { TextTableRenderable } from "../TextTable.js"
 import { SyntaxStyle } from "../../syntax-style.js"
@@ -1153,6 +1154,10 @@ test("streaming structured lists reuse existing renderables while appending", as
   const listBefore = md._blockStates[0]?.renderable
   const firstRowBefore = listBefore?.getChildren()[0]
   const firstTextBefore = firstRowBefore?.getChildren()[1]?.getChildren()[0]
+
+  expect(listBefore).toBeInstanceOf(BoxRenderable)
+  expect(firstRowBefore).toBeInstanceOf(BoxRenderable)
+  expect(firstTextBefore).toBeInstanceOf(CodeRenderable)
 
   md.content = "- first\n- second"
   await renderMarkdownRenderable(md)
