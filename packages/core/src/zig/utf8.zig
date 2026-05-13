@@ -755,6 +755,7 @@ inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
     } else if (byte < 0x80 and byte >= 32 and byte <= 126) {
         return 1;
     } else if (byte >= 0x80) {
+        if (codepoint > 0x10FFFF) return 0;
         const eaw = uucode.get(.east_asian_width, codepoint);
         const w = eawToWidth(codepoint, eaw);
         return if (w > 0) @intCast(w) else 0;
