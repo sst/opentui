@@ -18,6 +18,7 @@ import {
   MockTreeSitterClient,
   TestRecorder,
 } from "../../testing.js"
+import { ManualClock } from "../../testing/manual-clock.js"
 import { TextAttributes, type CapturedFrame } from "../../types.js"
 
 let renderer: TestRenderer
@@ -1169,6 +1170,58 @@ test("streaming structured lists reuse existing renderables while appending", as
   expect(listAfter).toBe(listBefore)
   expect(firstRowAfter).toBe(firstRowBefore)
   expect(firstTextAfter).toBe(firstTextBefore)
+})
+
+test("streaming structured list updates keep previous item text visible while highlighting", async () => {
+  const mockTreeSitterClient = new MockTreeSitterClient()
+  const md = createMarkdownRenderable({
+    id: "markdown-streaming-structured-list-no-flicker",
+    content: "- alp\n- bet\n- gam",
+    syntaxStyle,
+    streaming: true,
+    internalBlockMode: "top-level",
+    treeSitterClient: mockTreeSitterClient,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(0)
+  await renderOnce()
+
+  const settledFrame = captureFrame()
+  expect(settledFrame).toContain("- alp")
+  expect(settledFrame).toContain("- bet")
+  expect(settledFrame).toContain("- gam")
+
+  const clock = new ManualClock()
+  const recorder = new TestRecorder(renderer, { now: () => clock.now() })
+  recorder.rec()
+
+  md.content = "- alpha\n- beta\n- gamma"
+  await renderOnce()
+  clock.advance(16)
+  await renderOnce()
+
+  const framesBeforeHighlight = recorder.recordedFrames.map((recorded) => recorded.frame)
+  expect(framesBeforeHighlight.length).toBeGreaterThan(0)
+  for (const frame of framesBeforeHighlight) {
+    expect(frame).toContain("- alp")
+    expect(frame).toContain("- bet")
+    expect(frame).toContain("- gam")
+  }
+
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(0)
+  await renderOnce()
+  recorder.stop()
+
+  const finalFrame = captureFrame()
+  expect(finalFrame).toContain("- alpha")
+  expect(finalFrame).toContain("- beta")
+  expect(finalFrame).toContain("- gamma")
 })
 
 test("assistant-style top-level markdown layout", async () => {

@@ -184,6 +184,12 @@ interface ListItemRenderInput {
   id: string
 }
 
+interface ListChildRenderInput {
+  token: MarkedToken
+  id: string
+  marginTop: number
+}
+
 export class MarkdownRenderable extends Renderable {
   private _content: string = ""
   private _syntaxStyle: SyntaxStyle
@@ -643,12 +649,7 @@ export class MarkdownRenderable extends Renderable {
       const input = inputs[index]
       const existing = rows[index]
 
-      if (
-        existing instanceof BoxRenderable &&
-        previousItems[index] &&
-        this.canReuseListItem(previousItems[index], input.item)
-      ) {
-        this.applyListItemMarker(existing, input)
+      if (existing instanceof BoxRenderable && this.applyListItemRenderable(existing, input, previousItems[index])) {
         continue
       }
 
@@ -661,14 +662,6 @@ export class MarkdownRenderable extends Renderable {
     }
 
     return true
-  }
-
-  private canReuseListItem(previous: Tokens.ListItem, next: Tokens.ListItem): boolean {
-    return previous.raw === next.raw || this.getListItemReuseKey(previous) === this.getListItemReuseKey(next)
-  }
-
-  private getListItemReuseKey(item: Tokens.ListItem): string {
-    return this.normalizeScrollbackMarkdownBlockRaw(item.raw)
   }
 
   private createListItemRenderable(input: ListItemRenderInput): BoxRenderable {
@@ -696,25 +689,148 @@ export class MarkdownRenderable extends Renderable {
     })
     row.add(content)
 
+    for (const child of this.getListChildInputs(input.item, input.id)) {
+      const renderable = this.createListChildRenderable(child.token, child.id)
+      if (!renderable) continue
+      renderable.marginTop = child.marginTop
+      content.add(renderable)
+    }
+
+    return row
+  }
+
+  private getListChildInputs(item: Tokens.ListItem, id: string): ListChildRenderInput[] {
+    const children: ListChildRenderInput[] = []
     let pendingMarginTop = 0
-    for (let index = 0; index < input.item.tokens.length; index += 1) {
-      const child = input.item.tokens[index] as MarkedToken | undefined
+
+    for (let index = 0; index < item.tokens.length; index += 1) {
+      const child = item.tokens[index] as MarkedToken | undefined
       if (!child) continue
       if (child.type === "checkbox") continue
       if (child.type === "space") {
         pendingMarginTop = Math.max(pendingMarginTop, 1)
         continue
       }
-      const renderable = this.createListChildRenderable(child, `${input.id}-child-${index}`)
-      if (!renderable) continue
-      if (pendingMarginTop > 0) {
-        renderable.marginTop = pendingMarginTop
-        pendingMarginTop = 0
-      }
-      content.add(renderable)
+
+      children.push({
+        token: child,
+        id: `${id}-child-${index}`,
+        marginTop: pendingMarginTop,
+      })
+      pendingMarginTop = 0
     }
 
-    return row
+    return children
+  }
+
+  private applyListItemRenderable(
+    row: BoxRenderable,
+    input: ListItemRenderInput,
+    previousItem: Tokens.ListItem | undefined,
+  ): boolean {
+    this.applyListItemMarker(row, input)
+
+    const content = row.getChildren()[1]
+    if (!(content instanceof BoxRenderable)) return false
+
+    const inputs = this.getListChildInputs(input.item, input.id)
+    const previousInputs = previousItem ? this.getListChildInputs(previousItem, input.id) : []
+    const children = content.getChildren()
+
+    for (let index = 0; index < inputs.length; index += 1) {
+      const childInput = inputs[index]
+      const existing = children[index]
+
+      if (
+        existing &&
+        this.canUpdateListChildRenderable(existing, childInput.token) &&
+        this.applyListChildRenderable(existing, childInput.token, previousInputs[index]?.token, childInput.id)
+      ) {
+        existing.marginTop = childInput.marginTop
+        continue
+      }
+
+      existing?.destroyRecursively()
+      const renderable = this.createListChildRenderable(childInput.token, childInput.id)
+      if (!renderable) continue
+      renderable.marginTop = childInput.marginTop
+      content.add(renderable, index)
+    }
+
+    for (let index = children.length - 1; index >= inputs.length; index -= 1) {
+      children[index]?.destroyRecursively()
+    }
+
+    return true
+  }
+
+  private canUpdateListChildRenderable(renderable: Renderable, token: MarkedToken): boolean {
+    if (token.type === "text" || token.type === "paragraph") return renderable instanceof CodeRenderable
+    if (token.type === "code") return renderable instanceof CodeRenderable
+    if (token.type === "list") return renderable instanceof BoxRenderable
+    if (token.type === "blockquote") return renderable instanceof BoxRenderable
+    if (token.type === "hr") return renderable instanceof BoxRenderable
+    if (token.type === "table") return renderable instanceof TextTableRenderable || renderable instanceof CodeRenderable
+    return renderable instanceof CodeRenderable
+  }
+
+  private applyListChildRenderable(
+    renderable: Renderable,
+    token: MarkedToken,
+    previousToken: MarkedToken | undefined,
+    id: string,
+  ): boolean {
+    if ((token.type === "text" || token.type === "paragraph") && renderable instanceof CodeRenderable) {
+      this.applyMarkdownCodeRenderable(renderable, this.getListChildMarkdownRaw(token), 0)
+      return true
+    }
+
+    if (token.type === "code" && renderable instanceof CodeRenderable) {
+      this.applyCodeBlockRenderable(renderable, token as Tokens.Code, 0)
+      return true
+    }
+
+    if (token.type === "list") {
+      return this.applyListRenderable(renderable, token as Tokens.List, previousToken as Tokens.List | undefined, id)
+    }
+
+    if (token.type === "blockquote" && renderable instanceof BoxRenderable) {
+      this.applyBlockquoteRenderable(renderable, token, 0)
+      return true
+    }
+
+    if (token.type === "hr" && renderable instanceof BoxRenderable) {
+      renderable.marginBottom = 0
+      return true
+    }
+
+    if (token.type === "table") {
+      const tableToken = token as Tokens.Table
+      const { cache } = this.buildTableContentCache(tableToken)
+
+      if (!cache) {
+        if (!(renderable instanceof CodeRenderable)) return false
+        this.applyMarkdownCodeRenderable(renderable, tableToken.raw, 0)
+        return true
+      }
+
+      if (!(renderable instanceof TextTableRenderable)) return false
+      renderable.content = cache.content
+      this.applyTableRenderableOptions(renderable, this.resolveTableRenderableOptions())
+      renderable.marginBottom = 0
+      return true
+    }
+
+    if (renderable instanceof CodeRenderable && token.raw) {
+      this.applyMarkdownCodeRenderable(renderable, token.raw, 0)
+      return true
+    }
+
+    return false
+  }
+
+  private getListChildMarkdownRaw(token: MarkedToken): string {
+    return token.type === "paragraph" ? this.normalizeScrollbackMarkdownBlockRaw(token.raw) : token.raw
   }
 
   private applyListItemMarker(row: BoxRenderable, input: ListItemRenderInput): void {
@@ -732,9 +848,9 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private createListChildRenderable(token: MarkedToken, id: string): Renderable | null {
-    if (token.type === "text") return this.createMarkdownCodeRenderable(token.raw, id)
-    if (token.type === "paragraph")
-      return this.createMarkdownCodeRenderable(this.normalizeScrollbackMarkdownBlockRaw(token.raw), id)
+    if (token.type === "text" || token.type === "paragraph") {
+      return this.createMarkdownCodeRenderable(this.getListChildMarkdownRaw(token), id)
+    }
     if (token.type === "list") return this.createListRenderable(token as Tokens.List, id)
     if (token.type === "code") return this.createCodeRenderable(token as Tokens.Code, id)
     if (token.type === "blockquote") return this.createBlockquoteRenderable(token, id)
