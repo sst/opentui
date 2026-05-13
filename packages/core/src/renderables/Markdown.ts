@@ -184,12 +184,6 @@ interface ListItemRenderInput {
   id: string
 }
 
-interface ListChildRenderInput {
-  token: MarkedToken
-  id: string
-  marginTop: number
-}
-
 export class MarkdownRenderable extends Renderable {
   private _content: string = ""
   private _syntaxStyle: SyntaxStyle
@@ -720,47 +714,11 @@ export class MarkdownRenderable extends Renderable {
     const content = row.getChildren()[1]
     if (!(content instanceof BoxRenderable)) return false
 
-    const children = content.getChildren()
-    const markdownRaw = this.getSingleListItemMarkdownRaw(input.item)
-
-    if (markdownRaw !== undefined) {
-      const child = children[0]
-      if (child instanceof CodeRenderable) {
-        this.applyMarkdownCodeRenderable(child, markdownRaw, 0)
-        child.marginTop = 0
-      } else if (markdownRaw.length > 0) {
-        content.add(this.createMarkdownCodeRenderable(markdownRaw, `${input.id}-child-0`), 0)
-      }
-
-      this.destroyListItemChildrenAfter(content, 1)
-      return true
-    }
-
     if (previousItem && previousItem.raw === input.item.raw) {
       return true
     }
 
     return this.applyListItemChildren(content, input.item, previousItem, input.id)
-  }
-
-  private getListChildInputs(item: Tokens.ListItem, id: string): ListChildRenderInput[] {
-    const children: ListChildRenderInput[] = []
-    let pendingMarginTop = 0
-
-    for (let index = 0; index < item.tokens.length; index += 1) {
-      const child = item.tokens[index] as MarkedToken | undefined
-      if (!child) continue
-      if (child.type === "checkbox") continue
-      if (child.type === "space") {
-        pendingMarginTop = Math.max(pendingMarginTop, 1)
-        continue
-      }
-
-      children.push({ token: child, id: `${id}-child-${index}`, marginTop: pendingMarginTop })
-      pendingMarginTop = 0
-    }
-
-    return children
   }
 
   private applyListItemChildren(
@@ -769,30 +727,54 @@ export class MarkdownRenderable extends Renderable {
     previousItem: Tokens.ListItem | undefined,
     id: string,
   ): boolean {
-    const inputs = this.getListChildInputs(item, id)
-    const previousInputs = previousItem ? this.getListChildInputs(previousItem, id) : []
+    const previousTokens = previousItem ? this.getRenderableListItemTokens(previousItem) : []
     const children = content.getChildren()
+    let childIndex = 0
+    let pendingMarginTop = 0
 
-    for (let index = 0; index < inputs.length; index += 1) {
-      const input = inputs[index]
-      const existing = children[index]
-
-      if (!existing) {
-        const renderable = this.createListChildRenderable(input.token, input.id)
-        if (!renderable) return false
-        renderable.marginTop = input.marginTop
-        content.add(renderable, index)
+    for (let tokenIndex = 0; tokenIndex < item.tokens.length; tokenIndex += 1) {
+      const token = item.tokens[tokenIndex] as MarkedToken | undefined
+      if (!token) continue
+      if (token.type === "checkbox") continue
+      if (token.type === "space") {
+        pendingMarginTop = Math.max(pendingMarginTop, 1)
         continue
       }
 
-      if (!this.applyListChildRenderable(existing, input.token, previousInputs[index]?.token, input.id)) {
+      const existing = children[childIndex]
+      const childId = `${id}-child-${tokenIndex}`
+
+      if (!existing) {
+        const renderable = this.createListChildRenderable(token, childId)
+        if (!renderable) return false
+        renderable.marginTop = pendingMarginTop
+        pendingMarginTop = 0
+        content.add(renderable, childIndex)
+        childIndex += 1
+        continue
+      }
+
+      if (!this.applyListChildRenderable(existing, token, previousTokens[childIndex], childId)) {
         return false
       }
-      existing.marginTop = input.marginTop
+      existing.marginTop = pendingMarginTop
+      pendingMarginTop = 0
+      childIndex += 1
     }
 
-    this.destroyListItemChildrenAfter(content, inputs.length)
+    this.destroyListItemChildrenAfter(content, childIndex)
     return true
+  }
+
+  private getRenderableListItemTokens(item: Tokens.ListItem): MarkedToken[] {
+    const tokens: MarkedToken[] = []
+
+    for (const token of item.tokens as MarkedToken[]) {
+      if (token.type === "checkbox" || token.type === "space") continue
+      tokens.push(token)
+    }
+
+    return tokens
   }
 
   private applyListChildRenderable(
@@ -816,20 +798,6 @@ export class MarkdownRenderable extends Renderable {
     }
 
     return previousToken?.raw === token.raw
-  }
-
-  private getSingleListItemMarkdownRaw(item: Tokens.ListItem): string | undefined {
-    let raw = ""
-
-    for (const child of item.tokens as MarkedToken[]) {
-      if (child.type === "checkbox") continue
-      if (child.type === "space") continue
-      if (child.type !== "text" && child.type !== "paragraph") return undefined
-      if (raw.length > 0) return undefined
-      raw = this.getListChildMarkdownRaw(child)
-    }
-
-    return raw
   }
 
   private destroyListItemChildrenAfter(content: BoxRenderable, index: number): void {
