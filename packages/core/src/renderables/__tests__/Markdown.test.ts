@@ -1224,6 +1224,73 @@ test("streaming structured list updates keep previous item text visible while hi
   expect(finalFrame).toContain("- gamma")
 })
 
+test("streaming nested structured list updates keep previous nested text visible while highlighting", async () => {
+  const mockTreeSitterClient = new MockTreeSitterClient()
+  const initialContent = `1. First ordered item with \`inline code\`.
+2. Second ordered item before a nested list:
+   - Nested bullet with a long phrase.
+   - Nested bullet before fenced co
+3. Third ordered item after the nested fence.`
+  const updatedContent = `1. First ordered item with \`inline code\`.
+2. Second ordered item before a nested list:
+   - Nested bullet with a long phrase that should wrap without swallowing the marker or changing indentation.
+   - Nested bullet before fenced code:
+
+     \`\`\`ts
+     const nested = true
+     \`\`\`
+
+3. Third ordered item after the nested fence.`
+  const md = createMarkdownRenderable({
+    id: "markdown-streaming-nested-structured-list-no-flicker",
+    content: initialContent,
+    syntaxStyle,
+    streaming: true,
+    internalBlockMode: "top-level",
+    treeSitterClient: mockTreeSitterClient,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(0)
+  await renderOnce()
+
+  const settledFrame = captureFrame()
+  expect(settledFrame).toContain("2. Second ordered item before a nested list:")
+  expect(settledFrame).toContain("- Nested bullet with a long phrase.")
+  expect(settledFrame).toContain("- Nested bullet before fenced co")
+
+  const clock = new ManualClock()
+  const recorder = new TestRecorder(renderer, { now: () => clock.now() })
+  recorder.rec()
+
+  md.content = updatedContent
+  await renderOnce()
+  clock.advance(16)
+  await renderOnce()
+
+  const framesBeforeHighlight = recorder.recordedFrames.map((recorded) => recorded.frame)
+  expect(framesBeforeHighlight.length).toBeGreaterThan(0)
+  for (const frame of framesBeforeHighlight) {
+    expect(frame).toContain("2. Second ordered item before a nested list:")
+    expect(frame).toContain("- Nested bullet with a long phrase.")
+    expect(frame).toContain("- Nested bullet before fenced co")
+  }
+
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(0)
+  await renderOnce()
+  recorder.stop()
+
+  const finalFrame = captureFrame()
+  expect(finalFrame).toContain("Nested bullet with a long phrase that should wrap")
+  expect(finalFrame).toContain("- Nested bullet before fenced code:")
+  expect(finalFrame).toContain("const nested = true")
+})
+
 test("assistant-style top-level markdown layout", async () => {
   const md = createMarkdownRenderable({
     id: "assistant-style-layout",
