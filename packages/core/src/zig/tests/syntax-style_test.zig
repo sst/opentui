@@ -340,6 +340,23 @@ test "SyntaxStyle - merge caches results" {
     try std.testing.expect(style.getCacheSize() > 0);
 }
 
+test "SyntaxStyle - updating style invalidates merge cache" {
+    const style = try SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+
+    const id = try style.registerStyle("dynamic", null, null, 0b0001);
+    const ids = [_]u32{id};
+
+    const before = try style.mergeStyles(&ids);
+    try std.testing.expectEqual(@as(u32, 0b0001), before.attributes);
+
+    const updated_id = try style.registerStyle("dynamic", null, null, 0b0010);
+    try std.testing.expectEqual(id, updated_id);
+
+    const after = try style.mergeStyles(&ids);
+    try std.testing.expectEqual(@as(u32, 0b0010), after.attributes);
+}
+
 test "SyntaxStyle - merge different order produces different results" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();

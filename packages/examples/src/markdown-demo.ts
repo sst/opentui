@@ -79,6 +79,18 @@ Final paragraph with [docs](https://opentui.dev) and \`https://example.com/from-
 
 ---
 
+## Link Behavior Checks
+
+Markdown links: [OpenAI](https://openai.com) and [GitHub](https://github.com).
+
+Bare URLs: https://example.com and https://docs.github.com/en/get-started/learning-about-github/githubs-plans
+
+Same long URL behind a short label: [GitHub docs plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans)
+
+Email link: [someone@example.com](mailto:someone@example.com)
+
+Try your terminal's link modifier on these lines. In mouse-capturing TUIs this is often Cmd+Shift-click on macOS or Ctrl+Shift-click on Linux.
+
 ## Comparison Table
 
 | Feature | Status | Priority | Notes |
@@ -390,6 +402,7 @@ let streamingTimer: Timer | null = null
 let streamPosition = 0
 let endlessMode = false
 let rendererDestroyHandler: (() => void) | null = null
+let capabilityHandler: (() => void) | null = null
 
 // Streaming speed presets: [minDelay, maxDelay] in milliseconds
 const streamSpeeds = [
@@ -701,12 +714,15 @@ Other:
       const speed = getCurrentSpeed()
       const streamStatus = streamingMode ? "STREAMING" : "NORMAL"
       const endlessStatus = endlessMode ? " [ENDLESS]" : ""
-      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Mode: ${streamStatus}${endlessStatus} | Speed: ${speed.name} | Press T/C/S/E/[/]`
+      const hyperlinks = rendererInstance.capabilities?.hyperlinks ? "ON" : "OFF"
+      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Hyperlinks: ${hyperlinks} | Mode: ${streamStatus}${endlessStatus} | Speed: ${speed.name} | Press T/C/S/E/[/]`
     }
   }
 
   applyTheme(theme)
   updateStatusText()
+  capabilityHandler = () => updateStatusText()
+  rendererInstance.on(CliRenderEvents.CAPABILITIES, capabilityHandler)
 
   keyboardHandler = (key: ParsedKey) => {
     // Handle help modal toggle
@@ -774,6 +790,11 @@ export function destroy(rendererInstance: CliRenderer): void {
   if (rendererDestroyHandler) {
     rendererInstance.off(CliRenderEvents.DESTROY, rendererDestroyHandler)
     rendererDestroyHandler = null
+  }
+
+  if (capabilityHandler) {
+    rendererInstance.off(CliRenderEvents.CAPABILITIES, capabilityHandler)
+    capabilityHandler = null
   }
 
   if (keyboardHandler) {

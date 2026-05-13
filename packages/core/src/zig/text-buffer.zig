@@ -1166,8 +1166,12 @@ pub const UnifiedTextBuffer = struct {
                         }
                     }
 
-                    var style_name_buf: [64]u8 = undefined;
-                    const style_name = std.fmt.bufPrint(&style_name_buf, "chunk{d}", .{i}) catch continue;
+                    var style_name_buf: [96]u8 = undefined;
+                    const style_name = std.fmt.bufPrint(
+                        &style_name_buf,
+                        "chunk-{x}-{d}",
+                        .{ @intFromPtr(self), i },
+                    ) catch continue;
                     const style_id = (@constCast(style)).registerStyleDefinition(style_name, .{
                         .fg = fg,
                         .bg = bg,

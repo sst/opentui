@@ -72,6 +72,7 @@ pub const SyntaxStyle = struct {
     fn putStyle(self: *SyntaxStyle, name: []const u8, definition: StyleDefinition) SyntaxStyleError!u32 {
         if (self.name_to_id.get(name)) |existing_id| {
             try self.id_to_style.put(self.allocator, existing_id, definition);
+            self.clearCache();
             return existing_id;
         }
 

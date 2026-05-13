@@ -1424,6 +1424,11 @@ pub const CliRenderer = struct {
 
                 cellsUpdated += 1;
             }
+
+            if (hyperlinksEnabled and currentLinkId != 0) {
+                writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                currentLinkId = 0;
+            }
         }
 
         if (hyperlinksEnabled and currentLinkId != 0) {

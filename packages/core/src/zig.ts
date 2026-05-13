@@ -350,6 +350,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "u32",
     },
+    setHyperlinksCapability: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
 
     resizeRenderer: {
       args: ["ptr", "u32", "u32"],
@@ -1754,6 +1758,7 @@ export interface RenderLib extends AudioEngineLib {
   ) => void
   bufferResize: (buffer: Pointer, width: number, height: number) => void
   resizeRenderer: (renderer: Pointer, width: number, height: number) => void
+  setHyperlinksCapability: (renderer: Pointer, enabled: boolean) => void
   setCursorPosition: (renderer: Pointer, x: number, y: number, visible: boolean) => void
   setCursorColor: (renderer: Pointer, color: RGBA) => void
   getCursorState: (renderer: Pointer) => CursorState
@@ -2676,6 +2681,10 @@ class FFIRenderLib implements RenderLib {
 
   public attributesGetLinkId(attributes: number): number {
     return this.opentui.symbols.attributesGetLinkId(attributes)
+  }
+
+  public setHyperlinksCapability(renderer: Pointer, enabled: boolean): void {
+    this.opentui.symbols.setHyperlinksCapability(renderer, ffiBool(enabled))
   }
 
   public resizeRenderer(renderer: Pointer, width: number, height: number) {

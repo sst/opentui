@@ -95,4 +95,24 @@ describe("detectLinks", () => {
     // The label chunk should also get the link
     expect(result.find((c) => c.text === "Click here")!.link).toEqual({ url: "https://example.com" })
   })
+
+  test("should detect bare URLs without tree-sitter URL highlights", () => {
+    const content = "Visit https://example.com/docs for details"
+    const chunks = [chunk(content)]
+
+    const result = detectLinks(chunks, { content, highlights: [] })
+
+    expect(result.map((c) => c.text)).toEqual(["Visit ", "https://example.com/docs", " for details"])
+    expect(result[1].link).toEqual({ url: "https://example.com/docs" })
+  })
+
+  test("should detect markdown links without tree-sitter URL highlights", () => {
+    const content = "See [OpenTUI](https://opentui.com) now"
+    const chunks = [chunk(content)]
+
+    const result = detectLinks(chunks, { content, highlights: [] })
+
+    expect(result.find((c) => c.text === "OpenTUI")!.link).toEqual({ url: "https://opentui.com" })
+    expect(result.find((c) => c.text === "https://opentui.com")!.link).toEqual({ url: "https://opentui.com" })
+  })
 })

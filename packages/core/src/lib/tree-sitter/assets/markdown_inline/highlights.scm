@@ -35,10 +35,19 @@
   "[" @conceal)
   (#set! conceal ""))
 
-; Conceal closing bracket with space replacement
+; Conceal inline link syntax and destination, leaving the label as the
+; visible clickable text.
 ((inline_link
   "]" @conceal)
-  (#set! conceal " "))
+  (#set! conceal ""))
+
+((inline_link
+  [
+    "("
+    (link_destination)
+    ")"
+  ] @conceal)
+  (#set! conceal ""))
 
 ; Conceal image links
 (image

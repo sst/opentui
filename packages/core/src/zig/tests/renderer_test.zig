@@ -856,9 +856,10 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
         count += 1;
         pos += found + expected_open.len;
     }
-    // Should appear exactly once: the link stays open across rows without
-    // close/reopen at row boundaries, so terminals treat it as one contiguous link.
-    try std.testing.expectEqual(@as(usize, 1), count);
+    // Should appear once per visual row. Reopening with the same OSC 8 id lets
+    // terminals group wrapped/non-contiguous segments into one link while avoiding
+    // implementations that drop hyperlink state across cursor movement.
+    try std.testing.expectEqual(@as(usize, 2), count);
 }
 
 test "renderer - explicit default and indexed tags use ANSI default/indexed output" {

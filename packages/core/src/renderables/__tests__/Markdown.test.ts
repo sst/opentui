@@ -18,6 +18,7 @@ import {
   TestRecorder,
 } from "../../testing.js"
 import { TextAttributes, type CapturedFrame } from "../../types.js"
+import { getLinkId } from "../../utils.js"
 
 let renderer: TestRenderer
 let mockMouse: MockMouse
@@ -120,6 +121,14 @@ function findSpanContaining(frame: CapturedFrame, text: string) {
   }
 
   return undefined
+}
+
+function linkedText(frame: CapturedFrame): string {
+  return frame.lines
+    .flatMap((line) => line.spans)
+    .filter((span) => getLinkId(span.attributes) !== 0)
+    .map((span) => span.text)
+    .join("")
 }
 
 test("basic table alignment", async () => {
@@ -557,13 +566,13 @@ test("table with links", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    ┌──────┬─────────────────────────┐
-    │Name  │Link                     │
-    ├──────┼─────────────────────────┤
-    │Google│link (https://google.com)│
-    ├──────┼─────────────────────────┤
-    │GitHub│gh (https://github.com)  │
-    └──────┴─────────────────────────┘"
+    ┌──────┬────┐
+    │Name  │Link│
+    ├──────┼────┤
+    │Google│link│
+    ├──────┼────┤
+    │GitHub│gh  │
+    └──────┴────┘"
   `)
 })
 
@@ -1369,8 +1378,25 @@ test("links with conceal mode", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    Check out OpenTUI (https://github.com/sst/opentui) for more."
+    Check out OpenTUI for more."
   `)
+})
+
+test("concealed markdown links hide target but label carries hyperlink metadata", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-concealed-link-metadata",
+    content: `Check out [OpenTUI](https://github.com/sst/opentui) for more.`,
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("Check out OpenTUI for more.")
+  expect(frame).not.toContain("https://github.com/sst/opentui")
+  expect(linkedText(captureSpans())).toBe("OpenTUI")
 })
 
 test("links with conceal=false", async () => {
@@ -1381,6 +1407,61 @@ test("links with conceal=false", async () => {
     Check out [OpenTUI](https://github.com/sst/opentui) for
     more."
   `)
+})
+
+test("markdown links carry hyperlink metadata", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-link-metadata",
+    content: `Check out [OpenTUI](https://github.com/sst/opentui) for more.`,
+    syntaxStyle,
+    conceal: false,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const linked = linkedText(captureSpans())
+
+  expect(linked).toContain("OpenTUI")
+  expect(linked).toContain("https://github.com/sst/opentui")
+})
+
+test("bare urls carry hyperlink metadata when markdown text wraps", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-bare-url-metadata",
+    content: `Visit https://docs.github.com/en/get-started/learning-about-github/githubs-plans for details.`,
+    syntaxStyle,
+    conceal: false,
+    width: 34,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(linkedText(captureSpans())).toContain(
+    "https://docs.github.com/en/get-started/learning-about-github/githubs-plans",
+  )
+})
+
+test("bare urls use markdown link URL style", async () => {
+  const linkStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    "markup.link.url": { fg: RGBA.fromValues(0, 0.5, 1, 1), underline: true },
+  })
+  const md = createMarkdownRenderable({
+    id: "markdown-bare-url-style",
+    content: `Visit https://example.com for details.`,
+    syntaxStyle: linkStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const urlSpan = findSpanContaining(captureSpans(), "https://example.com")
+  expect(urlSpan).toBeDefined()
+  expect(urlSpan!.attributes & TextAttributes.UNDERLINE).toBeTruthy()
+  expect(urlSpan!.fg.b).toBe(1)
 })
 
 // Horizontal rule
@@ -1474,7 +1555,7 @@ Visit [GitHub](https://github.com) for more.
 
     Links
 
-    Visit GitHub (https://github.com) for more.
+    Visit GitHub for more.
     ────────────────────────────────────────────────────────────
 
     Press ? for help"
@@ -2999,7 +3080,7 @@ test("paragraph links are rendered with markdown conceal behavior", async () => 
 
   const frame = captureFrame()
   expect(frame).toContain("Google")
-  expect(frame).toContain("https://google.com")
+  expect(frame).not.toContain("https://google.com")
   expect(frame).not.toContain("[Google](https://google.com)")
 })
 

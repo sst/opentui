@@ -193,10 +193,12 @@ export class MarkdownRenderable extends Renderable {
   _stableBlockCount = 0
   private _styleDirty: boolean = false
   private _linkifyMarkdownChunks: OnChunksCallback = (chunks, context) =>
-    detectLinks(chunks, {
-      content: context.content,
-      highlights: context.highlights,
-    })
+    this.styleDetectedLinks(
+      detectLinks(chunks, {
+        content: context.content,
+        highlights: context.highlights,
+      }),
+    )
 
   protected _contentDefaultOptions = {
     content: "",
@@ -382,6 +384,29 @@ export class MarkdownRenderable extends Renderable {
     return this.createChunk(text, "default")
   }
 
+  private styleDetectedLinks(chunks: TextChunk[]): TextChunk[] {
+    const urlStyle = this.getStyle("markup.link.url") || this.getStyle("markup.link")
+    if (!urlStyle) return chunks
+
+    const attributes = createTextAttributes({
+      bold: urlStyle.bold,
+      italic: urlStyle.italic,
+      underline: urlStyle.underline,
+      dim: urlStyle.dim,
+    })
+
+    return chunks.map((chunk) => {
+      if (!chunk.link) return chunk
+
+      return {
+        ...chunk,
+        fg: urlStyle.fg ?? chunk.fg,
+        bg: urlStyle.bg ?? chunk.bg,
+        attributes: (chunk.attributes ?? 0) | attributes,
+      }
+    })
+  }
+
   private renderInlineContent(tokens: Token[], chunks: TextChunk[]): void {
     for (const token of tokens) {
       this.renderInlineToken(token as MarkedToken, chunks)
@@ -450,9 +475,6 @@ export class MarkdownRenderable extends Renderable {
           for (const child of token.tokens) {
             this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
           }
-          chunks.push(this.createChunk(" (", "markup.link", linkHref))
-          chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
-          chunks.push(this.createChunk(")", "markup.link", linkHref))
         } else {
           chunks.push(this.createChunk("[", "markup.link", linkHref))
           for (const child of token.tokens) {
