@@ -1138,6 +1138,34 @@ test("top-level structured ordered lists align multi-digit markers", async () =>
   `)
 })
 
+test("streaming structured lists reuse existing renderables while appending", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-streaming-structured-list-reuse",
+    content: "- first",
+    syntaxStyle,
+    streaming: true,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const listBefore = md._blockStates[0]?.renderable
+  const firstRowBefore = listBefore?.getChildren()[0]
+  const firstTextBefore = firstRowBefore?.getChildren()[1]?.getChildren()[0]
+
+  md.content = "- first\n- second"
+  await renderMarkdownRenderable(md)
+
+  const listAfter = md._blockStates[0]?.renderable
+  const firstRowAfter = listAfter?.getChildren()[0]
+  const firstTextAfter = firstRowAfter?.getChildren()[1]?.getChildren()[0]
+
+  expect(listAfter).toBe(listBefore)
+  expect(firstRowAfter).toBe(firstRowBefore)
+  expect(firstTextAfter).toBe(firstTextBefore)
+})
+
 test("assistant-style top-level markdown layout", async () => {
   const md = createMarkdownRenderable({
     id: "assistant-style-layout",
