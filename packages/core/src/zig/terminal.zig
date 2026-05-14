@@ -113,6 +113,7 @@ opts: Options = .{},
 host_env_map: ?std.process.EnvMap = null,
 
 in_tmux: bool = false,
+is_foot: bool = false,
 skip_graphics_query: bool = false,
 skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
@@ -269,9 +270,17 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.cursorPositionRequest);
 
     if (self.in_tmux) {
-        try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
+        if (self.is_foot) {
+            try tty.writeAll(ansi.ANSI.capabilityQueriesFootIsBrokenTmux);
+        } else {
+            try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
+        }
     } else {
-        try tty.writeAll(ansi.ANSI.capabilityQueries);
+        if (self.is_foot) {
+            try tty.writeAll(ansi.ANSI.capabilityQueriesFootIsBroken);
+        } else {
+            try tty.writeAll(ansi.ANSI.capabilityQueries);
+        }
         self.capability_queries_pending = true;
     }
 
@@ -397,14 +406,17 @@ fn detectNotificationProtocol(value: []const u8) ?NotificationProtocol {
     // OSC 99 is explicitly documented by kitty and supported by foot. Prefer it
     // where the terminal family is known because it has the only real queryable
     // notification protocol and robust text encoding.
-    if (std.ascii.indexOfIgnoreCase(value, "kitty") != null) return .osc99;
+    if (std.ascii.indexOfIgnoreCase(value, "kitty") != null or
+        std.ascii.indexOfIgnoreCase(value, "foot") != null)
+    {
+        return .osc99;
+    }
 
-    // OSC 777 is documented by foot, WezTerm, Warp, hterm/Blink, and is the
+    // OSC 777 is documented by WezTerm, Warp, hterm/Blink, and is the
     // rxvt/VTE-style title+body notification sequence. Use it where sources
     // document support, or where the terminal is clearly VTE/rxvt-derived.
     if (std.ascii.indexOfIgnoreCase(value, "ghostty") != null or
         std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
-        std.ascii.indexOfIgnoreCase(value, "foot") != null or
         std.ascii.indexOfIgnoreCase(value, "warp") != null or
         std.ascii.indexOfIgnoreCase(value, "hterm") != null or
         std.ascii.indexOfIgnoreCase(value, "blink") != null or
@@ -509,6 +521,7 @@ fn parseOsc99NotificationQuery(self: *Terminal, response: []const u8) void {
 
 fn checkEnvironmentOverrides(self: *Terminal) void {
     self.in_tmux = self.isXtversionTmux();
+    self.is_foot = self.term_info.from_xtversion and std.ascii.indexOfIgnoreCase(self.getTerminalName(), "foot") != null;
     self.skip_graphics_query = false;
     self.skip_explicit_width_query = false;
 
@@ -566,6 +579,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             self.caps.ansi256 = true;
         }
         self.applyNotificationHeuristic(term);
+        self.is_foot = self.is_foot or std.ascii.indexOfIgnoreCase(term, "foot") != null;
     }
 
     if (env_map.get("TERM_FEATURES")) |features| {
@@ -1359,6 +1373,7 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     }
 
     self.term_info.from_xtversion = true;
+    self.is_foot = std.ascii.indexOfIgnoreCase(self.getTerminalName(), "foot") != null;
     self.applyNotificationHeuristic(self.getTerminalName());
     if (std.mem.eql(u8, self.getTerminalName(), "tmux")) {
         self.in_tmux = true;

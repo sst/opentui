@@ -331,6 +331,7 @@ pub const ANSI = struct {
         decrqmSync;
 
     pub const capabilityQueries = capabilityQueriesBase ++ csiUQuery ++ notificationQueries;
+    pub const capabilityQueriesFootIsBroken = capabilityQueriesBase ++ csiUQuery;
 
     // tmux DCS passthrough wrapper (ESC chars doubled)
     pub const tmuxDcsStart = "\x1bPtmux;";
@@ -356,6 +357,7 @@ pub const ANSI = struct {
 
     pub const kittyGraphicsQueryTmux = wrapForTmux(kittyGraphicsQuery);
     pub const capabilityQueriesTmux = wrapForTmux(capabilityQueriesBase) ++ csiUQuery ++ notificationQueries;
+    pub const capabilityQueriesFootIsBrokenTmux = wrapForTmux(capabilityQueriesBase) ++ csiUQuery;
     pub const sixelGeometryQuery = "\x1b[?2;1;0S";
     pub const cursorPositionRequest = "\x1b[6n";
     pub const explicitWidthQuery = "\x1b]66;w=1; \x1b\\";
