@@ -1976,6 +1976,37 @@ test "OptimizedBuffer - drawBox transparent border preserves destination backgro
     try std.testing.expectEqual(@as(u32, 0), cell.attributes);
 }
 
+test "OptimizedBuffer - drawBox transparent border foreground blends against box background" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        4,
+        4,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const transparent = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
+    const panel = ansi.rgbColor(0x12, 0x34, 0x56, 255);
+    buf.clear(transparent, null);
+
+    const border_chars = [_]u32{ 0x250c, 0x2510, 0x2514, 0x2518, 0x2500, 0x2502, 0, 0, 0, 0, 0 };
+    try buf.drawBox(0, 0, 4, 4, &border_chars, .{ .left = true }, transparent, panel, true, null, 0, null, 0);
+
+    const cell = buf.get(0, 1).?;
+    try std.testing.expectEqual(@as(u32, 0x2502), cell.char);
+    try std.testing.expectEqual(ansi.red(panel), ansi.red(cell.fg));
+    try std.testing.expectEqual(ansi.green(panel), ansi.green(cell.fg));
+    try std.testing.expectEqual(ansi.blue(panel), ansi.blue(cell.fg));
+    try std.testing.expectEqual(ansi.alpha(panel), ansi.alpha(cell.fg));
+    try std.testing.expectEqual(ansi.red(panel), ansi.red(cell.bg));
+    try std.testing.expectEqual(ansi.green(panel), ansi.green(cell.bg));
+    try std.testing.expectEqual(ansi.blue(panel), ansi.blue(cell.bg));
+    try std.testing.expectEqual(ansi.alpha(panel), ansi.alpha(cell.bg));
+}
+
 test "OptimizedBuffer - link reuse after free" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

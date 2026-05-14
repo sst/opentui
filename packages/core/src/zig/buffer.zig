@@ -765,7 +765,7 @@ pub const OptimizedBuffer = struct {
                 finalFg = blendColors(overlayCell.bg, destCell.fg, self.blendBackdropColor);
             } else {
                 finalFg = if (hasFgAlpha)
-                    blendColors(overlayCell.fg, destCell.bg, self.blendBackdropColor)
+                    blendColors(overlayCell.fg, blendedBg, self.blendBackdropColor)
                 else
                     overlayCell.fg;
             }
