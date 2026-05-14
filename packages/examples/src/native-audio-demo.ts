@@ -725,7 +725,7 @@ async function loadBgmFile(filePath: string): Promise<void> {
   musicSound = nextSound
   musicVoice = null
 
-  if (groups && audio.isStarted()) {
+  if (groups && audio.isMixerStarted()) {
     playBgmVoice()
     lastAction = musicVoice ? `BGM playing ${displayName}` : `BGM loaded ${displayName}`
   } else {
@@ -793,14 +793,16 @@ async function initializeAudioForOutputConfig(
     }
   }
 
-  if (!nextAudio.start()) {
+  let outputStarted = nextAudio.start()
+  if (!outputStarted) {
     if (activePlaybackDeviceIndex != null) {
       nextAudio.clearPlaybackDeviceSelection()
       activePlaybackDeviceIndex = null
     }
 
-    if (!nextAudio.start()) {
-      lastAction = "Output unavailable; demo running silent"
+    outputStarted = nextAudio.start()
+    if (!outputStarted) {
+      lastAction = nextAudio.startMixer() ? "Playback unavailable; mixer-only mode" : "Audio engine unavailable"
     } else {
       lastAction = "Output started with default device"
     }
@@ -838,7 +840,7 @@ async function initializeAudioForOutputConfig(
     lastAction = `BGM unavailable: ${formatBgmPath(selectedBgmPath)}`
   }
 
-  if (resumeBgm && musicSound && groups && nextAudio.isStarted()) {
+  if (resumeBgm && musicSound && groups && nextAudio.isMixerStarted()) {
     playBgmVoice()
   }
 
@@ -989,7 +991,7 @@ function applySelectedPlaybackDevice(): void {
     musicVoice = null
   }
 
-  if (audio.isStarted() && !audio.stop()) {
+  if (audio.isMixerStarted() && !audio.stop()) {
     lastAction = "Failed to stop current output"
     updateHeader()
     return
@@ -1001,26 +1003,51 @@ function applySelectedPlaybackDevice(): void {
     return
   }
 
-  if (!audio.start()) {
+  const selectedOutputStarted = audio.start()
+  let outputStarted = selectedOutputStarted
+  if (!selectedOutputStarted) {
     audio.clearPlaybackDeviceSelection()
     activePlaybackDeviceIndex = null
-    const fallbackStarted = audio.start()
-    lastAction = fallbackStarted
-      ? `Device unavailable; fallback default (${truncateDeviceName(selectedDevice.name, 20)})`
+    outputStarted = audio.start()
+  }
+
+  if (!outputStarted) {
+    const mixerStarted = audio.startMixer()
+    lastAction = mixerStarted
+      ? `Failed ${truncateDeviceName(selectedDevice.name, 20)}; mixer-only mode`
       : `Failed to start ${truncateDeviceName(selectedDevice.name, 20)}`
+  } else if (!selectedOutputStarted) {
+    lastAction = `Device unavailable; fallback default (${truncateDeviceName(selectedDevice.name, 20)})`
+  } else {
+    activePlaybackDeviceIndex = selectedDevice.index
+    lastAction = `Output device ${truncateDeviceName(selectedDevice.name, 26)}`
+  }
+
+  if (!outputStarted && !audio.isMixerStarted()) {
     updateHeader()
     return
   }
 
-  activePlaybackDeviceIndex = selectedDevice.index
   audio.setMasterVolume(masterVolume)
   applyGroupVolumes()
-  if (resumeBgm && musicSound && groups) {
+  if (resumeBgm && musicSound && groups && audio.isMixerStarted()) {
     playBgmVoice()
   }
 
-  lastAction = `Output device ${truncateDeviceName(selectedDevice.name, 26)}`
   updateHeader()
+}
+
+function outputStateLabel(): string {
+  if (!audio) return "OFF"
+  if (audio.isStarted()) return "ON (miniaudio)"
+  if (audio.isMixerStarted()) return "MIXER ONLY"
+  return "OFF"
+}
+
+function mixOfflineFrame(deltaMs: number): void {
+  if (!audio || audio.isStarted() || !audio.isMixerStarted()) return
+  const frameCount = Math.max(64, Math.min(2048, Math.round((activeSampleRate * deltaMs) / 1000)))
+  audio.mixFrames(frameCount, 2)
 }
 
 function updateDeviceMenu(): void {
@@ -1072,8 +1099,12 @@ function updateHeader(): void {
 
   if (outputText && audio) {
     const activeDevice = activePlaybackDevice()
-    const activeDeviceLabel = activeDevice ? truncateDeviceName(activeDevice.name, 18) : "default/auto"
-    outputText.content = `Output: ${audio.isStarted() ? "ON (miniaudio)" : "OFF"} | ${formatSampleRate(activeSampleRate)} ${formatPlaybackChannels(activePlaybackChannels)} | Device ${activeDeviceLabel} | 400=${(fourHundredBandLevel * 100).toFixed(0)}% 12k=${(twelveKBandLevel * 100).toFixed(0)}% | Kick ${isKickVisible() ? "HIT" : "-"}`
+    const activeDeviceLabel = audio.isStarted()
+      ? activeDevice
+        ? truncateDeviceName(activeDevice.name, 18)
+        : "default/auto"
+      : "none"
+    outputText.content = `Output: ${outputStateLabel()} | ${formatSampleRate(activeSampleRate)} ${formatPlaybackChannels(activePlaybackChannels)} | Device ${activeDeviceLabel} | 400=${(fourHundredBandLevel * 100).toFixed(0)}% 12k=${(twelveKBandLevel * 100).toFixed(0)}% | Kick ${isKickVisible() ? "HIT" : "-"}`
   }
 
   updateBgmFileText()
@@ -1101,6 +1132,8 @@ function triggerSound(index: number): void {
 
 function updateAudioView(deltaMs: number = 16): void {
   if (!audio || !meterText || !statsText) return
+
+  mixOfflineFrame(deltaMs)
 
   const analysis = audio.readTapFrames(FFT_SIZE, 2)
   const stats = audio.getStats()
@@ -1292,7 +1325,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   updateHeader()
 
-  if (musicSound && groups && audio?.isStarted()) {
+  if (musicSound && groups && audio?.isMixerStarted()) {
     playBgmVoice()
     lastAction = "BGM auto start"
     updateHeader()

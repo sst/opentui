@@ -317,23 +317,24 @@ const renderer = await createCliRenderer({
 
 ## Key properties
 
-| Property                   | Type                 | Description                                                             |
-| -------------------------- | -------------------- | ----------------------------------------------------------------------- |
-| `root`                     | `RootRenderable`     | Root of the component tree                                              |
-| `width`                    | `number`             | Current render width in columns                                         |
-| `height`                   | `number`             | Current render height in rows                                           |
-| `console`                  | `TerminalConsole`    | Built-in console overlay                                                |
-| `keyInput`                 | `KeyHandler`         | Keyboard input handler                                                  |
-| `isRunning`                | `boolean`            | Whether the render loop is active                                       |
-| `isDestroyed`              | `boolean`            | Whether the renderer has been destroyed                                 |
-| `currentFocusedRenderable` | `Renderable \| null` | Currently focused component                                             |
-| `screenMode`               | `ScreenMode`         | Active screen mode; assignable to swap between modes at runtime         |
-| `footerHeight`             | `number`             | Split-footer height; assignable to resize the footer                    |
-| `externalOutputMode`       | `ExternalOutputMode` | Active stdout routing; assignable to switch between capture/passthrough |
-| `consoleMode`              | `ConsoleMode`        | Active console overlay mode                                             |
-| `themeMode`                | `ThemeMode \| null`  | Detected terminal theme (`"dark"` / `"light"`)                          |
-| `targetFps`                | `number`             | Target render loop FPS; assignable at runtime                           |
-| `maxFps`                   | `number`             | Upper cap for immediate re-renders; assignable at runtime               |
+| Property                   | Type                           | Description                                                             |
+| -------------------------- | ------------------------------ | ----------------------------------------------------------------------- |
+| `root`                     | `RootRenderable`               | Root of the component tree                                              |
+| `width`                    | `number`                       | Current render width in columns                                         |
+| `height`                   | `number`                       | Current render height in rows                                           |
+| `console`                  | `TerminalConsole`              | Built-in console overlay                                                |
+| `keyInput`                 | `KeyHandler`                   | Keyboard input handler                                                  |
+| `isRunning`                | `boolean`                      | Whether the render loop is active                                       |
+| `isDestroyed`              | `boolean`                      | Whether the renderer has been destroyed                                 |
+| `currentFocusedRenderable` | `Renderable \| null`           | Currently focused component                                             |
+| `screenMode`               | `ScreenMode`                   | Active screen mode; assignable to swap between modes at runtime         |
+| `footerHeight`             | `number`                       | Split-footer height; assignable to resize the footer                    |
+| `externalOutputMode`       | `ExternalOutputMode`           | Active stdout routing; assignable to switch between capture/passthrough |
+| `consoleMode`              | `ConsoleMode`                  | Active console overlay mode                                             |
+| `themeMode`                | `ThemeMode \| null`            | Detected terminal theme (`"dark"` / `"light"`)                          |
+| `capabilities`             | `TerminalCapabilities \| null` | Detected terminal capabilities                                          |
+| `targetFps`                | `number`                       | Target render loop FPS; assignable at runtime                           |
+| `maxFps`                   | `number`                       | Upper cap for immediate re-renders; assignable at runtime               |
 
 ## Events
 
@@ -346,7 +347,7 @@ Use `renderer.on(event, callback)` to subscribe:
 | `blur`                | `()`                              | Terminal window lost focus                                            |
 | `theme_mode`          | `(mode: "dark" \| "light")`       | Terminal color scheme changed. See [Theme mode](#theme-mode) section. |
 | `palette`             | `(colors: TerminalColors)`        | Terminal palette was refreshed and changed                            |
-| `capabilities`        | `(caps: Capabilities)`            | Terminal capabilities detected                                        |
+| `capabilities`        | `(caps: TerminalCapabilities)`    | Terminal capabilities detected                                        |
 | `selection`           | `(selection: Selection)`          | Text selection completed                                              |
 | `destroy`             | `()`                              | Renderer destroyed                                                    |
 | `memory:snapshot`     | `(snapshot: MemorySnapshot)`      | Memory usage snapshot available                                       |

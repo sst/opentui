@@ -52,6 +52,15 @@ const variants: Variant[] = [
   { platform: "win32", arch: "arm64" },
 ]
 
+const getHostVariant = (): Variant => {
+  const hostVariant = variants.find((variant) => variant.platform === process.platform && variant.arch === process.arch)
+  if (!hostVariant) {
+    console.error(`Error: Unsupported host platform for native builds: ${process.platform}-${process.arch}`)
+    process.exit(1)
+  }
+  return hostVariant
+}
+
 if (!buildLib && !buildNative) {
   console.error("Error: Please specify --lib, --native, or both")
   process.exit(1)
@@ -105,7 +114,9 @@ if (buildNative) {
     process.exit(1)
   }
 
-  for (const { platform, arch } of variants) {
+  const variantsToPackage = buildAll ? variants : [getHostVariant()]
+
+  for (const { platform, arch } of variantsToPackage) {
     const nativeName = `${packageJson.name}-${platform}-${arch}`
     const nativeDir = join(rootDir, "node_modules", nativeName)
     const libDir = join(rootDir, "src", "zig", "lib", getZigTarget(platform, arch))

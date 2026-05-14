@@ -216,6 +216,10 @@ export fn audioStart(engine: *native_audio.Engine, options_ptr: ?*const native_a
     return native_audio.start(engine, options_ptr);
 }
 
+export fn audioStartMixer(engine: *native_audio.Engine) i32 {
+    return native_audio.startMixer(engine);
+}
+
 export fn audioStop(engine: *native_audio.Engine) i32 {
     return native_audio.stop(engine);
 }

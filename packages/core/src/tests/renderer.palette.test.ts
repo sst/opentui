@@ -8,6 +8,7 @@ import { ManualClock } from "../testing/manual-clock.js"
 import type { GetPaletteOptions, TerminalColors } from "../lib/terminal-palette.js"
 import { clearEnvCache } from "../lib/env.js"
 import { CliRenderEvents } from "../renderer.js"
+import { createTerminalCapabilities, setRendererCapabilities } from "../testing/terminal-capabilities.js"
 
 const OSC_SUPPORT_TIMEOUT_MS = 300
 
@@ -206,22 +207,22 @@ function startCapabilityDetectionWindow(renderer: any, clock: ManualClock): void
 
 function setNativePaletteRequired(renderer: any): void {
   renderer._terminalIsSetup = true
-  renderer._capabilities = {
-    ...(renderer._capabilities ?? {}),
+  setRendererCapabilities(renderer, {
+    ...renderer._capabilities,
     rgb: false,
     ansi256: true,
     terminal: renderer._capabilities?.terminal ?? { from_xtversion: false, name: "", version: "" },
-  }
+  })
 }
 
 function setNativePaletteUnneeded(renderer: any): void {
   renderer._terminalIsSetup = true
-  renderer._capabilities = {
-    ...(renderer._capabilities ?? {}),
+  setRendererCapabilities(renderer, {
+    ...renderer._capabilities,
     rgb: true,
     ansi256: true,
     terminal: renderer._capabilities?.terminal ?? { from_xtversion: false, name: "", version: "" },
-  }
+  })
 }
 
 describe("Palette caching behavior", () => {
@@ -657,11 +658,12 @@ describe("Palette cache invalidation", () => {
 
     lib.setupTerminal = () => {}
     lib.queryPixelResolution = () => {}
-    lib.getTerminalCapabilities = () => ({
-      rgb: true,
-      ansi256: true,
-      terminal: { name: "Apple_Terminal", version: "", from_xtversion: false },
-    })
+    lib.getTerminalCapabilities = () =>
+      createTerminalCapabilities({
+        rgb: true,
+        ansi256: true,
+        terminal: { name: "Apple_Terminal", version: "", from_xtversion: false },
+      })
 
     await renderer.setupTerminal()
 
@@ -684,11 +686,12 @@ describe("Palette cache invalidation", () => {
 
     lib.setupTerminal = () => {}
     lib.queryPixelResolution = () => {}
-    lib.getTerminalCapabilities = () => ({
-      rgb: false,
-      ansi256: true,
-      terminal: { name: "Apple_Terminal", version: "", from_xtversion: false },
-    })
+    lib.getTerminalCapabilities = () =>
+      createTerminalCapabilities({
+        rgb: false,
+        ansi256: true,
+        terminal: { name: "Apple_Terminal", version: "", from_xtversion: false },
+      })
 
     await renderer.setupTerminal()
 
@@ -742,7 +745,7 @@ describe("Capability repaint handling", () => {
     const originalGetTerminalCapabilities = lib.getTerminalCapabilities
 
     lib.processCapabilityResponse = () => {}
-    lib.getTerminalCapabilities = () => ({ rgb: true, ansi256: true, unicode: "unicode" })
+    lib.getTerminalCapabilities = () => createTerminalCapabilities({ rgb: true, ansi256: true, unicode: "unicode" })
 
     // @ts-expect-error - testing private renderer state
     expect(renderer.forceFullRepaintRequested).toBe(false)
@@ -959,13 +962,12 @@ describe("Palette detection while capabilities are unsettled", () => {
     const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
 
     try {
-      // @ts-expect-error - simulating initial capabilities from TERM_PROGRAM=tmux and TERM_PROGRAM_VERSION
-      renderer._capabilities = {
+      setRendererCapabilities(renderer, {
         in_tmux: true,
         rgb: true,
         ansi256: true,
         terminal: { name: "tmux", version: "3.6a", from_xtversion: false },
-      }
+      })
       startCapabilityDetectionWindow(renderer, clock)
 
       void renderer.getPalette({ size: 16 })

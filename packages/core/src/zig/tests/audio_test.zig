@@ -111,7 +111,7 @@ test "audio - destroy works after create" {
     audio.destroy(engine);
 }
 
-test "audio - start and stop transition started state" {
+test "audio - start requires playback device" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);
 
@@ -121,11 +121,34 @@ test "audio - start and stop transition started state" {
         .performance_profile = 1,
         .share_mode = 0,
     };
-    try expectStatusOk(audio.start(engine, &options));
-    try testing.expect(engine.started);
+
+    const status = audio.start(engine, &options);
+    if (status == audio.Status.ok) {
+        try testing.expect(engine.started);
+        try testing.expect(engine.has_device);
+    } else {
+        try testing.expectEqual(audio.Status.err_device, status);
+        try testing.expect(!engine.started);
+        try testing.expect(!engine.has_device);
+        return;
+    }
 
     try expectStatusOk(audio.stop(engine));
     try testing.expect(!engine.started);
+    try testing.expect(!engine.has_device);
+}
+
+test "audio - startMixer enables mixing without playback device" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    try expectStatusOk(audio.startMixer(engine));
+    try testing.expect(engine.started);
+    try testing.expect(!engine.has_device);
+
+    try expectStatusOk(audio.stop(engine));
+    try testing.expect(!engine.started);
+    try testing.expect(!engine.has_device);
 }
 
 test "audio - load valid wav returns sound id" {
@@ -166,7 +189,7 @@ test "audio - unload stops active voices for sound" {
 
     const mono_samples = [_]i16{ 2000, -2000, 4000, -4000, 2000, -2000 };
     const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
-    try expectStatusOk(audio.start(engine, null));
+    try expectStatusOk(audio.startMixer(engine));
 
     const voice_id = try playLoop(engine, sound_id, 0, 0);
     try testing.expect(engine.voices[voice_id - 1].active);
@@ -192,7 +215,7 @@ test "audio - unloaded sound id is not reused by later loads" {
     const second_sound_id = try loadSoundFromSamples(engine, 1, &second_samples);
     try testing.expect(second_sound_id != first_sound_id);
 
-    try expectStatusOk(audio.start(engine, null));
+    try expectStatusOk(audio.startMixer(engine));
 
     var voice_id: u32 = 0;
     const options = audio.VoiceOptions{ .volume = 1, .pan = 0, .loop = false, .group_id = 0 };
@@ -216,7 +239,7 @@ test "audio - play valid sound returns voice id" {
 
     const mono_samples = [_]i16{ 3000, -3000, 6000, -6000, 3000, -3000 };
     const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
-    try expectStatusOk(audio.start(engine, null));
+    try expectStatusOk(audio.startMixer(engine));
 
     var voice_id: u32 = 0;
     const options = audio.VoiceOptions{ .volume = 1, .pan = 0, .loop = true, .group_id = 0 };
@@ -231,7 +254,7 @@ test "audio - stopVoice stops active voice" {
 
     const mono_samples = [_]i16{ 2000, -2000, 4000, -4000, 2000, -2000 };
     const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
-    try expectStatusOk(audio.start(engine, null));
+    try expectStatusOk(audio.startMixer(engine));
 
     const voice_id = try playLoop(engine, sound_id, 0, 0);
     try expectStatusOk(audio.stopVoice(engine, voice_id));
@@ -246,7 +269,7 @@ test "audio - setVoiceGroup moves voice between groups" {
     const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
     const group_a = try createGroup(engine, "group-a");
     const group_b = try createGroup(engine, "group-b");
-    try expectStatusOk(audio.start(engine, null));
+    try expectStatusOk(audio.startMixer(engine));
 
     const voice_id = try playLoop(engine, sound_id, group_a, 0);
     try expectStatusOk(audio.setVoiceGroup(engine, voice_id, group_b));
@@ -282,7 +305,7 @@ test "audio - mixToBuffer returns mixed samples" {
 
     const mono_samples = [_]i16{ 4000, -2000, 7000, -7000, 5000, -3000 };
     const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
-    try expectStatusOk(audio.start(engine, null));
+    try expectStatusOk(audio.startMixer(engine));
     _ = try playLoop(engine, sound_id, 0, 0.2);
 
     var out: [128]f32 = [_]f32{0} ** 128;
@@ -299,8 +322,8 @@ test "audio - mixToBuffer mono downmix averages stereo" {
     const mono_samples = [_]i16{ 5000, -2000, 8000, -8000, 5000, -2000 };
     const stereo_sound_id = try loadSoundFromSamples(stereo_engine, 1, &mono_samples);
     const mono_sound_id = try loadSoundFromSamples(mono_engine, 1, &mono_samples);
-    try expectStatusOk(audio.start(stereo_engine, null));
-    try expectStatusOk(audio.start(mono_engine, null));
+    try expectStatusOk(audio.startMixer(stereo_engine));
+    try expectStatusOk(audio.startMixer(mono_engine));
 
     _ = try playLoop(stereo_engine, stereo_sound_id, 0, 0.7);
     _ = try playLoop(mono_engine, mono_sound_id, 0, 0.7);
@@ -327,7 +350,7 @@ test "audio - mixToBuffer multichannel keeps extra channels zero" {
 
     const mono_samples = [_]i16{ 2500, -1500, 7000, -7000, 2500, -1500 };
     const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
-    try expectStatusOk(audio.start(engine, null));
+    try expectStatusOk(audio.startMixer(engine));
     _ = try playLoop(engine, sound_id, 0, 0);
 
     var quad: [256]f32 = [_]f32{0} ** 256;
@@ -346,7 +369,7 @@ test "audio - enableTap and readTap return captured frames" {
 
     const mono_samples = [_]i16{ 1000, -1000, 4000, -4000, 1000, -1000 };
     const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
-    try expectStatusOk(audio.start(engine, null));
+    try expectStatusOk(audio.startMixer(engine));
     _ = try playLoop(engine, sound_id, 0, 0.35);
 
     try expectStatusOk(audio.enableTap(engine, true, 256));
@@ -397,7 +420,7 @@ test "audio - getStats returns current counters" {
     var before: audio.Stats = undefined;
     try expectStatusOk(audio.getStats(engine, &before));
 
-    try expectStatusOk(audio.start(engine, null));
+    try expectStatusOk(audio.startMixer(engine));
     const voice_id = try playLoop(engine, sound_id, 0, 0);
 
     var out: [128]f32 = [_]f32{0} ** 128;

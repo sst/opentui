@@ -1,6 +1,6 @@
 {
   "name": "@opentui/examples",
-  "version": "0.2.6",
+  "version": "0.2.9",
   "private": true,
   "description": "OpenTUI examples and standalone examples executable",
   "license": "MIT",
@@ -14,7 +14,8 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "bun src/index.ts",
-    "build": "bun scripts/build.ts"
+    "build": "bun scripts/build.ts",
+    "build:host": "bun scripts/build.ts --host"
   },
   "dependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",

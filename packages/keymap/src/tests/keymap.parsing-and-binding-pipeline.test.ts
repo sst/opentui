@@ -90,6 +90,151 @@ describe("keymap: parsing and binding pipeline", () => {
     expect(calls).toEqual(["direct"])
   })
 
+  test("prefers lower-layer direct strokes over higher-layer fallback strokes", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.appendEventMatchResolver((event, ctx) => {
+      if (event.name !== "x") return undefined
+      return [matchEventAs(ctx, event, "y")]
+    })
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "direct",
+          run() {
+            calls.push("direct")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "direct" }],
+    })
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "fallback",
+          run() {
+            calls.push("fallback")
+          },
+        },
+      ],
+      bindings: [{ key: "y", cmd: "fallback" }],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["direct"])
+  })
+
+  test("keeps higher-layer direct strokes ahead of lower-layer direct strokes", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "lower",
+          run() {
+            calls.push("lower")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "lower" }],
+    })
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "higher",
+          run() {
+            calls.push("higher")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "higher" }],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["higher"])
+  })
+
+  test("uses fallback strokes when no direct stroke is reachable", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.appendEventMatchResolver((event, ctx) => {
+      if (event.name !== "x") return undefined
+      return [matchEventAs(ctx, event, "y")]
+    })
+
+    keymap.registerLayer({
+      enabled: false,
+      commands: [
+        {
+          name: "direct",
+          run() {
+            calls.push("direct")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "direct" }],
+    })
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "fallback",
+          run() {
+            calls.push("fallback")
+          },
+        },
+      ],
+      bindings: [{ key: "y", cmd: "fallback" }],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["fallback"])
+  })
+
+  test("prefers direct strokes over higher-layer fallback sequence prefixes", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.appendEventMatchResolver((event, ctx) => {
+      if (event.name !== "x") return undefined
+      return [matchEventAs(ctx, event, "g")]
+    })
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "direct",
+          run() {
+            calls.push("direct")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "direct" }],
+    })
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "fallback-sequence",
+          run() {
+            calls.push("fallback-sequence")
+          },
+        },
+      ],
+      bindings: [{ key: "ga", cmd: "fallback-sequence" }],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["direct"])
+    expect(keymap.getPendingSequence()).toEqual([])
+  })
+
   test("supports pending-sequence dispatch through registered fallback strokes", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
@@ -1099,6 +1244,57 @@ describe("keymap: parsing and binding pipeline", () => {
     )
 
     expect(calls).toEqual(["release"])
+  })
+
+  test("prefers lower-layer direct release strokes over higher-layer fallback release strokes", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.appendEventMatchResolver((event, ctx) => {
+      if (event.name !== "x") return undefined
+      return [matchEventAs(ctx, event, "y")]
+    })
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "direct-release",
+          run() {
+            calls.push("direct")
+          },
+        },
+      ],
+      bindings: [{ key: "x", event: "release", cmd: "direct-release" }],
+    })
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "fallback-release",
+          run() {
+            calls.push("fallback")
+          },
+        },
+      ],
+      bindings: [{ key: "y", event: "release", cmd: "fallback-release" }],
+    })
+
+    renderer.keyInput.emit(
+      "keyrelease",
+      new KeyEvent({
+        name: "x",
+        ctrl: false,
+        meta: false,
+        shift: false,
+        option: false,
+        sequence: "x",
+        number: false,
+        raw: "x",
+        eventType: "release",
+        source: "raw",
+      }),
+    )
+
+    expect(calls).toEqual(["direct"])
   })
 
   test("event match resolver ctx.match normalizes object keys", () => {

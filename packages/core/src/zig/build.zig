@@ -31,6 +31,123 @@ const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
 
+fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
+    if (builtin.os.tag != .linux) {
+        return b.resolveTargetQuery(.{});
+    }
+
+    // Zig 0.15.2's ELF linker currently fails on newer glibc startup objects
+    // that ship .sframe relocations. Keep shipped libraries on linux-gnu, but
+    // use musl for local native executables so test/debug/bench still work.
+    var query = b.graph.host.query;
+    query.abi = .musl;
+    query.glibc_version = null;
+    return b.resolveTargetQuery(query);
+}
+
+fn pathExists(path: []const u8) bool {
+    if (path.len == 0) return false;
+    std.fs.cwd().access(path, .{}) catch return false;
+    return true;
+}
+
+fn isMacOSSDKPath(path: []const u8) bool {
+    const trimmed_path = std.mem.trimRight(u8, path, "/");
+    if (trimmed_path.len == 0) return false;
+
+    const base_name = std.fs.path.basename(trimmed_path);
+    return std.mem.startsWith(u8, base_name, "MacOSX") and std.mem.endsWith(u8, base_name, ".sdk");
+}
+
+fn macOSSDKHasFramework(b: *std.Build, sdk_path: []const u8, framework: []const u8) bool {
+    return pathExists(b.pathJoin(&.{ sdk_path, "System", "Library", "Frameworks", b.fmt("{s}.framework", .{framework}) }));
+}
+
+fn isMacOSSDKAvailable(b: *std.Build, sdk_path: []const u8) bool {
+    return isMacOSSDKPath(sdk_path) and
+        pathExists(b.pathJoin(&.{ sdk_path, "usr", "lib" })) and
+        macOSSDKHasFramework(b, sdk_path, "CoreFoundation") and
+        macOSSDKHasFramework(b, sdk_path, "CoreAudio") and
+        macOSSDKHasFramework(b, sdk_path, "AudioToolbox");
+}
+
+fn resolveMacOSSDKPath(b: *std.Build) ?[]const u8 {
+    if (b.option([]const u8, "macos-sdk", "Path to a macOS SDK for CoreAudio headers and framework linking")) |sdk_path| {
+        if (isMacOSSDKAvailable(b, sdk_path)) return sdk_path;
+        std.debug.print("macOS SDK path '{s}' must be a MacOSX*.sdk with the required frameworks\n", .{sdk_path});
+        return null;
+    }
+
+    const env_vars = [_][]const u8{ "SDKROOT", "MACOS_SDK_PATH", "MACOSX_SDK_PATH" };
+    for (env_vars) |env_var| {
+        if (b.graph.env_map.get(env_var)) |sdk_path| {
+            if (isMacOSSDKAvailable(b, sdk_path)) return sdk_path;
+        }
+    }
+
+    if (builtin.os.tag == .macos and std.zig.system.darwin.isSdkInstalled(b.allocator)) {
+        const sdk_target = b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .macos });
+        if (std.zig.system.darwin.getSdk(b.allocator, &sdk_target.result)) |sdk_path| {
+            if (isMacOSSDKAvailable(b, sdk_path)) return sdk_path;
+        }
+    }
+
+    if (isMacOSSDKAvailable(b, DEFAULT_MACOS_SDK_PATH)) return DEFAULT_MACOS_SDK_PATH;
+    return null;
+}
+
+fn printMissingMacOSSDK(target_description: []const u8) void {
+    std.debug.print(
+        "macOS SDK not found for {s}. Set SDKROOT, MACOS_SDK_PATH, or -Dmacos-sdk=/path/to/MacOSX.sdk.\n",
+        .{target_description},
+    );
+}
+
+fn addMiniaudioShim(
+    b: *std.Build,
+    artifact: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    macos_sdk_path: ?[]const u8,
+) void {
+    const c_flags: []const []const u8 = switch (target.result.os.tag) {
+        .macos => blk: {
+            const flags = b.allocator.alloc([]const u8, 4) catch @panic("OOM");
+            flags[0] = "-std=c99";
+            flags[1] = "-DMA_NO_RUNTIME_LINKING";
+            flags[2] = "-isysroot";
+            flags[3] = macos_sdk_path.?;
+            break :blk flags;
+        },
+        else => &.{ "-std=c99" },
+    };
+
+    artifact.addIncludePath(b.path("."));
+    artifact.linkLibC();
+    artifact.addCSourceFile(.{
+        .file = b.path("miniaudio_shim.c"),
+        .flags = c_flags,
+    });
+}
+
+fn addMacOSSDKSearchPaths(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
+    const include_path = b.pathJoin(&.{ sdk_path, "usr", "include" });
+    const framework_path = b.pathJoin(&.{ sdk_path, "System", "Library", "Frameworks" });
+    const lib_path = b.pathJoin(&.{ sdk_path, "usr", "lib" });
+
+    artifact.addSystemIncludePath(.{ .cwd_relative = include_path });
+    artifact.addSystemFrameworkPath(.{ .cwd_relative = framework_path });
+    artifact.addFrameworkPath(.{ .cwd_relative = framework_path });
+    artifact.addLibraryPath(.{ .cwd_relative = lib_path });
+}
+
+fn addMacOSSystemLibraries(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
+    artifact.linkFramework("CoreFoundation");
+    artifact.linkFramework("CoreAudio");
+    artifact.linkFramework("AudioToolbox");
+    artifact.linkSystemLibrary("pthread");
+    addMacOSSDKSearchPaths(b, artifact, sdk_path);
+}
+
 /// Apply dependencies to a module
 fn applyDependencies(
     b: *std.Build,
@@ -98,26 +215,33 @@ pub fn build(b: *std.Build) void {
     const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu').");
     const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
     const gpa_safe_stats = b.option(bool, "gpa-safe-stats", "Enable GPA safety checks for trustworthy allocator stats") orelse false;
+    const macos_sdk_path = resolveMacOSSDKPath(b);
     const build_options = b.addOptions();
     build_options.addOption(bool, "gpa_safe_stats", gpa_safe_stats);
 
     if (target_option) |target_str| {
         // Build single target
-        buildSingleTarget(b, target_str, optimize, build_options) catch |err| {
+        buildSingleTarget(b, target_str, optimize, build_options, macos_sdk_path) catch |err| {
             std.debug.print("Error building target '{s}': {}\n", .{ target_str, err });
             std.process.exit(1);
         };
     } else if (build_all) {
         // Build all supported targets
-        buildAllTargets(b, optimize, build_options);
+        buildAllTargets(b, optimize, build_options, macos_sdk_path) catch |err| {
+            std.debug.print("Error building all targets: {}\n", .{err});
+            std.process.exit(1);
+        };
     } else {
         // Build for native target only (default)
-        buildNativeTarget(b, optimize, build_options);
+        buildNativeTarget(b, optimize, build_options, macos_sdk_path) catch |err| {
+            std.debug.print("Error building native target: {}\n", .{err});
+            std.process.exit(1);
+        };
     }
 
     // Test step (native only)
     const test_step = b.step("test", "Run unit tests");
-    const native_target = b.resolveTargetQuery(.{});
+    const native_target = nativeExecutableTarget(b);
     const test_mod = b.createModule(.{
         .root_source_file = b.path("test.zig"),
         .target = native_target,
@@ -130,27 +254,16 @@ pub fn build(b: *std.Build) void {
         .use_llvm = debug_use_llvm,
     });
 
-    const test_c_flags: []const []const u8 = if (native_target.result.os.tag == .macos)
-        &.{ "-std=c99", "-DMA_NO_RUNTIME_LINKING" }
-    else
-        &.{"-std=c99"};
-
-    test_artifact.addIncludePath(b.path("."));
-    test_artifact.linkLibC();
-    test_artifact.addCSourceFile(.{
-        .file = b.path("miniaudio_shim.c"),
-        .flags = test_c_flags,
-    });
+    addMiniaudioShim(b, test_artifact, native_target, macos_sdk_path);
 
     switch (native_target.result.os.tag) {
         .macos => {
-            test_artifact.linkFramework("CoreFoundation");
-            test_artifact.linkFramework("CoreAudio");
-            test_artifact.linkFramework("AudioToolbox");
-            test_artifact.linkSystemLibrary("pthread");
-            test_artifact.addFrameworkPath(.{ .cwd_relative = DEFAULT_MACOS_SDK_PATH });
-            test_artifact.addFrameworkPath(.{ .cwd_relative = b.fmt("{s}/System/Library/Frameworks", .{DEFAULT_MACOS_SDK_PATH}) });
-            test_artifact.addLibraryPath(.{ .cwd_relative = b.fmt("{s}/usr/lib", .{DEFAULT_MACOS_SDK_PATH}) });
+            if (macos_sdk_path) |sdk_path| {
+                addMacOSSystemLibraries(b, test_artifact, sdk_path);
+            } else {
+                printMissingMacOSSDK("native macOS tests");
+                std.process.exit(1);
+            }
         },
         .linux => {
             test_artifact.linkSystemLibrary("dl");
@@ -213,23 +326,31 @@ pub fn build(b: *std.Build) void {
     debug_step.dependOn(&run_debug.step);
 }
 
-fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode, build_options: *std.Build.Step.Options) void {
+fn buildAllTargets(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+    build_options: *std.Build.Step.Options,
+    macos_sdk_path: ?[]const u8,
+) !void {
     for (SUPPORTED_TARGETS) |supported_target| {
-        buildTarget(
+        try buildTarget(
             b,
             supported_target.zig_target,
             supported_target.output_name,
             supported_target.description,
             optimize,
             build_options,
-        ) catch |err| {
-            std.debug.print("Failed to build target {s}: {}\n", .{ supported_target.description, err });
-            continue;
-        };
+            macos_sdk_path,
+        );
     }
 }
 
-fn buildNativeTarget(b: *std.Build, optimize: std.builtin.OptimizeMode, build_options: *std.Build.Step.Options) void {
+fn buildNativeTarget(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+    build_options: *std.Build.Step.Options,
+    macos_sdk_path: ?[]const u8,
+) !void {
     // Find the matching supported target for the native platform
     const native_arch = @tagName(builtin.cpu.arch);
     const native_os = @tagName(builtin.os.tag);
@@ -239,21 +360,21 @@ fn buildNativeTarget(b: *std.Build, optimize: std.builtin.OptimizeMode, build_op
         if (std.mem.indexOf(u8, supported_target.zig_target, native_arch) != null and
             std.mem.indexOf(u8, supported_target.zig_target, native_os) != null)
         {
-            buildTarget(
+            try buildTarget(
                 b,
                 supported_target.zig_target,
                 supported_target.output_name,
                 supported_target.description,
                 optimize,
                 build_options,
-            ) catch |err| {
-                std.debug.print("Failed to build native target {s}: {}\n", .{ supported_target.description, err });
-            };
+                macos_sdk_path,
+            );
             return;
         }
     }
 
     std.debug.print("No matching supported target for native platform ({s}-{s})\n", .{ native_arch, native_os });
+    return error.UnsupportedNativeTarget;
 }
 
 fn buildSingleTarget(
@@ -261,6 +382,7 @@ fn buildSingleTarget(
     target_str: []const u8,
     optimize: std.builtin.OptimizeMode,
     build_options: *std.Build.Step.Options,
+    macos_sdk_path: ?[]const u8,
 ) !void {
     // Check if it matches a known target, use its output_name
     for (SUPPORTED_TARGETS) |supported_target| {
@@ -272,13 +394,14 @@ fn buildSingleTarget(
                 supported_target.description,
                 optimize,
                 build_options,
+                macos_sdk_path,
             );
             return;
         }
     }
     // Custom target - use target string as output name
     const description = try std.fmt.allocPrint(b.allocator, "Custom target: {s}", .{target_str});
-    try buildTarget(b, target_str, target_str, description, optimize, build_options);
+    try buildTarget(b, target_str, target_str, description, optimize, build_options, macos_sdk_path);
 }
 
 fn buildTarget(
@@ -288,13 +411,15 @@ fn buildTarget(
     description: []const u8,
     optimize: std.builtin.OptimizeMode,
     build_options: *std.Build.Step.Options,
+    macos_sdk_path: ?[]const u8,
 ) !void {
     const target_query = try std.Target.Query.parse(.{ .arch_os_abi = zig_target });
     const target = b.resolveTargetQuery(target_query);
-    const c_flags: []const []const u8 = if (target.result.os.tag == .macos)
-        &.{ "-std=c99", "-DMA_NO_RUNTIME_LINKING" }
-    else
-        &.{"-std=c99"};
+
+    if (target.result.os.tag == .macos and macos_sdk_path == null) {
+        printMissingMacOSSDK(description);
+        return error.MissingMacOSSDK;
+    }
 
     const module = b.createModule(.{
         .root_source_file = b.path(ROOT_SOURCE_FILE),
@@ -310,22 +435,11 @@ fn buildTarget(
         .linkage = .dynamic,
     });
 
-    lib.addIncludePath(b.path("."));
-    lib.linkLibC();
-    lib.addCSourceFile(.{
-        .file = b.path("miniaudio_shim.c"),
-        .flags = c_flags,
-    });
+    addMiniaudioShim(b, lib, target, macos_sdk_path);
 
     switch (target.result.os.tag) {
         .macos => {
-            lib.linkFramework("CoreFoundation");
-            lib.linkFramework("CoreAudio");
-            lib.linkFramework("AudioToolbox");
-            lib.linkSystemLibrary("pthread");
-            lib.addFrameworkPath(.{ .cwd_relative = DEFAULT_MACOS_SDK_PATH });
-            lib.addFrameworkPath(.{ .cwd_relative = b.fmt("{s}/System/Library/Frameworks", .{DEFAULT_MACOS_SDK_PATH}) });
-            lib.addLibraryPath(.{ .cwd_relative = b.fmt("{s}/usr/lib", .{DEFAULT_MACOS_SDK_PATH}) });
+            addMacOSSystemLibraries(b, lib, macos_sdk_path.?);
         },
         .linux => {
             lib.linkSystemLibrary("dl");

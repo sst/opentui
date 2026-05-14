@@ -630,7 +630,7 @@ pub fn clearPlaybackDeviceSelection(engine: *Engine) void {
 pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
     const e = engine;
     const options = if (options_ptr) |opts| opts.* else StartOptions{};
-    if (e.started) return Status.ok;
+    if (e.started and e.has_device) return Status.ok;
 
     if (!e.has_device) {
         const context_status = ensureContextInitialized(e);
@@ -671,13 +671,9 @@ pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
         config.dataCallback = audioCallback;
         config.pUserData = e;
 
-        const explicit_device = selected_device_id != null;
         const init_result = c.ma_device_init(&e.context, &config, &e.device);
         if (init_result != c.MA_SUCCESS) {
-            if (explicit_device) return Status.err_device;
-
-            e.started = true;
-            return Status.ok;
+            return Status.err_device;
         }
 
         e.has_device = true;
@@ -692,14 +688,15 @@ pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
     if (start_result != c.MA_SUCCESS) {
         c.ma_device_uninit(&e.device);
         e.has_device = false;
-
-        if (e.selected_playback_index != null) return Status.err_device;
-
-        e.started = true;
-        return Status.ok;
+        return Status.err_device;
     }
 
     e.started = true;
+    return Status.ok;
+}
+
+pub fn startMixer(engine: *Engine) i32 {
+    engine.started = true;
     return Status.ok;
 }
 

@@ -49,6 +49,7 @@ export interface AudioPlaybackDevice {
 export type AudioAction =
   | "createAudioEngine"
   | "start"
+  | "startMixer"
   | "stop"
   | "loadSound"
   | "loadSoundFile"
@@ -75,6 +76,7 @@ export interface AudioErrorContext {
 export interface AudioEvents {
   error: [error: Error, context: AudioErrorContext]
   started: []
+  mixerStarted: []
   stopped: []
   disposed: []
 }
@@ -96,7 +98,8 @@ export class Audio extends EventEmitter<AudioEvents> {
   private readonly defaultStartOptions: AudioStartOptions | undefined
   private engine: Pointer | null = null
   private readonly groups = new Map<string, number>()
-  private started = false
+  private playbackStarted = false
+  private mixerStarted = false
 
   private constructor(lib: RenderLib, options: AudioSetupOptions) {
     super()
@@ -116,7 +119,7 @@ export class Audio extends EventEmitter<AudioEvents> {
       return
     }
 
-    if (options.autoStart ?? true) {
+    if (options.autoStart ?? false) {
       this.start(this.defaultStartOptions)
     }
   }
@@ -128,7 +131,7 @@ export class Audio extends EventEmitter<AudioEvents> {
   }
 
   start(options?: AudioStartOptions): boolean {
-    if (this.started) return true
+    if (this.playbackStarted) return true
     const engine = this.engine
     if (!engine) {
       this.emitError("start", undefined, "Audio engine unavailable during start")
@@ -140,13 +143,31 @@ export class Audio extends EventEmitter<AudioEvents> {
       this.emitError("start", status)
       return false
     }
-    this.started = true
+    this.playbackStarted = true
+    this.mixerStarted = true
     this.emit("started")
     return true
   }
 
+  startMixer(): boolean {
+    if (this.mixerStarted) return true
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("startMixer", undefined, "Audio engine unavailable during startMixer")
+      return false
+    }
+    const status = this.lib.audioStartMixer(engine)
+    if (status !== 0) {
+      this.emitError("startMixer", status)
+      return false
+    }
+    this.mixerStarted = true
+    this.emit("mixerStarted")
+    return true
+  }
+
   stop(): boolean {
-    if (!this.started) return true
+    if (!this.mixerStarted) return true
     const engine = this.engine
     if (!engine) {
       this.emitError("stop", undefined, "Audio engine unavailable during stop")
@@ -157,13 +178,18 @@ export class Audio extends EventEmitter<AudioEvents> {
       this.emitError("stop", status)
       return false
     }
-    this.started = false
+    this.playbackStarted = false
+    this.mixerStarted = false
     this.emit("stopped")
     return true
   }
 
   isStarted(): boolean {
-    return this.started
+    return this.playbackStarted
+  }
+
+  isMixerStarted(): boolean {
+    return this.mixerStarted
   }
 
   loadSound(data: Uint8Array | ArrayBuffer): AudioSound | null {
@@ -439,7 +465,7 @@ export class Audio extends EventEmitter<AudioEvents> {
 
   dispose(): void {
     if (!this.engine) return
-    if (this.started) {
+    if (this.mixerStarted) {
       this.stop()
     }
     this.groups.clear()

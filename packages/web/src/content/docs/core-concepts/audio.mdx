@@ -1,7 +1,7 @@
 ---
 title: Native audio
 description: Load, play, mix, and inspect audio with the native miniaudio backend
-order: 10
+order: 11
 skill:
   entry: true
   intents: [audio, native-audio, sound, playback, pcm, fft]
@@ -36,7 +36,7 @@ Use `setupAudio(options?)` when you prefer a function wrapper around `Audio.crea
 
 | Option             | Default  | Description                                    |
 | ------------------ | -------- | ---------------------------------------------- |
-| `autoStart`        | `true`   | Call `start()` during creation                 |
+| `autoStart`        | `false`  | Call `start()` during creation                 |
 | `sampleRate`       | `48000`  | Engine sample rate                             |
 | `playbackChannels` | `2`      | Requested playback channel count               |
 | `startOptions`     | defaults | Options passed to `start()` when auto-starting |
@@ -59,6 +59,36 @@ Create a new `Audio` instance to change `sampleRate` or `playbackChannels`.
 
 `play()` accepts `{ volume, pan, loop, groupId }`. Native playback clamps `volume` to `0..4` and `pan` to `-1..1`. The engine has 32 voice slots.
 
+## Starting audio
+
+`start()` starts native playback and returns `false` when no output device is available. Use `isStarted()` to check native playback state.
+
+For headless mixing, tests, benchmarks, or manual `mixFrames()` output, use `startMixer()`. It starts the mixer without opening a playback device. Use `isMixerStarted()` to check either mode.
+
+## Bun standalone executables
+
+Bun embeds files in `bun build --compile` executables when they are imported with `with { type: "file" }`. Read the embedded file as bytes and pass it to `loadSound()` so audio decodes from memory instead of a file path.
+
+```typescript
+import { file } from "bun"
+import { Audio } from "@opentui/core"
+import clickPath from "./click.wav" with { type: "file" }
+
+const audio = Audio.create({ autoStart: false })
+const clickBytes = await file(clickPath).bytes()
+const click = audio.loadSound(clickBytes)
+
+if (click != null && audio.start()) {
+  audio.play(click)
+}
+```
+
+Compile the app normally with `bun build --compile ./app.ts --outfile app`.
+
+## Node.js standalone executables
+
+Coming soon.
+
 ## Devices
 
 Select devices before starting the engine:
@@ -72,7 +102,9 @@ if (device) {
   audio.selectPlaybackDevice(device.index)
 }
 
-audio.start()
+if (!audio.start()) {
+  console.error("No playback device available")
+}
 ```
 
 `listPlaybackDevices()` returns `{ index, name, isDefault }[] | null`. Use `clearPlaybackDeviceSelection()` to return to the default device selection.
@@ -97,4 +129,4 @@ The tap is disabled by default. When enabled, it stores the latest frames and ov
 
 ## Lifecycle and errors
 
-Use `start()`, `stop()`, `isStarted()`, and `dispose()` for lifecycle. `Audio` emits `started`, `stopped`, `disposed`, and `error`. Methods that fail return `false` or `null` and emit `error` with `{ action, status }` context.
+Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. `Audio` emits `started`, `mixerStarted`, `stopped`, `disposed`, and `error`. Methods that fail return `false` or `null` and emit `error` with `{ action, status }` context.

@@ -25,8 +25,11 @@ const coreRoot = join(repoRoot, "packages", "core")
 const keymapRoot = join(repoRoot, "packages", "keymap")
 const threeRoot = join(repoRoot, "packages", "three")
 const examplesDir = join(packageRoot, "src")
+const args = process.argv.slice(2)
 const usePrebuiltArtifacts = process.env.OPENTUI_EXAMPLES_USE_PREBUILT_ARTIFACTS === "true"
 const skipBunWebgpuInstall = process.env.OPENTUI_EXAMPLES_SKIP_BUN_WEBGPU_INSTALL === "true"
+const buildHostOnly = args.includes("--host")
+const canBuildLocalNativePackagesForAllTargets = process.platform === "darwin"
 
 // Supported platforms and architectures based on bun-webgpu and opentui native binaries.
 const targets: BuildTarget[] = [
@@ -77,6 +80,34 @@ function getNativePackageDir(platform: string, arch: string): string {
   return join(coreRoot, "node_modules", "@opentui", `core-${packagePlatform}-${arch}`)
 }
 
+function getHostBuildTarget(): BuildTarget {
+  const hostPlatform =
+    process.platform === "win32"
+      ? "windows"
+      : process.platform === "darwin"
+        ? "darwin"
+        : process.platform === "linux"
+          ? "linux"
+          : null
+
+  if (!hostPlatform || (process.arch !== "x64" && process.arch !== "arm64")) {
+    throw new Error(`Unsupported host platform for examples build: ${process.platform}-${process.arch}`)
+  }
+
+  return { platform: hostPlatform, arch: process.arch }
+}
+
+function verifyNativePackages(buildTargets: BuildTarget[]): void {
+  for (const { platform, arch } of buildTargets) {
+    const packageDir = getNativePackageDir(platform, arch)
+    if (!existsSync(packageDir)) {
+      throw new Error(`Missing native package for ${platform}-${arch}: ${packageDir}`)
+    }
+  }
+}
+
+const buildTargets = buildHostOnly ? [getHostBuildTarget()] : targets
+
 if (skipBunWebgpuInstall) {
   console.log(`Skipping bun-webgpu install; assuming bun-webgpu@${bunWebgpuVersion} is already prepared`)
 } else {
@@ -87,19 +118,22 @@ if (skipBunWebgpuInstall) {
 
 if (usePrebuiltArtifacts) {
   console.log("Using prebuilt native opentui packages from CI artifacts...")
-
-  for (const { platform, arch } of targets) {
-    const packageDir = getNativePackageDir(platform, arch)
-    if (!existsSync(packageDir)) {
-      throw new Error(`Missing prebuilt native package for ${platform}-${arch}: ${packageDir}`)
-    }
-  }
-
+  verifyNativePackages(buildTargets)
   console.log("✅ Prebuilt native opentui packages verified")
-} else {
+} else if (buildHostOnly) {
+  console.log("Refreshing the host native opentui package...")
+  await Bun.$`bun ${join(coreRoot, "scripts", "build.ts")} --native`
+  verifyNativePackages(buildTargets)
+  console.log("✅ Host native package refreshed")
+} else if (canBuildLocalNativePackagesForAllTargets) {
   console.log("Building local native opentui packages for all platforms...")
   await Bun.$`bun ${join(coreRoot, "scripts", "build.ts")} --native --all`
+  verifyNativePackages(buildTargets)
   console.log("✅ Local native opentui packages refreshed")
+} else {
+  throw new Error(
+    "Full examples builds require macOS so current-source darwin native packages can be built. Use `bun run build:host` for a local host-only build.",
+  )
 }
 console.log()
 
@@ -110,7 +144,7 @@ console.log()
 let successCount = 0
 let failCount = 0
 
-for (const { platform: targetPlatform, arch: targetArch } of targets) {
+for (const { platform: targetPlatform, arch: targetArch } of buildTargets) {
   const exeName = targetPlatform === "windows" ? "opentui-examples.exe" : "opentui-examples"
   const outfile = join(distDir, `${targetPlatform}-${targetArch}`, exeName)
   const outDir = dirname(outfile)

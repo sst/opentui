@@ -16,6 +16,7 @@ import {
   type TargetChannel,
   type DebugOverlayCorner,
   type WidthMethod,
+  type TerminalCapabilities,
   type Highlight,
   type LineInfo,
   type MousePointerStyle,
@@ -1187,6 +1188,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "i32",
     },
+    audioStartMixer: {
+      args: ["ptr"],
+      returns: "i32",
+    },
     audioStop: {
       args: ["ptr"],
       returns: "i32",
@@ -1546,6 +1551,7 @@ export interface AudioEngineLib {
   audioSelectPlaybackDevice: (engine: Pointer, index: number) => number
   audioClearPlaybackDeviceSelection: (engine: Pointer) => void
   audioStart: (engine: Pointer, options?: AudioStartOptions | null) => number
+  audioStartMixer: (engine: Pointer) => number
   audioStop: (engine: Pointer) => number
   audioLoad: (engine: Pointer, data: Uint8Array) => { status: number; soundId: number | null }
   audioUnload: (engine: Pointer, soundId: number) => number
@@ -2043,7 +2049,7 @@ export interface RenderLib extends AudioEngineLib {
   syntaxStyleResolveByName: (style: Pointer, name: string) => number | null
   syntaxStyleGetStyleCount: (style: Pointer) => number
 
-  getTerminalCapabilities: (renderer: Pointer) => any
+  getTerminalCapabilities: (renderer: Pointer) => TerminalCapabilities
   processCapabilityResponse: (renderer: Pointer, response: string) => void
 
   encodeUnicode: (
@@ -3950,7 +3956,7 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.bufferClearOpacity(buffer)
   }
 
-  public getTerminalCapabilities(renderer: Pointer) {
+  public getTerminalCapabilities(renderer: Pointer): TerminalCapabilities {
     const capsBuffer = new ArrayBuffer(TerminalCapabilitiesStruct.size)
     this.opentui.symbols.getTerminalCapabilities(renderer, ptr(capsBuffer))
 
@@ -4086,6 +4092,10 @@ class FFIRenderLib implements RenderLib {
   public audioStart(engine: Pointer, options?: AudioStartOptions | null): number {
     const optionsBuffer = options == null ? null : AudioStartOptionsStruct.pack(options)
     return this.opentui.symbols.audioStart(engine, optionsBuffer ? ptr(optionsBuffer) : null)
+  }
+
+  public audioStartMixer(engine: Pointer): number {
+    return this.opentui.symbols.audioStartMixer(engine)
   }
 
   public audioStop(engine: Pointer): number {

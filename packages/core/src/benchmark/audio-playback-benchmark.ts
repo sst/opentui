@@ -298,8 +298,8 @@ function runBurstScenario(audio: Audio, soundId: number, scenario: BurstScenario
 function main(): void {
   const audio = Audio.create({ autoStart: false })
 
-  if (!audio.start()) {
-    throw new Error("audio.start() failed")
+  if (!audio.startMixer()) {
+    throw new Error("audio.startMixer() failed")
   }
 
   const wav = buildMonoPcm16Wav({

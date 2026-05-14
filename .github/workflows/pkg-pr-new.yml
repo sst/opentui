@@ -15,7 +15,7 @@ jobs:
       (contains(github.event.comment.body, ' /pkg-preview') ||
         startsWith(github.event.comment.body, '/pkg-preview')) &&
       contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
@@ -46,7 +46,12 @@ jobs:
       - name: Get native package directories
         id: native-packages
         run: |
-          NATIVE_DIRS=$(find ./packages/core/node_modules/@opentui -maxdepth 1 -type d -name 'core-*' -printf '%p ' | sed 's/ $//')
+          NATIVE_DIRS=""
+          for dir in ./packages/core/node_modules/@opentui/core-*; do
+            if [ -d "$dir" ]; then
+              NATIVE_DIRS="${NATIVE_DIRS}${NATIVE_DIRS:+ }$dir"
+            fi
+          done
           echo "dirs=$NATIVE_DIRS" >> $GITHUB_OUTPUT
           echo "Found native packages: $NATIVE_DIRS"
 

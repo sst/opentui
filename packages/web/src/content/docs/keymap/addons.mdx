@@ -142,7 +142,7 @@ keymap.registerLayer({
 
 ### `registerBaseLayoutFallback()`
 
-Adds an event match resolver that falls back to `KeyEvent.baseCode` so bindings can ignore active keyboard layout changes when Kitty base-layout reporting is available. Direct stroke matches still win ahead of the fallback.
+Adds an event match resolver that falls back to `KeyEvent.baseCode` so bindings can ignore active keyboard layout changes when Kitty base-layout reporting is available. Direct stroke matches win before base-layout fallback matches, even across active layers.
 
 ### Edit buffer helpers
 

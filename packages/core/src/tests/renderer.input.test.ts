@@ -5,13 +5,15 @@ import { type KeyEvent } from "../lib/KeyHandler.js"
 import { Buffer } from "node:buffer"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { createTestRenderer, type TestRenderer, type TestRendererOptions } from "../testing/test-renderer.js"
+import { createTerminalCapabilities } from "../testing/terminal-capabilities.js"
 import { ManualClock } from "../testing/manual-clock.js"
 import type { RenderContext } from "../types.js"
+import type { RenderLib } from "../zig.js"
 
 let currentRenderer: TestRenderer
 let kittyRenderer: TestRenderer
 let mockProcessCapabilityResponse: any
-let mockGetTerminalCapabilities: any
+let mockGetTerminalCapabilities: RenderLib["getTerminalCapabilities"]
 let currentClock: ManualClock
 let kittyClock: ManualClock
 
@@ -30,12 +32,12 @@ beforeEach(async () => {
   // @ts-expect-error - mocking for test
   currentRenderer.lib.processCapabilityResponse = () => {}
   // @ts-expect-error - mocking for test
-  currentRenderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
+  currentRenderer.lib.getTerminalCapabilities = () => createTerminalCapabilities()
 
   // @ts-expect-error - mocking for test
   kittyRenderer.lib.processCapabilityResponse = () => {}
   // @ts-expect-error - mocking for test
-  kittyRenderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
+  kittyRenderer.lib.getTerminalCapabilities = () => createTerminalCapabilities()
 })
 
 afterEach(() => {
@@ -146,7 +148,7 @@ async function createThemeQueryRenderer(): Promise<{
   // @ts-expect-error - mocking for test
   renderer.lib.processCapabilityResponse = () => {}
   // @ts-expect-error - mocking for test
-  renderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
+  renderer.lib.getTerminalCapabilities = () => createTerminalCapabilities()
 
   const queryThemeColorsCalls = { count: 0 }
   // @ts-expect-error - mocking for test

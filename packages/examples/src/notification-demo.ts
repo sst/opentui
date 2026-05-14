@@ -12,6 +12,7 @@ import {
   type KeyEvent,
   type MouseEvent,
   type RenderContext,
+  type TerminalCapabilities,
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
@@ -81,7 +82,7 @@ let root: BoxRenderable | null = null
 let statusText: TextRenderable | null = null
 let logList: ScrollBoxRenderable | null = null
 let keyHandler: ((key: KeyEvent) => void) | null = null
-let capabilityHandler: ((capabilities: any) => void) | null = null
+let capabilityHandler: ((capabilities: TerminalCapabilities) => void) | null = null
 let pendingTimer: ReturnType<typeof setTimeout> | null = null
 let cards: NotificationCard[] = []
 let logRows: TextRenderable[] = []

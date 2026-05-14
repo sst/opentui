@@ -8,6 +8,7 @@ import {
   type CursorStyleOptions,
   type MousePointerStyle,
   type RenderContext,
+  type TerminalCapabilities,
   type ThemeMode,
   type ViewportBounds,
   type WidthMethod,
@@ -378,7 +379,7 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
   public height: number
   public frameId = 0
   public widthMethod: WidthMethod
-  public capabilities: any | null = null
+  public capabilities: TerminalCapabilities | null = null
   public hasSelection: boolean = false
   public currentFocusedRenderable: Renderable | null = null
   public keyInput: KeyHandler
@@ -813,7 +814,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const height = this.stdout.rows || 24
     this.handleResize(width, height)
   }).bind(this)
-  private _capabilities: any | null = null
+  private _capabilities: TerminalCapabilities | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
   private _hasPointer: boolean = false
   private _lastPointerModifiers: RawMouseEvent["modifiers"] = {
@@ -1538,7 +1539,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._controlState
   }
 
-  public get capabilities(): any | null {
+  public get capabilities(): TerminalCapabilities | null {
     return this._capabilities
   }
 
