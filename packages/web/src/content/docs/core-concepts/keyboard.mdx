@@ -74,7 +74,7 @@ The default keybinding aliases are:
 // kpdecimal/kpdivide/kpmultiply/kpminus/kpplus/kpequal/kpseparator -> symbols
 ```
 
-Aliases are one-step mappings from configured binding names to additional lookup names. For example, a component binding configured as `{ name: "enter", action: "submit" }` also matches an emitted `KeyEvent` whose `name` is `"return"`. Low-level helpers such as `matchesKeyBinding` do not apply aliases; pass canonical names such as `"return"`, `"escape"`, and `"space"` there.
+Aliases are one-step mappings from configured binding names to additional lookup names. For example, a component binding configured as `{ name: "enter", action: "submit" }` also matches an emitted `KeyEvent` whose `name` is `"return"`. This aliasing is component-specific; direct `renderer.keyInput` handlers receive the parser's canonical names and should compare against names such as `"return"`, `"escape"`, and `"space"`.
 
 Editable components that accept a `keyAliasMap` option (`InputRenderable`, `TextareaRenderable`, `SelectRenderable`, etc.) merge these defaults with your own map:
 
