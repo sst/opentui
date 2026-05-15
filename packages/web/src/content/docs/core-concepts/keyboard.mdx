@@ -34,25 +34,25 @@ keyHandler.on("keypress", (key: KeyEvent) => {
 
 Each `KeyEvent` contains the parsed key identity, the generated input sequence, and the original terminal input:
 
-| Property    | Type                | Description                                                                                 |
-| ----------- | ------------------- | ------------------------------------------------------------------------------------------- |
-| `name`      | `string`            | Canonical key identity, such as `"a"`, `"space"`, `"return"`, `"escape"`, or `"f1"`        |
-| `sequence`  | `string`            | Decoded input sequence/text for the key. For printable keys this is the text, such as `"a"` or `" "` |
-| `raw`       | `string`            | Exact terminal input sequence for this key event, decoded as a string                       |
-| `source`    | `"raw" \| "kitty"` | Parser path that produced the event                                                         |
-| `ctrl`      | `boolean`           | Whether Ctrl was held                                                                       |
-| `shift`     | `boolean`           | Whether Shift was held                                                                      |
-| `meta`      | `boolean`           | Whether Alt/Meta was held                                                                   |
-| `option`    | `boolean`           | Whether Option was held (macOS Alt/Option path)                                             |
-| `super`     | `boolean?`          | Whether Super/Cmd/Windows was held, when reported                                           |
-| `hyper`     | `boolean?`          | Whether Hyper was held, when reported                                                       |
-| `eventType` | `"press" \| "repeat" \| "release"` | Key event type. Kitty repeat events are emitted as `"press"` with `repeated: true` |
-| `repeated`  | `boolean?`          | `true` for Kitty repeat events                                                              |
-| `number`    | `boolean`           | `true` when the parsed key is a digit from legacy input                                     |
-| `code`      | `string?`           | Terminal key code for recognized function-style escape sequences                            |
-| `capsLock`  | `boolean?`          | Kitty Caps Lock modifier state, when reported                                               |
-| `numLock`   | `boolean?`          | Kitty Num Lock modifier state, when reported                                                |
-| `baseCode`  | `number?`           | Kitty base-layout codepoint used by layout-stable shortcut matching                         |
+| Property    | Type                               | Description                                                                                          |
+| ----------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `name`      | `string`                           | Canonical key identity, such as `"a"`, `"space"`, `"return"`, `"escape"`, or `"f1"`                  |
+| `sequence`  | `string`                           | Decoded input sequence/text for the key. For printable keys this is the text, such as `"a"` or `" "` |
+| `raw`       | `string`                           | Exact terminal input sequence for this key event, decoded as a string                                |
+| `source`    | `"raw" \| "kitty"`                 | Parser path that produced the event                                                                  |
+| `ctrl`      | `boolean`                          | Whether Ctrl was held                                                                                |
+| `shift`     | `boolean`                          | Whether Shift was held                                                                               |
+| `meta`      | `boolean`                          | Whether Alt/Meta was held                                                                            |
+| `option`    | `boolean`                          | Whether Option was held (macOS Alt/Option path)                                                      |
+| `super`     | `boolean?`                         | Whether Super/Cmd/Windows was held, when reported                                                    |
+| `hyper`     | `boolean?`                         | Whether Hyper was held, when reported                                                                |
+| `eventType` | `"press" \| "repeat" \| "release"` | Key event type. Kitty repeat events are emitted as `"press"` with `repeated: true`                   |
+| `repeated`  | `boolean?`                         | `true` for Kitty repeat events                                                                       |
+| `number`    | `boolean`                          | `true` when the parsed key is a digit from legacy input                                              |
+| `code`      | `string?`                          | Terminal key code for recognized function-style escape sequences                                     |
+| `capsLock`  | `boolean?`                         | Kitty Caps Lock modifier state, when reported                                                        |
+| `numLock`   | `boolean?`                         | Kitty Num Lock modifier state, when reported                                                         |
+| `baseCode`  | `number?`                          | Kitty base-layout codepoint used by layout-stable shortcut matching                                  |
 
 `sequence` is not always the raw terminal bytes. For example, Kitty `Ctrl+Space` arrives as raw `"\x1b[32;5u"`, but emits `name: "space"`, `ctrl: true`, and `sequence: " "`. Use `raw` when you need the exact terminal sequence.
 
