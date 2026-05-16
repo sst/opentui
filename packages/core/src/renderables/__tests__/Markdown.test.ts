@@ -1082,6 +1082,48 @@ test("task lists render checkbox and text on the same line", async () => {
   `)
 })
 
+test("selection across top-level unordered list copies marker and text on same line", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-structured-list-selection",
+    content: `- First item
+- Second item`,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const list = md._blockStates[0]?.renderable
+  expect(list).toBeInstanceOf(BoxRenderable)
+
+  await mockMouse.drag(list!.x, list!.y, list!.x + 20, list!.y + 1)
+  await renderer.idle()
+
+  expect(renderer.getSelection()?.getSelectedText()).toBe("- First item\n- Second item")
+})
+
+test("selection across top-level ordered list copies marker and text on same line", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-structured-ordered-list-selection",
+    content: `9. Nine
+10. Ten`,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const list = md._blockStates[0]?.renderable
+  expect(list).toBeInstanceOf(BoxRenderable)
+
+  await mockMouse.drag(list!.x, list!.y, list!.x + 20, list!.y + 1)
+  await renderer.idle()
+
+  expect(renderer.getSelection()?.getSelectedText()).toBe(" 9. Nine\n10. Ten")
+})
+
 test("top-level structured lists align nested fenced code under nested content", async () => {
   const md = createMarkdownRenderable({
     id: "markdown-structured-list-code",

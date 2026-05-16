@@ -110,7 +110,8 @@ export class Selection {
   }
 
   getSelectedText(): string {
-    const selectedTexts = this._selectedRenderables
+    const selectedTextsByLine = new Map<number, string[]>()
+    const selectedRenderables = this._selectedRenderables
       // Sort by reading order: top-to-bottom, then left-to-right
       .sort((a, b) => {
         const aY = a.y
@@ -121,9 +122,16 @@ export class Selection {
         return a.x - b.x
       })
       .filter((renderable) => !renderable.isDestroyed)
-      .map((renderable) => renderable.getSelectedText())
-      .filter((text) => text)
-    return selectedTexts.join("\n")
+
+    for (const renderable of selectedRenderables) {
+      const text = renderable.getSelectedText()
+      if (!text) continue
+      const lines = selectedTextsByLine.get(renderable.y) ?? []
+      lines.push(text)
+      selectedTextsByLine.set(renderable.y, lines)
+    }
+
+    return [...selectedTextsByLine.values()].map((line) => line.join("")).join("\n")
   }
 }
 
