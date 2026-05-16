@@ -65,9 +65,17 @@ test("parseKeypress - Kitty keyboard arrow key", () => {
 test("parseKeypress - Kitty keyboard shift+space", () => {
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
   const result = parseKeypress("\x1b[32;2u", options)!
-  expect(result.name).toBe(" ")
+  expect(result.name).toBe("space")
   expect(result.sequence).toBe(" ")
   expect(result.shift).toBe(true)
+})
+
+test("parseKeypress - Kitty keyboard ctrl+space", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+  const result = parseKeypress("\x1b[32;5u", options)!
+  expect(result.name).toBe("space")
+  expect(result.sequence).toBe(" ")
+  expect(result.ctrl).toBe(true)
 })
 
 test("parseKeypress - Kitty keyboard event types", () => {

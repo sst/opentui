@@ -258,6 +258,23 @@ if (buildLib) {
     },
   )
 
+  // Build updater as a separate entry so generator code stays out of the core runtime bundle.
+  spawnSync(
+    "bun",
+    [
+      "build",
+      "--target=bun",
+      "--outdir=dist/lib/tree-sitter",
+      "--sourcemap",
+      ...externalDeps.flatMap((dep) => ["--external", dep]),
+      "src/lib/tree-sitter/update-assets.ts",
+    ],
+    {
+      cwd: rootDir,
+      stdio: "inherit",
+    },
+  )
+
   // Build parser worker as standalone bundle (no splitting) so it can be loaded as a Worker
   // Make web-tree-sitter external so it loads from node_modules with its WASM file
   spawnSync(
@@ -288,6 +305,7 @@ if (buildLib) {
     "dist/runtime-plugin.js",
     "dist/runtime-plugin-support.js",
     "dist/runtime-plugin-support-configure.js",
+    "dist/lib/tree-sitter/update-assets.js",
     "dist/lib/tree-sitter/parser.worker.js",
   ]
   for (const filePath of bundledFiles) {
@@ -378,6 +396,11 @@ if (buildLib) {
       import: "./runtime-plugin-support-configure.js",
       require: "./runtime-plugin-support-configure.js",
       types: "./runtime-plugin-support-configure.d.ts",
+    },
+    "./tree-sitter/update-assets": {
+      import: "./lib/tree-sitter/update-assets.js",
+      require: "./lib/tree-sitter/update-assets.js",
+      types: "./lib/tree-sitter/update-assets.d.ts",
     },
     "./parser.worker": {
       import: "./lib/tree-sitter/parser.worker.js",

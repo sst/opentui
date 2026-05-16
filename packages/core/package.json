@@ -9,7 +9,7 @@
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.2.8",
+  "version": "0.2.12",
   "type": "module",
   "scripts": {
     "build": "bun run build:native && bun run build:lib",
@@ -47,12 +47,12 @@
     "web-tree-sitter": "0.25.10"
   },
   "optionalDependencies": {
-    "@opentui/core-darwin-x64": "0.2.8",
-    "@opentui/core-darwin-arm64": "0.2.8",
-    "@opentui/core-linux-x64": "0.2.8",
-    "@opentui/core-linux-arm64": "0.2.8",
-    "@opentui/core-win32-x64": "0.2.8",
-    "@opentui/core-win32-arm64": "0.2.8"
+    "@opentui/core-darwin-x64": "0.2.12",
+    "@opentui/core-darwin-arm64": "0.2.12",
+    "@opentui/core-linux-x64": "0.2.12",
+    "@opentui/core-linux-arm64": "0.2.12",
+    "@opentui/core-win32-x64": "0.2.12",
+    "@opentui/core-win32-arm64": "0.2.12"
   },
   "exports": {
     ".": {
@@ -74,6 +74,10 @@
     "./runtime-plugin-support/configure": {
       "types": "./src/runtime-plugin-support-configure.ts",
       "import": "./src/runtime-plugin-support-configure.ts"
+    },
+    "./tree-sitter/update-assets": {
+      "types": "./src/lib/tree-sitter/update-assets.ts",
+      "import": "./src/lib/tree-sitter/update-assets.ts"
     },
     "./parser.worker": {
       "types": "./src/lib/tree-sitter/parser.worker.ts",

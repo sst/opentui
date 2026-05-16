@@ -1107,7 +1107,7 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new 
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
   })
 
-  const mockClient = new MockTreeSitterClient({ autoResolveTimeout: 10 })
+  const mockClient = new MockTreeSitterClient()
   mockClient.setMockResult({
     highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
   })
@@ -1125,20 +1125,21 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new 
   })
 
   currentRenderer.root.add(codeRenderable)
-  currentRenderer.start()
 
-  await Bun.sleep(30)
+  await renderOnce()
+  mockClient.resolveHighlightOnce(0)
+  await codeRenderable.highlightingDone
 
   expect(codeRenderable.plainText).toBe("const initial = 'hello';")
 
   codeRenderable.content = "const updated = 'world';"
   expect(codeRenderable.plainText).toBe("const initial = 'hello';")
 
-  await Bun.sleep(30)
+  await renderOnce()
+  mockClient.resolveHighlightOnce(0)
+  await codeRenderable.highlightingDone
 
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
-
-  currentRenderer.stop()
 })
 
 test("CodeRenderable - onChunks callback can transform chunks when highlights are empty", async () => {
@@ -2169,7 +2170,7 @@ test("CodeRenderable - streaming with drawUnstyledText=false falls back to unsty
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
-  const mockClient = new MockTreeSitterClient({ autoResolveTimeout: 10 })
+  const mockClient = new MockTreeSitterClient()
 
   const codeRenderable = new CodeRenderable(currentRenderer, {
     id: "test-code",
@@ -2184,9 +2185,10 @@ test("CodeRenderable - streaming with drawUnstyledText=false falls back to unsty
   })
 
   currentRenderer.root.add(codeRenderable)
-  currentRenderer.start()
 
-  await Bun.sleep(30)
+  await renderOnce()
+  mockClient.resolveHighlightOnce(0)
+  await codeRenderable.highlightingDone
 
   mockClient.highlightOnce = async () => {
     throw new Error("Highlighting failed")
@@ -2194,9 +2196,8 @@ test("CodeRenderable - streaming with drawUnstyledText=false falls back to unsty
 
   codeRenderable.content = "const updated = 'world';"
 
-  await Bun.sleep(30)
+  await renderOnce()
+  await codeRenderable.highlightingDone
 
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
-
-  currentRenderer.stop()
 })

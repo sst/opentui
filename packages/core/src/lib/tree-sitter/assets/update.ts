@@ -311,7 +311,9 @@ function parseCLIArgs(): Partial<UpdateOptions> | null {
     })
 
     if (values.help) {
-      console.log(`Usage: bun update.ts [options]
+      const command = path.basename(Bun.argv[1] ?? "update-assets.js")
+
+      console.log(`Usage: bun ${command} [options]
 
 Options:
   --config <path>  Path to parsers-config.json
@@ -321,10 +323,10 @@ Options:
 
 Examples:
   # Use default paths (for OpenTUI core development)
-  bun update.ts
+  bun ${command}
 
   # Use custom paths (for application integration)
-  bun update.ts --config ./my-parsers.json --assets ./src/parsers --output ./src/parsers.ts
+  bun ${command} --config ./my-parsers.json --assets ./src/parsers --output ./src/parsers.ts
 `)
       process.exit(0)
     }
@@ -342,9 +344,13 @@ Examples:
   }
 }
 
-if (import.meta.main) {
+export function runUpdateAssetsCli(): Promise<void> {
   const cliOptions = parseCLIArgs()
-  main(cliOptions || undefined)
+  return main(cliOptions || undefined)
+}
+
+if (import.meta.main) {
+  await runUpdateAssetsCli()
 }
 
 export { main as updateAssets }

@@ -3,6 +3,7 @@ import { describe, expect, it, afterAll, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 import { KeyEvent } from "../../lib/KeyHandler.js"
+import { parseKeypress } from "../../lib/parse.keypress.js"
 
 // Helper function to create a KeyEvent from a string
 function createKeyEvent(
@@ -624,6 +625,25 @@ describe("Textarea - Keybinding Tests", () => {
       currentMockInput.pressKey("g", { ctrl: true })
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should match ctrl+space from Kitty keyboard protocol", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "space", ctrl: true, action: "newline" }],
+      })
+
+      editor.gotoLine(9999)
+
+      const key = parseKeypress("\x1b[32;5u", { useKittyKeyboard: true })
+      expect(key).toMatchObject({ name: "space", ctrl: true, sequence: " " })
+
+      const handled = editor.handleKeyPress(new KeyEvent(key!))
+
+      expect(handled).toBe(true)
+      expect(editor.plainText).toBe("Hello\n")
     })
 
     it("should use baseCode when matching ctrl shortcuts from alternate layouts", async () => {

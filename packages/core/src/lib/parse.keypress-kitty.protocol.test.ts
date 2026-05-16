@@ -285,6 +285,10 @@ const modifierCases: KeyCase[] = [
 ]
 
 const eventAndPayloadCases = [
+  ["\x1b[32u", { name: "space", sequence: " " }],
+  ["\x1b[32;2u", { name: "space", sequence: " ", shift: true }],
+  ["\x1b[32;5u", { name: "space", sequence: " ", ctrl: true }],
+  ["\x1b[32:32:32;5u", { name: "space", sequence: " ", ctrl: true, baseCode: 32 }],
   ["\x1b[97;1:1u", { name: "a", eventType: "press" }],
   ["\x1b[97;1:2u", { name: "a", eventType: "press", repeated: true }],
   ["\x1b[97;1:3u", { name: "a", eventType: "release" }],

@@ -791,7 +791,7 @@ test("Kitty keyboard shift+space via keyInput events", async () => {
   const result = await triggerKittyInput("\x1b[32;2u")
   expect(result).toMatchObject({
     eventType: "press",
-    name: " ",
+    name: "space",
     ctrl: false,
     meta: false,
     shift: true,
@@ -799,6 +799,25 @@ test("Kitty keyboard shift+space via keyInput events", async () => {
     number: false,
     sequence: " ",
     raw: "\x1b[32;2u",
+    super: false,
+    hyper: false,
+    capsLock: false,
+    numLock: false,
+  })
+})
+
+test("Kitty keyboard ctrl+space via keyInput events", async () => {
+  const result = await triggerKittyInput("\x1b[32;5u")
+  expect(result).toMatchObject({
+    eventType: "press",
+    name: "space",
+    ctrl: true,
+    meta: false,
+    shift: false,
+    option: false,
+    number: false,
+    sequence: " ",
+    raw: "\x1b[32;5u",
     super: false,
     hyper: false,
     capsLock: false,

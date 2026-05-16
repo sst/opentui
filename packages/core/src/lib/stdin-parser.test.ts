@@ -544,8 +544,11 @@ describe("StdinParser", () => {
     // CSI codepoint u format
     table([
       ["a key", "\x1b[97u", [k("a", { raw: "\x1b[97u" })]],
+      ["space", "\x1b[32u", [k("space", { raw: "\x1b[32u" })]],
       ["shift+a", "\x1b[97;2u", [k("a", { raw: "\x1b[97;2u", shift: true })]],
+      ["shift+space", "\x1b[32;2u", [k("space", { raw: "\x1b[32;2u", shift: true })]],
       ["ctrl+a", "\x1b[97;5u", [k("a", { raw: "\x1b[97;5u", ctrl: true })]],
+      ["ctrl+space", "\x1b[32;5u", [k("space", { raw: "\x1b[32;5u", ctrl: true })]],
       ["alt+a", "\x1b[97;3u", [k("a", { raw: "\x1b[97;3u", meta: true })]],
       ["ctrl+shift+a", "\x1b[97;6u", [k("a", { raw: "\x1b[97;6u", ctrl: true, shift: true })]],
       ["a release", "\x1b[97;1:3u", [k("a", { raw: "\x1b[97;1:3u", eventType: "release" })]],

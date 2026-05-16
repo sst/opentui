@@ -350,7 +350,7 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
     // It's a Unicode character
     if (codepoint > 0 && codepoint <= 0x10ffff) {
       const char = String.fromCodePoint(codepoint)
-      key.name = char
+      key.name = char === " " ? "space" : char
 
       // Keep the raw Unicode codepoint from Kitty so higher-level matching can
       // later turn `99` into `c` and use that as a layout-stable fallback.
@@ -413,7 +413,9 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
     const isPrintable = key.name.length > 0 && !kittyKeyMap[codepoint]
     if (isPrintable) {
       // Use shifted codepoint if shift is active and we have one
-      if (key.shift && shiftedCodepoint) {
+      if (codepoint === 32) {
+        text = " "
+      } else if (key.shift && shiftedCodepoint) {
         text = String.fromCodePoint(shiftedCodepoint)
       } else if (key.shift && key.name.length === 1) {
         // When shift is pressed but terminal didn't provide shifted codepoint,
@@ -423,11 +425,6 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
         text = key.name
       }
     }
-  }
-
-  // Special case: shift + space should produce a space
-  if (key.name === " " && key.shift && !key.ctrl && !key.meta) {
-    text = " "
   }
 
   if (text) {
