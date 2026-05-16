@@ -189,11 +189,11 @@ function makeFreshStats(): ClientStats {
   return { messages: 0, bytes: 0, oneshotMessages: 0, oneshotBytes: 0 }
 }
 
-let _statsRef: ClientStats = makeFreshStats()
-
 async function buildInstrumentedClient(): Promise<{ client: TreeSitterClient; reset: () => void; snapshot: () => ClientStats }> {
   const dataPaths = getDataPaths()
   const client = new TreeSitterClient({ dataPath: dataPaths.globalDataPath })
+
+  let stats: ClientStats = makeFreshStats()
 
   // The constructor calls startWorker(); the `worker` field is private.
   // Reach in once and wrap postMessage.
@@ -205,14 +205,14 @@ async function buildInstrumentedClient(): Promise<{ client: TreeSitterClient; re
     try {
       const json = JSON.stringify(message)
       const bytes = json.length
-      _statsRef.messages += 1
-      _statsRef.bytes += bytes
+      stats.messages += 1
+      stats.bytes += bytes
       if (message?.type === "ONESHOT_HIGHLIGHT") {
-        _statsRef.oneshotMessages += 1
-        _statsRef.oneshotBytes += bytes
+        stats.oneshotMessages += 1
+        stats.oneshotBytes += bytes
       }
     } catch {
-      _statsRef.messages += 1
+      stats.messages += 1
     }
     return originalPost(message, ...rest)
   }
@@ -223,9 +223,9 @@ async function buildInstrumentedClient(): Promise<{ client: TreeSitterClient; re
   return {
     client,
     reset: () => {
-      _statsRef = makeFreshStats()
+      stats = makeFreshStats()
     },
-    snapshot: () => ({ ..._statsRef }),
+    snapshot: () => ({ ...stats }),
   }
 }
 

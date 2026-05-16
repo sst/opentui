@@ -356,6 +356,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._shouldRenderTextBuffer = true
       this._isHighlighting = false
       this._highlightsDirty = false
+      this._restyleDirty = false
       this.updateTextInfo()
       this.requestRender()
     }
@@ -363,6 +364,17 @@ export class CodeRenderable extends TextBufferRenderable {
 
   public getLineHighlights(lineIdx: number) {
     return this.textBuffer.getLineHighlights(lineIdx)
+  }
+
+  destroy(): void {
+    if (this.isDestroyed) return
+    // Drop the per-renderable highlight cache so a markdown document with
+    // many fenced code blocks doesn't retain N copies of source text +
+    // highlights after the renderables are gone.
+    this._lastHighlights = []
+    this._lastHighlightContent = ""
+    this._lastHighlightFiletype = undefined
+    super.destroy()
   }
 
   // H3: re-run chunking against the last successful highlights without a
