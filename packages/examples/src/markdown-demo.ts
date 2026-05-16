@@ -26,7 +26,7 @@ interface StreamChunk {
 }
 
 export function appendMarkdownChunk(buffer: string, chunk: StreamChunk): string {
-  const prefix = chunk.index === 0 ? "" : "\n"
+  const prefix = chunk.index === 0 ? "" : "\\n"
   return buffer + prefix + chunk.text
 }
 
