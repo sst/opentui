@@ -415,6 +415,7 @@ const themeKeys = ["github", "githubLight", "monokai", "nord"] as const satisfie
 
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: ParsedKey) => void) | null = null
+let selectionHandler: ((selection: { getSelectedText: () => string }) => void) | null = null
 let parentContainer: BoxRenderable | null = null
 let markdownScrollBox: ScrollBoxRenderable | null = null
 let markdownDisplay: MarkdownRenderable | null = null
@@ -740,7 +741,7 @@ Other:
       const speed = getCurrentSpeed()
       const streamStatus = streamingMode ? "STREAMING" : "NORMAL"
       const endlessStatus = endlessMode ? " [ENDLESS]" : ""
-      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Mode: ${streamStatus}${endlessStatus} | Speed: ${speed.name} | Press T/C/S/E/[/]`
+      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Mode: ${streamStatus}${endlessStatus} | Speed: ${speed.name} | Select text to copy | Press T/C/S/E/[/]`
     }
   }
 
@@ -805,6 +806,17 @@ Other:
   }
 
   rendererInstance.keyInput.on("keypress", keyboardHandler)
+
+  selectionHandler = (selection) => {
+    const selectedText = selection.getSelectedText()
+    if (!selectedText || !statusText) return
+
+    const copied = rendererInstance.copyToClipboardOSC52(selectedText)
+    const lineCount = selectedText.split("\n").length
+    const summary = lineCount > 1 ? `${lineCount} lines` : `${selectedText.length} chars`
+    statusText.content = copied ? `Copied selection to clipboard (${summary})` : `Selected ${summary}; clipboard write unavailable`
+  }
+  rendererInstance.on(CliRenderEvents.SELECTION, selectionHandler)
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
@@ -818,6 +830,11 @@ export function destroy(rendererInstance: CliRenderer): void {
   if (keyboardHandler) {
     rendererInstance.keyInput.off("keypress", keyboardHandler)
     keyboardHandler = null
+  }
+
+  if (selectionHandler) {
+    rendererInstance.off(CliRenderEvents.SELECTION, selectionHandler)
+    selectionHandler = null
   }
 
   parentContainer?.destroy()
