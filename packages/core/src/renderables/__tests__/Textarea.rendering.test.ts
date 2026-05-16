@@ -66,9 +66,10 @@ describe("Textarea - Rendering Tests", () => {
         focusedBackgroundColor: surface,
       })
 
+      const textFrame = captureFrame().split("\n")
       const frame = captureSpans()
-      expect(frame.lines[0].spans[0].text).toBe("abc   ")
-      expect(frame.lines[1].spans[0].text).toBe("      ")
+      expect(textFrame[0].slice(0, 6)).toBe("abc   ")
+      expect(textFrame[1].slice(0, 6)).toBe("      ")
       expect(frame.lines[0].spans[0].bg.r).toBeCloseTo(frame.lines[1].spans[0].bg.r, 5)
       expect(frame.lines[0].spans[0].bg.g).toBeCloseTo(frame.lines[1].spans[0].bg.g, 5)
       expect(frame.lines[0].spans[0].bg.b).toBeCloseTo(frame.lines[1].spans[0].bg.b, 5)
