@@ -114,8 +114,16 @@ export class CodeRenderable extends TextBufferRenderable {
         return
       }
 
-      this.textBuffer.setText(value)
-      this.updateTextInfo()
+      if (this._streaming) {
+        // Streaming mode: reuse the cached styled prefix instead of wiping
+        // the buffer back to plain on every chunk. That wipe is what makes
+        // the visible text flicker between styled and plain on alternate
+        // frames during a stream.
+        this.applyContentWithCachedStyling()
+      } else {
+        this.textBuffer.setText(value)
+        this.updateTextInfo()
+      }
     }
   }
 
@@ -403,22 +411,61 @@ export class CodeRenderable extends TextBufferRenderable {
     super.destroy()
   }
 
+  // Render the current content using whatever cached highlights cover its
+  // prefix, with the unparsed tail (if any) emitted as a single plain chunk.
+  // Used in two places that would otherwise wipe styling back to plain text:
+  //
+  //   - `set content` while streaming: the next chunk arrives every ~16ms
+  //     but the worker takes ~16ms+ to reply, so calling textBuffer.setText
+  //     on every set would alternate the buffer between styled and plain on
+  //     every other frame — that's the visible flicker. Reusing the cached
+  //     prefix keeps the styled portion stable while the tail extends.
+  //
+  //   - the stale-partial-apply path below, when a worker reply lands for a
+  //     content prefix older than current.
+  //
+  // Falls back to plain `setText` when:
+  //   - there is no usable cached prefix (no prior highlight, filetype
+  //     differs, or current content isn't an extension of the cache);
+  //   - an async `onChunks` callback is registered — running it on every
+  //     incremental set-content would multiply user callback work and the
+  //     async hop would re-introduce the same flicker we're trying to
+  //     avoid. Plain text is the safer default in that combination.
+  private applyContentWithCachedStyling(): void {
+    if (this.isDestroyed) return
+    const content = this._content
+    const cached = this._lastHighlightContent
+    const usableCache =
+      !this._onChunks &&
+      this._filetype !== undefined &&
+      this._filetype === this._lastHighlightFiletype &&
+      cached.length > 0 &&
+      content.length >= cached.length &&
+      content.startsWith(cached)
+
+    if (!usableCache) {
+      this.textBuffer.setText(content)
+      this.updateTextInfo()
+      return
+    }
+
+    const prefixChunks = treeSitterToTextChunks(cached, this._lastHighlights, this._syntaxStyle, {
+      enabled: this._conceal,
+      baseHighlight: this._baseHighlight,
+    })
+    const tail = content.slice(cached.length)
+    const chunks: TextChunk[] = tail.length > 0 ? [...prefixChunks, { __isChunk: true, text: tail }] : prefixChunks
+    const styledText = new StyledText(chunks)
+    this.textBuffer.setStyledText(styledText)
+    this.updateTextInfo()
+  }
+
   // Streaming UX: when a highlight result lands stale (content has grown
-  // while the worker was busy), apply it as a partial styling of the new
-  // content's prefix so the user sees progressive highlighting rather than
-  // unstyled text until streaming stops.
-  //
-  // Conditions:
-  //   - streaming mode is on (this is a UX choice, not always desirable);
-  //   - current content extends the parsed content exactly;
-  //   - filetype hasn't changed since the call was fired;
-  //   - no async `onChunks` transform — running it on a partial result and
-  //     then again on the full result would double the user's callback work
-  //     and complicate ordering. Fall back to bail-stale in that case.
-  //
-  // We deliberately do NOT update _lastHighlights / _lastHighlightContent —
-  // those represent a complete, authoritative highlight result and the
-  // restyle path relies on them being whole.
+  // while the worker was busy) and the new content extends what we parsed,
+  // promote the parsed highlights to be our newest cache and re-render so
+  // the styled prefix shows immediately. Skipped when an async onChunks
+  // transform is set — partial+full chunk passes would double the user's
+  // callback work.
   private maybePartialApplyOnStale(
     parsedContent: string,
     parsedFiletype: string,
@@ -432,16 +479,15 @@ export class CodeRenderable extends TextBufferRenderable {
     if (latest.length <= parsedContent.length) return
     if (!latest.startsWith(parsedContent)) return
 
-    const prefixChunks = treeSitterToTextChunks(parsedContent, parsedHighlights, this._syntaxStyle, {
-      enabled: this._conceal,
-      baseHighlight: this._baseHighlight,
-    })
-    const tail = latest.slice(parsedContent.length)
-    const chunks: TextChunk[] = tail.length > 0 ? [...prefixChunks, { __isChunk: true, text: tail }] : prefixChunks
-    const styledText = new StyledText(chunks)
-    this.textBuffer.setStyledText(styledText)
+    // Promote: this is the newest highlight info we have, even if it's only
+    // for a prefix. The next full highlight will replace it with a strictly
+    // longer cache.
+    this._lastHighlights = parsedHighlights
+    this._lastHighlightContent = parsedContent
+    this._lastHighlightFiletype = parsedFiletype
+
+    this.applyContentWithCachedStyling()
     this._shouldRenderTextBuffer = true
-    this.updateTextInfo()
     this.requestRender()
   }
 
