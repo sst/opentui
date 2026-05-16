@@ -368,7 +368,11 @@ export class CodeRenderable extends TextBufferRenderable {
   // H3: re-run chunking against the last successful highlights without a
   // worker round-trip. Used when only chunk-affecting state changed
   // (conceal, syntaxStyle, drawUnstyledText, baseHighlight, onChunks).
-  private async restyleFromCache(): Promise<void> {
+  //
+  // Synchronous when no async chunk transform is registered, so the same
+  // frame that calls renderSelf can pick up the new styled text. Falls
+  // through to a Promise when `_onChunks` is set.
+  private restyleFromCache(): Promise<void> | void {
     if (this.isDestroyed) return
     const content = this._content
     const filetype = this._lastHighlightFiletype
@@ -382,28 +386,45 @@ export class CodeRenderable extends TextBufferRenderable {
     }
     const highlights = this._lastHighlights
 
-    if (highlights.length > 0 || this._onChunks || this._baseHighlight) {
-      const context: ChunkRenderContext = {
-        content,
-        filetype,
-        syntaxStyle: this._syntaxStyle,
-        highlights,
-      }
-      let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
-        enabled: this._conceal,
-        baseHighlight: this._baseHighlight,
-      })
-      chunks = await this.transformChunks(chunks, context)
-      if (this.isDestroyed) return
+    if (highlights.length === 0 && !this._onChunks && !this._baseHighlight) {
+      this.textBuffer.setText(content)
+      this._shouldRenderTextBuffer = true
+      this._restyleDirty = false
+      this.updateTextInfo()
+      this.requestRender()
+      return
+    }
+
+    const chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
+      enabled: this._conceal,
+      baseHighlight: this._baseHighlight,
+    })
+
+    if (!this._onChunks) {
       const styledText = new StyledText(chunks)
       this.textBuffer.setStyledText(styledText)
-    } else {
-      this.textBuffer.setText(content)
+      this._shouldRenderTextBuffer = true
+      this._restyleDirty = false
+      this.updateTextInfo()
+      this.requestRender()
+      return
     }
-    this._shouldRenderTextBuffer = true
-    this._restyleDirty = false
-    this.updateTextInfo()
-    this.requestRender()
+
+    const context: ChunkRenderContext = {
+      content,
+      filetype,
+      syntaxStyle: this._syntaxStyle,
+      highlights,
+    }
+    return this.transformChunks(chunks, context).then((transformed) => {
+      if (this.isDestroyed) return
+      const styledText = new StyledText(transformed)
+      this.textBuffer.setStyledText(styledText)
+      this._shouldRenderTextBuffer = true
+      this._restyleDirty = false
+      this.updateTextInfo()
+      this.requestRender()
+    })
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
@@ -432,7 +453,7 @@ export class CodeRenderable extends TextBufferRenderable {
       // H3: only style-side state changed. Re-chunk from cached highlights
       // without hitting the worker. If the cache turns out to be stale,
       // restyleFromCache promotes back to a full highlight.
-      this._restylePromise = this.restyleFromCache()
+      this._restylePromise = this.restyleFromCache() ?? Promise.resolve()
     }
 
     if (!this._shouldRenderTextBuffer) return
