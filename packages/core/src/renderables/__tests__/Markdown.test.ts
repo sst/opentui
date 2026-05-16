@@ -2328,6 +2328,45 @@ test("internalBlockMode=top-level adds spacing after ordered lists", async () =>
   `)
 })
 
+test("internalBlockMode=top-level treats lists as separated blocks", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-list-block-spacing",
+    content: `Paragraph before unordered list.
+- one
+- two
+
+Paragraph after unordered list.
+1. one
+2. two
+
+Paragraph after ordered list.`,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    Paragraph before unordered list.
+    
+    - one
+    - two
+    
+    Paragraph after unordered list.
+    
+    1. one
+    2. two
+    
+    Paragraph after ordered list."
+  `)
+})
+
 test("internalBlockMode=top-level preserves list spacing when a blank line is removed", async () => {
   const md = createMarkdownRenderable({
     id: "markdown-top-level-tighten-spacing",
