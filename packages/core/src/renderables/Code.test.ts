@@ -139,9 +139,12 @@ test("CodeRenderable - re-highlights when content changes during active highligh
   await renderOnce()
   expect(mockClient.isHighlighting()).toBe(true)
 
+  // Resolve initial: snapshot mismatch (content changed) bails out and
+  // requests a render. Next renderOnce fires the highlight for the latest
+  // content.
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
-
+  await renderOnce()
   expect(mockClient.isHighlighting()).toBe(true)
 
   mockClient.resolveHighlightOnce(0)
