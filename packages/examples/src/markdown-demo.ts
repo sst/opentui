@@ -814,7 +814,9 @@ Other:
     const copied = rendererInstance.copyToClipboardOSC52(selectedText)
     const lineCount = selectedText.split("\n").length
     const summary = lineCount > 1 ? `${lineCount} lines` : `${selectedText.length} chars`
-    statusText.content = copied ? `Copied selection to clipboard (${summary})` : `Selected ${summary}; clipboard write unavailable`
+    statusText.content = copied
+      ? `Copied selection to clipboard (${summary})`
+      : `Selected ${summary}; clipboard write unavailable`
   }
   rendererInstance.on(CliRenderEvents.SELECTION, selectionHandler)
 }
