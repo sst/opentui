@@ -2227,7 +2227,7 @@ test("internalBlockMode=top-level normalizes one blank row between top-level blo
   `)
 })
 
-test("internalBlockMode=top-level keeps tight paragraph list transitions tight", async () => {
+test("internalBlockMode=top-level adds spacing before lists", async () => {
   const md = createMarkdownRenderable({
     id: "markdown-top-level-tight-list-spacing",
     content: "Paragraph:\n- one\n- two",
@@ -2238,7 +2238,7 @@ test("internalBlockMode=top-level keeps tight paragraph list transitions tight",
   renderer.root.add(md)
   await renderMarkdownRenderable(md)
 
-  expect(md._blockStates.map((state) => state.marginTop ?? 0)).toEqual([0, 0])
+  expect(md._blockStates.map((state) => state.marginTop ?? 0)).toEqual([0, 1])
 
   const lines = captureFrame()
     .split("\n")
@@ -2247,6 +2247,7 @@ test("internalBlockMode=top-level keeps tight paragraph list transitions tight",
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
     Paragraph:
+    
     - one
     - two"
   `)
@@ -2327,7 +2328,7 @@ test("internalBlockMode=top-level adds spacing after ordered lists", async () =>
   `)
 })
 
-test("internalBlockMode=top-level tightens spacing when a blank line is removed", async () => {
+test("internalBlockMode=top-level preserves list spacing when a blank line is removed", async () => {
   const md = createMarkdownRenderable({
     id: "markdown-top-level-tighten-spacing",
     content: "Paragraph\n\n- one\n- two",
@@ -2341,7 +2342,7 @@ test("internalBlockMode=top-level tightens spacing when a blank line is removed"
   md.content = "Paragraph\n- one\n- two"
   await renderMarkdownRenderable(md)
 
-  expect(md._blockStates.map((state) => state.marginTop ?? 0)).toEqual([0, 0])
+  expect(md._blockStates.map((state) => state.marginTop ?? 0)).toEqual([0, 1])
 
   const lines = captureFrame()
     .split("\n")
@@ -2350,6 +2351,7 @@ test("internalBlockMode=top-level tightens spacing when a blank line is removed"
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
     Paragraph
+    
     - one
     - two"
   `)
