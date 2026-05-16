@@ -584,6 +584,15 @@ let highlightsEnabled = false
 let diagnosticsEnabled = false
 let showingHelp = false
 
+// Streaming-mode state. When active, the renderable's content grows by
+// CHUNK_CHARS_PER_TICK characters every CHUNK_INTERVAL_MS so you can watch
+// tree-sitter highlights catch up live.
+const CHUNK_CHARS_PER_TICK = 4
+const CHUNK_INTERVAL_MS = 16
+let streaming = false
+let streamPosition = 0
+let streamTimer: ReturnType<typeof setTimeout> | null = null
+
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
   showingHelp = false
@@ -624,9 +633,9 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     left: "50%",
     top: "50%",
     width: 60,
-    height: 18,
+    height: 21,
     marginLeft: -30, // Center horizontally
-    marginTop: -9, // Center vertically
+    marginTop: -10, // Center vertically
     border: true,
     borderStyle: "double",
     borderColor: getCurrentTheme().titleBorderColor,
@@ -642,6 +651,9 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     id: "help-content",
     content: `Navigation:
   ← → : Switch between code examples
+
+Streaming:
+  S : Toggle streaming the current example in char-by-char
 
 View Controls:
   L : Toggle line numbers
@@ -728,8 +740,57 @@ Other:
       const lineNums = codeWithLineNumbers?.showLineNumbers ? "ON" : "OFF"
       const diff = highlightsEnabled ? "ON" : "OFF"
       const diag = diagnosticsEnabled ? "ON" : "OFF"
-      timingText.content = `${examples[currentExampleIndex].name} (${currentExampleIndex + 1}/${examples.length}) | Theme: ${theme.name} (${currentThemeIndex + 1}/${themes.length}) | Conceal: ${concealEnabled ? "ON" : "OFF"} | Lines: ${lineNums} | Diff: ${diff} | Diag: ${diag}`
+      const streamLabel = streaming
+        ? `STREAMING ${streamPosition}/${examples[currentExampleIndex].code.length}`
+        : "OFF"
+      timingText.content = `${examples[currentExampleIndex].name} (${currentExampleIndex + 1}/${examples.length}) | Theme: ${theme.name} (${currentThemeIndex + 1}/${themes.length}) | Stream: ${streamLabel} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Lines: ${lineNums} | Diff: ${diff} | Diag: ${diag}`
     }
+  }
+
+  const stopStream = () => {
+    if (streamTimer) {
+      clearTimeout(streamTimer)
+      streamTimer = null
+    }
+    if (streaming && codeDisplay) {
+      // Restore the full code so the renderable is back to normal.
+      streaming = false
+      streamPosition = 0
+      codeDisplay.streaming = false
+      codeDisplay.content = examples[currentExampleIndex].code
+    } else {
+      streaming = false
+    }
+    updateTimingText()
+  }
+
+  const tickStream = () => {
+    if (!streaming || !codeDisplay) return
+    const full = examples[currentExampleIndex].code
+    streamPosition = Math.min(full.length, streamPosition + CHUNK_CHARS_PER_TICK)
+    codeDisplay.content = full.slice(0, streamPosition)
+    updateTimingText()
+    if (streamPosition < full.length) {
+      streamTimer = setTimeout(tickStream, CHUNK_INTERVAL_MS)
+    } else {
+      streamTimer = null
+      streaming = false
+      // Flip back out of streaming mode now that we're done so the renderable
+      // shows the unstyled text path on future edits too.
+      codeDisplay.streaming = false
+      updateTimingText()
+    }
+  }
+
+  const startStream = () => {
+    if (!codeDisplay) return
+    if (streamTimer) clearTimeout(streamTimer)
+    streaming = true
+    streamPosition = 0
+    codeDisplay.streaming = true
+    codeDisplay.content = ""
+    updateTimingText()
+    streamTimer = setTimeout(tickStream, CHUNK_INTERVAL_MS)
   }
 
   const applyTheme = () => {
@@ -794,7 +855,9 @@ Other:
     if (showingHelp) return
 
     if (key.name === "right" || key.name === "left") {
-      // Navigate between examples
+      // Navigate between examples. Stop any in-flight stream first so the new
+      // example renders from scratch rather than continuing the prior tick.
+      if (streaming) stopStream()
       if (key.name === "right") {
         currentExampleIndex = (currentExampleIndex + 1) % examples.length
       } else {
@@ -808,6 +871,14 @@ Other:
         codeDisplay.content = example.code
         codeDisplay.filetype = example.filetype
         updateTimingText()
+      }
+    } else if (key.name === "s" && !key.ctrl && !key.meta) {
+      // Stream the current example in character-by-character so you can watch
+      // the syntax highlighter coalesce updates as content arrives.
+      if (streaming) {
+        stopStream()
+      } else {
+        startStream()
       }
     } else if (key.name === "c" && !key.ctrl && !key.meta) {
       // Toggle conceal
@@ -899,6 +970,13 @@ export function destroy(rendererInstance: CliRenderer): void {
     rendererInstance.keyInput.off("keypress", keyboardHandler)
     keyboardHandler = null
   }
+
+  if (streamTimer) {
+    clearTimeout(streamTimer)
+    streamTimer = null
+  }
+  streaming = false
+  streamPosition = 0
 
   parentContainer?.destroy()
   helpModal?.destroy()
