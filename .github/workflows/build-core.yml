@@ -86,6 +86,14 @@ jobs:
           ls -la packages/core/node_modules/@opentui/
           ls -la packages/core/node_modules/@opentui/core-${{ matrix.platform }}/
 
+      - name: Verify glibc floor (linux only)
+        if: startsWith(matrix.platform, 'linux-')
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          bash packages/core/scripts/check-glibc-floor.sh \
+            "packages/core/node_modules/@opentui/core-${PLATFORM}/libopentui.so" 2.17
+
       - name: Run native tests
         run: |
           cd packages/core/src/zig
