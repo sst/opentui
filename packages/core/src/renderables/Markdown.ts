@@ -1013,8 +1013,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       const prev = blocks[blocks.length - 1]
-      const separated = prev ? TRAILING_MARKDOWN_BLOCK_BREAKS_RE.test(prev.token.raw + gapBefore) : false
-      const marginTop = prev && this.shouldAddTopLevelMargin(prev.token, token, separated) ? 1 : 0
+      const marginTop = prev && this.shouldAddTopLevelMargin(prev.token, token, gapBefore) ? 1 : 0
 
       blocks.push({
         token,
@@ -1027,12 +1026,14 @@ export class MarkdownRenderable extends Renderable {
     return blocks
   }
 
-  private shouldAddTopLevelMargin(prev: MarkedToken, current: MarkedToken, separated: boolean): boolean {
-    if (current.type === "heading" || prev.type === "heading") return true
-    if (current.type === "list") return true
-    if (prev.type === "list") return true
-    if (this.shouldRenderSeparately(prev) || this.shouldRenderSeparately(current)) return true
-    return separated && prev.type === "paragraph" && current.type === "paragraph"
+  private shouldAddTopLevelMargin(prev: MarkedToken, current: MarkedToken, gapBefore: string): boolean {
+    if (this.isSeparatedTopLevelBlock(prev) || this.isSeparatedTopLevelBlock(current)) return true
+    if (prev.type !== "paragraph" || current.type !== "paragraph") return false
+    return TRAILING_MARKDOWN_BLOCK_BREAKS_RE.test(prev.raw + gapBefore)
+  }
+
+  private isSeparatedTopLevelBlock(token: MarkedToken): boolean {
+    return token.type === "heading" || token.type === "list" || this.shouldRenderSeparately(token)
   }
 
   private getTableRowsToRender(table: Tokens.Table): Tokens.TableCell[][] {

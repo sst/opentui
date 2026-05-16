@@ -1392,7 +1392,13 @@ test("top-level structural markdown blocks have exactly one blank row between th
     id: "markdown-structural-spacing",
     content: `Paragraph before quote.
 
+- First bullet
+- Second bullet
+
 > Quote text.
+
+1. First step
+2. Second step
 
 | A | B |
 | --- | --- |
@@ -1423,7 +1429,13 @@ Paragraph after diff.
     "
     Paragraph before quote.
     
+    - First bullet
+    - Second bullet
+    
     │ Quote text.
+    
+    1. First step
+    2. Second step
     
     ┌───┬───┐
     │ A │ B │
