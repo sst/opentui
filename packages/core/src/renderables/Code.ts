@@ -55,6 +55,10 @@ export class CodeRenderable extends TextBufferRenderable {
   private _streaming: boolean
   private _hadInitialContent: boolean = false
   private _lastHighlights: SimpleHighlight[] = []
+  private _lastHighlightContent: string = ""
+  private _lastHighlightFiletype: string | undefined
+  private _restyleDirty: boolean = false
+  private _restylePromise: Promise<void> = Promise.resolve()
   private _baseHighlight?: string
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
@@ -128,7 +132,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set syntaxStyle(value: SyntaxStyle) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
-      this._highlightsDirty = true
+      this._restyleDirty = true
     }
   }
 
@@ -139,7 +143,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set conceal(value: boolean) {
     if (this._conceal !== value) {
       this._conceal = value
-      this._highlightsDirty = true
+      this._restyleDirty = true
     }
   }
 
@@ -150,7 +154,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set drawUnstyledText(value: boolean) {
     if (this._drawUnstyledText !== value) {
       this._drawUnstyledText = value
-      this._highlightsDirty = true
+      this._restyleDirty = true
     }
   }
 
@@ -189,7 +193,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set baseHighlight(value: string | undefined) {
     if (this._baseHighlight !== value) {
       this._baseHighlight = value
-      this._highlightsDirty = true
+      this._restyleDirty = true
     }
   }
 
@@ -207,7 +211,7 @@ export class CodeRenderable extends TextBufferRenderable {
   set onChunks(value: OnChunksCallback | undefined) {
     if (this._onChunks !== value) {
       this._onChunks = value
-      this._highlightsDirty = true
+      this._restyleDirty = true
     }
   }
 
@@ -216,7 +220,7 @@ export class CodeRenderable extends TextBufferRenderable {
   }
 
   get highlightingDone(): Promise<void> {
-    return this._highlightingPromise
+    return Promise.all([this._highlightingPromise, this._restylePromise]).then(() => undefined)
   }
 
   protected async transformChunks(chunks: TextChunk[], context: ChunkRenderContext): Promise<TextChunk[]> {
@@ -302,11 +306,11 @@ export class CodeRenderable extends TextBufferRenderable {
 
       if (this.isDestroyed) return
 
-      if (highlights.length > 0) {
-        if (this._streaming) {
-          this._lastHighlights = highlights
-        }
-      }
+      // Cache for the cheap-restyle path: H3 reuses these highlights when
+      // only chunk-affecting state changes (conceal, syntaxStyle, etc).
+      this._lastHighlights = highlights
+      this._lastHighlightContent = content
+      this._lastHighlightFiletype = filetype
 
       if (highlights.length > 0 || this._onChunks || this._baseHighlight) {
         const context: ChunkRenderContext = {
@@ -338,6 +342,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._shouldRenderTextBuffer = true
       this._isHighlighting = false
       this._highlightsDirty = false
+      this._restyleDirty = false
       this.updateTextInfo()
       this.requestRender()
     } catch (error) {
@@ -360,6 +365,47 @@ export class CodeRenderable extends TextBufferRenderable {
     return this.textBuffer.getLineHighlights(lineIdx)
   }
 
+  // H3: re-run chunking against the last successful highlights without a
+  // worker round-trip. Used when only chunk-affecting state changed
+  // (conceal, syntaxStyle, drawUnstyledText, baseHighlight, onChunks).
+  private async restyleFromCache(): Promise<void> {
+    if (this.isDestroyed) return
+    const content = this._content
+    const filetype = this._lastHighlightFiletype
+    if (!filetype || this._lastHighlightContent !== content) {
+      // Cache invalid (content changed since last highlight, or never
+      // highlighted). Fall back to a full highlight.
+      this._highlightsDirty = true
+      this._restyleDirty = false
+      this.requestRender()
+      return
+    }
+    const highlights = this._lastHighlights
+
+    if (highlights.length > 0 || this._onChunks || this._baseHighlight) {
+      const context: ChunkRenderContext = {
+        content,
+        filetype,
+        syntaxStyle: this._syntaxStyle,
+        highlights,
+      }
+      let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
+        enabled: this._conceal,
+        baseHighlight: this._baseHighlight,
+      })
+      chunks = await this.transformChunks(chunks, context)
+      if (this.isDestroyed) return
+      const styledText = new StyledText(chunks)
+      this.textBuffer.setStyledText(styledText)
+    } else {
+      this.textBuffer.setText(content)
+    }
+    this._shouldRenderTextBuffer = true
+    this._restyleDirty = false
+    this.updateTextInfo()
+    this.requestRender()
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this._highlightsDirty) {
       if (this.isDestroyed) return
@@ -367,9 +413,11 @@ export class CodeRenderable extends TextBufferRenderable {
       if (this._content.length === 0) {
         this._shouldRenderTextBuffer = false
         this._highlightsDirty = false
+        this._restyleDirty = false
       } else if (!this._filetype) {
         this._shouldRenderTextBuffer = true
         this._highlightsDirty = false
+        this._restyleDirty = false
       } else if (!this._isHighlighting) {
         // Coalesce: only one highlight in flight at a time. If content changes
         // again before the worker returns, the snapshot-id guard short-circuits
@@ -380,6 +428,11 @@ export class CodeRenderable extends TextBufferRenderable {
         this._highlightsDirty = false
         this._highlightingPromise = this.startHighlight()
       }
+    } else if (this._restyleDirty && !this._isHighlighting) {
+      // H3: only style-side state changed. Re-chunk from cached highlights
+      // without hitting the worker. If the cache turns out to be stale,
+      // restyleFromCache promotes back to a full highlight.
+      this._restylePromise = this.restyleFromCache()
     }
 
     if (!this._shouldRenderTextBuffer) return

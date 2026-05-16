@@ -178,13 +178,17 @@ test("CodeRenderable - multiple content changes during highlighting", async () =
 
   expect(codeRenderable.content).toBe("final content")
 
+  // With coalescing only the initial highlight is in flight; the three content
+  // changes just bumped the snapshot id and marked dirty.
   await renderOnce()
   expect(mockClient.isHighlighting()).toBe(true)
 
+  // Resolve the initial highlight. Snapshot id has moved → bailStale clears
+  // _isHighlighting and requests another render. The next renderOnce picks up
+  // the dirty state and fires a fresh highlight on "final content".
   mockClient.resolveHighlightOnce(0)
-
   await new Promise((resolve) => setTimeout(resolve, 10))
-
+  await renderOnce()
   expect(mockClient.isHighlighting()).toBe(true)
 
   mockClient.resolveHighlightOnce(0)
@@ -623,7 +627,7 @@ test("CodeRenderable - applies concealment to styled text", async () => {
   expect(codeRenderable.content).toBe("const message = 'hello';")
 })
 
-test("CodeRenderable - updating conceal triggers re-highlighting", async () => {
+test("CodeRenderable - updating conceal re-chunks from cache without a new worker round-trip", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -644,18 +648,20 @@ test("CodeRenderable - updating conceal triggers re-highlighting", async () => {
   await renderOnce()
 
   expect(codeRenderable.conceal).toBe(true)
-
+  // Settle the initial highlight so we have a cached _lastHighlights to restyle from.
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
+  expect(mockClient.isHighlighting()).toBe(false)
 
+  // Toggling conceal should NOT spawn a new worker round-trip — H3 reuses the
+  // cached highlights and just re-runs chunking.
   codeRenderable.conceal = false
   expect(codeRenderable.conceal).toBe(false)
 
   await renderOnce()
+  await codeRenderable.highlightingDone
 
-  expect(mockClient.isHighlighting()).toBe(true)
-  mockClient.resolveHighlightOnce(0)
-  await new Promise((resolve) => setTimeout(resolve, 10))
+  expect(mockClient.isHighlighting()).toBe(false)
 })
 
 test("CodeRenderable - drawUnstyledText is true by default", async () => {
@@ -767,7 +773,7 @@ test("CodeRenderable - with drawUnstyledText=false, text does not render before 
   expect(frameAfterHighlighting).toContain("const message")
 })
 
-test("CodeRenderable - updating drawUnstyledText from false to true triggers re-highlighting", async () => {
+test("CodeRenderable - updating drawUnstyledText from false to true re-renders without a new worker round-trip", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -791,10 +797,10 @@ test("CodeRenderable - updating drawUnstyledText from false to true triggers re-
   expect(codeRenderable.drawUnstyledText).toBe(false)
 
   await renderOnce()
-  // Text buffer has content for lineCount, but we can verify nothing renders
   expect(codeRenderable.plainText).toBe("const message = 'hello';")
   expect(codeRenderable.lineCount).toBe(1)
 
+  // Settle the initial highlight so the renderable has cached highlights.
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
@@ -802,18 +808,14 @@ test("CodeRenderable - updating drawUnstyledText from false to true triggers re-
   expect(codeRenderable.drawUnstyledText).toBe(true)
 
   await renderOnce()
+  await codeRenderable.highlightingDone
 
-  expect(mockClient.isHighlighting()).toBe(true)
-
-  mockClient.resolveHighlightOnce(0)
-  await new Promise((resolve) => setTimeout(resolve, 10))
-  await renderOnce()
-
+  // H3: no new worker call; restyle path handled it.
   expect(mockClient.isHighlighting()).toBe(false)
   expect(codeRenderable.plainText).toBe("const message = 'hello';")
 })
 
-test("CodeRenderable - updating drawUnstyledText from true to false triggers re-highlighting", async () => {
+test("CodeRenderable - updating drawUnstyledText from true to false re-renders without a new worker round-trip", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -842,10 +844,9 @@ test("CodeRenderable - updating drawUnstyledText from true to false triggers re-
   expect(codeRenderable.drawUnstyledText).toBe(false)
 
   await renderOnce()
+  await codeRenderable.highlightingDone
 
-  expect(mockClient.isHighlighting()).toBe(true)
-  mockClient.resolveHighlightOnce(0)
-  await new Promise((resolve) => setTimeout(resolve, 10))
+  expect(mockClient.isHighlighting()).toBe(false)
 })
 
 test("CodeRenderable - uses fallback rendering on error even with drawUnstyledText=false", async () => {
