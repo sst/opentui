@@ -18,6 +18,31 @@ const markdownContent = `# OpenTUI Markdown Demo
 
 Welcome to the **MarkdownRenderable** showcase! This demonstrates automatic table alignment and syntax highlighting.
 
+\`\`\`ts
+interface StreamChunk {
+  id: string
+  index: number
+  text: string
+}
+
+export function appendMarkdownChunk(buffer: string, chunk: StreamChunk): string {
+  const prefix = chunk.index === 0 ? "" : "\n"
+  return buffer + prefix + chunk.text
+}
+
+export function renderStreamingPreview(chunks: StreamChunk[]): string {
+  let markdown = ""
+
+  for (const chunk of chunks) {
+    markdown = appendMarkdownChunk(markdown, chunk)
+  }
+
+  return markdown
+}
+\`\`\`
+
+The fenced block above appears near the top so streaming mode exercises a larger CodeRenderable before the rest of the document arrives.
+
 ## Features
 
 - Automatic **table column alignment** based on content width
@@ -87,6 +112,20 @@ Final paragraph with [docs](https://opentui.dev) and \`https://example.com/from-
 | Conceal mode | *Working* | Medium | Hides \`**\`, \`\`\`, etc. |
 | Theme switching | **Done** | Low | Multiple themes available |
 | Unicode support | 日本語 | High | CJK characters |
+
+After a table, normal prose should resume without being treated as another row or inheriting table spacing. This paragraph intentionally starts right after the comparison grid.
+
+- Follow-up bullet with **bold text** and \`inline code\`.
+- Another bullet that wraps with enough text to prove list indentation still works after a table renderable has been emitted.
+- Final bullet before the next heading.
+
+This paragraph follows the list and should return to normal prose spacing before the next heading.
+
+1. First ordered follow-up with **emphasis** after the unordered list.
+2. Second ordered follow-up with \`inline code\` and enough text to wrap onto another line.
+3. Third ordered follow-up before returning to prose.
+
+This paragraph follows the numeric list and should align like ordinary body text.
 
 ## Code Examples
 

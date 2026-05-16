@@ -1030,6 +1030,7 @@ export class MarkdownRenderable extends Renderable {
   private shouldAddTopLevelMargin(prev: MarkedToken, current: MarkedToken, separated: boolean): boolean {
     if (current.type === "heading" || prev.type === "heading") return true
     if (current.type === "list") return separated
+    if (prev.type === "list") return true
     if (this.shouldRenderSeparately(prev) || this.shouldRenderSeparately(current)) return true
     return separated && prev.type === "paragraph" && current.type === "paragraph"
   }
