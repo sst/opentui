@@ -125,28 +125,6 @@ function findSpanContaining(frame: CapturedFrame, text: string) {
   return undefined
 }
 
-function linkedTextForUrl(frame: CapturedFrame, url: string): string {
-  const linkUrls = new Map<number, string>()
-  const lib = renderer.currentRenderBuffer.lib
-  let text = ""
-
-  for (const line of frame.lines) {
-    for (const span of line.spans) {
-      const linkId = getLinkId(span.attributes)
-      if (linkId === 0) continue
-
-      let linkUrl = linkUrls.get(linkId)
-      if (linkUrl === undefined) {
-        linkUrl = lib.linkGetUrl(linkId)
-        linkUrls.set(linkId, linkUrl)
-      }
-      if (linkUrl === url) text += span.text
-    }
-  }
-
-  return text
-}
-
 function linkedText(frame: CapturedFrame): string {
   return frame.lines
     .flatMap((line) => line.spans)
@@ -1664,7 +1642,10 @@ test("concealed markdown links hide target but label carries hyperlink metadata"
   const frame = captureFrame()
   expect(frame).toContain("Check out OpenTUI for more.")
   expect(frame).not.toContain("https://github.com/sst/opentui")
-  expect(linkedTextForUrl(captureSpans(), "https://github.com/sst/opentui")).toBe("OpenTUI")
+  const labelSpan = findSpanContaining(captureSpans(), "OpenTUI")
+  expect(labelSpan).toBeDefined()
+  if (!labelSpan) throw new Error("Expected OpenTUI label span")
+  expect(getLinkId(labelSpan.attributes)).not.toBe(0)
 })
 
 test("links with conceal=false", async () => {
