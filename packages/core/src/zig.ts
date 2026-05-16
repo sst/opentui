@@ -144,7 +144,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     // Event bus
-    setEventCallback: {
+    createEventSink: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    destroyEventSink: {
       args: ["ptr"],
       returns: "void",
     },
@@ -839,7 +843,7 @@ function getOpenTUILib(libPath?: string) {
 
     // EditBuffer functions
     createEditBuffer: {
-      args: ["u8"],
+      args: ["u8", "ptr"],
       returns: "ptr",
     },
     destroyEditBuffer: {
@@ -2090,6 +2094,7 @@ class FFIRenderLib implements RenderLib {
   public readonly decoder: TextDecoder = new TextDecoder()
   private logCallbackWrapper: FFICallbackInstance | null = null
   private eventCallbackWrapper: FFICallbackInstance | null = null
+  private eventSinkPtr: Pointer | null = null
   private _nativeEvents: EventEmitter = new EventEmitter()
   private _anyEventHandlers: Array<(name: string, data: ArrayBuffer) => void> = []
   private nativeSpanFeedCallbackWrapper: FFICallbackInstance | null = null
@@ -2173,16 +2178,8 @@ class FFIRenderLib implements RenderLib {
             return
           }
 
-          const nameBuffer = toArrayBuffer(namePtr, 0, nameLen)
-          const nameBytes = new Uint8Array(nameBuffer)
-          const eventName = this.decoder.decode(nameBytes)
-
-          let eventData: ArrayBuffer
-          if (dataLen > 0 && dataPtr) {
-            eventData = toArrayBuffer(dataPtr, 0, dataLen).slice()
-          } else {
-            eventData = new ArrayBuffer(0)
-          }
+          const eventName = this.decoder.decode(toArrayBuffer(namePtr, 0, nameLen))
+          const eventData = dataLen > 0 && dataPtr ? toArrayBuffer(dataPtr, 0, dataLen).slice(0) : new ArrayBuffer(0)
 
           queueMicrotask(() => {
             this._nativeEvents.emit(eventName, eventData)
@@ -2207,7 +2204,12 @@ class FFIRenderLib implements RenderLib {
       throw new Error("Failed to create event callback")
     }
 
-    this.setEventCallback(eventCallback.ptr)
+    this.eventSinkPtr = this.opentui.symbols.createEventSink(eventCallback.ptr)
+    if (!this.eventSinkPtr) {
+      eventCallback.close()
+      this.eventCallbackWrapper = null
+      throw new Error("Failed to create native event sink")
+    }
   }
 
   private ensureNativeSpanFeedCallback(): FFICallbackInstance {
@@ -2235,10 +2237,6 @@ class FFIRenderLib implements RenderLib {
     }
 
     return callback
-  }
-
-  private setEventCallback(callbackPtr: Pointer) {
-    this.opentui.symbols.setEventCallback(callbackPtr)
   }
 
   public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
@@ -3541,7 +3539,7 @@ class FFIRenderLib implements RenderLib {
   // EditBuffer implementations
   public createEditBuffer(widthMethod: WidthMethod): Pointer {
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createEditBuffer(widthMethodCode)
+    const bufferPtr = this.opentui.symbols.createEditBuffer(widthMethodCode, this.eventSinkPtr)
     if (!bufferPtr) {
       throw new Error("Failed to create EditBuffer")
     }
