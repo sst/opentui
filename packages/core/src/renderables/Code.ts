@@ -63,6 +63,54 @@ export class CodeRenderable extends TextBufferRenderable {
   // path captures this at kick-off and bails after `await transformChunks` if
   // it moved — otherwise stale chunks could land on changed state.
   private _stateRevision: number = 0
+
+  // Scope categories that tree-sitter assigns reliably regardless of how
+  // complete the parse tree is. Anything outside this set (function,
+  // constructor, type, property, variable.member, label, …) tends to flip
+  // between adjacent partial parses because the scope depends on syntactic
+  // context the parser hasn't seen yet — that's the visible flashing the
+  // user reports during streaming (e.g. `class UserManager` cycling between
+  // type-orange and property-blue on consecutive worker round-trips).
+  // While `_streaming` is true we apply only the stable subset; once the
+  // stream ends we re-highlight and pick up the full assignments.
+  private static readonly STREAMING_STABLE_PREFIXES: readonly string[] = [
+    "keyword",
+    "string",
+    "comment",
+    "number",
+    "boolean",
+    "constant",
+    "operator",
+    "punctuation",
+    "markup",
+    "spell",
+    "nospell",
+    "conceal",
+  ]
+
+  private filterStreamingHighlights(highlights: SimpleHighlight[]): SimpleHighlight[] {
+    if (!this._streaming) return highlights
+    return highlights.filter((h) => {
+      const meta = h[3]
+      // Conceal-driving highlights must survive the filter — losing them
+      // would cause text to appear and disappear between partial parses
+      // (e.g. markdown's `\`\`\`` fences would un-conceal mid-stream),
+      // which is a worse glitch than a color flip would be.
+      if (meta?.conceal !== undefined || meta?.concealLines !== undefined) return true
+      // Injection containers and their markers stabilize the language-switch
+      // boundaries (e.g. ` ```typescript ` opening a TS injection inside
+      // markdown). Keep them so injected ranges don't reshape between
+      // parses.
+      if (meta?.isInjection || meta?.containsInjection) return true
+
+      const name = h[2]
+      for (const prefix of CodeRenderable.STREAMING_STABLE_PREFIXES) {
+        if (name === prefix) return true
+        if (name.startsWith(prefix + ".")) return true
+      }
+      return false
+    })
+  }
   private _baseHighlight?: string
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
@@ -192,8 +240,15 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._streaming !== value) {
       this._streaming = value
       this._hadInitialContent = false
+      // Streaming mode applies a stability-filtered subset of highlights so
+      // identifier-class scopes don't flip mid-stream. Clearing the cache on
+      // both entry and exit forces the next render to repopulate with the
+      // appropriate subset.
       this._lastHighlights = []
+      this._lastHighlightContent = ""
+      this._lastHighlightFiletype = undefined
       this._highlightsDirty = true
+      this._stateRevision++
     }
   }
 
@@ -340,21 +395,28 @@ export class CodeRenderable extends TextBufferRenderable {
 
       if (this.isDestroyed) return
 
+      // While streaming, downsample to scopes that stay stable across
+      // partial parses. This is what stops identifiers (class names, member
+      // names, types) from flashing between adjacent worker round-trips.
+      // Apply the filter to both the cache and the chunks the buffer paints
+      // so they don't disagree.
+      const visibleHighlights = this.filterStreamingHighlights(highlights)
+
       // Cache for the cheap-restyle path: H3 reuses these highlights when
       // only chunk-affecting state changes (conceal, syntaxStyle, etc).
-      this._lastHighlights = highlights
+      this._lastHighlights = visibleHighlights
       this._lastHighlightContent = content
       this._lastHighlightFiletype = filetype
 
-      if (highlights.length > 0 || this._onChunks || this._baseHighlight) {
+      if (visibleHighlights.length > 0 || this._onChunks || this._baseHighlight) {
         const context: ChunkRenderContext = {
           content,
           filetype,
           syntaxStyle: this._syntaxStyle,
-          highlights,
+          highlights: visibleHighlights,
         }
 
-        let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
+        let chunks = treeSitterToTextChunks(content, visibleHighlights, this._syntaxStyle, {
           enabled: this._conceal,
           baseHighlight: this._baseHighlight,
         })
@@ -481,8 +543,9 @@ export class CodeRenderable extends TextBufferRenderable {
 
     // Promote: this is the newest highlight info we have, even if it's only
     // for a prefix. The next full highlight will replace it with a strictly
-    // longer cache.
-    this._lastHighlights = parsedHighlights
+    // longer cache. Filtered to the stable-streaming subset so we don't
+    // promote a flip-prone identifier scope into the cache.
+    this._lastHighlights = this.filterStreamingHighlights(parsedHighlights)
     this._lastHighlightContent = parsedContent
     this._lastHighlightFiletype = parsedFiletype
 
