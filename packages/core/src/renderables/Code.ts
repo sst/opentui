@@ -59,6 +59,10 @@ export class CodeRenderable extends TextBufferRenderable {
   private _lastHighlightFiletype: string | undefined
   private _restyleDirty: boolean = false
   private _restylePromise: Promise<void> = Promise.resolve()
+  // Bumped on every setter that marks either dirty flag. The async restyle
+  // path captures this at kick-off and bails after `await transformChunks` if
+  // it moved — otherwise stale chunks could land on changed state.
+  private _stateRevision: number = 0
   private _baseHighlight?: string
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
@@ -103,6 +107,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._content = value
       this._highlightsDirty = true
       this._highlightSnapshotId++
+      this._stateRevision++
 
       if (this._streaming && !this._drawUnstyledText && this._filetype) {
         this.requestRender()
@@ -122,6 +127,16 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._filetype !== value) {
       this._filetype = value
       this._highlightsDirty = true
+      // Bump the snapshot so an in-flight highlight on the old filetype gets
+      // discarded when it returns instead of accidentally applying parser
+      // results for the wrong language.
+      this._highlightSnapshotId++
+      this._stateRevision++
+      // Invalidate the restyle cache — its highlights are bound to the
+      // previous filetype's parser.
+      this._lastHighlights = []
+      this._lastHighlightContent = ""
+      this._lastHighlightFiletype = undefined
     }
   }
 
@@ -133,6 +148,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
       this._restyleDirty = true
+      this._stateRevision++
     }
   }
 
@@ -144,6 +160,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._conceal !== value) {
       this._conceal = value
       this._restyleDirty = true
+      this._stateRevision++
     }
   }
 
@@ -155,6 +172,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._drawUnstyledText !== value) {
       this._drawUnstyledText = value
       this._restyleDirty = true
+      this._stateRevision++
     }
   }
 
@@ -194,6 +212,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._baseHighlight !== value) {
       this._baseHighlight = value
       this._restyleDirty = true
+      this._stateRevision++
     }
   }
 
@@ -212,6 +231,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._onChunks !== value) {
       this._onChunks = value
       this._restyleDirty = true
+      this._stateRevision++
     }
   }
 
@@ -280,6 +300,12 @@ export class CodeRenderable extends TextBufferRenderable {
       const result = await this._treeSitterClient.highlightOnce(content, filetype)
 
       if (snapshotId !== this._highlightSnapshotId) {
+        // Streaming UX: under fast appends every in-flight call ends up
+        // stale by the time it returns, so the user would see nothing but
+        // plain text until streaming stops. If the newer content just
+        // extends what we parsed, apply our highlights to the prefix and
+        // leave the tail unstyled — the next highlight will catch up.
+        this.maybePartialApplyOnStale(content, filetype, result.highlights ?? [])
         bailStale()
         return
       }
@@ -377,6 +403,48 @@ export class CodeRenderable extends TextBufferRenderable {
     super.destroy()
   }
 
+  // Streaming UX: when a highlight result lands stale (content has grown
+  // while the worker was busy), apply it as a partial styling of the new
+  // content's prefix so the user sees progressive highlighting rather than
+  // unstyled text until streaming stops.
+  //
+  // Conditions:
+  //   - streaming mode is on (this is a UX choice, not always desirable);
+  //   - current content extends the parsed content exactly;
+  //   - filetype hasn't changed since the call was fired;
+  //   - no async `onChunks` transform — running it on a partial result and
+  //     then again on the full result would double the user's callback work
+  //     and complicate ordering. Fall back to bail-stale in that case.
+  //
+  // We deliberately do NOT update _lastHighlights / _lastHighlightContent —
+  // those represent a complete, authoritative highlight result and the
+  // restyle path relies on them being whole.
+  private maybePartialApplyOnStale(
+    parsedContent: string,
+    parsedFiletype: string,
+    parsedHighlights: SimpleHighlight[],
+  ): void {
+    if (!this._streaming) return
+    if (this.isDestroyed) return
+    if (this._onChunks) return
+    if (this._filetype !== parsedFiletype) return
+    const latest = this._content
+    if (latest.length <= parsedContent.length) return
+    if (!latest.startsWith(parsedContent)) return
+
+    const prefixChunks = treeSitterToTextChunks(parsedContent, parsedHighlights, this._syntaxStyle, {
+      enabled: this._conceal,
+      baseHighlight: this._baseHighlight,
+    })
+    const tail = latest.slice(parsedContent.length)
+    const chunks: TextChunk[] = tail.length > 0 ? [...prefixChunks, { __isChunk: true, text: tail }] : prefixChunks
+    const styledText = new StyledText(chunks)
+    this.textBuffer.setStyledText(styledText)
+    this._shouldRenderTextBuffer = true
+    this.updateTextInfo()
+    this.requestRender()
+  }
+
   // H3: re-run chunking against the last successful highlights without a
   // worker round-trip. Used when only chunk-affecting state changed
   // (conceal, syntaxStyle, drawUnstyledText, baseHighlight, onChunks).
@@ -386,13 +454,23 @@ export class CodeRenderable extends TextBufferRenderable {
   // through to a Promise when `_onChunks` is set.
   private restyleFromCache(): Promise<void> | void {
     if (this.isDestroyed) return
+    // Clear dirty up-front so a re-entrant render while we're awaiting an
+    // async transform doesn't kick off another restyle in parallel. State
+    // changes between here and the apply step are caught by the
+    // _stateRevision check after the await.
+    this._restyleDirty = false
+
     const content = this._content
     const filetype = this._lastHighlightFiletype
-    if (!filetype || this._lastHighlightContent !== content) {
-      // Cache invalid (content changed since last highlight, or never
-      // highlighted). Fall back to a full highlight.
+    if (
+      !filetype ||
+      this._lastHighlightContent !== content ||
+      this._filetype !== filetype
+    ) {
+      // Cache invalid: content changed since last highlight, the current
+      // filetype no longer matches what produced the cached highlights, or
+      // we never highlighted at all. Fall back to a full highlight.
       this._highlightsDirty = true
-      this._restyleDirty = false
       this.requestRender()
       return
     }
@@ -401,7 +479,6 @@ export class CodeRenderable extends TextBufferRenderable {
     if (highlights.length === 0 && !this._onChunks && !this._baseHighlight) {
       this.textBuffer.setText(content)
       this._shouldRenderTextBuffer = true
-      this._restyleDirty = false
       this.updateTextInfo()
       this.requestRender()
       return
@@ -416,12 +493,12 @@ export class CodeRenderable extends TextBufferRenderable {
       const styledText = new StyledText(chunks)
       this.textBuffer.setStyledText(styledText)
       this._shouldRenderTextBuffer = true
-      this._restyleDirty = false
       this.updateTextInfo()
       this.requestRender()
       return
     }
 
+    const revision = this._stateRevision
     const context: ChunkRenderContext = {
       content,
       filetype,
@@ -430,10 +507,13 @@ export class CodeRenderable extends TextBufferRenderable {
     }
     return this.transformChunks(chunks, context).then((transformed) => {
       if (this.isDestroyed) return
+      // Drop the result if any setter bumped state during the transform: the
+      // chunks were built from the captured (now stale) state, and a fresh
+      // restyle/highlight will be pending anyway.
+      if (revision !== this._stateRevision) return
       const styledText = new StyledText(transformed)
       this.textBuffer.setStyledText(styledText)
       this._shouldRenderTextBuffer = true
-      this._restyleDirty = false
       this.updateTextInfo()
       this.requestRender()
     })
@@ -448,6 +528,12 @@ export class CodeRenderable extends TextBufferRenderable {
         this._highlightsDirty = false
         this._restyleDirty = false
       } else if (!this._filetype) {
+        // No filetype → render as plain text. In streaming mode with
+        // drawUnstyledText=false, `set content` skipped the textBuffer
+        // update, so the buffer still holds whatever the last successful
+        // highlight applied (or is empty). Refresh it before painting.
+        this.textBuffer.setText(this._content)
+        this.updateTextInfo()
         this._shouldRenderTextBuffer = true
         this._highlightsDirty = false
         this._restyleDirty = false
