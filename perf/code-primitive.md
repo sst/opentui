@@ -150,6 +150,63 @@ incremental parse actually wins.
 - Worker boot: B1 includes worker init the first time. We preload the
   parser before measuring, but watch the first run for outliers.
 
+## Results (after H1+H2+H3 landed)
+
+See `perf/code-final.json` for the full record. Headline numbers:
+
+| Metric                       | Baseline      | Final         | Delta  |
+| ---------------------------- | ------------- | ------------- | ------ |
+| `b1_single_shot_ms`          | 15.82 ms      | 13.17 ms      | -17%   |
+| `b1_single_shot_msgs`        | 1             | **0**         | cache  |
+| `b1_single_shot_bytes`       | 6,270 B       | **0**         | cache  |
+| **`b2_streaming_total_ms`**  | **472.5 ms**  | **60.3 ms**   | **-87%** |
+| `b2_streaming_settle_ms`     | 456.3 ms      | 15.0 ms       | -97%   |
+| **`b2_streaming_msgs`**      | **200**       | **1**         | -99%   |
+| **`b2_streaming_bytes`**     | **2.06 MB**   | **6.4 KB**    | -99.7% |
+| `b3_conceal_toggle_ms`       | 16.07 ms      | 13.57 ms      | -16%   |
+| `b3_conceal_toggle_msgs`     | 1             | **0**         | -100%  |
+| `b3_syntaxstyle_swap_ms`     | 17.49 ms      | 13.13 ms      | -25%   |
+| `b3_syntaxstyle_swap_msgs`   | 1             | **0**         | -100%  |
+| `b4_content_reset_ms`        | 31.60 ms      | 26.99 ms      | -15%   |
+| `b4_content_reset_msgs`      | 2             | **0**         | -100%  |
+| `b4_conceal_pingpong_ms`     | 33.11 ms      | 28.60 ms      | -14%   |
+| `b4_conceal_pingpong_msgs`   | 2             | **0**         | -100%  |
+
+Landing commits:
+
+- `7c269ba7` H2 — coalesce in-flight highlights
+- `1c492acf` H3 — cheap restyle path for style-only changes
+- `b8118a5b` H1 — tiny LRU on `highlightOnce` responses
+- `f06632c3` follow-up: make H3 restyle synchronous when no async
+  transform is set (fixes Diff conceal-toggle snapshot regression)
+
+## H4 — deferred
+
+H4 (incremental edits via `TreeSitterClient`'s stateful buffer/edit
+API) is not landed. Rationale:
+
+- The current bench's 5.9 KB snippet doesn't exercise the workload
+  H4 targets (large files, ~50 KB+, where a single full parse is
+  itself the dominant cost).
+- H2 already collapses streaming bursts to ~1 worker call, so the
+  marginal value of incremental editing on top of that is small at
+  current sizes.
+- The change requires opening a per-renderable buffer in the
+  client, emitting `Edit[]` ranges from `set content`, and threading
+  the buffer through the snapshot-id guard. That's a real
+  architecture change and deserves its own benchmark (a B5
+  large-snippet scenario) before being attempted.
+
+Recommendation: add B5 (large-snippet incremental append) as a
+follow-up; only pursue H4 if B5 shows a clear bottleneck the
+current architecture can't reach.
+
 ## Dead ends
 
-(none yet)
+- **bailStale chains into next highlight**: an earlier draft of H2
+  had the stale-result bail directly fire the next highlight so
+  `highlightingDone` chained all the way through. It made test
+  driving harder (every `resolveAllHighlightOnce()` had to be
+  followed by a second to drain the chained call) without measurable
+  perf benefit. Reverted to a simple "clear flag + requestRender"
+  pattern; tests drive their own settle loop.
