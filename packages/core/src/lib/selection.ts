@@ -110,7 +110,7 @@ export class Selection {
   }
 
   getSelectedText(): string {
-    const selectedTextsByLine = new Map<number, string[]>()
+    const selectedTextsByLine = new Map<number, Array<{ x: number; text: string }>>()
     const selectedRenderables = this._selectedRenderables
       // Sort by reading order: top-to-bottom, then left-to-right
       .sort((a, b) => {
@@ -126,12 +126,24 @@ export class Selection {
     for (const renderable of selectedRenderables) {
       const text = renderable.getSelectedText()
       if (!text) continue
-      const lines = selectedTextsByLine.get(renderable.y) ?? []
-      lines.push(text)
-      selectedTextsByLine.set(renderable.y, lines)
+      const lines = text.split("\n")
+      for (let index = 0; index < lines.length; index += 1) {
+        const y = renderable.y + index
+        const line = selectedTextsByLine.get(y) ?? []
+        line.push({ x: renderable.x, text: lines[index] })
+        selectedTextsByLine.set(y, line)
+      }
     }
 
-    return [...selectedTextsByLine.values()].map((line) => line.join("")).join("\n")
+    return [...selectedTextsByLine.entries()]
+      .sort(([leftY], [rightY]) => leftY - rightY)
+      .map(([, line]) =>
+        line
+          .sort((left, right) => left.x - right.x)
+          .map((segment) => segment.text)
+          .join(""),
+      )
+      .join("\n")
   }
 }
 
