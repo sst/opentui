@@ -471,7 +471,7 @@ test("CodeRenderable - renders markdown with TypeScript injection correctly", as
   expect(codeRenderable.plainText).toContain("typescript")
 })
 
-test("CodeRenderable - continues highlighting after unresolved promise", async () => {
+test("CodeRenderable - coalesces highlights while one is in flight (hung-worker scenario)", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -546,14 +546,17 @@ test("CodeRenderable - continues highlighting after unresolved promise", async (
   await renderOnce()
   await new Promise((resolve) => setTimeout(resolve, 20))
 
-  const markdownHighlightHappened = pendingPromises.some(
-    (p) => p.content === "# New Documentation" && p.filetype === "markdown",
-  )
-
+  // With coalescing (at most one in-flight per renderable), the 4th call hangs
+  // forever and the 5th `set content` only marks the renderable dirty — it
+  // does not spawn a concurrent worker call. The latest content is still
+  // reflected on the renderable; it just won't be highlighted until the hung
+  // worker returns (or a watchdog supersedes it). This is the intended
+  // trade-off for collapsing streaming-burst write amplification.
   expect(codeRenderable.content).toBe("# New Documentation")
   expect(codeRenderable.filetype).toBe("markdown")
-  expect(markdownHighlightHappened).toBe(true)
-  expect(highlightCount).toBe(5)
+  expect(highlightCount).toBe(4)
+  // The hung 4th call is still in flight on the mock; nothing for the 5th.
+  expect(pendingPromises.filter((p) => p.never).length).toBe(1)
 })
 
 test("CodeRenderable - concealment is enabled by default", async () => {
@@ -939,6 +942,13 @@ test("CodeRenderable - with drawUnstyledText=false, multiple updates only render
   const frameAfterUpdate = captureFrame()
   expect(frameAfterUpdate.trim()).toBe("")
 
+  // Coalescing: only the first highlight is in flight. Resolving it surfaces
+  // a snapshot mismatch (content changed) which bails and schedules another
+  // render; that render fires the highlight on the latest content, which we
+  // then resolve as well.
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
   mockClient.resolveAllHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
@@ -1978,6 +1988,13 @@ test("CodeRenderable - plainText reflects content immediately with drawUnstyledT
   const frame = captureFrame()
   expect(frame.trim()).toBe("")
 
+  // Coalescing: the initial highlight (on "initial content") is still in
+  // flight when we set "updated content". Resolving it bails on snapshot
+  // mismatch and schedules the highlight for the latest content, which we
+  // resolve on the second pass.
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
   mockClient.resolveAllHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()

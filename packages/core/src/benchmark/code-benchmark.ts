@@ -282,6 +282,22 @@ interface ScenarioResult {
   blocks: MetricBlock[]
 }
 
+// Drive the renderer until the CodeRenderable is fully idle. Coalescing in
+// Code.ts means a stale bail clears the flag *and* requests a render — we
+// have to actually consume those renders for the next highlight to fire.
+async function settle(code: CodeRenderable, renderOnce: () => Promise<void>): Promise<void> {
+  const MAX_ROUNDS = 32
+  for (let i = 0; i < MAX_ROUNDS; i++) {
+    await code.highlightingDone
+    if (!code.isHighlighting) {
+      // One more render to flush any pending dirty state (set by bailStale).
+      await renderOnce()
+      if (!code.isHighlighting) return
+    }
+  }
+  throw new Error("settle: code never went idle")
+}
+
 async function withCode<T>(
   ctx: ScenarioContext,
   options: { content?: string; streaming?: boolean; drawUnstyledText?: boolean },
@@ -376,7 +392,10 @@ async function scenarioB2(ctx: ScenarioContext): Promise<ScenarioResult> {
         await renderOnce()
       }
       const tAppendsDone = performance.now()
-      await code.highlightingDone
+      // Drive frames until the renderable is fully idle. With coalescing the
+      // in-flight highlight may bail-stale, request a render, and only fire
+      // the next highlight on that subsequent frame.
+      await settle(code, renderOnce)
       const tSettled = performance.now()
 
       if (i >= WARMUP) {

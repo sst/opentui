@@ -263,11 +263,20 @@ export class CodeRenderable extends TextBufferRenderable {
 
     this._isHighlighting = true
 
+    // Cleanup for stale results: clear the in-flight flag and request a
+    // render. The dirty flag was set by the caller that bumped the snapshot
+    // id, so the next renderSelf will fire a fresh highlight on the latest
+    // content.
+    const bailStale = () => {
+      this._isHighlighting = false
+      this.requestRender()
+    }
+
     try {
       const result = await this._treeSitterClient.highlightOnce(content, filetype)
 
       if (snapshotId !== this._highlightSnapshotId) {
-        this.requestRender()
+        bailStale()
         return
       }
 
@@ -288,8 +297,7 @@ export class CodeRenderable extends TextBufferRenderable {
       }
 
       if (snapshotId !== this._highlightSnapshotId) {
-        this.requestRender()
-        return
+        bailStale(); return
       }
 
       if (this.isDestroyed) return
@@ -316,8 +324,7 @@ export class CodeRenderable extends TextBufferRenderable {
         chunks = await this.transformChunks(chunks, context)
 
         if (snapshotId !== this._highlightSnapshotId) {
-          this.requestRender()
-          return
+          bailStale(); return
         }
 
         if (this.isDestroyed) return
@@ -335,8 +342,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this.requestRender()
     } catch (error) {
       if (snapshotId !== this._highlightSnapshotId) {
-        this.requestRender()
-        return
+        bailStale(); return
       }
 
       console.warn("Code highlighting failed, falling back to plain text:", error)
@@ -364,7 +370,12 @@ export class CodeRenderable extends TextBufferRenderable {
       } else if (!this._filetype) {
         this._shouldRenderTextBuffer = true
         this._highlightsDirty = false
-      } else {
+      } else if (!this._isHighlighting) {
+        // Coalesce: only one highlight in flight at a time. If content changes
+        // again before the worker returns, the snapshot-id guard short-circuits
+        // the stale result and the trailing requestRender() picks up the
+        // latest content on the next frame. Without this guard, every set
+        // content call during streaming spawns a concurrent worker round-trip.
         this.ensureVisibleTextBeforeHighlight()
         this._highlightsDirty = false
         this._highlightingPromise = this.startHighlight()
