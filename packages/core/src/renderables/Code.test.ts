@@ -1078,6 +1078,40 @@ test("CodeRenderable - streaming can be enabled", async () => {
   expect(codeRenderable.streaming).toBe(true)
 })
 
+test("CodeRenderable - streaming applies provisional lexical styles before parser results", async () => {
+  const keywordColor = RGBA.fromValues(0, 0, 1, 1)
+  const typeColor = RGBA.fromValues(1, 0.5, 0, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: keywordColor },
+    type: { fg: typeColor },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [] })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-streaming-provisional-lexical",
+    content: "class UserManager",
+    filetype: "typescript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: true,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  const frame = captureSpans()
+  const keywordSpan = findSpanContaining(frame, "class")
+  const typeSpan = findSpanContaining(frame, "UserManager")
+  expect(keywordSpan?.fg?.toInts()).toEqual(keywordColor.toInts())
+  expect(typeSpan?.fg?.toInts()).toEqual(typeColor.toInts())
+})
+
 test("CodeRenderable - streaming mode respects drawUnstyledText only for initial content", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -1113,6 +1147,167 @@ test("CodeRenderable - streaming mode respects drawUnstyledText only for initial
   await new Promise((resolve) => queueMicrotask(resolve))
 
   expect(codeRenderable.content).toBe("const updated = 'world';")
+})
+
+test("CodeRenderable - streaming cached styling extends active-line class name style", async () => {
+  const keywordColor = RGBA.fromValues(0, 0, 1, 1)
+  const typeColor = RGBA.fromValues(1, 0.5, 0, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: keywordColor },
+    type: { fg: typeColor },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [
+      [0, 5, "keyword"],
+      [6, 10, "type"],
+    ] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-streaming-active-token",
+    content: "class User",
+    filetype: "typescript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: true,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  codeRenderable.content = "class UserManager"
+  await renderOnce()
+
+  const line = captureSpans().lines[0]
+  expect(
+    line.spans
+      .map((span) => span.text)
+      .join("")
+      .slice(0, "class UserManager".length),
+  ).toBe("class UserManager")
+  expect(
+    line.spans.some(
+      (span) => span.text.includes("UserManager") && span.fg?.toInts().join() === typeColor.toInts().join(),
+    ),
+  ).toBe(true)
+})
+
+test("CodeRenderable - streaming keeps first token style when parser flips scope", async () => {
+  const typeColor = RGBA.fromValues(1, 0.5, 0, 1)
+  const variableColor = RGBA.fromValues(0, 1, 1, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+    type: { fg: typeColor },
+    variable: { fg: variableColor },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [
+      [0, 5, "keyword"],
+      [6, 10, "type"],
+    ] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-streaming-style-lock",
+    content: "class User",
+    filetype: "typescript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: true,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  codeRenderable.content = "class UserManager"
+  await renderOnce()
+
+  mockClient.setMockResult({
+    highlights: [
+      [0, 5, "keyword"],
+      [6, 17, "variable"],
+    ] as SimpleHighlight[],
+  })
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  const line = captureSpans().lines[0]
+  expect(
+    line.spans.some(
+      (span) => span.text.includes("UserManager") && span.fg?.toInts().join() === typeColor.toInts().join(),
+    ),
+  ).toBe(true)
+  expect(
+    line.spans.some(
+      (span) => span.text.includes("UserManager") && span.fg?.toInts().join() === variableColor.toInts().join(),
+    ),
+  ).toBe(false)
+})
+
+test("CodeRenderable - streaming cached styling keeps completed lines highlighted while new line streams", async () => {
+  const keywordColor = RGBA.fromValues(0, 0, 1, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: keywordColor },
+    type: { fg: RGBA.fromValues(1, 0.5, 0, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [
+      [0, 5, "keyword"],
+      [6, 10, "type"],
+    ] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-streaming-completed-line",
+    content: "class User\n",
+    filetype: "typescript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: true,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  codeRenderable.content = "class User\nclass UserManager"
+  await renderOnce()
+
+  const frame = captureSpans()
+  const firstLineClass = frame.lines[0].spans.find((span) => span.text.includes("class"))
+  expect(firstLineClass?.fg?.toInts()).toEqual(keywordColor.toInts())
+  expect(
+    frame.lines[1].spans.some(
+      (span) => span.text.includes("class") && span.fg?.toInts().join() === keywordColor.toInts().join(),
+    ),
+  ).toBe(false)
 })
 
 test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new highlights", async () => {

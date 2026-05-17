@@ -200,19 +200,24 @@ async function buildInstrumentedClient(): Promise<{ client: TreeSitterClient; re
   const anyClient = client as unknown as { worker: Worker }
   const worker = anyClient.worker
   const originalPost = worker.postMessage.bind(worker)
+  // The byte count approximates JSON-serialized size by summing the dominant
+  // string fields (content / filetype / messageId) plus a small envelope
+  // constant. An earlier version called `JSON.stringify(message)` per post
+  // for exactness, but that added ~10 KB of stringify work per streaming
+  // chunk to the timing window we were trying to measure.
+  const ENVELOPE_BYTES = 64
   // @ts-expect-error overwrite for instrumentation
   worker.postMessage = (message: any, ...rest: any[]) => {
-    try {
-      const json = JSON.stringify(message)
-      const bytes = json.length
-      stats.messages += 1
-      stats.bytes += bytes
-      if (message?.type === "ONESHOT_HIGHLIGHT") {
-        stats.oneshotMessages += 1
-        stats.oneshotBytes += bytes
-      }
-    } catch {
-      stats.messages += 1
+    stats.messages += 1
+    const bytes =
+      ENVELOPE_BYTES +
+      (typeof message?.content === "string" ? message.content.length : 0) +
+      (typeof message?.filetype === "string" ? message.filetype.length : 0) +
+      (typeof message?.messageId === "string" ? message.messageId.length : 0)
+    stats.bytes += bytes
+    if (message?.type === "ONESHOT_HIGHLIGHT") {
+      stats.oneshotMessages += 1
+      stats.oneshotBytes += bytes
     }
     return originalPost(message, ...rest)
   }

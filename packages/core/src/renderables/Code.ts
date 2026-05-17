@@ -28,6 +28,13 @@ export type OnChunksCallback = (
   context: ChunkRenderContext,
 ) => TextChunk[] | undefined | Promise<TextChunk[] | undefined>
 
+interface StreamingStyleLock {
+  start: number
+  end: number
+  text: string
+  scope: string
+}
+
 export interface CodeOptions extends TextBufferOptions {
   content?: string
   filetype?: string
@@ -57,6 +64,26 @@ export class CodeRenderable extends TextBufferRenderable {
   private _lastHighlights: SimpleHighlight[] = []
   private _lastHighlightContent: string = ""
   private _lastHighlightFiletype: string | undefined
+  private _streamingStyledPrefixHighlights: SimpleHighlight[] = []
+  private _streamingStyledPrefixContent: string = ""
+  private _streamingStyledPrefixFiletype: string | undefined
+  private _streamingStyleLocks: StreamingStyleLock[] = []
+  // Memoization slot for the chunks built from the chosen prefix in
+  // `applyContentWithCachedStyling`. The prefix is identical between worker
+  // round-trips, so during streaming this collapses the per-chunk-arrival
+  // `treeSitterToTextChunks(prefix, …)` work to one rebuild per highlight
+  // result. Key is the inputs that affect chunk output (source highlights
+  // array identity, prefix string, prefix end, plus the three chunk-time
+  // style settings).
+  private _cachedPrefixChunks: {
+    sourceHighlights: SimpleHighlight[]
+    prefixContent: string
+    prefixEnd: number
+    syntaxStyle: SyntaxStyle
+    conceal: boolean
+    baseHighlight: string | undefined
+    chunks: TextChunk[]
+  } | null = null
   private _restyleDirty: boolean = false
   private _restylePromise: Promise<void> = Promise.resolve()
   // Bumped on every setter that marks either dirty flag. The async restyle
@@ -64,53 +91,17 @@ export class CodeRenderable extends TextBufferRenderable {
   // it moved — otherwise stale chunks could land on changed state.
   private _stateRevision: number = 0
 
-  // Scope categories that tree-sitter assigns reliably regardless of how
-  // complete the parse tree is. Anything outside this set (function,
-  // constructor, type, property, variable.member, label, …) tends to flip
-  // between adjacent partial parses because the scope depends on syntactic
-  // context the parser hasn't seen yet — that's the visible flashing the
-  // user reports during streaming (e.g. `class UserManager` cycling between
-  // type-orange and property-blue on consecutive worker round-trips).
-  // While `_streaming` is true we apply only the stable subset; once the
-  // stream ends we re-highlight and pick up the full assignments.
-  private static readonly STREAMING_STABLE_PREFIXES: readonly string[] = [
-    "keyword",
-    "string",
-    "comment",
-    "number",
-    "boolean",
-    "constant",
-    "operator",
-    "punctuation",
-    "markup",
-    "spell",
-    "nospell",
-    "conceal",
+  private static readonly STREAMING_LOCK_SCOPE_PREFIXES: readonly string[] = [
+    "type",
+    "variable",
+    "function",
+    "constructor",
+    "property",
+    "module",
+    "attribute",
+    "label",
   ]
 
-  private filterStreamingHighlights(highlights: SimpleHighlight[]): SimpleHighlight[] {
-    if (!this._streaming) return highlights
-    return highlights.filter((h) => {
-      const meta = h[3]
-      // Conceal-driving highlights must survive the filter — losing them
-      // would cause text to appear and disappear between partial parses
-      // (e.g. markdown's `\`\`\`` fences would un-conceal mid-stream),
-      // which is a worse glitch than a color flip would be.
-      if (meta?.conceal !== undefined || meta?.concealLines !== undefined) return true
-      // Injection containers and their markers stabilize the language-switch
-      // boundaries (e.g. ` ```typescript ` opening a TS injection inside
-      // markdown). Keep them so injected ranges don't reshape between
-      // parses.
-      if (meta?.isInjection || meta?.containsInjection) return true
-
-      const name = h[2]
-      for (const prefix of CodeRenderable.STREAMING_STABLE_PREFIXES) {
-        if (name === prefix) return true
-        if (name.startsWith(prefix + ".")) return true
-      }
-      return false
-    })
-  }
   private _baseHighlight?: string
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
@@ -193,6 +184,10 @@ export class CodeRenderable extends TextBufferRenderable {
       this._lastHighlights = []
       this._lastHighlightContent = ""
       this._lastHighlightFiletype = undefined
+      this._streamingStyledPrefixHighlights = []
+      this._streamingStyledPrefixContent = ""
+      this._streamingStyledPrefixFiletype = undefined
+      this._streamingStyleLocks = []
     }
   }
 
@@ -240,13 +235,16 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._streaming !== value) {
       this._streaming = value
       this._hadInitialContent = false
-      // Streaming mode applies a stability-filtered subset of highlights so
-      // identifier-class scopes don't flip mid-stream. Clearing the cache on
-      // both entry and exit forces the next render to repopulate with the
-      // appropriate subset.
+      // Streaming mode keeps a progressive display cache. Clearing the cache
+      // on both entry and exit forces the next render to repopulate with the
+      // appropriate content.
       this._lastHighlights = []
       this._lastHighlightContent = ""
       this._lastHighlightFiletype = undefined
+      this._streamingStyledPrefixHighlights = []
+      this._streamingStyledPrefixContent = ""
+      this._streamingStyledPrefixFiletype = undefined
+      this._streamingStyleLocks = []
       this._highlightsDirty = true
       this._stateRevision++
     }
@@ -260,6 +258,18 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._treeSitterClient !== value) {
       this._treeSitterClient = value
       this._highlightsDirty = true
+      // Bump the snapshot so an in-flight highlight on the previous client
+      // gets discarded when it returns — cached highlights came from a
+      // different parser instance and may not even agree on scopes.
+      this._highlightSnapshotId++
+      this._stateRevision++
+      this._lastHighlights = []
+      this._lastHighlightContent = ""
+      this._lastHighlightFiletype = undefined
+      this._streamingStyledPrefixHighlights = []
+      this._streamingStyledPrefixContent = ""
+      this._streamingStyledPrefixFiletype = undefined
+      this._streamingStyleLocks = []
     }
   }
 
@@ -356,6 +366,9 @@ export class CodeRenderable extends TextBufferRenderable {
     // content.
     const bailStale = () => {
       this._isHighlighting = false
+      // Renderable can be destroyed between bumping the snapshot and the
+      // worker reply arriving — don't request a render after teardown.
+      if (this.isDestroyed) return
       this.requestRender()
     }
 
@@ -390,33 +403,32 @@ export class CodeRenderable extends TextBufferRenderable {
       }
 
       if (snapshotId !== this._highlightSnapshotId) {
-        bailStale(); return
+        bailStale()
+        return
       }
 
       if (this.isDestroyed) return
 
-      // While streaming, downsample to scopes that stay stable across
-      // partial parses. This is what stops identifiers (class names, member
-      // names, types) from flashing between adjacent worker round-trips.
-      // Apply the filter to both the cache and the chunks the buffer paints
-      // so they don't disagree.
-      const visibleHighlights = this.filterStreamingHighlights(highlights)
+      highlights = this.applyStreamingStyleLocks(content, highlights)
 
       // Cache for the cheap-restyle path: H3 reuses these highlights when
       // only chunk-affecting state changes (conceal, syntaxStyle, etc).
-      this._lastHighlights = visibleHighlights
+      this._lastHighlights = highlights
       this._lastHighlightContent = content
       this._lastHighlightFiletype = filetype
+      this._streamingStyledPrefixHighlights = highlights
+      this._streamingStyledPrefixContent = content
+      this._streamingStyledPrefixFiletype = filetype
 
-      if (visibleHighlights.length > 0 || this._onChunks || this._baseHighlight) {
+      if (highlights.length > 0 || this._onChunks || this._baseHighlight) {
         const context: ChunkRenderContext = {
           content,
           filetype,
           syntaxStyle: this._syntaxStyle,
-          highlights: visibleHighlights,
+          highlights,
         }
 
-        let chunks = treeSitterToTextChunks(content, visibleHighlights, this._syntaxStyle, {
+        let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
           enabled: this._conceal,
           baseHighlight: this._baseHighlight,
         })
@@ -424,7 +436,8 @@ export class CodeRenderable extends TextBufferRenderable {
         chunks = await this.transformChunks(chunks, context)
 
         if (snapshotId !== this._highlightSnapshotId) {
-          bailStale(); return
+          bailStale()
+          return
         }
 
         if (this.isDestroyed) return
@@ -443,7 +456,8 @@ export class CodeRenderable extends TextBufferRenderable {
       this.requestRender()
     } catch (error) {
       if (snapshotId !== this._highlightSnapshotId) {
-        bailStale(); return
+        bailStale()
+        return
       }
 
       console.warn("Code highlighting failed, falling back to plain text:", error)
@@ -470,11 +484,169 @@ export class CodeRenderable extends TextBufferRenderable {
     this._lastHighlights = []
     this._lastHighlightContent = ""
     this._lastHighlightFiletype = undefined
+    this._streamingStyledPrefixHighlights = []
+    this._streamingStyledPrefixContent = ""
+    this._streamingStyledPrefixFiletype = undefined
+    this._streamingStyleLocks = []
+    this._cachedPrefixChunks = null
     super.destroy()
   }
 
-  // Render the current content using whatever cached highlights cover its
-  // prefix, with the unparsed tail (if any) emitted as a single plain chunk.
+  private getStreamingPrefixEnd(cachedContent: string, currentContent: string): number {
+    return currentContent.startsWith(cachedContent) ? cachedContent.length : 0
+  }
+
+  private getHighlightsWithin(highlights: SimpleHighlight[], end: number): SimpleHighlight[] {
+    // Half-open ranges [start, end); `highlightEnd <= end` keeps highlights
+    // that lie fully within the prefix. The source array is sorted by start
+    // (see parser.worker.ts), so once we see a highlight whose start is at
+    // or past the boundary it can't possibly fit and nothing after it can
+    // either — break out instead of scanning the whole array.
+    const result: SimpleHighlight[] = []
+    for (let i = 0; i < highlights.length; i++) {
+      const h = highlights[i]
+      if (h[0] >= end) break
+      if (h[1] <= end) result.push(h)
+    }
+    return result
+  }
+
+  private isStreamingStyleLockScope(scope: string, meta: any): boolean {
+    if (meta?.conceal !== undefined || meta?.concealLines !== undefined) return false
+    if (meta?.isInjection || meta?.containsInjection) return false
+
+    for (const prefix of CodeRenderable.STREAMING_LOCK_SCOPE_PREFIXES) {
+      if (scope === prefix || scope.startsWith(prefix + ".")) return true
+    }
+    return false
+  }
+
+  private applyStreamingStyleLocks(content: string, highlights: SimpleHighlight[]): SimpleHighlight[] {
+    if (!this._streaming || highlights.length === 0) return highlights
+
+    const nextLocks: StreamingStyleLock[] = []
+    const stabilized = highlights.map((highlight) => {
+      const [start, end, scope, meta] = highlight
+      if (!this.isStreamingStyleLockScope(scope, meta)) return highlight
+
+      const text = content.slice(start, end)
+      if (text.length === 0) return highlight
+
+      const existing = this._streamingStyleLocks.find(
+        (lock) => lock.start === start && (text.startsWith(lock.text) || lock.text.startsWith(text)),
+      )
+      const lockedScope = existing?.scope ?? scope
+      nextLocks.push({ start, end, text, scope: lockedScope })
+
+      if (lockedScope === scope) return highlight
+      return [start, end, lockedScope, meta] as SimpleHighlight
+    })
+
+    this._streamingStyleLocks = nextLocks
+    return stabilized
+  }
+
+  // Lexical predicates used by getContinuationLength to detect whether the
+  // streamed tail extends the prefix's last token (e.g. `User` + `Manager`
+  // are one identifier). The character classes are JS/TS-flavored and also
+  // cover C-family languages reasonably (Java, Rust, Go, Python, C#). On
+  // languages with different identifier rules (Lisp's `-` and `?`, Ruby's
+  // `?` and `!`, Clojure's `/`, etc.) the worst case is graceful
+  // degradation: a continuation that should extend the previous token's
+  // style instead falls into the plain-tail path. No incorrect styling is
+  // applied — just less continuation. Revisit if this becomes visible for
+  // a non-JS-family language.
+  private isIdentifierChar(value: string): boolean {
+    return /^[A-Za-z0-9_$]$/.test(value)
+  }
+
+  private isOperatorChar(value: string): boolean {
+    return /^[+\-*/%=&|^!<>?:.~]$/.test(value)
+  }
+
+  private getContinuationLength(prefix: string, tail: string): number {
+    if (prefix.length === 0 || tail.length === 0) return 0
+
+    const previous = prefix[prefix.length - 1]
+    const next = tail[0]
+    const continuesIdentifier = this.isIdentifierChar(previous) && this.isIdentifierChar(next)
+    const continuesOperator = this.isOperatorChar(previous) && this.isOperatorChar(next)
+    if (!continuesIdentifier && !continuesOperator) return 0
+
+    const isSameTokenChar = continuesIdentifier ? this.isIdentifierChar.bind(this) : this.isOperatorChar.bind(this)
+    let length = 0
+    while (length < tail.length && isSameTokenChar(tail[length])) {
+      length++
+    }
+    return length
+  }
+
+  private getCachedPrefixChunks(
+    sourceHighlights: SimpleHighlight[],
+    prefixContent: string,
+    prefixEnd: number,
+  ): TextChunk[] {
+    const cached = this._cachedPrefixChunks
+    if (
+      cached !== null &&
+      cached.sourceHighlights === sourceHighlights &&
+      cached.prefixContent === prefixContent &&
+      cached.prefixEnd === prefixEnd &&
+      cached.syntaxStyle === this._syntaxStyle &&
+      cached.conceal === this._conceal &&
+      cached.baseHighlight === this._baseHighlight
+    ) {
+      return cached.chunks
+    }
+
+    const prefixHighlights = this.getHighlightsWithin(sourceHighlights, prefixEnd)
+    const chunks = treeSitterToTextChunks(prefixContent, prefixHighlights, this._syntaxStyle, {
+      enabled: this._conceal,
+      baseHighlight: this._baseHighlight,
+    })
+    this._cachedPrefixChunks = {
+      sourceHighlights,
+      prefixContent,
+      prefixEnd,
+      syntaxStyle: this._syntaxStyle,
+      conceal: this._conceal,
+      baseHighlight: this._baseHighlight,
+      chunks,
+    }
+    return chunks
+  }
+
+  private appendTailToChunks(chunks: TextChunk[], prefix: string, tail: string): TextChunk[] {
+    if (tail.length === 0) return chunks
+
+    const continuationLength = this.getContinuationLength(prefix, tail)
+    const result = [...chunks]
+    if (continuationLength > 0 && result.length > 0) {
+      const last = result[result.length - 1]
+      result[result.length - 1] = {
+        ...last,
+        text: last.text + tail.slice(0, continuationLength),
+      }
+    }
+
+    const rest = tail.slice(continuationLength)
+    if (rest.length > 0) {
+      result.push(
+        ...treeSitterToTextChunks(rest, [], this._syntaxStyle, {
+          enabled: this._conceal,
+          baseHighlight: this._baseHighlight,
+        }),
+      )
+    }
+
+    return result
+  }
+
+  // Render the current content using cached highlights through the latest
+  // parsed prefix. If the stream extends the same lexical token, the appended
+  // token fragment inherits the previous token's style. This avoids both bad
+  // extremes: whole-buffer plain flashes and split-token flicker like
+  // `User` styled as a type while `Manager` is plain.
   // Used in two places that would otherwise wipe styling back to plain text:
   //
   //   - `set content` while streaming: the next chunk arrives every ~16ms
@@ -496,36 +668,52 @@ export class CodeRenderable extends TextBufferRenderable {
   private applyContentWithCachedStyling(): void {
     if (this.isDestroyed) return
     const content = this._content
-    const cached = this._lastHighlightContent
-    const usableCache =
-      !this._onChunks &&
-      this._filetype !== undefined &&
-      this._filetype === this._lastHighlightFiletype &&
-      cached.length > 0 &&
-      content.length >= cached.length &&
-      content.startsWith(cached)
+    const candidates = [
+      {
+        content: this._streamingStyledPrefixContent,
+        filetype: this._streamingStyledPrefixFiletype,
+        highlights: this._streamingStyledPrefixHighlights,
+      },
+      {
+        content: this._lastHighlightContent,
+        filetype: this._lastHighlightFiletype,
+        highlights: this._lastHighlights,
+      },
+    ]
 
-    if (!usableCache) {
+    let prefixContent = ""
+    let prefixSourceHighlights: SimpleHighlight[] = []
+    let prefixEnd = 0
+
+    if (!this._onChunks && this._filetype !== undefined) {
+      for (const candidate of candidates) {
+        if (candidate.filetype !== this._filetype || candidate.content.length === 0) continue
+        const candidateEnd = this.getStreamingPrefixEnd(candidate.content, content)
+        if (candidateEnd <= prefixEnd) continue
+        prefixContent = candidate.content.slice(0, candidateEnd)
+        prefixSourceHighlights = candidate.highlights
+        prefixEnd = candidateEnd
+      }
+    }
+
+    if (prefixContent.length === 0) {
       this.textBuffer.setText(content)
       this.updateTextInfo()
       return
     }
 
-    const prefixChunks = treeSitterToTextChunks(cached, this._lastHighlights, this._syntaxStyle, {
-      enabled: this._conceal,
-      baseHighlight: this._baseHighlight,
-    })
-    const tail = content.slice(cached.length)
-    const chunks: TextChunk[] = tail.length > 0 ? [...prefixChunks, { __isChunk: true, text: tail }] : prefixChunks
+    const prefixChunks = this.getCachedPrefixChunks(prefixSourceHighlights, prefixContent, prefixEnd)
+    const tail = content.slice(prefixContent.length)
+    const chunks = this.appendTailToChunks(prefixChunks, prefixContent, tail)
     const styledText = new StyledText(chunks)
     this.textBuffer.setStyledText(styledText)
+    this._shouldRenderTextBuffer = true
     this.updateTextInfo()
   }
 
   // Streaming UX: when a highlight result lands stale (content has grown
   // while the worker was busy) and the new content extends what we parsed,
-  // promote the parsed highlights to be our newest cache and re-render so
-  // the styled prefix shows immediately. Skipped when an async onChunks
+  // keep it as a progressive display cache. Skipped when an async onChunks
   // transform is set — partial+full chunk passes would double the user's
   // callback work.
   private maybePartialApplyOnStale(
@@ -541,13 +729,16 @@ export class CodeRenderable extends TextBufferRenderable {
     if (latest.length <= parsedContent.length) return
     if (!latest.startsWith(parsedContent)) return
 
-    // Promote: this is the newest highlight info we have, even if it's only
-    // for a prefix. The next full highlight will replace it with a strictly
-    // longer cache. Filtered to the stable-streaming subset so we don't
-    // promote a flip-prone identifier scope into the cache.
-    this._lastHighlights = this.filterStreamingHighlights(parsedHighlights)
-    this._lastHighlightContent = parsedContent
-    this._lastHighlightFiletype = parsedFiletype
+    const prefixEnd = this.getStreamingPrefixEnd(parsedContent, latest)
+    if (prefixEnd === 0) return
+
+    // This cache is display-only: it may represent a prefix, so do not write
+    // it to _lastHighlights / _lastHighlightContent. The restyle path needs
+    // those to remain complete-content highlight results.
+    const stabilizedHighlights = this.applyStreamingStyleLocks(parsedContent, parsedHighlights)
+    this._streamingStyledPrefixHighlights = this.getHighlightsWithin(stabilizedHighlights, prefixEnd)
+    this._streamingStyledPrefixContent = parsedContent.slice(0, prefixEnd)
+    this._streamingStyledPrefixFiletype = parsedFiletype
 
     this.applyContentWithCachedStyling()
     this._shouldRenderTextBuffer = true
@@ -571,11 +762,7 @@ export class CodeRenderable extends TextBufferRenderable {
 
     const content = this._content
     const filetype = this._lastHighlightFiletype
-    if (
-      !filetype ||
-      this._lastHighlightContent !== content ||
-      this._filetype !== filetype
-    ) {
+    if (!filetype || this._lastHighlightContent !== content || this._filetype !== filetype) {
       // Cache invalid: content changed since last highlight, the current
       // filetype no longer matches what produced the cached highlights, or
       // we never highlighted at all. Fall back to a full highlight.
