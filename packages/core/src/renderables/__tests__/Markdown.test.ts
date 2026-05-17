@@ -2563,6 +2563,102 @@ test("streaming code blocks with concealCode=true do not flash unconcealed markd
   expect(unconcealedFrames.length).toBe(0)
 })
 
+test("streaming demo-style fenced code block does not flicker unhighlighted", async () => {
+  const keywordFg = RGBA.fromValues(1, 0, 0, 1)
+  const defaultFg = RGBA.fromValues(1, 1, 1, 1)
+  const mockTreeSitterClient = new MockTreeSitterClient()
+  mockTreeSitterClient.setMockResult({
+    highlights: [[0, 6, "keyword"]],
+  })
+
+  const contentBeforeFence = `# OpenTUI Markdown Demo
+
+Welcome to the **MarkdownRenderable** showcase.
+
+`
+  const fencedCodeBlock = `\`\`\`ts
+export function appendMarkdownChunk(buffer: string): string {
+  return buffer
+}
+\`\`\``
+  const contentAfterFence = `
+
+The fenced block above appears near the top so streaming mode exercises a larger CodeRenderable before the rest of the document arrives.`
+  const fullContent = contentBeforeFence + fencedCodeBlock + contentAfterFence
+
+  const md = createMarkdownRenderable({
+    id: "markdown-streaming-demo-fence-no-flicker",
+    content: "",
+    syntaxStyle: SyntaxStyle.fromStyles({
+      default: { fg: defaultFg },
+      keyword: { fg: keywordFg },
+      "markup.heading.1": { fg: RGBA.fromValues(0, 1, 0, 1) },
+      "markup.strong": { fg: RGBA.fromValues(0, 1, 1, 1), bold: true },
+    }),
+    fg: defaultFg,
+    bg: RGBA.fromValues(0, 0, 0, 1),
+    conceal: true,
+    streaming: true,
+    internalBlockMode: "top-level",
+    tableOptions: { style: "grid", widthMode: "content", cellPaddingX: 1 },
+    treeSitterClient: mockTreeSitterClient,
+    width: "100%",
+  })
+
+  renderer.root.add(md)
+
+  const recorder = new TestRecorder(renderer, { recordBuffers: { fg: true } })
+  recorder.rec()
+
+  for (const streamedContent of [
+    contentBeforeFence,
+    contentBeforeFence + fencedCodeBlock.slice(0, fencedCodeBlock.indexOf("\n```")),
+    contentBeforeFence + fencedCodeBlock,
+    fullContent,
+  ]) {
+    md.content = streamedContent
+    await renderer.idle()
+  }
+
+  const codeBlock = md._blockStates.find((state) => state.token.type === "code")?.renderable
+  expect(codeBlock).toBeInstanceOf(CodeRenderable)
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await (codeBlock as CodeRenderable).highlightingDone
+  await renderer.idle()
+  recorder.stop()
+
+  const frameWidth = renderer.currentRenderBuffer.width
+  const expectedKeywordFg = [...keywordFg.buffer]
+
+  const findTextFg = (recordedFrame: (typeof recorder.recordedFrames)[number], text: string): number[] | undefined => {
+    const fgBuffer = recordedFrame.buffers?.fg
+    if (!fgBuffer) return undefined
+
+    const lines = recordedFrame.frame.split("\n")
+    for (let y = 0; y < lines.length; y += 1) {
+      const x = lines[y].indexOf(text)
+      if (x === -1) continue
+
+      const offset = (y * frameWidth + x) * 4
+      return [...fgBuffer.slice(offset, offset + 4)]
+    }
+
+    return undefined
+  }
+
+  const visibleCodeFrames = recorder.recordedFrames
+    .map((recordedFrame) => ({
+      frameNumber: recordedFrame.frameNumber,
+      exportFg: findTextFg(recordedFrame, "export function appendMarkdownChunk"),
+    }))
+    .filter((frame) => frame.exportFg !== undefined)
+
+  expect(visibleCodeFrames.length).toBeGreaterThan(0)
+  expect(visibleCodeFrames.some((frame) => frame.exportFg!.join(",") === expectedKeywordFg.join(","))).toBe(true)
+  expect(visibleCodeFrames.filter((frame) => frame.exportFg!.join(",") !== expectedKeywordFg.join(","))).toEqual([])
+})
+
 test("non-streaming mode parses all tokens as stable", async () => {
   const md = createMarkdownRenderable({
     id: "markdown",
