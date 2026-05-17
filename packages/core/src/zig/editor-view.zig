@@ -525,6 +525,23 @@ pub const EditorView = struct {
         };
     }
 
+    fn clampVisualColToRequestedRow(self: *EditorView, visual_row: u32, visual_col: u32) u32 {
+        self.text_buffer_view.updateVirtualLines();
+        const vlines = self.text_buffer_view.virtual_lines.items;
+        if (visual_row >= vlines.len) return visual_col;
+
+        const vline = &vlines[visual_row];
+        var target_visual_col = @min(visual_col, vline.width_cols);
+        if (target_visual_col == vline.width_cols and vline.width_cols > 0 and visual_row + 1 < vlines.len) {
+            const next_vline = &vlines[visual_row + 1];
+            if (next_vline.source_line == vline.source_line) {
+                target_visual_col = vline.width_cols - 1;
+            }
+        }
+
+        return target_visual_col;
+    }
+
     pub fn moveUpVisual(self: *EditorView) void {
         const cursor = self.edit_buffer.getPrimaryCursor();
         const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
@@ -540,8 +557,9 @@ pub const EditorView = struct {
             self.desired_visual_col = vcursor.visual_col;
         }
         const desired_visual_col = self.desired_visual_col.?;
+        const target_visual_col = self.clampVisualColToRequestedRow(target_visual_row, desired_visual_col);
 
-        if (self.visualToLogicalCursor(target_visual_row, desired_visual_col)) |new_vcursor| {
+        if (self.visualToLogicalCursor(target_visual_row, target_visual_col)) |new_vcursor| {
             if (self.edit_buffer.cursors.items.len > 0) {
                 self.edit_buffer.cursors.items[0] = .{
                     .row = new_vcursor.logical_row,
@@ -575,8 +593,9 @@ pub const EditorView = struct {
             self.desired_visual_col = vcursor.visual_col;
         }
         const desired_visual_col = self.desired_visual_col.?;
+        const target_visual_col = self.clampVisualColToRequestedRow(target_visual_row, desired_visual_col);
 
-        if (self.visualToLogicalCursor(target_visual_row, desired_visual_col)) |new_vcursor| {
+        if (self.visualToLogicalCursor(target_visual_row, target_visual_col)) |new_vcursor| {
             if (self.edit_buffer.cursors.items.len > 0) {
                 self.edit_buffer.cursors.items[0] = .{
                     .row = new_vcursor.logical_row,
