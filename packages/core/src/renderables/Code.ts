@@ -167,13 +167,7 @@ export class CodeRenderable extends TextBufferRenderable {
   // Python `pass` as plain). Gate it to filetypes we know map cleanly.
   // Markdown is included so its fenced JS/TS injection regions still get a
   // best-effort tail coloring during streaming.
-  private static readonly STREAMING_LEXER_FILETYPES = new Set([
-    "typescript",
-    "tsx",
-    "javascript",
-    "jsx",
-    "markdown",
-  ])
+  private static readonly STREAMING_LEXER_FILETYPES = new Set(["typescript", "tsx", "javascript", "jsx", "markdown"])
 
   private _baseHighlight?: string
   private _onHighlight?: OnHighlightCallback
@@ -281,6 +275,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
       this._restyleDirty = true
+      this._cachedPrefixChunks = null
       this._stateRevision++
     }
   }
@@ -293,6 +288,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._conceal !== value) {
       this._conceal = value
       this._restyleDirty = true
+      this._cachedPrefixChunks = null
       this._stateRevision++
     }
   }
@@ -305,6 +301,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._drawUnstyledText !== value) {
       this._drawUnstyledText = value
       this._restyleDirty = true
+      this._cachedPrefixChunks = null
       this._stateRevision++
     }
   }
@@ -370,6 +367,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._baseHighlight !== value) {
       this._baseHighlight = value
       this._restyleDirty = true
+      this._cachedPrefixChunks = null
       this._stateRevision++
     }
   }
@@ -378,6 +376,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._onHighlight !== value) {
       this._onHighlight = value
       this._highlightsDirty = true
+      this._stateRevision++
     }
   }
 
@@ -389,6 +388,7 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._onChunks !== value) {
       this._onChunks = value
       this._restyleDirty = true
+      this._cachedPrefixChunks = null
       this._stateRevision++
     }
   }

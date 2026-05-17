@@ -25,21 +25,27 @@ import { TreeSitterClient } from "../lib/tree-sitter/client.js"
 import { getDataPaths } from "../lib/data-paths.js"
 import { parseColor } from "../lib/RGBA.js"
 import { writeFileSync } from "node:fs"
+import { Command } from "commander"
 
-const args = new Map<string, string>()
-for (const arg of process.argv.slice(2)) {
-  const eq = arg.indexOf("=")
-  if (arg.startsWith("--") && eq > 0) {
-    args.set(arg.slice(2, eq), arg.slice(eq + 1))
-  } else if (arg.startsWith("--")) {
-    args.set(arg.slice(2), "true")
-  }
-}
+const program = new Command()
+program
+  .name("code-benchmark")
+  .description("CodeRenderable benchmark scenarios")
+  .option("--runs <count>", "measured runs per scenario", "9")
+  .option("--warmup <count>", "warmup runs before measurement", "1")
+  .option("--json <path>", "write JSON results to file")
+  .option("--quiet", "suppress human-readable output")
+  .option("--stream-chunks <count>", "number of streaming chunks", "200")
+  .option("--stream-chunk-size <count>", "characters per streaming chunk", "40")
+  .option("--only <names>", "comma-separated benchmark ids to run, e.g. b1,b2")
+  .parse(process.argv)
 
-const RUNS = Number(args.get("runs") ?? 9)
-const WARMUP = Number(args.get("warmup") ?? 1)
-const JSON_PATH = args.get("json")
-const QUIET = args.get("quiet") === "true"
+const options = program.opts()
+
+const RUNS = Number(options.runs)
+const WARMUP = Number(options.warmup)
+const JSON_PATH = options.json as string | undefined
+const QUIET = Boolean(options.quiet)
 
 // ----------------------------------------------------------------------------
 // Sample content: ~5KB TypeScript snippet
@@ -189,7 +195,11 @@ function makeFreshStats(): ClientStats {
   return { messages: 0, bytes: 0, oneshotMessages: 0, oneshotBytes: 0 }
 }
 
-async function buildInstrumentedClient(): Promise<{ client: TreeSitterClient; reset: () => void; snapshot: () => ClientStats }> {
+async function buildInstrumentedClient(): Promise<{
+  client: TreeSitterClient
+  reset: () => void
+  snapshot: () => ClientStats
+}> {
   const dataPaths = getDataPaths()
   const client = new TreeSitterClient({ dataPath: dataPaths.globalDataPath })
 
@@ -363,8 +373,8 @@ async function scenarioB1(ctx: ScenarioContext): Promise<ScenarioResult> {
 }
 
 // B2: streaming append — 200 chunks of ~40 chars into the snippet
-const STREAM_CHUNKS = Number(args.get("stream-chunks") ?? 200)
-const STREAM_CHUNK_SIZE = Number(args.get("stream-chunk-size") ?? 40)
+const STREAM_CHUNKS = Number(options.streamChunks)
+const STREAM_CHUNK_SIZE = Number(options.streamChunkSize)
 
 function makeStreamAppend(base: string): string[] {
   const chunks: string[] = []
@@ -560,7 +570,7 @@ async function main() {
   const { client, reset, snapshot } = await buildInstrumentedClient()
   const ctx: ScenarioContext = { client, reset, snapshot, syntaxStyleA, syntaxStyleB }
 
-  const scenarioFilter = args.get("only")?.split(",")
+  const scenarioFilter = (options.only as string | undefined)?.split(",")
   const all: ScenarioResult[] = []
   const scenarios: Array<[string, (ctx: ScenarioContext) => Promise<ScenarioResult>]> = [
     ["b1", scenarioB1],

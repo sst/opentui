@@ -1179,10 +1179,7 @@ test("CodeRenderable - streaming cached styling extends active-line class name s
   })
 
   currentRenderer.root.add(codeRenderable)
-  await renderOnce()
-  mockClient.resolveAllHighlightOnce()
-  await new Promise((resolve) => setTimeout(resolve, 10))
-  await renderOnce()
+  await resolveMockHighlights(mockClient)
 
   codeRenderable.content = "class UserManager"
   await renderOnce()
@@ -1232,10 +1229,7 @@ test("CodeRenderable - streaming keeps first token style when parser flips scope
   })
 
   currentRenderer.root.add(codeRenderable)
-  await renderOnce()
-  mockClient.resolveAllHighlightOnce()
-  await new Promise((resolve) => setTimeout(resolve, 10))
-  await renderOnce()
+  await resolveMockHighlights(mockClient)
 
   codeRenderable.content = "class UserManager"
   await renderOnce()
@@ -1292,10 +1286,7 @@ test("CodeRenderable - streaming cached styling keeps completed lines highlighte
   })
 
   currentRenderer.root.add(codeRenderable)
-  await renderOnce()
-  mockClient.resolveAllHighlightOnce()
-  await new Promise((resolve) => setTimeout(resolve, 10))
-  await renderOnce()
+  await resolveMockHighlights(mockClient)
 
   codeRenderable.content = "class User\nclass UserManager"
   await renderOnce()
@@ -1340,10 +1331,7 @@ test("CodeRenderable - ending streaming keeps styled text while final highlight 
   })
 
   currentRenderer.root.add(codeRenderable)
-  await renderOnce()
-  mockClient.resolveAllHighlightOnce()
-  await new Promise((resolve) => setTimeout(resolve, 10))
-  await renderOnce()
+  await resolveMockHighlights(mockClient)
 
   let frame = captureSpans()
   expect(findSpanContaining(frame, "class")?.fg?.toInts()).toEqual(keywordColor.toInts())

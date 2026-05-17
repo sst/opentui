@@ -215,6 +215,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   public addFiletypeParser(filetypeParser: FiletypeParserOptions): void {
+    this._clearOneshotCache()
     const resolvedParser: FiletypeParserOptions = {
       ...filetypeParser,
       aliases: filetypeParser.aliases
@@ -249,27 +250,28 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       }
     }
 
-    // H1: tiny LRU keyed on `(filetype, content)`. Catches the very common
+    // H1: tiny LRU keyed on `(filetype, length, content hash)`. Catches the very common
     // "toggle a character then undo it" / "remount renderable with same
-    // content" patterns without paying a worker round-trip.
-    const cacheKey = `${filetype}\0${content}`
+    // content" patterns without paying a worker round-trip, without retaining
+    // full source text in a global cache key.
+    const cacheKey = `${filetype}\0${content.length}\0${this._hashContent(content)}`
     const cached = this._oneshotCache.get(cacheKey)
     if (cached !== undefined) {
       this._touchOneshotCache(cacheKey)
-      // SimpleHighlight[] is treated as immutable by callers; _setOneshotCache
-      // already takes a defensive copy on insert, so we can hand out the
-      // stored array directly on hits.
-      return { highlights: cached }
+      return { highlights: this._copyHighlights(cached) }
     }
 
     const messageId = `oneshot_${this.messageIdCounter++}`
     return new Promise((resolve) => {
-      this.messageCallbacks.set(messageId, (response: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) => {
-        if (response.highlights && !response.error) {
-          this._setOneshotCache(cacheKey, response.highlights)
-        }
-        resolve(response)
-      })
+      this.messageCallbacks.set(
+        messageId,
+        (response: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) => {
+          if (response.highlights && !response.error) {
+            this._setOneshotCache(cacheKey, response.highlights)
+          }
+          resolve(response)
+        },
+      )
       this.worker?.postMessage({
         type: "ONESHOT_HIGHLIGHT",
         content,
@@ -281,6 +283,20 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
   private static readonly ONESHOT_CACHE_LIMIT = 8
   private _oneshotCache: Map<string, SimpleHighlight[]> = new Map()
+  private _clearOneshotCache(): void {
+    this._oneshotCache.clear()
+  }
+  private _copyHighlights(highlights: SimpleHighlight[]): SimpleHighlight[] {
+    return highlights.map((highlight) => [...highlight] as SimpleHighlight)
+  }
+  private _hashContent(content: string): string {
+    let hash = 0x811c9dc5
+    for (let i = 0; i < content.length; i++) {
+      hash ^= content.charCodeAt(i)
+      hash = Math.imul(hash, 0x01000193)
+    }
+    return (hash >>> 0).toString(36)
+  }
   // Stored in insertion order via Map's iteration order; on eviction we drop
   // the oldest entry. _touchOneshotCache promotes a key to most-recently-used
   // by deleting and re-inserting it.
@@ -297,7 +313,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       const oldest = this._oneshotCache.keys().next().value
       if (oldest !== undefined) this._oneshotCache.delete(oldest)
     }
-    this._oneshotCache.set(key, value.slice())
+    this._oneshotCache.set(key, this._copyHighlights(value))
   }
 
   private handleWorkerMessage(event: MessageEvent) {
@@ -627,6 +643,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return
     }
 
+    this._clearOneshotCache()
     this.options.dataPath = dataPath
 
     if (this.initialized && this.worker) {
@@ -636,6 +653,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
           if (response.error) {
             reject(new Error(response.error))
           } else {
+            this._clearOneshotCache()
             resolve()
           }
         })
