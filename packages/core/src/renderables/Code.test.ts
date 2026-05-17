@@ -1307,7 +1307,7 @@ test("CodeRenderable - streaming cached styling keeps completed lines highlighte
     frame.lines[1].spans.some(
       (span) => span.text.includes("class") && span.fg?.toInts().join() === keywordColor.toInts().join(),
     ),
-  ).toBe(false)
+  ).toBe(true)
 })
 
 test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new highlights", async () => {
