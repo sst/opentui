@@ -78,6 +78,7 @@ export class CodeRenderable extends TextBufferRenderable {
   } | null = null
   private _restyleDirty: boolean = false
   private _restylePromise: Promise<void> = Promise.resolve()
+  private _preserveStyledTextUntilHighlight: boolean = false
   // Bumped on every setter that marks either dirty flag. The async restyle
   // path captures this at kick-off and bails after `await transformChunks` if
   // it moved — otherwise stale chunks could land on changed state.
@@ -241,6 +242,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._streamingStyledPrefixHighlights = []
       this._streamingStyledPrefixContent = ""
       this._streamingStyledPrefixFiletype = undefined
+      this._preserveStyledTextUntilHighlight = false
     }
   }
 
@@ -286,18 +288,31 @@ export class CodeRenderable extends TextBufferRenderable {
 
   set streaming(value: boolean) {
     if (this._streaming !== value) {
+      const endingStreaming = this._streaming && !value
       this._streaming = value
       this._hadInitialContent = false
-      // Streaming mode keeps a progressive display cache. Clearing the cache
-      // on both entry and exit forces the next render to repopulate with the
-      // appropriate content.
-      this._lastHighlights = []
-      this._lastHighlightContent = ""
-      this._lastHighlightFiletype = undefined
+      // Keep full-content parser highlights when leaving streaming so the
+      // final frame can restyle synchronously instead of flashing plain text.
+      if (!endingStreaming) {
+        this._lastHighlights = []
+        this._lastHighlightContent = ""
+        this._lastHighlightFiletype = undefined
+      }
       this._streamingStyledPrefixHighlights = []
       this._streamingStyledPrefixContent = ""
       this._streamingStyledPrefixFiletype = undefined
-      this._highlightsDirty = true
+      if (
+        endingStreaming &&
+        this._lastHighlightContent === this._content &&
+        this._lastHighlightFiletype === this._filetype
+      ) {
+        this._highlightsDirty = false
+        this._restyleDirty = true
+        this._preserveStyledTextUntilHighlight = false
+      } else {
+        this._preserveStyledTextUntilHighlight = endingStreaming
+        this._highlightsDirty = true
+      }
       this._stateRevision++
     }
   }
@@ -321,6 +336,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._streamingStyledPrefixHighlights = []
       this._streamingStyledPrefixContent = ""
       this._streamingStyledPrefixFiletype = undefined
+      this._preserveStyledTextUntilHighlight = false
     }
   }
 
@@ -388,6 +404,8 @@ export class CodeRenderable extends TextBufferRenderable {
     const shouldDrawUnstyledNow = this._streaming ? isInitialContent && this._drawUnstyledText : this._drawUnstyledText
 
     if (this._streaming && !isInitialContent) {
+      this._shouldRenderTextBuffer = true
+    } else if (this._preserveStyledTextUntilHighlight) {
       this._shouldRenderTextBuffer = true
     } else if (shouldDrawUnstyledNow) {
       if (this._streaming && !this._onChunks) {
@@ -507,6 +525,7 @@ export class CodeRenderable extends TextBufferRenderable {
 
       this._shouldRenderTextBuffer = true
       this._isHighlighting = false
+      this._preserveStyledTextUntilHighlight = false
       this._highlightsDirty = false
       this._restyleDirty = false
       this.updateTextInfo()
@@ -522,6 +541,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this.textBuffer.setText(content)
       this._shouldRenderTextBuffer = true
       this._isHighlighting = false
+      this._preserveStyledTextUntilHighlight = false
       this._highlightsDirty = false
       this._restyleDirty = false
       this.updateTextInfo()

@@ -1310,6 +1310,53 @@ test("CodeRenderable - streaming cached styling keeps completed lines highlighte
   ).toBe(true)
 })
 
+test("CodeRenderable - ending streaming keeps styled text while final highlight is pending", async () => {
+  const keywordColor = RGBA.fromValues(0, 0, 1, 1)
+  const typeColor = RGBA.fromValues(1, 0.5, 0, 1)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: keywordColor },
+    type: { fg: typeColor },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [
+      [0, 5, "keyword"],
+      [6, 17, "type"],
+    ] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-streaming-end-no-white-flash",
+    content: "class UserManager",
+    filetype: "typescript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: true,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  let frame = captureSpans()
+  expect(findSpanContaining(frame, "class")?.fg?.toInts()).toEqual(keywordColor.toInts())
+  expect(findSpanContaining(frame, "UserManager")?.fg?.toInts()).toEqual(typeColor.toInts())
+
+  codeRenderable.streaming = false
+  await renderOnce()
+
+  frame = captureSpans()
+  expect(findSpanContaining(frame, "class")?.fg?.toInts()).toEqual(keywordColor.toInts())
+  expect(findSpanContaining(frame, "UserManager")?.fg?.toInts()).toEqual(typeColor.toInts())
+})
+
 test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new highlights", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -1819,10 +1866,11 @@ test("CodeRenderable - streaming mode works with large content updates", async (
   expect(codeRenderable.plainText).toContain("const var9 = 9;")
 })
 
-test("CodeRenderable - disabling streaming clears cached highlights", async () => {
+test("CodeRenderable - disabling streaming reuses current cached highlights", async () => {
+  const keywordColor = RGBA.fromValues(0, 0, 1, 1)
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
-    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+    keyword: { fg: keywordColor },
   })
 
   const mockClient = new MockTreeSitterClient()
@@ -1852,7 +1900,8 @@ test("CodeRenderable - disabling streaming clears cached highlights", async () =
 
   await renderOnce()
 
-  expect(mockClient.isHighlighting()).toBe(true)
+  expect(mockClient.isHighlighting()).toBe(false)
+  expect(findSpanContaining(captureSpans(), "const")?.fg?.toInts()).toEqual(keywordColor.toInts())
 })
 
 test("CodeRenderable - streaming mode with drawUnstyledText=false shows nothing initially", async () => {
