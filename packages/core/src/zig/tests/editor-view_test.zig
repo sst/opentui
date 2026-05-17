@@ -642,6 +642,36 @@ test "EditorView - moveUpVisual resolves wrapped boundary with canonical convers
     try std.testing.expectEqual(@as(u32, 5), cursor.visual_col);
 }
 
+test "EditorView - moveDownVisual resolves wrapped boundary with canonical conversion" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 10, 10);
+    defer ev.deinit();
+
+    ev.setWrapMode(.word);
+
+    try eb.setText("0123456789\nquick brown fox");
+
+    const line_info = ev.getCachedLineInfo();
+    try std.testing.expectEqualSlices(u32, &[_]u32{ 10, 6, 9 }, line_info.line_width_cols);
+
+    try eb.setCursor(0, 10);
+    var cursor = ev.getVisualCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.visual_row);
+    try std.testing.expectEqual(@as(u32, 10), cursor.visual_col);
+
+    ev.moveDownVisual();
+    cursor = ev.getVisualCursor();
+    try std.testing.expectEqual(@as(u32, 1), cursor.visual_row);
+    try std.testing.expectEqual(@as(u32, 5), cursor.visual_col);
+}
+
 test "EditorView - moveUpVisual at top boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
