@@ -858,7 +858,7 @@ export class MarkdownRenderable extends Renderable {
       fg: this._fg,
       bg: this._bg,
       conceal: this._concealCode,
-      drawUnstyledText: !(this._streaming && this._concealCode),
+      drawUnstyledText: !this._streaming,
       streaming: this._streaming,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
@@ -913,14 +913,14 @@ export class MarkdownRenderable extends Renderable {
   private applyCodeBlockRenderable(renderable: Renderable, token: Tokens.Code, marginBottom: number): void {
     if (!(renderable instanceof CodeRenderable)) return
 
-    renderable.content = token.text
     renderable.filetype = infoStringToFiletype(token.lang ?? "")
     renderable.syntaxStyle = this._syntaxStyle
     renderable.fg = this._fg
     renderable.bg = this._bg
     renderable.conceal = this._concealCode
-    renderable.drawUnstyledText = !(this._streaming && this._concealCode)
+    renderable.drawUnstyledText = !this._streaming
     renderable.streaming = this._streaming
+    renderable.content = token.text
     renderable.marginBottom = marginBottom
   }
 
