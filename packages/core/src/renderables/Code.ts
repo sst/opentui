@@ -64,12 +64,15 @@ export class CodeRenderable extends TextBufferRenderable {
   // `applyContentWithCachedStyling`. The prefix is identical between worker
   // round-trips, so during streaming this collapses the per-chunk-arrival
   // `treeSitterToTextChunks(prefix, …)` work to one rebuild per highlight
-  // result. Key is the inputs that affect chunk output (source highlights
-  // array identity, prefix string, prefix end, plus the three chunk-time
-  // style settings).
+  // result. Key is the inputs that determine chunk output:
+  //   - sourceHighlights identity: the highlights array reference only
+  //     changes when a new parser reply lands, so reference equality is
+  //     enough — no need to also compare the prefix string, which would
+  //     cost O(prefix) bytes per lookup;
+  //   - prefixEnd: pins the byte slice we cover within the source;
+  //   - syntaxStyle / conceal / baseHighlight: chunk-time style inputs.
   private _cachedPrefixChunks: {
     sourceHighlights: SimpleHighlight[]
-    prefixContent: string
     prefixEnd: number
     syntaxStyle: SyntaxStyle
     conceal: boolean
@@ -157,6 +160,21 @@ export class CodeRenderable extends TextBufferRenderable {
 
   private static readonly STREAMING_PUNCTUATION_CHARS = new Set(["{", "}", "(", ")", "[", "]", ",", ";"])
 
+  // The provisional lexer below is JS/TS-flavored: STREAMING_KEYWORDS lists
+  // ECMAScript / TypeScript keywords, and the identifier rules match
+  // C-family syntax. For other languages the lexer would mis-color (e.g.
+  // colouring Rust's `for`/`if` while missing `fn`/`impl`, or treating
+  // Python `pass` as plain). Gate it to filetypes we know map cleanly.
+  // Markdown is included so its fenced JS/TS injection regions still get a
+  // best-effort tail coloring during streaming.
+  private static readonly STREAMING_LEXER_FILETYPES = new Set([
+    "typescript",
+    "tsx",
+    "javascript",
+    "jsx",
+    "markdown",
+  ])
+
   private _baseHighlight?: string
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
@@ -225,6 +243,21 @@ export class CodeRenderable extends TextBufferRenderable {
     return this._filetype
   }
 
+  private clearHighlightCache(): void {
+    this._lastHighlights = []
+    this._lastHighlightContent = ""
+    this._lastHighlightFiletype = undefined
+    this.clearStreamingDisplayCache()
+  }
+
+  private clearStreamingDisplayCache(): void {
+    this._streamingStyledPrefixHighlights = []
+    this._streamingStyledPrefixContent = ""
+    this._streamingStyledPrefixFiletype = undefined
+    this._cachedPrefixChunks = null
+    this._preserveStyledTextUntilHighlight = false
+  }
+
   set filetype(value: string | undefined) {
     if (this._filetype !== value) {
       this._filetype = value
@@ -236,13 +269,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._stateRevision++
       // Invalidate the restyle cache — its highlights are bound to the
       // previous filetype's parser.
-      this._lastHighlights = []
-      this._lastHighlightContent = ""
-      this._lastHighlightFiletype = undefined
-      this._streamingStyledPrefixHighlights = []
-      this._streamingStyledPrefixContent = ""
-      this._streamingStyledPrefixFiletype = undefined
-      this._preserveStyledTextUntilHighlight = false
+      this.clearHighlightCache()
     }
   }
 
@@ -294,13 +321,10 @@ export class CodeRenderable extends TextBufferRenderable {
       // Keep full-content parser highlights when leaving streaming so the
       // final frame can restyle synchronously instead of flashing plain text.
       if (!endingStreaming) {
-        this._lastHighlights = []
-        this._lastHighlightContent = ""
-        this._lastHighlightFiletype = undefined
+        this.clearHighlightCache()
+      } else {
+        this.clearStreamingDisplayCache()
       }
-      this._streamingStyledPrefixHighlights = []
-      this._streamingStyledPrefixContent = ""
-      this._streamingStyledPrefixFiletype = undefined
       if (
         endingStreaming &&
         this._lastHighlightContent === this._content &&
@@ -330,13 +354,7 @@ export class CodeRenderable extends TextBufferRenderable {
       // different parser instance and may not even agree on scopes.
       this._highlightSnapshotId++
       this._stateRevision++
-      this._lastHighlights = []
-      this._lastHighlightContent = ""
-      this._lastHighlightFiletype = undefined
-      this._streamingStyledPrefixHighlights = []
-      this._streamingStyledPrefixContent = ""
-      this._streamingStyledPrefixFiletype = undefined
-      this._preserveStyledTextUntilHighlight = false
+      this.clearHighlightCache()
     }
   }
 
@@ -423,6 +441,7 @@ export class CodeRenderable extends TextBufferRenderable {
     const content = this._content
     const filetype = this._filetype
     const snapshotId = ++this._highlightSnapshotId
+    const revision = this._stateRevision
 
     if (!filetype) return
 
@@ -463,6 +482,11 @@ export class CodeRenderable extends TextBufferRenderable {
 
       let highlights = result.highlights ?? []
 
+      if (revision !== this._stateRevision) {
+        bailStale()
+        return
+      }
+
       if (this._onHighlight && highlights.length >= 0) {
         const context: HighlightContext = {
           content,
@@ -475,7 +499,7 @@ export class CodeRenderable extends TextBufferRenderable {
         }
       }
 
-      if (snapshotId !== this._highlightSnapshotId) {
+      if (snapshotId !== this._highlightSnapshotId || revision !== this._stateRevision) {
         bailStale()
         return
       }
@@ -510,7 +534,7 @@ export class CodeRenderable extends TextBufferRenderable {
 
         chunks = await this.transformChunks(chunks, context)
 
-        if (snapshotId !== this._highlightSnapshotId) {
+        if (snapshotId !== this._highlightSnapshotId || revision !== this._stateRevision) {
           bailStale()
           return
         }
@@ -531,7 +555,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this.updateTextInfo()
       this.requestRender()
     } catch (error) {
-      if (snapshotId !== this._highlightSnapshotId) {
+      if (snapshotId !== this._highlightSnapshotId || revision !== this._stateRevision) {
         bailStale()
         return
       }
@@ -558,13 +582,7 @@ export class CodeRenderable extends TextBufferRenderable {
     // Drop the per-renderable highlight cache so a markdown document with
     // many fenced code blocks doesn't retain N copies of source text +
     // highlights after the renderables are gone.
-    this._lastHighlights = []
-    this._lastHighlightContent = ""
-    this._lastHighlightFiletype = undefined
-    this._streamingStyledPrefixHighlights = []
-    this._streamingStyledPrefixContent = ""
-    this._streamingStyledPrefixFiletype = undefined
-    this._cachedPrefixChunks = null
+    this.clearHighlightCache()
     super.destroy()
   }
 
@@ -587,58 +605,80 @@ export class CodeRenderable extends TextBufferRenderable {
     return result
   }
 
-  private isStreamingIdentifierStart(value: string): boolean {
-    return /^[A-Za-z_$]$/.test(value)
-  }
-
-  private isStreamingIdentifierPart(value: string): boolean {
-    return /^[A-Za-z0-9_$]$/.test(value)
-  }
-
   private getStableStreamingPrefixEnd(content: string): number {
     const lineBreak = content.lastIndexOf("\n")
     return lineBreak === -1 ? 0 : lineBreak + 1
   }
 
+  // Per-char classifiers used by the provisional lexer. Inlined with
+  // charCodeAt comparisons rather than RegExp.test — both are called once
+  // per character on every streaming chunk, and charCode comparisons are
+  // ~5–10× faster than even cached one-char regexes.
+  private static isWhitespaceCode(c: number): boolean {
+    // space, tab, newline, carriage return
+    return c === 32 || c === 9 || c === 10 || c === 13
+  }
+  private static isDigitCode(c: number): boolean {
+    return c >= 48 && c <= 57
+  }
+  private static isDigitOrUnderscoreCode(c: number): boolean {
+    return (c >= 48 && c <= 57) || c === 95
+  }
+  private static isIdentifierStartCode(c: number): boolean {
+    // A-Z, a-z, _, $
+    return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36
+  }
+  private static isIdentifierPartCode(c: number): boolean {
+    // A-Z, a-z, 0-9, _, $
+    return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95 || c === 36
+  }
+  private static isUppercaseCode(c: number): boolean {
+    return c >= 65 && c <= 90
+  }
+
   private getStreamingLexicalHighlights(content: string): SimpleHighlight[] {
     const highlights: SimpleHighlight[] = []
+    const length = content.length
     let index = 0
 
-    while (index < content.length) {
+    while (index < length) {
       const start = index
-      const char = content[index]
-      const next = content[index + 1]
+      const code = content.charCodeAt(index)
 
-      if (/\s/.test(char)) {
+      if (CodeRenderable.isWhitespaceCode(code)) {
         index++
         continue
       }
 
-      if (char === "/" && next === "/") {
+      // Line comment `//`
+      if (code === 47 && content.charCodeAt(index + 1) === 47) {
         index += 2
-        while (index < content.length && content[index] !== "\n") index++
+        while (index < length && content.charCodeAt(index) !== 10) index++
         highlights.push([start, index, "comment"])
         continue
       }
 
-      if (char === "/" && next === "*") {
+      // Block comment /* ... */
+      if (code === 47 && content.charCodeAt(index + 1) === 42) {
         index += 2
-        while (index < content.length && !(content[index] === "*" && content[index + 1] === "/")) index++
-        index = Math.min(content.length, index + 2)
+        while (index < length && !(content.charCodeAt(index) === 42 && content.charCodeAt(index + 1) === 47)) index++
+        index = Math.min(length, index + 2)
         highlights.push([start, index, "comment"])
         continue
       }
 
-      if (char === '"' || char === "'" || char === "`") {
-        const quote = char
+      // Quoted strings: " ' `
+      if (code === 34 || code === 39 || code === 96) {
+        const quote = code
         index++
         let escaped = false
-        while (index < content.length) {
-          const current = content[index]
+        while (index < length) {
+          const current = content.charCodeAt(index)
           index++
           if (escaped) {
             escaped = false
-          } else if (current === "\\") {
+          } else if (current === 92) {
+            // backslash
             escaped = true
           } else if (current === quote) {
             break
@@ -648,32 +688,35 @@ export class CodeRenderable extends TextBufferRenderable {
         continue
       }
 
-      if (/\d/.test(char)) {
+      // Numbers, including `_` digit separators and a single decimal point
+      if (CodeRenderable.isDigitCode(code)) {
         index++
-        while (index < content.length && /[\d_]/.test(content[index])) index++
-        if (content[index] === "." && /\d/.test(content[index + 1] ?? "")) {
+        while (index < length && CodeRenderable.isDigitOrUnderscoreCode(content.charCodeAt(index))) index++
+        if (content.charCodeAt(index) === 46 && CodeRenderable.isDigitCode(content.charCodeAt(index + 1))) {
           index++
-          while (index < content.length && /[\d_]/.test(content[index])) index++
+          while (index < length && CodeRenderable.isDigitOrUnderscoreCode(content.charCodeAt(index))) index++
         }
         highlights.push([start, index, "number"])
         continue
       }
 
-      if (this.isStreamingIdentifierStart(char)) {
+      // Identifiers; keyword/type tagging via the static keyword set.
+      if (CodeRenderable.isIdentifierStartCode(code)) {
         index++
-        while (index < content.length && this.isStreamingIdentifierPart(content[index])) index++
+        while (index < length && CodeRenderable.isIdentifierPartCode(content.charCodeAt(index))) index++
         const text = content.slice(start, index)
         if (CodeRenderable.STREAMING_KEYWORDS.has(text)) {
           highlights.push([start, index, "keyword"])
-        } else if (/^[A-Z]/.test(text)) {
+        } else if (CodeRenderable.isUppercaseCode(content.charCodeAt(start))) {
           highlights.push([start, index, "type"])
         }
         continue
       }
 
+      const char = content[index]
       if (CodeRenderable.STREAMING_OPERATOR_CHARS.has(char)) {
         index++
-        while (index < content.length && CodeRenderable.STREAMING_OPERATOR_CHARS.has(content[index])) index++
+        while (index < length && CodeRenderable.STREAMING_OPERATOR_CHARS.has(content[index])) index++
         highlights.push([start, index, "operator"])
         continue
       }
@@ -694,15 +737,14 @@ export class CodeRenderable extends TextBufferRenderable {
     const lexicalContent =
       this._conceal && this._filetype === "markdown" ? content.replace(/^[ \t]*```.*(?:\n|$)/gm, "") : content
 
-    return treeSitterToTextChunks(
-      lexicalContent,
-      this.getStreamingLexicalHighlights(lexicalContent),
-      this._syntaxStyle,
-      {
-        enabled: this._conceal,
-        baseHighlight: this._baseHighlight,
-      },
-    )
+    const filetype = this._filetype
+    const useLexer = filetype !== undefined && CodeRenderable.STREAMING_LEXER_FILETYPES.has(filetype)
+    const highlights = useLexer ? this.getStreamingLexicalHighlights(lexicalContent) : []
+
+    return treeSitterToTextChunks(lexicalContent, highlights, this._syntaxStyle, {
+      enabled: this._conceal,
+      baseHighlight: this._baseHighlight,
+    })
   }
 
   private getCachedPrefixChunks(
@@ -714,7 +756,6 @@ export class CodeRenderable extends TextBufferRenderable {
     if (
       cached !== null &&
       cached.sourceHighlights === sourceHighlights &&
-      cached.prefixContent === prefixContent &&
       cached.prefixEnd === prefixEnd &&
       cached.syntaxStyle === this._syntaxStyle &&
       cached.conceal === this._conceal &&
@@ -730,7 +771,6 @@ export class CodeRenderable extends TextBufferRenderable {
     })
     this._cachedPrefixChunks = {
       sourceHighlights,
-      prefixContent,
       prefixEnd,
       syntaxStyle: this._syntaxStyle,
       conceal: this._conceal,
@@ -748,6 +788,9 @@ export class CodeRenderable extends TextBufferRenderable {
     const stableEnd = currentContent.startsWith(parserContent)
       ? Math.min(this.getStableStreamingPrefixEnd(currentContent), parserContent.length)
       : 0
+    // The spread is load-bearing: getCachedPrefixChunks returns the
+    // memoized array directly, and we push tail chunks below — without
+    // copying, the next cache hit would see the stale tail.
     const chunks =
       stableEnd > 0
         ? [...this.getCachedPrefixChunks(parserHighlights, currentContent.slice(0, stableEnd), stableEnd)]
