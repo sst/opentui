@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { readFileSync } from "node:fs"
 import { createServer, type Server } from "node:http"
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises"
+import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { TreeSitterClient } from "./client.js"
@@ -10,8 +11,7 @@ import type { FiletypeParserOptions } from "./types.js"
 describe("TreeSitterClient Caching", () => {
   let dataPath: string
   let testServer: Server
-  const TEST_PORT = 55231
-  const BASE_URL = `http://localhost:${TEST_PORT}`
+  let baseUrl: string
 
   beforeAll(async () => {
     const assetsDir = resolve(import.meta.dirname, "assets")
@@ -28,8 +28,10 @@ describe("TreeSitterClient Caching", () => {
     })
     await new Promise<void>((resolve, reject) => {
       testServer.on("error", reject)
-      testServer.listen(TEST_PORT, resolve)
+      testServer.listen(0, "127.0.0.1", resolve)
     })
+    const address = testServer.address() as AddressInfo
+    baseUrl = `http://127.0.0.1:${address.port}`
   })
 
   afterAll(async () => {
@@ -67,9 +69,9 @@ describe("TreeSitterClient Caching", () => {
     client.addFiletypeParser({
       filetype: "javascript",
       queries: {
-        highlights: [`${BASE_URL}/javascript/highlights.scm`],
+        highlights: [`${baseUrl}/javascript/highlights.scm`],
       },
-      wasm: `${BASE_URL}/javascript/tree-sitter-javascript.wasm`,
+      wasm: `${baseUrl}/javascript/tree-sitter-javascript.wasm`,
     })
 
     const hasParser = await client.preloadParser("javascript")
@@ -91,9 +93,9 @@ describe("TreeSitterClient Caching", () => {
     client.addFiletypeParser({
       filetype: "javascript",
       queries: {
-        highlights: [`${BASE_URL}/javascript/highlights.scm`],
+        highlights: [`${baseUrl}/javascript/highlights.scm`],
       },
-      wasm: `${BASE_URL}/javascript/tree-sitter-javascript.wasm`,
+      wasm: `${baseUrl}/javascript/tree-sitter-javascript.wasm`,
     })
 
     const hasParser = await client.preloadParser("javascript")
@@ -113,9 +115,9 @@ describe("TreeSitterClient Caching", () => {
     const jsParser: FiletypeParserOptions = {
       filetype: "javascript",
       queries: {
-        highlights: [`${BASE_URL}/javascript/highlights.scm`],
+        highlights: [`${baseUrl}/javascript/highlights.scm`],
       },
-      wasm: `${BASE_URL}/javascript/tree-sitter-javascript.wasm`,
+      wasm: `${baseUrl}/javascript/tree-sitter-javascript.wasm`,
     }
 
     let client1 = new TreeSitterClient({ dataPath })
@@ -156,16 +158,16 @@ describe("TreeSitterClient Caching", () => {
     client.addFiletypeParser({
       filetype: "javascript",
       queries: {
-        highlights: [`${BASE_URL}/javascript/highlights.scm`],
+        highlights: [`${baseUrl}/javascript/highlights.scm`],
       },
-      wasm: `${BASE_URL}/javascript/tree-sitter-javascript.wasm`,
+      wasm: `${baseUrl}/javascript/tree-sitter-javascript.wasm`,
     })
     client.addFiletypeParser({
       filetype: "typescript",
       queries: {
-        highlights: [`${BASE_URL}/typescript/highlights.scm`],
+        highlights: [`${baseUrl}/typescript/highlights.scm`],
       },
-      wasm: `${BASE_URL}/typescript/tree-sitter-typescript.wasm`,
+      wasm: `${baseUrl}/typescript/tree-sitter-typescript.wasm`,
     })
 
     const hasJS = await client.preloadParser("javascript")
@@ -197,9 +199,9 @@ describe("TreeSitterClient Caching", () => {
     client.addFiletypeParser({
       filetype: "javascript",
       queries: {
-        highlights: [`${BASE_URL}/javascript/highlights.scm`],
+        highlights: [`${baseUrl}/javascript/highlights.scm`],
       },
-      wasm: `${BASE_URL}/javascript/tree-sitter-javascript.wasm`,
+      wasm: `${baseUrl}/javascript/tree-sitter-javascript.wasm`,
     })
 
     const hasParser = await client.preloadParser("javascript")
@@ -246,9 +248,9 @@ describe("TreeSitterClient Caching", () => {
     client.addFiletypeParser({
       filetype: "javascript",
       queries: {
-        highlights: [`${BASE_URL}/javascript/highlights.scm`],
+        highlights: [`${baseUrl}/javascript/highlights.scm`],
       },
-      wasm: `${BASE_URL}/javascript/tree-sitter-javascript.wasm`,
+      wasm: `${baseUrl}/javascript/tree-sitter-javascript.wasm`,
     })
 
     const hasParser1 = await client.preloadParser("javascript")
@@ -264,9 +266,9 @@ describe("TreeSitterClient Caching", () => {
     client.addFiletypeParser({
       filetype: "typescript",
       queries: {
-        highlights: [`${BASE_URL}/typescript/highlights.scm`],
+        highlights: [`${baseUrl}/typescript/highlights.scm`],
       },
-      wasm: `${BASE_URL}/typescript/tree-sitter-typescript.wasm`,
+      wasm: `${baseUrl}/typescript/tree-sitter-typescript.wasm`,
     })
 
     const hasParser2 = await client.preloadParser("typescript")
