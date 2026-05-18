@@ -138,6 +138,30 @@ const kittyKeyMap: Record<number, string> = {
 
 export const kittyNamedSingleStrokeKeys = [...new Set(Object.values(kittyKeyMap))]
 
+const printableKeypadText: Record<string, string> = {
+  kp0: "0",
+  kp1: "1",
+  kp2: "2",
+  kp3: "3",
+  kp4: "4",
+  kp5: "5",
+  kp6: "6",
+  kp7: "7",
+  kp8: "8",
+  kp9: "9",
+  kpdecimal: ".",
+  kpdivide: "/",
+  kpmultiply: "*",
+  kpminus: "-",
+  kpplus: "+",
+  kpequal: "=",
+  kpseparator: ",",
+}
+
+function getPrintableKittyKeyText(key: ParsedKey): string | undefined {
+  return printableKeypadText[key.name]
+}
+
 function fromKittyMods(mod: number): {
   shift: boolean
   alt: boolean
@@ -405,6 +429,10 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
         text += String.fromCodePoint(cp)
       }
     }
+  }
+
+  if (text === "") {
+    text = getPrintableKittyKeyText(key) ?? ""
   }
 
   // Handle text generation for printable characters

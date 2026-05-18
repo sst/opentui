@@ -97,34 +97,16 @@ function getBaseCodeKeyName(baseCode: number | undefined): string | undefined {
   }
 }
 
-function getAliasedNames(name: string, aliasMap: KeyAliasMap): string[] {
-  const names = new Set<string>();
-  let currentName = name;
-
-  while (currentName && !names.has(currentName)) {
-    names.add(currentName);
-    currentName = aliasMap[currentName];
-  }
-
-  return [...names];
-}
-
 // Return every lookup key that can represent this event. We try the parsed
 // name first, then the base-layout key when Kitty provides one. That keeps
 // direct character bindings precise, and still lets physical-layout
 // shortcuts resolve.
-export function getKeyBindingKeys(binding: KeyBindingLookup, aliasMap: KeyAliasMap): string[] {
+export function getKeyBindingKeys(binding: KeyBindingLookup): string[] {
   const names = new Set([binding.name])
-
-  for (const alias of getAliasedNames(binding.name, aliasMap)) {
-    names.add(alias)
-  }
-
   const baseCodeName = getBaseCodeKeyName(binding.baseCode)
+
   if (baseCodeName) {
-    for (const alias of getAliasedNames(baseCodeName, aliasMap)) {
-      names.add(alias)
-    }
+    names.add(baseCodeName)
   }
 
   return [...names].map((name) => getKeyBindingKey({ ...binding, name }))
@@ -132,10 +114,9 @@ export function getKeyBindingKeys(binding: KeyBindingLookup, aliasMap: KeyAliasM
 
 export function getKeyBindingAction<Action extends string>(
   map: Map<string, Action>,
-  aliasMap: KeyAliasMap,
   binding: KeyBindingLookup,
 ): Action | undefined {
-  for (const key of getKeyBindingKeys(binding, aliasMap)) {
+  for (const key of getKeyBindingKeys(binding)) {
     const action = map.get(key)
 
     if (action !== undefined) {
@@ -146,10 +127,10 @@ export function getKeyBindingAction<Action extends string>(
   return undefined
 }
 
-export function matchesKeyBinding(binding: KeyBindingLookup, aliasMap: KeyAliasMap, match: KeyBindingLike): boolean {
+export function matchesKeyBinding(binding: KeyBindingLookup, match: KeyBindingLike): boolean {
   const matchKey = getKeyBindingKey(match)
 
-  return getKeyBindingKeys(binding, aliasMap).includes(matchKey)
+  return getKeyBindingKeys(binding).includes(matchKey)
 }
 
 export function buildKeyBindingsMap<Action extends string>(

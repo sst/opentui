@@ -524,7 +524,7 @@ export class TerminalConsole extends EventEmitter {
       return
     }
 
-    const action = getKeyBindingAction(this._keyBindingsMap, this._keyAliasMap, event)
+    const action = getKeyBindingAction(this._keyBindingsMap, event)
 
     if (action) {
       const handler = this._actionHandlers.get(action)

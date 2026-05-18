@@ -874,29 +874,56 @@ describe("InputRenderable", () => {
     }
 
     const input = new InputRenderable(kittyRenderer, {
-      width: 20,
+      width: 40,
       height: 1,
     })
 
-    let enterEventCount = 0
-    input.on(InputRenderableEvents.ENTER, () => {
-      enterEventCount += 1
-    })
+    try {
+      let enterEventCount = 0
+      input.on(InputRenderableEvents.ENTER, () => {
+        enterEventCount += 1
+      })
 
-    kittyRenderer.root.add(input)
-    input.focus()
+      kittyRenderer.root.add(input)
+      input.focus()
 
-    await pressKittyKey("\x1b[57400u")
-    await pressKittyKey("\x1b[57413u")
+      const printableKeypadKeys = [
+        ["\x1b[57399u", "0"],
+        ["\x1b[57400u", "1"],
+        ["\x1b[57401u", "2"],
+        ["\x1b[57402u", "3"],
+        ["\x1b[57403u", "4"],
+        ["\x1b[57404u", "5"],
+        ["\x1b[57405u", "6"],
+        ["\x1b[57406u", "7"],
+        ["\x1b[57407u", "8"],
+        ["\x1b[57408u", "9"],
+        ["\x1b[57409u", "."],
+        ["\x1b[57410u", "/"],
+        ["\x1b[57411u", "*"],
+        ["\x1b[57412u", "-"],
+        ["\x1b[57413u", "+"],
+        ["\x1b[57415u", "="],
+        ["\x1b[57416u", ","],
+      ] as const
 
-    expect(input.value).toBe("1+")
+      for (const [sequence] of printableKeypadKeys) {
+        await pressKittyKey(sequence)
+      }
 
-    await pressKittyKey("\x1b[57414u")
+      expect(input.value).toBe("0123456789./*-+=,")
 
-    expect(enterEventCount).toBe(1)
+      await pressKittyKey("\x1b[57400;5u")
+      expect(input.value).toBe("0123456789./*-+=,")
 
-    input.destroyRecursively()
-    kittyRenderer.destroy()
+      await pressKittyKey("\x1b[57414u")
+
+      expect(enterEventCount).toBe(1)
+      expect(input.value).toBe("0123456789./*-+=,")
+    } finally {
+      input.destroyRecursively()
+      kittyRenderer.destroy()
+    }
   })
 
   describe("Shift+Space Key Handling with modifyOtherKeys", () => {
