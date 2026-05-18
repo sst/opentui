@@ -30,7 +30,7 @@ function isValidInputValue(type: InputType, value: string): boolean {
     case "email":
       return isValidEmail(value)
     case "text":
-      return true;
+      return true
   }
 }
 
