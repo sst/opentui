@@ -4009,6 +4009,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.rendering = false
       if (this._destroyPending) {
         this.finalizeDestroy()
+      } else if (this.immediateRerenderRequested) {
+        // A requestRender() that fired during the in-flight frame, after the
+        // scheduling decision above, was demoted to just setting this flag
+        // (because `this.rendering` was still true at the time). Without
+        // this re-issue the loop can silently stall. Defer via setImmediate
+        // so the eventual requestRender() runs after activateFrame's own
+        // finally has cleared `updateScheduled` — otherwise the request
+        // would be dropped at the `!updateScheduled` guard. See #789.
+        this.immediateRerenderRequested = false
+        setImmediate(() => {
+          if (!this._isDestroyed) this.requestRender()
+        })
       }
       this.resolveIdleIfNeeded()
     }

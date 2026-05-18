@@ -197,6 +197,56 @@ test("requestRender() does trigger when renderer is paused", async () => {
   renderer.renderNative = originalRender
 })
 
+test("loop() finally reschedules when requestRender races the schedule decision (#789)", async () => {
+  // Drive the renderer in paused mode so it does NOT auto-loop. Each requestRender()
+  // schedules a one-off frame, and at the end of that frame the scheduler hits the
+  // else-branch (clearTimeout + renderTimeout = null) because _isRunning is false
+  // and immediateRerenderRequested is false. That is the exact path where a sync
+  // requestRender() between line 4005 (renderTimeout = null) and line 4009
+  // (this.rendering = false) is lost.
+  renderer.start()
+  await Bun.sleep(20)
+  renderer.pause()
+
+  let renderCount = 0
+  // @ts-expect-error - renderNative is private
+  const originalRender = renderer.renderNative.bind(renderer)
+  // @ts-expect-error - renderNative is private
+  renderer.renderNative = () => {
+    renderCount++
+    return originalRender()
+  }
+
+  // Inject a sync requestRender() right when the loop is clearing the
+  // (already-elapsed) renderTimeout in the else branch. At that point
+  // `this.rendering` is still true, so requestRender() only sets the flag.
+  // Without the fix, finally then sets rendering=false and the request is
+  // dropped. With the fix, finally re-issues it.
+  const clock = (renderer as any).clock
+  const originalClearTimeout = clock.clearTimeout.bind(clock)
+  let injected = false
+  clock.clearTimeout = (id: unknown) => {
+    if (!injected && (renderer as any).rendering) {
+      injected = true
+      renderer.requestRender()
+    }
+    return originalClearTimeout(id)
+  }
+
+  renderer.requestRender()
+  await Bun.sleep(60)
+
+  clock.clearTimeout = originalClearTimeout
+  // @ts-expect-error - renderNative is private
+  renderer.renderNative = originalRender
+
+  expect(injected).toBe(true)
+  // Without the finally fix: only the initial requested frame renders (count=1)
+  // because the injected requestRender's flag is dropped when rendering=false.
+  // With the fix: finally re-issues, producing at least a second frame.
+  expect(renderCount).toBeGreaterThanOrEqual(2)
+})
+
 test("auto() transitions running renderer to AUTO_STARTED state", () => {
   renderer.start()
   expect(renderer.controlState).toBe(RendererControlState.EXPLICIT_STARTED)
