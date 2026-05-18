@@ -227,6 +227,17 @@ export interface CliRendererStats extends NativeRenderStats {
   frameCallbackTime: number
 }
 
+export interface CliRendererFrameEvent {
+  frameId: number
+  stats: CliRendererStats
+}
+
+export interface RendererSchedulerState {
+  isRunning: boolean
+  isRendering: boolean
+  hasScheduledRender: boolean
+}
+
 export interface ScrollbackRenderContext {
   width: number
   widthMethod: WidthMethod
@@ -665,6 +676,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
 export enum CliRenderEvents {
   RESIZE = "resize",
+  FRAME = "frame",
   FOCUS = "focus",
   BLUR = "blur",
   FOCUSED_RENDERABLE = "focused_renderable",
@@ -1324,6 +1336,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return new Promise<void>((resolve) => {
       this.idleResolvers.push(resolve)
     })
+  }
+
+  public getSchedulerState(): RendererSchedulerState {
+    return {
+      isRunning: this._isRunning,
+      isRendering: this.rendering,
+      hasScheduledRender: Boolean(this.renderTimeout || this.updateScheduled || this.immediateRerenderRequested),
+    }
   }
 
   public get resolution(): PixelResolution | null {
@@ -3997,6 +4017,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           this.renderStats.fps,
           this.renderStats.frameCallbackTime,
         )
+
+        this.emit(CliRenderEvents.FRAME, {
+          frameId: this.frameId,
+          stats: this.getStats(),
+        } satisfies CliRendererFrameEvent)
 
         if (this.gatherStats) {
           this.collectStatSample(overallFrameTime)
