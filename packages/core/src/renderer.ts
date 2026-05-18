@@ -17,7 +17,7 @@ import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
 import type { Pointer } from "./platform/ffi.js"
 import { sleep } from "./platform/runtime.js"
 import { OptimizedBuffer } from "./buffer.js"
-import { resolveRenderLib, type RenderLib } from "./zig.js"
+import { resolveRenderLib, type NativeRenderStats, type RenderLib } from "./zig.js"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console.js"
 import { type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse.js"
 import { Selection } from "./lib/selection.js"
@@ -215,6 +215,16 @@ export type ConsoleMode = "console-overlay" | "disabled"
 export type PixelResolution = {
   width: number
   height: number
+}
+
+export interface CliRendererStats extends NativeRenderStats {
+  fps: number
+  frameCount: number
+  frameTimes: number[]
+  averageFrameTime: number
+  minFrameTime: number
+  maxFrameTime: number
+  frameCallbackTime: number
 }
 
 export interface ScrollbackRenderContext {
@@ -4058,14 +4068,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
   }
 
-  public getStats(): {
-    fps: number
-    frameCount: number
-    frameTimes: number[]
-    averageFrameTime: number
-    minFrameTime: number
-    maxFrameTime: number
-  } {
+  public getNativeStats(): NativeRenderStats {
+    return this.lib.getRenderStats(this.rendererPtr)
+  }
+
+  public getStats(): CliRendererStats {
+    const nativeStats = this.getNativeStats()
     const frameTimes = [...this.frameTimes]
     const sum = frameTimes.reduce((acc, time) => acc + time, 0)
     const avg = frameTimes.length ? sum / frameTimes.length : 0
@@ -4073,12 +4081,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const max = frameTimes.length ? Math.max(...frameTimes) : 0
 
     return {
+      ...nativeStats,
       fps: this.renderStats.fps,
       frameCount: this.renderStats.frameCount,
       frameTimes,
       averageFrameTime: avg,
       minFrameTime: min,
       maxFrameTime: max,
+      frameCallbackTime: this.renderStats.frameCallbackTime,
     }
   }
 

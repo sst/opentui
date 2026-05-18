@@ -1,7 +1,7 @@
 import { Readable, Writable } from "stream"
 import { CliRenderer, type CliRendererConfig } from "../renderer.js"
 import { calculateRenderGeometry } from "../lib/render-geometry.js"
-import { resolveRenderLib } from "../zig.js"
+import { resolveRenderLib, type NativeRenderStats } from "../zig.js"
 import { createMockKeys } from "./mock-keys.js"
 import { createMockMouse } from "./mock-mouse.js"
 import type { CapturedFrame } from "../types.js"
@@ -43,6 +43,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   mockInput: MockInput
   mockMouse: MockMouse
   renderOnce: () => Promise<void>
+  getNativeStats: () => NativeRenderStats
   captureCharFrame: () => string
   captureSpans: () => CapturedFrame
   resize: (width: number, height: number) => void
@@ -75,6 +76,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
     mockInput,
     mockMouse,
     renderOnce,
+    getNativeStats: () => renderer.getNativeStats(),
     captureCharFrame: () => {
       const currentBuffer = renderer.currentRenderBuffer
       const frameBytes = currentBuffer.getRealCharBytes(true)

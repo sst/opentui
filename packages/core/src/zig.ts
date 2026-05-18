@@ -21,7 +21,7 @@ import {
   type LineInfo,
   type MousePointerStyle,
 } from "./types.js"
-export type { LineInfo, AllocatorStats, BuildOptions }
+export type { LineInfo, AllocatorStats, BuildOptions, NativeRenderStats }
 
 import { RGBA } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
@@ -48,6 +48,7 @@ import {
   AudioStatsStruct,
   BuildOptionsStruct,
   AllocatorStatsStruct,
+  NativeRenderStatsStruct,
 } from "./zig-structs.js"
 import type {
   NativeSpanFeedOptions,
@@ -59,6 +60,7 @@ import type {
   AudioStats,
   BuildOptions,
   AllocatorStats,
+  NativeRenderStats,
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
 
@@ -207,6 +209,10 @@ function getOpenTUILib(libPath?: string) {
     },
     updateMemoryStats: {
       args: ["ptr", "u32", "u32", "u32"],
+      returns: "void",
+    },
+    getRenderStats: {
+      args: ["ptr", "ptr"],
       returns: "void",
     },
     render: {
@@ -1603,6 +1609,7 @@ export interface RenderLib extends AudioEngineLib {
   clearPendingSplitFooterTransition: (renderer: Pointer) => void
   updateStats: (renderer: Pointer, time: number, fps: number, frameCallbackTime: number) => void
   updateMemoryStats: (renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
+  getRenderStats: (renderer: Pointer) => NativeRenderStats
   render: (renderer: Pointer, force: boolean) => void
   repaintSplitFooter: (renderer: Pointer, pinnedRenderOffset: number, force: boolean) => number
   commitSplitFooterSnapshot: (
@@ -2308,6 +2315,22 @@ class FFIRenderLib implements RenderLib {
 
   public updateMemoryStats(renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) {
     this.opentui.symbols.updateMemoryStats(renderer, heapUsed, heapTotal, arrayBuffers)
+  }
+
+  public getRenderStats(renderer: Pointer): NativeRenderStats {
+    const statsBuffer = new ArrayBuffer(NativeRenderStatsStruct.size)
+    this.opentui.symbols.getRenderStats(renderer, ptr(statsBuffer))
+    const stats = NativeRenderStatsStruct.unpack(statsBuffer)
+
+    return {
+      nativeLastFrameTime: stats.lastFrameTime,
+      nativeAverageFrameTime: stats.averageFrameTime,
+      nativeFrameCount: toNumber(stats.frameCount),
+      cellsUpdated: stats.cellsUpdated,
+      averageCellsUpdated: stats.averageCellsUpdated,
+      nativeRenderTime: stats.renderTimeValid ? stats.renderTime : undefined,
+      nativeStdoutWriteTime: stats.stdoutWriteTimeValid ? stats.stdoutWriteTime : undefined,
+    }
   }
 
   public getNextBuffer(renderer: Pointer): OptimizedBuffer {
