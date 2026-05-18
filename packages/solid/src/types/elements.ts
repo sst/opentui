@@ -134,7 +134,6 @@ export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> 
   onContentChange?: (value: string) => void
   onCursorChange?: (value: { line: number; visualColumn: number }) => void
   onKeyDown?: (event: KeyEvent) => void
-  onKeyPress?: (event: KeyEvent) => void
 }
 
 export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderable> & {
