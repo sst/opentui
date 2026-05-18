@@ -140,7 +140,22 @@ export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
 
 export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable> & {
   focused?: boolean
+  /**
+   * Fires on every keystroke with the current input text.
+   *
+   * **Use this — not `onChange` — for the React-style controlled-component
+   * pattern** (`<input value={state} onInput={setState} />`). `onChange`
+   * follows native-HTML semantics (only fires on blur), so a controlled
+   * `<input>` driven by `onChange` will desync the moment the user types
+   * — see issue #726.
+   */
   onInput?: (value: string) => void
+  /**
+   * Fires when the input loses focus *and* its value changed since focus,
+   * matching native HTML `<input onchange>` semantics (NOT React web's
+   * per-keystroke `onChange`). For controlled-component / two-way binding
+   * use `onInput` instead — see issue #726.
+   */
   onChange?: (value: string) => void
   onSubmit?: (value: string) => void
 }
