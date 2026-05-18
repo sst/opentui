@@ -249,7 +249,9 @@ const defaultConsoleKeybindings: ConsoleKeyBinding[] = [
   { name: "o", ctrl: true, action: "position-next" },
   { name: "+", action: "size-increase" },
   { name: "=", shift: true, action: "size-increase" },
+  { name: "kpplus", action: "size-increase" },
   { name: "-", action: "size-decrease" },
+  { name: "kpminus", action: "size-decrease" },
   { name: "s", ctrl: true, action: "save-logs" },
   { name: "c", ctrl: true, shift: true, action: "copy-selection" },
 ]

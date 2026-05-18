@@ -119,6 +119,54 @@ describe("TerminalConsole", () => {
     })
   })
 
+  describe("Resize keypad bindings (#412)", () => {
+    test("kpplus increases sizePercent like +", () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+
+      terminalConsole["handleKeyPress"]({ name: "kpplus", ctrl: false, shift: false, meta: false } as any)
+
+      expect(terminalConsole["options"].sizePercent).toBe(35)
+    })
+
+    test("kpminus decreases sizePercent like -", () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+
+      terminalConsole["handleKeyPress"]({ name: "kpminus", ctrl: false, shift: false, meta: false } as any)
+
+      expect(terminalConsole["options"].sizePercent).toBe(25)
+    })
+
+    test("repeated kpplus presses cap at 100", () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 95,
+      })
+
+      terminalConsole["handleKeyPress"]({ name: "kpplus", ctrl: false, shift: false, meta: false } as any)
+      terminalConsole["handleKeyPress"]({ name: "kpplus", ctrl: false, shift: false, meta: false } as any)
+
+      expect(terminalConsole["options"].sizePercent).toBe(100)
+    })
+
+    test("repeated kpminus presses floor at 10", () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 15,
+      })
+
+      terminalConsole["handleKeyPress"]({ name: "kpminus", ctrl: false, shift: false, meta: false } as any)
+      terminalConsole["handleKeyPress"]({ name: "kpminus", ctrl: false, shift: false, meta: false } as any)
+
+      expect(terminalConsole["options"].sizePercent).toBe(10)
+    })
+  })
+
   describe("Console Selection", () => {
     test("should have no selection initially", () => {
       terminalConsole = new TerminalConsole(mockRenderer as any, {
