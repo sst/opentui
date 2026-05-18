@@ -229,7 +229,6 @@ export interface CliRendererStats extends NativeRenderStats {
 
 export interface CliRendererFrameEvent {
   frameId: number
-  stats: CliRendererStats
 }
 
 export interface RendererSchedulerState {
@@ -4018,10 +4017,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           this.renderStats.frameCallbackTime,
         )
 
-        this.emit(CliRenderEvents.FRAME, {
-          frameId: this.frameId,
-          stats: this.getStats(),
-        } satisfies CliRendererFrameEvent)
+        if (this.listenerCount(CliRenderEvents.FRAME) > 0) {
+          this.emit(CliRenderEvents.FRAME, {
+            frameId: this.frameId,
+          } satisfies CliRendererFrameEvent)
+        }
 
         if (this.gatherStats) {
           this.collectStatSample(overallFrameTime)

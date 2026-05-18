@@ -192,7 +192,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
         return
       }
 
-      if (event.stats.cellsUpdated === 0) {
+      if (renderer.getNativeStats().cellsUpdated === 0) {
         consecutiveQuietFrames++
         if (consecutiveQuietFrames >= quietFrames) {
           return

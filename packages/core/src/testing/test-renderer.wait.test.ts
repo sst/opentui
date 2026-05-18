@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
+import { CliRenderEvents } from "../renderer.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { ManualClock } from "./manual-clock.js"
 import { createTestRenderer, type TestRendererSetup } from "./test-renderer.js"
@@ -66,6 +67,50 @@ test("waitFor observes predicate changes after scheduled work", async () => {
   await setup.waitFor(() => setup!.getNativeStats().nativeFrameCount > 0, { maxPasses: 1 })
 
   expect(setup.getNativeStats().nativeFrameCount).toBe(1)
+})
+
+test("renderer does not build frame event stats when no frame listener is registered", async () => {
+  setup = await createTestRenderer({ width: 10, height: 4, useThread: false })
+
+  const getStats = spyOn(setup.renderer, "getStats")
+
+  const text = new TextRenderable(setup.renderer, {
+    content: "quiet",
+    width: 5,
+    height: 1,
+  })
+  setup.renderer.root.add(text)
+
+  await setup.renderOnce()
+
+  expect(getStats).not.toHaveBeenCalled()
+  getStats.mockRestore()
+})
+
+test("renderer emits frame event without building stats when a frame listener is registered", async () => {
+  setup = await createTestRenderer({ width: 10, height: 4, useThread: false })
+
+  const getStats = spyOn(setup.renderer, "getStats")
+  let frameEventCount = 0
+  let frameEvent: unknown
+  setup.renderer.on(CliRenderEvents.FRAME, (event) => {
+    frameEventCount++
+    frameEvent = event
+  })
+
+  const text = new TextRenderable(setup.renderer, {
+    content: "event",
+    width: 5,
+    height: 1,
+  })
+  setup.renderer.root.add(text)
+
+  await setup.renderOnce()
+
+  expect(frameEventCount).toBe(1)
+  expect(frameEvent).toEqual({ frameId: setup.renderer.frameId })
+  expect(getStats).not.toHaveBeenCalled()
+  getStats.mockRestore()
 })
 
 test("waitForFrame fails instead of rendering when no work is pending", async () => {
