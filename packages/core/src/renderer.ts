@@ -4020,7 +4020,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         if (this.listenerCount(CliRenderEvents.FRAME) > 0) {
           this.emit(CliRenderEvents.FRAME, {
             frameId: this.frameId,
-          } satisfies CliRendererFrameEvent)
+          })
         }
 
         if (this.gatherStats) {
