@@ -1661,6 +1661,29 @@ test("links with conceal mode", async () => {
   `)
 })
 
+test("bare URL link in conceal mode does not duplicate the href (#1050)", async () => {
+  const markdown = `Check https://github.com/anomalyco/opentui for details.`
+
+  const rendered = await renderMarkdown(markdown)
+  expect(rendered).toContain("https://github.com/anomalyco/opentui")
+  expect(rendered).not.toContain("(https://github.com/anomalyco/opentui)")
+})
+
+test("autolink <url> in conceal mode does not duplicate the href (#1050)", async () => {
+  const markdown = `Check <https://github.com/anomalyco/opentui> for details.`
+
+  const rendered = await renderMarkdown(markdown)
+  expect(rendered).toContain("https://github.com/anomalyco/opentui")
+  expect(rendered).not.toContain("(https://github.com/anomalyco/opentui)")
+})
+
+test("named link with conceal mode still shows (href) suffix (#1050)", async () => {
+  const markdown = `Check [opentui](https://github.com/anomalyco/opentui) for details.`
+
+  const rendered = await renderMarkdown(markdown)
+  expect(rendered).toContain("opentui (https://github.com/anomalyco/opentui)")
+})
+
 test("links with conceal=false", async () => {
   const markdown = `Check out [OpenTUI](https://github.com/sst/opentui) for more.`
 

@@ -456,12 +456,15 @@ export class MarkdownRenderable extends Renderable {
       case "link": {
         const linkHref = { url: token.href }
         if (this._conceal) {
+          const isBareUrl = token.text === token.href
           for (const child of token.tokens) {
             this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
           }
-          chunks.push(this.createChunk(" (", "markup.link", linkHref))
-          chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
-          chunks.push(this.createChunk(")", "markup.link", linkHref))
+          if (!isBareUrl) {
+            chunks.push(this.createChunk(" (", "markup.link", linkHref))
+            chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
+            chunks.push(this.createChunk(")", "markup.link", linkHref))
+          }
         } else {
           chunks.push(this.createChunk("[", "markup.link", linkHref))
           for (const child of token.tokens) {
