@@ -1175,6 +1175,13 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public add(obj: Renderable | VNode<any, any[]> | unknown, index?: number): number {
+    if (this._isDestroyed) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Renderable with id ${this.id} is destroyed, skipping add`)
+      }
+      return -1
+    }
+
     if (!obj) {
       return -1
     }
@@ -1229,6 +1236,13 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
+    if (this._isDestroyed) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Renderable with id ${this.id} is destroyed, skipping insertBefore`)
+      }
+      return -1
+    }
+
     if (!anchor) {
       return this.add(obj)
     }
@@ -1313,6 +1327,10 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public remove(id: string): void {
+    if (this._isDestroyed) {
+      return
+    }
+
     if (!id) {
       return
     }

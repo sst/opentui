@@ -414,6 +414,46 @@ describe("Renderable - Child Management", () => {
     expect(parent.getChildrenCount()).toBe(0)
   })
 
+  test("add on a destroyed parent is a no-op and does not crash Yoga (#733)", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    testRenderer.root.add(parent)
+
+    parent.destroy()
+
+    // Without the guard this throws "Out of bounds call_indirect" from Yoga wasm
+    // because parent.yogaNode.free() ran inside destroy().
+    const result = parent.add(child)
+    expect(result).toBe(-1)
+    expect(child.parent).toBeNull()
+  })
+
+  test("insertBefore on a destroyed parent is a no-op (#733)", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const anchor = new TestRenderable(testRenderer, { id: "anchor" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    testRenderer.root.add(parent)
+    parent.add(anchor)
+
+    parent.destroy()
+
+    const result = parent.insertBefore(child, anchor)
+    expect(result).toBe(-1)
+    expect(child.parent).toBeNull()
+  })
+
+  test("remove on a destroyed parent is a no-op (#733)", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    testRenderer.root.add(parent)
+    parent.add(child)
+
+    parent.destroy()
+
+    // Should not throw even if some stale reconciler write reaches here.
+    expect(() => parent.remove("child")).not.toThrow()
+  })
+
   test("can change renderable id and updates parent mapping", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const child = new TestRenderable(testRenderer, { id: "child" })
