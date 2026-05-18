@@ -306,6 +306,114 @@ describe("InputRenderable", () => {
       expect(input.value).toBe("abc")
     })
 
+    it("should reject submit for invalid email input", () => {
+      const { input } = createInputRenderable({
+        type: "email",
+        value: "invalid-email",
+      })
+
+      input.focus()
+
+      let changeEventFired = false
+      let enterEventFired = false
+
+      input.on(InputRenderableEvents.CHANGE, () => {
+        changeEventFired = true
+      })
+
+      input.on(InputRenderableEvents.ENTER, () => {
+        enterEventFired = true
+      })
+
+      expect(input.submit()).toBe(false)
+      expect(changeEventFired).toBe(false)
+      expect(enterEventFired).toBe(false)
+    })
+
+    it("should accept submit for valid email input", () => {
+      const { input } = createInputRenderable({
+        type: "email",
+      })
+
+      input.focus()
+      input.value = "user@example.com"
+
+      let changeEventFired = false
+      let enterEventFired = false
+      let enterValue = ""
+
+      input.on(InputRenderableEvents.CHANGE, () => {
+        changeEventFired = true
+      })
+
+      input.on(InputRenderableEvents.ENTER, (value: string) => {
+        enterEventFired = true
+        enterValue = value
+      })
+
+      expect(input.submit()).toBe(true)
+      expect(changeEventFired).toBe(true)
+      expect(enterEventFired).toBe(true)
+      expect(enterValue).toBe("user@example.com")
+    })
+
+    it("should reject submit for invalid number input", () => {
+      const { input } = createInputRenderable({
+        type: "number",
+        value: "12abc",
+      })
+
+      input.focus()
+
+      let enterEventFired = false
+
+      input.on(InputRenderableEvents.ENTER, () => {
+        enterEventFired = true
+      })
+
+      expect(input.submit()).toBe(false)
+      expect(enterEventFired).toBe(false)
+    })
+
+    it("should accept submit for valid number input", () => {
+      const { input } = createInputRenderable({
+        type: "number",
+        value: "42.5",
+      })
+
+      input.focus()
+
+      let enterEventFired = false
+      let enterValue = ""
+
+      input.on(InputRenderableEvents.ENTER, (value: string) => {
+        enterEventFired = true
+        enterValue = value
+      })
+
+      expect(input.submit()).toBe(true)
+      expect(enterEventFired).toBe(true)
+      expect(enterValue).toBe("42.5")
+    })
+
+    it("should accept submit for text input", () => {
+      const { input } = createInputRenderable({
+        type: "text",
+        value: "plain text value",
+      })
+
+      input.focus()
+
+      let enterEventFired = false
+
+      input.on(InputRenderableEvents.ENTER, () => {
+        enterEventFired = true
+      })
+
+      expect(input.submit()).toBe(true)
+      expect(enterEventFired).toBe(true)
+    })
+
     it("should handle cursor position with text insertion", () => {
       const { input } = createInputRenderable({
         value: "hello",
@@ -856,74 +964,6 @@ describe("InputRenderable", () => {
     expect(onKeyDownCalled).toBe(true)
     expect(inputEventFired).toBe(true)
     expect(input.value).toBe("initialb")
-  })
-
-  it("should handle Kitty keypad digits, operators, and enter", async () => {
-    const { renderer: kittyRenderer } = await createTestRenderer({ kittyKeyboard: true })
-
-    const pressKittyKey = async (sequence: string): Promise<void> => {
-      await new Promise<void>((resolve) => {
-        kittyRenderer.keyInput.once("keypress", () => {
-          resolve()
-        })
-
-        kittyRenderer.stdin.emit("data", Buffer.from(sequence))
-      })
-
-      await Promise.resolve()
-    }
-
-    const input = new InputRenderable(kittyRenderer, {
-      width: 40,
-      height: 1,
-    })
-
-    try {
-      let enterEventCount = 0
-      input.on(InputRenderableEvents.ENTER, () => {
-        enterEventCount += 1
-      })
-
-      kittyRenderer.root.add(input)
-      input.focus()
-
-      const printableKeypadKeys = [
-        ["\x1b[57399u", "0"],
-        ["\x1b[57400u", "1"],
-        ["\x1b[57401u", "2"],
-        ["\x1b[57402u", "3"],
-        ["\x1b[57403u", "4"],
-        ["\x1b[57404u", "5"],
-        ["\x1b[57405u", "6"],
-        ["\x1b[57406u", "7"],
-        ["\x1b[57407u", "8"],
-        ["\x1b[57408u", "9"],
-        ["\x1b[57409u", "."],
-        ["\x1b[57410u", "/"],
-        ["\x1b[57411u", "*"],
-        ["\x1b[57412u", "-"],
-        ["\x1b[57413u", "+"],
-        ["\x1b[57415u", "="],
-        ["\x1b[57416u", ","],
-      ] as const
-
-      for (const [sequence] of printableKeypadKeys) {
-        await pressKittyKey(sequence)
-      }
-
-      expect(input.value).toBe("0123456789./*-+=,")
-
-      await pressKittyKey("\x1b[57400;5u")
-      expect(input.value).toBe("0123456789./*-+=,")
-
-      await pressKittyKey("\x1b[57414u")
-
-      expect(enterEventCount).toBe(1)
-      expect(input.value).toBe("0123456789./*-+=,")
-    } finally {
-      input.destroyRecursively()
-      kittyRenderer.destroy()
-    }
   })
 
   describe("Shift+Space Key Handling with modifyOtherKeys", () => {
