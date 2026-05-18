@@ -196,13 +196,17 @@ describe("TestRecorder", () => {
     expect(recorder.recordedFrames.length).toBe(1)
   })
 
-  test("should restore original renderNative after stop", async () => {
+  test("should not replace renderNative while recording", async () => {
     const text = new TextRenderable(renderer, { content: "Restore Test" })
+    const originalRenderNative = renderer["renderNative"]
 
     recorder.rec()
+    expect(renderer["renderNative"]).toBe(originalRenderNative)
+
     renderer.root.add(text)
     await Bun.sleep(1)
     recorder.stop()
+    expect(renderer["renderNative"]).toBe(originalRenderNative)
 
     recorder.clear()
     await renderOnce()
