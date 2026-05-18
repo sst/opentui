@@ -18,6 +18,30 @@ export function isTextNodeRenderable(obj: any): obj is TextNodeRenderable {
   return !!obj?.[BrandedTextNodeRenderable]
 }
 
+function describeRejectedChild(obj: unknown): string {
+  if (obj === null) return "null"
+  if (obj === undefined) return "undefined"
+  if (typeof obj !== "object") return typeof obj
+
+  // Block-text renderable (e.g. <text>) keeps its inline content under .rootTextNode.
+  // Nesting <text> inside <text> is the most common mistake and deserves a hint
+  // pointing at the inline-styling tags that actually work here.
+  if ("rootTextNode" in obj && isTextNodeRenderable((obj as { rootTextNode: unknown }).rootTextNode)) {
+    return "<text> (block) — use <span>/<b>/<i>/<u>/<a> for inline styling inside <text>"
+  }
+
+  const ctorName = (obj as { constructor?: { name?: string } }).constructor?.name
+  return ctorName ?? "unknown object"
+}
+
+function rejectChildMessage(obj: unknown): string {
+  return (
+    "TextNodeRenderable only accepts strings, TextNodeRenderable instances " +
+    "(e.g. <span>, <b>, <i>, <u>, <a>), or StyledText instances. " +
+    `Received: ${describeRejectedChild(obj)}`
+  )
+}
+
 function styledTextToTextNodes(styledText: StyledText): TextNodeRenderable[] {
   return styledText.chunks.map((chunk) => {
     const node = new TextNodeRenderable({
@@ -109,7 +133,7 @@ export class TextNodeRenderable extends BaseRenderable {
       return insertIndex
     }
 
-    throw new Error("TextNodeRenderable only accepts strings, TextNodeRenderable instances, or StyledText instances")
+    throw new Error(rejectChildMessage(obj))
   }
 
   public replace(obj: TextNodeRenderable | string, index: number) {
@@ -143,7 +167,7 @@ export class TextNodeRenderable extends BaseRenderable {
       this._children.splice(anchorIndex, 0, ...textNodes)
       textNodes.forEach((node) => (node.parent = this))
     } else {
-      throw new Error("Child must be a string, TextNodeRenderable, or StyledText instance")
+      throw new Error(rejectChildMessage(child))
     }
 
     this.requestRender()

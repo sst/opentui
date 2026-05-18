@@ -154,7 +154,29 @@ describe("TextNodeRenderable", () => {
 
       expect(() => {
         node.add(invalidChild as any, 0)
-      }).toThrow("TextNodeRenderable only accepts strings, TextNodeRenderable instances, or StyledText instances")
+      }).toThrow(/TextNodeRenderable only accepts strings, TextNodeRenderable instances/)
+    })
+
+    it("should hint at <span> when a nested <text> (rootTextNode-bearing object) is added (#438)", () => {
+      const node = new TextNodeRenderable({})
+      // Duck-typed stand-in for a TextRenderable, which carries an inline
+      // content tree on `.rootTextNode`.
+      const fakeBlockText = { rootTextNode: new TextNodeRenderable({}) }
+
+      expect(() => {
+        node.add(fakeBlockText as any)
+      }).toThrow(/<text> \(block\) — use <span>/)
+    })
+
+    it("should hint at <span> when a nested <text> is passed to insertBefore (#438)", () => {
+      const parent = new TextNodeRenderable({})
+      const anchor = new TextNodeRenderable({})
+      parent.add(anchor)
+      const fakeBlockText = { rootTextNode: new TextNodeRenderable({}) }
+
+      expect(() => {
+        parent.insertBefore(fakeBlockText as any, anchor)
+      }).toThrow(/<text> \(block\) — use <span>/)
     })
 
     it("should add StyledText child using add method", () => {
