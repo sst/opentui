@@ -3636,3 +3636,32 @@ test("paragraph updates do not flash raw markdown markers", async () => {
   expect(finalFrame).toContain("Second value")
   expect(finalFrame).not.toContain("**Second**")
 })
+
+test("top-level list does not insert blank line before nested list when source has blank line", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-list-blank-before-nested",
+    content: `- Added t topic edit mode in TUI:
+
+  - t focuses input with current topic
+  - enter saves via daemon /topic
+  - esc cancels
+- Topic is now shown prominently near the top of the TUI.`,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    - Added t topic edit mode in TUI:
+      - t focuses input with current topic
+      - enter saves via daemon /topic
+      - esc cancels
+    - Topic is now shown prominently near the top of the TUI."
+  `)
+})

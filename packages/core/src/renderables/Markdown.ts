@@ -694,10 +694,8 @@ export class MarkdownRenderable extends Renderable {
       }
       const renderable = this.createListChildRenderable(child, `${input.id}-child-${index}`)
       if (!renderable) continue
-      if (pendingMarginTop > 0) {
-        renderable.marginTop = pendingMarginTop
-        pendingMarginTop = 0
-      }
+      renderable.marginTop = child.type === "list" ? 0 : pendingMarginTop
+      pendingMarginTop = 0
       content.add(renderable)
     }
 
@@ -744,11 +742,13 @@ export class MarkdownRenderable extends Renderable {
       const existing = children[childIndex]
       const childId = `${id}-child-${tokenIndex}`
 
+      const marginTop = token.type === "list" ? 0 : pendingMarginTop
+      pendingMarginTop = 0
+
       if (!existing) {
         const renderable = this.createListChildRenderable(token, childId)
         if (!renderable) return false
-        renderable.marginTop = pendingMarginTop
-        pendingMarginTop = 0
+        renderable.marginTop = marginTop
         content.add(renderable, childIndex)
         childIndex += 1
         continue
@@ -757,8 +757,7 @@ export class MarkdownRenderable extends Renderable {
       if (!this.applyListChildRenderable(existing, token, previousTokens[childIndex], childId)) {
         return false
       }
-      existing.marginTop = pendingMarginTop
-      pendingMarginTop = 0
+      existing.marginTop = marginTop
       childIndex += 1
     }
 
