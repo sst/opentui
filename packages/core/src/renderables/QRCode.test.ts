@@ -34,7 +34,6 @@ describe("QR code ISO-derived vectors", () => {
     expect(toBinaryString(readTopRightVersionBits(modules), 18)).toBe("000111110010010100")
     expect(toBinaryString(readBottomLeftVersionBits(modules), 18)).toBe("000111110010010100")
   })
-
 })
 
 describe("QRCode", () => {

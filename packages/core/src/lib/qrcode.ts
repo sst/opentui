@@ -145,58 +145,18 @@ class BitBuffer {
 }
 
 class Mode {
-  static readonly NUMERIC = new Mode(
-    "NUMERIC",
-    0x1,
-    [10, 12, 14],
-    true,
-  )
+  static readonly NUMERIC = new Mode("NUMERIC", 0x1, [10, 12, 14], true)
 
-  static readonly ALPHANUMERIC = new Mode(
-    "ALPHANUMERIC",
-    0x2,
-    [9, 11, 13],
-    true,
-  )
+  static readonly ALPHANUMERIC = new Mode("ALPHANUMERIC", 0x2, [9, 11, 13], true)
 
-  static readonly BYTE = new Mode(
-    "BYTE",
-    0x4,
-    [8, 16, 16],
-    true,
-  )
+  static readonly BYTE = new Mode("BYTE", 0x4, [8, 16, 16], true)
 
-  static readonly KANJI = new Mode(
-    "KANJI",
-    0x8,
-    [8, 10, 12],
-    true,
-  )
+  static readonly KANJI = new Mode("KANJI", 0x8, [8, 10, 12], true)
 
-  static readonly ECI = new Mode(
-    "ECI",
-    0x7,
-    [0, 0, 0],
-    false,
-  )
-  static readonly STRUCTURED_APPEND = new Mode(
-    "STRUCTURED_APPEND",
-    0x3,
-    [0, 0, 0],
-    false,
-  )
-  static readonly FNC1_FIRST = new Mode(
-    "FNC1_FIRST",
-    0x5,
-    [0, 0, 0],
-    false,
-  )
-  static readonly FNC1_SECOND = new Mode(
-    "FNC1_SECOND",
-    0x9,
-    [0, 0, 0],
-    false,
-  )
+  static readonly ECI = new Mode("ECI", 0x7, [0, 0, 0], false)
+  static readonly STRUCTURED_APPEND = new Mode("STRUCTURED_APPEND", 0x3, [0, 0, 0], false)
+  static readonly FNC1_FIRST = new Mode("FNC1_FIRST", 0x5, [0, 0, 0], false)
+  static readonly FNC1_SECOND = new Mode("FNC1_SECOND", 0x9, [0, 0, 0], false)
 
   private constructor(
     readonly name: string,
@@ -210,7 +170,6 @@ class Mode {
     if (version < 1 || version > 40) throw new RangeError("Version must be in 1..40")
     return this.charCountBitsForVersionRange[Math.floor((version + 7) / 17)]
   }
-
 }
 
 class ReedSolomon {
