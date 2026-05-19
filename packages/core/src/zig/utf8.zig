@@ -672,7 +672,6 @@ inline fn eawToWidth(cp: u21, eaw: uucode.types.EastAsianWidth) i16 {
     if (cp >= 0x2630 and cp <= 0x2637) return 2;
     if (cp >= 0x2648 and cp <= 0x2653) return 2;
     if (cp == 0x267F or cp == 0x2693 or cp == 0x269B) return 2;
-    if (cp == 0x26A0 or cp == 0x26A1) return 2;
     if (cp >= 0x26AA and cp <= 0x26AB) return 2;
     if (cp >= 0x26BD and cp <= 0x26BE) return 2;
     if (cp >= 0x26C4 and cp <= 0x26C5) return 2;
