@@ -14,8 +14,6 @@ import type {
   LineNumberRenderable,
   MarkdownOptions,
   MarkdownRenderable,
-  QRCodeOptions,
-  QRCodeRenderable,
   RenderableOptions,
   RenderContext,
   ScrollBoxOptions,
@@ -101,9 +99,7 @@ export type GetNonStyledProperties<TConstructor> =
                   | "drawUnstyledText"
               : TConstructor extends RenderableConstructor<MarkdownRenderable>
                 ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode"
-                : TConstructor extends RenderableConstructor<QRCodeRenderable>
-                  ? NonStyledProps | "content" | "errorCorrectionLevel" | "quietZone" | "scale" | "fit"
-                  : NonStyledProps
+                : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -160,8 +156,6 @@ export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> 
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
 
 export type MarkdownProps = ComponentProps<MarkdownOptions, MarkdownRenderable>
-
-export type QRCodeProps = ComponentProps<QRCodeOptions, QRCodeRenderable>
 
 export type DiffProps = ComponentProps<DiffRenderableOptions, DiffRenderable>
 

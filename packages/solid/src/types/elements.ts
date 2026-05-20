@@ -11,8 +11,6 @@ import type {
   KeyEvent,
   MarkdownOptions,
   MarkdownRenderable,
-  QRCodeOptions,
-  QRCodeRenderable,
   RenderableOptions,
   RenderContext,
   ScrollBoxOptions,
@@ -86,9 +84,7 @@ export type GetNonStyledProperties<TConstructor> =
             ? NonStyledProps | "content" | "filetype" | "syntaxStyle" | "treeSitterClient"
             : TConstructor extends RenderableConstructor<MarkdownRenderable>
               ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode"
-              : TConstructor extends RenderableConstructor<QRCodeRenderable>
-                ? NonStyledProps | "content" | "errorCorrectionLevel" | "quietZone" | "scale" | "fit"
-                : NonStyledProps
+              : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -164,8 +160,6 @@ export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, Sc
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
 
 export type MarkdownProps = ComponentProps<MarkdownOptions, MarkdownRenderable>
-
-export type QRCodeProps = ComponentProps<QRCodeOptions, QRCodeRenderable>
 
 // ============================================================================
 // Extended/Dynamic Component System

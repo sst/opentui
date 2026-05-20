@@ -1,12 +1,5 @@
-import {
-  BoxRenderable,
-  CliRenderer,
-  QRCodeRenderable,
-  RGBA,
-  TextAttributes,
-  TextRenderable,
-  createCliRenderer,
-} from "@opentui/core"
+import { BoxRenderable, CliRenderer, RGBA, TextAttributes, TextRenderable, createCliRenderer } from "@opentui/core"
+import { QRCodeRenderable } from "@opentui/qrcode"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const ROOT_ID = "qrcode-demo-root"

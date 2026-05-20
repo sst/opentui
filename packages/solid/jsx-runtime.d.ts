@@ -8,7 +8,6 @@ import type {
   LinkProps,
   MarkdownProps,
   OpenTUIComponents,
-  QRCodeProps,
   ScrollBoxProps,
   SelectProps,
   SpanProps,
@@ -36,7 +35,6 @@ declare namespace JSX {
     code: CodeProps
     textarea: TextareaProps
     markdown: MarkdownProps
-    qr_code: QRCodeProps
 
     b: SpanProps
     strong: SpanProps

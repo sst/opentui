@@ -1,9 +1,14 @@
 import { MeasureMode } from "yoga-layout"
-import { OptimizedBuffer } from "../buffer.js"
-import { parseColor, RGBA, type ColorInput } from "../lib/RGBA.js"
+import {
+  OptimizedBuffer,
+  parseColor,
+  RGBA,
+  Renderable,
+  type ColorInput,
+  type RenderableOptions,
+  type RenderContext,
+} from "@opentui/core"
 import { ErrorCorrectionLevel, QRCode } from "../lib/qrcode.js"
-import { Renderable, type RenderableOptions } from "../Renderable.js"
-import type { RenderContext } from "../types.js"
 
 const DEFAULT_FOREGROUND = RGBA.fromHex("#000000")
 const DEFAULT_BACKGROUND = RGBA.fromHex("#ffffff")

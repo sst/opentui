@@ -8,12 +8,19 @@ order: 16
 
 Display text or URLs as scannable standard QR Codes in the terminal. `QRCodeRenderable` renders QR Code Model 2 modules with half-block cells so the symbol stays square in terminal character geometry.
 
+Install the QR code package separately:
+
+```bash
+bun install @opentui/qrcode
+```
+
 ## Basic Usage
 
 ### Renderable API
 
 ```typescript
-import { QRCodeRenderable, createCliRenderer } from "@opentui/core"
+import { createCliRenderer } from "@opentui/core"
+import { QRCodeRenderable } from "@opentui/qrcode"
 
 const renderer = await createCliRenderer()
 
@@ -31,6 +38,9 @@ renderer.root.add(qr)
 
 ```tsx
 import { createRoot } from "@opentui/react"
+import { registerQRCode } from "@opentui/qrcode/react"
+
+registerQRCode()
 
 createRoot(renderer).render(
   <qr-code
@@ -47,6 +57,9 @@ createRoot(renderer).render(
 
 ```tsx
 import { render } from "@opentui/solid"
+import { registerQRCode } from "@opentui/qrcode/solid"
+
+registerQRCode()
 
 render(() => (
   <qr_code
@@ -90,10 +103,10 @@ const qr = new QRCodeRenderable(renderer, {
 
 ## Error Correction
 
-Set `errorCorrectionLevel` with the core QR error correction enum:
+Set `errorCorrectionLevel` with the QR package error correction enum:
 
 ```typescript
-import { ErrorCorrectionLevel, QRCodeRenderable } from "@opentui/core"
+import { ErrorCorrectionLevel, QRCodeRenderable } from "@opentui/qrcode"
 
 const qr = new QRCodeRenderable(renderer, {
   content: "opentui.com",

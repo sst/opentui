@@ -11,7 +11,6 @@ import type {
   LinkProps,
   MarkdownProps,
   OpenTUIComponents,
-  QRCodeProps,
   ScrollBoxProps,
   SelectProps,
   SpanProps,
@@ -44,7 +43,6 @@ export namespace JSX {
     code: CodeProps
     diff: DiffProps
     markdown: MarkdownProps
-    "qr-code": QRCodeProps
     input: InputProps
     textarea: TextareaProps
     select: SelectProps

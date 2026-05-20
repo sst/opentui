@@ -6,7 +6,6 @@ import {
   InputRenderable,
   LineNumberRenderable,
   MarkdownRenderable,
-  QRCodeRenderable,
   ScrollBoxRenderable,
   SelectRenderable,
   TabSelectRenderable,
@@ -105,7 +104,6 @@ export const baseComponents = {
   diff: DiffRenderable,
   line_number: LineNumberRenderable,
   markdown: MarkdownRenderable,
-  qr_code: QRCodeRenderable,
 
   span: SpanRenderable,
   strong: BoldSpanRenderable,

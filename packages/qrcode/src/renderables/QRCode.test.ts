@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { OptimizedBuffer } from "../buffer.js"
-import { BoxRenderable } from "./Box.js"
+import { BoxRenderable, OptimizedBuffer } from "@opentui/core"
+import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
 import { ErrorCorrectionLevel, QRCode, QrSegment } from "../lib/qrcode.js"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { QRCodeRenderable } from "./QRCode.js"
 
 let testRenderer: TestRenderer

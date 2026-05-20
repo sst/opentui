@@ -78,7 +78,7 @@ await Bun.build({
 
 OpenTUI Solid exposes intrinsic JSX elements that map to OpenTUI renderables:
 
-- **Layout & Display:** `text`, `box`, `scrollbox`, `ascii_font`, `qr_code`
+- **Layout & Display:** `text`, `box`, `scrollbox`, `ascii_font`
 - **Input:** `input`, `textarea`, `select`, `tab_select`
 - **Code & Diff:** `code`, `line_number`, `diff`
 - **Text Modifiers:** `span`, `strong`, `b`, `em`, `i`, `u`, `br`, `a`
@@ -164,7 +164,8 @@ import { Dynamic } from "@opentui/solid"
 - `box`: layout container with borders, padding, and flex settings
 - `scrollbox`: scrollable container
 - `ascii_font`: ASCII art text renderer
-- `qr_code`: QR code renderer with intrinsic sizing
+
+QR code support is available from `@opentui/qrcode/solid` and must be registered explicitly with `registerQRCode()`.
 
 ### Input
 
