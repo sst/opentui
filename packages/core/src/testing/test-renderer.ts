@@ -1,5 +1,11 @@
 import { Readable, Writable } from "stream"
-import { CliRenderer, CliRenderEvents, type CliRendererConfig, type CliRendererFrameEvent } from "../renderer.js"
+import {
+  CliRenderer,
+  CliRenderEvents,
+  type CliRendererConfig,
+  type CliRendererExternalOutputEvent,
+  type CliRendererFrameEvent,
+} from "../renderer.js"
 import { calculateRenderGeometry } from "../lib/render-geometry.js"
 import { resolveRenderLib, type NativeRenderStats } from "../zig.js"
 import { createMockKeys } from "./mock-keys.js"
@@ -29,6 +35,22 @@ export interface TestWaitForOptions {
   maxPasses?: number
 }
 
+export interface TestExternalOutputCommit {
+  text: string
+  rows: string[]
+  width: number
+  height: number
+  rowColumns: number
+  startOnNewLine: boolean
+  trailingNewline: boolean
+}
+
+export interface TestExternalOutput {
+  take(): TestExternalOutputCommit[]
+  takeText(): string
+  clear(): void
+}
+
 export interface TestRendererSetup {
   renderer: TestRenderer
   mockInput: MockInput
@@ -41,6 +63,7 @@ export interface TestRendererSetup {
     options?: TestWaitForOptions,
   ) => Promise<string>
   waitForVisualIdle: (options?: TestVisualIdleOptions) => Promise<void>
+  externalOutput: TestExternalOutput
   getNativeStats: () => NativeRenderStats
   captureCharFrame: () => string
   captureSpans: () => CapturedFrame
@@ -84,6 +107,50 @@ function createWaitError(renderer: TestRenderer, message: string, frame?: string
   }
 
   return new Error(details.join("\n"))
+}
+
+class TestExternalOutputRecorder implements TestExternalOutput {
+  private commits: TestExternalOutputCommit[] = []
+
+  constructor(renderer: TestRenderer) {
+    renderer.on(CliRenderEvents.EXTERNAL_OUTPUT, this.record)
+    renderer.once(CliRenderEvents.DESTROY, () => {
+      renderer.off(CliRenderEvents.EXTERNAL_OUTPUT, this.record)
+    })
+  }
+
+  private record = (event: CliRendererExternalOutputEvent): void => {
+    const raw = decoder.decode(event.snapshot.getRealCharBytes(false))
+    const rows = Array.from({ length: event.snapshot.height }, (_, index) =>
+      raw.slice(index * event.snapshot.width, (index + 1) * event.snapshot.width).trimEnd(),
+    )
+
+    this.commits.push({
+      text: rows.join("\n"),
+      rows,
+      width: event.snapshot.width,
+      height: event.snapshot.height,
+      rowColumns: event.rowColumns,
+      startOnNewLine: event.startOnNewLine,
+      trailingNewline: event.trailingNewline,
+    })
+  }
+
+  public take(): TestExternalOutputCommit[] {
+    const commits = this.commits
+    this.commits = []
+    return commits
+  }
+
+  public takeText(): string {
+    return this.take()
+      .flatMap((commit) => commit.rows)
+      .join("\n")
+  }
+
+  public clear(): void {
+    this.commits = []
+  }
 }
 
 function waitForNextFrameOrIdle(renderer: TestRenderer): Promise<CliRendererFrameEvent | null> {
@@ -156,6 +223,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
     consoleMode: options.consoleMode ?? "disabled",
     externalOutputMode: options.externalOutputMode ?? "passthrough",
   })
+  const externalOutput = new TestExternalOutputRecorder(renderer)
 
   const mockInput = createMockKeys(renderer, {
     kittyKeyboard: options.kittyKeyboard,
@@ -281,6 +349,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
     waitFor,
     waitForFrame,
     waitForVisualIdle,
+    externalOutput,
     getNativeStats: () => renderer.getNativeStats(),
     captureCharFrame,
     captureSpans: () => {

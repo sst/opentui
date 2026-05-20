@@ -204,6 +204,13 @@ export type ScreenMode = "alternate-screen" | "main-screen" | "split-footer"
 // - "passthrough": Leave stdout alone.
 export type ExternalOutputMode = "capture-stdout" | "passthrough"
 
+export interface CliRendererExternalOutputEvent {
+  snapshot: OptimizedBuffer
+  rowColumns: number
+  startOnNewLine: boolean
+  trailingNewline: boolean
+}
+
 // Controls the built-in console overlay:
 //
 // - "console-overlay": Capture `console.*` output and show the overlay.
@@ -676,6 +683,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 export enum CliRenderEvents {
   RESIZE = "resize",
   FRAME = "frame",
+  EXTERNAL_OUTPUT = "external_output",
   FOCUS = "focus",
   BLUR = "blur",
   FOCUSED_RENDERABLE = "focused_renderable",
@@ -2153,6 +2161,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enqueueSplitCommit(commit: ExternalOutputCommit): void {
     this.externalOutputQueue.writeSnapshot(commit)
+    if (this.listenerCount(CliRenderEvents.EXTERNAL_OUTPUT) > 0) {
+      this.emit(CliRenderEvents.EXTERNAL_OUTPUT, commit)
+    }
   }
 
   private createStdoutSnapshotCommit(line: string, trailingNewline: boolean): ExternalOutputCommit {

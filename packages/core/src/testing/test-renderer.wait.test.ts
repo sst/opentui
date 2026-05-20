@@ -156,3 +156,123 @@ test("waitForVisualIdle observes a naturally emitted zero-cell live frame", asyn
 
   setup.renderer.stop()
 })
+
+test("externalOutput records writeToScrollback commits without consuming native queue", async () => {
+  setup = await createTestRenderer({
+    width: 10,
+    height: 6,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+    useThread: false,
+    maxFps: Number.POSITIVE_INFINITY,
+  })
+
+  setup.renderer.writeToScrollback((ctx) => {
+    const root = new TextRenderable(ctx.renderContext, {
+      content: "hello\nworld",
+      width: 5,
+      height: 2,
+    })
+
+    return {
+      root,
+      width: 5,
+      height: 2,
+      trailingNewline: false,
+    }
+  })
+
+  const commits = setup.externalOutput.take()
+
+  expect(commits).toHaveLength(1)
+  expect(commits[0]).toMatchObject({
+    text: "hello\nworld",
+    rows: ["hello", "world"],
+    width: 5,
+    height: 2,
+    rowColumns: 5,
+    startOnNewLine: true,
+    trailingNewline: false,
+  })
+  expect((setup.renderer as any).externalOutputQueue.size).toBe(1)
+
+  await setup.renderOnce()
+
+  expect((setup.renderer as any).externalOutputQueue.size).toBe(0)
+  expect(setup.externalOutput.take()).toEqual([])
+})
+
+test("externalOutput records scrollback surface commits", async () => {
+  setup = await createTestRenderer({
+    width: 10,
+    height: 6,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+    useThread: false,
+  })
+
+  const surface = setup.renderer.createScrollbackSurface()
+  const text = new TextRenderable(surface.renderContext, {
+    content: "surface",
+    width: 7,
+    height: 1,
+  })
+
+  surface.root.add(text)
+  surface.render()
+  surface.commitRows(0, 1, { trailingNewline: false })
+
+  const commits = setup.externalOutput.take()
+
+  expect(commits).toHaveLength(1)
+  expect(commits[0]).toMatchObject({
+    text: "surface",
+    rows: ["surface"],
+    width: 10,
+    height: 1,
+    rowColumns: 10,
+    startOnNewLine: true,
+    trailingNewline: false,
+  })
+})
+
+test("externalOutput records captured stdout in FIFO order", async () => {
+  setup = await createTestRenderer({
+    width: 10,
+    height: 6,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+    useThread: false,
+  })
+
+  setup.renderer.writeToScrollback((ctx) => {
+    const root = new TextRenderable(ctx.renderContext, {
+      content: "api",
+      width: 3,
+      height: 1,
+    })
+
+    return {
+      root,
+      width: 3,
+      height: 1,
+    }
+  })
+  ;(setup.renderer as any).stdout.write("out-1\n\nout-2")
+
+  const commits = setup.externalOutput.take()
+
+  expect(commits.map((commit) => commit.text)).toEqual(["api", "out-1", "", "out-2"])
+  expect(commits.map((commit) => commit.startOnNewLine)).toEqual([true, false, false, false])
+  expect(commits.map((commit) => commit.trailingNewline)).toEqual([true, true, true, false])
+
+  ;(setup.renderer as any).stdout.write("again")
+  expect(setup.externalOutput.takeText()).toBe("again")
+  expect(setup.externalOutput.take()).toEqual([])
+})
