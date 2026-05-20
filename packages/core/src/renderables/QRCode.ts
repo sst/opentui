@@ -1,5 +1,5 @@
 import { MeasureMode } from "yoga-layout"
-import type { OptimizedBuffer } from "../buffer.js"
+import { OptimizedBuffer } from "../buffer.js"
 import { parseColor, RGBA, type ColorInput } from "../lib/RGBA.js"
 import { ErrorCorrectionLevel, QRCode } from "../lib/qrcode.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
@@ -60,6 +60,8 @@ abstract class BaseQRCodeRenderable<
   private _fallbackColor: RGBA
   private encoded: TEncoded
   private modules: boolean[][]
+  private renderBuffer: OptimizedBuffer | null = null
+  private renderBufferDirty = true
 
   protected constructor(
     ctx: RenderContext,
@@ -167,6 +169,7 @@ abstract class BaseQRCodeRenderable<
 
   public set foregroundColor(value: ColorInput) {
     this._foregroundColor = parseColor(value)
+    this.invalidateRenderBuffer()
     this.requestRender()
   }
 
@@ -176,6 +179,7 @@ abstract class BaseQRCodeRenderable<
 
   public set backgroundColor(value: ColorInput) {
     this._backgroundColor = parseColor(value)
+    this.invalidateRenderBuffer()
     this.requestRender()
   }
 
@@ -198,6 +202,7 @@ abstract class BaseQRCodeRenderable<
 
   public set fallbackColor(value: ColorInput) {
     this._fallbackColor = parseColor(value)
+    this.invalidateRenderBuffer()
     this.requestRender()
   }
 
@@ -214,11 +219,40 @@ abstract class BaseQRCodeRenderable<
       return
     }
 
+    const renderBuffer = this.getRenderBuffer()
+    if (this.renderBufferDirty) {
+      this.paintRenderBuffer(renderBuffer)
+      this.renderBufferDirty = false
+    }
+
+    if (this.buffered) {
+      buffer.clear(TRANSPARENT)
+      buffer.drawFrameBuffer(0, 0, renderBuffer)
+      return
+    }
+
+    buffer.drawFrameBuffer(this._screenX, this._screenY, renderBuffer)
+  }
+
+  protected override onResize(width: number, height: number): void {
+    this.invalidateRenderBuffer()
+    super.onResize(width, height)
+  }
+
+  protected override destroySelf(): void {
+    this.renderBuffer?.destroy()
+    this.renderBuffer = null
+    super.destroySelf()
+  }
+
+  private paintRenderBuffer(buffer: OptimizedBuffer): void {
+    buffer.clear(TRANSPARENT)
+
     const totalModules = this.encoded.size + this._quietZone * 2
     const effectiveScale = this.resolveRenderScale(this.width, this.height)
 
     if (effectiveScale <= 0) {
-      this.renderFallback(buffer)
+      this.paintFallback(buffer)
       return
     }
 
@@ -233,7 +267,7 @@ abstract class BaseQRCodeRenderable<
       const intersectsRenderY = bottomPixel >= 0 && topPixel < renderHeightPixels
 
       if (intersectsRenderY) {
-        buffer.fillRect(this.x + xOffset, this.y + cellY, renderWidth, 1, this._backgroundColor)
+        buffer.fillRect(xOffset, cellY, renderWidth, 1, this._backgroundColor)
       }
 
       for (let cellX = 0; cellX < renderWidth; cellX++) {
@@ -245,8 +279,8 @@ abstract class BaseQRCodeRenderable<
         }
 
         buffer.setCell(
-          this.x + xOffset + cellX,
-          this.y + cellY,
+          xOffset + cellX,
+          cellY,
           getBlockCharacter(top, bottom),
           this._foregroundColor,
           this._backgroundColor,
@@ -262,8 +296,31 @@ abstract class BaseQRCodeRenderable<
   }
 
   private remeasure(): void {
+    this.invalidateRenderBuffer()
     this.yogaNode.markDirty()
     this.requestRender()
+  }
+
+  private invalidateRenderBuffer(): void {
+    this.renderBufferDirty = true
+  }
+
+  private getRenderBuffer(): OptimizedBuffer {
+    if (this.renderBuffer) {
+      if (this.renderBuffer.width !== this.width || this.renderBuffer.height !== this.height) {
+        this.renderBuffer.resize(this.width, this.height)
+        this.invalidateRenderBuffer()
+      }
+
+      return this.renderBuffer
+    }
+
+    this.renderBuffer = OptimizedBuffer.create(this.width, this.height, this._ctx.widthMethod, {
+      respectAlpha: true,
+      id: `qrcode-renderable-${this.id}`,
+    })
+    this.invalidateRenderBuffer()
+    return this.renderBuffer
   }
 
   private setupMeasureFunc(): void {
@@ -332,7 +389,7 @@ abstract class BaseQRCodeRenderable<
     return this.modules[moduleY]![moduleX]!
   }
 
-  private renderFallback(buffer: OptimizedBuffer): void {
+  private paintFallback(buffer: OptimizedBuffer): void {
     if (this._fallbackContent.length === 0 || this.width <= 0 || this.height <= 0) {
       return
     }
@@ -342,7 +399,7 @@ abstract class BaseQRCodeRenderable<
     const yOffset = Math.max(0, Math.floor(this.height / 2))
 
     for (let i = 0; i < content.length; i++) {
-      buffer.setCell(this.x + xOffset + i, this.y + yOffset, content[i]!, this._fallbackColor, TRANSPARENT)
+      buffer.setCell(xOffset + i, yOffset, content[i]!, this._fallbackColor, TRANSPARENT)
     }
   }
 }

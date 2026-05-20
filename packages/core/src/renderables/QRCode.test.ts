@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { OptimizedBuffer } from "../buffer.js"
 import { BoxRenderable } from "./Box.js"
 import { ErrorCorrectionLevel, QRCode, QrSegment } from "../lib/qrcode.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
@@ -286,7 +287,106 @@ describe("QRCodeRenderable", () => {
     expect(qrRow.some((span) => span.bg.equals(qr.backgroundColor))).toBe(true)
     expect(qrRow[qrRow.length - 1]?.bg.equals(qr.backgroundColor)).toBe(false)
   })
+
+  it("caches rendered cells and only redraws them after QR inputs change", async () => {
+    const paintTracker = trackOptimizedBufferPaints()
+
+    try {
+      const qr = new QRCodeRenderable(testRenderer, {
+        content: "HELLO WORLD",
+        quietZone: 4,
+        scale: 1,
+      })
+
+      testRenderer.root.add(qr)
+      await renderOnce()
+
+      expect(paintTracker.counts.fillRect).toBeGreaterThan(0)
+      expect(paintTracker.counts.setCell).toBeGreaterThan(0)
+
+      const afterFirstPaint = { ...paintTracker.counts }
+
+      await renderOnce()
+
+      expect(paintTracker.counts.fillRect).toBe(afterFirstPaint.fillRect)
+      expect(paintTracker.counts.setCell).toBe(afterFirstPaint.setCell)
+      expect(paintTracker.counts.drawFrameBuffer).toBeGreaterThan(afterFirstPaint.drawFrameBuffer)
+
+      qr.foregroundColor = "#ff0000"
+      await renderOnce()
+
+      expect(paintTracker.counts.fillRect).toBeGreaterThan(afterFirstPaint.fillRect)
+      expect(paintTracker.counts.setCell).toBeGreaterThan(afterFirstPaint.setCell)
+
+      const afterColorPaint = { ...paintTracker.counts }
+
+      await renderOnce()
+
+      expect(paintTracker.counts.fillRect).toBe(afterColorPaint.fillRect)
+      expect(paintTracker.counts.setCell).toBe(afterColorPaint.setCell)
+      expect(paintTracker.counts.drawFrameBuffer).toBeGreaterThan(afterColorPaint.drawFrameBuffer)
+
+      qr.content = "HELLO OPENTUI"
+      await renderOnce()
+
+      expect(paintTracker.counts.fillRect).toBeGreaterThan(afterColorPaint.fillRect)
+      expect(paintTracker.counts.setCell).toBeGreaterThan(afterColorPaint.setCell)
+    } finally {
+      paintTracker.restore()
+    }
+  })
 })
+
+function trackOptimizedBufferPaints(): {
+  counts: {
+    fillRect: number
+    setCell: number
+    drawFrameBuffer: number
+  }
+  restore: () => void
+} {
+  const counts = {
+    fillRect: 0,
+    setCell: 0,
+    drawFrameBuffer: 0,
+  }
+  const originalFillRect = OptimizedBuffer.prototype.fillRect
+  const originalSetCell = OptimizedBuffer.prototype.setCell
+  const originalDrawFrameBuffer = OptimizedBuffer.prototype.drawFrameBuffer
+
+  OptimizedBuffer.prototype.fillRect = function (
+    this: OptimizedBuffer,
+    ...args: Parameters<OptimizedBuffer["fillRect"]>
+  ): void {
+    counts.fillRect++
+    originalFillRect.apply(this, args)
+  }
+
+  OptimizedBuffer.prototype.setCell = function (
+    this: OptimizedBuffer,
+    ...args: Parameters<OptimizedBuffer["setCell"]>
+  ): void {
+    counts.setCell++
+    originalSetCell.apply(this, args)
+  }
+
+  OptimizedBuffer.prototype.drawFrameBuffer = function (
+    this: OptimizedBuffer,
+    ...args: Parameters<OptimizedBuffer["drawFrameBuffer"]>
+  ): void {
+    counts.drawFrameBuffer++
+    originalDrawFrameBuffer.apply(this, args)
+  }
+
+  return {
+    counts,
+    restore: () => {
+      OptimizedBuffer.prototype.fillRect = originalFillRect
+      OptimizedBuffer.prototype.setCell = originalSetCell
+      OptimizedBuffer.prototype.drawFrameBuffer = originalDrawFrameBuffer
+    },
+  }
+}
 
 function encodeExactVersionQRCode(targetVersion: number): QRCode {
   return QRCode.encodeText("A", ErrorCorrectionLevel.H, {
