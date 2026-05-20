@@ -10,29 +10,6 @@ import {
 
 export type InputAction = TextareaAction
 export type InputKeyBinding = TextareaKeyBinding
-export type InputType = "number" | "email" | "text"
-
-function isValidNumber(value: string): boolean {
-  if (value === "") {
-    return true
-  }
-  return /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(value)
-}
-
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-}
-
-function isValidInputValue(type: InputType, value: string): boolean {
-  switch (type) {
-    case "number":
-      return isValidNumber(value)
-    case "email":
-      return isValidEmail(value)
-    case "text":
-      return true
-  }
-}
 
 export interface InputRenderableOptions extends Omit<
   TextareaOptions,
@@ -46,7 +23,6 @@ export interface InputRenderableOptions extends Omit<
   maxLength?: number
   /** Placeholder text (Input only supports string, not StyledText) */
   placeholder?: string
-  type?: InputType
 }
 
 // TODO: make this just plain strings instead of an enum (same for other events)
@@ -70,7 +46,6 @@ export enum InputRenderableEvents {
 export class InputRenderable extends TextareaRenderable {
   private _maxLength: number
   private _minLength: number
-  private _type: InputType
   private _lastCommittedValue: string = ""
 
   // Only specify defaults that differ from TextareaRenderable/EditBufferRenderable
@@ -80,7 +55,6 @@ export class InputRenderable extends TextareaRenderable {
     // Input-specific
     maxLength: 1000,
     minLength: 0,
-    type: "text",
     value: "",
   } satisfies Partial<InputRenderableOptions>
 
@@ -88,7 +62,6 @@ export class InputRenderable extends TextareaRenderable {
     const defaults = InputRenderable.defaultOptions
     const maxLength = options.maxLength ?? defaults.maxLength
     const minLength = options.minLength ?? defaults.minLength
-    const type = options.type ?? defaults.type
     // Sanitize initial value: strip newlines and enforce maxLength
     const rawValue = options.value ?? defaults.value
     const initialValue = rawValue.replace(/[\n\r]/g, "").substring(0, maxLength)
@@ -114,7 +87,6 @@ export class InputRenderable extends TextareaRenderable {
 
     this._maxLength = maxLength
     this._minLength = minLength
-    this._type = type
     this._lastCommittedValue = this.plainText
 
     // Set cursor to end of initial value
@@ -189,10 +161,6 @@ export class InputRenderable extends TextareaRenderable {
   public override submit(): boolean {
     const currentValue = this.plainText
     if (currentValue.length < this._minLength) {
-      return false
-    }
-
-    if (!isValidInputValue(this._type, currentValue)) {
       return false
     }
 
@@ -287,14 +255,6 @@ export class InputRenderable extends TextareaRenderable {
 
   public get minLength(): number {
     return this._minLength
-  }
-
-  public set type(type: InputType) {
-    this._type = type
-  }
-
-  public get type(): InputType {
-    return this._type
   }
 
   public override set placeholder(placeholder: string) {
