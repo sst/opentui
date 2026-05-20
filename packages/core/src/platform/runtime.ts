@@ -1,5 +1,5 @@
 import { mkdir, writeFile as writeFileNode } from "node:fs/promises"
-import { dirname } from "node:path"
+import { dirname, isAbsolute, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import stringWidthLib from "string-width"
@@ -17,6 +17,12 @@ interface BunLike {
   write(destination: string | URL, data: string | ArrayBufferView, options?: WriteFileOptions): Promise<number>
 }
 
+interface FileImportModule {
+  default: string
+}
+
+type FilePathFallback = string | URL | (() => string | URL)
+
 type GlobalWithBun = typeof globalThis & { Bun?: BunLike }
 
 const TEXT_ENCODER = new TextEncoder()
@@ -30,6 +36,30 @@ export const writeFile: (
   data: string | ArrayBufferView,
   options?: WriteFileOptions,
 ) => Promise<number> = bun?.write ?? writeFilePortable
+
+// Bun only discovers bundled file-like assets from the literal import expression at the call site.
+export async function resolveBundledFilePath(
+  loadBundledFile: () => Promise<FileImportModule>,
+  fallbackPath: FilePathFallback,
+  metaUrl: string,
+): Promise<string> {
+  if (!bun) {
+    const path = typeof fallbackPath === "function" ? fallbackPath() : fallbackPath
+    return fileURLToPath(path instanceof URL ? path : new URL(path, metaUrl))
+  }
+
+  const loadedPath = (await loadBundledFile()).default
+
+  if (loadedPath.startsWith("file:")) {
+    return fileURLToPath(loadedPath)
+  }
+
+  if (isAbsolute(loadedPath)) {
+    return loadedPath
+  }
+
+  return resolve(dirname(fileURLToPath(metaUrl)), loadedPath)
+}
 
 function standardSleep(msOrDate: number | Date): Promise<void> {
   const ms = msOrDate instanceof Date ? msOrDate.getTime() - Date.now() : msOrDate

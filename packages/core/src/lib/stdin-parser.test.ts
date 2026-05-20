@@ -544,8 +544,11 @@ describe("StdinParser", () => {
     // CSI codepoint u format
     table([
       ["a key", "\x1b[97u", [k("a", { raw: "\x1b[97u" })]],
+      ["space", "\x1b[32u", [k("space", { raw: "\x1b[32u" })]],
       ["shift+a", "\x1b[97;2u", [k("a", { raw: "\x1b[97;2u", shift: true })]],
+      ["shift+space", "\x1b[32;2u", [k("space", { raw: "\x1b[32;2u", shift: true })]],
       ["ctrl+a", "\x1b[97;5u", [k("a", { raw: "\x1b[97;5u", ctrl: true })]],
+      ["ctrl+space", "\x1b[32;5u", [k("space", { raw: "\x1b[32;5u", ctrl: true })]],
       ["alt+a", "\x1b[97;3u", [k("a", { raw: "\x1b[97;3u", meta: true })]],
       ["ctrl+shift+a", "\x1b[97;6u", [k("a", { raw: "\x1b[97;6u", ctrl: true, shift: true })]],
       ["a release", "\x1b[97;1:3u", [k("a", { raw: "\x1b[97;1:3u", eventType: "release" })]],
@@ -1384,6 +1387,87 @@ describe("StdinParser", () => {
 
         parser.push(Buffer.from("R"))
         expect(snap(parser)).toEqual([resp("cpr", "\x1b[24;80R")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR swallows a reply that finishes later", () => {
+      const parser = createParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[24;80"))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("R"))
+        expect(snap(parser)).toEqual([])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR swallows a reply split after the CSI introducer", () => {
+      const parser = createParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b["))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        parser.push(Buffer.from("24;80R"))
+        expect(snap(parser)).toEqual([])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR preserves explicit-width CPR replies", () => {
+      const parser = createParser({
+        protocolContext: {
+          startupCursorCprActive: true,
+          explicitWidthCprActive: true,
+        },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b["))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        parser.push(Buffer.from("1;2R"))
+        expect(snap(parser)).toEqual([resp("cpr", "\x1b[1;2R")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("aborting a pending startup cursor CPR preserves later non-CPR input", () => {
+      const parser = createParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[24;80"))
+        expect(snap(parser)).toEqual([])
+
+        parser.abortPendingStartupCursorCpr()
+        parser.updateProtocolContext({ startupCursorCprActive: false })
+
+        parser.push(Buffer.from("a"))
+        expect(snap(parser)).toEqual([k("a")])
       } finally {
         parser.destroy()
       }

@@ -2,6 +2,7 @@ import { test, expect, describe, beforeEach, afterEach, spyOn } from "bun:test"
 import { BoxRenderable, type BoxOptions } from "./Box.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import type { BorderStyle } from "../lib/border.js"
+import { RGBA } from "../lib/RGBA.js"
 
 let testRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -201,6 +202,34 @@ describe("BoxRenderable - border titles (top and bottom)", () => {
 
     const lines = captureFrame().split("\n")
     expect(lines[4].slice(0, 18)).toBe(expectedBorder)
+  })
+})
+
+describe("BoxRenderable - transparent border blending", () => {
+  test("blends transparent border foreground against the box background", async () => {
+    const panel = RGBA.fromHex("#123456")
+    const box = new BoxRenderable(testRenderer, {
+      id: "transparent-border-box",
+      width: 6,
+      height: 3,
+      border: ["left"],
+      borderStyle: "heavy",
+      borderColor: RGBA.fromInts(0, 0, 0, 0),
+      backgroundColor: panel,
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    const buffer = testRenderer.currentRenderBuffer
+    expect(buffer.buffers.char[0]).toBe("┃".codePointAt(0))
+    expect({
+      fg: RGBA.fromArray(buffer.buffers.fg.slice(0, 4)).toInts(),
+      bg: RGBA.fromArray(buffer.buffers.bg.slice(0, 4)).toInts(),
+    }).toEqual({
+      fg: panel.toInts(),
+      bg: panel.toInts(),
+    })
   })
 })
 

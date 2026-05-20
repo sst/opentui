@@ -5,9 +5,9 @@ import { BoxRenderable, type KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import * as addons from "./addons/index.js"
 import {
+  createBindingLookup,
   formatCommandBindings,
   formatKeySequence,
-  resolveBindingSections,
   type BindingValue,
   type SequenceBindingLike,
 } from "./extras/index.js"
@@ -728,7 +728,7 @@ function inferScenarioKind(name: string): BenchmarkKind {
     return "command-query"
   }
 
-  if (name.startsWith("format_") || name.startsWith("binding_sections_")) {
+  if (name.startsWith("format_") || name.startsWith("binding_lookup_")) {
     return "formatting"
   }
 
@@ -1564,37 +1564,31 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
-    name: "binding_sections_small_mixed",
-    description: "Repeated binding-section resolution for a small mixed app config",
+    name: "binding_lookup_small_mixed",
+    description: "Repeated binding lookup creation for a small mixed app config",
     async setup() {
       const resources = await createScenarioResources()
-      const sections = ["app", "prompt_input", "dialog_select", "missing"] as const
-      const config: Record<string, Record<string, BindingValue>> = {
-        app: {
-          " command.palette.show ": "ctrl+p",
-          "app.exit": ["ctrl+c", "ctrl+d", "<leader>q"],
-          "file.save": { name: "s", ctrl: true },
-          "file.close": false,
-        },
-        prompt_input: {
-          "prompt.paste": { key: "ctrl+v", preventDefault: false, fallthrough: true },
-          "prompt.history.previous": "up",
-          "prompt.history.next": "down",
-        },
-        dialog_select: {
-          "dialog.confirm": "enter",
-          "dialog.cancel": ["escape", "ctrl+c"],
-          "dialog.ignore": [],
-        },
+      const config: Record<string, BindingValue> = {
+        show_palette: "ctrl+p",
+        exit_app: ["ctrl+c", "ctrl+d", "<leader>q"],
+        save_file: { name: "s", ctrl: true },
+        close_file: false,
+        paste_prompt: { key: "ctrl+v", preventDefault: false, fallthrough: true },
+        prompt_history_previous: "up",
+        prompt_history_next: "down",
+        confirm_dialog: "enter",
+        cancel_dialog: ["escape", "ctrl+c"],
+        ignore_dialog: [],
       }
+      const appCommands = ["show_palette", "exit_app", "save_file", "close_file"]
       let sink = 0
 
       return {
         resources,
         runIteration() {
-          const resolved = resolveBindingSections(config, { sections })
-          sink += resolved.sections.app.length
-          sink += resolved.get("app", " app.exit ")?.length ?? 0
+          const lookup = createBindingLookup(config)
+          sink += lookup.gather("app", appCommands).length
+          sink += lookup.get("exit_app").length
         },
         cleanup() {
           consume(sink)
@@ -1604,37 +1598,145 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
-    name: "binding_sections_large_mixed",
-    description: "Repeated binding-section resolution for many sections and mixed binding value shapes",
+    name: "binding_lookup_small_mixed_defaults",
+    description: "Repeated binding lookup creation with binding defaults for a small mixed app config",
     async setup() {
       const resources = await createScenarioResources()
-      const config: Record<string, Record<string, BindingValue>> = Object.create(null)
-      const sections = Array.from({ length: 40 }, (_, index) => `section-${index}`)
+      const config: Record<string, BindingValue> = {
+        show_palette: "ctrl+p",
+        exit_app: ["ctrl+c", "ctrl+d", "<leader>q"],
+        save_file: { name: "s", ctrl: true },
+        close_file: false,
+        paste_prompt: { key: "ctrl+v", preventDefault: false, fallthrough: true },
+        prompt_history_previous: "up",
+        prompt_history_next: "down",
+        confirm_dialog: "enter",
+        cancel_dialog: ["escape", "ctrl+c"],
+        ignore_dialog: [],
+      }
+      const appCommands = ["show_palette", "exit_app", "save_file", "close_file"]
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          const lookup = createBindingLookup(config, {
+            bindingDefaults({ binding }) {
+              if (binding.group !== undefined) return
+              return { group: "default" }
+            },
+          })
+          sink += lookup.gather("app", appCommands).length
+          sink += lookup.get("exit_app").length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_pick_small_mixed",
+    description: "Repeated gathered binding command selection for a small mixed app config",
+    async setup() {
+      const resources = await createScenarioResources()
+      const lookup = createBindingLookup({
+        show_palette: "ctrl+p",
+        exit_app: ["ctrl+c", "ctrl+d", "<leader>q"],
+        save_file: { name: "s", ctrl: true },
+        close_file: false,
+        paste_prompt: { key: "ctrl+v", preventDefault: false, fallthrough: true },
+        prompt_history_previous: "up",
+        prompt_history_next: "down",
+      })
+      lookup.gather("app", ["show_palette", "exit_app", "save_file", "close_file"])
+      lookup.gather("prompt", ["paste_prompt", "prompt_history_previous", "prompt_history_next"])
+      const appCommands = ["exit_app", "missing", "show_palette"]
+      const promptCommands = ["prompt_history_next", "paste_prompt"]
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          sink += lookup.pick("app", appCommands).length
+          sink += lookup.pick("prompt", promptCommands).length
+          sink += lookup.pick("missing", appCommands).length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_omit_small_mixed",
+    description: "Repeated gathered binding command exclusion for a small mixed app config",
+    async setup() {
+      const resources = await createScenarioResources()
+      const lookup = createBindingLookup({
+        show_palette: "ctrl+p",
+        exit_app: ["ctrl+c", "ctrl+d", "<leader>q"],
+        save_file: { name: "s", ctrl: true },
+        close_file: false,
+        paste_prompt: { key: "ctrl+v", preventDefault: false, fallthrough: true },
+        prompt_history_previous: "up",
+        prompt_history_next: "down",
+      })
+      lookup.gather("app", ["show_palette", "exit_app", "save_file", "close_file"])
+      lookup.gather("prompt", ["paste_prompt", "prompt_history_previous", "prompt_history_next"])
+      const appCommands = ["exit_app", "missing"]
+      const promptCommands = ["prompt_history_next"]
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          sink += lookup.omit("app", appCommands).length
+          sink += lookup.omit("prompt", promptCommands).length
+          sink += lookup.omit("missing", appCommands).length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_large_mixed",
+    description: "Repeated binding lookup creation for many groups and mixed binding value shapes",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, BindingValue> = Object.create(null)
+      const groupCommands = Array.from({ length: 40 }, (_, sectionIndex) =>
+        Array.from({ length: 64 }, (_, commandIndex) => `group_${sectionIndex}_command_${commandIndex}`),
+      )
 
       for (let sectionIndex = 0; sectionIndex < 32; sectionIndex += 1) {
-        const section: Record<string, BindingValue> = Object.create(null)
-        config[`section-${sectionIndex}`] = section
+        const commands = groupCommands[sectionIndex]!
 
         for (let commandIndex = 0; commandIndex < 64; commandIndex += 1) {
-          const command = `command-${commandIndex}`
+          const command = commands[commandIndex]!
           switch (commandIndex % 6) {
             case 0:
-              section[command] = false
+              config[command] = false
               break
             case 1:
-              section[command] = []
+              config[command] = []
               break
             case 2:
-              section[command] = createKey(commandIndex)
+              config[command] = createKey(commandIndex)
               break
             case 3:
-              section[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+              config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
               break
             case 4:
-              section[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+              config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
               break
             default:
-              section[command] = "none"
+              config[command] = "none"
               break
           }
         }
@@ -1645,9 +1747,9 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          const resolved = resolveBindingSections(config, { sections })
-          sink += resolved.sections["section-0"]?.length ?? 0
-          sink += resolved.get("section-3", "command-4")?.length ?? 0
+          const lookup = createBindingLookup(config)
+          sink += lookup.gather("group-0", groupCommands[0]!).length
+          sink += lookup.get("group_3_command_4").length
         },
         cleanup() {
           consume(sink)
@@ -1657,26 +1759,377 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
-    name: "binding_sections_duplicate_normalized_commands",
-    description: "Repeated binding-section resolution with many trimmed command overrides and disables",
+    name: "binding_lookup_large_mixed_defaults",
+    description:
+      "Repeated binding lookup creation with binding defaults for many groups and mixed binding value shapes",
     async setup() {
       const resources = await createScenarioResources()
-      const section: Record<string, BindingValue> = Object.create(null)
+      const config: Record<string, BindingValue> = Object.create(null)
+      const groupCommands = Array.from({ length: 40 }, (_, sectionIndex) =>
+        Array.from({ length: 64 }, (_, commandIndex) => `group_${sectionIndex}_command_${commandIndex}`),
+      )
 
-      for (let index = 0; index < 512; index += 1) {
-        section[` command-${index} `] = createKey(index)
-        section[`command-${index}`] = index % 4 === 0 ? false : [createKey(index + 1), { key: createKey(index + 2) }]
+      for (let sectionIndex = 0; sectionIndex < 32; sectionIndex += 1) {
+        const commands = groupCommands[sectionIndex]!
+
+        for (let commandIndex = 0; commandIndex < 64; commandIndex += 1) {
+          const command = commands[commandIndex]!
+          switch (commandIndex % 6) {
+            case 0:
+              config[command] = false
+              break
+            case 1:
+              config[command] = []
+              break
+            case 2:
+              config[command] = createKey(commandIndex)
+              break
+            case 3:
+              config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+              break
+            case 4:
+              config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+              break
+            default:
+              config[command] = "none"
+              break
+          }
+        }
       }
 
-      const config = { app: section }
       let sink = 0
 
       return {
         resources,
         runIteration() {
-          const resolved = resolveBindingSections(config)
-          sink += resolved.sections.app.length
-          sink += resolved.get("app", " command-7 ")?.length ?? 0
+          const lookup = createBindingLookup(config, {
+            bindingDefaults({ binding }) {
+              if (binding.group !== undefined) return
+              return { group: "default" }
+            },
+          })
+          sink += lookup.gather("group-0", groupCommands[0]!).length
+          sink += lookup.get("group_3_command_4").length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_get_large_mixed",
+    description: "Repeated command lookup over a large mixed binding config",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, BindingValue> = Object.create(null)
+
+      for (let commandIndex = 0; commandIndex < 1024; commandIndex += 1) {
+        const command = `command_${commandIndex}`
+        switch (commandIndex % 5) {
+          case 0:
+            config[command] = false
+            break
+          case 1:
+            config[command] = createKey(commandIndex)
+            break
+          case 2:
+            config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`]
+            break
+          case 3:
+            config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+            break
+          default:
+            config[command] = []
+            break
+        }
+      }
+
+      const lookup = createBindingLookup(config)
+      const commands = Array.from({ length: 128 }, (_, index) => `command_${(index * 7) % 1024}`)
+      let sink = 0
+
+      return {
+        resources,
+        runIteration(iteration) {
+          sink += lookup.get(commands[iteration % commands.length]!).length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_gather_cached_large_mixed",
+    description: "Repeated cached gather calls for a large mixed binding group",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, BindingValue> = Object.create(null)
+      const commands = Array.from({ length: 512 }, (_, index) => `command_${index}`)
+
+      for (let commandIndex = 0; commandIndex < commands.length; commandIndex += 1) {
+        const command = commands[commandIndex]!
+        switch (commandIndex % 6) {
+          case 0:
+            config[command] = false
+            break
+          case 1:
+            config[command] = []
+            break
+          case 2:
+            config[command] = createKey(commandIndex)
+            break
+          case 3:
+            config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+            break
+          case 4:
+            config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+            break
+          default:
+            config[command] = "none"
+            break
+        }
+      }
+
+      const lookup = createBindingLookup(config)
+      lookup.gather("app", commands)
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          sink += lookup.gather("app", commands).length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_gather_cold_large_mixed",
+    description: "Repeated invalidated gather calls for a large mixed binding group",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, BindingValue> = Object.create(null)
+      const commands = Array.from({ length: 512 }, (_, index) => `command_${index}`)
+
+      for (let commandIndex = 0; commandIndex < commands.length; commandIndex += 1) {
+        const command = commands[commandIndex]!
+        switch (commandIndex % 6) {
+          case 0:
+            config[command] = false
+            break
+          case 1:
+            config[command] = []
+            break
+          case 2:
+            config[command] = createKey(commandIndex)
+            break
+          case 3:
+            config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+            break
+          case 4:
+            config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+            break
+          default:
+            config[command] = "none"
+            break
+        }
+      }
+
+      const lookup = createBindingLookup(config)
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          lookup.invalidate("app")
+          sink += lookup.gather("app", commands).length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_update_large_mixed",
+    description: "Repeated lookup rebuilds from large mixed binding configs",
+    async setup() {
+      const resources = await createScenarioResources()
+      const configs = Array.from({ length: 2 }, (_, variant) => {
+        const config: Record<string, BindingValue> = Object.create(null)
+
+        for (let commandIndex = 0; commandIndex < 512; commandIndex += 1) {
+          const command = `command_${commandIndex}`
+          switch ((commandIndex + variant) % 6) {
+            case 0:
+              config[command] = false
+              break
+            case 1:
+              config[command] = []
+              break
+            case 2:
+              config[command] = createKey(commandIndex)
+              break
+            case 3:
+              config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+              break
+            case 4:
+              config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+              break
+            default:
+              config[command] = "none"
+              break
+          }
+        }
+
+        return config
+      })
+      const lookup = createBindingLookup(configs[0]!)
+      const commands = Array.from({ length: 64 }, (_, index) => `command_${index}`)
+      let sink = 0
+
+      return {
+        resources,
+        runIteration(iteration) {
+          lookup.update(configs[iteration % configs.length]!)
+          sink += lookup.gather("app", commands).length
+          sink += lookup.get("command_7").length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_pick_large_mixed",
+    description: "Repeated gathered binding command selection for many commands and binding value shapes",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, BindingValue> = Object.create(null)
+
+      for (let commandIndex = 0; commandIndex < 256; commandIndex += 1) {
+        const command = `command_${commandIndex}`
+        switch (commandIndex % 6) {
+          case 0:
+            config[command] = false
+            break
+          case 1:
+            config[command] = []
+            break
+          case 2:
+            config[command] = createKey(commandIndex)
+            break
+          case 3:
+            config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+            break
+          case 4:
+            config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+            break
+          default:
+            config[command] = "none"
+            break
+        }
+      }
+
+      const lookup = createBindingLookup(config)
+      const allCommands = Array.from({ length: 256 }, (_, index) => `command_${index}`)
+      const commands = Array.from({ length: 96 }, (_, index) => `command_${(index * 5) % 256}`)
+      lookup.gather("app", allCommands)
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          sink += lookup.pick("app", commands).length
+          sink += lookup.pick("missing", commands).length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_omit_large_mixed",
+    description: "Repeated gathered binding command exclusion for many commands and binding value shapes",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, BindingValue> = Object.create(null)
+
+      for (let commandIndex = 0; commandIndex < 256; commandIndex += 1) {
+        const command = `command_${commandIndex}`
+        switch (commandIndex % 6) {
+          case 0:
+            config[command] = false
+            break
+          case 1:
+            config[command] = []
+            break
+          case 2:
+            config[command] = createKey(commandIndex)
+            break
+          case 3:
+            config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+            break
+          case 4:
+            config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+            break
+          default:
+            config[command] = "none"
+            break
+        }
+      }
+
+      const lookup = createBindingLookup(config)
+      const allCommands = Array.from({ length: 256 }, (_, index) => `command_${index}`)
+      const commands = Array.from({ length: 96 }, (_, index) => `command_${(index * 5) % 256}`)
+      lookup.gather("app", allCommands)
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          sink += lookup.omit("app", commands).length
+          sink += lookup.omit("missing", commands).length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_exact_spaced_commands",
+    description: "Repeated binding lookup creation with exact spaced command names and disables",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, BindingValue> = Object.create(null)
+
+      for (let index = 0; index < 512; index += 1) {
+        config[` command_${index} `] = createKey(index)
+        config[`command_${index}`] = index % 4 === 0 ? false : [createKey(index + 1), { key: createKey(index + 2) }]
+      }
+
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          const lookup = createBindingLookup(config)
+          sink += lookup.bindings.length
+          sink += lookup.get(" command_7 ").length
         },
         cleanup() {
           consume(sink)

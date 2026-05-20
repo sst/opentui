@@ -1,6 +1,6 @@
 {
   "name": "@opentui/web",
-  "version": "0.2.3",
+  "version": "0.2.14",
   "private": true,
   "type": "module",
   "scripts": {

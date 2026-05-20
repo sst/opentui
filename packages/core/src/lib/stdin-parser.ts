@@ -78,6 +78,17 @@ type ParserState =
       hasDigit: boolean
       firstParamValue: number | null
     }
+  | {
+      // Startup cursor CPR cancellation can happen before the parser has enough
+      // bytes to distinguish a stale reply from ordinary CSI input. This state
+      // keeps consuming that one pending reply until it is either discarded as
+      // CPR noise or handed back to normal CSI parsing.
+      tag: "csi_parametric_ignored"
+      semicolons: number
+      segments: number
+      hasDigit: boolean
+      firstParamValue: number | null
+    }
   | { tag: "csi_private_reply"; semicolons: number; hasDigit: boolean; sawDollar: boolean }
   | { tag: "csi_private_reply_deferred"; semicolons: number; hasDigit: boolean; sawDollar: boolean }
   | { tag: "osc"; sawEsc: boolean }
@@ -376,6 +387,10 @@ function canStillBeStartupCursorCpr(state: ParametricCsiLike): boolean {
   return state.semicolons === 1
 }
 
+function canStillBeStartupCursorCprPrefix(state: ParametricCsiLike): boolean {
+  return state.segments === 1 && state.semicolons <= 1
+}
+
 function canStillBePixelResolution(state: ParametricCsiLike): boolean {
   return state.firstParamValue === 4 && state.semicolons === 2
 }
@@ -598,6 +613,80 @@ export class StdinParser {
     this.ensureAlive()
     this.protocolContext = { ...this.protocolContext, ...patch }
     this.reconcileDeferredStateWithProtocolContext()
+    this.reconcileTimeoutState()
+  }
+
+  // A startup CPR can be split either after `ESC[` or after the first `;`.
+  // Normalize both shapes into one ignore-state so leaving split-footer can
+  // cancel the stale reply without also swallowing unrelated CSI sequences.
+  private getAbortableStartupCursorCprState(): Extract<ParserState, { tag: "csi_parametric_ignored" }> | null {
+    if (this.pending.length === 0) {
+      return null
+    }
+
+    switch (this.state.tag) {
+      case "csi": {
+        const bytes = this.pending.view()
+        const firstParamStart = this.unitStart + 2
+        if (this.cursor < firstParamStart) {
+          return null
+        }
+
+        let firstParamValue: number | null = null
+        for (let index = firstParamStart; index < this.cursor; index += 1) {
+          const byte = bytes[index]!
+          if (!isAsciiDigit(byte)) {
+            return null
+          }
+
+          firstParamValue = (firstParamValue ?? 0) * 10 + (byte - 0x30)
+        }
+
+        return {
+          tag: "csi_parametric_ignored",
+          semicolons: 0,
+          segments: 1,
+          hasDigit: this.cursor > firstParamStart,
+          firstParamValue,
+        }
+      }
+
+      case "csi_parametric":
+      case "csi_parametric_deferred":
+        if (
+          !canStillBeStartupCursorCprPrefix(this.state) ||
+          (this.protocolContext.explicitWidthCprActive && canStillBeExplicitWidthCpr(this.state))
+        ) {
+          return null
+        }
+
+        return {
+          tag: "csi_parametric_ignored",
+          semicolons: this.state.semicolons,
+          segments: this.state.segments,
+          hasDigit: this.state.hasDigit,
+          firstParamValue: this.state.firstParamValue,
+        }
+    }
+
+    return null
+  }
+
+  public abortPendingStartupCursorCpr(): void {
+    this.ensureAlive()
+
+    const nextState = this.getAbortableStartupCursorCprState()
+    if (!nextState) {
+      return
+    }
+
+    this.state = nextState
+
+    if (this.pendingSinceMs === null) {
+      this.markPending()
+    }
+
+    this.forceFlush = false
     this.reconcileTimeoutState()
   }
 
@@ -1291,6 +1380,76 @@ export class StdinParser {
           }
 
           this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.cursor)
+          continue
+        }
+
+        case "csi_parametric_ignored": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (byte === ESC) {
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (isAsciiDigit(byte)) {
+            this.cursor += 1
+            this.state = {
+              tag: "csi_parametric_ignored",
+              semicolons: this.state.semicolons,
+              segments: this.state.segments,
+              hasDigit: true,
+              firstParamValue:
+                this.state.semicolons === 0
+                  ? (this.state.firstParamValue ?? 0) * 10 + (byte - 0x30)
+                  : this.state.firstParamValue,
+            }
+            continue
+          }
+
+          if (byte === 0x3b && this.state.semicolons === 0 && this.state.hasDigit) {
+            // `CSI 1;...R` is also used by the explicit-width probe, so once we
+            // learn that first param we must hand control back to normal CSI
+            // parsing instead of discarding the rest of the reply.
+            if (this.protocolContext.explicitWidthCprActive && this.state.firstParamValue === 1) {
+              this.state = { tag: "csi" }
+              continue
+            }
+
+            this.cursor += 1
+            this.state = {
+              tag: "csi_parametric_ignored",
+              semicolons: 1,
+              segments: 1,
+              hasDigit: false,
+              firstParamValue: this.state.firstParamValue,
+            }
+            continue
+          }
+
+          if (byte === 0x52 && this.state.semicolons === 1 && this.state.hasDigit) {
+            const end = this.cursor + 1
+            this.state = { tag: "ground" }
+            this.consumePrefix(end)
+            continue
+          }
+
+          if (this.state.semicolons === 0) {
+            this.state = { tag: "csi" }
+            continue
+          }
+
           this.state = { tag: "ground" }
           this.consumePrefix(this.cursor)
           continue

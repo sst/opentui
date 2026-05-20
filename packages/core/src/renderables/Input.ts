@@ -71,6 +71,7 @@ export class InputRenderable extends TextareaRenderable {
       // Override return/linefeed to submit instead of newline
       keyBindings: [
         { name: "return", action: "submit" },
+        { name: "kpenter", action: "submit" },
         { name: "linefeed", action: "submit" },
         ...(options.keyBindings || []),
       ],

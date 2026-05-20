@@ -1,7 +1,15 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { TextBuffer } from "./text-buffer.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
+import { SyntaxStyle } from "./syntax-style.js"
+import { resolveRenderLib } from "./zig.js"
+
+const MALFORMED_UTF8_ABOVE_UNICODE_RANGE = new Uint8Array([0x41, 0xf4, 0x90, 0x80, 0x80, 0x42])
+const MALFORMED_UTF8_TEXT = "A" + "\uFFFD".repeat(4) + "B"
 
 describe("TextBuffer", () => {
   let buffer: TextBuffer
@@ -204,6 +212,47 @@ describe("TextBuffer", () => {
       expect(buffer.getPlainText()).toBe("New Text")
     })
 
+    it("setText should clear styled text chunk highlights", () => {
+      const syntaxStyle = SyntaxStyle.create()
+      buffer.setSyntaxStyle(syntaxStyle)
+      buffer.setStyledText(
+        new StyledText([
+          {
+            __isChunk: true,
+            text: "Styled",
+            fg: RGBA.fromValues(1, 0, 0, 1),
+          },
+        ]),
+      )
+
+      expect(buffer.getHighlightCount()).toBe(1)
+
+      buffer.setText("Plain")
+
+      expect(buffer.getPlainText()).toBe("Plain")
+      expect(buffer.getHighlightCount()).toBe(0)
+
+      syntaxStyle.destroy()
+    })
+
+    it("setText should preserve user highlights including max hlRef", () => {
+      const syntaxStyle = SyntaxStyle.create()
+      const styleId = syntaxStyle.registerStyle("user-highlight", { fg: RGBA.fromValues(0, 1, 0, 1) })
+      buffer.setSyntaxStyle(syntaxStyle)
+      buffer.setText("Hello World")
+      buffer.addHighlight(0, { start: 0, end: 5, styleId, priority: 0, hlRef: 65535 })
+
+      expect(buffer.getHighlightCount()).toBe(1)
+
+      buffer.setText("New Text")
+
+      expect(buffer.getPlainText()).toBe("New Text")
+      expect(buffer.getHighlightCount()).toBe(1)
+      expect(buffer.getLineHighlights(0)[0]?.hlRef).toBe(65535)
+
+      syntaxStyle.destroy()
+    })
+
     it("setStyledText should preserve content across calls", () => {
       const firstText = stringToStyledText("First")
       buffer.setStyledText(firstText)
@@ -250,6 +299,42 @@ describe("TextBuffer", () => {
       buffer.setText("After reset")
       expect(buffer.length).toBe(11)
       expect(buffer.getPlainText()).toBe("After reset")
+    })
+  })
+
+  describe("malformed UTF-8 bytes", () => {
+    it("loadFile should preserve malformed UTF-8 bytes without panicking", () => {
+      const dir = mkdtempSync(join(tmpdir(), "opentui-text-buffer-"))
+      const path = join(dir, "malformed.txt")
+      const unicodeBuffer = TextBuffer.create("unicode")
+
+      try {
+        writeFileSync(path, MALFORMED_UTF8_ABOVE_UNICODE_RANGE)
+
+        unicodeBuffer.loadFile(path)
+
+        expect(unicodeBuffer.byteSize).toBe(6)
+        expect(unicodeBuffer.length).toBe(2)
+        expect(unicodeBuffer.getLineCount()).toBe(1)
+        expect(unicodeBuffer.getPlainText()).toBe(MALFORMED_UTF8_TEXT)
+      } finally {
+        unicodeBuffer.destroy()
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it("textBufferAppend should preserve malformed UTF-8 bytes without panicking", () => {
+      const lib = resolveRenderLib()
+      const unicodeBuffer = TextBuffer.create("unicode")
+
+      try {
+        lib.textBufferAppend(unicodeBuffer.ptr, MALFORMED_UTF8_ABOVE_UNICODE_RANGE)
+
+        expect(lib.textBufferGetByteSize(unicodeBuffer.ptr)).toBe(6)
+        expect(lib.textBufferGetLength(unicodeBuffer.ptr)).toBe(2)
+      } finally {
+        unicodeBuffer.destroy()
+      }
     })
   })
 

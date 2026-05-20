@@ -1205,6 +1205,26 @@ describe("EditBuffer History Management", () => {
       expect(buffer.getText()).toBe("First text")
     })
 
+    it("should restore cursor position after undo and redo for mid-line edits", () => {
+      buffer.setText("hello world")
+      buffer.setCursorToLineCol(0, 8)
+
+      buffer.insertText("X")
+      expect(buffer.getText()).toBe("hello woXrld")
+      expect(buffer.getCursorPosition().row).toBe(0)
+      expect(buffer.getCursorPosition().col).toBe(9)
+
+      buffer.undo()
+      expect(buffer.getText()).toBe("hello world")
+      expect(buffer.getCursorPosition().row).toBe(0)
+      expect(buffer.getCursorPosition().col).toBe(8)
+
+      buffer.redo()
+      expect(buffer.getText()).toBe("hello woXrld")
+      expect(buffer.getCursorPosition().row).toBe(0)
+      expect(buffer.getCursorPosition().col).toBe(9)
+    })
+
     it("should maintain history across multiple replaceText calls", () => {
       buffer.replaceText("Text 1")
       buffer.replaceText("Text 2")

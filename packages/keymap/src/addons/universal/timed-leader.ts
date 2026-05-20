@@ -1,5 +1,5 @@
 import type { Keymap, KeymapEvent, KeySequencePart } from "../../index.js"
-import { registerLeader, type LeaderOptions } from "./leader.js"
+import { registerLeader, resolveLeaderTrigger, type LeaderOptions } from "./leader.js"
 
 export interface TimedLeaderOptions extends LeaderOptions {
   timeoutMs?: number
@@ -15,7 +15,8 @@ export function registerTimedLeader<TTarget extends object, TEvent extends Keyma
   keymap: Keymap<TTarget, TEvent>,
   options: TimedLeaderOptions,
 ): () => void {
-  const matchesTrigger = keymap.createKeyMatcher(options.trigger)
+  const trigger = resolveLeaderTrigger(options.trigger)
+  const matchesTrigger = keymap.createKeyMatcher(trigger)
   const timeoutMs = options.timeoutMs ?? 1500
 
   let armed = false
@@ -58,7 +59,7 @@ export function registerTimedLeader<TTarget extends object, TEvent extends Keyma
     options.onDisarm?.()
   }
 
-  const offLeader = registerLeader(keymap, options)
+  const offLeader = registerLeader(keymap, { name: options.name, trigger })
   const offPendingSequenceChange = keymap.on("pendingSequence", (sequence) => {
     syncArmedState(sequence)
   })

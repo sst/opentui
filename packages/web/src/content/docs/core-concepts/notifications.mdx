@@ -1,0 +1,35 @@
+---
+title: Notifications
+description: Trigger terminal-mediated desktop notifications
+order: 8
+skill:
+  intents: [notifications, terminal, osc, renderer]
+---
+
+# Notifications
+
+OpenTUI can ask the terminal emulator to show a desktop notification using OSC escape sequences. Use this for long-running tasks, background work, or prompts that need attention.
+
+```typescript
+const ok = renderer.triggerNotification("Build finished", "OpenTUI")
+```
+
+`triggerNotification(message, title?)` returns `true` when OpenTUI has detected a supported notification protocol, and `false` otherwise.
+
+## Capability
+
+Check detection state through renderer capabilities:
+
+```typescript
+if (renderer.capabilities?.notifications) {
+  renderer.triggerNotification("Tests passed", "CI")
+}
+```
+
+OpenTUI detects and emits terminal OSC notification protocols only. It does not call platform tools such as `notify-send`, AppleScript, or PowerShell toasts.
+
+## Terminal behavior
+
+Terminal and OS settings decide how the notification is presented. Some terminals only show banners when the terminal is unfocused, and macOS may store notifications in Notification Center without showing a banner depending on app notification settings.
+
+See `packages/examples/src/notification-demo.ts` for an interactive example.

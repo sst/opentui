@@ -1,8 +1,30 @@
 import type { KeyLike, Keymap, KeymapEvent } from "../../index.js"
 
+export type LeaderTrigger = KeyLike | Readonly<{ key: KeyLike }> | readonly Readonly<{ key: KeyLike }>[]
+
 export interface LeaderOptions {
-  trigger: KeyLike
+  trigger: LeaderTrigger
   name?: string
+}
+
+function isLeaderTriggerArray(trigger: LeaderTrigger): trigger is readonly Readonly<{ key: KeyLike }>[] {
+  return Array.isArray(trigger)
+}
+
+export function resolveLeaderTrigger(trigger: LeaderTrigger): KeyLike {
+  if (isLeaderTriggerArray(trigger)) {
+    if (trigger.length !== 1) {
+      throw new Error("Invalid leader trigger: expected exactly one binding")
+    }
+
+    return trigger[0]!.key
+  }
+
+  if (typeof trigger === "object" && "key" in trigger) {
+    return trigger.key
+  }
+
+  return trigger
 }
 
 /**
@@ -14,6 +36,6 @@ export function registerLeader<TTarget extends object, TEvent extends KeymapEven
 ): () => void {
   return keymap.registerToken({
     name: options.name ?? "leader",
-    key: options.trigger,
+    key: resolveLeaderTrigger(options.trigger),
   })
 }

@@ -3,6 +3,7 @@ import { describe, expect, it, afterAll, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 import { KeyEvent } from "../../lib/KeyHandler.js"
+import { parseKeypress } from "../../lib/parse.keypress.js"
 
 // Helper function to create a KeyEvent from a string
 function createKeyEvent(
@@ -626,6 +627,25 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(0)
     })
 
+    it("should match ctrl+space from Kitty keyboard protocol", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "space", ctrl: true, action: "newline" }],
+      })
+
+      editor.gotoLine(9999)
+
+      const key = parseKeypress("\x1b[32;5u", { useKittyKeyboard: true })
+      expect(key).toMatchObject({ name: "space", ctrl: true, sequence: " " })
+
+      const handled = editor.handleKeyPress(new KeyEvent(key!))
+
+      expect(handled).toBe(true)
+      expect(editor.plainText).toBe("Hello\n")
+    })
+
     it("should use baseCode when matching ctrl shortcuts from alternate layouts", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Hello World",
@@ -1027,10 +1047,10 @@ describe("Textarea - Keybinding Tests", () => {
 
       currentMockInput.pressKey("z")
       expect(editor.plainText).toBe("Hello World")
+      expect(editor.logicalCursor.col).toBe(6)
 
-      for (let i = 0; i < 6; i++) {
-        editor.moveCursorRight()
-      }
+      editor.moveCursorLeft()
+      editor.moveCursorRight()
       expect(editor.logicalCursor.col).toBe(6)
 
       currentMockInput.pressKey("u", { ctrl: true })
@@ -2789,6 +2809,94 @@ describe("Textarea - Keybinding Tests", () => {
       currentMockInput.pressEnter({ meta: true })
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
+    })
+  })
+
+  describe("Kitty keypad input", () => {
+    let kittyRenderer: TestRenderer
+    let kittyRenderOnce: () => Promise<void>
+
+    beforeEach(async () => {
+      ;({ renderer: kittyRenderer, renderOnce: kittyRenderOnce } = await createTestRenderer({
+        width: 80,
+        height: 24,
+        kittyKeyboard: true,
+      }))
+    })
+
+    afterEach(() => {
+      kittyRenderer.destroy()
+    })
+
+    const pressKittyKey = async (sequence: string): Promise<void> => {
+      await new Promise<void>((resolve) => {
+        kittyRenderer.keyInput.once("keypress", () => {
+          resolve()
+        })
+
+        kittyRenderer.stdin.emit("data", Buffer.from(sequence))
+      })
+
+      await Promise.resolve()
+    }
+
+    it("should insert printable keypad keys and handle keypad enter", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        width: 80,
+        height: 10,
+      })
+
+      editor.focus()
+
+      const printableKeypadKeys = [
+        "\x1b[57399u",
+        "\x1b[57400u",
+        "\x1b[57401u",
+        "\x1b[57402u",
+        "\x1b[57403u",
+        "\x1b[57404u",
+        "\x1b[57405u",
+        "\x1b[57406u",
+        "\x1b[57407u",
+        "\x1b[57408u",
+        "\x1b[57409u",
+        "\x1b[57410u",
+        "\x1b[57411u",
+        "\x1b[57412u",
+        "\x1b[57413u",
+        "\x1b[57415u",
+        "\x1b[57416u",
+      ]
+
+      for (const sequence of printableKeypadKeys) {
+        await pressKittyKey(sequence)
+      }
+
+      expect(editor.plainText).toBe("0123456789./*-+=,")
+
+      await pressKittyKey("\x1b[57400;5u")
+      expect(editor.plainText).toBe("0123456789./*-+=,")
+
+      await pressKittyKey("\x1b[57414u")
+      expect(editor.plainText).toBe("0123456789./*-+=,\n")
+    })
+
+    it("should submit on meta keypad enter", async () => {
+      let submitCount = 0
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        width: 80,
+        height: 10,
+        onSubmit: () => {
+          submitCount += 1
+        },
+      })
+
+      editor.focus()
+
+      await pressKittyKey("\x1b[57414;3u")
+
+      expect(submitCount).toBe(1)
+      expect(editor.plainText).toBe("")
     })
   })
 

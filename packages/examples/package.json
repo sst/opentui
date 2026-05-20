@@ -1,6 +1,6 @@
 {
   "name": "@opentui/examples",
-  "version": "0.2.3",
+  "version": "0.2.14",
   "private": true,
   "description": "OpenTUI examples and standalone examples executable",
   "license": "MIT",
@@ -14,7 +14,8 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "bun src/index.ts",
-    "build": "bun scripts/build.ts"
+    "build": "bun scripts/build.ts",
+    "build:host": "bun scripts/build.ts --host"
   },
   "dependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
@@ -23,6 +24,7 @@
     "@opentui/qrcode": "workspace:*",
     "@opentui/three": "workspace:*",
     "bun-webgpu": "0.1.7",
+    "fft.js": "^4.0.4",
     "planck": "^1.4.2",
     "three": "0.177.0",
     "web-tree-sitter": "0.25.10"

@@ -26,6 +26,6 @@ export type { BackspacePopsPendingSequenceOptions } from "./backspace-pops-pendi
 export type { EscapeClearsPendingSequenceOptions } from "./escape-clears-pending-sequence.js"
 export type { Enabled } from "./enabled.js"
 export type { ExCommand, ExCommandPayload } from "./ex-commands.js"
-export type { LeaderOptions } from "./leader.js"
+export type { LeaderOptions, LeaderTrigger } from "./leader.js"
 export type { NeovimDisambiguationOptions } from "./neovim-disambiguation.js"
 export type { TimedLeaderOptions } from "./timed-leader.js"

@@ -18,6 +18,7 @@ const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const native_span_feed = @import("native-span-feed.zig");
+const native_audio = @import("audio.zig");
 const buffer_effects = @import("buffer-methods.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
@@ -46,14 +47,19 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
 
 comptime {
     _ = native_span_feed;
+    _ = native_audio;
 }
 
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.c) void) void {
     logger.setLogCallback(callback);
 }
 
-export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: usize, dataPtr: [*]const u8, dataLen: usize) callconv(.c) void) void {
-    event_bus.setEventCallback(callback);
+export fn createEventSink(callback: ?event_bus.EventCallback) ?*event_bus.EventSink {
+    return event_bus.createEventSink(globalAllocator, callback orelse return null) catch null;
+}
+
+export fn destroyEventSink(sink: *event_bus.EventSink) void {
+    event_bus.destroyEventSink(globalAllocator, sink);
 }
 
 var gpa: std.heap.GeneralPurposeAllocator(.{
@@ -178,6 +184,98 @@ export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*
     return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
 }
 
+export fn createAudioEngine(options_ptr: ?*const native_audio.CreateOptions) ?*native_audio.Engine {
+    return native_audio.create(globalAllocator, options_ptr);
+}
+
+export fn destroyAudioEngine(engine: *native_audio.Engine) void {
+    native_audio.destroy(engine);
+}
+
+export fn audioRefreshPlaybackDevices(engine: *native_audio.Engine) i32 {
+    return native_audio.refreshPlaybackDevices(engine);
+}
+
+export fn audioGetPlaybackDeviceCount(engine: *native_audio.Engine) u32 {
+    return native_audio.getPlaybackDeviceCount(engine);
+}
+
+export fn audioGetPlaybackDeviceName(engine: *native_audio.Engine, index: u32, out_ptr: [*]u8, max_len: usize) usize {
+    return native_audio.getPlaybackDeviceName(engine, index, out_ptr, max_len);
+}
+
+export fn audioIsPlaybackDeviceDefault(engine: *native_audio.Engine, index: u32) bool {
+    return native_audio.isPlaybackDeviceDefault(engine, index);
+}
+
+export fn audioSelectPlaybackDevice(engine: *native_audio.Engine, index: u32) i32 {
+    return native_audio.selectPlaybackDevice(engine, index);
+}
+
+export fn audioClearPlaybackDeviceSelection(engine: *native_audio.Engine) void {
+    native_audio.clearPlaybackDeviceSelection(engine);
+}
+
+export fn audioStart(engine: *native_audio.Engine, options_ptr: ?*const native_audio.StartOptions) i32 {
+    return native_audio.start(engine, options_ptr);
+}
+
+export fn audioStartMixer(engine: *native_audio.Engine) i32 {
+    return native_audio.startMixer(engine);
+}
+
+export fn audioStop(engine: *native_audio.Engine) i32 {
+    return native_audio.stop(engine);
+}
+
+export fn audioLoad(engine: *native_audio.Engine, data_ptr: ?[*]const u8, data_len: usize, out_sound_id: ?*u32) i32 {
+    return native_audio.load(engine, data_ptr, data_len, out_sound_id);
+}
+
+export fn audioUnload(engine: *native_audio.Engine, sound_id: u32) i32 {
+    return native_audio.unload(engine, sound_id);
+}
+
+export fn audioPlay(engine: *native_audio.Engine, sound_id: u32, options_ptr: ?*const native_audio.VoiceOptions, out_voice_id: ?*u32) i32 {
+    return native_audio.play(engine, sound_id, options_ptr, out_voice_id);
+}
+
+export fn audioStopVoice(engine: *native_audio.Engine, voice_id: u32) i32 {
+    return native_audio.stopVoice(engine, voice_id);
+}
+
+export fn audioSetVoiceGroup(engine: *native_audio.Engine, voice_id: u32, group_id: u32) i32 {
+    return native_audio.setVoiceGroup(engine, voice_id, group_id);
+}
+
+export fn audioCreateGroup(engine: *native_audio.Engine, name_ptr: ?[*]const u8, name_len: usize, out_group_id: ?*u32) i32 {
+    return native_audio.createGroup(engine, name_ptr, name_len, out_group_id);
+}
+
+export fn audioSetGroupVolume(engine: *native_audio.Engine, group_id: u32, volume: f32) i32 {
+    return native_audio.setGroupVolume(engine, group_id, volume);
+}
+
+export fn audioSetMasterVolume(engine: *native_audio.Engine, volume: f32) i32 {
+    return native_audio.setMasterVolume(engine, volume);
+}
+
+export fn audioMixToBuffer(engine: *native_audio.Engine, out_ptr: ?[*]f32, frame_count: u32, channels: u8) i32 {
+    return native_audio.mixToBuffer(engine, out_ptr, frame_count, channels);
+}
+
+export fn audioEnableTap(engine: *native_audio.Engine, enabled: bool, capacity_frames: u32) i32 {
+    return native_audio.enableTap(engine, enabled, capacity_frames);
+}
+
+export fn audioReadTap(engine: *native_audio.Engine, out_ptr: ?[*]f32, frame_count: u32, channels: u8, out_frames_read: ?*u32) i32 {
+    return native_audio.readTap(engine, out_ptr, frame_count, channels, out_frames_read);
+}
+
+export fn audioGetStats(engine: *native_audio.Engine, out_stats: ?*native_audio.Stats) i32 {
+    return native_audio.getStats(engine, out_stats);
+}
+
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
 }
@@ -252,6 +350,10 @@ export fn syncSplitScrollback(rendererPtr: *renderer.CliRenderer, pinnedRenderOf
     return rendererPtr.syncSplitScrollback(pinnedRenderOffset);
 }
 
+export fn getSplitOutputOffset(rendererPtr: *renderer.CliRenderer, surfaceOffset: u32) u32 {
+    return rendererPtr.getSplitOutputOffset(surfaceOffset);
+}
+
 export fn setPendingSplitFooterTransition(
     rendererPtr: *renderer.CliRenderer,
     mode: u8,
@@ -259,6 +361,7 @@ export fn setPendingSplitFooterTransition(
     sourceHeight: u32,
     targetTopLine: u32,
     targetHeight: u32,
+    scrollLines: u32,
 ) void {
     rendererPtr.setPendingSplitFooterTransition(
         @enumFromInt(mode),
@@ -266,6 +369,7 @@ export fn setPendingSplitFooterTransition(
         sourceHeight,
         targetTopLine,
         targetHeight,
+        scrollLines,
     );
 }
 
@@ -429,6 +533,7 @@ pub const ExternalCapabilities = extern struct {
     bracketed_paste: bool,
     hyperlinks: bool,
     osc52: bool,
+    notifications: bool,
     explicit_cursor_positioning: bool,
     in_tmux: bool,
     term_name_ptr: [*]const u8,
@@ -458,6 +563,7 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .bracketed_paste = caps.bracketed_paste,
         .hyperlinks = caps.hyperlinks,
         .osc52 = caps.osc52,
+        .notifications = caps.notifications,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .in_tmux = term.in_tmux,
         .term_name_ptr = &term.term_info.name,
@@ -587,6 +693,12 @@ export fn copyToClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8, p
 export fn clearClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8) bool {
     const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
     return rendererPtr.clearClipboardOSC52(targetEnum);
+}
+
+export fn triggerNotification(rendererPtr: *renderer.CliRenderer, messagePtr: [*]const u8, messageLen: usize, titlePtr: ?[*]const u8, titleLen: usize) bool {
+    const message = messagePtr[0..messageLen];
+    const title = if (titlePtr) |ptr| ptr[0..titleLen] else null;
+    return rendererPtr.triggerNotification(message, title);
 }
 
 // Buffer functions
@@ -1194,7 +1306,7 @@ export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.UnifiedText
 
 // ===== EditBuffer Exports =====
 
-export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
+export fn createEditBuffer(widthMethod: u8, event_sink: ?*event_bus.EventSink) ?*edit_buffer_mod.EditBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
@@ -1204,6 +1316,7 @@ export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
         pool,
         link_pool,
         wMethod,
+        event_sink,
     ) catch null;
 }
 
@@ -1835,11 +1948,18 @@ pub const EncodedChar = extern struct {
 export fn encodeUnicode(
     textPtr: [*]const u8,
     textLen: usize,
-    outPtr: *[*]EncodedChar,
+    outPtr: *?[*]EncodedChar,
     outLenPtr: *usize,
     widthMethod: u8,
 ) bool {
     const text = textPtr[0..textLen];
+
+    if (text.len == 0) {
+        outPtr.* = @ptrFromInt(0);
+        outLenPtr.* = 0;
+        return true;
+    }
+
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
@@ -1954,8 +2074,12 @@ export fn encodeUnicode(
     return true;
 }
 
-export fn freeUnicode(charsPtr: [*]const EncodedChar, charsLen: usize) void {
-    const chars = charsPtr[0..charsLen];
+export fn freeUnicode(charsPtr: ?[*]const EncodedChar, charsLen: usize) void {
+    if (charsLen == 0 or charsPtr == null) {
+        return;
+    }
+
+    const chars = charsPtr.?[0..charsLen];
     const pool = gp.initGlobalPool(globalArena);
 
     for (chars) |encoded_char| {

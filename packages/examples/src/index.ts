@@ -50,6 +50,7 @@ import * as asciiFontSelectionExample from "./ascii-font-selection-demo.js"
 import * as splitModeExample from "./split-mode-demo.js"
 import * as splitFooterStreamingDemo from "./split-footer-streaming-demo.js"
 import * as consoleExample from "./console-demo.js"
+import * as notificationDemo from "./notification-demo.js"
 import * as vnodeCompositionDemo from "./vnode-composition-demo.js"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo.js"
 import * as codeDemo from "./code-demo.js"
@@ -76,6 +77,7 @@ import * as keymapDemo from "./keymap-demo.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as corePluginSlotsDemo from "./core-plugin-slots-demo.js"
 import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
+import * as nativeAudioDemo from "./native-audio-demo.js"
 
 interface Example {
   name: string
@@ -180,6 +182,12 @@ const examples: Example[] = [
     description: "Interactive console logging with clickable buttons for different log levels",
     run: consoleExample.run,
     destroy: consoleExample.destroy,
+  },
+  {
+    name: "Notification Demo",
+    description: "Standalone OSC terminal notification demo with capability detection and interactive triggers",
+    run: notificationDemo.run,
+    destroy: notificationDemo.destroy,
   },
   {
     name: "Styled Text Demo",
@@ -488,6 +496,12 @@ const examples: Example[] = [
     description: "Test focus restore - alt-tab away and back to verify mouse tracking resumes",
     run: focusRestoreDemo.run,
     destroy: focusRestoreDemo.destroy,
+  },
+  {
+    name: "Audio Demo",
+    description: "WAV-based native mixer with sound groups and live meter stats",
+    run: nativeAudioDemo.run,
+    destroy: nativeAudioDemo.destroy,
   },
 ]
 

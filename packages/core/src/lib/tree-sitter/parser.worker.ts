@@ -13,6 +13,7 @@ import type {
 import { DownloadUtils } from "./download-utils.js"
 import { isMainThread } from "worker_threads"
 import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
+import { resolveBundledFilePath } from "../../platform/runtime.js"
 
 const self = globalThis
 
@@ -88,9 +89,11 @@ class ParserWorker {
       await mkdir(path.join(this.tsDataPath, "languages"), { recursive: true })
       await mkdir(path.join(this.tsDataPath, "queries"), { recursive: true })
 
-      let { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
-        with: { type: "wasm" },
-      })
+      let treeWasm = await resolveBundledFilePath(
+        () => import("web-tree-sitter/tree-sitter.wasm" as string, { with: { type: "wasm" } }),
+        () => import.meta.resolve("web-tree-sitter/tree-sitter.wasm"),
+        import.meta.url,
+      )
 
       if (isBunfsPath(treeWasm)) {
         treeWasm = normalizeBunfsPath(path.parse(treeWasm).base)
