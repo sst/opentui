@@ -43,6 +43,8 @@ jobs:
           cd packages/core
           bun run build:native --all
           bun run build:lib
+          cd ../qrcode
+          bun run build
           cd ../three
           bun run build
           cd ../react
@@ -73,6 +75,8 @@ jobs:
           echo "Verifying dist packages exist..."
           test -d packages/core/dist || (echo "❌ core dist missing!" && exit 1)
           test -f packages/core/dist/package.json || (echo "❌ core dist/package.json missing!" && exit 1)
+          test -d packages/qrcode/dist || (echo "❌ qrcode dist missing!" && exit 1)
+          test -f packages/qrcode/dist/package.json || (echo "❌ qrcode dist/package.json missing!" && exit 1)
           test -d packages/three/dist || (echo "❌ three dist missing!" && exit 1)
           test -f packages/three/dist/package.json || (echo "❌ three dist/package.json missing!" && exit 1)
           test -d packages/react/dist || (echo "❌ react dist missing!" && exit 1)
@@ -82,7 +86,7 @@ jobs:
           test -d packages/keymap/dist || (echo "❌ keymap dist missing!" && exit 1)
           test -f packages/keymap/dist/package.json || (echo "❌ keymap dist/package.json missing!" && exit 1)
 
-          echo "✅ All required build outputs verified (6 native platforms, 5 package dists)"
+          echo "✅ All required build outputs verified (6 native platforms, 6 package dists)"
 
       # Create separate zips for each platform's native binaries
       - name: Package native binaries - darwin-x64
@@ -165,6 +169,10 @@ jobs:
           echo "Packaging three dist..."
           cp -r packages/three/dist artifacts/npm-packages/three-dist
           test -f artifacts/npm-packages/three-dist/package.json || (echo "❌ three dist/package.json missing after copy!" && exit 1)
+
+          echo "Packaging qrcode dist..."
+          cp -r packages/qrcode/dist artifacts/npm-packages/qrcode-dist
+          test -f artifacts/npm-packages/qrcode-dist/package.json || (echo "❌ qrcode dist/package.json missing after copy!" && exit 1)
 
           echo "Packaging core native packages..."
           mkdir -p artifacts/npm-packages/core-native-packages

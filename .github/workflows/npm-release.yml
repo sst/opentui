@@ -57,6 +57,7 @@ jobs:
           cd packages/core
           bun run build:native --all
           bun run build:lib
+          cd ../qrcode && bun run build
           cd ../three && bun run build
           cd ../solid && bun run build
           cd ../react && bun run build

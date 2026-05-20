@@ -64,6 +64,12 @@ jobs:
           test -f packages/three/dist/package.json || (echo "❌ three dist/package.json missing after copy!" && exit 1)
           echo "✅ Three dist copied"
 
+          echo "Copying qrcode dist..."
+          test -d "npm-packages/qrcode-dist" || (echo "❌ qrcode-dist not found in artifact!" && exit 1)
+          cp -r npm-packages/qrcode-dist packages/qrcode/dist
+          test -f packages/qrcode/dist/package.json || (echo "❌ qrcode dist/package.json missing after copy!" && exit 1)
+          echo "✅ QRCode dist copied"
+
           # Copy native packages to core's node_modules (required - these OVERRIDE the npm versions)
           echo "Copying built native packages (overriding any npm versions)..."
           test -d "npm-packages/core-native-packages" || (echo "❌ core-native-packages not found in artifact!" && exit 1)
@@ -94,6 +100,7 @@ jobs:
           echo ""
           echo "Package extraction complete:"
           ls -lah packages/core/dist/
+          ls -lah packages/qrcode/dist/
           ls -lah packages/three/dist/
           ls -lah packages/core/node_modules/@opentui/
 
