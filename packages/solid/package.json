@@ -37,6 +37,10 @@
       "types": "./scripts/runtime-plugin-support-configure.ts",
       "import": "./scripts/runtime-plugin-support-configure.ts"
     },
+    "./components": {
+      "types": "./components.ts",
+      "import": "./components.ts"
+    },
     "./jsx-runtime": "./jsx-runtime.d.ts",
     "./jsx-dev-runtime": "./jsx-runtime.d.ts"
   },

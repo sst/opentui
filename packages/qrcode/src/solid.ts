@@ -1,4 +1,4 @@
-import { extend } from "@opentui/solid"
+import { extend } from "@opentui/solid/components"
 import { QRCodeRenderable } from "./renderables/QRCode.js"
 
 declare module "@opentui/solid" {
