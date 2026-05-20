@@ -636,6 +636,74 @@ test("KeyHandler - internal handler error with preventDefault still respects pre
   expect(internalCalled).toBe(false)
 })
 
+test("KeyHandler - numpad keys are normalized to standard names", () => {
+  const handler = createKeyHandler()
+
+  let receivedKey: KeyEvent | undefined
+  handler.on("keypress", (key: KeyEvent) => {
+    receivedKey = key
+  })
+
+  // Simulate a kitty protocol numpad 5 key (codepoint 57404)
+  dispatchInput(handler, "\x1b[57404u", { useKittyKeyboard: true })
+
+  expect(receivedKey).toBeDefined()
+  expect(receivedKey?.name).toBe("5")
+  expect(receivedKey?.sequence).toBe("5")
+})
+
+test("KeyHandler - numpad enter is normalized to return", () => {
+  const handler = createKeyHandler()
+
+  let receivedKey: KeyEvent | undefined
+  handler.on("keypress", (key: KeyEvent) => {
+    receivedKey = key
+  })
+
+  // Simulate a kitty protocol numpad enter (codepoint 57414)
+  dispatchInput(handler, "\x1b[57414u", { useKittyKeyboard: true })
+
+  expect(receivedKey).toBeDefined()
+  expect(receivedKey?.name).toBe("return")
+})
+
+test("KeyHandler - numpad decimal is normalized to dot", () => {
+  const handler = createKeyHandler()
+
+  let receivedKey: KeyEvent | undefined
+  handler.on("keypress", (key: KeyEvent) => {
+    receivedKey = key
+  })
+
+  // Simulate a kitty protocol numpad decimal (codepoint 57409)
+  dispatchInput(handler, "\x1b[57409u", { useKittyKeyboard: true })
+
+  expect(receivedKey).toBeDefined()
+  expect(receivedKey?.name).toBe(".")
+  expect(receivedKey?.sequence).toBe(".")
+})
+
+test("KeyHandler - numpad operators are normalized", () => {
+  const handler = createKeyHandler()
+
+  const receivedKeys: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => {
+    receivedKeys.push(key)
+  })
+
+  // kpdivide=57410, kpmultiply=57411, kpminus=57412, kpplus=57413
+  dispatchInput(handler, "\x1b[57410u", { useKittyKeyboard: true })
+  dispatchInput(handler, "\x1b[57411u", { useKittyKeyboard: true })
+  dispatchInput(handler, "\x1b[57412u", { useKittyKeyboard: true })
+  dispatchInput(handler, "\x1b[57413u", { useKittyKeyboard: true })
+
+  expect(receivedKeys).toHaveLength(4)
+  expect(receivedKeys[0]?.name).toBe("/")
+  expect(receivedKeys[1]?.name).toBe("*")
+  expect(receivedKeys[2]?.name).toBe("-")
+  expect(receivedKeys[3]?.name).toBe("+")
+})
+
 test("KeyHandler - error in one event type does not prevent other event types from working", () => {
   const handler = createKeyHandler()
 

@@ -96,8 +96,37 @@ export type KeyHandlerEventMap = {
   paste: [PasteEvent]
 }
 
+// Map numpad key names to their standard equivalents so that keybindings
+// and direct name checks (e.g. `evt.name === "return"`) work uniformly
+// regardless of whether the key was pressed on the main keyboard or numpad.
+const numpadKeyNameMap: Record<string, string> = {
+  kpenter: "return",
+  kp0: "0",
+  kp1: "1",
+  kp2: "2",
+  kp3: "3",
+  kp4: "4",
+  kp5: "5",
+  kp6: "6",
+  kp7: "7",
+  kp8: "8",
+  kp9: "9",
+  kpdecimal: ".",
+  kpdivide: "/",
+  kpmultiply: "*",
+  kpminus: "-",
+  kpplus: "+",
+  kpequal: "=",
+  kpseparator: ",",
+}
+
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   public processParsedKey(parsedKey: ParsedKey): boolean {
+    const mappedName = numpadKeyNameMap[parsedKey.name]
+    if (mappedName) {
+      parsedKey.name = mappedName
+      parsedKey.sequence = mappedName
+    }
     try {
       switch (parsedKey.eventType) {
         case "press":
