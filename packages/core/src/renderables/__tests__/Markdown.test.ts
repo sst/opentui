@@ -484,6 +484,25 @@ test("table inside code block should NOT be formatted", async () => {
   `)
 })
 
+test("paragraphs and fenced code blocks keep markdown block spacing", async () => {
+  const markdown = `Before
+
+\`\`\`ts
+const value = 1
+\`\`\`
+
+After`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    const value = 1
+
+    After"
+  `)
+})
+
 test("multiple tables in same document", async () => {
   const markdown = `| Table1 | A |
 |---|---|
@@ -504,6 +523,7 @@ Some text between.
     └──────┴─┘
 
     Some text between.
+
     ┌────────────┬──┐
     │Table2      │BB│
     ├────────────┼──┤
@@ -755,6 +775,7 @@ This is a paragraph after the table.`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     This is a paragraph before the table.
+
     ┌─────┬───┐
     │Name │Age│
     ├─────┼───┤
@@ -850,6 +871,7 @@ And here is more text after.`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Here is some code:
+
     function hello() {
       return "world";
     }
@@ -874,9 +896,11 @@ fn main() {}
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     First block:
+
     print("hello")
 
     Second block:
+
     fn main() {}"
   `)
 })
@@ -1683,8 +1707,9 @@ After`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Before
+
     ────────────────────────────────────────────────────────────
-    
+
     After"
   `)
 })
@@ -1756,6 +1781,7 @@ Visit [GitHub](https://github.com) for more.
 
     Code Example
 
+
     const md = new MarkdownRenderable(ctx, {
       content: "# Hello",
     })
@@ -1763,6 +1789,7 @@ Visit [GitHub](https://github.com) for more.
     Links
 
     Visit GitHub (https://github.com) for more.
+
     ────────────────────────────────────────────────────────────
 
     Press ? for help"
@@ -2025,6 +2052,7 @@ console.log(x);`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Here is some code:
+
     const x = 1;
     console.log(x);"
   `)
@@ -2169,6 +2197,7 @@ const x = 1;
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Text before
+
     const x = 1;"
   `)
 })

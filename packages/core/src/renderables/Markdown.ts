@@ -927,9 +927,9 @@ export class MarkdownRenderable extends Renderable {
     return token.type === "code" || token.type === "table" || token.type === "blockquote" || token.type === "hr"
   }
 
-  private getInterBlockMargin(token: MarkedToken, hasNextToken: boolean): number {
-    if (!hasNextToken) return 0
-    return this.shouldRenderSeparately(token) ? 1 : 0
+  private getInterBlockMargin(token: MarkedToken, nextToken: MarkedToken | undefined): number {
+    if (!nextToken) return 0
+    return this.shouldRenderSeparately(token) || this.shouldRenderSeparately(nextToken) ? 1 : 0
   }
 
   private createMarkdownBlockToken(raw: string): MarkedToken {
@@ -1425,9 +1425,9 @@ export class MarkdownRenderable extends Renderable {
     return next ?? this.createTopLevelDefaultRenderable(block, index)
   }
 
-  private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
+  private createDefaultRenderable(token: MarkedToken, index: number, nextToken?: MarkedToken): Renderable | null {
     const id = `${this.id}-block-${index}`
-    const marginBottom = this.getInterBlockMargin(token, hasNextToken)
+    const marginBottom = this.getInterBlockMargin(token, nextToken)
 
     if (token.type === "code") {
       return this.createCodeRenderable(token, id, marginBottom)
@@ -1464,10 +1464,10 @@ export class MarkdownRenderable extends Renderable {
     state: BlockState,
     token: MarkedToken,
     index: number,
-    hasNextToken: boolean,
+    nextToken: MarkedToken | undefined,
     forceListRefresh: boolean = false,
   ): void {
-    const marginBottom = this.getInterBlockMargin(token, hasNextToken)
+    const marginBottom = this.getInterBlockMargin(token, nextToken)
 
     if (token.type === "code") {
       this.applyCodeBlockRenderable(state.renderable, token as Tokens.Code, marginBottom)
@@ -1596,7 +1596,7 @@ export class MarkdownRenderable extends Renderable {
         existing.token.type === block.token.type &&
         this.canUpdateBlockRenderable(existing.renderable, block.token)
       ) {
-        this.updateBlockRenderable(existing, block.token, blockIndex, blockIndex < blocks.length - 1)
+        this.updateBlockRenderable(existing, block.token, blockIndex, blocks[i + 1]?.token)
         existing.renderable.marginBottom = 0
         if (existing.marginTop !== block.marginTop) {
           this.applyMargins(existing.renderable, block.marginTop, 0)
@@ -1677,19 +1677,16 @@ export class MarkdownRenderable extends Renderable {
 
     this._stableBlockCount = 0
     const blockTokens = this.buildRenderableTokens(tokens)
-    const lastBlockIndex = blockTokens.length - 1
-
     let blockIndex = 0
     for (let i = 0; i < blockTokens.length; i++) {
       const token = blockTokens[i]
-      const hasNextToken = i < lastBlockIndex
       const existing = this._blockStates[blockIndex]
 
       const shouldForceRefresh = forceTableRefresh
 
       if (existing && existing.token === token) {
         if (shouldForceRefresh) {
-          this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
+          this.updateBlockRenderable(existing, token, blockIndex, blockTokens[i + 1])
           existing.tokenRaw = token.raw
         }
         blockIndex++
@@ -1699,7 +1696,7 @@ export class MarkdownRenderable extends Renderable {
       if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type) {
         existing.token = token
         if (shouldForceRefresh) {
-          this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
+          this.updateBlockRenderable(existing, token, blockIndex, blockTokens[i + 1])
           existing.tokenRaw = token.raw
         }
         blockIndex++
@@ -1707,7 +1704,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       if (existing && existing.token.type === token.type) {
-        this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
+        this.updateBlockRenderable(existing, token, blockIndex, blockTokens[i + 1])
         existing.token = token
         existing.tokenRaw = token.raw
         blockIndex++
@@ -1727,7 +1724,7 @@ export class MarkdownRenderable extends Renderable {
           conceal: this._conceal,
           concealCode: this._concealCode,
           treeSitterClient: this._treeSitterClient,
-          defaultRender: () => this.createDefaultRenderable(token, blockIndex, hasNextToken),
+          defaultRender: () => this.createDefaultRenderable(token, blockIndex, blockTokens[i + 1]),
         }
         const custom = this._renderNode(token, context)
         if (custom) {
@@ -1740,12 +1737,12 @@ export class MarkdownRenderable extends Renderable {
           const tableBlock = this.createTableBlock(
             token,
             `${this.id}-block-${blockIndex}`,
-            this.getInterBlockMargin(token, hasNextToken),
+            this.getInterBlockMargin(token, blockTokens[i + 1]),
           )
           renderable = tableBlock.renderable
           tableContentCache = tableBlock.tableContentCache
         } else {
-          renderable = this.createDefaultRenderable(token, blockIndex, hasNextToken) ?? undefined
+          renderable = this.createDefaultRenderable(token, blockIndex, blockTokens[i + 1]) ?? undefined
         }
       }
 
@@ -1792,8 +1789,7 @@ export class MarkdownRenderable extends Renderable {
 
     for (let i = 0; i < this._blockStates.length; i++) {
       const state = this._blockStates[i]
-      const hasNextToken = i < this._blockStates.length - 1
-      const marginBottom = this.getInterBlockMargin(state.token, hasNextToken)
+      const marginBottom = this.getInterBlockMargin(state.token, this._blockStates[i + 1]?.token)
 
       if (state.token.type === "code") {
         this.applyCodeBlockRenderable(state.renderable, state.token as Tokens.Code, marginBottom)
@@ -1806,7 +1802,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       if (state.token.type === "list") {
-        this.updateBlockRenderable(state, state.token, i, hasNextToken, true)
+        this.updateBlockRenderable(state, state.token, i, this._blockStates[i + 1]?.token, true)
         continue
       }
 
