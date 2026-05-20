@@ -167,6 +167,7 @@ export interface BlockState {
   marginTop?: number
   renderable: Renderable
   tableContentCache?: TableContentCache
+  tracksInterBlockMargin?: boolean
 }
 
 export type { ParseState }
@@ -929,7 +930,14 @@ export class MarkdownRenderable extends Renderable {
 
   private getInterBlockMargin(token: MarkedToken, nextToken: MarkedToken | undefined): number {
     if (!nextToken) return 0
-    return this.shouldRenderSeparately(token) || this.shouldRenderSeparately(nextToken) ? 1 : 0
+    if (this.shouldRenderSeparately(token)) return 1
+    if (!this.shouldRenderSeparately(nextToken)) return 0
+    return TRAILING_MARKDOWN_BLOCK_NEWLINES_RE.test(token.raw) ? 0 : 1
+  }
+
+  private applyInterBlockMargin(state: BlockState, token: MarkedToken, nextToken: MarkedToken | undefined): void {
+    if (state.tracksInterBlockMargin === false) return
+    state.renderable.marginBottom = this.getInterBlockMargin(token, nextToken)
   }
 
   private createMarkdownBlockToken(raw: string): MarkedToken {
@@ -1665,6 +1673,7 @@ export class MarkdownRenderable extends Renderable {
           tokenRaw: this._content,
           marginTop: 0,
           renderable: fallback,
+          tracksInterBlockMargin: true,
         },
       ]
       return
@@ -1680,14 +1689,17 @@ export class MarkdownRenderable extends Renderable {
     let blockIndex = 0
     for (let i = 0; i < blockTokens.length; i++) {
       const token = blockTokens[i]
+      const nextToken = blockTokens[i + 1]
       const existing = this._blockStates[blockIndex]
 
       const shouldForceRefresh = forceTableRefresh
 
       if (existing && existing.token === token) {
         if (shouldForceRefresh) {
-          this.updateBlockRenderable(existing, token, blockIndex, blockTokens[i + 1])
+          this.updateBlockRenderable(existing, token, blockIndex, nextToken)
           existing.tokenRaw = token.raw
+        } else {
+          this.applyInterBlockMargin(existing, token, nextToken)
         }
         blockIndex++
         continue
@@ -1696,17 +1708,20 @@ export class MarkdownRenderable extends Renderable {
       if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type) {
         existing.token = token
         if (shouldForceRefresh) {
-          this.updateBlockRenderable(existing, token, blockIndex, blockTokens[i + 1])
+          this.updateBlockRenderable(existing, token, blockIndex, nextToken)
           existing.tokenRaw = token.raw
+        } else {
+          this.applyInterBlockMargin(existing, token, nextToken)
         }
         blockIndex++
         continue
       }
 
       if (existing && existing.token.type === token.type) {
-        this.updateBlockRenderable(existing, token, blockIndex, blockTokens[i + 1])
+        this.updateBlockRenderable(existing, token, blockIndex, nextToken)
         existing.token = token
         existing.tokenRaw = token.raw
+        existing.tracksInterBlockMargin = true
         blockIndex++
         continue
       }
@@ -1717,18 +1732,24 @@ export class MarkdownRenderable extends Renderable {
 
       let renderable: Renderable | undefined
       let tableContentCache: TableContentCache | undefined
+      let tracksInterBlockMargin = true
 
       if (this._renderNode) {
+        let defaultRenderable: Renderable | null | undefined
         const context: RenderNodeContext = {
           syntaxStyle: this._syntaxStyle,
           conceal: this._conceal,
           concealCode: this._concealCode,
           treeSitterClient: this._treeSitterClient,
-          defaultRender: () => this.createDefaultRenderable(token, blockIndex, blockTokens[i + 1]),
+          defaultRender: () => {
+            defaultRenderable = this.createDefaultRenderable(token, blockIndex, nextToken)
+            return defaultRenderable
+          },
         }
         const custom = this._renderNode(token, context)
         if (custom) {
           renderable = custom
+          tracksInterBlockMargin = custom === defaultRenderable
         }
       }
 
@@ -1737,12 +1758,12 @@ export class MarkdownRenderable extends Renderable {
           const tableBlock = this.createTableBlock(
             token,
             `${this.id}-block-${blockIndex}`,
-            this.getInterBlockMargin(token, blockTokens[i + 1]),
+            this.getInterBlockMargin(token, nextToken),
           )
           renderable = tableBlock.renderable
           tableContentCache = tableBlock.tableContentCache
         } else {
-          renderable = this.createDefaultRenderable(token, blockIndex, blockTokens[i + 1]) ?? undefined
+          renderable = this.createDefaultRenderable(token, blockIndex, nextToken) ?? undefined
         }
       }
 
@@ -1758,6 +1779,7 @@ export class MarkdownRenderable extends Renderable {
           tokenRaw: token.raw,
           renderable,
           tableContentCache,
+          tracksInterBlockMargin,
         }
       }
       blockIndex++

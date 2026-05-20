@@ -1,4 +1,5 @@
 import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:test"
+import { Edge } from "yoga-layout"
 import { Lexer } from "marked"
 import { MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
 import { CodeRenderable } from "../Code.js"
@@ -122,6 +123,15 @@ function findSpanContaining(frame: CapturedFrame, text: string) {
   }
 
   return undefined
+}
+
+function getMarginBottom(renderable: { getLayoutNode(): { getMargin(edge: Edge): unknown } }): number {
+  const margin = renderable.getLayoutNode().getMargin(Edge.Bottom) as unknown
+  if (typeof margin === "number") return margin
+  if (typeof margin === "object" && margin && "value" in margin && typeof margin.value === "number") {
+    return margin.value
+  }
+  return 0
 }
 
 test("basic table alignment", async () => {
@@ -500,6 +510,160 @@ After`
     const value = 1
 
     After"
+  `)
+})
+
+test("paragraphs keep spacing when a fenced code block is appended", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-append-code-spacing",
+    content: "Before",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  md.content = `Before
+
+\`\`\`ts
+const value = 1
+\`\`\``
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["paragraph", "code"])
+  expect(getMarginBottom(md._blockStates[0]!.renderable)).toBe(1)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    Before
+
+    const value = 1"
+  `)
+})
+
+test("paragraph margins update when a following fenced code block is removed", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-remove-code-spacing",
+    content: `Before
+
+\`\`\`ts
+const value = 1
+\`\`\``,
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(getMarginBottom(md._blockStates[0]!.renderable)).toBe(1)
+
+  md.content = "Before"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["paragraph"])
+  expect(getMarginBottom(md._blockStates[0]!.renderable)).toBe(0)
+})
+
+test("code block margins update when a following paragraph is removed", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-remove-paragraph-after-code-spacing",
+    content: `\`\`\`ts
+const value = 1
+\`\`\`
+
+After`,
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["code", "paragraph"])
+  expect(getMarginBottom(md._blockStates[0]!.renderable)).toBe(1)
+
+  md.content = `\`\`\`ts
+const value = 1
+\`\`\``
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["code"])
+  expect(getMarginBottom(md._blockStates[0]!.renderable)).toBe(0)
+})
+
+test("tight paragraphs and fenced code blocks keep exactly one separator row", async () => {
+  const markdown = `Before
+\`\`\`ts
+const value = 1
+\`\`\``
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    const value = 1"
+  `)
+})
+
+test("headings and fenced code blocks keep exactly one separator row", async () => {
+  const markdown = `## Before
+
+\`\`\`ts
+const value = 1
+\`\`\``
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    const value = 1"
+  `)
+})
+
+test("headings and tables keep exactly one separator row", async () => {
+  const markdown = `## Before
+
+| A | B |
+|---|---|
+| 1 | 2 |`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    ┌─┬─┐
+    │A│B│
+    ├─┼─┤
+    │1│2│
+    └─┴─┘"
+  `)
+})
+
+test("headings and blockquotes keep exactly one separator row", async () => {
+  const markdown = `## Before
+
+> quoted text`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    │ quoted text"
+  `)
+})
+
+test("headings and horizontal rules keep exactly one separator row", async () => {
+  const markdown = `## Before
+
+---`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    ────────────────────────────────────────────────────────────"
   `)
 })
 
@@ -1780,7 +1944,6 @@ Visit [GitHub](https://github.com) for more.
     - Italic and bold text
 
     Code Example
-
 
     const md = new MarkdownRenderable(ctx, {
       content: "# Hello",
