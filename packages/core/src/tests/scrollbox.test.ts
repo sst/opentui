@@ -1377,6 +1377,58 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     expect((scrollBox as any)._hasManualScroll).toBe(true)
   })
 
+  // Regression test for issue #1087: re-engagement path resets _hasManualScroll when
+  // user scrolls back to bottom during streaming, allowing sticky to resume.
+  // NOTE: This test passes on pre-1088 code by accident — the else branch forces
+  // scroll to bottom which satisfies the final assertion. The fix adds the proper
+  // re-engagement path via _hasManualScroll reset instead of forced scrolling.
+  test("recalculateBarProps re-engages sticky when user scrolls to bottom during content growth (issue #1087)", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    for (let i = 0; i < 30; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    // User scrolls up manually
+    scrollBox.scrollTo(5)
+    await renderOnce()
+
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+
+    // Simulate the race condition: both flags true, user at bottom
+    ;(scrollBox as any)._stickyScrollBottom = true
+
+    // Set scroll position to bottom directly (bypassing setter to keep _hasManualScroll true)
+    // When one line is added, newMaxScrollTop = oldMaxScrollTop + 1,
+    // so scrollTop = oldMaxScrollTop satisfies scrollTop >= newMaxScrollTop - 1
+    const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    scrollBox.verticalScrollBar.scrollPosition = maxScroll
+
+    // Add one line — triggers recalculateBarProps which sees scrollTop >= newMaxScrollTop - 1
+    scrollBox.add(new TextRenderable(testRenderer, { id: "line-50", content: "Line 50" }))
+    await renderOnce()
+
+    // With the fix: _hasManualScroll resets to false, sticky re-engages
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    // More content should now follow to bottom because sticky is re-engaged
+    for (let i = 51; i < 60; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const newMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(scrollBox.scrollTop).toBe(newMaxScroll)
+  })
+
   test("scrollChildIntoView does nothing when child is already visible", async () => {
     const scrollBox = new ScrollBoxRenderable(testRenderer, {
       width: 40,
