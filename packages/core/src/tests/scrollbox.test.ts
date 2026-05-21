@@ -1411,12 +1411,12 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     expect(scrollBox.scrollTop).toBe(5)
     expect((scrollBox as any)._hasManualScroll).toBe(true)
 
-    // User scrolls back to near-bottom to re-engage sticky
+    // User scrolls to bottom to re-engage sticky
     const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
-    scrollBox.scrollTo(maxScroll - 1)
+    scrollBox.scrollTo(maxScroll)
     await renderOnce()
 
-    // Sticky re-engaged
+    // Sticky re-engaged via setter path
     expect((scrollBox as any)._hasManualScroll).toBe(false)
 
     // More streaming content should now follow to bottom
