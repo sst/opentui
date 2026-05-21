@@ -193,6 +193,28 @@ export const AllocatorStatsStruct = defineStruct([
   ["requestedBytesValid", "bool_u8"],
 ])
 
+export type NativeRenderStats = {
+  nativeLastFrameTime: number
+  nativeAverageFrameTime: number
+  nativeFrameCount: number
+  cellsUpdated: number
+  averageCellsUpdated: number
+  nativeRenderTime?: number
+  nativeStdoutWriteTime?: number
+}
+
+export const NativeRenderStatsStruct = defineStruct([
+  ["lastFrameTime", "f64"],
+  ["averageFrameTime", "f64"],
+  ["renderTime", "f64"],
+  ["stdoutWriteTime", "f64"],
+  ["frameCount", "u64"],
+  ["cellsUpdated", "u32"],
+  ["averageCellsUpdated", "u32"],
+  ["renderTimeValid", "bool_u8"],
+  ["stdoutWriteTimeValid", "bool_u8"],
+])
+
 export type GrowthPolicy = "grow" | "block"
 
 export type NativeSpanFeedOptions = {

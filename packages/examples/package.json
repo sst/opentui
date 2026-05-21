@@ -1,6 +1,6 @@
 {
   "name": "@opentui/examples",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "private": true,
   "description": "OpenTUI examples and standalone examples executable",
   "license": "MIT",
@@ -21,6 +21,7 @@
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
     "@opentui/core": "workspace:*",
     "@opentui/keymap": "workspace:*",
+    "@opentui/qrcode": "workspace:*",
     "@opentui/three": "workspace:*",
     "bun-webgpu": "0.1.7",
     "fft.js": "^4.0.4",

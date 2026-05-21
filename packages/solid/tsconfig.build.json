@@ -21,6 +21,7 @@
   },
   "include": [
     "index.ts",
+    "components.ts",
     "src/**/*",
     "jsx-runtime.d.ts",
     // See the comment below

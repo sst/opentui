@@ -69,6 +69,16 @@ pub const SplitFooterTransitionMode = enum(u8) {
     clear_stale_rows = 2,
 };
 
+pub const RenderStatsSnapshot = struct {
+    lastFrameTime: f64,
+    averageFrameTime: f64,
+    frameCount: u64,
+    cellsUpdated: u32,
+    averageCellsUpdated: u32,
+    renderTime: ?f64,
+    stdoutWriteTime: ?f64,
+};
+
 const SplitFooterTransition = struct {
     mode: SplitFooterTransitionMode = .none,
     source_top_line: u32 = 0,
@@ -538,6 +548,18 @@ pub const CliRenderer = struct {
         self.renderStats.heapUsed = heapUsed;
         self.renderStats.heapTotal = heapTotal;
         self.renderStats.arrayBuffers = arrayBuffers;
+    }
+
+    pub fn getRenderStats(self: *const CliRenderer) RenderStatsSnapshot {
+        return .{
+            .lastFrameTime = self.renderStats.lastFrameTime,
+            .averageFrameTime = getStatAverage(f64, &self.statSamples.lastFrameTime),
+            .frameCount = self.renderStats.frameCount,
+            .cellsUpdated = self.renderStats.cellsUpdated,
+            .averageCellsUpdated = getStatAverage(u32, &self.statSamples.cellsUpdated),
+            .renderTime = self.renderStats.renderTime,
+            .stdoutWriteTime = self.renderStats.stdoutWriteTime,
+        };
     }
 
     pub fn resize(self: *CliRenderer, width: u32, height: u32) !void {

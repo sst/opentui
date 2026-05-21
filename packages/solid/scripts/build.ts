@@ -70,7 +70,7 @@ if (!packageJson.module) {
 
 console.log("Building main entry point...")
 const mainBuildResult = await Bun.build({
-  entrypoints: [join(rootDir, packageJson.module)],
+  entrypoints: [join(rootDir, packageJson.module), join(rootDir, "components.ts")],
   target: "bun",
   outdir: join(rootDir, "dist"),
   external: externalDeps,
@@ -167,6 +167,11 @@ const exports = {
   "./runtime-plugin-support/configure": {
     types: "./scripts/runtime-plugin-support-configure.d.ts",
     import: "./scripts/runtime-plugin-support-configure.ts",
+  },
+  "./components": {
+    types: "./components.d.ts",
+    import: "./components.js",
+    require: "./components.js",
   },
   "./jsx-runtime": "./jsx-runtime.d.ts",
   "./jsx-dev-runtime": "./jsx-runtime.d.ts",

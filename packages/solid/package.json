@@ -1,6 +1,6 @@
 {
   "name": "@opentui/solid",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "SolidJS renderer for OpenTUI",
   "repository": {
     "type": "git",
@@ -36,6 +36,10 @@
     "./runtime-plugin-support/configure": {
       "types": "./scripts/runtime-plugin-support-configure.ts",
       "import": "./scripts/runtime-plugin-support-configure.ts"
+    },
+    "./components": {
+      "types": "./components.ts",
+      "import": "./components.ts"
     },
     "./jsx-runtime": "./jsx-runtime.d.ts",
     "./jsx-dev-runtime": "./jsx-runtime.d.ts"

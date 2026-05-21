@@ -43,6 +43,12 @@ const ALL_PACKAGES: PackageConfig[] = [
     requiresCore: true,
   },
   {
+    name: "@opentui/qrcode",
+    rootDir: join(rootDir, "packages", "qrcode"),
+    distDir: join(rootDir, "packages", "qrcode", "dist"),
+    requiresCore: true,
+  },
+  {
     name: "@opentui/react",
     rootDir: join(rootDir, "packages", "react"),
     distDir: join(rootDir, "packages", "react", "dist"),
