@@ -770,16 +770,16 @@ export class ScrollBoxRenderable extends BoxRenderable {
           // User scrolled back to bottom during streaming -- re-engage sticky
           this._hasManualScroll = false
           this.applyStickyStart(this._stickyStart)
-        } else {
-          if (this._stickyScrollTop && !this._hasManualScroll) {
+        } else if (!this._hasManualScroll) {
+          if (this._stickyScrollTop) {
             this.scrollTop = 0
-          } else if (this._stickyScrollBottom && !this._hasManualScroll && newMaxScrollTop > 0) {
+          } else if (this._stickyScrollBottom && newMaxScrollTop > 0) {
             this.scrollTop = newMaxScrollTop
           }
 
-          if (this._stickyScrollLeft && !this._hasManualScroll) {
+          if (this._stickyScrollLeft) {
             this.scrollLeft = 0
-          } else if (this._stickyScrollRight && !this._hasManualScroll && newMaxScrollLeft > 0) {
+          } else if (this._stickyScrollRight && newMaxScrollLeft > 0) {
             this.scrollLeft = newMaxScrollLeft
           }
         }

@@ -1337,6 +1337,98 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     expect(scrollBox.scrollTop).toBe(0)
   })
 
+  // Regression test for issue #1087: recalculateBarProps else branch must not force scroll during streaming
+  test("preserves scroll position when content grows during manual scroll (issue #1087)", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    // Fill with enough content to cause scrolling
+    for (let i = 0; i < 30; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const initialMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(scrollBox.scrollTop).toBe(initialMaxScroll)
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    // User scrolls up manually
+    scrollBox.scrollTo(5)
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(5)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+
+    // Simulate streaming: append more content while user is scrolled up
+    for (let i = 30; i < 50; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    // Scroll position must stay at 5, not forced to bottom
+    expect(scrollBox.scrollTop).toBe(5)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+  })
+
+  // Regression test for issue #1087: sticky re-engages when user returns to bottom during streaming
+  test("re-engages sticky scroll when user returns to bottom during content growth (issue #1087)", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    // Fill with enough content to cause scrolling
+    for (let i = 0; i < 30; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    // User scrolls up manually
+    scrollBox.scrollTo(5)
+    await renderOnce()
+
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+
+    // Simulate streaming: append content
+    for (let i = 30; i < 50; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    // Position preserved during streaming
+    expect(scrollBox.scrollTop).toBe(5)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+
+    // User scrolls back to near-bottom to re-engage sticky
+    const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    scrollBox.scrollTo(maxScroll - 1)
+    await renderOnce()
+
+    // Sticky re-engaged
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    // More streaming content should now follow to bottom
+    for (let i = 50; i < 60; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const newMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(scrollBox.scrollTop).toBe(newMaxScroll)
+  })
+
   test("scrollChildIntoView does nothing when child is already visible", async () => {
     const scrollBox = new ScrollBoxRenderable(testRenderer, {
       width: 40,
