@@ -292,8 +292,11 @@ export class ExtmarksController {
         return
       }
 
+      const text = this.editBuffer.getText()
+      const deletedCharWidth = this.getVisualWidthBeforeOffset(text, currentOffset)
+
       this.originalDeleteCharBackward()
-      this.adjustExtmarksAfterDeletion(targetOffset, 1)
+      this.adjustExtmarksAfterDeletion(currentOffset - deletedCharWidth, deletedCharWidth)
     }
 
     this.editBuffer.deleteChar = (): void => {
@@ -337,8 +340,11 @@ export class ExtmarksController {
         return
       }
 
+      const text = this.editBuffer.getText()
+      const deletedCharWidth = this.getVisualWidthBeforeOffset(text, currentOffset)
+
       this.originalDeleteChar()
-      this.adjustExtmarksAfterDeletion(targetOffset, 1)
+      this.adjustExtmarksAfterDeletion(currentOffset, deletedCharWidth)
     }
 
     this.editBuffer.deleteRange = (startLine: number, startCol: number, endLine: number, endCol: number): void => {
@@ -402,7 +408,7 @@ export class ExtmarksController {
 
       const currentOffset = this.editorView.getVisualCursor().offset
       this.originalInsertText(text)
-      this.adjustExtmarksAfterInsertion(currentOffset, text.length)
+      this.adjustExtmarksAfterInsertion(currentOffset, stringWidth(text))
     }
 
     this.editBuffer.insertChar = (char: string): void => {
@@ -415,7 +421,7 @@ export class ExtmarksController {
 
       const currentOffset = this.editorView.getVisualCursor().offset
       this.originalInsertChar(char)
-      this.adjustExtmarksAfterInsertion(currentOffset, 1)
+      this.adjustExtmarksAfterInsertion(currentOffset, stringWidth(char))
     }
 
     this.editBuffer.setText = (text: string): void => {
@@ -569,6 +575,19 @@ export class ExtmarksController {
 
   private positionToOffset(row: number, col: number): number {
     return this.editBuffer.positionToOffset(row, col)
+  }
+
+  private getVisualWidthBeforeOffset(text: string, visualOffset: number): number {
+    let seen = 0
+    let idx = 0
+    for (const char of text) {
+      const span = char === "\n" ? 1 : stringWidth(char)
+      const next = seen + span
+      if (next >= visualOffset) return span
+      seen = next
+      idx += char.length
+    }
+    return 1
   }
 
   private updateHighlights(): void {
