@@ -2,3 +2,4 @@
 .zig-cache
 zig-out
 src/zig/lib
+src/zig/zig-pkg
