@@ -232,7 +232,8 @@ export interface CliRendererByteChunkExternalOutputEvent {
   kind: "bytes"
   snapshot?: undefined
   text: string
-  rowWidths: Uint32Array
+  bytes: Uint8Array
+  rowColumnsByRow: Uint32Array
   startOnNewLine: boolean
   trailingNewline: boolean
 }
@@ -2154,12 +2155,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       tailColumn = 0
     }
 
-    const rowWidths =
-      commit.kind === "snapshot" ? this.getSnapshotRowWidths(commit.snapshot, commit.rowColumns) : commit.rowWidths
-    for (let index = 0; index < rowWidths.length; index += 1) {
-      const rowWidth = rowWidths[index] ?? 0
-      tailColumn = this.advanceSplitTailColumn(tailColumn, rowWidth, width)
-      if (index < rowWidths.length - 1 || commit.trailingNewline) {
+    const rowColumnsByRow =
+      commit.kind === "snapshot" ? this.getSnapshotRowWidths(commit.snapshot, commit.rowColumns) : commit.rowColumnsByRow
+    for (let index = 0; index < rowColumnsByRow.length; index += 1) {
+      const rowColumns = rowColumnsByRow[index] ?? 0
+      tailColumn = this.advanceSplitTailColumn(tailColumn, rowColumns, width)
+      if (index < rowColumnsByRow.length - 1 || commit.trailingNewline) {
         tailColumn = 0
       }
     }
@@ -2359,7 +2360,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           this.renderOffset = this.lib.commitSplitFooterByteChunk(
             this.rendererPtr,
             commit.bytes,
-            commit.rowWidths,
+            commit.rowColumnsByRow,
             commit.startOnNewLine,
             commit.trailingNewline,
             this.getSplitPinnedRenderOffset(),

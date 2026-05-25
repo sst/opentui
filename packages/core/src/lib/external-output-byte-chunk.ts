@@ -7,7 +7,7 @@ export interface ByteChunkExternalOutputCommit {
   snapshot?: undefined
   text: string
   bytes: Uint8Array
-  rowWidths: Uint32Array
+  rowColumnsByRow: Uint32Array
   startOnNewLine: false
   trailingNewline: boolean
 }
@@ -20,8 +20,8 @@ function getByteChunkOutputRowWidth(line: string): number {
   return stringWidth(visibleLine)
 }
 
-function measureByteChunkRows(text: string): { rowWidths: Uint32Array; trailingNewline: boolean } | null {
-  const rowWidths: number[] = []
+function measureByteChunkRows(text: string): { rowColumnsByRow: Uint32Array; trailingNewline: boolean } | null {
+  const rowColumnsByRow: number[] = []
   let rowStart = 0
 
   for (let index = 0; index < text.length; index += 1) {
@@ -29,20 +29,20 @@ function measureByteChunkRows(text: string): { rowWidths: Uint32Array; trailingN
       continue
     }
 
-    rowWidths.push(getByteChunkOutputRowWidth(text.slice(rowStart, index)))
+    rowColumnsByRow.push(getByteChunkOutputRowWidth(text.slice(rowStart, index)))
     rowStart = index + 1
   }
 
   const trailingNewline = rowStart === text.length
   if (!trailingNewline) {
-    rowWidths.push(getByteChunkOutputRowWidth(text.slice(rowStart)))
+    rowColumnsByRow.push(getByteChunkOutputRowWidth(text.slice(rowStart)))
   }
 
-  if (rowWidths.length === 0) {
+  if (rowColumnsByRow.length === 0) {
     return null
   }
 
-  return { rowWidths: Uint32Array.from(rowWidths), trailingNewline }
+  return { rowColumnsByRow: Uint32Array.from(rowColumnsByRow), trailingNewline }
 }
 
 export function createByteChunkExternalOutputCommit(text: string): ByteChunkExternalOutputCommit | null {
@@ -59,7 +59,7 @@ export function createByteChunkExternalOutputCommit(text: string): ByteChunkExte
     kind: "bytes",
     text,
     bytes: encoder.encode(text),
-    rowWidths: measuredRows.rowWidths,
+    rowColumnsByRow: measuredRows.rowColumnsByRow,
     startOnNewLine: false,
     trailingNewline: measuredRows.trailingNewline,
   }
