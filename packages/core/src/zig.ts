@@ -230,6 +230,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "u32", "bool", "bool", "u32", "bool", "bool", "bool"],
       returns: "u32",
     },
+    commitSplitFooterByteChunk: {
+      args: ["ptr", "ptr", "u32", "ptr", "u32", "bool", "bool", "u32", "bool", "bool", "bool"],
+      returns: "u32",
+    },
     getNextBuffer: {
       args: ["ptr"],
       returns: "ptr",
@@ -1625,6 +1629,17 @@ export interface RenderLib extends AudioEngineLib {
     beginFrame?: boolean,
     finalizeFrame?: boolean,
   ) => number
+  commitSplitFooterByteChunk: (
+    renderer: Pointer,
+    bytes: Uint8Array,
+    rowWidths: Uint32Array,
+    startOnNewLine: boolean,
+    trailingNewline: boolean,
+    pinnedRenderOffset: number,
+    force: boolean,
+    beginFrame?: boolean,
+    finalizeFrame?: boolean,
+  ) => number
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
   rendererSetPaletteState: (
@@ -2758,6 +2773,32 @@ class FFIRenderLib implements RenderLib {
       renderer,
       snapshot.ptr,
       rowColumns,
+      ffiBool(startOnNewLine),
+      ffiBool(trailingNewline),
+      pinnedRenderOffset,
+      ffiBool(force),
+      ffiBool(beginFrame),
+      ffiBool(finalizeFrame),
+    )
+  }
+
+  public commitSplitFooterByteChunk(
+    renderer: Pointer,
+    bytes: Uint8Array,
+    rowWidths: Uint32Array,
+    startOnNewLine: boolean,
+    trailingNewline: boolean,
+    pinnedRenderOffset: number,
+    force: boolean,
+    beginFrame: boolean = true,
+    finalizeFrame: boolean = true,
+  ): number {
+    return this.opentui.symbols.commitSplitFooterByteChunk(
+      renderer,
+      ptr(bytes),
+      bytes.length,
+      ptr(rowWidths),
+      rowWidths.length,
       ffiBool(startOnNewLine),
       ffiBool(trailingNewline),
       pinnedRenderOffset,

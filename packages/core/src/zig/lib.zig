@@ -501,6 +501,31 @@ export fn commitSplitFooterSnapshot(
     );
 }
 
+export fn commitSplitFooterByteChunk(
+    rendererPtr: *renderer.CliRenderer,
+    textPtr: [*]const u8,
+    textLen: u32,
+    rowWidthsPtr: [*]const u32,
+    rowCount: u32,
+    startOnNewLine: bool,
+    trailingNewline: bool,
+    pinnedRenderOffset: u32,
+    force: bool,
+    beginFrame: bool,
+    finalizeFrame: bool,
+) u32 {
+    return rendererPtr.commitSplitFooterByteChunkBatched(
+        textPtr[0..textLen],
+        rowWidthsPtr[0..rowCount],
+        startOnNewLine,
+        trailingNewline,
+        pinnedRenderOffset,
+        force,
+        beginFrame,
+        finalizeFrame,
+    );
+}
+
 export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: [*]const u8, idLen: usize) ?*buffer.OptimizedBuffer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid buffer dimensions: {}x{}", .{ width, height });
