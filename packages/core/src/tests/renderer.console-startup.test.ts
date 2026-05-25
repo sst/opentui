@@ -2027,6 +2027,65 @@ test("CliRenderer split-footer terminal-native captured stdout preserves logical
   byteChunkCommitSpy.mockRestore()
 })
 
+test("CliRenderer split-footer terminal-native does not batch byte chunks with snapshot commits", async () => {
+  const result = await createTestRenderer({
+    width: 20,
+    height: 8,
+    screenMode: "split-footer",
+    footerHeight: 3,
+    externalOutputMode: "capture-stdout",
+    externalOutputRendering: "terminal-native",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  const lib = (renderer as any).lib
+  const snapshotCommitSpy = spyOn(lib, "commitSplitFooterSnapshot")
+  const byteChunkCommitSpy = spyOn(lib, "commitSplitFooterByteChunk")
+
+  try {
+    renderer.writeToScrollback(textScrollbackWrite(""))
+    ;(renderer as any).stdout.write("\x1b[31mhello\x1b[0m\n")
+
+    await result.renderOnce()
+
+    expect(snapshotCommitSpy).toHaveBeenCalledTimes(1)
+    expect(byteChunkCommitSpy).toHaveBeenCalledTimes(1)
+
+    const snapshotArgs = snapshotCommitSpy.mock.calls[0] as [
+      unknown,
+      unknown,
+      number,
+      boolean,
+      boolean,
+      number,
+      boolean,
+      boolean,
+      boolean,
+    ]
+    const byteChunkArgs = byteChunkCommitSpy.mock.calls[0] as [
+      unknown,
+      Uint8Array,
+      Uint32Array,
+      boolean,
+      boolean,
+      number,
+      boolean,
+      boolean,
+      boolean,
+    ]
+
+    expect(snapshotArgs[7]).toBe(true)
+    expect(snapshotArgs[8]).toBe(true)
+    expect(new TextDecoder().decode(byteChunkArgs[1])).toBe("\x1b[31mhello\x1b[0m")
+    expect(byteChunkArgs[7]).toBe(true)
+    expect(byteChunkArgs[8]).toBe(true)
+  } finally {
+    snapshotCommitSpy.mockRestore()
+    byteChunkCommitSpy.mockRestore()
+  }
+})
+
 test("CliRenderer split-footer terminal-native defers trailing newline until following output", async () => {
   const result = await createTestRenderer({
     width: 20,

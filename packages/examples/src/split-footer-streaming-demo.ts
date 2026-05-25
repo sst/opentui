@@ -7,6 +7,7 @@ import {
   TextRenderable,
   createCliRenderer,
   type CliRenderer,
+  type ExternalOutputRendering,
   type KeyEvent,
   type ScrollbackSurface,
 } from "@opentui/core"
@@ -22,8 +23,10 @@ const DEFAULT_INTERVAL_MS = 180
 const MIN_INTERVAL_MS = 60
 const MAX_INTERVAL_MS = 1000
 const INTERVAL_STEP_MS = 40
+const DEFAULT_EXTERNAL_OUTPUT_RENDERING: ExternalOutputRendering = "emulated"
+const EXTERNAL_OUTPUT_RENDERING_ENV = process.env.OTUI_SPLIT_STREAMING_DEMO_RENDERING
 
-type StreamKind = "text" | "code" | "markdown"
+type StreamKind = "text" | "code" | "markdown" | "ansi"
 
 interface ScenarioDefinition {
   kind: StreamKind
@@ -36,8 +39,8 @@ interface ScenarioDefinition {
 interface ActiveRun {
   id: number
   scenario: ScenarioDefinition
-  surface: ScrollbackSurface
-  renderable: TextRenderable | CodeRenderable | MarkdownRenderable
+  surface: ScrollbackSurface | null
+  renderable: TextRenderable | CodeRenderable | MarkdownRenderable | null
   content: string
   chunkIndex: number
   committedRows: number
@@ -57,6 +60,7 @@ const PALETTE = {
   textAccent: "#66D9EF",
   codeAccent: "#FFD580",
   markdownAccent: "#C7A6FF",
+  ansiAccent: "#7CFFB2",
   error: "#FF9B9B",
 } as const
 
@@ -140,6 +144,23 @@ const SCENARIOS: Record<StreamKind, ScenarioDefinition> = {
       " in one chunk\n- second item closes the sample\n",
     ],
   },
+  ansi: {
+    kind: "ansi",
+    title: "ansi",
+    prefix: "ansi> ",
+    description: "Writes ANSI SGR color and style sequences through captured stdout.",
+    chunks: [
+      "\x1b[38;5;82mgreen stdout\x1b[0m and ",
+      "\x1b[38;5;213mbright magenta\x1b[0m on one logical row\n",
+      "\x1b[1m\x1b[38;5;39mbold blue\x1b[0m, ",
+      "\x1b[3mitalic default\x1b[0m, ",
+      "\x1b[4munderlined default\x1b[0m\n",
+      "carriage return demo: pending text",
+      "\r\x1b[38;5;220mcarriage return replacement\x1b[0m\n",
+      "\x1b[48;5;24m background blue \x1b[0m ",
+      "\x1b[48;5;88m background red \x1b[0m final row\n",
+    ],
+  },
 }
 
 function getScenarioAccent(kind: StreamKind): string {
@@ -150,6 +171,8 @@ function getScenarioAccent(kind: StreamKind): string {
       return PALETTE.codeAccent
     case "markdown":
       return PALETTE.markdownAccent
+    case "ansi":
+      return PALETTE.ansiAccent
   }
 }
 
@@ -191,7 +214,10 @@ class SplitFooterStreamingDemo {
   private pendingReplayReason: string | null = null
   private wrote = false
 
-  constructor(private renderer: CliRenderer) {
+  constructor(
+    private renderer: CliRenderer,
+    private readonly externalOutputRendering: ExternalOutputRendering = DEFAULT_EXTERNAL_OUTPUT_RENDERING,
+  ) {
     if (this.renderer.screenMode !== "split-footer") {
       this.renderer.screenMode = "split-footer"
     }
@@ -253,7 +279,11 @@ class SplitFooterStreamingDemo {
 
     this.refreshFooter()
     this.syncAutoTimer()
-    this.requestReplay("Started markdown sample.")
+    setTimeout(() => {
+      if (!this.destroyed) {
+        this.requestReplay("Started markdown sample.")
+      }
+    }, 0)
   }
 
   private get currentScenario(): ScenarioDefinition {
@@ -280,13 +310,13 @@ class SplitFooterStreamingDemo {
     this.footerTable.content = [
       footerRow(
         "mode",
-        `${scenario.title} · start ${this.inlinePrefix ? "inline-prefix" : "newline"} · auto ${this.autoAdvance ? `${this.intervalMs}ms` : "off"} · ${runState}`,
+        `${scenario.title} · ${this.externalOutputRendering} · start ${this.inlinePrefix ? "inline-prefix" : "newline"} · auto ${this.autoAdvance ? `${this.intervalMs}ms` : "off"} · ${runState}`,
         getScenarioAccent(this.currentKind),
       ),
       footerRow("status", this.lastStatus, this.lastStatus.startsWith("Error:") ? PALETTE.error : PALETTE.status),
       footerRow("stats", `${run?.content.length ?? 0} bytes · ${committedState}`, PALETTE.detail),
       footerRow("about", scenario.description, PALETTE.detail),
-      footerRow("scene", "1 text · 2 code · 3 markdown · i inline-prefix", PALETTE.hint),
+      footerRow("scene", "1 text · 2 code · 3 markdown · 4 ansi stdout · i inline-prefix", PALETTE.hint),
       footerRow("flow", "r replay · n next · a auto · [ slower · ] faster · resize -> r", PALETTE.hint),
     ]
   }
@@ -313,7 +343,7 @@ class SplitFooterStreamingDemo {
 
     this.activeRun.cancelled = true
 
-    if (!this.activeRun.surface.isDestroyed) {
+    if (this.activeRun.surface && !this.activeRun.surface.isDestroyed) {
       try {
         this.activeRun.surface.destroy()
       } catch {
@@ -361,13 +391,14 @@ class SplitFooterStreamingDemo {
       this.writeInlinePrefix(scenario, !spaced)
     }
 
-    const surface = this.renderer.createScrollbackSurface({
-      startOnNewLine: this.inlinePrefix ? false : !spaced,
-    })
+    let surface: ScrollbackSurface | null = null
+    let renderable: TextRenderable | CodeRenderable | MarkdownRenderable | null = null
 
-    let renderable: TextRenderable | CodeRenderable | MarkdownRenderable
     switch (scenario.kind) {
       case "text":
+        surface = this.renderer.createScrollbackSurface({
+          startOnNewLine: this.inlinePrefix ? false : !spaced,
+        })
         renderable = new TextRenderable(surface.renderContext, {
           id: `split-footer-stream-text-${this.nextRunId}`,
           content: "",
@@ -377,6 +408,9 @@ class SplitFooterStreamingDemo {
         })
         break
       case "code":
+        surface = this.renderer.createScrollbackSurface({
+          startOnNewLine: this.inlinePrefix ? false : !spaced,
+        })
         renderable = new CodeRenderable(surface.renderContext, {
           id: `split-footer-stream-code-${this.nextRunId}`,
           content: "",
@@ -390,6 +424,9 @@ class SplitFooterStreamingDemo {
         })
         break
       case "markdown":
+        surface = this.renderer.createScrollbackSurface({
+          startOnNewLine: this.inlinePrefix ? false : !spaced,
+        })
         renderable = new MarkdownRenderable(surface.renderContext, {
           id: `split-footer-stream-markdown-${this.nextRunId}`,
           content: "",
@@ -401,9 +438,13 @@ class SplitFooterStreamingDemo {
           treeSitterClient: this.treeSitterClient,
         })
         break
+      case "ansi":
+        break
     }
 
-    surface.root.add(renderable)
+    if (surface && renderable) {
+      surface.root.add(renderable)
+    }
 
     return {
       id: this.nextRunId++,
@@ -513,7 +554,7 @@ class SplitFooterStreamingDemo {
 
       if (isFinalChunk) {
         run.done = true
-        run.surface.destroy()
+        run.surface?.destroy()
         this.lastStatus = `${run.scenario.title} sample finished. Press R to replay.`
       } else {
         this.lastStatus = `${run.scenario.title} chunk ${run.chunkIndex}/${run.scenario.chunks.length} committed.`
@@ -549,10 +590,17 @@ class SplitFooterStreamingDemo {
       case "markdown":
         await this.flushMarkdownRun(run, done)
         return
+      case "ansi":
+        this.flushAnsiRun(run)
+        return
     }
   }
 
   private async flushTextRun(run: ActiveRun, done: boolean): Promise<void> {
+    if (!run.surface || !(run.renderable instanceof TextRenderable)) {
+      return
+    }
+
     const renderable = run.renderable as TextRenderable
     renderable.content = run.content
     run.surface.render()
@@ -566,6 +614,10 @@ class SplitFooterStreamingDemo {
   }
 
   private async flushCodeRun(run: ActiveRun, done: boolean): Promise<void> {
+    if (!run.surface || !(run.renderable instanceof CodeRenderable)) {
+      return
+    }
+
     const renderable = run.renderable as CodeRenderable
     renderable.content = run.content
     renderable.streaming = !done
@@ -580,6 +632,10 @@ class SplitFooterStreamingDemo {
   }
 
   private async flushMarkdownRun(run: ActiveRun, done: boolean): Promise<void> {
+    if (!run.surface || !(run.renderable instanceof MarkdownRenderable)) {
+      return
+    }
+
     const renderable = run.renderable as MarkdownRenderable
     renderable.content = run.content
     renderable.streaming = !done
@@ -599,6 +655,17 @@ class SplitFooterStreamingDemo {
 
     run.surface.commitRows(firstState.renderable.y, endRow)
     run.committedBlocks = targetBlockCount
+    this.wrote = true
+  }
+
+  private flushAnsiRun(run: ActiveRun): void {
+    const chunk = run.scenario.chunks[run.chunkIndex - 1]
+    if (!chunk) {
+      return
+    }
+
+    process.stdout.write(chunk)
+    run.committedRows = run.chunkIndex
     this.wrote = true
   }
 
@@ -661,6 +728,10 @@ class SplitFooterStreamingDemo {
       case "3":
         key.preventDefault()
         this.setScenario("markdown")
+        return
+      case "4":
+        key.preventDefault()
+        this.setScenario("ansi")
         return
       case "r":
         key.preventDefault()
@@ -733,12 +804,15 @@ class SplitFooterStreamingDemo {
 
 let activeDemo: SplitFooterStreamingDemo | null = null
 
-export function run(renderer: CliRenderer): void {
+export function run(
+  renderer: CliRenderer,
+  externalOutputRendering: ExternalOutputRendering = DEFAULT_EXTERNAL_OUTPUT_RENDERING,
+): void {
   if (activeDemo) {
     activeDemo.destroy()
   }
 
-  activeDemo = new SplitFooterStreamingDemo(renderer)
+  activeDemo = new SplitFooterStreamingDemo(renderer, externalOutputRendering)
 }
 
 export function destroy(_renderer: CliRenderer): void {
@@ -750,7 +824,22 @@ export function destroy(_renderer: CliRenderer): void {
   activeDemo = null
 }
 
+function resolveExternalOutputRendering(rendering: string | undefined): ExternalOutputRendering {
+  if (rendering === undefined) {
+    return DEFAULT_EXTERNAL_OUTPUT_RENDERING
+  }
+
+  if (rendering === "emulated" || rendering === "terminal-native") {
+    return rendering
+  }
+
+  throw new Error(
+    `Invalid OTUI_SPLIT_STREAMING_DEMO_RENDERING value "${rendering}". Expected "emulated" or "terminal-native".`,
+  )
+}
+
 if (import.meta.main) {
+  const externalOutputRendering = resolveExternalOutputRendering(EXTERNAL_OUTPUT_RENDERING_ENV)
   const renderer = await createCliRenderer({
     targetFps: 30,
     exitOnCtrlC: true,
@@ -758,10 +847,11 @@ if (import.meta.main) {
     screenMode: "split-footer",
     footerHeight: FOOTER_HEIGHT,
     externalOutputMode: "capture-stdout",
+    externalOutputRendering,
     consoleMode: "disabled",
   })
 
-  run(renderer)
+  run(renderer, externalOutputRendering)
   setupCommonDemoKeys(renderer)
   renderer.start()
 }

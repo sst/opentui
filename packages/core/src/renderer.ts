@@ -2331,15 +2331,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const commits = this.externalOutputQueue.claim(drainAll ? Number.POSITIVE_INFINITY : this.maxSplitCommitsPerFrame)
     let hasCommittedOutput = false
     const lastCommitIndex = commits.length - 1
+    const hasMixedCommitKinds = commits.some((commit) => commit.kind !== commits[0]?.kind)
 
     for (const [index, commit] of commits.entries()) {
       // Force repaint only on the last commit in a frame. Repainting after every
       // chunk negates batching and reintroduces duplicate clear/move traffic.
       const forceCommit = forceFooterRepaint && index === lastCommitIndex
       // beginFrame/finalizeFrame tell native code whether this commit opens or
-      // closes the shared frame envelope. Intermediate commits append payload only.
-      const beginFrame = index === 0
-      const finalizeFrame = index === lastCommitIndex
+      // closes the shared frame envelope. Keep homogeneous bursts batched, but do
+      // not mix rendered snapshots and terminal-native byte chunks in one native
+      // frame because the FFI path can drop bytes from mixed batches.
+      const beginFrame = hasMixedCommitKinds ? true : index === 0
+      const finalizeFrame = hasMixedCommitKinds ? true : index === lastCommitIndex
 
       try {
         // Keep split append policy in native code so every producer (captured stdout
