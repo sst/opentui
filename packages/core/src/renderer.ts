@@ -934,7 +934,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       if (commit.kind === "snapshot") {
         capturedExternalOutput += `[snapshot ${commit.snapshot.width}x${commit.snapshot.height}]\n`
       } else {
-        capturedExternalOutput += commit.text
+        capturedExternalOutput += `[bytes ${commit.bytes.length} bytes, ${commit.rowColumnsByRow.length} rows]\n`
       }
       commit.snapshot?.destroy()
     }
@@ -2816,7 +2816,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       if (commit.kind === "snapshot") {
         output += `[snapshot ${commit.snapshot.width}x${commit.snapshot.height}]\n`
       } else {
-        output += commit.text
+        output += `[bytes ${commit.bytes.length} bytes, ${commit.rowColumnsByRow.length} rows]\n`
       }
       commit.snapshot?.destroy()
     }
