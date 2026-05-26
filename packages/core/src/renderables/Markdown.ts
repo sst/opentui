@@ -405,7 +405,7 @@ export class MarkdownRenderable extends Renderable {
     })
 
     return chunks.map((chunk) => {
-      if (!chunk.link) return chunk
+      if (!chunk.link || !/^(?:https?:\/\/|mailto:)/.test(chunk.text)) return chunk
 
       return {
         ...chunk,
