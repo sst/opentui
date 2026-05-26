@@ -31,6 +31,7 @@ export function detectLinks(
         ranges.push({ start: labelStart, end: labelEnd, url })
         break
       }
+      if (prev === "conceal") continue
       if (!prev.startsWith("markup.link")) break
     }
   }

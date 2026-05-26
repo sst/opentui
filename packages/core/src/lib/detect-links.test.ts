@@ -133,4 +133,18 @@ describe("detectLinks", () => {
 
     expect(result.find((c) => c.text === "OpenTUI")!.link).toEqual({ url: "https://opentui.com" })
   })
+
+  test("should associate markdown label when conceal highlights separate it from the destination", () => {
+    const content = "[OpenTUI](https://opentui.com)"
+    const highlights: SimpleHighlight[] = [
+      [1, 8, "markup.link.label"],
+      [8, 10, "conceal", { conceal: "" }],
+      [10, 29, "markup.link.url"],
+    ]
+    const chunks = [chunk("OpenTUI")]
+
+    const result = detectLinks(chunks, { content, highlights })
+
+    expect(result[0].link).toEqual({ url: "https://opentui.com" })
+  })
 })
