@@ -1706,6 +1706,11 @@ test "TextBuffer setStyledText - generated chunk styles do not leak between buff
     try std.testing.expectEqual(@as(u32, 1), style.resolveById(tb1_highlights[0].style_id).?.attributes);
     try std.testing.expectEqual(@as(u32, 0), style.resolveById(tb1_highlights[1].style_id).?.attributes);
 
+    tb1.clear();
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+    try std.testing.expectEqual(@as(u32, 1), style.resolveById(tb1_highlights[0].style_id).?.attributes);
+    try std.testing.expectEqual(@as(u32, 0), style.resolveById(tb1_highlights[1].style_id).?.attributes);
+
     const three = "three";
     const four = " four";
     const tb2_chunks = [_]text_buffer.StyledChunk{

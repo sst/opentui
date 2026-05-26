@@ -356,7 +356,6 @@ pub const UnifiedTextBuffer = struct {
     /// Preserves highlights, memory buffers, and arena allocations.
     /// Use this for frequent text updates where undo/redo history should be preserved.
     pub fn clear(self: *Self) void {
-        self.clearStyledChunkStyles();
         self.clearLinkRefs();
         self._rope.clear();
         self.markAllViewsDirty();
@@ -469,6 +468,7 @@ pub const UnifiedTextBuffer = struct {
     /// Set the text content using SIMD-optimized line break detection
     pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
         self.clearInternalHighlights();
+        self.clearStyledChunkStyles();
         self.clear();
         const mem_id = try self.mem_registry.register(text, false);
         try self.setTextInternal(mem_id, text);
@@ -1102,6 +1102,7 @@ pub const UnifiedTextBuffer = struct {
         self: *Self,
         chunks: []const StyledChunk,
     ) TextBufferError!void {
+        self.clearStyledChunkStyles();
         if (chunks.len == 0) {
             self.clear();
             self.clearAllHighlights();
