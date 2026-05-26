@@ -727,7 +727,7 @@ describe("StdinParser", () => {
       }
     })
 
-    test("delayed X10 continuation after timed-out escape stays opaque", () => {
+    test("delayed X10 continuation after timed-out escape becomes a mouse event", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b"))
@@ -738,7 +738,7 @@ describe("StdinParser", () => {
         parser.push(Buffer.from("[M"))
         expect(snap(parser)).toEqual([])
         parser.push(Buffer.from(" !!"))
-        expect(snap(parser)).toEqual([resp("unknown", "[M !!")])
+        expect(snap(parser)).toEqual([x10m("\x1b[M !!", "down", 0, 0)])
       } finally {
         parser.destroy()
       }
@@ -1707,7 +1707,23 @@ describe("StdinParser", () => {
   })
 
   describe("ESC-less SGR continuation recovery", () => {
-    test("after timed-out ESC, continuation is not split into text", () => {
+    test("after timed-out ESC, scroll continuation still becomes a mouse event", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b"))
+        clock.advance(10)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+
+        parser.push(Buffer.from("[<64;38;15M"))
+        expect(snap(parser)).toEqual([
+          sgr("\x1b[<64;38;15M", "scroll", 37, 14, { scroll: { direction: "up", delta: 1 } }),
+        ])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("after timed-out ESC, continuation is recovered as mouse input", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b"))
@@ -1715,13 +1731,13 @@ describe("StdinParser", () => {
         expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
 
         parser.push(Buffer.from("[<35;20;5m"))
-        expect(snap(parser)).toEqual([resp("unknown", "[<35;20;5m")])
+        expect(snap(parser)).toEqual([sgr("\x1b[<35;20;5m", "move", 19, 4)])
       } finally {
         parser.destroy()
       }
     })
 
-    test("after timed-out ESC, split continuation across pushes is not split into text", () => {
+    test("after timed-out ESC, split continuation across pushes is recovered as mouse input", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b"))
@@ -1732,7 +1748,7 @@ describe("StdinParser", () => {
         expect(snap(parser)).toEqual([])
 
         parser.push(Buffer.from("<35;20;5m"))
-        expect(snap(parser)).toEqual([resp("unknown", "[<35;20;5m")])
+        expect(snap(parser)).toEqual([sgr("\x1b[<35;20;5m", "move", 19, 4)])
       } finally {
         parser.destroy()
       }
