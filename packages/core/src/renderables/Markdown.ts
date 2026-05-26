@@ -807,7 +807,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private getListChildMarkdownRaw(token: MarkedToken): string {
-    return token.type === "paragraph" ? this.normalizeScrollbackMarkdownBlockRaw(token.raw) : token.raw
+    return this.normalizeScrollbackMarkdownBlockRaw(token.raw)
   }
 
   private applyListItemMarker(row: BoxRenderable, input: ListItemRenderInput): void {
