@@ -521,6 +521,23 @@ export class ScrollBoxRenderable extends BoxRenderable {
     }
   }
 
+  private isAtStickyReengagePoint(
+    stickyStart: "bottom" | "top" | "left" | "right",
+    maxScrollTop: number,
+    maxScrollLeft: number,
+  ): boolean {
+    switch (stickyStart) {
+      case "top":
+        return maxScrollTop > 0 && this.scrollTop <= 0
+      case "bottom":
+        return maxScrollTop > 0 && this.scrollTop >= maxScrollTop - 1
+      case "left":
+        return maxScrollLeft > 0 && this.scrollLeft <= 0
+      case "right":
+        return maxScrollLeft > 0 && this.scrollLeft >= maxScrollLeft - 1
+    }
+  }
+
   public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
     return this.content.add(obj, index)
   }
@@ -763,13 +780,18 @@ export class ScrollBoxRenderable extends BoxRenderable {
       if (this._stickyScroll) {
         const newMaxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
         const newMaxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
+        const stickyStart = this._stickyStart
 
-        if (this._stickyStart && !this._hasManualScroll) {
-          this.applyStickyStart(this._stickyStart)
-        } else if (this._hasManualScroll && newMaxScrollTop > 0 && this.scrollTop >= newMaxScrollTop - 1) {
-          // User scrolled back to bottom during streaming -- re-engage sticky
+        if (stickyStart && !this._hasManualScroll) {
+          this.applyStickyStart(stickyStart)
+        } else if (
+          stickyStart &&
+          this._hasManualScroll &&
+          this.isAtStickyReengagePoint(stickyStart, newMaxScrollTop, newMaxScrollLeft)
+        ) {
+          // User scrolled back to the sticky edge during streaming; re-engage sticky.
           this._hasManualScroll = false
-          this.applyStickyStart(this._stickyStart)
+          this.applyStickyStart(stickyStart)
         } else if (!this._hasManualScroll) {
           if (this._stickyScrollTop) {
             this.scrollTop = 0
