@@ -14,6 +14,7 @@ on:
         default: false
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   ZIG_VERSION: 0.15.2
 
 jobs:
@@ -23,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -232,7 +233,7 @@ jobs:
           ls -lah artifacts/*.zip
 
       - name: Upload native binaries artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-binaries-${{ inputs.version }}
           path: |
@@ -246,7 +247,7 @@ jobs:
           retention-days: 30
 
       - name: Upload npm packages artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: npm-packages-${{ inputs.version }}
           path: artifacts/npm-packages.zip

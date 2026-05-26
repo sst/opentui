@@ -59,7 +59,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check version matches package.json files
         run: |
@@ -126,7 +126,7 @@ jobs:
   sign-windows-artifacts:
     name: Sign Windows DLL Artifacts
     needs: [prepare, build-native]
-    runs-on: windows-2025
+    runs-on: windows-2025-vs2026
     permissions:
       id-token: write
       contents: read
@@ -146,14 +146,14 @@ jobs:
 
       - name: Download native binaries artifact
         if: needs.prepare.outputs.isDryRun != 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: native-binaries-${{ needs.prepare.outputs.fullTag }}
           path: artifacts/native
 
       - name: Download npm packages artifact
         if: needs.prepare.outputs.isDryRun != 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: npm-packages-${{ needs.prepare.outputs.fullTag }}
           path: artifacts/npm
@@ -174,7 +174,7 @@ jobs:
 
       - name: Azure login
         if: needs.prepare.outputs.isDryRun != 'true'
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
@@ -256,7 +256,7 @@ jobs:
 
       - name: Upload signed native binaries artifact
         if: needs.prepare.outputs.isDryRun != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-binaries-${{ needs.prepare.outputs.fullTag }}
           path: |
@@ -272,7 +272,7 @@ jobs:
 
       - name: Upload signed npm packages artifact
         if: needs.prepare.outputs.isDryRun != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: npm-packages-${{ needs.prepare.outputs.fullTag }}
           path: artifacts/npm/npm-packages.zip
@@ -288,10 +288,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 
@@ -383,7 +383,7 @@ jobs:
           ls -lah release-assets/
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: ${{ needs.prepare.outputs.releaseTitle }}
           files: release-assets/*.zip
