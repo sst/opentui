@@ -1716,6 +1716,12 @@ test "TextBuffer setStyledText - generated chunk styles do not leak between buff
 
     try std.testing.expectEqual(@as(u32, 1), style.resolveById(tb1_highlights[0].style_id).?.attributes);
     try std.testing.expectEqual(@as(u32, 0), style.resolveById(tb1_highlights[1].style_id).?.attributes);
+    try std.testing.expectEqual(@as(usize, 4), style.getStyleCount());
+
+    tb1.setSyntaxStyle(null);
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+    tb2.setSyntaxStyle(null);
+    try std.testing.expectEqual(@as(usize, 0), style.getStyleCount());
 }
 
 test "addHighlightByCharRange - single line highlight should not extend to EOL" {

@@ -106,13 +106,31 @@ describe("detectLinks", () => {
     expect(result[1].link).toEqual({ url: "https://example.com/docs" })
   })
 
-  test("should detect markdown links without tree-sitter URL highlights", () => {
-    const content = "See [OpenTUI](https://opentui.com) now"
+  test("should not detect bare URLs inside markdown code spans", () => {
+    const content = "`https://opentui.com`"
     const chunks = [chunk(content)]
+    const highlights: SimpleHighlight[] = [[0, content.length, "markup.raw"]]
 
-    const result = detectLinks(chunks, { content, highlights: [] })
+    const result = detectLinks(chunks, { content, highlights })
+
+    expect(result).toBe(chunks)
+    expect(result[0].link).toBeUndefined()
+  })
+
+  test("should retain following link metadata after a concealed one-character replacement", () => {
+    const content = "&emsp;[OpenTUI](https://opentui.com) suffix"
+    const highlights: SimpleHighlight[] = [
+      [0, 6, "character.special", { conceal: " " }],
+      [6, 7, "markup.link"],
+      [7, 14, "markup.link.label"],
+      [14, 16, "markup.link"],
+      [16, 35, "markup.link.url"],
+      [35, 36, "markup.link"],
+    ]
+    const chunks = [chunk(" "), chunk("OpenTUI"), chunk(""), chunk(" suffix")]
+
+    const result = detectLinks(chunks, { content, highlights })
 
     expect(result.find((c) => c.text === "OpenTUI")!.link).toEqual({ url: "https://opentui.com" })
-    expect(result.find((c) => c.text === "https://opentui.com")!.link).toEqual({ url: "https://opentui.com" })
   })
 })
