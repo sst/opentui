@@ -273,6 +273,28 @@ test "environment overrides - does not enable hyperlinks for WSL non-xterm terms
     try testing.expect(!term.caps.hyperlinks);
 }
 
+test "environment overrides - TERM_PROGRAM enables hyperlinks for Zed" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM", "xterm-256color");
+    try env.put("TERM_PROGRAM", "zed");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(term.caps.hyperlinks);
+}
+
+test "environment overrides - TERM_PROGRAM enables hyperlinks for VS Code" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM", "xterm-256color");
+    try env.put("TERM_PROGRAM", "vscode");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(term.caps.hyperlinks);
+}
+
 test "setHostEnvVar detects ansi256 separately from rgb" {
     var env = std.process.EnvMap.init(testing.allocator);
     defer env.deinit();

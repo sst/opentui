@@ -700,6 +700,14 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
 
     if (!self.caps.hyperlinks and !self.term_info.from_xtversion) {
+        if (env_map.get("TERM_PROGRAM")) |program| {
+            if (isHyperlinkTerm(program)) {
+                self.caps.hyperlinks = true;
+            }
+        }
+    }
+
+    if (!self.caps.hyperlinks and !self.term_info.from_xtversion) {
         const is_wsl = env_map.get("WSL_DISTRO_NAME") != null or env_map.get("WSL_INTEROP") != null;
         const has_wt_session = env_map.get("WT_SESSION") != null;
         if (is_wsl and has_wt_session) {
@@ -1076,7 +1084,9 @@ fn isHyperlinkTerm(value: []const u8) bool {
         std.ascii.indexOfIgnoreCase(value, "kitty") != null or
         std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
         std.ascii.indexOfIgnoreCase(value, "alacritty") != null or
-        std.ascii.indexOfIgnoreCase(value, "iterm") != null;
+        std.ascii.indexOfIgnoreCase(value, "iterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "zed") != null or
+        std.ascii.indexOfIgnoreCase(value, "vscode") != null;
 }
 
 pub fn getCapabilities(self: *Terminal) Capabilities {
