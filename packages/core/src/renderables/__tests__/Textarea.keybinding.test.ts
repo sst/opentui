@@ -2812,6 +2812,94 @@ describe("Textarea - Keybinding Tests", () => {
     })
   })
 
+  describe("Kitty keypad input", () => {
+    let kittyRenderer: TestRenderer
+    let kittyRenderOnce: () => Promise<void>
+
+    beforeEach(async () => {
+      ;({ renderer: kittyRenderer, renderOnce: kittyRenderOnce } = await createTestRenderer({
+        width: 80,
+        height: 24,
+        kittyKeyboard: true,
+      }))
+    })
+
+    afterEach(() => {
+      kittyRenderer.destroy()
+    })
+
+    const pressKittyKey = async (sequence: string): Promise<void> => {
+      await new Promise<void>((resolve) => {
+        kittyRenderer.keyInput.once("keypress", () => {
+          resolve()
+        })
+
+        kittyRenderer.stdin.emit("data", Buffer.from(sequence))
+      })
+
+      await Promise.resolve()
+    }
+
+    it("should insert printable keypad keys and handle keypad enter", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        width: 80,
+        height: 10,
+      })
+
+      editor.focus()
+
+      const printableKeypadKeys = [
+        "\x1b[57399u",
+        "\x1b[57400u",
+        "\x1b[57401u",
+        "\x1b[57402u",
+        "\x1b[57403u",
+        "\x1b[57404u",
+        "\x1b[57405u",
+        "\x1b[57406u",
+        "\x1b[57407u",
+        "\x1b[57408u",
+        "\x1b[57409u",
+        "\x1b[57410u",
+        "\x1b[57411u",
+        "\x1b[57412u",
+        "\x1b[57413u",
+        "\x1b[57415u",
+        "\x1b[57416u",
+      ]
+
+      for (const sequence of printableKeypadKeys) {
+        await pressKittyKey(sequence)
+      }
+
+      expect(editor.plainText).toBe("0123456789./*-+=,")
+
+      await pressKittyKey("\x1b[57400;5u")
+      expect(editor.plainText).toBe("0123456789./*-+=,")
+
+      await pressKittyKey("\x1b[57414u")
+      expect(editor.plainText).toBe("0123456789./*-+=,\n")
+    })
+
+    it("should submit on meta keypad enter", async () => {
+      let submitCount = 0
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        width: 80,
+        height: 10,
+        onSubmit: () => {
+          submitCount += 1
+        },
+      })
+
+      editor.focus()
+
+      await pressKittyKey("\x1b[57414;3u")
+
+      expect(submitCount).toBe(1)
+      expect(editor.plainText).toBe("")
+    })
+  })
+
   describe("Selection with ctrl+shift+a/e (line home/end)", () => {
     let kittyRenderer: TestRenderer
     let kittyRenderOnce: () => Promise<void>

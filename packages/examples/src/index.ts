@@ -65,6 +65,7 @@ import * as diffDemo from "./diff-demo.js"
 import * as keypressDebugDemo from "./keypress-debug-demo.js"
 import * as extmarksDemo from "./extmarks-demo.js"
 import * as markdownDemo from "./markdown-demo.js"
+import * as qrcodeDemo from "./qrcode-demo.js"
 import * as linkDemo from "./link-demo.js"
 import * as opacityExample from "./opacity-example.js"
 import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test.js"
@@ -242,6 +243,12 @@ const examples: Example[] = [
     description: "Markdown rendering with table alignment, syntax highlighting, and theme switching",
     run: markdownDemo.run,
     destroy: markdownDemo.destroy,
+  },
+  {
+    name: "QR Code Demo",
+    description: "Intrinsic QR code renderable with manual scaling and terminal-friendly half-block output",
+    run: qrcodeDemo.run,
+    destroy: qrcodeDemo.destroy,
   },
   {
     name: "Split Footer Streaming Demo",

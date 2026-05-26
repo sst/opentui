@@ -1,8 +1,15 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { TextBuffer } from "./text-buffer.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
 import { SyntaxStyle } from "./syntax-style.js"
+import { resolveRenderLib } from "./zig.js"
+
+const MALFORMED_UTF8_ABOVE_UNICODE_RANGE = new Uint8Array([0x41, 0xf4, 0x90, 0x80, 0x80, 0x42])
+const MALFORMED_UTF8_TEXT = "A" + "\uFFFD".repeat(4) + "B"
 
 describe("TextBuffer", () => {
   let buffer: TextBuffer
@@ -292,6 +299,42 @@ describe("TextBuffer", () => {
       buffer.setText("After reset")
       expect(buffer.length).toBe(11)
       expect(buffer.getPlainText()).toBe("After reset")
+    })
+  })
+
+  describe("malformed UTF-8 bytes", () => {
+    it("loadFile should preserve malformed UTF-8 bytes without panicking", () => {
+      const dir = mkdtempSync(join(tmpdir(), "opentui-text-buffer-"))
+      const path = join(dir, "malformed.txt")
+      const unicodeBuffer = TextBuffer.create("unicode")
+
+      try {
+        writeFileSync(path, MALFORMED_UTF8_ABOVE_UNICODE_RANGE)
+
+        unicodeBuffer.loadFile(path)
+
+        expect(unicodeBuffer.byteSize).toBe(6)
+        expect(unicodeBuffer.length).toBe(2)
+        expect(unicodeBuffer.getLineCount()).toBe(1)
+        expect(unicodeBuffer.getPlainText()).toBe(MALFORMED_UTF8_TEXT)
+      } finally {
+        unicodeBuffer.destroy()
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it("textBufferAppend should preserve malformed UTF-8 bytes without panicking", () => {
+      const lib = resolveRenderLib()
+      const unicodeBuffer = TextBuffer.create("unicode")
+
+      try {
+        lib.textBufferAppend(unicodeBuffer.ptr, MALFORMED_UTF8_ABOVE_UNICODE_RANGE)
+
+        expect(lib.textBufferGetByteSize(unicodeBuffer.ptr)).toBe(6)
+        expect(lib.textBufferGetLength(unicodeBuffer.ptr)).toBe(2)
+      } finally {
+        unicodeBuffer.destroy()
+      }
     })
   })
 

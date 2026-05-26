@@ -1,0 +1,67 @@
+name: Build QRCode
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+env:
+  # Workaround for bug in Zig 0.15.2 (fixed in next version)
+  # https://github.com/ziglang/zig/issues/25805
+  ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.zig-global-cache
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build core
+        run: |
+          cd packages/core
+          bun run build
+
+      - name: Build
+        run: |
+          cd packages/qrcode
+          bun run build
+
+      - name: Run tests
+        run: |
+          cd packages/qrcode
+          bun run test
+
+  build-complete:
+    name: QRCode - Build and Test
+    needs: [test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "Tests failed"
+            exit 1
+          fi
+          echo "All tests passed"

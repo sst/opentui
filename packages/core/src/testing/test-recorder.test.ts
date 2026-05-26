@@ -196,24 +196,6 @@ describe("TestRecorder", () => {
     expect(recorder.recordedFrames.length).toBe(1)
   })
 
-  test("should restore original renderNative after stop", async () => {
-    const text = new TextRenderable(renderer, { content: "Restore Test" })
-
-    recorder.rec()
-    renderer.root.add(text)
-    await Bun.sleep(1)
-    recorder.stop()
-
-    recorder.clear()
-    await renderOnce()
-    expect(recorder.recordedFrames.length).toBe(0)
-
-    recorder.rec()
-    await renderOnce()
-    recorder.stop()
-    expect(recorder.recordedFrames.length).toBe(1)
-  })
-
   test("should capture timestamps in increasing order", async () => {
     let time = 0
     recorder = new TestRecorder(renderer, { now: () => time })

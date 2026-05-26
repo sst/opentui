@@ -149,6 +149,24 @@ fn addMacOSSystemLibraries(b: *std.Build, artifact: *std.Build.Step.Compile, sdk
     addMacOSSDKSearchPaths(b, artifact, sdk_path);
 }
 
+fn addNativeAudioDependencies(
+    b: *std.Build,
+    artifact: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    macos_sdk_path: ?[]const u8,
+) void {
+    addMiniaudioShim(b, artifact, target, macos_sdk_path);
+
+    switch (target.result.os.tag) {
+        .macos => addMacOSSystemLibraries(b, artifact, macos_sdk_path.?),
+        .linux => {
+            artifact.linkSystemLibrary("dl");
+            artifact.linkSystemLibrary("pthread");
+        },
+        else => {},
+    }
+}
+
 /// Apply dependencies to a module
 fn applyDependencies(
     b: *std.Build,
@@ -255,23 +273,11 @@ pub fn build(b: *std.Build) void {
         .use_llvm = debug_use_llvm,
     });
 
-    addMiniaudioShim(b, test_artifact, native_target, macos_sdk_path);
-
-    switch (native_target.result.os.tag) {
-        .macos => {
-            if (macos_sdk_path) |sdk_path| {
-                addMacOSSystemLibraries(b, test_artifact, sdk_path);
-            } else {
-                printMissingMacOSSDK("native macOS tests");
-                std.process.exit(1);
-            }
-        },
-        .linux => {
-            test_artifact.linkSystemLibrary("dl");
-            test_artifact.linkSystemLibrary("pthread");
-        },
-        else => {},
+    if (native_target.result.os.tag == .macos and macos_sdk_path == null) {
+        printMissingMacOSSDK("native macOS tests");
+        std.process.exit(1);
     }
+    addNativeAudioDependencies(b, test_artifact, native_target, macos_sdk_path);
 
     const run_test = b.addRunArtifact(test_artifact);
     test_step.dependOn(&run_test.step);
@@ -306,6 +312,11 @@ pub fn build(b: *std.Build) void {
         .root_module = bench_ffi_mod,
         .linkage = .dynamic,
     });
+    if (native_target.result.os.tag == .macos and macos_sdk_path == null) {
+        printMissingMacOSSDK("native macOS benchmark FFI library");
+        std.process.exit(1);
+    }
+    addNativeAudioDependencies(b, bench_ffi_lib, native_target, macos_sdk_path);
     const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
     bench_ffi_step.dependOn(&install_bench_ffi.step);
     bench_step.dependOn(bench_ffi_step);
@@ -436,18 +447,7 @@ fn buildTarget(
         .linkage = .dynamic,
     });
 
-    addMiniaudioShim(b, lib, target, macos_sdk_path);
-
-    switch (target.result.os.tag) {
-        .macos => {
-            addMacOSSystemLibraries(b, lib, macos_sdk_path.?);
-        },
-        .linux => {
-            lib.linkSystemLibrary("dl");
-            lib.linkSystemLibrary("pthread");
-        },
-        else => {},
-    }
+    addNativeAudioDependencies(b, lib, target, macos_sdk_path);
 
     const install_dir = b.addInstallArtifact(lib, .{
         .dest_dir = .{

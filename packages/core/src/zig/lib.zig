@@ -83,6 +83,18 @@ pub const ExternalAllocatorStats = extern struct {
     requested_bytes_valid: bool,
 };
 
+pub const ExternalRenderStats = extern struct {
+    last_frame_time: f64,
+    average_frame_time: f64,
+    render_time: f64,
+    stdout_write_time: f64,
+    frame_count: u64,
+    cells_updated: u32,
+    average_cells_updated: u32,
+    render_time_valid: bool,
+    stdout_write_time_valid: bool,
+};
+
 fn toNonNegativeU64(value: anytype) u64 {
     const ValueType = @TypeOf(value);
 
@@ -383,6 +395,22 @@ export fn updateStats(rendererPtr: *renderer.CliRenderer, time: f64, fps: u32, f
 
 export fn updateMemoryStats(rendererPtr: *renderer.CliRenderer, heapUsed: u32, heapTotal: u32, arrayBuffers: u32) void {
     rendererPtr.updateMemoryStats(heapUsed, heapTotal, arrayBuffers);
+}
+
+export fn getRenderStats(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalRenderStats) void {
+    const stats = rendererPtr.getRenderStats();
+
+    outPtr.* = .{
+        .last_frame_time = stats.lastFrameTime,
+        .average_frame_time = stats.averageFrameTime,
+        .render_time = stats.renderTime orelse 0,
+        .stdout_write_time = stats.stdoutWriteTime orelse 0,
+        .frame_count = stats.frameCount,
+        .cells_updated = stats.cellsUpdated,
+        .average_cells_updated = stats.averageCellsUpdated,
+        .render_time_valid = stats.renderTime != null,
+        .stdout_write_time_valid = stats.stdoutWriteTime != null,
+    };
 }
 
 export fn getNextBuffer(rendererPtr: *renderer.CliRenderer) *buffer.OptimizedBuffer {

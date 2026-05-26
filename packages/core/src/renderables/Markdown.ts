@@ -714,10 +714,8 @@ export class MarkdownRenderable extends Renderable {
       }
       const renderable = this.createListChildRenderable(child, `${input.id}-child-${index}`)
       if (!renderable) continue
-      if (pendingMarginTop > 0) {
-        renderable.marginTop = pendingMarginTop
-        pendingMarginTop = 0
-      }
+      renderable.marginTop = child.type === "list" ? 0 : pendingMarginTop
+      pendingMarginTop = 0
       content.add(renderable)
     }
 
@@ -764,11 +762,13 @@ export class MarkdownRenderable extends Renderable {
       const existing = children[childIndex]
       const childId = `${id}-child-${tokenIndex}`
 
+      const marginTop = token.type === "list" ? 0 : pendingMarginTop
+      pendingMarginTop = 0
+
       if (!existing) {
         const renderable = this.createListChildRenderable(token, childId)
         if (!renderable) return false
-        renderable.marginTop = pendingMarginTop
-        pendingMarginTop = 0
+        renderable.marginTop = marginTop
         content.add(renderable, childIndex)
         childIndex += 1
         continue
@@ -777,8 +777,7 @@ export class MarkdownRenderable extends Renderable {
       if (!this.applyListChildRenderable(existing, token, previousTokens[childIndex], childId)) {
         return false
       }
-      existing.marginTop = pendingMarginTop
-      pendingMarginTop = 0
+      existing.marginTop = marginTop
       childIndex += 1
     }
 
@@ -878,7 +877,7 @@ export class MarkdownRenderable extends Renderable {
       fg: this._fg,
       bg: this._bg,
       conceal: this._concealCode,
-      drawUnstyledText: !(this._streaming && this._concealCode),
+      drawUnstyledText: !this._streaming,
       streaming: this._streaming,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
@@ -933,14 +932,14 @@ export class MarkdownRenderable extends Renderable {
   private applyCodeBlockRenderable(renderable: Renderable, token: Tokens.Code, marginBottom: number): void {
     if (!(renderable instanceof CodeRenderable)) return
 
-    renderable.content = token.text
     renderable.filetype = infoStringToFiletype(token.lang ?? "")
     renderable.syntaxStyle = this._syntaxStyle
     renderable.fg = this._fg
     renderable.bg = this._bg
     renderable.conceal = this._concealCode
-    renderable.drawUnstyledText = !(this._streaming && this._concealCode)
+    renderable.drawUnstyledText = !this._streaming
     renderable.streaming = this._streaming
+    renderable.content = token.text
     renderable.marginBottom = marginBottom
   }
 
@@ -1574,7 +1573,7 @@ export class MarkdownRenderable extends Renderable {
       `${this.id}-block-${index}`,
       marginBottom,
     )
-    this.add(markdownRenderable)
+    this.add(markdownRenderable, index)
     state.renderable = markdownRenderable
   }
 
@@ -1633,7 +1632,7 @@ export class MarkdownRenderable extends Renderable {
 
       const next = this.createTopLevelRenderable(block, blockIndex)
       if (next.renderable) {
-        this.add(next.renderable)
+        this.add(next.renderable, blockIndex)
         this._blockStates[blockIndex] = {
           token: block.token,
           tokenRaw: block.token.raw,
@@ -1776,7 +1775,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       if (renderable) {
-        this.add(renderable)
+        this.add(renderable, blockIndex)
         this._blockStates[blockIndex] = {
           token,
           tokenRaw: token.raw,
@@ -1850,7 +1849,7 @@ export class MarkdownRenderable extends Renderable {
               `${this.id}-block-${i}`,
               marginBottom,
             )
-            this.add(fallbackRenderable)
+            this.add(fallbackRenderable, i)
             state.renderable = fallbackRenderable
           }
           state.tableContentCache = undefined
@@ -1867,7 +1866,7 @@ export class MarkdownRenderable extends Renderable {
 
         state.renderable.destroyRecursively()
         const tableRenderable = this.createTextTableRenderable(cache.content, `${this.id}-block-${i}`, marginBottom)
-        this.add(tableRenderable)
+        this.add(tableRenderable, i)
         state.renderable = tableRenderable
         state.tableContentCache = cache
         continue
@@ -1888,7 +1887,7 @@ export class MarkdownRenderable extends Renderable {
         `${this.id}-block-${i}`,
         marginBottom,
       )
-      this.add(markdownRenderable)
+      this.add(markdownRenderable, i)
       state.renderable = markdownRenderable
     }
   }

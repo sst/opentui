@@ -2363,6 +2363,100 @@ test("internalBlockMode=top-level updates code renderable filetype when fence ch
   expect((md._blockStates[0]?.renderable as CodeRenderable).filetype).toBe("diff")
 })
 
+test("internalBlockMode=top-level preserves child order when replacing an earlier block", () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-replacement-order",
+    content: "# A\n\n```ts\nconst a = 1\n```\n\nTail A",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  const codeBlock = md._blockStates[1]?.renderable
+
+  md.content = "Intro B\n\n```ts\nconst b = 2\n```\n\nTail B"
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["paragraph", "code", "paragraph"])
+  expect(md._blockStates[1]?.renderable).toBe(codeBlock)
+  expect(md.getChildren().map((child) => child.id)).toEqual(md._blockStates.map((state) => state.renderable.id))
+})
+
+test("incremental update preserves child order when replacing an earlier coalesced block", () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-coalesced-replacement-order",
+    content: "- one\n\n```ts\nconst a = 1\n```\n\nTail A",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  const codeBlock = md._blockStates[1]?.renderable
+
+  md.content = "Intro B\n\n```ts\nconst b = 2\n```\n\nTail B"
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["paragraph", "code", "paragraph"])
+  expect(md._blockStates[1]?.renderable).toBe(codeBlock)
+  expect(md.getChildren().map((child) => child.id)).toEqual(md._blockStates.map((state) => state.renderable.id))
+})
+
+test("refreshStyles preserves child order when replacing an earlier table renderable", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-table-refresh-order",
+    content: "| A | B |\n|---|---|\n| 1 | 2 |\n\n```ts\nconst x = 1\n```\n\nTail",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const codeBlock = md._blockStates[1]?.renderable
+  const tailBlock = md._blockStates[2]?.renderable
+  const staleTable = md._blockStates[0]?.renderable
+
+  staleTable?.destroyRecursively()
+  const wrongRenderable = new BoxRenderable(renderer, { id: "markdown-table-refresh-order-wrong", width: "100%" })
+  md.add(wrongRenderable, 0)
+  md._blockStates[0]!.renderable = wrongRenderable
+
+  md.refreshStyles()
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.renderable).toBeInstanceOf(TextTableRenderable)
+  expect(md._blockStates[1]?.renderable).toBe(codeBlock)
+  expect(md._blockStates[2]?.renderable).toBe(tailBlock)
+  expect(md.getChildren().map((child) => child.id)).toEqual(md._blockStates.map((state) => state.renderable.id))
+})
+
+test("refreshStyles preserves child order when replacing an earlier header-only table fallback", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-table-fallback-refresh-order",
+    content: "| A | B |\n|---|---|\n\n```ts\nconst x = 1\n```\n\nTail",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const codeBlock = md._blockStates[1]?.renderable
+  const tailBlock = md._blockStates[2]?.renderable
+  const staleFallback = md._blockStates[0]?.renderable
+
+  staleFallback?.destroyRecursively()
+  const wrongRenderable = new BoxRenderable(renderer, {
+    id: "markdown-table-fallback-refresh-order-wrong",
+    width: "100%",
+  })
+  md.add(wrongRenderable, 0)
+  md._blockStates[0]!.renderable = wrongRenderable
+
+  md.refreshStyles()
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.renderable).toBeInstanceOf(CodeRenderable)
+  expect(md._blockStates[1]?.renderable).toBe(codeBlock)
+  expect(md._blockStates[2]?.renderable).toBe(tailBlock)
+  expect(md.getChildren().map((child) => child.id)).toEqual(md._blockStates.map((state) => state.renderable.id))
+})
+
 test("internalBlockMode=top-level normalizes one blank row between top-level blocks", async () => {
   const md = createMarkdownRenderable({
     id: "markdown-top-level-spacing",
@@ -2668,6 +2762,102 @@ test("streaming code blocks with concealCode=true do not flash unconcealed markd
   const frames = recorder.recordedFrames.map((frame) => frame.frame)
   const unconcealedFrames = frames.filter((frame) => frame.includes("# Hidden heading"))
   expect(unconcealedFrames.length).toBe(0)
+})
+
+test("streaming demo-style fenced code block does not flicker unhighlighted", async () => {
+  const keywordFg = RGBA.fromValues(1, 0, 0, 1)
+  const defaultFg = RGBA.fromValues(1, 1, 1, 1)
+  const mockTreeSitterClient = new MockTreeSitterClient()
+  mockTreeSitterClient.setMockResult({
+    highlights: [[0, 6, "keyword"]],
+  })
+
+  const contentBeforeFence = `# OpenTUI Markdown Demo
+
+Welcome to the **MarkdownRenderable** showcase.
+
+`
+  const fencedCodeBlock = `\`\`\`ts
+export function appendMarkdownChunk(buffer: string): string {
+  return buffer
+}
+\`\`\``
+  const contentAfterFence = `
+
+The fenced block above appears near the top so streaming mode exercises a larger CodeRenderable before the rest of the document arrives.`
+  const fullContent = contentBeforeFence + fencedCodeBlock + contentAfterFence
+
+  const md = createMarkdownRenderable({
+    id: "markdown-streaming-demo-fence-no-flicker",
+    content: "",
+    syntaxStyle: SyntaxStyle.fromStyles({
+      default: { fg: defaultFg },
+      keyword: { fg: keywordFg },
+      "markup.heading.1": { fg: RGBA.fromValues(0, 1, 0, 1) },
+      "markup.strong": { fg: RGBA.fromValues(0, 1, 1, 1), bold: true },
+    }),
+    fg: defaultFg,
+    bg: RGBA.fromValues(0, 0, 0, 1),
+    conceal: true,
+    streaming: true,
+    internalBlockMode: "top-level",
+    tableOptions: { style: "grid", widthMode: "content", cellPaddingX: 1 },
+    treeSitterClient: mockTreeSitterClient,
+    width: "100%",
+  })
+
+  renderer.root.add(md)
+
+  const recorder = new TestRecorder(renderer, { recordBuffers: { fg: true } })
+  recorder.rec()
+
+  for (const streamedContent of [
+    contentBeforeFence,
+    contentBeforeFence + fencedCodeBlock.slice(0, fencedCodeBlock.indexOf("\n```")),
+    contentBeforeFence + fencedCodeBlock,
+    fullContent,
+  ]) {
+    md.content = streamedContent
+    await renderer.idle()
+  }
+
+  const codeBlock = md._blockStates.find((state) => state.token.type === "code")?.renderable
+  expect(codeBlock).toBeInstanceOf(CodeRenderable)
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await (codeBlock as CodeRenderable).highlightingDone
+  await renderer.idle()
+  recorder.stop()
+
+  const frameWidth = renderer.currentRenderBuffer.width
+  const expectedKeywordFg = [...keywordFg.buffer]
+
+  const findTextFg = (recordedFrame: (typeof recorder.recordedFrames)[number], text: string): number[] | undefined => {
+    const fgBuffer = recordedFrame.buffers?.fg
+    if (!fgBuffer) return undefined
+
+    const lines = recordedFrame.frame.split("\n")
+    for (let y = 0; y < lines.length; y += 1) {
+      const x = lines[y].indexOf(text)
+      if (x === -1) continue
+
+      const offset = (y * frameWidth + x) * 4
+      return [...fgBuffer.slice(offset, offset + 4)]
+    }
+
+    return undefined
+  }
+
+  const visibleCodeFrames = recorder.recordedFrames
+    .map((recordedFrame) => ({
+      frameNumber: recordedFrame.frameNumber,
+      exportFg: findTextFg(recordedFrame, "export function appendMarkdownChunk"),
+    }))
+    .filter((frame) => frame.exportFg !== undefined)
+
+  expect(visibleCodeFrames.length).toBeGreaterThan(0)
+  expect(visibleCodeFrames.some((frame) => frame.exportFg!.join(",") === expectedKeywordFg.join(","))).toBe(true)
+  expect(visibleCodeFrames.filter((frame) => frame.exportFg!.join(",") !== expectedKeywordFg.join(","))).toEqual([])
 })
 
 test("non-streaming mode parses all tokens as stable", async () => {
@@ -3552,4 +3742,33 @@ test("paragraph updates do not flash raw markdown markers", async () => {
   const finalFrame = captureFrame()
   expect(finalFrame).toContain("Second value")
   expect(finalFrame).not.toContain("**Second**")
+})
+
+test("top-level list does not insert blank line before nested list when source has blank line", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-list-blank-before-nested",
+    content: `- Added t topic edit mode in TUI:
+
+  - t focuses input with current topic
+  - enter saves via daemon /topic
+  - esc cancels
+- Topic is now shown prominently near the top of the TUI.`,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    - Added t topic edit mode in TUI:
+      - t focuses input with current topic
+      - enter saves via daemon /topic
+      - esc cancels
+    - Topic is now shown prominently near the top of the TUI."
+  `)
 })

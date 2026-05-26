@@ -296,6 +296,9 @@ const eventAndPayloadCases = [
   ["\x1b[97:65;2u", { name: "a", sequence: "A", shift: true }],
   ["\x1b[97::113u", { name: "a", sequence: "a", baseCode: 113 }],
   ["\x1b[97;1;65u", { name: "a", sequence: "A" }],
+  ["\x1b[57400u", { name: "kp1", sequence: "1" }],
+  ["\x1b[57413u", { name: "kpplus", sequence: "+" }],
+  ["\x1b[57400;1;120u", { name: "kp1", sequence: "x" }],
   ["\x1b[0;;229u", { name: "å", sequence: "å" }],
   ["\x1b[0;;104:105u", { name: "hi", sequence: "hi" }],
 ] as const satisfies ReadonlyArray<readonly [string, ExpectedKey]>
