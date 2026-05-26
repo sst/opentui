@@ -3665,3 +3665,46 @@ test("top-level list does not insert blank line before nested list when source h
     - Topic is now shown prominently near the top of the TUI."
   `)
 })
+
+test("top-level lists keep tight multi-level nesting compact", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-tight-multi-level-nested-list",
+    content: `- Main section:
+  - Supporting point:
+    - Third-level detail
+    - Another detail with **emphasis**
+  - Another supporting point:
+    1. First numbered item
+    2. Second numbered item:
+       - Nested bullet beneath a numbered item
+- Second section:
+  - Short detail
+  - Lead-in item:
+    - Explanation below the lead-in`,
+    syntaxStyle,
+    streaming: true,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    - Main section:
+      - Supporting point:
+        - Third-level detail
+        - Another detail with emphasis
+      - Another supporting point:
+        1. First numbered item
+        2. Second numbered item:
+           - Nested bullet beneath a numbered item
+    - Second section:
+      - Short detail
+      - Lead-in item:
+        - Explanation below the lead-in"
+  `)
+})
