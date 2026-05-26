@@ -91,6 +91,7 @@ pub const UnifiedTextBuffer = struct {
     styled_text_mem_id: ?u8,
     styled_buffer: ?[]u8,
     styled_capacity: usize,
+    styled_chunk_style_count: usize,
 
     tab_width: u8,
 
@@ -225,6 +226,7 @@ pub const UnifiedTextBuffer = struct {
             .styled_text_mem_id = null,
             .styled_buffer = null,
             .styled_capacity = 0,
+            .styled_chunk_style_count = 0,
             .tab_width = 2,
         };
 
@@ -236,6 +238,7 @@ pub const UnifiedTextBuffer = struct {
         defer global_allocator.destroy(self);
 
         if (self.syntax_style) |style| {
+            self.clearStyledChunkStyles();
             (@constCast(style)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
 
@@ -353,12 +356,14 @@ pub const UnifiedTextBuffer = struct {
     /// Preserves highlights, memory buffers, and arena allocations.
     /// Use this for frequent text updates where undo/redo history should be preserved.
     pub fn clear(self: *Self) void {
+        self.clearStyledChunkStyles();
         self.clearLinkRefs();
         self._rope.clear();
         self.markAllViewsDirty();
     }
 
     pub fn reset(self: *Self) void {
+        self.clearStyledChunkStyles();
         self.clearLinkRefs();
 
         // Free highlight/span arrays (they use global_allocator, not arena)
@@ -413,10 +418,13 @@ pub const UnifiedTextBuffer = struct {
     fn onSyntaxStyleDestroyed(ctx_ptr: *anyopaque) void {
         const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
         self.syntax_style = null;
+        self.styled_chunk_style_count = 0;
     }
 
     pub fn setSyntaxStyle(self: *Self, syntax_style: ?*const SyntaxStyle) void {
+        if (self.syntax_style == syntax_style) return;
         if (self.syntax_style) |prev| {
+            self.clearStyledChunkStyles();
             (@constCast(prev)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
         self.syntax_style = syntax_style;
@@ -441,6 +449,21 @@ pub const UnifiedTextBuffer = struct {
         if (self.link_tracker) |*tracker| {
             tracker.clear();
         }
+    }
+
+    fn clearStyledChunkStyles(self: *Self) void {
+        const style = self.syntax_style orelse {
+            self.styled_chunk_style_count = 0;
+            return;
+        };
+
+        var i: usize = 0;
+        while (i < self.styled_chunk_style_count) : (i += 1) {
+            var style_name_buf: [96]u8 = undefined;
+            const style_name = std.fmt.bufPrint(&style_name_buf, "chunk-{x}-{d}", .{ @intFromPtr(self), i }) catch continue;
+            (@constCast(style)).removeStyle(style_name);
+        }
+        self.styled_chunk_style_count = 0;
     }
 
     /// Set the text content using SIMD-optimized line break detection
@@ -1177,6 +1200,7 @@ pub const UnifiedTextBuffer = struct {
                         .bg = bg,
                         .attributes = attributes,
                     }) catch continue;
+                    self.styled_chunk_style_count = @max(self.styled_chunk_style_count, i + 1);
 
                     self.addHighlightByCharRangeInternal(char_pos, char_pos + chunk_len, style_id, 1, 0, true) catch {};
                 }

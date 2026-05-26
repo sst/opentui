@@ -2,8 +2,8 @@ import type { TextChunk } from "../text-buffer.js"
 import type { SimpleHighlight } from "./tree-sitter/types.js"
 
 const URL_SCOPES = ["markup.link.url", "string.special.url"]
-const MARKDOWN_LINK_RE = /\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/g
 const BARE_URL_RE = /https?:\/\/[^\s<>()]+(?:\([^\s<>()]*\)[^\s<>()]*)?/g
+const RAW_SCOPES = ["markup.raw", "markup.raw.block"]
 
 function trimUrlEnd(url: string): string {
   return url.replace(/[.,;:!?]+$/, "")
@@ -35,22 +35,6 @@ export function detectLinks(
     }
   }
 
-  for (const match of content.matchAll(MARKDOWN_LINK_RE)) {
-    const fullMatch = match[0]
-    const label = match[1]
-    const url = trimUrlEnd(match[2])
-    if (!label || !url) continue
-
-    const start = match.index ?? 0
-    const labelStart = start + 1
-    const labelEnd = labelStart + label.length
-    const urlStart = start + fullMatch.indexOf(match[2])
-    const urlEnd = urlStart + url.length
-
-    ranges.push({ start: labelStart, end: labelEnd, url })
-    ranges.push({ start: urlStart, end: urlEnd, url })
-  }
-
   for (const match of content.matchAll(BARE_URL_RE)) {
     const rawUrl = match[0]
     const url = trimUrlEnd(rawUrl)
@@ -58,6 +42,14 @@ export function detectLinks(
 
     const start = match.index ?? 0
     const end = start + url.length
+    if (
+      highlights.some(
+        ([rangeStart, rangeEnd, group]) =>
+          start < rangeEnd && end > rangeStart && (URL_SCOPES.includes(group) || RAW_SCOPES.includes(group)),
+      )
+    ) {
+      continue
+    }
     ranges.push({ start, end, url })
   }
 
@@ -70,9 +62,10 @@ export function detectLinks(
   // empty (length 0, skipped) or single-char replacements (length 1, skipped).
   // Non-concealed chunks with length > 1 are exact substrings of content in order.
   let contentPos = 0
+  let rangeIndex = 0
   const linkedChunks: TextChunk[] = []
   for (const chunk of chunks) {
-    if (chunk.text.length === 0) {
+    if (chunk.text.length <= 1) {
       linkedChunks.push(chunk)
       continue
     }
@@ -86,7 +79,12 @@ export function detectLinks(
     const chunkEnd = idx + chunk.text.length
     let offset = 0
 
-    for (const range of ranges) {
+    while (rangeIndex < ranges.length && ranges[rangeIndex].end <= idx) {
+      rangeIndex += 1
+    }
+
+    for (let i = rangeIndex; i < ranges.length && ranges[i].start < chunkEnd; i += 1) {
+      const range = ranges[i]
       const overlapStart = Math.max(idx, range.start)
       const overlapEnd = Math.min(chunkEnd, range.end)
       if (overlapStart >= overlapEnd) continue

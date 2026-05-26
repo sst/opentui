@@ -396,7 +396,6 @@ export class MarkdownRenderable extends Renderable {
   private styleDetectedLinks(chunks: TextChunk[]): TextChunk[] {
     const urlStyle = this.getStyle("markup.link.url") || this.getStyle("markup.link")
     if (!urlStyle) return chunks
-
     const attributes = createTextAttributes({
       bold: urlStyle.bold,
       italic: urlStyle.italic,
@@ -405,8 +404,7 @@ export class MarkdownRenderable extends Renderable {
     })
 
     return chunks.map((chunk) => {
-      if (!chunk.link || !/^(?:https?:\/\/|mailto:)/.test(chunk.text)) return chunk
-
+      if (!chunk.link || chunk.text !== chunk.link.url) return chunk
       return {
         ...chunk,
         fg: urlStyle.fg ?? chunk.fg,
