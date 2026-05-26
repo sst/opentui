@@ -35,19 +35,11 @@
   "[" @conceal)
   (#set! conceal ""))
 
-; Conceal inline link syntax and destination, leaving the label as the
-; visible clickable text.
+; Conceal closing bracket with space replacement. MarkdownRenderable removes
+; the visible destination only when OSC 8 hyperlink support is detected.
 ((inline_link
   "]" @conceal)
-  (#set! conceal ""))
-
-((inline_link
-  [
-    "("
-    (link_destination)
-    ")"
-  ] @conceal)
-  (#set! conceal ""))
+  (#set! conceal " "))
 
 ; Conceal image links
 (image

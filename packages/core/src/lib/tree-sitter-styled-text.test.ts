@@ -367,7 +367,7 @@ const x: string = "hello";
     expect(reconstructed).toContain(" text")
   })
 
-  test("should conceal link syntax and target", async () => {
+  test("should conceal link syntax while preserving visible target fallback", async () => {
     const markdownCode = "[Link text](https://example.com)"
 
     const result = await client.highlightOnce(markdownCode, "markdown")
@@ -382,13 +382,13 @@ const x: string = "hello";
 
     expect(reconstructed).not.toContain("[")
     expect(reconstructed).not.toContain("]")
-    expect(reconstructed).not.toContain("(")
-    expect(reconstructed).not.toContain(")")
+    expect(reconstructed).toContain("(")
+    expect(reconstructed).toContain(")")
 
     expect(reconstructed).toContain("Link text")
-    expect(reconstructed).not.toContain("https://example.com")
+    expect(reconstructed).toContain("https://example.com")
 
-    expect(reconstructed).toBe("Link text")
+    expect(reconstructed).toBe("Link text (https://example.com)")
   })
 
   test("should conceal code block delimiters and language info", async () => {

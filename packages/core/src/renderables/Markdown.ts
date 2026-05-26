@@ -6,7 +6,7 @@ import { createTextAttributes } from "../utils.js"
 import type { BorderStyle } from "../lib/border.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { type MarkedToken, type Token, type Tokens } from "marked"
-import { CodeRenderable, type OnChunksCallback } from "./Code.js"
+import { CodeRenderable, type OnChunksCallback, type OnHighlightCallback } from "./Code.js"
 import { BoxRenderable } from "./Box.js"
 import { StyledText } from "../lib/styled-text.js"
 import { TextRenderable } from "./Text.js"
@@ -201,6 +201,34 @@ export class MarkdownRenderable extends Renderable {
   _blockStates: BlockState[] = []
   _stableBlockCount = 0
   private _styleDirty: boolean = false
+  private _hyperlinksEnabled: boolean
+  private _handleCapabilitiesChanged = (): void => {
+    const enabled = this.ctx.capabilities?.hyperlinks === true
+    if (enabled === this._hyperlinksEnabled) return
+    this._hyperlinksEnabled = enabled
+    if (this._conceal) this.clearCache()
+  }
+  private _concealClickableLinkTargets: OnHighlightCallback = (highlights, context) => {
+    if (!this._conceal || !this._hyperlinksEnabled) return highlights
+
+    const destinations = highlights.filter(
+      ([start, end, group]) =>
+        group === "markup.link.url" && context.content.slice(start - 2, start) === "](" && context.content[end] === ")",
+    )
+    if (destinations.length === 0) return highlights
+
+    const result = highlights.filter(
+      ([start, end, group]) =>
+        !(
+          group === "conceal" &&
+          destinations.some(([destinationStart]) => start === destinationStart - 2 && end === destinationStart - 1)
+        ),
+    )
+    for (const [start, end] of destinations) {
+      result.push([start - 2, end + 1, "conceal", { conceal: "" }])
+    }
+    return result
+  }
   private _linkifyMarkdownChunks: OnChunksCallback = (chunks, context) =>
     this.styleDetectedLinks(
       detectLinks(chunks, {
@@ -235,6 +263,8 @@ export class MarkdownRenderable extends Renderable {
     this._renderNode = options.renderNode
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
     this._internalBlockMode = options.internalBlockMode ?? this._contentDefaultOptions.internalBlockMode
+    this._hyperlinksEnabled = ctx.capabilities?.hyperlinks === true
+    ctx.on("capabilities", this._handleCapabilitiesChanged)
 
     this.updateBlocks()
   }
@@ -482,6 +512,11 @@ export class MarkdownRenderable extends Renderable {
           for (const child of token.tokens) {
             this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
           }
+          if (!this._hyperlinksEnabled) {
+            chunks.push(this.createChunk(" (", "markup.link", linkHref))
+            chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
+            chunks.push(this.createChunk(")", "markup.link", linkHref))
+          }
         } else {
           chunks.push(this.createChunk("[", "markup.link", linkHref))
           for (const child of token.tokens) {
@@ -576,6 +611,7 @@ export class MarkdownRenderable extends Renderable {
       drawUnstyledText: false,
       streaming: true,
       baseHighlight,
+      onHighlight: this._concealClickableLinkTargets,
       onChunks,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
@@ -900,6 +936,7 @@ export class MarkdownRenderable extends Renderable {
     renderable.drawUnstyledText = false
     renderable.streaming = true
     renderable.baseHighlight = baseHighlight
+    renderable.onHighlight = this._concealClickableLinkTargets
     renderable.marginBottom = marginBottom
   }
 
@@ -1903,6 +1940,11 @@ export class MarkdownRenderable extends Renderable {
     this._styleDirty = false
     this.rerenderBlocks()
     this.requestRender()
+  }
+
+  protected override destroySelf(): void {
+    this.ctx.off("capabilities", this._handleCapabilitiesChanged)
+    super.destroySelf()
   }
 
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
