@@ -292,11 +292,12 @@ export class ExtmarksController {
         return
       }
 
-      const text = this.editBuffer.getText()
-      const deletedCharWidth = this.getVisualWidthBeforeOffset(text, currentOffset)
-
       this.originalDeleteCharBackward()
-      this.adjustExtmarksAfterDeletion(currentOffset - deletedCharWidth, deletedCharWidth)
+      const deleteOffset = this.editorView.getVisualCursor().offset
+      const deleteLength = currentOffset - deleteOffset
+      if (deleteLength > 0) {
+        this.adjustExtmarksAfterDeletion(deleteOffset, deleteLength)
+      }
     }
 
     this.editBuffer.deleteChar = (): void => {
@@ -308,13 +309,7 @@ export class ExtmarksController {
       this.saveSnapshot()
 
       const currentOffset = this.editorView.getVisualCursor().offset
-      const textLength = this.editBuffer.getText().length
       const hadSelection = this.editorView.hasSelection()
-
-      if (currentOffset >= textLength) {
-        this.originalDeleteChar()
-        return
-      }
 
       if (hadSelection) {
         this.originalDeleteChar()
@@ -340,11 +335,14 @@ export class ExtmarksController {
         return
       }
 
-      const text = this.editBuffer.getText()
-      const deletedCharWidth = this.getVisualWidthBeforeOffset(text, currentOffset)
+      const deleteEndOffset = this.getNextCursorOffset(currentOffset)
+      const deleteLength = deleteEndOffset - currentOffset
 
       this.originalDeleteChar()
-      this.adjustExtmarksAfterDeletion(currentOffset, deletedCharWidth)
+
+      if (deleteLength > 0) {
+        this.adjustExtmarksAfterDeletion(currentOffset, deleteLength)
+      }
     }
 
     this.editBuffer.deleteRange = (startLine: number, startCol: number, endLine: number, endCol: number): void => {
@@ -408,7 +406,10 @@ export class ExtmarksController {
 
       const currentOffset = this.editorView.getVisualCursor().offset
       this.originalInsertText(text)
-      this.adjustExtmarksAfterInsertion(currentOffset, stringWidth(text))
+      const insertLength = this.editorView.getVisualCursor().offset - currentOffset
+      if (insertLength > 0) {
+        this.adjustExtmarksAfterInsertion(currentOffset, insertLength)
+      }
     }
 
     this.editBuffer.insertChar = (char: string): void => {
@@ -421,7 +422,10 @@ export class ExtmarksController {
 
       const currentOffset = this.editorView.getVisualCursor().offset
       this.originalInsertChar(char)
-      this.adjustExtmarksAfterInsertion(currentOffset, stringWidth(char))
+      const insertLength = this.editorView.getVisualCursor().offset - currentOffset
+      if (insertLength > 0) {
+        this.adjustExtmarksAfterInsertion(currentOffset, insertLength)
+      }
     }
 
     this.editBuffer.setText = (text: string): void => {
@@ -577,17 +581,11 @@ export class ExtmarksController {
     return this.editBuffer.positionToOffset(row, col)
   }
 
-  private getVisualWidthBeforeOffset(text: string, visualOffset: number): number {
-    let seen = 0
-    let idx = 0
-    for (const char of text) {
-      const span = char === "\n" ? 1 : stringWidth(char)
-      const next = seen + span
-      if (next >= visualOffset) return span
-      seen = next
-      idx += char.length
-    }
-    return 1
+  private getNextCursorOffset(currentOffset: number): number {
+    this.originalMoveCursorRight()
+    const nextOffset = this.editorView.getVisualCursor().offset
+    this.originalSetCursorByOffset(currentOffset)
+    return nextOffset
   }
 
   private updateHighlights(): void {
