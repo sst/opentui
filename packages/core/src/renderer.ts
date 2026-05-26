@@ -150,9 +150,6 @@ export interface CliRendererConfig {
   // Enable mouse input. Defaults to true.
   useMouse?: boolean
 
-  // Controls OSC 8 hyperlink emission. Defaults to "auto".
-  hyperlinks?: "auto" | "always" | "never"
-
   // Focus the nearest focusable renderable on left click. Defaults to true.
   autoFocus?: boolean
 
@@ -803,7 +800,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
-  private hyperlinkMode: "auto" | "always" | "never" = "auto"
   private autoFocus: boolean = true
   private _screenMode: ScreenMode = "alternate-screen"
   private _footerHeight: number = DEFAULT_FOOTER_HEIGHT
@@ -1024,7 +1020,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.maxStatSamples = config.maxStatSamples || 300
     this.enableMouseMovement = config.enableMouseMovement ?? true
     this._useMouse = config.useMouse ?? true
-    this.hyperlinkMode = this.resolveHyperlinkMode(config.hyperlinks)
     this.autoFocus = config.autoFocus ?? true
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
@@ -1588,28 +1583,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public triggerNotification(message: string, title?: string): boolean {
     if (this._isDestroyed) return false
     return this.lib.triggerNotification(this.rendererPtr, message, title)
-  }
-
-  private resolveHyperlinkMode(configMode?: "auto" | "always" | "never"): "auto" | "always" | "never" {
-    if (configMode) return configMode
-
-    const envMode = process.env.OPENTUI_HYPERLINKS?.toLowerCase()
-    if (envMode === "always" || envMode === "1" || envMode === "true") return "always"
-    if (envMode === "never" || envMode === "0" || envMode === "false") return "never"
-    return "auto"
-  }
-
-  private applyHyperlinkMode(): void {
-    if (this.hyperlinkMode === "auto") return
-
-    const enabled = this.hyperlinkMode === "always"
-    this.lib.setHyperlinksCapability(this.rendererPtr, enabled)
-    if (this._capabilities) {
-      this._capabilities = {
-        ...this._capabilities,
-        hyperlinks: enabled,
-      }
-    }
   }
 
   public get themeMode(): ThemeMode | null {
@@ -2814,7 +2787,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
     this.lib.setupTerminal(this.rendererPtr, this._screenMode === "alternate-screen")
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
-    this.applyHyperlinkMode()
 
     if (this.debugOverlay.enabled) {
       this.lib.setDebugOverlay(this.rendererPtr, true, this.debugOverlay.corner)
@@ -2927,7 +2899,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.lib.processCapabilityResponse(this.rendererPtr, sequence)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
-    this.applyHyperlinkMode()
     if (this._capabilities?.terminal?.from_xtversion) {
       this.resolveXtVersionWaiters()
     }
