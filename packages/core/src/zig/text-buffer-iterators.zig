@@ -465,7 +465,8 @@ pub fn extractTextBetweenOffsets(
         fn line_end_callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
-            // Add newline if we had content and range extends beyond this line's newline
+            // Add newline when the newline offset is inside the selected range,
+            // even for empty logical lines.
             const newline_offset = ctx.col_offset.*;
             if (line_info.line_idx < ctx.line_count - 1 and newline_offset >= ctx.start and newline_offset < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
                 ctx.out_buffer[ctx.out_index.*] = '\n';

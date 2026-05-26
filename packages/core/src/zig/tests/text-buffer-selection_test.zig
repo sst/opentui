@@ -513,25 +513,25 @@ test "Selection - getSelectedText with newlines" {
 }
 
 test "Selection - getSelectedText preserves empty lines" {
-  const pool = gp.initGlobalPool(std.testing.allocator);
-  defer gp.deinitGlobalPool();
-  const link_pool = link.initGlobalLinkPool(std.testing.allocator);
-  defer link.deinitGlobalLinkPool();
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-  var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
-  defer tb.deinit();
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
 
-  var view = try TextBufferView.init(std.testing.allocator, tb);
-  defer view.deinit();
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
 
-  try tb.setText("const a = 1\n\nconst b = 2");
+    try tb.setText("const a = 1\n\nconst b = 2");
 
-  view.setSelection(0, 24, null, null);
+    view.setSelection(0, 24, null, null);
 
-  var out_buffer: [100]u8 = undefined;
-  const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
 
-  try std.testing.expectEqualStrings("const a = 1\n\nconst b = 2", out_buffer[0..len]);
+    try std.testing.expectEqualStrings("const a = 1\n\nconst b = 2", out_buffer[0..len]);
 }
 
 test "Selection - spanning multiple lines with getSelectedText" {
