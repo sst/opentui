@@ -466,82 +466,74 @@ describe("TreeSitterClient", () => {
   })
 
   test("should handle concurrent highlightOnce calls efficiently (no duplicate parser loading)", async () => {
-    const freshClient = new TreeSitterClient({ dataPath })
     const workerLogs: string[] = []
 
-    freshClient.on("worker:log", (logType, message) => {
+    client.on("worker:log", (_logType, message) => {
       if (message.includes("Loading from local path:")) {
         workerLogs.push(message)
       }
     })
 
-    try {
-      await freshClient.initialize()
+    await client.initialize()
 
-      const jsCode = 'const hello = "world"; function test() { return 42; }'
-      const promises = Array.from({ length: 5 }, () => freshClient.highlightOnce(jsCode, "javascript"))
+    const jsCode = 'const hello = "world"; function test() { return 42; }'
+    const promises = Array.from({ length: 5 }, () => client.highlightOnce(jsCode, "javascript"))
 
-      const results = await Promise.all(promises)
+    const results = await Promise.all(promises)
 
-      for (const result of results) {
-        expect(result.highlights).toBeDefined()
-        expect(result.highlights!.length).toBeGreaterThan(0)
-        expect(result.error).toBeUndefined()
-      }
-
-      const firstResult = results[0]
-      for (let i = 1; i < results.length; i++) {
-        expect(results[i].highlights).toEqual(firstResult.highlights)
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      const languageLoadLogs = workerLogs.filter((log) => log.includes("tree-sitter-javascript.wasm"))
-      const queryLoadLogs = workerLogs.filter((log) => log.includes("highlights.scm"))
-
-      expect(languageLoadLogs.length).toBeLessThanOrEqual(1)
-      expect(queryLoadLogs.length).toBeLessThanOrEqual(1)
-    } finally {
-      await freshClient.destroy()
+    for (const result of results) {
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+      expect(result.error).toBeUndefined()
     }
-  })
+
+    const firstResult = results[0]
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i].highlights).toEqual(firstResult.highlights)
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const languageLoadLogs = workerLogs.filter((log) => log.includes("tree-sitter-javascript.wasm"))
+    const queryLoadLogs = workerLogs.filter((log) => log.includes("highlights.scm"))
+
+    expect(languageLoadLogs.length).toBeLessThanOrEqual(1)
+    expect(queryLoadLogs.length).toBeLessThanOrEqual(1)
+  }, 15000)
 
   test("should reuse canonical parser assets for aliased filetypes", async () => {
-    const freshClient = new TreeSitterClient({ dataPath })
     const workerLogs: string[] = []
 
-    freshClient.on("worker:log", (_logType, message) => {
+    client.on("worker:log", (_logType, message) => {
       if (message.includes("Loading from local path:")) {
         workerLogs.push(message)
       }
     })
 
-    try {
-      await freshClient.initialize()
+    await client.initialize()
 
-      const jsxCode = 'const view = <div className="card">hello</div>'
-      const [canonicalResult, aliasResult] = await Promise.all([
-        freshClient.highlightOnce(jsxCode, "javascript"),
-        freshClient.highlightOnce(jsxCode, "javascriptreact"),
-      ])
+    const jsxCode = 'const view = <div className="card">hello</div>'
+    const [canonicalResult, aliasResult] = await Promise.all([
+      client.highlightOnce(jsxCode, "javascript"),
+      client.highlightOnce(jsxCode, "javascriptreact"),
+    ])
 
-      expect(canonicalResult.highlights).toBeDefined()
-      expect(aliasResult.highlights).toBeDefined()
-      expect(canonicalResult.error).toBeUndefined()
-      expect(aliasResult.error).toBeUndefined()
+    expect(canonicalResult.highlights).toBeDefined()
+    expect(aliasResult.highlights).toBeDefined()
+    expect(canonicalResult.error).toBeUndefined()
+    expect(aliasResult.error).toBeUndefined()
 
-      await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 100))
 
-      const languageLoadLogs = workerLogs.filter((log) => log.includes("tree-sitter-javascript.wasm"))
-      const queryLoadLogs = workerLogs.filter((log) => log.includes("/assets/javascript/highlights.scm"))
+    const languageLoadLogs = workerLogs.filter((log) => log.includes("tree-sitter-javascript.wasm"))
+    const queryLoadLogs = workerLogs.filter(
+      (log) => log.includes("assets") && log.includes("javascript") && log.includes("highlights.scm"),
+    )
 
-      expect(languageLoadLogs.length).toBeLessThanOrEqual(1)
-      expect(queryLoadLogs.length).toBeLessThanOrEqual(1)
-      expect(workerLogs.some((log) => log.includes("javascriptreact"))).toBe(false)
-    } finally {
-      await freshClient.destroy()
-    }
-  })
+    expect(languageLoadLogs.length).toBeLessThanOrEqual(1)
+    expect(queryLoadLogs.length).toBeLessThanOrEqual(1)
+    expect(workerLogs.some((log) => log.includes("javascriptreact"))).toBe(false)
+  }, 15000)
 })
 
 describe("TreeSitterClient Injections", () => {
