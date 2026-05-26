@@ -1690,6 +1690,29 @@ test("concealed markdown links hide target but label carries hyperlink metadata"
   expect(getLinkId(labelSpan.attributes)).not.toBe(0)
 })
 
+test("concealed markdown links preserve label styling when URL styling differs", async () => {
+  const labelColor = RGBA.fromValues(0, 1, 0, 1)
+  const urlColor = RGBA.fromValues(0, 0, 1, 1)
+  const md = createMarkdownRenderable({
+    id: "markdown-concealed-link-label-style",
+    content: `Check out [OpenTUI](https://github.com/sst/opentui) for more.`,
+    syntaxStyle: SyntaxStyle.fromStyles({
+      default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+      "markup.link.label": { fg: labelColor, underline: true },
+      "markup.link.url": { fg: urlColor, underline: true },
+    }),
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const labelSpan = findSpanContaining(captureSpans(), "OpenTUI")
+  expect(labelSpan).toBeDefined()
+  expect(labelSpan!.fg.toInts()).toEqual(labelColor.toInts())
+  expect(getLinkId(labelSpan!.attributes)).not.toBe(0)
+})
+
 test("links with conceal=false", async () => {
   const markdown = `Check out [OpenTUI](https://github.com/sst/opentui) for more.`
 
