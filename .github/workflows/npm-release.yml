@@ -27,6 +27,7 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          cache-key: npm-release
 
       - name: Extract version from tag
         id: extract_version

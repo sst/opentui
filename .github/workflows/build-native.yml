@@ -34,6 +34,7 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
+          cache-key: build-native
 
       - name: Install dependencies
         run: bun install
