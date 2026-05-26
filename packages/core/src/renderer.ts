@@ -99,7 +99,8 @@ export interface CliRendererConfig {
   // Native frame output still goes to the real TTY.
   stdout?: NodeJS.WriteStream
 
-  // Tell the native renderer it is driving a remote terminal.
+  // Tell the native renderer it is driving a remote terminal. When omitted,
+  // native startup auto-detects SSH/mosh sessions.
   remote?: boolean
 
   // Skip terminal setup. Useful in tests.
@@ -651,12 +652,13 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
   const ziglib = resolveRenderLib()
   const rendererPtr = ziglib.createRenderer(geometry.renderWidth, geometry.renderHeight, {
-    remote: config.remote ?? false,
+    remote: config.remote,
     testing: config.testing ?? false,
   })
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
+
   if (config.useThread === undefined) {
     config.useThread = true
   }
@@ -972,7 +974,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.clearOnShutdown = config.clearOnShutdown ?? true
     this.lib.setClearOnShutdown(this.rendererPtr, this.clearOnShutdown)
 
-    const forwardEnvKeys = config.forwardEnvKeys ?? (config.remote ? [] : [...DEFAULT_FORWARDED_ENV_KEYS])
+    const forwardEnvKeys = config.forwardEnvKeys ?? (config.remote === false ? [...DEFAULT_FORWARDED_ENV_KEYS] : [])
     for (const key of forwardEnvKeys) {
       const value = process.env[key]
       if (value === undefined) continue

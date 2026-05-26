@@ -233,7 +233,7 @@ pub const CliRenderer = struct {
     };
 
     pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool, testing: bool) !*CliRenderer {
-        return createWithOptions(allocator, width, height, pool, testing, false);
+        return createWithOptions(allocator, width, height, pool, testing, .local);
     }
 
     pub fn createWithOptions(
@@ -242,7 +242,7 @@ pub const CliRenderer = struct {
         height: u32,
         pool: *gp.GraphemePool,
         testing: bool,
-        remote: bool,
+        remote_mode: Terminal.RemoteMode,
     ) !*CliRenderer {
         const self = try allocator.create(CliRenderer);
         errdefer allocator.destroy(self);
@@ -293,7 +293,7 @@ pub const CliRenderer = struct {
             .pool = pool,
             .backgroundColor = ansi.rgbColor(0, 0, 0, 0),
             .renderOffset = 0,
-            .terminal = Terminal.init(.{ .remote = remote }),
+            .terminal = Terminal.init(.{ .remote_mode = remote_mode }),
             .testing = testing,
             .lastCursorStyleTag = null,
             .lastCursorBlinking = null,

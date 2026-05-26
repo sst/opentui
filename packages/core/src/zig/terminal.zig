@@ -29,6 +29,7 @@ pub const Capabilities = struct {
     osc52: bool = false,
     notifications: bool = false,
     explicit_cursor_positioning: bool = false,
+    remote: bool = false,
 };
 
 pub const NotificationProtocol = enum {
@@ -36,6 +37,12 @@ pub const NotificationProtocol = enum {
     osc9,
     osc777,
     osc99,
+};
+
+pub const RemoteMode = enum(u8) {
+    auto,
+    local,
+    remote,
 };
 
 const NOTIFICATION_QUERY_ID = "opentui-notifications";
@@ -95,7 +102,7 @@ pub const Options = struct {
     // Default 0b00101 (5) = disambiguate + alternate keys
     // Use 0b00111 (7) to also enable event types for key release detection
     kitty_keyboard_flags: u8 = 0b00101,
-    remote: bool = false,
+    remote_mode: RemoteMode = .local,
     // Optional override for environment lookups. Caller owns the map.
     env_map: ?*const std.process.EnvMap = null,
 };
@@ -111,6 +118,7 @@ pub const TerminalInfo = struct {
 caps: Capabilities = .{},
 opts: Options = .{},
 host_env_map: ?std.process.EnvMap = null,
+remote: bool = false,
 
 in_tmux: bool = false,
 is_foot: bool = false,
@@ -533,12 +541,17 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         self.caps.hyperlinks = true;
     }
 
+    if (self.opts.remote_mode == .remote) {
+        self.remote = true;
+        self.caps.remote = true;
+    } else if (self.opts.remote_mode == .local) {
+        self.remote = false;
+        self.caps.remote = false;
+    }
+
     var env_map_storage: ?std.process.EnvMap = null;
     const maybe_env_map: ?*const std.process.EnvMap = self.opts.env_map orelse blk: {
-        if (self.opts.remote) {
-            break :blk null;
-        }
-
+        if (self.opts.remote_mode == .remote) break :blk null;
         env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
             logger.err("Failed to get environment map: {}", .{err});
             return;
@@ -552,6 +565,15 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
 
     const env_map = maybe_env_map.?;
+
+    if (self.opts.remote_mode == .auto) {
+        self.remote = self.remote or isRemoteSessionEnv(env_map);
+        self.caps.remote = self.remote;
+    }
+
+    if (self.remote and self.opts.env_map == null) {
+        return;
+    }
 
     if (!self.term_info.from_xtversion) {
         if (env_map.get("TMUX")) |_| {
@@ -736,6 +758,13 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             }
         }
     }
+}
+
+fn isRemoteSessionEnv(env_map: *const std.process.EnvMap) bool {
+    return env_map.get("SSH_CONNECTION") != null or
+        env_map.get("SSH_CLIENT") != null or
+        env_map.get("SSH_TTY") != null or
+        env_map.get("MOSH_CONNECTION") != null;
 }
 
 fn writeMouseDisableSequences(tty: anytype) !void {
@@ -1151,7 +1180,7 @@ fn writePassthroughSequence(self: *Terminal, tty: anytype, sequence: []const u8)
         return;
     }
 
-    if (!self.opts.remote) {
+    if (!self.remote) {
         var env_map_storage: ?std.process.EnvMap = null;
         const env_map: ?*const std.process.EnvMap = self.opts.env_map orelse blk: {
             env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch null;
@@ -1295,7 +1324,7 @@ pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, pa
         try tty.writeAll(ansi.ANSI.tmuxDcsStart);
         try tty.writeAll(doubled);
         try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
-    } else if (self.opts.remote) {
+    } else if (self.remote) {
         try tty.writeAll(osc52);
     } else {
         var env_map_storage: ?std.process.EnvMap = null;

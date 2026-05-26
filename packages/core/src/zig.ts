@@ -156,7 +156,7 @@ function getOpenTUILib(libPath?: string) {
     },
     // Renderer management
     createRenderer: {
-      args: ["u32", "u32", "bool", "bool"],
+      args: ["u32", "u32", "bool", "u8"],
       returns: "ptr",
     },
     setTerminalEnvVar: {
@@ -2243,8 +2243,8 @@ class FFIRenderLib implements RenderLib {
 
   public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
     const testing = options.testing ?? false
-    const remote = options.remote ?? false
-    return this.opentui.symbols.createRenderer(width, height, ffiBool(testing), ffiBool(remote))
+    const remoteMode = options.remote === undefined ? 0 : options.remote ? 2 : 1
+    return this.opentui.symbols.createRenderer(width, height, ffiBool(testing), remoteMode)
   }
 
   public setTerminalEnvVar(renderer: Pointer, key: string, value: string): boolean {
@@ -4001,6 +4001,7 @@ class FFIRenderLib implements RenderLib {
       osc52: caps.osc52,
       notifications: caps.notifications,
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
+      remote: caps.remote,
       in_tmux: caps.in_tmux,
       terminal: {
         name: caps.term_name ?? "",

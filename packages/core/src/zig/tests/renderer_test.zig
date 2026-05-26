@@ -19,7 +19,7 @@ fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) 
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
 
-    var cli_renderer = try CliRenderer.createWithOptions(allocator, width, height, pool, true, false);
+    var cli_renderer = try CliRenderer.createWithOptions(allocator, width, height, pool, true, .local);
     cli_renderer.destroy();
 }
 

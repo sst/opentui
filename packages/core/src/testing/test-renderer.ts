@@ -382,11 +382,12 @@ async function setupTestRenderer(config: TestRendererOptions) {
   const ziglib = resolveRenderLib()
   const rendererPtr = ziglib.createRenderer(geometry.renderWidth, geometry.renderHeight, {
     testing: true,
-    remote: config.remote ?? false,
+    remote: config.remote,
   })
   if (!rendererPtr) {
     throw new Error("Failed to create test renderer")
   }
+
   if (config.useThread === undefined) {
     config.useThread = true
   }

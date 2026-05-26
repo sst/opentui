@@ -24,6 +24,7 @@ export function createTerminalCapabilities(overrides: TerminalCapabilitiesOverri
     osc52: false,
     notifications: false,
     explicit_cursor_positioning: false,
+    remote: false,
     in_tmux: false,
     ...overrides,
     terminal: {

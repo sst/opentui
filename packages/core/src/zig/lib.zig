@@ -314,15 +314,22 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
     };
 }
 
-export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {
+export fn createRenderer(width: u32, height: u32, testing: bool, remoteModeValue: u8) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
     }
 
+    const remote_mode: terminal.Terminal.RemoteMode = switch (remoteModeValue) {
+        0 => .auto,
+        1 => .local,
+        2 => .remote,
+        else => .local,
+    };
+
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
-    return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, testing, remote) catch |err| {
+    return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, testing, remote_mode) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
@@ -563,6 +570,7 @@ pub const ExternalCapabilities = extern struct {
     osc52: bool,
     notifications: bool,
     explicit_cursor_positioning: bool,
+    remote: bool,
     in_tmux: bool,
     term_name_ptr: [*]const u8,
     term_name_len: usize,
@@ -593,6 +601,7 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .osc52 = caps.osc52,
         .notifications = caps.notifications,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
+        .remote = caps.remote,
         .in_tmux = term.in_tmux,
         .term_name_ptr = &term.term_info.name,
         .term_name_len = term.term_info.name_len,
