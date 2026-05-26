@@ -202,6 +202,12 @@ export class MarkdownRenderable extends Renderable {
   _stableBlockCount = 0
   private _styleDirty: boolean = false
   private _hyperlinksEnabled: boolean
+  private _handleCapabilitiesChanged = (): void => {
+    const enabled = this.ctx.capabilities?.hyperlinks === true
+    if (enabled === this._hyperlinksEnabled) return
+    this._hyperlinksEnabled = enabled
+    if (this._conceal) this.clearCache()
+  }
   private _concealClickableLinkTargets: OnHighlightCallback = (highlights, context) => {
     if (!this._conceal || !this._hyperlinksEnabled) return highlights
 
@@ -259,6 +265,7 @@ export class MarkdownRenderable extends Renderable {
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
     this._internalBlockMode = options.internalBlockMode ?? this._contentDefaultOptions.internalBlockMode
     this._hyperlinksEnabled = ctx.capabilities?.hyperlinks === true
+    ctx.on("capabilities", this._handleCapabilitiesChanged)
 
     this.updateBlocks()
   }
@@ -1936,13 +1943,12 @@ export class MarkdownRenderable extends Renderable {
     this.requestRender()
   }
 
-  protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
-    const hyperlinksEnabled = this.ctx.capabilities?.hyperlinks === true
-    if (hyperlinksEnabled !== this._hyperlinksEnabled) {
-      this._hyperlinksEnabled = hyperlinksEnabled
-      this.clearCache()
-    }
+  protected override destroySelf(): void {
+    this.ctx.off("capabilities", this._handleCapabilitiesChanged)
+    super.destroySelf()
+  }
 
+  protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
     // Check if style/conceal changed - re-render blocks before rendering
     if (this._styleDirty) {
       this._styleDirty = false
