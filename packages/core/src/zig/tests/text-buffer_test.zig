@@ -1711,6 +1711,11 @@ test "TextBuffer setStyledText - generated chunk styles do not leak between buff
     try std.testing.expectEqual(@as(u32, 1), style.resolveById(tb1_highlights[0].style_id).?.attributes);
     try std.testing.expectEqual(@as(u32, 0), style.resolveById(tb1_highlights[1].style_id).?.attributes);
 
+    try tb1.setStyledText(&tb1_chunks);
+    const tb1_updated_highlights = tb1.getLineHighlights(0);
+    try std.testing.expectEqual(tb1_highlights[0].style_id, tb1_updated_highlights[0].style_id);
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+
     const three = "three";
     const four = " four";
     const tb2_chunks = [_]text_buffer.StyledChunk{
@@ -1726,6 +1731,22 @@ test "TextBuffer setStyledText - generated chunk styles do not leak between buff
     tb1.setSyntaxStyle(null);
     try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
     tb2.setSyntaxStyle(null);
+    try std.testing.expectEqual(@as(usize, 0), style.getStyleCount());
+
+    var tb3 = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb3.deinit();
+    tb3.setSyntaxStyle(style);
+    try tb3.setStyledText(&tb1_chunks);
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+
+    const plain_id = try tb3.registerMemBuffer("plain", false);
+    try tb3.setTextFromMemId(plain_id);
+    try std.testing.expectEqual(@as(usize, 0), style.getStyleCount());
+
+    try tb3.setStyledText(&tb1_chunks);
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+    const empty_chunks = [_]text_buffer.StyledChunk{};
+    try tb3.setStyledText(&empty_chunks);
     try std.testing.expectEqual(@as(usize, 0), style.getStyleCount());
 }
 

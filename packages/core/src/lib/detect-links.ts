@@ -6,7 +6,21 @@ const BARE_URL_RE = /https?:\/\/[^\s<>()]+(?:\([^\s<>()]*\)[^\s<>()]*)?/g
 const RAW_SCOPES = ["markup.raw", "markup.raw.block"]
 
 function trimUrlEnd(url: string): string {
-  return url.replace(/[.,;:!?]+$/, "")
+  return url.replace(/[.,;:!?\]]+$/, "")
+}
+
+function trimConcealedUrlEnd(content: string, start: number, url: string, highlights: SimpleHighlight[]): string {
+  let trimmed = trimUrlEnd(url)
+  let end = start + trimmed.length
+
+  while (true) {
+    const concealedSuffix = highlights.find(
+      ([rangeStart, rangeEnd, group]) => group === "conceal" && rangeStart >= start && rangeEnd === end,
+    )
+    if (!concealedSuffix) return trimmed
+    trimmed = trimUrlEnd(content.slice(start, concealedSuffix[0]))
+    end = start + trimmed.length
+  }
 }
 
 export function detectLinks(
@@ -38,10 +52,9 @@ export function detectLinks(
 
   for (const match of content.matchAll(BARE_URL_RE)) {
     const rawUrl = match[0]
-    const url = trimUrlEnd(rawUrl)
-    if (!url) continue
-
     const start = match.index ?? 0
+    const url = trimConcealedUrlEnd(content, start, rawUrl, highlights)
+    if (!url) continue
     const end = start + url.length
     if (
       highlights.some(
@@ -66,7 +79,7 @@ export function detectLinks(
   let rangeIndex = 0
   const linkedChunks: TextChunk[] = []
   for (const chunk of chunks) {
-    if (chunk.text.length <= 1) {
+    if (chunk.text.length === 0) {
       linkedChunks.push(chunk)
       continue
     }
@@ -79,12 +92,13 @@ export function detectLinks(
 
     const chunkEnd = idx + chunk.text.length
     let offset = 0
+    let nextRangeIndex = rangeIndex
 
-    while (rangeIndex < ranges.length && ranges[rangeIndex].end <= idx) {
-      rangeIndex += 1
+    while (nextRangeIndex < ranges.length && ranges[nextRangeIndex].end <= idx) {
+      nextRangeIndex += 1
     }
 
-    for (let i = rangeIndex; i < ranges.length && ranges[i].start < chunkEnd; i += 1) {
+    for (let i = nextRangeIndex; i < ranges.length && ranges[i].start < chunkEnd; i += 1) {
       const range = ranges[i]
       const overlapStart = Math.max(idx, range.start)
       const overlapEnd = Math.min(chunkEnd, range.end)
@@ -111,6 +125,15 @@ export function detectLinks(
       linkedChunks.push({ ...chunk, text: chunk.text.slice(offset) })
     }
 
+    if (
+      offset === 0 &&
+      chunk.text.length === 1 &&
+      (nextRangeIndex > rangeIndex || (ranges[nextRangeIndex] && idx >= ranges[nextRangeIndex].start))
+    ) {
+      continue
+    }
+
+    rangeIndex = nextRangeIndex
     contentPos = idx + chunk.text.length
   }
 

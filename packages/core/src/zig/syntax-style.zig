@@ -81,13 +81,14 @@ pub const SyntaxStyle = struct {
         }
 
         const id = self.next_id;
-        self.next_id += 1;
 
         const owned_name = self.global_allocator.dupe(u8, name) catch return SyntaxStyleError.OutOfMemory;
         errdefer self.global_allocator.free(owned_name);
 
         try self.name_to_id.put(self.allocator, owned_name, id);
+        errdefer _ = self.name_to_id.remove(owned_name);
         try self.id_to_style.put(self.allocator, id, definition);
+        self.next_id += 1;
 
         return id;
     }

@@ -685,23 +685,13 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
-    if (!self.caps.hyperlinks and self.term_info.from_xtversion) {
-        if (isHyperlinkTerm(self.getTerminalName())) {
-            self.caps.hyperlinks = true;
-        }
+    if (!self.caps.hyperlinks and isHyperlinkTerm(self.getTerminalName())) {
+        self.caps.hyperlinks = true;
     }
 
     if (!self.caps.hyperlinks and !self.term_info.from_xtversion) {
         if (env_map.get("TERM")) |term| {
             if (isHyperlinkTerm(term)) {
-                self.caps.hyperlinks = true;
-            }
-        }
-    }
-
-    if (!self.caps.hyperlinks and !self.term_info.from_xtversion) {
-        if (env_map.get("TERM_PROGRAM")) |program| {
-            if (isHyperlinkTerm(program)) {
                 self.caps.hyperlinks = true;
             }
         }

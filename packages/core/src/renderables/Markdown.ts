@@ -202,30 +202,25 @@ export class MarkdownRenderable extends Renderable {
   _stableBlockCount = 0
   private _styleDirty: boolean = false
   private _hyperlinksEnabled: boolean
-  private _handleCapabilitiesChanged = (): void => {
-    const enabled = this.ctx.capabilities?.hyperlinks === true
-    if (enabled === this._hyperlinksEnabled) return
-    this._hyperlinksEnabled = enabled
-    if (this._conceal) this.clearCache()
-  }
   private _concealClickableLinkTargets: OnHighlightCallback = (highlights, context) => {
     if (!this._conceal || !this._hyperlinksEnabled) return highlights
 
-    const destinations = highlights.filter(
-      ([start, end, group]) =>
-        group === "markup.link.url" && context.content.slice(start - 2, start) === "](" && context.content[end] === ")",
-    )
+    const destinations = highlights.flatMap(([start, end, group]) => {
+      if (group !== "markup.link.url" || context.content.slice(start - 2, start) !== "](") return []
+      const suffix = context.content.slice(end).match(/^(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?\)/)?.[0]
+      return suffix ? [{ start, end: end + suffix.length }] : []
+    })
     if (destinations.length === 0) return highlights
 
     const result = highlights.filter(
       ([start, end, group]) =>
         !(
           group === "conceal" &&
-          destinations.some(([destinationStart]) => start === destinationStart - 2 && end === destinationStart - 1)
+          destinations.some((destination) => start === destination.start - 2 && end === destination.start - 1)
         ),
     )
-    for (const [start, end] of destinations) {
-      result.push([start - 2, end + 1, "conceal", { conceal: "", isInjection: true }])
+    for (const { start, end } of destinations) {
+      result.push([start - 2, end, "conceal", { conceal: "", isInjection: true }])
     }
     return result
   }
@@ -264,7 +259,6 @@ export class MarkdownRenderable extends Renderable {
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
     this._internalBlockMode = options.internalBlockMode ?? this._contentDefaultOptions.internalBlockMode
     this._hyperlinksEnabled = ctx.capabilities?.hyperlinks === true
-    ctx.on("capabilities", this._handleCapabilitiesChanged)
 
     this.updateBlocks()
   }
@@ -1942,12 +1936,13 @@ export class MarkdownRenderable extends Renderable {
     this.requestRender()
   }
 
-  protected override destroySelf(): void {
-    this.ctx.off("capabilities", this._handleCapabilitiesChanged)
-    super.destroySelf()
-  }
-
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
+    const hyperlinksEnabled = this.ctx.capabilities?.hyperlinks === true
+    if (hyperlinksEnabled !== this._hyperlinksEnabled) {
+      this._hyperlinksEnabled = hyperlinksEnabled
+      this.clearCache()
+    }
+
     // Check if style/conceal changed - re-render blocks before rendering
     if (this._styleDirty) {
       this._styleDirty = false

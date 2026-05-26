@@ -1701,6 +1701,41 @@ test("concealed markdown links hide target but label carries hyperlink metadata"
   expect(getLinkId(labelSpan.attributes)).not.toBe(0)
 })
 
+test("concealed markdown links keep single-character labels clickable", async () => {
+  setRendererCapabilities(renderer, { hyperlinks: true })
+  const md = createMarkdownRenderable({
+    id: "markdown-concealed-short-link-metadata",
+    content: `[x](https://example.com)`,
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const span = findSpanContaining(captureSpans(), "x")
+  expect(span).toBeDefined()
+  expect(getLinkId(span!.attributes)).not.toBe(0)
+})
+
+test("concealed markdown links hide titled destinations when hyperlinks are supported", async () => {
+  setRendererCapabilities(renderer, { hyperlinks: true })
+  const md = createMarkdownRenderable({
+    id: "markdown-concealed-titled-link",
+    content: `[OpenTUI](https://example.com "Example docs")`,
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("OpenTUI")
+  expect(frame).not.toContain("https://example.com")
+  expect(frame).not.toContain("Example docs")
+})
+
 test("concealed markdown links preserve label styling when URL styling differs", async () => {
   setRendererCapabilities(renderer, { hyperlinks: true })
   const labelColor = RGBA.fromValues(0, 1, 0, 1)

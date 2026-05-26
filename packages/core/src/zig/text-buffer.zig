@@ -451,18 +451,23 @@ pub const UnifiedTextBuffer = struct {
     }
 
     fn clearStyledChunkStyles(self: *Self) void {
+        self.removeStyledChunkStylesFrom(0);
+    }
+
+    fn removeStyledChunkStylesFrom(self: *Self, start: usize) void {
+        if (start >= self.styled_chunk_style_count) return;
         const style = self.syntax_style orelse {
             self.styled_chunk_style_count = 0;
             return;
         };
 
-        var i: usize = 0;
+        var i: usize = start;
         while (i < self.styled_chunk_style_count) : (i += 1) {
             var style_name_buf: [96]u8 = undefined;
             const style_name = std.fmt.bufPrint(&style_name_buf, "chunk-{x}-{d}", .{ @intFromPtr(self), i }) catch continue;
             (@constCast(style)).removeStyle(style_name);
         }
-        self.styled_chunk_style_count = 0;
+        self.styled_chunk_style_count = start;
     }
 
     /// Set the text content using SIMD-optimized line break detection
@@ -478,6 +483,7 @@ pub const UnifiedTextBuffer = struct {
     pub fn setTextFromMemId(self: *Self, mem_id: u8) TextBufferError!void {
         const text = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         self.clearInternalHighlights();
+        self.clearStyledChunkStyles();
         self.clear();
         try self.setTextInternal(mem_id, text);
     }
@@ -1102,7 +1108,7 @@ pub const UnifiedTextBuffer = struct {
         self: *Self,
         chunks: []const StyledChunk,
     ) TextBufferError!void {
-        self.clearStyledChunkStyles();
+        self.removeStyledChunkStylesFrom(chunks.len);
         if (chunks.len == 0) {
             self.clear();
             self.clearAllHighlights();
@@ -1116,6 +1122,7 @@ pub const UnifiedTextBuffer = struct {
         }
 
         if (total_len == 0) {
+            self.clearStyledChunkStyles();
             self.clear();
             self.clearAllHighlights();
             return;
@@ -1225,6 +1232,8 @@ pub const UnifiedTextBuffer = struct {
 
         const file_size = file.getEndPos() catch return TextBufferError.OutOfMemory;
 
+        self.clearInternalHighlights();
+        self.clearStyledChunkStyles();
         self.clear();
 
         const content = self.allocator.alloc(u8, file_size) catch return TextBufferError.OutOfMemory;

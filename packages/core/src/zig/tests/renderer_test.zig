@@ -860,6 +860,10 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
     // terminals group wrapped/non-contiguous segments into one link while avoiding
     // implementations that drop hyperlink state across cursor movement.
     try std.testing.expectEqual(@as(usize, 2), count);
+
+    const second_row_move = std.mem.indexOf(u8, output, "\x1b[2;1H") orelse return error.TestUnexpectedResult;
+    const second_open = std.mem.lastIndexOf(u8, output, expected_open) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(second_row_move < second_open);
 }
 
 test "renderer - explicit default and indexed tags use ANSI default/indexed output" {
