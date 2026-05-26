@@ -578,7 +578,7 @@ describe("Textarea - Selection Tests", () => {
 
       expect(editor.hasSelection()).toBe(true)
       const selectedText = editor.getSelectedText()
-      expect(selectedText).toBe("Line 1")
+      expect(selectedText).toBe("Line 1\n")
     })
 
     it("should select with shift+up", async () => {
@@ -744,7 +744,7 @@ describe("Textarea - Selection Tests", () => {
       currentMockInput.pressArrow("down", { shift: true })
 
       const selectedText = editor.getSelectedText()
-      expect(selectedText).toBe("Line 2")
+      expect(selectedText).toBe("Line 2\n")
 
       currentMockInput.pressKey("DELETE")
 

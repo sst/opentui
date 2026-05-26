@@ -3026,9 +3026,9 @@ describe("Textarea - Keybinding Tests", () => {
       // At end of line 1
       editor.editBuffer.setCursor(0, 6)
 
-      // First ctrl+shift+a from EOL should select entire line
+      // First ctrl+shift+a from EOL selects through the line break at EOL
       kittyMockInput.pressKey("a", { ctrl: true, shift: true })
-      expect(editor.getSelectedText()).toBe("Line 1")
+      expect(editor.getSelectedText()).toBe("Line 1\n")
 
       // Reset
       editor.editBuffer.setCursor(0, 0)
