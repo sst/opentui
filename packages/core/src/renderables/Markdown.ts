@@ -783,7 +783,7 @@ export class MarkdownRenderable extends Renderable {
     id: string,
   ): boolean {
     if ((token.type === "text" || token.type === "paragraph") && renderable instanceof CodeRenderable) {
-      this.applyMarkdownCodeRenderable(renderable, this.getListChildMarkdownRaw(token), 0)
+      this.applyMarkdownCodeRenderable(renderable, this.normalizeScrollbackMarkdownBlockRaw(token.raw), 0)
       return true
     }
 
@@ -806,10 +806,6 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  private getListChildMarkdownRaw(token: MarkedToken): string {
-    return this.normalizeScrollbackMarkdownBlockRaw(token.raw)
-  }
-
   private applyListItemMarker(row: BoxRenderable, input: ListItemRenderInput): void {
     const marker = row.getChildren()[0]
     if (!(marker instanceof TextRenderable)) return
@@ -826,7 +822,7 @@ export class MarkdownRenderable extends Renderable {
 
   private createListChildRenderable(token: MarkedToken, id: string): Renderable | null {
     if (token.type === "text" || token.type === "paragraph") {
-      return this.createMarkdownCodeRenderable(this.getListChildMarkdownRaw(token), id)
+      return this.createMarkdownCodeRenderable(this.normalizeScrollbackMarkdownBlockRaw(token.raw), id)
     }
     if (token.type === "list") return this.createListRenderable(token as Tokens.List, id)
     if (token.type === "code") return this.createCodeRenderable(token as Tokens.Code, id)
