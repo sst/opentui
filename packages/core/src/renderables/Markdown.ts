@@ -225,7 +225,7 @@ export class MarkdownRenderable extends Renderable {
         ),
     )
     for (const [start, end] of destinations) {
-      result.push([start - 2, end + 1, "conceal", { conceal: "" }])
+      result.push([start - 2, end + 1, "conceal", { conceal: "", isInjection: true }])
     }
     return result
   }
