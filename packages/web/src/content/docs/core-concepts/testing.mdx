@@ -23,19 +23,19 @@ console.log(captureCharFrame())
 renderer.destroy()
 ```
 
-| Helper | Description |
-| ------ | ----------- |
-| `renderer` | The `CliRenderer` instance |
-| `renderOnce()` | Run one render pass |
-| `flush()` | Wait until scheduled rendering settles |
-| `waitFor(predicate)` | Retry until a condition passes |
-| `waitForFrame(predicate)` | Retry against captured frame text |
-| `waitForVisualIdle()` | Wait for quiet native frames |
-| `captureCharFrame()` | Read the current character frame as text |
-| `captureSpans()` | Read styled span lines and cursor state |
+| Helper                      | Description                              |
+| --------------------------- | ---------------------------------------- |
+| `renderer`                  | The `CliRenderer` instance               |
+| `renderOnce()`              | Run one render pass                      |
+| `flush()`                   | Wait until scheduled rendering settles   |
+| `waitFor(predicate)`        | Retry until a condition passes           |
+| `waitForFrame(predicate)`   | Retry against captured frame text        |
+| `waitForVisualIdle()`       | Wait for quiet native frames             |
+| `captureCharFrame()`        | Read the current character frame as text |
+| `captureSpans()`            | Read styled span lines and cursor state  |
 | `externalOutput.takeText()` | Read captured split-footer output events |
-| `getNativeStats()` | Read native render stats |
-| `resize(width, height)` | Simulate a terminal resize |
-| `mockInput` / `mockMouse` | Drive keyboard and mouse input |
+| `getNativeStats()`          | Read native render stats                 |
+| `resize(width, height)`     | Simulate a terminal resize               |
+| `mockInput` / `mockMouse`   | Drive keyboard and mouse input           |
 
 Use `createCliRenderer()` with custom `stdin` / `stdout` streams when a test needs the real output transport instead of memory output.

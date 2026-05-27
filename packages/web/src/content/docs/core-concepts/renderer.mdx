@@ -34,30 +34,30 @@ The factory function does three things:
 
 This page covers the options that most apps set directly. `CliRendererConfig` also includes lower-level hooks for testing and tuning, such as `clock`, `postProcessFns`, `prependInputHandlers`, `bufferedOutput`, `useThread`, and stats options.
 
-| Option                | Type                           | Default                              | Description                                                                             |
-| --------------------- | ------------------------------ | ------------------------------------ | --------------------------------------------------------------------------------------- |
-| `screenMode`          | `ScreenMode`                   | `"alternate-screen"`                 | How the renderer uses terminal space ([details](#screen-modes))                         |
-| `footerHeight`        | `number`                       | `12`                                 | Requested footer rows for `"split-footer"` mode                                         |
-| `stdin`               | `NodeJS.ReadStream`            | `process.stdin`                      | Input stream; raw mode is used when available                                           |
-| `stdout`              | `NodeJS.WriteStream`           | `process.stdout`                     | Output stream for native frames and stdout interception ([details](#custom-streams))    |
-| `width`               | `number`                       | `stdout.columns \|\| 80`             | Fallback columns for non-TTY/custom `stdout`                                            |
-| `height`              | `number`                       | `stdout.rows \|\| 24`                | Fallback rows for non-TTY/custom `stdout`                                               |
-| `remote`              | `boolean`                      | custom: `true`; process: `false`     | Treat output as a remote terminal and skip default env forwarding                       |
-| `externalOutputMode`  | `ExternalOutputMode`           | varies                               | How writes to `stdout.write` are handled ([details](#external-output-mode))             |
-| `consoleMode`         | `ConsoleMode`                  | `"console-overlay"`                  | How the built-in console overlay behaves ([details](#console-mode))                     |
-| `exitOnCtrlC`         | `boolean`                      | `true`                               | Call `renderer.destroy()` when Ctrl+C is pressed                                        |
-| `exitSignals`         | `NodeJS.Signals[]`             | see below                            | Signals that trigger cleanup ([details](/docs/core-concepts/lifecycle#signal-handling)) |
-| `clearOnShutdown`     | `boolean`                      | `true`                               | Clear the renderer-owned region on `suspend()` and `destroy()`                          |
-| `targetFps`           | `number`                       | `30`                                 | Target frames per second for the render loop                                            |
-| `maxFps`              | `number`                       | `60`                                 | Maximum FPS cap for immediate re-renders                                                |
-| `useMouse`            | `boolean`                      | `true`                               | Enable mouse input                                                                      |
-| `autoFocus`           | `boolean`                      | `true`                               | Focus the nearest focusable renderable on left click                                    |
-| `enableMouseMovement` | `boolean`                      | `true`                               | Track mouse movement, not just clicks and scrolls                                       |
-| `useKittyKeyboard`    | `KittyKeyboardOptions \| null` | `{}`                                 | Kitty keyboard protocol settings, or `null` to disable                                  |
-| `backgroundColor`     | `ColorInput`                   | transparent                          | Background color for the render buffer                                                  |
-| `consoleOptions`      | `ConsoleOptions`               | -                                    | Options forwarded to the built-in console overlay                                       |
-| `openConsoleOnError`  | `boolean`                      | `true` (dev)                         | Open the console overlay on uncaught errors                                             |
-| `onDestroy`           | `() => void`                   | -                                    | Run after the renderer finishes cleanup                                                 |
+| Option                | Type                           | Default                          | Description                                                                             |
+| --------------------- | ------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------- |
+| `screenMode`          | `ScreenMode`                   | `"alternate-screen"`             | How the renderer uses terminal space ([details](#screen-modes))                         |
+| `footerHeight`        | `number`                       | `12`                             | Requested footer rows for `"split-footer"` mode                                         |
+| `stdin`               | `NodeJS.ReadStream`            | `process.stdin`                  | Input stream; raw mode is used when available                                           |
+| `stdout`              | `NodeJS.WriteStream`           | `process.stdout`                 | Output stream for native frames and stdout interception ([details](#custom-streams))    |
+| `width`               | `number`                       | `stdout.columns \|\| 80`         | Fallback columns for non-TTY/custom `stdout`                                            |
+| `height`              | `number`                       | `stdout.rows \|\| 24`            | Fallback rows for non-TTY/custom `stdout`                                               |
+| `remote`              | `boolean`                      | custom: `true`; process: `false` | Treat output as a remote terminal and skip default env forwarding                       |
+| `externalOutputMode`  | `ExternalOutputMode`           | varies                           | How writes to `stdout.write` are handled ([details](#external-output-mode))             |
+| `consoleMode`         | `ConsoleMode`                  | `"console-overlay"`              | How the built-in console overlay behaves ([details](#console-mode))                     |
+| `exitOnCtrlC`         | `boolean`                      | `true`                           | Call `renderer.destroy()` when Ctrl+C is pressed                                        |
+| `exitSignals`         | `NodeJS.Signals[]`             | see below                        | Signals that trigger cleanup ([details](/docs/core-concepts/lifecycle#signal-handling)) |
+| `clearOnShutdown`     | `boolean`                      | `true`                           | Clear the renderer-owned region on `suspend()` and `destroy()`                          |
+| `targetFps`           | `number`                       | `30`                             | Target frames per second for the render loop                                            |
+| `maxFps`              | `number`                       | `60`                             | Maximum FPS cap for immediate re-renders                                                |
+| `useMouse`            | `boolean`                      | `true`                           | Enable mouse input                                                                      |
+| `autoFocus`           | `boolean`                      | `true`                           | Focus the nearest focusable renderable on left click                                    |
+| `enableMouseMovement` | `boolean`                      | `true`                           | Track mouse movement, not just clicks and scrolls                                       |
+| `useKittyKeyboard`    | `KittyKeyboardOptions \| null` | `{}`                             | Kitty keyboard protocol settings, or `null` to disable                                  |
+| `backgroundColor`     | `ColorInput`                   | transparent                      | Background color for the render buffer                                                  |
+| `consoleOptions`      | `ConsoleOptions`               | -                                | Options forwarded to the built-in console overlay                                       |
+| `openConsoleOnError`  | `boolean`                      | `true` (dev)                     | Open the console overlay on uncaught errors                                             |
+| `onDestroy`           | `() => void`                   | -                                | Run after the renderer finishes cleanup                                                 |
 
 You can also change `screenMode`, `footerHeight`, `externalOutputMode`, and `consoleMode` at runtime through their
 matching `renderer` properties.
@@ -373,22 +373,22 @@ const renderer = await createCliRenderer({
 
 Use `renderer.on(event, callback)` to subscribe:
 
-| Event                 | Payload                           | Description                                                           |
-| --------------------- | --------------------------------- | --------------------------------------------------------------------- |
-| `resize`              | `(width: number, height: number)` | Terminal window resized                                               |
-| `frame`               | `(event: { frameId: number })`    | A native frame rendered successfully                                  |
-| `external_output`     | `(event: CliRendererExternalOutputEvent)` | Split-footer captured output was queued; copy the snapshot if needed |
-| `focus`               | `()`                              | Terminal window gained focus                                          |
-| `blur`                | `()`                              | Terminal window lost focus                                            |
-| `focused_renderable`  | `(current, previous)`             | Focused renderable changed                                            |
-| `focused_editor`      | `(current, previous)`             | Focused editor renderable changed                                     |
-| `theme_mode`          | `(mode: "dark" \| "light")`       | Terminal color scheme changed. See [Theme mode](#theme-mode) section. |
-| `palette`             | `(colors: TerminalColors)`        | Terminal palette was refreshed and changed                            |
-| `capabilities`        | `(caps: TerminalCapabilities)`    | Terminal capabilities detected                                        |
-| `selection`           | `(selection: Selection)`          | Text selection completed                                              |
-| `destroy`             | `()`                              | Renderer destroyed                                                    |
-| `memory:snapshot`     | `(snapshot: MemorySnapshot)`      | Memory usage snapshot available                                       |
-| `debugOverlay:toggle` | `(enabled: boolean)`              | Debug overlay visibility changed                                      |
+| Event                 | Payload                                   | Description                                                           |
+| --------------------- | ----------------------------------------- | --------------------------------------------------------------------- |
+| `resize`              | `(width: number, height: number)`         | Terminal window resized                                               |
+| `frame`               | `(event: { frameId: number })`            | A native frame rendered successfully                                  |
+| `external_output`     | `(event: CliRendererExternalOutputEvent)` | Split-footer captured output was queued; copy the snapshot if needed  |
+| `focus`               | `()`                                      | Terminal window gained focus                                          |
+| `blur`                | `()`                                      | Terminal window lost focus                                            |
+| `focused_renderable`  | `(current, previous)`                     | Focused renderable changed                                            |
+| `focused_editor`      | `(current, previous)`                     | Focused editor renderable changed                                     |
+| `theme_mode`          | `(mode: "dark" \| "light")`               | Terminal color scheme changed. See [Theme mode](#theme-mode) section. |
+| `palette`             | `(colors: TerminalColors)`                | Terminal palette was refreshed and changed                            |
+| `capabilities`        | `(caps: TerminalCapabilities)`            | Terminal capabilities detected                                        |
+| `selection`           | `(selection: Selection)`                  | Text selection completed                                              |
+| `destroy`             | `()`                                      | Renderer destroyed                                                    |
+| `memory:snapshot`     | `(snapshot: MemorySnapshot)`              | Memory usage snapshot available                                       |
+| `debugOverlay:toggle` | `(enabled: boolean)`                      | Debug overlay visibility changed                                      |
 
 ```typescript
 // Terminal resized
