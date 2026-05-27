@@ -1,18 +1,16 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { Readable, Writable } from "stream"
-import { createCliRenderer, CliRenderer } from "../renderer.js"
-
-// These tests verify that rendererTracker only pauses process.stdin when the
-// last renderer that was ACTIVELY USING process.stdin is destroyed. A renderer
-// using a custom stdin should not influence process.stdin at all.
+import { createCliRenderer } from "../renderer.js"
 
 class NoopWritable extends Writable {
   public readonly isTTY = true
   public readonly columns = 80
   public readonly rows = 24
+
   override _write(_c: any, _e: BufferEncoding, cb: (err?: Error | null) => void): void {
     cb()
   }
+
   getColorDepth(): number {
     return 24
   }
@@ -29,9 +27,9 @@ function nonProcessStdout(): NodeJS.WriteStream {
 let originalStdinPaused: boolean
 let pauseCalled = false
 let originalPause: typeof process.stdin.pause
+let destroyFns: Array<() => void> = []
 
 beforeEach(() => {
-  // Spy on process.stdin.pause so we can assert whether it was called.
   pauseCalled = false
   originalStdinPaused = process.stdin.isPaused()
   originalPause = process.stdin.pause.bind(process.stdin)
@@ -42,110 +40,144 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  for (const destroy of destroyFns.splice(0)) {
+    destroy()
+  }
+
   process.stdin.pause = originalPause
-  // Restore original paused state
   if (!originalStdinPaused) {
     process.stdin.resume()
   }
 })
 
-test("two renderers sharing process.stdin: only the second destroy pauses", async () => {
-  const a = await createCliRenderer({
+test("second renderer sharing process.stdin is rejected", async () => {
+  const first = await createCliRenderer({
     stdin: process.stdin,
     stdout: nonProcessStdout(),
     bufferedOutput: "memory",
   })
-  const b = await createCliRenderer({
+  destroyFns.push(() => first.destroy())
+
+  await expect(
+    createCliRenderer({
+      stdin: process.stdin,
+      stdout: nonProcessStdout(),
+      bufferedOutput: "memory",
+    }),
+  ).rejects.toThrow("stdin is already used by another CliRenderer")
+})
+
+test("second renderer sharing stdout is rejected", async () => {
+  const stdout = nonProcessStdout()
+  const first = await createCliRenderer({
+    stdin: customStdin(),
+    stdout,
+    bufferedOutput: "memory",
+  })
+  destroyFns.push(() => first.destroy())
+
+  await expect(
+    createCliRenderer({
+      stdin: customStdin(),
+      stdout,
+      bufferedOutput: "memory",
+    }),
+  ).rejects.toThrow("stdout is already used by another CliRenderer")
+})
+
+test("destroy releases streams for reuse", async () => {
+  const stdin = customStdin()
+  const stdout = nonProcessStdout()
+  const first = await createCliRenderer({
+    stdin,
+    stdout,
+    bufferedOutput: "memory",
+  })
+
+  first.destroy()
+
+  const second = await createCliRenderer({
+    stdin,
+    stdout,
+    bufferedOutput: "memory",
+  })
+  destroyFns.push(() => second.destroy())
+
+  expect(second.stdin).toBe(stdin)
+})
+
+test("failed input setup releases streams for reuse", async () => {
+  const stdin = customStdin()
+  const stdout = nonProcessStdout()
+  let failRawMode = true
+
+  stdin.setRawMode = (enabled) => {
+    if (enabled && failRawMode) {
+      throw new Error("raw mode failed")
+    }
+    return stdin
+  }
+
+  await expect(
+    createCliRenderer({
+      stdin,
+      stdout,
+      bufferedOutput: "memory",
+    }),
+  ).rejects.toThrow("raw mode failed")
+
+  failRawMode = false
+
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    bufferedOutput: "memory",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  expect(renderer.stdin).toBe(stdin)
+})
+
+test("renderers using separate stream objects can coexist", async () => {
+  const first = await createCliRenderer({
+    stdin: customStdin(),
+    stdout: nonProcessStdout(),
+    bufferedOutput: "memory",
+  })
+  destroyFns.push(() => first.destroy())
+
+  const second = await createCliRenderer({
+    stdin: customStdin(),
+    stdout: nonProcessStdout(),
+    bufferedOutput: "memory",
+  })
+  destroyFns.push(() => second.destroy())
+
+  expect(second.isDestroyed).toBe(false)
+})
+
+test("renderer using process.stdin pauses it on destroy", async () => {
+  const renderer = await createCliRenderer({
     stdin: process.stdin,
     stdout: nonProcessStdout(),
     bufferedOutput: "memory",
   })
 
   pauseCalled = false
-  a.destroy()
-  // First destroy: another process.stdin user remains, so no pause yet.
-  expect(pauseCalled).toBe(false)
+  renderer.destroy()
 
-  pauseCalled = false
-  b.destroy()
-  // Second destroy: last process.stdin user gone, so pause should be called.
   expect(pauseCalled).toBe(true)
 })
 
-test("renderer with custom stdin does not touch process.stdin on destroy", async () => {
-  const r = await createCliRenderer({
+test("renderer with custom stdin does not pause process.stdin on destroy", async () => {
+  const renderer = await createCliRenderer({
     stdin: customStdin(),
     stdout: nonProcessStdout(),
     bufferedOutput: "memory",
   })
 
   pauseCalled = false
-  r.destroy()
-  // No renderer was using process.stdin, so pause should not be called.
-  expect(pauseCalled).toBe(false)
-})
+  renderer.destroy()
 
-test("mixed: destroying custom-stdin renderer before process.stdin renderer does not pause prematurely", async () => {
-  const processOne = await createCliRenderer({
-    stdin: process.stdin,
-    stdout: nonProcessStdout(),
-    bufferedOutput: "memory",
-  })
-  const customOne = await createCliRenderer({
-    stdin: customStdin(),
-    stdout: nonProcessStdout(),
-    bufferedOutput: "memory",
-  })
-
-  pauseCalled = false
-  customOne.destroy()
-  // Custom-stdin renderer destroyed; process.stdin still in use.
-  expect(pauseCalled).toBe(false)
-
-  pauseCalled = false
-  processOne.destroy()
-  // Now the last process.stdin user is gone; pause expected.
-  expect(pauseCalled).toBe(true)
-})
-
-test("two custom-stdin renderers: neither touches process.stdin", async () => {
-  const a = await createCliRenderer({
-    stdin: customStdin(),
-    stdout: nonProcessStdout(),
-    bufferedOutput: "memory",
-  })
-  const b = await createCliRenderer({
-    stdin: customStdin(),
-    stdout: nonProcessStdout(),
-    bufferedOutput: "memory",
-  })
-
-  pauseCalled = false
-  a.destroy()
-  expect(pauseCalled).toBe(false)
-  b.destroy()
-  expect(pauseCalled).toBe(false)
-})
-
-test("mixed: destroying process-stdin renderer first, custom second still behaves correctly", async () => {
-  const processOne = await createCliRenderer({
-    stdin: process.stdin,
-    stdout: nonProcessStdout(),
-    bufferedOutput: "memory",
-  })
-  const customOne = await createCliRenderer({
-    stdin: customStdin(),
-    stdout: nonProcessStdout(),
-    bufferedOutput: "memory",
-  })
-
-  pauseCalled = false
-  processOne.destroy()
-  // Removing the only process.stdin user should pause, regardless of order.
-  expect(pauseCalled).toBe(true)
-
-  pauseCalled = false
-  customOne.destroy()
-  // Removing a custom-stdin renderer should never touch process.stdin.
   expect(pauseCalled).toBe(false)
 })

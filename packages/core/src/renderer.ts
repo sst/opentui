@@ -633,41 +633,10 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
-const rendererTracker = singleton("RendererTracker", () => {
-  const renderers = new Set<CliRenderer>()
-  // Track how many renderers are actively using process.stdin. We pause
-  // process.stdin only when the last such renderer is destroyed — independent
-  // of whether other renderers (on custom stdins) are still alive. This
-  // prevents a renderer using a non-process stdin (e.g. an SSH channel) from
-  // unexpectedly pausing the host's process.stdin, while still properly
-  // restoring it when process.stdin consumers go away.
-  let processStdinUsers = 0
-  return {
-    addRenderer: (renderer: CliRenderer) => {
-      renderers.add(renderer)
-      if (renderer.stdin === process.stdin) processStdinUsers++
-    },
-    removeRenderer: (renderer: CliRenderer) => {
-      renderers.delete(renderer)
-      const wasProcessStdin = renderer.stdin === process.stdin
-      if (wasProcessStdin) {
-        processStdinUsers = Math.max(0, processStdinUsers - 1)
-        // Pause process.stdin as soon as the last process.stdin-using renderer
-        // goes away. Other renderers on custom stdins are orthogonal.
-        if (processStdinUsers === 0) {
-          process.stdin.pause()
-        }
-      }
-
-      if (renderers.size === 0) {
-        if (hasSingleton("tree-sitter-client")) {
-          getTreeSitterClient().destroy()
-          destroySingleton("tree-sitter-client")
-        }
-      }
-    },
-  }
-})
+const rendererTracker = singleton("RendererTracker", () => ({
+  renderers: new Set<CliRenderer>(),
+  streamOwners: new WeakMap<object, CliRenderer>(),
+}))
 
 /**
  * Create a CLI renderer and run its async terminal setup. The constructor
@@ -740,6 +709,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _destroyPending: boolean = false
   private _destroyFinalized: boolean = false
   private _destroyCleanupPrepared: boolean = false
+  private _streamLeaseAcquired: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
@@ -979,6 +949,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
    * `setupTerminal` convenience.
    *
    * Construction side effects (observable before the constructor returns):
+   *   - Acquires exclusive ownership of the given stdin/stdout streams
    *   - Allocates a `NativeSpanFeed` (for non-process stdout unless bufferedOutput is "memory")
    *   - Calls `lib.createRenderer` → native Zig allocation
    *   - Registers in the process-wide `rendererTracker`
@@ -989,9 +960,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
    *   - When `setupTerminal()` is called, it will put `stdin` in raw mode and
    *     call `stdin.resume()`
    *
-   * These side effects are NOT rolled back if the constructor throws partway;
-   * production callers should use `createCliRenderer`, which wraps
-   * `setupTerminal()` in a try/catch that calls `destroy()` on failure.
+   * Some late constructor side effects are not rolled back if construction
+   * throws partway; production callers should use `createCliRenderer`, which
+   * wraps `setupTerminal()` in a try/catch that calls `destroy()` on failure.
    */
   constructor(
     stdin: NodeJS.ReadStream,
@@ -1009,6 +980,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const lib = resolveRenderLib()
     const useMemoryBufferedOutput = config.bufferedOutput === "memory"
+    const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
+    const initialGeometry = calculateRenderGeometry(screenMode, width, height, footerHeight)
+    const resolvedRemote = config.remote ?? !this._usesProcessStdout
+
+    if (rendererTracker.streamOwners.get(stdin)) {
+      throw new Error("Cannot create CliRenderer: stdin is already used by another CliRenderer")
+    }
+    if (rendererTracker.streamOwners.get(stdout)) {
+      throw new Error("Cannot create CliRenderer: stdout is already used by another CliRenderer")
+    }
 
     // Feed allocation: only when the output target is a non-process Writable.
     // Tests use custom Writable instances too; those should exercise the same
@@ -1032,10 +1013,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // accepts it but the public `RenderLib` interface does not. The local
     // type cast below keeps the method call bound to `lib` (preserving
     // `this`) while accessing the implementation's wider signature.
-    const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
-    const initialGeometry = calculateRenderGeometry(screenMode, width, height, footerHeight)
-    const resolvedRemote = config.remote ?? !this._usesProcessStdout
-
     type InternalRenderLib = RenderLib & {
       createRenderer: (
         width: number,
@@ -1095,8 +1072,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         console.error(`[CliRenderer] NativeSpanFeed error: code=${code}`)
       })
     }
-
-    rendererTracker.addRenderer(this)
 
     this.lib = lib
     this._terminalWidth = width
@@ -1229,6 +1204,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
     this.consoleMode = config.consoleMode ?? "console-overlay"
     this.applyScreenMode(screenMode, false, false)
+    rendererTracker.streamOwners.set(stdin, this)
+    rendererTracker.streamOwners.set(stdout, this)
+    this._streamLeaseAcquired = true
+    rendererTracker.renderers.add(this)
     this.stdout.write = externalOutputMode === "capture-stdout" ? this.interceptStdoutWrite : this.realStdoutWrite
     this._openConsoleOnError = config.openConsoleOnError ?? process.env.NODE_ENV !== "production"
     this._onDestroy = config.onDestroy
@@ -4090,6 +4069,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         console.error("Error disabling raw mode during destroy:", e)
       }
     }
+    try {
+      this.stdin.pause()
+    } catch (e) {
+      console.error("Error pausing stdin during destroy:", e)
+    }
 
     if (this._feed !== null && this._splitHeight > 0 && !this._terminalIsSetup) {
       this.flushPendingSplitOutputBeforeTransition(false, { allowSuspended: true, allowUnsetup: true })
@@ -4207,7 +4191,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     } catch (e) {
       console.error("Error in lib.destroyRenderer during destroy:", e)
     }
-    rendererTracker.removeRenderer(this)
+    rendererTracker.renderers.delete(this)
+    if (rendererTracker.renderers.size === 0 && hasSingleton("tree-sitter-client")) {
+      getTreeSitterClient().destroy()
+      destroySingleton("tree-sitter-client")
+    }
 
     if (this._feed) {
       try {
@@ -4221,6 +4209,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._detachFeedError = null
       this._feed.close()
       this._feed = null
+    }
+
+    if (this._streamLeaseAcquired) {
+      if (rendererTracker.streamOwners.get(this.stdin) === this) rendererTracker.streamOwners.delete(this.stdin)
+      if (rendererTracker.streamOwners.get(this.stdout) === this) rendererTracker.streamOwners.delete(this.stdout)
+      this._streamLeaseAcquired = false
     }
 
     if (this._onDestroy) {
