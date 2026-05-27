@@ -1,4 +1,3 @@
-import { Readable, Writable } from "stream"
 import {
   CliRenderer,
   CliRenderEvents,
@@ -9,6 +8,7 @@ import {
 import type { NativeRenderStats } from "../zig.js"
 import { createMockKeys } from "./mock-keys.js"
 import { createMockMouse } from "./mock-mouse.js"
+import { createTestStdin, createTestStdout } from "./test-streams.js"
 import type { CapturedFrame } from "../types.js"
 
 export interface TestRendererOptions extends CliRendererConfig {
@@ -190,26 +190,6 @@ function waitForNextFrameOrIdle(renderer: TestRenderer): Promise<CliRendererFram
   })
 }
 
-class TestWriteStream extends Writable {
-  public readonly isTTY = true
-  public readonly columns: number
-  public readonly rows: number
-
-  constructor(columns: number, rows: number) {
-    super()
-    this.columns = columns
-    this.rows = rows
-  }
-
-  _write(_chunk: any, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
-    callback()
-  }
-
-  getColorDepth(): number {
-    return 24
-  }
-}
-
 export async function createTestRenderer(options: TestRendererOptions): Promise<TestRendererSetup> {
   // Convert legacy kittyKeyboard boolean to new format
   const useKittyKeyboard = options.kittyKeyboard ? { events: true } : options.useKittyKeyboard
@@ -374,14 +354,15 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
 }
 
 async function setupTestRenderer(config: TestRendererOptions) {
-  const stdin = config.stdin || (new Readable({ read() {} }) as NodeJS.ReadStream)
+  const stdin = config.stdin || createTestStdin()
   const width = config.width || config.stdout?.columns || process.stdout.columns || 80
   const height = config.height || config.stdout?.rows || process.stdout.rows || 24
-  const stdout = config.stdout || (new TestWriteStream(width, height) as unknown as NodeJS.WriteStream)
+  const stdout = config.stdout || createTestStdout(width, height)
 
   // Direct construction skips setupTerminal(); native bytes are routed to an
   // explicit memory destination so tests do not depend on process stdout or feed
-  // backpressure behavior.
+  // backpressure behavior. CliRenderer still owns native renderer creation and
+  // applies the same useThread defaults as production construction.
   return new CliRenderer(stdin, stdout, width, height, {
     ...config,
     remote: config.remote ?? false,

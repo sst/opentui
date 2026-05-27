@@ -1,28 +1,6 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
-import { Readable, Writable } from "stream"
 import { createCliRenderer } from "../renderer.js"
-
-class NoopWritable extends Writable {
-  public readonly isTTY = true
-  public readonly columns = 80
-  public readonly rows = 24
-
-  override _write(_c: any, _e: BufferEncoding, cb: (err?: Error | null) => void): void {
-    cb()
-  }
-
-  getColorDepth(): number {
-    return 24
-  }
-}
-
-function customStdin(): NodeJS.ReadStream {
-  return new Readable({ read() {} }) as NodeJS.ReadStream
-}
-
-function nonProcessStdout(): NodeJS.WriteStream {
-  return new NoopWritable() as unknown as NodeJS.WriteStream
-}
+import { createTestStdin, createTestStdout } from "../testing/test-streams.js"
 
 let originalStdinPaused: boolean
 let pauseCalled = false
@@ -53,7 +31,7 @@ afterEach(() => {
 test("second renderer sharing process.stdin is rejected", async () => {
   const first = await createCliRenderer({
     stdin: process.stdin,
-    stdout: nonProcessStdout(),
+    stdout: createTestStdout(),
     bufferedOutput: "memory",
   })
   destroyFns.push(() => first.destroy())
@@ -61,16 +39,16 @@ test("second renderer sharing process.stdin is rejected", async () => {
   await expect(
     createCliRenderer({
       stdin: process.stdin,
-      stdout: nonProcessStdout(),
+      stdout: createTestStdout(),
       bufferedOutput: "memory",
     }),
   ).rejects.toThrow("stdin is already used by another CliRenderer")
 })
 
 test("second renderer sharing stdout is rejected", async () => {
-  const stdout = nonProcessStdout()
+  const stdout = createTestStdout()
   const first = await createCliRenderer({
-    stdin: customStdin(),
+    stdin: createTestStdin(),
     stdout,
     bufferedOutput: "memory",
   })
@@ -78,7 +56,7 @@ test("second renderer sharing stdout is rejected", async () => {
 
   await expect(
     createCliRenderer({
-      stdin: customStdin(),
+      stdin: createTestStdin(),
       stdout,
       bufferedOutput: "memory",
     }),
@@ -86,8 +64,8 @@ test("second renderer sharing stdout is rejected", async () => {
 })
 
 test("destroy releases streams for reuse", async () => {
-  const stdin = customStdin()
-  const stdout = nonProcessStdout()
+  const stdin = createTestStdin()
+  const stdout = createTestStdout()
   const first = await createCliRenderer({
     stdin,
     stdout,
@@ -107,8 +85,8 @@ test("destroy releases streams for reuse", async () => {
 })
 
 test("failed input setup releases streams for reuse", async () => {
-  const stdin = customStdin()
-  const stdout = nonProcessStdout()
+  const stdin = createTestStdin()
+  const stdout = createTestStdout()
   let failRawMode = true
 
   stdin.setRawMode = (enabled) => {
@@ -140,15 +118,15 @@ test("failed input setup releases streams for reuse", async () => {
 
 test("renderers using separate stream objects can coexist", async () => {
   const first = await createCliRenderer({
-    stdin: customStdin(),
-    stdout: nonProcessStdout(),
+    stdin: createTestStdin(),
+    stdout: createTestStdout(),
     bufferedOutput: "memory",
   })
   destroyFns.push(() => first.destroy())
 
   const second = await createCliRenderer({
-    stdin: customStdin(),
-    stdout: nonProcessStdout(),
+    stdin: createTestStdin(),
+    stdout: createTestStdout(),
     bufferedOutput: "memory",
   })
   destroyFns.push(() => second.destroy())
@@ -159,7 +137,7 @@ test("renderers using separate stream objects can coexist", async () => {
 test("renderer using process.stdin pauses it on destroy", async () => {
   const renderer = await createCliRenderer({
     stdin: process.stdin,
-    stdout: nonProcessStdout(),
+    stdout: createTestStdout(),
     bufferedOutput: "memory",
   })
 
@@ -171,8 +149,8 @@ test("renderer using process.stdin pauses it on destroy", async () => {
 
 test("renderer with custom stdin does not pause process.stdin on destroy", async () => {
   const renderer = await createCliRenderer({
-    stdin: customStdin(),
-    stdout: nonProcessStdout(),
+    stdin: createTestStdin(),
+    stdout: createTestStdout(),
     bufferedOutput: "memory",
   })
 
