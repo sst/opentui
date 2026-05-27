@@ -469,8 +469,7 @@ export fn getBufferHeight(bufferPtr: *buffer.OptimizedBuffer) u32 {
 }
 
 export fn render(rendererPtr: *renderer.CliRenderer, force: bool) u8 {
-    rendererPtr.render(force);
-    return @intFromEnum(rendererPtr.getLastRenderStatus());
+    return @intFromEnum(rendererPtr.render(force));
 }
 
 fn packRenderResult(result: renderer.RenderResult) u64 {

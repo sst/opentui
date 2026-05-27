@@ -95,7 +95,7 @@ test "renderer - simple text rendering to currentRenderBuffer" {
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
 
@@ -137,7 +137,7 @@ test "renderer - multi-line text rendering" {
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
 
@@ -179,7 +179,7 @@ test "renderer - emoji (wide grapheme) rendering" {
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
 
@@ -237,7 +237,7 @@ test "renderer - CJK characters rendering" {
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
 
@@ -291,7 +291,7 @@ test "renderer - mixed ASCII, emoji, and CJK" {
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
 
@@ -421,7 +421,7 @@ test "renderer - empty text buffer renders correctly" {
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 }
 
 test "renderer - multiple renders update currentRenderBuffer" {
@@ -448,7 +448,7 @@ test "renderer - multiple renders update currentRenderBuffer" {
     try tb.setText("Hello");
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     var current_buffer = cli_renderer.getCurrentBuffer();
     var first_cell = current_buffer.get(0, 0);
@@ -458,7 +458,7 @@ test "renderer - multiple renders update currentRenderBuffer" {
     try tb.setText("World");
     const next_buffer2 = cli_renderer.getNextBuffer();
     next_buffer2.drawTextBuffer(view, 0, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     current_buffer = cli_renderer.getCurrentBuffer();
     first_cell = current_buffer.get(0, 0);
@@ -530,7 +530,7 @@ test "renderer - 1000 frame render loop with setStyledText" {
         next_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         next_buffer.drawFrameBuffer(0, 0, opt_buffer, null, null, null, null);
 
-        cli_renderer.render(false);
+        _ = cli_renderer.render(false);
 
         if (frame % 100 == 0) {
             const current_buffer = cli_renderer.getCurrentBuffer();
@@ -621,7 +621,7 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
         frame_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     }
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
     const rendered_cell = current_buffer.get(0, 0);
@@ -648,7 +648,7 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
 
     const first_next_buffer = cli_renderer.getNextBuffer();
     try first_next_buffer.drawText("👋", 0, 0, fg, bg, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const first_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, first_output, "👋") != null);
@@ -671,7 +671,7 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
     // otherwise diff/write treats unchanged cells as modified every frame.
     try std.testing.expectEqual(first_gid, second_gid);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const second_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, second_output, "👋") == null);
@@ -705,7 +705,7 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
 
@@ -753,7 +753,7 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
 
@@ -799,7 +799,7 @@ test "renderer - link transition mid-line" {
     // Draw no link
     try next_buffer.drawText("Normal", 13, 0, fg, bg, 0);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
 
@@ -851,7 +851,7 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
     // Continue the same link on row 1
     try next_buffer.drawText("Here", 0, 1, fg, bg, attributes);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
 
@@ -901,7 +901,7 @@ test "renderer - explicit default and indexed tags use ANSI default/indexed outp
         .attributes = 0,
     });
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[39m") != null);
@@ -934,7 +934,7 @@ test "renderer - indexed snapshots fall back to rgb and explicit bg default rese
         .attributes = 0,
     });
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;51;102;153m") != null);
@@ -963,7 +963,7 @@ test "renderer - rgb colors fall back to ANSI256 mapping when rgb is unavailable
     const next_buffer = cli_renderer.getNextBuffer();
     try next_buffer.drawText("A", 0, 0, ansi.rgbaFromFloats(0.95, 0.1, 0.1, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 0);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;") != null);
@@ -996,7 +996,7 @@ test "renderer - rgb fallback uses published palette state" {
     const next_buffer = cli_renderer.getNextBuffer();
     try next_buffer.drawText("A", 0, 0, target, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 0);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;42m") != null);
@@ -1029,13 +1029,13 @@ test "renderer - palette epoch changes force repaint and use new palette mapping
 
     const next_buffer = cli_renderer.getNextBuffer();
     try next_buffer.drawText("A", 0, 0, target, bg, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const first_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, first_output, "\x1b[38;5;42m") != null);
 
     try next_buffer.drawText("A", 0, 0, target, bg, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const second_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, second_output, "A") == null);
@@ -1045,7 +1045,7 @@ test "renderer - palette epoch changes force repaint and use new palette mapping
     cli_renderer.setPaletteState(palette_b[0..], ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), bg, 2);
 
     try next_buffer.drawText("A", 0, 0, target, bg, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const third_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, third_output, "A") != null);
@@ -1072,7 +1072,7 @@ test "renderer - transparent rgb backgrounds still emit 49 reset" {
     const next_buffer = cli_renderer.getNextBuffer();
     try next_buffer.drawText("A", 0, 0, ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
@@ -1098,7 +1098,7 @@ test "renderer - default cursor style emits reset cursor ANSI" {
     const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.setCursorPosition(4, 2, true);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
 
@@ -1135,7 +1135,7 @@ test "renderer - explicit_cursor_positioning emits cursor move after wide graphe
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
 
@@ -1169,7 +1169,7 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
 
     const next_buffer1 = cli_renderer1.getNextBuffer();
     next_buffer1.drawTextBuffer(view, 0, 0);
-    cli_renderer1.render(false);
+    _ = cli_renderer1.render(false);
     const output_without = test_cli_renderer1.lastOutput();
 
     var test_cli_renderer2 = try TestRenderer.create(
@@ -1186,7 +1186,7 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
 
     const next_buffer2 = cli_renderer2.getNextBuffer();
     next_buffer2.drawTextBuffer(view, 0, 0);
-    cli_renderer2.render(false);
+    _ = cli_renderer2.render(false);
     const output_with = test_cli_renderer2.lastOutput();
 
     var count_without: usize = 0;
@@ -1246,7 +1246,7 @@ test "renderer - explicit_cursor_positioning with CJK characters" {
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
 
@@ -1985,9 +1985,9 @@ test "renderer - unchanged frame with unchanged cursor emits no output" {
     const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.setCursorPosition(3, 2, true);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
     const output = test_cli_renderer.lastOutput();
 
     // No-op frames must be byte-empty; otherwise repeated sync/cursor toggles can
@@ -2016,7 +2016,7 @@ test "renderer - stdout debug dump includes non-threaded last render" {
     const next_buffer = cli_renderer.getNextBuffer();
     try next_buffer.drawText("DUMP", 0, 0, fg, bg, 0);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     var dump_buf: [4096]u8 = undefined;
     var stream = std.io.fixedBufferStream(&dump_buf);
@@ -2051,7 +2051,7 @@ test "FeedBackend - renderer writes through feed" {
     const next_buffer = cli_renderer.getNextBuffer();
     try next_buffer.drawText("Hello", 0, 0, fg, bg, 0);
 
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     var span_out: [32]native_span_feed.SpanInfo = undefined;
     const count = feed.drainSpans(&span_out);
@@ -2094,10 +2094,10 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const next_buffer = cli_renderer.getNextBuffer();
     try next_buffer.drawText("A", 0, 0, fg, bg, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     try next_buffer.drawText("B", 0, 0, fg, bg, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     try std.testing.expect(cli_renderer.backend.shouldSkipFrame());
 
@@ -2105,9 +2105,9 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     // so the next non-skipped frame sees the full accumulated delta.
     const before = cli_renderer.lastRenderTime;
     try next_buffer.drawText("C", 0, 0, fg, bg, 0);
-    cli_renderer.render(false);
+    const status = cli_renderer.render(false);
     try std.testing.expectEqual(before, cli_renderer.lastRenderTime);
-    try std.testing.expectEqual(renderer.RenderStatus.skipped, cli_renderer.getLastRenderStatus());
+    try std.testing.expectEqual(renderer.RenderStatus.skipped, status);
 
     const current_cell = cli_renderer.getCurrentBuffer().get(0, 0).?;
     const next_cell = cli_renderer.getNextBuffer().get(0, 0).?;
@@ -2262,11 +2262,11 @@ test "two renderers on buffered backend have independent buffers" {
 
     const b1 = r1.getNextBuffer();
     try b1.drawText("AAA", 0, 0, fg, bg, 0);
-    r1.render(false);
+    _ = r1.render(false);
 
     const b2 = r2.getNextBuffer();
     try b2.drawText("BBB", 0, 0, fg, bg, 0);
-    r2.render(false);
+    _ = r2.render(false);
 
     const out1 = test_r1.lastOutput();
     const out2 = test_r2.lastOutput();
@@ -2294,7 +2294,7 @@ test "threaded stdout destroy: no stale write after shutdown ANSI" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     const nb = cli_renderer.getNextBuffer();
     try nb.drawText("STALE", 0, 0, fg, bg, 0);
-    cli_renderer.render(false);
+    _ = cli_renderer.render(false);
 
     // Toggle threading off and back on — flags must be reset so the new
     // thread waits for a real renderRequested rather than replaying the

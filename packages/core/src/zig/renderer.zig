@@ -160,7 +160,6 @@ pub const CliRenderer = struct {
         frameCallbackTime: std.ArrayListUnmanaged(f64),
     },
     lastRenderTime: i64,
-    lastRenderStatus: RenderStatus = .rendered,
     allocator: Allocator,
     writeOutBuf: [1024]u8 = undefined,
     debugOverlay: struct {
@@ -335,7 +334,6 @@ pub const CliRenderer = struct {
                 .frameCallbackTime = frameCallbackTimes,
             },
             .lastRenderTime = std.time.microTimestamp(),
-            .lastRenderStatus = .rendered,
             .allocator = allocator,
             .currentHitGrid = currentHitGrid,
             .nextHitGrid = nextHitGrid,
@@ -738,18 +736,12 @@ pub const CliRenderer = struct {
 
     fn finishSkippedFrame(self: *CliRenderer) RenderStatus {
         self.clearSkippedFrameState();
-        self.lastRenderStatus = .skipped;
         return .skipped;
     }
 
     fn finishFailedFrame(self: *CliRenderer) RenderStatus {
         self.force_full_repaint = true;
-        self.lastRenderStatus = .failed;
         return .failed;
-    }
-
-    pub fn getLastRenderStatus(self: *CliRenderer) RenderStatus {
-        return self.lastRenderStatus;
     }
 
     fn renderResult(self: *CliRenderer, status: RenderStatus) RenderResult {
@@ -757,12 +749,11 @@ pub const CliRenderer = struct {
     }
 
     // One code path; backend selects writer type at compile time.
-    pub fn render(self: *CliRenderer, force: bool) void {
+    pub fn render(self: *CliRenderer, force: bool) RenderStatus {
         // Backpressure: skipping must NOT update lastRenderTime so the next
         // successful render sees the full accumulated delta (catch-up).
         if (self.backend.prepareFrame() != .ok) {
-            _ = self.finishSkippedFrame();
-            return;
+            return self.finishSkippedFrame();
         }
 
         const now = std.time.microTimestamp();
@@ -786,12 +777,11 @@ pub const CliRenderer = struct {
 
         const status = renderStatusFromWrite(write_status);
         if (status == .failed) {
-            _ = self.finishFailedFrame();
-            return;
+            return self.finishFailedFrame();
         }
 
         self.collectFrameStats(deltaTime);
-        self.lastRenderStatus = status;
+        return status;
     }
 
     fn splitOutputOffset(self: *const CliRenderer, surface_offset: u32) u32 {
@@ -907,7 +897,6 @@ pub const CliRenderer = struct {
         if (status == .failed) {
             result_status = self.finishFailedFrame();
         } else {
-            self.lastRenderStatus = status;
             self.collectFrameStats(deltaTime);
         }
 
@@ -976,7 +965,6 @@ pub const CliRenderer = struct {
                         if (status == .failed) {
                             result_status = self.finishFailedFrame();
                         } else {
-                            self.lastRenderStatus = status;
                             result_status = status;
                             self.collectFrameStats(deltaTime);
                         }
@@ -985,7 +973,6 @@ pub const CliRenderer = struct {
                         self.splitBatchRedrawFooter = false;
                         self.splitBatchDeltaTime = 0;
                     } else {
-                        self.lastRenderStatus = .rendered;
                         result_status = .rendered;
                         self.splitBatchRedrawFooter = redraw_footer;
                     }
@@ -1034,7 +1021,6 @@ pub const CliRenderer = struct {
                     if (status == .failed) {
                         result_status = self.finishFailedFrame();
                     } else {
-                        self.lastRenderStatus = status;
                         result_status = status;
                         self.collectFrameStats(self.splitBatchDeltaTime);
                     }
@@ -1043,7 +1029,6 @@ pub const CliRenderer = struct {
                     self.splitBatchRedrawFooter = false;
                     self.splitBatchDeltaTime = 0;
                 } else {
-                    self.lastRenderStatus = .rendered;
                     result_status = .rendered;
                 }
             },
