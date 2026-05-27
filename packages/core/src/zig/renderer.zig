@@ -752,8 +752,8 @@ pub const CliRenderer = struct {
         return self.lastRenderStatus;
     }
 
-    fn renderResult(self: *CliRenderer) RenderResult {
-        return .{ .renderOffset = self.renderOffset, .status = self.lastRenderStatus };
+    fn renderResult(self: *CliRenderer, status: RenderStatus) RenderResult {
+        return .{ .renderOffset = self.renderOffset, .status = status };
     }
 
     // One code path; backend selects writer type at compile time.
@@ -891,8 +891,8 @@ pub const CliRenderer = struct {
         force: bool,
     ) RenderResult {
         if (self.backend.prepareFrame() != .ok) {
-            _ = self.finishSkippedFrame();
-            return self.renderResult();
+            const status = self.finishSkippedFrame();
+            return self.renderResult(status);
         }
 
         const now = std.time.microTimestamp();
@@ -903,14 +903,15 @@ pub const CliRenderer = struct {
         self.renderDebugOverlay();
 
         const status = self.prepareSplitFooterRepaintFrame(pinned_render_offset, force);
+        var result_status = status;
         if (status == .failed) {
-            _ = self.finishFailedFrame();
+            result_status = self.finishFailedFrame();
         } else {
             self.lastRenderStatus = status;
             self.collectFrameStats(deltaTime);
         }
 
-        return self.renderResult();
+        return self.renderResult(result_status);
     }
 
     pub fn commitSplitFooterSnapshotBatched(
@@ -931,8 +932,8 @@ pub const CliRenderer = struct {
         // This avoids repeated syncSet/syncReset and cursor toggles per chunk.
         if (begin_frame) {
             if (self.backend.prepareFrame() != .ok) {
-                _ = self.finishSkippedFrame();
-                return self.renderResult();
+                const status = self.finishSkippedFrame();
+                return self.renderResult(status);
             }
 
             const now = std.time.microTimestamp();
@@ -943,6 +944,7 @@ pub const CliRenderer = struct {
             self.renderDebugOverlay();
 
             var write_status: output.WriteStatus = .ok;
+            var result_status: RenderStatus = .rendered;
             switch (self.backend) {
                 inline else => |*b| {
                     b.beginFrame();
@@ -972,9 +974,10 @@ pub const CliRenderer = struct {
                         write_status = b.endFrame();
                         const status = renderStatusFromWrite(write_status);
                         if (status == .failed) {
-                            _ = self.finishFailedFrame();
+                            result_status = self.finishFailedFrame();
                         } else {
                             self.lastRenderStatus = status;
+                            result_status = status;
                             self.collectFrameStats(deltaTime);
                         }
 
@@ -983,12 +986,13 @@ pub const CliRenderer = struct {
                         self.splitBatchDeltaTime = 0;
                     } else {
                         self.lastRenderStatus = .rendered;
+                        result_status = .rendered;
                         self.splitBatchRedrawFooter = redraw_footer;
                     }
                 },
             }
 
-            return self.renderResult();
+            return self.renderResult(result_status);
         }
 
         // Defensive fallback: if caller forgot begin_frame, execute through a
@@ -1007,6 +1011,7 @@ pub const CliRenderer = struct {
         }
 
         var write_status: output.WriteStatus = .ok;
+        var result_status: RenderStatus = .rendered;
         switch (self.backend) {
             inline else => |*b| {
                 var w = b.writer();
@@ -1027,9 +1032,10 @@ pub const CliRenderer = struct {
 
                     const status = renderStatusFromWrite(write_status);
                     if (status == .failed) {
-                        _ = self.finishFailedFrame();
+                        result_status = self.finishFailedFrame();
                     } else {
                         self.lastRenderStatus = status;
+                        result_status = status;
                         self.collectFrameStats(self.splitBatchDeltaTime);
                     }
 
@@ -1038,11 +1044,12 @@ pub const CliRenderer = struct {
                     self.splitBatchDeltaTime = 0;
                 } else {
                     self.lastRenderStatus = .rendered;
+                    result_status = .rendered;
                 }
             },
         }
 
-        return self.renderResult();
+        return self.renderResult(result_status);
     }
 
     /// Serialization for one split append payload.
