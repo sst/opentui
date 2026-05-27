@@ -2473,15 +2473,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         break
       }
 
-      this.renderOffset = nativeResult.renderOffset
-      this.recordSplitCommit(commit)
-      hasCommittedOutput = true
-      acceptedCommits++
-
       if (nativeResult.status === NATIVE_RENDER_STATUS_FAILED) {
         nativeBackpressured = true
         break
       }
+
+      this.renderOffset = nativeResult.renderOffset
+      this.recordSplitCommit(commit)
+      hasCommittedOutput = true
+      acceptedCommits++
     }
 
     if (acceptedCommits > 0) {

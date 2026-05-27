@@ -301,6 +301,42 @@ test("split-footer custom stdout retains captured commits when native skips", as
   }
 })
 
+test("split-footer custom stdout retains captured commits when native fails and retries", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
+
+  const renderer = new CliRenderer(stdin, stdout, 80, 24, {
+    screenMode: "split-footer",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  const rendererAny = renderer as any
+  const originalCommit = rendererAny.lib.commitSplitFooterSnapshot.bind(rendererAny.lib)
+  let calls = 0
+  rendererAny.lib.commitSplitFooterSnapshot = () => {
+    calls++
+    return { renderOffset: rendererAny.renderOffset, status: 2 }
+  }
+
+  stdout.write("captured-while-native-failed\n")
+  expect(rendererAny.externalOutputQueue.size).toBeGreaterThan(0)
+
+  try {
+    await rendererAny.loop()
+    expect(calls).toBeGreaterThan(0)
+    expect(rendererAny.externalOutputQueue.size).toBeGreaterThan(0)
+  } finally {
+    rendererAny.lib.commitSplitFooterSnapshot = originalCommit
+  }
+
+  await rendererAny.loop()
+  await (rendererAny._feed?.idle() ?? Promise.resolve())
+
+  expect(rendererAny.externalOutputQueue.size).toBe(0)
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("captured-while-native-failed")
+})
+
 test("capture-to-passthrough flushes queued split-footer commits while feed is backpressured", async () => {
   const stdin = createTestStdin()
   const stdout = createCollectingStdout(80, 24)
