@@ -211,7 +211,8 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   const mockMouse = createMockMouse(renderer)
 
   const renderOnce = async () => {
-    const feed = (renderer as unknown as { _feed?: { idle: () => Promise<void>; isBackpressured: () => boolean } })._feed
+    const feed = (renderer as unknown as { _feed?: { idle: () => Promise<void>; isBackpressured: () => boolean } })
+      ._feed
     if (feed?.isBackpressured()) {
       await feed.idle()
     }
