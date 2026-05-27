@@ -2105,6 +2105,44 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     try std.testing.expectEqual(before, cli_renderer.lastRenderTime);
 }
 
+test "FeedBackend - failed commit discards uncommitted frame bytes" {
+    var opts = native_span_feed.defaultOptions();
+    opts.chunk_size = 64;
+    opts.initial_chunks = 1;
+    opts.span_queue_capacity = 1;
+    opts.auto_commit_on_full = 0;
+
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    defer feed.destroy();
+
+    var backend = renderer.FeedBackend.create(feed);
+
+    try feed.write("queued");
+    try feed.commit();
+    try std.testing.expect(backend.shouldSkipFrame());
+
+    backend.beginFrame();
+    var failed_writer = backend.writer();
+    try failed_writer.writeAll("stale");
+    backend.endFrame();
+
+    var span_out: [4]native_span_feed.SpanInfo = undefined;
+    var count = feed.drainSpans(&span_out);
+    try std.testing.expectEqual(@as(u32, 1), count);
+    feed.markSpanConsumed(span_out[0]);
+
+    backend.beginFrame();
+    var fresh_writer = backend.writer();
+    try fresh_writer.writeAll("fresh");
+    backend.endFrame();
+
+    count = feed.drainSpans(&span_out);
+    try std.testing.expectEqual(@as(u32, 1), count);
+    const fresh_span = span_out[0].slice();
+    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "fresh") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "stale") == null);
+}
+
 test "FeedBackend - supportsThreading is false" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

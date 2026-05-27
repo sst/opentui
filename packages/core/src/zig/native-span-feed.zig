@@ -291,6 +291,13 @@ pub const Stream = struct {
         try self.commitLocked(&notify);
     }
 
+    pub fn discardPending(self: *Stream) void {
+        if (self.reserved_active) return;
+        self.pending_len = 0;
+        self.pending_offset = self.write_offset;
+        self.pending_chunk_index = self.current_chunk_index;
+    }
+
     pub fn getStats(self: *Stream) Stats {
         var out: Stats = undefined;
         out = self.stats;

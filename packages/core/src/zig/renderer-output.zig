@@ -468,13 +468,12 @@ pub const StdoutBackend = struct {
 pub const FeedBackend = struct {
     feed: *NativeSpanFeed.Stream,
 
-    /// Set when a frame's write to the feed fails. Suppresses the tail
-    /// commit in `endFrame`, so the failed frame's *uncommitted* bytes are
-    /// dropped. Note: if `Stream.write` auto-committed intermediate chunks
-    /// mid-frame (auto_commit_on_full=true), those bytes have already
-    /// escaped to the span ring and are not recalled here. Full ANSI
-    /// integrity under write failure requires a future
-    /// `Stream.discardPending()` API.
+    /// Set when a frame's write to the feed fails. Suppresses the tail commit
+    /// in `endFrame`; uncommitted pending bytes are discarded immediately so a
+    /// later successful frame cannot commit stale data from the failed frame.
+    /// Note: if `Stream.write` auto-committed intermediate chunks mid-frame
+    /// (auto_commit_on_full=true), those bytes have already escaped to the span
+    /// ring and cannot be recalled here.
     frameWriteFailed: bool = false,
 
     lastWriteTimeUs: ?f64 = null,
@@ -515,10 +514,8 @@ pub const FeedBackend = struct {
         const self = ctx.backend;
         self.feed.write(data) catch {
             self.frameWriteFailed = true;
-            // Return success so the caller keeps generating output; the tail
-            // commit at frame end is suppressed. Any intermediate chunks
-            // auto-committed mid-write before this error have already
-            // escaped — see frameWriteFailed doc.
+            self.feed.discardPending();
+            return error.BufferFull;
         };
         return data.len;
     }
@@ -528,16 +525,18 @@ pub const FeedBackend = struct {
     }
 
     pub fn beginFrame(self: *FeedBackend) void {
+        self.feed.discardPending();
         self.frameWriteFailed = false;
     }
 
     pub fn endFrame(self: *FeedBackend) void {
         const writeStart = std.time.microTimestamp();
 
-        if (!self.frameWriteFailed) {
+        if (self.frameWriteFailed) {
+            self.feed.discardPending();
+        } else {
             self.feed.commit() catch {
-                // If commit fails, the pending data stays uncommitted on the
-                // feed. The next successful commit will include it.
+                self.feed.discardPending();
             };
         }
 
@@ -546,8 +545,13 @@ pub const FeedBackend = struct {
 
     pub fn writeOut(self: *FeedBackend, data: []const u8) void {
         if (data.len == 0) return;
-        self.feed.write(data) catch return;
-        self.feed.commit() catch {};
+        self.feed.write(data) catch {
+            self.feed.discardPending();
+            return;
+        };
+        self.feed.commit() catch {
+            self.feed.discardPending();
+        };
     }
 
     pub fn writeOutMultiple(self: *FeedBackend, data_slices: []const []const u8) void {
@@ -558,14 +562,14 @@ pub const FeedBackend = struct {
         var wrote_any = false;
         for (data_slices) |slice| {
             self.feed.write(slice) catch {
-                // Flush what we already wrote this batch to avoid orphaning
-                // partial bytes in the feed.
-                if (wrote_any) self.feed.commit() catch {};
+                self.feed.discardPending();
                 return;
             };
             wrote_any = true;
         }
-        if (wrote_any) self.feed.commit() catch {};
+        if (wrote_any) self.feed.commit() catch {
+            self.feed.discardPending();
+        };
     }
 
     pub fn performShutdownExtras(_: *FeedBackend) void {}
