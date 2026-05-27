@@ -2470,7 +2470,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return commits
   }
 
-  private flushPendingSplitCommits(forceFooterRepaint: boolean = false, drainAll: boolean = false): "rendered" | "backpressured" {
+  private flushPendingSplitCommits(
+    forceFooterRepaint: boolean = false,
+    drainAll: boolean = false,
+  ): "rendered" | "backpressured" {
     if (!drainAll && this.isFeedBackpressured()) {
       this.scheduleRenderAfterFeedIdle()
       return "backpressured"
@@ -4396,7 +4399,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         // transitions need a complete footer refresh. Consume it once so steady-state
         // capture path keeps using diff-based repainting.
         const forceSplitRepaint = this.forceFullRepaintRequested
-        const status = this.flushPendingSplitCommits(forceSplitRepaint, this.pendingExternalOutputMode === "passthrough")
+        const status = this.flushPendingSplitCommits(
+          forceSplitRepaint,
+          this.pendingExternalOutputMode === "passthrough",
+        )
         if (status === "backpressured") {
           return "backpressured"
         }
