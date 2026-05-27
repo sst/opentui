@@ -6,6 +6,7 @@ on:
     branches: [main]
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Workaround for bug in Zig 0.15.2 (fixed in next version)
   # https://github.com/ziglang/zig/issues/25805
   ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.zig-global-cache
@@ -22,7 +23,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -30,9 +31,13 @@ jobs:
           bun-version: latest
 
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          # Keep Zig's cache path on the workspace drive, but do not restore/save
+          # stale .zig-cache archives on Windows; Zig 0.15.2 can fail with missing cache files.
+          use-cache: ${{ runner.os != 'Windows' }}
+          cache-key: build-qrcode
 
       - name: Install dependencies
         run: bun install

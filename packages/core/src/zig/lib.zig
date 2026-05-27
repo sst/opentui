@@ -324,20 +324,26 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
 ///   - `feedPtr == null`: writes go through a buffered backend selected by
 ///     `bufferedDestinationKind` (0 = process stdout, 1 = memory)
 ///
-/// `remote` and `feedPtr` are orthogonal from Zig's perspective; the TS side
-/// is responsible for defaulting `remote = !usesProcessStdout` when wiring a
-/// feed. Zig trusts the caller's `remote` value verbatim.
+/// `remoteModeValue` is 0 = auto, 1 = local, 2 = remote. The TS side decides
+/// the appropriate default for process stdout, memory output, and feed output.
 export fn createRenderer(
     width: u32,
     height: u32,
     bufferedDestinationKind: u8,
-    remote: bool,
+    remoteModeValue: u8,
     feedPtr: ?*native_span_feed.Stream,
 ) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
     }
+
+    const remote_mode: terminal.Terminal.RemoteMode = switch (remoteModeValue) {
+        0 => .auto,
+        1 => .local,
+        2 => .remote,
+        else => .local,
+    };
 
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
@@ -354,7 +360,7 @@ export fn createRenderer(
     };
 
     return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, .{
-        .remote = remote,
+        .remote_mode = remote_mode,
         .output = output_target,
     }) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
@@ -590,6 +596,7 @@ pub const ExternalCapabilities = extern struct {
     osc52: bool,
     notifications: bool,
     explicit_cursor_positioning: bool,
+    remote: bool,
     in_tmux: bool,
     term_name_ptr: [*]const u8,
     term_name_len: usize,
@@ -620,6 +627,7 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .osc52 = caps.osc52,
         .notifications = caps.notifications,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
+        .remote = caps.remote,
         .in_tmux = term.in_tmux,
         .term_name_ptr = &term.term_info.name,
         .term_name_len = term.term_info.name_len,

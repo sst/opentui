@@ -156,7 +156,7 @@ function getOpenTUILib(libPath?: string) {
     },
     // Renderer management
     createRenderer: {
-      args: ["u32", "u32", "u8", "bool", "ptr"],
+      args: ["u32", "u32", "u8", "u8", "ptr"],
       returns: "ptr",
     },
     setTerminalEnvVar: {
@@ -2255,13 +2255,13 @@ class FFIRenderLib implements RenderLib {
   }
 
   public createRenderer(width: number, height: number, options: NativeRendererCreateOptions = {}) {
-    const remote = options.remote ?? false
     const bufferedOutputKind = options.bufferedOutput === "memory" ? 1 : 0
+    const remoteMode = options.remote === undefined ? 0 : options.remote ? 2 : 1
     // `feedPtr` is an internal wiring detail: non-null selects the feed backend
     // used for custom Writable output. When null, `bufferedOutput` selects the
     // buffered stdout or memory backend.
     const feedPtr = options.feedPtr ?? null
-    return this.opentui.symbols.createRenderer(width, height, bufferedOutputKind, ffiBool(remote), feedPtr)
+    return this.opentui.symbols.createRenderer(width, height, bufferedOutputKind, remoteMode, feedPtr)
   }
 
   public setTerminalEnvVar(renderer: Pointer, key: string, value: string): boolean {
@@ -4034,6 +4034,7 @@ class FFIRenderLib implements RenderLib {
       osc52: caps.osc52,
       notifications: caps.notifications,
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
+      remote: caps.remote,
       in_tmux: caps.in_tmux,
       terminal: {
         name: caps.term_name ?? "",

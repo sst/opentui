@@ -72,7 +72,7 @@ jobs:
 
       - name: Checkout PR branch
         if: steps.run-mode.outputs.run == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ steps.pr-details.outputs.head_ref }}
           fetch-depth: 0

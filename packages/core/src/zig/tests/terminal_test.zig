@@ -82,7 +82,7 @@ test "notifications - OSC99 query response enables OSC99 protocol" {
 }
 
 test "notifications - OSC99 query response ignores mismatched identifier" {
-    var term = Terminal.init(.{ .remote = true });
+    var term = Terminal.init(.{ .remote_mode = .remote });
 
     term.processCapabilityResponse("\x1b]99;i=other:p=?;p=title,body\x1b\\");
 
@@ -100,7 +100,7 @@ test "notifications - iTerm2 feature reporting enables OSC9 protocol" {
 }
 
 test "notifications - iTerm2 feature reporting without No leaves disabled" {
-    var term = Terminal.init(.{ .remote = true });
+    var term = Terminal.init(.{ .remote_mode = .remote });
 
     term.processCapabilityResponse("\x1b]1337;Capabilities=T2H\x1b\\");
 
@@ -134,6 +134,39 @@ test "notifications - TERM_FEATURES enables OSC9 protocol" {
 
     try testing.expect(term.caps.notifications);
     try testing.expectEqual(Terminal.NotificationProtocol.osc9, term.notification_protocol);
+}
+
+test "remote detection - auto mode detects SSH environment" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("SSH_CONNECTION", "192.0.2.1 54231 192.0.2.2 22");
+
+    const term = Terminal.init(.{ .remote_mode = .auto, .env_map = &env });
+
+    try testing.expect(term.remote);
+    try testing.expect(term.caps.remote);
+}
+
+test "remote detection - auto mode detects mosh environment" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("MOSH_CONNECTION", "192.0.2.1 60001");
+
+    const term = Terminal.init(.{ .remote_mode = .auto, .env_map = &env });
+
+    try testing.expect(term.remote);
+    try testing.expect(term.caps.remote);
+}
+
+test "remote detection - explicit local mode ignores SSH environment" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("SSH_TTY", "/dev/pts/1");
+
+    const term = Terminal.init(.{ .remote_mode = .local, .env_map = &env });
+
+    try testing.expect(!term.remote);
+    try testing.expect(!term.caps.remote);
 }
 
 test "processCapabilityResponse captures startup cursor report before home probes" {
@@ -176,8 +209,10 @@ test "environment variables - should be overridden by xtversion" {
 }
 
 test "remote without forwarded env map ignores local env overrides" {
-    const term = Terminal.init(.{ .remote = true });
+    const term = Terminal.init(.{ .remote_mode = .remote });
 
+    try testing.expect(term.remote);
+    try testing.expect(term.caps.remote);
     try testing.expect(!term.in_tmux);
     try testing.expect(!term.caps.osc52);
     try testing.expect(!term.caps.explicit_cursor_positioning);
@@ -210,8 +245,10 @@ test "remote applies forwarded env overrides and capability responses" {
     try env.put("TERM_PROGRAM", "iTerm.app");
     try env.put("WT_SESSION", "test-session");
 
-    var term = Terminal.init(.{ .remote = true, .env_map = &env });
+    var term = Terminal.init(.{ .remote_mode = .remote, .env_map = &env });
 
+    try testing.expect(term.remote);
+    try testing.expect(term.caps.remote);
     try testing.expect(term.in_tmux);
     try testing.expect(term.caps.osc52);
     try testing.expect(term.caps.explicit_cursor_positioning);
@@ -679,7 +716,7 @@ test "writeClipboard - generates basic OSC52 sequence" {
 }
 
 test "writeNotification - returns false when unsupported" {
-    var term = Terminal.init(.{ .remote = true });
+    var term = Terminal.init(.{ .remote_mode = .remote });
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
 

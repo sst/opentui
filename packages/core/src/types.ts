@@ -81,6 +81,7 @@ export interface TerminalCapabilities {
   osc52: boolean
   notifications: boolean
   explicit_cursor_positioning: boolean
+  remote: boolean
   in_tmux: boolean
   terminal: TerminalInfo
 }

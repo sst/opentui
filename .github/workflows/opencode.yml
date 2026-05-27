@@ -4,6 +4,9 @@ on:
   issue_comment:
     types: [created]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   opencode:
     if: |
@@ -17,7 +20,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run opencode
         uses: sst/opencode/github@latest

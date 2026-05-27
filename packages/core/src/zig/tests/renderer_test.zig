@@ -26,7 +26,6 @@ fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) 
     defer memory.deinit();
 
     var cli_renderer = try CliRenderer.createWithOptions(allocator, width, height, pool, .{
-        .remote = false,
         .output = .{ .buffered = memory.bufferedOutput() },
     });
     cli_renderer.destroy();
@@ -2039,7 +2038,7 @@ test "FeedBackend - renderer writes through feed" {
 
     const feed = try native_span_feed.Stream.create(std.testing.allocator, null);
     var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 80, 24, pool, .{
-        .remote = true,
+        .remote_mode = .remote,
         .output = .{ .feed = feed },
     });
     // LIFO: renderer destroys first (needs the feed alive for shutdown writes).
@@ -2081,7 +2080,7 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     opts.span_queue_capacity = 2;
     const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
     var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 80, 24, pool, .{
-        .remote = true,
+        .remote_mode = .remote,
         .output = .{ .feed = feed },
     });
     // LIFO: renderer destroys first.
@@ -2229,7 +2228,7 @@ test "FeedBackend - supportsThreading is false" {
 
     const feed = try native_span_feed.Stream.create(std.testing.allocator, null);
     var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 80, 24, pool, .{
-        .remote = true,
+        .remote_mode = .remote,
         .output = .{ .feed = feed },
     });
     // LIFO: renderer destroys first.

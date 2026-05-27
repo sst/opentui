@@ -221,7 +221,7 @@ pub const CliRenderer = struct {
     /// Full set of options for `createWithOptions`. `output` determines the
     /// backend variant: buffered stdout, injected buffered output, or feed.
     pub const CreateOptions = struct {
-        remote: bool = false,
+        remote_mode: Terminal.RemoteMode = .local,
         output: OutputTarget = .stdout,
         clearOnShutdown: bool = true,
     };
@@ -237,12 +237,6 @@ pub const CliRenderer = struct {
         pool: *gp.GraphemePool,
         opts: CreateOptions,
     ) !*CliRenderer {
-        // Trust the caller's `remote` value verbatim. The TS side
-        // (`createCliRenderer`) already computes the appropriate default
-        // (`remote = config.remote ?? !usesProcessStdout`); Zig should not
-        // second-guess that decision.
-        const remote = opts.remote;
-
         const self = try allocator.create(CliRenderer);
         errdefer allocator.destroy(self);
 
@@ -301,7 +295,7 @@ pub const CliRenderer = struct {
             .pool = pool,
             .backgroundColor = ansi.rgbColor(0, 0, 0, 0),
             .renderOffset = 0,
-            .terminal = Terminal.init(.{ .remote = remote }),
+            .terminal = Terminal.init(.{ .remote_mode = opts.remote_mode }),
             .clearOnShutdown = opts.clearOnShutdown,
             .backend = backend,
             .lastCursorStyleTag = null,

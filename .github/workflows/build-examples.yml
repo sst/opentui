@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -36,7 +36,7 @@ jobs:
           echo "✅ Base dependencies installed"
 
       - name: Download npm packages artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: npm-packages-${{ inputs.version }}
 
@@ -184,7 +184,7 @@ jobs:
           ls -lah artifacts/*.zip
 
       - name: Upload example executables
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: example-executables-${{ inputs.version }}
           path: |

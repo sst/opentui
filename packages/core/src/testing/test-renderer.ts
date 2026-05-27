@@ -370,7 +370,6 @@ async function setupTestRenderer(config: TestRendererOptions) {
   // applies the same useThread defaults as production construction.
   return new CliRenderer(stdin, stdout, width, height, {
     ...config,
-    remote: config.remote ?? false,
     bufferedOutput: config.bufferedOutput ?? "memory",
   })
 }

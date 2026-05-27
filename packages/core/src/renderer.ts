@@ -111,7 +111,9 @@ export interface CliRendererConfig {
   // Fallback terminal height when `stdout.rows` is not available. Default 24.
   height?: number
 
-  // Tell the native renderer it is driving a remote terminal.
+  // Tell the native renderer it is driving a remote terminal. When omitted,
+  // native startup auto-detects SSH/mosh sessions; custom stdout feed output
+  // defaults to remote because it is not connected to the host TTY directly.
   remote?: boolean
 
   // Use an in-memory native buffered output destination instead of process stdout.
@@ -984,9 +986,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const lib = resolveRenderLib()
     const useMemoryBufferedOutput = config.bufferedOutput === "memory"
+    const useFeedOutput = !this._usesProcessStdout && !useMemoryBufferedOutput
     const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
     const initialGeometry = calculateRenderGeometry(screenMode, width, height, footerHeight)
-    const resolvedRemote = config.remote ?? !this._usesProcessStdout
+    const remoteMode = config.remote ?? (useFeedOutput ? true : undefined)
 
     if (rendererTracker.streamOwners.get(stdin)) {
       throw new Error("Cannot create CliRenderer: stdin is already used by another CliRenderer")
@@ -999,7 +1002,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // Tests use custom Writable instances too; those should exercise the same
     // output transport as production custom stdout.
     let feed: NativeSpanFeed | null = null
-    if (!this._usesProcessStdout && !useMemoryBufferedOutput) {
+    if (useFeedOutput) {
       try {
         feed = NativeSpanFeed.create()
       } catch (error) {
@@ -1009,14 +1012,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     }
 
-    // Native renderer creation. Outside tests, `remote` defaults to true for
-    // non-process stdouts so the Zig Terminal module skips local-TTY
-    // capability-query timing assumptions; callers can still override.
+    // Native renderer creation. Custom writable feed output defaults to remote
+    // so Zig skips local-TTY capability-query timing assumptions; process
+    // stdout and memory output preserve native auto detection.
     //
     let rendererPtr: Pointer | null
     try {
       rendererPtr = lib.createRenderer(initialGeometry.renderWidth, initialGeometry.renderHeight, {
-        remote: resolvedRemote,
+        remote: remoteMode,
         feedPtr: feed?.streamPtr ?? null,
         bufferedOutput: config.bufferedOutput,
       })
@@ -1078,7 +1081,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.clearOnShutdown = config.clearOnShutdown ?? true
     this.lib.setClearOnShutdown(this.rendererPtr, this.clearOnShutdown)
 
-    const forwardEnvKeys = config.forwardEnvKeys ?? (resolvedRemote ? [] : [...DEFAULT_FORWARDED_ENV_KEYS])
+    const forwardEnvKeys = config.forwardEnvKeys ?? (config.remote === false ? [...DEFAULT_FORWARDED_ENV_KEYS] : [])
     for (const key of forwardEnvKeys) {
       const value = process.env[key]
       if (value === undefined) continue
