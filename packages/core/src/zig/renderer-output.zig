@@ -21,6 +21,12 @@ const NativeSpanFeed = @import("native-span-feed.zig");
 
 pub const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2 MiB, double-buffered per BufferedBackend for thread handoff
 
+pub const WriteStatus = enum(u8) {
+    ok = 0,
+    skipped = 1,
+    failed = 2,
+};
+
 pub const BufferedWriteFn = *const fn (ctx: *anyopaque, data: []const u8) void;
 
 pub const BufferedOutput = struct {
@@ -96,9 +102,17 @@ pub const OutputBackend = union(enum) {
         }
     }
 
-    /// Return true if the frame should be skipped (e.g. backpressure).
-    /// Callers preserve catch-up semantics by not updating `lastRenderTime`
-    /// when this returns true.
+    /// Prepare the backend for a new frame. Feed backends can return skipped
+    /// when the durable queue is over its high-water mark or still owns pending
+    /// bytes from an earlier frame.
+    pub fn prepareFrame(self: *OutputBackend) WriteStatus {
+        switch (self.*) {
+            inline else => |*b| return b.prepareFrame(),
+        }
+    }
+
+    /// Non-mutating high-water check. Rendering uses `prepareFrame()` so pending
+    /// bytes from earlier writes can be committed before deciding to skip.
     pub fn shouldSkipFrame(self: *OutputBackend) bool {
         switch (self.*) {
             inline else => |*b| return b.shouldSkipFrame(),
@@ -255,6 +269,10 @@ pub const BufferedBackend = struct {
         return false;
     }
 
+    pub fn prepareFrame(_: *BufferedBackend) WriteStatus {
+        return .ok;
+    }
+
     pub fn supportsThreading(self: *BufferedBackend) bool {
         return self.output.thread_safe;
     }
@@ -342,7 +360,7 @@ pub const BufferedBackend = struct {
         }
     }
 
-    pub fn endFrame(self: *BufferedBackend) void {
+    pub fn endFrame(self: *BufferedBackend) WriteStatus {
         const writeStart = std.time.microTimestamp();
         const committed_buffer = self.instanceActiveBuffer;
 
@@ -379,6 +397,7 @@ pub const BufferedBackend = struct {
 
         self.lastCommittedBuffer = committed_buffer;
         self.hasCommittedFrame = true;
+        return .ok;
     }
 
     fn renderThreadFn(self: *BufferedBackend) void {
@@ -477,19 +496,17 @@ pub const BufferedBackend = struct {
 ///
 /// Feed writes are in-memory ring-buffer ops with no I/O, so threading adds
 /// synchronization cost without latency-hiding benefit. Backpressure is
-/// exposed via `shouldSkipFrame`: when the span queue is saturated, frames
-/// are skipped at the render loop with catch-up semantics preserved.
+/// exposed through `prepareFrame`: when the span queue is at its high-water
+/// mark, frames are skipped before diffing while already queued bytes remain
+/// durable and drain in order.
 ///
 /// Zig tests that want to exercise the feed path should drain the feed directly.
 pub const FeedBackend = struct {
     feed: *NativeSpanFeed.Stream,
 
-    /// Set when a frame's write to the feed fails. Suppresses the tail commit
-    /// in `endFrame`; uncommitted pending bytes are discarded immediately so a
-    /// later successful frame cannot commit stale data from the failed frame.
-    /// Note: if `Stream.write` auto-committed intermediate chunks mid-frame
-    /// (auto_commit_on_full=true), those bytes have already escaped to the span
-    /// ring and cannot be recalled here.
+    /// Set when a frame's write to the feed fails. The backend never discards
+    /// feed bytes; failures are reported so the renderer can force a later full
+    /// repaint after the durable queue drains or accepts pending bytes.
     frameWriteFailed: bool = false,
 
     lastWriteTimeUs: ?f64 = null,
@@ -506,6 +523,20 @@ pub const FeedBackend = struct {
         const stats = self.feed.getStats();
         const cap = self.feed.options.span_queue_capacity;
         return cap > 0 and stats.pending_spans >= cap;
+    }
+
+    pub fn prepareFrame(self: *FeedBackend) WriteStatus {
+        self.frameWriteFailed = false;
+
+        if (self.feed.hasPendingBytes()) {
+            self.feed.commit() catch return .skipped;
+            // Pending bytes belonged to an earlier frame/control write. Queue
+            // them first and let the caller retry the new frame after drain.
+            return .skipped;
+        }
+
+        if (self.shouldSkipFrame()) return .skipped;
+        return .ok;
     }
 
     pub fn supportsThreading(_: *FeedBackend) bool {
@@ -530,7 +561,6 @@ pub const FeedBackend = struct {
         const self = ctx.backend;
         self.feed.write(data) catch {
             self.frameWriteFailed = true;
-            self.feed.discardPending();
             return error.BufferFull;
         };
         return data.len;
@@ -541,33 +571,32 @@ pub const FeedBackend = struct {
     }
 
     pub fn beginFrame(self: *FeedBackend) void {
-        self.feed.discardPending();
         self.frameWriteFailed = false;
     }
 
-    pub fn endFrame(self: *FeedBackend) void {
+    pub fn endFrame(self: *FeedBackend) WriteStatus {
         const writeStart = std.time.microTimestamp();
+        var status: WriteStatus = .ok;
 
         if (self.frameWriteFailed) {
-            self.feed.discardPending();
+            if (self.feed.hasPendingBytes()) {
+                self.feed.commit() catch {};
+            }
+            status = .failed;
         } else {
             self.feed.commit() catch {
-                self.feed.discardPending();
+                status = .failed;
             };
         }
 
         self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
+        return status;
     }
 
     pub fn writeOut(self: *FeedBackend, data: []const u8) void {
         if (data.len == 0) return;
-        self.feed.write(data) catch {
-            self.feed.discardPending();
-            return;
-        };
-        self.feed.commit() catch {
-            self.feed.discardPending();
-        };
+        self.feed.write(data) catch return;
+        self.feed.commit() catch {};
     }
 
     pub fn writeOutMultiple(self: *FeedBackend, data_slices: []const []const u8) void {
@@ -577,15 +606,10 @@ pub const FeedBackend = struct {
 
         var wrote_any = false;
         for (data_slices) |slice| {
-            self.feed.write(slice) catch {
-                self.feed.discardPending();
-                return;
-            };
+            self.feed.write(slice) catch return;
             wrote_any = true;
         }
-        if (wrote_any) self.feed.commit() catch {
-            self.feed.discardPending();
-        };
+        if (wrote_any) self.feed.commit() catch {};
     }
 
     /// Write a debug dump placeholder. FeedBackend has no flat previous-frame

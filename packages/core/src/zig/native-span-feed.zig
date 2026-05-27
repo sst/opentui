@@ -53,14 +53,43 @@ const SpanRing = struct {
         return self.tail -% self.head;
     }
 
+    fn grow(self: *SpanRing, stream: *Stream) StreamError!void {
+        if (stream.options.growth_policy == @intFromEnum(GrowthPolicy.block)) {
+            return StreamError.NoSpace;
+        }
+
+        const old_capacity = self.capacity;
+        const old_count = self.count();
+        const new_capacity = if (old_capacity == 0) 1 else old_capacity * 2;
+        const new_buffer = stream.allocator.alloc(SpanInfo, new_capacity) catch return StreamError.OutOfMemory;
+
+        var i: u32 = 0;
+        while (i < old_count) : (i += 1) {
+            const old_index = (self.head +% i) % old_capacity;
+            new_buffer[i] = self.buffer[old_index];
+        }
+
+        if (old_capacity > 0) {
+            stream.allocator.free(self.buffer);
+        }
+        self.buffer = new_buffer;
+        self.capacity = new_capacity;
+        self.head = 0;
+        self.tail = old_count;
+    }
+
     pub fn push(self: *SpanRing, stream: *Stream, span: SpanInfo, notify: *bool) StreamError!void {
-        const capacity = self.capacity;
-        const head = self.head;
+        var capacity = self.capacity;
+        var head = self.head;
         var tail = self.tail;
-        const queued = tail -% head;
+        var queued = tail -% head;
 
         if (queued >= capacity) {
-            return StreamError.NoSpace;
+            try self.grow(stream);
+            capacity = self.capacity;
+            head = self.head;
+            tail = self.tail;
+            queued = tail -% head;
         }
 
         const index = tail % capacity;
@@ -291,17 +320,14 @@ pub const Stream = struct {
         try self.commitLocked(&notify);
     }
 
-    pub fn discardPending(self: *Stream) void {
-        if (self.reserved_active) return;
-        self.pending_len = 0;
-        self.pending_offset = self.write_offset;
-        self.pending_chunk_index = self.current_chunk_index;
-    }
-
     pub fn getStats(self: *Stream) Stats {
         var out: Stats = undefined;
         out = self.stats;
         return out;
+    }
+
+    pub fn hasPendingBytes(self: *Stream) bool {
+        return self.pending_len > 0;
     }
 
     /// Apply only runtime-safe options; creation-time fields are ignored.

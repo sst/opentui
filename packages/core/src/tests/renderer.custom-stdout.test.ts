@@ -49,6 +49,20 @@ function createNullReadable(): NodeJS.ReadStream {
   return new Readable({ read() {} }) as NodeJS.ReadStream
 }
 
+function forceNativeSplitSkip(renderer: CliRenderer): () => void {
+  const rendererAny = renderer as any
+  const originalCommit = rendererAny.lib.commitSplitFooterSnapshot.bind(rendererAny.lib)
+  const originalStatus = rendererAny.lib.getLastRenderStatus.bind(rendererAny.lib)
+
+  rendererAny.lib.commitSplitFooterSnapshot = () => renderer.renderOffset
+  rendererAny.lib.getLastRenderStatus = () => 1
+
+  return () => {
+    rendererAny.lib.commitSplitFooterSnapshot = originalCommit
+    rendererAny.lib.getLastRenderStatus = originalStatus
+  }
+}
+
 let destroyFns: Array<() => void> = []
 
 afterEach(() => {
@@ -237,7 +251,7 @@ test("slow Writable marks feed as backpressured until write callback settles", a
   expect(feed.isBackpressured()).toBe(false)
 })
 
-test("split-footer custom stdout keeps captured commits queued while feed is backpressured", async () => {
+test("split-footer custom stdout can flush captured commits while feed writes are in flight", async () => {
   const stdin = createNullReadable()
   const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
   stdout.delayMs = 100
@@ -261,22 +275,35 @@ test("split-footer custom stdout keeps captured commits queued while feed is bac
   stdout.write("captured\n")
   await (renderer as any).loop()
 
-  expect((renderer as any).externalOutputQueue.size).toBeGreaterThan(0)
-
-  let idleResolved = false
-  const idlePromise = renderer.idle().then(() => {
-    idleResolved = true
-  })
-
-  await Promise.resolve()
-  expect(idleResolved).toBe(false)
+  expect((renderer as any).externalOutputQueue.size).toBe(0)
 
   stdout.delayMs = 0
   await feed.idle()
-  await idlePromise
-  await feed.idle()
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("captured")
+})
 
-  expect((renderer as any).externalOutputQueue.size).toBe(0)
+test("split-footer custom stdout retains captured commits when native skips", async () => {
+  const stdin = createNullReadable()
+  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+
+  const renderer = new CliRenderer(stdin, stdout, 80, 24, {
+    screenMode: "split-footer",
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  const restoreNative = forceNativeSplitSkip(renderer)
+
+  stdout.write("captured-while-native-skipped\n")
+  const rendererAny = renderer as any
+  expect(rendererAny.externalOutputQueue.size).toBeGreaterThan(0)
+
+  try {
+    await rendererAny.loop()
+    expect(rendererAny.externalOutputQueue.size).toBeGreaterThan(0)
+  } finally {
+    restoreNative()
+  }
 })
 
 test("capture-to-passthrough flushes queued split-footer commits while feed is backpressured", async () => {
@@ -333,9 +360,14 @@ test("destroy resolves idle waiters when a feed-idle render was scheduled", asyn
   await new Promise<void>((resolve) => setImmediate(resolve))
   expect(feed.isBackpressured()).toBe(true)
 
+  const restoreNative = forceNativeSplitSkip(renderer)
   stdout.write("captured-before-idle-destroy\n")
-  await (renderer as any).loop()
-  expect((renderer as any).feedIdleRenderScheduled).toBe(true)
+  try {
+    await (renderer as any).loop()
+    expect((renderer as any).feedIdleRenderScheduled).toBe(true)
+  } finally {
+    restoreNative()
+  }
 
   let idleResolved = false
   const idlePromise = renderer.idle().then(() => {
@@ -375,9 +407,14 @@ test("suspend resolves idle waiters when a feed-idle render was scheduled", asyn
   await new Promise<void>((resolve) => setImmediate(resolve))
   expect(feed.isBackpressured()).toBe(true)
 
+  const restoreNative = forceNativeSplitSkip(renderer)
   stdout.write("captured-before-suspend\n")
-  await (renderer as any).loop()
-  expect((renderer as any).feedIdleRenderScheduled).toBe(true)
+  try {
+    await (renderer as any).loop()
+    expect((renderer as any).feedIdleRenderScheduled).toBe(true)
+  } finally {
+    restoreNative()
+  }
 
   let idleResolved = false
   const idlePromise = renderer.idle().then(() => {

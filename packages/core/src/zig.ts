@@ -217,7 +217,11 @@ function getOpenTUILib(libPath?: string) {
     },
     render: {
       args: ["ptr", "bool"],
-      returns: "void",
+      returns: "u8",
+    },
+    getLastRenderStatus: {
+      args: ["ptr"],
+      returns: "u8",
     },
     repaintSplitFooter: {
       args: ["ptr", "u32", "bool"],
@@ -1614,7 +1618,8 @@ export interface RenderLib extends AudioEngineLib {
   updateStats: (renderer: Pointer, time: number, fps: number, frameCallbackTime: number) => void
   updateMemoryStats: (renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
   getRenderStats: (renderer: Pointer) => NativeRenderStats
-  render: (renderer: Pointer, force: boolean) => void
+  render: (renderer: Pointer, force: boolean) => number
+  getLastRenderStatus: (renderer: Pointer) => number
   repaintSplitFooter: (renderer: Pointer, pinnedRenderOffset: number, force: boolean) => number
   commitSplitFooterSnapshot: (
     renderer: Pointer,
@@ -2748,8 +2753,12 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setCursorStyleOptions(renderer, ptr(buffer))
   }
 
-  public render(renderer: Pointer, force: boolean) {
-    this.opentui.symbols.render(renderer, ffiBool(force))
+  public render(renderer: Pointer, force: boolean): number {
+    return this.opentui.symbols.render(renderer, ffiBool(force))
+  }
+
+  public getLastRenderStatus(renderer: Pointer): number {
+    return this.opentui.symbols.getLastRenderStatus(renderer)
   }
 
   public repaintSplitFooter(renderer: Pointer, pinnedRenderOffset: number, force: boolean): number {

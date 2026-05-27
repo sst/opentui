@@ -21,6 +21,12 @@ pub const StdoutOutput = output.StdoutOutput;
 pub const FeedBackend = output.FeedBackend;
 pub const OUTPUT_BUFFER_SIZE = output.OUTPUT_BUFFER_SIZE;
 
+pub const RenderStatus = enum(u8) {
+    rendered = 0,
+    skipped = 1,
+    failed = 2,
+};
+
 const CLEAR_CHAR = '\u{0a00}';
 const MAX_STAT_SAMPLES = 30;
 const STAT_SAMPLE_CAPACITY = 30;
@@ -149,6 +155,7 @@ pub const CliRenderer = struct {
         frameCallbackTime: std.ArrayListUnmanaged(f64),
     },
     lastRenderTime: i64,
+    lastRenderStatus: RenderStatus = .rendered,
     allocator: Allocator,
     writeOutBuf: [1024]u8 = undefined,
     debugOverlay: struct {
@@ -323,6 +330,7 @@ pub const CliRenderer = struct {
                 .frameCallbackTime = frameCallbackTimes,
             },
             .lastRenderTime = std.time.microTimestamp(),
+            .lastRenderStatus = .rendered,
             .allocator = allocator,
             .currentHitGrid = currentHitGrid,
             .nextHitGrid = nextHitGrid,
@@ -710,11 +718,43 @@ pub const CliRenderer = struct {
         self.renderOffset = offset;
     }
 
+    fn renderStatusFromWrite(status: output.WriteStatus) RenderStatus {
+        return switch (status) {
+            .ok => .rendered,
+            .skipped => .skipped,
+            .failed => .failed,
+        };
+    }
+
+    fn clearSkippedFrameState(self: *CliRenderer) void {
+        self.nextRenderBuffer.clear(self.backgroundColor, null);
+        @memset(self.nextHitGrid, 0);
+    }
+
+    fn finishSkippedFrame(self: *CliRenderer) RenderStatus {
+        self.clearSkippedFrameState();
+        self.lastRenderStatus = .skipped;
+        return .skipped;
+    }
+
+    fn finishFailedFrame(self: *CliRenderer) RenderStatus {
+        self.force_full_repaint = true;
+        self.lastRenderStatus = .failed;
+        return .failed;
+    }
+
+    pub fn getLastRenderStatus(self: *CliRenderer) RenderStatus {
+        return self.lastRenderStatus;
+    }
+
     // One code path; backend selects writer type at compile time.
     pub fn render(self: *CliRenderer, force: bool) void {
         // Backpressure: skipping must NOT update lastRenderTime so the next
         // successful render sees the full accumulated delta (catch-up).
-        if (self.backend.shouldSkipFrame()) return;
+        if (self.backend.prepareFrame() != .ok) {
+            _ = self.finishSkippedFrame();
+            return;
+        }
 
         const now = std.time.microTimestamp();
         const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
@@ -725,16 +765,24 @@ pub const CliRenderer = struct {
 
         // `inline else` monomorphizes the writer type per variant — one
         // dispatch site, zero vtable cost.
+        var write_status: output.WriteStatus = .ok;
         switch (self.backend) {
             inline else => |*b| {
                 b.beginFrame();
                 var w = b.writer();
                 self.prepareRenderFrameWithWriter(&w, force, false);
-                b.endFrame();
+                write_status = b.endFrame();
             },
         }
 
+        const status = renderStatusFromWrite(write_status);
+        if (status == .failed) {
+            _ = self.finishFailedFrame();
+            return;
+        }
+
         self.collectFrameStats(deltaTime);
+        self.lastRenderStatus = status;
     }
 
     fn splitOutputOffset(self: *const CliRenderer, surface_offset: u32) u32 {
@@ -833,7 +881,10 @@ pub const CliRenderer = struct {
         pinned_render_offset: u32,
         force: bool,
     ) u32 {
-        if (self.backend.shouldSkipFrame()) return self.renderOffset;
+        if (self.backend.prepareFrame() != .ok) {
+            _ = self.finishSkippedFrame();
+            return self.renderOffset;
+        }
 
         const now = std.time.microTimestamp();
         const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
@@ -842,8 +893,13 @@ pub const CliRenderer = struct {
         self.lastRenderTime = now;
         self.renderDebugOverlay();
 
-        self.prepareSplitFooterRepaintFrame(pinned_render_offset, force);
-        self.collectFrameStats(deltaTime);
+        const status = self.prepareSplitFooterRepaintFrame(pinned_render_offset, force);
+        if (status == .failed) {
+            _ = self.finishFailedFrame();
+        } else {
+            self.lastRenderStatus = status;
+            self.collectFrameStats(deltaTime);
+        }
 
         return self.renderOffset;
     }
@@ -865,6 +921,11 @@ pub const CliRenderer = struct {
         // - final call renders footer diff/cursor and closes frame
         // This avoids repeated syncSet/syncReset and cursor toggles per chunk.
         if (begin_frame) {
+            if (self.backend.prepareFrame() != .ok) {
+                _ = self.finishSkippedFrame();
+                return self.renderOffset;
+            }
+
             const now = std.time.microTimestamp();
             const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
             const deltaTime = deltaTimeMs / 1000.0;
@@ -872,6 +933,7 @@ pub const CliRenderer = struct {
             self.lastRenderTime = now;
             self.renderDebugOverlay();
 
+            var write_status: output.WriteStatus = .ok;
             switch (self.backend) {
                 inline else => |*b| {
                     b.beginFrame();
@@ -898,13 +960,20 @@ pub const CliRenderer = struct {
 
                     if (finalize_frame) {
                         self.prepareRenderFrameWithWriter(&w, redraw_footer, true);
-                        b.endFrame();
-                        self.collectFrameStats(deltaTime);
+                        write_status = b.endFrame();
+                        const status = renderStatusFromWrite(write_status);
+                        if (status == .failed) {
+                            _ = self.finishFailedFrame();
+                        } else {
+                            self.lastRenderStatus = status;
+                            self.collectFrameStats(deltaTime);
+                        }
 
                         self.splitBatchActive = false;
                         self.splitBatchRedrawFooter = false;
                         self.splitBatchDeltaTime = 0;
                     } else {
+                        self.lastRenderStatus = .rendered;
                         self.splitBatchRedrawFooter = redraw_footer;
                     }
                 },
@@ -928,6 +997,7 @@ pub const CliRenderer = struct {
             );
         }
 
+        var write_status: output.WriteStatus = .ok;
         switch (self.backend) {
             inline else => |*b| {
                 var w = b.writer();
@@ -944,13 +1014,21 @@ pub const CliRenderer = struct {
 
                 if (finalize_frame) {
                     self.prepareRenderFrameWithWriter(&w, self.splitBatchRedrawFooter, true);
-                    b.endFrame();
+                    write_status = b.endFrame();
 
-                    self.collectFrameStats(self.splitBatchDeltaTime);
+                    const status = renderStatusFromWrite(write_status);
+                    if (status == .failed) {
+                        _ = self.finishFailedFrame();
+                    } else {
+                        self.lastRenderStatus = status;
+                        self.collectFrameStats(self.splitBatchDeltaTime);
+                    }
 
                     self.splitBatchActive = false;
                     self.splitBatchRedrawFooter = false;
                     self.splitBatchDeltaTime = 0;
+                } else {
+                    self.lastRenderStatus = .rendered;
                 }
             },
         }
@@ -1200,7 +1278,7 @@ pub const CliRenderer = struct {
         self: *CliRenderer,
         pinned_render_offset: u32,
         force: bool,
-    ) void {
+    ) RenderStatus {
         const transition = self.pendingSplitFooterTransition;
         const hasPendingViewportTarget = transition.mode == .viewport_scroll and
             transition.target_top_line > 0 and
@@ -1216,14 +1294,16 @@ pub const CliRenderer = struct {
         // Do not pre-start sync frame here. prepareRenderFrameWithWriter now lazily starts
         // frame output only when something actually changes; this prevents no-op
         // repaint ticks from emitting hide/show cursor and sync envelopes.
+        var write_status: output.WriteStatus = .ok;
         switch (self.backend) {
             inline else => |*b| {
                 b.beginFrame();
                 var w = b.writer();
                 self.prepareRenderFrameWithWriter(&w, redraw_footer, false);
-                b.endFrame();
+                write_status = b.endFrame();
             },
         }
+        return renderStatusFromWrite(write_status);
     }
 
     pub fn getNextBuffer(self: *CliRenderer) *OptimizedBuffer {

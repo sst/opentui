@@ -2104,15 +2104,21 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     // Catch-up semantics: a skipped render must NOT advance lastRenderTime,
     // so the next non-skipped frame sees the full accumulated delta.
     const before = cli_renderer.lastRenderTime;
+    try next_buffer.drawText("C", 0, 0, fg, bg, 0);
     cli_renderer.render(false);
     try std.testing.expectEqual(before, cli_renderer.lastRenderTime);
+    try std.testing.expectEqual(renderer.RenderStatus.skipped, cli_renderer.getLastRenderStatus());
+
+    const current_cell = cli_renderer.getCurrentBuffer().get(0, 0).?;
+    const next_cell = cli_renderer.getNextBuffer().get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, 'B'), current_cell.char);
+    try std.testing.expect(next_cell.char != @as(u32, 'C'));
 }
 
-test "FeedBackend - failed commit discards uncommitted frame bytes" {
+test "FeedBackend - prepareFrame commits existing pending bytes before new frames" {
     var opts = native_span_feed.defaultOptions();
     opts.chunk_size = 64;
     opts.initial_chunks = 1;
-    opts.span_queue_capacity = 1;
     opts.auto_commit_on_full = 0;
 
     const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
@@ -2120,33 +2126,20 @@ test "FeedBackend - failed commit discards uncommitted frame bytes" {
 
     var backend = renderer.FeedBackend.create(feed);
 
-    try feed.write("queued");
-    try feed.commit();
-    try std.testing.expect(backend.shouldSkipFrame());
-
-    backend.beginFrame();
-    var failed_writer = backend.writer();
-    try failed_writer.writeAll("stale");
-    backend.endFrame();
+    try feed.write("pending");
+    try std.testing.expect(feed.hasPendingBytes());
+    try std.testing.expectEqual(.skipped, backend.prepareFrame());
 
     var span_out: [4]native_span_feed.SpanInfo = undefined;
-    var count = feed.drainSpans(&span_out);
+    const count = feed.drainSpans(&span_out);
     try std.testing.expectEqual(@as(u32, 1), count);
+    try std.testing.expectEqualStrings("pending", span_out[0].slice());
     feed.markSpanConsumed(span_out[0]);
 
-    backend.beginFrame();
-    var fresh_writer = backend.writer();
-    try fresh_writer.writeAll("fresh");
-    backend.endFrame();
-
-    count = feed.drainSpans(&span_out);
-    try std.testing.expectEqual(@as(u32, 1), count);
-    const fresh_span = span_out[0].slice();
-    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "fresh") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "stale") == null);
+    try std.testing.expectEqual(.ok, backend.prepareFrame());
 }
 
-test "FeedBackend - failed frame write discards earlier uncommitted frame bytes" {
+test "FeedBackend - failed frame write preserves pending bytes" {
     var opts = native_span_feed.defaultOptions();
     opts.chunk_size = 32;
     opts.initial_chunks = 1;
@@ -2161,29 +2154,22 @@ test "FeedBackend - failed frame write discards earlier uncommitted frame bytes"
     var failed_writer = backend.writer();
     try failed_writer.writeAll("stale");
     try std.testing.expectError(error.BufferFull, failed_writer.writeAll("this-write-is-too-large-for-the-current-chunk"));
-    backend.endFrame();
+    try std.testing.expectEqual(.failed, backend.endFrame());
 
     var span_out: [4]native_span_feed.SpanInfo = undefined;
-    try std.testing.expectEqual(@as(u32, 0), feed.drainSpans(&span_out));
-
-    backend.beginFrame();
-    var fresh_writer = backend.writer();
-    try fresh_writer.writeAll("fresh");
-    backend.endFrame();
-
     const count = feed.drainSpans(&span_out);
     try std.testing.expectEqual(@as(u32, 1), count);
-    const fresh_span = span_out[0].slice();
-    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "fresh") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "stale") == null);
+    const stale_span = span_out[0].slice();
+    try std.testing.expect(std.mem.indexOf(u8, stale_span, "stale") != null);
 }
 
-test "FeedBackend - failed writeOut commit discards pending bytes" {
+test "FeedBackend - writeOut keeps pending bytes when commit is blocked" {
     var opts = native_span_feed.defaultOptions();
     opts.chunk_size = 64;
-    opts.initial_chunks = 1;
+    opts.initial_chunks = 2;
     opts.span_queue_capacity = 1;
     opts.auto_commit_on_full = 0;
+    opts.growth_policy = @intFromEnum(native_span_feed.GrowthPolicy.block);
 
     const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
     defer feed.destroy();
@@ -2194,23 +2180,22 @@ test "FeedBackend - failed writeOut commit discards pending bytes" {
     try feed.commit();
     try std.testing.expect(backend.shouldSkipFrame());
 
-    backend.writeOut("stale");
+    backend.writeOut("shutdown");
+    try std.testing.expect(feed.hasPendingBytes());
 
     var span_out: [4]native_span_feed.SpanInfo = undefined;
     var count = feed.drainSpans(&span_out);
     try std.testing.expectEqual(@as(u32, 1), count);
     feed.markSpanConsumed(span_out[0]);
 
-    backend.writeOut("fresh");
+    try std.testing.expectEqual(.skipped, backend.prepareFrame());
 
     count = feed.drainSpans(&span_out);
     try std.testing.expectEqual(@as(u32, 1), count);
-    const fresh_span = span_out[0].slice();
-    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "fresh") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "stale") == null);
+    try std.testing.expectEqualStrings("shutdown", span_out[0].slice());
 }
 
-test "FeedBackend - failed writeOutMultiple discards partial batch bytes" {
+test "FeedBackend - writeOutMultiple keeps partial pending batch bytes" {
     var opts = native_span_feed.defaultOptions();
     opts.chunk_size = 32;
     opts.initial_chunks = 1;
@@ -2226,17 +2211,14 @@ test "FeedBackend - failed writeOutMultiple discards partial batch bytes" {
     };
 
     backend.writeOutMultiple(&failed_batch);
+    try std.testing.expect(feed.hasPendingBytes());
+
+    try std.testing.expectEqual(.skipped, backend.prepareFrame());
 
     var span_out: [4]native_span_feed.SpanInfo = undefined;
-    try std.testing.expectEqual(@as(u32, 0), feed.drainSpans(&span_out));
-
-    backend.writeOut("fresh");
-
     const count = feed.drainSpans(&span_out);
     try std.testing.expectEqual(@as(u32, 1), count);
-    const fresh_span = span_out[0].slice();
-    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "fresh") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "stale") == null);
+    try std.testing.expectEqualStrings("stale", span_out[0].slice());
 }
 
 test "FeedBackend - supportsThreading is false" {

@@ -378,8 +378,9 @@ class ExternalOutputQueue {
     this.commits.push(commit)
   }
 
-  peek(): readonly ExternalOutputCommit[] {
-    return this.commits
+  peek(limit: number = Number.POSITIVE_INFINITY): readonly ExternalOutputCommit[] {
+    const clampedLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : this.commits.length
+    return this.commits.slice(0, clampedLimit)
   }
 
   claim(limit: number = Number.POSITIVE_INFINITY): ExternalOutputCommit[] {
@@ -507,6 +508,9 @@ const DEFAULT_FORWARDED_ENV_KEYS = [
   "WSL_DISTRO_NAME",
   "WSL_INTEROP",
 ] as const
+
+const NATIVE_RENDER_STATUS_SKIPPED = 1
+const NATIVE_RENDER_STATUS_FAILED = 2
 
 // Kitty keyboard protocol flags
 // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
@@ -1397,10 +1401,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     return this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
-  }
-
-  private isFeedBackpressured(): boolean {
-    return this._feed?.isBackpressured() ?? false
   }
 
   private scheduleRenderAfterFeedIdle(): void {
@@ -2453,17 +2453,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     forceFooterRepaint: boolean = false,
     drainAll: boolean = false,
   ): "rendered" | "backpressured" {
-    if (!drainAll && this.isFeedBackpressured()) {
-      this.scheduleRenderAfterFeedIdle()
-      return "backpressured"
-    }
-
     // Drain only a bounded prefix so one JS render pass maps to one native frame.
     // Remaining commits are intentionally left queued and rendered on subsequent
     // ticks to avoid giant multi-thousand-cell frames that can flicker.
-    const commits = this.externalOutputQueue.claim(drainAll ? Number.POSITIVE_INFINITY : this.maxSplitCommitsPerFrame)
+    const commits = this.externalOutputQueue.peek(drainAll ? Number.POSITIVE_INFINITY : this.maxSplitCommitsPerFrame)
     let hasCommittedOutput = false
     const lastCommitIndex = commits.length - 1
+    let acceptedCommits = 0
+    let nativeBackpressured = false
 
     for (const [index, commit] of commits.entries()) {
       // Force repaint only on the last commit in a frame. Repainting after every
@@ -2474,33 +2471,57 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const beginFrame = index === 0
       const finalizeFrame = index === lastCommitIndex
 
-      try {
-        // Keep split append policy in native code so every producer (captured stdout
-        // and writeToScrollback) shares the same cursor/scrollback invariants.
-        this.renderOffset = this.lib.commitSplitFooterSnapshot(
-          this.rendererPtr,
-          commit.snapshot,
-          commit.rowColumns,
-          commit.startOnNewLine,
-          commit.trailingNewline,
-          this.getSplitPinnedRenderOffset(),
-          forceCommit,
-          beginFrame,
-          finalizeFrame,
-        )
-        this.recordSplitCommit(commit)
-        hasCommittedOutput = true
-      } finally {
-        commit.snapshot.destroy()
+      // Keep split append policy in native code so every producer (captured stdout
+      // and writeToScrollback) shares the same cursor/scrollback invariants.
+      const renderOffset = this.lib.commitSplitFooterSnapshot(
+        this.rendererPtr,
+        commit.snapshot,
+        commit.rowColumns,
+        commit.startOnNewLine,
+        commit.trailingNewline,
+        this.getSplitPinnedRenderOffset(),
+        forceCommit,
+        beginFrame,
+        finalizeFrame,
+      )
+      const nativeStatus = this.lib.getLastRenderStatus(this.rendererPtr)
+      if (nativeStatus === NATIVE_RENDER_STATUS_SKIPPED) {
+        nativeBackpressured = true
+        break
+      }
+
+      this.renderOffset = renderOffset
+      this.recordSplitCommit(commit)
+      hasCommittedOutput = true
+      acceptedCommits++
+
+      if (nativeStatus === NATIVE_RENDER_STATUS_FAILED) {
+        nativeBackpressured = true
+        break
       }
     }
 
+    if (acceptedCommits > 0) {
+      this.externalOutputQueue.drop(acceptedCommits)
+    }
+
+    if (nativeBackpressured) {
+      this.scheduleRenderAfterFeedIdle()
+      return "backpressured"
+    }
+
     if (!hasCommittedOutput) {
-      this.renderOffset = this.lib.repaintSplitFooter(
+      const renderOffset = this.lib.repaintSplitFooter(
         this.rendererPtr,
         this.getSplitPinnedRenderOffset(),
         forceFooterRepaint,
       )
+      const nativeStatus = this.lib.getLastRenderStatus(this.rendererPtr)
+      if (nativeStatus === NATIVE_RENDER_STATUS_SKIPPED || nativeStatus === NATIVE_RENDER_STATUS_FAILED) {
+        this.scheduleRenderAfterFeedIdle()
+        return "backpressured"
+      }
+      this.renderOffset = renderOffset
     }
 
     this.pendingSplitFooterTransition = null
@@ -4405,15 +4426,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return "rendered"
       }
 
-      if (this.isFeedBackpressured()) {
+      const force = this.forceFullRepaintRequested
+      const nativeStatus = this.lib.render(this.rendererPtr, force)
+      if (nativeStatus === NATIVE_RENDER_STATUS_SKIPPED || nativeStatus === NATIVE_RENDER_STATUS_FAILED) {
         this.scheduleRenderAfterFeedIdle()
         return "backpressured"
       }
 
-      const force = this.forceFullRepaintRequested
       this.forceFullRepaintRequested = false
       this.pendingSplitFooterTransition = null
-      this.lib.render(this.rendererPtr, force)
       // this.dumpOutputBuffer(Date.now())
       return "rendered"
     } finally {

@@ -468,8 +468,13 @@ export fn getBufferHeight(bufferPtr: *buffer.OptimizedBuffer) u32 {
     return bufferPtr.height;
 }
 
-export fn render(rendererPtr: *renderer.CliRenderer, force: bool) void {
+export fn render(rendererPtr: *renderer.CliRenderer, force: bool) u8 {
     rendererPtr.render(force);
+    return @intFromEnum(rendererPtr.getLastRenderStatus());
+}
+
+export fn getLastRenderStatus(rendererPtr: *renderer.CliRenderer) u8 {
+    return @intFromEnum(rendererPtr.getLastRenderStatus());
 }
 
 export fn repaintSplitFooter(
