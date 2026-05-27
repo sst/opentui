@@ -2473,7 +2473,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       // Keep split append policy in native code so every producer (captured stdout
       // and writeToScrollback) shares the same cursor/scrollback invariants.
-      const renderOffset = this.lib.commitSplitFooterSnapshot(
+      const nativeResult = this.lib.commitSplitFooterSnapshot(
         this.rendererPtr,
         commit.snapshot,
         commit.rowColumns,
@@ -2484,18 +2484,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         beginFrame,
         finalizeFrame,
       )
-      const nativeStatus = this.lib.getLastRenderStatus(this.rendererPtr)
-      if (nativeStatus === NATIVE_RENDER_STATUS_SKIPPED) {
+      if (nativeResult.status === NATIVE_RENDER_STATUS_SKIPPED) {
         nativeBackpressured = true
         break
       }
 
-      this.renderOffset = renderOffset
+      this.renderOffset = nativeResult.renderOffset
       this.recordSplitCommit(commit)
       hasCommittedOutput = true
       acceptedCommits++
 
-      if (nativeStatus === NATIVE_RENDER_STATUS_FAILED) {
+      if (nativeResult.status === NATIVE_RENDER_STATUS_FAILED) {
         nativeBackpressured = true
         break
       }
@@ -2511,17 +2510,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (!hasCommittedOutput) {
-      const renderOffset = this.lib.repaintSplitFooter(
+      const nativeResult = this.lib.repaintSplitFooter(
         this.rendererPtr,
         this.getSplitPinnedRenderOffset(),
         forceFooterRepaint,
       )
-      const nativeStatus = this.lib.getLastRenderStatus(this.rendererPtr)
-      if (nativeStatus === NATIVE_RENDER_STATUS_SKIPPED || nativeStatus === NATIVE_RENDER_STATUS_FAILED) {
+      if (nativeResult.status === NATIVE_RENDER_STATUS_SKIPPED || nativeResult.status === NATIVE_RENDER_STATUS_FAILED) {
         this.scheduleRenderAfterFeedIdle()
         return "backpressured"
       }
-      this.renderOffset = renderOffset
+      this.renderOffset = nativeResult.renderOffset
     }
 
     this.pendingSplitFooterTransition = null

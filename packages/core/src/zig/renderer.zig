@@ -27,6 +27,11 @@ pub const RenderStatus = enum(u8) {
     failed = 2,
 };
 
+pub const RenderResult = struct {
+    renderOffset: u32,
+    status: RenderStatus,
+};
+
 const CLEAR_CHAR = '\u{0a00}';
 const MAX_STAT_SAMPLES = 30;
 const STAT_SAMPLE_CAPACITY = 30;
@@ -747,6 +752,10 @@ pub const CliRenderer = struct {
         return self.lastRenderStatus;
     }
 
+    fn renderResult(self: *CliRenderer) RenderResult {
+        return .{ .renderOffset = self.renderOffset, .status = self.lastRenderStatus };
+    }
+
     // One code path; backend selects writer type at compile time.
     pub fn render(self: *CliRenderer, force: bool) void {
         // Backpressure: skipping must NOT update lastRenderTime so the next
@@ -880,10 +889,10 @@ pub const CliRenderer = struct {
         self: *CliRenderer,
         pinned_render_offset: u32,
         force: bool,
-    ) u32 {
+    ) RenderResult {
         if (self.backend.prepareFrame() != .ok) {
             _ = self.finishSkippedFrame();
-            return self.renderOffset;
+            return self.renderResult();
         }
 
         const now = std.time.microTimestamp();
@@ -901,7 +910,7 @@ pub const CliRenderer = struct {
             self.collectFrameStats(deltaTime);
         }
 
-        return self.renderOffset;
+        return self.renderResult();
     }
 
     pub fn commitSplitFooterSnapshotBatched(
@@ -914,7 +923,7 @@ pub const CliRenderer = struct {
         force: bool,
         begin_frame: bool,
         finalize_frame: bool,
-    ) u32 {
+    ) RenderResult {
         // Batched commit protocol:
         // - first call starts frame and appends payload
         // - middle calls append payload only
@@ -923,7 +932,7 @@ pub const CliRenderer = struct {
         if (begin_frame) {
             if (self.backend.prepareFrame() != .ok) {
                 _ = self.finishSkippedFrame();
-                return self.renderOffset;
+                return self.renderResult();
             }
 
             const now = std.time.microTimestamp();
@@ -979,7 +988,7 @@ pub const CliRenderer = struct {
                 },
             }
 
-            return self.renderOffset;
+            return self.renderResult();
         }
 
         // Defensive fallback: if caller forgot begin_frame, execute through a
@@ -1033,7 +1042,7 @@ pub const CliRenderer = struct {
             },
         }
 
-        return self.renderOffset;
+        return self.renderResult();
     }
 
     /// Serialization for one split append payload.

@@ -473,16 +473,16 @@ export fn render(rendererPtr: *renderer.CliRenderer, force: bool) u8 {
     return @intFromEnum(rendererPtr.getLastRenderStatus());
 }
 
-export fn getLastRenderStatus(rendererPtr: *renderer.CliRenderer) u8 {
-    return @intFromEnum(rendererPtr.getLastRenderStatus());
+fn packRenderResult(result: renderer.RenderResult) u64 {
+    return @as(u64, result.renderOffset) | (@as(u64, @intFromEnum(result.status)) << 32);
 }
 
 export fn repaintSplitFooter(
     rendererPtr: *renderer.CliRenderer,
     pinnedRenderOffset: u32,
     force: bool,
-) u32 {
-    return rendererPtr.repaintSplitFooter(pinnedRenderOffset, force);
+) u64 {
+    return packRenderResult(rendererPtr.repaintSplitFooter(pinnedRenderOffset, force));
 }
 
 export fn commitSplitFooterSnapshot(
@@ -495,14 +495,14 @@ export fn commitSplitFooterSnapshot(
     force: bool,
     beginFrame: bool,
     finalizeFrame: bool,
-) u32 {
+) u64 {
     // JS passes rowColumns/startOnNewLine/trailingNewline per commit from
     // writeToScrollback or captured stdout chunking. This entrypoint is the ABI
     // boundary where that metadata enters the native split append algorithm.
     // Route all commits through the batched renderer path so sync/cursor framing
     // happens exactly once per JS flush cycle.
     if (beginFrame and finalizeFrame) {
-        return rendererPtr.commitSplitFooterSnapshotBatched(
+        return packRenderResult(rendererPtr.commitSplitFooterSnapshotBatched(
             snapshotBufferPtr,
             rowColumns,
             startOnNewLine,
@@ -511,10 +511,10 @@ export fn commitSplitFooterSnapshot(
             force,
             true,
             true,
-        );
+        ));
     }
 
-    return rendererPtr.commitSplitFooterSnapshotBatched(
+    return packRenderResult(rendererPtr.commitSplitFooterSnapshotBatched(
         snapshotBufferPtr,
         rowColumns,
         startOnNewLine,
@@ -523,7 +523,7 @@ export fn commitSplitFooterSnapshot(
         force,
         beginFrame,
         finalizeFrame,
-    );
+    ));
 }
 
 export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: [*]const u8, idLen: usize) ?*buffer.OptimizedBuffer {

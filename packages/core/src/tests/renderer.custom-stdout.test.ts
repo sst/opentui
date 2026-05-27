@@ -52,14 +52,11 @@ function createNullReadable(): NodeJS.ReadStream {
 function forceNativeSplitSkip(renderer: CliRenderer): () => void {
   const rendererAny = renderer as any
   const originalCommit = rendererAny.lib.commitSplitFooterSnapshot.bind(rendererAny.lib)
-  const originalStatus = rendererAny.lib.getLastRenderStatus.bind(rendererAny.lib)
 
-  rendererAny.lib.commitSplitFooterSnapshot = () => renderer.renderOffset
-  rendererAny.lib.getLastRenderStatus = () => 1
+  rendererAny.lib.commitSplitFooterSnapshot = () => ({ renderOffset: renderer.renderOffset, status: 1 })
 
   return () => {
     rendererAny.lib.commitSplitFooterSnapshot = originalCommit
-    rendererAny.lib.getLastRenderStatus = originalStatus
   }
 }
 

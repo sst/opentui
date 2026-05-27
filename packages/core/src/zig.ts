@@ -219,20 +219,16 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "bool"],
       returns: "u8",
     },
-    getLastRenderStatus: {
-      args: ["ptr"],
-      returns: "u8",
-    },
     repaintSplitFooter: {
       args: ["ptr", "u32", "bool"],
-      returns: "u32",
+      returns: "u64",
     },
     // Single FFI entrypoint for split commit append. beginFrame/finalizeFrame let
     // native code decide whether this call is a standalone commit or part of a
     // larger batched frame envelope.
     commitSplitFooterSnapshot: {
       args: ["ptr", "ptr", "u32", "bool", "bool", "u32", "bool", "bool", "bool"],
-      returns: "u32",
+      returns: "u64",
     },
     getNextBuffer: {
       args: ["ptr"],
@@ -1555,6 +1551,11 @@ export interface CursorState {
 
 export type NativeSpanFeedEventHandler = (eventId: number, arg0: Pointer, arg1: number | bigint) => void
 
+export interface NativeRenderOperationResult {
+  renderOffset: number
+  status: number
+}
+
 export interface AudioEngineLib {
   createAudioEngine: (options?: AudioCreateOptions | null) => Pointer | null
   destroyAudioEngine: (engine: Pointer) => void
@@ -1619,8 +1620,7 @@ export interface RenderLib extends AudioEngineLib {
   updateMemoryStats: (renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
   getRenderStats: (renderer: Pointer) => NativeRenderStats
   render: (renderer: Pointer, force: boolean) => number
-  getLastRenderStatus: (renderer: Pointer) => number
-  repaintSplitFooter: (renderer: Pointer, pinnedRenderOffset: number, force: boolean) => number
+  repaintSplitFooter: (renderer: Pointer, pinnedRenderOffset: number, force: boolean) => NativeRenderOperationResult
   commitSplitFooterSnapshot: (
     renderer: Pointer,
     snapshot: OptimizedBuffer,
@@ -1633,7 +1633,7 @@ export interface RenderLib extends AudioEngineLib {
     // multiple stdout snapshots. Defaults preserve old one-call behavior.
     beginFrame?: boolean,
     finalizeFrame?: boolean,
-  ) => number
+  ) => NativeRenderOperationResult
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
   rendererSetPaletteState: (
@@ -2757,12 +2757,22 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.render(renderer, ffiBool(force))
   }
 
-  public getLastRenderStatus(renderer: Pointer): number {
-    return this.opentui.symbols.getLastRenderStatus(renderer)
+  private unpackRenderOperationResult(value: number | bigint): NativeRenderOperationResult {
+    const packed = typeof value === "bigint" ? value : BigInt(value)
+    return {
+      renderOffset: Number(packed & 0xffffffffn),
+      status: Number((packed >> 32n) & 0xffn),
+    }
   }
 
-  public repaintSplitFooter(renderer: Pointer, pinnedRenderOffset: number, force: boolean): number {
-    return this.opentui.symbols.repaintSplitFooter(renderer, pinnedRenderOffset, ffiBool(force))
+  public repaintSplitFooter(
+    renderer: Pointer,
+    pinnedRenderOffset: number,
+    force: boolean,
+  ): NativeRenderOperationResult {
+    return this.unpackRenderOperationResult(
+      this.opentui.symbols.repaintSplitFooter(renderer, pinnedRenderOffset, ffiBool(force)),
+    )
   }
 
   public commitSplitFooterSnapshot(
@@ -2775,17 +2785,19 @@ class FFIRenderLib implements RenderLib {
     force: boolean,
     beginFrame: boolean = true,
     finalizeFrame: boolean = true,
-  ): number {
-    return this.opentui.symbols.commitSplitFooterSnapshot(
-      renderer,
-      snapshot.ptr,
-      rowColumns,
-      ffiBool(startOnNewLine),
-      ffiBool(trailingNewline),
-      pinnedRenderOffset,
-      ffiBool(force),
-      ffiBool(beginFrame),
-      ffiBool(finalizeFrame),
+  ): NativeRenderOperationResult {
+    return this.unpackRenderOperationResult(
+      this.opentui.symbols.commitSplitFooterSnapshot(
+        renderer,
+        snapshot.ptr,
+        rowColumns,
+        ffiBool(startOnNewLine),
+        ffiBool(trailingNewline),
+        pinnedRenderOffset,
+        ffiBool(force),
+        ffiBool(beginFrame),
+        ffiBool(finalizeFrame),
+      ),
     )
   }
 
