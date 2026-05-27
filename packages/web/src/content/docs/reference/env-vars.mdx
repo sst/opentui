@@ -32,6 +32,8 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 | `SHOW_CONSOLE`                 | `boolean` | `false` | Open the built-in console overlay at startup                  |
 | `OTUI_DUMP_CAPTURES`           | `boolean` | `false` | Dump captured stdout and console caches from the exit handler |
 | `OTUI_NO_NATIVE_RENDER`        | `boolean` | `false` | Skip the Zig/native frame renderer                            |
+| `OTUI_USE_ALTERNATE_SCREEN`    | `boolean` | unset   | Force alternate-screen or main-screen mode when set           |
+| `OTUI_OVERRIDE_STDOUT`         | `boolean` | unset   | Force stdout capture/passthrough routing when set             |
 | `OTUI_DEBUG`                   | `boolean` | `false` | Capture all raw stdin input for debugging                     |
 
 ## Notes
@@ -39,5 +41,7 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 - `OPENTUI_FORCE_EXPLICIT_WIDTH=false` skips OSC 66 queries on older terminals.
 - `OTUI_PALETTE_IDLE_TIMEOUT_MS` bounds palette detection when a terminal reports OSC support but does not answer follow-up color queries.
 - Disable global `console.*` capture with `OTUI_USE_CONSOLE=false`. `consoleMode` only changes the overlay surface.
-- `OTUI_NO_NATIVE_RENDER` still runs the render loop. In `"split-footer"` mode, the current stdout flush path can still emit ANSI cursor movement and clear sequences.
+- `OTUI_USE_ALTERNATE_SCREEN=false` forces `"main-screen"`; `true` forces `"alternate-screen"`. When set, it overrides `screenMode`.
+- `OTUI_OVERRIDE_STDOUT=true` captures only in `"split-footer"`; `false` forces passthrough. When set, it overrides `externalOutputMode`.
+- `OTUI_NO_NATIVE_RENDER` still runs the render loop. In `"split-footer"` mode, the current output flush path can still emit ANSI cursor movement and clear sequences.
 - `OTUI_DUMP_CAPTURES` runs from the renderer exit handler. A direct `renderer.destroy()` call does not trigger it by itself.

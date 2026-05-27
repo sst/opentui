@@ -18,6 +18,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 
 - Getting started: `/docs/getting-started`
 - Core: `/docs/core-concepts/renderer`
+- Testing: `/docs/core-concepts/testing`
 - Audio: `/docs/core-concepts/audio`
 - Keymap: `/docs/keymap/overview`
 - React: `/docs/bindings/react`
@@ -38,6 +39,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 | `keymap`, `keybindings`, `shortcuts`, `commands`, `leader` | `docs/keymap/overview.mdx`        |
 | `layout`, `flexbox`, `yoga`, `positioning`                 | `docs/core-concepts/layout.mdx`   |
 | `keyboard`, `input`, `keybindings`, `paste`, `focus`       | `docs/core-concepts/keyboard.mdx` |
+| `testing`, `test-renderer`, `snapshots`, `frames`          | `docs/core-concepts/testing.mdx`  |
 | `react`, `jsx`, `hooks`, `animation`, `testing`            | `docs/bindings/react.mdx`         |
 | `solid`, `signals`, `jsx`, `hooks`, `animation`, `testing` | `docs/bindings/solid.mdx`         |
 | `plugins`, `plugin`, `slots`, `registry`, `extensions`     | `docs/plugins/slots.mdx`          |
