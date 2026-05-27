@@ -10,8 +10,8 @@
 // renderer.resize().
 //
 // Run:
-//   bun run packages/core/src/examples/xterm-web-demo/server.ts
-//   PORT=8080 bun run packages/core/src/examples/xterm-web-demo/server.ts
+//   bun run packages/examples/src/xterm-web-demo/server.ts
+//   PORT=8080 bun run packages/examples/src/xterm-web-demo/server.ts
 // Then open http://localhost:3000/ or the configured PORT.
 //
 // Controls: Up/k or Down/j move, Space serves/pauses/resumes, r resets, q or
@@ -34,7 +34,7 @@ import {
   fg,
   type KeyEvent,
   type TextChunk,
-} from "../../index.js"
+} from "@opentui/core"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const INDEX_HTML = readFileSync(join(__dirname, "index.html"), "utf8")
