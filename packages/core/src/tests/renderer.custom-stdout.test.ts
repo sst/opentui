@@ -1,22 +1,14 @@
 import { test, expect, afterEach } from "bun:test"
-import { Readable, Writable } from "stream"
+import { Writable } from "stream"
 import { createCliRenderer, CliRenderer, CliRenderEvents } from "../renderer.js"
+import { createTestStdin, TestWriteStream } from "../testing/test-streams.js"
 
 // Collecting Writable used as a mock stdout. Because it is !== process.stdout,
 // createCliRenderer allocates a NativeSpanFeed and pipes bytes through it.
-class CollectingWriteStream extends Writable {
-  public readonly isTTY = true
-  public readonly columns: number
-  public readonly rows: number
+class CollectingWriteStream extends TestWriteStream {
   public readonly writes: Buffer[] = []
   /** When > 0, delay the write callback by this many ms to simulate a slow consumer. */
   public delayMs = 0
-
-  constructor(columns: number = 80, rows: number = 24) {
-    super()
-    this.columns = columns
-    this.rows = rows
-  }
 
   override _write(chunk: any, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
     // Defensive copy: `Buffer.from(Uint8Array)` can alias the source's
@@ -32,10 +24,6 @@ class CollectingWriteStream extends Writable {
     }
   }
 
-  getColorDepth(): number {
-    return 24
-  }
-
   getWrittenBytes(): Buffer {
     return Buffer.concat(this.writes)
   }
@@ -45,15 +33,25 @@ class CollectingWriteStream extends Writable {
   }
 }
 
-function createNullReadable(): NodeJS.ReadStream {
-  return new Readable({ read() {} }) as NodeJS.ReadStream
+type CollectingStdout = CollectingWriteStream & NodeJS.WriteStream
+
+function createCollectingStdout(columns = 80, rows = 24): CollectingStdout {
+  return new CollectingWriteStream(columns, rows) as CollectingStdout
+}
+
+function createPlainStdout(): NodeJS.WriteStream {
+  return new Writable({
+    write(_c, _e, cb) {
+      cb()
+    },
+  }) as NodeJS.WriteStream
 }
 
 function forceNativeSplitSkip(renderer: CliRenderer): () => void {
   const rendererAny = renderer as any
   const originalCommit = rendererAny.lib.commitSplitFooterSnapshot.bind(rendererAny.lib)
 
-  rendererAny.lib.commitSplitFooterSnapshot = () => ({ renderOffset: renderer.renderOffset, status: 1 })
+  rendererAny.lib.commitSplitFooterSnapshot = () => ({ renderOffset: rendererAny.renderOffset, status: 1 })
 
   return () => {
     rendererAny.lib.commitSplitFooterSnapshot = originalCommit
@@ -76,8 +74,8 @@ afterEach(() => {
 // ---- Byte-routing behavior ----
 
 test("non-process stdout: rendered bytes flow to the custom Writable", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
 
   const renderer = await createCliRenderer({
     stdin,
@@ -95,8 +93,8 @@ test("non-process stdout: rendered bytes flow to the custom Writable", async () 
 })
 
 test("split-footer custom stdout: native feed bytes bypass stdout capture", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
 
   // Construct directly so the test isolates the feed/write bridge without
   // setupTerminal() adding unrelated startup ANSI.
@@ -120,8 +118,8 @@ test("split-footer custom stdout: native feed bytes bypass stdout capture", asyn
 })
 
 test("custom stdout resetTerminalBgColor routes through configured stdout", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
     consoleMode: "disabled",
@@ -162,16 +160,16 @@ test("custom stdout defaults to remote env behavior", async () => {
 
   try {
     const defaultRemoteRenderer = await createCliRenderer({
-      stdin: createNullReadable(),
-      stdout: new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream,
+      stdin: createTestStdin(),
+      stdout: createCollectingStdout(80, 24),
     })
     destroyFns.push(() => defaultRemoteRenderer.destroy())
 
     expect(defaultRemoteRenderer.widthMethod).toBe("unicode")
 
     const localRenderer = await createCliRenderer({
-      stdin: createNullReadable(),
-      stdout: new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream,
+      stdin: createTestStdin(),
+      stdout: createCollectingStdout(80, 24),
       remote: false,
     })
     destroyFns.push(() => localRenderer.destroy())
@@ -189,8 +187,8 @@ test("custom stdout defaults to remote env behavior", async () => {
 // ---- Shutdown bytes reach the remote Writable (F1 regression test) ----
 
 test("destroy emits shutdown ANSI sequence through the custom Writable", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
 
   const renderer = await createCliRenderer({
     stdin,
@@ -221,8 +219,8 @@ test("destroy emits shutdown ANSI sequence through the custom Writable", async (
 // ---- Backpressure ----
 
 test("slow Writable marks feed as backpressured until write callback settles", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
   stdout.delayMs = 50
 
   const renderer = await createCliRenderer({
@@ -249,8 +247,8 @@ test("slow Writable marks feed as backpressured until write callback settles", a
 })
 
 test("split-footer custom stdout can flush captured commits while feed writes are in flight", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
   stdout.delayMs = 100
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
@@ -280,8 +278,8 @@ test("split-footer custom stdout can flush captured commits while feed writes ar
 })
 
 test("split-footer custom stdout retains captured commits when native skips", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
     screenMode: "split-footer",
@@ -304,8 +302,8 @@ test("split-footer custom stdout retains captured commits when native skips", as
 })
 
 test("capture-to-passthrough flushes queued split-footer commits while feed is backpressured", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
   stdout.delayMs = 30
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
@@ -337,8 +335,8 @@ test("capture-to-passthrough flushes queued split-footer commits while feed is b
 })
 
 test("destroy resolves idle waiters when a feed-idle render was scheduled", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
   stdout.delayMs = 30
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
@@ -384,8 +382,8 @@ test("destroy resolves idle waiters when a feed-idle render was scheduled", asyn
 })
 
 test("suspend resolves idle waiters when a feed-idle render was scheduled", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
   stdout.delayMs = 30
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
@@ -430,8 +428,8 @@ test("suspend resolves idle waiters when a feed-idle render was scheduled", asyn
 // ---- Dimension fallback ----
 
 test("dimensions: stdout.columns wins over config.width", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(120, 30) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(120, 30)
 
   const renderer = await createCliRenderer({
     stdin,
@@ -447,12 +445,8 @@ test("dimensions: stdout.columns wins over config.width", async () => {
 })
 
 test("dimensions: config.width used when stdout lacks columns", async () => {
-  const stdin = createNullReadable()
-  const stdout = new Writable({
-    write(_c, _e, cb) {
-      cb()
-    },
-  }) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createPlainStdout()
 
   const renderer = await createCliRenderer({
     stdin,
@@ -468,8 +462,8 @@ test("dimensions: config.width used when stdout lacks columns", async () => {
 })
 
 test("dimensions: config.width used when stdout reports zero columns", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(0, 0) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(0, 0)
 
   const renderer = await createCliRenderer({
     stdin,
@@ -485,12 +479,8 @@ test("dimensions: config.width used when stdout reports zero columns", async () 
 })
 
 test("dimensions: defaults 80x24 when no stdout columns and no config", async () => {
-  const stdin = createNullReadable()
-  const stdout = new Writable({
-    write(_c, _e, cb) {
-      cb()
-    },
-  }) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createPlainStdout()
 
   const renderer = await createCliRenderer({
     stdin,
@@ -504,8 +494,8 @@ test("dimensions: defaults 80x24 when no stdout columns and no config", async ()
 })
 
 test("dimensions: defaults 80x24 when stdout reports zero columns and no config", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(0, 0) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(0, 0)
 
   const renderer = await createCliRenderer({
     stdin,
@@ -521,8 +511,8 @@ test("dimensions: defaults 80x24 when stdout reports zero columns and no config"
 // ---- Duck-typed stream capabilities ----
 
 test("stdin without setRawMode: start/suspend/resume/destroy all succeed", async () => {
-  const stdin = createNullReadable() // Readable has no setRawMode
-  const stdout = new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin() // Readable has no setRawMode
+  const stdout = createCollectingStdout(80, 24)
 
   const renderer = await createCliRenderer({
     stdin,
@@ -538,8 +528,8 @@ test("stdin without setRawMode: start/suspend/resume/destroy all succeed", async
 // ---- Public resize API ----
 
 test("resize(w, h) updates dimensions and fires RESIZE event", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
 
   const renderer = await createCliRenderer({
     stdin,
@@ -567,8 +557,8 @@ test("resize(w, h) updates dimensions and fires RESIZE event", async () => {
 })
 
 test("resize() after destroy is a no-op", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
 
   const renderer = await createCliRenderer({
     stdin,
@@ -583,8 +573,8 @@ test("resize() after destroy is a no-op", async () => {
 // ---- Full feed teardown path ----
 
 test("full feed teardown after successful setup does not throw", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
 
   const renderer = await createCliRenderer({
     stdin,
@@ -597,8 +587,8 @@ test("full feed teardown after successful setup does not throw", async () => {
 // ---- Destroy resilience ----
 
 test("constructor cleans up listeners when input setup fails", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
   const calls: boolean[] = []
   const processEvents = ["warning", "uncaughtException", "unhandledRejection", "beforeExit"] as const
   const listenerCounts = new Map(processEvents.map((event) => [event, process.listenerCount(event)]))
@@ -622,13 +612,13 @@ test("constructor cleans up listeners when input setup fails", async () => {
   expect(calls).toEqual([true, false])
   expect(stdin.listenerCount("data")).toBe(0)
   for (const event of processEvents) {
-    expect(process.listenerCount(event)).toBe(listenerCounts.get(event))
+    expect(process.listenerCount(event)).toBe(listenerCounts.get(event) ?? 0)
   }
 })
 
 test("destroy tolerates drainAll throwing", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
 
   const renderer = await createCliRenderer({
     stdin,
@@ -656,8 +646,8 @@ test("destroy tolerates drainAll throwing", async () => {
 // ---- onError handler wire-up ----
 
 test("feed.onError handler registration and detach work", async () => {
-  const stdin = createNullReadable()
-  const stdout = new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
 
   const renderer = await createCliRenderer({
     stdin,

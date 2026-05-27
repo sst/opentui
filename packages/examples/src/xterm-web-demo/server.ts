@@ -42,7 +42,7 @@ const INDEX_HTML = readFileSync(join(__dirname, "index.html"), "utf8")
 interface Session {
   renderer: CliRenderer | null
   stdin: Readable | null
-  stdout: Writable | null
+  stdout: NodeJS.WriteStream | null
   card: BoxRenderable | null
   boardBox: BoxRenderable | null
   scoreText: TextRenderable | null
@@ -62,6 +62,12 @@ interface SessionTheme {
   cardColor: string
   scoreColor: string
   accentColor: string
+}
+
+interface ResizeControlMessage {
+  type: "resize"
+  cols: number
+  rows: number
 }
 
 type RoundState = "serve" | "live" | "paused"
@@ -205,10 +211,18 @@ function readInitialTerminalSize(url: URL) {
   )
 }
 
-function setStreamSize(stdout: Writable | null, cols: number, rows: number) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isResizeControlMessage(value: unknown): value is ResizeControlMessage {
+  return isRecord(value) && value.type === "resize" && typeof value.cols === "number" && typeof value.rows === "number"
+}
+
+function setStreamSize(stdout: NodeJS.WriteStream | null, cols: number, rows: number) {
   if (!stdout) return
-  ;(stdout as unknown as { columns: number }).columns = cols
-  ;(stdout as unknown as { rows: number }).rows = rows
+  stdout.columns = cols
+  stdout.rows = rows
 }
 
 function clampPaddle(value: number) {
@@ -684,7 +698,11 @@ function closeSession(ws: ServerWebSocket<Session>, code = 1000, reason = "quit"
  * Readable whose data events are driven by the WebSocket; the stdout is
  * a Writable that forwards each chunk to the WebSocket as a binary frame.
  */
-function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number, initialRows: number) {
+function createSessionStreams(
+  ws: ServerWebSocket<Session>,
+  initialCols: number,
+  initialRows: number,
+): { stdin: NodeJS.ReadStream; stdout: NodeJS.WriteStream; rawStdin: Readable } {
   // Renderer attaches a `data` listener to stdin and expects bytes.
   // A no-op `read()` keeps the stream in flowing mode without auto-end.
   const stdin = new Readable({ read() {} })
@@ -713,13 +731,13 @@ function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number,
       }
       callback()
     },
-  })
-  ;(stdout as unknown as { columns: number }).columns = initialCols
-  ;(stdout as unknown as { rows: number }).rows = initialRows
+  }) as NodeJS.WriteStream
+  stdout.columns = initialCols
+  stdout.rows = initialRows
 
   return {
-    stdin: stdin as unknown as NodeJS.ReadStream,
-    stdout: stdout as unknown as NodeJS.WriteStream,
+    stdin: stdin as NodeJS.ReadStream,
+    stdout,
     rawStdin: stdin,
   }
 }
@@ -907,7 +925,7 @@ const server = Bun.serve<Session>({
           theme,
           closed: false,
           pendingWrite: null,
-        } satisfies Session,
+        },
       })
       return ok ? undefined : new Response("WebSocket upgrade failed", { status: 400 })
     }
@@ -946,8 +964,8 @@ const server = Bun.serve<Session>({
       // JSON control frames (currently just `resize`).
       if (typeof message === "string") {
         try {
-          const parsed = JSON.parse(message) as { type?: string; cols?: number; rows?: number }
-          if (parsed.type === "resize" && typeof parsed.cols === "number" && typeof parsed.rows === "number") {
+          const parsed: unknown = JSON.parse(message)
+          if (isResizeControlMessage(parsed)) {
             handleResize(ws, parsed.cols, parsed.rows)
           }
         } catch {

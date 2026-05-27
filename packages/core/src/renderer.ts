@@ -17,7 +17,7 @@ import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
 import type { Pointer } from "./platform/ffi.js"
 import { sleep } from "./platform/runtime.js"
 import { OptimizedBuffer } from "./buffer.js"
-import { resolveRenderLib, type NativeRenderStats, type RenderLib } from "./zig.js"
+import { resolveRenderLib, type NativeBufferedOutput, type NativeRenderStats, type RenderLib } from "./zig.js"
 import { NativeSpanFeed } from "./NativeSpanFeed.js"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console.js"
 import { type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse.js"
@@ -116,7 +116,7 @@ export interface CliRendererConfig {
 
   // Use an in-memory native buffered output destination instead of process stdout.
   // Intended for test helpers that need native rendering without terminal I/O.
-  bufferedOutput?: "stdout" | "memory"
+  bufferedOutput?: NativeBufferedOutput
 
   // Call renderer.destroy() when Ctrl+C is pressed. Defaults to true.
   exitOnCtrlC?: boolean
@@ -1013,29 +1013,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // non-process stdouts so the Zig Terminal module skips local-TTY
     // capability-query timing assumptions; callers can still override.
     //
-    // `feedPtr` is an internal wiring detail — the concrete `FFIRenderLib`
-    // accepts it but the public `RenderLib` interface does not. The local
-    // type cast below keeps the method call bound to `lib` (preserving
-    // `this`) while accessing the implementation's wider signature.
-    type InternalRenderLib = RenderLib & {
-      createRenderer: (
-        width: number,
-        height: number,
-        options: { remote?: boolean; feedPtr?: Pointer | null; bufferedOutput?: "stdout" | "memory" },
-      ) => Pointer | null
-    }
-
     let rendererPtr: Pointer | null
     try {
-      rendererPtr = (lib as InternalRenderLib).createRenderer(
-        initialGeometry.renderWidth,
-        initialGeometry.renderHeight,
-        {
-          remote: resolvedRemote,
-          feedPtr: feed?.streamPtr ?? null,
-          bufferedOutput: config.bufferedOutput,
-        },
-      )
+      rendererPtr = lib.createRenderer(initialGeometry.renderWidth, initialGeometry.renderHeight, {
+        remote: resolvedRemote,
+        feedPtr: feed?.streamPtr ?? null,
+        bufferedOutput: config.bufferedOutput,
+      })
     } catch (error) {
       feed?.close()
       throw error

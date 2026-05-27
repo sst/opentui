@@ -5,6 +5,7 @@ import {
   type CliRendererExternalOutputEvent,
   type CliRendererFrameEvent,
 } from "../renderer.js"
+import type { NativeSpanFeed } from "../NativeSpanFeed.js"
 import type { NativeRenderStats } from "../zig.js"
 import { createMockKeys } from "./mock-keys.js"
 import { createMockMouse } from "./mock-mouse.js"
@@ -17,9 +18,13 @@ export interface TestRendererOptions extends CliRendererConfig {
   kittyKeyboard?: boolean
   otherModifiersMode?: boolean
 }
-export interface TestRenderer extends CliRenderer {}
+export type TestRenderer = CliRenderer
 export type MockInput = ReturnType<typeof createMockKeys>
 export type MockMouse = ReturnType<typeof createMockMouse>
+
+type RendererFeedAccess = {
+  _feed?: NativeSpanFeed | null
+}
 
 export interface TestFlushOptions {
   maxPasses?: number
@@ -211,8 +216,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   const mockMouse = createMockMouse(renderer)
 
   const renderOnce = async () => {
-    const feed = (renderer as unknown as { _feed?: { idle: () => Promise<void>; isBackpressured: () => boolean } })
-      ._feed
+    const feed = (renderer as unknown as RendererFeedAccess)._feed
     if (feed?.isBackpressured()) {
       await feed.idle()
     }

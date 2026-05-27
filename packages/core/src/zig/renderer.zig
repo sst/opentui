@@ -36,7 +36,6 @@ const CLEAR_CHAR = '\u{0a00}';
 const MAX_STAT_SAMPLES = 30;
 const STAT_SAMPLE_CAPACITY = 30;
 
-
 pub const RendererError = error{
     OutOfMemory,
     InvalidDimensions,
@@ -94,7 +93,7 @@ pub const RenderStatsSnapshot = struct {
     cellsUpdated: u32,
     averageCellsUpdated: u32,
     renderTime: ?f64,
-    stdoutWriteTime: ?f64,
+    outputWriteTime: ?f64,
 };
 
 const SplitFooterTransition = struct {
@@ -144,7 +143,7 @@ pub const CliRenderer = struct {
         renderTime: ?f64,
         overallFrameTime: ?f64,
         bufferResetTime: ?f64,
-        stdoutWriteTime: ?f64,
+        outputWriteTime: ?f64,
         heapUsed: u32,
         heapTotal: u32,
         arrayBuffers: u32,
@@ -155,7 +154,7 @@ pub const CliRenderer = struct {
         renderTime: std.ArrayListUnmanaged(f64),
         overallFrameTime: std.ArrayListUnmanaged(f64),
         bufferResetTime: std.ArrayListUnmanaged(f64),
-        stdoutWriteTime: std.ArrayListUnmanaged(f64),
+        outputWriteTime: std.ArrayListUnmanaged(f64),
         cellsUpdated: std.ArrayListUnmanaged(u32),
         frameCallbackTime: std.ArrayListUnmanaged(f64),
     },
@@ -261,8 +260,8 @@ pub const CliRenderer = struct {
         errdefer overallFrameTime.deinit(allocator);
         var bufferResetTime: std.ArrayListUnmanaged(f64) = .{};
         errdefer bufferResetTime.deinit(allocator);
-        var stdoutWriteTime: std.ArrayListUnmanaged(f64) = .{};
-        errdefer stdoutWriteTime.deinit(allocator);
+        var outputWriteTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer outputWriteTime.deinit(allocator);
         var cellsUpdated: std.ArrayListUnmanaged(u32) = .{};
         errdefer cellsUpdated.deinit(allocator);
         var frameCallbackTimes: std.ArrayListUnmanaged(f64) = .{};
@@ -272,7 +271,7 @@ pub const CliRenderer = struct {
         try renderTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
         try overallFrameTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
         try bufferResetTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
-        try stdoutWriteTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
+        try outputWriteTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
         try cellsUpdated.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
         try frameCallbackTimes.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
 
@@ -318,7 +317,7 @@ pub const CliRenderer = struct {
                 .renderTime = null,
                 .overallFrameTime = null,
                 .bufferResetTime = null,
-                .stdoutWriteTime = null,
+                .outputWriteTime = null,
                 .heapUsed = 0,
                 .heapTotal = 0,
                 .arrayBuffers = 0,
@@ -329,7 +328,7 @@ pub const CliRenderer = struct {
                 .renderTime = renderTime,
                 .overallFrameTime = overallFrameTime,
                 .bufferResetTime = bufferResetTime,
-                .stdoutWriteTime = stdoutWriteTime,
+                .outputWriteTime = outputWriteTime,
                 .cellsUpdated = cellsUpdated,
                 .frameCallbackTime = frameCallbackTimes,
             },
@@ -373,7 +372,7 @@ pub const CliRenderer = struct {
         self.statSamples.renderTime.deinit(self.allocator);
         self.statSamples.overallFrameTime.deinit(self.allocator);
         self.statSamples.bufferResetTime.deinit(self.allocator);
-        self.statSamples.stdoutWriteTime.deinit(self.allocator);
+        self.statSamples.outputWriteTime.deinit(self.allocator);
         self.statSamples.cellsUpdated.deinit(self.allocator);
         self.statSamples.frameCallbackTime.deinit(self.allocator);
         self.palette_index_cache.deinit(self.allocator);
@@ -509,7 +508,7 @@ pub const CliRenderer = struct {
 
     fn collectFrameStats(self: *CliRenderer, deltaTime: f64) void {
         if (self.backend.getLastWriteTimeUs()) |wt| {
-            self.renderStats.stdoutWriteTime = wt;
+            self.renderStats.outputWriteTime = wt;
         }
 
         self.renderStats.lastFrameTime = deltaTime * 1000.0;
@@ -522,8 +521,8 @@ pub const CliRenderer = struct {
         if (self.renderStats.bufferResetTime) |brt| {
             self.addStatSample(f64, &self.statSamples.bufferResetTime, brt);
         }
-        if (self.renderStats.stdoutWriteTime) |swt| {
-            self.addStatSample(f64, &self.statSamples.stdoutWriteTime, swt);
+        if (self.renderStats.outputWriteTime) |swt| {
+            self.addStatSample(f64, &self.statSamples.outputWriteTime, swt);
         }
         self.addStatSample(u32, &self.statSamples.cellsUpdated, self.renderStats.cellsUpdated);
     }
@@ -561,7 +560,7 @@ pub const CliRenderer = struct {
             .cellsUpdated = self.renderStats.cellsUpdated,
             .averageCellsUpdated = getStatAverage(u32, &self.statSamples.cellsUpdated),
             .renderTime = self.renderStats.renderTime,
-            .stdoutWriteTime = self.renderStats.stdoutWriteTime,
+            .outputWriteTime = self.renderStats.outputWriteTime,
         };
     }
 
@@ -1316,17 +1315,9 @@ pub const CliRenderer = struct {
     }
 
     /// Generic over the writer type so each backend can provide its own writer
-    /// (stdout: buffered-append, feed: streaming) without any dispatch in the
-    /// render path.
-    ///
-    /// `sync_started` indicates whether the caller has already emitted a sync
-    /// envelope is started at the top of the function. When true (the normal
-    /// render path), `beginFrame()` was already called by the caller. When
-    /// false (batched split-footer commits), the frame was started by the
-    /// batching caller and this function appends into the existing frame.
-    ///
-    /// `sync_started` indicates whether a sync-update envelope has already
-    /// been opened by the caller (for batched commits).
+    /// (buffered frame append or feed streaming) without dispatch in the render path.
+    /// `sync_started` is true only when the caller already opened the
+    /// synchronized-update envelope for a batched split-footer commit.
     pub fn prepareRenderFrameWithWriter(self: *CliRenderer, writer: anytype, force: bool, sync_started: bool) void {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
@@ -2028,7 +2019,7 @@ pub const CliRenderer = struct {
         const renderTimeAvg = getStatAverage(f64, &self.statSamples.renderTime);
         const overallFrameTimeAvg = getStatAverage(f64, &self.statSamples.overallFrameTime);
         const bufferResetTimeAvg = getStatAverage(f64, &self.statSamples.bufferResetTime);
-        const stdoutWriteTimeAvg = getStatAverage(f64, &self.statSamples.stdoutWriteTime);
+        const outputWriteTimeAvg = getStatAverage(f64, &self.statSamples.outputWriteTime);
         const cellsUpdatedAvg = getStatAverage(u32, &self.statSamples.cellsUpdated);
         const frameCallbackTimeAvg = getStatAverage(f64, &self.statSamples.frameCallbackTime);
 
@@ -2076,10 +2067,10 @@ pub const CliRenderer = struct {
             row += 1;
         }
 
-        // Stdout Write Time
-        if (self.renderStats.stdoutWriteTime) |writeTime| {
+        // Output Write Time
+        if (self.renderStats.outputWriteTime) |writeTime| {
             var writeTimeText: [64]u8 = undefined;
-            const writeTimeLen = std.fmt.bufPrint(&writeTimeText, "Stdout: {d:.3}ms (avg: {d:.3}ms)", .{ writeTime / 1000.0, stdoutWriteTimeAvg / 1000.0 }) catch return;
+            const writeTimeLen = std.fmt.bufPrint(&writeTimeText, "Output: {d:.3}ms (avg: {d:.3}ms)", .{ writeTime / 1000.0, outputWriteTimeAvg / 1000.0 }) catch return;
             self.nextRenderBuffer.drawText(writeTimeLen, x + 1, y + row, fg, bg, 0) catch {};
             row += 1;
         }

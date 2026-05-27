@@ -1995,7 +1995,7 @@ test "renderer - unchanged frame with unchanged cursor emits no output" {
     try std.testing.expectEqual(@as(usize, 0), output.len);
 }
 
-test "renderer - stdout debug dump includes non-threaded last render" {
+test "renderer - buffered debug dump includes non-threaded last render" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
@@ -2027,7 +2027,7 @@ test "renderer - stdout debug dump includes non-threaded last render" {
     try std.testing.expect(std.mem.indexOf(u8, dump, "(no output rendered yet)") == null);
 }
 
-// ---- FeedBackend tests (Phase 2) ----
+// ---- FeedBackend tests ----
 
 const native_span_feed = @import("../native-span-feed.zig");
 
@@ -2152,15 +2152,15 @@ test "FeedBackend - failed frame write preserves pending bytes" {
 
     backend.beginFrame();
     var failed_writer = backend.writer();
-    try failed_writer.writeAll("stale");
+    try failed_writer.writeAll("pending");
     try std.testing.expectError(error.BufferFull, failed_writer.writeAll("this-write-is-too-large-for-the-current-chunk"));
     try std.testing.expectEqual(.failed, backend.endFrame());
 
     var span_out: [4]native_span_feed.SpanInfo = undefined;
     const count = feed.drainSpans(&span_out);
     try std.testing.expectEqual(@as(u32, 1), count);
-    const stale_span = span_out[0].slice();
-    try std.testing.expect(std.mem.indexOf(u8, stale_span, "stale") != null);
+    const pending_span = span_out[0].slice();
+    try std.testing.expect(std.mem.indexOf(u8, pending_span, "pending") != null);
 }
 
 test "FeedBackend - writeOut keeps pending bytes when commit is blocked" {
@@ -2206,7 +2206,7 @@ test "FeedBackend - writeOutMultiple keeps partial pending batch bytes" {
 
     var backend = renderer.FeedBackend.create(feed);
     const failed_batch = [_][]const u8{
-        "stale",
+        "pending",
         "this-write-is-too-large-for-the-current-chunk",
     };
 
@@ -2218,7 +2218,7 @@ test "FeedBackend - writeOutMultiple keeps partial pending batch bytes" {
     var span_out: [4]native_span_feed.SpanInfo = undefined;
     const count = feed.drainSpans(&span_out);
     try std.testing.expectEqual(@as(u32, 1), count);
-    try std.testing.expectEqualStrings("stale", span_out[0].slice());
+    try std.testing.expectEqualStrings("pending", span_out[0].slice());
 }
 
 test "FeedBackend - supportsThreading is false" {
@@ -2242,9 +2242,8 @@ test "FeedBackend - supportsThreading is false" {
 }
 
 test "two renderers on buffered backend have independent buffers" {
-    // This verifies the Phase 1 fix: per-instance output buffers rather than
-    // file-scope statics. Without the fix, two renderers would clobber each
-    // other's output.
+    // Independent output buffers prevent concurrent renderers from clobbering
+    // each other's output.
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     _ = link.initGlobalLinkPool(std.testing.allocator);
@@ -2277,7 +2276,7 @@ test "two renderers on buffered backend have independent buffers" {
     try std.testing.expect(std.mem.indexOf(u8, out2, "AAA") == null);
 }
 
-test "threaded stdout destroy: no stale write after shutdown ANSI" {
+test "threaded buffered destroy: no stale write after shutdown ANSI" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     _ = link.initGlobalLinkPool(std.testing.allocator);

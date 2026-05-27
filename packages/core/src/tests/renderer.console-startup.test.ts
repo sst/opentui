@@ -410,7 +410,7 @@ test("CliRenderer preserves append order when writeToScrollback and stdout captu
   lib.commitSplitFooterSnapshot = (...args: any[]) => {
     const snapshotBuffer = args[1]
     const content = new TextDecoder().decode(snapshotBuffer.getRealCharBytes(true)).trim()
-    const startOnNewLine = args[3] as boolean
+    const startOnNewLine = args[3]
     order.push(`${startOnNewLine ? "api" : "stdout"}:${content}`)
     return originalCommitSplitFooterSnapshot(...args)
   }

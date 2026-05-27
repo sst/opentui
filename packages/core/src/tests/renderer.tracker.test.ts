@@ -11,10 +11,10 @@ beforeEach(() => {
   pauseCalled = false
   originalStdinPaused = process.stdin.isPaused()
   originalPause = process.stdin.pause.bind(process.stdin)
-  process.stdin.pause = (() => {
+  process.stdin.pause = () => {
     pauseCalled = true
     return originalPause()
-  }) as typeof process.stdin.pause
+  }
 })
 
 afterEach(() => {

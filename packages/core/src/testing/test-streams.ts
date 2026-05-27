@@ -20,10 +20,12 @@ export class TestWriteStream extends Writable {
   }
 }
 
+export type TestStdout = TestWriteStream & NodeJS.WriteStream
+
 export function createTestStdin(): NodeJS.ReadStream {
   return new Readable({ read() {} }) as NodeJS.ReadStream
 }
 
 export function createTestStdout(columns = 80, rows = 24): NodeJS.WriteStream {
-  return new TestWriteStream(columns, rows) as unknown as NodeJS.WriteStream
+  return new TestWriteStream(columns, rows) as TestStdout
 }

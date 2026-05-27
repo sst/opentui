@@ -163,14 +163,8 @@ pub const OutputBackend = union(enum) {
 /// Backend that stages frame bytes in per-renderer buffers and flushes them to
 /// an injected byte output when a frame is committed.
 ///
-/// Owns all state that was previously scattered across `CliRenderer`:
-///   - Double-buffered per-instance output arrays (`instanceOutputA/B`)
-///   - The active-buffer enum (was a file-scope static, now per-instance)
-///   - Render thread handle + mutex + condition + flags
-///
-/// The per-instance buffers fix a correctness issue with the pre-existing
-/// file-scope static buffers: multiple concurrent renderers would clobber each
-/// other's output. This makes per-process multi-renderer scenarios safe.
+/// Owns the double buffers and optional render-thread state so each renderer
+/// has isolated output storage.
 pub const BufferedBackend = struct {
     const BufferId = enum { A, B };
 
@@ -178,12 +172,11 @@ pub const BufferedBackend = struct {
     ownedStdoutOutput: ?*StdoutOutput = null,
     ownedMemoryOutput: ?*MemoryOutput = null,
 
-    // Per-instance (was file-scope pre-refactor).
-    instanceOutputA: []u8,
-    instanceOutputB: []u8,
-    instanceOutputLenA: usize = 0,
-    instanceOutputLenB: usize = 0,
-    instanceActiveBuffer: BufferId = .A,
+    outputA: []u8,
+    outputB: []u8,
+    outputLenA: usize = 0,
+    outputLenB: usize = 0,
+    activeBuffer: BufferId = .A,
     lastCommittedBuffer: BufferId = .A,
     hasCommittedFrame: bool = false,
 
@@ -209,8 +202,8 @@ pub const BufferedBackend = struct {
 
         return BufferedBackend{
             .output = output,
-            .instanceOutputA = a_buf,
-            .instanceOutputB = b_buf,
+            .outputA = a_buf,
+            .outputB = b_buf,
         };
     }
 
@@ -252,8 +245,8 @@ pub const BufferedBackend = struct {
             self.renderThread = null;
         }
 
-        allocator.free(self.instanceOutputA);
-        allocator.free(self.instanceOutputB);
+        allocator.free(self.outputA);
+        allocator.free(self.outputB);
         if (self.ownedStdoutOutput) |stdoutOutput| {
             allocator.destroy(stdoutOutput);
             self.ownedStdoutOutput = null;
@@ -328,14 +321,14 @@ pub const BufferedBackend = struct {
 
     fn bufferWrite(ctx: WriterCtx, data: []const u8) error{BufferFull}!usize {
         const self = ctx.backend;
-        const bufferLen = if (self.instanceActiveBuffer == .A)
-            &self.instanceOutputLenA
+        const bufferLen = if (self.activeBuffer == .A)
+            &self.outputLenA
         else
-            &self.instanceOutputLenB;
-        const buffer = if (self.instanceActiveBuffer == .A)
-            self.instanceOutputA
+            &self.outputLenB;
+        const buffer = if (self.activeBuffer == .A)
+            self.outputA
         else
-            self.instanceOutputB;
+            self.outputB;
 
         if (bufferLen.* + data.len > buffer.len) {
             return error.BufferFull;
@@ -353,16 +346,16 @@ pub const BufferedBackend = struct {
     }
 
     pub fn beginFrame(self: *BufferedBackend) void {
-        if (self.instanceActiveBuffer == .A) {
-            self.instanceOutputLenA = 0;
+        if (self.activeBuffer == .A) {
+            self.outputLenA = 0;
         } else {
-            self.instanceOutputLenB = 0;
+            self.outputLenB = 0;
         }
     }
 
     pub fn endFrame(self: *BufferedBackend) WriteStatus {
         const writeStart = std.time.microTimestamp();
-        const committed_buffer = self.instanceActiveBuffer;
+        const committed_buffer = self.activeBuffer;
 
         if (self.useThread) {
             self.renderMutex.lock();
@@ -372,14 +365,14 @@ pub const BufferedBackend = struct {
 
             // Hand off the just-written buffer to the render thread and flip
             // active to the other one for the next frame.
-            if (self.instanceActiveBuffer == .A) {
-                self.instanceActiveBuffer = .B;
-                self.currentOutputBuffer = self.instanceOutputA;
-                self.currentOutputLen = self.instanceOutputLenA;
+            if (self.activeBuffer == .A) {
+                self.activeBuffer = .B;
+                self.currentOutputBuffer = self.outputA;
+                self.currentOutputLen = self.outputLenA;
             } else {
-                self.instanceActiveBuffer = .A;
-                self.currentOutputBuffer = self.instanceOutputB;
-                self.currentOutputLen = self.instanceOutputLenB;
+                self.activeBuffer = .A;
+                self.currentOutputBuffer = self.outputB;
+                self.currentOutputLen = self.outputLenB;
             }
 
             self.renderRequested = true;
@@ -387,10 +380,10 @@ pub const BufferedBackend = struct {
             self.renderCondition.signal();
             self.renderMutex.unlock();
         } else {
-            const to_write = if (self.instanceActiveBuffer == .A)
-                self.instanceOutputA[0..self.instanceOutputLenA]
+            const to_write = if (self.activeBuffer == .A)
+                self.outputA[0..self.outputLenA]
             else
-                self.instanceOutputB[0..self.instanceOutputLenB];
+                self.outputB[0..self.outputLenB];
             self.output.write(to_write);
             self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
         }
@@ -470,8 +463,8 @@ pub const BufferedBackend = struct {
     /// not flip the active buffer after each frame.
     pub fn dumpTo(self: *BufferedBackend, out: anytype) void {
         const last = if (self.hasCommittedFrame) blk: {
-            const buf = if (self.lastCommittedBuffer == .A) self.instanceOutputA else self.instanceOutputB;
-            const len = if (self.lastCommittedBuffer == .A) self.instanceOutputLenA else self.instanceOutputLenB;
+            const buf = if (self.lastCommittedBuffer == .A) self.outputA else self.outputB;
+            const len = if (self.lastCommittedBuffer == .A) self.outputLenA else self.outputLenB;
             break :blk buf[0..len];
         } else &.{};
 
@@ -482,7 +475,7 @@ pub const BufferedBackend = struct {
         }
         out.writeAll("\n================\n") catch return;
         out.print("Buffer size: {d} bytes\n", .{last.len}) catch return;
-        const active_label: []const u8 = if (self.instanceActiveBuffer == .A) "A" else "B";
+        const active_label: []const u8 = if (self.activeBuffer == .A) "A" else "B";
         const committed_label: []const u8 = if (self.lastCommittedBuffer == .A) "A" else "B";
         out.print("Active buffer: {s}\n", .{active_label}) catch return;
         out.print("Last committed buffer: {s}\n", .{committed_label}) catch return;

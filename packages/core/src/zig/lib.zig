@@ -87,6 +87,8 @@ pub const ExternalRenderStats = extern struct {
     last_frame_time: f64,
     average_frame_time: f64,
     render_time: f64,
+    // ABI names keep stdout terminology for compatibility; the value is the
+    // backend output write time for stdout, memory, or feed output.
     stdout_write_time: f64,
     frame_count: u64,
     cells_updated: u32,
@@ -316,10 +318,11 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
 
 /// Create a renderer.
 ///
-/// `feedPtr` selects the output transport:
-///   - null: writes go to buffered process.stdout output
-///   - non-null: writes go to the provided NativeSpanFeed stream (FeedBackend),
-///     which the TS side pipes onward to a user-supplied Writable
+/// Output transport selection:
+///   - `feedPtr != null`: writes go to the provided NativeSpanFeed stream
+///     (FeedBackend), which the TS side pipes onward to a user-supplied Writable
+///   - `feedPtr == null`: writes go through a buffered backend selected by
+///     `bufferedDestinationKind` (0 = process stdout, 1 = memory)
 ///
 /// `remote` and `feedPtr` are orthogonal from Zig's perspective; the TS side
 /// is responsible for defaulting `remote = !usesProcessStdout` when wiring a
@@ -435,12 +438,12 @@ export fn getRenderStats(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalRe
         .last_frame_time = stats.lastFrameTime,
         .average_frame_time = stats.averageFrameTime,
         .render_time = stats.renderTime orelse 0,
-        .stdout_write_time = stats.stdoutWriteTime orelse 0,
+        .stdout_write_time = stats.outputWriteTime orelse 0,
         .frame_count = stats.frameCount,
         .cells_updated = stats.cellsUpdated,
         .average_cells_updated = stats.averageCellsUpdated,
         .render_time_valid = stats.renderTime != null,
-        .stdout_write_time_valid = stats.stdoutWriteTime != null,
+        .stdout_write_time_valid = stats.outputWriteTime != null,
     };
 }
 

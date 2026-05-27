@@ -1551,6 +1551,14 @@ export interface CursorState {
 
 export type NativeSpanFeedEventHandler = (eventId: number, arg0: Pointer, arg1: number | bigint) => void
 
+export type NativeBufferedOutput = "stdout" | "memory"
+
+export interface NativeRendererCreateOptions {
+  remote?: boolean
+  feedPtr?: Pointer | null
+  bufferedOutput?: NativeBufferedOutput
+}
+
 export interface NativeRenderOperationResult {
   renderOffset: number
   status: number
@@ -1592,11 +1600,7 @@ export interface AudioEngineLib {
 }
 
 export interface RenderLib extends AudioEngineLib {
-  createRenderer: (
-    width: number,
-    height: number,
-    options?: { remote?: boolean; feedPtr?: Pointer | null; bufferedOutput?: "stdout" | "memory" },
-  ) => Pointer | null
+  createRenderer: (width: number, height: number, options?: NativeRendererCreateOptions) => Pointer | null
   setTerminalEnvVar: (renderer: Pointer, key: string, value: string) => boolean
   destroyRenderer: (renderer: Pointer) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
@@ -2250,17 +2254,12 @@ class FFIRenderLib implements RenderLib {
     return callback
   }
 
-  public createRenderer(
-    width: number,
-    height: number,
-    options: { remote?: boolean; feedPtr?: Pointer | null; bufferedOutput?: "stdout" | "memory" } = {},
-  ) {
+  public createRenderer(width: number, height: number, options: NativeRendererCreateOptions = {}) {
     const remote = options.remote ?? false
     const bufferedOutputKind = options.bufferedOutput === "memory" ? 1 : 0
-    // `feedPtr` is an internal wiring detail: null selects the stdout backend,
-    // non-null selects the feed backend (used when piping to a non-process
-    // Writable). Public callers pass their stdout stream; `createCliRenderer`
-    // decides which backend to wire.
+    // `feedPtr` is an internal wiring detail: non-null selects the feed backend
+    // used for custom Writable output. When null, `bufferedOutput` selects the
+    // buffered stdout or memory backend.
     const feedPtr = options.feedPtr ?? null
     return this.opentui.symbols.createRenderer(width, height, bufferedOutputKind, ffiBool(remote), feedPtr)
   }
