@@ -2143,6 +2143,99 @@ test "FeedBackend - failed commit discards uncommitted frame bytes" {
     try std.testing.expect(std.mem.indexOf(u8, fresh_span, "stale") == null);
 }
 
+test "FeedBackend - failed frame write discards earlier uncommitted frame bytes" {
+    var opts = native_span_feed.defaultOptions();
+    opts.chunk_size = 32;
+    opts.initial_chunks = 1;
+    opts.auto_commit_on_full = 0;
+
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    defer feed.destroy();
+
+    var backend = renderer.FeedBackend.create(feed);
+
+    backend.beginFrame();
+    var failed_writer = backend.writer();
+    try failed_writer.writeAll("stale");
+    try std.testing.expectError(error.BufferFull, failed_writer.writeAll("this-write-is-too-large-for-the-current-chunk"));
+    backend.endFrame();
+
+    var span_out: [4]native_span_feed.SpanInfo = undefined;
+    try std.testing.expectEqual(@as(u32, 0), feed.drainSpans(&span_out));
+
+    backend.beginFrame();
+    var fresh_writer = backend.writer();
+    try fresh_writer.writeAll("fresh");
+    backend.endFrame();
+
+    const count = feed.drainSpans(&span_out);
+    try std.testing.expectEqual(@as(u32, 1), count);
+    const fresh_span = span_out[0].slice();
+    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "fresh") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "stale") == null);
+}
+
+test "FeedBackend - failed writeOut commit discards pending bytes" {
+    var opts = native_span_feed.defaultOptions();
+    opts.chunk_size = 64;
+    opts.initial_chunks = 1;
+    opts.span_queue_capacity = 1;
+    opts.auto_commit_on_full = 0;
+
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    defer feed.destroy();
+
+    var backend = renderer.FeedBackend.create(feed);
+
+    try feed.write("queued");
+    try feed.commit();
+    try std.testing.expect(backend.shouldSkipFrame());
+
+    backend.writeOut("stale");
+
+    var span_out: [4]native_span_feed.SpanInfo = undefined;
+    var count = feed.drainSpans(&span_out);
+    try std.testing.expectEqual(@as(u32, 1), count);
+    feed.markSpanConsumed(span_out[0]);
+
+    backend.writeOut("fresh");
+
+    count = feed.drainSpans(&span_out);
+    try std.testing.expectEqual(@as(u32, 1), count);
+    const fresh_span = span_out[0].slice();
+    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "fresh") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "stale") == null);
+}
+
+test "FeedBackend - failed writeOutMultiple discards partial batch bytes" {
+    var opts = native_span_feed.defaultOptions();
+    opts.chunk_size = 32;
+    opts.initial_chunks = 1;
+    opts.auto_commit_on_full = 0;
+
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    defer feed.destroy();
+
+    var backend = renderer.FeedBackend.create(feed);
+    const failed_batch = [_][]const u8{
+        "stale",
+        "this-write-is-too-large-for-the-current-chunk",
+    };
+
+    backend.writeOutMultiple(&failed_batch);
+
+    var span_out: [4]native_span_feed.SpanInfo = undefined;
+    try std.testing.expectEqual(@as(u32, 0), feed.drainSpans(&span_out));
+
+    backend.writeOut("fresh");
+
+    const count = feed.drainSpans(&span_out);
+    try std.testing.expectEqual(@as(u32, 1), count);
+    const fresh_span = span_out[0].slice();
+    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "fresh") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fresh_span, "stale") == null);
+}
+
 test "FeedBackend - supportsThreading is false" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
