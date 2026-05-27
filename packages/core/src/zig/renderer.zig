@@ -15,7 +15,9 @@ pub const OptimizedBuffer = buf.OptimizedBuffer;
 pub const TextAttributes = ansi.TextAttributes;
 pub const CursorStyle = Terminal.CursorStyle;
 pub const OutputBackend = output.OutputBackend;
-pub const StdoutBackend = output.StdoutBackend;
+pub const BufferedBackend = output.BufferedBackend;
+pub const BufferedOutput = output.BufferedOutput;
+pub const StdoutOutput = output.StdoutOutput;
 pub const FeedBackend = output.FeedBackend;
 pub const OUTPUT_BUFFER_SIZE = output.OUTPUT_BUFFER_SIZE;
 
@@ -106,7 +108,6 @@ pub const CliRenderer = struct {
     backgroundColor: RGBA,
     renderOffset: u32,
     terminal: Terminal,
-    testing: bool = false,
     useAlternateScreen: bool = true,
     terminalSetup: bool = false,
     clearOnShutdown: bool = true,
@@ -200,18 +201,23 @@ pub const CliRenderer = struct {
     force_full_repaint: bool = false,
     palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .{},
 
-    /// Full set of options for `createWithOptions`. Presence of `feed_ptr`
-    /// determines the backend variant: non-null selects FeedBackend, null
-    /// selects StdoutBackend.
+    pub const OutputTarget = union(enum) {
+        stdout,
+        memory,
+        buffered: BufferedOutput,
+        feed: *NativeSpanFeed.Stream,
+    };
+
+    /// Full set of options for `createWithOptions`. `output` determines the
+    /// backend variant: buffered stdout, injected buffered output, or feed.
     pub const CreateOptions = struct {
-        testing: bool = false,
         remote: bool = false,
-        feed_ptr: ?*NativeSpanFeed.Stream = null,
+        output: OutputTarget = .stdout,
         clearOnShutdown: bool = true,
     };
 
-    pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool, testing: bool) !*CliRenderer {
-        return createWithOptions(allocator, width, height, pool, .{ .testing = testing });
+    pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool) !*CliRenderer {
+        return createWithOptions(allocator, width, height, pool, .{});
     }
 
     pub fn createWithOptions(
@@ -221,7 +227,6 @@ pub const CliRenderer = struct {
         pool: *gp.GraphemePool,
         opts: CreateOptions,
     ) !*CliRenderer {
-        const testing = opts.testing;
         // Trust the caller's `remote` value verbatim. The TS side
         // (`createCliRenderer`) already computes the appropriate default
         // (`remote = config.remote ?? !usesProcessStdout`); Zig should not
@@ -269,11 +274,13 @@ pub const CliRenderer = struct {
         @memset(nextHitGrid, 0);
         const hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect) = .{};
 
-        // Backend variant selected once by opts.feed_ptr.
-        var backend: OutputBackend = if (opts.feed_ptr) |feed_ptr|
-            .{ .feed = FeedBackend.create(feed_ptr) }
-        else
-            .{ .stdout = try StdoutBackend.create(allocator, testing) };
+        // Backend variant selected once by opts.output.
+        var backend: OutputBackend = switch (opts.output) {
+            .stdout => .{ .buffered = try BufferedBackend.createStdout(allocator) },
+            .memory => .{ .buffered = try BufferedBackend.createMemory(allocator) },
+            .buffered => |buffered_output| .{ .buffered = try BufferedBackend.create(allocator, buffered_output) },
+            .feed => |feed_ptr| .{ .feed = FeedBackend.create(feed_ptr) },
+        };
         errdefer backend.deinit(allocator);
 
         self.* = .{
@@ -285,7 +292,6 @@ pub const CliRenderer = struct {
             .backgroundColor = ansi.rgbColor(0, 0, 0, 0),
             .renderOffset = 0,
             .terminal = Terminal.init(.{ .remote = remote }),
-            .testing = testing,
             .clearOnShutdown = opts.clearOnShutdown,
             .backend = backend,
             .lastCursorStyleTag = null,
@@ -454,8 +460,11 @@ pub const CliRenderer = struct {
 
         self.backend.writeOut(stream.getWritten());
 
-        // Backend-specific trailing behavior (e.g. stdout's cursor-reshow sleep).
-        self.backend.performShutdownExtras();
+        // Workaround for Ghostty not showing the cursor after shutdown for some reason.
+        // Keep this backend-agnostic: the active output transport owns delivery.
+        std.Thread.sleep(10 * std.time.ns_per_ms);
+        self.backend.writeOut(ansi.ANSI.showCursor);
+        std.Thread.sleep(10 * std.time.ns_per_ms);
     }
 
     pub fn setClearOnShutdown(self: *CliRenderer, clear: bool) void {
@@ -1763,12 +1772,6 @@ pub const CliRenderer = struct {
             writer.writeByte('\n') catch return;
         }
         writer.flush() catch {};
-    }
-
-    /// Return the most recently rendered frame's bytes. Only meaningful for the
-    /// stdout backend; other backends return an empty slice.
-    pub fn getLastOutputForTest(self: *CliRenderer) []const u8 {
-        return self.backend.getLastOutputForTest();
     }
 
     /// Dump the last rendered output to a file. Backend-specific formatting

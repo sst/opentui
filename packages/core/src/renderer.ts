@@ -114,8 +114,9 @@ export interface CliRendererConfig {
   // Tell the native renderer it is driving a remote terminal.
   remote?: boolean
 
-  // Skip terminal setup. Useful in tests.
-  testing?: boolean
+  // Use an in-memory native buffered output destination instead of process stdout.
+  // Intended for test helpers that need native rendering without terminal I/O.
+  bufferedOutput?: "stdout" | "memory"
 
   // Call renderer.destroy() when Ctrl+C is pressed. Defaults to true.
   exitOnCtrlC?: boolean
@@ -688,9 +689,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
   const renderer = new CliRenderer(stdin, stdout, width, height, config)
   try {
-    if (!config.testing) {
-      await renderer.setupTerminal()
-    }
+    await renderer.setupTerminal()
     return renderer
   } catch (error) {
     try {
@@ -960,9 +959,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   // or duck-typed capability checks (e.g. `stdin.setRawMode?.()`).
   private readonly _usesProcessStdout: boolean
 
-  // Feed wiring. Non-null when the given stdout is not process.stdout and
-  // we're not in testing mode — the renderer then routes native ANSI output
-  // through a NativeSpanFeed into the caller's Writable.
+  // Feed wiring. Non-null when the given stdout is not process.stdout and native
+  // output is not explicitly redirected to a buffered memory destination.
   private _feed: NativeSpanFeed | null = null
   private _detachFeed: (() => void) | null = null
   private _detachFeedError: (() => void) | null = null
@@ -976,19 +974,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
    * Construct a renderer over the given streams.
    *
    * If `stdout` is not `process.stdout`, a `NativeSpanFeed` is allocated
-   * internally and rendered bytes are piped through it to `stdout`. Prefer
-   * `createCliRenderer` for the async `setupTerminal` convenience.
+   * internally and rendered bytes are piped through it to `stdout` unless
+   * `bufferedOutput: "memory"` is set. Prefer `createCliRenderer` for the async
+   * `setupTerminal` convenience.
    *
    * Construction side effects (observable before the constructor returns):
-   *   - Allocates a `NativeSpanFeed` (for non-process stdout, non-testing)
+   *   - Allocates a `NativeSpanFeed` (for non-process stdout unless bufferedOutput is "memory")
    *   - Calls `lib.createRenderer` → native Zig allocation
    *   - Registers in the process-wide `rendererTracker`
    *   - Adds `process.on(...)` listeners for SIGWINCH (process.stdout only),
    *     "warning", "uncaughtException", "unhandledRejection", "beforeExit",
    *     plus the configured `exitSignals`
    *   - Replaces `global.requestAnimationFrame` with the renderer's impl
-   *   - On non-testing paths, subsequent `setupTerminal()` will put `stdin`
-   *     in raw mode and call `stdin.resume()`
+   *   - When `setupTerminal()` is called, it will put `stdin` in raw mode and
+   *     call `stdin.resume()`
    *
    * These side effects are NOT rolled back if the constructor throws partway;
    * production callers should use `createCliRenderer`, which wraps
@@ -1009,12 +1008,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.realStdoutWrite = stdout.write
 
     const lib = resolveRenderLib()
+    const useMemoryBufferedOutput = config.bufferedOutput === "memory"
 
-    // Feed allocation: only when the output target is a non-process Writable
-    // AND we're not in testing mode. Testing mode short-circuits I/O in Zig,
-    // so a feed would be pure overhead.
+    // Feed allocation: only when the output target is a non-process Writable.
+    // Tests use custom Writable instances too; those should exercise the same
+    // output transport as production custom stdout.
     let feed: NativeSpanFeed | null = null
-    if (!this._usesProcessStdout && !config.testing) {
+    if (!this._usesProcessStdout && !useMemoryBufferedOutput) {
       try {
         feed = NativeSpanFeed.create()
       } catch (error) {
@@ -1034,13 +1034,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // `this`) while accessing the implementation's wider signature.
     const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
     const initialGeometry = calculateRenderGeometry(screenMode, width, height, footerHeight)
-    const resolvedRemote = config.remote ?? (!config.testing && !this._usesProcessStdout)
+    const resolvedRemote = config.remote ?? !this._usesProcessStdout
 
     type InternalRenderLib = RenderLib & {
       createRenderer: (
         width: number,
         height: number,
-        options: { testing?: boolean; remote?: boolean; feedPtr?: Pointer | null },
+        options: { remote?: boolean; feedPtr?: Pointer | null; bufferedOutput?: "stdout" | "memory" },
       ) => Pointer | null
     }
 
@@ -1051,8 +1051,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         initialGeometry.renderHeight,
         {
           remote: resolvedRemote,
-          testing: config.testing ?? false,
           feedPtr: feed?.streamPtr ?? null,
+          bufferedOutput: config.bufferedOutput,
         },
       )
     } catch (error) {

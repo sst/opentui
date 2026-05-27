@@ -53,12 +53,12 @@ test("two renderers sharing process.stdin: only the second destroy pauses", asyn
   const a = await createCliRenderer({
     stdin: process.stdin,
     stdout: nonProcessStdout(),
-    testing: true,
+    bufferedOutput: "memory",
   })
   const b = await createCliRenderer({
     stdin: process.stdin,
     stdout: nonProcessStdout(),
-    testing: true,
+    bufferedOutput: "memory",
   })
 
   pauseCalled = false
@@ -76,7 +76,7 @@ test("renderer with custom stdin does not touch process.stdin on destroy", async
   const r = await createCliRenderer({
     stdin: customStdin(),
     stdout: nonProcessStdout(),
-    testing: true,
+    bufferedOutput: "memory",
   })
 
   pauseCalled = false
@@ -89,12 +89,12 @@ test("mixed: destroying custom-stdin renderer before process.stdin renderer does
   const processOne = await createCliRenderer({
     stdin: process.stdin,
     stdout: nonProcessStdout(),
-    testing: true,
+    bufferedOutput: "memory",
   })
   const customOne = await createCliRenderer({
     stdin: customStdin(),
     stdout: nonProcessStdout(),
-    testing: true,
+    bufferedOutput: "memory",
   })
 
   pauseCalled = false
@@ -112,12 +112,12 @@ test("two custom-stdin renderers: neither touches process.stdin", async () => {
   const a = await createCliRenderer({
     stdin: customStdin(),
     stdout: nonProcessStdout(),
-    testing: true,
+    bufferedOutput: "memory",
   })
   const b = await createCliRenderer({
     stdin: customStdin(),
     stdout: nonProcessStdout(),
-    testing: true,
+    bufferedOutput: "memory",
   })
 
   pauseCalled = false
@@ -131,12 +131,12 @@ test("mixed: destroying process-stdin renderer first, custom second still behave
   const processOne = await createCliRenderer({
     stdin: process.stdin,
     stdout: nonProcessStdout(),
-    testing: true,
+    bufferedOutput: "memory",
   })
   const customOne = await createCliRenderer({
     stdin: customStdin(),
     stdout: nonProcessStdout(),
-    testing: true,
+    bufferedOutput: "memory",
   })
 
   pauseCalled = false

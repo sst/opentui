@@ -156,7 +156,7 @@ function getOpenTUILib(libPath?: string) {
     },
     // Renderer management
     createRenderer: {
-      args: ["u32", "u32", "bool", "bool", "ptr"],
+      args: ["u32", "u32", "u8", "bool", "ptr"],
       returns: "ptr",
     },
     setTerminalEnvVar: {
@@ -1590,7 +1590,7 @@ export interface RenderLib extends AudioEngineLib {
   createRenderer: (
     width: number,
     height: number,
-    options?: { testing?: boolean; remote?: boolean; feedPtr?: Pointer | null },
+    options?: { remote?: boolean; feedPtr?: Pointer | null; bufferedOutput?: "stdout" | "memory" },
   ) => Pointer | null
   setTerminalEnvVar: (renderer: Pointer, key: string, value: string) => boolean
   destroyRenderer: (renderer: Pointer) => void
@@ -2248,16 +2248,16 @@ class FFIRenderLib implements RenderLib {
   public createRenderer(
     width: number,
     height: number,
-    options: { testing?: boolean; remote?: boolean; feedPtr?: Pointer | null } = {},
+    options: { remote?: boolean; feedPtr?: Pointer | null; bufferedOutput?: "stdout" | "memory" } = {},
   ) {
-    const testing = options.testing ?? false
     const remote = options.remote ?? false
+    const bufferedOutputKind = options.bufferedOutput === "memory" ? 1 : 0
     // `feedPtr` is an internal wiring detail: null selects the stdout backend,
     // non-null selects the feed backend (used when piping to a non-process
     // Writable). Public callers pass their stdout stream; `createCliRenderer`
     // decides which backend to wire.
     const feedPtr = options.feedPtr ?? null
-    return this.opentui.symbols.createRenderer(width, height, ffiBool(testing), ffiBool(remote), feedPtr)
+    return this.opentui.symbols.createRenderer(width, height, bufferedOutputKind, ffiBool(remote), feedPtr)
   }
 
   public setTerminalEnvVar(renderer: Pointer, key: string, value: string): boolean {

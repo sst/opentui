@@ -3,8 +3,8 @@
 //! The renderer's render path writes ANSI bytes into an abstract writer
 //! supplied by an `OutputBackend`. Two variants are available:
 //!
-//!   - `StdoutBackend`: writes directly to `process.stdout` with optional
-//!     background-thread handoff for I/O latency hiding.
+//!   - `BufferedBackend`: writes into per-renderer A/B frame buffers, then
+//!     flushes committed bytes to an injected `BufferedOutput`.
 //!
 //!   - `FeedBackend`: writes into a `NativeSpanFeed.Stream` whose chunks are
 //!     consumed from TypeScript and piped to a user-supplied Writable
@@ -17,14 +17,69 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const ansi = @import("ansi.zig");
 const NativeSpanFeed = @import("native-span-feed.zig");
 
-pub const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2 MiB, double-buffered per StdoutBackend for thread handoff
+pub const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2 MiB, double-buffered per BufferedBackend for thread handoff
 
-/// Tagged union dispatching to StdoutBackend or FeedBackend.
+pub const BufferedWriteFn = *const fn (ctx: *anyopaque, data: []const u8) void;
+
+pub const BufferedOutput = struct {
+    ctx: *anyopaque,
+    write_fn: BufferedWriteFn,
+    thread_safe: bool = false,
+
+    pub fn write(self: BufferedOutput, data: []const u8) void {
+        self.write_fn(self.ctx, data);
+    }
+};
+
+pub const StdoutOutput = struct {
+    stdoutBuffer: [4096]u8 = undefined,
+
+    pub fn bufferedOutput(self: *StdoutOutput) BufferedOutput {
+        return .{
+            .ctx = self,
+            .write_fn = write,
+            .thread_safe = true,
+        };
+    }
+
+    fn write(ctx: *anyopaque, data: []const u8) void {
+        if (data.len == 0) return;
+
+        const self: *StdoutOutput = @ptrCast(@alignCast(ctx));
+        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+        const w = &stdoutWriter.interface;
+        w.writeAll(data) catch {};
+        w.flush() catch {};
+    }
+};
+
+pub const MemoryOutput = struct {
+    allocator: Allocator,
+    bytes: std.ArrayListUnmanaged(u8) = .{},
+
+    pub fn init(allocator: Allocator) MemoryOutput {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *MemoryOutput) void {
+        self.bytes.deinit(self.allocator);
+    }
+
+    pub fn bufferedOutput(self: *MemoryOutput) BufferedOutput {
+        return .{ .ctx = self, .write_fn = write };
+    }
+
+    fn write(ctx: *anyopaque, data: []const u8) void {
+        const self: *MemoryOutput = @ptrCast(@alignCast(ctx));
+        self.bytes.appendSlice(self.allocator, data) catch {};
+    }
+};
+
+/// Tagged union dispatching to BufferedBackend or FeedBackend.
 pub const OutputBackend = union(enum) {
-    stdout: StdoutBackend,
+    buffered: BufferedBackend,
     feed: FeedBackend,
 
     /// Synchronously emit a pre-built byte sequence (setup/shutdown/query).
@@ -68,24 +123,6 @@ pub const OutputBackend = union(enum) {
         }
     }
 
-    /// Backend-specific behavior that runs after the shutdown ANSI sequence
-    /// has been written (e.g. stdout's cursor-reshow sleep workaround).
-    pub fn performShutdownExtras(self: *OutputBackend) void {
-        switch (self.*) {
-            inline else => |*b| b.performShutdownExtras(),
-        }
-    }
-
-    /// Return the most recently rendered frame's output bytes, for testing.
-    /// Only meaningful for the stdout backend; feed-backed callers should
-    /// drain bytes via the NativeSpanFeed directly.
-    pub fn getLastOutputForTest(self: *OutputBackend) []const u8 {
-        switch (self.*) {
-            .stdout => |*sb| return sb.getLastOutputForTest(),
-            .feed => return &.{},
-        }
-    }
-
     /// Microseconds spent on the last write (populated after endFrame).
     pub fn getLastWriteTimeUs(self: *OutputBackend) ?f64 {
         switch (self.*) {
@@ -109,19 +146,23 @@ pub const OutputBackend = union(enum) {
     }
 };
 
-/// Backend that writes directly to `process.stdout` via `std.fs.File.stdout()`.
+/// Backend that stages frame bytes in per-renderer buffers and flushes them to
+/// an injected byte output when a frame is committed.
 ///
 /// Owns all state that was previously scattered across `CliRenderer`:
 ///   - Double-buffered per-instance output arrays (`instanceOutputA/B`)
 ///   - The active-buffer enum (was a file-scope static, now per-instance)
 ///   - Render thread handle + mutex + condition + flags
-///   - The small stdout writer buffer
 ///
 /// The per-instance buffers fix a correctness issue with the pre-existing
 /// file-scope static buffers: multiple concurrent renderers would clobber each
 /// other's output. This makes per-process multi-renderer scenarios safe.
-pub const StdoutBackend = struct {
+pub const BufferedBackend = struct {
     const BufferId = enum { A, B };
+
+    output: BufferedOutput,
+    ownedStdoutOutput: ?*StdoutOutput = null,
+    ownedMemoryOutput: ?*MemoryOutput = null,
 
     // Per-instance (was file-scope pre-refactor).
     instanceOutputA: []u8,
@@ -131,8 +172,6 @@ pub const StdoutBackend = struct {
     instanceActiveBuffer: BufferId = .A,
     lastCommittedBuffer: BufferId = .A,
     hasCommittedFrame: bool = false,
-
-    stdoutBuffer: [4096]u8 = undefined,
 
     useThread: bool = false,
     renderThread: ?std.Thread = null,
@@ -146,26 +185,42 @@ pub const StdoutBackend = struct {
     currentOutputBuffer: []u8 = &[_]u8{},
     currentOutputLen: usize = 0,
 
-    // Testing mode short-circuits I/O while still filling instance buffers so
-    // `getLastOutputForTest` can return the rendered ANSI.
-    testing: bool,
-
     lastWriteTimeUs: ?f64 = null,
 
-    pub fn create(allocator: Allocator, testing: bool) !StdoutBackend {
+    pub fn create(allocator: Allocator, output: BufferedOutput) !BufferedBackend {
         const a_buf = try allocator.alloc(u8, OUTPUT_BUFFER_SIZE);
         errdefer allocator.free(a_buf);
         const b_buf = try allocator.alloc(u8, OUTPUT_BUFFER_SIZE);
         errdefer allocator.free(b_buf);
 
-        return StdoutBackend{
+        return BufferedBackend{
+            .output = output,
             .instanceOutputA = a_buf,
             .instanceOutputB = b_buf,
-            .testing = testing,
         };
     }
 
-    pub fn deinit(self: *StdoutBackend, allocator: Allocator) void {
+    pub fn createStdout(allocator: Allocator) !BufferedBackend {
+        const stdoutOutput = try allocator.create(StdoutOutput);
+        errdefer allocator.destroy(stdoutOutput);
+        stdoutOutput.* = .{};
+
+        var backend = try BufferedBackend.create(allocator, stdoutOutput.bufferedOutput());
+        backend.ownedStdoutOutput = stdoutOutput;
+        return backend;
+    }
+
+    pub fn createMemory(allocator: Allocator) !BufferedBackend {
+        const memoryOutput = try allocator.create(MemoryOutput);
+        errdefer allocator.destroy(memoryOutput);
+        memoryOutput.* = MemoryOutput.init(allocator);
+
+        var backend = try BufferedBackend.create(allocator, memoryOutput.bufferedOutput());
+        backend.ownedMemoryOutput = memoryOutput;
+        return backend;
+    }
+
+    pub fn deinit(self: *BufferedBackend, allocator: Allocator) void {
         if (self.renderThread) |thread| {
             self.renderMutex.lock();
             while (self.renderInProgress) {
@@ -185,21 +240,31 @@ pub const StdoutBackend = struct {
 
         allocator.free(self.instanceOutputA);
         allocator.free(self.instanceOutputB);
+        if (self.ownedStdoutOutput) |stdoutOutput| {
+            allocator.destroy(stdoutOutput);
+            self.ownedStdoutOutput = null;
+        }
+        if (self.ownedMemoryOutput) |memoryOutput| {
+            memoryOutput.deinit();
+            allocator.destroy(memoryOutput);
+            self.ownedMemoryOutput = null;
+        }
     }
 
-    pub fn shouldSkipFrame(_: *StdoutBackend) bool {
+    pub fn shouldSkipFrame(_: *BufferedBackend) bool {
         return false;
     }
 
-    pub fn supportsThreading(_: *StdoutBackend) bool {
-        return true;
+    pub fn supportsThreading(self: *BufferedBackend) bool {
+        return self.output.thread_safe;
     }
 
-    pub fn isUseThread(self: *StdoutBackend) bool {
+    pub fn isUseThread(self: *BufferedBackend) bool {
         return self.useThread;
     }
 
-    pub fn setUseThread(self: *StdoutBackend, use_thread: bool) void {
+    pub fn setUseThread(self: *BufferedBackend, use_thread: bool) void {
+        if (use_thread and !self.supportsThreading()) return;
         if (self.useThread == use_thread) return;
 
         if (use_thread) {
@@ -238,7 +303,7 @@ pub const StdoutBackend = struct {
     /// Frame-time writer context. A pointer to the backend so writes know
     /// which active buffer to append to.
     pub const WriterCtx = struct {
-        backend: *StdoutBackend,
+        backend: *BufferedBackend,
     };
 
     pub const Writer = std.io.GenericWriter(WriterCtx, error{BufferFull}, bufferWrite);
@@ -265,11 +330,11 @@ pub const StdoutBackend = struct {
 
     // TODO: std.io.GenericWriter is deprecated but the replacement is much more involved.
     // Migrate when the ecosystem stabilizes.
-    pub fn writer(self: *StdoutBackend) Writer {
+    pub fn writer(self: *BufferedBackend) Writer {
         return .{ .context = .{ .backend = self } };
     }
 
-    pub fn beginFrame(self: *StdoutBackend) void {
+    pub fn beginFrame(self: *BufferedBackend) void {
         if (self.instanceActiveBuffer == .A) {
             self.instanceOutputLenA = 0;
         } else {
@@ -277,7 +342,7 @@ pub const StdoutBackend = struct {
         }
     }
 
-    pub fn endFrame(self: *StdoutBackend) void {
+    pub fn endFrame(self: *BufferedBackend) void {
         const writeStart = std.time.microTimestamp();
         const committed_buffer = self.instanceActiveBuffer;
 
@@ -304,16 +369,11 @@ pub const StdoutBackend = struct {
             self.renderCondition.signal();
             self.renderMutex.unlock();
         } else {
-            if (!self.testing) {
-                var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-                const w = &stdoutWriter.interface;
-                const to_write = if (self.instanceActiveBuffer == .A)
-                    self.instanceOutputA[0..self.instanceOutputLenA]
-                else
-                    self.instanceOutputB[0..self.instanceOutputLenB];
-                w.writeAll(to_write) catch {};
-                w.flush() catch {};
-            }
+            const to_write = if (self.instanceActiveBuffer == .A)
+                self.instanceOutputA[0..self.instanceOutputLenA]
+            else
+                self.instanceOutputB[0..self.instanceOutputLenB];
+            self.output.write(to_write);
             self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
         }
 
@@ -321,7 +381,7 @@ pub const StdoutBackend = struct {
         self.hasCommittedFrame = true;
     }
 
-    fn renderThreadFn(self: *StdoutBackend) void {
+    fn renderThreadFn(self: *BufferedBackend) void {
         while (true) {
             self.renderMutex.lock();
             while (!self.renderRequested and !self.shouldTerminate) {
@@ -343,12 +403,7 @@ pub const StdoutBackend = struct {
 
             const writeStart = std.time.microTimestamp();
 
-            if (outputLen > 0 and !self.testing) {
-                var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-                const w = &stdoutWriter.interface;
-                w.writeAll(outputData[0..outputLen]) catch {};
-                w.flush() catch {};
-            }
+            self.output.write(outputData[0..outputLen]);
 
             self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
             self.renderInProgress = false;
@@ -357,9 +412,8 @@ pub const StdoutBackend = struct {
         }
     }
 
-    pub fn writeOut(self: *StdoutBackend, data: []const u8) void {
+    pub fn writeOut(self: *BufferedBackend, data: []const u8) void {
         if (data.len == 0) return;
-        if (self.testing) return;
 
         if (self.useThread) {
             self.renderMutex.lock();
@@ -369,15 +423,10 @@ pub const StdoutBackend = struct {
             self.renderMutex.unlock();
         }
 
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const w = &stdoutWriter.interface;
-        w.writeAll(data) catch {};
-        w.flush() catch {};
+        self.output.write(data);
     }
 
-    pub fn writeOutMultiple(self: *StdoutBackend, data_slices: []const []const u8) void {
-        if (self.testing) return;
-
+    pub fn writeOutMultiple(self: *BufferedBackend, data_slices: []const []const u8) void {
         if (self.useThread) {
             self.renderMutex.lock();
             while (self.renderInProgress) {
@@ -392,45 +441,15 @@ pub const StdoutBackend = struct {
         }
         if (totalLen == 0) return;
 
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const w = &stdoutWriter.interface;
         for (data_slices) |slice| {
-            w.writeAll(slice) catch {};
+            self.output.write(slice);
         }
-        w.flush() catch {};
-    }
-
-    /// Sleep + re-emit showCursor. Workaround for Ghostty not showing the cursor
-    /// after shutdown. Stdout-specific; remote clients handle their own cursor.
-    ///
-    /// In testing mode, skip both the sleep and the emit — tests don't observe
-    /// the terminal, so paying ~20 ms per destroy is pure overhead.
-    pub fn performShutdownExtras(self: *StdoutBackend) void {
-        if (self.testing) return;
-
-        std.Thread.sleep(10 * std.time.ns_per_ms);
-
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const w = &stdoutWriter.interface;
-        w.writeAll(ansi.ANSI.showCursor) catch {};
-        w.flush() catch {};
-
-        std.Thread.sleep(10 * std.time.ns_per_ms);
-    }
-
-    /// Return the most recently committed instance buffer's rendered output.
-    pub fn getLastOutputForTest(self: *StdoutBackend) []const u8 {
-        if (!self.hasCommittedFrame) return &.{};
-
-        const buffer = if (self.lastCommittedBuffer == .A) self.instanceOutputA else self.instanceOutputB;
-        const len = if (self.lastCommittedBuffer == .A) self.instanceOutputLenA else self.instanceOutputLenB;
-        return buffer[0..len];
     }
 
     /// Write a debug dump of the last rendered output into `out`. The
     /// committed-buffer marker is explicit because non-threaded rendering does
     /// not flip the active buffer after each frame.
-    pub fn dumpTo(self: *StdoutBackend, out: anytype) void {
+    pub fn dumpTo(self: *BufferedBackend, out: anytype) void {
         const last = if (self.hasCommittedFrame) blk: {
             const buf = if (self.lastCommittedBuffer == .A) self.instanceOutputA else self.instanceOutputB;
             const len = if (self.lastCommittedBuffer == .A) self.instanceOutputLenA else self.instanceOutputLenB;
@@ -461,10 +480,7 @@ pub const StdoutBackend = struct {
 /// exposed via `shouldSkipFrame`: when the span queue is saturated, frames
 /// are skipped at the render loop with catch-up semantics preserved.
 ///
-/// FeedBackend does not honor a `testing` flag: the TypeScript side allocates
-/// a feed only when `!config.testing`, so this backend is never constructed
-/// in tests of the renderer pipeline. Zig tests that want to exercise the
-/// feed path should drain the feed directly.
+/// Zig tests that want to exercise the feed path should drain the feed directly.
 pub const FeedBackend = struct {
     feed: *NativeSpanFeed.Stream,
 
@@ -571,8 +587,6 @@ pub const FeedBackend = struct {
             self.feed.discardPending();
         };
     }
-
-    pub fn performShutdownExtras(_: *FeedBackend) void {}
 
     /// Write a debug dump placeholder. FeedBackend has no flat previous-frame
     /// slice — callers wanting feed bytes should drain the NativeSpanFeed.

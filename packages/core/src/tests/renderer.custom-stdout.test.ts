@@ -71,7 +71,6 @@ test("non-process stdout: rendered bytes flow to the custom Writable", async () 
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: false,
   })
   destroyFns.push(() => renderer.destroy())
 
@@ -91,7 +90,6 @@ test("split-footer custom stdout: native feed bytes bypass stdout capture", asyn
   // Construct directly so the test isolates the feed/write bridge without
   // setupTerminal() adding unrelated startup ANSI.
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
-    testing: false,
     screenMode: "split-footer",
     consoleMode: "disabled",
   })
@@ -115,7 +113,6 @@ test("custom stdout resetTerminalBgColor routes through configured stdout", asyn
   const stdout = new CollectingWriteStream(80, 24) as unknown as CollectingWriteStream & NodeJS.WriteStream
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
-    testing: false,
     consoleMode: "disabled",
   })
   destroyFns.push(() => renderer.destroy())
@@ -132,7 +129,7 @@ test("process.stdout: no feed is allocated (stdout-direct path)", async () => {
   const renderer = await createCliRenderer({
     stdin: process.stdin,
     stdout: process.stdout,
-    testing: true,
+    bufferedOutput: "memory",
   })
   // Direct private-field inspection: no feed should be allocated when output
   // goes straight to process.stdout.
@@ -142,7 +139,7 @@ test("process.stdout: no feed is allocated (stdout-direct path)", async () => {
 
 test("omitting stdin/stdout uses process streams", async () => {
   const renderer = await createCliRenderer({
-    testing: true,
+    bufferedOutput: "memory",
   })
   expect(renderer.stdin).toBe(process.stdin)
   destroyFns.push(() => renderer.destroy())
@@ -156,7 +153,6 @@ test("custom stdout defaults to remote env behavior", async () => {
     const defaultRemoteRenderer = await createCliRenderer({
       stdin: createNullReadable(),
       stdout: new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream,
-      testing: false,
     })
     destroyFns.push(() => defaultRemoteRenderer.destroy())
 
@@ -165,7 +161,6 @@ test("custom stdout defaults to remote env behavior", async () => {
     const localRenderer = await createCliRenderer({
       stdin: createNullReadable(),
       stdout: new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream,
-      testing: false,
       remote: false,
     })
     destroyFns.push(() => localRenderer.destroy())
@@ -189,7 +184,6 @@ test("destroy emits shutdown ANSI sequence through the custom Writable", async (
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: false,
   })
 
   // Let setup output settle, then clear so we can isolate shutdown output.
@@ -223,7 +217,6 @@ test("slow Writable marks feed as backpressured until write callback settles", a
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: false,
   })
   destroyFns.push(() => {
     stdout.delayMs = 0
@@ -250,7 +243,6 @@ test("split-footer custom stdout keeps captured commits queued while feed is bac
   stdout.delayMs = 100
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
-    testing: false,
     screenMode: "split-footer",
     consoleMode: "disabled",
   })
@@ -293,7 +285,6 @@ test("capture-to-passthrough flushes queued split-footer commits while feed is b
   stdout.delayMs = 30
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
-    testing: false,
     screenMode: "split-footer",
     consoleMode: "disabled",
   })
@@ -327,7 +318,6 @@ test("destroy resolves idle waiters when a feed-idle render was scheduled", asyn
   stdout.delayMs = 30
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
-    testing: false,
     screenMode: "split-footer",
     consoleMode: "disabled",
   })
@@ -370,7 +360,6 @@ test("suspend resolves idle waiters when a feed-idle render was scheduled", asyn
   stdout.delayMs = 30
 
   const renderer = new CliRenderer(stdin, stdout, 80, 24, {
-    testing: false,
     screenMode: "split-footer",
     consoleMode: "disabled",
   })
@@ -415,7 +404,7 @@ test("dimensions: stdout.columns wins over config.width", async () => {
     stdout,
     width: 40,
     height: 10,
-    testing: true,
+    bufferedOutput: "memory",
   })
   destroyFns.push(() => renderer.destroy())
 
@@ -436,7 +425,7 @@ test("dimensions: config.width used when stdout lacks columns", async () => {
     stdout,
     width: 100,
     height: 50,
-    testing: true,
+    bufferedOutput: "memory",
   })
   destroyFns.push(() => renderer.destroy())
 
@@ -453,7 +442,7 @@ test("dimensions: config.width used when stdout reports zero columns", async () 
     stdout,
     width: 100,
     height: 50,
-    testing: true,
+    bufferedOutput: "memory",
   })
   destroyFns.push(() => renderer.destroy())
 
@@ -472,7 +461,7 @@ test("dimensions: defaults 80x24 when no stdout columns and no config", async ()
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: true,
+    bufferedOutput: "memory",
   })
   destroyFns.push(() => renderer.destroy())
 
@@ -487,7 +476,7 @@ test("dimensions: defaults 80x24 when stdout reports zero columns and no config"
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: true,
+    bufferedOutput: "memory",
   })
   destroyFns.push(() => renderer.destroy())
 
@@ -504,7 +493,7 @@ test("stdin without setRawMode: start/suspend/resume/destroy all succeed", async
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: true,
+    bufferedOutput: "memory",
   })
 
   expect(() => renderer.suspend()).not.toThrow()
@@ -521,7 +510,7 @@ test("resize(w, h) updates dimensions and fires RESIZE event", async () => {
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: true,
+    bufferedOutput: "memory",
   })
   destroyFns.push(() => renderer.destroy())
 
@@ -550,7 +539,7 @@ test("resize() after destroy is a no-op", async () => {
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: true,
+    bufferedOutput: "memory",
   })
 
   renderer.destroy()
@@ -566,7 +555,6 @@ test("full feed teardown after successful setup does not throw", async () => {
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: false,
   })
   // Exercises the full drain → destroyRenderer → drain → detach → close path.
   expect(() => renderer.destroy()).not.toThrow()
@@ -593,7 +581,6 @@ test("constructor cleans up listeners when input setup fails", async () => {
     createCliRenderer({
       stdin,
       stdout,
-      testing: false,
       exitSignals: [],
     }),
   ).rejects.toThrow("raw mode setup failed")
@@ -612,7 +599,6 @@ test("destroy tolerates drainAll throwing", async () => {
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: false,
   })
 
   // Monkey-patch drainAll on the private feed handle to throw on the first
@@ -642,7 +628,6 @@ test("feed.onError handler registration and detach work", async () => {
   const renderer = await createCliRenderer({
     stdin,
     stdout,
-    testing: false,
   })
   destroyFns.push(() => renderer.destroy())
 

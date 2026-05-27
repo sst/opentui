@@ -231,6 +231,10 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   const mockMouse = createMockMouse(renderer)
 
   const renderOnce = async () => {
+    const feed = (renderer as unknown as { _feed?: { idle: () => Promise<void>; isBackpressured: () => boolean } })._feed
+    if (feed?.isBackpressured()) {
+      await feed.idle()
+    }
     //@ts-expect-error - this is a test renderer
     await renderer.loop()
   }
@@ -375,8 +379,12 @@ async function setupTestRenderer(config: TestRendererOptions) {
   const height = config.height || config.stdout?.rows || process.stdout.rows || 24
   const stdout = config.stdout || (new TestWriteStream(width, height) as unknown as NodeJS.WriteStream)
 
-  // CliRenderer handles everything: testing=true short-circuits I/O, skips
-  // feed allocation, and (via identity-based SIGWINCH gating) never registers
-  // a SIGWINCH listener since TestWriteStream !== process.stdout.
-  return new CliRenderer(stdin, stdout, width, height, { ...config, testing: true })
+  // Direct construction skips setupTerminal(); native bytes are routed to an
+  // explicit memory destination so tests do not depend on process stdout or feed
+  // backpressure behavior.
+  return new CliRenderer(stdin, stdout, width, height, {
+    ...config,
+    remote: config.remote ?? false,
+    bufferedOutput: config.bufferedOutput ?? "memory",
+  })
 }

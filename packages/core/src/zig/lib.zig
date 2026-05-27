@@ -317,7 +317,7 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
 /// Create a renderer.
 ///
 /// `feedPtr` selects the output transport:
-///   - null: writes go to process.stdout (StdoutBackend)
+///   - null: writes go to buffered process.stdout output
 ///   - non-null: writes go to the provided NativeSpanFeed stream (FeedBackend),
 ///     which the TS side pipes onward to a user-supplied Writable
 ///
@@ -327,7 +327,7 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
 export fn createRenderer(
     width: u32,
     height: u32,
-    testing: bool,
+    bufferedDestinationKind: u8,
     remote: bool,
     feedPtr: ?*native_span_feed.Stream,
 ) ?*renderer.CliRenderer {
@@ -338,10 +338,21 @@ export fn createRenderer(
 
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
+
+    const output_target: renderer.CliRenderer.OutputTarget = if (feedPtr) |feed|
+        .{ .feed = feed }
+    else switch (bufferedDestinationKind) {
+        0 => .stdout,
+        1 => .memory,
+        else => {
+            logger.warn("Invalid buffered destination kind: {}", .{bufferedDestinationKind});
+            return null;
+        },
+    };
+
     return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, .{
-        .testing = testing,
         .remote = remote,
-        .feed_ptr = feedPtr,
+        .output = output_target,
     }) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
@@ -439,17 +450,6 @@ export fn getNextBuffer(rendererPtr: *renderer.CliRenderer) *buffer.OptimizedBuf
 
 export fn getCurrentBuffer(rendererPtr: *renderer.CliRenderer) *buffer.OptimizedBuffer {
     return rendererPtr.getCurrentBuffer();
-}
-
-const OutputSlice = extern struct {
-    ptr: [*]const u8,
-    len: usize,
-};
-
-export fn getLastOutputForTest(rendererPtr: *renderer.CliRenderer, outSlice: *OutputSlice) void {
-    const output = rendererPtr.getLastOutputForTest();
-    outSlice.ptr = output.ptr;
-    outSlice.len = output.len;
 }
 
 export fn setHyperlinksCapability(rendererPtr: *renderer.CliRenderer, enabled: bool) void {

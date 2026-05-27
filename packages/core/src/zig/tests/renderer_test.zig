@@ -7,21 +7,27 @@ const gp = @import("../grapheme.zig");
 const ss = @import("../syntax-style.zig");
 const link = @import("../link.zig");
 const ansi = @import("../ansi.zig");
+const test_renderer_mod = @import("test-renderer.zig");
 
 const CliRenderer = renderer.CliRenderer;
 const TextBuffer = text_buffer.TextBuffer;
 const TextBufferView = text_buffer_view.TextBufferView;
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const RGBA = text_buffer.RGBA;
+const TestMemoryOutput = test_renderer_mod.TestMemoryOutput;
+const TestRenderer = test_renderer_mod.TestRenderer;
 
 fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
 
+    var memory = TestMemoryOutput.init(allocator);
+    defer memory.deinit();
+
     var cli_renderer = try CliRenderer.createWithOptions(allocator, width, height, pool, .{
-        .testing = true,
         .remote = false,
+        .output = .{ .buffered = memory.bufferedOutput() },
     });
     cli_renderer.destroy();
 }
@@ -50,18 +56,17 @@ test "renderer - create and destroy" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_renderer.deinit();
+    const cli_renderer = test_renderer.renderer;
 
     try std.testing.expectEqual(@as(u32, 80), cli_renderer.width);
     try std.testing.expectEqual(@as(u32, 24), cli_renderer.height);
-    try std.testing.expect(cli_renderer.testing == true);
 }
 
 test "renderer - simple text rendering to currentRenderBuffer" {
@@ -78,14 +83,14 @@ test "renderer - simple text rendering to currentRenderBuffer" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
@@ -121,14 +126,14 @@ test "renderer - multi-line text rendering" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
@@ -163,14 +168,14 @@ test "renderer - emoji (wide grapheme) rendering" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
@@ -221,14 +226,14 @@ test "renderer - CJK characters rendering" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
@@ -275,14 +280,14 @@ test "renderer - mixed ASCII, emoji, and CJK" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
@@ -325,14 +330,14 @@ test "renderer - resize updates dimensions" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     try std.testing.expectEqual(@as(u32, 80), cli_renderer.width);
     try std.testing.expectEqual(@as(u32, 24), cli_renderer.height);
@@ -349,14 +354,14 @@ test "renderer - background color setting" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     const bg_color = ansi.rgbaFromFloats(0.1, 0.2, 0.3, 1.0);
     cli_renderer.setBackgroundColor(bg_color);
@@ -377,14 +382,14 @@ test "renderer - theme color query tracks pending background restore" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.setBackgroundColor(ansi.rgbaFromFloats(0.1, 0.2, 0.3, 1.0));
     cli_renderer.queryThemeColors();
@@ -405,14 +410,14 @@ test "renderer - empty text buffer renders correctly" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.drawTextBuffer(view, 0, 0);
@@ -431,14 +436,14 @@ test "renderer - multiple renders update currentRenderBuffer" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     try tb.setText("Hello");
     const next_buffer = cli_renderer.getNextBuffer();
@@ -477,14 +482,14 @@ test "renderer - 1000 frame render loop with setStyledText" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -561,14 +566,14 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         limited_pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     var frame_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -629,14 +634,14 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         4,
         1,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
     const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
@@ -645,7 +650,7 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
     try first_next_buffer.drawText("👋", 0, 0, fg, bg, 0);
     cli_renderer.render(false);
 
-    const first_output = cli_renderer.getLastOutputForTest();
+    const first_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, first_output, "👋") != null);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
@@ -668,7 +673,7 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
 
     cli_renderer.render(false);
 
-    const second_output = cli_renderer.getLastOutputForTest();
+    const second_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, second_output, "👋") == null);
 }
 
@@ -678,14 +683,14 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
     const local_link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     // Enable hyperlinks capability
     cli_renderer.terminal.caps.hyperlinks = true;
@@ -702,7 +707,7 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
 
     // Verify OSC 8 contains id parameter
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b]8;id=") != null);
@@ -726,14 +731,14 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
     const local_link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     // Hyperlinks disabled by default
     cli_renderer.terminal.caps.hyperlinks = false;
@@ -750,7 +755,7 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
 
     // Verify output does NOT contain OSC 8 sequences
     try std.testing.expect(std.mem.indexOf(u8, output, "]8;;") == null);
@@ -763,14 +768,14 @@ test "renderer - link transition mid-line" {
     const local_link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     // Enable hyperlinks
     cli_renderer.terminal.caps.hyperlinks = true;
@@ -796,7 +801,7 @@ test "renderer - link transition mid-line" {
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
 
     // Should contain both URLs
     try std.testing.expect(std.mem.indexOf(u8, output, "https://first.com") != null);
@@ -820,14 +825,14 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     // Enable hyperlinks
     cli_renderer.terminal.caps.hyperlinks = true;
@@ -848,7 +853,7 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
 
     // Build expected OSC 8 open sequence with the link id
     var buf: [256]u8 = undefined;
@@ -870,14 +875,14 @@ test "renderer - explicit default and indexed tags use ANSI default/indexed outp
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         4,
         1,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.rgb = true;
     cli_renderer.terminal.caps.ansi256 = true;
@@ -898,7 +903,7 @@ test "renderer - explicit default and indexed tags use ANSI default/indexed outp
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[39m") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") != null);
 }
@@ -909,14 +914,14 @@ test "renderer - indexed snapshots fall back to rgb and explicit bg default rese
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         2,
         1,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.rgb = true;
     cli_renderer.terminal.caps.ansi256 = false;
@@ -931,7 +936,7 @@ test "renderer - indexed snapshots fall back to rgb and explicit bg default rese
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;51;102;153m") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") == null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
@@ -943,14 +948,14 @@ test "renderer - rgb colors fall back to ANSI256 mapping when rgb is unavailable
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         2,
         1,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.rgb = false;
     cli_renderer.terminal.caps.ansi256 = true;
@@ -960,7 +965,7 @@ test "renderer - rgb colors fall back to ANSI256 mapping when rgb is unavailable
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;") == null);
 }
@@ -971,14 +976,14 @@ test "renderer - rgb fallback uses published palette state" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         2,
         1,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.rgb = false;
     cli_renderer.terminal.caps.ansi256 = true;
@@ -993,7 +998,7 @@ test "renderer - rgb fallback uses published palette state" {
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;42m") != null);
 }
 
@@ -1003,14 +1008,14 @@ test "renderer - palette epoch changes force repaint and use new palette mapping
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         2,
         1,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.rgb = false;
     cli_renderer.terminal.caps.ansi256 = true;
@@ -1026,13 +1031,13 @@ test "renderer - palette epoch changes force repaint and use new palette mapping
     try next_buffer.drawText("A", 0, 0, target, bg, 0);
     cli_renderer.render(false);
 
-    const first_output = cli_renderer.getLastOutputForTest();
+    const first_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, first_output, "\x1b[38;5;42m") != null);
 
     try next_buffer.drawText("A", 0, 0, target, bg, 0);
     cli_renderer.render(false);
 
-    const second_output = cli_renderer.getLastOutputForTest();
+    const second_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, second_output, "A") == null);
 
     var palette_b = [_]RGBA{ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0)} ** 256;
@@ -1042,7 +1047,7 @@ test "renderer - palette epoch changes force repaint and use new palette mapping
     try next_buffer.drawText("A", 0, 0, target, bg, 0);
     cli_renderer.render(false);
 
-    const third_output = cli_renderer.getLastOutputForTest();
+    const third_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, third_output, "A") != null);
     try std.testing.expect(std.mem.indexOf(u8, third_output, "\x1b[38;5;77m") != null);
 }
@@ -1053,14 +1058,14 @@ test "renderer - transparent rgb backgrounds still emit 49 reset" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         2,
         1,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.rgb = true;
 
@@ -1069,7 +1074,7 @@ test "renderer - transparent rgb backgrounds still emit 49 reset" {
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
 }
 
@@ -1083,19 +1088,19 @@ test "renderer - default cursor style emits reset cursor ANSI" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.setCursorPosition(4, 2, true);
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
 
     try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.defaultCursorStyle) != null);
     try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.cursorBlock) == null);
@@ -1115,14 +1120,14 @@ test "renderer - explicit_cursor_positioning emits cursor move after wide graphe
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.explicit_cursor_positioning = true;
     cli_renderer.terminal.caps.explicit_width = false;
@@ -1132,7 +1137,7 @@ test "renderer - explicit_cursor_positioning emits cursor move after wide graphe
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
 
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
 }
@@ -1150,14 +1155,14 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer1 = try CliRenderer.create(
+    var test_cli_renderer1 = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer1.destroy();
+    defer test_cli_renderer1.deinit();
+    const cli_renderer1 = test_cli_renderer1.renderer;
 
     cli_renderer1.terminal.caps.explicit_cursor_positioning = false;
     cli_renderer1.terminal.caps.explicit_width = false;
@@ -1165,16 +1170,16 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
     const next_buffer1 = cli_renderer1.getNextBuffer();
     next_buffer1.drawTextBuffer(view, 0, 0);
     cli_renderer1.render(false);
-    const output_without = cli_renderer1.getLastOutputForTest();
+    const output_without = test_cli_renderer1.lastOutput();
 
-    var cli_renderer2 = try CliRenderer.create(
+    var test_cli_renderer2 = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer2.destroy();
+    defer test_cli_renderer2.deinit();
+    const cli_renderer2 = test_cli_renderer2.renderer;
 
     cli_renderer2.terminal.caps.explicit_cursor_positioning = true;
     cli_renderer2.terminal.caps.explicit_width = false;
@@ -1182,7 +1187,7 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
     const next_buffer2 = cli_renderer2.getNextBuffer();
     next_buffer2.drawTextBuffer(view, 0, 0);
     cli_renderer2.render(false);
-    const output_with = cli_renderer2.getLastOutputForTest();
+    const output_with = test_cli_renderer2.lastOutput();
 
     var count_without: usize = 0;
     var count_with: usize = 0;
@@ -1226,14 +1231,14 @@ test "renderer - explicit_cursor_positioning with CJK characters" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.explicit_cursor_positioning = true;
     cli_renderer.terminal.caps.explicit_width = false;
@@ -1243,7 +1248,7 @@ test "renderer - explicit_cursor_positioning with CJK characters" {
 
     cli_renderer.render(false);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
 
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
 }
@@ -1254,14 +1259,14 @@ test "renderer - commitSplitFooterSnapshot writes append before footer repaint i
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         12,
         3,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
@@ -1288,7 +1293,7 @@ test "renderer - commitSplitFooterSnapshot writes append before footer repaint i
     // 3) footer repaint cursor move happens after append payload
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 11, false, true, 2, false, true, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     const append_index = std.mem.indexOf(u8, output, appended);
     const scroll_region_set_index = std.mem.indexOf(u8, output, "\x1b[1;2r");
     const scroll_region_reset_index = std.mem.indexOf(u8, output, "\x1b[r");
@@ -1323,14 +1328,14 @@ test "renderer - commitSplitFooterSnapshot settling phase moves footer downward"
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         12,
         3,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(0, 3);
 
@@ -1355,7 +1360,7 @@ test "renderer - commitSplitFooterSnapshot settling phase moves footer downward"
     // that transition from footer surface to scrollback before append.
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 6, false, true, 3, false, true, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     const settling_clear_index = std.mem.indexOf(u8, output, "\x1b[1;1H\x1b[J");
     const stale_footer_clear_top_index = std.mem.indexOf(u8, output, "\x1b[1;1H\x1b[2K");
     const stale_footer_clear_next_index = std.mem.indexOf(u8, output, "\x1b[2;1H\x1b[2K");
@@ -1384,14 +1389,14 @@ test "renderer - commitSplitFooterSnapshot multiline settling enables bounded sc
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         12,
         3,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(1, 3);
 
@@ -1414,7 +1419,7 @@ test "renderer - commitSplitFooterSnapshot multiline settling enables bounded sc
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 6, false, true, 3, false, true, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     const expanded_region_index = std.mem.indexOf(u8, output, "\x1b[1;3r");
     const collapsed_region_index = std.mem.indexOf(u8, output, "\x1b[r");
 
@@ -1430,14 +1435,14 @@ test "renderer - commitSplitFooterSnapshot multiline short final row keeps conti
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         20,
         4,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
@@ -1475,7 +1480,7 @@ test "renderer - commitSplitFooterSnapshot multiline short final row keeps conti
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(second_snapshot, 1, false, false, 2, false, true, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     const move_index = std.mem.indexOf(u8, output, "\x1b[2;6H");
     const comma_index = std.mem.indexOf(u8, output, ",");
 
@@ -1491,14 +1496,14 @@ test "renderer - commitSplitFooterSnapshot exact-width continuation preserves au
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         20,
         4,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
@@ -1533,7 +1538,7 @@ test "renderer - commitSplitFooterSnapshot exact-width continuation preserves au
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(second_snapshot, 8, false, false, 2, false, true, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     const wrap_index = std.mem.indexOf(u8, output, "\x1b[2;20H\r\n");
     const text_index = std.mem.indexOf(u8, output, " letters");
 
@@ -1549,14 +1554,14 @@ test "renderer - commitSplitFooterSnapshot does not emit continuation spaces for
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         12,
         4,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
@@ -1579,7 +1584,7 @@ test "renderer - commitSplitFooterSnapshot does not emit continuation spaces for
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 10, false, false, 2, false, true, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
 
     try std.testing.expect(std.mem.indexOf(u8, output, "│甲│乙│丙│") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "│😀│🚀│🧪│") != null);
@@ -1597,14 +1602,14 @@ test "renderer - repaintSplitFooter repaints footer without append payload" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         12,
         3,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
@@ -1615,7 +1620,7 @@ test "renderer - repaintSplitFooter repaints footer without append payload" {
 
     _ = cli_renderer.repaintSplitFooter(2, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     const footer_text_index = std.mem.indexOf(u8, output, "FOOT");
     const footer_clear_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[2K");
     const footer_erase_below_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[J");
@@ -1634,14 +1639,14 @@ test "renderer - repaintSplitFooter applies pending viewport scroll transition i
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         12,
         1,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(4, 4);
     cli_renderer.setRenderOffset(3);
@@ -1654,7 +1659,7 @@ test "renderer - repaintSplitFooter applies pending viewport scroll transition i
 
     _ = cli_renderer.repaintSplitFooter(4, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
     const scroll_index = std.mem.indexOf(u8, output, "\x1b[1T");
     const footer_move_index = std.mem.indexOf(u8, output, "\x1b[5;1H");
@@ -1677,14 +1682,14 @@ test "renderer - repaintSplitFooter viewport scroll uses explicit split scroll d
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         12,
         8,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(6, 6);
     cli_renderer.splitScrollback.noteViewportScroll(2);
@@ -1698,7 +1703,7 @@ test "renderer - repaintSplitFooter viewport scroll uses explicit split scroll d
 
     _ = cli_renderer.repaintSplitFooter(2, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[2S") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[4S") == null);
     try std.testing.expectEqual(@as(u32, 2), cli_renderer.getSplitOutputOffset(2));
@@ -1710,14 +1715,14 @@ test "renderer - repaintSplitFooter applies pending stale row clear transition i
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         12,
         3,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(1, 7);
     cli_renderer.setPendingSplitFooterTransition(.clear_stale_rows, 2, 4, 2, 3, 0);
@@ -1729,7 +1734,7 @@ test "renderer - repaintSplitFooter applies pending stale row clear transition i
 
     _ = cli_renderer.repaintSplitFooter(7, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
     const clear_index = std.mem.indexOf(u8, output, "\x1b[5;1H\x1b[2K");
     const footer_text_index = std.mem.indexOf(u8, output, "FOOT");
@@ -1749,14 +1754,14 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         16,
         4,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.rgb = true;
     cli_renderer.terminal.caps.ansi256 = true;
@@ -1782,7 +1787,7 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 8, true, true, 2, false, true, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     const snapshot_text_index = std.mem.indexOf(u8, output, "SNAP");
     const orange_fg_index = std.mem.indexOf(u8, output, "\x1b[38;2;255;128;0m");
     const bold_index = std.mem.indexOf(u8, output, "\x1b[1m");
@@ -1803,14 +1808,14 @@ test "renderer - commitSplitFooterSnapshot preserves indexed and default color t
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         8,
         4,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.caps.rgb = true;
     cli_renderer.terminal.caps.ansi256 = true;
@@ -1841,7 +1846,7 @@ test "renderer - commitSplitFooterSnapshot preserves indexed and default color t
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 2, true, false, 2, false, true, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, output, "A") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "B") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[39m") != null);
@@ -1856,14 +1861,14 @@ test "renderer - commitSplitFooterSnapshot does not emit NUL padding for short r
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         20,
         4,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
@@ -1886,7 +1891,7 @@ test "renderer - commitSplitFooterSnapshot does not emit NUL padding for short r
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 16, true, true, 2, false, true, true);
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOfScalar(u8, output, 0) == null);
     try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.eraseToEndOfLine) != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\r\n\x1b[0m\x1b[K") != null);
@@ -1898,14 +1903,14 @@ test "renderer - batched split commits share single sync frame" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         16,
         4,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
@@ -1956,7 +1961,7 @@ test "renderer - batched split commits share single sync frame" {
         true,
     );
 
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
     // Batching should keep both commits inside one synchronized update envelope.
     try std.testing.expect(std.mem.indexOf(u8, output, "FIRST") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "SECOND") != null);
@@ -1970,20 +1975,20 @@ test "renderer - unchanged frame with unchanged cursor emits no output" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         12,
         4,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.terminal.setCursorPosition(3, 2, true);
     cli_renderer.render(false);
 
     cli_renderer.render(false);
-    const output = cli_renderer.getLastOutputForTest();
+    const output = test_cli_renderer.lastOutput();
 
     // No-op frames must be byte-empty; otherwise repeated sync/cursor toggles can
     // produce visible shimmer in terminals that animate cursor or repaint eagerly.
@@ -1996,14 +2001,14 @@ test "renderer - stdout debug dump includes non-threaded last render" {
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
-    var cli_renderer = try CliRenderer.create(
+    var test_cli_renderer = try TestRenderer.create(
         std.testing.allocator,
         12,
         4,
         pool,
-        true,
     );
-    defer cli_renderer.destroy();
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
     try std.testing.expect(!cli_renderer.backend.isUseThread());
 
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
@@ -2034,9 +2039,8 @@ test "FeedBackend - renderer writes through feed" {
 
     const feed = try native_span_feed.Stream.create(std.testing.allocator, null);
     var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 80, 24, pool, .{
-        .testing = false,
         .remote = true,
-        .feed_ptr = feed,
+        .output = .{ .feed = feed },
     });
     // LIFO: renderer destroys first (needs the feed alive for shutdown writes).
     defer feed.destroy();
@@ -2077,9 +2081,8 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     opts.span_queue_capacity = 2;
     const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
     var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 80, 24, pool, .{
-        .testing = false,
         .remote = true,
-        .feed_ptr = feed,
+        .output = .{ .feed = feed },
     });
     // LIFO: renderer destroys first.
     defer feed.destroy();
@@ -2244,9 +2247,8 @@ test "FeedBackend - supportsThreading is false" {
 
     const feed = try native_span_feed.Stream.create(std.testing.allocator, null);
     var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 80, 24, pool, .{
-        .testing = false,
         .remote = true,
-        .feed_ptr = feed,
+        .output = .{ .feed = feed },
     });
     // LIFO: renderer destroys first.
     defer feed.destroy();
@@ -2257,7 +2259,7 @@ test "FeedBackend - supportsThreading is false" {
     try std.testing.expect(!cli_renderer.backend.isUseThread());
 }
 
-test "two renderers on stdout backend have independent buffers" {
+test "two renderers on buffered backend have independent buffers" {
     // This verifies the Phase 1 fix: per-instance output buffers rather than
     // file-scope statics. Without the fix, two renderers would clobber each
     // other's output.
@@ -2266,10 +2268,12 @@ test "two renderers on stdout backend have independent buffers" {
     _ = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
-    var r1 = try CliRenderer.create(std.testing.allocator, 80, 24, pool, true);
-    defer r1.destroy();
-    var r2 = try CliRenderer.create(std.testing.allocator, 80, 24, pool, true);
-    defer r2.destroy();
+    var test_r1 = try TestRenderer.create(std.testing.allocator, 80, 24, pool);
+    defer test_r1.deinit();
+    const r1 = test_r1.renderer;
+    var test_r2 = try TestRenderer.create(std.testing.allocator, 80, 24, pool);
+    defer test_r2.deinit();
+    const r2 = test_r2.renderer;
 
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
@@ -2282,8 +2286,8 @@ test "two renderers on stdout backend have independent buffers" {
     try b2.drawText("BBB", 0, 0, fg, bg, 0);
     r2.render(false);
 
-    const out1 = r1.getLastOutputForTest();
-    const out2 = r2.getLastOutputForTest();
+    const out1 = test_r1.lastOutput();
+    const out2 = test_r2.lastOutput();
 
     try std.testing.expect(std.mem.indexOf(u8, out1, "AAA") != null);
     try std.testing.expect(std.mem.indexOf(u8, out1, "BBB") == null);
@@ -2297,8 +2301,9 @@ test "threaded stdout destroy: no stale write after shutdown ANSI" {
     _ = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
-    var cli_renderer = try CliRenderer.create(std.testing.allocator, 80, 24, pool, true);
-    defer cli_renderer.destroy();
+    var test_cli_renderer = try TestRenderer.createThreadSafe(std.testing.allocator, 80, 24, pool);
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
 
     cli_renderer.setUseThread(true);
     try std.testing.expect(cli_renderer.backend.isUseThread());
