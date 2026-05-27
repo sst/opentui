@@ -686,11 +686,25 @@ function closeSession(ws: ServerWebSocket<Session>, code = 1000, reason = "quit"
   if (ws.data.closed) return
   ws.data.closed = true
   finishPendingWrite(ws.data)
-  try {
-    ws.close(code, reason)
-  } catch {
-    // Socket may already be closing.
+
+  const renderer = ws.data.renderer
+  ws.data.renderer = null
+  if (renderer) {
+    try {
+      renderer.destroy()
+    } catch (err) {
+      console.error("error destroying renderer before WS close", err)
+    }
   }
+
+  queueMicrotask(() => {
+    finishPendingWrite(ws.data)
+    try {
+      ws.close(code, reason)
+    } catch {
+      // Socket may already be closing.
+    }
+  })
 }
 
 /**
