@@ -42,6 +42,9 @@ const INDEX_HTML = readFileSync(join(__dirname, "index.html"), "utf8")
 interface Session {
   renderer: CliRenderer | null
   stdin: Readable | null
+  stdout: Writable | null
+  card: BoxRenderable | null
+  boardBox: BoxRenderable | null
   scoreText: TextRenderable | null
   metaText: TextRenderable | null
   boardText: TextRenderable | null
@@ -122,6 +125,15 @@ const BOARD_STYLE_TRAIL_1 = 4
 const BOARD_STYLE_CPU_PADDLE = 5
 const BOARD_STYLE_PLAYER_PADDLE = 6
 const BOARD_STYLE_BALL = 7
+const DEFAULT_COLS = 80
+const DEFAULT_ROWS = 24
+const MAX_COLS = 1000
+const MAX_ROWS = 500
+const CARD_ASPECT_RATIO = CARD_WIDTH / CARD_HEIGHT
+const CARD_MARGIN_COLS = 2
+const CARD_MARGIN_ROWS = 2
+const BOARD_CARD_WIDTH_OVERHEAD = CARD_WIDTH - BOARD_WIDTH
+const BOARD_CARD_HEIGHT_OVERHEAD = CARD_HEIGHT - BOARD_HEIGHT
 
 let playerScore = 0
 let cpuScore = 0
@@ -163,8 +175,40 @@ function setTextContent(renderable: TextRenderable | null, content: StyledText |
   }
 }
 
+function setBoxSize(renderable: BoxRenderable | null, width: number, height: number) {
+  if (!renderable) return
+  renderable.width = width
+  renderable.height = height
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max))
+}
+
+function normalizeTerminalSize(cols: unknown, rows: unknown) {
+  if (typeof cols !== "number" || typeof rows !== "number") return null
+  if (!Number.isFinite(cols) || !Number.isFinite(rows)) return null
+  if (cols <= 0 || rows <= 0) return null
+
+  return {
+    cols: Math.trunc(clamp(cols, 1, MAX_COLS)),
+    rows: Math.trunc(clamp(rows, 1, MAX_ROWS)),
+  }
+}
+
+function readInitialTerminalSize(url: URL) {
+  return (
+    normalizeTerminalSize(Number(url.searchParams.get("cols")), Number(url.searchParams.get("rows"))) ?? {
+      cols: DEFAULT_COLS,
+      rows: DEFAULT_ROWS,
+    }
+  )
+}
+
+function setStreamSize(stdout: Writable | null, cols: number, rows: number) {
+  if (!stdout) return
+  ;(stdout as unknown as { columns: number }).columns = cols
+  ;(stdout as unknown as { rows: number }).rows = rows
 }
 
 function clampPaddle(value: number) {
@@ -402,7 +446,7 @@ function drawBallTrail(maskBuffer: Uint8Array, styleBuffer: Uint8Array) {
   }
 }
 
-function buildBoardFrame() {
+function createBoardSourceBuffers() {
   const maskBuffer = new Uint8Array(BOARD_WIDTH * BOARD_HEIGHT)
   const styleBuffer = new Uint8Array(BOARD_WIDTH * BOARD_HEIGHT)
   const centerLineX = Math.floor(BOARD_PIXEL_WIDTH / 2)
@@ -418,14 +462,60 @@ function buildBoardFrame() {
   drawBallTrail(maskBuffer, styleBuffer)
   drawBall(maskBuffer, styleBuffer)
 
+  return { maskBuffer, styleBuffer }
+}
+
+function scaleBoardBuffers(sourceMask: Uint8Array, sourceStyle: Uint8Array, boardWidth: number, boardHeight: number) {
+  if (boardWidth === BOARD_WIDTH && boardHeight === BOARD_HEIGHT) {
+    return { maskBuffer: sourceMask, styleBuffer: sourceStyle }
+  }
+
+  const maskBuffer = new Uint8Array(boardWidth * boardHeight)
+  const styleBuffer = new Uint8Array(boardWidth * boardHeight)
+  const targetPixelWidth = boardWidth * 2
+  const targetPixelHeight = boardHeight * 4
+
+  for (let y = 0; y < targetPixelHeight; y += 1) {
+    const sourceY = Math.min(BOARD_PIXEL_HEIGHT - 1, Math.floor((y * BOARD_PIXEL_HEIGHT) / targetPixelHeight))
+    const sourceCellY = Math.floor(sourceY / 4)
+    const sourceDotY = sourceY % 4
+    const targetCellY = Math.floor(y / 4)
+    const targetDotY = y % 4
+
+    for (let x = 0; x < targetPixelWidth; x += 1) {
+      const sourceX = Math.min(BOARD_PIXEL_WIDTH - 1, Math.floor((x * BOARD_PIXEL_WIDTH) / targetPixelWidth))
+      const sourceCellX = Math.floor(sourceX / 2)
+      const sourceDotX = sourceX % 2
+      const sourceIndex = sourceCellY * BOARD_WIDTH + sourceCellX
+      const sourceMaskValue = sourceMask[sourceIndex] ?? 0
+      if ((sourceMaskValue & BRAILLE_DOT_MASKS[sourceDotY][sourceDotX]) === 0) continue
+
+      const targetCellX = Math.floor(x / 2)
+      const targetDotX = x % 2
+      const targetIndex = targetCellY * boardWidth + targetCellX
+      maskBuffer[targetIndex] |= BRAILLE_DOT_MASKS[targetDotY][targetDotX]
+      styleBuffer[targetIndex] = Math.max(
+        styleBuffer[targetIndex] ?? BOARD_STYLE_EMPTY,
+        sourceStyle[sourceIndex] ?? BOARD_STYLE_EMPTY,
+      )
+    }
+  }
+
+  return { maskBuffer, styleBuffer }
+}
+
+function buildBoardFrame(boardWidth: number, boardHeight: number) {
+  const source = createBoardSourceBuffers()
+  const { maskBuffer, styleBuffer } = scaleBoardBuffers(source.maskBuffer, source.styleBuffer, boardWidth, boardHeight)
+
   const chunks: TextChunk[] = []
 
-  for (let row = 0; row < BOARD_HEIGHT; row += 1) {
+  for (let row = 0; row < boardHeight; row += 1) {
     let runText = ""
-    let runStyle = styleBuffer[row * BOARD_WIDTH] ?? BOARD_STYLE_EMPTY
+    let runStyle = styleBuffer[row * boardWidth] ?? BOARD_STYLE_EMPTY
 
-    for (let col = 0; col < BOARD_WIDTH; col += 1) {
-      const cellIndex = row * BOARD_WIDTH + col
+    for (let col = 0; col < boardWidth; col += 1) {
+      const cellIndex = row * boardWidth + col
       const mask = maskBuffer[cellIndex]
       const style = styleBuffer[cellIndex] ?? BOARD_STYLE_EMPTY
       const char = mask === 0 ? " " : String.fromCodePoint(0x2800 + mask)
@@ -448,7 +538,7 @@ function buildBoardFrame() {
 
     chunks.push(styleBoardRun(runStyle, runText))
 
-    if (row < BOARD_HEIGHT - 1) {
+    if (row < boardHeight - 1) {
       chunks.push(plainChunk("\n"))
     }
   }
@@ -464,19 +554,50 @@ function buildMetaLine(session: Session) {
   return `Tabs ${ACTIVE_SESSIONS.size}   Session ${session.sessionId}   ${session.cols}x${session.rows}`
 }
 
+function calculateSessionLayout(session: Session) {
+  const availableWidth = Math.max(1, session.cols - CARD_MARGIN_COLS)
+  const availableHeight = Math.max(1, session.rows - CARD_MARGIN_ROWS)
+  let cardWidth = availableWidth
+  let cardHeight = Math.round(cardWidth / CARD_ASPECT_RATIO)
+
+  if (cardHeight > availableHeight) {
+    cardHeight = availableHeight
+    cardWidth = Math.round(cardHeight * CARD_ASPECT_RATIO)
+  }
+
+  cardWidth = Math.max(1, Math.min(availableWidth, cardWidth))
+  cardHeight = Math.max(1, Math.min(availableHeight, cardHeight))
+
+  return {
+    cardWidth,
+    cardHeight,
+    boardWidth: Math.max(2, cardWidth - BOARD_CARD_WIDTH_OVERHEAD),
+    boardHeight: Math.max(2, cardHeight - BOARD_CARD_HEIGHT_OVERHEAD),
+  }
+}
+
+function applySessionLayout(session: Session) {
+  const layout = calculateSessionLayout(session)
+  setBoxSize(session.card, layout.cardWidth, layout.cardHeight)
+  setBoxSize(session.boardBox, layout.boardWidth + 2, layout.boardHeight + 2)
+  return layout
+}
+
 function renderAllUi() {
-  const boardFrame = buildBoardFrame()
   const scoreLine = buildScoreLine()
 
   for (const ws of ACTIVE_SESSIONS) {
+    const layout = applySessionLayout(ws.data)
     setTextContent(ws.data.scoreText, scoreLine)
     setTextContent(ws.data.metaText, buildMetaLine(ws.data))
-    setTextContent(ws.data.boardText, boardFrame)
+    setTextContent(ws.data.boardText, buildBoardFrame(layout.boardWidth, layout.boardHeight))
   }
 }
 
 function cleanupSession(ws: ServerWebSocket<Session>) {
   ACTIVE_SESSIONS.delete(ws)
+  ws.data.card = null
+  ws.data.boardBox = null
   ws.data.scoreText = null
   ws.data.metaText = null
   ws.data.boardText = null
@@ -573,6 +694,11 @@ function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number,
       // Copy into a fresh buffer so we don't hold a view into the feed's
       // chunk memory (which is reclaimed once this callback fires).
       const bytes = typeof chunk === "string" ? Buffer.from(chunk) : Buffer.from(chunk)
+      if (bytes.byteLength === 0) {
+        callback()
+        return
+      }
+
       try {
         const sendResult = ws.sendBinary(bytes)
         if (sendResult === -1) {
@@ -600,6 +726,7 @@ function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number,
 
 function setupPongUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, session: Session) {
   renderer.setBackgroundColor("#08111f")
+  const layout = calculateSessionLayout(session)
 
   const container = new BoxRenderable(renderer, {
     id: "xterm-demo-root",
@@ -616,8 +743,8 @@ function setupPongUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, sessio
 
   const card = new BoxRenderable(renderer, {
     id: "xterm-demo-card",
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
+    width: layout.cardWidth,
+    height: layout.cardHeight,
     backgroundColor: session.theme.cardColor,
     borderStyle: "double",
     borderColor: session.theme.borderColor,
@@ -646,8 +773,8 @@ function setupPongUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, sessio
 
   const boardBox = new BoxRenderable(renderer, {
     id: "xterm-demo-board-box",
-    width: BOARD_WIDTH + 2,
-    height: BOARD_HEIGHT + 2,
+    width: layout.boardWidth + 2,
+    height: layout.boardHeight + 2,
     backgroundColor: "#020617",
     borderStyle: "single",
     borderColor: session.theme.borderColor,
@@ -672,6 +799,8 @@ function setupPongUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, sessio
   container.add(card)
   renderer.root.add(container)
 
+  session.card = card
+  session.boardBox = boardBox
   session.scoreText = scoreText
   session.metaText = metaText
   session.boardText = boardText
@@ -716,6 +845,7 @@ function setupPongUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, sessio
 async function startSession(ws: ServerWebSocket<Session>) {
   const { stdin, stdout, rawStdin } = createSessionStreams(ws, ws.data.cols, ws.data.rows)
   ws.data.stdin = rawStdin
+  ws.data.stdout = stdout
 
   const renderer = await createCliRenderer({
     stdin,
@@ -727,20 +857,27 @@ async function startSession(ws: ServerWebSocket<Session>) {
     targetFps: 30,
   })
 
+  ws.data.renderer = renderer
+  if (renderer.width !== ws.data.cols || renderer.height !== ws.data.rows) {
+    renderer.resize(ws.data.cols, ws.data.rows)
+  }
+
   renderer.on(CliRenderEvents.DESTROY, () => {
     cleanupSession(ws)
   })
 
-  ws.data.renderer = renderer
   setupPongUI(ws, renderer, ws.data)
 }
 
 function handleResize(ws: ServerWebSocket<Session>, cols: number, rows: number) {
-  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) return
-  ws.data.cols = cols
-  ws.data.rows = rows
+  const size = normalizeTerminalSize(cols, rows)
+  if (!size) return
+
+  ws.data.cols = size.cols
+  ws.data.rows = size.rows
+  setStreamSize(ws.data.stdout, size.cols, size.rows)
   if (ws.data.renderer) {
-    ws.data.renderer.resize(cols, rows)
+    ws.data.renderer.resize(size.cols, size.rows)
   }
   renderAllUi()
 }
@@ -752,16 +889,20 @@ const server = Bun.serve<Session>({
     if (url.pathname === "/ws") {
       const sessionId = createSessionId()
       const theme = pickSessionTheme(sessionId)
+      const initialSize = readInitialTerminalSize(url)
       const ok = srv.upgrade(req, {
         data: {
           renderer: null,
           stdin: null,
+          stdout: null,
+          card: null,
+          boardBox: null,
           scoreText: null,
           metaText: null,
           boardText: null,
           hintText: null,
-          cols: 80,
-          rows: 24,
+          cols: initialSize.cols,
+          rows: initialSize.rows,
           sessionId,
           theme,
           closed: false,
@@ -834,6 +975,7 @@ const server = Bun.serve<Session>({
         // ignore
       }
       ws.data.stdin = null
+      ws.data.stdout = null
     },
   },
 })

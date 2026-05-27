@@ -44,6 +44,14 @@
         margin-top: 4px;
         color: #94a3b8;
       }
+      .header-meta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .terminal-size {
+        color: #94a3b8;
+      }
       header code {
         background: #182235;
         padding: 1px 6px;
@@ -53,12 +61,23 @@
       #terminal {
         flex: 1;
         min-height: 0;
-        padding: 8px;
+        width: 100%;
         box-sizing: border-box;
+        overflow: hidden;
+        background: #000;
+      }
+      #terminal-host {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+      }
+      #terminal-host .xterm {
+        width: 100%;
+        height: 100%;
       }
       .status {
         color: #888;
-        margin-left: 12px;
       }
       .status.connected {
         color: #7ec699;
@@ -72,63 +91,173 @@
     <header>
       <div class="header-row">
         <div class="header-title">opentui web pong</div>
-        <span class="status" id="status">connecting…</span>
+        <div class="header-meta">
+          <span class="terminal-size" id="terminal-size">sizing…</span>
+          <span class="status" id="status">connecting…</span>
+        </div>
       </div>
       <div class="header-copy">
         Shared match across tabs. <code>j/k</code> or arrows move, <code>space</code> serves or pauses,
-        <code>r</code> resets, <code>q</code> quits.
+        <code>r</code> resets, <code>q</code> quits. <code>Ctrl/Cmd +/-</code> changes terminal resolution,
+        <code>Ctrl/Cmd 0</code> resets it.
       </div>
     </header>
-    <div id="terminal"></div>
+    <div id="terminal"><div id="terminal-host"></div></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
     <script>
       const status = document.getElementById("status")
-      const terminalElement = document.getElementById("terminal")
+      const terminalSize = document.getElementById("terminal-size")
+      const terminalHost = document.getElementById("terminal-host")
+
+      const fontFamily = "Menlo, Monaco, 'Courier New', monospace"
+      const lineHeight = 1
+      const fontSizes = [8, 10, 12, 14, 16, 20, 24, 30, 38, 48]
+      const defaultFontSizeIndex = 6
+
+      let fontSizeIndex = defaultFontSizeIndex
+      let currentCols = 80
+      let currentRows = 24
+      let currentFontSize = fontSizes[fontSizeIndex]
+      let lastSentCols = 0
+      let lastSentRows = 0
+      let pendingLayoutFrame = 0
+      let ws = null
+
       const term = new Terminal({
         cursorBlink: false,
-        fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+        fontFamily,
+        fontSize: currentFontSize,
+        lineHeight,
+        letterSpacing: 0,
+        scrollback: 0,
         theme: { background: "#000000" },
       })
       const fitAddon = new FitAddon.FitAddon()
       term.loadAddon(fitAddon)
-      term.open(terminalElement)
-      fitAddon.fit()
-      term.focus()
 
-      const wsUrl = (location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + "/ws"
-      const ws = new WebSocket(wsUrl)
+      term.open(terminalHost)
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(value, max))
+      }
+
+      function updateSizeLabel() {
+        const zoomPercent = Math.round((currentFontSize / fontSizes[defaultFontSizeIndex]) * 100)
+        terminalSize.textContent = `${currentCols}x${currentRows}  ${zoomPercent}%  ${currentFontSize}px`
+      }
+
+      function layoutTerminal() {
+        currentFontSize = fontSizes[fontSizeIndex]
+        term.options.fontSize = currentFontSize
+        fitAddon.fit()
+        currentCols = term.cols
+        currentRows = term.rows
+        updateSizeLabel()
+        sendSize()
+      }
+
+      function scheduleLayout() {
+        if (pendingLayoutFrame) cancelAnimationFrame(pendingLayoutFrame)
+        pendingLayoutFrame = requestAnimationFrame(() => {
+          pendingLayoutFrame = 0
+          layoutTerminal()
+        })
+      }
+
+      function setFontSizeIndex(nextIndex) {
+        const next = clamp(nextIndex, 0, fontSizes.length - 1)
+        if (next === fontSizeIndex) return
+        fontSizeIndex = next
+        scheduleLayout()
+      }
+
+      function resetFontSize() {
+        if (fontSizeIndex === defaultFontSizeIndex) return
+        fontSizeIndex = defaultFontSizeIndex
+        scheduleLayout()
+      }
+
+      function handleResolutionKey(event) {
+        if (!event.ctrlKey && !event.metaKey) return
+
+        if (event.key === "+" || event.key === "=") {
+          event.preventDefault()
+          event.stopPropagation()
+          setFontSizeIndex(fontSizeIndex + 1)
+          return
+        }
+
+        if (event.key === "-" || event.key === "_") {
+          event.preventDefault()
+          event.stopPropagation()
+          setFontSizeIndex(fontSizeIndex - 1)
+          return
+        }
+
+        if (event.key === "0") {
+          event.preventDefault()
+          event.stopPropagation()
+          resetFontSize()
+        }
+      }
+
+      term.focus()
+      layoutTerminal()
+
+      function createWebSocketUrl() {
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:"
+        const url = new URL("/ws", protocol + "//" + location.host)
+        if (currentCols > 0 && currentRows > 0) {
+          url.searchParams.set("cols", String(currentCols))
+          url.searchParams.set("rows", String(currentRows))
+        }
+        return url.href
+      }
+
+      ws = new WebSocket(createWebSocketUrl())
       ws.binaryType = "arraybuffer"
 
       function focusTerminal() {
         term.focus()
       }
 
-      function syncSize() {
-        fitAddon.fit()
-        if (ws.readyState !== WebSocket.OPEN) return
-        if (term.cols <= 0 || term.rows <= 0) return
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }))
+      function sendSize() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return
+        if (currentCols <= 0 || currentRows <= 0) return
+        if (currentCols === lastSentCols && currentRows === lastSentRows) return
+
+        ws.send(JSON.stringify({ type: "resize", cols: currentCols, rows: currentRows }))
+        lastSentCols = currentCols
+        lastSentRows = currentRows
       }
 
-      const resizeObserver = new ResizeObserver(() => syncSize())
-      resizeObserver.observe(terminalElement)
-      terminalElement.addEventListener("pointerdown", focusTerminal)
+      term.onResize(({ cols, rows }) => {
+        currentCols = cols
+        currentRows = rows
+        updateSizeLabel()
+        sendSize()
+      })
 
-      window.addEventListener("resize", syncSize)
+      const resizeObserver = new ResizeObserver(scheduleLayout)
+      resizeObserver.observe(terminalHost)
+      terminalHost.addEventListener("pointerdown", focusTerminal)
+      document.addEventListener("keydown", handleResolutionKey, { capture: true })
+
+      window.addEventListener("resize", scheduleLayout)
       window.addEventListener("pageshow", () => {
         focusTerminal()
-        syncSize()
+        scheduleLayout()
       })
       window.addEventListener("focus", () => {
         focusTerminal()
-        syncSize()
+        scheduleLayout()
       })
       document.addEventListener("visibilitychange", () => {
         if (!document.hidden) {
           focusTerminal()
-          syncSize()
+          scheduleLayout()
         }
       })
 
@@ -136,7 +265,7 @@
         status.textContent = "connected"
         status.className = "status connected"
         focusTerminal()
-        syncSize()
+        layoutTerminal()
       })
 
       ws.addEventListener("message", (ev) => {
