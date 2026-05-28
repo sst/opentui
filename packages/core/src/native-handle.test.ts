@@ -15,7 +15,7 @@ import {
 describe("native handles", () => {
   test("renderer calls after destroy are rejected safely", () => {
     const lib = resolveRenderLib()
-    const renderer = lib.createRenderer(4, 3, { testing: true })
+    const renderer = lib.createRenderer(4, 3, { bufferedOutput: "memory" })
     expect(renderer).toBeTruthy()
     const rendererHandle = renderer as RendererHandle
     const current = lib.getCurrentBuffer(rendererHandle)
@@ -27,7 +27,7 @@ describe("native handles", () => {
 
     expect(lib.getBufferWidth(currentHandle)).toBe(0)
 
-    const second = lib.createRenderer(4, 3, { testing: true }) as RendererHandle
+    const second = lib.createRenderer(4, 3, { bufferedOutput: "memory" }) as RendererHandle
     expect(second).toBeTruthy()
     const before = lib.getCursorState(second)
     lib.setCursorPosition(rendererHandle, 2, 2, true)
@@ -47,7 +47,7 @@ describe("native handles", () => {
     expect(lib.getBufferWidth(bufferHandle)).toBe(0)
     lib.destroyOptimizedBuffer(bufferHandle)
 
-    const renderer = lib.createRenderer(4, 3, { testing: true }) as RendererHandle
+    const renderer = lib.createRenderer(4, 3, { bufferedOutput: "memory" }) as RendererHandle
     expect(lib.getBufferWidth(renderer as unknown as OptimizedBufferHandle)).toBe(0)
     lib.destroyRenderer(renderer)
   })

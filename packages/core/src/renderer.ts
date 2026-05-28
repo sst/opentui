@@ -979,7 +979,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
    * Some late constructor side effects are not rolled back if construction
    * throws partway; production callers should use `createCliRenderer`, which
    * wraps `setupTerminal()` in a try/catch that calls `destroy()` on failure.
-  */
+   */
   constructor(
     stdin: NodeJS.ReadStream,
     stdout: NodeJS.WriteStream,
@@ -3055,7 +3055,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // Feed-backed startup writes are async relative to the JS Writable. Wait
     // until they drain so callers can safely destroy immediately after
     // createCliRenderer() resolves.
-    await this._feed?.idle()
+    if (this._feed?.isBackpressured()) {
+      await this._feed.idle()
+    }
   }
 
   private stdinListener: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {

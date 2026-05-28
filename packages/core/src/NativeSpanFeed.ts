@@ -306,6 +306,7 @@ export class NativeSpanFeed {
             this.decrementRefcount(chunkIndex)
             this.pendingAsyncHandlers -= 1
             this.processPendingClose()
+            this.resolveIdleIfNeeded()
           })
         } else {
           this.decrementRefcount(span.chunkIndex)

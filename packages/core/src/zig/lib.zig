@@ -644,23 +644,6 @@ export fn getCurrentBuffer(renderer_handle: NativeHandle) NativeHandle {
     return handles.getOrInsertBorrowed(.optimized_buffer, erasePtr(guard.ptr.getCurrentBuffer()), renderer_handle) catch INVALID_HANDLE;
 }
 
-const OutputSlice = extern struct {
-    ptr: [*]const u8,
-    len: usize,
-};
-
-export fn getLastOutputForTest(renderer_handle: NativeHandle, outSlice: *OutputSlice) void {
-    const guard = acquireRenderer(renderer_handle) orelse {
-        outSlice.ptr = EMPTY_U8[0..].ptr;
-        outSlice.len = 0;
-        return;
-    };
-    defer guard.release();
-    const output = guard.ptr.getLastOutputForTest();
-    outSlice.ptr = output.ptr;
-    outSlice.len = output.len;
-}
-
 export fn setHyperlinksCapability(renderer_handle: NativeHandle, enabled: bool) void {
     const guard = acquireRenderer(renderer_handle) orelse return;
     defer guard.release();
