@@ -14,6 +14,49 @@ import { type ColorInput, RGBA, parseColor } from "../lib/RGBA.js"
 import { isValidPercentage } from "../lib/renderable.validations.js"
 import type { RenderContext } from "../types.js"
 
+const CHAR_FLAG_MASK = 0xc0000000 >>> 0
+const CHAR_FLAG_GRAPHEME = 0x80000000 >>> 0
+const CHAR_FLAG_CONTINUATION = 0xc0000000 >>> 0
+const CHAR_EXT_RIGHT_SHIFT = 28
+const CHAR_EXT_LEFT_SHIFT = 26
+const CHAR_EXT_MASK = 0x3
+const TRANSPARENT = RGBA.fromValues(0, 0, 0, 0)
+
+function isWideClusterCell(charCode: number): boolean {
+  const flag = (charCode & CHAR_FLAG_MASK) >>> 0
+  if (flag !== CHAR_FLAG_GRAPHEME && flag !== CHAR_FLAG_CONTINUATION) {
+    return false
+  }
+
+  const left = (charCode >>> CHAR_EXT_LEFT_SHIFT) & CHAR_EXT_MASK
+  const right = (charCode >>> CHAR_EXT_RIGHT_SHIFT) & CHAR_EXT_MASK
+  return left + right > 0
+}
+
+interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+function intersectRects(a: Rect, b: Rect): Rect | null {
+  const startX = Math.max(a.x, b.x)
+  const startY = Math.max(a.y, b.y)
+  const endX = Math.min(a.x + a.width - 1, b.x + b.width - 1)
+  const endY = Math.min(a.y + a.height - 1, b.y + b.height - 1)
+
+  if (startX > endX || startY > endY) {
+    return null
+  }
+
+  return {
+    x: startX,
+    y: startY,
+    width: endX - startX + 1,
+    height: endY - startY + 1,
+  }
+}
 export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> extends RenderableOptions<TRenderable> {
   backgroundColor?: string | RGBA
   borderStyle?: BorderStyle
@@ -56,6 +99,9 @@ export class BoxRenderable extends Renderable {
   protected _titleAlignment: "left" | "center" | "right"
   protected _bottomTitle?: string
   protected _bottomTitleAlignment: "left" | "center" | "right"
+  private suppressFillDuringFrameBufferRender = false
+  private frameBufferNeedsReset = false
+  private frameBufferRendered = false
 
   protected _defaultOptions = {
     backgroundColor: "transparent",
@@ -237,36 +283,314 @@ export class BoxRenderable extends Renderable {
     }
   }
 
-  protected renderSelf(buffer: OptimizedBuffer): void {
+  public override render(buffer: OptimizedBuffer, deltaTime: number): void {
+    let shouldDrawFrameBuffer = false
+
+    if (!this.buffered || !this.frameBuffer) {
+      this.renderToBuffer(buffer, deltaTime)
+    } else if (this.canReuseFrameBuffer(buffer)) {
+      shouldDrawFrameBuffer = true
+    } else if (this.shouldBypassFrameBuffer(buffer)) {
+      // The framebuffer is skipped entirely on this path, so any retained
+      // contents must be discarded before we use it again later.
+      this.frameBufferNeedsReset = true
+      this.frameBufferRendered = false
+      this.renderToBuffer(buffer, deltaTime)
+    } else {
+      if (this.frameBufferNeedsReset || this.shouldClearFrameBufferBeforeRender(buffer)) {
+        // Only reset retained contents when this box would otherwise alpha-blend
+        // onto its own previous framebuffer output.
+        this.frameBuffer.clear(RGBA.fromValues(0, 0, 0, 0))
+        this.frameBufferNeedsReset = false
+        this.frameBufferRendered = false
+      }
+      const shouldRenderFillDirectly = this.shouldRenderFillDirectly(buffer)
+      const shouldRenderBeforeUnderDirectFill = shouldRenderFillDirectly && !!this.renderBefore
+      if (shouldRenderBeforeUnderDirectFill) {
+        this.renderBefore!.call(this, this.frameBuffer, deltaTime)
+        buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+        this.frameBuffer.clear(RGBA.fromValues(0, 0, 0, 0))
+      }
+      if (shouldRenderFillDirectly) {
+        this.renderFill(buffer)
+        this.suppressFillDuringFrameBufferRender = true
+      }
+      this.renderToBuffer(this.frameBuffer, deltaTime, {
+        skipRenderBefore: shouldRenderBeforeUnderDirectFill,
+      })
+      this.frameBufferRendered = true
+      shouldDrawFrameBuffer = true
+    }
+    this.markClean()
+    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
+
+    if (shouldDrawFrameBuffer) {
+      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer!)
+    }
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer, _deltaTime: number): void {
     const hasBorder = this.borderSides.top || this.borderSides.right || this.borderSides.bottom || this.borderSides.left
-    const hasVisibleFill = this.shouldFill && this._backgroundColor.a > 0
-    // Many boxes are used only for layout. Skip drawBox entirely when a box
-    // would not draw pixels so wrapper nodes do not pay the FFI/native cost.
+    const hasVisibleFill = this.shouldFill && this._backgroundColor.a * buffer.getCurrentOpacity() > 0
     if (!hasBorder && !hasVisibleFill) {
       return
     }
 
-    const hasFocusWithin = this._focusable && (this._focused || this._hasFocusedDescendant)
-    const currentBorderColor = hasFocusWithin ? this._focusedBorderColor : this._borderColor
-    const screenX = this._screenX
-    const screenY = this._screenY
+    const currentBorderColor = this.getCurrentBorderColor()
+    const { x, y } = this.getRenderOrigin(buffer)
+    if (!this.suppressFillDuringFrameBufferRender) {
+      this.renderFill(buffer)
+    }
+    if (!hasBorder) {
+      return
+    }
 
+    const borderBackgroundColor = this.shouldFill && currentBorderColor.a > 0 ? TRANSPARENT : this._backgroundColor
     buffer.drawBox({
-      x: screenX,
-      y: screenY,
+      x,
+      y,
       width: this.width,
       height: this.height,
       borderStyle: this._borderStyle,
       customBorderChars: this._customBorderChars,
       border: this._border,
       borderColor: currentBorderColor,
-      backgroundColor: this._backgroundColor,
-      shouldFill: this.shouldFill,
+      backgroundColor: borderBackgroundColor,
+      shouldFill: false,
       title: this._title,
       titleAlignment: this._titleAlignment,
       bottomTitle: this._bottomTitle,
       bottomTitleAlignment: this._bottomTitleAlignment,
     })
+  }
+
+  private shouldBypassFrameBuffer(buffer: OptimizedBuffer): boolean {
+    if (!this.buffered || !this.frameBuffer) {
+      return false
+    }
+
+    // Bypass is only safe for the plain Box path. Hooks or renderSelf
+    // overrides depend on framebuffer-local ordering/coordinates.
+    if (this.renderBefore || this.renderAfter) {
+      return false
+    }
+
+    const resolvedRenderSelf = Object.getPrototypeOf(this).renderSelf
+    if (resolvedRenderSelf !== BoxRenderable.prototype.renderSelf) {
+      return false
+    }
+
+    return this.hasTranslucentParts(buffer)
+  }
+
+  private shouldClearFrameBufferBeforeRender(buffer: OptimizedBuffer): boolean {
+    return this.hasTranslucentParts(buffer)
+  }
+
+  private canReuseFrameBuffer(buffer: OptimizedBuffer): boolean {
+    if (!this.frameBufferRendered || this.frameBufferNeedsReset || this.isDirty || this.live) {
+      return false
+    }
+
+    if (this.shouldBypassFrameBuffer(buffer)) {
+      return false
+    }
+
+    return !this.shouldRenderFillDirectly(buffer)
+  }
+
+  private shouldRenderFillDirectly(buffer: OptimizedBuffer): boolean {
+    return this.hasTranslucentFill(buffer)
+  }
+
+  private hasTranslucentParts(buffer: OptimizedBuffer): boolean {
+    return this.hasTranslucentFill(buffer) || this.hasTranslucentBorder()
+  }
+
+  private hasTranslucentFill(buffer: OptimizedBuffer): boolean {
+    return this._backgroundColor.a < 1 || buffer.getCurrentOpacity() < 1
+  }
+
+  private hasTranslucentBorder(): boolean {
+    return this.getCurrentBorderColor().a < 1
+  }
+
+  private getCurrentBorderColor(): RGBA {
+    const hasFocusWithin = this._focusable && (this._focused || this._hasFocusedDescendant)
+    return hasFocusWithin ? this._focusedBorderColor : this._borderColor
+  }
+
+  private renderToBuffer(
+    buffer: OptimizedBuffer,
+    deltaTime: number,
+    options: { skipRenderBefore?: boolean } = {},
+  ): void {
+    try {
+      if (!options.skipRenderBefore && this.renderBefore) {
+        this.renderBefore.call(this, buffer, deltaTime)
+      }
+
+      this.renderSelf(buffer, deltaTime)
+
+      if (this.renderAfter) {
+        this.renderAfter.call(this, buffer, deltaTime)
+      }
+    } finally {
+      this.suppressFillDuringFrameBufferRender = false
+    }
+  }
+  private isRenderingToOwnFrameBuffer(buffer: OptimizedBuffer): boolean {
+    return this.buffered && this.frameBuffer === buffer
+  }
+
+  private getRenderOrigin(buffer: OptimizedBuffer): { x: number; y: number } {
+    if (this.isRenderingToOwnFrameBuffer(buffer)) {
+      return { x: 0, y: 0 }
+    }
+
+    return { x: this.x, y: this.y }
+  }
+
+  // Translucent fills only need the hybrid strategy when the perimeter
+  // actually crosses a wide span. Otherwise the normal preserved fill path
+  // can be used for the whole rect, which keeps small narrow-text overlays
+  // from collapsing into an all-edge clipped fill.
+  private renderFill(buffer: OptimizedBuffer): void {
+    if (!this.shouldFill || this.width <= 0 || this.height <= 0) {
+      return
+    }
+
+    if (this._backgroundColor.a * buffer.getCurrentOpacity() <= 0) {
+      return
+    }
+
+    const fillRect = this.getClippedFillRect(buffer)
+    if (!fillRect) {
+      return
+    }
+
+    const backgroundIsTranslucent = this._backgroundColor.a < 1 || buffer.getCurrentOpacity() < 1
+    if (!backgroundIsTranslucent) {
+      buffer.fillRect(fillRect.x, fillRect.y, fillRect.width, fillRect.height, this._backgroundColor)
+      return
+    }
+
+    if (!this.fillPerimeterTouchesWideGrapheme(buffer, fillRect)) {
+      buffer.fillRect(fillRect.x, fillRect.y, fillRect.width, fillRect.height, this._backgroundColor)
+      return
+    }
+
+    // When the visible fill collapses to a 1- or 2-cell band, keep the normal
+    // preserved-fill behavior instead of turning the whole box into an edge
+    // clipping pass. This matters for boxes clipped by the viewport.
+    if (fillRect.width <= 2 || fillRect.height <= 2) {
+      buffer.fillRect(fillRect.x, fillRect.y, fillRect.width, fillRect.height, this._backgroundColor)
+      return
+    }
+
+    buffer.fillRectClipWideGraphemes(fillRect.x, fillRect.y, fillRect.width, 1, this._backgroundColor)
+    buffer.fillRectClipWideGraphemes(
+      fillRect.x,
+      fillRect.y + fillRect.height - 1,
+      fillRect.width,
+      1,
+      this._backgroundColor,
+    )
+    buffer.fillRectClipWideGraphemes(fillRect.x, fillRect.y + 1, 1, fillRect.height - 2, this._backgroundColor)
+    buffer.fillRectClipWideGraphemes(
+      fillRect.x + fillRect.width - 1,
+      fillRect.y + 1,
+      1,
+      fillRect.height - 2,
+      this._backgroundColor,
+    )
+    buffer.fillRect(fillRect.x + 1, fillRect.y + 1, fillRect.width - 2, fillRect.height - 2, this._backgroundColor)
+  }
+
+  private fillPerimeterTouchesWideGrapheme(
+    buffer: OptimizedBuffer,
+    fillRect: { x: number; y: number; width: number; height: number },
+  ): boolean {
+    const chars = buffer.buffers.char
+    const top = fillRect.y
+    const bottom = fillRect.y + fillRect.height - 1
+    const left = fillRect.x
+    const right = fillRect.x + fillRect.width - 1
+    const rowStride = buffer.width
+
+    for (let x = left; x <= right; x++) {
+      if (isWideClusterCell(chars[top * rowStride + x])) {
+        return true
+      }
+      if (bottom !== top && isWideClusterCell(chars[bottom * rowStride + x])) {
+        return true
+      }
+    }
+
+    for (let y = top + 1; y < bottom; y++) {
+      if (isWideClusterCell(chars[y * rowStride + left])) {
+        return true
+      }
+      if (right !== left && isWideClusterCell(chars[y * rowStride + right])) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private getClippedFillRect(buffer: OptimizedBuffer): Rect | null {
+    if (this.width <= 0 || this.height <= 0) {
+      return null
+    }
+
+    const { x, y } = this.getRenderOrigin(buffer)
+    const requestedRect = {
+      x,
+      y,
+      width: this.width,
+      height: this.height,
+    }
+    const visibleClipRect = this.getVisibleClipRect(buffer)
+    if (!visibleClipRect) {
+      return null
+    }
+
+    return intersectRects(requestedRect, visibleClipRect)
+  }
+
+  private getVisibleClipRect(buffer: OptimizedBuffer): Rect | null {
+    if (this.isRenderingToOwnFrameBuffer(buffer)) {
+      return {
+        x: 0,
+        y: 0,
+        width: buffer.width,
+        height: buffer.height,
+      }
+    }
+
+    let clipRect: Rect = {
+      x: 0,
+      y: 0,
+      width: buffer.width,
+      height: buffer.height,
+    }
+
+    let ancestor = this.parent
+    while (ancestor) {
+      if (ancestor.overflow !== "visible" && ancestor.width > 0 && ancestor.height > 0) {
+        const ancestorClipRect = ancestor.getOverflowClipRect()
+        const nextClipRect = intersectRects(clipRect, ancestorClipRect)
+        if (!nextClipRect) {
+          return null
+        }
+        clipRect = nextClipRect
+      }
+
+      ancestor = ancestor.parent
+    }
+
+    return clipRect
   }
 
   protected getScissorRect(): { x: number; y: number; width: number; height: number } {

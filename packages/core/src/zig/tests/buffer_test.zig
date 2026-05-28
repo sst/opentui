@@ -121,7 +121,7 @@ test "OptimizedBuffer - alpha blending downgrades blended metadata to rgb" {
     const base_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     buf.clear(base_bg, null);
 
-    buf.setCellWithAlphaBlending(
+    _ = buf.setCellWithAlphaBlending(
         0,
         0,
         'B',
@@ -142,7 +142,7 @@ test "OptimizedBuffer - alpha blending downgrades blended metadata to rgb" {
         .attributes = 0,
     });
 
-    buf.setCellWithAlphaBlending(
+    _ = buf.setCellWithAlphaBlending(
         0,
         0,
         'C',
@@ -155,6 +155,39 @@ test "OptimizedBuffer - alpha blending downgrades blended metadata to rgb" {
     try std.testing.expectEqual(ansi.ColorIntent.indexed, ansi.intent(bg_blended_cell.fg));
     try std.testing.expectEqual(@as(u8, 5), ansi.slot(bg_blended_cell.fg));
     try std.testing.expectEqual(ansi.ColorIntent.rgb, ansi.intent(bg_blended_cell.bg));
+}
+
+test "OptimizedBuffer - translucent fill preserves default destination background intent" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        4,
+        1,
+        .{ .pool = pool, .id = "default-bg-alpha-fill-buffer" },
+    );
+    defer buf.deinit();
+
+    const default_bg = ansi.defaultColor(31, 32, 34, 255);
+    const fg = ansi.rgbColor(255, 255, 255, 255);
+    buf.clear(default_bg, null);
+    buf.set(0, 0, .{ .char = 'h', .fg = fg, .bg = default_bg, .attributes = 0 });
+
+    buf.fillRect(0, 0, 4, 1, ansi.rgbColor(0, 0, 0, 102));
+
+    const text_cell = buf.get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, 'h'), text_cell.char);
+    try std.testing.expectEqual(ansi.ColorIntent.default, ansi.intent(text_cell.bg));
+    try std.testing.expectEqual(@as(u8, 31), ansi.red(text_cell.bg));
+    try std.testing.expectEqual(@as(u8, 32), ansi.green(text_cell.bg));
+    try std.testing.expectEqual(@as(u8, 34), ansi.blue(text_cell.bg));
+    try std.testing.expect(ansi.red(text_cell.fg) < 255);
+
+    const blank_cell = buf.get(3, 0).?;
+    try std.testing.expectEqual(ansi.ColorIntent.default, ansi.intent(blank_cell.bg));
 }
 
 test "OptimizedBuffer - transparent framebuffer cell background stays transparent over backdrop" {
@@ -2600,7 +2633,7 @@ test "OptimizedBuffer - blendColors with transparent destination" {
 
     const semi_white = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 0.5);
     const transparent_fg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
-    buf.setCellWithAlphaBlending(0, 0, 'X', semi_white, transparent_fg, 0);
+    _ = buf.setCellWithAlphaBlending(0, 0, 'X', semi_white, transparent_fg, 0);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(u8, 255), ansi.red(cell.fg));
@@ -2628,7 +2661,7 @@ test "OptimizedBuffer - blend backdrop flattens transparent destination" {
 
     const opaque_fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
     const semi_black_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.5);
-    buf.setCellWithAlphaBlending(0, 0, buffer_mod.DEFAULT_SPACE_CHAR, opaque_fg, semi_black_bg, 0);
+    _ = buf.setCellWithAlphaBlending(0, 0, buffer_mod.DEFAULT_SPACE_CHAR, opaque_fg, semi_black_bg, 0);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(u8, 127), ansi.red(cell.bg));
@@ -2922,4 +2955,1032 @@ test "renderer - CJK graphemes shifting left must preserve continuation cells (#
     const id7 = gp.graphemeIdFromChar(cell7.char);
     const id8 = gp.graphemeIdFromChar(cell8.char);
     try std.testing.expectEqual(id7, id8);
+}
+
+// ── Wide-grapheme alpha-blending tests ──────────────────────────────────
+//
+// These tests verify the wide-grapheme alpha-blending contract on the
+// paths covered here: setCellWithAlphaBlending(), drawText(),
+// drawFrameBuffer(), and fillRect().
+//
+// The fixture graphemes used here are width-2 CJK characters. The contract is:
+// a translucent space overlay must preserve the underlying wide grapheme and,
+// when preservation happens, tint the grapheme span uniformly across its cells.
+//
+// Covered cases:
+//   1. Basic preservation: overlay space keeps the underlying char.
+//   2. Partial overlap:    hitting a continuation cell tints the whole span.
+//   3. Multi-cell pass:    a row of spaces doesn't double-blend a single span.
+//   4. Multiple spans:     the skip cursor resets between distinct graphemes.
+//   5. Scissor clipping:   span expansion doesn't bleed outside the scissor.
+//   6. Non-space override: a real character still overwrites mid-span.
+//   7. Cross-call compose: independent overlays stack across separate calls.
+//   8. Scissor then full:  a clipped write doesn't suppress a later full write.
+//
+// Most tests place a width-2 grapheme, apply an overlay through one of these
+// APIs, and then assert grapheme preservation and/or the expected background
+// color behavior.
+
+test "setCellWithAlphaBlending preserves wide characters under translucent overlay" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    // Write a width-2 grapheme (東) at column 2
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    // Verify grapheme start + continuation are present
+    const start_before = buf.get(2, 0).?;
+    const cont_before = buf.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(start_before.char));
+    try std.testing.expect(gp.isContinuationChar(cont_before.char));
+
+    // Apply a translucent overlay (like NestedTmuxOverlay's #0088ff18) over the whole row
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094); // #0088ff18
+    const overlay_fg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
+    for (0..10) |x| {
+        _ = buf.setCellWithAlphaBlending(@intCast(x), 0, ' ', overlay_fg, overlay_bg, 0);
+    }
+
+    // Grapheme start and continuation must still be present
+    const start_after = buf.get(2, 0).?;
+    const cont_after = buf.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(start_after.char));
+    try std.testing.expect(gp.isContinuationChar(cont_after.char));
+
+    // Chars must be identical (same grapheme ID, same extents)
+    try std.testing.expectEqual(start_before.char, start_after.char);
+    try std.testing.expectEqual(cont_before.char, cont_after.char);
+
+    // Background should be tinted (not identical to the original pure black)
+    try std.testing.expect(ansi.greenF(start_after.bg) > 0.01); // green channel gained from #0088ff
+    try std.testing.expect(ansi.greenF(cont_after.bg) > 0.01);
+
+    // Both cells should have the SAME blended bg (no double-blending)
+    try std.testing.expectEqual(start_after.bg[0], cont_after.bg[0]);
+    try std.testing.expectEqual(start_after.bg[1], cont_after.bg[1]);
+    try std.testing.expectEqual(start_after.bg[2], cont_after.bg[2]);
+}
+
+test "drawText translucent space over continuation cell tints the whole grapheme span" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    // Write a width-2 grapheme (東) at column 2
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    // drawText a single translucent space at x=3 (the continuation cell only)
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    const overlay_fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    try buf.drawText(" ", 3, 0, overlay_fg, overlay_bg, 0);
+
+    // Grapheme must survive
+    const start_after = buf.get(2, 0).?;
+    const cont_after = buf.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(start_after.char));
+    try std.testing.expect(gp.isContinuationChar(cont_after.char));
+
+    // Both cells should be tinted (not just x=3)
+    try std.testing.expect(ansi.greenF(start_after.bg) > 0.01);
+    try std.testing.expect(ansi.greenF(cont_after.bg) > 0.01);
+
+    // Both cells should have the SAME blended bg (uniform tint across the span)
+    try std.testing.expectEqual(start_after.bg[0], cont_after.bg[0]);
+    try std.testing.expectEqual(start_after.bg[1], cont_after.bg[1]);
+    try std.testing.expectEqual(start_after.bg[2], cont_after.bg[2]);
+}
+
+test "drawFrameBuffer 1x1 translucent child over continuation cell tints the whole grapheme span" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    // Write a width-2 grapheme (東) at column 2
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    // Create a 1×1 child framebuffer with a translucent background
+    var child = try OptimizedBuffer.init(
+        std.testing.allocator,
+        1,
+        1,
+        .{ .pool = pool, .id = "child-buffer" },
+    );
+    defer child.deinit();
+    child.setRespectAlpha(true);
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    child.clear(overlay_bg, null);
+
+    // Composite the 1×1 child at dest x=3 (the continuation cell only)
+    buf.drawFrameBuffer(3, 0, child, null, null, null, null);
+
+    // Grapheme must survive
+    const start_after = buf.get(2, 0).?;
+    const cont_after = buf.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(start_after.char));
+    try std.testing.expect(gp.isContinuationChar(cont_after.char));
+
+    // Both cells should be tinted (not just x=3)
+    try std.testing.expect(ansi.greenF(start_after.bg) > 0.01);
+    try std.testing.expect(ansi.greenF(cont_after.bg) > 0.01);
+
+    // Both cells should have the SAME blended bg (uniform tint across the span)
+    try std.testing.expectEqual(start_after.bg[0], cont_after.bg[0]);
+    try std.testing.expectEqual(start_after.bg[1], cont_after.bg[1]);
+    try std.testing.expectEqual(start_after.bg[2], cont_after.bg[2]);
+}
+
+test "drawFrameBuffer preserves later per-cell overlay colors within a wide grapheme span" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    var ref = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "ref-buffer" },
+    );
+    defer ref.deinit();
+
+    const base_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(base_bg, null);
+    ref.clear(base_bg, null);
+
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = base_bg, .attributes = 0 });
+    ref.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = base_bg, .attributes = 0 });
+
+    var child = try OptimizedBuffer.init(
+        std.testing.allocator,
+        2,
+        1,
+        .{ .pool = pool, .id = "child-buffer" },
+    );
+    defer child.deinit();
+    child.setRespectAlpha(true);
+    child.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), null);
+
+    const blue_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5);
+    const red_bg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 0.5);
+    child.set(0, 0, .{ .char = buffer_mod.DEFAULT_SPACE_CHAR, .fg = fg, .bg = blue_bg, .attributes = 0 });
+    child.set(1, 0, .{ .char = buffer_mod.DEFAULT_SPACE_CHAR, .fg = fg, .bg = red_bg, .attributes = 0 });
+
+    buf.drawFrameBuffer(2, 0, child, null, null, null, null);
+
+    _ = ref.setCellWithAlphaBlending(2, 0, buffer_mod.DEFAULT_SPACE_CHAR, fg, blue_bg, 0);
+    _ = ref.setCellWithAlphaBlending(3, 0, buffer_mod.DEFAULT_SPACE_CHAR, fg, red_bg, 0);
+
+    const actual_start = buf.get(2, 0).?;
+    const actual_cont = buf.get(3, 0).?;
+    const expected_start = ref.get(2, 0).?;
+    const expected_cont = ref.get(3, 0).?;
+
+    try std.testing.expect(gp.isGraphemeChar(actual_start.char));
+    try std.testing.expect(gp.isContinuationChar(actual_cont.char));
+    try std.testing.expectEqual(expected_start.bg[0], actual_start.bg[0]);
+    try std.testing.expectEqual(expected_start.bg[1], actual_start.bg[1]);
+    try std.testing.expectEqual(expected_start.bg[2], actual_start.bg[2]);
+    try std.testing.expectEqual(expected_start.bg[3], actual_start.bg[3]);
+    try std.testing.expectEqual(expected_cont.bg[0], actual_cont.bg[0]);
+    try std.testing.expectEqual(expected_cont.bg[1], actual_cont.bg[1]);
+    try std.testing.expectEqual(expected_cont.bg[2], actual_cont.bg[2]);
+    try std.testing.expectEqual(expected_cont.bg[3], actual_cont.bg[3]);
+}
+
+test "fillRect with translucent partial overlap tints the whole grapheme span" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const start_before = buf.get(2, 0).?;
+    const cont_before = buf.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(start_before.char));
+    try std.testing.expect(gp.isContinuationChar(cont_before.char));
+
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    buf.fillRect(3, 0, 1, 1, overlay_bg);
+
+    const start_after = buf.get(2, 0).?;
+    const cont_after = buf.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(start_after.char));
+    try std.testing.expect(gp.isContinuationChar(cont_after.char));
+
+    try std.testing.expectEqual(start_before.char, start_after.char);
+    try std.testing.expectEqual(cont_before.char, cont_after.char);
+
+    try std.testing.expect(ansi.greenF(start_after.bg) > 0.01);
+    try std.testing.expect(ansi.greenF(cont_after.bg) > 0.01);
+
+    try std.testing.expectEqual(start_after.bg[0], cont_after.bg[0]);
+    try std.testing.expectEqual(start_after.bg[1], cont_after.bg[1]);
+    try std.testing.expectEqual(start_after.bg[2], cont_after.bg[2]);
+}
+
+test "fillRectClipWideGraphemes clips a left-edge overlap instead of tinting outside the box" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    buf.fillRectClipWideGraphemes(3, 0, 1, 1, overlay_bg);
+
+    const outside = buf.get(2, 0).?;
+    const inside = buf.get(3, 0).?;
+
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), outside.char);
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), inside.char);
+    try std.testing.expectEqual(bg, outside.bg);
+    try std.testing.expect(ansi.greenF(inside.bg) > 0.01);
+}
+
+test "fillRectClipWideGraphemes clips a right-edge overlap instead of tinting outside the box" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    buf.fillRectClipWideGraphemes(2, 0, 1, 1, overlay_bg);
+
+    const inside = buf.get(2, 0).?;
+    const outside = buf.get(3, 0).?;
+
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), inside.char);
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), outside.char);
+    try std.testing.expect(ansi.greenF(inside.bg) > 0.01);
+    try std.testing.expectEqual(bg, outside.bg);
+}
+
+test "fillRectClipWideGraphemes with transparent background is a no-op over wide graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const start_before = buf.get(2, 0).?;
+    const cont_before = buf.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(start_before.char));
+    try std.testing.expect(gp.isContinuationChar(cont_before.char));
+
+    buf.fillRectClipWideGraphemes(3, 0, 1, 1, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0));
+
+    const start_after = buf.get(2, 0).?;
+    const cont_after = buf.get(3, 0).?;
+    try std.testing.expectEqual(start_before.char, start_after.char);
+    try std.testing.expectEqual(cont_before.char, cont_after.char);
+    try std.testing.expectEqual(start_before.bg[0], start_after.bg[0]);
+    try std.testing.expectEqual(start_before.bg[1], start_after.bg[1]);
+    try std.testing.expectEqual(start_before.bg[2], start_after.bg[2]);
+    try std.testing.expectEqual(cont_before.bg[0], cont_after.bg[0]);
+    try std.testing.expectEqual(cont_before.bg[1], cont_after.bg[1]);
+    try std.testing.expectEqual(cont_before.bg[2], cont_after.bg[2]);
+}
+
+test "drawText multi-space translucent overlay over wide grapheme does not double-blend" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    // Write a width-2 grapheme (東) at column 2
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    // Build the reference: apply a single setCellWithAlphaBlending at x=2
+    // which span-blends both cells exactly once.
+    var ref = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "ref-buffer" },
+    );
+    defer ref.deinit();
+    ref.clear(bg, null);
+    ref.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    const overlay_fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    _ = ref.setCellWithAlphaBlending(2, 0, ' ', overlay_fg, overlay_bg, 0);
+    const expected_bg = ref.get(2, 0).?.bg;
+
+    // Now draw TWO translucent spaces covering both cells of the wide grapheme.
+    // Without the span-skip fix, cell x=2 gets double-blended.
+    try buf.drawText("  ", 2, 0, overlay_fg, overlay_bg, 0);
+
+    // Grapheme must survive
+    const start_after = buf.get(2, 0).?;
+    const cont_after = buf.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(start_after.char));
+    try std.testing.expect(gp.isContinuationChar(cont_after.char));
+
+    // Both cells must have the same bg (uniform tint)
+    try std.testing.expectEqual(start_after.bg[0], cont_after.bg[0]);
+    try std.testing.expectEqual(start_after.bg[1], cont_after.bg[1]);
+    try std.testing.expectEqual(start_after.bg[2], cont_after.bg[2]);
+
+    // The tint must match a single-blend reference (no double-blend)
+    try std.testing.expectEqual(expected_bg[0], start_after.bg[0]);
+    try std.testing.expectEqual(expected_bg[1], start_after.bg[1]);
+    try std.testing.expectEqual(expected_bg[2], start_after.bg[2]);
+}
+
+test "drawText translucent spaces over multiple separate wide graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    // Place two separate wide graphemes: 東 at x=1 and 京 at x=5
+    const gid1 = try pool.alloc("東");
+    const gs1 = gp.packGraphemeStart(gid1 & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(1, 0, .{ .char = gs1, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const gid2 = try pool.alloc("京");
+    const gs2 = gp.packGraphemeStart(gid2 & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(5, 0, .{ .char = gs2, .fg = fg, .bg = bg, .attributes = 0 });
+
+    // Build single-blend reference for each grapheme independently
+    var ref = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "ref-buffer" },
+    );
+    defer ref.deinit();
+    ref.clear(bg, null);
+    ref.set(1, 0, .{ .char = gs1, .fg = fg, .bg = bg, .attributes = 0 });
+    ref.set(5, 0, .{ .char = gs2, .fg = fg, .bg = bg, .attributes = 0 });
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    const overlay_fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    _ = ref.setCellWithAlphaBlending(1, 0, ' ', overlay_fg, overlay_bg, 0);
+    _ = ref.setCellWithAlphaBlending(5, 0, ' ', overlay_fg, overlay_bg, 0);
+    const expected_bg1 = ref.get(1, 0).?.bg;
+    const expected_bg2 = ref.get(5, 0).?.bg;
+
+    // Draw translucent spaces across the whole row — hits both graphemes,
+    // plus the gap at x=3-4 which has normal cells.  The span tracker
+    // must reset between the two graphemes.
+    try buf.drawText("          ", 0, 0, overlay_fg, overlay_bg, 0);
+
+    // First grapheme (x=1-2): preserved, uniform tint, no double-blend
+    const g1_start = buf.get(1, 0).?;
+    const g1_cont = buf.get(2, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(g1_start.char));
+    try std.testing.expect(gp.isContinuationChar(g1_cont.char));
+    try std.testing.expectEqual(g1_start.bg[0], g1_cont.bg[0]);
+    try std.testing.expectEqual(g1_start.bg[1], g1_cont.bg[1]);
+    try std.testing.expectEqual(g1_start.bg[2], g1_cont.bg[2]);
+    try std.testing.expectEqual(expected_bg1[0], g1_start.bg[0]);
+    try std.testing.expectEqual(expected_bg1[1], g1_start.bg[1]);
+    try std.testing.expectEqual(expected_bg1[2], g1_start.bg[2]);
+
+    // Second grapheme (x=5-6): same checks — tracker must have reset
+    const g2_start = buf.get(5, 0).?;
+    const g2_cont = buf.get(6, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(g2_start.char));
+    try std.testing.expect(gp.isContinuationChar(g2_cont.char));
+    try std.testing.expectEqual(g2_start.bg[0], g2_cont.bg[0]);
+    try std.testing.expectEqual(g2_start.bg[1], g2_cont.bg[1]);
+    try std.testing.expectEqual(g2_start.bg[2], g2_cont.bg[2]);
+    try std.testing.expectEqual(expected_bg2[0], g2_start.bg[0]);
+    try std.testing.expectEqual(expected_bg2[1], g2_start.bg[1]);
+    try std.testing.expectEqual(expected_bg2[2], g2_start.bg[2]);
+}
+
+test "scissor clips span expansion — does not bleed outside clipped region" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    // Write 東 at x=2 (occupies x=2 and x=3)
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const start_bg_before = buf.get(2, 0).?.bg;
+
+    // Set scissor to x=3 only (1 cell wide), so x=2 is outside the scissor
+    try buf.pushScissorRect(3, 0, 1, 1);
+
+    // fillRect at x=3 — the span expansion should NOT write to x=2
+    // because x=2 is outside the scissor.
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    buf.fillRect(3, 0, 1, 1, overlay_bg);
+
+    buf.popScissorRect();
+
+    const start_after = buf.get(2, 0).?;
+    const cont_after = buf.get(3, 0).?;
+
+    // Grapheme structure must survive
+    try std.testing.expect(gp.isGraphemeChar(start_after.char));
+    try std.testing.expect(gp.isContinuationChar(cont_after.char));
+
+    // x=3 (inside scissor) should be tinted
+    try std.testing.expect(ansi.greenF(cont_after.bg) > 0.01);
+
+    // x=2 (outside scissor) must NOT be tinted — bg should be unchanged
+    try std.testing.expectEqual(start_bg_before[0], start_after.bg[0]);
+    try std.testing.expectEqual(start_bg_before[1], start_after.bg[1]);
+    try std.testing.expectEqual(start_bg_before[2], start_after.bg[2]);
+}
+
+test "drawText non-space character overwrites wide grapheme even after span blend" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    // Write 東 at x=2 (occupies x=2 and x=3)
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    // drawText " B" at x=2: space at x=2 should tint the span,
+    // then 'B' at x=3 should overwrite the continuation cell.
+    // The span-skip logic must NOT skip non-space characters.
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    const overlay_fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    try buf.drawText(" B", 2, 0, overlay_fg, overlay_bg, 0);
+
+    const cell3 = buf.get(3, 0).?;
+    // 'B' is ASCII 66 — should have overwritten the continuation cell
+    try std.testing.expectEqual(@as(u32, 'B'), cell3.char);
+}
+
+test "drawFrameBuffer mixed space-then-char child overwrites continuation cell" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    // Write 東 at x=2 (occupies x=2 and x=3)
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    // Create a 2×1 child framebuffer with respectAlpha containing " B":
+    // cell 0 = translucent space, cell 1 = 'B'
+    var child = try OptimizedBuffer.init(
+        std.testing.allocator,
+        2,
+        1,
+        .{ .pool = pool, .id = "child-buffer" },
+    );
+    defer child.deinit();
+    child.setRespectAlpha(true);
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    const overlay_fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    child.clear(overlay_bg, null);
+    // Overwrite cell 1 with 'B' (fully opaque)
+    child.set(1, 0, .{ .char = 'B', .fg = overlay_fg, .bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), .attributes = 0 });
+
+    // Composite at dest x=2: space lands on grapheme start, 'B' on continuation
+    buf.drawFrameBuffer(2, 0, child, null, null, null, null);
+
+    // The space at x=2 should have triggered span blending, tinting the
+    // grapheme. But 'B' at x=3 must NOT be skipped by the span guard —
+    // it should overwrite the continuation cell.
+    const cell3 = buf.get(3, 0).?;
+    try std.testing.expectEqual(@as(u32, 'B'), cell3.char);
+}
+
+test "two separate alpha overlays over the same wide grapheme blend twice" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    // Write 東 at x=2 (occupies x=2 and x=3)
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    // Build single-blend reference
+    var ref = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "ref-buffer" },
+    );
+    defer ref.deinit();
+    ref.clear(bg, null);
+    ref.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+    const overlay_fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+
+    // Apply two separate fillRect overlays
+    buf.fillRect(2, 0, 2, 1, overlay_bg);
+    buf.fillRect(2, 0, 2, 1, overlay_bg);
+
+    // Apply two overlays to reference using setCellWithAlphaBlending directly
+    _ = ref.setCellWithAlphaBlending(2, 0, ' ', overlay_fg, overlay_bg, 0);
+    _ = ref.setCellWithAlphaBlending(2, 0, ' ', overlay_fg, overlay_bg, 0);
+
+    const expected_bg = ref.get(2, 0).?.bg;
+    const actual_start = buf.get(2, 0).?;
+    const actual_cont = buf.get(3, 0).?;
+
+    // Grapheme must survive
+    try std.testing.expect(gp.isGraphemeChar(actual_start.char));
+    try std.testing.expect(gp.isContinuationChar(actual_cont.char));
+
+    // Both cells should match double-blended reference
+    try std.testing.expectEqual(expected_bg[0], actual_start.bg[0]);
+    try std.testing.expectEqual(expected_bg[1], actual_start.bg[1]);
+    try std.testing.expectEqual(expected_bg[2], actual_start.bg[2]);
+    try std.testing.expectEqual(expected_bg[0], actual_cont.bg[0]);
+    try std.testing.expectEqual(expected_bg[1], actual_cont.bg[1]);
+    try std.testing.expectEqual(expected_bg[2], actual_cont.bg[2]);
+
+    // Double-blend must differ from single-blend
+    const single_ref = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "single-ref" },
+    );
+    defer single_ref.deinit();
+    single_ref.clear(bg, null);
+    single_ref.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+    _ = single_ref.setCellWithAlphaBlending(2, 0, ' ', overlay_fg, overlay_bg, 0);
+    const single_bg = single_ref.get(2, 0).?.bg;
+    try std.testing.expect(ansi.blue(actual_start.bg) > ansi.blue(single_bg));
+}
+
+test "scissored partial-span tint followed by unclipped tint applies to both cells" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    // Write 東 at x=2 (occupies x=2 and x=3)
+    const gid = try pool.alloc("東");
+    const grapheme_start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = grapheme_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const overlay_bg = ansi.rgbaFromFloats(0.0, 0.533, 1.0, 0.094);
+
+    // First: scissored fillRect that only covers x=3 (continuation cell)
+    try buf.pushScissorRect(3, 0, 1, 1);
+    buf.fillRect(3, 0, 1, 1, overlay_bg);
+    buf.popScissorRect();
+
+    // x=2 should be untouched (outside scissor), x=3 tinted
+    const bg_after_first_x2 = buf.get(2, 0).?.bg;
+    try std.testing.expectEqual(bg[1], bg_after_first_x2[1]);
+    try std.testing.expect(ansi.greenF(buf.get(3, 0).?.bg) > 0.01);
+
+    // Second: unclipped fillRect covering x=2 — must NOT be suppressed
+    buf.fillRect(2, 0, 1, 1, overlay_bg);
+
+    const final_x2 = buf.get(2, 0).?;
+    const final_x3 = buf.get(3, 0).?;
+
+    // Grapheme must survive
+    try std.testing.expect(gp.isGraphemeChar(final_x2.char));
+    try std.testing.expect(gp.isContinuationChar(final_x3.char));
+
+    // x=2 must now be tinted (the second fillRect must have applied)
+    try std.testing.expect(ansi.greenF(final_x2.bg) > 0.01);
+}
+
+test "alpha overlay preserves wide text but replaces emoji with placeholder" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-preserve-text-placeholder-emoji" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    const cjk_gid = try pool.alloc("東");
+    buf.set(0, 0, .{ .char = gp.packGraphemeStart(cjk_gid & gp.GRAPHEME_ID_MASK, 2), .fg = fg, .bg = bg, .attributes = 0 });
+
+    const emoji_gid = try pool.alloc("👋");
+    buf.set(4, 0, .{ .char = gp.packGraphemeStart(emoji_gid & gp.GRAPHEME_ID_MASK, 2), .fg = fg, .bg = bg, .attributes = 0 });
+
+    buf.fillRect(0, 0, 10, 1, ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5));
+
+    try std.testing.expect(gp.isGraphemeChar(buf.get(0, 0).?.char));
+    try std.testing.expectEqual(@as(u32, '['), buf.get(4, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ']'), buf.get(5, 0).?.char);
+}
+
+test "placeholder rendering produces bracket characters and blanks extra cells" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        12,
+        1,
+        .{ .pool = pool, .id = "test-placeholder-rendering" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    const emoji_gid = try pool.alloc("👋");
+    buf.set(2, 0, .{ .char = gp.packGraphemeStart(emoji_gid & gp.GRAPHEME_ID_MASK, 4), .fg = fg, .bg = bg, .attributes = 0 });
+
+    buf.fillRect(2, 0, 4, 1, ansi.rgbaFromFloats(1.0, 0.0, 0.0, 0.5));
+
+    try std.testing.expectEqual(@as(u32, '['), buf.get(2, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ']'), buf.get(3, 0).?.char);
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), buf.get(4, 0).?.char);
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), buf.get(5, 0).?.char);
+}
+
+test "classifyWideChar distinguishes wide text, emoji, and wide non-emoji text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        12,
+        1,
+        .{ .pool = pool, .id = "test-classify-wide-char" },
+    );
+    defer buf.deinit();
+
+    try std.testing.expectEqual(OptimizedBuffer.WideCharKind.wide_text, buf.classifyWideChar(0x6771));
+
+    const cjk_gid = try pool.alloc("東");
+    try std.testing.expectEqual(
+        OptimizedBuffer.WideCharKind.wide_text,
+        buf.classifyWideChar(gp.packGraphemeStart(cjk_gid & gp.GRAPHEME_ID_MASK, 2)),
+    );
+
+    const emoji_gid = try pool.alloc("👋");
+    try std.testing.expectEqual(
+        OptimizedBuffer.WideCharKind.emoji,
+        buf.classifyWideChar(gp.packGraphemeStart(emoji_gid & gp.GRAPHEME_ID_MASK, 2)),
+    );
+
+    const dark_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(dark_bg, null);
+    try buf.drawText("नमस्ते", 0, 0, fg, dark_bg, 0);
+    try std.testing.expectEqual(OptimizedBuffer.WideCharKind.wide_text, buf.classifyWideChar(buf.get(2, 0).?.char));
+}
+
+test "setCellWithAlphaBlending on emoji produces placeholder" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-emoji-placeholder" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    const emoji_gid = try pool.alloc("👋");
+    buf.set(2, 0, .{ .char = gp.packGraphemeStart(emoji_gid & gp.GRAPHEME_ID_MASK, 2), .fg = fg, .bg = bg, .attributes = 0 });
+
+    _ = buf.setCellWithAlphaBlending(2, 0, buffer_mod.DEFAULT_SPACE_CHAR, ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), ansi.rgbaFromFloats(1.0, 0.0, 0.0, 0.5), 0);
+    try std.testing.expectEqual(@as(u32, '['), buf.get(2, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ']'), buf.get(3, 0).?.char);
+}
+
+test "transparent space alpha overlay leaves emoji unchanged" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-transparent-emoji-noop" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+
+    const emoji_gid = try pool.alloc("👋");
+    const emoji_start = gp.packGraphemeStart(emoji_gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = emoji_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const start_before = buf.get(2, 0).?;
+    const cont_before = buf.get(3, 0).?;
+
+    _ = buf.setCellWithAlphaBlending(2, 0, buffer_mod.DEFAULT_SPACE_CHAR, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    const start_after = buf.get(2, 0).?;
+    const cont_after = buf.get(3, 0).?;
+    try std.testing.expectEqual(start_before.char, start_after.char);
+    try std.testing.expectEqual(cont_before.char, cont_after.char);
+    try std.testing.expectEqualStrings("👋", try pool.get(gp.graphemeIdFromChar(start_after.char)));
+}
+
+test "transparent space alpha overlay preserves visible foreground on blank cells" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        4,
+        1,
+        .{ .pool = pool, .id = "test-transparent-space-visible-fg" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(0.5, 0.5, 0.5, 1.0);
+    buf.clear(bg, null);
+
+    _ = buf.setCellWithAlphaBlending(1, 0, buffer_mod.DEFAULT_SPACE_CHAR, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    const cell = buf.get(1, 0).?;
+    try std.testing.expectEqual(buffer_mod.DEFAULT_SPACE_CHAR, cell.char);
+    try std.testing.expectEqual(fg, cell.fg);
+    try std.testing.expectEqual(bg, cell.bg);
+}
+
+test "fillRect with transparent background leaves blank-cell styles unchanged" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        4,
+        1,
+        .{ .pool = pool, .id = "test-transparent-fill-noop" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const attributes: u32 = 1;
+    buf.clear(bg, null);
+    buf.set(1, 0, .{ .char = buffer_mod.DEFAULT_SPACE_CHAR, .fg = fg, .bg = bg, .attributes = attributes });
+
+    buf.fillRect(1, 0, 1, 1, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0));
+
+    const cell = buf.get(1, 0).?;
+    try std.testing.expectEqual(buffer_mod.DEFAULT_SPACE_CHAR, cell.char);
+    try std.testing.expectEqual(fg, cell.fg);
+    try std.testing.expectEqual(bg, cell.bg);
+    try std.testing.expectEqual(attributes, cell.attributes);
+}
+
+test "fillRect preserves wide non-emoji text grapheme" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        12,
+        1,
+        .{ .pool = pool, .id = "test-wide-non-emoji-text" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    buf.clear(bg, null);
+    try buf.drawText("नमस्ते", 0, 0, fg, bg, 0);
+
+    buf.fillRect(0, 0, 8, 1, ansi.rgbaFromFloats(1.0, 0.0, 0.0, 0.5));
+
+    try std.testing.expect(gp.isGraphemeChar(buf.get(2, 0).?.char));
+    try std.testing.expect(gp.isContinuationChar(buf.get(3, 0).?.char));
+}
+
+test "emoji graphemes survive placeholder replacement across frames" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var fb = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "framebuffer" },
+    );
+    defer fb.deinit();
+
+    const dark_bg = ansi.rgbaFromFloats(0.04, 0.05, 0.08, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    fb.clear(dark_bg, null);
+
+    const gid = try pool.alloc("👋");
+    fb.set(2, 0, .{ .char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2), .fg = fg, .bg = dark_bg, .attributes = 0 });
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "main-buffer" },
+    );
+    defer buf.deinit();
+
+    buf.clear(dark_bg, null);
+    buf.drawFrameBuffer(0, 0, fb, null, null, null, null);
+    buf.fillRect(0, 0, 10, 1, ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5));
+    try std.testing.expectEqual(@as(u32, '['), buf.get(2, 0).?.char);
+
+    buf.clear(dark_bg, null);
+    buf.drawFrameBuffer(0, 0, fb, null, null, null, null);
+
+    const start = buf.get(2, 0).?;
+    const cont = buf.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(start.char));
+    try std.testing.expect(gp.isContinuationChar(cont.char));
+    try std.testing.expectEqualStrings("👋", try pool.get(gp.graphemeIdFromChar(start.char)));
 }

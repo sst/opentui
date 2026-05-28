@@ -1,16 +1,38 @@
 import { test, expect, describe, beforeEach, afterEach, spyOn } from "bun:test"
-import { BoxRenderable, type BoxOptions } from "./Box.js"
+import { BoxRenderable } from "./Box.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import { TextRenderable } from "./Text.js"
+import type { OptimizedBuffer } from "../buffer.js"
 import type { BorderStyle } from "../lib/border.js"
+import type { CapturedFrame } from "../types.js"
 import { RGBA } from "../lib/RGBA.js"
 
 let testRenderer: TestRenderer
 let renderOnce: () => Promise<void>
-let captureFrame: () => string
+let captureCharFrame: () => string
+let captureSpans: () => CapturedFrame
 let warnSpy: ReturnType<typeof spyOn>
 
+function getBgAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: number): RGBA {
+  const index = (y * buffer.width + x) * 4
+  return RGBA.fromValues(
+    buffer.buffers.bg[index] ?? 0,
+    buffer.buffers.bg[index + 1] ?? 0,
+    buffer.buffers.bg[index + 2] ?? 0,
+    buffer.buffers.bg[index + 3] ?? 0,
+  )
+}
+
 beforeEach(async () => {
-  ;({ renderer: testRenderer, renderOnce, captureCharFrame: captureFrame } = await createTestRenderer({}))
+  ;({
+    renderer: testRenderer,
+    renderOnce,
+    captureCharFrame,
+    captureSpans,
+  } = await createTestRenderer({
+    width: 24,
+    height: 6,
+  }))
   warnSpy = spyOn(console, "warn").mockImplementation(() => {})
 })
 
@@ -177,7 +199,7 @@ describe("BoxRenderable - border titles (top and bottom)", () => {
     testRenderer.root.add(box)
     await renderOnce()
 
-    const lines = captureFrame().split("\n")
+    const lines = captureCharFrame().split("\n")
 
     expect(lines[0].slice(0, 16)).toBe("┌─Top──────────┐")
     expect(lines[4].slice(0, 16)).toBe("└──────────Bot─┘")
@@ -200,7 +222,7 @@ describe("BoxRenderable - border titles (top and bottom)", () => {
     testRenderer.root.add(box)
     await renderOnce()
 
-    const lines = captureFrame().split("\n")
+    const lines = captureCharFrame().split("\n")
     expect(lines[4].slice(0, 18)).toBe(expectedBorder)
   })
 })
@@ -348,18 +370,33 @@ describe("BoxRenderable - no-op rendering", () => {
       height: 5,
     })
 
-    let called = false
+    let drawBoxCalled = false
+    let fillRectCalled = false
+    let clipFillCalled = false
     const buffer = {
+      width: 80,
+      height: 24,
+      getCurrentOpacity() {
+        return 1
+      },
       drawBox() {
-        called = true
+        drawBoxCalled = true
+      },
+      fillRect() {
+        fillRectCalled = true
+      },
+      fillRectClipWideGraphemes() {
+        clipFillCalled = true
       },
     }
 
-    ;(box as any).renderSelf(buffer)
-    expect(called).toBe(false)
+    ;(box as any).renderSelf(buffer, 0)
+    expect(drawBoxCalled).toBe(false)
+    expect(fillRectCalled).toBe(false)
+    expect(clipFillCalled).toBe(false)
   })
 
-  test("still draws boxes with a visible fill", () => {
+  test("still fills boxes with a visible background", () => {
     const box = new BoxRenderable(testRenderer, {
       id: "filled-box",
       width: 10,
@@ -367,15 +404,28 @@ describe("BoxRenderable - no-op rendering", () => {
       backgroundColor: "#112233",
     })
 
-    let called = false
+    let drawBoxCalled = false
+    let fillRectCalled = false
     const buffer = {
+      width: 80,
+      height: 24,
+      getCurrentOpacity() {
+        return 1
+      },
       drawBox() {
-        called = true
+        drawBoxCalled = true
+      },
+      fillRect() {
+        fillRectCalled = true
+      },
+      fillRectClipWideGraphemes() {
+        throw new Error("opaque fills should not use clip-wide fill path")
       },
     }
 
-    ;(box as any).renderSelf(buffer)
-    expect(called).toBe(true)
+    ;(box as any).renderSelf(buffer, 0)
+    expect(fillRectCalled).toBe(true)
+    expect(drawBoxCalled).toBe(false)
   })
 
   test("still draws boxes with borders", () => {
@@ -386,14 +436,752 @@ describe("BoxRenderable - no-op rendering", () => {
       border: true,
     })
 
-    let called = false
+    let drawBoxCalled = false
     const buffer = {
-      drawBox() {
-        called = true
+      width: 80,
+      height: 24,
+      getCurrentOpacity() {
+        return 1
       },
+      drawBox() {
+        drawBoxCalled = true
+      },
+      fillRect() {},
+      fillRectClipWideGraphemes() {},
     }
 
-    ;(box as any).renderSelf(buffer)
-    expect(called).toBe(true)
+    ;(box as any).renderSelf(buffer, 0)
+    expect(drawBoxCalled).toBe(true)
+  })
+})
+
+describe("BoxRenderable - wide grapheme alpha fill", () => {
+  test("leaves wide text untouched when a transparent box would otherwise take the clipping path", async () => {
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "ab東cd",
+        position: "absolute",
+        left: 0,
+        top: 0,
+      }),
+    )
+
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        position: "absolute",
+        left: 3,
+        top: 0,
+        width: 4,
+        height: 1,
+        border: false,
+        backgroundColor: "transparent",
+      }),
+    )
+
+    await renderOnce()
+
+    const topRow = captureCharFrame().split("\n")[0]
+    expect(topRow?.startsWith("ab東cd")).toBe(true)
+  })
+
+  test("clips a partially offscreen translucent fill to the visible rect", async () => {
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "abcd",
+        position: "absolute",
+        left: 0,
+        top: 0,
+      }),
+    )
+
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        position: "absolute",
+        left: -1,
+        top: 0,
+        width: 2,
+        height: 1,
+        border: false,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+      }),
+    )
+
+    await renderOnce()
+
+    const spans = captureSpans().lines[0].spans
+    expect(spans[0]?.text).toBe("a")
+    expect(spans[0]?.bg.a).toBeGreaterThan(0)
+    expect(spans[1]?.text.startsWith("bcd")).toBe(true)
+    expect(spans[1]?.bg.a).toBe(0)
+  })
+
+  test("keeps narrow text visible when a small translucent fill does not touch any wide grapheme", async () => {
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "abcd東",
+        position: "absolute",
+        left: 0,
+        top: 0,
+      }),
+    )
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-1",
+        content: "efgh",
+        position: "absolute",
+        left: 0,
+        top: 1,
+      }),
+    )
+
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        position: "absolute",
+        left: 1,
+        top: 0,
+        width: 2,
+        height: 2,
+        border: false,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+      }),
+    )
+
+    await renderOnce()
+
+    const [topRow, middleRow] = captureCharFrame().split("\n")
+    expect(topRow.startsWith("abcd東")).toBe(true)
+    expect(middleRow.startsWith("efgh")).toBe(true)
+  })
+
+  test("clips boundary-crossing wide graphemes while preserving fully interior graphemes", async () => {
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "ab東cd",
+        position: "absolute",
+        left: 0,
+        top: 0,
+      }),
+    )
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-1",
+        content: "abcd東ef",
+        position: "absolute",
+        left: 0,
+        top: 1,
+      }),
+    )
+
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        position: "absolute",
+        left: 3,
+        top: 0,
+        width: 6,
+        height: 3,
+        border: false,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+      }),
+    )
+
+    await renderOnce()
+
+    const [topRow, middleRow] = captureCharFrame().split("\n")
+    expect(topRow.startsWith("ab       ")).toBe(true)
+    expect(middleRow.startsWith("abc 東ef")).toBe(true)
+  })
+
+  test("applies the same clipping when the translucent overlay box is buffered", async () => {
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "ab東cd",
+        position: "absolute",
+        left: 0,
+        top: 0,
+      }),
+    )
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-1",
+        content: "abcd東ef",
+        position: "absolute",
+        left: 0,
+        top: 1,
+      }),
+    )
+
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        buffered: true,
+        position: "absolute",
+        left: 3,
+        top: 0,
+        width: 6,
+        height: 3,
+        border: false,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+      }),
+    )
+
+    await renderOnce()
+
+    const [topRow, middleRow] = captureCharFrame().split("\n")
+    expect(topRow.startsWith("ab       ")).toBe(true)
+    expect(middleRow.startsWith("abc 東ef")).toBe(true)
+  })
+
+  test("treats ancestor overflow clipping as a visible edge for wide-grapheme clipping", async () => {
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "ab東cd",
+        position: "absolute",
+        left: 0,
+        top: 1,
+      }),
+    )
+
+    const parent = new BoxRenderable(testRenderer, {
+      id: "parent",
+      position: "absolute",
+      left: 3,
+      top: 0,
+      width: 3,
+      height: 3,
+      border: false,
+      shouldFill: false,
+      overflow: "hidden",
+    })
+    testRenderer.root.add(parent)
+
+    parent.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        position: "absolute",
+        left: -1,
+        top: 0,
+        width: 4,
+        height: 3,
+        border: false,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+      }),
+    )
+
+    await renderOnce()
+
+    const middleRow = captureCharFrame().split("\n")[1]
+    expect(middleRow?.startsWith("ab  c ")).toBe(true)
+  })
+
+  test("treats buffered ancestor overflow clipping as a visible edge for wide-grapheme clipping", async () => {
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "ab東cd",
+        position: "absolute",
+        left: 0,
+        top: 1,
+      }),
+    )
+
+    const parent = new BoxRenderable(testRenderer, {
+      id: "parent",
+      buffered: true,
+      position: "absolute",
+      left: 3,
+      top: 0,
+      width: 3,
+      height: 3,
+      border: false,
+      shouldFill: false,
+      overflow: "hidden",
+    })
+    testRenderer.root.add(parent)
+
+    parent.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        position: "absolute",
+        left: -1,
+        top: 0,
+        width: 4,
+        height: 3,
+        border: false,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+      }),
+    )
+
+    await renderOnce()
+
+    const middleRow = captureCharFrame().split("\n")[1]
+    expect(middleRow?.startsWith("ab  c ")).toBe(true)
+  })
+
+  test("clips buffered overflow-hidden children in screen coordinates", async () => {
+    const parent = new BoxRenderable(testRenderer, {
+      id: "parent",
+      buffered: true,
+      position: "absolute",
+      left: 3,
+      top: 0,
+      width: 3,
+      height: 3,
+      border: false,
+      shouldFill: false,
+      overflow: "hidden",
+    })
+    testRenderer.root.add(parent)
+
+    parent.add(
+      new TextRenderable(testRenderer, {
+        id: "child",
+        content: "abcdef",
+        position: "absolute",
+        left: -1,
+        top: 1,
+      }),
+    )
+
+    await renderOnce()
+
+    const middleRow = captureCharFrame().split("\n")[1]
+    expect(middleRow?.startsWith("   bc")).toBe(true)
+  })
+
+  test("uses the border ring as the clipped perimeter so no interior space is wasted", async () => {
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "abcd東ef",
+        position: "absolute",
+        left: 0,
+        top: 1,
+      }),
+    )
+
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        position: "absolute",
+        left: 3,
+        top: 0,
+        width: 6,
+        height: 3,
+        border: true,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+      }),
+    )
+
+    await renderOnce()
+
+    const [topRow, middleRow] = captureCharFrame().split("\n")
+    expect(topRow?.startsWith("   ┌────┐")).toBe(true)
+    expect(middleRow?.startsWith("abc│東ef│")).toBe(true)
+  })
+
+  test("does not double-tint border cells when the fill already covers the border ring", async () => {
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        position: "absolute",
+        left: 1,
+        top: 0,
+        width: 6,
+        height: 3,
+        border: true,
+        backgroundColor: RGBA.fromInts(64, 176, 255, 128),
+      }),
+    )
+
+    await renderOnce()
+
+    const borderBg = getBgAt(testRenderer.currentRenderBuffer, 2, 0)
+    const interiorBg = getBgAt(testRenderer.currentRenderBuffer, 2, 1)
+
+    expect(borderBg.r).toBeCloseTo(interiorBg.r, 6)
+    expect(borderBg.g).toBeCloseTo(interiorBg.g, 6)
+    expect(borderBg.b).toBeCloseTo(interiorBg.b, 6)
+    expect(borderBg.a).toBeCloseTo(interiorBg.a, 6)
+  })
+
+  test("renders buffered opaque boxes from framebuffer-local coordinates", async () => {
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "abcdefgh",
+        position: "absolute",
+        left: 0,
+        top: 1,
+      }),
+    )
+
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        buffered: true,
+        position: "absolute",
+        left: 3,
+        top: 1,
+        width: 4,
+        height: 1,
+        border: false,
+        backgroundColor: "#ff0000",
+      }),
+    )
+
+    await renderOnce()
+
+    const middleRow = captureCharFrame().split("\n")[1]
+    expect(middleRow?.startsWith("abc    h")).toBe(true)
+  })
+
+  test("retains buffered opaque framebuffer contents across unrelated rerenders", async () => {
+    let firstFrame = true
+    const box = new BoxRenderable(testRenderer, {
+      id: "overlay",
+      buffered: true,
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: 5,
+      height: 1,
+      border: false,
+      shouldFill: false,
+      backgroundColor: "#000000",
+      renderAfter(buffer) {
+        if (!firstFrame) {
+          return
+        }
+
+        buffer.drawText("A", 0, 0, RGBA.fromInts(255, 255, 255, 255))
+        firstFrame = false
+      },
+    })
+    const tick = new TextRenderable(testRenderer, {
+      id: "tick",
+      content: "x",
+      position: "absolute",
+      left: 0,
+      top: 1,
+    })
+
+    testRenderer.root.add(box)
+    testRenderer.root.add(tick)
+
+    await renderOnce()
+    expect(captureCharFrame().split("\n")[0]?.startsWith("A")).toBe(true)
+
+    tick.content = "y"
+    await renderOnce()
+
+    expect(captureCharFrame().split("\n")[0]?.startsWith("A")).toBe(true)
+  })
+
+  test("keeps renderAfter callbacks framebuffer-local while clipping wide grapheme edges", async () => {
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "ab東cd",
+        position: "absolute",
+        left: 0,
+        top: 0,
+      }),
+    )
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-1",
+        content: "abcd東ef",
+        position: "absolute",
+        left: 0,
+        top: 1,
+      }),
+    )
+
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        buffered: true,
+        position: "absolute",
+        left: 3,
+        top: 0,
+        width: 6,
+        height: 3,
+        border: false,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+        renderAfter(buffer) {
+          buffer.drawText("X", 5, 0, RGBA.fromInts(255, 255, 255, 255))
+        },
+      }),
+    )
+
+    await renderOnce()
+
+    const [topRow, middleRow] = captureCharFrame().split("\n")
+    expect(topRow?.startsWith("ab      X")).toBe(true)
+    expect(middleRow?.startsWith("abc 東ef")).toBe(true)
+  })
+
+  test("keeps renderBefore callbacks beneath direct translucent fill for buffered boxes", async () => {
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        buffered: true,
+        position: "absolute",
+        left: 3,
+        top: 1,
+        width: 4,
+        height: 1,
+        border: false,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+        renderBefore(buffer) {
+          buffer.drawText("X", 0, 0, RGBA.fromInts(255, 255, 255, 255))
+        },
+      }),
+    )
+
+    await renderOnce()
+
+    const xSpan = captureSpans().lines[1].spans.find((span) => span.text.includes("X"))
+    expect(xSpan).toBeDefined()
+    expect(xSpan!.fg.r).toBeLessThan(1)
+    expect(xSpan!.bg.a).toBeGreaterThan(0)
+  })
+
+  test("does not accumulate translucent buffered box tint across identical rerenders", async () => {
+    testRenderer.root.add(
+      new BoxRenderable(testRenderer, {
+        id: "overlay",
+        buffered: true,
+        position: "absolute",
+        left: 4,
+        top: 1,
+        width: 4,
+        height: 2,
+        border: false,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+        renderAfter(buffer) {
+          buffer.drawText("X", 0, 0, RGBA.fromInts(255, 255, 255, 255))
+        },
+      }),
+    )
+
+    await renderOnce()
+    const firstSpan = captureSpans().lines[1].spans.find((span) => span.text.includes("X"))
+    expect(firstSpan).toBeDefined()
+
+    await renderOnce()
+    const secondSpan = captureSpans().lines[1].spans.find((span) => span.text.includes("X"))
+    expect(secondSpan).toBeDefined()
+
+    expect(secondSpan!.bg.r).toBeCloseTo(firstSpan!.bg.r, 6)
+    expect(secondSpan!.bg.g).toBeCloseTo(firstSpan!.bg.g, 6)
+    expect(secondSpan!.bg.b).toBeCloseTo(firstSpan!.bg.b, 6)
+    expect(secondSpan!.bg.a).toBeCloseTo(firstSpan!.bg.a, 6)
+  })
+
+  test("does not accumulate translucent framebuffer writes across unrelated rerenders when the box is otherwise opaque", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "overlay",
+      buffered: true,
+      position: "absolute",
+      left: 1,
+      top: 1,
+      width: 3,
+      height: 1,
+      border: false,
+      shouldFill: false,
+      backgroundColor: "#000000",
+      renderAfter(buffer) {
+        buffer.fillRect(0, 0, 1, 1, RGBA.fromInts(255, 0, 0, 128))
+      },
+    })
+    const tick = new TextRenderable(testRenderer, {
+      id: "tick",
+      content: "x",
+      position: "absolute",
+      left: 0,
+      top: 2,
+    })
+
+    testRenderer.root.add(box)
+    testRenderer.root.add(tick)
+
+    await renderOnce()
+    const firstRed = captureSpans().lines[1].spans[1]?.bg.r
+    expect(firstRed).toBeDefined()
+
+    tick.content = "y"
+    await renderOnce()
+    const secondRed = captureSpans().lines[1].spans[1]?.bg.r
+    expect(secondRed).toBeDefined()
+    expect(secondRed).toBeCloseTo(firstRed!, 6)
+  })
+
+  test("keeps subclass renderSelf framebuffer-local while clipping wide grapheme edges", async () => {
+    class BufferedLabelBox extends BoxRenderable {
+      protected override renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
+        super.renderSelf(buffer, deltaTime)
+        buffer.drawText("X", 5, 0, RGBA.fromInts(255, 255, 255, 255))
+      }
+    }
+
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "ab東cd",
+        position: "absolute",
+        left: 0,
+        top: 0,
+      }),
+    )
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-1",
+        content: "abcd東ef",
+        position: "absolute",
+        left: 0,
+        top: 1,
+      }),
+    )
+
+    testRenderer.root.add(
+      new BufferedLabelBox(testRenderer, {
+        id: "overlay",
+        buffered: true,
+        position: "absolute",
+        left: 3,
+        top: 0,
+        width: 6,
+        height: 3,
+        border: false,
+        backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+      }),
+    )
+
+    await renderOnce()
+
+    const [topRow, middleRow] = captureCharFrame().split("\n")
+    expect(topRow?.startsWith("ab      X")).toBe(true)
+    expect(middleRow?.startsWith("abc 東ef")).toBe(true)
+  })
+
+  test("does not replay stale framebuffer contents after switching back from bypass rendering", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "overlay",
+      buffered: true,
+      position: "absolute",
+      left: 2,
+      top: 1,
+      width: 3,
+      height: 1,
+      border: false,
+      shouldFill: false,
+      backgroundColor: RGBA.fromInts(0, 136, 255, 24),
+      renderAfter(buffer) {
+        buffer.drawText("A", 0, 0, RGBA.fromInts(255, 255, 255, 255))
+      },
+    })
+    testRenderer.root.add(box)
+
+    await renderOnce()
+    expect(captureCharFrame().split("\n")[1]?.startsWith("  A")).toBe(true)
+
+    box.renderAfter = undefined
+    await renderOnce()
+    expect(captureCharFrame().split("\n")[1]?.trim()).toBe("")
+
+    box.renderAfter = function (buffer) {
+      buffer.drawText("B", 1, 0, RGBA.fromInts(255, 255, 255, 255))
+    }
+    await renderOnce()
+
+    const middleRow = captureCharFrame().split("\n")[1]
+    expect(middleRow?.startsWith("  AB")).toBe(false)
+    expect(middleRow?.startsWith("   B")).toBe(true)
+  })
+
+  test("clears stale framebuffer contents when opaque rendering resumes after a bypassed frame", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "overlay",
+      buffered: true,
+      position: "absolute",
+      left: 2,
+      top: 1,
+      width: 3,
+      height: 1,
+      border: false,
+      shouldFill: false,
+      backgroundColor: "#ff0000",
+      renderAfter(buffer) {
+        buffer.drawText("A", 0, 0, RGBA.fromInts(255, 255, 255, 255))
+      },
+    })
+    testRenderer.root.add(box)
+
+    await renderOnce()
+    expect(captureCharFrame().split("\n")[1]?.startsWith("  A")).toBe(true)
+
+    box.renderAfter = undefined
+    box.backgroundColor = RGBA.fromInts(0, 136, 255, 24)
+    await renderOnce()
+    expect(captureCharFrame().split("\n")[1]?.trim()).toBe("")
+
+    box.backgroundColor = "#ff0000"
+    box.renderAfter = function (buffer) {
+      buffer.drawText("B", 1, 0, RGBA.fromInts(255, 255, 255, 255))
+    }
+    await renderOnce()
+
+    const middleRow = captureCharFrame().split("\n")[1]
+    expect(middleRow?.startsWith("  AB")).toBe(false)
+    expect(middleRow?.startsWith("   B")).toBe(true)
+  })
+
+  test("does not replace emoji when a buffered transparent framebuffer draw is otherwise empty", async () => {
+    class TransparentBufferedBox extends BoxRenderable {
+      protected override renderSelf(buffer: OptimizedBuffer): void {
+        super.renderSelf(buffer)
+      }
+    }
+
+    testRenderer.root.add(
+      new TextRenderable(testRenderer, {
+        id: "line-0",
+        content: "ab👋cd",
+        position: "absolute",
+        left: 0,
+        top: 2,
+      }),
+    )
+
+    testRenderer.root.add(
+      new TransparentBufferedBox(testRenderer, {
+        id: "overlay",
+        buffered: true,
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 8,
+        height: 3,
+        border: false,
+        shouldFill: false,
+        backgroundColor: "transparent",
+      }),
+    )
+
+    await renderOnce()
+
+    const row = captureCharFrame().split("\n")[2]
+    expect(row?.startsWith("ab👋cd")).toBe(true)
   })
 })

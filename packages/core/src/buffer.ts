@@ -296,6 +296,13 @@ export class OptimizedBuffer {
     this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg)
   }
 
+  // Clip any wide grapheme spans crossed by this fill instead of tinting the
+  // full span. Overlay edge bands use this to keep box geometry straight.
+  public fillRectClipWideGraphemes(x: number, y: number, width: number, height: number, bg: RGBA): void {
+    this.guard()
+    this.lib.bufferFillRectClipWideGraphemes(this.bufferPtr, x, y, width, height, bg)
+  }
+
   public colorMatrix(
     matrix: Float32Array,
     cellMask: Float32Array,
