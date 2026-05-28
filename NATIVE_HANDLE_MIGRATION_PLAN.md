@@ -31,6 +31,7 @@ This document describes a complete, step-by-step migration for all relevant nati
 - Do not make every borrowed pointer or temporary out-buffer a handle. Only long-lived native objects that JavaScript stores and passes back should become handles.
 - Do not silently ignore all native errors. Functions that already return status codes should continue to return meaningful invalid-handle status values where possible.
 - Do not remove the optimized buffer direct-write path. Native buffer cell arrays must remain directly accessible to TypeScript via `toArrayBuffer(...)` typed arrays for performance.
+- Do not remove the native span feed zero-copy chunk/state-buffer path. It must remain directly accessible to TypeScript unless replaced by an explicitly benchmarked alternative.
 
 ## Current Native Object Inventory
 
@@ -95,10 +96,13 @@ The audit must include both `packages/core/src/zig/lib.zig` and other Zig module
 - `createNativeSpanFeed(...) ?*native_span_feed.Stream`
 - `destroyNativeSpanFeed(stream: ?*Stream)`
 - `attachNativeSpanFeed`, `streamWrite`, `streamCommit`, `streamDrainSpans`, `streamClose`, `streamReserve`, `streamCommitReserved`, `streamSetOptions`, `streamGetStats`, and `streamSetCallback` accept stream pointers.
+- `NativeSpanFeed.ts` aliases native memory with `toArrayBuffer(...)` for chunk payloads and for the state/refcount buffer. These are deliberate zero-copy data views and must be treated like the buffer cell-array data plane.
 
 ### Buffer Data Pointers, Borrowed Pointers, and Temporary Pointers
 
 Buffer cell-array pointers are a deliberate data-plane escape hatch. They are not object handles. They expose raw memory so TypeScript can write directly into native buffers without an FFI call per cell. This path must remain available unless a separate performance project replaces it.
+
+Native span feed chunk pointers and the state/refcount buffer are the same category: raw data pointers exposed for zero-copy reads/writes. They are not object handles and cannot be fully protected by handle validation after JavaScript has created typed-array views over them.
 
 The handle migration can protect FFI calls that accept a buffer object, but it cannot validate direct writes through previously-created `Uint32Array` or `Uint16Array` views. Once JavaScript has a typed array backed by native memory, writes to that array bypass `lib.zig` entirely. Therefore:
 
@@ -108,6 +112,7 @@ The handle migration can protect FFI calls that accept a buffer object, but it c
 - destroying a buffer must invalidate the wrapper's cached views where possible
 - code holding old typed array references after destroy is still unsafe by design and should be documented as invalid usage
 - debug/test builds may optionally poison or zero memory before free, but native handle validation cannot catch direct typed-array writes
+- `NativeSpanFeed` must keep zero-copy chunk/state views unless a separate performance project replaces the stream data plane. Handles can validate stream methods, but they cannot validate direct reads/writes through previously-created chunk or state typed arrays.
 
 Renderer-owned current/next buffers are not temporary pointers. They are stable child objects owned by the renderer and used repeatedly from JavaScript. Their object identity should be represented as borrowed child handles, but their cell arrays still need direct raw data pointers while the renderer is alive.
 
@@ -416,11 +421,13 @@ Acceptance target: no material regression in frame throughput. Small per-call ov
 3. Update both `lib.zig` and direct `pub export fn` declarations in `native-span-feed.zig` to use the same handle table.
 4. Native callbacks should pass the stream handle, not a raw stream pointer, if JavaScript needs to dispatch by stream identity.
 5. If native callbacks currently only know the stream pointer, store the handle in the stream object or in callback context during creation.
-6. Add tests:
+6. Preserve zero-copy data views for chunks and state/refcount buffers. The stream handle validates stream operations; chunk/state typed arrays remain borrowed memory views valid only while their owning stream/chunk lifetime permits.
+7. Add tests:
    - stream write after destroy returns invalid status
    - callbacks after destroy are ignored
    - stale stream handle cannot target a reused stream slot
-7. Benchmark stream write/commit/drain paths.
+   - state/chunk typed-array views are documented invalid after stream destroy and are not treated as handles
+8. Benchmark stream write/commit/drain paths and zero-copy data-handler throughput.
 
 ### Phase 11: Audit Temporary Pointer APIs
 
@@ -433,6 +440,7 @@ Classify each remaining pointer as one of:
 - caller-provided buffer pointer valid only for the duration of the call
 - returned temporary allocation with explicit free function
 - callback function pointer
+- zero-copy data-plane pointer, such as buffer cell arrays or native span feed chunks/state
 - internal borrowed pointer that should not cross the boundary
 
 For each returned temporary allocation, confirm:
@@ -442,6 +450,8 @@ For each returned temporary allocation, confirm:
 - stale/free-twice behavior is tested or impossible by API design
 
 Do not convert every temporary pointer to a generational handle by default. Handles are for long-lived objects that JavaScript stores and passes back repeatedly.
+
+Zero-copy data-plane pointers must be documented separately from object handles. They should only be returned after validating the owning handle, and their TypeScript wrappers should make lifetime constraints explicit.
 
 ### Phase 12: Remove Raw Pointer Types From Public Core Wrappers
 
@@ -502,9 +512,11 @@ Do not support both raw pointer and handle representations for the same object f
 - Destroying a borrowed child handle directly. This should no-op or be rejected; it must not free owner-managed memory.
 - Requesting buffer cell-array pointers through `bufferGet*Ptr` after buffer destroy.
 - Reusing `OptimizedBuffer.buffers` after `OptimizedBuffer.destroy()` from TypeScript. The wrapper should prevent reacquiring views, while documentation must state that already-retained typed array views are invalid.
+- Native span feed stream method calls after destroy.
+- Native span feed callbacks after close/destroy.
+- Native span feed zero-copy chunk/state typed-array lifetime documentation and tests for wrapper cleanup.
 - Reentrant callbacks during destruction.
 - Renderer destruction while a frame is rendering.
-- Native span feed callbacks after stream close/destroy.
 - Audio callbacks after engine stop/destroy.
 
 ## Open Design Questions
@@ -518,6 +530,7 @@ Resolve these before implementation begins:
 5. Should handle-table debug diagnostics expose live object counts by kind?
 6. Which object getters return owned handles, borrowed child handles, or temporary data? This must be explicitly documented before each object family migrates.
 7. Should buffer cell-array pointers continue to be returned as raw pointers, or should there be a debug-only mode that copies/validates them at the cost of performance?
+8. Should native span feed zero-copy chunk/state views keep their current aliasing behavior in all modes, or should debug/test builds offer copy-out validation for easier lifetime diagnostics?
 
 ## Preferred Answers To Open Questions
 
@@ -530,6 +543,7 @@ These are starting recommendations, not final decisions:
 5. Add debug-only live handle counts. They are useful for leak tests and should have negligible production impact when disabled.
 6. Treat renderer current/next buffers and view/editor related getters as borrowed child handles unless a specific API owns and destroys the returned object independently.
 7. Keep buffer cell-array pointers raw in production. They are the intentional direct-write data plane. Consider debug-only validation/copying separately if needed for diagnostics.
+8. Keep native span feed chunk/state views zero-copy in production. Consider debug-only copy-out diagnostics separately if needed.
 
 ## Completion Criteria
 
@@ -538,6 +552,7 @@ The migration is complete when:
 - No long-lived native object pointer is exposed to TypeScript as `Pointer`.
 - No exported getter returns a raw pointer to a long-lived native object.
 - Buffer cell-array getters are the explicit exception: they may return raw data pointers for direct typed-array writes, but only after validating a live buffer handle.
+- Native span feed chunk/state data pointers are the other explicit exception: they may be exposed as raw typed-array-backed memory for zero-copy streaming, but only through a live stream and documented chunk/state lifetimes.
 - All FFI object methods validate handles in `lib.zig` before dereferencing native pointers.
 - All direct `pub export fn` object methods outside `lib.zig` validate handles before dereferencing native pointers.
 - Stale handles are rejected by generation checks.
@@ -545,6 +560,7 @@ The migration is complete when:
 - Double destroy is safe for every object family.
 - Borrowed child handles are invalidated when their owner is destroyed and cannot free owner-managed memory.
 - Direct buffer typed-array access remains available and documented as valid only while the owning buffer is alive.
+- Native span feed zero-copy typed-array access remains available and documented with its stream/chunk lifetime rules.
 - The original renderer use-after-destroy sequence cannot crash.
 - Benchmarks show acceptable overhead and document the measured cost.
 - Tests cover renderer, buffer, text buffer, text buffer view, edit buffer, editor view, syntax style, event sink, audio engine, and native span feed stream invalid-handle behavior.
