@@ -219,13 +219,13 @@ pub fn acquire(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?Gua
         atomicLoad(u8, &slot.kind) != @intFromEnum(expected_kind) or
         atomicLoad(u8, &slot.state) != ALIVE)
     {
-        releaseHandle(handle);
+        releaseSlot(slot);
         return null;
     }
 
     const raw_ptr = atomicLoad(usize, &slot.ptr);
     if (raw_ptr == 0) {
-        releaseHandle(handle);
+        releaseSlot(slot);
         return null;
     }
 
@@ -240,6 +240,10 @@ pub fn resolve(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?*T 
         return guard.ptr;
     }
     return null;
+}
+
+fn releaseSlot(slot: *ObjectSlot) void {
+    _ = @atomicRmw(u32, &slot.active_calls, .Sub, 1, .acq_rel);
 }
 
 pub fn beginDestroy(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?DestroyToken(T) {
@@ -409,7 +413,7 @@ fn releaseHandle(handle: Handle) void {
     if (index_u32 == 0 or index_u32 >= atomicLoad(u32, &slot_count)) return;
     const slot = &slots[@intCast(index_u32)];
     if (atomicLoad(u32, &slot.generation) != slotGeneration(handle)) return;
-    _ = @atomicRmw(u32, &slot.active_calls, .Sub, 1, .acq_rel);
+    releaseSlot(slot);
 }
 
 pub fn resetForTesting() void {

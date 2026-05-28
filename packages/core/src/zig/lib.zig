@@ -1487,6 +1487,14 @@ fn destroyTextBufferViewChildren(owner: NativeHandle) void {
     }
 }
 
+fn destroyTextBufferViewGrandchildren(owner: NativeHandle) void {
+    const text_handles = handles.collectChildren(owner, .text_buffer, globalAllocator) catch unreachable;
+    defer globalAllocator.free(text_handles);
+    for (text_handles) |text_handle| {
+        destroyTextBufferViewChildren(text_handle);
+    }
+}
+
 export fn createTextBuffer(widthMethod: u8) NativeHandle {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
@@ -1892,6 +1900,7 @@ export fn createEditBuffer(widthMethod: u8, event_sink_handle: NativeHandle) Nat
 export fn destroyEditBuffer(edit_handle: NativeHandle) void {
     const token = handles.beginDestroy(edit_handle, .edit_buffer, edit_buffer_mod.EditBuffer) orelse return;
     destroyEditorViewChildren(token.handle);
+    destroyTextBufferViewGrandchildren(token.handle);
     handles.invalidateChildren(token.handle);
     token.ptr.deinit();
     handles.finishDestroy(token.handle);
