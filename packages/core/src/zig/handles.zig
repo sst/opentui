@@ -460,14 +460,3 @@ fn releaseHandle(handle: Handle) void {
     if (atomicLoad(u32, &slot.generation) != slotGeneration(handle)) return;
     releaseSlot(slot);
 }
-
-pub fn resetForTesting() void {
-    mutex.lock();
-    defer mutex.unlock();
-
-    for (&slots) |*slot| {
-        slot.* = .{};
-    }
-    slot_count = 1;
-    free_indices.clearRetainingCapacity();
-}

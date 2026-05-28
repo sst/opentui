@@ -2,26 +2,29 @@ const std = @import("std");
 const handles = @import("../handles.zig");
 
 test "handles insert and resolve" {
-    handles.resetForTesting();
     var value: u32 = 42;
     const handle = try handles.insert(.renderer, &value);
     try std.testing.expect(handle != 0);
 
     const resolved = handles.resolve(handle, .renderer, u32) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqual(@as(*u32, &value), resolved);
+
+    const token = handles.beginDestroy(handle, .renderer, u32) orelse return error.TestUnexpectedResult;
+    handles.finishDestroy(token.handle);
 }
 
 test "handles reject wrong kind and zero" {
-    handles.resetForTesting();
     var value: u32 = 42;
     const handle = try handles.insert(.renderer, &value);
 
     try std.testing.expect(handles.resolve(handle, .optimized_buffer, u32) == null);
     try std.testing.expect(handles.resolve(0, .renderer, u32) == null);
+
+    const token = handles.beginDestroy(handle, .renderer, u32) orelse return error.TestUnexpectedResult;
+    handles.finishDestroy(token.handle);
 }
 
 test "handles double destroy is rejected" {
-    handles.resetForTesting();
     var value: u32 = 42;
     const handle = try handles.insert(.renderer, &value);
 
@@ -32,7 +35,6 @@ test "handles double destroy is rejected" {
 }
 
 test "handles reject stale generation after reuse" {
-    handles.resetForTesting();
     var first: u32 = 1;
     var second: u32 = 2;
 
@@ -50,7 +52,6 @@ test "handles reject stale generation after reuse" {
 }
 
 test "handles mark destroying before destructor body" {
-    handles.resetForTesting();
     var value: u32 = 42;
     const handle = try handles.insert(.renderer, &value);
 
@@ -60,7 +61,6 @@ test "handles mark destroying before destructor body" {
 }
 
 test "handles pause and unpause temporarily reject calls" {
-    handles.resetForTesting();
     var value: u32 = 42;
     const handle = try handles.insert(.renderer, &value);
 
@@ -68,10 +68,12 @@ test "handles pause and unpause temporarily reject calls" {
     try std.testing.expect(handles.resolve(handle, .renderer, u32) == null);
     handles.unpause(token.handle);
     try std.testing.expect(handles.resolve(handle, .renderer, u32) != null);
+
+    const destroy_token = handles.beginDestroy(handle, .renderer, u32) orelse return error.TestUnexpectedResult;
+    handles.finishDestroy(destroy_token.handle);
 }
 
 test "borrowed handles are stable and invalidated with owner" {
-    handles.resetForTesting();
     var owner_value: u32 = 1;
     var child_value: u32 = 2;
     const owner = try handles.insert(.renderer, &owner_value);
@@ -83,4 +85,7 @@ test "borrowed handles are stable and invalidated with owner" {
 
     handles.invalidateChildren(owner);
     try std.testing.expect(!handles.isValid(child_a, .optimized_buffer));
+
+    const token = handles.beginDestroy(owner, .renderer, u32) orelse return error.TestUnexpectedResult;
+    handles.finishDestroy(token.handle);
 }
