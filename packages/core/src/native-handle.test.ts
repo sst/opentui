@@ -6,12 +6,7 @@ import { TextBufferView } from "./text-buffer-view.js"
 import { EditBuffer } from "./edit-buffer.js"
 import { EditorView } from "./editor-view.js"
 import { SyntaxStyle } from "./syntax-style.js"
-import {
-  resolveRenderLib,
-  type OptimizedBufferHandle,
-  type RendererHandle,
-  type TextBufferHandle,
-} from "./zig.js"
+import { resolveRenderLib, type OptimizedBufferHandle, type RendererHandle, type TextBufferHandle } from "./zig.js"
 
 describe("native handles", () => {
   test("renderer calls after destroy are rejected safely", () => {
@@ -44,9 +39,7 @@ describe("native handles", () => {
     const bufferHandle = buffer.ptr
     buffer.destroy()
     expect(() => buffer.buffers).toThrow()
-    expect(() => buffer.fillRect(0, 0, 1, 1, RGBA.fromValues(1, 0, 0, 1))).toThrow(
-      "is destroyed",
-    )
+    expect(() => buffer.fillRect(0, 0, 1, 1, RGBA.fromValues(1, 0, 0, 1))).toThrow("is destroyed")
 
     expect(lib.getBufferWidth(bufferHandle)).toBe(0)
     lib.destroyOptimizedBuffer(bufferHandle)
