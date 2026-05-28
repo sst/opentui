@@ -34,8 +34,8 @@ const SlotState = enum(u8) {
 const VACANT: u8 = @intFromEnum(SlotState.vacant);
 const ALIVE: u8 = @intFromEnum(SlotState.alive);
 const DESTROYING: u8 = @intFromEnum(SlotState.destroying);
-const DESTROYING_CALLS_BIT: u32 = 1 << 31;
-const ACTIVE_CALLS_MASK: u32 = DESTROYING_CALLS_BIT - 1;
+const ACQUIRE_CLOSED_BIT: u32 = 1 << 31;
+const ACTIVE_CALLS_MASK: u32 = ACQUIRE_CLOSED_BIT - 1;
 
 const ObjectSlot = struct {
     generation: u32 = 1,
@@ -131,18 +131,18 @@ fn waitForInactiveLocked(slot: *ObjectSlot) void {
     }
 }
 
-fn blockNewCalls(slot: *ObjectSlot) void {
-    _ = @atomicRmw(u32, &slot.active_calls, .Or, DESTROYING_CALLS_BIT, .acq_rel);
+fn closeSlotForAcquire(slot: *ObjectSlot) void {
+    _ = @atomicRmw(u32, &slot.active_calls, .Or, ACQUIRE_CLOSED_BIT, .acq_rel);
 }
 
-fn unblockNewCalls(slot: *ObjectSlot) void {
+fn reopenSlotForAcquire(slot: *ObjectSlot) void {
     _ = @atomicRmw(u32, &slot.active_calls, .And, ACTIVE_CALLS_MASK, .acq_rel);
 }
 
 fn tryAcquireSlot(slot: *ObjectSlot) bool {
     while (true) {
         const current = atomicLoad(u32, &slot.active_calls);
-        if ((current & DESTROYING_CALLS_BIT) != 0) return false;
+        if ((current & ACQUIRE_CLOSED_BIT) != 0) return false;
         if ((current & ACTIVE_CALLS_MASK) == ACTIVE_CALLS_MASK) return false;
         if (@cmpxchgWeak(u32, &slot.active_calls, current, current + 1, .acq_rel, .acquire) == null) return true;
     }
@@ -272,9 +272,10 @@ pub fn beginDestroy(handle: Handle, expected_kind: ObjectKind, comptime T: type)
     const index = validateSlotLocked(handle, expected_kind) orelse return null;
     const slot = &slots[index];
     if (!slot.owned) return null;
-    blockNewCalls(slot);
+    // Close the slot before waiting so a late acquire cannot enter while destroy is underway.
+    closeSlotForAcquire(slot);
     if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
-        unblockNewCalls(slot);
+        reopenSlotForAcquire(slot);
         return null;
     }
 
@@ -292,9 +293,9 @@ pub fn pause(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?Destr
 
     const index = validateSlotLocked(handle, expected_kind) orelse return null;
     const slot = &slots[index];
-    blockNewCalls(slot);
+    closeSlotForAcquire(slot);
     if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
-        unblockNewCalls(slot);
+        reopenSlotForAcquire(slot);
         return null;
     }
 
@@ -321,7 +322,7 @@ pub fn unpause(handle: Handle) void {
         return;
     }
     atomicStore(u8, &slot.state, ALIVE);
-    unblockNewCalls(slot);
+    reopenSlotForAcquire(slot);
 }
 
 pub fn finishDestroy(handle: Handle) void {
@@ -363,9 +364,9 @@ pub fn invalidate(handle: Handle, expected_kind: ObjectKind) void {
 
     const index = validateSlotLocked(handle, expected_kind) orelse return;
     const slot = &slots[index];
-    blockNewCalls(slot);
+    closeSlotForAcquire(slot);
     if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
-        unblockNewCalls(slot);
+        reopenSlotForAcquire(slot);
         return;
     }
     waitForInactiveLocked(slot);
@@ -389,9 +390,9 @@ fn invalidateChildrenLocked(owner: Handle) void {
             if (atomicLoad(u8, &slot.state) != ALIVE or slot.owner != owner) continue;
 
             const child_handle = encode(@intCast(index), atomicLoad(u32, &slot.generation), @enumFromInt(atomicLoad(u8, &slot.kind)));
-            blockNewCalls(slot);
+            closeSlotForAcquire(slot);
             if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
-                unblockNewCalls(slot);
+                reopenSlotForAcquire(slot);
                 continue;
             }
             waitForInactiveLocked(slot);
