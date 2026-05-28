@@ -83,4 +83,27 @@ describe("native handles", () => {
 
     expect(lib.textBufferGetLength(editHandle as unknown as TextBufferHandle)).toBe(0)
   })
+
+  test("owned text buffer destroys child views", () => {
+    const lib = resolveRenderLib()
+    const textBuffer = TextBuffer.create("unicode")
+    const textView = TextBufferView.create(textBuffer)
+    const textViewHandle = textView.ptr
+
+    textBuffer.destroy()
+
+    expect(lib.textBufferViewGetVirtualLineCount(textViewHandle)).toBe(0)
+  })
+
+  test("borrowed edit buffer text handle cannot own text buffer views", () => {
+    const lib = resolveRenderLib()
+    const editBuffer = EditBuffer.create("unicode")
+    const editHandle = editBuffer.ptr
+    const borrowedTextHandle = lib.editBufferGetTextBuffer(editHandle)
+
+    expect(() => lib.createTextBufferView(borrowedTextHandle)).toThrow("Failed to create TextBufferView")
+
+    editBuffer.destroy()
+    expect(lib.textBufferGetLength(borrowedTextHandle)).toBe(0)
+  })
 })

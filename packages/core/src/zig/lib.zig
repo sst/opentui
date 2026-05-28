@@ -1487,14 +1487,6 @@ fn destroyTextBufferViewChildren(owner: NativeHandle) void {
     }
 }
 
-fn destroyTextBufferViewGrandchildren(owner: NativeHandle) void {
-    const text_handles = handles.collectChildren(owner, .text_buffer, globalAllocator) catch unreachable;
-    defer globalAllocator.free(text_handles);
-    for (text_handles) |text_handle| {
-        destroyTextBufferViewChildren(text_handle);
-    }
-}
-
 export fn createTextBuffer(widthMethod: u8) NativeHandle {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
@@ -1653,6 +1645,8 @@ export fn textBufferGetPlainText(tb_handle: NativeHandle, outPtr: [*]u8, maxLen:
 
 // TextBufferView functions (Array-based for backward compatibility)
 export fn createTextBufferView(tb_handle: NativeHandle) NativeHandle {
+    if (!handles.isOwned(tb_handle, .text_buffer)) return INVALID_HANDLE;
+
     const guard = acquireTextBuffer(tb_handle) orelse return INVALID_HANDLE;
     defer guard.release();
     const view = text_buffer_view.UnifiedTextBufferView.init(globalAllocator, guard.ptr) catch {
@@ -1900,7 +1894,6 @@ export fn createEditBuffer(widthMethod: u8, event_sink_handle: NativeHandle) Nat
 export fn destroyEditBuffer(edit_handle: NativeHandle) void {
     const token = handles.beginDestroy(edit_handle, .edit_buffer, edit_buffer_mod.EditBuffer) orelse return;
     destroyEditorViewChildren(token.handle);
-    destroyTextBufferViewGrandchildren(token.handle);
     handles.invalidateChildren(token.handle);
     token.ptr.deinit();
     handles.finishDestroy(token.handle);

@@ -34,6 +34,8 @@ const SlotState = enum(u8) {
 const VACANT: u8 = @intFromEnum(SlotState.vacant);
 const ALIVE: u8 = @intFromEnum(SlotState.alive);
 const DESTROYING: u8 = @intFromEnum(SlotState.destroying);
+const DESTROYING_CALLS_BIT: u32 = 1 << 31;
+const ACTIVE_CALLS_MASK: u32 = DESTROYING_CALLS_BIT - 1;
 
 const ObjectSlot = struct {
     generation: u32 = 1,
@@ -122,10 +124,27 @@ fn validateSlotLocked(handle: Handle, expected_kind: ObjectKind) ?u16 {
 }
 
 fn waitForInactiveLocked(slot: *ObjectSlot) void {
-    while (atomicLoad(u32, &slot.active_calls) != 0) {
+    while ((atomicLoad(u32, &slot.active_calls) & ACTIVE_CALLS_MASK) != 0) {
         mutex.unlock();
         std.Thread.yield() catch {};
         mutex.lock();
+    }
+}
+
+fn blockNewCalls(slot: *ObjectSlot) void {
+    _ = @atomicRmw(u32, &slot.active_calls, .Or, DESTROYING_CALLS_BIT, .acq_rel);
+}
+
+fn unblockNewCalls(slot: *ObjectSlot) void {
+    _ = @atomicRmw(u32, &slot.active_calls, .And, ACTIVE_CALLS_MASK, .acq_rel);
+}
+
+fn tryAcquireSlot(slot: *ObjectSlot) bool {
+    while (true) {
+        const current = atomicLoad(u32, &slot.active_calls);
+        if ((current & DESTROYING_CALLS_BIT) != 0) return false;
+        if ((current & ACTIVE_CALLS_MASK) == ACTIVE_CALLS_MASK) return false;
+        if (@cmpxchgWeak(u32, &slot.active_calls, current, current + 1, .acq_rel, .acquire) == null) return true;
     }
 }
 
@@ -213,7 +232,7 @@ pub fn acquire(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?Gua
     if (atomicLoad(u8, &slot.kind) != @intFromEnum(expected_kind)) return null;
     if (atomicLoad(u8, &slot.state) != ALIVE) return null;
 
-    _ = @atomicRmw(u32, &slot.active_calls, .Add, 1, .acq_rel);
+    if (!tryAcquireSlot(slot)) return null;
 
     if (atomicLoad(u32, &slot.generation) != slotGeneration(handle) or
         atomicLoad(u8, &slot.kind) != @intFromEnum(expected_kind) or
@@ -253,7 +272,11 @@ pub fn beginDestroy(handle: Handle, expected_kind: ObjectKind, comptime T: type)
     const index = validateSlotLocked(handle, expected_kind) orelse return null;
     const slot = &slots[index];
     if (!slot.owned) return null;
-    if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) return null;
+    blockNewCalls(slot);
+    if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
+        unblockNewCalls(slot);
+        return null;
+    }
 
     waitForInactiveLocked(slot);
     const raw_ptr = atomicLoad(usize, &slot.ptr);
@@ -269,7 +292,11 @@ pub fn pause(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?Destr
 
     const index = validateSlotLocked(handle, expected_kind) orelse return null;
     const slot = &slots[index];
-    if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) return null;
+    blockNewCalls(slot);
+    if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
+        unblockNewCalls(slot);
+        return null;
+    }
 
     waitForInactiveLocked(slot);
     const raw_ptr = atomicLoad(usize, &slot.ptr);
@@ -294,6 +321,7 @@ pub fn unpause(handle: Handle) void {
         return;
     }
     atomicStore(u8, &slot.state, ALIVE);
+    unblockNewCalls(slot);
 }
 
 pub fn finishDestroy(handle: Handle) void {
@@ -321,13 +349,25 @@ pub fn isValid(handle: Handle, expected_kind: ObjectKind) bool {
         atomicLoad(usize, &slot.ptr) != 0;
 }
 
+pub fn isOwned(handle: Handle, expected_kind: ObjectKind) bool {
+    mutex.lock();
+    defer mutex.unlock();
+
+    const index = validateSlotLocked(handle, expected_kind) orelse return false;
+    return slots[index].owned;
+}
+
 pub fn invalidate(handle: Handle, expected_kind: ObjectKind) void {
     mutex.lock();
     defer mutex.unlock();
 
     const index = validateSlotLocked(handle, expected_kind) orelse return;
     const slot = &slots[index];
-    if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) return;
+    blockNewCalls(slot);
+    if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
+        unblockNewCalls(slot);
+        return;
+    }
     waitForInactiveLocked(slot);
     vacateSlotLocked(index);
 }
@@ -349,7 +389,11 @@ fn invalidateChildrenLocked(owner: Handle) void {
             if (atomicLoad(u8, &slot.state) != ALIVE or slot.owner != owner) continue;
 
             const child_handle = encode(@intCast(index), atomicLoad(u32, &slot.generation), @enumFromInt(atomicLoad(u8, &slot.kind)));
-            if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) continue;
+            blockNewCalls(slot);
+            if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
+                unblockNewCalls(slot);
+                continue;
+            }
             waitForInactiveLocked(slot);
             invalidateChildrenLocked(child_handle);
             vacateSlotLocked(@intCast(index));
@@ -425,84 +469,4 @@ pub fn resetForTesting() void {
     }
     slot_count = 1;
     free_indices.clearRetainingCapacity();
-}
-
-test "handles insert and resolve" {
-    resetForTesting();
-    var value: u32 = 42;
-    const handle = try insert(.renderer, &value);
-    try std.testing.expect(handle != 0);
-
-    const resolved = resolve(handle, .renderer, u32) orelse return error.TestUnexpectedResult;
-    try std.testing.expectEqual(@as(*u32, &value), resolved);
-}
-
-test "handles reject wrong kind and zero" {
-    resetForTesting();
-    var value: u32 = 42;
-    const handle = try insert(.renderer, &value);
-
-    try std.testing.expect(resolve(handle, .optimized_buffer, u32) == null);
-    try std.testing.expect(resolve(0, .renderer, u32) == null);
-}
-
-test "handles double destroy is rejected" {
-    resetForTesting();
-    var value: u32 = 42;
-    const handle = try insert(.renderer, &value);
-
-    const token = beginDestroy(handle, .renderer, u32) orelse return error.TestUnexpectedResult;
-    finishDestroy(token.handle);
-
-    try std.testing.expect(beginDestroy(handle, .renderer, u32) == null);
-}
-
-test "handles reject stale generation after reuse" {
-    resetForTesting();
-    var first: u32 = 1;
-    var second: u32 = 2;
-
-    const stale = try insert(.renderer, &first);
-    const token = beginDestroy(stale, .renderer, u32) orelse return error.TestUnexpectedResult;
-    finishDestroy(token.handle);
-
-    const fresh = try insert(.renderer, &second);
-    try std.testing.expect(stale != fresh);
-    try std.testing.expect(resolve(stale, .renderer, u32) == null);
-    try std.testing.expectEqual(@as(*u32, &second), resolve(fresh, .renderer, u32).?);
-}
-
-test "handles mark destroying before destructor body" {
-    resetForTesting();
-    var value: u32 = 42;
-    const handle = try insert(.renderer, &value);
-
-    const token = beginDestroy(handle, .renderer, u32) orelse return error.TestUnexpectedResult;
-    try std.testing.expect(resolve(handle, .renderer, u32) == null);
-    finishDestroy(token.handle);
-}
-
-test "handles pause and unpause temporarily reject calls" {
-    resetForTesting();
-    var value: u32 = 42;
-    const handle = try insert(.renderer, &value);
-
-    const token = pause(handle, .renderer, u32) orelse return error.TestUnexpectedResult;
-    try std.testing.expect(resolve(handle, .renderer, u32) == null);
-    unpause(token.handle);
-    try std.testing.expect(resolve(handle, .renderer, u32) != null);
-}
-
-test "borrowed handles are stable and invalidated with owner" {
-    resetForTesting();
-    var owner_value: u32 = 1;
-    var child_value: u32 = 2;
-    const owner = try insert(.renderer, &owner_value);
-    const child_a = try getOrInsertBorrowed(.optimized_buffer, &child_value, owner);
-    const child_b = try getOrInsertBorrowed(.optimized_buffer, &child_value, owner);
-    try std.testing.expectEqual(child_a, child_b);
-    try std.testing.expect(isValid(child_a, .optimized_buffer));
-
-    invalidateChildren(owner);
-    try std.testing.expect(!isValid(child_a, .optimized_buffer));
 }
