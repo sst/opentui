@@ -53,7 +53,7 @@ pub const RemoteMode = enum(u8) {
     remote,
 };
 
-pub const Multiplexer = enum {
+pub const Multiplexer = enum(u8) {
     none,
     tmux,
     zellij,

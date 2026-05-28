@@ -155,7 +155,7 @@ async function createSilentFollowUpPaletteRenderer(clock = new ManualClock()) {
   })
 
   setRendererCapabilities(renderer, {
-    in_tmux: false,
+    multiplexer: "none",
     terminal: { name: "", version: "", from_xtversion: false },
   })
 
@@ -878,12 +878,12 @@ describe("Palette detection while capabilities are unsettled", () => {
 
     try {
       setRendererCapabilities(renderer, {
-        in_tmux: false,
+        multiplexer: "none",
         terminal: { name: "", version: "", from_xtversion: false },
       })
       startCapabilityDetectionWindow(renderer, clock)
 
-      expect(renderer.capabilities?.in_tmux).toBe(false)
+      expect(renderer.capabilities?.multiplexer).toBe("none")
 
       void renderer.getPalette({ size: 16 })
       await flushAsync()
@@ -899,12 +899,12 @@ describe("Palette detection while capabilities are unsettled", () => {
 
     try {
       setRendererCapabilities(renderer, {
-        in_tmux: true,
+        multiplexer: "tmux",
         terminal: { name: "", version: "", from_xtversion: false },
       })
       startCapabilityDetectionWindow(renderer, clock)
 
-      expect(renderer.capabilities?.in_tmux).toBe(true)
+      expect(renderer.capabilities?.multiplexer).toBe("tmux")
       expect(renderer.capabilities?.terminal?.from_xtversion).toBe(false)
 
       void renderer.getPalette({ size: 16 })
@@ -922,7 +922,7 @@ describe("Palette detection while capabilities are unsettled", () => {
 
     try {
       setRendererCapabilities(renderer, {
-        in_tmux: true,
+        multiplexer: "tmux",
         rgb: true,
         ansi256: true,
         terminal: { name: "tmux", version: "3.6a", from_xtversion: false },
@@ -943,7 +943,7 @@ describe("Palette detection while capabilities are unsettled", () => {
 
     try {
       setRendererCapabilities(renderer, {
-        in_tmux: true,
+        multiplexer: "tmux",
         terminal: { name: "", version: "", from_xtversion: false },
       })
       startCapabilityDetectionWindow(renderer, clock)
@@ -969,7 +969,7 @@ describe("Palette detection while capabilities are unsettled", () => {
 
     try {
       setRendererCapabilities(renderer, {
-        in_tmux: true,
+        multiplexer: "tmux",
         terminal: { name: "", version: "", from_xtversion: false },
       })
       startCapabilityDetectionWindow(renderer, clock)
@@ -996,7 +996,7 @@ describe("Palette detection while capabilities are unsettled", () => {
     try {
       setRendererCapabilities(renderer, {
         remote: true,
-        in_tmux: false,
+        multiplexer: "none",
         terminal: { name: "", version: "", from_xtversion: false },
       })
       startCapabilityDetectionWindow(renderer, clock)
@@ -1004,7 +1004,7 @@ describe("Palette detection while capabilities are unsettled", () => {
       void renderer.getPalette({ size: 16 })
       await flushAsync()
 
-      expect(renderer.capabilities?.in_tmux).toBe(false)
+      expect(renderer.capabilities?.multiplexer).toBe("none")
       expect(writes).toContain("\x1b]4;0;?\x07")
     } finally {
       renderer.destroy()

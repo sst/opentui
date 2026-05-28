@@ -4002,8 +4002,7 @@ class FFIRenderLib implements RenderLib {
       notifications: caps.notifications,
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
       remote: caps.remote,
-      in_tmux: caps.in_tmux,
-      in_zellij: caps.in_zellij,
+      multiplexer: caps.multiplexer,
       terminal: {
         name: caps.term_name ?? "",
         version: caps.term_version ?? "",

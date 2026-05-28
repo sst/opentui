@@ -95,8 +95,7 @@ describe("remote detection", () => {
     )
 
     expect(caps.remote).toBe(false)
-    expect(caps.in_zellij).toBe(true)
-    expect(caps.in_tmux).toBe(false)
+    expect(caps.multiplexer).toBe("zellij")
     expect(caps.notifications).toBe(false)
     expect(caps.terminal.name).toBe("Zellij")
   })

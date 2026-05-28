@@ -56,6 +56,7 @@ export enum TargetChannel {
 }
 
 export type WidthMethod = "wcwidth" | "unicode"
+export type TerminalMultiplexer = "none" | "tmux" | "zellij" | "screen" | "unknown"
 
 export interface TerminalInfo {
   name: string
@@ -82,8 +83,7 @@ export interface TerminalCapabilities {
   notifications: boolean
   explicit_cursor_positioning: boolean
   remote: boolean
-  in_tmux: boolean
-  in_zellij: boolean
+  multiplexer: TerminalMultiplexer
   terminal: TerminalInfo
 }
 

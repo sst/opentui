@@ -4339,7 +4339,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private ensurePaletteDetector(): TerminalPaletteDetector {
     if (!this._paletteDetector) {
       const isTmux = Boolean(
-        this.capabilities?.in_tmux || this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux"),
+        this.capabilities?.multiplexer === "tmux" || this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux"),
       )
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
@@ -4453,7 +4453,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // TERM_PROGRAM=tmux/TERM_PROGRAM_VERSION; otherwise wait for XTVERSION.
     const terminal = this._capabilities?.terminal
     const hasTmuxVersion = terminal?.name?.toLowerCase() === "tmux" && Boolean(terminal.version)
-    if (this._capabilities?.in_tmux && !hasTmuxVersion) {
+    if (this._capabilities?.multiplexer === "tmux" && !hasTmuxVersion) {
       await this.waitForXtVersion()
 
       // Another caller may have populated the cache while this call waited.
