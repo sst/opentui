@@ -28,11 +28,11 @@ setRenderLibPath(libPath)
 
 const benchLib = dlopen(libPath, {
   benchProduce: {
-    args: [FFIType.u32, FFIType.u64, FFIType.ptr, FFIType.u64, FFIType.u32],
+    args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.u64, FFIType.u32],
     returns: FFIType.i32,
   },
   benchProduceWrite: {
-    args: [FFIType.u32, FFIType.u64, FFIType.ptr, FFIType.u64, FFIType.u32],
+    args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.u64, FFIType.u32],
     returns: FFIType.i32,
   },
 })

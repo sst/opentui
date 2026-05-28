@@ -274,7 +274,7 @@ fn getLargeAllocationCount() u64 {
     return @intCast(gpa.large_allocations.count());
 }
 
-export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) NativeHandle {
+export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) native_span_feed.AbiHandle {
     return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
 }
 

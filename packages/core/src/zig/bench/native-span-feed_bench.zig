@@ -14,7 +14,7 @@ fn streamErrorToStatus(err: raw.StreamError) i32 {
 
 /// Zero-copy benchmark producer (reserve/commit).
 pub export fn benchProduce(
-    stream: raw_handle.Handle,
+    stream: raw.AbiHandle,
     total_bytes: u64,
     pattern_ptr: ?*const u8,
     pattern_len: usize,
@@ -22,7 +22,7 @@ pub export fn benchProduce(
 ) callconv(.c) i32 {
     if (stream == 0) return raw.Status.err_invalid;
     if (total_bytes == 0) return raw.Status.ok;
-    const guard = raw_handle.acquire(stream, .native_span_feed, raw.Stream) orelse return raw.Status.err_invalid;
+    const guard = raw_handle.acquire(std.math.cast(raw_handle.Handle, stream) orelse return raw.Status.err_invalid, .native_span_feed, raw.Stream) orelse return raw.Status.err_invalid;
     defer guard.release();
 
     var pattern_slice: []const u8 = raw.default_pattern;
@@ -64,7 +64,7 @@ pub export fn benchProduce(
 
 /// Copy benchmark producer (streamWrite).
 pub export fn benchProduceWrite(
-    stream: raw_handle.Handle,
+    stream: raw.AbiHandle,
     total_bytes: u64,
     pattern_ptr: ?*const u8,
     pattern_len: usize,
@@ -72,7 +72,7 @@ pub export fn benchProduceWrite(
 ) callconv(.c) i32 {
     if (stream == 0) return raw.Status.err_invalid;
     if (total_bytes == 0) return raw.Status.ok;
-    const guard = raw_handle.acquire(stream, .native_span_feed, raw.Stream) orelse return raw.Status.err_invalid;
+    const guard = raw_handle.acquire(std.math.cast(raw_handle.Handle, stream) orelse return raw.Status.err_invalid, .native_span_feed, raw.Stream) orelse return raw.Status.err_invalid;
     defer guard.release();
 
     var pattern_slice: []const u8 = raw.default_pattern;

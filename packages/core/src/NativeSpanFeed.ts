@@ -1,5 +1,5 @@
 import { toArrayBuffer, type Pointer } from "./platform/ffi.js"
-import { resolveRenderLib, type NativeSpanFeedEventHandler } from "./zig.js"
+import { resolveRenderLib } from "./zig.js"
 import { SpanInfoStruct } from "./zig-structs.js"
 import type { NativeSpanFeedOptions } from "./zig-structs.js"
 
@@ -11,11 +11,14 @@ const enum EventId {
   Error = 6,
   DataAvailable = 7,
   StateBuffer = 8,
+  SpanAvailable = 9,
 }
 
 function toNumber(value: number | bigint): number {
   return typeof value === "bigint" ? Number(value) : value
 }
+
+type StreamEventHandler = (eventId: number, arg0: Pointer, arg1: number, arg2?: number, arg3?: number) => void
 
 export type DataHandler = (data: Uint8Array) => void | Promise<void>
 
@@ -58,9 +61,13 @@ export class NativeSpanFeed {
 
   readonly streamPtr: Pointer
   private readonly lib = resolveRenderLib()
-  private readonly eventHandler: NativeSpanFeedEventHandler
+  private readonly eventHandler: StreamEventHandler
   private chunkMap = new Map<Pointer, ArrayBuffer>()
   private chunkSizes = new Map<Pointer, number>()
+  private chunkViews = new Map<Pointer, Uint8Array>()
+  private lastChunkPtr: Pointer | null = null
+  private lastChunkBuffer: ArrayBuffer | null = null
+  private lastChunkView: Uint8Array | null = null
   private dataHandlers = new Set<DataHandler>()
   private errorHandlers = new Set<(code: number) => void>()
   private drainBuffer: Uint8Array | null = null
@@ -78,10 +85,9 @@ export class NativeSpanFeed {
 
   private constructor(streamPtr: Pointer) {
     this.streamPtr = streamPtr
-    this.eventHandler = (eventId, arg0, arg1) => {
-      this.handleEvent(eventId, arg0, arg1)
+    this.eventHandler = (eventId, arg0, arg1, arg2, arg3) => {
+      this.handleEvent(eventId, arg0, arg1, arg2, arg3)
     }
-    this.ensureDrainBuffer()
   }
 
   private ensureDrainBuffer(): void {
@@ -96,7 +102,16 @@ export class NativeSpanFeed {
       this.pendingDataAvailable = false
       this.drainAll()
     }
-    return () => this.dataHandlers.delete(handler)
+    this.updateDirectCallbackMode()
+    return () => {
+      this.dataHandlers.delete(handler)
+      this.updateDirectCallbackMode()
+    }
+  }
+
+  private updateDirectCallbackMode(): void {
+    if (this.destroyed) return
+    this.lib.streamSetDirectCallback(this.streamPtr, this.dataHandlers.size > 0 && !this.pendingDataAvailable)
   }
 
   onError(handler: (code: number) => void): () => void {
@@ -120,6 +135,7 @@ export class NativeSpanFeed {
     if (this.destroyed) return
     if (this.inCallback || this.draining || this.pendingAsyncHandlers > 0) {
       this.pendingClose = true
+      this.closing = true
       if (!this.closeQueued) {
         this.closeQueued = true
         queueMicrotask(() => {
@@ -136,6 +152,7 @@ export class NativeSpanFeed {
     if (!this.pendingClose || this.destroyed) return
     if (this.inCallback || this.draining || this.pendingAsyncHandlers > 0) return
     this.pendingClose = false
+    this.closing = false
     this.performClose()
     this.resolveIdleIfNeeded()
   }
@@ -161,6 +178,10 @@ export class NativeSpanFeed {
     this.destroyed = true
     this.chunkMap.clear()
     this.chunkSizes.clear()
+    this.chunkViews.clear()
+    this.lastChunkPtr = null
+    this.lastChunkBuffer = null
+    this.lastChunkView = null
     this.stateBuffer = null
     this.drainBuffer = null
     this.dataHandlers.clear()
@@ -194,7 +215,7 @@ export class NativeSpanFeed {
     })
   }
 
-  private handleEvent(eventId: number, arg0: Pointer, arg1: number | bigint): void {
+  private handleEvent(eventId: number, arg0: Pointer, arg1: number, arg2: number = 0, arg3: number = 0): void {
     this.inCallback = true
     try {
       switch (eventId) {
@@ -211,9 +232,20 @@ export class NativeSpanFeed {
           if (this.closing) break
           if (this.dataHandlers.size === 0) {
             this.pendingDataAvailable = true
+            this.updateDirectCallbackMode()
             break
           }
           this.drainAll()
+          break
+        }
+        case EventId.SpanAvailable: {
+          if (this.closing) break
+          if (this.dataHandlers.size === 0) {
+            this.pendingDataAvailable = true
+            this.updateDirectCallbackMode()
+            break
+          }
+          this.handleSpan({ chunkPtr: arg0, offset: arg1, len: arg2, chunkIndex: arg3 })
           break
         }
         case EventId.ChunkAdded: {
@@ -222,6 +254,11 @@ export class NativeSpanFeed {
             if (!this.chunkMap.has(arg0)) {
               const buffer = toArrayBuffer(arg0, 0, chunkLen)
               this.chunkMap.set(arg0, buffer)
+              const view = new Uint8Array(buffer)
+              this.chunkViews.set(arg0, view)
+              this.lastChunkPtr = arg0
+              this.lastChunkBuffer = buffer
+              this.lastChunkView = view
             }
             this.chunkSizes.set(arg0, chunkLen)
           }
@@ -253,6 +290,7 @@ export class NativeSpanFeed {
   }
 
   private drainOnce(): number {
+    this.ensureDrainBuffer()
     if (!this.drainBuffer || this.draining || this.pendingClose) return 0
     const capacity = Math.floor(this.drainBuffer.byteLength / SpanInfoStruct.size)
     if (capacity === 0) return 0
@@ -266,51 +304,12 @@ export class NativeSpanFeed {
 
     try {
       for (const span of spans) {
-        if (span.len === 0) continue
-
-        let buffer = this.chunkMap.get(span.chunkPtr)
-        if (!buffer) {
-          const size = this.chunkSizes.get(span.chunkPtr)
-          if (!size) continue
-          buffer = toArrayBuffer(span.chunkPtr, 0, size)
-          this.chunkMap.set(span.chunkPtr, buffer)
+        try {
+          this.handleSpan(span)
+        } catch (error) {
+          firstError ??= error
         }
-
-        if (span.offset + span.len > buffer.byteLength) continue
-
-        const slice = new Uint8Array(buffer, span.offset, span.len)
-        let asyncResults: Promise<void>[] | null = null
-
-        for (const handler of this.dataHandlers) {
-          try {
-            const result = handler(slice)
-            // Async handlers keep the chunk pinned until they settle.
-            if (result && typeof result.then === "function") {
-              asyncResults ??= []
-              asyncResults.push(result)
-            }
-          } catch (e) {
-            firstError ??= e
-          }
-        }
-
-        const shouldStopAfterThisSpan = this.pendingClose
-
-        if (asyncResults) {
-          // Use allSettled so rejections still release refcounts.
-          const chunkIndex = span.chunkIndex
-          this.pendingAsyncHandlers += 1
-          Promise.allSettled(asyncResults).then(() => {
-            this.decrementRefcount(chunkIndex)
-            this.pendingAsyncHandlers -= 1
-            this.processPendingClose()
-            this.resolveIdleIfNeeded()
-          })
-        } else {
-          this.decrementRefcount(span.chunkIndex)
-        }
-
-        if (shouldStopAfterThisSpan) break
+        if (this.pendingClose) break
       }
     } finally {
       this.draining = false
@@ -320,6 +319,81 @@ export class NativeSpanFeed {
     if (firstError) throw firstError
 
     return count
+  }
+
+  private handleSpan(span: { chunkPtr: Pointer; offset: number; len: number; chunkIndex: number }): void {
+    if (span.len === 0) return
+
+    let buffer = span.chunkPtr === this.lastChunkPtr ? this.lastChunkBuffer : null
+    if (!buffer) {
+      const cached = this.chunkMap.get(span.chunkPtr)
+      if (cached) buffer = cached
+    }
+    if (!buffer) {
+      const size = this.chunkSizes.get(span.chunkPtr)
+      if (!size) return
+      buffer = toArrayBuffer(span.chunkPtr, 0, size)
+      this.chunkMap.set(span.chunkPtr, buffer)
+    }
+    let fullChunkView = span.chunkPtr === this.lastChunkPtr ? this.lastChunkView : null
+    if (!fullChunkView) {
+      const cached = this.chunkViews.get(span.chunkPtr)
+      if (cached) fullChunkView = cached
+    }
+    if (!fullChunkView) {
+      fullChunkView = new Uint8Array(buffer)
+      this.chunkViews.set(span.chunkPtr, fullChunkView)
+    }
+    this.lastChunkPtr = span.chunkPtr
+    this.lastChunkBuffer = buffer
+    this.lastChunkView = fullChunkView
+
+    if (span.offset + span.len > buffer.byteLength) return
+
+    const slice = span.offset === 0 && span.len === fullChunkView.byteLength ? fullChunkView : new Uint8Array(buffer, span.offset, span.len)
+    let asyncResults: Promise<void>[] | null = null
+    let firstError: unknown = null
+
+    const runHandler = (handler: DataHandler): void => {
+      try {
+        const result = handler(slice)
+        // Async handlers keep the chunk pinned until they settle.
+        if (result && typeof result.then === "function") {
+          asyncResults ??= []
+          asyncResults.push(result)
+        }
+      } catch (error) {
+        firstError ??= error
+      }
+    }
+
+    if (this.dataHandlers.size === 1) {
+      const firstHandler = this.dataHandlers.values().next().value
+      if (firstHandler) {
+        runHandler(firstHandler)
+        if (this.dataHandlers.size !== 1 || !this.dataHandlers.has(firstHandler)) {
+          for (const handler of this.dataHandlers) {
+            if (handler !== firstHandler) runHandler(handler)
+          }
+        }
+      }
+    } else {
+      for (const handler of this.dataHandlers) runHandler(handler)
+    }
+
+    if (asyncResults) {
+      const chunkIndex = span.chunkIndex
+      this.pendingAsyncHandlers += 1
+      Promise.allSettled(asyncResults).then(() => {
+        this.decrementRefcount(chunkIndex)
+        this.pendingAsyncHandlers -= 1
+        this.processPendingClose()
+      })
+    } else {
+      this.decrementRefcount(span.chunkIndex)
+    }
+
+    if (firstError) throw firstError
   }
 
   drainAll(): void {

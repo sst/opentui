@@ -1,7 +1,9 @@
 const std = @import("std");
 const handles = @import("handles.zig");
 
-pub const CallbackFn = fn (stream_handle: handles.Handle, event_id: u32, arg0: usize, arg1: u64) callconv(.c) void;
+pub const AbiHandle = usize;
+
+pub const CallbackFn = fn (stream_handle: AbiHandle, event_id: u32, arg0: usize, arg1: u32, arg2: u32, arg3: u32) callconv(.c) void;
 
 pub const GrowthPolicy = enum(u8) {
     grow = 0,
@@ -150,6 +152,7 @@ pub const Stream = struct {
     reserved_len: usize,
     attached: bool,
     callback: ?*const CallbackFn,
+    direct_callback: bool,
     closed: bool,
     span_ring: SpanRing,
     state_buffer: []u8,
@@ -175,6 +178,7 @@ pub const Stream = struct {
             .reserved_len = 0,
             .attached = false,
             .callback = null,
+            .direct_callback = false,
             .closed = false,
             .span_ring = .{
                 .buffer = &[_]SpanInfo{},
@@ -226,8 +230,8 @@ pub const Stream = struct {
 
         self.emitStateBuffer();
 
-        for (self.chunks.items) |chunk| {
-            self.emitChunkAdded(chunk);
+        for (self.chunks.items, 0..) |chunk, index| {
+            self.emitChunkAdded(chunk, @intCast(index));
         }
 
         queued = self.span_ring.count();
@@ -241,13 +245,17 @@ pub const Stream = struct {
         if (cb == null or !self.attached) return;
 
         self.emitStateBuffer();
-        for (self.chunks.items) |chunk| {
-            self.emitChunkAdded(chunk);
+        for (self.chunks.items, 0..) |chunk, index| {
+            self.emitChunkAdded(chunk, @intCast(index));
         }
         const queued = self.span_ring.count();
         if (queued > 0) {
             self.emitDataAvailable(queued);
         }
+    }
+
+    pub fn setDirectCallback(self: *Stream, enabled: bool) void {
+        self.direct_callback = enabled;
     }
 
     pub fn write(self: *Stream, data: []const u8) StreamError!void {
@@ -442,18 +450,33 @@ pub const Stream = struct {
             .chunk_index = @intCast(self.pending_chunk_index),
             .reserved = 0,
         };
-        try self.span_ring.push(self, info, notify);
-        if (self.pending_chunk_index < self.state_capacity) {
-            self.state_buffer[self.pending_chunk_index] +|= 1;
-            // Avoid refcount saturation, which can corrupt data.
-            if (self.state_buffer[self.pending_chunk_index] == 255) {
-                self.write_offset = self.options.chunk_size;
-            }
+
+        if (self.direct_callback and self.attached and self.callback != null) {
+            self.markSpanPending(info.chunk_index);
+            self.stats.spans_committed += 1;
+            self.pending_len = 0;
+            self.pending_offset = self.write_offset;
+            self.pending_chunk_index = self.current_chunk_index;
+            self.emitSpanAvailable(&info);
+            return;
         }
+
+        try self.span_ring.push(self, info, notify);
+        self.markSpanPending(info.chunk_index);
         self.stats.spans_committed += 1;
         self.pending_len = 0;
         self.pending_offset = self.write_offset;
         self.pending_chunk_index = self.current_chunk_index;
+    }
+
+    fn markSpanPending(self: *Stream, chunk_index: u32) void {
+        if (chunk_index < self.state_capacity) {
+            self.state_buffer[chunk_index] +|= 1;
+            // Avoid refcount saturation, which can corrupt data.
+            if (self.state_buffer[chunk_index] == 255) {
+                self.write_offset = self.options.chunk_size;
+            }
+        }
     }
 
     pub fn reserveLocked(self: *Stream, min_len: u32) StreamError!ReserveInfo {
@@ -511,7 +534,7 @@ pub const Stream = struct {
         self.chunks.append(self.allocator, chunk) catch return StreamError.OutOfMemory;
         self.stats.chunks = @intCast(self.chunks.items.len);
         if (self.attached and self.callback != null) {
-            self.emitChunkAdded(chunk);
+            self.emitChunkAdded(chunk, @intCast(self.chunks.items.len - 1));
         }
     }
 
@@ -547,27 +570,33 @@ pub const Stream = struct {
         self.pending_len = 0;
     }
 
-    fn emitChunkAdded(self: *Stream, chunk: Chunk) void {
+    fn emitChunkAdded(self: *Stream, chunk: Chunk, chunk_index: u32) void {
         if (self.callback) |cb| {
-            cb(self.handle, Event.ChunkAdded, @intFromPtr(chunk.ptr), chunk.len);
+            cb(toAbiHandle(self.handle), Event.ChunkAdded, @intFromPtr(chunk.ptr), chunk.len, chunk_index, 0);
         }
     }
 
     fn emitDataAvailable(self: *Stream, count: u32) void {
         if (self.callback) |cb| {
-            cb(self.handle, Event.DataAvailable, count, 0);
+            cb(toAbiHandle(self.handle), Event.DataAvailable, count, 0, 0, 0);
+        }
+    }
+
+    fn emitSpanAvailable(self: *Stream, info: *const SpanInfo) void {
+        if (self.callback) |cb| {
+            cb(toAbiHandle(self.handle), Event.SpanAvailable, info.chunk_ptr, info.offset, info.len, info.chunk_index);
         }
     }
 
     fn emitStateBuffer(self: *Stream) void {
         if (self.callback) |cb| {
-            cb(self.handle, Event.StateBuffer, @intFromPtr(self.state_buffer.ptr), self.state_capacity);
+            cb(toAbiHandle(self.handle), Event.StateBuffer, @intFromPtr(self.state_buffer.ptr), self.state_capacity, 0, 0);
         }
     }
 
     fn emitClosed(self: *Stream) void {
         if (self.callback) |cb| {
-            cb(self.handle, Event.Closed, 0, 0);
+            cb(toAbiHandle(self.handle), Event.Closed, 0, 0, 0, 0);
         }
     }
 };
@@ -582,6 +611,7 @@ pub const EventId = enum(u32) {
     Error = 6,
     DataAvailable = 7,
     StateBuffer = 8,
+    SpanAvailable = 9,
 };
 
 const Event = struct {
@@ -590,6 +620,7 @@ const Event = struct {
     pub const Error: u32 = @intFromEnum(EventId.Error);
     pub const DataAvailable: u32 = @intFromEnum(EventId.DataAvailable);
     pub const StateBuffer: u32 = @intFromEnum(EventId.StateBuffer);
+    pub const SpanAvailable: u32 = @intFromEnum(EventId.SpanAvailable);
 };
 
 pub const Status = struct {
@@ -646,7 +677,15 @@ fn acquireStream(stream_handle: handles.Handle) ?handles.Guard(Stream) {
     return handles.acquire(stream_handle, .native_span_feed, Stream);
 }
 
-pub fn createNativeSpanFeedWithAllocator(allocator: std.mem.Allocator, options_ptr: ?*const Options) handles.Handle {
+fn toHandle(stream_handle: AbiHandle) handles.Handle {
+    return std.math.cast(handles.Handle, stream_handle) orelse 0;
+}
+
+fn toAbiHandle(stream_handle: handles.Handle) AbiHandle {
+    return @intCast(stream_handle);
+}
+
+pub fn createNativeSpanFeedWithAllocator(allocator: std.mem.Allocator, options_ptr: ?*const Options) AbiHandle {
     const opts = normalizeOptions(if (options_ptr) |p| p.* else defaultOptions());
     const stream = Stream.create(allocator, opts) catch return 0;
     const stream_handle = handles.insert(.native_span_feed, erasePtr(stream)) catch {
@@ -654,31 +693,37 @@ pub fn createNativeSpanFeedWithAllocator(allocator: std.mem.Allocator, options_p
         return 0;
     };
     stream.handle = stream_handle;
-    return stream_handle;
+    return toAbiHandle(stream_handle);
 }
 
-pub export fn streamSetCallback(stream_handle: handles.Handle, callback: ?*const CallbackFn) void {
-    const guard = acquireStream(stream_handle) orelse return;
+pub export fn streamSetCallback(stream_handle: AbiHandle, callback: ?*const CallbackFn) void {
+    const guard = acquireStream(toHandle(stream_handle)) orelse return;
     defer guard.release();
     guard.ptr.setCallback(callback);
 }
 
-pub export fn attachNativeSpanFeed(stream_handle: handles.Handle) i32 {
-    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+pub export fn streamSetDirectCallback(stream_handle: AbiHandle, enabled: bool) void {
+    const guard = acquireStream(toHandle(stream_handle)) orelse return;
+    defer guard.release();
+    guard.ptr.setDirectCallback(enabled);
+}
+
+pub export fn attachNativeSpanFeed(stream_handle: AbiHandle) i32 {
+    const guard = acquireStream(toHandle(stream_handle)) orelse return Status.err_invalid;
     defer guard.release();
     guard.ptr.attach() catch |err| return errorToStatus(err);
     return Status.ok;
 }
 
-pub export fn streamClose(stream_handle: handles.Handle) i32 {
-    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+pub export fn streamClose(stream_handle: AbiHandle) i32 {
+    const guard = acquireStream(toHandle(stream_handle)) orelse return Status.err_invalid;
     defer guard.release();
     guard.ptr.close() catch |err| return errorToStatus(err);
     return Status.ok;
 }
 
-pub export fn destroyNativeSpanFeed(stream_handle: handles.Handle) void {
-    const token = handles.beginDestroy(stream_handle, .native_span_feed, Stream) orelse return;
+pub export fn destroyNativeSpanFeed(stream_handle: AbiHandle) void {
+    const token = handles.beginDestroy(toHandle(stream_handle), .native_span_feed, Stream) orelse return;
     token.ptr.destroy();
     handles.finishDestroy(token.handle);
 }
@@ -693,9 +738,9 @@ pub export fn destroyNativeSpanFeed(stream_handle: handles.Handle) void {
 /// but a write that would exceed it returns err_no_space without writing
 /// any bytes. A write that exactly fills the chunk succeeds; the next
 /// write will move to a new chunk (committing the full one first).
-pub export fn streamWrite(stream_handle: handles.Handle, src_ptr: ?*const u8, len: usize) i32 {
+pub export fn streamWrite(stream_handle: AbiHandle, src_ptr: ?*const u8, len: usize) i32 {
     if (src_ptr == null) return Status.err_invalid;
-    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    const guard = acquireStream(toHandle(stream_handle)) orelse return Status.err_invalid;
     defer guard.release();
     if (len == 0) return Status.ok;
     const src = @as([*]const u8, @ptrCast(src_ptr.?))[0..len];
@@ -706,8 +751,8 @@ pub export fn streamWrite(stream_handle: handles.Handle, src_ptr: ?*const u8, le
 /// Commits the pending span accumulated by streamWrite and emits DataAvailable.
 /// Only needed when auto_commit_on_full is disabled or to flush a partially
 /// filled chunk.
-pub export fn streamCommit(stream_handle: handles.Handle) i32 {
-    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+pub export fn streamCommit(stream_handle: AbiHandle) i32 {
+    const guard = acquireStream(toHandle(stream_handle)) orelse return Status.err_invalid;
     defer guard.release();
     guard.ptr.commit() catch |err| return errorToStatus(err);
     return Status.ok;
@@ -721,9 +766,9 @@ pub export fn streamCommit(stream_handle: handles.Handle) i32 {
 /// directly into the chunk buffer). Only one reservation can be active at
 /// a time; the stream is locked until streamCommitReserved is called.
 /// Returns at most one chunk's worth of available space.
-pub export fn streamReserve(stream_handle: handles.Handle, min_len: u32, out_ptr: ?*ReserveInfo) i32 {
+pub export fn streamReserve(stream_handle: AbiHandle, min_len: u32, out_ptr: ?*ReserveInfo) i32 {
     if (out_ptr == null) return Status.err_invalid;
-    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    const guard = acquireStream(toHandle(stream_handle)) orelse return Status.err_invalid;
     defer guard.release();
     const info = guard.ptr.reserve(min_len) catch |err| return errorToStatus(err);
     out_ptr.?.* = info;
@@ -732,32 +777,32 @@ pub export fn streamReserve(stream_handle: handles.Handle, min_len: u32, out_ptr
 
 /// Commits len bytes of the previously reserved region and emits DataAvailable.
 /// Must be called after streamReserve. len must not exceed the reserved length.
-pub export fn streamCommitReserved(stream_handle: handles.Handle, len: u32) i32 {
-    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+pub export fn streamCommitReserved(stream_handle: AbiHandle, len: u32) i32 {
+    const guard = acquireStream(toHandle(stream_handle)) orelse return Status.err_invalid;
     defer guard.release();
     guard.ptr.commitReserved(len) catch |err| return errorToStatus(err);
     return Status.ok;
 }
 
-pub export fn streamSetOptions(stream_handle: handles.Handle, options_ptr: ?*const Options) i32 {
+pub export fn streamSetOptions(stream_handle: AbiHandle, options_ptr: ?*const Options) i32 {
     if (options_ptr == null) return Status.err_invalid;
-    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    const guard = acquireStream(toHandle(stream_handle)) orelse return Status.err_invalid;
     defer guard.release();
     guard.ptr.setOptions(options_ptr.?.*) catch |err| return errorToStatus(err);
     return Status.ok;
 }
 
-pub export fn streamGetStats(stream_handle: handles.Handle, stats_ptr: ?*Stats) i32 {
+pub export fn streamGetStats(stream_handle: AbiHandle, stats_ptr: ?*Stats) i32 {
     if (stats_ptr == null) return Status.err_invalid;
-    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    const guard = acquireStream(toHandle(stream_handle)) orelse return Status.err_invalid;
     defer guard.release();
     stats_ptr.?.* = guard.ptr.getStats();
     return Status.ok;
 }
 
-pub export fn streamDrainSpans(stream_handle: handles.Handle, out_ptr: ?*SpanInfo, max_spans: u32) u32 {
+pub export fn streamDrainSpans(stream_handle: AbiHandle, out_ptr: ?*SpanInfo, max_spans: u32) u32 {
     if (out_ptr == null or max_spans == 0) return 0;
-    const guard = acquireStream(stream_handle) orelse return 0;
+    const guard = acquireStream(toHandle(stream_handle)) orelse return 0;
     defer guard.release();
     const out = @as([*]SpanInfo, @ptrCast(out_ptr.?))[0..max_spans];
     return guard.ptr.drainSpans(out);
