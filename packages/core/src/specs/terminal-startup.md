@@ -31,7 +31,7 @@ This spec describes the startup flow for `createCliRenderer()` with `testing !==
 
 11. Startup calls `refreshPalette()` only when native palette state is useful: terminal setup is active, the renderer is alive, `ansi256` is supported, and truecolor `rgb` is not supported. Truecolor terminals do not run startup palette detection.
 
-12. `getPalette()` waits for `XTVERSION` only when native capabilities already indicate `in_tmux` but no tmux version is known from either `TERM_PROGRAM=tmux` with `TERM_PROGRAM_VERSION` or `XTVERSION`. This avoids choosing the wrong OSC 4 strategy for tmux while avoiding a 5000ms wait for remote or non-responding terminals.
+12. `getPalette()` waits for `XTVERSION` only when native capabilities already indicate `multiplexer === "tmux"` but no tmux version is known from either `TERM_PROGRAM=tmux` with `TERM_PROGRAM_VERSION` or `XTVERSION`. This avoids choosing the wrong OSC 4 strategy for tmux while avoiding a 5000ms wait for remote or non-responding terminals.
 
 13. `getPalette()` creates the palette detector after any required `XTVERSION` wait. The detector uses tmux version to choose OSC 4 behavior:
     - tmux `< 3.6`: wrap OSC palette queries in tmux DCS passthrough.
