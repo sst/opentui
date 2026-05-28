@@ -1075,26 +1075,26 @@ More text with ![image](img.png) and **bold**.`
     try {
       await client.initialize()
 
-      const markdownCode = `Check [this link](https://example.com) out!`
+      const markdownCode = `Before&emsp;after`
 
       const result = await client.highlightOnce(markdownCode, "markdown")
 
       expect(result.highlights).toBeDefined()
       expect(result.error).toBeUndefined()
 
-      const closingBracket = result.highlights!.find((hl) => {
+      const entityReference = result.highlights!.find((hl) => {
         const text = markdownCode.substring(hl[0], hl[1])
         const meta = (hl as any)[3]
-        return text === "]" && hl[2] === "conceal" && meta?.conceal !== undefined
+        return text === "&emsp;" && hl[2] === "character.special" && meta?.conceal !== undefined
       })
 
-      if (closingBracket) {
-        const meta = (closingBracket as any)[3]
-        expect(meta).toBeDefined()
-        expect(meta.conceal).toBeDefined()
-        expect(meta.conceal).toBe(" ")
-        expect(meta.conceal.length).toBeGreaterThan(0)
-      }
+      expect(entityReference).toBeDefined()
+
+      const meta = (entityReference as any)[3]
+      expect(meta).toBeDefined()
+      expect(meta.conceal).toBeDefined()
+      expect(meta.conceal).toBe(" ")
+      expect(meta.conceal.length).toBeGreaterThan(0)
     } finally {
       await client.destroy()
     }

@@ -95,4 +95,94 @@ describe("detectLinks", () => {
     // The label chunk should also get the link
     expect(result.find((c) => c.text === "Click here")!.link).toEqual({ url: "https://example.com" })
   })
+
+  test("should detect bare URLs without tree-sitter URL highlights", () => {
+    const content = "Visit https://example.com/docs for details"
+    const chunks = [chunk(content)]
+
+    const result = detectLinks(chunks, { content, highlights: [] })
+
+    expect(result.map((c) => c.text)).toEqual(["Visit ", "https://example.com/docs", " for details"])
+    expect(result[1].link).toEqual({ url: "https://example.com/docs" })
+  })
+
+  test("should not detect bare URLs inside markdown code spans", () => {
+    const content = "`https://opentui.com`"
+    const chunks = [chunk(content)]
+    const highlights: SimpleHighlight[] = [[0, content.length, "markup.raw"]]
+
+    const result = detectLinks(chunks, { content, highlights })
+
+    expect(result).toBe(chunks)
+    expect(result[0].link).toBeUndefined()
+  })
+
+  test("should retain following link metadata after a concealed one-character replacement", () => {
+    const content = "&emsp;[OpenTUI](https://opentui.com) suffix"
+    const highlights: SimpleHighlight[] = [
+      [0, 6, "character.special", { conceal: " " }],
+      [6, 7, "markup.link"],
+      [7, 14, "markup.link.label"],
+      [14, 16, "markup.link"],
+      [16, 35, "markup.link.url"],
+      [35, 36, "markup.link"],
+    ]
+    const chunks = [chunk(" "), chunk("OpenTUI"), chunk(""), chunk(" suffix")]
+
+    const result = detectLinks(chunks, { content, highlights })
+
+    expect(result.find((c) => c.text === "OpenTUI")!.link).toEqual({ url: "https://opentui.com" })
+  })
+
+  test("should associate markdown label when conceal highlights separate it from the destination", () => {
+    const content = "[OpenTUI](https://opentui.com)"
+    const highlights: SimpleHighlight[] = [
+      [1, 8, "markup.link.label"],
+      [8, 10, "conceal", { conceal: "" }],
+      [10, 29, "markup.link.url"],
+    ]
+    const chunks = [chunk("OpenTUI")]
+
+    const result = detectLinks(chunks, { content, highlights })
+
+    expect(result[0].link).toEqual({ url: "https://opentui.com" })
+  })
+
+  test("should preserve link metadata for single-character labels", () => {
+    const content = "[x](https://opentui.com)"
+    const highlights: SimpleHighlight[] = [
+      [1, 2, "markup.link.label"],
+      [2, 4, "conceal", { conceal: "" }],
+      [4, 23, "markup.link.url"],
+    ]
+    const chunks = [chunk("x")]
+
+    const result = detectLinks(chunks, { content, highlights })
+
+    expect(result[0].link).toEqual({ url: "https://opentui.com" })
+  })
+
+  test("should preserve link metadata for single-character labels after visible single-character chunks", () => {
+    const content = "x [x](https://opentui.com)"
+    const highlights: SimpleHighlight[] = [
+      [3, 4, "markup.link.label"],
+      [4, 6, "conceal", { conceal: "" }],
+      [6, 25, "markup.link.url"],
+    ]
+    const chunks = [chunk("x"), chunk(" "), chunk("x")]
+
+    const result = detectLinks(chunks, { content, highlights })
+
+    expect(result[2].link).toEqual({ url: "https://opentui.com" })
+  })
+
+  test("should omit concealed emphasis delimiters from bare URL targets", () => {
+    const content = "**https://opentui.com**"
+    const highlights: SimpleHighlight[] = [[21, 23, "conceal", { conceal: "" }]]
+    const chunks = [chunk("https://opentui.com")]
+
+    const result = detectLinks(chunks, { content, highlights })
+
+    expect(result[0].link).toEqual({ url: "https://opentui.com" })
+  })
 })

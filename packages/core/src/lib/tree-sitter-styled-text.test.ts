@@ -367,7 +367,7 @@ const x: string = "hello";
     expect(reconstructed).toContain(" text")
   })
 
-  test("should conceal link syntax but keep text and URL", async () => {
+  test("should conceal link syntax while preserving visible target fallback", async () => {
     const markdownCode = "[Link text](https://example.com)"
 
     const result = await client.highlightOnce(markdownCode, "markdown")

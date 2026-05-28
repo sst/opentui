@@ -91,6 +91,7 @@ pub const UnifiedTextBuffer = struct {
     styled_text_mem_id: ?u8,
     styled_buffer: ?[]u8,
     styled_capacity: usize,
+    styled_chunk_style_count: usize,
 
     tab_width: u8,
 
@@ -225,6 +226,7 @@ pub const UnifiedTextBuffer = struct {
             .styled_text_mem_id = null,
             .styled_buffer = null,
             .styled_capacity = 0,
+            .styled_chunk_style_count = 0,
             .tab_width = 2,
         };
 
@@ -236,6 +238,7 @@ pub const UnifiedTextBuffer = struct {
         defer global_allocator.destroy(self);
 
         if (self.syntax_style) |style| {
+            self.clearStyledChunkStyles();
             (@constCast(style)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
 
@@ -359,6 +362,7 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn reset(self: *Self) void {
+        self.clearStyledChunkStyles();
         self.clearLinkRefs();
 
         // Free highlight/span arrays (they use global_allocator, not arena)
@@ -413,10 +417,13 @@ pub const UnifiedTextBuffer = struct {
     fn onSyntaxStyleDestroyed(ctx_ptr: *anyopaque) void {
         const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
         self.syntax_style = null;
+        self.styled_chunk_style_count = 0;
     }
 
     pub fn setSyntaxStyle(self: *Self, syntax_style: ?*const SyntaxStyle) void {
+        if (self.syntax_style == syntax_style) return;
         if (self.syntax_style) |prev| {
+            self.clearStyledChunkStyles();
             (@constCast(prev)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
         self.syntax_style = syntax_style;
@@ -443,9 +450,30 @@ pub const UnifiedTextBuffer = struct {
         }
     }
 
+    fn clearStyledChunkStyles(self: *Self) void {
+        self.removeStyledChunkStylesFrom(0);
+    }
+
+    fn removeStyledChunkStylesFrom(self: *Self, start: usize) void {
+        if (start >= self.styled_chunk_style_count) return;
+        const style = self.syntax_style orelse {
+            self.styled_chunk_style_count = 0;
+            return;
+        };
+
+        var i: usize = start;
+        while (i < self.styled_chunk_style_count) : (i += 1) {
+            var style_name_buf: [96]u8 = undefined;
+            const style_name = std.fmt.bufPrint(&style_name_buf, "chunk-{x}-{d}", .{ @intFromPtr(self), i }) catch continue;
+            (@constCast(style)).removeStyle(style_name);
+        }
+        self.styled_chunk_style_count = start;
+    }
+
     /// Set the text content using SIMD-optimized line break detection
     pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
         self.clearInternalHighlights();
+        self.clearStyledChunkStyles();
         self.clear();
         const mem_id = try self.mem_registry.register(text, false);
         try self.setTextInternal(mem_id, text);
@@ -455,6 +483,7 @@ pub const UnifiedTextBuffer = struct {
     pub fn setTextFromMemId(self: *Self, mem_id: u8) TextBufferError!void {
         const text = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         self.clearInternalHighlights();
+        self.clearStyledChunkStyles();
         self.clear();
         try self.setTextInternal(mem_id, text);
     }
@@ -1079,6 +1108,7 @@ pub const UnifiedTextBuffer = struct {
         self: *Self,
         chunks: []const StyledChunk,
     ) TextBufferError!void {
+        self.removeStyledChunkStylesFrom(chunks.len);
         if (chunks.len == 0) {
             self.clear();
             self.clearAllHighlights();
@@ -1092,6 +1122,7 @@ pub const UnifiedTextBuffer = struct {
         }
 
         if (total_len == 0) {
+            self.clearStyledChunkStyles();
             self.clear();
             self.clearAllHighlights();
             return;
@@ -1166,13 +1197,18 @@ pub const UnifiedTextBuffer = struct {
                         }
                     }
 
-                    var style_name_buf: [64]u8 = undefined;
-                    const style_name = std.fmt.bufPrint(&style_name_buf, "chunk{d}", .{i}) catch continue;
+                    var style_name_buf: [96]u8 = undefined;
+                    const style_name = std.fmt.bufPrint(
+                        &style_name_buf,
+                        "chunk-{x}-{d}",
+                        .{ @intFromPtr(self), i },
+                    ) catch continue;
                     const style_id = (@constCast(style)).registerStyleDefinition(style_name, .{
                         .fg = fg,
                         .bg = bg,
                         .attributes = attributes,
                     }) catch continue;
+                    self.styled_chunk_style_count = @max(self.styled_chunk_style_count, i + 1);
 
                     self.addHighlightByCharRangeInternal(char_pos, char_pos + chunk_len, style_id, 1, 0, true) catch {};
                 }
@@ -1196,6 +1232,8 @@ pub const UnifiedTextBuffer = struct {
 
         const file_size = file.getEndPos() catch return TextBufferError.OutOfMemory;
 
+        self.clearInternalHighlights();
+        self.clearStyledChunkStyles();
         self.clear();
 
         const content = self.allocator.alloc(u8, file_size) catch return TextBufferError.OutOfMemory;

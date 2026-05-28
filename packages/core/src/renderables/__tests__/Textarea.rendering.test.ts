@@ -17,6 +17,13 @@ let captureFrame: () => string
 let captureSpans: () => CapturedFrame
 let resize: (width: number, height: number) => void
 
+function lineText(frame: CapturedFrame, row: number, width: number): string {
+  return frame.lines[row].spans
+    .map((span) => span.text)
+    .join("")
+    .slice(0, width)
+}
+
 describe("Textarea - Rendering Tests", () => {
   beforeEach(async () => {
     ;({
@@ -48,10 +55,10 @@ describe("Textarea - Rendering Tests", () => {
       })
 
       const frame = captureSpans()
-      expect(frame.lines[0].spans[0].text).toBe("abc   ")
+      expect(lineText(frame, 0, 6)).toBe("abc   ")
       expect(frame.lines[0].spans[0].bg.intent).toBe("indexed")
       expect(frame.lines[0].spans[0].bg.slot).toBe(254)
-      expect(frame.lines[1].spans[0].text).toBe("      ")
+      expect(lineText(frame, 1, 6)).toBe("      ")
       expect(frame.lines[1].spans[0].bg.intent).toBe("indexed")
       expect(frame.lines[1].spans[0].bg.slot).toBe(254)
     })
@@ -67,8 +74,8 @@ describe("Textarea - Rendering Tests", () => {
       })
 
       const frame = captureSpans()
-      expect(frame.lines[0].spans[0].text).toBe("abc   ")
-      expect(frame.lines[1].spans[0].text).toBe("      ")
+      expect(lineText(frame, 0, 6)).toBe("abc   ")
+      expect(lineText(frame, 1, 6)).toBe("      ")
       expect(frame.lines[0].spans[0].bg.r).toBeCloseTo(frame.lines[1].spans[0].bg.r, 5)
       expect(frame.lines[0].spans[0].bg.g).toBeCloseTo(frame.lines[1].spans[0].bg.g, 5)
       expect(frame.lines[0].spans[0].bg.b).toBeCloseTo(frame.lines[1].spans[0].bg.b, 5)

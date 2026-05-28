@@ -104,6 +104,18 @@ Final paragraph with [docs](https://opentui.dev) and \`https://example.com/from-
 
 ---
 
+## Link Behavior Checks
+
+Markdown links: [OpenAI](https://openai.com) and [GitHub](https://github.com).
+
+Bare URLs: https://example.com and https://docs.github.com/en/get-started/learning-about-github/githubs-plans
+
+Same long URL behind a short label: [GitHub docs plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans)
+
+Email link: [someone@example.com](mailto:someone@example.com)
+
+Try your terminal's link modifier on these lines. In mouse-capturing TUIs this is often Cmd+Shift-click on macOS or Ctrl+Shift-click on Linux.
+
 ## Comparison Table
 
 | Feature | Status | Priority | Notes |

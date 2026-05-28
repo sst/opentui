@@ -35,7 +35,8 @@
   "[" @conceal)
   (#set! conceal ""))
 
-; Conceal closing bracket with space replacement
+; Conceal closing bracket with space replacement. MarkdownRenderable removes
+; the visible destination only when OSC 8 hyperlink support is detected.
 ((inline_link
   "]" @conceal)
   (#set! conceal " "))

@@ -3063,7 +3063,8 @@ class FFIRenderLib implements RenderLib {
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
   ): void {
     if (chunks.length === 0) {
-      this.textBufferClear(buffer)
+      const emptyChunk = StyledChunkStruct.packList([{ text: "" }])
+      this.opentui.symbols.textBufferSetStyledText(buffer, ptr(emptyChunk), 1)
       return
     }
 

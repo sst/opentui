@@ -6,7 +6,7 @@ import { createTextAttributes } from "../utils.js"
 import type { BorderStyle } from "../lib/border.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { type MarkedToken, type Token, type Tokens } from "marked"
-import { CodeRenderable, type OnChunksCallback } from "./Code.js"
+import { CodeRenderable, type OnChunksCallback, type OnHighlightCallback } from "./Code.js"
 import { BoxRenderable } from "./Box.js"
 import { StyledText } from "../lib/styled-text.js"
 import { TextRenderable } from "./Text.js"
@@ -202,11 +202,42 @@ export class MarkdownRenderable extends Renderable {
   _blockStates: BlockState[] = []
   _stableBlockCount = 0
   private _styleDirty: boolean = false
-  private _linkifyMarkdownChunks: OnChunksCallback = (chunks, context) =>
-    detectLinks(chunks, {
-      content: context.content,
-      highlights: context.highlights,
+  private _hyperlinksEnabled: boolean
+  private _handleCapabilitiesChanged = (): void => {
+    const enabled = this.ctx.capabilities?.hyperlinks === true
+    if (enabled === this._hyperlinksEnabled) return
+    this._hyperlinksEnabled = enabled
+    if (this._conceal) this.clearCache()
+  }
+  private _concealClickableLinkTargets: OnHighlightCallback = (highlights, context) => {
+    if (!this._conceal || !this._hyperlinksEnabled) return highlights
+
+    const destinations = highlights.flatMap(([start, end, group]) => {
+      if (group !== "markup.link.url" || context.content.slice(start - 2, start) !== "](") return []
+      const suffix = context.content.slice(end).match(/^(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?\)/)?.[0]
+      return suffix ? [{ start, end: end + suffix.length }] : []
     })
+    if (destinations.length === 0) return highlights
+
+    const result = highlights.filter(
+      ([start, end, group]) =>
+        !(
+          group === "conceal" &&
+          destinations.some((destination) => start === destination.start - 2 && end === destination.start - 1)
+        ),
+    )
+    for (const { start, end } of destinations) {
+      result.push([start - 2, end, "conceal", { conceal: "", isInjection: true }])
+    }
+    return result
+  }
+  private _linkifyMarkdownChunks: OnChunksCallback = (chunks, context) =>
+    this.styleDetectedLinks(
+      detectLinks(chunks, {
+        content: context.content,
+        highlights: context.highlights,
+      }),
+    )
 
   protected _contentDefaultOptions = {
     content: "",
@@ -234,6 +265,8 @@ export class MarkdownRenderable extends Renderable {
     this._renderNode = options.renderNode
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
     this._internalBlockMode = options.internalBlockMode ?? this._contentDefaultOptions.internalBlockMode
+    this._hyperlinksEnabled = ctx.capabilities?.hyperlinks === true
+    ctx.on("capabilities", this._handleCapabilitiesChanged)
 
     this.updateBlocks()
   }
@@ -392,6 +425,27 @@ export class MarkdownRenderable extends Renderable {
     return this.createChunk(text, "default")
   }
 
+  private styleDetectedLinks(chunks: TextChunk[]): TextChunk[] {
+    const urlStyle = this.getStyle("markup.link.url") || this.getStyle("markup.link")
+    if (!urlStyle) return chunks
+    const attributes = createTextAttributes({
+      bold: urlStyle.bold,
+      italic: urlStyle.italic,
+      underline: urlStyle.underline,
+      dim: urlStyle.dim,
+    })
+
+    return chunks.map((chunk) => {
+      if (!chunk.link || chunk.text !== chunk.link.url) return chunk
+      return {
+        ...chunk,
+        fg: urlStyle.fg ?? chunk.fg,
+        bg: urlStyle.bg ?? chunk.bg,
+        attributes: (chunk.attributes ?? 0) | attributes,
+      }
+    })
+  }
+
   private renderInlineContent(tokens: Token[], chunks: TextChunk[]): void {
     for (const token of tokens) {
       this.renderInlineToken(token as MarkedToken, chunks)
@@ -460,9 +514,11 @@ export class MarkdownRenderable extends Renderable {
           for (const child of token.tokens) {
             this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
           }
-          chunks.push(this.createChunk(" (", "markup.link", linkHref))
-          chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
-          chunks.push(this.createChunk(")", "markup.link", linkHref))
+          if (!this._hyperlinksEnabled) {
+            chunks.push(this.createChunk(" (", "markup.link", linkHref))
+            chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
+            chunks.push(this.createChunk(")", "markup.link", linkHref))
+          }
         } else {
           chunks.push(this.createChunk("[", "markup.link", linkHref))
           for (const child of token.tokens) {
@@ -557,6 +613,7 @@ export class MarkdownRenderable extends Renderable {
       drawUnstyledText: false,
       streaming: true,
       baseHighlight,
+      onHighlight: this._concealClickableLinkTargets,
       onChunks,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
@@ -877,6 +934,7 @@ export class MarkdownRenderable extends Renderable {
     renderable.drawUnstyledText = false
     renderable.streaming = true
     renderable.baseHighlight = baseHighlight
+    renderable.onHighlight = this._concealClickableLinkTargets
     renderable.marginBottom = marginBottom
   }
 
@@ -1897,6 +1955,11 @@ export class MarkdownRenderable extends Renderable {
     this._styleDirty = false
     this.rerenderBlocks()
     this.requestRender()
+  }
+
+  protected override destroySelf(): void {
+    this.ctx.off("capabilities", this._handleCapabilitiesChanged)
+    super.destroySelf()
   }
 
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {

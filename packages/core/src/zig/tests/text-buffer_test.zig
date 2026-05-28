@@ -1675,6 +1675,81 @@ test "TextBuffer setStyledText - repeated calls with SyntaxStyle (crash reproduc
     try std.testing.expect(arena_growth < max_expected_growth);
 }
 
+test "TextBuffer setStyledText - generated chunk styles do not leak between buffers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb1 = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb1.deinit();
+    var tb2 = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb2.deinit();
+
+    const ss = @import("../syntax-style.zig");
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+
+    tb1.setSyntaxStyle(style);
+    tb2.setSyntaxStyle(style);
+
+    const one = "one";
+    const two = " two";
+    const tb1_chunks = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = one.ptr, .text_len = one.len, .fg_ptr = null, .bg_ptr = null, .attributes = 1 },
+        .{ .text_ptr = two.ptr, .text_len = two.len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+    };
+    try tb1.setStyledText(&tb1_chunks);
+
+    const tb1_highlights = tb1.getLineHighlights(0);
+    try std.testing.expectEqual(@as(usize, 2), tb1_highlights.len);
+    try std.testing.expectEqual(@as(u32, 1), style.resolveById(tb1_highlights[0].style_id).?.attributes);
+    try std.testing.expectEqual(@as(u32, 0), style.resolveById(tb1_highlights[1].style_id).?.attributes);
+
+    tb1.clear();
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+    try std.testing.expectEqual(@as(u32, 1), style.resolveById(tb1_highlights[0].style_id).?.attributes);
+    try std.testing.expectEqual(@as(u32, 0), style.resolveById(tb1_highlights[1].style_id).?.attributes);
+
+    try tb1.setStyledText(&tb1_chunks);
+    const tb1_updated_highlights = tb1.getLineHighlights(0);
+    try std.testing.expectEqual(tb1_highlights[0].style_id, tb1_updated_highlights[0].style_id);
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+
+    const three = "three";
+    const four = " four";
+    const tb2_chunks = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = three.ptr, .text_len = three.len, .fg_ptr = null, .bg_ptr = null, .attributes = 2 },
+        .{ .text_ptr = four.ptr, .text_len = four.len, .fg_ptr = null, .bg_ptr = null, .attributes = 2 },
+    };
+    try tb2.setStyledText(&tb2_chunks);
+
+    try std.testing.expectEqual(@as(u32, 1), style.resolveById(tb1_highlights[0].style_id).?.attributes);
+    try std.testing.expectEqual(@as(u32, 0), style.resolveById(tb1_highlights[1].style_id).?.attributes);
+    try std.testing.expectEqual(@as(usize, 4), style.getStyleCount());
+
+    tb1.setSyntaxStyle(null);
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+    tb2.setSyntaxStyle(null);
+    try std.testing.expectEqual(@as(usize, 0), style.getStyleCount());
+
+    var tb3 = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb3.deinit();
+    tb3.setSyntaxStyle(style);
+    try tb3.setStyledText(&tb1_chunks);
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+
+    const plain_id = try tb3.registerMemBuffer("plain", false);
+    try tb3.setTextFromMemId(plain_id);
+    try std.testing.expectEqual(@as(usize, 0), style.getStyleCount());
+
+    try tb3.setStyledText(&tb1_chunks);
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+    const empty_chunks = [_]text_buffer.StyledChunk{};
+    try tb3.setStyledText(&empty_chunks);
+    try std.testing.expectEqual(@as(usize, 0), style.getStyleCount());
+}
+
 test "addHighlightByCharRange - single line highlight should not extend to EOL" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

@@ -18,9 +18,11 @@ import {
   type TestRenderer,
   MockTreeSitterClient,
   TestRecorder,
+  setRendererCapabilities,
 } from "../../testing.js"
 import { ManualClock } from "../../testing/manual-clock.js"
 import { TextAttributes, type CapturedFrame } from "../../types.js"
+import { getLinkId } from "../../utils.js"
 
 let renderer: TestRenderer
 let mockMouse: MockMouse
@@ -123,6 +125,14 @@ function findSpanContaining(frame: CapturedFrame, text: string) {
   }
 
   return undefined
+}
+
+function linkedText(frame: CapturedFrame): string {
+  return frame.lines
+    .flatMap((line) => line.spans)
+    .filter((span) => getLinkId(span.attributes) !== 0)
+    .map((span) => span.text)
+    .join("")
 }
 
 function getMarginBottom(renderable: { getLayoutNode(): { getMargin(edge: Edge): unknown } }): number {
@@ -751,6 +761,15 @@ test("table with links", async () => {
     │GitHub│gh (https://github.com)  │
     └──────┴─────────────────────────┘"
   `)
+})
+
+test("table links conceal targets when hyperlinks are supported", async () => {
+  setRendererCapabilities(renderer, { hyperlinks: true })
+  const markdown = `| Name | Link |
+|---|---|
+| Google | [link](https://google.com) |`
+
+  expect(await renderMarkdown(markdown)).toContain("│Google│link│")
 })
 
 test("single row table (header + delimiter only)", async () => {
@@ -1849,6 +1868,86 @@ test("links with conceal mode", async () => {
   `)
 })
 
+test("concealed markdown links hide target but label carries hyperlink metadata", async () => {
+  setRendererCapabilities(renderer, { hyperlinks: true })
+  const md = createMarkdownRenderable({
+    id: "markdown-concealed-link-metadata",
+    content: `Check out [OpenTUI](https://github.com/sst/opentui) for more.`,
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("Check out OpenTUI for more.")
+  expect(frame).not.toContain("https://github.com/sst/opentui")
+  const labelSpan = findSpanContaining(captureSpans(), "OpenTUI")
+  expect(labelSpan).toBeDefined()
+  if (!labelSpan) throw new Error("Expected OpenTUI label span")
+  expect(getLinkId(labelSpan.attributes)).not.toBe(0)
+})
+
+test("concealed markdown links keep single-character labels clickable", async () => {
+  setRendererCapabilities(renderer, { hyperlinks: true })
+  const md = createMarkdownRenderable({
+    id: "markdown-concealed-short-link-metadata",
+    content: `[x](https://example.com)`,
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const span = findSpanContaining(captureSpans(), "x")
+  expect(span).toBeDefined()
+  expect(getLinkId(span!.attributes)).not.toBe(0)
+})
+
+test("concealed markdown links hide titled destinations when hyperlinks are supported", async () => {
+  setRendererCapabilities(renderer, { hyperlinks: true })
+  const md = createMarkdownRenderable({
+    id: "markdown-concealed-titled-link",
+    content: `[OpenTUI](https://example.com "Example docs")`,
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("OpenTUI")
+  expect(frame).not.toContain("https://example.com")
+  expect(frame).not.toContain("Example docs")
+})
+
+test("concealed markdown links preserve label styling when URL styling differs", async () => {
+  setRendererCapabilities(renderer, { hyperlinks: true })
+  const labelColor = RGBA.fromValues(0, 1, 0, 1)
+  const urlColor = RGBA.fromValues(0, 0, 1, 1)
+  const md = createMarkdownRenderable({
+    id: "markdown-concealed-link-label-style",
+    content: `Check out [OpenTUI](https://github.com/sst/opentui) for more.`,
+    syntaxStyle: SyntaxStyle.fromStyles({
+      default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+      "markup.link.label": { fg: labelColor, underline: true },
+      "markup.link.url": { fg: urlColor, underline: true },
+    }),
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const labelSpan = findSpanContaining(captureSpans(), "OpenTUI")
+  expect(labelSpan).toBeDefined()
+  expect(labelSpan!.fg.toInts()).toEqual(labelColor.toInts())
+  expect(getLinkId(labelSpan!.attributes)).not.toBe(0)
+})
+
 test("links with conceal=false", async () => {
   const markdown = `Check out [OpenTUI](https://github.com/sst/opentui) for more.`
 
@@ -1857,6 +1956,61 @@ test("links with conceal=false", async () => {
     Check out [OpenTUI](https://github.com/sst/opentui) for
     more."
   `)
+})
+
+test("markdown links carry hyperlink metadata", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-link-metadata",
+    content: `Check out [OpenTUI](https://github.com/sst/opentui) for more.`,
+    syntaxStyle,
+    conceal: false,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const linked = linkedText(captureSpans())
+
+  expect(linked).toContain("OpenTUI")
+  expect(linked).toContain("https://github.com/sst/opentui")
+})
+
+test("bare urls carry hyperlink metadata when markdown text wraps", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-bare-url-metadata",
+    content: `Visit https://docs.github.com/en/get-started/learning-about-github/githubs-plans for details.`,
+    syntaxStyle,
+    conceal: false,
+    width: 34,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(linkedText(captureSpans())).toContain(
+    "https://docs.github.com/en/get-started/learning-about-github/githubs-plans",
+  )
+})
+
+test("bare urls use markdown link URL style", async () => {
+  const linkStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    "markup.link.url": { fg: RGBA.fromValues(0, 0.5, 1, 1), underline: true },
+  })
+  const md = createMarkdownRenderable({
+    id: "markdown-bare-url-style",
+    content: `Visit https://example.com for details.`,
+    syntaxStyle: linkStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const urlSpan = findSpanContaining(captureSpans(), "https://example.com")
+  expect(urlSpan).toBeDefined()
+  expect(urlSpan!.attributes & TextAttributes.UNDERLINE).toBeTruthy()
+  expect(urlSpan!.fg.b).toBe(1)
 })
 
 // Horizontal rule
@@ -3744,7 +3898,7 @@ The table alignment uses:
 
 // Paragraph rendering tests
 
-test("paragraph links are rendered with markdown conceal behavior", async () => {
+test("paragraph links retain visible targets without hyperlink capability", async () => {
   const md = createMarkdownRenderable({
     id: "markdown",
     content: "Check [Google](https://google.com) out",
@@ -3764,6 +3918,28 @@ test("paragraph links are rendered with markdown conceal behavior", async () => 
   expect(frame).toContain("Google")
   expect(frame).toContain("https://google.com")
   expect(frame).not.toContain("[Google](https://google.com)")
+})
+
+test("paragraph links compact after hyperlink capability is detected", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-link-capability-transition",
+    content: "Check [Google](https://google.com) out",
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  expect(captureFrame()).toContain("Google (https://google.com)")
+
+  const capabilities = setRendererCapabilities(renderer, { hyperlinks: true })
+  renderer.emit("capabilities", capabilities)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("Google")
+  expect(frame).not.toContain("https://google.com")
+  expect(getLinkId(findSpanContaining(captureSpans(), "Google")!.attributes)).not.toBe(0)
 })
 
 test("paragraph initial render does not flash raw markdown markers", async () => {
