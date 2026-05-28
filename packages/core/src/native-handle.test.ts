@@ -83,12 +83,4 @@ describe("native handles", () => {
 
     expect(lib.textBufferGetLength(editHandle as unknown as TextBufferHandle)).toBe(0)
   })
-
-  test("native span feed stale stream handles return invalid status", () => {
-    const lib = resolveRenderLib()
-    const stream = lib.createNativeSpanFeed({ chunkSize: 64, initialChunks: 1 })
-    lib.destroyNativeSpanFeed(stream)
-    expect(lib.streamWrite(stream, "after destroy")).toBe(-3)
-    lib.destroyNativeSpanFeed(stream)
-  })
 })

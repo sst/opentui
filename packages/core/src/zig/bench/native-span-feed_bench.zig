@@ -1,6 +1,5 @@
 const std = @import("std");
 const raw = @import("../native-span-feed.zig");
-const raw_handle = @import("../handles.zig");
 
 fn streamErrorToStatus(err: raw.StreamError) i32 {
     return switch (err) {
@@ -14,16 +13,15 @@ fn streamErrorToStatus(err: raw.StreamError) i32 {
 
 /// Zero-copy benchmark producer (reserve/commit).
 pub export fn benchProduce(
-    stream: raw.AbiHandle,
+    stream: ?*raw.Stream,
     total_bytes: u64,
     pattern_ptr: ?*const u8,
     pattern_len: usize,
     commit_every: u32,
 ) callconv(.c) i32 {
-    if (stream == 0) return raw.Status.err_invalid;
+    if (stream == null) return raw.Status.err_invalid;
     if (total_bytes == 0) return raw.Status.ok;
-    const guard = raw_handle.acquire(std.math.cast(raw_handle.Handle, stream) orelse return raw.Status.err_invalid, .native_span_feed, raw.Stream) orelse return raw.Status.err_invalid;
-    defer guard.release();
+    const s = stream.?;
 
     var pattern_slice: []const u8 = raw.default_pattern;
     if (pattern_ptr != null and pattern_len > 0) {
@@ -40,7 +38,7 @@ pub export fn benchProduce(
         else
             @as(usize, @intCast(remaining));
 
-        reserve_info = guard.ptr.reserve(1) catch |err| return streamErrorToStatus(err);
+        reserve_info = s.reserve(1) catch |err| return streamErrorToStatus(err);
 
         const available: usize = @intCast(reserve_info.len);
         const to_write = @min(available, remaining_usize);
@@ -53,7 +51,7 @@ pub export fn benchProduce(
             dest_index += copy_len;
         }
 
-        guard.ptr.commitReserved(@intCast(to_write)) catch |err| return streamErrorToStatus(err);
+        s.commitReserved(@intCast(to_write)) catch |err| return streamErrorToStatus(err);
 
         remaining -= @as(u64, to_write);
     }
@@ -64,16 +62,15 @@ pub export fn benchProduce(
 
 /// Copy benchmark producer (streamWrite).
 pub export fn benchProduceWrite(
-    stream: raw.AbiHandle,
+    stream: ?*raw.Stream,
     total_bytes: u64,
     pattern_ptr: ?*const u8,
     pattern_len: usize,
     commit_every: u32,
 ) callconv(.c) i32 {
-    if (stream == 0) return raw.Status.err_invalid;
+    if (stream == null) return raw.Status.err_invalid;
     if (total_bytes == 0) return raw.Status.ok;
-    const guard = raw_handle.acquire(std.math.cast(raw_handle.Handle, stream) orelse return raw.Status.err_invalid, .native_span_feed, raw.Stream) orelse return raw.Status.err_invalid;
-    defer guard.release();
+    const s = stream.?;
 
     var pattern_slice: []const u8 = raw.default_pattern;
     if (pattern_ptr != null and pattern_len > 0) {
@@ -91,19 +88,19 @@ pub export fn benchProduceWrite(
             @as(usize, @intCast(remaining));
 
         const to_write = @min(pattern_slice.len, remaining_usize);
-        guard.ptr.write(pattern_slice[0..to_write]) catch |err| return streamErrorToStatus(err);
+        s.write(pattern_slice[0..to_write]) catch |err| return streamErrorToStatus(err);
 
         bytes_since_commit += @as(u64, to_write);
         remaining -= @as(u64, to_write);
 
         if (commit_every != 0 and bytes_since_commit >= commit_every) {
-            guard.ptr.commit() catch |err| return streamErrorToStatus(err);
+            s.commit() catch |err| return streamErrorToStatus(err);
             bytes_since_commit = 0;
         }
     }
 
     if (commit_every != 0 and bytes_since_commit > 0) {
-        guard.ptr.commit() catch |err| return streamErrorToStatus(err);
+        s.commit() catch |err| return streamErrorToStatus(err);
     }
 
     return raw.Status.ok;

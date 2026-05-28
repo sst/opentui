@@ -917,7 +917,7 @@ test "Stream - bytes_written matches total drained across all operations" {
 
 var data_available_count: u32 = 0;
 
-fn countingCallback(_: usize, event_id: u32, _: usize, _: u32, _: u32, _: u32) callconv(.c) void {
+fn countingCallback(_: usize, event_id: u32, _: usize, _: u64) callconv(.c) void {
     if (event_id == @intFromEnum(raw.EventId.DataAvailable)) {
         data_available_count += 1;
     }
@@ -956,9 +956,10 @@ test "Stream - hasPendingSpans reflects state correctly" {
 var drain_during_write_stream: ?*raw.Stream = null;
 var drain_during_write_total: u64 = 0;
 
-fn drainingCallback(_: usize, event_id: u32, _: usize, _: u32, _: u32, _: u32) callconv(.c) void {
+fn drainingCallback(stream_ptr: usize, event_id: u32, _: usize, _: u64) callconv(.c) void {
     if (event_id != @intFromEnum(raw.EventId.DataAvailable)) return;
     const s = drain_during_write_stream orelse return;
+    if (@intFromPtr(s) != stream_ptr) return;
 
     var buf: [64]raw.SpanInfo = undefined;
     while (true) {
