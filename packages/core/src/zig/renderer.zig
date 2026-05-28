@@ -982,6 +982,94 @@ pub const CliRenderer = struct {
         return self.renderOffset;
     }
 
+    pub fn commitSplitFooterByteChunkBatched(
+        self: *CliRenderer,
+        text: []const u8,
+        row_columns_by_row: []const u32,
+        start_on_new_line: bool,
+        trailing_newline: bool,
+        pinned_render_offset: u32,
+        force: bool,
+        begin_frame: bool,
+        finalize_frame: bool,
+    ) u32 {
+        if (begin_frame) {
+            const now = std.time.microTimestamp();
+            const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
+            const deltaTime = deltaTimeMs / 1000.0;
+
+            self.lastRenderTime = now;
+            self.renderDebugOverlay();
+
+            resetActiveOutputBuffer();
+            const writer = OutputBufferWriter.writer();
+            beginRenderFrame(writer);
+            var frame_started = true;
+            self.applyPendingSplitFooterTransition(writer, &frame_started);
+
+            self.splitBatchActive = !finalize_frame;
+            self.splitBatchRedrawFooter = false;
+            self.splitBatchDeltaTime = deltaTime;
+
+            const redraw_footer = self.appendSplitFooterByteChunkCommit(
+                writer,
+                text,
+                row_columns_by_row,
+                start_on_new_line,
+                trailing_newline,
+                pinned_render_offset,
+                force,
+            );
+
+            if (finalize_frame) {
+                self.prepareRenderFrame(redraw_footer, false, true);
+                self.finalizeRender(deltaTime);
+                self.splitBatchActive = false;
+                self.splitBatchRedrawFooter = false;
+                self.splitBatchDeltaTime = 0;
+            } else {
+                self.splitBatchRedrawFooter = redraw_footer;
+            }
+
+            return self.renderOffset;
+        }
+
+        if (!self.splitBatchActive) {
+            return self.commitSplitFooterByteChunkBatched(
+                text,
+                row_columns_by_row,
+                start_on_new_line,
+                trailing_newline,
+                pinned_render_offset,
+                force,
+                true,
+                true,
+            );
+        }
+
+        const writer = OutputBufferWriter.writer();
+        const redraw_footer = self.appendSplitFooterByteChunkCommit(
+            writer,
+            text,
+            row_columns_by_row,
+            start_on_new_line,
+            trailing_newline,
+            pinned_render_offset,
+            force,
+        );
+        self.splitBatchRedrawFooter = self.splitBatchRedrawFooter or redraw_footer;
+
+        if (finalize_frame) {
+            self.prepareRenderFrame(self.splitBatchRedrawFooter, false, true);
+            self.finalizeRender(self.splitBatchDeltaTime);
+            self.splitBatchActive = false;
+            self.splitBatchRedrawFooter = false;
+            self.splitBatchDeltaTime = 0;
+        }
+
+        return self.renderOffset;
+    }
+
     fn finalizeRender(self: *CliRenderer, deltaTime: f64) void {
         if (self.useThread) {
             self.renderMutex.lock();
@@ -1178,6 +1266,16 @@ pub const CliRenderer = struct {
         }
     }
 
+    fn writeByteChunkCommit(
+        self: *CliRenderer,
+        writer: anytype,
+        text: []const u8,
+    ) void {
+        _ = self;
+        writer.writeAll(text) catch {};
+        writer.writeAll(ansi.ANSI.reset) catch {};
+    }
+
     /// Shared append path for all split payload sources.
     ///
     /// Contract: append payload first, then position for footer repaint in the
@@ -1272,6 +1370,86 @@ pub const CliRenderer = struct {
                 if (use_bounded_scroll_region) {
                     // Restore default full-height scroll region for regular repaint
                     // and cursor operations after append is complete.
+                    writer.writeAll("\x1b[r") catch {};
+                }
+            }
+
+            self.renderOffset = next_render_offset;
+            if (redraw_footer) {
+                ansi.ANSI.moveToOutput(writer, 1, targetFooterTopLine) catch {};
+            }
+        } else {
+            self.renderOffset = next_render_offset;
+        }
+
+        return redraw_footer;
+    }
+
+    fn appendSplitFooterByteChunkCommit(
+        self: *CliRenderer,
+        writer: anytype,
+        text: []const u8,
+        row_columns_by_row: []const u32,
+        start_on_new_line: bool,
+        trailing_newline: bool,
+        pinned_render_offset: u32,
+        force: bool,
+    ) bool {
+        const previousSurfaceOffset = self.renderOffset;
+        const previousOutputOffset = self.splitOutputOffset(previousSurfaceOffset);
+        const previousOutputColumn = self.splitScrollback.tail_column;
+        const payload_has_content = text.len > 0 and row_columns_by_row.len > 0;
+        const starts_mid_line = previousOutputColumn > 0 and start_on_new_line;
+        const starts_wrapped_line = previousOutputColumn >= self.width;
+        const previousFooterTopLine: u32 = @max(previousSurfaceOffset + 1, @as(u32, 1));
+
+        if (payload_has_content) {
+            if (starts_mid_line) {
+                self.splitScrollback.noteNewline();
+            }
+
+            for (row_columns_by_row, 0..) |row_columns, row_index| {
+                self.splitScrollback.publishRow(
+                    row_columns,
+                    self.width,
+                    row_index + 1 < row_columns_by_row.len or trailing_newline,
+                );
+            }
+
+            self.splitScrollback.published_rows = @min(self.splitScrollback.published_rows, pinned_render_offset);
+        }
+
+        const next_output_offset = self.splitScrollback.renderOffset(pinned_render_offset);
+        const next_render_offset = self.clampSplitSurfaceOffset(previousSurfaceOffset, pinned_render_offset);
+        const targetFooterTopLine: u32 = @max(next_render_offset + 1, @as(u32, 1));
+        const redraw_footer = force or previousSurfaceOffset != next_render_offset;
+        const use_bounded_scroll_region = payload_has_content and
+            pinned_render_offset > 0 and
+            next_render_offset == pinned_render_offset and
+            next_output_offset == next_render_offset;
+
+        if (payload_has_content or force) {
+            if (payload_has_content) {
+                if (targetFooterTopLine > previousFooterTopLine) {
+                    var clear_line = previousFooterTopLine;
+                    while (clear_line < targetFooterTopLine) : (clear_line += 1) {
+                        ansi.ANSI.moveToOutput(writer, 1, clear_line) catch {};
+                        writer.writeAll("\x1b[2K") catch {};
+                    }
+                }
+
+                if (use_bounded_scroll_region) {
+                    writer.print("\x1b[1;{d}r", .{pinned_render_offset}) catch {};
+                }
+
+                moveToSplitOutputCursor(writer, previousOutputOffset, previousOutputColumn, self.width);
+                if (starts_mid_line or starts_wrapped_line) {
+                    writer.writeAll("\r\n") catch {};
+                }
+
+                self.writeByteChunkCommit(writer, text);
+
+                if (use_bounded_scroll_region) {
                     writer.writeAll("\x1b[r") catch {};
                 }
             }
