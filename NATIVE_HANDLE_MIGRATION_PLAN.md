@@ -118,7 +118,9 @@ Renderer-owned current/next buffers are not temporary pointers. They are stable 
 
 ### Other Borrowed or Temporary Pointers
 
-Some exports return temporary arrays or use caller-provided buffers, for example highlight result arrays freed by `textBufferFreeLineHighlights(...)`, byte buffers, RGBA arrays, and out parameters. These are not long-lived object handles in the same sense. They need a separate audit, but they should not block the first handle-table migration.
+Some exports return temporary arrays or use caller-provided buffers, for example highlight result arrays freed by `textBufferFreeLineHighlights(...)`, Unicode encoding results freed by `freeUnicode(...)`, byte buffers, RGBA arrays, and out parameters. These are not long-lived object handles in the same sense. They need a separate audit, but they should not block the first handle-table migration.
+
+Callback payload pointers are also not object handles by default. Current examples include Zig log callback message bytes and native event callback name/data bytes. These are only valid for the callback duration unless TypeScript copies them. `zig.ts` already copies native event payload data with `.slice(0)` before exposing it to user handlers; keep that rule for callback payloads.
 
 ## Handle Model
 
@@ -440,6 +442,7 @@ Classify each remaining pointer as one of:
 - caller-provided buffer pointer valid only for the duration of the call
 - returned temporary allocation with explicit free function
 - callback function pointer
+- callback payload pointer valid only for the callback duration unless copied
 - zero-copy data-plane pointer, such as buffer cell arrays or native span feed chunks/state
 - internal borrowed pointer that should not cross the boundary
 
