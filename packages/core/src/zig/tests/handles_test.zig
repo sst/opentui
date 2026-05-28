@@ -51,6 +51,24 @@ test "handles reject stale generation after reuse" {
     handles.finishDestroy(fresh_token.handle);
 }
 
+test "handles reject stale generation after wrap" {
+    var value: u32 = 42;
+    const stale = try handles.insert(.renderer, &value);
+    var current = stale;
+
+    var i: usize = 0;
+    while (i < 4095) : (i += 1) {
+        const token = handles.beginDestroy(current, .renderer, u32) orelse return error.TestUnexpectedResult;
+        handles.finishDestroy(token.handle);
+        current = try handles.insert(.renderer, &value);
+    }
+
+    try std.testing.expect(handles.resolve(stale, .renderer, u32) == null);
+
+    const token = handles.beginDestroy(current, .renderer, u32) orelse return error.TestUnexpectedResult;
+    handles.finishDestroy(token.handle);
+}
+
 test "handles mark destroying before destructor body" {
     var value: u32 = 42;
     const handle = try handles.insert(.renderer, &value);

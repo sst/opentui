@@ -94,9 +94,9 @@ fn slotKind(handle: Handle) u4 {
     return @intCast(handle >> (INDEX_BITS + GENERATION_BITS));
 }
 
-fn nextGeneration(generation: u32) u32 {
-    const next = (generation + 1) & GENERATION_MASK;
-    return if (next == 0) 1 else next;
+fn nextGeneration(generation: u32) ?u32 {
+    const next = generation + 1;
+    return if (next > GENERATION_MASK) null else next;
 }
 
 fn atomicLoad(comptime T: type, value: *T) T {
@@ -155,8 +155,11 @@ fn vacateSlotLocked(index: u16) void {
     slot.owner = 0;
     slot.owned = true;
     atomicStore(u8, &slot.kind, 0);
-    atomicStore(u32, &slot.generation, nextGeneration(atomicLoad(u32, &slot.generation)));
     atomicStore(u8, &slot.state, VACANT);
+
+    const generation = atomicLoad(u32, &slot.generation);
+    const next = nextGeneration(generation) orelse return;
+    atomicStore(u32, &slot.generation, next);
     free_indices.append(allocator, index) catch unreachable;
 }
 
