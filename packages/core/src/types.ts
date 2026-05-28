@@ -83,6 +83,7 @@ export interface TerminalCapabilities {
   explicit_cursor_positioning: boolean
   remote: boolean
   in_tmux: boolean
+  in_zellij: boolean
   terminal: TerminalInfo
 }
 

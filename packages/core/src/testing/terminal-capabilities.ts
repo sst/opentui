@@ -26,6 +26,7 @@ export function createTerminalCapabilities(overrides: TerminalCapabilitiesOverri
     explicit_cursor_positioning: false,
     remote: false,
     in_tmux: false,
+    in_zellij: false,
     ...overrides,
     terminal: {
       name: "",

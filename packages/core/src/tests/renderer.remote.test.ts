@@ -76,6 +76,31 @@ describe("remote detection", () => {
     expect(caps.terminal.name).toBe("ghostty")
   })
 
+  test("explicit local mode detects Zellij and suppresses inherited host notification heuristics", async () => {
+    const caps = await getCapabilitiesFromChild(
+      { remote: false },
+      {
+        PATH: process.env.PATH ?? "",
+        HOME: process.env.HOME ?? "",
+        TMPDIR: process.env.TMPDIR ?? "/tmp",
+        ZELLIJ: "0",
+        ZELLIJ_SESSION_NAME: "test-session",
+        ZELLIJ_PANE_ID: "1",
+        TERM: "xterm-256color",
+        TERM_PROGRAM: "ghostty",
+        TERM_PROGRAM_VERSION: "1.3.1",
+        WT_SESSION: "outer-windows-terminal-session",
+        TERM_FEATURES: "T2NoH",
+      },
+    )
+
+    expect(caps.remote).toBe(false)
+    expect(caps.in_zellij).toBe(true)
+    expect(caps.in_tmux).toBe(false)
+    expect(caps.notifications).toBe(false)
+    expect(caps.terminal.name).toBe("Zellij")
+  })
+
   test("explicit remote mode does not require SSH environment", async () => {
     const caps = await getCapabilitiesFromChild(
       { remote: true },
