@@ -506,6 +506,7 @@ export fn createRenderer(
     };
     if (!registerRendererBufferHandles(renderer_handle, rendererPtr)) {
         if (handles.beginDestroy(renderer_handle, .renderer, renderer.CliRenderer)) |token| {
+            handles.invalidateChildren(token.handle);
             rendererPtr.destroy();
             handles.finishDestroy(token.handle);
         }

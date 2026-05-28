@@ -89,3 +89,17 @@ test "borrowed handles are stable and invalidated with owner" {
     const token = handles.beginDestroy(owner, .renderer, u32) orelse return error.TestUnexpectedResult;
     handles.finishDestroy(token.handle);
 }
+
+test "children can be invalidated after owner destroy begins" {
+    var owner_value: u32 = 1;
+    var child_value: u32 = 2;
+    const owner = try handles.insert(.renderer, &owner_value);
+    const child = try handles.insertBorrowed(.optimized_buffer, &child_value, owner);
+
+    const token = handles.beginDestroy(owner, .renderer, u32) orelse return error.TestUnexpectedResult;
+    handles.invalidateChildren(token.handle);
+
+    try std.testing.expect(!handles.isValid(child, .optimized_buffer));
+
+    handles.finishDestroy(token.handle);
+}

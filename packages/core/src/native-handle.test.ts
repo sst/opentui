@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { OptimizedBuffer } from "./buffer.js"
+import { RGBA } from "./lib/RGBA.js"
 import { TextBuffer } from "./text-buffer.js"
 import { TextBufferView } from "./text-buffer-view.js"
 import { EditBuffer } from "./edit-buffer.js"
@@ -43,6 +44,9 @@ describe("native handles", () => {
     const bufferHandle = buffer.ptr
     buffer.destroy()
     expect(() => buffer.buffers).toThrow()
+    expect(() => buffer.fillRect(0, 0, 1, 1, RGBA.fromValues(1, 0, 0, 1))).toThrow(
+      "is destroyed",
+    )
 
     expect(lib.getBufferWidth(bufferHandle)).toBe(0)
     lib.destroyOptimizedBuffer(bufferHandle)

@@ -293,6 +293,7 @@ export class OptimizedBuffer {
   }
 
   public fillRect(x: number, y: number, width: number, height: number, bg: RGBA): void {
+    this.guard()
     this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg)
   }
 
