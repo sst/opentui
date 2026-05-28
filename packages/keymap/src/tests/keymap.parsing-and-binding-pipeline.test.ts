@@ -366,7 +366,9 @@ describe("keymap: parsing and binding pipeline", () => {
       bindings: [{ key: "[Leader]d", cmd: "case-token" }],
     })
 
-    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "[Leader]d" was ignored'])
+    expect(takeWarnings().warnings).toEqual([
+      '[Keymap] Unknown token "leader" in key sequence "[Leader]d"; binding was skipped until the token is registered',
+    ])
 
     keymap.registerToken({ name: "leader", key: { name: "x", ctrl: true } })
 
@@ -1021,7 +1023,9 @@ describe("keymap: parsing and binding pipeline", () => {
     keymap.registerToken({ name: "leader", key: { name: "space" } })
 
     expect(runs).toBe(1)
-    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown token "leader" in key sequence "<leader>x" was ignored'])
+    expect(takeWarnings().warnings).toEqual([
+      '[Keymap] Unknown token "leader" in key sequence "<leader>x"; binding was skipped until the token is registered',
+    ])
   })
 
   test("can dispose binding transformers to stop transforming future layer registrations", () => {

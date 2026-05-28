@@ -35,7 +35,7 @@ test "parseXtversion - tmux format" {
     try testing.expectEqualStrings("tmux", term.getTerminalName());
     try testing.expectEqualStrings("3.5a", term.getTerminalVersion());
     try testing.expect(term.term_info.from_xtversion);
-    try testing.expect(term.in_tmux);
+    try testing.expectEqual(Terminal.Multiplexer.tmux, term.multiplexer);
     try testing.expect(term.caps.osc52);
 }
 
@@ -136,6 +136,84 @@ test "notifications - TERM_FEATURES enables OSC9 protocol" {
     try testing.expectEqual(Terminal.NotificationProtocol.osc9, term.notification_protocol);
 }
 
+test "notifications - Zellij env suppresses inherited host notification heuristics" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("ZELLIJ", "0");
+    try env.put("ZELLIJ_PANE_ID", "1");
+    try env.put("TERM", "xterm-256color");
+    try env.put("TERM_PROGRAM", "ghostty");
+    try env.put("WT_SESSION", "outer-windows-terminal-session");
+    try env.put("TERM_FEATURES", "T2NoH");
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expectEqual(Terminal.Multiplexer.zellij, term.multiplexer);
+    try testing.expectEqualStrings("Zellij", term.getTerminalName());
+    try testing.expect(!term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.none, term.notification_protocol);
+
+    term.processCapabilityResponse("\x1b]1337;Capabilities=T2NoH\x1b\\");
+    try testing.expect(!term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.none, term.notification_protocol);
+
+    term.processCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body:o=always\x1b\\");
+    try testing.expect(term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.osc99, term.notification_protocol);
+}
+
+test "notifications - Zellij XTVERSION overrides inherited tmux and clears heuristics" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    try env.put("TERM", "screen-256color");
+    try env.put("TERM_PROGRAM", "ghostty");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    try testing.expectEqual(Terminal.Multiplexer.tmux, term.multiplexer);
+    try testing.expect(term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.osc777, term.notification_protocol);
+
+    term.processCapabilityResponse("\x1bP>|Zellij(0.44.1)\x1b\\");
+    try testing.expectEqual(Terminal.Multiplexer.zellij, term.multiplexer);
+    try testing.expectEqualStrings("Zellij", term.getTerminalName());
+    try testing.expectEqualStrings("0.44.1", term.getTerminalVersion());
+    try testing.expect(!term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.none, term.notification_protocol);
+
+    term.processCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body:o=always\x1b\\");
+    try testing.expect(term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.osc99, term.notification_protocol);
+}
+
+test "notifications - explicit protocol override works in tmux" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    try env.put("TERM", "screen-256color");
+    try env.put("OPENTUI_NOTIFICATION_PROTOCOL", "osc9");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expectEqual(Terminal.Multiplexer.tmux, term.multiplexer);
+    try testing.expect(term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.osc9, term.notification_protocol);
+}
+
+test "notifications - explicit disable blocks later queries" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_NOTIFICATION_PROTOCOL", "none");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    try testing.expect(!term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.none, term.notification_protocol);
+
+    term.processCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body:o=always\x1b\\");
+    try testing.expect(!term.caps.notifications);
+    try testing.expectEqual(Terminal.NotificationProtocol.none, term.notification_protocol);
+}
+
 test "remote detection - auto mode detects SSH environment" {
     var env = std.process.EnvMap.init(testing.allocator);
     defer env.deinit();
@@ -213,7 +291,7 @@ test "remote without forwarded env map ignores local env overrides" {
 
     try testing.expect(term.remote);
     try testing.expect(term.caps.remote);
-    try testing.expect(!term.in_tmux);
+    try testing.expectEqual(Terminal.Multiplexer.none, term.multiplexer);
     try testing.expect(!term.caps.osc52);
     try testing.expect(!term.caps.explicit_cursor_positioning);
 }
@@ -229,7 +307,7 @@ test "TERM_PROGRAM tmux provides initial tmux version before xtversion" {
 
     var term = Terminal.init(.{ .env_map = &env });
 
-    try testing.expect(term.in_tmux);
+    try testing.expectEqual(Terminal.Multiplexer.tmux, term.multiplexer);
     try testing.expectEqualStrings("tmux", term.getTerminalName());
     try testing.expectEqualStrings("3.6a", term.getTerminalVersion());
     try testing.expect(!term.term_info.from_xtversion);
@@ -249,7 +327,7 @@ test "remote applies forwarded env overrides and capability responses" {
 
     try testing.expect(term.remote);
     try testing.expect(term.caps.remote);
-    try testing.expect(term.in_tmux);
+    try testing.expectEqual(Terminal.Multiplexer.tmux, term.multiplexer);
     try testing.expect(term.caps.osc52);
     try testing.expect(term.caps.explicit_cursor_positioning);
     try testing.expect(term.caps.ansi256);
@@ -264,6 +342,7 @@ test "setHostEnvVar applies env overrides in shared library mode" {
     defer term.deinit();
 
     try term.setHostEnvVar(testing.allocator, "TERM", "screen");
+    try testing.expectEqual(Terminal.Multiplexer.screen, term.multiplexer);
     try testing.expect(term.skip_graphics_query);
     try testing.expect(term.caps.unicode == .wcwidth);
     try testing.expect(term.caps.explicit_cursor_positioning);
@@ -403,7 +482,7 @@ test "queryTerminalSend - sends unwrapped queries when not in tmux" {
     var term = Terminal.init(.{});
 
     // Skip test if actually running in tmux
-    if (term.in_tmux) return error.SkipZigTest;
+    if (term.isInTmux()) return error.SkipZigTest;
 
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
@@ -433,13 +512,13 @@ test "queryTerminalSend - sends unwrapped queries when not in tmux" {
 }
 
 test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
-    // Note: This test checks logic when in_tmux is true.
-    // We can't easily force in_tmux=true since checkEnvironmentOverrides resets it,
+    // Note: This test checks logic when tmux is detected.
+    // We can't easily force tmux detection since checkEnvironmentOverrides resets it,
     // so we test this via sendPendingQueries tests instead.
     var term = Terminal.init(.{});
 
     // Only run the DCS wrapping test if actually in tmux
-    if (!term.in_tmux) return error.SkipZigTest;
+    if (!term.isInTmux()) return error.SkipZigTest;
 
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
@@ -481,7 +560,7 @@ test "queryTerminalSend - sends plain theme queries when TMUX is set" {
 
     const output = writer.getWritten();
 
-    try testing.expect(term.in_tmux);
+    try testing.expectEqual(Terminal.Multiplexer.tmux, term.multiplexer);
     try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.oscThemeQueries) != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b]10;?") == null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?996n") == null);
@@ -489,14 +568,12 @@ test "queryTerminalSend - sends plain theme queries when TMUX is set" {
 
 test "sendPendingQueries - sends wrapped queries after tmux detected via xtversion" {
     var term = Terminal.init(.{});
-    term.in_tmux = false;
+    term.multiplexer = .none;
     term.capability_queries_pending = true;
     term.graphics_query_pending = true;
 
     // Simulate tmux detected via xtversion
-    term.term_info.from_xtversion = true;
-    term.term_info.name_len = 4;
-    @memcpy(term.term_info.name[0..4], "tmux");
+    term.processCapabilityResponse("\x1bP>|tmux 3.5a\x1b\\");
 
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
@@ -520,7 +597,7 @@ test "sendPendingQueries - sends wrapped queries after tmux detected via xtversi
 
 test "sendPendingQueries - sends unwrapped graphics query for non-tmux terminal" {
     var term = Terminal.init(.{});
-    term.in_tmux = false;
+    term.multiplexer = .none;
     term.capability_queries_pending = true;
     term.graphics_query_pending = true;
 
@@ -553,7 +630,7 @@ test "sendPendingQueries - sends unwrapped graphics query even without xtversion
     // This covers terminals that support kitty graphics but don't respond to xtversion.
     // The graphics query should still be sent (unwrapped) so we can detect graphics support.
     var term = Terminal.init(.{});
-    term.in_tmux = false;
+    term.multiplexer = .none;
     term.term_info.from_xtversion = false;
     term.capability_queries_pending = true;
     term.graphics_query_pending = true;
@@ -581,7 +658,7 @@ test "sendPendingQueries - sends unwrapped graphics query even without xtversion
 
 test "sendPendingQueries - skips graphics when skip_graphics_query is set" {
     var term = Terminal.init(.{});
-    term.in_tmux = true;
+    term.multiplexer = .tmux;
     term.skip_graphics_query = true;
     term.graphics_query_pending = true;
     term.capability_queries_pending = false;
@@ -792,6 +869,46 @@ test "writeNotification - wraps OSC777 in tmux passthrough" {
     try testing.expect(std.mem.startsWith(u8, writer.getWritten(), "\x1bPtmux;"));
     try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b\x1b]777;notify;Title;Body") != null);
     try testing.expect(std.mem.endsWith(u8, writer.getWritten(), "\x1b\\"));
+}
+
+test "writeNotification - wraps OSC99 in tmux passthrough" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.notifications = true;
+    term.notification_protocol = .osc99;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const ok = try term.writeNotification(testing.allocator, &writer, "Body", null);
+
+    try testing.expect(ok);
+    try testing.expect(std.mem.startsWith(u8, writer.getWritten(), "\x1bPtmux;"));
+    try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b\x1b]99;i=opentui-1:p=body:e=1:d=1;Qm9keQ==") != null);
+    try testing.expect(std.mem.endsWith(u8, writer.getWritten(), "\x1b\\"));
+}
+
+test "writeNotification - writes raw OSC99 in Zellij" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    try env.put("TERM_PROGRAM", "ghostty");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.processCapabilityResponse("\x1bP>|Zellij(0.44.1)\x1b\\");
+    term.processCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body:o=always\x1b\\");
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const ok = try term.writeNotification(testing.allocator, &writer, "Body", null);
+
+    try testing.expect(ok);
+    try testing.expect(!std.mem.startsWith(u8, writer.getWritten(), "\x1bPtmux;"));
+    try testing.expectEqualStrings("\x1b]99;i=opentui-1:p=body:e=1:d=1;Qm9keQ==\x1b\\", writer.getWritten());
 }
 
 test "writeClipboard - supports different targets" {
