@@ -1,7 +1,6 @@
 import type { StyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
-import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig.js"
-import { type Pointer } from "./platform/ffi.js"
+import { resolveRenderLib, type LineInfo, type RenderLib, type TextBufferHandle } from "./zig.js"
 import { type WidthMethod, type Highlight } from "./types.js"
 import type { SyntaxStyle } from "./syntax-style.js"
 
@@ -16,7 +15,7 @@ export interface TextChunk {
 
 export class TextBuffer {
   private lib: RenderLib
-  private bufferPtr: Pointer
+  private bufferPtr: TextBufferHandle
   private _length: number = 0
   private _byteSize: number = 0
   private _lineInfo?: LineInfo
@@ -26,7 +25,7 @@ export class TextBuffer {
   private _memId?: number
   private _appendedChunks: Uint8Array[] = []
 
-  constructor(lib: RenderLib, ptr: Pointer) {
+  constructor(lib: RenderLib, ptr: TextBufferHandle) {
     this.lib = lib
     this.bufferPtr = ptr
   }
@@ -128,7 +127,7 @@ export class TextBuffer {
     return this._byteSize
   }
 
-  public get ptr(): Pointer {
+  public get ptr(): TextBufferHandle {
     this.guard()
     return this.bufferPtr
   }

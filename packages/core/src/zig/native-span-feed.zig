@@ -1,6 +1,7 @@
 const std = @import("std");
+const handles = @import("handles.zig");
 
-pub const CallbackFn = fn (stream_ptr: usize, event_id: u32, arg0: usize, arg1: u64) callconv(.c) void;
+pub const CallbackFn = fn (stream_handle: handles.Handle, event_id: u32, arg0: usize, arg1: u64) callconv(.c) void;
 
 pub const GrowthPolicy = enum(u8) {
     grow = 0,
@@ -134,6 +135,7 @@ pub const ReserveInfo = extern struct {
 };
 
 pub const Stream = struct {
+    handle: handles.Handle,
     allocator: std.mem.Allocator,
     options: Options,
     chunks: std.ArrayList(Chunk),
@@ -158,6 +160,7 @@ pub const Stream = struct {
         const opts = normalizeOptions(options orelse defaultOptions());
         const stream = allocator.create(Stream) catch return StreamError.OutOfMemory;
         stream.* = .{
+            .handle = 0,
             .allocator = allocator,
             .options = opts,
             .chunks = std.ArrayList(Chunk).empty,
@@ -546,25 +549,25 @@ pub const Stream = struct {
 
     fn emitChunkAdded(self: *Stream, chunk: Chunk) void {
         if (self.callback) |cb| {
-            cb(@intFromPtr(self), Event.ChunkAdded, @intFromPtr(chunk.ptr), chunk.len);
+            cb(self.handle, Event.ChunkAdded, @intFromPtr(chunk.ptr), chunk.len);
         }
     }
 
     fn emitDataAvailable(self: *Stream, count: u32) void {
         if (self.callback) |cb| {
-            cb(@intFromPtr(self), Event.DataAvailable, count, 0);
+            cb(self.handle, Event.DataAvailable, count, 0);
         }
     }
 
     fn emitStateBuffer(self: *Stream) void {
         if (self.callback) |cb| {
-            cb(@intFromPtr(self), Event.StateBuffer, @intFromPtr(self.state_buffer.ptr), self.state_capacity);
+            cb(self.handle, Event.StateBuffer, @intFromPtr(self.state_buffer.ptr), self.state_capacity);
         }
     }
 
     fn emitClosed(self: *Stream) void {
         if (self.callback) |cb| {
-            cb(@intFromPtr(self), Event.Closed, 0, 0);
+            cb(self.handle, Event.Closed, 0, 0);
         }
     }
 };
@@ -635,34 +638,49 @@ fn errorToStatus(err: StreamError) i32 {
     };
 }
 
-pub fn createNativeSpanFeedWithAllocator(allocator: std.mem.Allocator, options_ptr: ?*const Options) ?*Stream {
+fn erasePtr(ptr_value: anytype) *anyopaque {
+    return @ptrCast(ptr_value);
+}
+
+fn acquireStream(stream_handle: handles.Handle) ?handles.Guard(Stream) {
+    return handles.acquire(stream_handle, .native_span_feed, Stream);
+}
+
+pub fn createNativeSpanFeedWithAllocator(allocator: std.mem.Allocator, options_ptr: ?*const Options) handles.Handle {
     const opts = normalizeOptions(if (options_ptr) |p| p.* else defaultOptions());
-    return Stream.create(allocator, opts) catch null;
+    const stream = Stream.create(allocator, opts) catch return 0;
+    const stream_handle = handles.insert(.native_span_feed, erasePtr(stream)) catch {
+        stream.destroy();
+        return 0;
+    };
+    stream.handle = stream_handle;
+    return stream_handle;
 }
 
-pub export fn streamSetCallback(stream: ?*Stream, callback: ?*const CallbackFn) void {
-    if (stream == null) return;
-    stream.?.setCallback(callback);
+pub export fn streamSetCallback(stream_handle: handles.Handle, callback: ?*const CallbackFn) void {
+    const guard = acquireStream(stream_handle) orelse return;
+    defer guard.release();
+    guard.ptr.setCallback(callback);
 }
 
-pub export fn attachNativeSpanFeed(stream: ?*Stream) i32 {
-    if (stream == null) return Status.err_invalid;
-    const s = stream.?;
-    s.attach() catch |err| return errorToStatus(err);
+pub export fn attachNativeSpanFeed(stream_handle: handles.Handle) i32 {
+    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    defer guard.release();
+    guard.ptr.attach() catch |err| return errorToStatus(err);
     return Status.ok;
 }
 
-pub export fn streamClose(stream: ?*Stream) i32 {
-    if (stream == null) return Status.err_invalid;
-    const s = stream.?;
-    s.close() catch |err| return errorToStatus(err);
+pub export fn streamClose(stream_handle: handles.Handle) i32 {
+    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    defer guard.release();
+    guard.ptr.close() catch |err| return errorToStatus(err);
     return Status.ok;
 }
 
-pub export fn destroyNativeSpanFeed(stream: ?*Stream) void {
-    if (stream == null) return;
-    const s = stream.?;
-    s.destroy();
+pub export fn destroyNativeSpanFeed(stream_handle: handles.Handle) void {
+    const token = handles.beginDestroy(stream_handle, .native_span_feed, Stream) orelse return;
+    token.ptr.destroy();
+    handles.finishDestroy(token.handle);
 }
 
 /// Copy API: copies len bytes from src_ptr into the stream's chunk pool.
@@ -675,22 +693,23 @@ pub export fn destroyNativeSpanFeed(stream: ?*Stream) void {
 /// but a write that would exceed it returns err_no_space without writing
 /// any bytes. A write that exactly fills the chunk succeeds; the next
 /// write will move to a new chunk (committing the full one first).
-pub export fn streamWrite(stream: ?*Stream, src_ptr: ?*const u8, len: usize) i32 {
-    if (stream == null or src_ptr == null) return Status.err_invalid;
-    const s = stream.?;
+pub export fn streamWrite(stream_handle: handles.Handle, src_ptr: ?*const u8, len: usize) i32 {
+    if (src_ptr == null) return Status.err_invalid;
+    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    defer guard.release();
     if (len == 0) return Status.ok;
     const src = @as([*]const u8, @ptrCast(src_ptr.?))[0..len];
-    s.write(src) catch |err| return errorToStatus(err);
+    guard.ptr.write(src) catch |err| return errorToStatus(err);
     return Status.ok;
 }
 
 /// Commits the pending span accumulated by streamWrite and emits DataAvailable.
 /// Only needed when auto_commit_on_full is disabled or to flush a partially
 /// filled chunk.
-pub export fn streamCommit(stream: ?*Stream) i32 {
-    if (stream == null) return Status.err_invalid;
-    const s = stream.?;
-    s.commit() catch |err| return errorToStatus(err);
+pub export fn streamCommit(stream_handle: handles.Handle) i32 {
+    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    defer guard.release();
+    guard.ptr.commit() catch |err| return errorToStatus(err);
     return Status.ok;
 }
 
@@ -702,40 +721,44 @@ pub export fn streamCommit(stream: ?*Stream) i32 {
 /// directly into the chunk buffer). Only one reservation can be active at
 /// a time; the stream is locked until streamCommitReserved is called.
 /// Returns at most one chunk's worth of available space.
-pub export fn streamReserve(stream: ?*Stream, min_len: u32, out_ptr: ?*ReserveInfo) i32 {
-    if (stream == null or out_ptr == null) return Status.err_invalid;
-    const s = stream.?;
-    const info = s.reserve(min_len) catch |err| return errorToStatus(err);
+pub export fn streamReserve(stream_handle: handles.Handle, min_len: u32, out_ptr: ?*ReserveInfo) i32 {
+    if (out_ptr == null) return Status.err_invalid;
+    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    defer guard.release();
+    const info = guard.ptr.reserve(min_len) catch |err| return errorToStatus(err);
     out_ptr.?.* = info;
     return Status.ok;
 }
 
 /// Commits len bytes of the previously reserved region and emits DataAvailable.
 /// Must be called after streamReserve. len must not exceed the reserved length.
-pub export fn streamCommitReserved(stream: ?*Stream, len: u32) i32 {
-    if (stream == null) return Status.err_invalid;
-    const s = stream.?;
-    s.commitReserved(len) catch |err| return errorToStatus(err);
+pub export fn streamCommitReserved(stream_handle: handles.Handle, len: u32) i32 {
+    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    defer guard.release();
+    guard.ptr.commitReserved(len) catch |err| return errorToStatus(err);
     return Status.ok;
 }
 
-pub export fn streamSetOptions(stream: ?*Stream, options_ptr: ?*const Options) i32 {
-    if (stream == null or options_ptr == null) return Status.err_invalid;
-    const s = stream.?;
-    s.setOptions(options_ptr.?.*) catch |err| return errorToStatus(err);
+pub export fn streamSetOptions(stream_handle: handles.Handle, options_ptr: ?*const Options) i32 {
+    if (options_ptr == null) return Status.err_invalid;
+    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    defer guard.release();
+    guard.ptr.setOptions(options_ptr.?.*) catch |err| return errorToStatus(err);
     return Status.ok;
 }
 
-pub export fn streamGetStats(stream: ?*Stream, stats_ptr: ?*Stats) i32 {
-    if (stream == null or stats_ptr == null) return Status.err_invalid;
-    const s = stream.?;
-    stats_ptr.?.* = s.getStats();
+pub export fn streamGetStats(stream_handle: handles.Handle, stats_ptr: ?*Stats) i32 {
+    if (stats_ptr == null) return Status.err_invalid;
+    const guard = acquireStream(stream_handle) orelse return Status.err_invalid;
+    defer guard.release();
+    stats_ptr.?.* = guard.ptr.getStats();
     return Status.ok;
 }
 
-pub export fn streamDrainSpans(stream: ?*Stream, out_ptr: ?*SpanInfo, max_spans: u32) u32 {
-    if (stream == null or out_ptr == null or max_spans == 0) return 0;
-    const s = stream.?;
+pub export fn streamDrainSpans(stream_handle: handles.Handle, out_ptr: ?*SpanInfo, max_spans: u32) u32 {
+    if (out_ptr == null or max_spans == 0) return 0;
+    const guard = acquireStream(stream_handle) orelse return 0;
+    defer guard.release();
     const out = @as([*]SpanInfo, @ptrCast(out_ptr.?))[0..max_spans];
-    return s.drainSpans(out);
+    return guard.ptr.drainSpans(out);
 }

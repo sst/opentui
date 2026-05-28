@@ -1,15 +1,16 @@
 const std = @import("std");
 const raw = @import("../native-span-feed.zig");
+const raw_handle = @import("../handles.zig");
 
 /// Zero-copy benchmark producer (reserve/commit).
 pub export fn benchProduce(
-    stream: ?*raw.Stream,
+    stream: raw_handle.Handle,
     total_bytes: u64,
     pattern_ptr: ?*const u8,
     pattern_len: usize,
     commit_every: u32,
 ) callconv(.c) i32 {
-    if (stream == null) return raw.Status.err_invalid;
+    if (stream == 0) return raw.Status.err_invalid;
     if (total_bytes == 0) return raw.Status.ok;
 
     var pattern_slice: []const u8 = raw.default_pattern;
@@ -53,13 +54,13 @@ pub export fn benchProduce(
 
 /// Copy benchmark producer (streamWrite).
 pub export fn benchProduceWrite(
-    stream: ?*raw.Stream,
+    stream: raw_handle.Handle,
     total_bytes: u64,
     pattern_ptr: ?*const u8,
     pattern_len: usize,
     commit_every: u32,
 ) callconv(.c) i32 {
-    if (stream == null) return raw.Status.err_invalid;
+    if (stream == 0) return raw.Status.err_invalid;
     if (total_bytes == 0) return raw.Status.ok;
 
     var pattern_slice: []const u8 = raw.default_pattern;

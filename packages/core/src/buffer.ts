@@ -1,5 +1,5 @@
 import { RGBA } from "./lib/index.js"
-import { resolveRenderLib, type RenderLib } from "./zig.js"
+import { resolveRenderLib, type OptimizedBufferHandle, type RenderLib } from "./zig.js"
 import { type Pointer, type PointerInput, toArrayBuffer, toPointer, ptr } from "./platform/ffi.js"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
 import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
@@ -47,7 +47,7 @@ export class OptimizedBuffer {
   private static fbIdCounter = 0
   public id: string
   public lib: RenderLib
-  private bufferPtr: Pointer
+  private bufferPtr: OptimizedBufferHandle
   private _width: number
   private _height: number
   private _widthMethod: WidthMethod
@@ -60,7 +60,7 @@ export class OptimizedBuffer {
   } | null = null
   private _destroyed: boolean = false
 
-  get ptr(): Pointer {
+  get ptr(): OptimizedBufferHandle {
     return this.bufferPtr
   }
 
@@ -103,7 +103,7 @@ export class OptimizedBuffer {
 
   constructor(
     lib: RenderLib,
-    ptr: Pointer,
+    ptr: OptimizedBufferHandle,
     width: number,
     height: number,
     options: { respectAlpha?: boolean; id?: string; widthMethod?: WidthMethod },
@@ -336,6 +336,8 @@ export class OptimizedBuffer {
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true
+    // Cached typed arrays alias native memory and are invalid after destroy.
+    this._rawBuffers = null
     this.lib.destroyOptimizedBuffer(this.bufferPtr)
   }
 

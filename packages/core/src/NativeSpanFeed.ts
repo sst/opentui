@@ -21,6 +21,7 @@ export type DataHandler = (data: Uint8Array) => void | Promise<void>
 
 /**
  * Zero-copy wrapper over Zig memory; not a full stream interface.
+ * Chunk and state typed-array views are borrowed and invalid after destroy.
  */
 export class NativeSpanFeed {
   static create(options?: NativeSpanFeedOptions): NativeSpanFeed {

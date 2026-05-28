@@ -14,10 +14,15 @@ import {
   type WidthMethod,
 } from "./types.js"
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
-import type { Pointer } from "./platform/ffi.js"
 import { sleep } from "./platform/runtime.js"
 import { OptimizedBuffer } from "./buffer.js"
-import { resolveRenderLib, type NativeBufferedOutput, type NativeRenderStats, type RenderLib } from "./zig.js"
+import {
+  resolveRenderLib,
+  type NativeBufferedOutput,
+  type NativeRenderStats,
+  type RenderLib,
+  type RendererHandle,
+} from "./zig.js"
 import { NativeSpanFeed } from "./NativeSpanFeed.js"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console.js"
 import { type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse.js"
@@ -710,7 +715,7 @@ export enum RendererControlState {
 export class CliRenderer extends EventEmitter implements RenderContext {
   private static animationFrameId = 0
   private lib: RenderLib
-  public rendererPtr: Pointer
+  public rendererPtr: RendererHandle
   public stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
@@ -974,7 +979,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
    * Some late constructor side effects are not rolled back if construction
    * throws partway; production callers should use `createCliRenderer`, which
    * wraps `setupTerminal()` in a try/catch that calls `destroy()` on failure.
-   */
+  */
   constructor(
     stdin: NodeJS.ReadStream,
     stdout: NodeJS.WriteStream,
@@ -1021,7 +1026,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // so Zig skips local-TTY capability-query timing assumptions; process
     // stdout and memory output preserve native auto detection.
     //
-    let rendererPtr: Pointer | null
+    let rendererPtr: RendererHandle | null
     try {
       rendererPtr = lib.createRenderer(initialGeometry.renderWidth, initialGeometry.renderHeight, {
         remote: remoteMode,

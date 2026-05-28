@@ -1,7 +1,6 @@
 import { EventEmitter } from "events"
 import { readFile } from "node:fs/promises"
-import type { Pointer } from "./platform/ffi.js"
-import { resolveRenderLib, type RenderLib } from "./zig.js"
+import { resolveRenderLib, type AudioEngineHandle, type RenderLib } from "./zig.js"
 import type { AudioStats } from "./zig-structs.js"
 
 export interface AudioSetupOptions {
@@ -96,7 +95,7 @@ export class Audio extends EventEmitter<AudioEvents> {
 
   private readonly lib: RenderLib
   private readonly defaultStartOptions: AudioStartOptions | undefined
-  private engine: Pointer | null = null
+  private engine: AudioEngineHandle | null = null
   private readonly groups = new Map<string, number>()
   private playbackStarted = false
   private mixerStarted = false
