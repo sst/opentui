@@ -15,6 +15,7 @@
       "dependencies": {
         "bun-ffi-structs": "0.2.2",
         "diff": "9.0.0",
+        "koffi": "2.15.6",
         "marked": "17.0.1",
         "string-width": "7.2.0",
         "strip-ansi": "7.1.2",
@@ -989,6 +990,8 @@
     "json5": ["json5@2.2.3", "", { "bin": { "json5": "lib/cli.js" } }, "sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg=="],
 
     "kleur": ["kleur@3.0.3", "", {}, "sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w=="],
+
+    "koffi": ["koffi@2.15.6", "", {}, "sha512-WQBpM5uo74UQ17UpsFN+PUOrQQg4/nYdey4SGVluQun2drYYfePziLLWdSmFb4wSdWlJC1aimXQnjhPCheRKuw=="],
 
     "locate-path": ["locate-path@3.0.0", "", { "dependencies": { "p-locate": "^3.0.0", "path-exists": "^3.0.0" } }, "sha512-7AO748wWnIhNqAuaty2ZWHkQHRSNfPVIsPIfwEOWO22AmaoVrWavlOcMR5nzTLNYvp36X220/maaRsrec1G65A=="],
 
