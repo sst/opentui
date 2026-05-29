@@ -1,5 +1,5 @@
 import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:test"
-import { Edge } from "yoga-layout"
+import { Edge } from "../../yoga.js"
 import { Lexer } from "marked"
 import { createMarkdownCodeBlockRenderer, MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
 import { CodeRenderable } from "../Code.js"

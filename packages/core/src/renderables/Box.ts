@@ -1,4 +1,4 @@
-import { Edge, Gutter } from "yoga-layout"
+import { Edge, Gutter } from "../yoga.js"
 import { type RenderableOptions, Renderable } from "../Renderable.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import {

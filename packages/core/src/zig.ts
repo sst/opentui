@@ -1251,6 +1251,184 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
 
+    // Yoga layout
+    yogaConfigCreate: {
+      args: [],
+      returns: "ptr",
+    },
+    yogaConfigFree: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    yogaConfigSetUseWebDefaults: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
+    yogaConfigGetUseWebDefaults: {
+      args: ["ptr"],
+      returns: "bool",
+    },
+    yogaConfigSetPointScaleFactor: {
+      args: ["ptr", "f32"],
+      returns: "void",
+    },
+    yogaConfigGetPointScaleFactor: {
+      args: ["ptr"],
+      returns: "f32",
+    },
+    yogaConfigSetErrata: {
+      args: ["ptr", "u32"],
+      returns: "void",
+    },
+    yogaConfigGetErrata: {
+      args: ["ptr"],
+      returns: "u32",
+    },
+    yogaConfigSetExperimentalFeatureEnabled: {
+      args: ["ptr", "u32", "bool"],
+      returns: "void",
+    },
+    yogaConfigIsExperimentalFeatureEnabled: {
+      args: ["ptr", "u32"],
+      returns: "bool",
+    },
+    yogaNodeCreate: {
+      args: [],
+      returns: "ptr",
+    },
+    yogaNodeCreateWithConfig: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    yogaNodeFree: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    yogaNodeFreeRecursive: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    yogaNodeReset: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    yogaNodeCopyStyle: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    yogaNodeInsertChild: {
+      args: ["ptr", "ptr", "u32"],
+      returns: "void",
+    },
+    yogaNodeRemoveChild: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    yogaNodeRemoveAllChildren: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    yogaNodeGetChild: {
+      args: ["ptr", "u32"],
+      returns: "ptr",
+    },
+    yogaNodeGetChildCount: {
+      args: ["ptr"],
+      returns: "u32",
+    },
+    yogaNodeGetParent: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    yogaNodeCalculateLayout: {
+      args: ["ptr", "f32", "f32", "u32"],
+      returns: "void",
+    },
+    yogaNodeIsDirty: {
+      args: ["ptr"],
+      returns: "bool",
+    },
+    yogaNodeMarkDirty: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    yogaNodeGetHasNewLayout: {
+      args: ["ptr"],
+      returns: "bool",
+    },
+    yogaNodeSetHasNewLayout: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
+    yogaNodeSetIsReferenceBaseline: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
+    yogaNodeIsReferenceBaseline: {
+      args: ["ptr"],
+      returns: "bool",
+    },
+    yogaNodeSetAlwaysFormsContainingBlock: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
+    yogaNodeGetComputedLayout: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    yogaNodeLayoutGetEdge: {
+      args: ["ptr", "u32", "u32"],
+      returns: "f32",
+    },
+    yogaNodeStyleSetEnum: {
+      args: ["ptr", "u32", "u32"],
+      returns: "void",
+    },
+    yogaNodeStyleGetEnum: {
+      args: ["ptr", "u32"],
+      returns: "u32",
+    },
+    yogaNodeStyleSetFloat: {
+      args: ["ptr", "u32", "f32"],
+      returns: "void",
+    },
+    yogaNodeStyleGetFloat: {
+      args: ["ptr", "u32"],
+      returns: "f32",
+    },
+    yogaNodeStyleSetBorder: {
+      args: ["ptr", "u32", "f32"],
+      returns: "void",
+    },
+    yogaNodeStyleGetBorder: {
+      args: ["ptr", "u32"],
+      returns: "f32",
+    },
+    yogaNodeStyleSetValue: {
+      args: ["ptr", "u32", "u32", "u32", "f32"],
+      returns: "void",
+    },
+    yogaNodeStyleGetValue: {
+      args: ["ptr", "u32", "u32"],
+      returns: "u64",
+    },
+    yogaNodeSetMeasureFunc: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    yogaNodeUnsetMeasureFunc: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    yogaNodeHasMeasureFunc: {
+      args: ["ptr"],
+      returns: "bool",
+    },
+    yogaStoreMeasureResult: {
+      args: ["f32", "f32"],
+      returns: "void",
+    },
+
     // Audio
     createAudioEngine: {
       args: ["ptr"],
@@ -1654,6 +1832,23 @@ export interface NativeRenderOperationResult {
   status: number
 }
 
+export interface NativeYogaLayout {
+  left: number
+  top: number
+  right: number
+  bottom: number
+  width: number
+  height: number
+}
+
+export type NativeYogaMeasureCallback = (
+  node: Pointer | null,
+  width: number,
+  widthMode: number,
+  height: number,
+  heightMode: number,
+) => void
+
 export interface AudioEngineLib {
   createAudioEngine: (options?: AudioCreateOptions | null) => AudioEngineHandle | null
   destroyAudioEngine: (engine: AudioEngineHandle) => void
@@ -1926,6 +2121,53 @@ export interface RenderLib extends AudioEngineLib {
   queryPixelResolution: (renderer: RendererHandle) => void
   queryThemeColors: (renderer: RendererHandle) => void
   writeOut: (renderer: RendererHandle, data: string | Uint8Array) => void
+
+  // Yoga layout methods
+  yogaConfigCreate: () => Pointer
+  yogaConfigFree: (config: Pointer) => void
+  yogaConfigSetUseWebDefaults: (config: Pointer, enabled: boolean) => void
+  yogaConfigGetUseWebDefaults: (config: Pointer) => boolean
+  yogaConfigSetPointScaleFactor: (config: Pointer, pointScaleFactor: number) => void
+  yogaConfigGetPointScaleFactor: (config: Pointer) => number
+  yogaConfigSetErrata: (config: Pointer, errata: number) => void
+  yogaConfigGetErrata: (config: Pointer) => number
+  yogaConfigSetExperimentalFeatureEnabled: (config: Pointer, feature: number, enabled: boolean) => void
+  yogaConfigIsExperimentalFeatureEnabled: (config: Pointer, feature: number) => boolean
+  yogaNodeCreate: () => Pointer
+  yogaNodeCreateWithConfig: (config: Pointer) => Pointer
+  yogaNodeFree: (node: Pointer) => void
+  yogaNodeFreeRecursive: (node: Pointer) => void
+  yogaNodeReset: (node: Pointer) => void
+  yogaNodeCopyStyle: (dstNode: Pointer, srcNode: Pointer) => void
+  yogaNodeInsertChild: (node: Pointer, child: Pointer, index: number) => void
+  yogaNodeRemoveChild: (node: Pointer, child: Pointer) => void
+  yogaNodeRemoveAllChildren: (node: Pointer) => void
+  yogaNodeGetChild: (node: Pointer, index: number) => Pointer | null
+  yogaNodeGetChildCount: (node: Pointer) => number
+  yogaNodeGetParent: (node: Pointer) => Pointer | null
+  yogaNodeCalculateLayout: (node: Pointer, width: number, height: number, direction: number) => void
+  yogaNodeIsDirty: (node: Pointer) => boolean
+  yogaNodeMarkDirty: (node: Pointer) => void
+  yogaNodeGetHasNewLayout: (node: Pointer) => boolean
+  yogaNodeSetHasNewLayout: (node: Pointer, hasNewLayout: boolean) => void
+  yogaNodeSetIsReferenceBaseline: (node: Pointer, isReferenceBaseline: boolean) => void
+  yogaNodeIsReferenceBaseline: (node: Pointer) => boolean
+  yogaNodeSetAlwaysFormsContainingBlock: (node: Pointer, alwaysFormsContainingBlock: boolean) => void
+  yogaNodeGetComputedLayout: (node: Pointer) => NativeYogaLayout
+  yogaNodeLayoutGetEdge: (node: Pointer, kind: number, edge: number) => number
+  yogaNodeStyleSetEnum: (node: Pointer, kind: number, value: number) => void
+  yogaNodeStyleGetEnum: (node: Pointer, kind: number) => number
+  yogaNodeStyleSetFloat: (node: Pointer, kind: number, value: number) => void
+  yogaNodeStyleGetFloat: (node: Pointer, kind: number) => number
+  yogaNodeStyleSetBorder: (node: Pointer, edge: number, border: number) => void
+  yogaNodeStyleGetBorder: (node: Pointer, edge: number) => number
+  yogaNodeStyleSetValue: (node: Pointer, kind: number, edgeOrGutter: number, unit: number, value: number) => void
+  yogaNodeStyleGetValue: (node: Pointer, kind: number, edgeOrGutter: number) => number | bigint
+  yogaNodeSetMeasureFunc: (node: Pointer, callback: Pointer | null) => void
+  yogaNodeUnsetMeasureFunc: (node: Pointer) => void
+  yogaNodeHasMeasureFunc: (node: Pointer) => boolean
+  yogaStoreMeasureResult: (width: number, height: number) => void
+  createYogaMeasureCallback: (callback: NativeYogaMeasureCallback) => FFICallbackInstance
 
   // TextBuffer methods
   createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
@@ -3170,6 +3412,204 @@ class FFIRenderLib implements RenderLib {
     const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data
     if (bytes.length === 0) return
     this.opentui.symbols.writeOut(renderer, ptrOrNull(bytes), bytes.byteLength)
+  }
+
+  public yogaConfigCreate(): Pointer {
+    const config = this.opentui.symbols.yogaConfigCreate()
+    if (!config) throw new Error("Failed to create Yoga config")
+    return config
+  }
+
+  public yogaConfigFree(config: Pointer): void {
+    this.opentui.symbols.yogaConfigFree(config)
+  }
+
+  public yogaConfigSetUseWebDefaults(config: Pointer, enabled: boolean): void {
+    this.opentui.symbols.yogaConfigSetUseWebDefaults(config, ffiBool(enabled))
+  }
+
+  public yogaConfigGetUseWebDefaults(config: Pointer): boolean {
+    return this.opentui.symbols.yogaConfigGetUseWebDefaults(config)
+  }
+
+  public yogaConfigSetPointScaleFactor(config: Pointer, pointScaleFactor: number): void {
+    this.opentui.symbols.yogaConfigSetPointScaleFactor(config, pointScaleFactor)
+  }
+
+  public yogaConfigGetPointScaleFactor(config: Pointer): number {
+    return this.opentui.symbols.yogaConfigGetPointScaleFactor(config)
+  }
+
+  public yogaConfigSetErrata(config: Pointer, errata: number): void {
+    this.opentui.symbols.yogaConfigSetErrata(config, errata)
+  }
+
+  public yogaConfigGetErrata(config: Pointer): number {
+    return this.opentui.symbols.yogaConfigGetErrata(config)
+  }
+
+  public yogaConfigSetExperimentalFeatureEnabled(config: Pointer, feature: number, enabled: boolean): void {
+    this.opentui.symbols.yogaConfigSetExperimentalFeatureEnabled(config, feature, ffiBool(enabled))
+  }
+
+  public yogaConfigIsExperimentalFeatureEnabled(config: Pointer, feature: number): boolean {
+    return this.opentui.symbols.yogaConfigIsExperimentalFeatureEnabled(config, feature)
+  }
+
+  public yogaNodeCreate(): Pointer {
+    const node = this.opentui.symbols.yogaNodeCreate()
+    if (!node) throw new Error("Failed to create Yoga node")
+    return node
+  }
+
+  public yogaNodeCreateWithConfig(config: Pointer): Pointer {
+    const node = this.opentui.symbols.yogaNodeCreateWithConfig(config)
+    if (!node) throw new Error("Failed to create Yoga node")
+    return node
+  }
+
+  public yogaNodeFree(node: Pointer): void {
+    this.opentui.symbols.yogaNodeFree(node)
+  }
+
+  public yogaNodeFreeRecursive(node: Pointer): void {
+    this.opentui.symbols.yogaNodeFreeRecursive(node)
+  }
+
+  public yogaNodeReset(node: Pointer): void {
+    this.opentui.symbols.yogaNodeReset(node)
+  }
+
+  public yogaNodeCopyStyle(dstNode: Pointer, srcNode: Pointer): void {
+    this.opentui.symbols.yogaNodeCopyStyle(dstNode, srcNode)
+  }
+
+  public yogaNodeInsertChild(node: Pointer, child: Pointer, index: number): void {
+    this.opentui.symbols.yogaNodeInsertChild(node, child, index)
+  }
+
+  public yogaNodeRemoveChild(node: Pointer, child: Pointer): void {
+    this.opentui.symbols.yogaNodeRemoveChild(node, child)
+  }
+
+  public yogaNodeRemoveAllChildren(node: Pointer): void {
+    this.opentui.symbols.yogaNodeRemoveAllChildren(node)
+  }
+
+  public yogaNodeGetChild(node: Pointer, index: number): Pointer | null {
+    return this.opentui.symbols.yogaNodeGetChild(node, index) || null
+  }
+
+  public yogaNodeGetChildCount(node: Pointer): number {
+    return this.opentui.symbols.yogaNodeGetChildCount(node)
+  }
+
+  public yogaNodeGetParent(node: Pointer): Pointer | null {
+    return this.opentui.symbols.yogaNodeGetParent(node) || null
+  }
+
+  public yogaNodeCalculateLayout(node: Pointer, width: number, height: number, direction: number): void {
+    this.opentui.symbols.yogaNodeCalculateLayout(node, width, height, direction)
+  }
+
+  public yogaNodeIsDirty(node: Pointer): boolean {
+    return this.opentui.symbols.yogaNodeIsDirty(node)
+  }
+
+  public yogaNodeMarkDirty(node: Pointer): void {
+    this.opentui.symbols.yogaNodeMarkDirty(node)
+  }
+
+  public yogaNodeGetHasNewLayout(node: Pointer): boolean {
+    return this.opentui.symbols.yogaNodeGetHasNewLayout(node)
+  }
+
+  public yogaNodeSetHasNewLayout(node: Pointer, hasNewLayout: boolean): void {
+    this.opentui.symbols.yogaNodeSetHasNewLayout(node, ffiBool(hasNewLayout))
+  }
+
+  public yogaNodeSetIsReferenceBaseline(node: Pointer, isReferenceBaseline: boolean): void {
+    this.opentui.symbols.yogaNodeSetIsReferenceBaseline(node, ffiBool(isReferenceBaseline))
+  }
+
+  public yogaNodeIsReferenceBaseline(node: Pointer): boolean {
+    return this.opentui.symbols.yogaNodeIsReferenceBaseline(node)
+  }
+
+  public yogaNodeSetAlwaysFormsContainingBlock(node: Pointer, alwaysFormsContainingBlock: boolean): void {
+    this.opentui.symbols.yogaNodeSetAlwaysFormsContainingBlock(node, ffiBool(alwaysFormsContainingBlock))
+  }
+
+  public yogaNodeGetComputedLayout(node: Pointer): NativeYogaLayout {
+    const layout = new Float32Array(6)
+    this.opentui.symbols.yogaNodeGetComputedLayout(node, ptr(layout))
+    return {
+      left: layout[0]!,
+      top: layout[1]!,
+      right: layout[2]!,
+      bottom: layout[3]!,
+      width: layout[4]!,
+      height: layout[5]!,
+    }
+  }
+
+  public yogaNodeLayoutGetEdge(node: Pointer, kind: number, edge: number): number {
+    return this.opentui.symbols.yogaNodeLayoutGetEdge(node, kind, edge)
+  }
+
+  public yogaNodeStyleSetEnum(node: Pointer, kind: number, value: number): void {
+    this.opentui.symbols.yogaNodeStyleSetEnum(node, kind, value)
+  }
+
+  public yogaNodeStyleGetEnum(node: Pointer, kind: number): number {
+    return this.opentui.symbols.yogaNodeStyleGetEnum(node, kind)
+  }
+
+  public yogaNodeStyleSetFloat(node: Pointer, kind: number, value: number): void {
+    this.opentui.symbols.yogaNodeStyleSetFloat(node, kind, value)
+  }
+
+  public yogaNodeStyleGetFloat(node: Pointer, kind: number): number {
+    return this.opentui.symbols.yogaNodeStyleGetFloat(node, kind)
+  }
+
+  public yogaNodeStyleSetBorder(node: Pointer, edge: number, border: number): void {
+    this.opentui.symbols.yogaNodeStyleSetBorder(node, edge, border)
+  }
+
+  public yogaNodeStyleGetBorder(node: Pointer, edge: number): number {
+    return this.opentui.symbols.yogaNodeStyleGetBorder(node, edge)
+  }
+
+  public yogaNodeStyleSetValue(node: Pointer, kind: number, edgeOrGutter: number, unit: number, value: number): void {
+    this.opentui.symbols.yogaNodeStyleSetValue(node, kind, edgeOrGutter, unit, value)
+  }
+
+  public yogaNodeStyleGetValue(node: Pointer, kind: number, edgeOrGutter: number): number | bigint {
+    return this.opentui.symbols.yogaNodeStyleGetValue(node, kind, edgeOrGutter)
+  }
+
+  public yogaNodeSetMeasureFunc(node: Pointer, callback: Pointer | null): void {
+    this.opentui.symbols.yogaNodeSetMeasureFunc(node, callback)
+  }
+
+  public yogaNodeUnsetMeasureFunc(node: Pointer): void {
+    this.opentui.symbols.yogaNodeUnsetMeasureFunc(node)
+  }
+
+  public yogaNodeHasMeasureFunc(node: Pointer): boolean {
+    return this.opentui.symbols.yogaNodeHasMeasureFunc(node)
+  }
+
+  public yogaStoreMeasureResult(width: number, height: number): void {
+    this.opentui.symbols.yogaStoreMeasureResult(width, height)
+  }
+
+  public createYogaMeasureCallback(callback: NativeYogaMeasureCallback): FFICallbackInstance {
+    return this.opentui.createCallback(callback, {
+      args: ["ptr", "f32", "u32", "f32", "u32"],
+      returns: "void",
+    })
   }
 
   // TextBuffer methods

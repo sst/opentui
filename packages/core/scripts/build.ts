@@ -272,7 +272,7 @@ if (buildLib) {
     process.exit(1)
   }
 
-  const portableEntryPoints: string[] = [packageJson.module, "src/testing.ts"]
+  const portableEntryPoints: string[] = [packageJson.module, "src/testing.ts", "src/yoga.ts"]
 
   const bunOnlyEntryPoints = [
     {
@@ -345,6 +345,7 @@ if (buildLib) {
     "dist/runtime-plugin.js",
     "dist/runtime-plugin-support.js",
     "dist/runtime-plugin-support-configure.js",
+    "dist/yoga.js",
     "dist/lib/tree-sitter/update-assets.js",
     "dist/parser.worker.js",
   ]
@@ -456,6 +457,10 @@ if (buildLib) {
       bun: "./runtime-plugin-support-configure.js",
       node: "./runtime-plugin-support-configure.node.js",
       default: "./runtime-plugin-support-configure.node.js",
+    },
+    "./yoga": {
+      types: "./yoga.d.ts",
+      import: "./yoga.js",
     },
     // Conditional exports select the first matching key in declaration order. Bun
     // matches `bun` for both import and require, while Node ESM falls through to

@@ -1,5 +1,5 @@
 import { EventEmitter } from "events"
-import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
+import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "./yoga.js"
 import { OptimizedBuffer } from "./buffer.js"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
 import type { MouseEventType } from "./lib/parse.mouse.js"

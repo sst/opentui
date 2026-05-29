@@ -43,8 +43,7 @@
     "diff": "9.0.0",
     "marked": "17.0.1",
     "string-width": "7.2.0",
-    "strip-ansi": "7.1.2",
-    "yoga-layout": "3.2.1"
+    "strip-ansi": "7.1.2"
   },
   "peerDependencies": {
     "web-tree-sitter": "0.25.10"
@@ -79,6 +78,10 @@
     "./runtime-plugin-support/configure": {
       "types": "./src/runtime-plugin-support-configure.ts",
       "import": "./src/runtime-plugin-support-configure.ts"
+    },
+    "./yoga": {
+      "types": "./src/yoga.ts",
+      "import": "./src/yoga.ts"
     },
     "./tree-sitter/update-assets": {
       "types": "./src/lib/tree-sitter/update-assets.ts",

@@ -32,8 +32,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@opentui/core": "workspace:*",
-    "yoga-layout": "3.2.1"
+    "@opentui/core": "workspace:*"
   },
   "peerDependencies": {
     "@opentui/react": "workspace:*",
