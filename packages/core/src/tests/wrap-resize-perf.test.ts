@@ -31,9 +31,9 @@ describe("Word wrap algorithmic complexity", () => {
   function calibrateRoundsPerSample(
     fn: (width: number) => void,
     widths: number[],
-    minBatchMs = 5,
+    minBatchMs = 20,
     initialRounds = 4,
-    maxRounds = 512,
+    maxRounds = 8192,
   ): number {
     let roundsPerSample = initialRounds
 
@@ -69,7 +69,13 @@ describe("Word wrap algorithmic complexity", () => {
         smallTime = measureBatch(smallFn, widths, roundsPerSample)
       }
 
-      ratios.push(largeTime / smallTime)
+      if (smallTime > 0 && largeTime > 0) {
+        ratios.push(largeTime / smallTime)
+      }
+    }
+
+    if (ratios.length === 0) {
+      return Number.POSITIVE_INFINITY
     }
 
     ratios.sort((a, b) => a - b)
