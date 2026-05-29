@@ -79,6 +79,11 @@ describe("Word wrap algorithmic complexity", () => {
   const COMPLEXITY_THRESHOLD = 1.75
   const MEASURE_WIDTHS = [76, 77, 78, 79, 80, 81, 82, 83]
 
+  function rebuildWrap(view: TextBufferView, width: number): void {
+    view.setWrapWidth(width)
+    view.getVirtualLineCount()
+  }
+
   it("should have O(n) complexity for word wrap without word breaks", () => {
     const smallSize = 20000
     const largeSize = 40000
@@ -101,20 +106,20 @@ describe("Word wrap algorithmic complexity", () => {
     largeView.setWrapWidth(80)
 
     for (const width of MEASURE_WIDTHS) {
-      smallView.measureForDimensions(width, 100)
-      largeView.measureForDimensions(width, 100)
+      rebuildWrap(smallView, width)
+      rebuildWrap(largeView, width)
     }
 
     const roundsPerSample = calibrateRoundsPerSample((width) => {
-      smallView.measureForDimensions(width, 100)
+      rebuildWrap(smallView, width)
     }, MEASURE_WIDTHS)
 
     const ratio = measureMedianRatio(
       (width) => {
-        smallView.measureForDimensions(width, 100)
+        rebuildWrap(smallView, width)
       },
       (width) => {
-        largeView.measureForDimensions(width, 100)
+        rebuildWrap(largeView, width)
       },
       MEASURE_WIDTHS,
       roundsPerSample,
@@ -158,20 +163,20 @@ describe("Word wrap algorithmic complexity", () => {
 
     // Warm up with changing widths so we measure wrap work, not cache hits.
     for (const width of MEASURE_WIDTHS) {
-      smallView.measureForDimensions(width, 100)
-      largeView.measureForDimensions(width, 100)
+      rebuildWrap(smallView, width)
+      rebuildWrap(largeView, width)
     }
 
     const roundsPerSample = calibrateRoundsPerSample((width) => {
-      smallView.measureForDimensions(width, 100)
+      rebuildWrap(smallView, width)
     }, MEASURE_WIDTHS)
 
     const ratio = measureMedianRatio(
       (width) => {
-        smallView.measureForDimensions(width, 100)
+        rebuildWrap(smallView, width)
       },
       (width) => {
-        largeView.measureForDimensions(width, 100)
+        rebuildWrap(largeView, width)
       },
       MEASURE_WIDTHS,
       roundsPerSample,
@@ -209,20 +214,20 @@ describe("Word wrap algorithmic complexity", () => {
     largeView.setWrapWidth(80)
 
     for (const width of MEASURE_WIDTHS) {
-      smallView.measureForDimensions(width, 100)
-      largeView.measureForDimensions(width, 100)
+      rebuildWrap(smallView, width)
+      rebuildWrap(largeView, width)
     }
 
     const roundsPerSample = calibrateRoundsPerSample((width) => {
-      smallView.measureForDimensions(width, 100)
+      rebuildWrap(smallView, width)
     }, MEASURE_WIDTHS)
 
     const ratio = measureMedianRatio(
       (width) => {
-        smallView.measureForDimensions(width, 100)
+        rebuildWrap(smallView, width)
       },
       (width) => {
-        largeView.measureForDimensions(width, 100)
+        rebuildWrap(largeView, width)
       },
       MEASURE_WIDTHS,
       roundsPerSample,
