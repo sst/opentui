@@ -40,8 +40,6 @@ pub const BufferedOutput = struct {
 };
 
 pub const StdoutOutput = struct {
-    stdoutBuffer: [4096]u8 = undefined,
-
     pub fn bufferedOutput(self: *StdoutOutput) BufferedOutput {
         return .{
             .ctx = self,
@@ -51,13 +49,20 @@ pub const StdoutOutput = struct {
     }
 
     fn write(ctx: *anyopaque, data: []const u8) void {
+        _ = ctx;
         if (data.len == 0) return;
 
-        const self: *StdoutOutput = @ptrCast(@alignCast(ctx));
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const w = &stdoutWriter.interface;
-        w.writeAll(data) catch {};
-        w.flush() catch {};
+        // Bypass std.fs.File.Writer (the buffered .writer() interface), which
+        // attempts pwritev(fd, iov, n, /*offset=*/0) as a fast path before
+        // falling back to writev on ESPIPE. Stdout to a TTY is not seekable,
+        // so pwritev gains nothing here on Linux/macOS; under gVisor (runsc)
+        // the kernel returns EINVAL instead of ESPIPE for that call, the
+        // fallback never fires, and every render frame is silently dropped
+        // inside the sandbox.
+        //
+        // std.fs.File.writeAll loops directly over posix.write on Unix and
+        // WriteFile on Windows. Cross-platform, no pwritev path.
+        std.fs.File.stdout().writeAll(data) catch {};
     }
 };
 
