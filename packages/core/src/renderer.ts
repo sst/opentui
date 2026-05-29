@@ -160,10 +160,26 @@ export interface CliRendererConfig {
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
 
   // Track mouse move events. Defaults to true.
+  // Legacy. Prefer `mouseLevel`. When `mouseLevel` is set, this is ignored.
   enableMouseMovement?: boolean
 
   // Enable mouse input. Defaults to true.
+  // Legacy. Prefer `mouseLevel`. When `mouseLevel` is set, this is ignored.
   useMouse?: boolean
+
+  // Choose how much of the xterm mouse protocol to subscribe to.
+  //
+  //   "none"   - all tracking off
+  //   "basic"  - press/release only (?1000h ?1006h). Drag events stay with
+  //              the host terminal so the user's native drag-to-select
+  //              highlighter is undisturbed.
+  //   "drag"   - clicks + button-drag (?1000h ?1002h ?1006h). Default.
+  //   "motion" - clicks + button-drag + all motion (?1003h)
+  //
+  // When `mouseLevel` is unset, the renderer falls back to the legacy
+  // `useMouse` + `enableMouseMovement` shim (false => "none";
+  // true,false => "drag"; true,true => "motion").
+  mouseLevel?: MouseLevel | "none" | "basic" | "drag" | "motion"
 
   // Focus the nearest focusable renderable on left click. Defaults to true.
   autoFocus?: boolean
@@ -210,6 +226,51 @@ export interface CliRendererConfig {
 //
 // - "split-footer": Keep the renderer in a reserved footer on the main screen.
 export type ScreenMode = "alternate-screen" | "main-screen" | "split-footer"
+
+// Mouse-protocol subscription level. Numeric values match the Zig-side
+// `MouseLevel` enum order (terminal.zig); changes here MUST stay in sync
+// with `setMouseLevel` in lib.zig.
+export enum MouseLevel {
+  None = 0,
+  // Press/release only (?1000h ?1006h). Drag events flow back to the host
+  // terminal — needed for native drag-to-select with terminals that don't
+  // implement OSC 52 (e.g. Warp).
+  Basic = 1,
+  // Clicks + button-drag (?1000h ?1002h ?1006h). Historical default.
+  Drag = 2,
+  // Clicks + button-drag + all motion (adds ?1003h).
+  Motion = 3,
+  // Reserved for future pixel-coordinate decoding.
+  Pixels = 4,
+}
+
+const MOUSE_LEVEL_BY_NAME: Record<string, MouseLevel> = {
+  none: MouseLevel.None,
+  basic: MouseLevel.Basic,
+  drag: MouseLevel.Drag,
+  motion: MouseLevel.Motion,
+}
+
+export function resolveMouseLevel(
+  mouseLevel: MouseLevel | "none" | "basic" | "drag" | "motion" | undefined,
+  legacyUseMouse: boolean | undefined,
+  legacyEnableMovement: boolean | undefined,
+): MouseLevel {
+  if (mouseLevel !== undefined) {
+    if (typeof mouseLevel === "string") {
+      return MOUSE_LEVEL_BY_NAME[mouseLevel] ?? MouseLevel.Drag
+    }
+    return mouseLevel
+  }
+  // Legacy fallback. Defaults preserve the historical 0.2.x behavior:
+  //   useMouse undefined or true + enableMouseMovement undefined or true => Motion
+  //   useMouse true + enableMouseMovement false                          => Drag
+  //   useMouse false                                                     => None
+  const useMouse = legacyUseMouse ?? true
+  if (!useMouse) return MouseLevel.None
+  const enableMovement = legacyEnableMovement ?? true
+  return enableMovement ? MouseLevel.Motion : MouseLevel.Drag
+}
 
 // Controls writes that go through the configured `stdout.write`.
 //
@@ -802,6 +863,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
+  private _mouseLevel: MouseLevel = MouseLevel.Drag
   private autoFocus: boolean = true
   private _screenMode: ScreenMode = "alternate-screen"
   private _footerHeight: number = DEFAULT_FOOTER_HEIGHT
@@ -1134,6 +1196,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.maxStatSamples = config.maxStatSamples || 300
     this.enableMouseMovement = config.enableMouseMovement ?? true
     this._useMouse = config.useMouse ?? true
+    this._mouseLevel = resolveMouseLevel(config.mouseLevel, config.useMouse, config.enableMouseMovement)
+    // Keep the legacy projection consistent so callers reading
+    // `enableMouseMovement` / `useMouse` after-the-fact see a value that
+    // matches the resolved level.
+    this._useMouse = this._mouseLevel !== MouseLevel.None
+    this.enableMouseMovement = this._mouseLevel === MouseLevel.Motion
     this.autoFocus = config.autoFocus ?? true
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
@@ -2945,7 +3013,34 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enableMouse(): void {
     this._useMouse = true
-    this.lib.enableMouse(this.rendererPtr, this.enableMouseMovement)
+    // Use the level-aware FFI when the resolved level isn't the historical
+    // default (Drag with movement). Falling through to enableMouse(bool)
+    // keeps behavior bit-identical for legacy callers that never set
+    // `mouseLevel` and never call `setMouseLevel(...)`.
+    if (this._mouseLevel === MouseLevel.Motion || this._mouseLevel === MouseLevel.Drag) {
+      this.lib.enableMouse(this.rendererPtr, this._mouseLevel === MouseLevel.Motion)
+      return
+    }
+    this.lib.setMouseLevel(this.rendererPtr, this._mouseLevel)
+  }
+
+  public get mouseLevel(): MouseLevel {
+    return this._mouseLevel
+  }
+
+  public set mouseLevel(level: MouseLevel | "none" | "basic" | "drag" | "motion") {
+    const resolved = resolveMouseLevel(level, undefined, undefined)
+    if (resolved === this._mouseLevel) return
+    this._mouseLevel = resolved
+    this._useMouse = resolved !== MouseLevel.None
+    this.enableMouseMovement = resolved === MouseLevel.Motion
+    if (resolved === MouseLevel.None) {
+      this.setCapturedRenderable(undefined)
+      this.stdinParser?.resetMouseState()
+      this.lib.disableMouse(this.rendererPtr)
+      return
+    }
+    this.lib.setMouseLevel(this.rendererPtr, resolved)
   }
 
   private disableMouse(): void {

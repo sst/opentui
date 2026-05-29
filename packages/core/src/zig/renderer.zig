@@ -1881,7 +1881,13 @@ pub const CliRenderer = struct {
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setMouseMode(stream.writer(), true, enableMovement) catch {};
+        self.terminal.setMouseModeLegacy(stream.writer(), true, enableMovement) catch {};
+        self.writeOut(stream.getWritten());
+    }
+
+    pub fn setMouseLevel(self: *CliRenderer, level: Terminal.MouseLevel) void {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setMouseMode(stream.writer(), level) catch {};
         self.writeOut(stream.getWritten());
     }
 
@@ -1897,7 +1903,7 @@ pub const CliRenderer = struct {
 
     pub fn disableMouse(self: *CliRenderer) void {
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setMouseMode(stream.writer(), false, self.terminal.state.mouse_movement) catch {};
+        self.terminal.setMouseMode(stream.writer(), .none) catch {};
         self.writeOut(stream.getWritten());
     }
 

@@ -1070,6 +1070,21 @@ export fn enableMouse(rendererPtr: *renderer.CliRenderer, enableMovement: bool) 
     rendererPtr.enableMouse(enableMovement);
 }
 
+// `level` is a u8 corresponding to the MouseLevel enum order:
+//   0 = none, 1 = basic, 2 = drag, 3 = motion, 4 = pixels.
+// Out-of-range values fall back to .none for safety.
+export fn setMouseLevel(rendererPtr: *renderer.CliRenderer, level: u8) void {
+    const ml: terminal.MouseLevel = switch (level) {
+        0 => .none,
+        1 => .basic,
+        2 => .drag,
+        3 => .motion,
+        4 => .pixels,
+        else => .none,
+    };
+    rendererPtr.setMouseLevel(ml);
+}
+
 export fn disableMouse(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.disableMouse();
 }
