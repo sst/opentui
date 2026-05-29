@@ -123,8 +123,8 @@ interface BenchmarkResult {
   measuredMetricIterations: number
   avgSettlePassesPerIteration: number
   maxSettlePasses: number
-  avgRenderCommandsPerIteration: number
-  maxRenderCommands: number
+  avgUpdateCommandsPerIteration: number | null
+  maxUpdateCommands: number | null
   medianDurationMs: number
   bestDurationMs: number
   medianOpsPerSecond: number
@@ -565,6 +565,12 @@ function calculateAndUpdateLayout(
   return renderList.length
 }
 
+function assertProbeChanged(scenarioName: string, label: string, before: number, after: number): void {
+  if (before === after) {
+    throw new Error(`${scenarioName}: ${label} did not change the validation probe`)
+  }
+}
+
 async function validateFullRenderRecalculation(
   ctx: BenchmarkContext,
   scenarioName: string,
@@ -591,8 +597,9 @@ async function validateFullRenderRecalculation(
     throw new Error(`${scenarioName}: expected at least ${minimumSettlePasses} render pass per layout update`)
   }
 
-  if (options.expectProbeChange !== false && before === afterFirst && afterFirst === afterSecond) {
-    throw new Error(`${scenarioName}: layout probe did not change across validated recalculations`)
+  if (options.expectProbeChange !== false) {
+    assertProbeChanged(scenarioName, "first layout mutation", before, afterFirst)
+    assertProbeChanged(scenarioName, "second layout mutation", afterFirst, afterSecond)
   }
 
   consume(before + afterFirst + afterSecond + firstPasses + secondPasses)
@@ -618,9 +625,8 @@ async function validateContentRecalculation(
   const secondPasses = await renderUntilLayoutClean(ctx, scenarioName)
   const afterSecond = readContentProbe()
 
-  if (before === afterFirst && afterFirst === afterSecond) {
-    throw new Error(`${scenarioName}: content probe did not change across validated recalculations`)
-  }
+  assertProbeChanged(scenarioName, "first content mutation", before, afterFirst)
+  assertProbeChanged(scenarioName, "second content mutation", afterFirst, afterSecond)
 
   consume(before + afterFirst + afterSecond + firstPasses + secondPasses)
 }
@@ -645,9 +651,8 @@ function validateCalculateRecalculation(
   calculateLayout(ctx, scenarioName)
   const afterSecond = readProbe()
 
-  if (before === afterFirst && afterFirst === afterSecond) {
-    throw new Error(`${scenarioName}: calculate-layout probe did not change across validated recalculations`)
-  }
+  assertProbeChanged(scenarioName, "first calculate-layout mutation", before, afterFirst)
+  assertProbeChanged(scenarioName, "second calculate-layout mutation", afterFirst, afterSecond)
 
   consume(before + afterFirst + afterSecond)
 }
@@ -673,9 +678,8 @@ function validateCalculateUpdateRecalculation(
   calculateAndUpdateLayout(ctx, scenarioName, metrics)
   const afterSecond = readProbe()
 
-  if (before === afterFirst && afterFirst === afterSecond) {
-    throw new Error(`${scenarioName}: calculate-update probe did not change across validated recalculations`)
-  }
+  assertProbeChanged(scenarioName, "first calculate-update mutation", before, afterFirst)
+  assertProbeChanged(scenarioName, "second calculate-update mutation", afterFirst, afterSecond)
 
   consume(before + afterFirst + afterSecond + metrics.snapshot().totalRenderCommands)
 }
@@ -731,6 +735,16 @@ function renderableLayoutChecksum(renderables: readonly Renderable[]): number {
         (renderable.height | 0) * 11 +
         index) |
       0
+  }
+
+  return checksum >>> 0
+}
+
+function renderableIdentityLayoutChecksum(renderables: readonly Renderable[]): number {
+  let checksum = renderableLayoutChecksum(renderables)
+
+  for (let index = 0; index < renderables.length; index += 1) {
+    checksum = (checksum + renderables[index]!.num * (index + 1)) | 0
   }
 
   return checksum >>> 0
@@ -996,15 +1010,15 @@ function createScenarios(): BenchmarkScenario[] {
       },
     },
     {
-      name: "root_size_full_render",
-      description: "Dirty the renderer root size so percentage-based descendants recalculate from the top",
+      name: "root_layout_size_full_render",
+      description: "Dirty the RootRenderable Yoga size so percentage-based descendants recalculate from the top",
       setup: async (ctx) => {
         const state = await buildOpencodeLayoutTree(ctx, {
           messageCount: Math.max(56, ctx.height + 16),
           includeVisualBoxes: true,
           includeText: false,
         })
-        await renderUntilLayoutClean(ctx, "root_size_full_render")
+        await renderUntilLayoutClean(ctx, "root_layout_size_full_render")
         const metrics = createMetricsTracker()
 
         let compact = false
@@ -1031,10 +1045,10 @@ function createScenarios(): BenchmarkScenario[] {
             layoutMutationsPerIteration: 2,
             async runIteration() {
               consume(mutate())
-              const passes = await renderMeasuredUntilLayoutClean(ctx, "root_size_full_render", metrics)
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "root_layout_size_full_render", metrics)
               return readProbe() + passes
             },
-            validate: () => validateFullRenderRecalculation(ctx, "root_size_full_render", mutate, readProbe),
+            validate: () => validateFullRenderRecalculation(ctx, "root_layout_size_full_render", mutate, readProbe),
             cleanup: () => {
               ctx.renderer.root.resize(ctx.width, ctx.height)
               state.root.destroyRecursively()
@@ -1450,7 +1464,7 @@ function createScenarios(): BenchmarkScenario[] {
           state.rows.push(row)
           return state.rows.length + state.nextRowId
         }
-        const readProbe = () => renderableLayoutChecksum(state.rows.slice(0, 24))
+        const readProbe = () => renderableIdentityLayoutChecksum(state.rows.slice(0, 24))
 
         return withMetrics(
           {
@@ -2111,10 +2125,11 @@ async function buildScrollboxReflowState(ctx: BenchmarkContext, itemCount: numbe
   ) as ScrollBoxRenderable
   root.add(scrollBox)
 
-  // ScrollBoxRenderable owns wrapper, viewport, content, and two scrollbars.
+  // ScrollBoxRenderable owns wrapper, viewport, content, two scrollbars,
+  // and each scrollbar owns a slider plus two arrows.
   // Count those internal renderables so per-node metrics match traversal scale.
-  stats.renderables += 5
-  stats.layoutNodes += 5
+  stats.renderables += 11
+  stats.layoutNodes += 11
   stats.layoutOnlyBoxes += 3
 
   for (let i = 0; i < itemCount; i += 1) {
@@ -2256,8 +2271,12 @@ async function runScenario(
     const metrics = runtime.readMetrics?.() ?? emptyMetrics()
     const avgSettlePassesPerIteration =
       metrics.measuredIterations > 0 ? metrics.totalSettlePasses / metrics.measuredIterations : 0
-    const avgRenderCommandsPerIteration =
-      metrics.measuredIterations > 0 ? metrics.totalRenderCommands / metrics.measuredIterations : 0
+    const hasUpdateCommandMetrics = runtime.phase === "layout-update"
+    const avgUpdateCommandsPerIteration =
+      hasUpdateCommandMetrics && metrics.measuredIterations > 0
+        ? metrics.totalRenderCommands / metrics.measuredIterations
+        : null
+    const maxUpdateCommands = hasUpdateCommandMetrics ? metrics.maxRenderCommands : null
 
     return {
       name: scenario.name,
@@ -2278,8 +2297,8 @@ async function runScenario(
       measuredMetricIterations: metrics.measuredIterations,
       avgSettlePassesPerIteration,
       maxSettlePasses: metrics.maxSettlePasses,
-      avgRenderCommandsPerIteration,
-      maxRenderCommands: metrics.maxRenderCommands,
+      avgUpdateCommandsPerIteration,
+      maxUpdateCommands,
       medianDurationMs: median(durations),
       bestDurationMs: Math.min(...durations),
       medianOpsPerSecond: median(opsPerSecond),
@@ -2337,6 +2356,14 @@ function formatNumber(value: number): string {
   return value.toFixed(2)
 }
 
+function formatOptionalNumber(value: number | null): string {
+  return value === null ? "-" : formatNumber(value)
+}
+
+function formatOptionalInteger(value: number | null): string {
+  return value === null ? "-" : String(value)
+}
+
 function writeLine(enabled: boolean, line: string): void {
   if (enabled) {
     console.log(line)
@@ -2359,7 +2386,8 @@ function printResults(results: BenchmarkResult[], args: BenchmarkArgs): void {
     "mutations",
     "avg passes",
     "max passes",
-    "avg cmds",
+    "avg update cmds",
+    "max update cmds",
     "median ns/op",
     "p95 ns/op",
     "rme %",
@@ -2374,7 +2402,8 @@ function printResults(results: BenchmarkResult[], args: BenchmarkArgs): void {
     String(result.layoutMutationsPerIteration),
     formatNumber(result.avgSettlePassesPerIteration),
     String(result.maxSettlePasses),
-    formatNumber(result.avgRenderCommandsPerIteration),
+    formatOptionalNumber(result.avgUpdateCommandsPerIteration),
+    formatOptionalInteger(result.maxUpdateCommands),
     formatNumber(result.medianNsPerOperation),
     formatNumber(result.p95NsPerOperation),
     formatNumber(result.rmePercent),
