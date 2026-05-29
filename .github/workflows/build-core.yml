@@ -166,7 +166,7 @@ jobs:
             cd packages/core
             bun run build:lib
             bun run test:native
-            bun run test:js
+            bun run test:js:serial
 
   # Gate job for branch protection
   build-complete:
