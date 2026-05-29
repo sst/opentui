@@ -1,4 +1,9 @@
-import { resolveRenderLib, type NativeYogaMeasureCallback, type RenderLib } from "./zig.js"
+import {
+  resolveRenderLib,
+  type NativeYogaDirtiedCallback,
+  type NativeYogaMeasureCallback,
+  type RenderLib,
+} from "./zig.js"
 import type { FFICallbackInstance, Pointer } from "./platform/ffi.js"
 
 export enum Align {
@@ -238,6 +243,7 @@ export interface Value {
 }
 
 export type MeasureFunction = (width: number, widthMode: MeasureMode, height: number, heightMode: MeasureMode) => Size
+export type DirtiedFunction = (node: Node) => void
 
 type ValueInput = number | "auto" | `${number}%` | Value | undefined
 type ValueInputNoAuto = number | `${number}%` | Value | undefined
@@ -403,6 +409,7 @@ export class Node {
   readonly ptr: Pointer
   private freed = false
   private measureCallback: FFICallbackInstance | null = null
+  private dirtiedCallback: FFICallbackInstance | null = null
 
   private constructor(ptr: Pointer) {
     this.ptr = ptr
@@ -439,6 +446,7 @@ export class Node {
   free(): void {
     if (this.freed) return
     this.unsetMeasureFunc()
+    this.unsetDirtiedFunc()
     lib().yogaNodeFree(this.ptr)
     this.markFreed()
   }
@@ -448,6 +456,7 @@ export class Node {
     const nodes = this.collectSubtree([])
     for (const node of nodes) {
       node.closeMeasureCallback()
+      node.closeDirtiedCallback()
     }
     lib().yogaNodeFreeRecursive(this.ptr)
     for (const node of nodes) {
@@ -458,6 +467,7 @@ export class Node {
   reset(): void {
     if (this.freed) return
     this.unsetMeasureFunc()
+    this.unsetDirtiedFunc()
     lib().yogaNodeReset(this.ptr)
   }
 
@@ -864,6 +874,11 @@ export class Node {
     lib().yogaNodeSetAlwaysFormsContainingBlock(this.ptr, alwaysFormsContainingBlock)
   }
 
+  getAlwaysFormsContainingBlock(): boolean {
+    if (this.freed) return false
+    return lib().yogaNodeGetAlwaysFormsContainingBlock(this.ptr)
+  }
+
   setMeasureFunc(measureFunc: MeasureFunction | null): void {
     if (this.freed) return
     this.unsetMeasureFunc()
@@ -894,6 +909,32 @@ export class Node {
   hasMeasureFunc(): boolean {
     if (this.freed) return false
     return lib().yogaNodeHasMeasureFunc(this.ptr)
+  }
+
+  setDirtiedFunc(dirtiedFunc: DirtiedFunction | null): void {
+    if (this.freed) return
+    this.unsetDirtiedFunc()
+
+    if (!dirtiedFunc) return
+
+    const callback: NativeYogaDirtiedCallback = () => {
+      dirtiedFunc(this)
+    }
+
+    this.dirtiedCallback = lib().createYogaDirtiedCallback(callback)
+    if (!this.dirtiedCallback.ptr) {
+      this.dirtiedCallback.close()
+      this.dirtiedCallback = null
+      throw new Error("Failed to create Yoga dirtied callback")
+    }
+
+    lib().yogaNodeSetDirtiedFunc(this.ptr, this.dirtiedCallback.ptr)
+  }
+
+  unsetDirtiedFunc(): void {
+    if (this.freed) return
+    lib().yogaNodeUnsetDirtiedFunc(this.ptr)
+    this.closeDirtiedCallback()
   }
 
   private setEnum(kind: number, value: number): void {
@@ -940,6 +981,12 @@ export class Node {
     if (!this.measureCallback) return
     this.measureCallback.close()
     this.measureCallback = null
+  }
+
+  private closeDirtiedCallback(): void {
+    if (!this.dirtiedCallback) return
+    this.dirtiedCallback.close()
+    this.dirtiedCallback = null
   }
 
   private markFreed(): void {

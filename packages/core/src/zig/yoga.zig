@@ -68,9 +68,11 @@ pub const ExternalYogaLayout = extern struct {
 
 const CallbackContext = struct {
     measure_callback: ?*const anyopaque = null,
+    dirtied_callback: ?*const anyopaque = null,
 };
 
 const JsMeasureCallback = *const fn (?*anyopaque, f32, u32, f32, u32) callconv(.c) void;
+const JsDirtiedCallback = *const fn () callconv(.c) void;
 const callback_allocator = std.heap.c_allocator;
 
 threadlocal var tls_measure_width: f32 = 0;
@@ -174,6 +176,17 @@ fn freeContext(node: YGNodeRef) void {
     }
 }
 
+fn freeContextIfUnused(node: YGNodeRef) void {
+    const existing = c.YGNodeGetContext(node);
+    if (existing) |ptr| {
+        const ctx: *CallbackContext = @ptrCast(@alignCast(ptr));
+        if (ctx.measure_callback == null and ctx.dirtied_callback == null) {
+            callback_allocator.destroy(ctx);
+            c.YGNodeSetContext(node, null);
+        }
+    }
+}
+
 fn freeContextRecursive(node: YGNodeRef) void {
     const child_count = c.YGNodeGetChildCount(node);
     var index: usize = 0;
@@ -202,6 +215,15 @@ fn internalMeasureFunc(
     }
 
     return .{ .width = tls_measure_width, .height = tls_measure_height };
+}
+
+fn internalDirtiedFunc(node: YGNodeConstRef) callconv(.c) void {
+    if (getContext(node)) |ctx| {
+        if (ctx.dirtied_callback) |callback| {
+            const trampoline: JsDirtiedCallback = @ptrCast(@alignCast(callback));
+            trampoline();
+        }
+    }
 }
 
 export fn yogaConfigCreate() YGConfigRef {
@@ -325,6 +347,10 @@ export fn yogaNodeIsReferenceBaseline(node: YGNodeConstRef) bool {
 
 export fn yogaNodeSetAlwaysFormsContainingBlock(node: YGNodeRef, always_forms_containing_block: bool) void {
     c.YGNodeSetAlwaysFormsContainingBlock(node, always_forms_containing_block);
+}
+
+export fn yogaNodeGetAlwaysFormsContainingBlock(node: YGNodeConstRef) bool {
+    return c.YGNodeGetAlwaysFormsContainingBlock(node);
 }
 
 export fn yogaNodeGetComputedLayout(node: YGNodeConstRef, out_ptr: *ExternalYogaLayout) void {
@@ -506,11 +532,30 @@ export fn yogaNodeUnsetMeasureFunc(node: YGNodeRef) void {
         ctx.measure_callback = null;
     }
     c.YGNodeSetMeasureFunc(node, null);
-    freeContext(node);
+    freeContextIfUnused(node);
 }
 
 export fn yogaNodeHasMeasureFunc(node: YGNodeConstRef) bool {
     return c.YGNodeHasMeasureFunc(node);
+}
+
+export fn yogaNodeSetDirtiedFunc(node: YGNodeRef, callback: ?*const anyopaque) void {
+    if (callback) |callback_ptr| {
+        const ctx = getOrCreateContext(node);
+        ctx.dirtied_callback = callback_ptr;
+        c.YGNodeSetDirtiedFunc(node, &internalDirtiedFunc);
+        return;
+    }
+
+    yogaNodeUnsetDirtiedFunc(node);
+}
+
+export fn yogaNodeUnsetDirtiedFunc(node: YGNodeRef) void {
+    if (getContext(node)) |ctx| {
+        ctx.dirtied_callback = null;
+    }
+    c.YGNodeSetDirtiedFunc(node, null);
+    freeContextIfUnused(node);
 }
 
 export fn yogaStoreMeasureResult(width: f32, height: f32) void {
@@ -554,4 +599,13 @@ test "Yoga wrapper packs style values" {
 
     try std.testing.expectEqual(@as(u32, @intFromEnum(YogaUnit.point)), unit);
     try std.testing.expectApproxEqAbs(@as(f32, 10), value, 0.001);
+}
+
+test "Yoga wrapper stores dirtied callback alongside measure callback" {
+    const node = yogaNodeCreate();
+    defer yogaNodeFree(node);
+
+    yogaNodeSetMeasureFunc(node, null);
+    yogaNodeSetDirtiedFunc(node, null);
+    try std.testing.expect(c.YGNodeGetContext(node) == null);
 }
