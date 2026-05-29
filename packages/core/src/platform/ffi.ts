@@ -508,7 +508,11 @@ export function createKoffiBackend(
             (definition.args ?? []).map((type) => toKoffiFFIType(type, "parameter")),
           )
           const callbackPointer = koffi.register(
-            (...args: any[]) => callback(...normalizeKoffiCallbackArguments(koffi, definition.args ?? [], args)),
+            (...args: any[]) =>
+              normalizeKoffiCallbackReturn(
+                callback(...normalizeKoffiCallbackArguments(koffi, definition.args ?? [], args)),
+                definition.returns ?? FFIType.void,
+              ),
             koffi.pointer(callbackType),
           )
 
@@ -587,8 +591,16 @@ function createKoffiSymbol(
 function normalizeKoffiCallArguments(parameterTypes: readonly FFITypeOrString[], args: readonly unknown[]): unknown[] {
   return args.map((arg, index) => {
     const type = parameterTypes[index]
+    if (type === FFIType.bool) {
+      return Boolean(arg)
+    }
+
     return type != null && isKoffiPointerLike(type) ? toKoffiPointerArgument(arg) : arg
   })
+}
+
+function normalizeKoffiCallbackReturn(value: unknown, type: FFITypeOrString): unknown {
+  return type === FFIType.bool ? Boolean(value) : value
 }
 
 function normalizeKoffiCallbackArguments(

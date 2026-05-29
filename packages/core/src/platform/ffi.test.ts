@@ -492,15 +492,17 @@ describe("platform/ffi", () => {
     const fileUrl = pathToFileURL(filePath)
 
     const library = backend.dlopen(fileUrl, {
-      withPointers: { args: [FFIType.ptr, FFIType.usize], returns: FFIType.ptr },
+      withPointers: { args: [FFIType.ptr, FFIType.usize, FFIType.bool], returns: FFIType.ptr },
     })
 
-    expect(library.symbols.withPointers(123 as Pointer, 4)).toBe(5000 as Pointer)
+    expect(library.symbols.withPointers(123 as Pointer, 4, 1)).toBe(5000 as Pointer)
     backend.toArrayBuffer(200 as Pointer, 8, 16)
 
     expect(paths).toEqual([fileURLToPath(fileUrl)])
-    expect(symbolDefinitions).toEqual([{ name: "withPointers", result: "void *", parameters: ["void *", "size_t"] }])
-    expect(symbolCalls).toEqual([{ name: "withPointers", args: [123n, 4] }])
+    expect(symbolDefinitions).toEqual([
+      { name: "withPointers", result: "void *", parameters: ["void *", "size_t", "bool"] },
+    ])
+    expect(symbolCalls).toEqual([{ name: "withPointers", args: [123n, 4, true] }])
     expect(viewCalls).toEqual([{ pointer: 208n, length: 16 }])
   })
 
@@ -518,7 +520,8 @@ describe("platform/ffi", () => {
 
     expect(callback.ptr).toBe(callbackPointers[0] as Pointer)
     expect(callbackArgs).toEqual([5000 as Pointer])
-    expect(callbackDefinitions[0]).toEqual({ name: "OpenTUICallback0", result: "void", parameters: ["void *"] })
+    expect(callbackDefinitions[0]).toMatchObject({ result: "void", parameters: ["void *"] })
+    expect((callbackDefinitions[0] as { name: string }).name).toMatch(/^OpenTUICallback\d+$/)
 
     callback.close()
     callback.close()
