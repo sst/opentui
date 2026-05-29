@@ -107,17 +107,82 @@ jobs:
           cd packages/core
           bun run test:js
 
+  test_freebsd:
+    name: Test (freebsd-14.3)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download native artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: native-libraries
+          path: packages/core/node_modules/@opentui/
+
+      - name: Run tests in FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.3"
+          usesh: true
+          copyback: false
+          run: |
+            set -e
+            BUN_VERSION=1.3.14
+            ZIG_VERSION=${{ env.ZIG_VERSION }}
+
+            freebsd-version
+            uname -a
+
+            pkg install -y ca_root_nss curl unzip
+
+            curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-freebsd-x64.zip" -o /tmp/bun-freebsd-x64.zip
+            rm -rf /tmp/bun-freebsd-x64
+            unzip -q /tmp/bun-freebsd-x64.zip -d /tmp
+            export PATH="/tmp/bun-freebsd-x64:$PATH"
+            bun --version
+
+            curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-freebsd-${ZIG_VERSION}.tar.xz" -o /tmp/zig-x86_64-freebsd.tar.xz
+            rm -rf "/tmp/zig-x86_64-freebsd-${ZIG_VERSION}"
+            tar -C /tmp -xf /tmp/zig-x86_64-freebsd.tar.xz
+            export PATH="/tmp/zig-x86_64-freebsd-${ZIG_VERSION}:$PATH"
+            zig version
+
+            echo "Checking downloaded freebsd-x64 native artifact..."
+            test -f packages/core/node_modules/@opentui/core-freebsd-x64/libopentui.so
+            rm -rf /tmp/core-freebsd-x64
+            cp -R packages/core/node_modules/@opentui/core-freebsd-x64 /tmp/core-freebsd-x64
+
+            bun install --frozen-lockfile
+
+            rm -rf packages/core/node_modules/@opentui/core-freebsd-x64
+            mkdir -p packages/core/node_modules/@opentui
+            cp -R /tmp/core-freebsd-x64 packages/core/node_modules/@opentui/core-freebsd-x64
+
+            echo "Checking installed freebsd-x64 native library..."
+            test -f packages/core/node_modules/@opentui/core-freebsd-x64/libopentui.so
+
+            cd packages/core
+            bun run build:lib
+            bun run test:native
+            bun run test:js:serial
+
   # Gate job for branch protection
   build-complete:
     name: Core - Build and Test
-    needs: [test]
+    needs: [test, test_freebsd]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check test results
         run: |
           if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "Tests failed"
+            echo "Hosted runner tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.test_freebsd.result }}" != "success" ]; then
+            echo "FreeBSD tests failed"
             exit 1
           fi
           echo "All tests passed"

@@ -4,6 +4,9 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import {
   BUN_DLOPEN_NULL,
   FFIType,
+  KOFFI_CALLBACK_THREADSAFE,
+  KOFFI_NAPI_UNSUPPORTED,
+  KOFFI_POINTER_OVERRIDE,
   LIBRARY_CLOSED,
   NODE_CALLBACK_THREADSAFE,
   NODE_NAPI_UNSUPPORTED,
@@ -14,6 +17,7 @@ import {
   POINTER_NEGATIVE,
   POINTER_UNSAFE,
   createBunBackend,
+  createKoffiBackend,
   createNodeBackend,
   ffiBool,
   toPointer,
@@ -147,6 +151,106 @@ function createMockNodeBackend(options: MockNodeBackendOptions = {}) {
     paths,
     symbolDefinitions,
     toArrayBufferCalls,
+  }
+}
+
+function createMockKoffiBackend() {
+  const events: string[] = []
+  const paths: string[] = []
+  const symbolDefinitions: unknown[] = []
+  const symbolCalls: Array<{ name: string; args: unknown[] }> = []
+  const callbackDefinitions: unknown[] = []
+  const callbackPointers: object[] = []
+  const viewCalls: Array<{ pointer: unknown; length: number }> = []
+  const returnValues = new Map<string, unknown>()
+  const objectPointers = new WeakMap<object, bigint>()
+  let nextObjectPointer = 5000n
+
+  function address(value: unknown): bigint {
+    if (typeof value === "bigint") {
+      return value
+    }
+
+    if (typeof value === "number") {
+      return BigInt(value)
+    }
+
+    if ((typeof value !== "object" && typeof value !== "function") || value == null) {
+      throw new TypeError("mock Koffi address expects a pointer-like value")
+    }
+
+    let pointer = objectPointers.get(value)
+    if (pointer == null) {
+      pointer = nextObjectPointer
+      nextObjectPointer += 100n
+      objectPointers.set(value, pointer)
+    }
+
+    return pointer
+  }
+
+  const backend = createKoffiBackend(
+    {
+      address,
+      load(path: string) {
+        paths.push(path)
+        return {
+          func(name: string, result: string, parameters: readonly unknown[]) {
+            symbolDefinitions.push({ name, result, parameters })
+            return (...args: unknown[]) => {
+              symbolCalls.push({ name, args })
+              return returnValues.get(name)
+            }
+          },
+          unload() {
+            events.push("library.unload")
+          },
+        }
+      },
+      pointer(type: unknown) {
+        return { pointerTo: type }
+      },
+      proto(name: string, result: string, parameters: readonly unknown[]) {
+        const definition = { name, result, parameters }
+        callbackDefinitions.push(definition)
+        return definition
+      },
+      register(callback: (...args: any[]) => any, type: unknown) {
+        const pointer = { id: callbackPointers.length + 1 }
+        callbackPointers.push(pointer)
+        events.push(`callback.register:${pointer.id}`)
+        callbackDefinitions.push({ callback, type })
+        return pointer
+      },
+      unregister(pointer: { id?: number }) {
+        events.push(`callback.unregister:${pointer.id}`)
+      },
+      view(pointer: unknown, length: number) {
+        viewCalls.push({ pointer, length })
+        return new ArrayBuffer(length)
+      },
+    },
+    {
+      ptr(value) {
+        return Number(address(value)) as Pointer
+      },
+      toArrayBuffer(pointer, offset, length) {
+        viewCalls.push({ pointer: BigInt(pointer) + BigInt(offset ?? 0), length })
+        return new ArrayBuffer(length)
+      },
+    },
+  )
+
+  return {
+    backend,
+    callbackDefinitions,
+    callbackPointers,
+    events,
+    paths,
+    returnValues,
+    symbolCalls,
+    symbolDefinitions,
+    viewCalls,
   }
 }
 
@@ -378,6 +482,79 @@ describe("platform/ffi", () => {
     expect(node.paths).toEqual([null])
 
     expect(() => bun.backend.dlopen(null, {})).toThrow(BUN_DLOPEN_NULL)
+  })
+
+  test("loads Koffi symbols and normalizes pointer boundaries", () => {
+    const { backend, paths, returnValues, symbolCalls, symbolDefinitions, viewCalls } = createMockKoffiBackend()
+    const returnedPointer = { native: true }
+    returnValues.set("withPointers", returnedPointer)
+    returnValues.set("withU64", 42)
+    const filePath = join(process.cwd(), "libopentui.mock")
+    const fileUrl = pathToFileURL(filePath)
+
+    const library = backend.dlopen(fileUrl, {
+      withPointers: { args: [FFIType.ptr, FFIType.usize, FFIType.bool], returns: FFIType.ptr },
+      withU64: { returns: FFIType.u64 },
+    })
+
+    expect(library.symbols.withPointers(123 as Pointer, 4, 1)).toBe(5000 as Pointer)
+    expect(library.symbols.withU64()).toBe(42n)
+    backend.toArrayBuffer(200 as Pointer, 8, 16)
+
+    expect(paths).toEqual([fileURLToPath(fileUrl)])
+    expect(symbolDefinitions).toEqual([
+      { name: "withPointers", result: "void *", parameters: ["void *", "size_t", "bool"] },
+      { name: "withU64", result: "uint64_t", parameters: [] },
+    ])
+    expect(symbolCalls).toEqual([
+      { name: "withPointers", args: [123n, 4, true] },
+      { name: "withU64", args: [] },
+    ])
+    expect(viewCalls).toEqual([{ pointer: 208n, length: 16 }])
+  })
+
+  test("manages Koffi callbacks and normalizes callback pointer arguments", () => {
+    const { backend, callbackDefinitions, callbackPointers, events } = createMockKoffiBackend()
+    const library = backend.dlopen("mock", {})
+    const callbackArgs: unknown[] = []
+    const callback = library.createCallback((pointer: Pointer) => callbackArgs.push(pointer), {
+      args: [FFIType.ptr],
+      returns: FFIType.void,
+    })
+    const nativePointer = { native: true }
+
+    ;(callbackDefinitions[1] as { callback: (...args: unknown[]) => void }).callback(nativePointer)
+
+    expect(callback.ptr).toBe(callbackPointers[0] as Pointer)
+    expect(callbackArgs).toEqual([5000 as Pointer])
+    expect(callbackDefinitions[0]).toMatchObject({ result: "void", parameters: ["void *"] })
+    expect((callbackDefinitions[0] as { name: string }).name).toMatch(/^OpenTUICallback\d+$/)
+
+    callback.close()
+    callback.close()
+    library.close()
+
+    expect(callback.ptr).toBeNull()
+    expect(events).toEqual(["callback.register:1", "callback.unregister:1", "library.unload"])
+  })
+
+  test("rejects Koffi unsupported callback and symbol definitions", () => {
+    const { backend } = createMockKoffiBackend()
+
+    expect(() => backend.dlopen("mock", { withPtr: { ptr: 1n as Pointer, returns: FFIType.void } })).toThrow(
+      KOFFI_POINTER_OVERRIDE,
+    )
+    expect(() => backend.dlopen("mock", { withNapi: { args: [FFIType.napi_env], returns: FFIType.void } })).toThrow(
+      KOFFI_NAPI_UNSUPPORTED,
+    )
+
+    const library = backend.dlopen("mock", {})
+    expect(() => library.createCallback(() => undefined, { returns: FFIType.void, threadsafe: true })).toThrow(
+      KOFFI_CALLBACK_THREADSAFE,
+    )
+    expect(() => library.createCallback(() => undefined, { ptr: 1n as Pointer, returns: FFIType.void })).toThrow(
+      KOFFI_POINTER_OVERRIDE,
+    )
   })
 
   test("manages Node callbacks through the loaded library", () => {

@@ -144,7 +144,7 @@ function collectTargets(flags: Flags): CleanTarget[] {
 
     const coreOpentui = join(packagesDir, "core", "node_modules", "@opentui")
     for (const entry of safeReaddir(coreOpentui)) {
-      if (entry.isDirectory() && /^core-(darwin|linux|win32)-(x64|arm64)$/.test(entry.name)) {
+      if (entry.isDirectory() && /^core-((darwin|linux|win32)-(x64|arm64)|freebsd-x64)$/.test(entry.name)) {
         add(join(coreOpentui, entry.name), "prebuilt native package")
       }
     }

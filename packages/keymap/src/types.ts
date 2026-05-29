@@ -12,7 +12,7 @@ export interface KeymapEvent {
   readonly propagationStopped: boolean
 }
 
-export type HostPlatform = "macos" | "windows" | "linux" | "unknown"
+export type HostPlatform = "macos" | "windows" | "linux" | "freebsd" | "unknown"
 
 export type HostModifier = "ctrl" | "shift" | "meta" | "super" | "hyper"
 

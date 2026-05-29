@@ -24,6 +24,7 @@
     "bench:ts": "bun src/benchmark/native-span-feed-benchmark.ts --suite=quick --json=src/benchmark/latest-quick-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=default --json=src/benchmark/latest-default-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=large --json=src/benchmark/latest-large-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=all --json=src/benchmark/latest-all-bench-run.json && bun src/benchmark/native-span-feed-async-benchmark.ts --json=src/benchmark/latest-async-bench-run.json",
     "publish": "bun scripts/publish.ts",
     "test:js": "bun test",
+    "test:js:serial": "bun scripts/test-js-serial.ts",
     "test": "bun run test:native && bun run test:js"
   },
   "license": "MIT",
@@ -38,6 +39,7 @@
   "dependencies": {
     "bun-ffi-structs": "0.2.2",
     "diff": "9.0.0",
+    "koffi": "2.15.6",
     "marked": "17.0.1",
     "string-width": "7.2.0",
     "strip-ansi": "7.1.2",
@@ -49,6 +51,7 @@
   "optionalDependencies": {
     "@opentui/core-darwin-x64": "0.3.0",
     "@opentui/core-darwin-arm64": "0.3.0",
+    "@opentui/core-freebsd-x64": "0.3.0",
     "@opentui/core-linux-x64": "0.3.0",
     "@opentui/core-linux-arm64": "0.3.0",
     "@opentui/core-win32-x64": "0.3.0",

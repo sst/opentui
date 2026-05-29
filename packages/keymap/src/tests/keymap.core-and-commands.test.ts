@@ -65,7 +65,9 @@ describe("keymap: core and commands", () => {
           ? "windows"
           : process.platform === "linux"
             ? "linux"
-            : "unknown"
+            : process.platform === "freebsd"
+              ? "freebsd"
+              : "unknown"
 
     expect(keymap.getHostMetadata()).toEqual({
       platform,
@@ -78,6 +80,19 @@ describe("keymap: core and commands", () => {
         hyper: "unknown",
       },
     })
+  })
+
+  test("OpenTUI host maps FreeBSD platform metadata", () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, "platform", { value: "freebsd", configurable: true, writable: true })
+
+    try {
+      const keymap = createBareKeymap(renderer)
+      expect(keymap.getHostMetadata().platform).toBe("freebsd")
+      expect(keymap.getHostMetadata().primaryModifier).toBe("ctrl")
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true, writable: true })
+    }
   })
 
   test("OpenTUI host marks super and hyper supported when terminal capabilities report Kitty keyboard", () => {

@@ -181,7 +181,7 @@ describe("html keymap adapter", () => {
     const keymap = createBareHtmlKeymap(root as unknown as HTMLElement)
     const metadata = keymap.getHostMetadata()
 
-    expect(["macos", "windows", "linux", "unknown"]).toContain(metadata.platform)
+    expect(["macos", "windows", "linux", "freebsd", "unknown"]).toContain(metadata.platform)
     expect(metadata.primaryModifier).toBe(
       metadata.platform === "macos" ? "super" : metadata.platform === "unknown" ? "unknown" : "ctrl",
     )
@@ -192,6 +192,27 @@ describe("html keymap adapter", () => {
       super: "supported",
       hyper: "unsupported",
     })
+  })
+
+  test("HTML host maps FreeBSD platform metadata", () => {
+    const originalNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "navigator", {
+      value: { userAgentData: { platform: "FreeBSD" }, platform: "FreeBSD amd64", userAgent: "FreeBSD" },
+      configurable: true,
+      writable: true,
+    })
+
+    try {
+      const keymap = createBareHtmlKeymap(root as unknown as HTMLElement)
+      expect(keymap.getHostMetadata().platform).toBe("freebsd")
+      expect(keymap.getHostMetadata().primaryModifier).toBe("ctrl")
+    } finally {
+      Object.defineProperty(globalThis, "navigator", {
+        value: originalNavigator,
+        configurable: true,
+        writable: true,
+      })
+    }
   })
 
   test("createHtmlKeymap stays bare until addons are installed", () => {

@@ -146,6 +146,26 @@ interface NodeFfiBackend {
   toArrayBuffer(pointer: bigint, length: number, copy?: boolean): ArrayBuffer
 }
 
+interface KoffiLibrary {
+  func(name: string, result: string, parameters: readonly unknown[]): (...args: any[]) => any
+  unload(): void
+}
+
+interface KoffiBackend {
+  address(value: unknown): bigint
+  load(path: string): KoffiLibrary
+  pointer(type: unknown): unknown
+  proto(name: string, result: string, parameters: readonly unknown[]): unknown
+  register(callback: (...args: any[]) => any, type: unknown): unknown
+  unregister(pointer: unknown): void
+  view(pointer: unknown, length: number): ArrayBuffer
+}
+
+interface KoffiMemoryBackend {
+  ptr(value: PointerSource): Pointer
+  toArrayBuffer(pointer: BunPointer, offset: number | undefined, length: number): ArrayBuffer
+}
+
 export const FFI_UNAVAILABLE = "OpenTUI native FFI is not available for this runtime yet"
 export const BUN_DLOPEN_NULL = "Bun FFI backend does not support dlopen(null)"
 export const LIBRARY_CLOSED = "Cannot create FFI callback after library.close() has been called"
@@ -157,6 +177,9 @@ export const NODE_PTR_VALUE =
   "node:ffi ptr() only supports ArrayBuffer and ArrayBufferView values backed by ArrayBuffer"
 export const NODE_STRING_RETURN = "Node FFI backend does not normalize string return values (yet)"
 export const NODE_USIZE_UNSUPPORTED = "Node FFI backend does not support usize until (yet)"
+export const KOFFI_CALLBACK_THREADSAFE = "Koffi FFI callbacks do not support threadsafe callbacks"
+export const KOFFI_NAPI_UNSUPPORTED = "Koffi FFI backend does not support Bun N-API FFI types"
+export const KOFFI_POINTER_OVERRIDE = "Koffi FFI backend does not support FFIFunction.ptr overrides"
 export const POINTER_NEGATIVE = "Pointer must be non-negative"
 export const POINTER_UNSAFE = "Pointer exceeds safe integer range"
 
@@ -193,6 +216,10 @@ function loadBackend(): FfiBackend {
   // Keep the Bun module import behind the runtime check so Node does not
   // resolve bun:ffi during import.
   if (isBun) {
+    if (process.platform === "freebsd") {
+      return createKoffiBackend(requireModule("koffi") as KoffiBackend)
+    }
+
     return createBunBackend(requireModule("bun:ffi") as BunFfiBackend)
   }
 
@@ -440,8 +467,279 @@ export function createNodeBackend(nodeFfi: NodeFfiBackend): FfiBackend {
   }
 }
 
+// Create a Koffi backend for runtimes where bun:ffi cannot dlopen native
+// libraries. Bun's FreeBSD builds currently ship with TinyCC disabled, but
+// Koffi's static trampolines work there through Bun's Node-API support.
+export function createKoffiBackend(
+  koffi: KoffiBackend,
+  memory: KoffiMemoryBackend | undefined = isBun ? (requireModule("bun:ffi") as BunFfiBackend) : undefined,
+): FfiBackend {
+  return {
+    dlopen(path, symbols) {
+      const library = koffi.load(path instanceof URL ? fileURLToPath(path) : path)
+      const callbacks = new Set<FFICallbackInstance>()
+      let closed = false
+
+      const loadedSymbols = Object.fromEntries(
+        Object.entries(symbols).map(([name, definition]) => [
+          name,
+          createKoffiSymbol(koffi, library, name, definition),
+        ]),
+      ) as { [K in keyof typeof symbols]: (...args: any[]) => any }
+
+      return {
+        symbols: loadedSymbols,
+        createCallback(callback, definition) {
+          if (closed) {
+            throw new Error(LIBRARY_CLOSED)
+          }
+
+          if (definition.threadsafe) {
+            throw new Error(KOFFI_CALLBACK_THREADSAFE)
+          }
+
+          if (definition.ptr != null) {
+            throw new Error(KOFFI_POINTER_OVERRIDE)
+          }
+
+          const callbackType = koffi.proto(
+            `OpenTUICallback${nextKoffiCallbackId++}`,
+            toKoffiFFIType(definition.returns ?? FFIType.void, "result"),
+            (definition.args ?? []).map((type) => toKoffiFFIType(type, "parameter")),
+          )
+          const callbackPointer = koffi.register(
+            (...args: any[]) =>
+              normalizeKoffiCallbackReturn(
+                callback(...normalizeKoffiCallbackArguments(koffi, definition.args ?? [], args)),
+                definition.returns ?? FFIType.void,
+              ),
+            koffi.pointer(callbackType),
+          )
+
+          const raw: FFICallbackInstance = {
+            ptr: callbackPointer as Pointer,
+            threadsafe: false,
+            close() {
+              koffi.unregister(callbackPointer)
+            },
+          }
+
+          return createManagedCallback(raw, callbacks)
+        },
+        close() {
+          if (closed) {
+            return
+          }
+
+          closed = true
+
+          try {
+            library.unload()
+          } finally {
+            for (const callback of [...callbacks]) {
+              callback.close()
+            }
+          }
+        },
+      }
+    },
+    ptr(value) {
+      return memory?.ptr(value) ?? normalizeKoffiPointer(koffi.address(value))
+    },
+    suffix: nativeLibrarySuffix(),
+    toArrayBuffer(pointer, offset, length) {
+      if (memory) {
+        return memory.toArrayBuffer(toBunPointer(pointer), offset, length)
+      }
+
+      return koffi.view(toBigIntPointer(pointer) + BigInt(offset ?? 0), length)
+    },
+  }
+}
+
 function toNodeLibraryPath(path: string | URL | null): string | null {
   return path instanceof URL ? fileURLToPath(path) : path
+}
+
+let nextKoffiCallbackId = 0
+
+function createKoffiSymbol(
+  koffi: KoffiBackend,
+  library: KoffiLibrary,
+  name: string,
+  definition: FFIFunction,
+): (...args: any[]) => any {
+  if (definition.ptr != null) {
+    throw new Error(KOFFI_POINTER_OVERRIDE)
+  }
+
+  const parameterTypes = definition.args ?? []
+  const symbol = library.func(
+    name,
+    toKoffiFFIType(definition.returns ?? FFIType.void, "result"),
+    parameterTypes.map((type) => toKoffiFFIType(type, "parameter")),
+  )
+
+  return (...args: any[]) =>
+    normalizeKoffiReturn(
+      koffi,
+      symbol(...normalizeKoffiCallArguments(parameterTypes, args)),
+      definition.returns ?? FFIType.void,
+    )
+}
+
+function normalizeKoffiCallArguments(parameterTypes: readonly FFITypeOrString[], args: readonly unknown[]): unknown[] {
+  return args.map((arg, index) => {
+    const type = parameterTypes[index]
+    if (type === FFIType.bool) {
+      return Boolean(arg)
+    }
+
+    return type != null && isKoffiPointerLike(type) ? toKoffiPointerArgument(arg) : arg
+  })
+}
+
+function normalizeKoffiCallbackReturn(value: unknown, type: FFITypeOrString): unknown {
+  return type === FFIType.bool ? Boolean(value) : value
+}
+
+function normalizeKoffiCallbackArguments(
+  koffi: KoffiBackend,
+  parameterTypes: readonly FFITypeOrString[],
+  args: readonly unknown[],
+): unknown[] {
+  return args.map((arg, index) => {
+    const type = parameterTypes[index]
+    if (
+      type == null ||
+      !isKoffiPointerLike(type) ||
+      arg == null ||
+      typeof arg === "number" ||
+      typeof arg === "bigint"
+    ) {
+      return arg
+    }
+
+    return normalizeKoffiPointer(koffi.address(arg))
+  })
+}
+
+function normalizeKoffiReturn(koffi: KoffiBackend, value: unknown, type: FFITypeOrString): unknown {
+  if (!isKoffiPointerLike(type) || value == null || type === FFIType.cstring) {
+    if (isKoffiBigIntReturn(type) && typeof value === "number") {
+      return BigInt(value)
+    }
+
+    return value
+  }
+
+  if (typeof value === "number" || typeof value === "bigint") {
+    return normalizeKoffiPointer(value)
+  }
+
+  return normalizeKoffiPointer(koffi.address(value))
+}
+
+function isKoffiBigIntReturn(type: FFITypeOrString): boolean {
+  return type === FFIType.int64_t || type === FFIType.i64 || type === FFIType.uint64_t || type === FFIType.u64
+}
+
+function normalizeKoffiPointer(pointer: number | bigint): Pointer {
+  const bigintPointer = typeof pointer === "bigint" ? pointer : toSafeBigIntPointer(pointer)
+  return (isBun ? toSafeNumberPointer(bigintPointer) : bigintPointer) as Pointer
+}
+
+function toKoffiPointerArgument(value: unknown): unknown {
+  if (value == null || (typeof value !== "number" && typeof value !== "bigint")) {
+    return value
+  }
+
+  return toBigIntPointer(value as Pointer)
+}
+
+function isKoffiPointerLike(type: FFITypeOrString): boolean {
+  return (
+    type === FFIType.ptr ||
+    type === FFIType.pointer ||
+    type === FFIType.function ||
+    type === FFIType.callback ||
+    type === FFIType.buffer ||
+    type === FFIType.cstring
+  )
+}
+
+function toKoffiFFIType(type: FFITypeOrString, _position: "parameter" | "result"): string {
+  switch (type) {
+    case FFIType.char:
+      return "char"
+    case FFIType.int8_t:
+    case FFIType.i8:
+      return "int8_t"
+    case FFIType.uint8_t:
+    case FFIType.u8:
+      return "uint8_t"
+    case FFIType.int16_t:
+    case FFIType.i16:
+      return "int16_t"
+    case FFIType.uint16_t:
+    case FFIType.u16:
+      return "uint16_t"
+    case FFIType.int32_t:
+    case FFIType.i32:
+      return "int32_t"
+    case FFIType.int:
+      return "int"
+    case FFIType.uint32_t:
+    case FFIType.u32:
+      return "uint32_t"
+    case FFIType.int64_t:
+    case FFIType.i64:
+      return "int64_t"
+    case FFIType.uint64_t:
+    case FFIType.u64:
+      return "uint64_t"
+    case FFIType.double:
+    case FFIType.f64:
+      return "double"
+    case FFIType.float:
+    case FFIType.f32:
+      return "float"
+    case FFIType.bool:
+      return "bool"
+    case FFIType.ptr:
+    case FFIType.pointer:
+    case FFIType.function:
+    case FFIType.callback:
+      return "void *"
+    case FFIType.void:
+      return "void"
+    case FFIType.cstring:
+      return "str"
+    case FFIType.usize:
+      return "size_t"
+    case FFIType.napi_env:
+    case FFIType.napi_value:
+      throw new Error(KOFFI_NAPI_UNSUPPORTED)
+    case FFIType.buffer:
+      return "void *"
+    default:
+      return unsupportedKoffiFFIType(type)
+  }
+}
+
+function unsupportedKoffiFFIType(type: never): never {
+  throw new Error(`Unsupported FFIType for Koffi: ${String(type)}`)
+}
+
+function nativeLibrarySuffix(): string {
+  switch (process.platform) {
+    case "darwin":
+      return "dylib"
+    case "win32":
+      return "dll"
+    default:
+      return "so"
+  }
 }
 
 function normalizeNodeDefinitions<Fns extends Record<string, FFIFunction>>(

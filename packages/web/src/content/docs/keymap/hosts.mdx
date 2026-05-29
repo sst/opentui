@@ -52,8 +52,8 @@ Host metadata is available through `keymap.getHostMetadata()`. `primaryModifier`
 
 | Metadata field    | Meaning                                                          |
 | ----------------- | ---------------------------------------------------------------- |
-| `platform`        | `macos`, `windows`, `linux` or `unknown`                         |
-| `primaryModifier` | `super` on macOS, `ctrl` on Windows/Linux, or `unknown`          |
+| `platform`        | `macos`, `windows`, `linux`, `freebsd` or `unknown`              |
+| `primaryModifier` | `super` on macOS, `ctrl` on Windows/Linux/FreeBSD, or `unknown`  |
 | `modifiers`       | Host capability for `ctrl`, `shift`, `meta`, `super` and `hyper` |
 
 Host key events must satisfy `KeymapEvent`:

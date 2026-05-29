@@ -30,6 +30,10 @@ function normalizeRuntimePlatform(platform: NodeJS.Platform | string | undefined
     return "linux"
   }
 
+  if (platform === "freebsd") {
+    return "freebsd"
+  }
+
   return "unknown"
 }
 

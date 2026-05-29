@@ -46,6 +46,7 @@ const gpaSafeStats = args.includes("--gpa-safe-stats")
 const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
   { platform: "darwin", arch: "arm64" },
+  { platform: "freebsd", arch: "x64" },
   { platform: "linux", arch: "x64" },
   { platform: "linux", arch: "arm64" },
   { platform: "win32", arch: "x64" },
@@ -339,7 +340,7 @@ if (buildLib) {
 
   const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
 
-  const tscResult: SpawnSyncReturns<Buffer> = spawnSync("bunx", ["tsc", "-p", tsconfigBuildPath], {
+  const tscResult: SpawnSyncReturns<Buffer> = spawnSync("bun", ["x", "tsc", "-p", tsconfigBuildPath], {
     cwd: rootDir,
     stdio: "inherit",
   })

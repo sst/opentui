@@ -79,6 +79,10 @@ function normalizeHostPlatform(value: string | undefined): HostPlatform {
     return "linux"
   }
 
+  if (normalized.includes("freebsd")) {
+    return "freebsd"
+  }
+
   return "unknown"
 }
 

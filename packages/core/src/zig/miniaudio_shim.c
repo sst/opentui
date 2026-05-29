@@ -11,6 +11,11 @@
 #define MA_ENABLE_COREAUDIO
 #endif
 
+#if defined(__FreeBSD__)
+#define MA_ENABLE_ONLY_SPECIFIC_BACKENDS
+#define MA_ENABLE_OSS
+#endif
+
 #if defined(_WIN32)
 #define MA_ENABLE_ONLY_SPECIFIC_BACKENDS
 #define MA_ENABLE_WASAPI

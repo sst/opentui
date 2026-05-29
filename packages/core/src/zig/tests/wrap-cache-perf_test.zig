@@ -7,13 +7,11 @@ const link = @import("../link.zig");
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 
-test "word wrap complexity - width changes are O(n)" {
+fn measureWrapRebuildBatch(size: usize, width: u32, rebuild_count: usize) !u64 {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     const link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
-
-    const size: usize = 100_000;
 
     const text = try std.testing.allocator.alloc(u8, size);
     defer std.testing.allocator.free(text);
@@ -27,43 +25,37 @@ test "word wrap complexity - width changes are O(n)" {
     defer view.deinit();
     view.setWrapMode(.word);
 
-    const widths = [_]u32{ 60, 70, 80, 90, 100 };
+    var timer = std.time.Timer.start() catch unreachable;
+    for (0..rebuild_count) |_| {
+        view.setWrapWidth(width + 1);
+        _ = view.getVirtualLineCount();
 
-    // Run multiple iterations and use median to reduce noise from CI variability
-    const iterations = 5;
-    var median_times: [widths.len]u64 = undefined;
-
-    for (widths, 0..) |width, width_idx| {
-        var iter_times: [iterations]u64 = undefined;
-
-        for (0..iterations) |iter| {
-            // Reset cache by setting a different width first
-            view.setWrapWidth(50);
-            _ = view.getVirtualLineCount();
-
-            view.setWrapWidth(width);
-            var timer = std.time.Timer.start() catch unreachable;
-            _ = view.getVirtualLineCount();
-            iter_times[iter] = timer.read();
-        }
-
-        // Sort and take median
-        std.mem.sort(u64, &iter_times, {}, std.sort.asc(u64));
-        median_times[width_idx] = iter_times[iterations / 2];
+        view.setWrapWidth(width);
+        _ = view.getVirtualLineCount();
     }
 
-    var min_time: u64 = std.math.maxInt(u64);
-    var max_time: u64 = 0;
-    for (median_times) |t| {
-        min_time = @min(min_time, t);
-        max_time = @max(max_time, t);
-    }
+    return timer.read();
+}
 
-    const ratio = @as(f64, @floatFromInt(max_time)) / @as(f64, @floatFromInt(min_time));
+test "word wrap complexity - width changes are O(n)" {
+    const small_size: usize = 100_000;
+    const large_size: usize = 1_000_000;
+    const width: u32 = 80;
+    const rebuild_count = 10;
 
-    // All times should be roughly similar since text size is constant.
-    // Use a generous threshold (5x) to account for CI runner variability.
-    try std.testing.expect(ratio < 5.0);
+    const small_ns = try measureWrapRebuildBatch(small_size, width, rebuild_count);
+    const large_ns = try measureWrapRebuildBatch(large_size, width, rebuild_count);
+
+    try std.testing.expect(small_ns > 0);
+    try std.testing.expect(large_ns > 0);
+
+    const input_ratio = @as(f64, @floatFromInt(large_size)) / @as(f64, @floatFromInt(small_size));
+    const time_ratio = @as(f64, @floatFromInt(large_ns)) / @as(f64, @floatFromInt(small_ns));
+
+    // A linear rebuild should scale near input size. The multiplier keeps the
+    // assertion stable under VM/QEMU scheduling while still catching O(n^2)
+    // growth, which would be about input_ratio * input_ratio here.
+    try std.testing.expect(time_ratio < input_ratio * 5.0);
 }
 
 test "word wrap - virtual line count correctness" {
