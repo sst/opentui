@@ -8,7 +8,8 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
-import { BoxRenderable, RGBA, ScrollBoxRenderable, TextRenderable, type Renderable } from "../index.js"
+import { BoxRenderable, RGBA, ScrollBoxRenderable, TextRenderable } from "../index.js"
+import type { Renderable, RenderCommand } from "../Renderable.js"
 import { createTestRenderer, type TestRenderer } from "../testing.js"
 
 const DEFAULT_ITERATIONS = 100
@@ -19,9 +20,18 @@ const DEFAULT_WIDTH = 140
 const DEFAULT_HEIGHT = 44
 const MAX_LAYOUT_SETTLE_PASSES = 4
 
-type BenchmarkKind = "baseline" | "layout-recalc" | "text-measure" | "tree-mutation" | "scrollbox"
-type BenchmarkPhase = "calculate-layout" | "full-render"
-type RenderPassMode = "calculate-only" | "single-frame" | "settle-layout"
+type BenchmarkKind =
+  | "baseline"
+  | "layout-recalc"
+  | "text-measure"
+  | "tree-mutation"
+  | "scrollbox"
+  | "top-branch"
+  | "wide-shallow"
+  | "deep-chain"
+  | "root-resize"
+type BenchmarkPhase = "calculate-layout" | "layout-update" | "full-render"
+type RenderPassMode = "calculate-only" | "calculate-update" | "single-frame" | "settle-layout"
 
 interface BenchmarkArgs {
   iterations: number
@@ -60,7 +70,24 @@ interface ScenarioRuntime {
   layoutMutationsPerIteration: number
   runIteration: (iteration: number) => unknown | Promise<unknown>
   validate?: () => void | Promise<void>
+  resetMetrics?: () => void
+  readMetrics?: () => ScenarioMetricsSnapshot
   cleanup: () => void | Promise<void>
+}
+
+interface ScenarioMetricsSnapshot {
+  measuredIterations: number
+  totalSettlePasses: number
+  maxSettlePasses: number
+  totalRenderCommands: number
+  maxRenderCommands: number
+}
+
+interface ScenarioMetricsTracker {
+  recordSettlePasses: (passes: number) => void
+  recordRenderCommands: (commands: number) => void
+  reset: () => void
+  snapshot: () => ScenarioMetricsSnapshot
 }
 
 interface BenchmarkScenario {
@@ -93,6 +120,11 @@ interface BenchmarkResult {
   layoutNodesPerIteration: number
   layoutOnlyBoxesPerIteration: number
   layoutMutationsPerIteration: number
+  measuredMetricIterations: number
+  avgSettlePassesPerIteration: number
+  maxSettlePasses: number
+  avgRenderCommandsPerIteration: number
+  maxRenderCommands: number
   medianDurationMs: number
   bestDurationMs: number
   medianOpsPerSecond: number
@@ -111,8 +143,27 @@ interface BenchmarkSinkState {
 
 interface OpencodeLayoutTreeState {
   root: BoxRenderable
+  header: BoxRenderable
+  body: BoxRenderable
+  sidebar: BoxRenderable
+  main: BoxRenderable
+  footer: BoxRenderable
   rows: BoxRenderable[]
   badges: BoxRenderable[]
+  stats: TreeStats
+}
+
+interface WideShallowTreeState {
+  root: BoxRenderable
+  container: BoxRenderable
+  children: BoxRenderable[]
+  stats: TreeStats
+}
+
+interface DeepChainTreeState {
+  root: BoxRenderable
+  nodes: BoxRenderable[]
+  leaf: BoxRenderable
   stats: TreeStats
 }
 
@@ -393,6 +444,59 @@ function roundIterations(value: number): number {
   return Math.ceil(value / 1_000) * 1_000
 }
 
+function createMetricsTracker(): ScenarioMetricsTracker {
+  const metrics: ScenarioMetricsSnapshot = {
+    measuredIterations: 0,
+    totalSettlePasses: 0,
+    maxSettlePasses: 0,
+    totalRenderCommands: 0,
+    maxRenderCommands: 0,
+  }
+
+  return {
+    recordSettlePasses(passes) {
+      metrics.measuredIterations += 1
+      metrics.totalSettlePasses += passes
+      metrics.maxSettlePasses = Math.max(metrics.maxSettlePasses, passes)
+    },
+    recordRenderCommands(commands) {
+      metrics.totalRenderCommands += commands
+      metrics.maxRenderCommands = Math.max(metrics.maxRenderCommands, commands)
+    },
+    reset() {
+      metrics.measuredIterations = 0
+      metrics.totalSettlePasses = 0
+      metrics.maxSettlePasses = 0
+      metrics.totalRenderCommands = 0
+      metrics.maxRenderCommands = 0
+    },
+    snapshot() {
+      return { ...metrics }
+    },
+  }
+}
+
+function withMetrics(
+  runtime: Omit<ScenarioRuntime, "resetMetrics" | "readMetrics">,
+  metrics: ScenarioMetricsTracker,
+): ScenarioRuntime {
+  return {
+    ...runtime,
+    resetMetrics: metrics.reset,
+    readMetrics: metrics.snapshot,
+  }
+}
+
+function emptyMetrics(): ScenarioMetricsSnapshot {
+  return {
+    measuredIterations: 0,
+    totalSettlePasses: 0,
+    maxSettlePasses: 0,
+    totalRenderCommands: 0,
+    maxRenderCommands: 0,
+  }
+}
+
 function isRootLayoutDirty(ctx: BenchmarkContext): boolean {
   return ctx.renderer.root.getLayoutNode().isDirty()
 }
@@ -424,10 +528,41 @@ async function renderUntilLayoutClean(ctx: BenchmarkContext, scenarioName: strin
   return passes
 }
 
+async function renderMeasuredUntilLayoutClean(
+  ctx: BenchmarkContext,
+  scenarioName: string,
+  metrics: ScenarioMetricsTracker,
+): Promise<number> {
+  const passes = await renderUntilLayoutClean(ctx, scenarioName)
+  metrics.recordSettlePasses(passes)
+  return passes
+}
+
 function calculateLayout(ctx: BenchmarkContext, scenarioName: string): number {
   ctx.renderer.root.calculateLayout()
   assertLayoutClean(ctx, scenarioName)
   return 1
+}
+
+function advanceLayoutFrame(ctx: BenchmarkContext): void {
+  ;(ctx.renderer as unknown as { _frameId: number })._frameId += 1
+}
+
+function calculateAndUpdateLayout(
+  ctx: BenchmarkContext,
+  scenarioName: string,
+  metrics: ScenarioMetricsTracker,
+): number {
+  calculateLayout(ctx, scenarioName)
+  advanceLayoutFrame(ctx)
+
+  const renderList: RenderCommand[] = []
+  ctx.renderer.root.updateLayout(0, renderList)
+  assertLayoutClean(ctx, scenarioName)
+
+  metrics.recordSettlePasses(1)
+  metrics.recordRenderCommands(renderList.length)
+  return renderList.length
 }
 
 async function validateFullRenderRecalculation(
@@ -463,6 +598,33 @@ async function validateFullRenderRecalculation(
   consume(before + afterFirst + afterSecond + firstPasses + secondPasses)
 }
 
+async function validateContentRecalculation(
+  ctx: BenchmarkContext,
+  scenarioName: string,
+  mutate: (iteration: number) => unknown,
+  readContentProbe: () => number,
+): Promise<void> {
+  await renderUntilLayoutClean(ctx, scenarioName)
+  assertLayoutClean(ctx, scenarioName)
+
+  const before = readContentProbe()
+  consume(mutate(0))
+  assertLayoutDirty(ctx, scenarioName)
+  const firstPasses = await renderUntilLayoutClean(ctx, scenarioName)
+  const afterFirst = readContentProbe()
+
+  consume(mutate(1))
+  assertLayoutDirty(ctx, scenarioName)
+  const secondPasses = await renderUntilLayoutClean(ctx, scenarioName)
+  const afterSecond = readContentProbe()
+
+  if (before === afterFirst && afterFirst === afterSecond) {
+    throw new Error(`${scenarioName}: content probe did not change across validated recalculations`)
+  }
+
+  consume(before + afterFirst + afterSecond + firstPasses + secondPasses)
+}
+
 function validateCalculateRecalculation(
   ctx: BenchmarkContext,
   scenarioName: string,
@@ -488,6 +650,34 @@ function validateCalculateRecalculation(
   }
 
   consume(before + afterFirst + afterSecond)
+}
+
+function validateCalculateUpdateRecalculation(
+  ctx: BenchmarkContext,
+  scenarioName: string,
+  mutate: (iteration: number) => unknown,
+  readProbe: () => number,
+): void {
+  const metrics = createMetricsTracker()
+  calculateAndUpdateLayout(ctx, scenarioName, metrics)
+  assertLayoutClean(ctx, scenarioName)
+
+  const before = readProbe()
+  consume(mutate(0))
+  assertLayoutDirty(ctx, scenarioName)
+  calculateAndUpdateLayout(ctx, scenarioName, metrics)
+  const afterFirst = readProbe()
+
+  consume(mutate(1))
+  assertLayoutDirty(ctx, scenarioName)
+  calculateAndUpdateLayout(ctx, scenarioName, metrics)
+  const afterSecond = readProbe()
+
+  if (before === afterFirst && afterFirst === afterSecond) {
+    throw new Error(`${scenarioName}: calculate-update probe did not change across validated recalculations`)
+  }
+
+  consume(before + afterFirst + afterSecond + metrics.snapshot().totalRenderCommands)
 }
 
 async function validateStaticFullRender(
@@ -559,25 +749,32 @@ function createScenarios(): BenchmarkScenario[] {
         })
         const probeTargets = [...state.rows.slice(0, 16), ...state.badges.slice(0, 16)]
         await renderUntilLayoutClean(ctx, "static_opencode_full_render")
+        const metrics = createMetricsTracker()
 
-        return {
-          kind: "baseline",
-          phase: "full-render",
-          passMode: "single-frame",
-          renderablesPerIteration: state.stats.renderables,
-          layoutNodesPerIteration: state.stats.layoutNodes,
-          layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
-          layoutMutationsPerIteration: 0,
-          runIteration: async () => {
-            await ctx.renderOnce()
-            return renderableLayoutChecksum(probeTargets)
+        return withMetrics(
+          {
+            kind: "baseline",
+            phase: "full-render",
+            passMode: "single-frame",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 0,
+            runIteration: async () => {
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "static_opencode_full_render", metrics)
+              consume(passes)
+              return renderableLayoutChecksum(probeTargets)
+            },
+            validate: () =>
+              validateStaticFullRender(ctx, "static_opencode_full_render", () =>
+                renderableLayoutChecksum(probeTargets),
+              ),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
           },
-          validate: () =>
-            validateStaticFullRender(ctx, "static_opencode_full_render", () => renderableLayoutChecksum(probeTargets)),
-          cleanup: () => {
-            state.root.destroyRecursively()
-          },
-        }
+          metrics,
+        )
       },
     },
     {
@@ -590,6 +787,7 @@ function createScenarios(): BenchmarkScenario[] {
           includeText: false,
         })
         calculateLayout(ctx, "opencode_leaf_width_calculate_only")
+        const metrics = createMetricsTracker()
 
         const badgeWidths = new Array<number>(state.badges.length).fill(0)
         const mutate = (iteration: number): number => {
@@ -602,24 +800,29 @@ function createScenarios(): BenchmarkScenario[] {
         }
         const readProbe = () => layoutChecksum(state.badges.slice(0, 24))
 
-        return {
-          kind: "layout-recalc",
-          phase: "calculate-layout",
-          passMode: "calculate-only",
-          renderablesPerIteration: state.stats.renderables,
-          layoutNodesPerIteration: state.stats.layoutNodes,
-          layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
-          layoutMutationsPerIteration: 1,
-          runIteration(iteration) {
-            consume(mutate(iteration))
-            const passes = calculateLayout(ctx, "opencode_leaf_width_calculate_only")
-            return readProbe() + passes
+        return withMetrics(
+          {
+            kind: "layout-recalc",
+            phase: "calculate-layout",
+            passMode: "calculate-only",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 1,
+            runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = calculateLayout(ctx, "opencode_leaf_width_calculate_only")
+              metrics.recordSettlePasses(passes)
+              return readProbe() + passes
+            },
+            validate: () =>
+              validateCalculateRecalculation(ctx, "opencode_leaf_width_calculate_only", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
           },
-          validate: () => validateCalculateRecalculation(ctx, "opencode_leaf_width_calculate_only", mutate, readProbe),
-          cleanup: () => {
-            state.root.destroyRecursively()
-          },
-        }
+          metrics,
+        )
       },
     },
     {
@@ -632,6 +835,7 @@ function createScenarios(): BenchmarkScenario[] {
           includeText: false,
         })
         await renderUntilLayoutClean(ctx, "opencode_leaf_width_full_render")
+        const metrics = createMetricsTracker()
 
         const badgeWidths = new Array<number>(state.badges.length).fill(0)
         const mutate = (iteration: number): number => {
@@ -644,24 +848,27 @@ function createScenarios(): BenchmarkScenario[] {
         }
         const readProbe = () => renderableLayoutChecksum(state.badges.slice(0, 24))
 
-        return {
-          kind: "layout-recalc",
-          phase: "full-render",
-          passMode: "settle-layout",
-          renderablesPerIteration: state.stats.renderables,
-          layoutNodesPerIteration: state.stats.layoutNodes,
-          layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
-          layoutMutationsPerIteration: 1,
-          async runIteration(iteration) {
-            consume(mutate(iteration))
-            const passes = await renderUntilLayoutClean(ctx, "opencode_leaf_width_full_render")
-            return readProbe() + passes
+        return withMetrics(
+          {
+            kind: "layout-recalc",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 1,
+            async runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "opencode_leaf_width_full_render", metrics)
+              return readProbe() + passes
+            },
+            validate: () => validateFullRenderRecalculation(ctx, "opencode_leaf_width_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
           },
-          validate: () => validateFullRenderRecalculation(ctx, "opencode_leaf_width_full_render", mutate, readProbe),
-          cleanup: () => {
-            state.root.destroyRecursively()
-          },
-        }
+          metrics,
+        )
       },
     },
     {
@@ -674,6 +881,7 @@ function createScenarios(): BenchmarkScenario[] {
           includeText: false,
         })
         await renderUntilLayoutClean(ctx, "opencode_many_rows_full_render")
+        const metrics = createMetricsTracker()
 
         const mutationsPerIteration = Math.min(16, state.rows.length)
         const rowHeights = new Array<number>(state.rows.length).fill(0)
@@ -697,24 +905,435 @@ function createScenarios(): BenchmarkScenario[] {
         }
         const readProbe = () => renderableLayoutChecksum([...state.rows.slice(0, 20), ...state.badges.slice(0, 20)])
 
-        return {
-          kind: "layout-recalc",
-          phase: "full-render",
-          passMode: "settle-layout",
-          renderablesPerIteration: state.stats.renderables,
-          layoutNodesPerIteration: state.stats.layoutNodes,
-          layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
-          layoutMutationsPerIteration: mutationsPerIteration * 2,
-          async runIteration(iteration) {
-            consume(mutate(iteration))
-            const passes = await renderUntilLayoutClean(ctx, "opencode_many_rows_full_render")
-            return readProbe() + passes
+        return withMetrics(
+          {
+            kind: "layout-recalc",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: mutationsPerIteration * 2,
+            async runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "opencode_many_rows_full_render", metrics)
+              return readProbe() + passes
+            },
+            validate: () => validateFullRenderRecalculation(ctx, "opencode_many_rows_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
           },
-          validate: () => validateFullRenderRecalculation(ctx, "opencode_many_rows_full_render", mutate, readProbe),
-          cleanup: () => {
-            state.root.destroyRecursively()
-          },
+          metrics,
+        )
+      },
+    },
+    {
+      name: "top_branch_container_full_render",
+      description: "Dirty high-level header/body/sidebar/main layout props before a full settled render",
+      setup: async (ctx) => {
+        const state = await buildOpencodeLayoutTree(ctx, {
+          messageCount: Math.max(56, ctx.height + 16),
+          includeVisualBoxes: true,
+          includeText: false,
+        })
+        await renderUntilLayoutClean(ctx, "top_branch_container_full_render")
+        const metrics = createMetricsTracker()
+
+        let wideSidebar = false
+        let tallHeader = false
+        let paddedBody = false
+        let looseMain = false
+        const mutate = (): number => {
+          wideSidebar = !wideSidebar
+          tallHeader = !tallHeader
+          paddedBody = !paddedBody
+          looseMain = !looseMain
+
+          const sidebarWidth = wideSidebar ? 30 : 22
+          state.sidebar.width = sidebarWidth
+          state.sidebar.minWidth = sidebarWidth
+          state.sidebar.maxWidth = sidebarWidth
+          state.header.height = tallHeader ? 4 : 3
+          state.body.paddingLeft = paddedBody ? 3 : 1
+          state.body.paddingRight = paddedBody ? 2 : 1
+          state.main.gap = looseMain ? 2 : 1
+
+          return sidebarWidth + state.header.height + (paddedBody ? 5 : 2) + (looseMain ? 2 : 1)
         }
+        const readProbe = () =>
+          renderableLayoutChecksum([
+            state.root,
+            state.header,
+            state.body,
+            state.sidebar,
+            state.main,
+            state.footer,
+            ...state.rows.slice(0, 12),
+          ])
+
+        return withMetrics(
+          {
+            kind: "top-branch",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 7,
+            async runIteration() {
+              consume(mutate())
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "top_branch_container_full_render", metrics)
+              return readProbe() + passes
+            },
+            validate: () => validateFullRenderRecalculation(ctx, "top_branch_container_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
+          },
+          metrics,
+        )
+      },
+    },
+    {
+      name: "root_size_full_render",
+      description: "Dirty the renderer root size so percentage-based descendants recalculate from the top",
+      setup: async (ctx) => {
+        const state = await buildOpencodeLayoutTree(ctx, {
+          messageCount: Math.max(56, ctx.height + 16),
+          includeVisualBoxes: true,
+          includeText: false,
+        })
+        await renderUntilLayoutClean(ctx, "root_size_full_render")
+        const metrics = createMetricsTracker()
+
+        let compact = false
+        const compactWidth = Math.max(80, ctx.width - 18)
+        const compactHeight = Math.max(24, ctx.height - 4)
+        const mutate = (): number => {
+          compact = !compact
+          const nextWidth = compact ? compactWidth : ctx.width
+          const nextHeight = compact ? compactHeight : ctx.height
+          ctx.renderer.root.resize(nextWidth, nextHeight)
+          return nextWidth + nextHeight
+        }
+        const readProbe = () =>
+          renderableLayoutChecksum([state.root, state.body, state.main, ...state.rows.slice(0, 16)])
+
+        return withMetrics(
+          {
+            kind: "root-resize",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 2,
+            async runIteration() {
+              consume(mutate())
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "root_size_full_render", metrics)
+              return readProbe() + passes
+            },
+            validate: () => validateFullRenderRecalculation(ctx, "root_size_full_render", mutate, readProbe),
+            cleanup: () => {
+              ctx.renderer.root.resize(ctx.width, ctx.height)
+              state.root.destroyRecursively()
+            },
+          },
+          metrics,
+        )
+      },
+    },
+    {
+      name: "opencode_many_rows_layout_update_only",
+      description: "Dirty many rows, calculate Yoga, then only run updateLayout/render-command collection",
+      setup: async (ctx) => {
+        const state = await buildOpencodeLayoutTree(ctx, {
+          messageCount: Math.max(72, ctx.height * 2),
+          includeVisualBoxes: false,
+          includeText: false,
+        })
+        calculateAndUpdateLayout(ctx, "opencode_many_rows_layout_update_only", createMetricsTracker())
+        const metrics = createMetricsTracker()
+
+        const mutationsPerIteration = Math.min(16, state.rows.length)
+        const rowHeights = new Array<number>(state.rows.length).fill(0)
+        const badgeWidths = new Array<number>(state.badges.length).fill(0)
+        const mutate = (iteration: number): number => {
+          let checksum = 0
+          for (let offset = 0; offset < mutationsPerIteration; offset += 1) {
+            const rowIndex = (iteration * 5 + offset * 7) % state.rows.length
+            const badgeIndex = (iteration * 11 + offset * 13) % state.badges.length
+            const row = state.rows[rowIndex]!
+            const badge = state.badges[badgeIndex]!
+            const nextHeight = rowHeights[rowIndex] === 2 ? 4 : 2
+            const nextWidth = badgeWidths[badgeIndex] === 4 ? 10 : 4
+            rowHeights[rowIndex] = nextHeight
+            badgeWidths[badgeIndex] = nextWidth
+            row.height = nextHeight
+            badge.width = nextWidth
+            checksum += nextHeight + nextWidth
+          }
+          return checksum
+        }
+        const readProbe = () => renderableLayoutChecksum([...state.rows.slice(0, 20), ...state.badges.slice(0, 20)])
+
+        return withMetrics(
+          {
+            kind: "layout-recalc",
+            phase: "layout-update",
+            passMode: "calculate-update",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: mutationsPerIteration * 2,
+            runIteration(iteration) {
+              consume(mutate(iteration))
+              const commands = calculateAndUpdateLayout(ctx, "opencode_many_rows_layout_update_only", metrics)
+              return readProbe() + commands
+            },
+            validate: () =>
+              validateCalculateUpdateRecalculation(ctx, "opencode_many_rows_layout_update_only", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
+          },
+          metrics,
+        )
+      },
+    },
+    {
+      name: "batched_leaf_props_full_render",
+      description: "Dirty 128 mixed leaf and row props before one full settled render",
+      setup: async (ctx) => {
+        const state = await buildOpencodeLayoutTree(ctx, {
+          messageCount: Math.max(96, ctx.height * 3),
+          includeVisualBoxes: true,
+          includeText: false,
+        })
+        await renderUntilLayoutClean(ctx, "batched_leaf_props_full_render")
+        const metrics = createMetricsTracker()
+
+        const rowMutations = Math.min(32, state.rows.length)
+        const badgeMutations = Math.min(96, state.badges.length)
+        const rowHeights = new Array<number>(state.rows.length).fill(0)
+        const badgeWidths = new Array<number>(state.badges.length).fill(0)
+        const mutate = (iteration: number): number => {
+          let checksum = 0
+          for (let offset = 0; offset < rowMutations; offset += 1) {
+            const rowIndex = (iteration * 17 + offset * 19) % state.rows.length
+            const row = state.rows[rowIndex]!
+            const nextHeight = rowHeights[rowIndex] === 2 ? 5 : 2
+            rowHeights[rowIndex] = nextHeight
+            row.height = nextHeight
+            checksum += nextHeight
+          }
+          for (let offset = 0; offset < badgeMutations; offset += 1) {
+            const badgeIndex = (iteration * 23 + offset * 29) % state.badges.length
+            const badge = state.badges[badgeIndex]!
+            const nextWidth = badgeWidths[badgeIndex] === 4 ? 12 : 4
+            badgeWidths[badgeIndex] = nextWidth
+            badge.width = nextWidth
+            checksum += nextWidth
+          }
+          return checksum
+        }
+        const readProbe = () => renderableLayoutChecksum([...state.rows.slice(0, 40), ...state.badges.slice(0, 80)])
+
+        return withMetrics(
+          {
+            kind: "layout-recalc",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: rowMutations + badgeMutations,
+            async runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "batched_leaf_props_full_render", metrics)
+              return readProbe() + passes
+            },
+            validate: () => validateFullRenderRecalculation(ctx, "batched_leaf_props_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
+          },
+          metrics,
+        )
+      },
+    },
+    {
+      name: "wide_shallow_siblings_calculate_only",
+      description: "Dirty one direct child in a wide wrapping container and run only root.calculateLayout()",
+      setup: async (ctx) => {
+        const state = await buildWideShallowTree(ctx, 512)
+        calculateLayout(ctx, "wide_shallow_siblings_calculate_only")
+        const metrics = createMetricsTracker()
+
+        const childWidths = new Array<number>(state.children.length).fill(0)
+        const mutate = (iteration: number): number => {
+          const childIndex = iteration % state.children.length
+          const child = state.children[childIndex]!
+          const nextWidth = childWidths[childIndex] === 13 ? 3 : 13
+          childWidths[childIndex] = nextWidth
+          child.width = nextWidth
+          return nextWidth + childIndex
+        }
+        const readProbe = () => layoutChecksum(state.children.slice(0, 96))
+
+        return withMetrics(
+          {
+            kind: "wide-shallow",
+            phase: "calculate-layout",
+            passMode: "calculate-only",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 1,
+            runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = calculateLayout(ctx, "wide_shallow_siblings_calculate_only")
+              metrics.recordSettlePasses(passes)
+              return readProbe() + passes
+            },
+            validate: () =>
+              validateCalculateRecalculation(ctx, "wide_shallow_siblings_calculate_only", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
+          },
+          metrics,
+        )
+      },
+    },
+    {
+      name: "wide_shallow_siblings_full_render",
+      description: "Dirty a batch of direct children in a wide wrapping container before a full settled render",
+      setup: async (ctx) => {
+        const state = await buildWideShallowTree(ctx, 512)
+        await renderUntilLayoutClean(ctx, "wide_shallow_siblings_full_render")
+        const metrics = createMetricsTracker()
+
+        const mutationsPerIteration = 32
+        const childWidths = new Array<number>(state.children.length).fill(0)
+        const mutate = (iteration: number): number => {
+          let checksum = 0
+          for (let offset = 0; offset < mutationsPerIteration; offset += 1) {
+            const childIndex = (iteration * 31 + offset * 37) % state.children.length
+            const child = state.children[childIndex]!
+            const nextWidth = childWidths[childIndex] === 13 ? 3 : 13
+            childWidths[childIndex] = nextWidth
+            child.width = nextWidth
+            checksum += nextWidth + childIndex
+          }
+          return checksum
+        }
+        const readProbe = () => renderableLayoutChecksum(state.children.slice(0, 128))
+
+        return withMetrics(
+          {
+            kind: "wide-shallow",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: mutationsPerIteration,
+            async runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "wide_shallow_siblings_full_render", metrics)
+              return readProbe() + passes
+            },
+            validate: () =>
+              validateFullRenderRecalculation(ctx, "wide_shallow_siblings_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
+          },
+          metrics,
+        )
+      },
+    },
+    {
+      name: "deep_chain_leaf_calculate_only",
+      description: "Dirty the leaf of a long single-child chain and run only root.calculateLayout()",
+      setup: async (ctx) => {
+        const state = await buildDeepChainTree(ctx, 192)
+        calculateLayout(ctx, "deep_chain_leaf_calculate_only")
+        const metrics = createMetricsTracker()
+
+        let wideLeaf = false
+        const mutate = (): number => {
+          wideLeaf = !wideLeaf
+          state.leaf.width = wideLeaf ? 22 : 7
+          state.leaf.height = wideLeaf ? 2 : 1
+          return state.leaf.width + state.leaf.height
+        }
+        const readProbe = () => layoutChecksum([state.leaf, ...state.nodes.slice(-16)])
+
+        return withMetrics(
+          {
+            kind: "deep-chain",
+            phase: "calculate-layout",
+            passMode: "calculate-only",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 2,
+            runIteration() {
+              consume(mutate())
+              const passes = calculateLayout(ctx, "deep_chain_leaf_calculate_only")
+              metrics.recordSettlePasses(passes)
+              return readProbe() + passes
+            },
+            validate: () => validateCalculateRecalculation(ctx, "deep_chain_leaf_calculate_only", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
+          },
+          metrics,
+        )
+      },
+    },
+    {
+      name: "deep_chain_leaf_full_render",
+      description: "Dirty the leaf of a long single-child chain before a full settled render",
+      setup: async (ctx) => {
+        const state = await buildDeepChainTree(ctx, 192)
+        await renderUntilLayoutClean(ctx, "deep_chain_leaf_full_render")
+        const metrics = createMetricsTracker()
+
+        let wideLeaf = false
+        const mutate = (): number => {
+          wideLeaf = !wideLeaf
+          state.leaf.width = wideLeaf ? 22 : 7
+          state.leaf.height = wideLeaf ? 2 : 1
+          return state.leaf.width + state.leaf.height
+        }
+        const readProbe = () => renderableLayoutChecksum([state.leaf, ...state.nodes.slice(-16)])
+
+        return withMetrics(
+          {
+            kind: "deep-chain",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 2,
+            async runIteration() {
+              consume(mutate())
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "deep_chain_leaf_full_render", metrics)
+              return readProbe() + passes
+            },
+            validate: () => validateFullRenderRecalculation(ctx, "deep_chain_leaf_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
+          },
+          metrics,
+        )
       },
     },
     {
@@ -723,6 +1342,7 @@ function createScenarios(): BenchmarkScenario[] {
       setup: async (ctx) => {
         const state = await buildTextReflowTree(ctx, Math.max(36, ctx.height + 8))
         await renderUntilLayoutClean(ctx, "text_measure_reflow_full_render")
+        const metrics = createMetricsTracker()
 
         const textVersions = new Array<number>(state.texts.length).fill(0)
         const textWidths = new Array<number>(state.texts.length).fill(0)
@@ -738,24 +1358,76 @@ function createScenarios(): BenchmarkScenario[] {
         }
         const readProbe = () => renderableLayoutChecksum([...state.rows.slice(0, 16), ...state.texts.slice(0, 16)])
 
-        return {
-          kind: "text-measure",
-          phase: "full-render",
-          passMode: "settle-layout",
-          renderablesPerIteration: state.stats.renderables,
-          layoutNodesPerIteration: state.stats.layoutNodes,
-          layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
-          layoutMutationsPerIteration: 2,
-          async runIteration(iteration) {
-            consume(mutate(iteration))
-            const passes = await renderUntilLayoutClean(ctx, "text_measure_reflow_full_render")
-            return readProbe() + passes
+        return withMetrics(
+          {
+            kind: "text-measure",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 2,
+            async runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "text_measure_reflow_full_render", metrics)
+              return readProbe() + passes
+            },
+            validate: () => validateFullRenderRecalculation(ctx, "text_measure_reflow_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
           },
-          validate: () => validateFullRenderRecalculation(ctx, "text_measure_reflow_full_render", mutate, readProbe),
-          cleanup: () => {
-            state.root.destroyRecursively()
-          },
+          metrics,
+        )
+      },
+    },
+    {
+      name: "text_content_measure_full_render",
+      description: "Change wrapped text content only, validating dirty Yoga and text line-info changes",
+      setup: async (ctx) => {
+        const state = await buildTextReflowTree(ctx, Math.max(36, ctx.height + 8))
+        await renderUntilLayoutClean(ctx, "text_content_measure_full_render")
+        const metrics = createMetricsTracker()
+
+        const textVersions = new Array<number>(state.texts.length).fill(0)
+        const mutate = (iteration: number): number => {
+          const targetIndex = iteration % state.texts.length
+          const text = state.texts[targetIndex]!
+          textVersions[targetIndex] += 1
+          text.content = createMeasuredText(textVersions[targetIndex] + iteration)
+          return targetIndex + text.textLength + text.virtualLineCount
         }
+        const readContentProbe = () => {
+          let checksum = 0
+          for (let index = 0; index < Math.min(16, state.texts.length); index += 1) {
+            const text = state.texts[index]!
+            checksum += text.textLength + text.virtualLineCount * 31 + index
+          }
+          return checksum
+        }
+
+        return withMetrics(
+          {
+            kind: "text-measure",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 1,
+            async runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "text_content_measure_full_render", metrics)
+              return readContentProbe() + passes
+            },
+            validate: () =>
+              validateContentRecalculation(ctx, "text_content_measure_full_render", mutate, readContentProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
+          },
+          metrics,
+        )
       },
     },
     {
@@ -764,6 +1436,7 @@ function createScenarios(): BenchmarkScenario[] {
       setup: async (ctx) => {
         const state = await buildTreeMutationState(ctx, Math.max(48, ctx.height + 12))
         await renderUntilLayoutClean(ctx, "insert_remove_rows_full_render")
+        const metrics = createMetricsTracker()
 
         const mutate = (iteration: number): number => {
           const removed = state.rows.shift()
@@ -779,24 +1452,27 @@ function createScenarios(): BenchmarkScenario[] {
         }
         const readProbe = () => renderableLayoutChecksum(state.rows.slice(0, 24))
 
-        return {
-          kind: "tree-mutation",
-          phase: "full-render",
-          passMode: "settle-layout",
-          renderablesPerIteration: state.stats.renderables,
-          layoutNodesPerIteration: state.stats.layoutNodes,
-          layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
-          layoutMutationsPerIteration: 2,
-          async runIteration(iteration) {
-            consume(mutate(iteration))
-            const passes = await renderUntilLayoutClean(ctx, "insert_remove_rows_full_render")
-            return readProbe() + passes
+        return withMetrics(
+          {
+            kind: "tree-mutation",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 2,
+            async runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "insert_remove_rows_full_render", metrics)
+              return readProbe() + passes
+            },
+            validate: () => validateFullRenderRecalculation(ctx, "insert_remove_rows_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
           },
-          validate: () => validateFullRenderRecalculation(ctx, "insert_remove_rows_full_render", mutate, readProbe),
-          cleanup: () => {
-            state.root.destroyRecursively()
-          },
-        }
+          metrics,
+        )
       },
     },
     {
@@ -806,6 +1482,7 @@ function createScenarios(): BenchmarkScenario[] {
       setup: async (ctx) => {
         const state = await buildScrollboxReflowState(ctx, Math.max(120, ctx.height * 6))
         await renderUntilLayoutClean(ctx, "scrollbox_content_reflow_full_render")
+        const metrics = createMetricsTracker()
 
         const mutationsPerIteration = Math.min(8, state.items.length)
         const itemHeights = new Array<number>(state.items.length).fill(0)
@@ -824,25 +1501,28 @@ function createScenarios(): BenchmarkScenario[] {
         const readProbe = () =>
           renderableLayoutChecksum(state.items.slice(0, 32)) + state.scrollBox.scrollHeight + state.scrollBox.scrollTop
 
-        return {
-          kind: "scrollbox",
-          phase: "full-render",
-          passMode: "settle-layout",
-          renderablesPerIteration: state.stats.renderables,
-          layoutNodesPerIteration: state.stats.layoutNodes,
-          layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
-          layoutMutationsPerIteration: mutationsPerIteration,
-          async runIteration(iteration) {
-            consume(mutate(iteration))
-            const passes = await renderUntilLayoutClean(ctx, "scrollbox_content_reflow_full_render")
-            return readProbe() + passes
+        return withMetrics(
+          {
+            kind: "scrollbox",
+            phase: "full-render",
+            passMode: "settle-layout",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: mutationsPerIteration,
+            async runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = await renderMeasuredUntilLayoutClean(ctx, "scrollbox_content_reflow_full_render", metrics)
+              return readProbe() + passes
+            },
+            validate: () =>
+              validateFullRenderRecalculation(ctx, "scrollbox_content_reflow_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+            },
           },
-          validate: () =>
-            validateFullRenderRecalculation(ctx, "scrollbox_content_reflow_full_render", mutate, readProbe),
-          cleanup: () => {
-            state.root.destroyRecursively()
-          },
-        }
+          metrics,
+        )
       },
     },
   ]
@@ -856,8 +1536,8 @@ async function buildOpencodeLayoutTree(
   resetBuffers(ctx.renderer)
 
   const stats: TreeStats = {
-    renderables: 0,
-    layoutNodes: 0,
+    renderables: 1,
+    layoutNodes: 1,
     layoutOnlyBoxes: 0,
   }
   const rows: BoxRenderable[] = []
@@ -1115,8 +1795,130 @@ async function buildOpencodeLayoutTree(
 
   return {
     root,
+    header,
+    body,
+    sidebar,
+    main,
+    footer,
     rows,
     badges,
+    stats,
+  }
+}
+
+async function buildWideShallowTree(ctx: BenchmarkContext, childCount: number): Promise<WideShallowTreeState> {
+  clearRoot(ctx.renderer)
+  resetBuffers(ctx.renderer)
+
+  const stats: TreeStats = {
+    renderables: 1,
+    layoutNodes: 1,
+    layoutOnlyBoxes: 0,
+  }
+  const children: BoxRenderable[] = []
+
+  const root = trackLayoutBox(
+    stats,
+    new BoxRenderable(ctx.renderer, {
+      id: "bench-wide-root",
+      width: "100%",
+      height: "100%",
+      flexDirection: "column",
+      paddingLeft: 1,
+      paddingRight: 1,
+    }),
+  )
+  ctx.renderer.root.add(root)
+
+  const container = trackLayoutBox(
+    stats,
+    new BoxRenderable(ctx.renderer, {
+      id: "bench-wide-container",
+      width: "100%",
+      flexGrow: 1,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 1,
+    }),
+  )
+  root.add(container)
+
+  for (let i = 0; i < childCount; i += 1) {
+    const child = trackLayoutBox(
+      stats,
+      new BoxRenderable(ctx.renderer, {
+        id: `bench-wide-child-${i}`,
+        width: 3 + (i % 5),
+        height: 1,
+        flexShrink: 0,
+      }),
+    )
+    container.add(child)
+    children.push(child)
+  }
+
+  return {
+    root,
+    container,
+    children,
+    stats,
+  }
+}
+
+async function buildDeepChainTree(ctx: BenchmarkContext, depth: number): Promise<DeepChainTreeState> {
+  clearRoot(ctx.renderer)
+  resetBuffers(ctx.renderer)
+
+  const stats: TreeStats = {
+    renderables: 1,
+    layoutNodes: 1,
+    layoutOnlyBoxes: 0,
+  }
+  const nodes: BoxRenderable[] = []
+
+  const root = trackLayoutBox(
+    stats,
+    new BoxRenderable(ctx.renderer, {
+      id: "bench-deep-root",
+      width: "100%",
+      height: "100%",
+      flexDirection: "column",
+    }),
+  )
+  ctx.renderer.root.add(root)
+
+  let parent: BoxRenderable = root
+  for (let i = 0; i < depth; i += 1) {
+    const node = trackLayoutBox(
+      stats,
+      new BoxRenderable(ctx.renderer, {
+        id: `bench-deep-node-${i}`,
+        width: "100%",
+        flexDirection: i % 2 === 0 ? "column" : "row",
+        paddingLeft: i % 7 === 0 ? 1 : 0,
+      }),
+    )
+    parent.add(node)
+    nodes.push(node)
+    parent = node
+  }
+
+  const leaf = trackVisualBox(
+    stats,
+    new BoxRenderable(ctx.renderer, {
+      id: "bench-deep-leaf",
+      width: 7,
+      height: 1,
+      flexShrink: 0,
+      backgroundColor: COLORS.panel,
+    }),
+  )
+  parent.add(leaf)
+
+  return {
+    root,
+    nodes,
+    leaf,
     stats,
   }
 }
@@ -1126,8 +1928,8 @@ async function buildTextReflowTree(ctx: BenchmarkContext, rowCount: number): Pro
   resetBuffers(ctx.renderer)
 
   const stats: TreeStats = {
-    renderables: 0,
-    layoutNodes: 0,
+    renderables: 1,
+    layoutNodes: 1,
     layoutOnlyBoxes: 0,
   }
   const rows: BoxRenderable[] = []
@@ -1198,8 +2000,8 @@ async function buildTreeMutationState(ctx: BenchmarkContext, rowCount: number): 
   resetBuffers(ctx.renderer)
 
   const stats: TreeStats = {
-    renderables: 0,
-    layoutNodes: 0,
+    renderables: 1,
+    layoutNodes: 1,
     layoutOnlyBoxes: 0,
   }
   const rows: BoxRenderable[] = []
@@ -1276,8 +2078,8 @@ async function buildScrollboxReflowState(ctx: BenchmarkContext, itemCount: numbe
   resetBuffers(ctx.renderer)
 
   const stats: TreeStats = {
-    renderables: 0,
-    layoutNodes: 0,
+    renderables: 1,
+    layoutNodes: 1,
     layoutOnlyBoxes: 0,
   }
   const items: BoxRenderable[] = []
@@ -1425,6 +2227,8 @@ async function runScenario(
       nextIteration = await runIterations(runtime, Math.min(batchIterations, args.warmupIterations), nextIteration)
     }
 
+    runtime.resetMetrics?.()
+
     const samples: BenchmarkSample[] = []
     for (let round = 0; round < args.rounds; round += 1) {
       const start = nowNs()
@@ -1449,6 +2253,11 @@ async function runScenario(
     const durations = samples.map((sample) => sample.durationMs)
     const opsPerSecond = samples.map((sample) => sample.opsPerSecond)
     const nsPerOperation = samples.map((sample) => sample.nsPerOperation)
+    const metrics = runtime.readMetrics?.() ?? emptyMetrics()
+    const avgSettlePassesPerIteration =
+      metrics.measuredIterations > 0 ? metrics.totalSettlePasses / metrics.measuredIterations : 0
+    const avgRenderCommandsPerIteration =
+      metrics.measuredIterations > 0 ? metrics.totalRenderCommands / metrics.measuredIterations : 0
 
     return {
       name: scenario.name,
@@ -1466,6 +2275,11 @@ async function runScenario(
       layoutNodesPerIteration: runtime.layoutNodesPerIteration,
       layoutOnlyBoxesPerIteration: runtime.layoutOnlyBoxesPerIteration,
       layoutMutationsPerIteration: runtime.layoutMutationsPerIteration,
+      measuredMetricIterations: metrics.measuredIterations,
+      avgSettlePassesPerIteration,
+      maxSettlePasses: metrics.maxSettlePasses,
+      avgRenderCommandsPerIteration,
+      maxRenderCommands: metrics.maxRenderCommands,
       medianDurationMs: median(durations),
       bestDurationMs: Math.min(...durations),
       medianOpsPerSecond: median(opsPerSecond),
@@ -1543,6 +2357,9 @@ function printResults(results: BenchmarkResult[], args: BenchmarkArgs): void {
     "batch",
     "nodes",
     "mutations",
+    "avg passes",
+    "max passes",
+    "avg cmds",
     "median ns/op",
     "p95 ns/op",
     "rme %",
@@ -1555,6 +2372,9 @@ function printResults(results: BenchmarkResult[], args: BenchmarkArgs): void {
     String(result.batchIterations),
     String(result.layoutNodesPerIteration),
     String(result.layoutMutationsPerIteration),
+    formatNumber(result.avgSettlePassesPerIteration),
+    String(result.maxSettlePasses),
+    formatNumber(result.avgRenderCommandsPerIteration),
     formatNumber(result.medianNsPerOperation),
     formatNumber(result.p95NsPerOperation),
     formatNumber(result.rmePercent),
