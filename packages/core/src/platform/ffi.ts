@@ -626,6 +626,10 @@ function normalizeKoffiCallbackArguments(
 
 function normalizeKoffiReturn(koffi: KoffiBackend, value: unknown, type: FFITypeOrString): unknown {
   if (!isKoffiPointerLike(type) || value == null || type === FFIType.cstring) {
+    if (isKoffiBigIntReturn(type) && typeof value === "number") {
+      return BigInt(value)
+    }
+
     return value
   }
 
@@ -634,6 +638,10 @@ function normalizeKoffiReturn(koffi: KoffiBackend, value: unknown, type: FFIType
   }
 
   return normalizeKoffiPointer(koffi.address(value))
+}
+
+function isKoffiBigIntReturn(type: FFITypeOrString): boolean {
+  return type === FFIType.int64_t || type === FFIType.i64 || type === FFIType.uint64_t || type === FFIType.u64
 }
 
 function normalizeKoffiPointer(pointer: number | bigint): Pointer {

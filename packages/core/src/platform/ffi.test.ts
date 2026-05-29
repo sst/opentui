@@ -488,21 +488,28 @@ describe("platform/ffi", () => {
     const { backend, paths, returnValues, symbolCalls, symbolDefinitions, viewCalls } = createMockKoffiBackend()
     const returnedPointer = { native: true }
     returnValues.set("withPointers", returnedPointer)
+    returnValues.set("withU64", 42)
     const filePath = join(process.cwd(), "libopentui.mock")
     const fileUrl = pathToFileURL(filePath)
 
     const library = backend.dlopen(fileUrl, {
       withPointers: { args: [FFIType.ptr, FFIType.usize, FFIType.bool], returns: FFIType.ptr },
+      withU64: { returns: FFIType.u64 },
     })
 
     expect(library.symbols.withPointers(123 as Pointer, 4, 1)).toBe(5000 as Pointer)
+    expect(library.symbols.withU64()).toBe(42n)
     backend.toArrayBuffer(200 as Pointer, 8, 16)
 
     expect(paths).toEqual([fileURLToPath(fileUrl)])
     expect(symbolDefinitions).toEqual([
       { name: "withPointers", result: "void *", parameters: ["void *", "size_t", "bool"] },
+      { name: "withU64", result: "uint64_t", parameters: [] },
     ])
-    expect(symbolCalls).toEqual([{ name: "withPointers", args: [123n, 4, true] }])
+    expect(symbolCalls).toEqual([
+      { name: "withPointers", args: [123n, 4, true] },
+      { name: "withU64", args: [] },
+    ])
     expect(viewCalls).toEqual([{ pointer: 208n, length: 16 }])
   })
 
