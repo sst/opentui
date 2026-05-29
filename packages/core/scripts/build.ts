@@ -46,6 +46,7 @@ const gpaSafeStats = args.includes("--gpa-safe-stats")
 const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
   { platform: "darwin", arch: "arm64" },
+  { platform: "freebsd", arch: "x64" },
   { platform: "linux", arch: "x64" },
   { platform: "linux", arch: "arm64" },
   { platform: "win32", arch: "x64" },

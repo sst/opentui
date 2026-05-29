@@ -49,6 +49,7 @@
   "optionalDependencies": {
     "@opentui/core-darwin-x64": "0.3.0",
     "@opentui/core-darwin-arm64": "0.3.0",
+    "@opentui/core-freebsd-x64": "0.3.0",
     "@opentui/core-linux-x64": "0.3.0",
     "@opentui/core-linux-arm64": "0.3.0",
     "@opentui/core-win32-x64": "0.3.0",

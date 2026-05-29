@@ -77,6 +77,7 @@ jobs:
           # Remove Bun-managed symlinks first so we can replace them with the prebuilt artifact directories.
           rm -rf packages/core/node_modules/@opentui/core-darwin-x64
           rm -rf packages/core/node_modules/@opentui/core-darwin-arm64
+          rm -rf packages/core/node_modules/@opentui/core-freebsd-x64
           rm -rf packages/core/node_modules/@opentui/core-linux-x64
           rm -rf packages/core/node_modules/@opentui/core-linux-arm64
           rm -rf packages/core/node_modules/@opentui/core-win32-x64

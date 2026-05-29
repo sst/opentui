@@ -64,11 +64,12 @@ jobs:
           echo "Checking for dist packages..."
           ls -lah packages/*/dist/
 
-          # Verify critical files exist (all 6 platforms)
+          # Verify critical files exist (all 7 platforms)
           echo ""
           echo "Verifying native binaries exist..."
           test -f packages/core/node_modules/@opentui/core-darwin-x64/libopentui.dylib || (echo "❌ darwin-x64 binary missing!" && exit 1)
           test -f packages/core/node_modules/@opentui/core-darwin-arm64/libopentui.dylib || (echo "❌ darwin-arm64 binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-freebsd-x64/libopentui.so || (echo "❌ freebsd-x64 binary missing!" && exit 1)
           test -f packages/core/node_modules/@opentui/core-linux-x64/libopentui.so || (echo "❌ linux-x64 binary missing!" && exit 1)
           test -f packages/core/node_modules/@opentui/core-linux-arm64/libopentui.so || (echo "❌ linux-arm64 binary missing!" && exit 1)
           test -f packages/core/node_modules/@opentui/core-win32-x64/opentui.dll || (echo "❌ windows-x64 binary missing!" && exit 1)
@@ -88,7 +89,7 @@ jobs:
           test -d packages/keymap/dist || (echo "❌ keymap dist missing!" && exit 1)
           test -f packages/keymap/dist/package.json || (echo "❌ keymap dist/package.json missing!" && exit 1)
 
-          echo "✅ All required build outputs verified (6 native platforms, 6 package dists)"
+          echo "✅ All required build outputs verified (7 native platforms, 6 package dists)"
 
       # Create separate zips for each platform's native binaries
       - name: Package native binaries - darwin-x64
@@ -112,6 +113,17 @@ jobs:
           test -f native-darwin-arm64.zip || (echo "❌ Failed to create darwin-arm64 zip" && exit 1)
           test -s native-darwin-arm64.zip || (echo "❌ darwin-arm64 zip is empty" && exit 1)
           echo "✅ darwin-arm64 packaged successfully ($(du -h native-darwin-arm64.zip | cut -f1))"
+
+      - name: Package native binaries - freebsd-x64
+        run: |
+          set -e
+          mkdir -p artifacts/native-freebsd-x64
+          cp packages/core/node_modules/@opentui/core-freebsd-x64/libopentui.so artifacts/native-freebsd-x64/
+          cd artifacts
+          zip -r native-freebsd-x64.zip native-freebsd-x64/
+          test -f native-freebsd-x64.zip || (echo "❌ Failed to create freebsd-x64 zip" && exit 1)
+          test -s native-freebsd-x64.zip || (echo "❌ freebsd-x64 zip is empty" && exit 1)
+          echo "✅ freebsd-x64 packaged successfully ($(du -h native-freebsd-x64.zip | cut -f1))"
 
       - name: Package native binaries - linux-x64
         run: |
@@ -181,6 +193,7 @@ jobs:
           cp -r \
             packages/core/node_modules/@opentui/core-darwin-x64 \
             packages/core/node_modules/@opentui/core-darwin-arm64 \
+            packages/core/node_modules/@opentui/core-freebsd-x64 \
             packages/core/node_modules/@opentui/core-linux-x64 \
             packages/core/node_modules/@opentui/core-linux-arm64 \
             packages/core/node_modules/@opentui/core-win32-x64 \
@@ -222,6 +235,7 @@ jobs:
           echo "Verifying all artifacts exist..."
           test -f artifacts/native-darwin-x64.zip || (echo "❌ native-darwin-x64.zip missing!" && exit 1)
           test -f artifacts/native-darwin-arm64.zip || (echo "❌ native-darwin-arm64.zip missing!" && exit 1)
+          test -f artifacts/native-freebsd-x64.zip || (echo "❌ native-freebsd-x64.zip missing!" && exit 1)
           test -f artifacts/native-linux-x64.zip || (echo "❌ native-linux-x64.zip missing!" && exit 1)
           test -f artifacts/native-linux-arm64.zip || (echo "❌ native-linux-arm64.zip missing!" && exit 1)
           test -f artifacts/native-windows-x64.zip || (echo "❌ native-windows-x64.zip missing!" && exit 1)
@@ -229,7 +243,7 @@ jobs:
           test -f artifacts/npm-packages.zip || (echo "❌ npm-packages.zip missing!" && exit 1)
 
           echo ""
-          echo "✅ All 6 platform artifacts verified. Ready to upload:"
+          echo "✅ All 7 platform artifacts verified. Ready to upload:"
           ls -lah artifacts/*.zip
 
       - name: Upload native binaries artifacts
@@ -239,6 +253,7 @@ jobs:
           path: |
             artifacts/native-darwin-x64.zip
             artifacts/native-darwin-arm64.zip
+            artifacts/native-freebsd-x64.zip
             artifacts/native-linux-x64.zip
             artifacts/native-linux-arm64.zip
             artifacts/native-windows-x64.zip
