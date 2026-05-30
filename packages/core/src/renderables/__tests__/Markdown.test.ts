@@ -753,6 +753,39 @@ test("table with links", async () => {
   `)
 })
 
+test("bare url is not duplicated in concealed mode", async () => {
+  const markdown = "Visit https://example.com today."
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Visit https://example.com today."
+  `)
+})
+
+test("named link still shows href in concealed mode", async () => {
+  const markdown = "[click here](https://example.com)"
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    click here (https://example.com)"
+  `)
+})
+
+test("table with bare url is not duplicated", async () => {
+  const markdown = `| Name | Link |
+|---|---|
+| Site | https://example.com |`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    ┌────┬───────────────────┐
+    │Name│Link               │
+    ├────┼───────────────────┤
+    │Site│https://example.com│
+    └────┴───────────────────┘"
+  `)
+})
+
 test("single row table (header + delimiter only)", async () => {
   const markdown = `| Only | Header |
 |---|---|`
