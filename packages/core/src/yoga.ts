@@ -702,7 +702,11 @@ export class Node {
   }
 
   setFlexBasisPercent(flexBasis: number | undefined): void {
-    if (flexBasis !== undefined) this.setValue(YogaValueKind.FlexBasis, 0, { unit: Unit.Percent, value: flexBasis })
+    this.setValue(
+      YogaValueKind.FlexBasis,
+      0,
+      flexBasis === undefined ? undefined : { unit: Unit.Percent, value: flexBasis },
+    )
   }
 
   setFlexBasisAuto(): void {
@@ -718,7 +722,7 @@ export class Node {
   }
 
   setWidthPercent(width: number | undefined): void {
-    if (width !== undefined) this.setValue(YogaValueKind.Width, 0, { unit: Unit.Percent, value: width })
+    this.setValue(YogaValueKind.Width, 0, width === undefined ? undefined : { unit: Unit.Percent, value: width })
   }
 
   setWidthAuto(): void {
@@ -734,7 +738,7 @@ export class Node {
   }
 
   setHeightPercent(height: number | undefined): void {
-    if (height !== undefined) this.setValue(YogaValueKind.Height, 0, { unit: Unit.Percent, value: height })
+    this.setValue(YogaValueKind.Height, 0, height === undefined ? undefined : { unit: Unit.Percent, value: height })
   }
 
   setHeightAuto(): void {
@@ -750,7 +754,11 @@ export class Node {
   }
 
   setMinWidthPercent(minWidth: number | undefined): void {
-    if (minWidth !== undefined) this.setValue(YogaValueKind.MinWidth, 0, { unit: Unit.Percent, value: minWidth })
+    this.setValue(
+      YogaValueKind.MinWidth,
+      0,
+      minWidth === undefined ? undefined : { unit: Unit.Percent, value: minWidth },
+    )
   }
 
   getMinWidth(): Value {
@@ -762,7 +770,11 @@ export class Node {
   }
 
   setMinHeightPercent(minHeight: number | undefined): void {
-    if (minHeight !== undefined) this.setValue(YogaValueKind.MinHeight, 0, { unit: Unit.Percent, value: minHeight })
+    this.setValue(
+      YogaValueKind.MinHeight,
+      0,
+      minHeight === undefined ? undefined : { unit: Unit.Percent, value: minHeight },
+    )
   }
 
   getMinHeight(): Value {
@@ -774,7 +786,11 @@ export class Node {
   }
 
   setMaxWidthPercent(maxWidth: number | undefined): void {
-    if (maxWidth !== undefined) this.setValue(YogaValueKind.MaxWidth, 0, { unit: Unit.Percent, value: maxWidth })
+    this.setValue(
+      YogaValueKind.MaxWidth,
+      0,
+      maxWidth === undefined ? undefined : { unit: Unit.Percent, value: maxWidth },
+    )
   }
 
   getMaxWidth(): Value {
@@ -786,7 +802,11 @@ export class Node {
   }
 
   setMaxHeightPercent(maxHeight: number | undefined): void {
-    if (maxHeight !== undefined) this.setValue(YogaValueKind.MaxHeight, 0, { unit: Unit.Percent, value: maxHeight })
+    this.setValue(
+      YogaValueKind.MaxHeight,
+      0,
+      maxHeight === undefined ? undefined : { unit: Unit.Percent, value: maxHeight },
+    )
   }
 
   getMaxHeight(): Value {
@@ -798,7 +818,7 @@ export class Node {
   }
 
   setMarginPercent(edge: Edge, margin: number | undefined): void {
-    if (margin !== undefined) this.setValue(YogaValueKind.Margin, edge, { unit: Unit.Percent, value: margin })
+    this.setValue(YogaValueKind.Margin, edge, margin === undefined ? undefined : { unit: Unit.Percent, value: margin })
   }
 
   setMarginAuto(edge: Edge): void {
@@ -814,7 +834,11 @@ export class Node {
   }
 
   setPaddingPercent(edge: Edge, padding: number | undefined): void {
-    if (padding !== undefined) this.setValue(YogaValueKind.Padding, edge, { unit: Unit.Percent, value: padding })
+    this.setValue(
+      YogaValueKind.Padding,
+      edge,
+      padding === undefined ? undefined : { unit: Unit.Percent, value: padding },
+    )
   }
 
   getPadding(edge: Edge): Value {
@@ -826,7 +850,11 @@ export class Node {
   }
 
   setPositionPercent(edge: Edge, position: number | undefined): void {
-    if (position !== undefined) this.setValue(YogaValueKind.Position, edge, { unit: Unit.Percent, value: position })
+    this.setValue(
+      YogaValueKind.Position,
+      edge,
+      position === undefined ? undefined : { unit: Unit.Percent, value: position },
+    )
   }
 
   setPositionAuto(edge: Edge): void {
@@ -842,7 +870,7 @@ export class Node {
   }
 
   setGapPercent(gutter: Gutter, gap: number | undefined): void {
-    if (gap !== undefined) this.setValue(YogaValueKind.Gap, gutter, { unit: Unit.Percent, value: gap })
+    this.setValue(YogaValueKind.Gap, gutter, gap === undefined ? undefined : { unit: Unit.Percent, value: gap })
   }
 
   getGap(gutter: Gutter): Value {
@@ -850,8 +878,8 @@ export class Node {
   }
 
   setBorder(edge: Edge, border: number | undefined): void {
-    if (this.freed || border === undefined) return
-    lib().yogaNodeStyleSetBorder(this.ptr, edge, border)
+    if (this.freed) return
+    lib().yogaNodeStyleSetBorder(this.ptr, edge, border ?? NaN)
   }
 
   getBorder(edge: Edge): number {
@@ -948,8 +976,8 @@ export class Node {
   }
 
   private setFloat(kind: number, value: number | undefined): void {
-    if (this.freed || value === undefined) return
-    lib().yogaNodeStyleSetFloat(this.ptr, kind, value)
+    if (this.freed) return
+    lib().yogaNodeStyleSetFloat(this.ptr, kind, value ?? NaN)
   }
 
   private getFloat(kind: number): number {
@@ -960,7 +988,6 @@ export class Node {
   private setValue(kind: number, edgeOrGutter: number, valueInput: ValueInput): void {
     if (this.freed) return
     const value = parseValue(valueInput)
-    if (value.unit === Unit.Undefined) return
     lib().yogaNodeStyleSetValue(this.ptr, kind, edgeOrGutter, value.unit, value.value)
   }
 

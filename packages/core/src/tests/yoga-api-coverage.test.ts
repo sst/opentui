@@ -232,6 +232,77 @@ describe("native Yoga API coverage", () => {
     node.free()
   })
 
+  test("resets optional style values with undefined like Yoga JS", () => {
+    const node = Yoga.Node.create()
+    const expectUndefinedValue = (value: Value): void => expectYogaValue(value, Unit.Undefined, NaN)
+
+    node.setFlex(2)
+    node.setFlex(undefined)
+    expect(Number.isNaN(node.getFlex())).toBe(true)
+
+    node.setFlexGrow(3)
+    node.setFlexGrow(undefined)
+    expect(node.getFlexGrow()).toBe(0)
+
+    node.setFlexShrink(4)
+    node.setFlexShrink(undefined)
+    expect(node.getFlexShrink()).toBe(0)
+
+    node.setAspectRatio(1.5)
+    node.setAspectRatio(undefined)
+    expect(Number.isNaN(node.getAspectRatio())).toBe(true)
+
+    node.setFlexBasis(10)
+    node.setFlexBasis(undefined)
+    expectUndefinedValue(node.getFlexBasis())
+
+    node.setWidth(100)
+    node.setWidth(undefined)
+    expectUndefinedValue(node.getWidth())
+
+    node.setHeightPercent(40)
+    node.setHeightPercent(undefined)
+    expectUndefinedValue(node.getHeight())
+
+    node.setMinWidth(11)
+    node.setMinWidth(undefined)
+    expectUndefinedValue(node.getMinWidth())
+
+    node.setMinHeightPercent(14)
+    node.setMinHeightPercent(undefined)
+    expectUndefinedValue(node.getMinHeight())
+
+    node.setMaxWidth(15)
+    node.setMaxWidth(undefined)
+    expectUndefinedValue(node.getMaxWidth())
+
+    node.setMaxHeightPercent(18)
+    node.setMaxHeightPercent(undefined)
+    expectUndefinedValue(node.getMaxHeight())
+
+    node.setMargin(Edge.Left, 19)
+    node.setMargin(Edge.Left, undefined)
+    expectUndefinedValue(node.getMargin(Edge.Left))
+
+    node.setPaddingPercent(Edge.Top, 22)
+    node.setPaddingPercent(Edge.Top, undefined)
+    expectUndefinedValue(node.getPadding(Edge.Top))
+
+    node.setPosition(Edge.Right, 23)
+    node.setPosition(Edge.Right, undefined)
+    expectUndefinedValue(node.getPosition(Edge.Right))
+
+    node.setGap(Gutter.Column, 25)
+    node.setGap(Gutter.Column, undefined)
+    expectUndefinedValue(node.getGap(Gutter.Column))
+
+    node.setBorder(Edge.Bottom, 27)
+    node.setBorder(Edge.Bottom, undefined)
+    expect(Number.isNaN(node.getBorder(Edge.Bottom))).toBe(true)
+
+    node.free()
+  })
+
   test("covers copyStyle", () => {
     const source = Yoga.Node.create()
     const target = Yoga.Node.create()

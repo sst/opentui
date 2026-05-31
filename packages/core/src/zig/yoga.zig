@@ -434,67 +434,74 @@ export fn yogaNodeStyleGetBorder(node: YGNodeConstRef, edge: u32) f32 {
 export fn yogaNodeStyleSetValue(node: YGNodeRef, kind: u32, edge_or_gutter: u32, unit: u32, value: f32) void {
     const value_kind = @as(YogaValueKind, @enumFromInt(kind));
     const value_unit = @as(YogaUnit, @enumFromInt(unit));
+    const undefined_value = std.math.nan(f32);
 
     switch (value_kind) {
         .width => switch (value_unit) {
             .point => c.YGNodeStyleSetWidth(node, value),
             .percent => c.YGNodeStyleSetWidthPercent(node, value),
             .auto => c.YGNodeStyleSetWidthAuto(node),
-            .undefined => {},
+            .undefined => c.YGNodeStyleSetWidth(node, undefined_value),
         },
         .height => switch (value_unit) {
             .point => c.YGNodeStyleSetHeight(node, value),
             .percent => c.YGNodeStyleSetHeightPercent(node, value),
             .auto => c.YGNodeStyleSetHeightAuto(node),
-            .undefined => {},
+            .undefined => c.YGNodeStyleSetHeight(node, undefined_value),
         },
         .min_width => switch (value_unit) {
             .point => c.YGNodeStyleSetMinWidth(node, value),
             .percent => c.YGNodeStyleSetMinWidthPercent(node, value),
-            else => {},
+            .undefined => c.YGNodeStyleSetMinWidth(node, undefined_value),
+            .auto => {},
         },
         .min_height => switch (value_unit) {
             .point => c.YGNodeStyleSetMinHeight(node, value),
             .percent => c.YGNodeStyleSetMinHeightPercent(node, value),
-            else => {},
+            .undefined => c.YGNodeStyleSetMinHeight(node, undefined_value),
+            .auto => {},
         },
         .max_width => switch (value_unit) {
             .point => c.YGNodeStyleSetMaxWidth(node, value),
             .percent => c.YGNodeStyleSetMaxWidthPercent(node, value),
-            else => {},
+            .undefined => c.YGNodeStyleSetMaxWidth(node, undefined_value),
+            .auto => {},
         },
         .max_height => switch (value_unit) {
             .point => c.YGNodeStyleSetMaxHeight(node, value),
             .percent => c.YGNodeStyleSetMaxHeightPercent(node, value),
-            else => {},
+            .undefined => c.YGNodeStyleSetMaxHeight(node, undefined_value),
+            .auto => {},
         },
         .flex_basis => switch (value_unit) {
             .point => c.YGNodeStyleSetFlexBasis(node, value),
             .percent => c.YGNodeStyleSetFlexBasisPercent(node, value),
             .auto => c.YGNodeStyleSetFlexBasisAuto(node),
-            .undefined => {},
+            .undefined => c.YGNodeStyleSetFlexBasis(node, undefined_value),
         },
         .margin => switch (value_unit) {
             .point => c.YGNodeStyleSetMargin(node, toEdge(edge_or_gutter), value),
             .percent => c.YGNodeStyleSetMarginPercent(node, toEdge(edge_or_gutter), value),
             .auto => c.YGNodeStyleSetMarginAuto(node, toEdge(edge_or_gutter)),
-            .undefined => {},
+            .undefined => c.YGNodeStyleSetMargin(node, toEdge(edge_or_gutter), undefined_value),
         },
         .padding => switch (value_unit) {
             .point => c.YGNodeStyleSetPadding(node, toEdge(edge_or_gutter), value),
             .percent => c.YGNodeStyleSetPaddingPercent(node, toEdge(edge_or_gutter), value),
-            else => {},
+            .undefined => c.YGNodeStyleSetPadding(node, toEdge(edge_or_gutter), undefined_value),
+            .auto => {},
         },
         .position => switch (value_unit) {
             .point => c.YGNodeStyleSetPosition(node, toEdge(edge_or_gutter), value),
             .percent => c.YGNodeStyleSetPositionPercent(node, toEdge(edge_or_gutter), value),
             .auto => c.YGNodeStyleSetPositionAuto(node, toEdge(edge_or_gutter)),
-            .undefined => {},
+            .undefined => c.YGNodeStyleSetPosition(node, toEdge(edge_or_gutter), undefined_value),
         },
         .gap => switch (value_unit) {
             .point => c.YGNodeStyleSetGap(node, toGutter(edge_or_gutter), value),
             .percent => c.YGNodeStyleSetGapPercent(node, toGutter(edge_or_gutter), value),
-            else => {},
+            .undefined => c.YGNodeStyleSetGap(node, toGutter(edge_or_gutter), undefined_value),
+            .auto => {},
         },
     }
 }
@@ -511,7 +518,10 @@ export fn yogaNodeStyleGetValue(node: YGNodeConstRef, kind: u32, edge_or_gutter:
         .margin => c.YGNodeStyleGetMargin(node, toEdge(edge_or_gutter)),
         .padding => c.YGNodeStyleGetPadding(node, toEdge(edge_or_gutter)),
         .position => c.YGNodeStyleGetPosition(node, toEdge(edge_or_gutter)),
-        .gap => pointValue(c.YGNodeStyleGetGap(node, toGutter(edge_or_gutter))),
+        .gap => blk: {
+            const gap = c.YGNodeStyleGetGap(node, toGutter(edge_or_gutter));
+            break :blk if (std.math.isNan(gap)) undefinedValue() else pointValue(gap);
+        },
     };
     return packValue(value);
 }

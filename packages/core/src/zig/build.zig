@@ -360,6 +360,7 @@ pub fn build(b: *std.Build) void {
         std.process.exit(1);
     }
     addNativeAudioDependencies(b, bench_ffi_lib, native_target, macos_sdk_path);
+    addYogaDependencies(b, bench_ffi_lib);
     const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
     bench_ffi_step.dependOn(&install_bench_ffi.step);
     bench_step.dependOn(bench_ffi_step);
