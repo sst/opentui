@@ -1047,7 +1047,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (process.platform === "linux") config.useThread = false
     lib.setUseThread(rendererPtr, config.useThread)
 
-    const kittyConfig = config.useKittyKeyboard ?? {}
+    // Explicit `undefined` check (not `??`) so a caller-supplied `null` is
+    // preserved rather than collapsed to `{}`. `null` means "disable Kitty";
+    // `?? {}` would turn that into enabled (buildKittyKeyboardFlags({}) !== 0).
+    const kittyConfig = config.useKittyKeyboard === undefined ? {} : config.useKittyKeyboard
     const kittyFlags = buildKittyKeyboardFlags(kittyConfig)
     lib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
 
