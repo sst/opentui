@@ -1720,4 +1720,48 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
       }
     }
   })
+
+  test("updateStickyState resets _hasManualScroll when reaching bottom even during concurrent sticky operations", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    // Add enough content to make scrolling possible
+    for (let i = 0; i < 30; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+
+    // Simulate: user scrolled to bottom while concurrent sticky operation was running
+    scrollBox.verticalScrollBar.scrollPosition = maxScrollTop
+    ;(scrollBox as any)._hasManualScroll = true
+    ;(scrollBox as any)._isApplyingStickyScroll = true
+
+    // Trigger updateStickyState (called when scrollTop changes)
+    const updateStickyState = (scrollBox as any).updateStickyState.bind(scrollBox)
+    updateStickyState()
+
+    // With fix: flag should reset even though _isApplyingStickyScroll was true
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+    expect((scrollBox as any)._stickyScrollBottom).toBe(true)
+
+    // Clear the flag for subsequent behavior check
+    ;(scrollBox as any)._isApplyingStickyScroll = false
+
+    // Adding more content should now cause viewport to stay locked to bottom
+    for (let i = 30; i < 40; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const newMaxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(scrollBox.scrollTop).toBe(newMaxScrollTop)
+  })
 })
