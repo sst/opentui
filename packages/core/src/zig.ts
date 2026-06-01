@@ -69,6 +69,33 @@ let targetLibPath = nativePackage.default
 
 if (isBunfsPath(targetLibPath)) {
   targetLibPath = targetLibPath.replace("../", "")
+
+  // When the native library is embedded by `bun build --compile`, it lives in
+  // Bun's virtual filesystem (`/$bunfs/...`). macOS `dlopen` cannot load a
+  // shared library from that virtual path, so extract it to a real temp file
+  // before opening it. (Linux can dlopen the bunfs path directly.)
+  if (process.platform === "darwin") {
+    const name = targetLibPath.split(/[\\/]/).pop() || "libopentui"
+    const data = new Uint8Array(await Bun.file(targetLibPath).arrayBuffer())
+    const candidateDirs = [
+      ...new Set([process.env.TMPDIR, "/tmp", "/private/tmp"].filter((d): d is string => Boolean(d))),
+    ]
+    let lastError: unknown
+    for (const dir of candidateDirs) {
+      try {
+        const extracted = `${dir.replace(/\/$/, "")}/${process.pid}-${name}`
+        writeFileSync(extracted, data)
+        targetLibPath = extracted
+        lastError = undefined
+        break
+      } catch (error) {
+        lastError = error
+      }
+    }
+    if (lastError) {
+      throw lastError
+    }
+  }
 }
 
 if (!existsSync(targetLibPath)) {
