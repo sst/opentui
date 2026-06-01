@@ -183,6 +183,12 @@ export interface CliRendererConfig {
   // Set Kitty keyboard protocol flags, or null to disable them.
   useKittyKeyboard?: KittyKeyboardOptions | null
 
+  // Skip the synchronous terminal setup performed by `createCliRenderer`.
+  // Defaults to true. Set to false when an outer layer already owns terminal
+  // setup (e.g. a tmux `-CC` control-mode host) and the renderer should not
+  // touch raw mode / alternate screen on creation.
+  setupTerminal?: boolean
+
   // Fill the render buffer with this background color. Default transparent.
   backgroundColor?: ColorInput
 
@@ -673,7 +679,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 
   const renderer = new CliRenderer(stdin, stdout, width, height, config)
   try {
-    await renderer.setupTerminal()
+    if (config.setupTerminal !== false) {
+      await renderer.setupTerminal()
+    }
     return renderer
   } catch (error) {
     try {
