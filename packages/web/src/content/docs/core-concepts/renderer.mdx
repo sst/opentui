@@ -106,6 +106,8 @@ renderer.footerHeight = 15
 
 Split-footer bookkeeping lives in the native renderer. A shared `SplitScrollback` model tracks the rows it has already published and the current tail column, so the footer pins to the bottom of the terminal as scrollback grows. Captured stdout and [scrollback writers](#writing-to-scrollback) both produce styled `OptimizedBuffer` snapshots. The native side emits these as ANSI alongside the footer repaint in one atomic frame. The renderer flushes pending output before `resize`, `suspend`, mode transitions, and `destroy`.
 
+Applications that can reconstruct their scrollback may opt into a destructive resize replay. `renderer.resetSplitFooterForReplay({ clearSavedLines: true })` clears the visible viewport and terminal saved lines, resets split-footer scrollback bookkeeping, and leaves the footer ready for newly appended snapshots. This method is only valid in split-footer capture mode.
+
 ## External output mode
 
 The `externalOutputMode` option controls what happens to writes that go through the renderer's configured `stdout.write` while the renderer is active. It does not change `stderr`, the built-in console overlay, or renderer-owned frame bytes.

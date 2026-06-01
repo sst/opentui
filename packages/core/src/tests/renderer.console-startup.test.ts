@@ -758,6 +758,58 @@ test("CliRenderer flushes pending writeToScrollback output before resize applies
   lib.resizeRenderer = originalResizeRenderer
 })
 
+test("CliRenderer resetSplitFooterForReplay clears published scrollback and starts fresh", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  renderer.writeToScrollback(textScrollbackWrite("before-replay\n"))
+
+  const lib = (renderer as any).lib
+  const resetSpy = spyOn(lib, "resetSplitScrollback")
+  const writeOutSpy = spyOn(renderer as any, "writeOut")
+
+  renderer.resetSplitFooterForReplay({ clearSavedLines: true })
+
+  expect(resetSpy).toHaveBeenCalledWith((renderer as any).rendererPtr, 0, 6)
+  expect(writeOutSpy).toHaveBeenCalledWith("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J\x1b[H")
+  expect((renderer as any).splitTailColumn).toBe(0)
+  expect((renderer as any).pendingSplitFooterTransition).toBeNull()
+
+  resetSpy.mockRestore()
+  writeOutSpy.mockRestore()
+})
+
+test("CliRenderer resetSplitFooterForReplay rejects suspended terminal ownership", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  renderer.suspend()
+  const writeOutSpy = spyOn(renderer as any, "writeOut")
+
+  expect(() => renderer!.resetSplitFooterForReplay({ clearSavedLines: true })).toThrow(
+    "resetSplitFooterForReplay requires an active terminal",
+  )
+  expect(writeOutSpy).not.toHaveBeenCalled()
+
+  writeOutSpy.mockRestore()
+})
+
 test("CliRenderer reuses generic suspend/resume native helpers in split-footer mode", async () => {
   const result = await createTestRenderer({
     width: 40,
