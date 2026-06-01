@@ -138,6 +138,13 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private _stickyScrollBottom: boolean = false
   private _stickyScrollLeft: boolean = false
   private _stickyScrollRight: boolean = false
+
+  // Snapshot of content/viewport size at the last recalculateBarProps() so the
+  // deferred re-render below can be skipped when nothing relevant changed.
+  private _lastBarRecalcScrollHeight: number = -1
+  private _lastBarRecalcScrollWidth: number = -1
+  private _lastBarRecalcViewportHeight: number = -1
+  private _lastBarRecalcViewportWidth: number = -1
   private _stickyStart?: "bottom" | "top" | "left" | "right"
   private _hasManualScroll: boolean = false
   private _isApplyingStickyScroll: boolean = false
@@ -819,9 +826,28 @@ export class ScrollBoxRenderable extends BoxRenderable {
     // and update all renderables in one go before rendering.
     // OR: Move this logic to the viewport. IMHO the wrapper and viewport are overkill and not necessary.
     //     The Scrollbox can be the viewport, we are using translations on the content anyway.
-    process.nextTick(() => {
-      this.requestRender()
-    })
+    //
+    // Gate the deferred re-render so it only fires when it can actually change
+    // output: when the viewport dimensions changed (the resize workaround above)
+    // or when sticky scroll is active and the content grew (auto-scroll during
+    // streaming). Otherwise a render was always left pending between content
+    // updates and the renderer never settled.
+    const contentHeight = this.content.height
+    const contentWidth = this.content.width
+    const viewportHeight = this.viewport.height
+    const viewportWidth = this.viewport.width
+    const viewportChanged =
+      viewportHeight !== this._lastBarRecalcViewportHeight || viewportWidth !== this._lastBarRecalcViewportWidth
+    const contentGrew = contentHeight > this._lastBarRecalcScrollHeight || contentWidth > this._lastBarRecalcScrollWidth
+    this._lastBarRecalcScrollHeight = contentHeight
+    this._lastBarRecalcScrollWidth = contentWidth
+    this._lastBarRecalcViewportHeight = viewportHeight
+    this._lastBarRecalcViewportWidth = viewportWidth
+    if (viewportChanged || (this._stickyScroll && contentGrew)) {
+      process.nextTick(() => {
+        this.requestRender()
+      })
+    }
   }
 
   // Setters for reactive properties
