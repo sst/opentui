@@ -36,6 +36,9 @@ export interface CodeOptions extends TextBufferOptions {
   conceal?: boolean
   drawUnstyledText?: boolean
   streaming?: boolean
+  // Coalesce tree-sitter re-highlights to at most one per this many ms while
+  // streaming. 0 (default) disables throttling; a positive value opts in.
+  streamingHighlightThrottleMs?: number
   baseHighlight?: string
   onHighlight?: OnHighlightCallback
   onChunks?: OnChunksCallback
@@ -59,12 +62,15 @@ export class CodeRenderable extends TextBufferRenderable {
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
   private _highlightingPromise: Promise<void> = Promise.resolve()
+  private _streamingHighlightThrottleMs: number
+  private _highlightThrottleTimer: ReturnType<typeof setTimeout> | null = null
 
   protected _contentDefaultOptions = {
     content: "",
     conceal: true,
     drawUnstyledText: true,
     streaming: false,
+    streamingHighlightThrottleMs: 0,
   } satisfies Partial<CodeOptions>
 
   constructor(ctx: RenderContext, options: CodeOptions) {
@@ -77,6 +83,8 @@ export class CodeRenderable extends TextBufferRenderable {
     this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
     this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
+    this._streamingHighlightThrottleMs =
+      options.streamingHighlightThrottleMs ?? this._contentDefaultOptions.streamingHighlightThrottleMs
     this._baseHighlight = options.baseHighlight
     this._onHighlight = options.onHighlight
     this._onChunks = options.onChunks
@@ -164,6 +172,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._hadInitialContent = false
       this._lastHighlights = []
       this._highlightsDirty = true
+      this._cancelThrottledHighlight()
     }
   }
 
@@ -364,6 +373,14 @@ export class CodeRenderable extends TextBufferRenderable {
       } else if (!this._filetype) {
         this._shouldRenderTextBuffer = true
         this._highlightsDirty = false
+      } else if (this._streaming && this._hadInitialContent && this._streamingHighlightThrottleMs > 0) {
+        // Keep the buffer current each frame but defer the expensive re-highlight.
+        if (this._drawUnstyledText) {
+          this.textBuffer.setText(this._content)
+        }
+        this._shouldRenderTextBuffer = true
+        this._highlightsDirty = false
+        this._scheduleThrottledHighlight()
       } else {
         this.ensureVisibleTextBeforeHighlight()
         this._highlightsDirty = false
@@ -373,5 +390,26 @@ export class CodeRenderable extends TextBufferRenderable {
 
     if (!this._shouldRenderTextBuffer) return
     super.renderSelf(buffer)
+  }
+
+  private _scheduleThrottledHighlight(): void {
+    if (this._highlightThrottleTimer !== null) return
+    this._highlightThrottleTimer = setTimeout(() => {
+      this._highlightThrottleTimer = null
+      if (this.isDestroyed) return
+      this._highlightingPromise = this.startHighlight()
+    }, this._streamingHighlightThrottleMs)
+  }
+
+  private _cancelThrottledHighlight(): void {
+    if (this._highlightThrottleTimer !== null) {
+      clearTimeout(this._highlightThrottleTimer)
+      this._highlightThrottleTimer = null
+    }
+  }
+
+  protected destroySelf(): void {
+    this._cancelThrottledHighlight()
+    super.destroySelf()
   }
 }
