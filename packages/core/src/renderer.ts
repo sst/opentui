@@ -300,6 +300,10 @@ export interface ScrollbackSurface {
   destroy(): void
 }
 
+export interface SplitFooterReplayResetOptions {
+  clearSavedLines?: boolean
+}
+
 const DEFAULT_FOOTER_HEIGHT = 12
 const MAX_SCROLLBACK_SURFACE_HEIGHT_PASSES = 4
 const TRANSPARENT_RGBA = RGBA.fromValues(0, 0, 0, 0)
@@ -2194,6 +2198,36 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         throw cleanupError
       }
     }
+  }
+
+  public resetSplitFooterForReplay(options: SplitFooterReplayResetOptions = {}): void {
+    if (this._isDestroyed) return
+    if (this._screenMode !== "split-footer" || this._externalOutputMode !== "capture-stdout") {
+      throw new Error(
+        'resetSplitFooterForReplay requires screenMode "split-footer" and externalOutputMode "capture-stdout"',
+      )
+    }
+    if (!this._terminalIsSetup || this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      throw new Error("resetSplitFooterForReplay requires an active terminal")
+    }
+
+    this.flushPendingSplitOutputBeforeTransition(true)
+    this.externalOutputQueue.clear()
+    this.abortSplitStartupCursorSeed()
+    this.clearPendingSplitFooterTransition()
+    this.resetSplitScrollback()
+    this.currentRenderBuffer.clear(this.backgroundColor)
+    this.nextRenderBuffer.clear(this.backgroundColor)
+    this.forceFullRepaintRequested = true
+    this.writeOut(
+      ANSI.resetScrollRegion +
+        ANSI.reset +
+        ANSI.home +
+        ANSI.clearScreen +
+        (options.clearSavedLines ? ANSI.clearSavedLines : "") +
+        ANSI.home,
+    )
+    this.requestRender()
   }
 
   private getSnapshotWidth(value: number | undefined, fallback: number): number {
