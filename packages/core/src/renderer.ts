@@ -819,6 +819,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private lastOverRenderableNum: number = 0
   private lastOverRenderable?: Renderable
 
+  // Double-click tracking for word selection (see handleMouseEvent).
+  private _lastClickTime: number = 0
+  private _lastClickX: number = -1
+  private _lastClickY: number = -1
+
   private currentSelection: Selection | null = null
   private selectionContainers: Renderable[] = []
   private clipboard: Clipboard
@@ -3374,6 +3379,40 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const sameElement = maybeRenderableId === this.lastOverRenderableNum
     this.lastOverRenderableNum = maybeRenderableId
     const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+
+    // Double-click to select the word under the cursor. A "word" is the
+    // contiguous run of printable cells (codepoint > 32) around the click.
+    if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && !mouseEvent.modifiers.ctrl) {
+      const now = Date.now()
+      const isDoubleClick =
+        now - this._lastClickTime < 500 && mouseEvent.x === this._lastClickX && mouseEvent.y === this._lastClickY
+      this._lastClickTime = now
+      this._lastClickX = mouseEvent.x
+      this._lastClickY = mouseEvent.y
+
+      if (
+        isDoubleClick &&
+        maybeRenderable &&
+        maybeRenderable.selectable &&
+        !maybeRenderable.isDestroyed &&
+        this.currentRenderBuffer
+      ) {
+        const buf = this.currentRenderBuffer
+        const w = this.width
+        const y = mouseEvent.y
+        const cp = buf.buffers.char[y * w + mouseEvent.x]
+        if (cp > 32) {
+          let startX = mouseEvent.x
+          let endX = mouseEvent.x
+          while (startX > 0 && buf.buffers.char[y * w + startX - 1] > 32) startX--
+          while (endX < w - 1 && buf.buffers.char[y * w + endX + 1] > 32) endX++
+          this.clearSelection()
+          this.startSelection(maybeRenderable, startX, y)
+          this.updateSelection(maybeRenderable, endX + 1, y)
+          return true
+        }
+      }
+    }
 
     if (
       mouseEvent.type === "down" &&
