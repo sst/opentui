@@ -65,6 +65,7 @@ import * as diffDemo from "./diff-demo.js"
 import * as keypressDebugDemo from "./keypress-debug-demo.js"
 import * as extmarksDemo from "./extmarks-demo.js"
 import * as markdownDemo from "./markdown-demo.js"
+import * as markdownCodeBlockRendererDemo from "./markdown-code-block-renderer-demo.js"
 import * as qrcodeDemo from "./qrcode-demo.js"
 import * as linkDemo from "./link-demo.js"
 import * as opacityExample from "./opacity-example.js"
@@ -243,6 +244,12 @@ const examples: Example[] = [
     description: "Markdown rendering with table alignment, syntax highlighting, and theme switching",
     run: markdownDemo.run,
     destroy: markdownDemo.destroy,
+  },
+  {
+    name: "Markdown Code Block Renderer Demo",
+    description: "Custom fenced-code rendering for a fake taskflow DSL inside markdown",
+    run: markdownCodeBlockRendererDemo.run,
+    destroy: markdownCodeBlockRendererDemo.destroy,
   },
   {
     name: "QR Code Demo",

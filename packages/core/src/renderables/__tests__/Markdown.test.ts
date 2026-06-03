@@ -1,7 +1,7 @@
 import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:test"
 import { Edge } from "yoga-layout"
 import { Lexer } from "marked"
-import { MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
+import { createMarkdownCodeBlockRenderer, MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
 import { CodeRenderable } from "../Code.js"
 import { BoxRenderable } from "../Box.js"
 import { TextRenderable } from "../Text.js"
@@ -2045,6 +2045,144 @@ const x = 1;
     │CODE: const x = 1;                                        │
     └──────────────────────────────────────────────────────────┘"
   `)
+})
+
+test("custom code block renderable updates when fenced content changes", async () => {
+  const md = createMarkdownRenderable({
+    id: "custom-code-update",
+    content: "```widget\nfirst\n```",
+    syntaxStyle,
+    renderNode: (node, ctx) => {
+      if (node.type !== "code" || node.lang !== "widget") return ctx.defaultRender()
+
+      return new TextRenderable(renderer, {
+        id: "custom-widget",
+        content: `WIDGET: ${node.text}`,
+        width: "100%",
+      })
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  expect(captureFrame()).toContain("WIDGET: first")
+
+  md.content = "```widget\nsecond\n```"
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("WIDGET: second")
+  expect(frame).not.toContain("WIDGET: first")
+})
+
+test("createMarkdownCodeBlockRenderer dispatches fenced code by language", async () => {
+  const md = createMarkdownRenderable({
+    id: "language-code-renderer",
+    content: `Before
+
+
+\`\`\`taskflow title=Deploy
+step test done
+step preview active
+\`\`\`
+
+\`\`\`tsx
+<Button />
+\`\`\`
+
+After`,
+    syntaxStyle,
+    renderNode: createMarkdownCodeBlockRenderer({
+      taskflow: (node) =>
+        new TextRenderable(renderer, {
+          id: "taskflow-renderer",
+          content: `TASKFLOW:\n${node.text.replaceAll("step ", "- ")}`,
+          width: "100%",
+        }),
+      typescriptreact: (node) =>
+        new TextRenderable(renderer, {
+          id: "tsx-renderer",
+          content: `TSX: ${node.text}`,
+          width: "100%",
+        }),
+    }),
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("Before")
+  expect(frame).toContain("TASKFLOW:")
+  expect(frame).toContain("- test done")
+  expect(frame).toContain("- preview active")
+  expect(frame).toContain("TSX: <Button />")
+  expect(frame).toContain("After")
+})
+
+test("default code blocks reuse their renderable when a custom renderer ignores them", async () => {
+  const md = createMarkdownRenderable({
+    id: "default-code-update-with-custom-renderer",
+    content: "```ts\nconst first = true\n```",
+    syntaxStyle,
+    renderNode: (node) => {
+      if (node.type !== "code" || node.lang !== "widget") return null
+      return new TextRenderable(renderer, { content: `WIDGET: ${node.text}` })
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  const initial = md._blockStates[0]?.renderable
+
+  md.content = "```ts\nconst second = true\n```"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.renderable).toBe(initial)
+  expect(captureFrame()).toContain("const second = true")
+})
+
+test("a default code block becomes custom once its updated content is handled", async () => {
+  const md = createMarkdownRenderable({
+    id: "default-to-custom-code-update",
+    content: "```widget\nincomplete\n```",
+    syntaxStyle,
+    renderNode: (node) => {
+      if (node.type !== "code" || node.lang !== "widget" || !node.text.includes("ready")) return null
+      return new TextRenderable(renderer, { content: `WIDGET: ${node.text}` })
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  expect(captureFrame()).toContain("incomplete")
+
+  md.content = "```widget\nready\n```"
+  await renderMarkdownRenderable(md)
+
+  expect(captureFrame()).toContain("WIDGET: ready")
+})
+
+test("a top-level default code block becomes custom once updated content is handled", async () => {
+  const md = createMarkdownRenderable({
+    id: "top-level-default-to-custom-code-update",
+    content: "```widget\nincomplete\n```",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+    renderNode: (node) => {
+      if (node.type !== "code" || node.lang !== "widget" || !node.text.includes("ready")) return null
+      return new TextRenderable(renderer, { content: `WIDGET: ${node.text}` })
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  expect(captureFrame()).toContain("incomplete")
+
+  md.content = "```widget\nready\n```"
+  await renderMarkdownRenderable(md)
+
+  expect(captureFrame()).toContain("WIDGET: ready")
 })
 
 test("custom renderNode output survives top-level spacing updates", async () => {
