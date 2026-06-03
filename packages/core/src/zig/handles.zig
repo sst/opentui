@@ -31,37 +31,18 @@ const SlotState = enum(u8) {
     destroying,
 };
 
-const VACANT: u8 = @intFromEnum(SlotState.vacant);
-const ALIVE: u8 = @intFromEnum(SlotState.alive);
-const DESTROYING: u8 = @intFromEnum(SlotState.destroying);
-const ACQUIRE_CLOSED_BIT: u32 = 1 << 31;
-const ACTIVE_CALLS_MASK: u32 = ACQUIRE_CLOSED_BIT - 1;
-
 const ObjectSlot = struct {
     generation: u32 = 1,
     kind: u8 = 0,
-    state: u8 = VACANT,
+    state: SlotState = .vacant,
     ptr: usize = 0,
     owned: bool = true,
     owner: Handle = 0,
-    active_calls: u32 = 0,
 };
 
 pub const Error = error{
     OutOfHandles,
-    OutOfMemory,
 };
-
-pub fn Guard(comptime T: type) type {
-    return struct {
-        handle: Handle,
-        ptr: *T,
-
-        pub fn release(self: @This()) void {
-            releaseHandle(self.handle);
-        }
-    };
-}
 
 pub fn DestroyToken(comptime T: type) type {
     return struct {
@@ -70,11 +51,12 @@ pub fn DestroyToken(comptime T: type) type {
     };
 }
 
-const allocator = std.heap.page_allocator;
-var mutex: std.Thread.Mutex = .{};
+// Native core entry is serialized by contract. Renderer and audio implementation
+// threads synchronize their own private state and do not enter this registry.
 var slots: [MAX_SLOTS + 1]ObjectSlot = [_]ObjectSlot{.{}} ** (MAX_SLOTS + 1);
 var slot_count: u32 = 1;
-var free_indices: std.ArrayList(u16) = .empty;
+var free_indices: [MAX_SLOTS]u16 = undefined;
+var free_index_count: usize = 0;
 
 fn encode(index: u32, generation: u32, kind: ObjectKind) Handle {
     return (@as(u32, @intFromEnum(kind)) << (INDEX_BITS + GENERATION_BITS)) |
@@ -99,15 +81,7 @@ fn nextGeneration(generation: u32) ?u32 {
     return if (next > GENERATION_MASK) null else next;
 }
 
-fn atomicLoad(comptime T: type, value: *T) T {
-    return @atomicLoad(T, value, .acquire);
-}
-
-fn atomicStore(comptime T: type, value: *T, new_value: T) void {
-    @atomicStore(T, value, new_value, .release);
-}
-
-fn validateSlotLocked(handle: Handle, expected_kind: ObjectKind) ?u16 {
+fn validateSlot(handle: Handle, expected_kind: ObjectKind) ?u16 {
     if (handle == 0) return null;
     if (slotKind(handle) != @intFromEnum(expected_kind)) return null;
 
@@ -116,51 +90,26 @@ fn validateSlotLocked(handle: Handle, expected_kind: ObjectKind) ?u16 {
 
     const index: u16 = @intCast(index_u32);
     const slot = &slots[index];
-    if (atomicLoad(u32, &slot.generation) != slotGeneration(handle)) return null;
-    if (atomicLoad(u8, &slot.kind) != @intFromEnum(expected_kind)) return null;
-    if (atomicLoad(u8, &slot.state) != ALIVE) return null;
-    if (atomicLoad(usize, &slot.ptr) == 0) return null;
+    if (slot.generation != slotGeneration(handle)) return null;
+    if (slot.kind != @intFromEnum(expected_kind)) return null;
+    if (slot.state != .alive) return null;
+    if (slot.ptr == 0) return null;
     return index;
 }
 
-fn waitForInactiveLocked(slot: *ObjectSlot) void {
-    while ((atomicLoad(u32, &slot.active_calls) & ACTIVE_CALLS_MASK) != 0) {
-        mutex.unlock();
-        std.Thread.yield() catch {};
-        mutex.lock();
-    }
-}
-
-fn closeSlotForAcquire(slot: *ObjectSlot) void {
-    _ = @atomicRmw(u32, &slot.active_calls, .Or, ACQUIRE_CLOSED_BIT, .acq_rel);
-}
-
-fn reopenSlotForAcquire(slot: *ObjectSlot) void {
-    _ = @atomicRmw(u32, &slot.active_calls, .And, ACTIVE_CALLS_MASK, .acq_rel);
-}
-
-fn tryAcquireSlot(slot: *ObjectSlot) bool {
-    while (true) {
-        const current = atomicLoad(u32, &slot.active_calls);
-        if ((current & ACQUIRE_CLOSED_BIT) != 0) return false;
-        if ((current & ACTIVE_CALLS_MASK) == ACTIVE_CALLS_MASK) return false;
-        if (@cmpxchgWeak(u32, &slot.active_calls, current, current + 1, .acq_rel, .acquire) == null) return true;
-    }
-}
-
-fn vacateSlotLocked(index: u16) void {
+fn vacateSlot(index: u16) void {
     const slot = &slots[index];
-    atomicStore(usize, &slot.ptr, 0);
-    atomicStore(u32, &slot.active_calls, 0);
+    slot.ptr = 0;
     slot.owner = 0;
     slot.owned = true;
-    atomicStore(u8, &slot.kind, 0);
-    atomicStore(u8, &slot.state, VACANT);
+    slot.kind = 0;
+    slot.state = .vacant;
 
-    const generation = atomicLoad(u32, &slot.generation);
-    const next = nextGeneration(generation) orelse return;
-    atomicStore(u32, &slot.generation, next);
-    free_indices.append(allocator, index) catch unreachable;
+    const next = nextGeneration(slot.generation) orelse return;
+    slot.generation = next;
+    std.debug.assert(free_index_count < free_indices.len);
+    free_indices[free_index_count] = index;
+    free_index_count += 1;
 }
 
 pub fn insert(kind: ObjectKind, ptr_value: *anyopaque) Error!Handle {
@@ -176,36 +125,23 @@ pub fn insertOwnedChild(kind: ObjectKind, ptr_value: *anyopaque, owner: Handle) 
 }
 
 pub fn getOrInsertBorrowed(kind: ObjectKind, ptr_value: *anyopaque, owner: Handle) Error!Handle {
-    mutex.lock();
-    defer mutex.unlock();
-
     const raw_ptr = @intFromPtr(ptr_value);
     var index: usize = 1;
     while (index < slot_count) : (index += 1) {
         const slot = &slots[index];
-        if (atomicLoad(u8, &slot.state) == ALIVE and
-            atomicLoad(u8, &slot.kind) == @intFromEnum(kind) and
-            atomicLoad(usize, &slot.ptr) == raw_ptr and
-            slot.owner == owner)
-        {
-            return encode(@intCast(index), atomicLoad(u32, &slot.generation), kind);
+        if (slot.state == .alive and slot.kind == @intFromEnum(kind) and slot.ptr == raw_ptr and slot.owner == owner) {
+            return encode(@intCast(index), slot.generation, kind);
         }
     }
 
-    return insertWithOwnerLocked(kind, ptr_value, false, owner);
+    return insertWithOwner(kind, ptr_value, false, owner);
 }
 
 fn insertWithOwner(kind: ObjectKind, ptr_value: *anyopaque, owned: bool, owner: Handle) Error!Handle {
-    mutex.lock();
-    defer mutex.unlock();
-
-    return insertWithOwnerLocked(kind, ptr_value, owned, owner);
-}
-
-fn insertWithOwnerLocked(kind: ObjectKind, ptr_value: *anyopaque, owned: bool, owner: Handle) Error!Handle {
-    const index: u16 = if (free_indices.items.len > 0)
-        free_indices.pop().?
-    else blk: {
+    const index: u16 = if (free_index_count > 0) blk: {
+        free_index_count -= 1;
+        break :blk free_indices[free_index_count];
+    } else blk: {
         if (slot_count > MAX_SLOTS) return Error.OutOfHandles;
         const new_index: u16 = @intCast(slot_count);
         slot_count += 1;
@@ -213,253 +149,118 @@ fn insertWithOwnerLocked(kind: ObjectKind, ptr_value: *anyopaque, owned: bool, o
     };
 
     const slot = &slots[index];
-    atomicStore(u32, &slot.active_calls, 0);
     slot.owned = owned;
     slot.owner = owner;
-    atomicStore(u8, &slot.kind, @intFromEnum(kind));
-    atomicStore(usize, &slot.ptr, @intFromPtr(ptr_value));
-    atomicStore(u8, &slot.state, ALIVE);
+    slot.kind = @intFromEnum(kind);
+    slot.ptr = @intFromPtr(ptr_value);
+    slot.state = .alive;
 
-    return encode(index, atomicLoad(u32, &slot.generation), kind);
+    return encode(index, slot.generation, kind);
 }
 
-pub fn acquire(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?Guard(T) {
-    if (handle == 0) return null;
-    if (slotKind(handle) != @intFromEnum(expected_kind)) return null;
-
-    const index_u32 = slotIndex(handle);
-    if (index_u32 == 0 or index_u32 >= atomicLoad(u32, &slot_count)) return null;
-
-    const slot = &slots[@intCast(index_u32)];
-    if (atomicLoad(u32, &slot.generation) != slotGeneration(handle)) return null;
-    if (atomicLoad(u8, &slot.kind) != @intFromEnum(expected_kind)) return null;
-    if (atomicLoad(u8, &slot.state) != ALIVE) return null;
-
-    if (!tryAcquireSlot(slot)) return null;
-
-    if (atomicLoad(u32, &slot.generation) != slotGeneration(handle) or
-        atomicLoad(u8, &slot.kind) != @intFromEnum(expected_kind) or
-        atomicLoad(u8, &slot.state) != ALIVE)
-    {
-        releaseSlot(slot);
-        return null;
-    }
-
-    const raw_ptr = atomicLoad(usize, &slot.ptr);
-    if (raw_ptr == 0) {
-        releaseSlot(slot);
-        return null;
-    }
-
-    const opaque_ptr: *anyopaque = @ptrFromInt(raw_ptr);
-    const typed_ptr: *T = @ptrCast(@alignCast(opaque_ptr));
-    return .{ .handle = handle, .ptr = typed_ptr };
+pub fn acquire(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?*T {
+    const index = validateSlot(handle, expected_kind) orelse return null;
+    const opaque_ptr: *anyopaque = @ptrFromInt(slots[index].ptr);
+    return @ptrCast(@alignCast(opaque_ptr));
 }
 
 pub fn resolve(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?*T {
-    if (acquire(handle, expected_kind, T)) |guard| {
-        defer guard.release();
-        return guard.ptr;
-    }
-    return null;
-}
-
-fn releaseSlot(slot: *ObjectSlot) void {
-    _ = @atomicRmw(u32, &slot.active_calls, .Sub, 1, .acq_rel);
+    return acquire(handle, expected_kind, T);
 }
 
 pub fn beginDestroy(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?DestroyToken(T) {
-    mutex.lock();
-    defer mutex.unlock();
-
-    const index = validateSlotLocked(handle, expected_kind) orelse return null;
+    const index = validateSlot(handle, expected_kind) orelse return null;
     const slot = &slots[index];
     if (!slot.owned) return null;
-    // Close the slot before waiting so a late acquire cannot enter while destroy is underway.
-    closeSlotForAcquire(slot);
-    if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
-        reopenSlotForAcquire(slot);
-        return null;
-    }
+    slot.state = .destroying;
 
-    waitForInactiveLocked(slot);
-    const raw_ptr = atomicLoad(usize, &slot.ptr);
-    if (raw_ptr == 0) return null;
-    const opaque_ptr: *anyopaque = @ptrFromInt(raw_ptr);
+    const opaque_ptr: *anyopaque = @ptrFromInt(slot.ptr);
     const typed_ptr: *T = @ptrCast(@alignCast(opaque_ptr));
     return .{ .handle = handle, .ptr = typed_ptr };
 }
 
 pub fn pause(handle: Handle, expected_kind: ObjectKind, comptime T: type) ?DestroyToken(T) {
-    mutex.lock();
-    defer mutex.unlock();
-
-    const index = validateSlotLocked(handle, expected_kind) orelse return null;
+    const index = validateSlot(handle, expected_kind) orelse return null;
     const slot = &slots[index];
-    closeSlotForAcquire(slot);
-    if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
-        reopenSlotForAcquire(slot);
-        return null;
-    }
+    slot.state = .destroying;
 
-    waitForInactiveLocked(slot);
-    const raw_ptr = atomicLoad(usize, &slot.ptr);
-    if (raw_ptr == 0) return null;
-    const opaque_ptr: *anyopaque = @ptrFromInt(raw_ptr);
+    const opaque_ptr: *anyopaque = @ptrFromInt(slot.ptr);
     const typed_ptr: *T = @ptrCast(@alignCast(opaque_ptr));
     return .{ .handle = handle, .ptr = typed_ptr };
 }
 
 pub fn unpause(handle: Handle) void {
-    mutex.lock();
-    defer mutex.unlock();
-
     if (handle == 0) return;
     const index_u32 = slotIndex(handle);
     if (index_u32 == 0 or index_u32 >= slot_count) return;
     const slot = &slots[@intCast(index_u32)];
-    if (atomicLoad(u32, &slot.generation) != slotGeneration(handle) or
-        atomicLoad(u8, &slot.state) != DESTROYING or
-        atomicLoad(usize, &slot.ptr) == 0)
-    {
-        return;
-    }
-    atomicStore(u8, &slot.state, ALIVE);
-    reopenSlotForAcquire(slot);
+    if (slot.generation != slotGeneration(handle) or slot.state != .destroying or slot.ptr == 0) return;
+    slot.state = .alive;
 }
 
 pub fn finishDestroy(handle: Handle) void {
-    mutex.lock();
-    defer mutex.unlock();
-
     if (handle == 0) return;
     const index_u32 = slotIndex(handle);
     if (index_u32 == 0 or index_u32 >= slot_count) return;
     const index: u16 = @intCast(index_u32);
     const slot = &slots[index];
-    if (atomicLoad(u32, &slot.generation) != slotGeneration(handle) or atomicLoad(u8, &slot.state) != DESTROYING) return;
-    vacateSlotLocked(index);
+    if (slot.generation != slotGeneration(handle) or slot.state != .destroying) return;
+    vacateSlot(index);
 }
 
 pub fn isValid(handle: Handle, expected_kind: ObjectKind) bool {
-    if (handle == 0) return false;
-    if (slotKind(handle) != @intFromEnum(expected_kind)) return false;
-    const index_u32 = slotIndex(handle);
-    if (index_u32 == 0 or index_u32 >= atomicLoad(u32, &slot_count)) return false;
-    const slot = &slots[@intCast(index_u32)];
-    return atomicLoad(u32, &slot.generation) == slotGeneration(handle) and
-        atomicLoad(u8, &slot.kind) == @intFromEnum(expected_kind) and
-        atomicLoad(u8, &slot.state) == ALIVE and
-        atomicLoad(usize, &slot.ptr) != 0;
+    return validateSlot(handle, expected_kind) != null;
 }
 
 pub fn isOwned(handle: Handle, expected_kind: ObjectKind) bool {
-    mutex.lock();
-    defer mutex.unlock();
-
-    const index = validateSlotLocked(handle, expected_kind) orelse return false;
+    const index = validateSlot(handle, expected_kind) orelse return false;
     return slots[index].owned;
 }
 
 pub fn invalidate(handle: Handle, expected_kind: ObjectKind) void {
-    mutex.lock();
-    defer mutex.unlock();
-
-    const index = validateSlotLocked(handle, expected_kind) orelse return;
-    const slot = &slots[index];
-    closeSlotForAcquire(slot);
-    if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
-        reopenSlotForAcquire(slot);
-        return;
-    }
-    waitForInactiveLocked(slot);
-    vacateSlotLocked(index);
+    const index = validateSlot(handle, expected_kind) orelse return;
+    slots[index].state = .destroying;
+    vacateSlot(index);
 }
 
 pub fn invalidateChildren(owner: Handle) void {
-    mutex.lock();
-    defer mutex.unlock();
-
-    invalidateChildrenLocked(owner);
-}
-
-fn invalidateChildrenLocked(owner: Handle) void {
-    var changed = true;
-    while (changed) {
-        changed = false;
-        var index: usize = 1;
-        while (index < slot_count) : (index += 1) {
-            const slot = &slots[index];
-            if (atomicLoad(u8, &slot.state) != ALIVE or slot.owner != owner) continue;
-
-            const child_handle = encode(@intCast(index), atomicLoad(u32, &slot.generation), @enumFromInt(atomicLoad(u8, &slot.kind)));
-            closeSlotForAcquire(slot);
-            if (@cmpxchgStrong(u8, &slot.state, ALIVE, DESTROYING, .acq_rel, .acquire) != null) {
-                reopenSlotForAcquire(slot);
-                continue;
-            }
-            waitForInactiveLocked(slot);
-            invalidateChildrenLocked(child_handle);
-            vacateSlotLocked(@intCast(index));
-            changed = true;
-            break;
-        }
+    while (findChild(owner, null)) |child_handle| {
+        const index: u16 = @intCast(slotIndex(child_handle));
+        slots[index].state = .destroying;
+        invalidateChildren(child_handle);
+        vacateSlot(index);
     }
 }
 
-pub fn collectChildren(owner: Handle, kind: ?ObjectKind, alloc: std.mem.Allocator) Error![]Handle {
-    mutex.lock();
-    defer mutex.unlock();
-
-    var result: std.ArrayList(Handle) = .empty;
-    errdefer result.deinit(alloc);
-
+pub fn findChild(owner: Handle, kind: ?ObjectKind) ?Handle {
     var index: usize = 1;
     while (index < slot_count) : (index += 1) {
         const slot = &slots[index];
-        if (atomicLoad(u8, &slot.state) != ALIVE or slot.owner != owner) continue;
-        const slot_kind: ObjectKind = @enumFromInt(atomicLoad(u8, &slot.kind));
+        if (slot.state != .alive or slot.owner != owner) continue;
+        const slot_kind: ObjectKind = @enumFromInt(slot.kind);
         if (kind) |expected| {
             if (slot_kind != expected) continue;
         }
-        try result.append(alloc, encode(@intCast(index), atomicLoad(u32, &slot.generation), slot_kind));
+        return encode(@intCast(index), slot.generation, slot_kind);
     }
-
-    return result.toOwnedSlice(alloc);
+    return null;
 }
 
-pub fn collectByKind(kind: ObjectKind, alloc: std.mem.Allocator) Error![]Handle {
-    mutex.lock();
-    defer mutex.unlock();
-
-    var result: std.ArrayList(Handle) = .empty;
-    errdefer result.deinit(alloc);
-
-    var index: usize = 1;
-    while (index < slot_count) : (index += 1) {
+pub fn nextByKind(kind: ObjectKind, cursor: *usize) ?Handle {
+    while (cursor.* < slot_count) {
+        const index = cursor.*;
+        cursor.* += 1;
         const slot = &slots[index];
-        if (atomicLoad(u8, &slot.state) != ALIVE or atomicLoad(u8, &slot.kind) != @intFromEnum(kind)) continue;
-        try result.append(alloc, encode(@intCast(index), atomicLoad(u32, &slot.generation), kind));
+        if (slot.state == .alive and slot.kind == @intFromEnum(kind)) {
+            return encode(@intCast(index), slot.generation, kind);
+        }
     }
-
-    return result.toOwnedSlice(alloc);
+    return null;
 }
 
 pub fn liveCount(kind: ObjectKind) usize {
     var count: usize = 0;
-    var index: usize = 1;
-    while (index < atomicLoad(u32, &slot_count)) : (index += 1) {
-        const slot = &slots[index];
-        if (atomicLoad(u8, &slot.state) == ALIVE and atomicLoad(u8, &slot.kind) == @intFromEnum(kind)) count += 1;
-    }
+    var cursor: usize = 1;
+    while (nextByKind(kind, &cursor)) |_| count += 1;
     return count;
-}
-
-fn releaseHandle(handle: Handle) void {
-    if (handle == 0) return;
-    const index_u32 = slotIndex(handle);
-    if (index_u32 == 0 or index_u32 >= atomicLoad(u32, &slot_count)) return;
-    const slot = &slots[@intCast(index_u32)];
-    if (atomicLoad(u32, &slot.generation) != slotGeneration(handle)) return;
-    releaseSlot(slot);
 }

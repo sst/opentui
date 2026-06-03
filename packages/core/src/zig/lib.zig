@@ -48,39 +48,39 @@ fn erasePtr(ptr_value: anytype) *anyopaque {
     return @ptrCast(ptr_value);
 }
 
-fn acquireRenderer(handle: NativeHandle) ?handles.Guard(renderer.CliRenderer) {
+fn acquireRenderer(handle: NativeHandle) ?*renderer.CliRenderer {
     return handles.acquire(handle, .renderer, renderer.CliRenderer);
 }
 
-fn acquireBuffer(handle: NativeHandle) ?handles.Guard(buffer.OptimizedBuffer) {
+fn acquireBuffer(handle: NativeHandle) ?*buffer.OptimizedBuffer {
     return handles.acquire(handle, .optimized_buffer, buffer.OptimizedBuffer);
 }
 
-fn acquireTextBuffer(handle: NativeHandle) ?handles.Guard(text_buffer.UnifiedTextBuffer) {
+fn acquireTextBuffer(handle: NativeHandle) ?*text_buffer.UnifiedTextBuffer {
     return handles.acquire(handle, .text_buffer, text_buffer.UnifiedTextBuffer);
 }
 
-fn acquireTextBufferView(handle: NativeHandle) ?handles.Guard(text_buffer_view.UnifiedTextBufferView) {
+fn acquireTextBufferView(handle: NativeHandle) ?*text_buffer_view.UnifiedTextBufferView {
     return handles.acquire(handle, .text_buffer_view, text_buffer_view.UnifiedTextBufferView);
 }
 
-fn acquireEditBuffer(handle: NativeHandle) ?handles.Guard(edit_buffer_mod.EditBuffer) {
+fn acquireEditBuffer(handle: NativeHandle) ?*edit_buffer_mod.EditBuffer {
     return handles.acquire(handle, .edit_buffer, edit_buffer_mod.EditBuffer);
 }
 
-fn acquireEditorView(handle: NativeHandle) ?handles.Guard(editor_view.EditorView) {
+fn acquireEditorView(handle: NativeHandle) ?*editor_view.EditorView {
     return handles.acquire(handle, .editor_view, editor_view.EditorView);
 }
 
-fn acquireSyntaxStyle(handle: NativeHandle) ?handles.Guard(syntax_style.SyntaxStyle) {
+fn acquireSyntaxStyle(handle: NativeHandle) ?*syntax_style.SyntaxStyle {
     return handles.acquire(handle, .syntax_style, syntax_style.SyntaxStyle);
 }
 
-fn acquireEventSink(handle: NativeHandle) ?handles.Guard(event_bus.EventSink) {
+fn acquireEventSink(handle: NativeHandle) ?*event_bus.EventSink {
     return handles.acquire(handle, .event_sink, event_bus.EventSink);
 }
 
-fn acquireAudioEngine(handle: NativeHandle) ?handles.Guard(native_audio.Engine) {
+fn acquireAudioEngine(handle: NativeHandle) ?*native_audio.Engine {
     return handles.acquire(handle, .audio_engine, native_audio.Engine);
 }
 
@@ -123,10 +123,8 @@ export fn createEventSink(callback: ?event_bus.EventCallback) NativeHandle {
 }
 
 fn clearEditBufferEventSinkRefs(sink: *event_bus.EventSink) void {
-    const edit_handles = handles.collectByKind(.edit_buffer, globalAllocator) catch unreachable;
-    defer globalAllocator.free(edit_handles);
-
-    for (edit_handles) |edit_handle| {
+    var cursor: usize = 1;
+    while (handles.nextByKind(.edit_buffer, &cursor)) |edit_handle| {
         const token = handles.pause(edit_handle, .edit_buffer, edit_buffer_mod.EditBuffer) orelse continue;
         if (token.ptr.event_sink == sink) {
             token.ptr.event_sink = null;
@@ -293,129 +291,108 @@ export fn destroyAudioEngine(engine_handle: NativeHandle) void {
 }
 
 export fn audioRefreshPlaybackDevices(engine_handle: NativeHandle) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.refreshPlaybackDevices(guard.ptr);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.refreshPlaybackDevices(object_ptr);
 }
 
 export fn audioGetPlaybackDeviceCount(engine_handle: NativeHandle) u32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return 0;
-    defer guard.release();
-    return native_audio.getPlaybackDeviceCount(guard.ptr);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return 0;
+    return native_audio.getPlaybackDeviceCount(object_ptr);
 }
 
 export fn audioGetPlaybackDeviceName(engine_handle: NativeHandle, index: u32, out_ptr: [*]u8, max_len: usize) usize {
-    const guard = acquireAudioEngine(engine_handle) orelse return 0;
-    defer guard.release();
-    return native_audio.getPlaybackDeviceName(guard.ptr, index, out_ptr, max_len);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return 0;
+    return native_audio.getPlaybackDeviceName(object_ptr, index, out_ptr, max_len);
 }
 
 export fn audioIsPlaybackDeviceDefault(engine_handle: NativeHandle, index: u32) bool {
-    const guard = acquireAudioEngine(engine_handle) orelse return false;
-    defer guard.release();
-    return native_audio.isPlaybackDeviceDefault(guard.ptr, index);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return false;
+    return native_audio.isPlaybackDeviceDefault(object_ptr, index);
 }
 
 export fn audioSelectPlaybackDevice(engine_handle: NativeHandle, index: u32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.selectPlaybackDevice(guard.ptr, index);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.selectPlaybackDevice(object_ptr, index);
 }
 
 export fn audioClearPlaybackDeviceSelection(engine_handle: NativeHandle) void {
-    const guard = acquireAudioEngine(engine_handle) orelse return;
-    defer guard.release();
-    native_audio.clearPlaybackDeviceSelection(guard.ptr);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return;
+    native_audio.clearPlaybackDeviceSelection(object_ptr);
 }
 
 export fn audioStart(engine_handle: NativeHandle, options_ptr: ?*const native_audio.StartOptions) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.start(guard.ptr, options_ptr);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.start(object_ptr, options_ptr);
 }
 
 export fn audioStartMixer(engine_handle: NativeHandle) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.startMixer(guard.ptr);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.startMixer(object_ptr);
 }
 
 export fn audioStop(engine_handle: NativeHandle) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.stop(guard.ptr);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.stop(object_ptr);
 }
 
 export fn audioLoad(engine_handle: NativeHandle, data_ptr: ?[*]const u8, data_len: usize, out_sound_id: ?*u32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.load(guard.ptr, data_ptr, data_len, out_sound_id);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.load(object_ptr, data_ptr, data_len, out_sound_id);
 }
 
 export fn audioUnload(engine_handle: NativeHandle, sound_id: u32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.unload(guard.ptr, sound_id);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.unload(object_ptr, sound_id);
 }
 
 export fn audioPlay(engine_handle: NativeHandle, sound_id: u32, options_ptr: ?*const native_audio.VoiceOptions, out_voice_id: ?*u32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.play(guard.ptr, sound_id, options_ptr, out_voice_id);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.play(object_ptr, sound_id, options_ptr, out_voice_id);
 }
 
 export fn audioStopVoice(engine_handle: NativeHandle, voice_id: u32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.stopVoice(guard.ptr, voice_id);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.stopVoice(object_ptr, voice_id);
 }
 
 export fn audioSetVoiceGroup(engine_handle: NativeHandle, voice_id: u32, group_id: u32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.setVoiceGroup(guard.ptr, voice_id, group_id);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.setVoiceGroup(object_ptr, voice_id, group_id);
 }
 
 export fn audioCreateGroup(engine_handle: NativeHandle, name_ptr: ?[*]const u8, name_len: usize, out_group_id: ?*u32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.createGroup(guard.ptr, name_ptr, name_len, out_group_id);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.createGroup(object_ptr, name_ptr, name_len, out_group_id);
 }
 
 export fn audioSetGroupVolume(engine_handle: NativeHandle, group_id: u32, volume: f32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.setGroupVolume(guard.ptr, group_id, volume);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.setGroupVolume(object_ptr, group_id, volume);
 }
 
 export fn audioSetMasterVolume(engine_handle: NativeHandle, volume: f32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.setMasterVolume(guard.ptr, volume);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.setMasterVolume(object_ptr, volume);
 }
 
 export fn audioMixToBuffer(engine_handle: NativeHandle, out_ptr: ?[*]f32, frame_count: u32, channels: u8) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.mixToBuffer(guard.ptr, out_ptr, frame_count, channels);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.mixToBuffer(object_ptr, out_ptr, frame_count, channels);
 }
 
 export fn audioEnableTap(engine_handle: NativeHandle, enabled: bool, capacity_frames: u32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.enableTap(guard.ptr, enabled, capacity_frames);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.enableTap(object_ptr, enabled, capacity_frames);
 }
 
 export fn audioReadTap(engine_handle: NativeHandle, out_ptr: ?[*]f32, frame_count: u32, channels: u8, out_frames_read: ?*u32) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.readTap(guard.ptr, out_ptr, frame_count, channels, out_frames_read);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.readTap(object_ptr, out_ptr, frame_count, channels, out_frames_read);
 }
 
 export fn audioGetStats(engine_handle: NativeHandle, out_stats: ?*native_audio.Stats) i32 {
-    const guard = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    defer guard.release();
-    return native_audio.getStats(guard.ptr, out_stats);
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.getStats(object_ptr, out_stats);
 }
 
 export fn getArenaAllocatedBytes() usize {
@@ -517,23 +494,20 @@ export fn createRenderer(
 }
 
 export fn setTerminalEnvVar(renderer_handle: NativeHandle, keyPtr: [*]const u8, keyLen: usize, valuePtr: [*]const u8, valueLen: usize) bool {
-    const guard = acquireRenderer(renderer_handle) orelse return false;
-    defer guard.release();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return false;
     const key = keyPtr[0..keyLen];
     const value = valuePtr[0..valueLen];
-    return guard.ptr.setTerminalEnvVar(key, value);
+    return object_ptr.setTerminalEnvVar(key, value);
 }
 
 export fn setUseThread(renderer_handle: NativeHandle, useThread: bool) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setUseThread(useThread);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.setUseThread(useThread);
 }
 
 export fn setClearOnShutdown(renderer_handle: NativeHandle, clear: bool) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setClearOnShutdown(clear);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.setClearOnShutdown(clear);
 }
 
 export fn destroyRenderer(renderer_handle: NativeHandle) void {
@@ -544,33 +518,28 @@ export fn destroyRenderer(renderer_handle: NativeHandle) void {
 }
 
 export fn setBackgroundColor(renderer_handle: NativeHandle, color: [*]const u16) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setBackgroundColor(ptrToRGBA(color));
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.setBackgroundColor(ptrToRGBA(color));
 }
 
 export fn setRenderOffset(renderer_handle: NativeHandle, offset: u32) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setRenderOffset(offset);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.setRenderOffset(offset);
 }
 
 export fn resetSplitScrollback(renderer_handle: NativeHandle, seedRows: u32, pinnedRenderOffset: u32) u32 {
-    const guard = acquireRenderer(renderer_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.resetSplitScrollback(seedRows, pinnedRenderOffset);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return 0;
+    return object_ptr.resetSplitScrollback(seedRows, pinnedRenderOffset);
 }
 
 export fn syncSplitScrollback(renderer_handle: NativeHandle, pinnedRenderOffset: u32) u32 {
-    const guard = acquireRenderer(renderer_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.syncSplitScrollback(pinnedRenderOffset);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return 0;
+    return object_ptr.syncSplitScrollback(pinnedRenderOffset);
 }
 
 export fn getSplitOutputOffset(renderer_handle: NativeHandle, surfaceOffset: u32) u32 {
-    const guard = acquireRenderer(renderer_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getSplitOutputOffset(surfaceOffset);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return 0;
+    return object_ptr.getSplitOutputOffset(surfaceOffset);
 }
 
 export fn setPendingSplitFooterTransition(
@@ -582,9 +551,8 @@ export fn setPendingSplitFooterTransition(
     targetHeight: u32,
     scrollLines: u32,
 ) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setPendingSplitFooterTransition(
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.setPendingSplitFooterTransition(
         @enumFromInt(mode),
         sourceTopLine,
         sourceHeight,
@@ -595,30 +563,26 @@ export fn setPendingSplitFooterTransition(
 }
 
 export fn clearPendingSplitFooterTransition(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clearPendingSplitFooterTransition();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.clearPendingSplitFooterTransition();
 }
 
 export fn updateStats(renderer_handle: NativeHandle, time: f64, fps: u32, frameCallbackTime: f64) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.updateStats(time, fps, frameCallbackTime);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.updateStats(time, fps, frameCallbackTime);
 }
 
 export fn updateMemoryStats(renderer_handle: NativeHandle, heapUsed: u32, heapTotal: u32, arrayBuffers: u32) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.updateMemoryStats(heapUsed, heapTotal, arrayBuffers);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.updateMemoryStats(heapUsed, heapTotal, arrayBuffers);
 }
 
 export fn getRenderStats(renderer_handle: NativeHandle, outPtr: *ExternalRenderStats) void {
-    const guard = acquireRenderer(renderer_handle) orelse {
+    const object_ptr = acquireRenderer(renderer_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalRenderStats);
         return;
     };
-    defer guard.release();
-    const stats = guard.ptr.getRenderStats();
+    const stats = object_ptr.getRenderStats();
 
     outPtr.* = .{
         .last_frame_time = stats.lastFrameTime,
@@ -634,21 +598,18 @@ export fn getRenderStats(renderer_handle: NativeHandle, outPtr: *ExternalRenderS
 }
 
 export fn getNextBuffer(renderer_handle: NativeHandle) NativeHandle {
-    const guard = acquireRenderer(renderer_handle) orelse return INVALID_HANDLE;
-    defer guard.release();
-    return handles.getOrInsertBorrowed(.optimized_buffer, erasePtr(guard.ptr.getNextBuffer()), renderer_handle) catch INVALID_HANDLE;
+    const object_ptr = acquireRenderer(renderer_handle) orelse return INVALID_HANDLE;
+    return handles.getOrInsertBorrowed(.optimized_buffer, erasePtr(object_ptr.getNextBuffer()), renderer_handle) catch INVALID_HANDLE;
 }
 
 export fn getCurrentBuffer(renderer_handle: NativeHandle) NativeHandle {
-    const guard = acquireRenderer(renderer_handle) orelse return INVALID_HANDLE;
-    defer guard.release();
-    return handles.getOrInsertBorrowed(.optimized_buffer, erasePtr(guard.ptr.getCurrentBuffer()), renderer_handle) catch INVALID_HANDLE;
+    const object_ptr = acquireRenderer(renderer_handle) orelse return INVALID_HANDLE;
+    return handles.getOrInsertBorrowed(.optimized_buffer, erasePtr(object_ptr.getCurrentBuffer()), renderer_handle) catch INVALID_HANDLE;
 }
 
 export fn setHyperlinksCapability(renderer_handle: NativeHandle, enabled: bool) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.terminal.caps.hyperlinks = enabled;
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.terminal.caps.hyperlinks = enabled;
 }
 
 export fn clearGlobalLinkPool() void {
@@ -656,15 +617,13 @@ export fn clearGlobalLinkPool() void {
 }
 
 export fn getBufferWidth(buffer_handle: NativeHandle) u32 {
-    const guard = acquireBuffer(buffer_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.width;
+    const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
+    return object_ptr.width;
 }
 
 export fn getBufferHeight(buffer_handle: NativeHandle) u32 {
-    const guard = acquireBuffer(buffer_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.height;
+    const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
+    return object_ptr.height;
 }
 
 fn packRenderResult(result: renderer.RenderResult) u64 {
@@ -676,9 +635,8 @@ fn packFailedRenderResult() u64 {
 }
 
 export fn render(renderer_handle: NativeHandle, force: bool) u8 {
-    const guard = acquireRenderer(renderer_handle) orelse return @intFromEnum(renderer.RenderStatus.failed);
-    defer guard.release();
-    return @intFromEnum(guard.ptr.render(force));
+    const object_ptr = acquireRenderer(renderer_handle) orelse return @intFromEnum(renderer.RenderStatus.failed);
+    return @intFromEnum(object_ptr.render(force));
 }
 
 export fn repaintSplitFooter(
@@ -686,9 +644,8 @@ export fn repaintSplitFooter(
     pinnedRenderOffset: u32,
     force: bool,
 ) u64 {
-    const guard = acquireRenderer(renderer_handle) orelse return packFailedRenderResult();
-    defer guard.release();
-    return packRenderResult(guard.ptr.repaintSplitFooter(pinnedRenderOffset, force));
+    const object_ptr = acquireRenderer(renderer_handle) orelse return packFailedRenderResult();
+    return packRenderResult(object_ptr.repaintSplitFooter(pinnedRenderOffset, force));
 }
 
 export fn commitSplitFooterSnapshot(
@@ -702,10 +659,8 @@ export fn commitSplitFooterSnapshot(
     beginFrame: bool,
     finalizeFrame: bool,
 ) u64 {
-    const renderer_guard = acquireRenderer(renderer_handle) orelse return packFailedRenderResult();
-    defer renderer_guard.release();
-    const snapshot_guard = acquireBuffer(snapshot_buffer_handle) orelse return packFailedRenderResult();
-    defer snapshot_guard.release();
+    const renderer_ptr = acquireRenderer(renderer_handle) orelse return packFailedRenderResult();
+    const snapshot_ptr = acquireBuffer(snapshot_buffer_handle) orelse return packFailedRenderResult();
 
     // JS passes rowColumns/startOnNewLine/trailingNewline per commit from
     // writeToScrollback or captured stdout chunking. This entrypoint is the ABI
@@ -713,8 +668,8 @@ export fn commitSplitFooterSnapshot(
     // Route all commits through the batched renderer path so sync/cursor framing
     // happens exactly once per JS flush cycle.
     if (beginFrame and finalizeFrame) {
-        return packRenderResult(renderer_guard.ptr.commitSplitFooterSnapshotBatched(
-            snapshot_guard.ptr,
+        return packRenderResult(renderer_ptr.commitSplitFooterSnapshotBatched(
+            snapshot_ptr,
             rowColumns,
             startOnNewLine,
             trailingNewline,
@@ -725,8 +680,8 @@ export fn commitSplitFooterSnapshot(
         ));
     }
 
-    return packRenderResult(renderer_guard.ptr.commitSplitFooterSnapshotBatched(
-        snapshot_guard.ptr,
+    return packRenderResult(renderer_ptr.commitSplitFooterSnapshotBatched(
+        snapshot_ptr,
         rowColumns,
         startOnNewLine,
         trailingNewline,
@@ -776,22 +731,19 @@ export fn destroyFrameBuffer(frame_buffer_handle: NativeHandle) void {
 }
 
 export fn drawFrameBuffer(target_handle: NativeHandle, destX: i32, destY: i32, frame_buffer_handle: NativeHandle, sourceX: u32, sourceY: u32, sourceWidth: u32, sourceHeight: u32) void {
-    const target_guard = acquireBuffer(target_handle) orelse return;
-    defer target_guard.release();
-    const frame_guard = acquireBuffer(frame_buffer_handle) orelse return;
-    defer frame_guard.release();
+    const target_ptr = acquireBuffer(target_handle) orelse return;
+    const frame_ptr = acquireBuffer(frame_buffer_handle) orelse return;
     const srcX = if (sourceX == 0) null else sourceX;
     const srcY = if (sourceY == 0) null else sourceY;
     const srcWidth = if (sourceWidth == 0) null else sourceWidth;
     const srcHeight = if (sourceHeight == 0) null else sourceHeight;
 
-    target_guard.ptr.drawFrameBuffer(destX, destY, frame_guard.ptr, srcX, srcY, srcWidth, srcHeight);
+    target_ptr.drawFrameBuffer(destX, destY, frame_ptr, srcX, srcY, srcWidth, srcHeight);
 }
 
 export fn setCursorPosition(renderer_handle: NativeHandle, x: i32, y: i32, visible: bool) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.terminal.setCursorPosition(@intCast(@max(1, x)), @intCast(@max(1, y)), visible);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.terminal.setCursorPosition(@intCast(@max(1, x)), @intCast(@max(1, y)), visible);
 }
 
 pub const ExternalCapabilities = extern struct {
@@ -822,15 +774,14 @@ pub const ExternalCapabilities = extern struct {
 };
 
 export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *ExternalCapabilities) void {
-    const guard = acquireRenderer(renderer_handle) orelse {
+    const object_ptr = acquireRenderer(renderer_handle) orelse {
         capsPtr.* = std.mem.zeroes(ExternalCapabilities);
         capsPtr.term_name_ptr = EMPTY_U8[0..].ptr;
         capsPtr.term_version_ptr = EMPTY_U8[0..].ptr;
         return;
     };
-    defer guard.release();
-    const caps = guard.ptr.getTerminalCapabilities();
-    const term = &guard.ptr.terminal;
+    const caps = object_ptr.getTerminalCapabilities();
+    const term = &object_ptr.terminal;
 
     capsPtr.* = .{
         .kitty_keyboard = caps.kitty_keyboard,
@@ -861,16 +812,14 @@ export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *Exter
 }
 
 export fn processCapabilityResponse(renderer_handle: NativeHandle, responsePtr: [*]const u8, responseLen: usize) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
     const response = responsePtr[0..responseLen];
-    guard.ptr.processCapabilityResponse(response);
+    object_ptr.processCapabilityResponse(response);
 }
 
 export fn setCursorColor(renderer_handle: NativeHandle, color: [*]const u16) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.terminal.setCursorColor(ptrToRGBA(color));
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.terminal.setCursorColor(ptrToRGBA(color));
 }
 
 export fn rendererSetPaletteState(
@@ -881,8 +830,7 @@ export fn rendererSetPaletteState(
     defaultBgPtr: [*]const u16,
     paletteEpoch: u32,
 ) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
     if (paletteLen < 256) return;
 
     var palette: [256]renderer.RGBA = undefined;
@@ -892,7 +840,7 @@ export fn rendererSetPaletteState(
         palette[index] = .{ palettePtr[base], palettePtr[base + 1], palettePtr[base + 2], palettePtr[base + 3] };
     }
 
-    guard.ptr.setPaletteState(palette[0..], ptrToRGBA(defaultFgPtr), ptrToRGBA(defaultBgPtr), paletteEpoch);
+    object_ptr.setPaletteState(palette[0..], ptrToRGBA(defaultFgPtr), ptrToRGBA(defaultBgPtr), paletteEpoch);
 }
 
 pub const CursorStyleOptions = extern struct {
@@ -903,21 +851,20 @@ pub const CursorStyleOptions = extern struct {
 };
 
 export fn setCursorStyleOptions(renderer_handle: NativeHandle, options: *const CursorStyleOptions) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    const current = guard.ptr.terminal.getCursorStyle();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    const current = object_ptr.terminal.getCursorStyle();
 
     const style = if (options.style <= 3) @as(terminal.CursorStyle, @enumFromInt(options.style)) else current.style;
     const blinking = if (options.blinking <= 1) options.blinking == 1 else current.blinking;
 
     if (options.style <= 3 or options.blinking <= 1) {
-        guard.ptr.terminal.setCursorStyle(style, blinking);
+        object_ptr.terminal.setCursorStyle(style, blinking);
     }
     if (options.color) |rgba| {
-        guard.ptr.terminal.setCursorColor(ptrToRGBA(rgba));
+        object_ptr.terminal.setCursorColor(ptrToRGBA(rgba));
     }
     if (options.cursor <= 5) {
-        guard.ptr.terminal.setMousePointerStyle(@enumFromInt(options.cursor));
+        object_ptr.terminal.setMousePointerStyle(@enumFromInt(options.cursor));
     }
 }
 
@@ -934,14 +881,13 @@ pub const ExternalCursorState = extern struct {
 };
 
 export fn getCursorState(renderer_handle: NativeHandle, outPtr: *ExternalCursorState) void {
-    const guard = acquireRenderer(renderer_handle) orelse {
+    const object_ptr = acquireRenderer(renderer_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalCursorState);
         return;
     };
-    defer guard.release();
-    const pos = guard.ptr.terminal.getCursorPosition();
-    const style = guard.ptr.terminal.getCursorStyle();
-    const color = guard.ptr.terminal.getCursorColor();
+    const pos = object_ptr.terminal.getCursorPosition();
+    const style = object_ptr.terminal.getCursorStyle();
+    const color = object_ptr.terminal.getCursorColor();
 
     const styleTag: u8 = switch (style.style) {
         .block => 0,
@@ -964,8 +910,7 @@ export fn getCursorState(renderer_handle: NativeHandle, outPtr: *ExternalCursorS
 }
 
 export fn setDebugOverlay(renderer_handle: NativeHandle, enabled: bool, corner: u8) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
     const cornerEnum: renderer.DebugOverlayCorner = switch (corner) {
         0 => .topLeft,
         1 => .topRight,
@@ -973,114 +918,98 @@ export fn setDebugOverlay(renderer_handle: NativeHandle, enabled: bool, corner: 
         else => .bottomRight,
     };
 
-    guard.ptr.setDebugOverlay(enabled, cornerEnum);
+    object_ptr.setDebugOverlay(enabled, cornerEnum);
 }
 
 export fn clearTerminal(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clearTerminal();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.clearTerminal();
 }
 
 export fn setTerminalTitle(renderer_handle: NativeHandle, titlePtr: [*]const u8, titleLen: usize) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
     const title = titlePtr[0..titleLen];
-    guard.ptr.setTerminalTitle(title);
+    object_ptr.setTerminalTitle(title);
 }
 
 export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, payloadPtr: [*]const u8, payloadLen: usize) bool {
-    const guard = acquireRenderer(renderer_handle) orelse return false;
-    defer guard.release();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return false;
     const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
     const payload = payloadPtr[0..payloadLen];
-    return guard.ptr.copyToClipboardOSC52(targetEnum, payload);
+    return object_ptr.copyToClipboardOSC52(targetEnum, payload);
 }
 
 export fn clearClipboardOSC52(renderer_handle: NativeHandle, target: u8) bool {
-    const guard = acquireRenderer(renderer_handle) orelse return false;
-    defer guard.release();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return false;
     const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
-    return guard.ptr.clearClipboardOSC52(targetEnum);
+    return object_ptr.clearClipboardOSC52(targetEnum);
 }
 
 export fn triggerNotification(renderer_handle: NativeHandle, messagePtr: [*]const u8, messageLen: usize, titlePtr: ?[*]const u8, titleLen: usize) bool {
-    const guard = acquireRenderer(renderer_handle) orelse return false;
-    defer guard.release();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return false;
     const message = messagePtr[0..messageLen];
     const title = if (titlePtr) |ptr| ptr[0..titleLen] else null;
-    return guard.ptr.triggerNotification(message, title);
+    return object_ptr.triggerNotification(message, title);
 }
 
 // Buffer functions
 export fn bufferClear(buffer_handle: NativeHandle, bg: [*]const u16) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clear(ptrToRGBA(bg), null);
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.clear(ptrToRGBA(bg), null);
 }
 
 export fn bufferGetCharPtr(buffer_handle: NativeHandle) ?[*]u32 {
-    const guard = acquireBuffer(buffer_handle) orelse return null;
-    defer guard.release();
-    return guard.ptr.getCharPtr();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return null;
+    return object_ptr.getCharPtr();
 }
 
 export fn bufferGetFgPtr(buffer_handle: NativeHandle) ?[*]RGBA {
-    const guard = acquireBuffer(buffer_handle) orelse return null;
-    defer guard.release();
-    return guard.ptr.getFgPtr();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return null;
+    return object_ptr.getFgPtr();
 }
 
 export fn bufferGetBgPtr(buffer_handle: NativeHandle) ?[*]RGBA {
-    const guard = acquireBuffer(buffer_handle) orelse return null;
-    defer guard.release();
-    return guard.ptr.getBgPtr();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return null;
+    return object_ptr.getBgPtr();
 }
 
 export fn bufferGetAttributesPtr(buffer_handle: NativeHandle) ?[*]u32 {
-    const guard = acquireBuffer(buffer_handle) orelse return null;
-    defer guard.release();
-    return guard.ptr.getAttributesPtr();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return null;
+    return object_ptr.getAttributesPtr();
 }
 
 export fn bufferGetRespectAlpha(buffer_handle: NativeHandle) bool {
-    const guard = acquireBuffer(buffer_handle) orelse return false;
-    defer guard.release();
-    return guard.ptr.getRespectAlpha();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return false;
+    return object_ptr.getRespectAlpha();
 }
 
 export fn bufferSetRespectAlpha(buffer_handle: NativeHandle, respectAlpha: bool) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setRespectAlpha(respectAlpha);
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.setRespectAlpha(respectAlpha);
 }
 
 export fn bufferGetId(buffer_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireBuffer(buffer_handle) orelse return 0;
-    defer guard.release();
-    const id = guard.ptr.getId();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
+    const id = object_ptr.getId();
     const copyLen = @min(id.len, maxLen);
     @memcpy(outPtr[0..copyLen], id[0..copyLen]);
     return copyLen;
 }
 
 export fn bufferGetRealCharSize(buffer_handle: NativeHandle) u32 {
-    const guard = acquireBuffer(buffer_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getRealCharSize();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
+    return object_ptr.getRealCharSize();
 }
 
 export fn bufferWriteResolvedChars(buffer_handle: NativeHandle, outputPtr: [*]u8, outputLen: usize, addLineBreaks: bool) u32 {
-    const guard = acquireBuffer(buffer_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
     const output_slice = outputPtr[0..outputLen];
-    return guard.ptr.writeResolvedChars(output_slice, addLineBreaks) catch 0;
+    return object_ptr.writeResolvedChars(output_slice, addLineBreaks) catch 0;
 }
 
 export fn bufferDrawText(buffer_handle: NativeHandle, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const u16, bg: ?[*]const u16, attributes: u32) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.drawText(
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.drawText(
         text[0..textLen],
         x,
         y,
@@ -1091,15 +1020,13 @@ export fn bufferDrawText(buffer_handle: NativeHandle, text: [*]const u8, textLen
 }
 
 export fn bufferSetCellWithAlphaBlending(buffer_handle: NativeHandle, x: u32, y: u32, char: u32, fg: [*]const u16, bg: [*]const u16, attributes: u32) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setCellWithAlphaBlending(x, y, char, ptrToRGBA(fg), ptrToRGBA(bg), attributes);
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.setCellWithAlphaBlending(x, y, char, ptrToRGBA(fg), ptrToRGBA(bg), attributes);
 }
 
 export fn bufferSetCell(buffer_handle: NativeHandle, x: u32, y: u32, char: u32, fg: [*]const u16, bg: [*]const u16, attributes: u32) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.set(x, y, .{
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.set(x, y, .{
         .char = char,
         .fg = ptrToRGBA(fg),
         .bg = ptrToRGBA(bg),
@@ -1108,40 +1035,35 @@ export fn bufferSetCell(buffer_handle: NativeHandle, x: u32, y: u32, char: u32, 
 }
 
 export fn bufferFillRect(buffer_handle: NativeHandle, x: u32, y: u32, width: u32, height: u32, bg: [*]const u16) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.fillRect(x, y, width, height, ptrToRGBA(bg));
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.fillRect(x, y, width, height, ptrToRGBA(bg));
 }
 
 export fn bufferColorMatrix(buffer_handle: NativeHandle, matrixPtr: [*]const f32, cellMaskPtr: [*]const f32, cellMaskCount: usize, strength: f32, target: u8) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
     if (cellMaskCount == 0) return;
     const matrix = matrixPtr[0..16];
     const len = cellMaskCount * 3;
     const cellMask = cellMaskPtr[0..len];
     const targetEnum: buffer_effects.ColorTarget = @enumFromInt(target);
-    buffer_effects.colorMatrix(guard.ptr, matrix, cellMask, strength, targetEnum);
+    buffer_effects.colorMatrix(object_ptr, matrix, cellMask, strength, targetEnum);
 }
 
 export fn bufferColorMatrixUniform(buffer_handle: NativeHandle, matrixPtr: [*]const f32, strength: f32, target: u8) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
     const matrix = matrixPtr[0..16];
     const targetEnum: buffer_effects.ColorTarget = @enumFromInt(target);
-    buffer_effects.colorMatrixUniform(guard.ptr, matrix, strength, targetEnum);
+    buffer_effects.colorMatrixUniform(object_ptr, matrix, strength, targetEnum);
 }
 
 export fn bufferDrawPackedBuffer(buffer_handle: NativeHandle, data: [*]const u8, dataLen: usize, posX: u32, posY: u32, terminalWidthCells: u32, terminalHeightCells: u32) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.drawPackedBuffer(data, dataLen, posX, posY, terminalWidthCells, terminalHeightCells);
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.drawPackedBuffer(data, dataLen, posX, posY, terminalWidthCells, terminalHeightCells);
 }
 
 export fn bufferDrawGrayscaleBuffer(buffer_handle: NativeHandle, posX: i32, posY: i32, intensities: [*]const f32, srcWidth: u32, srcHeight: u32, fg: ?[*]const u16, bg: ?[*]const u16) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.drawGrayscaleBuffer(
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.drawGrayscaleBuffer(
         posX,
         posY,
         intensities,
@@ -1153,9 +1075,8 @@ export fn bufferDrawGrayscaleBuffer(buffer_handle: NativeHandle, posX: i32, posY
 }
 
 export fn bufferDrawGrayscaleBufferSupersampled(buffer_handle: NativeHandle, posX: i32, posY: i32, intensities: [*]const f32, srcWidth: u32, srcHeight: u32, fg: ?[*]const u16, bg: ?[*]const u16) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.drawGrayscaleBufferSupersampled(
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.drawGrayscaleBufferSupersampled(
         posX,
         posY,
         intensities,
@@ -1167,52 +1088,44 @@ export fn bufferDrawGrayscaleBufferSupersampled(buffer_handle: NativeHandle, pos
 }
 
 export fn bufferPushScissorRect(buffer_handle: NativeHandle, x: i32, y: i32, width: u32, height: u32) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.pushScissorRect(x, y, width, height) catch {};
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.pushScissorRect(x, y, width, height) catch {};
 }
 
 export fn bufferPopScissorRect(buffer_handle: NativeHandle) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.popScissorRect();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.popScissorRect();
 }
 
 export fn bufferClearScissorRects(buffer_handle: NativeHandle) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clearScissorRects();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.clearScissorRects();
 }
 
 // Opacity stack functions
 export fn bufferPushOpacity(buffer_handle: NativeHandle, opacity: f32) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.pushOpacity(opacity) catch {};
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.pushOpacity(opacity) catch {};
 }
 
 export fn bufferPopOpacity(buffer_handle: NativeHandle) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.popOpacity();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.popOpacity();
 }
 
 export fn bufferGetCurrentOpacity(buffer_handle: NativeHandle) f32 {
-    const guard = acquireBuffer(buffer_handle) orelse return 1;
-    defer guard.release();
-    return guard.ptr.getCurrentOpacity();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return 1;
+    return object_ptr.getCurrentOpacity();
 }
 
 export fn bufferClearOpacity(buffer_handle: NativeHandle) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clearOpacity();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.clearOpacity();
 }
 
 export fn bufferDrawSuperSampleBuffer(buffer_handle: NativeHandle, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow);
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow);
 }
 
 export fn linkAlloc(urlPtr: [*]const u8, urlLen: usize) u32 {
@@ -1253,9 +1166,8 @@ export fn bufferDrawGrid(
     rowCount: u32,
     options: *const ExternalGridDrawOptions,
 ) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.drawGrid(
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.drawGrid(
         borderChars,
         ptrToRGBA(borderFg),
         ptrToRGBA(borderBg),
@@ -1283,8 +1195,7 @@ export fn bufferDrawBox(
     bottomTitle: ?[*]const u8,
     bottomTitleLen: u32,
 ) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
     const borderSides: buffer.BorderSides = .{
         .top = (packedOptions & 0b1000) != 0,
         .right = (packedOptions & 0b0100) != 0,
@@ -1299,7 +1210,7 @@ export fn bufferDrawBox(
 
     const bottomTitleSlice = if (bottomTitle) |bt| bt[0..bottomTitleLen] else null;
 
-    guard.ptr.drawBox(
+    object_ptr.drawBox(
         x,
         y,
         width,
@@ -1317,161 +1228,135 @@ export fn bufferDrawBox(
 }
 
 export fn bufferResize(buffer_handle: NativeHandle, width: u32, height: u32) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.resize(width, height) catch {};
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.resize(width, height) catch {};
 }
 
 export fn resizeRenderer(renderer_handle: NativeHandle, width: u32, height: u32) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.resize(width, height) catch {};
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.resize(width, height) catch {};
 }
 
 export fn addToHitGrid(renderer_handle: NativeHandle, x: i32, y: i32, width: u32, height: u32, id: u32) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.addToHitGrid(x, y, width, height, id);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.addToHitGrid(x, y, width, height, id);
 }
 
 export fn clearCurrentHitGrid(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clearCurrentHitGrid();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.clearCurrentHitGrid();
 }
 
 export fn hitGridPushScissorRect(renderer_handle: NativeHandle, x: i32, y: i32, width: u32, height: u32) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.hitGridPushScissorRect(x, y, width, height);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.hitGridPushScissorRect(x, y, width, height);
 }
 
 export fn hitGridPopScissorRect(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.hitGridPopScissorRect();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.hitGridPopScissorRect();
 }
 
 export fn hitGridClearScissorRects(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.hitGridClearScissorRects();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.hitGridClearScissorRects();
 }
 
 export fn addToCurrentHitGridClipped(renderer_handle: NativeHandle, x: i32, y: i32, width: u32, height: u32, id: u32) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.addToCurrentHitGridClipped(x, y, width, height, id);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.addToCurrentHitGridClipped(x, y, width, height, id);
 }
 
 export fn checkHit(renderer_handle: NativeHandle, x: u32, y: u32) u32 {
-    const guard = acquireRenderer(renderer_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.checkHit(x, y);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return 0;
+    return object_ptr.checkHit(x, y);
 }
 
 export fn getHitGridDirty(renderer_handle: NativeHandle) bool {
-    const guard = acquireRenderer(renderer_handle) orelse return false;
-    defer guard.release();
-    return guard.ptr.getHitGridDirty();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return false;
+    return object_ptr.getHitGridDirty();
 }
 
 export fn dumpHitGrid(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.dumpHitGrid();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.dumpHitGrid();
 }
 
 export fn dumpBuffers(renderer_handle: NativeHandle, timestamp: i64) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.dumpBuffers(timestamp);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.dumpBuffers(timestamp);
 }
 
 export fn dumpOutputBuffer(renderer_handle: NativeHandle, timestamp: i64) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.dumpOutputBuffer(timestamp);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.dumpOutputBuffer(timestamp);
 }
 
 export fn restoreTerminalModes(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.restoreTerminalModes();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.restoreTerminalModes();
 }
 
 export fn enableMouse(renderer_handle: NativeHandle, enableMovement: bool) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.enableMouse(enableMovement);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.enableMouse(enableMovement);
 }
 
 export fn disableMouse(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.disableMouse();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.disableMouse();
 }
 
 export fn queryPixelResolution(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.queryPixelResolution();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.queryPixelResolution();
 }
 
 export fn queryThemeColors(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.queryThemeColors();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.queryThemeColors();
 }
 
 export fn enableKittyKeyboard(renderer_handle: NativeHandle, flags: u8) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.enableKittyKeyboard(flags);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.enableKittyKeyboard(flags);
 }
 
 export fn disableKittyKeyboard(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.disableKittyKeyboard();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.disableKittyKeyboard();
 }
 
 export fn setKittyKeyboardFlags(renderer_handle: NativeHandle, flags: u8) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setKittyKeyboardFlags(flags);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.setKittyKeyboardFlags(flags);
 }
 
 export fn getKittyKeyboardFlags(renderer_handle: NativeHandle) u8 {
-    const guard = acquireRenderer(renderer_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getKittyKeyboardFlags();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return 0;
+    return object_ptr.getKittyKeyboardFlags();
 }
 
 export fn setupTerminal(renderer_handle: NativeHandle, useAlternateScreen: bool) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setupTerminal(useAlternateScreen);
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.setupTerminal(useAlternateScreen);
 }
 
 export fn suspendRenderer(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.suspendRenderer();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.suspendRenderer();
 }
 
 export fn resumeRenderer(renderer_handle: NativeHandle) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.resumeRenderer();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
+    object_ptr.resumeRenderer();
 }
 
 export fn writeOut(renderer_handle: NativeHandle, dataPtr: [*]const u8, dataLen: usize) void {
-    const guard = acquireRenderer(renderer_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireRenderer(renderer_handle) orelse return;
     if (dataLen == 0) return;
     const data = dataPtr[0..dataLen];
-    guard.ptr.writeOut(data);
+    object_ptr.writeOut(data);
 }
 
 fn destroyTextBufferViewHandle(view_handle: NativeHandle) void {
@@ -1481,9 +1366,7 @@ fn destroyTextBufferViewHandle(view_handle: NativeHandle) void {
 }
 
 fn destroyTextBufferViewChildren(owner: NativeHandle) void {
-    const view_handles = handles.collectChildren(owner, .text_buffer_view, globalAllocator) catch unreachable;
-    defer globalAllocator.free(view_handles);
-    for (view_handles) |view_handle| {
+    while (handles.findChild(owner, .text_buffer_view)) |view_handle| {
         destroyTextBufferViewHandle(view_handle);
     }
 }
@@ -1510,112 +1393,95 @@ export fn destroyTextBuffer(tb_handle: NativeHandle) void {
 }
 
 export fn textBufferGetLength(tb_handle: NativeHandle) u32 {
-    const guard = acquireTextBuffer(tb_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getLength();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
+    return object_ptr.getLength();
 }
 
 export fn textBufferGetByteSize(tb_handle: NativeHandle) u32 {
-    const guard = acquireTextBuffer(tb_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getByteSize();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
+    return object_ptr.getByteSize();
 }
 
 export fn textBufferReset(tb_handle: NativeHandle) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.reset();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.reset();
 }
 
 export fn textBufferClear(tb_handle: NativeHandle) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clear();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.clear();
 }
 
 export fn textBufferSetDefaultFg(tb_handle: NativeHandle, fg: ?[*]const u16) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setDefaultFg(optionalPtrToRGBA(fg));
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.setDefaultFg(optionalPtrToRGBA(fg));
 }
 
 export fn textBufferSetDefaultBg(tb_handle: NativeHandle, bg: ?[*]const u16) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setDefaultBg(optionalPtrToRGBA(bg));
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.setDefaultBg(optionalPtrToRGBA(bg));
 }
 
 export fn textBufferSetDefaultAttributes(tb_handle: NativeHandle, attr: ?[*]const u32) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
     const attributes = if (attr) |a| a[0] else null;
-    guard.ptr.setDefaultAttributes(attributes);
+    object_ptr.setDefaultAttributes(attributes);
 }
 
 export fn textBufferResetDefaults(tb_handle: NativeHandle) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.resetDefaults();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.resetDefaults();
 }
 
 export fn textBufferGetTabWidth(tb_handle: NativeHandle) u8 {
-    const guard = acquireTextBuffer(tb_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.tabWidth();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
+    return object_ptr.tabWidth();
 }
 
 export fn textBufferSetTabWidth(tb_handle: NativeHandle, width: u8) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setTabWidth(width);
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.setTabWidth(width);
 }
 
 export fn textBufferRegisterMemBuffer(tb_handle: NativeHandle, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
-    const guard = acquireTextBuffer(tb_handle) orelse return 0xFFFF;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0xFFFF;
     const data = dataPtr[0..dataLen];
-    const mem_id = guard.ptr.registerMemBuffer(data, owned) catch return 0xFFFF;
+    const mem_id = object_ptr.registerMemBuffer(data, owned) catch return 0xFFFF;
     return @intCast(mem_id);
 }
 
 export fn textBufferReplaceMemBuffer(tb_handle: NativeHandle, id: u8, dataPtr: [*]const u8, dataLen: usize, owned: bool) bool {
-    const guard = acquireTextBuffer(tb_handle) orelse return false;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return false;
     const data = dataPtr[0..dataLen];
-    guard.ptr.replaceMemBuffer(id, data, owned) catch return false;
+    object_ptr.replaceMemBuffer(id, data, owned) catch return false;
     return true;
 }
 
 export fn textBufferClearMemRegistry(tb_handle: NativeHandle) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clearMemRegistry();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.clearMemRegistry();
 }
 
 export fn textBufferSetTextFromMem(tb_handle: NativeHandle, id: u8) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setTextFromMemId(id) catch {};
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.setTextFromMemId(id) catch {};
 }
 
 export fn textBufferAppend(tb_handle: NativeHandle, dataPtr: [*]const u8, dataLen: usize) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
     const data = dataPtr[0..dataLen];
-    guard.ptr.append(data) catch {};
+    object_ptr.append(data) catch {};
 }
 
 export fn textBufferAppendFromMemId(tb_handle: NativeHandle, id: u8) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.appendFromMemId(id) catch {};
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.appendFromMemId(id) catch {};
 }
 
 export fn textBufferLoadFile(tb_handle: NativeHandle, pathPtr: [*]const u8, pathLen: usize) bool {
-    const guard = acquireTextBuffer(tb_handle) orelse return false;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return false;
     const path = pathPtr[0..pathLen];
-    guard.ptr.loadFile(path) catch return false;
+    object_ptr.loadFile(path) catch return false;
     return true;
 }
 
@@ -1624,33 +1490,29 @@ export fn textBufferSetStyledText(
     chunksPtr: [*]const text_buffer.StyledChunk,
     chunkCount: usize,
 ) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
     if (chunkCount == 0) return;
     const chunks = chunksPtr[0..chunkCount];
-    guard.ptr.setStyledText(chunks) catch {};
+    object_ptr.setStyledText(chunks) catch {};
 }
 
 export fn textBufferGetLineCount(tb_handle: NativeHandle) u32 {
-    const guard = acquireTextBuffer(tb_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getLineCount();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
+    return object_ptr.getLineCount();
 }
 
 export fn textBufferGetPlainText(tb_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireTextBuffer(tb_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
     const outBuffer = outPtr[0..maxLen];
-    return guard.ptr.getPlainTextIntoBuffer(outBuffer);
+    return object_ptr.getPlainTextIntoBuffer(outBuffer);
 }
 
 // TextBufferView functions (Array-based for backward compatibility)
 export fn createTextBufferView(tb_handle: NativeHandle) NativeHandle {
     if (!handles.isOwned(tb_handle, .text_buffer)) return INVALID_HANDLE;
 
-    const guard = acquireTextBuffer(tb_handle) orelse return INVALID_HANDLE;
-    defer guard.release();
-    const view = text_buffer_view.UnifiedTextBufferView.init(globalAllocator, guard.ptr) catch {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return INVALID_HANDLE;
+    const view = text_buffer_view.UnifiedTextBufferView.init(globalAllocator, object_ptr) catch {
         return INVALID_HANDLE;
     };
     return handles.insertOwnedChild(.text_buffer_view, erasePtr(view), tb_handle) catch {
@@ -1664,81 +1526,69 @@ export fn destroyTextBufferView(view_handle: NativeHandle) void {
 }
 
 export fn textBufferViewSetSelection(view_handle: NativeHandle, start: u32, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setSelectionStyle(start, end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.setSelectionStyle(start, end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
 export fn textBufferViewResetSelection(view_handle: NativeHandle) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.resetSelection();
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.resetSelection();
 }
 
 export fn textBufferViewGetSelectionInfo(view_handle: NativeHandle) u64 {
-    const guard = acquireTextBufferView(view_handle) orelse return std.math.maxInt(u64);
-    defer guard.release();
-    return guard.ptr.packSelectionInfo();
+    const object_ptr = acquireTextBufferView(view_handle) orelse return std.math.maxInt(u64);
+    return object_ptr.packSelectionInfo();
 }
 
 export fn textBufferViewSetLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) bool {
-    const guard = acquireTextBufferView(view_handle) orelse return false;
-    defer guard.release();
-    return guard.ptr.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    const object_ptr = acquireTextBufferView(view_handle) orelse return false;
+    return object_ptr.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
 export fn textBufferViewUpdateSelection(view_handle: NativeHandle, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.updateSelectionStyle(end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.updateSelectionStyle(end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
 export fn textBufferViewUpdateLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) bool {
-    const guard = acquireTextBufferView(view_handle) orelse return false;
-    defer guard.release();
-    return guard.ptr.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    const object_ptr = acquireTextBufferView(view_handle) orelse return false;
+    return object_ptr.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
 export fn textBufferViewResetLocalSelection(view_handle: NativeHandle) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.resetLocalSelection();
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.resetLocalSelection();
 }
 
 export fn textBufferViewSetWrapWidth(view_handle: NativeHandle, width: u32) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setWrapWidth(if (width == 0) null else width);
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.setWrapWidth(if (width == 0) null else width);
 }
 
 export fn textBufferViewSetWrapMode(view_handle: NativeHandle, mode: u8) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
     const wrapMode: text_buffer.WrapMode = switch (mode) {
         0 => .none,
         1 => .char,
         2 => .word,
         else => .none,
     };
-    guard.ptr.setWrapMode(wrapMode);
+    object_ptr.setWrapMode(wrapMode);
 }
 
 export fn textBufferViewSetFirstLineOffset(view_handle: NativeHandle, offset: u32) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setFirstLineOffset(offset);
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.setFirstLineOffset(offset);
 }
 
 export fn textBufferViewSetViewportSize(view_handle: NativeHandle, width: u32, height: u32) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setViewportSize(width, height);
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.setViewportSize(width, height);
 }
 
 export fn textBufferViewSetViewport(view_handle: NativeHandle, x: u32, y: u32, width: u32, height: u32) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setViewport(.{
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.setViewport(.{
         .x = x,
         .y = y,
         .width = width,
@@ -1747,18 +1597,16 @@ export fn textBufferViewSetViewport(view_handle: NativeHandle, x: u32, y: u32, w
 }
 
 export fn textBufferViewGetVirtualLineCount(view_handle: NativeHandle) u32 {
-    const guard = acquireTextBufferView(view_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getVirtualLineCount();
+    const object_ptr = acquireTextBufferView(view_handle) orelse return 0;
+    return object_ptr.getVirtualLineCount();
 }
 
 export fn textBufferViewGetLineInfoDirect(view_handle: NativeHandle, outPtr: *ExternalLineInfo) void {
-    const guard = acquireTextBufferView(view_handle) orelse {
+    const object_ptr = acquireTextBufferView(view_handle) orelse {
         emptyLineInfo(outPtr);
         return;
     };
-    defer guard.release();
-    const line_info = guard.ptr.getCachedLineInfo();
+    const line_info = object_ptr.getCachedLineInfo();
 
     outPtr.* = .{
         .start_cols_ptr = line_info.line_start_cols.ptr,
@@ -1774,12 +1622,11 @@ export fn textBufferViewGetLineInfoDirect(view_handle: NativeHandle, outPtr: *Ex
 }
 
 export fn textBufferViewGetLogicalLineInfoDirect(view_handle: NativeHandle, outPtr: *ExternalLineInfo) void {
-    const guard = acquireTextBufferView(view_handle) orelse {
+    const object_ptr = acquireTextBufferView(view_handle) orelse {
         emptyLineInfo(outPtr);
         return;
     };
-    defer guard.release();
-    const line_info = guard.ptr.getLogicalLineInfo();
+    const line_info = object_ptr.getLogicalLineInfo();
 
     outPtr.* = .{
         .start_cols_ptr = line_info.line_start_cols.ptr,
@@ -1795,35 +1642,30 @@ export fn textBufferViewGetLogicalLineInfoDirect(view_handle: NativeHandle, outP
 }
 
 export fn textBufferViewGetSelectedText(view_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireTextBufferView(view_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireTextBufferView(view_handle) orelse return 0;
     const outBuffer = outPtr[0..maxLen];
-    return guard.ptr.getSelectedTextIntoBuffer(outBuffer);
+    return object_ptr.getSelectedTextIntoBuffer(outBuffer);
 }
 
 export fn textBufferViewGetPlainText(view_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireTextBufferView(view_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireTextBufferView(view_handle) orelse return 0;
     const outBuffer = outPtr[0..maxLen];
-    return guard.ptr.getPlainTextIntoBuffer(outBuffer);
+    return object_ptr.getPlainTextIntoBuffer(outBuffer);
 }
 
 export fn textBufferViewSetTabIndicator(view_handle: NativeHandle, indicator: u32) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setTabIndicator(indicator);
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.setTabIndicator(indicator);
 }
 
 export fn textBufferViewSetTabIndicatorColor(view_handle: NativeHandle, color: [*]const u16) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setTabIndicatorColor(ptrToRGBA(color));
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.setTabIndicatorColor(ptrToRGBA(color));
 }
 
 export fn textBufferViewSetTruncate(view_handle: NativeHandle, truncate: bool) void {
-    const guard = acquireTextBufferView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setTruncate(truncate);
+    const object_ptr = acquireTextBufferView(view_handle) orelse return;
+    object_ptr.setTruncate(truncate);
 }
 
 pub const ExternalMeasureResult = extern struct {
@@ -1832,12 +1674,11 @@ pub const ExternalMeasureResult = extern struct {
 };
 
 export fn textBufferViewMeasureForDimensions(view_handle: NativeHandle, width: u32, height: u32, outPtr: *ExternalMeasureResult) bool {
-    const guard = acquireTextBufferView(view_handle) orelse {
+    const object_ptr = acquireTextBufferView(view_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalMeasureResult);
         return false;
     };
-    defer guard.release();
-    const result = guard.ptr.measureForDimensions(width, height) catch return false;
+    const result = object_ptr.measureForDimensions(width, height) catch return false;
     outPtr.* = .{
         .line_count = result.line_count,
         .width_cols_max = result.width_cols_max,
@@ -1855,9 +1696,7 @@ fn destroyEditorViewHandle(view_handle: NativeHandle) void {
 }
 
 fn destroyEditorViewChildren(owner: NativeHandle) void {
-    const view_handles = handles.collectChildren(owner, .editor_view, globalAllocator) catch unreachable;
-    defer globalAllocator.free(view_handles);
-    for (view_handles) |view_handle| {
+    while (handles.findChild(owner, .editor_view)) |view_handle| {
         destroyEditorViewHandle(view_handle);
     }
 }
@@ -1866,9 +1705,8 @@ export fn createEditBuffer(widthMethod: u8, event_sink_handle: NativeHandle) Nat
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
-    const event_sink_guard = if (event_sink_handle == INVALID_HANDLE) null else acquireEventSink(event_sink_handle);
-    defer if (event_sink_guard) |guard| guard.release();
-    const event_sink = if (event_sink_guard) |guard| guard.ptr else null;
+    const event_sink_ptr = if (event_sink_handle == INVALID_HANDLE) null else acquireEventSink(event_sink_handle);
+    const event_sink = if (event_sink_ptr) |object_ptr| object_ptr else null;
 
     const edit_buffer = edit_buffer_mod.EditBuffer.init(
         globalAllocator,
@@ -1901,99 +1739,85 @@ export fn destroyEditBuffer(edit_handle: NativeHandle) void {
 }
 
 export fn editBufferGetTextBuffer(edit_handle: NativeHandle) NativeHandle {
-    const guard = acquireEditBuffer(edit_handle) orelse return INVALID_HANDLE;
-    defer guard.release();
-    return handles.getOrInsertBorrowed(.text_buffer, erasePtr(guard.ptr.getTextBuffer()), edit_handle) catch INVALID_HANDLE;
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return INVALID_HANDLE;
+    return handles.getOrInsertBorrowed(.text_buffer, erasePtr(object_ptr.getTextBuffer()), edit_handle) catch INVALID_HANDLE;
 }
 
 export fn editBufferInsertText(edit_handle: NativeHandle, textPtr: [*]const u8, textLen: usize) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
     const text = textPtr[0..textLen];
-    guard.ptr.insertText(text) catch {};
+    object_ptr.insertText(text) catch {};
 }
 
 export fn editBufferDeleteRange(edit_handle: NativeHandle, start_row: u32, start_col: u32, end_row: u32, end_col: u32) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
     const start: edit_buffer_mod.Cursor = .{ .row = start_row, .col = start_col };
     const end: edit_buffer_mod.Cursor = .{ .row = end_row, .col = end_col };
-    guard.ptr.deleteRange(start, end) catch {};
+    object_ptr.deleteRange(start, end) catch {};
 }
 
 export fn editBufferDeleteCharBackward(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.backspace() catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.backspace() catch {};
 }
 
 export fn editBufferDeleteChar(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.deleteForward() catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.deleteForward() catch {};
 }
 
 export fn editBufferMoveCursorLeft(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.moveLeft();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.moveLeft();
 }
 
 export fn editBufferMoveCursorRight(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.moveRight();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.moveRight();
 }
 
 export fn editBufferMoveCursorUp(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.moveUp();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.moveUp();
 }
 
 export fn editBufferMoveCursorDown(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.moveDown();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.moveDown();
 }
 
 export fn editBufferGetCursor(edit_handle: NativeHandle, outRow: *u32, outCol: *u32) void {
-    const guard = acquireEditBuffer(edit_handle) orelse {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse {
         outRow.* = 0;
         outCol.* = 0;
         return;
     };
-    defer guard.release();
-    const cursor = guard.ptr.getPrimaryCursor();
+    const cursor = object_ptr.getPrimaryCursor();
     outRow.* = cursor.row;
     outCol.* = cursor.col;
 }
 
 export fn editBufferSetCursor(edit_handle: NativeHandle, row: u32, col: u32) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setCursor(row, col) catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.setCursor(row, col) catch {};
 }
 
 export fn editBufferSetCursorToLineCol(edit_handle: NativeHandle, row: u32, col: u32) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setCursor(row, col) catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.setCursor(row, col) catch {};
 }
 
 export fn editBufferSetCursorByOffset(edit_handle: NativeHandle, offset: u32) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setCursorByOffset(offset) catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.setCursorByOffset(offset) catch {};
 }
 
 export fn editBufferGetNextWordBoundary(edit_handle: NativeHandle, outPtr: *ExternalLogicalCursor) void {
-    const guard = acquireEditBuffer(edit_handle) orelse {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalLogicalCursor);
         return;
     };
-    defer guard.release();
-    const cursor = guard.ptr.getNextWordBoundary();
+    const cursor = object_ptr.getNextWordBoundary();
     outPtr.* = .{
         .row = cursor.row,
         .col = cursor.col,
@@ -2002,12 +1826,11 @@ export fn editBufferGetNextWordBoundary(edit_handle: NativeHandle, outPtr: *Exte
 }
 
 export fn editBufferGetPrevWordBoundary(edit_handle: NativeHandle, outPtr: *ExternalLogicalCursor) void {
-    const guard = acquireEditBuffer(edit_handle) orelse {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalLogicalCursor);
         return;
     };
-    defer guard.release();
-    const cursor = guard.ptr.getPrevWordBoundary();
+    const cursor = object_ptr.getPrevWordBoundary();
     outPtr.* = .{
         .row = cursor.row,
         .col = cursor.col,
@@ -2016,12 +1839,11 @@ export fn editBufferGetPrevWordBoundary(edit_handle: NativeHandle, outPtr: *Exte
 }
 
 export fn editBufferGetEOL(edit_handle: NativeHandle, outPtr: *ExternalLogicalCursor) void {
-    const guard = acquireEditBuffer(edit_handle) orelse {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalLogicalCursor);
         return;
     };
-    defer guard.release();
-    const cursor = guard.ptr.getEOL();
+    const cursor = object_ptr.getEOL();
     outPtr.* = .{
         .row = cursor.row,
         .col = cursor.col,
@@ -2030,12 +1852,11 @@ export fn editBufferGetEOL(edit_handle: NativeHandle, outPtr: *ExternalLogicalCu
 }
 
 export fn editBufferOffsetToPosition(edit_handle: NativeHandle, offset: u32, outPtr: *ExternalLogicalCursor) bool {
-    const guard = acquireEditBuffer(edit_handle) orelse {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalLogicalCursor);
         return false;
     };
-    defer guard.release();
-    const coords = text_buffer_iterators.offsetToCoords(guard.ptr.tb.rope(), offset) orelse return false;
+    const coords = text_buffer_iterators.offsetToCoords(object_ptr.tb.rope(), offset) orelse return false;
     outPtr.* = .{
         .row = coords.row,
         .col = coords.col,
@@ -2045,96 +1866,82 @@ export fn editBufferOffsetToPosition(edit_handle: NativeHandle, offset: u32, out
 }
 
 export fn editBufferPositionToOffset(edit_handle: NativeHandle, row: u32, col: u32) u32 {
-    const guard = acquireEditBuffer(edit_handle) orelse return 0;
-    defer guard.release();
-    return text_buffer_iterators.coordsToOffset(guard.ptr.tb.rope(), row, col) orelse 0;
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
+    return text_buffer_iterators.coordsToOffset(object_ptr.tb.rope(), row, col) orelse 0;
 }
 
 export fn editBufferGetLineStartOffset(edit_handle: NativeHandle, row: u32) u32 {
-    const guard = acquireEditBuffer(edit_handle) orelse return 0;
-    defer guard.release();
-    return text_buffer_iterators.coordsToOffset(guard.ptr.tb.rope(), row, 0) orelse 0;
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
+    return text_buffer_iterators.coordsToOffset(object_ptr.tb.rope(), row, 0) orelse 0;
 }
 
 export fn editBufferGetTextRange(edit_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireEditBuffer(edit_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
     const outBuffer = outPtr[0..maxLen];
-    return guard.ptr.getTextRange(start_offset, end_offset, outBuffer) catch 0;
+    return object_ptr.getTextRange(start_offset, end_offset, outBuffer) catch 0;
 }
 
 export fn editBufferGetTextRangeByCoords(edit_handle: NativeHandle, start_row: u32, start_col: u32, end_row: u32, end_col: u32, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireEditBuffer(edit_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
     const outBuffer = outPtr[0..maxLen];
-    return guard.ptr.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
+    return object_ptr.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
 }
 
 export fn editBufferSetText(edit_handle: NativeHandle, textPtr: [*]const u8, textLen: usize) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
     const text = textPtr[0..textLen];
-    guard.ptr.setText(text) catch {};
+    object_ptr.setText(text) catch {};
 }
 
 export fn editBufferSetTextFromMem(edit_handle: NativeHandle, mem_id: u8) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setTextFromMemId(mem_id) catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.setTextFromMemId(mem_id) catch {};
 }
 
 export fn editBufferReplaceText(edit_handle: NativeHandle, textPtr: [*]const u8, textLen: usize) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
     const text = textPtr[0..textLen];
-    guard.ptr.replaceText(text) catch {};
+    object_ptr.replaceText(text) catch {};
 }
 
 export fn editBufferReplaceTextFromMem(edit_handle: NativeHandle, mem_id: u8) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.replaceTextFromMemId(mem_id) catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.replaceTextFromMemId(mem_id) catch {};
 }
 
 export fn editBufferGetText(edit_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireEditBuffer(edit_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
     const outBuffer = outPtr[0..maxLen];
-    return guard.ptr.getText(outBuffer);
+    return object_ptr.getText(outBuffer);
 }
 
 export fn editBufferInsertChar(edit_handle: NativeHandle, charPtr: [*]const u8, charLen: usize) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
     const text = charPtr[0..charLen];
-    guard.ptr.insertText(text) catch {};
+    object_ptr.insertText(text) catch {};
 }
 
 export fn editBufferNewLine(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.insertText("\n") catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.insertText("\n") catch {};
 }
 
 export fn editBufferDeleteLine(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.deleteLine() catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.deleteLine() catch {};
 }
 
 export fn editBufferGotoLine(edit_handle: NativeHandle, line: u32) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.gotoLine(line) catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.gotoLine(line) catch {};
 }
 
 export fn editBufferGetCursorPosition(edit_handle: NativeHandle, outPtr: *ExternalLogicalCursor) void {
-    const guard = acquireEditBuffer(edit_handle) orelse {
+    const object_ptr = acquireEditBuffer(edit_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalLogicalCursor);
         return;
     };
-    defer guard.release();
-    const pos = guard.ptr.getCursorPosition();
+    const pos = object_ptr.getCursorPosition();
     outPtr.* = .{
         .row = pos.line,
         .col = pos.visual_col,
@@ -2143,65 +1950,56 @@ export fn editBufferGetCursorPosition(edit_handle: NativeHandle, outPtr: *Extern
 }
 
 export fn editBufferGetId(edit_handle: NativeHandle) u16 {
-    const guard = acquireEditBuffer(edit_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getId();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
+    return object_ptr.getId();
 }
 
 export fn editBufferDebugLogRope(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.debugLogRope();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.debugLogRope();
 }
 
 export fn editBufferUndo(edit_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireEditBuffer(edit_handle) orelse return 0;
-    defer guard.release();
-    const prev_meta = guard.ptr.undo() catch return 0;
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
+    const prev_meta = object_ptr.undo() catch return 0;
     const copyLen = @min(prev_meta.len, maxLen);
     @memcpy(outPtr[0..copyLen], prev_meta[0..copyLen]);
     return copyLen;
 }
 
 export fn editBufferRedo(edit_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireEditBuffer(edit_handle) orelse return 0;
-    defer guard.release();
-    const next_meta = guard.ptr.redo() catch return 0;
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
+    const next_meta = object_ptr.redo() catch return 0;
     const copyLen = @min(next_meta.len, maxLen);
     @memcpy(outPtr[0..copyLen], next_meta[0..copyLen]);
     return copyLen;
 }
 
 export fn editBufferCanUndo(edit_handle: NativeHandle) bool {
-    const guard = acquireEditBuffer(edit_handle) orelse return false;
-    defer guard.release();
-    return guard.ptr.canUndo();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return false;
+    return object_ptr.canUndo();
 }
 
 export fn editBufferCanRedo(edit_handle: NativeHandle) bool {
-    const guard = acquireEditBuffer(edit_handle) orelse return false;
-    defer guard.release();
-    return guard.ptr.canRedo();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return false;
+    return object_ptr.canRedo();
 }
 
 export fn editBufferClearHistory(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clearHistory();
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.clearHistory();
 }
 
 export fn editBufferClear(edit_handle: NativeHandle) void {
-    const guard = acquireEditBuffer(edit_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clear() catch {};
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return;
+    object_ptr.clear() catch {};
 }
 
 // ===== EditorView Exports =====
 
 export fn createEditorView(edit_handle: NativeHandle, viewport_width: u32, viewport_height: u32) NativeHandle {
-    const guard = acquireEditBuffer(edit_handle) orelse return INVALID_HANDLE;
-    defer guard.release();
-    const view = editor_view.EditorView.init(globalArena, guard.ptr, viewport_width, viewport_height) catch return INVALID_HANDLE;
+    const object_ptr = acquireEditBuffer(edit_handle) orelse return INVALID_HANDLE;
+    const view = editor_view.EditorView.init(globalArena, object_ptr, viewport_width, viewport_height) catch return INVALID_HANDLE;
     const view_handle = handles.insertOwnedChild(.editor_view, erasePtr(view), edit_handle) catch {
         view.deinit();
         return INVALID_HANDLE;
@@ -2221,27 +2019,24 @@ export fn destroyEditorView(view_handle: NativeHandle) void {
 }
 
 export fn editorViewSetViewport(view_handle: NativeHandle, x: u32, y: u32, width: u32, height: u32, moveCursor: bool) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setViewport(.{ .x = x, .y = y, .width = width, .height = height }, moveCursor);
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.setViewport(.{ .x = x, .y = y, .width = width, .height = height }, moveCursor);
 }
 
 export fn editorViewClearViewport(view_handle: NativeHandle) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setViewport(null, false);
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.setViewport(null, false);
 }
 
 export fn editorViewGetViewport(view_handle: NativeHandle, outX: *u32, outY: *u32, outWidth: *u32, outHeight: *u32) bool {
-    const guard = acquireEditorView(view_handle) orelse {
+    const object_ptr = acquireEditorView(view_handle) orelse {
         outX.* = 0;
         outY.* = 0;
         outWidth.* = 0;
         outHeight.* = 0;
         return false;
     };
-    defer guard.release();
-    if (guard.ptr.getViewport()) |vp| {
+    if (object_ptr.getViewport()) |vp| {
         outX.* = vp.x;
         outY.* = vp.y;
         outWidth.* = vp.width;
@@ -2252,31 +2047,27 @@ export fn editorViewGetViewport(view_handle: NativeHandle, outX: *u32, outY: *u3
 }
 
 export fn editorViewSetScrollMargin(view_handle: NativeHandle, margin: f32) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setScrollMargin(margin);
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.setScrollMargin(margin);
 }
 
 export fn editorViewGetVirtualLineCount(view_handle: NativeHandle) u32 {
-    const guard = acquireEditorView(view_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireEditorView(view_handle) orelse return 0;
     // TODO: There is a getter for that directly, no?
-    return @intCast(guard.ptr.getVirtualLines().len);
+    return @intCast(object_ptr.getVirtualLines().len);
 }
 
 export fn editorViewGetTotalVirtualLineCount(view_handle: NativeHandle) u32 {
-    const guard = acquireEditorView(view_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getTotalVirtualLineCount();
+    const object_ptr = acquireEditorView(view_handle) orelse return 0;
+    return object_ptr.getTotalVirtualLineCount();
 }
 
 export fn editorViewGetLineInfoDirect(view_handle: NativeHandle, outPtr: *ExternalLineInfo) void {
-    const guard = acquireEditorView(view_handle) orelse {
+    const object_ptr = acquireEditorView(view_handle) orelse {
         emptyLineInfo(outPtr);
         return;
     };
-    defer guard.release();
-    const line_info = guard.ptr.getCachedLineInfo();
+    const line_info = object_ptr.getCachedLineInfo();
     outPtr.* = .{
         .start_cols_ptr = line_info.line_start_cols.ptr,
         .start_cols_len = @intCast(line_info.line_start_cols.len),
@@ -2291,18 +2082,16 @@ export fn editorViewGetLineInfoDirect(view_handle: NativeHandle, outPtr: *Extern
 }
 
 export fn editorViewGetTextBufferView(view_handle: NativeHandle) NativeHandle {
-    const guard = acquireEditorView(view_handle) orelse return INVALID_HANDLE;
-    defer guard.release();
-    return handles.getOrInsertBorrowed(.text_buffer_view, erasePtr(guard.ptr.getTextBufferView()), view_handle) catch INVALID_HANDLE;
+    const object_ptr = acquireEditorView(view_handle) orelse return INVALID_HANDLE;
+    return handles.getOrInsertBorrowed(.text_buffer_view, erasePtr(object_ptr.getTextBufferView()), view_handle) catch INVALID_HANDLE;
 }
 
 export fn editorViewGetLogicalLineInfoDirect(view_handle: NativeHandle, outPtr: *ExternalLineInfo) void {
-    const guard = acquireEditorView(view_handle) orelse {
+    const object_ptr = acquireEditorView(view_handle) orelse {
         emptyLineInfo(outPtr);
         return;
     };
-    defer guard.release();
-    const line_info = guard.ptr.getLogicalLineInfo();
+    const line_info = object_ptr.getLogicalLineInfo();
     outPtr.* = .{
         .start_cols_ptr = line_info.line_start_cols.ptr,
         .start_cols_len = @intCast(line_info.line_start_cols.len),
@@ -2317,113 +2106,100 @@ export fn editorViewGetLogicalLineInfoDirect(view_handle: NativeHandle, outPtr: 
 }
 
 export fn editorViewSetViewportSize(view_handle: NativeHandle, width: u32, height: u32) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setViewportSize(width, height);
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.setViewportSize(width, height);
 }
 
 export fn editorViewSetWrapMode(view_handle: NativeHandle, mode: u8) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireEditorView(view_handle) orelse return;
     const wrapMode: text_buffer.WrapMode = switch (mode) {
         0 => .none,
         1 => .char,
         2 => .word,
         else => .none,
     };
-    guard.ptr.setWrapMode(wrapMode);
+    object_ptr.setWrapMode(wrapMode);
 }
 
 // EditorView selection methods - delegate to TextBufferView
 export fn editorViewSetSelection(view_handle: NativeHandle, start: u32, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.text_buffer_view.setSelectionStyle(start, end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.text_buffer_view.setSelectionStyle(start, end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
 export fn editorViewResetSelection(view_handle: NativeHandle) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.text_buffer_view.resetSelection();
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.text_buffer_view.resetSelection();
 }
 
 export fn editorViewGetSelection(view_handle: NativeHandle) u64 {
-    const guard = acquireEditorView(view_handle) orelse return std.math.maxInt(u64);
-    defer guard.release();
-    return guard.ptr.text_buffer_view.packSelectionInfo();
+    const object_ptr = acquireEditorView(view_handle) orelse return std.math.maxInt(u64);
+    return object_ptr.text_buffer_view.packSelectionInfo();
 }
 
 export fn editorViewSetLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: bool, followCursor: bool) bool {
-    const guard = acquireEditorView(view_handle) orelse return false;
-    defer guard.release();
-    guard.ptr.setSelectionFollowCursor(followCursor);
-    const changed = guard.ptr.text_buffer_view.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    const object_ptr = acquireEditorView(view_handle) orelse return false;
+    object_ptr.setSelectionFollowCursor(followCursor);
+    const changed = object_ptr.text_buffer_view.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
     if (changed and updateCursor) {
-        guard.ptr.syncCursorToSelectionFocus();
+        object_ptr.syncCursorToSelectionFocus();
     }
     return changed;
 }
 
 export fn editorViewUpdateSelection(view_handle: NativeHandle, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.text_buffer_view.updateSelectionStyle(end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.text_buffer_view.updateSelectionStyle(end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
 export fn editorViewUpdateLocalSelection(view_handle: NativeHandle, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: bool, followCursor: bool) bool {
-    const guard = acquireEditorView(view_handle) orelse return false;
-    defer guard.release();
-    guard.ptr.setSelectionFollowCursor(followCursor);
-    const changed = guard.ptr.text_buffer_view.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
+    const object_ptr = acquireEditorView(view_handle) orelse return false;
+    object_ptr.setSelectionFollowCursor(followCursor);
+    const changed = object_ptr.text_buffer_view.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
     if (changed and updateCursor) {
-        guard.ptr.syncCursorToSelectionFocus();
+        object_ptr.syncCursorToSelectionFocus();
     }
     return changed;
 }
 
 export fn editorViewResetLocalSelection(view_handle: NativeHandle) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setSelectionFollowCursor(false);
-    guard.ptr.text_buffer_view.resetLocalSelection();
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.setSelectionFollowCursor(false);
+    object_ptr.text_buffer_view.resetLocalSelection();
 }
 
 export fn editorViewGetSelectedTextBytes(view_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireEditorView(view_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireEditorView(view_handle) orelse return 0;
     const outBuffer = outPtr[0..maxLen];
-    return guard.ptr.text_buffer_view.getSelectedTextIntoBuffer(outBuffer);
+    return object_ptr.text_buffer_view.getSelectedTextIntoBuffer(outBuffer);
 }
 
 // EditorView cursor and text methods
 export fn editorViewGetCursor(view_handle: NativeHandle, outRow: *u32, outCol: *u32) void {
-    const guard = acquireEditorView(view_handle) orelse {
+    const object_ptr = acquireEditorView(view_handle) orelse {
         outRow.* = 0;
         outCol.* = 0;
         return;
     };
-    defer guard.release();
-    const cursor = guard.ptr.getPrimaryCursor();
+    const cursor = object_ptr.getPrimaryCursor();
     outRow.* = cursor.row;
     outCol.* = cursor.col;
 }
 
 export fn editorViewGetText(view_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireEditorView(view_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireEditorView(view_handle) orelse return 0;
     const outBuffer = outPtr[0..maxLen];
-    return guard.ptr.getText(outBuffer);
+    return object_ptr.getText(outBuffer);
 }
 
 // ===== EditorView VisualCursor Exports =====
 
 export fn editorViewGetVisualCursor(view_handle: NativeHandle, outPtr: *ExternalVisualCursor) void {
-    const guard = acquireEditorView(view_handle) orelse {
+    const object_ptr = acquireEditorView(view_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalVisualCursor);
         return;
     };
-    defer guard.release();
-    const vcursor = guard.ptr.getVisualCursor();
+    const vcursor = object_ptr.getVisualCursor();
     outPtr.* = .{
         .visual_row = vcursor.visual_row,
         .visual_col = vcursor.visual_col,
@@ -2434,36 +2210,31 @@ export fn editorViewGetVisualCursor(view_handle: NativeHandle, outPtr: *External
 }
 
 export fn editorViewMoveUpVisual(view_handle: NativeHandle) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.moveUpVisual();
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.moveUpVisual();
 }
 
 export fn editorViewMoveDownVisual(view_handle: NativeHandle) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.moveDownVisual();
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.moveDownVisual();
 }
 
 export fn editorViewDeleteSelectedText(view_handle: NativeHandle) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.deleteSelectedText() catch {};
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.deleteSelectedText() catch {};
 }
 
 export fn editorViewSetCursorByOffset(view_handle: NativeHandle, offset: u32) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setCursorByOffset(offset) catch {};
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.setCursorByOffset(offset) catch {};
 }
 
 export fn editorViewGetNextWordBoundary(view_handle: NativeHandle, outPtr: *ExternalVisualCursor) void {
-    const guard = acquireEditorView(view_handle) orelse {
+    const object_ptr = acquireEditorView(view_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalVisualCursor);
         return;
     };
-    defer guard.release();
-    const vcursor = guard.ptr.getNextWordBoundary();
+    const vcursor = object_ptr.getNextWordBoundary();
     outPtr.* = .{
         .visual_row = vcursor.visual_row,
         .visual_col = vcursor.visual_col,
@@ -2474,12 +2245,11 @@ export fn editorViewGetNextWordBoundary(view_handle: NativeHandle, outPtr: *Exte
 }
 
 export fn editorViewGetPrevWordBoundary(view_handle: NativeHandle, outPtr: *ExternalVisualCursor) void {
-    const guard = acquireEditorView(view_handle) orelse {
+    const object_ptr = acquireEditorView(view_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalVisualCursor);
         return;
     };
-    defer guard.release();
-    const vcursor = guard.ptr.getPrevWordBoundary();
+    const vcursor = object_ptr.getPrevWordBoundary();
     outPtr.* = .{
         .visual_row = vcursor.visual_row,
         .visual_col = vcursor.visual_col,
@@ -2490,12 +2260,11 @@ export fn editorViewGetPrevWordBoundary(view_handle: NativeHandle, outPtr: *Exte
 }
 
 export fn editorViewGetEOL(view_handle: NativeHandle, outPtr: *ExternalVisualCursor) void {
-    const guard = acquireEditorView(view_handle) orelse {
+    const object_ptr = acquireEditorView(view_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalVisualCursor);
         return;
     };
-    defer guard.release();
-    const vcursor = guard.ptr.getEOL();
+    const vcursor = object_ptr.getEOL();
     outPtr.* = .{
         .visual_row = vcursor.visual_row,
         .visual_col = vcursor.visual_col,
@@ -2506,12 +2275,11 @@ export fn editorViewGetEOL(view_handle: NativeHandle, outPtr: *ExternalVisualCur
 }
 
 export fn editorViewGetVisualSOL(view_handle: NativeHandle, outPtr: *ExternalVisualCursor) void {
-    const guard = acquireEditorView(view_handle) orelse {
+    const object_ptr = acquireEditorView(view_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalVisualCursor);
         return;
     };
-    defer guard.release();
-    const vcursor = guard.ptr.getVisualSOL();
+    const vcursor = object_ptr.getVisualSOL();
     outPtr.* = .{
         .visual_row = vcursor.visual_row,
         .visual_col = vcursor.visual_col,
@@ -2522,12 +2290,11 @@ export fn editorViewGetVisualSOL(view_handle: NativeHandle, outPtr: *ExternalVis
 }
 
 export fn editorViewGetVisualEOL(view_handle: NativeHandle, outPtr: *ExternalVisualCursor) void {
-    const guard = acquireEditorView(view_handle) orelse {
+    const object_ptr = acquireEditorView(view_handle) orelse {
         outPtr.* = std.mem.zeroes(ExternalVisualCursor);
         return;
     };
-    defer guard.release();
-    const vcursor = guard.ptr.getVisualEOL();
+    const vcursor = object_ptr.getVisualEOL();
     outPtr.* = .{
         .visual_row = vcursor.visual_row,
         .visual_col = vcursor.visual_col,
@@ -2542,26 +2309,23 @@ export fn editorViewSetPlaceholderStyledText(
     chunksPtr: [*]const text_buffer.StyledChunk,
     chunkCount: usize,
 ) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireEditorView(view_handle) orelse return;
     if (chunkCount == 0) {
-        guard.ptr.setPlaceholderStyledText(&[_]text_buffer.StyledChunk{}) catch {};
+        object_ptr.setPlaceholderStyledText(&[_]text_buffer.StyledChunk{}) catch {};
         return;
     }
     const chunks = chunksPtr[0..chunkCount];
-    guard.ptr.setPlaceholderStyledText(chunks) catch {};
+    object_ptr.setPlaceholderStyledText(chunks) catch {};
 }
 
 export fn editorViewSetTabIndicator(view_handle: NativeHandle, indicator: u32) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setTabIndicator(indicator);
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.setTabIndicator(indicator);
 }
 
 export fn editorViewSetTabIndicatorColor(view_handle: NativeHandle, color: [*]const u16) void {
-    const guard = acquireEditorView(view_handle) orelse return;
-    defer guard.release();
-    guard.ptr.setTabIndicatorColor(ptrToRGBA(color));
+    const object_ptr = acquireEditorView(view_handle) orelse return;
+    object_ptr.setTabIndicatorColor(ptrToRGBA(color));
 }
 
 export fn bufferDrawEditorView(
@@ -2570,11 +2334,9 @@ export fn bufferDrawEditorView(
     x: i32,
     y: i32,
 ) void {
-    const buffer_guard = acquireBuffer(buffer_handle) orelse return;
-    defer buffer_guard.release();
-    const view_guard = acquireEditorView(view_handle) orelse return;
-    defer view_guard.release();
-    buffer_guard.ptr.drawEditorView(view_guard.ptr, x, y);
+    const buffer_ptr = acquireBuffer(buffer_handle) orelse return;
+    const view_ptr = acquireEditorView(view_handle) orelse return;
+    buffer_ptr.drawEditorView(view_ptr, x, y);
 }
 
 export fn bufferDrawTextBufferView(
@@ -2583,11 +2345,9 @@ export fn bufferDrawTextBufferView(
     x: i32,
     y: i32,
 ) void {
-    const buffer_guard = acquireBuffer(buffer_handle) orelse return;
-    defer buffer_guard.release();
-    const view_guard = acquireTextBufferView(view_handle) orelse return;
-    defer view_guard.release();
-    buffer_guard.ptr.drawTextBuffer(view_guard.ptr, x, y);
+    const buffer_ptr = acquireBuffer(buffer_handle) orelse return;
+    const view_ptr = acquireTextBufferView(view_handle) orelse return;
+    buffer_ptr.drawTextBuffer(view_ptr, x, y);
 }
 
 pub const ExternalHighlight = extern struct {
@@ -2628,11 +2388,10 @@ export fn textBufferAddHighlightByCharRange(
     tb_handle: NativeHandle,
     hl_ptr: [*]const ExternalHighlight,
 ) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
     const hl = hl_ptr[0];
     // For char-range highlights, start/end in the struct are unused (passed as char_start/char_end)
-    guard.ptr.addHighlightByCharRange(hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
+    object_ptr.addHighlightByCharRange(hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
 }
 
 export fn textBufferAddHighlight(
@@ -2640,44 +2399,38 @@ export fn textBufferAddHighlight(
     line_idx: u32,
     hl_ptr: [*]const ExternalHighlight,
 ) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
     const hl = hl_ptr[0];
     // For line-based highlights, start/end are column offsets
-    guard.ptr.addHighlight(line_idx, hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
+    object_ptr.addHighlight(line_idx, hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
 }
 
 export fn textBufferRemoveHighlightsByRef(tb_handle: NativeHandle, hl_ref: u16) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.removeHighlightsByRef(hl_ref);
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.removeHighlightsByRef(hl_ref);
 }
 
 export fn textBufferClearLineHighlights(tb_handle: NativeHandle, line_idx: u32) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clearLineHighlights(line_idx);
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.clearLineHighlights(line_idx);
 }
 
 export fn textBufferClearAllHighlights(tb_handle: NativeHandle) void {
-    const guard = acquireTextBuffer(tb_handle) orelse return;
-    defer guard.release();
-    guard.ptr.clearAllHighlights();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return;
+    object_ptr.clearAllHighlights();
 }
 
 export fn textBufferSetSyntaxStyle(tb_handle: NativeHandle, style_handle: NativeHandle) void {
-    const tb_guard = acquireTextBuffer(tb_handle) orelse return;
-    defer tb_guard.release();
+    const tb_ptr = acquireTextBuffer(tb_handle) orelse return;
     if (style_handle == INVALID_HANDLE) {
-        tb_guard.ptr.setSyntaxStyle(null);
+        tb_ptr.setSyntaxStyle(null);
         return;
     }
-    const style_guard = acquireSyntaxStyle(style_handle) orelse {
-        tb_guard.ptr.setSyntaxStyle(null);
+    const style_ptr = acquireSyntaxStyle(style_handle) orelse {
+        tb_ptr.setSyntaxStyle(null);
         return;
     };
-    defer style_guard.release();
-    tb_guard.ptr.setSyntaxStyle(style_guard.ptr);
+    tb_ptr.setSyntaxStyle(style_ptr);
 }
 
 export fn textBufferGetLineHighlightsPtr(
@@ -2685,12 +2438,11 @@ export fn textBufferGetLineHighlightsPtr(
     line_idx: u32,
     out_count: *usize,
 ) ?[*]const ExternalHighlight {
-    const guard = acquireTextBuffer(tb_handle) orelse {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse {
         out_count.* = 0;
         return null;
     };
-    defer guard.release();
-    const highs = guard.ptr.getLineHighlightsSlice(@intCast(line_idx));
+    const highs = object_ptr.getLineHighlightsSlice(@intCast(line_idx));
 
     if (highs.len == 0) {
         out_count.* = 0;
@@ -2718,23 +2470,20 @@ export fn textBufferFreeLineHighlights(ptr: [*]const ExternalHighlight, count: u
 }
 
 export fn textBufferGetHighlightCount(tb_handle: NativeHandle) u32 {
-    const guard = acquireTextBuffer(tb_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getHighlightCount();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
+    return object_ptr.getHighlightCount();
 }
 
 export fn textBufferGetTextRange(tb_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireTextBuffer(tb_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
     const outBuffer = outPtr[0..maxLen];
-    return guard.ptr.getTextRange(start_offset, end_offset, outBuffer);
+    return object_ptr.getTextRange(start_offset, end_offset, outBuffer);
 }
 
 export fn textBufferGetTextRangeByCoords(tb_handle: NativeHandle, start_row: u32, start_col: u32, end_row: u32, end_col: u32, outPtr: [*]u8, maxLen: usize) usize {
-    const guard = acquireTextBuffer(tb_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
     const outBuffer = outPtr[0..maxLen];
-    return guard.ptr.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
+    return object_ptr.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
 }
 
 // SyntaxStyle functions
@@ -2756,10 +2505,9 @@ export fn destroySyntaxStyle(style_handle: NativeHandle) void {
 }
 
 export fn syntaxStyleRegister(style_handle: NativeHandle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const u16, bg: ?[*]const u16, attributes: u32) u32 {
-    const guard = acquireSyntaxStyle(style_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireSyntaxStyle(style_handle) orelse return 0;
     const name = namePtr[0..nameLen];
-    return guard.ptr.registerStyleDefinition(name, .{
+    return object_ptr.registerStyleDefinition(name, .{
         .fg = optionalPtrToRGBA(fg),
         .bg = optionalPtrToRGBA(bg),
         .attributes = attributes,
@@ -2767,16 +2515,14 @@ export fn syntaxStyleRegister(style_handle: NativeHandle, namePtr: [*]const u8, 
 }
 
 export fn syntaxStyleResolveByName(style_handle: NativeHandle, namePtr: [*]const u8, nameLen: usize) u32 {
-    const guard = acquireSyntaxStyle(style_handle) orelse return 0;
-    defer guard.release();
+    const object_ptr = acquireSyntaxStyle(style_handle) orelse return 0;
     const name = namePtr[0..nameLen];
-    return guard.ptr.resolveByName(name) orelse 0;
+    return object_ptr.resolveByName(name) orelse 0;
 }
 
 export fn syntaxStyleGetStyleCount(style_handle: NativeHandle) usize {
-    const guard = acquireSyntaxStyle(style_handle) orelse return 0;
-    defer guard.release();
-    return guard.ptr.getStyleCount();
+    const object_ptr = acquireSyntaxStyle(style_handle) orelse return 0;
+    return object_ptr.getStyleCount();
 }
 
 // Unicode encoding API
@@ -2946,7 +2692,6 @@ export fn bufferDrawChar(
     bg: [*]const u16,
     attributes: u32,
 ) void {
-    const guard = acquireBuffer(buffer_handle) orelse return;
-    defer guard.release();
-    guard.ptr.drawChar(char, x, y, ptrToRGBA(fg), ptrToRGBA(bg), attributes);
+    const object_ptr = acquireBuffer(buffer_handle) orelse return;
+    object_ptr.drawChar(char, x, y, ptrToRGBA(fg), ptrToRGBA(bg), attributes);
 }

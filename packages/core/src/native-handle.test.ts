@@ -6,9 +6,22 @@ import { TextBufferView } from "./text-buffer-view.js"
 import { EditBuffer } from "./edit-buffer.js"
 import { EditorView } from "./editor-view.js"
 import { SyntaxStyle } from "./syntax-style.js"
-import { resolveRenderLib, type OptimizedBufferHandle, type RendererHandle, type TextBufferHandle } from "./zig.js"
+import {
+  resolveRenderLib,
+  setRenderLibPath,
+  type OptimizedBufferHandle,
+  type RendererHandle,
+  type TextBufferHandle,
+} from "./zig.js"
 
 describe("native handles", () => {
+  test("render library path cannot change after native use", () => {
+    resolveRenderLib()
+    expect(() => setRenderLibPath("/tmp/opentui-unused-native-library.so")).toThrow(
+      "setRenderLibPath() must be called before resolveRenderLib()",
+    )
+  })
+
   test("renderer calls after destroy are rejected safely", () => {
     const lib = resolveRenderLib()
     const renderer = lib.createRenderer(4, 3, { bufferedOutput: "memory" })
