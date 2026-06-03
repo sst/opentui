@@ -195,7 +195,7 @@ interface CustomRenderableResult {
   renderable?: Renderable
   tableContentCache?: TableContentCache
   tracksInterBlockMargin: boolean
-  usesDefaultRenderer: boolean
+  canUpdateInPlace: boolean
 }
 
 interface CustomRenderDefaultResult {
@@ -239,7 +239,8 @@ export interface BlockState {
   renderable: Renderable
   tableContentCache?: TableContentCache
   tracksInterBlockMargin?: boolean
-  usesDefaultRenderer: boolean
+  /** Whether built-in reconciliation can update this renderable without replacing it. */
+  canUpdateInPlace: boolean
 }
 
 export type { ParseState }
@@ -1431,54 +1432,54 @@ export class MarkdownRenderable extends Renderable {
   private createTopLevelDefaultRenderable(
     block: MarkdownRenderBlock,
     index: number,
-  ): { renderable: Renderable | undefined; tableContentCache?: TableContentCache; usesDefaultRenderer: boolean } {
+  ): { renderable: Renderable | undefined; tableContentCache?: TableContentCache; canUpdateInPlace: boolean } {
     const { token, marginTop } = block
     const id = `${this.id}-block-${index}`
 
     if (token.type === "code") {
       const renderable = this.createCodeRenderable(token, id)
       renderable.marginTop = marginTop
-      return { renderable, usesDefaultRenderer: true }
+      return { renderable, canUpdateInPlace: true }
     }
 
     if (token.type === "table") {
       const next = this.createTableBlock(token, id)
       next.renderable.marginTop = marginTop
-      return { ...next, usesDefaultRenderer: true }
+      return { ...next, canUpdateInPlace: true }
     }
 
     if (token.type === "blockquote") {
       const renderable = this.createBlockquoteRenderable(token, id)
       renderable.marginTop = marginTop
-      return { renderable, usesDefaultRenderer: true }
+      return { renderable, canUpdateInPlace: true }
     }
 
     if (token.type === "list") {
       const renderable = this.createListRenderable(token, id)
       renderable.marginTop = marginTop
-      return { renderable, usesDefaultRenderer: true }
+      return { renderable, canUpdateInPlace: true }
     }
 
     if (token.type === "hr") {
       const renderable = this.createHorizontalRuleRenderable(id)
       renderable.marginTop = marginTop
-      return { renderable, usesDefaultRenderer: true }
+      return { renderable, canUpdateInPlace: true }
     }
 
     const markdownRaw = this.getTopLevelBlockRaw(token)
     if (!markdownRaw) {
-      return { renderable: undefined, usesDefaultRenderer: true }
+      return { renderable: undefined, canUpdateInPlace: true }
     }
 
     const renderable = this.createMarkdownCodeRenderable(markdownRaw, id)
     renderable.marginTop = marginTop
-    return { renderable, usesDefaultRenderer: true }
+    return { renderable, canUpdateInPlace: true }
   }
 
   private createTopLevelRenderable(
     block: MarkdownRenderBlock,
     index: number,
-  ): { renderable: Renderable | undefined; tableContentCache?: TableContentCache; usesDefaultRenderer: boolean } {
+  ): { renderable: Renderable | undefined; tableContentCache?: TableContentCache; canUpdateInPlace: boolean } {
     if (!this._renderNode) {
       return this.createTopLevelDefaultRenderable(block, index)
     }
@@ -1495,7 +1496,7 @@ export class MarkdownRenderable extends Renderable {
     return {
       renderable: custom.renderable,
       tableContentCache: custom.tableContentCache,
-      usesDefaultRenderer: custom.usesDefaultRenderer,
+      canUpdateInPlace: custom.canUpdateInPlace,
     }
   }
 
@@ -1543,15 +1544,15 @@ export class MarkdownRenderable extends Renderable {
       return { renderable: this.createDefaultRenderable(token, index, nextToken) }
     })
     if (!custom.renderable) {
-      return { tracksInterBlockMargin: true, usesDefaultRenderer: true }
+      return { tracksInterBlockMargin: true, canUpdateInPlace: true }
     }
 
-    const usesDefaultRenderer = custom.renderable === custom.defaultResult?.renderable
+    const canUpdateInPlace = custom.renderable === custom.defaultResult?.renderable
 
     return {
       renderable: custom.renderable,
-      tracksInterBlockMargin: usesDefaultRenderer,
-      usesDefaultRenderer,
+      tracksInterBlockMargin: canUpdateInPlace,
+      canUpdateInPlace,
     }
   }
 
@@ -1560,16 +1561,16 @@ export class MarkdownRenderable extends Renderable {
       return this.createTopLevelDefaultRenderable(block, index)
     })
     if (!custom.renderable) {
-      return { tracksInterBlockMargin: true, usesDefaultRenderer: true }
+      return { tracksInterBlockMargin: true, canUpdateInPlace: true }
     }
 
-    const usesDefaultRenderer = custom.renderable === custom.defaultResult?.renderable
+    const canUpdateInPlace = custom.renderable === custom.defaultResult?.renderable
 
     return {
       renderable: custom.renderable,
-      tableContentCache: usesDefaultRenderer ? custom.defaultResult?.tableContentCache : undefined,
-      tracksInterBlockMargin: usesDefaultRenderer,
-      usesDefaultRenderer,
+      tableContentCache: canUpdateInPlace ? custom.defaultResult?.tableContentCache : undefined,
+      tracksInterBlockMargin: canUpdateInPlace,
+      canUpdateInPlace,
     }
   }
 
@@ -1730,13 +1731,13 @@ export class MarkdownRenderable extends Renderable {
       if (
         existing &&
         !forceTableRefresh &&
-        existing.usesDefaultRenderer &&
+        existing.canUpdateInPlace &&
         existing.token.type === block.token.type &&
         this.canUpdateBlockRenderable(existing.renderable, block.token)
       ) {
         if (this._renderNode) {
           const custom = this.createTopLevelCustomRenderable(block, blockIndex)
-          if (custom.renderable && !custom.usesDefaultRenderer) {
+          if (custom.renderable && !custom.canUpdateInPlace) {
             const marginTop =
               typeof custom.renderable.marginTop === "number"
                 ? Math.max(custom.renderable.marginTop, block.marginTop)
@@ -1752,7 +1753,7 @@ export class MarkdownRenderable extends Renderable {
               marginTop: block.marginTop,
               renderable: custom.renderable,
               tableContentCache: custom.tableContentCache,
-              usesDefaultRenderer: custom.usesDefaultRenderer,
+              canUpdateInPlace: custom.canUpdateInPlace,
             }
             blockIndex++
             continue
@@ -1783,7 +1784,7 @@ export class MarkdownRenderable extends Renderable {
           marginTop: block.marginTop,
           renderable: next.renderable,
           tableContentCache: next.tableContentCache,
-          usesDefaultRenderer: next.usesDefaultRenderer,
+          canUpdateInPlace: next.canUpdateInPlace,
         }
       }
       blockIndex++
@@ -1831,7 +1832,7 @@ export class MarkdownRenderable extends Renderable {
           marginTop: 0,
           renderable: fallback,
           tracksInterBlockMargin: true,
-          usesDefaultRenderer: true,
+          canUpdateInPlace: true,
         },
       ]
       return
@@ -1875,9 +1876,9 @@ export class MarkdownRenderable extends Renderable {
         continue
       }
 
-      if (existing && existing.usesDefaultRenderer && existing.token.type === token.type) {
+      if (existing && existing.canUpdateInPlace && existing.token.type === token.type) {
         const custom = this.createCustomRenderable(token, blockIndex, nextToken)
-        if (custom.renderable && !custom.usesDefaultRenderer) {
+        if (custom.renderable && !custom.canUpdateInPlace) {
           if (custom.renderable !== existing.renderable) {
             existing.renderable.destroyRecursively()
             this.add(custom.renderable, blockIndex)
@@ -1887,7 +1888,7 @@ export class MarkdownRenderable extends Renderable {
             tokenRaw: token.raw,
             renderable: custom.renderable,
             tracksInterBlockMargin: custom.tracksInterBlockMargin,
-            usesDefaultRenderer: custom.usesDefaultRenderer,
+            canUpdateInPlace: custom.canUpdateInPlace,
           }
           blockIndex++
           continue
@@ -1909,13 +1910,13 @@ export class MarkdownRenderable extends Renderable {
       let renderable: Renderable | undefined
       let tableContentCache: TableContentCache | undefined
       let tracksInterBlockMargin = true
-      let usesDefaultRenderer = true
+      let canUpdateInPlace = true
 
       const custom = this.createCustomRenderable(token, blockIndex, nextToken)
       if (custom.renderable) {
         renderable = custom.renderable
         tracksInterBlockMargin = custom.tracksInterBlockMargin
-        usesDefaultRenderer = custom.usesDefaultRenderer
+        canUpdateInPlace = custom.canUpdateInPlace
       }
 
       if (!renderable) {
@@ -1945,7 +1946,7 @@ export class MarkdownRenderable extends Renderable {
           renderable,
           tableContentCache,
           tracksInterBlockMargin,
-          usesDefaultRenderer,
+          canUpdateInPlace,
         }
       }
       blockIndex++
