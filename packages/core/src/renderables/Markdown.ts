@@ -141,46 +141,49 @@ export type MarkdownCodeBlockRendererMap =
   | ReadonlyMap<string, MarkdownCodeBlockRenderer>
   | Readonly<Record<string, MarkdownCodeBlockRenderer>>
 
-function getMarkdownCodeBlockRenderer(
+type MarkdownRenderNode = NonNullable<MarkdownOptions["renderNode"]> & {
+  codeBlockOnly?: boolean
+}
+
+function normalizeMarkdownCodeBlockRenderers(
   renderers: MarkdownCodeBlockRendererMap,
-  language: string,
-): MarkdownCodeBlockRenderer | undefined {
-  if (renderers instanceof Map) {
-    return renderers.get(language)
+): ReadonlyMap<string, MarkdownCodeBlockRenderer> {
+  const rendererMap = new Map<string, MarkdownCodeBlockRenderer>()
+  const maybeMap = renderers as Partial<ReadonlyMap<string, MarkdownCodeBlockRenderer>>
+
+  if (typeof maybeMap.forEach === "function") {
+    maybeMap.forEach((renderer, language) => {
+      rendererMap.set(language, renderer)
+    })
+    return rendererMap
   }
 
   const rendererRecord = renderers as Readonly<Record<string, MarkdownCodeBlockRenderer>>
-  return Object.prototype.hasOwnProperty.call(rendererRecord, language) ? rendererRecord[language] : undefined
-}
+  for (const [language, renderer] of Object.entries(rendererRecord)) {
+    rendererMap.set(language, renderer)
+  }
 
-function getMarkdownCodeBlockLanguageCandidates(infoString: string | undefined): string[] {
-  const candidates: string[] = []
-  const normalized = infoStringToFiletype(infoString ?? "")
-  if (normalized) candidates.push(normalized)
-
-  const raw = infoString?.trim().split(/\s+/, 1)[0]?.replace(/^\./, "").toLowerCase()
-  if (raw && raw !== normalized) candidates.push(raw)
-
-  return candidates
+  return rendererMap
 }
 
 export function createMarkdownCodeBlockRenderer(
   renderers: MarkdownCodeBlockRendererMap,
 ): MarkdownOptions["renderNode"] {
-  return (token, context) => {
+  const rendererMap = normalizeMarkdownCodeBlockRenderers(renderers)
+
+  const renderNode: MarkdownRenderNode = (token, context) => {
     if (token.type !== "code") {
       return undefined
     }
 
-    for (const language of getMarkdownCodeBlockLanguageCandidates(token.lang)) {
-      const renderer = getMarkdownCodeBlockRenderer(renderers, language)
-      if (!renderer) continue
+    const language = infoStringToFiletype(token.lang ?? "")
+    if (!language) return undefined
 
-      return renderer(token as Tokens.Code, context)
-    }
-
-    return undefined
+    return rendererMap.get(language)?.(token as Tokens.Code, context)
   }
+
+  renderNode.codeBlockOnly = true
+  return renderNode
 }
 
 interface TableContentCache {
@@ -193,6 +196,16 @@ interface CustomRenderableResult {
   tableContentCache?: TableContentCache
   tracksInterBlockMargin: boolean
   usesDefaultRenderer: boolean
+}
+
+interface CustomRenderDefaultResult {
+  renderable: Renderable | null | undefined
+  tableContentCache?: TableContentCache
+}
+
+interface RenderNodeResult {
+  renderable?: Renderable
+  defaultResult?: CustomRenderDefaultResult
 }
 
 interface ResolvedTableRenderableOptions {
@@ -1012,8 +1025,12 @@ export class MarkdownRenderable extends Renderable {
     return raw.replace(TRAILING_MARKDOWN_BLOCK_NEWLINES_RE, "")
   }
 
+  private isCodeBlockOnlyRenderer(): boolean {
+    return (this._renderNode as MarkdownRenderNode | undefined)?.codeBlockOnly === true
+  }
+
   private buildRenderableTokens(tokens: MarkedToken[]): MarkedToken[] {
-    if (this._renderNode) {
+    if (this._renderNode && !this.isCodeBlockOnlyRenderer()) {
       return tokens.filter((token) => token.type !== "space")
     }
 
@@ -1522,62 +1539,58 @@ export class MarkdownRenderable extends Renderable {
     index: number,
     nextToken: MarkedToken | undefined,
   ): CustomRenderableResult {
-    if (!this._renderNode) return { tracksInterBlockMargin: true, usesDefaultRenderer: true }
+    const custom = this.renderCustomNode(token, () => {
+      return { renderable: this.createDefaultRenderable(token, index, nextToken) }
+    })
+    if (!custom.renderable) {
+      return { tracksInterBlockMargin: true, usesDefaultRenderer: true }
+    }
 
-    let defaultRenderable: Renderable | null | undefined
+    const usesDefaultRenderer = custom.renderable === custom.defaultResult?.renderable
+
+    return {
+      renderable: custom.renderable,
+      tracksInterBlockMargin: usesDefaultRenderer,
+      usesDefaultRenderer,
+    }
+  }
+
+  private createTopLevelCustomRenderable(block: MarkdownRenderBlock, index: number): CustomRenderableResult {
+    const custom = this.renderCustomNode(block.token, () => {
+      return this.createTopLevelDefaultRenderable(block, index)
+    })
+    if (!custom.renderable) {
+      return { tracksInterBlockMargin: true, usesDefaultRenderer: true }
+    }
+
+    const usesDefaultRenderer = custom.renderable === custom.defaultResult?.renderable
+
+    return {
+      renderable: custom.renderable,
+      tableContentCache: usesDefaultRenderer ? custom.defaultResult?.tableContentCache : undefined,
+      tracksInterBlockMargin: usesDefaultRenderer,
+      usesDefaultRenderer,
+    }
+  }
+
+  private renderCustomNode(token: MarkedToken, createDefault: () => CustomRenderDefaultResult): RenderNodeResult {
+    if (!this._renderNode) return {}
+
+    let defaultResult: CustomRenderDefaultResult | undefined
     const custom = this._renderNode(token, {
       syntaxStyle: this._syntaxStyle,
       conceal: this._conceal,
       concealCode: this._concealCode,
       treeSitterClient: this._treeSitterClient,
       defaultRender: () => {
-        defaultRenderable = this.createDefaultRenderable(token, index, nextToken)
-        return defaultRenderable
+        defaultResult = createDefault()
+        return defaultResult.renderable ?? null
       },
     })
-    if (!custom) {
-      this.destroyUnusedDefaultRenderable(defaultRenderable)
-      return { tracksInterBlockMargin: true, usesDefaultRenderer: true }
-    }
 
-    this.destroyUnusedDefaultRenderable(defaultRenderable, custom)
+    this.destroyUnusedDefaultRenderable(defaultResult?.renderable, custom ?? undefined)
 
-    return {
-      renderable: custom,
-      tracksInterBlockMargin: custom === defaultRenderable,
-      usesDefaultRenderer: false,
-    }
-  }
-
-  private createTopLevelCustomRenderable(block: MarkdownRenderBlock, index: number): CustomRenderableResult {
-    if (!this._renderNode) return { tracksInterBlockMargin: true, usesDefaultRenderer: true }
-
-    let defaultRenderable:
-      | { renderable: Renderable | undefined; tableContentCache?: TableContentCache; usesDefaultRenderer: boolean }
-      | undefined
-    const custom = this._renderNode(block.token, {
-      syntaxStyle: this._syntaxStyle,
-      conceal: this._conceal,
-      concealCode: this._concealCode,
-      treeSitterClient: this._treeSitterClient,
-      defaultRender: () => {
-        defaultRenderable = this.createTopLevelDefaultRenderable(block, index)
-        return defaultRenderable.renderable ?? null
-      },
-    })
-    if (!custom) {
-      this.destroyUnusedDefaultRenderable(defaultRenderable?.renderable)
-      return { tracksInterBlockMargin: true, usesDefaultRenderer: true }
-    }
-
-    this.destroyUnusedDefaultRenderable(defaultRenderable?.renderable, custom)
-
-    return {
-      renderable: custom,
-      tableContentCache: custom === defaultRenderable?.renderable ? defaultRenderable?.tableContentCache : undefined,
-      tracksInterBlockMargin: custom === defaultRenderable?.renderable,
-      usesDefaultRenderer: false,
-    }
+    return custom ? { renderable: custom, defaultResult } : {}
   }
 
   private destroyUnusedDefaultRenderable(renderable: Renderable | null | undefined, usedRenderable?: Renderable): void {
@@ -1723,14 +1736,16 @@ export class MarkdownRenderable extends Renderable {
       ) {
         if (this._renderNode) {
           const custom = this.createTopLevelCustomRenderable(block, blockIndex)
-          if (custom.renderable) {
+          if (custom.renderable && !custom.usesDefaultRenderer) {
             const marginTop =
               typeof custom.renderable.marginTop === "number"
                 ? Math.max(custom.renderable.marginTop, block.marginTop)
                 : block.marginTop
             this.applyMargins(custom.renderable, marginTop, 0)
-            existing.renderable.destroyRecursively()
-            this.add(custom.renderable, blockIndex)
+            if (custom.renderable !== existing.renderable) {
+              existing.renderable.destroyRecursively()
+              this.add(custom.renderable, blockIndex)
+            }
             this._blockStates[blockIndex] = {
               token: block.token,
               tokenRaw: block.token.raw,
@@ -1742,6 +1757,7 @@ export class MarkdownRenderable extends Renderable {
             blockIndex++
             continue
           }
+          this.destroyUnusedDefaultRenderable(custom.renderable)
         }
 
         this.updateBlockRenderable(existing, block.token, blockIndex, blocks[i + 1]?.token)
@@ -1861,9 +1877,11 @@ export class MarkdownRenderable extends Renderable {
 
       if (existing && existing.usesDefaultRenderer && existing.token.type === token.type) {
         const custom = this.createCustomRenderable(token, blockIndex, nextToken)
-        if (custom.renderable) {
-          existing.renderable.destroyRecursively()
-          this.add(custom.renderable, blockIndex)
+        if (custom.renderable && !custom.usesDefaultRenderer) {
+          if (custom.renderable !== existing.renderable) {
+            existing.renderable.destroyRecursively()
+            this.add(custom.renderable, blockIndex)
+          }
           this._blockStates[blockIndex] = {
             token,
             tokenRaw: token.raw,
@@ -1874,6 +1892,7 @@ export class MarkdownRenderable extends Renderable {
           blockIndex++
           continue
         }
+        this.destroyUnusedDefaultRenderable(custom.renderable)
 
         this.updateBlockRenderable(existing, token, blockIndex, nextToken)
         existing.token = token

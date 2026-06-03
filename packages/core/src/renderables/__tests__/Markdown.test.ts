@@ -2120,6 +2120,69 @@ After`,
   expect(frame).toContain("After")
 })
 
+test("createMarkdownCodeBlockRenderer accepts renderer maps", async () => {
+  const md = createMarkdownRenderable({
+    id: "language-code-renderer-map",
+    content: "```widget\nfrom map\n```",
+    syntaxStyle,
+    renderNode: createMarkdownCodeBlockRenderer(
+      new Map([
+        [
+          "widget",
+          (node) =>
+            new TextRenderable(renderer, {
+              id: "widget-map-renderer",
+              content: `MAP: ${node.text}`,
+              width: "100%",
+            }),
+        ],
+      ]),
+    ),
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(captureFrame()).toContain("MAP: from map")
+})
+
+test("code block renderer preserves coalesced prose spacing", async () => {
+  const md = createMarkdownRenderable({
+    id: "language-code-renderer-coalesced-prose",
+    content: `First paragraph.
+
+Second paragraph.
+
+\`\`\`widget
+custom
+\`\`\`
+
+Third paragraph.`,
+    syntaxStyle,
+    renderNode: createMarkdownCodeBlockRenderer({
+      widget: (node) => new TextRenderable(renderer, { content: `WIDGET: ${node.text}`, width: "100%" }),
+    }),
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["paragraph", "code", "paragraph"])
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    First paragraph.
+
+    Second paragraph.
+
+    WIDGET: custom
+    Third paragraph."
+  `)
+})
+
 test("default code blocks reuse their renderable when a custom renderer ignores them", async () => {
   const md = createMarkdownRenderable({
     id: "default-code-update-with-custom-renderer",
@@ -2129,6 +2192,25 @@ test("default code blocks reuse their renderable when a custom renderer ignores 
       if (node.type !== "code" || node.lang !== "widget") return null
       return new TextRenderable(renderer, { content: `WIDGET: ${node.text}` })
     },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  const initial = md._blockStates[0]?.renderable
+
+  md.content = "```ts\nconst second = true\n```"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.renderable).toBe(initial)
+  expect(captureFrame()).toContain("const second = true")
+})
+
+test("default-render delegation reuses renderable on same-type updates", async () => {
+  const md = createMarkdownRenderable({
+    id: "default-render-delegation-update",
+    content: "```ts\nconst first = true\n```",
+    syntaxStyle,
+    renderNode: (_node, ctx) => ctx.defaultRender(),
   })
 
   renderer.root.add(md)
