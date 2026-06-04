@@ -116,14 +116,15 @@ function renderInlineMarkdownMath(line: string): string {
 
     const bracketMath = tryReadBracketMath(line, index)
     if (bracketMath) {
-      output += renderLatexToString(bracketMath.content)
+      const rendered = renderLatexToString(bracketMath.content, { layout: bracketMath.display ? "display" : "inline" })
+      output += bracketMath.display ? `\n${rendered}\n` : rendered
       index = bracketMath.end
       continue
     }
 
     const dollarMath = tryReadDollarMath(line, index)
     if (dollarMath) {
-      const rendered = renderLatexToString(dollarMath.content)
+      const rendered = renderLatexToString(dollarMath.content, { layout: dollarMath.display ? "display" : "inline" })
       output += dollarMath.display ? `\n${rendered}\n` : rendered
       index = dollarMath.end
       continue
@@ -147,12 +148,13 @@ function findInlineCodeEnd(line: string, start: number): number {
   return end >= 0 ? end + tickCount : -1
 }
 
-function tryReadBracketMath(line: string, start: number): { content: string; end: number } | null {
+function tryReadBracketMath(line: string, start: number): { content: string; end: number; display: boolean } | null {
   if (line[start] !== "\\" || (line[start + 1] !== "(" && line[start + 1] !== "[")) {
     return null
   }
 
-  const closer = line[start + 1] === "(" ? "\\)" : "\\]"
+  const display = line[start + 1] === "["
+  const closer = display ? "\\]" : "\\)"
   const end = line.indexOf(closer, start + 2)
   if (end < 0) {
     return null
@@ -161,6 +163,7 @@ function tryReadBracketMath(line: string, start: number): { content: string; end
   return {
     content: line.slice(start + 2, end),
     end: end + closer.length,
+    display,
   }
 }
 

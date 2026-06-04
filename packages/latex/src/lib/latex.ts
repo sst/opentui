@@ -1,7 +1,9 @@
 export type LatexRenderMode = "unicode" | "ascii"
+export type LatexRenderLayout = "display" | "inline"
 
 export interface LatexRenderOptions {
   mode?: LatexRenderMode
+  layout?: LatexRenderLayout
 }
 
 export interface LatexRenderResult {
@@ -16,7 +18,10 @@ interface LatexBox {
   width: number
   height: number
   baseline: number
+  atomKind?: LatexAtomKind
 }
+
+type LatexAtomKind = "largeOperator" | "limitOperator" | "integralOperator"
 
 const EMPTY_BOX: LatexBox = {
   lines: [""],
@@ -102,6 +107,9 @@ const SUBSCRIPT: Record<string, string> = {
   v: "ᵥ",
   x: "ₓ",
 }
+
+const MATH_ITALIC_LOWERCASE_START = 0x1d44e
+const MATH_ITALIC_UPPERCASE_START = 0x1d434
 
 const UNICODE_COMMANDS: Record<string, string> = {
   alpha: "α",
@@ -279,8 +287,9 @@ const ASCII_COMMANDS: Record<string, string> = {
 
 export function renderLatexToLines(source: string, options: LatexRenderOptions = {}): LatexRenderResult {
   const mode = options.mode ?? "unicode"
+  const layout = options.layout ?? "display"
   const normalizedSource = source.replaceAll("\\\\", "\n")
-  const rows = normalizedSource.split(/\r?\n/).map((line) => new LatexParser(line, mode).parse())
+  const rows = normalizedSource.split(/\r?\n/).map((line) => new LatexParser(line, mode, layout).parse())
   const width = Math.max(0, ...rows.map((row) => row.width))
   const lines = rows.flatMap((row) => row.lines.map((line) => padRight(line, width)))
 
@@ -288,7 +297,7 @@ export function renderLatexToLines(source: string, options: LatexRenderOptions =
     lines: lines.length > 0 ? lines : [""],
     width,
     height: Math.max(1, lines.length),
-    text: lines.join("\n"),
+    text: lines.map(trimRight).join("\n"),
   }
 }
 
@@ -302,6 +311,7 @@ class LatexParser {
   constructor(
     private readonly source: string,
     private readonly mode: LatexRenderMode,
+    private readonly layout: LatexRenderLayout,
   ) {}
 
   parse(stop = ""): LatexBox {
@@ -363,7 +373,12 @@ class LatexParser {
       return textBox(" ")
     }
 
-    return textBox(this.consume())
+    if (char === "-" && this.isBinaryMinus()) {
+      this.consume()
+      return textBox(" - ")
+    }
+
+    return textBox(this.formatMathCharacter(this.consume()))
   }
 
   private parseCommand(): LatexBox {
@@ -378,15 +393,26 @@ class LatexParser {
       case "frac":
       case "dfrac":
       case "tfrac": {
-        const numerator = this.parseRequiredArgument()
-        const denominator = this.parseRequiredArgument()
+        const numerator = this.parseRequiredArgument("inline")
+        const denominator = this.parseRequiredArgument("inline")
+        if (this.layout === "inline") {
+          return inlineFractionBox(numerator, denominator)
+        }
         return fractionBox(numerator, denominator, this.mode)
       }
       case "sqrt": {
         const index = this.parseOptionalArgument()
         const radicand = this.parseRequiredArgument()
-        return sqrtBox(index ? new LatexParser(index, this.mode).parse() : null, radicand, this.mode)
+        return sqrtBox(index ? new LatexParser(index, this.mode, this.layout).parse() : null, radicand, this.mode)
       }
+      case "sum":
+      case "prod":
+        return operatorBox(this.resolveCommand(name), "largeOperator")
+      case "lim":
+        return operatorBox(this.resolveCommand(name), "limitOperator")
+      case "int":
+      case "oint":
+        return operatorBox(this.resolveCommand(name), "integralOperator")
       case "text":
       case "mathrm":
       case "mathbf":
@@ -414,12 +440,12 @@ class LatexParser {
   }
 
   private parseScripts(base: LatexBox): LatexBox {
-    let superscript: string | undefined
-    let subscript: string | undefined
+    let superscript: LatexBox | undefined
+    let subscript: LatexBox | undefined
 
     while (this.peek() === "^" || this.peek() === "_") {
       const kind = this.consume()
-      const value = flattenBox(this.parseScriptArgument())
+      const value = this.parseScriptArgument()
 
       if (kind === "^") {
         superscript = value
@@ -428,7 +454,28 @@ class LatexParser {
       }
     }
 
-    return scriptBox(base, superscript, subscript, this.mode)
+    if (base.atomKind === "largeOperator") {
+      if (this.layout === "display") {
+        return largeOperatorBox(base, superscript, subscript)
+      }
+    } else if (base.atomKind === "limitOperator") {
+      if (this.layout === "display") {
+        return limitOperatorBox(base, superscript, subscript)
+      }
+
+      return inlineLimitOperatorBox(base, superscript, subscript, this.mode)
+    } else if (base.atomKind === "integralOperator") {
+      if (this.layout === "display") {
+        return integralOperatorBox(base, superscript, subscript, this.mode)
+      }
+    }
+
+    return scriptBox(
+      base,
+      superscript ? flattenBox(superscript) : undefined,
+      subscript ? flattenBox(subscript) : undefined,
+      this.mode,
+    )
   }
 
   private parseScriptArgument(): LatexBox {
@@ -444,10 +491,14 @@ class LatexParser {
     return this.parseAtom()
   }
 
-  private parseRequiredArgument(): LatexBox {
+  private parseRequiredArgument(layout: LatexRenderLayout = this.layout): LatexBox {
     this.consumeWhitespace()
 
     if (this.peek() === "{") {
+      if (layout !== this.layout) {
+        return new LatexParser(this.readGroupContent(), this.mode, layout).parse()
+      }
+
       this.consume()
       const box = this.parse("}")
       this.consumeIf("}")
@@ -455,6 +506,33 @@ class LatexParser {
     }
 
     return this.parseAtom()
+  }
+
+  private readGroupContent(): string {
+    if (this.peek() !== "{") {
+      return ""
+    }
+
+    this.consume()
+    let depth = 1
+    let value = ""
+
+    while (!this.done() && depth > 0) {
+      const char = this.consume()
+
+      if (char === "{") {
+        depth++
+      } else if (char === "}") {
+        depth--
+        if (depth === 0) {
+          break
+        }
+      }
+
+      value += char
+    }
+
+    return value
   }
 
   private parseOptionalArgument(): string | null {
@@ -510,6 +588,26 @@ class LatexParser {
     return UNICODE_COMMANDS[name] ?? name
   }
 
+  private formatMathCharacter(char: string): string {
+    if (this.mode === "ascii") {
+      return char
+    }
+
+    if (/^[a-z]$/.test(char)) {
+      if (char === "h") {
+        return "ℎ"
+      }
+
+      return String.fromCodePoint(MATH_ITALIC_LOWERCASE_START + char.charCodeAt(0) - "a".charCodeAt(0))
+    }
+
+    if (/^[A-Z]$/.test(char)) {
+      return String.fromCodePoint(MATH_ITALIC_UPPERCASE_START + char.charCodeAt(0) - "A".charCodeAt(0))
+    }
+
+    return char
+  }
+
   private readCommandName(): string {
     if (this.done()) {
       return ""
@@ -553,11 +651,26 @@ class LatexParser {
   private done(): boolean {
     return this.position >= this.source.length
   }
+
+  private isBinaryMinus(): boolean {
+    const previous = this.source[this.position - 1] ?? ""
+    const next = this.source[this.position + 1] ?? ""
+
+    if (previous.length === 0 || next.length === 0) {
+      return false
+    }
+
+    return !/[\\\s{[(^_+\-=,]/.test(previous) && !/[\s})\]^_+\-=,]/.test(next)
+  }
 }
 
 function textBox(text: string): LatexBox {
   const lines = text.split(/\r?\n/)
   return makeBox(lines, 0)
+}
+
+function operatorBox(text: string, atomKind: LatexAtomKind): LatexBox {
+  return makeBox([text], 0, atomKind)
 }
 
 function fractionBox(numerator: LatexBox, denominator: LatexBox, mode: LatexRenderMode): LatexBox {
@@ -572,28 +685,213 @@ function fractionBox(numerator: LatexBox, denominator: LatexBox, mode: LatexRend
   return makeBox(lines, numerator.height)
 }
 
-function sqrtBox(index: LatexBox | null, radicand: LatexBox, mode: LatexRenderMode): LatexBox {
-  const indexText = index ? toSuperscript(flattenBox(index), mode) : ""
-
-  if (mode === "ascii") {
-    return textBox(`${index ? `root[${flattenBox(index)}]` : "sqrt"}(${flattenBox(radicand)})`)
+function largeOperatorBox(
+  base: LatexBox,
+  superscript: LatexBox | undefined,
+  subscript: LatexBox | undefined,
+): LatexBox {
+  if (!superscript && !subscript) {
+    return base
   }
 
+  const baseText = flattenBox(base)
+  const superText = superscript ? flattenBox(superscript) : ""
+  const subText = subscript ? flattenBox(subscript) : ""
+  const width = Math.max(displayWidth(baseText), displayWidth(superText), displayWidth(subText), 1)
+  const lines: string[] = []
+
+  if (superscript) {
+    lines.push(center(superText, width))
+  }
+
+  const baseline = lines.length
+  lines.push(center(baseText, width))
+
+  if (subscript) {
+    lines.push(center(subText, width))
+  }
+
+  return makeBox(lines, baseline)
+}
+
+function limitOperatorBox(
+  base: LatexBox,
+  superscript: LatexBox | undefined,
+  subscript: LatexBox | undefined,
+): LatexBox {
+  if (!superscript && !subscript) {
+    return base
+  }
+
+  const baseText = flattenBox(base)
+  const superText = superscript ? flattenBox(superscript) : ""
+  const subText = subscript ? flattenBox(subscript) : ""
+  const width = Math.max(displayWidth(baseText), displayWidth(superText), displayWidth(subText), 1)
+  const lines = [center(baseText, width)]
+
+  if (subscript) {
+    lines.push(center(subText, width))
+  }
+
+  if (superscript) {
+    lines.unshift(center(superText, width))
+    return makeBox(lines, 1)
+  }
+
+  return makeBox(lines, 0)
+}
+
+function inlineLimitOperatorBox(
+  base: LatexBox,
+  superscript: LatexBox | undefined,
+  subscript: LatexBox | undefined,
+  mode: LatexRenderMode,
+): LatexBox {
+  const baseText = flattenBox(base)
+  const superText = superscript ? flattenBox(superscript) : ""
+  const subText = subscript ? flattenBox(subscript) : ""
+
+  if (mode === "ascii") {
+    const suffix = `${subscript ? `_${subText}` : ""}${superscript ? `^${superText}` : ""}`
+    return textBox(`${baseText}${suffix}`)
+  }
+
+  const qualifier = subscript ? ` ${subText}` : ""
+  const suffix = superscript ? toSuperscript(superText, mode) : ""
+  return textBox(`${baseText}${qualifier}${suffix} `)
+}
+
+function integralOperatorBox(
+  base: LatexBox,
+  superscript: LatexBox | undefined,
+  subscript: LatexBox | undefined,
+  mode: LatexRenderMode,
+): LatexBox {
+  const baseText = flattenBox(base)
+
+  if (baseText === "∮" && mode === "unicode") {
+    return contourIntegralBox(baseText, superscript, subscript)
+  }
+
+  if (!superscript && !subscript) {
+    return mode === "ascii" ? base : makeBox(["⌠", "⎮", "⌡"], 1)
+  }
+
+  if (mode === "ascii") {
+    return scriptBox(
+      base,
+      superscript ? flattenBox(superscript) : undefined,
+      subscript ? flattenBox(subscript) : undefined,
+      mode,
+    )
+  }
+
+  const superText = superscript ? flattenBox(superscript) : ""
+  const subText = subscript ? flattenBox(subscript) : ""
+  const width = Math.max(displayWidth(superText), displayWidth(subText), 1)
+  const lines: string[] = []
+
+  if (superscript) {
+    lines.push(center(superText, width))
+  }
+
+  lines.push(center("⌠", width), center("⎮", width), center("⌡", width))
+
+  if (subscript) {
+    lines.push(center(subText, width))
+  }
+
+  return makeBox(lines, superscript ? 2 : 1)
+}
+
+function contourIntegralBox(
+  baseText: string,
+  superscript: LatexBox | undefined,
+  subscript: LatexBox | undefined,
+): LatexBox {
+  const superText = superscript ? flattenBox(superscript) : ""
+  const subText = subscript ? flattenBox(subscript) : ""
+  const width = Math.max(displayWidth(baseText), displayWidth(superText), displayWidth(subText), 1)
+  const lines: string[] = []
+
+  if (superscript) {
+    lines.push(center(superText, width))
+  }
+
+  const baseline = lines.length
+  lines.push(center(baseText, width))
+
+  if (subscript) {
+    lines.push(center(subText, width))
+  }
+
+  return makeBox(
+    lines.map((line) => ` ${line} `),
+    baseline,
+  )
+}
+
+function inlineFractionBox(numerator: LatexBox, denominator: LatexBox): LatexBox {
+  const numeratorText = wrapInlineFractionPart(flattenBox(numerator), "numerator")
+  const denominatorText = wrapInlineFractionPart(flattenBox(denominator), "denominator")
+  return textBox(`${numeratorText}/${denominatorText}`)
+}
+
+function wrapInlineFractionPart(value: string, position: "numerator" | "denominator"): string {
+  return needsInlineFractionParens(value, position) ? `(${value})` : value
+}
+
+function sqrtBox(index: LatexBox | null, radicand: LatexBox, mode: LatexRenderMode): LatexBox {
+  const indexValue = index ? flattenBox(index) : ""
+
+  if (mode === "ascii") {
+    return textBox(`${index ? `root[${indexValue}]` : "sqrt"}(${flattenBox(radicand)})`)
+  }
+
+  const root = rootMarker(indexValue, mode)
+
   if (radicand.height === 1) {
-    return textBox(`${indexText}√${radicand.lines[0] ?? ""}`)
+    return textBox(`${root.indexText}${root.glyph}${radicand.lines[0] ?? ""}`)
   }
 
   const width = Math.max(1, radicand.width)
-  const lines = [` ${"─".repeat(width)}`, ...radicand.lines.map((line, row) => `${row === 0 ? "√" : " "}${padRight(line, width)}`)]
-
-  if (indexText.length > 0) {
-    lines[0] = `${indexText}${lines[0]}`
-  }
+  const prefixWidth = Math.max(2, displayWidth(root.glyph) + 1, displayWidth(root.indexText) + 1)
+  const lines = [
+    `${root.indexText.padEnd(prefixWidth)}┌${"─".repeat(width + 1)}`,
+    ...radicand.lines.map((line, row) => {
+      const radical = row === radicand.baseline ? root.glyph : ""
+      return `${radical.padEnd(prefixWidth)}│ ${padRight(line, width)}`
+    }),
+  ]
 
   return makeBox(lines, radicand.baseline + 1)
 }
 
-function scriptBox(base: LatexBox, superscript: string | undefined, subscript: string | undefined, mode: LatexRenderMode): LatexBox {
+function rootMarker(indexValue: string, mode: LatexRenderMode): { glyph: string; indexText: string } {
+  if (mode === "ascii" || indexValue.length === 0) {
+    return { glyph: "√", indexText: "" }
+  }
+
+  if (indexValue === "3") {
+    return { glyph: "∛", indexText: "" }
+  }
+
+  if (indexValue === "4") {
+    return { glyph: "∜", indexText: "" }
+  }
+
+  return {
+    glyph: "√",
+    indexText: toSuperscript(indexValue, mode),
+  }
+}
+
+function scriptBox(
+  base: LatexBox,
+  superscript: string | undefined,
+  subscript: string | undefined,
+  mode: LatexRenderMode,
+): LatexBox {
   const baseText = flattenBox(base)
   const superText = superscript ? toSuperscript(superscript, mode) : ""
   const subText = subscript ? toSubscript(subscript, mode) : ""
@@ -613,7 +911,7 @@ function toSuperscript(value: string, mode: LatexRenderMode): string {
     return needsParens(value) ? `^(${value})` : `^${value}`
   }
 
-  return convertScript(value, SUPERSCRIPT, "^")
+  return convertScript(normalizeMathItalic(value), SUPERSCRIPT, "^")
 }
 
 function toSubscript(value: string, mode: LatexRenderMode): string {
@@ -621,7 +919,27 @@ function toSubscript(value: string, mode: LatexRenderMode): string {
     return needsParens(value) ? `_(${value})` : `_${value}`
   }
 
-  return convertScript(value, SUBSCRIPT, "_")
+  return convertScript(normalizeMathItalic(value), SUBSCRIPT, "_")
+}
+
+function normalizeMathItalic(value: string): string {
+  let normalized = ""
+
+  for (const char of value) {
+    const codePoint = char.codePointAt(0)
+
+    if (char === "ℎ") {
+      normalized += "h"
+    } else if (codePoint && codePoint >= MATH_ITALIC_LOWERCASE_START && codePoint < MATH_ITALIC_LOWERCASE_START + 26) {
+      normalized += String.fromCharCode("a".charCodeAt(0) + codePoint - MATH_ITALIC_LOWERCASE_START)
+    } else if (codePoint && codePoint >= MATH_ITALIC_UPPERCASE_START && codePoint < MATH_ITALIC_UPPERCASE_START + 26) {
+      normalized += String.fromCharCode("A".charCodeAt(0) + codePoint - MATH_ITALIC_UPPERCASE_START)
+    } else {
+      normalized += char
+    }
+  }
+
+  return normalized
 }
 
 function convertScript(value: string, map: Record<string, string>, prefix: string): string {
@@ -664,7 +982,7 @@ function concatBoxes(boxes: LatexBox[]): LatexBox {
   return makeBox(lines, baseline)
 }
 
-function makeBox(lines: string[], baseline: number): LatexBox {
+function makeBox(lines: string[], baseline: number, atomKind?: LatexAtomKind): LatexBox {
   const normalizedLines = lines.length > 0 ? lines : [""]
   const width = Math.max(0, ...normalizedLines.map(displayWidth))
   return {
@@ -672,6 +990,7 @@ function makeBox(lines: string[], baseline: number): LatexBox {
     width,
     height: normalizedLines.length,
     baseline: Math.max(0, Math.min(baseline, normalizedLines.length - 1)),
+    atomKind,
   }
 }
 
@@ -708,4 +1027,14 @@ function displayWidth(value: string): number {
 
 function needsParens(value: string): boolean {
   return [...value].length !== 1 || /\s/.test(value)
+}
+
+function needsInlineFractionParens(value: string, position: "numerator" | "denominator"): boolean {
+  const normalized = normalizeMathItalic(value)
+
+  if (/[\s+\-*/=<>±∓]/.test(normalized)) {
+    return true
+  }
+
+  return position === "denominator" && /^\d+[A-Za-z]+$/.test(normalized)
 }

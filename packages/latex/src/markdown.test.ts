@@ -4,7 +4,13 @@ import { registerLatexMarkdown, renderMarkdownMath } from "./markdown.js"
 
 describe("@opentui/latex/markdown", () => {
   it("renders inline dollar math", () => {
-    expect(renderMarkdownMath("Power: $x^2$")).toBe("Power: x²")
+    expect(renderMarkdownMath("Power: $x^2$")).toBe("Power: 𝑥²")
+  })
+
+  it("renders inline dollar fractions on one line", () => {
+    expect(renderMarkdownMath("- Quadratic formula: $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$")).toBe(
+      "- Quadratic formula: 𝑥 = (-𝑏 ± √𝑏² - 4𝑎𝑐)/(2𝑎)",
+    )
   })
 
   it("renders bracketed inline math", () => {
@@ -22,15 +28,9 @@ describe("@opentui/latex/markdown", () => {
   })
 
   it("skips inline code and fenced code", () => {
-    const markdown = [
-      "Inline `$x^2$` and $x^2$",
-      "",
-      "```",
-      "$y^2$",
-      "```",
-    ].join("\n")
+    const markdown = ["Inline `$x^2$` and $x^2$", "", "```", "$y^2$", "```"].join("\n")
 
-    expect(renderMarkdownMath(markdown)).toBe(["Inline `$x^2$` and x²", "", "```", "$y^2$", "```"].join("\n"))
+    expect(renderMarkdownMath(markdown)).toBe(["Inline `$x^2$` and 𝑥²", "", "```", "$y^2$", "```"].join("\n"))
   })
 
   it("registers the markdown transform explicitly", () => {
@@ -45,9 +45,7 @@ describe("@opentui/latex/markdown", () => {
       const after = parseMarkdownIncremental("Math: $\\frac{a}{b}$", null, 0)
       const afterParagraph = after.tokens.find((token) => token.type === "paragraph") as any
 
-      expect(afterParagraph?.text).toContain("a")
-      expect(afterParagraph?.text).toContain("─")
-      expect(afterParagraph?.text).toContain("b")
+      expect(afterParagraph?.text).toBe("Math: 𝑎/𝑏")
     } finally {
       unregister()
     }

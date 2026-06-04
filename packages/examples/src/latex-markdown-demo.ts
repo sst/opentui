@@ -1,196 +1,228 @@
 import {
   BoxRenderable,
   CliRenderer,
-  MarkdownRenderable,
   RGBA,
-  ScrollBoxRenderable,
-  SyntaxStyle,
   TextAttributes,
   TextRenderable,
   createCliRenderer,
-  parseColor,
   type KeyEvent,
 } from "@opentui/core"
-import { LatexRenderable, registerLatexMarkdown } from "@opentui/latex"
+import { LatexRenderable } from "@opentui/latex"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const ROOT_ID = "latex-markdown-demo-root"
 
-function getMarkdownContent(latexEnabled: boolean): string {
-  const mode = latexEnabled
-    ? "LaTeX Markdown is **enabled**. Press `M` to unregister it and reveal the raw source."
-    : "LaTeX Markdown is **disabled**. Press `M` to register it and render the math."
-
-  return String.raw`# LaTeX Markdown
-
-${mode}
-
-The same Markdown source is used in both modes. Only the package registration changes.
-
-## Greatest Hits
-
-- Quadratic formula: $x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$
-- Euler identity: $e^{i\pi} + 1 = 0$
-- Indexed symbols: \(\alpha_i^2 + \beta_j^2 \le \gamma^2\)
-- Tiny calculus: $\frac{dy}{dx} = \lim_{h \to 0}\frac{f(x+h)-f(x)}{h}$
-- Logic: $\forall x \in X, \exists y \in Y$
-
-## Display Math
-
-$$
-\frac{\sum_{i=1}^{n} x_i}{n}
-$$
-
-$$
-\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
-$$
-
-## Table Playground
-
-Tables use the same registered Markdown transform:
-
-| Scene | Formula | Terminal rendering |
-| --- | --- | --- |
-| Geometry | $\sqrt{a^2+b^2}$ | distance |
-| Statistics | $\frac{\sum x_i}{n}$ | average |
-| Logic | $\alpha_i \Rightarrow \beta_i$ | implication |
-| Physics | $E = mc^2$ | energy |
-
-## Theorem Card
-
-> If $a^2 + b^2 = c^2$, a right triangle is hiding in the grid.
->
-> The same Markdown blockquote can mix text, links, and math like $\theta \le 90^\circ$.
-
-## Notebook Snippets
-
-1. Start with a symbolic signal: $s(t) = A\sin(\omega t + \phi)$.
-2. Normalize it with $\frac{s(t)-\mu}{\sigma}$.
-3. Compare two outcomes: $p(x) \ge q(x)$.
-4. Finish with an infinite horizon: $\sum_{n=0}^{\infty} r^n$.
-
-## Code Safety
-
-Inline code stays untouched: \`$x^2$\`
-
-\`\`\`tex
-\frac{this}{also stays untouched}
-\`\`\`
-
-## Symbol Sampler
-
-| Input | Output |
-| --- | --- |
-| \`$\\alpha_i^2$\` | $\alpha_i^2$ |
-| \`$x \\le y$\` | $x \le y$ |
-| \`$A \\cap B$\` | $A \cap B$ |
-| \`$p \\to q$\` | $p \to q$ |
-
-## More Display Blocks
-
-$$
-\sqrt{1 + \frac{x^2}{1 - x^2}}
-$$
-
-$$
-\frac{\alpha + \beta}{\gamma + \delta}
-$$
-
-That is a lot of math for a terminal, and it still scrolls like ordinary Markdown.
-`
+interface FormulaSlide {
+  title: string
+  kicker: string
+  content: string
+  note: string
+  color: string
 }
 
-const galleryFormulas = [
+const slides: FormulaSlide[] = [
   {
-    title: "Quadratic",
-    content: String.raw`\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}`,
-    color: "#FDE68A",
-  },
-  {
-    title: "Mean",
-    content: String.raw`\frac{\sum x_i}{n}`,
+    title: "Powers and Subscripts",
+    kicker: "Math italic identifiers and compact scripts",
+    content: String.raw`\alpha_i^2 + \beta_j^2 \le \gamma^2`,
+    note: "The basic building block: Greek letters, mathematical italic variables, subscripts, superscripts, and relation symbols.",
     color: "#A7F3D0",
   },
   {
-    title: "Gradient",
-    content: String.raw`\nabla f(x)`,
-    color: "#BAE6FD",
+    title: "Euler Identity",
+    kicker: "Symbols in a compact inline expression",
+    content: String.raw`e^{i\pi} + 1 = 0`,
+    note: "A simple single-line expression that shows math italic, Greek symbols, and superscripts without needing display layout.",
+    color: "#FDE68A",
   },
   {
-    title: "Signal",
-    content: String.raw`A\sin(\omega t + \phi)`,
+    title: "Pythagorean Distance",
+    kicker: "Square root with scripts",
+    content: String.raw`\sqrt{a^2 + b^2}`,
+    note: "Single-line square roots stay compact, while variables still render with math-style glyphs.",
+    color: "#93C5FD",
+  },
+  {
+    title: "Quadratic Formula",
+    kicker: "Fraction plus nested root",
+    content: String.raw`\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}`,
+    note: "A dense classic formula combining a display fraction, plus/minus, a square root, and polynomial terms.",
+    color: "#FDBA74",
+  },
+  {
+    title: "Sample Mean",
+    kicker: "Compact fraction style",
+    content: String.raw`\frac{\sum_{i=1}^{n} x_i}{n}`,
+    note: "Fraction arguments render in compact style, so the summation stays readable instead of turning into a tall numerator.",
+    color: "#A7F3D0",
+  },
+  {
+    title: "Weighted Average",
+    kicker: "Nested sum in a ratio",
+    content: String.raw`\frac{\sum_{i=1}^{n} w_i x_i}{\sum_{i=1}^{n} w_i}`,
+    note: "Both numerator and denominator use compact summation notation inside a larger display fraction.",
+    color: "#5EEAD4",
+  },
+  {
+    title: "Finite Product",
+    kicker: "Large operator limits",
+    content: String.raw`\prod_{k=1}^{n}\left(1 + \frac{x}{k}\right)`,
+    note: "Product limits use the same display-style operator layout as summations, with compact fractions inside parentheses.",
+    color: "#93C5FD",
+  },
+  {
+    title: "Derivative Definition",
+    kicker: "Limit plus quotient",
+    content: String.raw`\lim_{h \to 0}\frac{f(x+h)-f(x)}{h}`,
+    note: "Display-style limits put the condition under lim while the quotient remains compact and centered.",
     color: "#F0ABFC",
   },
   {
-    title: "Logic",
-    content: String.raw`\forall x \in X \to y`,
+    title: "Nested Radical",
+    kicker: "Root enclosure and nested fraction",
+    content: String.raw`\sqrt{1 + \frac{x^2}{1 - x^2}}`,
+    note: "Multiline roots use an enclosure so the radicand reads as one expression.",
+    color: "#FDE68A",
+  },
+  {
+    title: "Cube Root",
+    kicker: "Indexed radical marker",
+    content: String.raw`\sqrt[3]{1 + \frac{x^2}{1 - x^2}}`,
+    note: "Indexed roots use dedicated cube and fourth-root glyphs when available, then fall back to upper-left indices.",
+    color: "#F9A8D4",
+  },
+  {
+    title: "Gaussian Integral",
+    kicker: "Bounded integral",
+    content: String.raw`\int_{0}^{\infty} e^{-x^2}\,dx`,
+    note: "Bounded integrals use a tall terminal integral with upper and lower bounds.",
+    color: "#BAE6FD",
+  },
+  {
+    title: "Line Integral",
+    kicker: "Contour operator",
+    content: String.raw`\oint_{\gamma} f(z)\,dz`,
+    note: "Contour integrals keep the path label visually tied to the operator.",
     color: "#C4B5FD",
+  },
+  {
+    title: "Cauchy Integral Formula",
+    kicker: "Contour integral with stacked fractions",
+    content: String.raw`f(a) = \frac{1}{2\pi i}\oint_{\gamma}\frac{f(z)}{z-a}\,dz`,
+    note: "A focused complex-analysis example: italic identifiers, a contour path under the operator, and spaced denominator terms.",
+    color: "#C4B5FD",
+  },
+  {
+    title: "Signal Phase",
+    kicker: "Named operators and Greek parameters",
+    content: String.raw`A\sin(\omega t + \phi)`,
+    note: "Named functions such as sin stay roman while variables and Greek parameters remain mathematical.",
+    color: "#F0ABFC",
+  },
+  {
+    title: "Normalized Signal",
+    kicker: "Greek parameters in a quotient",
+    content: String.raw`\frac{s(t)-\mu}{\sigma}`,
+    note: "A compact statistics-style transform with Greek symbols and an expression numerator.",
+    color: "#67E8F9",
+  },
+  {
+    title: "Logic Statement",
+    kicker: "Quantifiers and set membership",
+    content: String.raw`\forall x \in X, \exists y \in Y`,
+    note: "Logical quantifiers, set membership, and uppercase mathematical symbols are rendered in a single line.",
+    color: "#DDD6FE",
+  },
+  {
+    title: "Set Relation",
+    kicker: "Subset, union, intersection",
+    content: String.raw`A \cap B \subseteq A \cup B`,
+    note: "Set operators provide a good symbol sampler without needing multiline layout.",
+    color: "#A5B4FC",
   },
 ]
 
-const syntaxStyle = SyntaxStyle.fromStyles({
-  default: { fg: parseColor("#E5E7EB") },
-  "markup.heading": { fg: parseColor("#67E8F9"), bold: true },
-  "markup.heading.1": { fg: parseColor("#FDE68A"), bold: true, underline: true },
-  "markup.strong": { fg: parseColor("#F8FAFC"), bold: true },
-  "markup.italic": { fg: parseColor("#F8FAFC"), italic: true },
-  "markup.list": { fg: parseColor("#A7F3D0") },
-  "markup.quote": { fg: parseColor("#94A3B8"), italic: true },
-  "markup.raw": { fg: parseColor("#BAE6FD"), bg: parseColor("#111827") },
-  "markup.raw.block": { fg: parseColor("#BAE6FD"), bg: parseColor("#111827") },
-  "markup.raw.inline": { fg: parseColor("#BAE6FD"), bg: parseColor("#111827") },
-  "markup.link": { fg: parseColor("#93C5FD"), underline: true },
-  "markup.link.label": { fg: parseColor("#BFDBFE"), underline: true },
-  "markup.link.url": { fg: parseColor("#93C5FD"), underline: true },
-  "punctuation.special": { fg: parseColor("#64748B") },
-  conceal: { fg: parseColor("#64748B") },
-})
-
-let unregisterMarkdownLatex: (() => void) | null = null
-let latexMarkdownEnabled = true
-let markdownDisplay: MarkdownRenderable | null = null
+let slideIndex = 0
+let slideTitle: TextRenderable | null = null
+let slideKicker: TextRenderable | null = null
+let slideCounter: TextRenderable | null = null
+let slideFormula: LatexRenderable | null = null
+let slideSource: TextRenderable | null = null
+let slideNote: TextRenderable | null = null
+let slideRail: TextRenderable | null = null
 let badgeText: TextRenderable | null = null
 let modeText: TextRenderable | null = null
 let keyHandler: ((key: KeyEvent) => void) | null = null
 
-function setLatexMarkdownEnabled(enabled: boolean): void {
-  latexMarkdownEnabled = enabled
+function getSlideRail(): string {
+  return slides
+    .map((slide, index) => {
+      const marker = index === slideIndex ? `[${index + 1}]` : `${index + 1}`
+      return marker
+    })
+    .join(" ")
+}
 
-  if (enabled && !unregisterMarkdownLatex) {
-    unregisterMarkdownLatex = registerLatexMarkdown()
-  } else if (!enabled && unregisterMarkdownLatex) {
-    unregisterMarkdownLatex()
-    unregisterMarkdownLatex = null
+function currentSlide(): FormulaSlide {
+  return slides[slideIndex] ?? slides[0]!
+}
+
+function moveSlide(delta: number): void {
+  slideIndex = (slideIndex + delta + slides.length) % slides.length
+  updateSlide()
+}
+
+function updateSlide(): void {
+  const slide = currentSlide()
+
+  if (slideTitle) {
+    slideTitle.content = slide.title
+    slideTitle.fg = slide.color
   }
 
-  if (badgeText) {
-    badgeText.content = enabled ? "math: registered" : "math: raw source"
-    badgeText.fg = enabled ? "#5EEAD4" : "#FCA5A5"
+  if (slideKicker) {
+    slideKicker.content = slide.kicker
   }
 
-  if (modeText) {
-    modeText.content = enabled
-      ? "M: unregister math transform and show raw LaTeX"
-      : "M: register math transform and render formulas"
-    modeText.fg = enabled ? "#A7F3D0" : "#FCA5A5"
+  if (slideCounter) {
+    slideCounter.content = `${slideIndex + 1}/${slides.length}`
   }
 
-  if (markdownDisplay) {
-    markdownDisplay.content = ""
-    markdownDisplay.content = getMarkdownContent(enabled)
+  if (slideFormula) {
+    slideFormula.content = slide.content
+    slideFormula.fg = "#F8FAFC"
+  }
+
+  if (slideSource) {
+    slideSource.content = slide.content
+  }
+
+  if (slideNote) {
+    slideNote.content = slide.note
+  }
+
+  if (slideRail) {
+    slideRail.content = getSlideRail()
   }
 }
 
 function handleKeyPress(key: KeyEvent): void {
-  if ((key.name?.toLowerCase() === "m" || key.raw === "M") && !key.ctrl && !key.meta) {
-    setLatexMarkdownEnabled(!latexMarkdownEnabled)
+  const keyName = key.name?.toLowerCase()
+  const raw = key.raw?.toLowerCase()
+
+  if (keyName === "right" || keyName === "arrowright" || keyName === "n" || raw === "n") {
+    moveSlide(1)
+    return
+  }
+
+  if (keyName === "left" || keyName === "arrowleft" || keyName === "p" || raw === "p") {
+    moveSlide(-1)
   }
 }
 
 export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor("#0B1020")
-  setLatexMarkdownEnabled(true)
 
   const root = new BoxRenderable(renderer, {
     id: ROOT_ID,
@@ -221,7 +253,7 @@ export function run(renderer: CliRenderer): void {
   headerText.add(
     new TextRenderable(renderer, {
       id: `${ROOT_ID}-title`,
-      content: "LaTeX Markdown Lab",
+      content: "LaTeX Formula Showcase",
       fg: "#F8FAFC",
       attributes: TextAttributes.BOLD,
     }),
@@ -230,14 +262,14 @@ export function run(renderer: CliRenderer): void {
   headerText.add(
     new TextRenderable(renderer, {
       id: `${ROOT_ID}-subtitle`,
-      content: "Markdown math, display blocks, tables, quotes, and standalone formulas",
+      content: "One formula at a time, progressing from simple notation to complex display math",
       fg: "#94A3B8",
     }),
   )
 
   badgeText = new TextRenderable(renderer, {
     id: `${ROOT_ID}-badge`,
-    content: "math: registered",
+    content: `${slides.length} slides`,
     fg: "#5EEAD4",
     attributes: TextAttributes.BOLD,
     flexShrink: 0,
@@ -246,7 +278,7 @@ export function run(renderer: CliRenderer): void {
 
   modeText = new TextRenderable(renderer, {
     id: `${ROOT_ID}-mode`,
-    content: "M: unregister math transform and show raw LaTeX",
+    content: "←/→ or P/N: move through formulas",
     fg: "#A7F3D0",
     marginBottom: 1,
   })
@@ -256,13 +288,13 @@ export function run(renderer: CliRenderer): void {
     id: `${ROOT_ID}-body`,
     width: "100%",
     flexGrow: 1,
-    flexDirection: "row",
-    gap: 2,
+    flexDirection: "column",
   })
   root.add(body)
 
-  const markdownPanel = new BoxRenderable(renderer, {
-    id: `${ROOT_ID}-markdown-panel`,
+  const stagePanel = new BoxRenderable(renderer, {
+    id: `${ROOT_ID}-stage-panel`,
+    width: "100%",
     flexGrow: 1,
     height: "100%",
     border: true,
@@ -271,102 +303,97 @@ export function run(renderer: CliRenderer): void {
     padding: 1,
     flexDirection: "column",
   })
-  body.add(markdownPanel)
+  body.add(stagePanel)
 
-  markdownPanel.add(
-    new TextRenderable(renderer, {
-      id: `${ROOT_ID}-markdown-label`,
-      content: "MarkdownRenderable",
-      fg: "#93C5FD",
-      attributes: TextAttributes.BOLD,
-      marginBottom: 1,
-    }),
-  )
-
-  const scroll = new ScrollBoxRenderable(renderer, {
-    id: `${ROOT_ID}-scroll`,
+  const slideHeader = new BoxRenderable(renderer, {
+    id: `${ROOT_ID}-slide-header`,
     width: "100%",
-    flexGrow: 1,
-    scrollbar: true,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 1,
   })
-  markdownPanel.add(scroll)
+  stagePanel.add(slideHeader)
 
-  markdownDisplay = new MarkdownRenderable(renderer, {
-      id: `${ROOT_ID}-markdown`,
-      content: getMarkdownContent(latexMarkdownEnabled),
-      syntaxStyle,
-      fg: "#E5E7EB",
-      tableOptions: {
-        widthMode: "content",
-        style: "grid",
-      },
-    })
-  scroll.add(markdownDisplay)
-
-  const standalonePanel = new BoxRenderable(renderer, {
-    id: `${ROOT_ID}-standalone-panel`,
-    width: 42,
-    height: "100%",
-    border: true,
-    borderStyle: "rounded",
-    borderColor: "#14B8A6",
-    padding: 1,
+  const slideHeading = new BoxRenderable(renderer, {
+    id: `${ROOT_ID}-slide-heading`,
     flexDirection: "column",
+    flexGrow: 1,
+  })
+  slideHeader.add(slideHeading)
+
+  slideTitle = new TextRenderable(renderer, {
+    id: `${ROOT_ID}-slide-title`,
+    content: "",
+    fg: "#A7F3D0",
+    attributes: TextAttributes.BOLD,
+  })
+  slideHeading.add(slideTitle)
+
+  slideKicker = new TextRenderable(renderer, {
+    id: `${ROOT_ID}-slide-kicker`,
+    content: "",
+    fg: "#94A3B8",
+  })
+  slideHeading.add(slideKicker)
+
+  slideCounter = new TextRenderable(renderer, {
+    id: `${ROOT_ID}-slide-counter`,
+    content: "",
+    fg: "#CBD5E1",
+    attributes: TextAttributes.BOLD,
     flexShrink: 0,
   })
-  body.add(standalonePanel)
+  slideHeader.add(slideCounter)
 
-  standalonePanel.add(
-    new TextRenderable(renderer, {
-      id: `${ROOT_ID}-standalone-label`,
-      content: "LatexRenderable",
-      fg: "#5EEAD4",
-      attributes: TextAttributes.BOLD,
-      marginBottom: 1,
-    }),
-  )
+  const formulaStage = new BoxRenderable(renderer, {
+    id: `${ROOT_ID}-formula-stage`,
+    width: "100%",
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    border: ["top", "bottom"],
+    borderColor: "#1E3A8A",
+    marginBottom: 1,
+  })
+  stagePanel.add(formulaStage)
 
-  for (const [index, formula] of galleryFormulas.entries()) {
-    const item = new BoxRenderable(renderer, {
-      id: `${ROOT_ID}-gallery-${index}`,
-      width: "100%",
-      border: ["left"],
-      borderColor: formula.color,
-      paddingLeft: 1,
-      marginBottom: 1,
-      flexDirection: "column",
-    })
-    standalonePanel.add(item)
+  slideFormula = new LatexRenderable(renderer, {
+    id: `${ROOT_ID}-slide-formula`,
+    content: "",
+    fg: "#F8FAFC",
+    align: "center",
+    width: "100%",
+  })
+  formulaStage.add(slideFormula)
 
-    item.add(
-      new TextRenderable(renderer, {
-        id: `${ROOT_ID}-gallery-${index}-title`,
-        content: formula.title,
-        fg: formula.color,
-        attributes: TextAttributes.BOLD,
-      }),
-    )
+  slideNote = new TextRenderable(renderer, {
+    id: `${ROOT_ID}-slide-note`,
+    content: "",
+    fg: "#CBD5E1",
+    wrapMode: "word",
+    marginBottom: 1,
+  })
+  stagePanel.add(slideNote)
 
-    item.add(
-      new LatexRenderable(renderer, {
-        id: `${ROOT_ID}-gallery-${index}-formula`,
-        content: formula.content,
-        fg: "#F8FAFC",
-        align: "center",
-        width: "100%",
-      }),
-    )
-  }
+  slideSource = new TextRenderable(renderer, {
+    id: `${ROOT_ID}-slide-source`,
+    content: "",
+    fg: "#FDE68A",
+    bg: "#111827",
+    wrapMode: "word",
+  })
+  stagePanel.add(slideSource)
 
-  standalonePanel.add(
-    new TextRenderable(renderer, {
-      id: `${ROOT_ID}-note`,
-      content:
-        "Press M to flip Markdown math between rendered formulas and raw source. Standalone LatexRenderable cards stay rendered.",
-      fg: "#CBD5E1",
-      wrapMode: "word",
-    }),
-  )
+  slideRail = new TextRenderable(renderer, {
+    id: `${ROOT_ID}-slide-rail`,
+    content: "",
+    fg: "#CBD5E1",
+    marginTop: 1,
+    wrapMode: "word",
+  })
+  stagePanel.add(slideRail)
+
+  updateSlide()
 
   keyHandler = handleKeyPress
   renderer.keyInput.on("keypress", keyHandler)
@@ -377,11 +404,16 @@ export function destroy(renderer: CliRenderer): void {
     renderer.keyInput.off("keypress", keyHandler)
     keyHandler = null
   }
-  unregisterMarkdownLatex?.()
-  unregisterMarkdownLatex = null
-  markdownDisplay = null
   badgeText = null
   modeText = null
+  slideTitle = null
+  slideKicker = null
+  slideCounter = null
+  slideFormula = null
+  slideSource = null
+  slideNote = null
+  slideRail = null
+  slideIndex = 0
   renderer.root.remove(ROOT_ID)
   renderer.setCursorPosition(0, 0, false)
 }

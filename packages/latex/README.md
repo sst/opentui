@@ -35,7 +35,8 @@ renderer.root.add(
 )
 ```
 
-The renderer supports a practical terminal subset: fractions, square roots, superscripts, subscripts, Greek letters, and common math operators. It is intentionally not a full TeX engine.
+The renderer supports a practical terminal subset: fractions, square roots,
+superscripts, subscripts, Greek letters, and common math operators. 
 
 React JSX support is registered explicitly:
 
