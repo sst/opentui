@@ -1,40 +1,45 @@
-# @opentui/latex
+---
+title: LaTeX
+description: Render terminal-native LaTeX math formulas
+order: 17
+---
 
-LaTeX math rendering for OpenTUI.
+# LaTeX
 
-`@opentui/latex` provides a terminal-native math renderer for common TeX-style formulas. It can render standalone math with `LatexRenderable`, or it can be registered as an opt-in transform for `MarkdownRenderable`.
+Render common LaTeX math formulas in the terminal. `@opentui/latex` provides a standalone `LatexRenderable` and an opt-in Markdown transform for `MarkdownRenderable`.
 
-The renderer is intentionally text based. It targets clean terminal output for practical math notation, not a full TeX engine.
-
-## Install
+Install the LaTeX package separately:
 
 ```bash
 bun install @opentui/latex
 ```
 
-## Standalone Renderable
+## Basic Usage
 
-```ts
+### Renderable API
+
+```typescript
 import { createCliRenderer } from "@opentui/core"
 import { LatexRenderable } from "@opentui/latex"
 
 const renderer = await createCliRenderer()
 
-renderer.root.add(
-  new LatexRenderable(renderer, {
-    content: String.raw`f(a) = \frac{1}{2\pi i}\oint_{\gamma}\frac{f(z)}{z-a}\,dz`,
-    width: "100%",
-    align: "center",
-    fg: "#f8fafc",
-  }),
-)
+const formula = new LatexRenderable(renderer, {
+  id: "cauchy",
+  content: String.raw`f(a) = \frac{1}{2\pi i}\oint_{\gamma}\frac{f(z)}{z-a}\,dz`,
+  width: "100%",
+  align: "center",
+  fg: "#f8fafc",
+})
+
+renderer.root.add(formula)
 ```
 
-## Markdown Math
+### Markdown Math
 
-Markdown rendering is opt-in. Register the transform before creating `MarkdownRenderable` instances that should render math:
+Markdown math is opt-in. Register the transform before creating `MarkdownRenderable` instances that should render formulas:
 
-```ts
+```typescript
 import { MarkdownRenderable, SyntaxStyle } from "@opentui/core"
 import { registerLatexMarkdown } from "@opentui/latex/markdown"
 
@@ -47,25 +52,18 @@ Euler: $e^{i\pi} + 1 = 0$
 $$
 \frac{\sum_{i=1}^{n} x_i}{n}
 $$
+
+Inline code is ignored: \`$x_i$\`
 `,
   syntaxStyle: SyntaxStyle.fromStyles({}),
 })
 ```
 
-The Markdown transform supports:
+The Markdown transform supports inline `$...$`, inline `\(...\)`, display `$$...$$`, and display `\[...\]`. Inline code and fenced code blocks are left unchanged.
 
-- inline `$...$`
-- inline `\(...\)`
-- display `$$...$$`
-- display `\[...\]`
+`registerLatexMarkdown()` returns an unregister function. Calling it more than once reuses the existing registration.
 
-Inline code and fenced code blocks are left unchanged.
-
-`registerLatexMarkdown()` returns an unregister function. Calling `registerLatexMarkdown()` more than once reuses the existing registration.
-
-## React JSX
-
-Register the JSX intrinsic explicitly:
+### React JSX
 
 ```tsx
 import { createRoot } from "@opentui/react"
@@ -78,9 +76,7 @@ createRoot(renderer).render(
 )
 ```
 
-## Solid JSX
-
-Register the JSX intrinsic explicitly:
+### Solid JSX
 
 ```tsx
 import { render } from "@opentui/solid"
@@ -93,13 +89,13 @@ render(() => <latex content={String.raw`\sqrt[3]{1 + \frac{x^2}{1 - x^2}}`} alig
 
 ## Supported Notation
 
-The renderer supports a practical subset of LaTeX math:
+The renderer supports a practical terminal subset of LaTeX math:
 
 - fractions with `\frac{...}{...}`
 - square roots and indexed roots with `\sqrt{...}` and `\sqrt[n]{...}`
 - superscripts and subscripts
 - Greek letters
-- common relation and logic symbols
+- common relation, set, and logic symbols
 - common operators such as `\sum`, `\prod`, `\lim`, `\int`, and `\oint`
 - display-style limits for standalone formulas
 - compact inline layout for Markdown inline math and fraction arguments
@@ -107,12 +103,34 @@ The renderer supports a practical subset of LaTeX math:
 
 Unknown commands are rendered as their command name so unsupported input still produces visible output.
 
+## Display and Inline Layout
+
+Standalone `LatexRenderable` uses display layout. Large operators such as sums, products, limits, and integrals can use stacked limits when that makes the formula easier to read.
+
+Markdown inline math uses compact layout:
+
+```typescript
+import { renderLatexToString } from "@opentui/latex"
+
+const inline = renderLatexToString(String.raw`\frac{\sum_{i=1}^{n} x_i}{n}`, {
+  layout: "inline",
+})
+```
+
+Use display layout for formulas that should stand on their own:
+
+```typescript
+const display = renderLatexToString(String.raw`\lim_{h \to 0}\frac{f(x+h)-f(x)}{h}`, {
+  layout: "display",
+})
+```
+
 ## Unicode and ASCII
 
 Unicode mode is the default and gives the best output:
 
-```ts
-new LatexRenderable(renderer, {
+```typescript
+const formula = new LatexRenderable(renderer, {
   content: String.raw`\alpha_i^2 + \beta_j^2 \le \gamma^2`,
   mode: "unicode",
 })
@@ -120,8 +138,8 @@ new LatexRenderable(renderer, {
 
 Use ASCII mode when a terminal or font does not render Unicode math well:
 
-```ts
-new LatexRenderable(renderer, {
+```typescript
+const formula = new LatexRenderable(renderer, {
   content: String.raw`\alpha_i^2 \le \frac{1}{2}`,
   mode: "ascii",
 })
@@ -129,10 +147,10 @@ new LatexRenderable(renderer, {
 
 ## Sizing and Fallback
 
-`LatexRenderable` measures itself from the rendered formula. If the parent constrains the renderable too tightly, it clips the math by default. Provide `fallbackContent` to show a compact message instead:
+`LatexRenderable` measures itself from the rendered formula. If the parent constrains the renderable too tightly, it clips the math by default. Provide `fallbackContent` to show compact fallback text instead:
 
-```ts
-new LatexRenderable(renderer, {
+```typescript
+const formula = new LatexRenderable(renderer, {
   content: String.raw`\sqrt{1 + \frac{x^2}{1 - x^2}}`,
   width: 12,
   height: 1,
@@ -141,14 +159,14 @@ new LatexRenderable(renderer, {
 })
 ```
 
-## Helpers
+Use `align` to place formulas inside wider bounds:
 
-Use the text renderer directly when you need a string:
-
-```ts
-import { renderLatexToString } from "@opentui/latex"
-
-const rendered = renderLatexToString(String.raw`\frac{\sum_{i=1}^{n} x_i}{n}`)
+```typescript
+const formula = new LatexRenderable(renderer, {
+  content: String.raw`\prod_{k=1}^{n}\left(1 + \frac{x}{k}\right)`,
+  width: "100%",
+  align: "center",
+})
 ```
 
 ## Properties

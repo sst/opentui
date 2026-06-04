@@ -75,6 +75,7 @@ OpenTUI Solid provides JSX intrinsic elements that map to core renderables.
 - `<markdown>` - Render Markdown content
 
 QR code support is available from `@opentui/qrcode/solid` and must be registered explicitly with `registerQRCode()`.
+LaTeX math support is available from `@opentui/latex/solid` and must be registered explicitly with `registerLatex()`.
 
 ### Input
 
@@ -88,6 +89,8 @@ QR code support is available from `@opentui/qrcode/solid` and must be registered
 - `<code>` - Syntax-highlighted code
 - `<line_number>` - Line numbers with diff/diagnostic support
 - `<diff>` - Unified or split diff viewer
+
+LaTeX markdown transforms are registered separately with `registerLatexMarkdown()` from `@opentui/latex/markdown`.
 
 ### Text modifiers
 

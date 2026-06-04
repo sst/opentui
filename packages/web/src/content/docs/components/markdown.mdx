@@ -158,6 +158,26 @@ const markdown = new MarkdownRenderable(renderer, {
 
 If you do not pass `style`, it defaults to `"columns"` when `internalBlockMode` is `"top-level"`, and `"grid"` otherwise. You can still override individual fields (for example, `borders: true`) to pull toward a different look.
 
+## LaTeX math
+
+LaTeX math support is available from the separate `@opentui/latex` package. Register it before creating markdown renderables that should transform math delimiters:
+
+```typescript
+import { MarkdownRenderable, SyntaxStyle } from "@opentui/core"
+import { registerLatexMarkdown } from "@opentui/latex/markdown"
+
+registerLatexMarkdown()
+
+const markdown = new MarkdownRenderable(renderer, {
+  content: String.raw`Euler: $e^{i\pi} + 1 = 0$`,
+  syntaxStyle: SyntaxStyle.fromStyles({}),
+})
+```
+
+The transform supports inline `$...$`, inline `\(...\)`, display `$$...$$`, and display `\[...\]`. Inline code and fenced code blocks are left unchanged.
+
+See [LaTeX](/docs/components/latex) for the standalone renderable, JSX registration, supported notation, and sizing behavior.
+
 ## Custom node rendering
 
 Override rendering for a token and fall back to default rendering:

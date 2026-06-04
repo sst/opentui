@@ -80,6 +80,7 @@ OpenTUI React provides JSX intrinsic elements that map to core renderables:
 - `<ascii-font>` - ASCII art text
 
 QR code support is available from `@opentui/qrcode/react` and must be registered explicitly with `registerQRCode()`.
+LaTeX math support is available from `@opentui/latex/react` and must be registered explicitly with `registerLatex()`.
 
 ### Input
 
@@ -94,6 +95,8 @@ QR code support is available from `@opentui/qrcode/react` and must be registered
 - `<line-number>` - Line numbers with diff/diagnostic support
 - `<diff>` - Unified or split diff viewer
 - `<markdown>` - Markdown rendering
+
+LaTeX markdown transforms are registered separately with `registerLatexMarkdown()` from `@opentui/latex/markdown`.
 
 ### Text modifiers
 
