@@ -145,13 +145,11 @@ const slides: FormulaSlide[] = [
 let slideIndex = 0
 let slideTitle: TextRenderable | null = null
 let slideKicker: TextRenderable | null = null
-let slideCounter: TextRenderable | null = null
 let slideFormula: LatexRenderable | null = null
 let slideSource: TextRenderable | null = null
 let slideNote: TextRenderable | null = null
 let slideRail: TextRenderable | null = null
-let badgeText: TextRenderable | null = null
-let modeText: TextRenderable | null = null
+let navigationText: TextRenderable | null = null
 let keyHandler: ((key: KeyEvent) => void) | null = null
 
 function getSlideRail(): string {
@@ -176,16 +174,12 @@ function updateSlide(): void {
   const slide = currentSlide()
 
   if (slideTitle) {
-    slideTitle.content = slide.title
+    slideTitle.content = `${slide.title} (${slideIndex + 1}/${slides.length})`
     slideTitle.fg = slide.color
   }
 
   if (slideKicker) {
     slideKicker.content = slide.kicker
-  }
-
-  if (slideCounter) {
-    slideCounter.content = `${slideIndex + 1}/${slides.length}`
   }
 
   if (slideFormula) {
@@ -237,52 +231,35 @@ export function run(renderer: CliRenderer): void {
   const header = new BoxRenderable(renderer, {
     id: `${ROOT_ID}-header`,
     width: "100%",
-    flexDirection: "row",
-    justifyContent: "space-between",
+    height: 2,
+    flexDirection: "column",
     marginBottom: 1,
   })
   root.add(header)
 
-  const headerText = new BoxRenderable(renderer, {
-    id: `${ROOT_ID}-header-text`,
-    flexDirection: "column",
-    flexGrow: 1,
-  })
-  header.add(headerText)
-
-  headerText.add(
+  header.add(
     new TextRenderable(renderer, {
       id: `${ROOT_ID}-title`,
-      content: "LaTeX Formula Showcase",
+      content: `LaTeX Formula Showcase: ${slides.length} formulas`,
+      width: "100%",
+      height: 1,
       fg: "#F8FAFC",
       attributes: TextAttributes.BOLD,
+      wrapMode: "none",
+      truncate: true,
     }),
   )
 
-  headerText.add(
-    new TextRenderable(renderer, {
-      id: `${ROOT_ID}-subtitle`,
-      content: "One formula at a time, progressing from simple notation to complex display math",
-      fg: "#94A3B8",
-    }),
-  )
-
-  badgeText = new TextRenderable(renderer, {
-    id: `${ROOT_ID}-badge`,
-    content: `${slides.length} slides`,
-    fg: "#5EEAD4",
-    attributes: TextAttributes.BOLD,
-    flexShrink: 0,
-  })
-  header.add(badgeText)
-
-  modeText = new TextRenderable(renderer, {
+  navigationText = new TextRenderable(renderer, {
     id: `${ROOT_ID}-mode`,
     content: "←/→ or P/N: move through formulas",
+    width: "100%",
+    height: 1,
     fg: "#A7F3D0",
-    marginBottom: 1,
+    wrapMode: "none",
+    truncate: true,
   })
-  root.add(modeText)
+  header.add(navigationText)
 
   const body = new BoxRenderable(renderer, {
     id: `${ROOT_ID}-body`,
@@ -308,42 +285,33 @@ export function run(renderer: CliRenderer): void {
   const slideHeader = new BoxRenderable(renderer, {
     id: `${ROOT_ID}-slide-header`,
     width: "100%",
-    flexDirection: "row",
-    justifyContent: "space-between",
+    flexDirection: "column",
     marginBottom: 1,
   })
   stagePanel.add(slideHeader)
 
-  const slideHeading = new BoxRenderable(renderer, {
-    id: `${ROOT_ID}-slide-heading`,
-    flexDirection: "column",
-    flexGrow: 1,
-  })
-  slideHeader.add(slideHeading)
-
   slideTitle = new TextRenderable(renderer, {
     id: `${ROOT_ID}-slide-title`,
     content: "",
+    width: "100%",
+    height: 1,
     fg: "#A7F3D0",
     attributes: TextAttributes.BOLD,
+    wrapMode: "none",
+    truncate: true,
   })
-  slideHeading.add(slideTitle)
+  slideHeader.add(slideTitle)
 
   slideKicker = new TextRenderable(renderer, {
     id: `${ROOT_ID}-slide-kicker`,
     content: "",
+    width: "100%",
+    height: 1,
     fg: "#94A3B8",
+    wrapMode: "none",
+    truncate: true,
   })
-  slideHeading.add(slideKicker)
-
-  slideCounter = new TextRenderable(renderer, {
-    id: `${ROOT_ID}-slide-counter`,
-    content: "",
-    fg: "#CBD5E1",
-    attributes: TextAttributes.BOLD,
-    flexShrink: 0,
-  })
-  slideHeader.add(slideCounter)
+  slideHeader.add(slideKicker)
 
   const formulaStage = new BoxRenderable(renderer, {
     id: `${ROOT_ID}-formula-stage`,
@@ -387,9 +355,12 @@ export function run(renderer: CliRenderer): void {
   slideRail = new TextRenderable(renderer, {
     id: `${ROOT_ID}-slide-rail`,
     content: "",
+    width: "100%",
+    height: 1,
     fg: "#CBD5E1",
     marginTop: 1,
-    wrapMode: "word",
+    wrapMode: "none",
+    truncate: true,
   })
   stagePanel.add(slideRail)
 
@@ -404,11 +375,9 @@ export function destroy(renderer: CliRenderer): void {
     renderer.keyInput.off("keypress", keyHandler)
     keyHandler = null
   }
-  badgeText = null
-  modeText = null
+  navigationText = null
   slideTitle = null
   slideKicker = null
-  slideCounter = null
   slideFormula = null
   slideSource = null
   slideNote = null
