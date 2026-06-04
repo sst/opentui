@@ -66,6 +66,7 @@ import * as keypressDebugDemo from "./keypress-debug-demo.js"
 import * as extmarksDemo from "./extmarks-demo.js"
 import * as markdownDemo from "./markdown-demo.js"
 import * as latexMarkdownDemo from "./latex-markdown-demo.js"
+import * as markdownCodeBlockRendererDemo from "./markdown-code-block-renderer-demo.js"
 import * as qrcodeDemo from "./qrcode-demo.js"
 import * as linkDemo from "./link-demo.js"
 import * as opacityExample from "./opacity-example.js"
@@ -250,6 +251,12 @@ const examples: Example[] = [
     description: "Opt-in LaTeX math rendering inside MarkdownRenderable plus standalone math rendering",
     run: latexMarkdownDemo.run,
     destroy: latexMarkdownDemo.destroy,
+  },
+  {
+    name: "Markdown Code Block Renderer Demo",
+    description: "Custom fenced-code rendering for a fake taskflow DSL inside markdown",
+    run: markdownCodeBlockRendererDemo.run,
+    destroy: markdownCodeBlockRendererDemo.destroy,
   },
   {
     name: "QR Code Demo",

@@ -8,6 +8,7 @@ import path from "path"
 interface Variant {
   platform: string
   arch: string
+  abi?: string
 }
 
 interface PackageJson {
@@ -48,6 +49,8 @@ const variants: Variant[] = [
   { platform: "darwin", arch: "arm64" },
   { platform: "linux", arch: "x64" },
   { platform: "linux", arch: "arm64" },
+  { platform: "linux", arch: "x64", abi: "musl" },
+  { platform: "linux", arch: "arm64", abi: "musl" },
   { platform: "win32", arch: "x64" },
   { platform: "win32", arch: "arm64" },
 ]
@@ -66,10 +69,11 @@ if (!buildLib && !buildNative) {
   process.exit(1)
 }
 
-const getZigTarget = (platform: string, arch: string): string => {
+const getZigTarget = (platform: string, arch: string, abi?: string): string => {
   const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux" }
   const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64" }
-  return `${archMap[arch] ?? arch}-${platformMap[platform] ?? platform}`
+  const base = `${archMap[arch] ?? arch}-${platformMap[platform] ?? platform}`
+  return abi ? `${base}-${abi}` : base
 }
 
 const replaceLinks = (text: string): string => {
@@ -116,10 +120,10 @@ if (buildNative) {
 
   const variantsToPackage = buildAll ? variants : [getHostVariant()]
 
-  for (const { platform, arch } of variantsToPackage) {
-    const nativeName = `${packageJson.name}-${platform}-${arch}`
+  for (const { platform, arch, abi } of variantsToPackage) {
+    const nativeName = `${packageJson.name}-${platform}-${arch}${abi ? `-${abi}` : ""}`
     const nativeDir = join(rootDir, "node_modules", nativeName)
-    const libDir = join(rootDir, "src", "zig", "lib", getZigTarget(platform, arch))
+    const libDir = join(rootDir, "src", "zig", "lib", getZigTarget(platform, arch, abi))
 
     rmSync(nativeDir, { recursive: true, force: true })
     mkdirSync(nativeDir, { recursive: true })
@@ -167,7 +171,7 @@ export default module.default
         {
           name: nativeName,
           version: packageJson.version,
-          description: `Prebuilt ${platform}-${arch} binaries for ${packageJson.name}`,
+          description: `Prebuilt ${platform}-${arch}${abi ? `-${abi}` : ""} binaries for ${packageJson.name}`,
           type: "module",
           main: "index.js",
           module: "index.js",
@@ -187,6 +191,7 @@ export default module.default
           },
           os: [platform],
           cpu: [arch],
+          ...(abi ? { libc: [abi] } : {}),
         },
         null,
         2,
@@ -195,7 +200,9 @@ export default module.default
 
     writeFileSync(
       join(nativeDir, "README.md"),
-      replaceLinks(`## ${nativeName}\n\n> Prebuilt ${platform}-${arch} binaries for \`${packageJson.name}\`.`),
+      replaceLinks(
+        `## ${nativeName}\n\n> Prebuilt ${platform}-${arch}${abi ? `-${abi}` : ""} binaries for \`${packageJson.name}\`.`,
+      ),
     )
 
     if (existsSync(licensePath)) copyFileSync(licensePath, join(nativeDir, "LICENSE"))
@@ -410,7 +417,10 @@ if (buildLib) {
   }
 
   const optionalDeps: Record<string, string> = Object.fromEntries(
-    variants.map(({ platform, arch }) => [`${packageJson.name}-${platform}-${arch}`, packageJson.version]),
+    variants.map(({ platform, arch, abi }) => [
+      `${packageJson.name}-${platform}-${arch}${abi ? `-${abi}` : ""}`,
+      packageJson.version,
+    ]),
   )
 
   writeFileSync(

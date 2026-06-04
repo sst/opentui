@@ -188,6 +188,8 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
         0x3001, // IDEOGRAPHIC COMMA
         0x3002, // IDEOGRAPHIC FULL STOP
         0xFF01, // FULLWIDTH EXCLAMATION MARK
+        0xFF0C, // FULLWIDTH COMMA
+        0xFF1A, // FULLWIDTH COLON
         0xFF1F, // FULLWIDTH QUESTION MARK
         => true,
         else => false,

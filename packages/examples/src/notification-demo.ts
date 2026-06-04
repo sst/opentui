@@ -207,7 +207,12 @@ function updateStatus(): void {
   const terminalVersion = caps?.terminal?.version ? ` ${caps.terminal.version}` : ""
   const supported = notificationSupported()
   const status = supported ? fg(P.lime)("enabled") : fg(P.rose)("not detected")
-  const transport = caps?.in_tmux ? fg(P.amber)("tmux passthrough") : fg(P.blue)("direct OSC")
+  const transport =
+    caps?.multiplexer === "tmux"
+      ? fg(P.amber)("tmux passthrough")
+      : caps?.multiplexer === "zellij"
+        ? fg(P.amber)("Zellij OSC 99")
+        : fg(P.blue)("direct OSC")
 
   statusText.content = t`${bold(fg(P.text)("Terminal notifications"))}: ${status}
 ${fg(P.muted)("Terminal:")} ${fg(P.cyan)(`${terminalName}${terminalVersion}`)}  ${fg(P.muted)("Transport:")} ${transport}`

@@ -1,4 +1,3 @@
-import { Readable, Writable } from "stream"
 import {
   CliRenderer,
   CliRenderEvents,
@@ -6,10 +5,11 @@ import {
   type CliRendererExternalOutputEvent,
   type CliRendererFrameEvent,
 } from "../renderer.js"
-import { calculateRenderGeometry } from "../lib/render-geometry.js"
-import { resolveRenderLib, type NativeRenderStats } from "../zig.js"
+import type { NativeSpanFeed } from "../NativeSpanFeed.js"
+import type { NativeRenderStats } from "../zig.js"
 import { createMockKeys } from "./mock-keys.js"
 import { createMockMouse } from "./mock-mouse.js"
+import { createTestStdin, createTestStdout } from "./test-streams.js"
 import type { CapturedFrame } from "../types.js"
 
 export interface TestRendererOptions extends CliRendererConfig {
@@ -18,9 +18,13 @@ export interface TestRendererOptions extends CliRendererConfig {
   kittyKeyboard?: boolean
   otherModifiersMode?: boolean
 }
-export interface TestRenderer extends CliRenderer {}
+export type TestRenderer = CliRenderer
 export type MockInput = ReturnType<typeof createMockKeys>
 export type MockMouse = ReturnType<typeof createMockMouse>
+
+type RendererFeedAccess = {
+  _feed?: NativeSpanFeed | null
+}
 
 export interface TestFlushOptions {
   maxPasses?: number
@@ -191,26 +195,6 @@ function waitForNextFrameOrIdle(renderer: TestRenderer): Promise<CliRendererFram
   })
 }
 
-class TestWriteStream extends Writable {
-  public readonly isTTY = true
-  public readonly columns: number
-  public readonly rows: number
-
-  constructor(columns: number, rows: number) {
-    super()
-    this.columns = columns
-    this.rows = rows
-  }
-
-  _write(_chunk: any, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
-    callback()
-  }
-
-  getColorDepth(): number {
-    return 24
-  }
-}
-
 export async function createTestRenderer(options: TestRendererOptions): Promise<TestRendererSetup> {
   // Convert legacy kittyKeyboard boolean to new format
   const useKittyKeyboard = options.kittyKeyboard ? { events: true } : options.useKittyKeyboard
@@ -232,6 +216,10 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   const mockMouse = createMockMouse(renderer)
 
   const renderOnce = async () => {
+    const feed = (renderer as unknown as RendererFeedAccess)._feed
+    if (feed?.isBackpressured()) {
+      await feed.idle()
+    }
     //@ts-expect-error - this is a test renderer
     await renderer.loop()
   }
@@ -371,37 +359,17 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
 }
 
 async function setupTestRenderer(config: TestRendererOptions) {
-  const stdin = config.stdin || (new Readable({ read() {} }) as NodeJS.ReadStream)
+  const stdin = config.stdin || createTestStdin()
   const width = config.width || config.stdout?.columns || process.stdout.columns || 80
   const height = config.height || config.stdout?.rows || process.stdout.rows || 24
-  const stdout = config.stdout || (new TestWriteStream(width, height) as unknown as NodeJS.WriteStream)
-  const screenMode = config.screenMode ?? "alternate-screen"
-  const footerHeight = config.footerHeight ?? 12
-  const geometry = calculateRenderGeometry(screenMode, width, height, footerHeight)
+  const stdout = config.stdout || createTestStdout(width, height)
 
-  const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(geometry.renderWidth, geometry.renderHeight, {
-    testing: true,
-    remote: config.remote ?? false,
+  // Direct construction skips setupTerminal(); native bytes are routed to an
+  // explicit memory destination so tests do not depend on process stdout or feed
+  // backpressure behavior. CliRenderer still owns native renderer creation and
+  // applies the same useThread defaults as production construction.
+  return new CliRenderer(stdin, stdout, width, height, {
+    ...config,
+    bufferedOutput: config.bufferedOutput ?? "memory",
   })
-  if (!rendererPtr) {
-    throw new Error("Failed to create test renderer")
-  }
-  if (config.useThread === undefined) {
-    config.useThread = true
-  }
-
-  if (process.platform === "linux") {
-    config.useThread = false
-  }
-  ziglib.setUseThread(rendererPtr, config.useThread)
-
-  const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
-
-  process.off("SIGWINCH", renderer["sigwinchHandler"])
-
-  // Do not setup the terminal for testing as we will not actually output anything to the terminal
-  // await renderer.setupTerminal()
-
-  return renderer
 }

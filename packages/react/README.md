@@ -471,7 +471,7 @@ function App() {
       </box>
 
       {/* Box with title and styling */}
-      <box title="Settings" border borderStyle="double" padding={2} backgroundColor="blue">
+      <box title="Settings" titleColor="yellow" border borderStyle="double" padding={2} backgroundColor="blue">
         <text>Box content</text>
       </box>
 

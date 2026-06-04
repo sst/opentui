@@ -115,6 +115,8 @@ The shared default parser understands single-stroke named keys, modifier chords,
 
 Token and pattern registration names are syntax-free. The default parser maps `<leader>` to the token named `"leader"` and `{count}` to the sequence pattern named `"count"`. Parser-preserved display keeps the original syntax for UIs, while the engine stores semantic names.
 
+Unknown tokens skip the expanded binding until the token is registered. This avoids unsafe fallback shortcuts: `<leader>q` without a registered `leader` token is inactive, not equivalent to `q`. If an expander splits a config string into alternatives, only the alternatives containing unresolved tokens are skipped.
+
 Sequence patterns can capture repeated runtime input and pass finalized values to command payloads:
 
 | Pattern field | Description                                                                                  |
@@ -143,6 +145,8 @@ Patterns with the default unbounded `max` must be followed by a concrete continu
 | `formatKey(key, options?)` | Parses and stringifies a `KeyLike` with the current environment                                                                  |
 | `createKeyMatcher(key)`    | Parses one `KeyLike` and returns a single-stroke predicate for any `KeyStringifyInput`. It does not match multi-stroke sequences |
 | `getHostMetadata()`        | Returns the host metadata used by addons such as `registerModBindings()`                                                         |
+
+`parseKeySequence()` also follows the fail-closed token rule: a sequence containing an unknown token returns an empty sequence and emits the same unknown-token warning as binding compilation. Register the token first when parsing tokenized strings for display.
 
 `getActiveKeys()` accepts `ActiveKeyOptions`:
 

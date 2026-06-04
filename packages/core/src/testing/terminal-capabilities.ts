@@ -24,7 +24,8 @@ export function createTerminalCapabilities(overrides: TerminalCapabilitiesOverri
     osc52: false,
     notifications: false,
     explicit_cursor_positioning: false,
-    in_tmux: false,
+    remote: false,
+    multiplexer: "none",
     ...overrides,
     terminal: {
       name: "",

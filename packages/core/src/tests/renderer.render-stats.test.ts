@@ -26,7 +26,7 @@ function expectRenderedStats(stats: NativeRenderStats, expectedFrameCount: numbe
 }
 
 function createNativeRenderer(lib: RenderLib, width: number, height: number): Pointer {
-  const rendererPtr = lib.createRenderer(width, height, { testing: true })
+  const rendererPtr = lib.createRenderer(width, height, { bufferedOutput: "memory" })
   if (!rendererPtr) {
     throw new Error("Failed to create native render-stats test renderer")
   }

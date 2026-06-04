@@ -1,6 +1,7 @@
 import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:test"
+import { Edge } from "yoga-layout"
 import { Lexer } from "marked"
-import { MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
+import { createMarkdownCodeBlockRenderer, MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
 import { CodeRenderable } from "../Code.js"
 import { BoxRenderable } from "../Box.js"
 import { TextRenderable } from "../Text.js"
@@ -122,6 +123,15 @@ function findSpanContaining(frame: CapturedFrame, text: string) {
   }
 
   return undefined
+}
+
+function getMarginBottom(renderable: { getLayoutNode(): { getMargin(edge: Edge): unknown } }): number {
+  const margin = renderable.getLayoutNode().getMargin(Edge.Bottom) as unknown
+  if (typeof margin === "number") return margin
+  if (typeof margin === "object" && margin && "value" in margin && typeof margin.value === "number") {
+    return margin.value
+  }
+  return 0
 }
 
 test("basic table alignment", async () => {
@@ -491,6 +501,179 @@ test("table inside code block should NOT be formatted", async () => {
   `)
 })
 
+test("paragraphs and fenced code blocks keep markdown block spacing", async () => {
+  const markdown = `Before
+
+\`\`\`ts
+const value = 1
+\`\`\`
+
+After`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    const value = 1
+
+    After"
+  `)
+})
+
+test("paragraphs keep spacing when a fenced code block is appended", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-append-code-spacing",
+    content: "Before",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  md.content = `Before
+
+\`\`\`ts
+const value = 1
+\`\`\``
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["paragraph", "code"])
+  expect(getMarginBottom(md._blockStates[0]!.renderable)).toBe(1)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    Before
+
+    const value = 1"
+  `)
+})
+
+test("paragraph margins update when a following fenced code block is removed", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-remove-code-spacing",
+    content: `Before
+
+\`\`\`ts
+const value = 1
+\`\`\``,
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(getMarginBottom(md._blockStates[0]!.renderable)).toBe(1)
+
+  md.content = "Before"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["paragraph"])
+  expect(getMarginBottom(md._blockStates[0]!.renderable)).toBe(0)
+})
+
+test("code block margins update when a following paragraph is removed", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-remove-paragraph-after-code-spacing",
+    content: `\`\`\`ts
+const value = 1
+\`\`\`
+
+After`,
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["code", "paragraph"])
+  expect(getMarginBottom(md._blockStates[0]!.renderable)).toBe(1)
+
+  md.content = `\`\`\`ts
+const value = 1
+\`\`\``
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["code"])
+  expect(getMarginBottom(md._blockStates[0]!.renderable)).toBe(0)
+})
+
+test("tight paragraphs and fenced code blocks keep exactly one separator row", async () => {
+  const markdown = `Before
+\`\`\`ts
+const value = 1
+\`\`\``
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    const value = 1"
+  `)
+})
+
+test("headings and fenced code blocks keep exactly one separator row", async () => {
+  const markdown = `## Before
+
+\`\`\`ts
+const value = 1
+\`\`\``
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    const value = 1"
+  `)
+})
+
+test("headings and tables keep exactly one separator row", async () => {
+  const markdown = `## Before
+
+| A | B |
+|---|---|
+| 1 | 2 |`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    ┌─┬─┐
+    │A│B│
+    ├─┼─┤
+    │1│2│
+    └─┴─┘"
+  `)
+})
+
+test("headings and blockquotes keep exactly one separator row", async () => {
+  const markdown = `## Before
+
+> quoted text`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    │ quoted text"
+  `)
+})
+
+test("headings and horizontal rules keep exactly one separator row", async () => {
+  const markdown = `## Before
+
+---`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Before
+
+    ────────────────────────────────────────────────────────────"
+  `)
+})
+
 test("multiple tables in same document", async () => {
   const markdown = `| Table1 | A |
 |---|---|
@@ -511,6 +694,7 @@ Some text between.
     └──────┴─┘
 
     Some text between.
+
     ┌────────────┬──┐
     │Table2      │BB│
     ├────────────┼──┤
@@ -762,6 +946,7 @@ This is a paragraph after the table.`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     This is a paragraph before the table.
+
     ┌─────┬───┐
     │Name │Age│
     ├─────┼───┤
@@ -857,6 +1042,7 @@ And here is more text after.`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Here is some code:
+
     function hello() {
       return "world";
     }
@@ -881,9 +1067,11 @@ fn main() {}
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     First block:
+
     print("hello")
 
     Second block:
+
     fn main() {}"
   `)
 })
@@ -1690,8 +1878,9 @@ After`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Before
+
     ────────────────────────────────────────────────────────────
-    
+
     After"
   `)
 })
@@ -1770,6 +1959,7 @@ Visit [GitHub](https://github.com) for more.
     Links
 
     Visit GitHub (https://github.com) for more.
+
     ────────────────────────────────────────────────────────────
 
     Press ? for help"
@@ -1862,6 +2052,226 @@ const x = 1;
     │CODE: const x = 1;                                        │
     └──────────────────────────────────────────────────────────┘"
   `)
+})
+
+test("custom code block renderable updates when fenced content changes", async () => {
+  const md = createMarkdownRenderable({
+    id: "custom-code-update",
+    content: "```widget\nfirst\n```",
+    syntaxStyle,
+    renderNode: (node, ctx) => {
+      if (node.type !== "code" || node.lang !== "widget") return ctx.defaultRender()
+
+      return new TextRenderable(renderer, {
+        id: "custom-widget",
+        content: `WIDGET: ${node.text}`,
+        width: "100%",
+      })
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  expect(captureFrame()).toContain("WIDGET: first")
+
+  md.content = "```widget\nsecond\n```"
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("WIDGET: second")
+  expect(frame).not.toContain("WIDGET: first")
+})
+
+test("createMarkdownCodeBlockRenderer dispatches fenced code by language", async () => {
+  const md = createMarkdownRenderable({
+    id: "language-code-renderer",
+    content: `Before
+
+
+\`\`\`taskflow title=Deploy
+step test done
+step preview active
+\`\`\`
+
+\`\`\`tsx
+<Button />
+\`\`\`
+
+After`,
+    syntaxStyle,
+    renderNode: createMarkdownCodeBlockRenderer({
+      taskflow: (node) =>
+        new TextRenderable(renderer, {
+          id: "taskflow-renderer",
+          content: `TASKFLOW:\n${node.text.replaceAll("step ", "- ")}`,
+          width: "100%",
+        }),
+      typescriptreact: (node) =>
+        new TextRenderable(renderer, {
+          id: "tsx-renderer",
+          content: `TSX: ${node.text}`,
+          width: "100%",
+        }),
+    }),
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  expect(frame).toContain("Before")
+  expect(frame).toContain("TASKFLOW:")
+  expect(frame).toContain("- test done")
+  expect(frame).toContain("- preview active")
+  expect(frame).toContain("TSX: <Button />")
+  expect(frame).toContain("After")
+})
+
+test("createMarkdownCodeBlockRenderer accepts renderer maps", async () => {
+  const md = createMarkdownRenderable({
+    id: "language-code-renderer-map",
+    content: "```widget\nfrom map\n```",
+    syntaxStyle,
+    renderNode: createMarkdownCodeBlockRenderer(
+      new Map([
+        [
+          "widget",
+          (node) =>
+            new TextRenderable(renderer, {
+              id: "widget-map-renderer",
+              content: `MAP: ${node.text}`,
+              width: "100%",
+            }),
+        ],
+      ]),
+    ),
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(captureFrame()).toContain("MAP: from map")
+})
+
+test("code block renderer preserves coalesced prose spacing", async () => {
+  const md = createMarkdownRenderable({
+    id: "language-code-renderer-coalesced-prose",
+    content: `First paragraph.
+
+Second paragraph.
+
+\`\`\`widget
+custom
+\`\`\`
+
+Third paragraph.`,
+    syntaxStyle,
+    renderNode: createMarkdownCodeBlockRenderer({
+      widget: (node) => new TextRenderable(renderer, { content: `WIDGET: ${node.text}`, width: "100%" }),
+    }),
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["paragraph", "code", "paragraph"])
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    First paragraph.
+
+    Second paragraph.
+
+    WIDGET: custom
+    Third paragraph."
+  `)
+})
+
+test("default code blocks reuse their renderable when a custom renderer ignores them", async () => {
+  const md = createMarkdownRenderable({
+    id: "default-code-update-with-custom-renderer",
+    content: "```ts\nconst first = true\n```",
+    syntaxStyle,
+    renderNode: (node) => {
+      if (node.type !== "code" || node.lang !== "widget") return null
+      return new TextRenderable(renderer, { content: `WIDGET: ${node.text}` })
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  const initial = md._blockStates[0]?.renderable
+
+  md.content = "```ts\nconst second = true\n```"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.renderable).toBe(initial)
+  expect(captureFrame()).toContain("const second = true")
+})
+
+test("default-render delegation reuses renderable on same-type updates", async () => {
+  const md = createMarkdownRenderable({
+    id: "default-render-delegation-update",
+    content: "```ts\nconst first = true\n```",
+    syntaxStyle,
+    renderNode: (_node, ctx) => ctx.defaultRender(),
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  const initial = md._blockStates[0]?.renderable
+
+  md.content = "```ts\nconst second = true\n```"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.renderable).toBe(initial)
+  expect(captureFrame()).toContain("const second = true")
+})
+
+test("a default code block becomes custom once its updated content is handled", async () => {
+  const md = createMarkdownRenderable({
+    id: "default-to-custom-code-update",
+    content: "```widget\nincomplete\n```",
+    syntaxStyle,
+    renderNode: (node) => {
+      if (node.type !== "code" || node.lang !== "widget" || !node.text.includes("ready")) return null
+      return new TextRenderable(renderer, { content: `WIDGET: ${node.text}` })
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  expect(captureFrame()).toContain("incomplete")
+
+  md.content = "```widget\nready\n```"
+  await renderMarkdownRenderable(md)
+
+  expect(captureFrame()).toContain("WIDGET: ready")
+})
+
+test("a top-level default code block becomes custom once updated content is handled", async () => {
+  const md = createMarkdownRenderable({
+    id: "top-level-default-to-custom-code-update",
+    content: "```widget\nincomplete\n```",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+    renderNode: (node) => {
+      if (node.type !== "code" || node.lang !== "widget" || !node.text.includes("ready")) return null
+      return new TextRenderable(renderer, { content: `WIDGET: ${node.text}` })
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  expect(captureFrame()).toContain("incomplete")
+
+  md.content = "```widget\nready\n```"
+  await renderMarkdownRenderable(md)
+
+  expect(captureFrame()).toContain("WIDGET: ready")
 })
 
 test("custom renderNode output survives top-level spacing updates", async () => {
@@ -2032,6 +2442,7 @@ console.log(x);`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Here is some code:
+
     const x = 1;
     console.log(x);"
   `)
@@ -2176,6 +2587,7 @@ const x = 1;
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Text before
+
     const x = 1;"
   `)
 })
@@ -3670,5 +4082,48 @@ test("top-level list does not insert blank line before nested list when source h
       - enter saves via daemon /topic
       - esc cancels
     - Topic is now shown prominently near the top of the TUI."
+  `)
+})
+
+test("top-level lists keep tight multi-level nesting compact", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-tight-multi-level-nested-list",
+    content: `- Main section:
+  - Supporting point:
+    - Third-level detail
+    - Another detail with **emphasis**
+  - Another supporting point:
+    1. First numbered item
+    2. Second numbered item:
+       - Nested bullet beneath a numbered item
+- Second section:
+  - Short detail
+  - Lead-in item:
+    - Explanation below the lead-in`,
+    syntaxStyle,
+    streaming: true,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    - Main section:
+      - Supporting point:
+        - Third-level detail
+        - Another detail with emphasis
+      - Another supporting point:
+        1. First numbered item
+        2. Second numbered item:
+           - Nested bullet beneath a numbered item
+    - Second section:
+      - Short detail
+      - Lead-in item:
+        - Explanation below the lead-in"
   `)
 })

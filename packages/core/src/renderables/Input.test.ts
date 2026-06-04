@@ -306,6 +306,37 @@ describe("InputRenderable", () => {
       expect(input.value).toBe("abc")
     })
 
+    it("should respect minLength when submitting", () => {
+      const { input } = createInputRenderable({
+        minLength: 3,
+        value: "hi",
+      })
+
+      input.focus()
+
+      let changeEventFired = false
+      let enterEventFired = false
+
+      input.on(InputRenderableEvents.CHANGE, () => {
+        changeEventFired = true
+      })
+
+      input.on(InputRenderableEvents.ENTER, () => {
+        enterEventFired = true
+      })
+
+      expect(input.submit()).toBe(false)
+      expect(changeEventFired).toBe(false)
+      expect(enterEventFired).toBe(false)
+
+      mockInput.pressKey("!")
+
+      expect(input.value).toBe("hi!")
+      expect(input.submit()).toBe(true)
+      expect(changeEventFired).toBe(true)
+      expect(enterEventFired).toBe(true)
+    })
+
     it("should handle cursor position with text insertion", () => {
       const { input } = createInputRenderable({
         value: "hello",

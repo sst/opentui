@@ -32,6 +32,7 @@ const native_span_feed_tests = @import("tests/native-span-feed_test.zig");
 const buffer_methods_tests = @import("tests/buffer-methods_test.zig");
 const split_scrollback_tests = @import("tests/split-scrollback_test.zig");
 const audio_tests = @import("tests/audio_test.zig");
+const handles_tests = @import("tests/handles_test.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -70,5 +71,6 @@ comptime {
     _ = buffer_methods_tests;
     _ = split_scrollback_tests;
     _ = audio_tests;
+    _ = handles_tests;
     // _ = example_tests;
 }

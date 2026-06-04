@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -39,7 +39,7 @@ jobs:
         run: bun install
 
       - name: Download npm packages artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: npm-packages-${{ inputs.version }}
 
@@ -73,6 +73,8 @@ jobs:
             rm -rf packages/core/node_modules/@opentui/core-darwin-arm64
             rm -rf packages/core/node_modules/@opentui/core-linux-x64
             rm -rf packages/core/node_modules/@opentui/core-linux-arm64
+            rm -rf packages/core/node_modules/@opentui/core-linux-x64-musl
+            rm -rf packages/core/node_modules/@opentui/core-linux-arm64-musl
             rm -rf packages/core/node_modules/@opentui/core-win32-x64
             rm -rf packages/core/node_modules/@opentui/core-win32-arm64
 

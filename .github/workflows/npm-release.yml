@@ -9,12 +9,15 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   release:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -27,6 +30,7 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          cache-key: npm-release
 
       - name: Extract version from tag
         id: extract_version

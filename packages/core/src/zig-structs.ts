@@ -86,6 +86,7 @@ export const VisualCursorStruct = defineStruct([
 ])
 
 const UnicodeMethodEnum = defineEnum({ wcwidth: 0, unicode: 1 }, "u8")
+const TerminalMultiplexerEnum = defineEnum({ none: 0, tmux: 1, zellij: 2, screen: 3, unknown: 4 }, "u8")
 
 export const TerminalCapabilitiesStruct = defineStruct([
   ["kitty_keyboard", "bool_u8"],
@@ -105,7 +106,8 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["osc52", "bool_u8"],
   ["notifications", "bool_u8"],
   ["explicit_cursor_positioning", "bool_u8"],
-  ["in_tmux", "bool_u8"],
+  ["remote", "bool_u8"],
+  ["multiplexer", TerminalMultiplexerEnum],
   ["term_name", "char*"],
   ["term_name_len", "u64", { lengthOf: "term_name" }],
   ["term_version", "char*"],

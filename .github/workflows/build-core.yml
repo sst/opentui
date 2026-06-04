@@ -6,6 +6,7 @@ on:
     branches: [main]
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   ZIG_VERSION: 0.15.2
 
 jobs:
@@ -14,7 +15,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -25,6 +26,7 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
+          cache-key: build-core-native
 
       - name: Install dependencies
         run: bun install
@@ -35,7 +37,7 @@ jobs:
           bun run build:native --all
 
       - name: Upload native artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-libraries
           path: packages/core/node_modules/@opentui/
@@ -59,7 +61,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -70,12 +72,16 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
+          # Keep Zig's cache path on the workspace drive, but do not restore/save
+          # stale .zig-cache archives on Windows; Zig 0.15.2 can fail with missing cache files.
+          use-cache: ${{ runner.os != 'Windows' }}
+          cache-key: build-core-test
 
       - name: Install dependencies
         run: bun install
 
       - name: Download native artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: native-libraries
           path: packages/core/node_modules/@opentui/

@@ -105,7 +105,9 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   live?: boolean
   opacity?: number
 
-  // hooks for custom render logic
+  // Draw-only hooks for custom rendering/decorations. They run after layout
+  // and viewport culling, so do not mutate layout, children, or reactive state here.
+  // Culled children do not run these hooks.
   renderBefore?: (this: T, buffer: OptimizedBuffer, deltaTime: number) => void
   renderAfter?: (this: T, buffer: OptimizedBuffer, deltaTime: number) => void
 
@@ -1452,6 +1454,8 @@ export abstract class Renderable extends BaseRenderable {
       renderBuffer = this.frameBuffer
     }
 
+    // Layout and culling are already finalized for this frame. These hooks are
+    // only safe for drawing into the buffer; avoid renderable/reactive mutations.
     if (this.renderBefore) {
       this.renderBefore.call(this, renderBuffer, deltaTime)
     }
