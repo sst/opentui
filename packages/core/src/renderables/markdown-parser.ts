@@ -6,6 +6,28 @@ export interface ParseState {
   stableTokenCount?: number
 }
 
+export type MarkdownContentTransform = (content: string) => string
+
+const markdownContentTransforms = new Set<MarkdownContentTransform>()
+
+export function registerMarkdownContentTransform(transform: MarkdownContentTransform): () => void {
+  markdownContentTransforms.add(transform)
+
+  return () => {
+    markdownContentTransforms.delete(transform)
+  }
+}
+
+function applyMarkdownContentTransforms(content: string): string {
+  let result = content
+
+  for (const transform of markdownContentTransforms) {
+    result = transform(result)
+  }
+
+  return result
+}
+
 /**
  * Incrementally parse markdown, reusing unchanged tokens from previous parse.
  * Compares token.raw at each offset - matching tokens keep same object reference.
@@ -15,6 +37,8 @@ export function parseMarkdownIncremental(
   prevState: ParseState | null,
   trailingUnstable: number = 2,
 ): ParseState {
+  newContent = applyMarkdownContentTransforms(newContent)
+
   if (!prevState || prevState.tokens.length === 0) {
     try {
       const tokens = Lexer.lex(newContent, { gfm: true }) as MarkedToken[]

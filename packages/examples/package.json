@@ -21,6 +21,7 @@
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
     "@opentui/core": "workspace:*",
     "@opentui/keymap": "workspace:*",
+    "@opentui/latex": "workspace:*",
     "@opentui/qrcode": "workspace:*",
     "@opentui/three": "workspace:*",
     "bun-webgpu": "0.1.7",

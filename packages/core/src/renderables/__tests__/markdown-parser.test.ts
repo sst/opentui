@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test"
 import { Lexer } from "marked"
-import { parseMarkdownIncremental, type ParseState } from "../markdown-parser.js"
+import { parseMarkdownIncremental, registerMarkdownContentTransform, type ParseState } from "../markdown-parser.js"
 
 test("first parse returns all tokens", () => {
   const state = parseMarkdownIncremental("# Hello\n\nParagraph", null)
@@ -216,6 +216,26 @@ test("falls back to full re-parse when incremental tail parse fails", () => {
     expect(table.rows.length).toBe(2)
   } finally {
     lexerRef.lex = originalLex
+  }
+})
+
+test("parseMarkdownIncremental leaves dollar math unchanged by default", () => {
+  const state = parseMarkdownIncremental("Math: $\\frac{a}{b}$", null, 0)
+  const paragraph = state.tokens.find((token) => token.type === "paragraph") as any
+
+  expect(paragraph?.text).toBe("Math: $\\frac{a}{b}$")
+})
+
+test("parseMarkdownIncremental applies registered markdown content transforms", () => {
+  const unregister = registerMarkdownContentTransform((content) => content.replaceAll("$x$", "x"))
+
+  try {
+    const state = parseMarkdownIncremental("Math: $x$", null, 0)
+    const paragraph = state.tokens.find((token) => token.type === "paragraph") as any
+
+    expect(paragraph?.text).toBe("Math: x")
+  } finally {
+    unregister()
   }
 })
 

@@ -142,6 +142,13 @@ test("basic table alignment", async () => {
   `)
 })
 
+test("does not render LaTeX math in markdown text by default", async () => {
+  expect(await renderMarkdown("Euler: $e^{i\\pi} + 1 = 0$")).toMatchInlineSnapshot(`
+    "
+    Euler: $e^{i\\pi} + 1 = 0$"
+  `)
+})
+
 test("tableOptions.widthMode configures markdown table layout", async () => {
   const md = createMarkdownRenderable({
     id: "markdown-table-width-mode",

@@ -49,6 +49,12 @@ const ALL_PACKAGES: PackageConfig[] = [
     requiresCore: true,
   },
   {
+    name: "@opentui/latex",
+    rootDir: join(rootDir, "packages", "latex"),
+    distDir: join(rootDir, "packages", "latex", "dist"),
+    requiresCore: true,
+  },
+  {
     name: "@opentui/react",
     rootDir: join(rootDir, "packages", "react"),
     distDir: join(rootDir, "packages", "react", "dist"),
