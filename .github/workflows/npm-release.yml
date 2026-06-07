@@ -66,6 +66,7 @@ jobs:
           cd ../solid && bun run build
           cd ../react && bun run build
           cd ../keymap && bun run build
+          cd ../ssh && bun run build
 
       - name: Publish packages
         run: bun run publish

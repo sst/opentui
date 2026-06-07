@@ -71,6 +71,10 @@ jobs:
         run: bun run build --ci
         working-directory: packages/solid
 
+      - name: Build ssh
+        run: bun run build
+        working-directory: packages/ssh
+
       - name: Publish preview packages
         run: |
           npx pkg-pr-new publish --no-template --commentWithSha --bun \
@@ -79,4 +83,5 @@ jobs:
             './packages/qrcode/dist' \
             './packages/three/dist' \
             './packages/react/dist' \
-            './packages/solid/dist'
+            './packages/solid/dist' \
+            './packages/ssh/dist'

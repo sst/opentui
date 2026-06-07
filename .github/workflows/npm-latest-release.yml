@@ -98,6 +98,11 @@ jobs:
             echo "Copied keymap dist"
           fi
 
+          if [ -d "npm-packages/ssh-dist" ]; then
+            cp -r npm-packages/ssh-dist packages/ssh/dist
+            echo "Copied ssh dist"
+          fi
+
           echo "Package extraction complete"
 
       - name: Publish packages (dry-run)
@@ -136,6 +141,10 @@ jobs:
           echo ""
           echo "📦 Checking @opentui/keymap..."
           cd ../../keymap/dist && npm pack --dry-run
+
+          echo ""
+          echo "📦 Checking @opentui/ssh..."
+          cd ../../ssh/dist && npm pack --dry-run
 
           echo ""
           echo "=========================================="

@@ -1,0 +1,347 @@
+import { EventEmitter } from "node:events"
+import { expect, test } from "bun:test"
+import type { ServerChannel } from "ssh2"
+import { createSessionBridge, DEFAULT_PTY, MAX_PTY, type RendererFactory } from "../../bridge.js"
+import { runSession } from "../../run-session.js"
+import { createSafeInvoke } from "../../safe.js"
+import type { SessionHandler } from "../../types.js"
+
+/**
+ * The teardown race: the renderer is lazy, so a client can disconnect in the
+ * window between "the chain authorized" and "the renderer is ready". A disconnect
+ * mid-setup closes the session without running the handler or reporting an error;
+ * a genuine renderer-creation failure tears the half-open session down and
+ * rethrows for safe() to report. The renderer factory is injected so both paths
+ * drive the real bridge deterministically.
+ */
+
+/**
+ * Minimal ssh2 `ServerChannel` stub: the bridge wires its own adapter streams to
+ * the renderer, so the renderer only needs an EventEmitter with
+ * `write()`/`exit()`/`close()`. Counts peer-disconnect calls so idempotency can
+ * be proven.
+ */
+function fakeChannel(): EventEmitter & { exitCalls: number; closeCalls: number } {
+  const ch = new EventEmitter() as EventEmitter & { exitCalls: number; closeCalls: number }
+  ch.exitCalls = 0
+  ch.closeCalls = 0
+  return Object.assign(ch, {
+    write: () => true,
+    exit: () => {
+      ch.exitCalls++
+      return true
+    },
+    close: () => {
+      ch.closeCalls++
+    },
+  })
+}
+
+function testBridge(
+  options: {
+    channel?: ReturnType<typeof fakeChannel>
+    pty?: Parameters<typeof createSessionBridge>[1]["pty"]
+    username?: string
+    safe?: ReturnType<typeof createSafeInvoke>
+    createRenderer?: RendererFactory
+  } = {},
+) {
+  const channel = options.channel ?? fakeChannel()
+  const bridge = createSessionBridge(channel as unknown as ServerChannel, {
+    pty: options.pty ?? DEFAULT_PTY,
+    identity: { method: "none", username: options.username ?? "t" },
+    idleTimeoutMs: undefined,
+    maxTimeoutMs: undefined,
+    safe: options.safe ?? createSafeInvoke(() => {}),
+    createRenderer: options.createRenderer,
+  })
+  return { channel, bridge }
+}
+
+test("destroy is idempotent — a second call tells the peer only once", () => {
+  const { channel, bridge } = testBridge()
+  let closes = 0
+  bridge.session.onClose(() => closes++)
+
+  bridge.destroy()
+  bridge.destroy()
+
+  expect(closes).toBe(1)
+  expect(channel.exitCalls).toBe(1) // peer disconnected once, not twice
+  expect(channel.closeCalls).toBe(1)
+})
+
+test("destroy is per-session — closing one bridge leaves another untouched", () => {
+  const safe = createSafeInvoke(() => {}) // one server-wide sink, shared by both
+  const chA = fakeChannel()
+  const chB = fakeChannel()
+  const { bridge: a } = testBridge({ channel: chA, username: "a", safe })
+  const { bridge: b } = testBridge({ channel: chB, username: "b", safe })
+  let aClosed = false
+  let bClosed = false
+  a.session.onClose(() => {
+    aClosed = true
+  })
+  b.session.onClose(() => {
+    bClosed = true
+  })
+
+  a.destroy()
+
+  expect(a.closed).toBe(true)
+  expect(aClosed).toBe(true)
+  expect(b.closed).toBe(false) // the other session is untouched
+  expect(bClosed).toBe(false)
+  expect(chB.exitCalls).toBe(0)
+  expect(chB.closeCalls).toBe(0)
+})
+
+test("onClose registered AFTER the session closed still fires — no lost app teardown", () => {
+  const { bridge } = testBridge()
+
+  bridge.destroy()
+  expect(bridge.closed).toBe(true)
+
+  // An onClose registered after close (e.g. an async handler that wired up post-
+  // disconnect) must still run its teardown, not be silently dropped.
+  let lateRan = false
+  const dispose = bridge.session.onClose(() => {
+    lateRan = true
+  })
+  expect(lateRan).toBe(true) // fired immediately, contained by safe()
+  expect(typeof dispose).toBe("function")
+})
+
+test("onResize registered after close is a harmless no-op (never fires, returns a disposer)", () => {
+  const { bridge } = testBridge()
+  bridge.destroy()
+
+  let fired = false
+  const dispose = bridge.session.onResize(() => {
+    fired = true
+  })
+  bridge.resize(120, 40) // a dead session must not deliver to a late subscriber
+  expect(fired).toBe(false)
+  expect(typeof dispose).toBe("function")
+})
+
+/** Let the fire-and-forget `runSession` work settle before asserting. */
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+function rendererStub(
+  overrides: Partial<{
+    width: number
+    height: number
+    on: () => void
+    resize: (cols: number, rows: number) => void
+    destroy: () => void
+  }> = {},
+) {
+  return { width: DEFAULT_PTY.cols, height: DEFAULT_PTY.rows, on() {}, resize() {}, destroy() {}, ...overrides }
+}
+
+function readyBridge(errors: unknown[] = []) {
+  const safe = createSafeInvoke((e) => errors.push(e))
+  return {
+    safe,
+    ...testBridge({ safe, createRenderer: (() => rendererStub()) as unknown as RendererFactory }),
+  }
+}
+
+/**
+ * A renderer factory with controllable timing and outcome: it stays pending until
+ * `finish()` (modelling the setup window in which the client can disconnect), and
+ * records `destroy()` so the race test can prove the late renderer is
+ * released, not leaked.
+ */
+function controllableRenderer() {
+  let markCalled!: () => void
+  const called = new Promise<void>((resolve) => {
+    markCalled = resolve
+  })
+  let release!: (r: unknown) => void
+  const pending = new Promise<unknown>((resolve) => {
+    release = resolve
+  })
+  let destroyed = false
+  const renderer = rendererStub({
+    destroy() {
+      destroyed = true
+    },
+  })
+  return {
+    factory: (() => {
+      markCalled()
+      return pending
+    }) as unknown as RendererFactory,
+    whenCalled: called,
+    finish: () => release(renderer),
+    wasDestroyed: () => destroyed,
+  }
+}
+
+test("a disconnect during renderer setup is teardown, not a reported error", async () => {
+  const errors: unknown[] = []
+  let handlerRan = false
+  const channel = fakeChannel()
+  const safe = createSafeInvoke((e) => errors.push(e))
+  const rc = controllableRenderer()
+  const { bridge } = testBridge({ channel, safe, createRenderer: rc.factory })
+
+  runSession(
+    [],
+    (() => {
+      handlerRan = true
+    }) as SessionHandler,
+    bridge,
+    safe,
+  )
+
+  await rc.whenCalled // the leaf is now awaiting the renderer…
+  channel.emit("close") // …and the client vanishes mid-setup
+  expect(bridge.closed).toBe(true)
+  rc.finish() // resolve the late renderer; enterApp must release it and bail
+  await flush()
+
+  expect(handlerRan).toBe(false) // never run against a dead renderer
+  expect(errors).toEqual([]) // a mid-setup disconnect is not an error
+  expect(rc.wasDestroyed()).toBe(true) // late renderer released, not leaked
+})
+
+test("a genuine renderer-creation failure is still reported", async () => {
+  const errors: unknown[] = []
+  let handlerRan = false
+  const safe = createSafeInvoke((e) => errors.push(e))
+  const { bridge } = testBridge({
+    safe,
+    createRenderer: (() => {
+      throw new Error("createCliRenderer failed")
+    }) as unknown as RendererFactory,
+  })
+
+  runSession(
+    [],
+    (() => {
+      handlerRan = true
+    }) as SessionHandler,
+    bridge,
+    safe,
+  )
+  await flush()
+
+  expect(handlerRan).toBe(false)
+  expect(errors).toHaveLength(1) // a real failure IS reported…
+  expect(bridge.closed).toBe(true) // …and the half-open session was torn down
+})
+
+test("disconnect runs middleware teardown even if the handler never settles", async () => {
+  const errors: unknown[] = []
+  let handlerRan = false
+  let middlewareTeardownRan = false
+  const { channel, bridge, safe } = readyBridge(errors)
+
+  runSession(
+    [
+      async (_session, next) => {
+        try {
+          return await next()
+        } finally {
+          middlewareTeardownRan = true
+        }
+      },
+    ],
+    (() => {
+      handlerRan = true
+      return new Promise(() => {})
+    }) as SessionHandler,
+    bridge,
+    safe,
+  )
+
+  await flush()
+  expect(handlerRan).toBe(true)
+  expect(middlewareTeardownRan).toBe(false)
+
+  channel.emit("close")
+  await flush()
+
+  expect(middlewareTeardownRan).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("a handler error after disconnect is still reported", async () => {
+  const errors: unknown[] = []
+  const boom = new Error("late handler boom")
+  let rejectHandler!: (err: Error) => void
+  const { channel, bridge, safe } = readyBridge(errors)
+
+  runSession(
+    [],
+    (() =>
+      new Promise<void>((_resolve, reject) => {
+        rejectHandler = reject
+      })) as SessionHandler,
+    bridge,
+    safe,
+  )
+
+  await flush()
+  channel.emit("close")
+  await flush()
+  rejectHandler(boom)
+  await flush()
+
+  expect(errors).toContain(boom)
+})
+
+test("a handler that ends then throws is still reported", async () => {
+  const errors: unknown[] = []
+  const boom = new Error("end then throw")
+  const { bridge, safe } = readyBridge(errors)
+
+  runSession(
+    [],
+    ((session) => {
+      session.end()
+      throw boom
+    }) as SessionHandler,
+    bridge,
+    safe,
+  )
+
+  await flush()
+
+  expect(errors).toContain(boom)
+})
+
+test("pty dimensions are clamped before renderer creation and resize", async () => {
+  const safe = createSafeInvoke(() => {})
+  let created: { width?: number; height?: number } | undefined
+  let resized: [number, number] | undefined
+  const renderer = rendererStub({
+    width: MAX_PTY.cols,
+    height: MAX_PTY.rows,
+    resize(c: number, r: number) {
+      resized = [c, r]
+    },
+  })
+  const { bridge } = testBridge({
+    pty: { term: "xterm", cols: 999_999, rows: 999_999, hasPty: true },
+    safe,
+    createRenderer: ((options: Parameters<RendererFactory>[0]) => {
+      created = { width: options!.width, height: options!.height }
+      return renderer
+    }) as unknown as RendererFactory,
+  })
+
+  const entered = bridge.enterApp(() => {})
+  await flush()
+  bridge.resize(999_999, 999_999)
+  bridge.destroy()
+  await entered
+
+  expect(created).toEqual({ width: MAX_PTY.cols, height: MAX_PTY.rows })
+  expect(bridge.session.cols).toBe(MAX_PTY.cols)
+  expect(bridge.session.rows).toBe(MAX_PTY.rows)
+  expect(resized).toEqual([MAX_PTY.cols, MAX_PTY.rows])
+})
