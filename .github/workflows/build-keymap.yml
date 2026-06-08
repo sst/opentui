@@ -18,7 +18,7 @@ jobs:
     name: Test (${{ matrix.os }})
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, blacksmith-4vcpu-windows-2025]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -61,7 +61,7 @@ jobs:
 
   packed-consumer:
     name: Packed Consumer Smoke
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     defaults:
       run:
         shell: bash
@@ -105,7 +105,7 @@ jobs:
   build-complete:
     name: Keymap - Build and Test
     needs: [test, packed-consumer]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: always()
     steps:
       - name: Check test results

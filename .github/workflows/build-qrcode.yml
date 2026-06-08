@@ -20,7 +20,7 @@ jobs:
     name: Test (${{ matrix.os }})
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, blacksmith-4vcpu-windows-2025]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -64,7 +64,7 @@ jobs:
   build-complete:
     name: QRCode - Build and Test
     needs: [test]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: always()
     steps:
       - name: Check test results

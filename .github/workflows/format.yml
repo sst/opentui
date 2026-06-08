@@ -11,7 +11,7 @@ jobs:
       github.event.issue.state == 'open' &&
       github.event.comment.body == '/fmt' &&
       contains(fromJson('["OWNER","MEMBER"]'), github.event.comment.author_association)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
       issues: write
