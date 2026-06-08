@@ -27,7 +27,7 @@ describe("InputRenderable", () => {
 
   describe("Initialization", () => {
     it("should initialize properly with default options", () => {
-      const { input, root } = createInputRenderable({ width: 20, height: 1 })
+      const { input, root } = createInputRenderable({ width: 20 })
 
       expect(input.x).toBeDefined()
       expect(input.y).toBeDefined()
@@ -111,7 +111,7 @@ describe("InputRenderable", () => {
 
   describe("Single Input Key Handling", () => {
     it("should handle text input when focused", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       input.focus()
 
@@ -143,7 +143,7 @@ describe("InputRenderable", () => {
     })
 
     it("should not handle key events when not focused", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       // Don't focus the input
       expect(input.focused).toBe(false)
@@ -231,7 +231,6 @@ describe("InputRenderable", () => {
       const { input } = createInputRenderable({
         value: "hello",
         width: 20,
-        height: 1,
       })
 
       input.focus()
@@ -356,7 +355,6 @@ describe("InputRenderable", () => {
 
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         onPaste: (event) => {
           pasteText = decodePasteBytes(event.bytes)
           pasteCalled = true
@@ -559,7 +557,7 @@ describe("InputRenderable", () => {
 
   describe("Input Value Management", () => {
     it("should handle value setting programmatically", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       input.value = "programmatic"
       expect(input.value).toBe("programmatic")
@@ -592,7 +590,7 @@ describe("InputRenderable", () => {
     })
 
     it("should emit input events when value changes programmatically", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       let inputEventFired = false
       let inputValue = ""
@@ -634,7 +632,7 @@ describe("InputRenderable", () => {
     })
 
     it("should handle color property changes", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       input.backgroundColor = "#ff0000"
       input.textColor = "#00ff00"
@@ -652,7 +650,6 @@ describe("InputRenderable", () => {
     it("should not handle key events when preventDefault is called by global handler", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "initial",
       })
 
@@ -697,7 +694,6 @@ describe("InputRenderable", () => {
     it("should handle multiple global handlers with preventDefault", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
       })
 
       let firstHandlerCalled = false
@@ -741,7 +737,6 @@ describe("InputRenderable", () => {
     it("should respect preventDefault from global handler registered AFTER input focus", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "initial",
       })
 
@@ -796,7 +791,6 @@ describe("InputRenderable", () => {
     it("should handle dynamic preventDefault conditions", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "",
       })
 
@@ -855,7 +849,6 @@ describe("InputRenderable", () => {
   it("should respect preventDefault from onKeyDown handler", () => {
     const { input } = createInputRenderable({
       width: 20,
-      height: 1,
       value: "initial",
     })
 
@@ -906,7 +899,6 @@ describe("InputRenderable", () => {
 
     const input = new InputRenderable(kittyRenderer, {
       width: 40,
-      height: 1,
     })
 
     try {
@@ -979,7 +971,6 @@ describe("InputRenderable", () => {
     } {
       const inputRenderable = new InputRenderable(modRenderer, {
         width: 20,
-        height: 1,
         ...options,
       })
       modRenderer.root.add(inputRenderable)
@@ -1043,7 +1034,7 @@ describe("InputRenderable", () => {
 
   describe("Edge Cases", () => {
     it("should handle non-printable characters", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       input.focus()
 
@@ -1130,7 +1121,6 @@ describe("InputRenderable", () => {
     it("should support custom key bindings", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
         keyBindings: [
           { name: "k", ctrl: true, action: "line-end" },
@@ -1153,7 +1143,6 @@ describe("InputRenderable", () => {
     it("should support key aliases", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         keyAliasMap: {
           enter: "return",
         },
@@ -1175,7 +1164,6 @@ describe("InputRenderable", () => {
     it("should merge custom bindings with defaults", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
         keyBindings: [{ name: "x", ctrl: true, action: "line-home" }],
       })
@@ -1194,7 +1182,6 @@ describe("InputRenderable", () => {
     it("should override default bindings with custom ones", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
         keyBindings: [
           { name: "left", action: "line-end" }, // Override left to move to end
@@ -1212,7 +1199,6 @@ describe("InputRenderable", () => {
     it("should support Emacs-style bindings by default", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
       })
 
@@ -1246,7 +1232,6 @@ describe("InputRenderable", () => {
     it("should allow updating key bindings dynamically", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
       })
 
@@ -1270,7 +1255,6 @@ describe("InputRenderable", () => {
     it("should allow updating key aliases dynamically", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
       })
 
       input.focus()
@@ -1293,7 +1277,6 @@ describe("InputRenderable", () => {
     it("should handle modifiers in custom bindings", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
         keyBindings: [
           { name: "left", shift: true, action: "line-home" },

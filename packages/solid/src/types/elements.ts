@@ -28,7 +28,7 @@ import type {
   TextRenderable,
 } from "@opentui/core"
 import type { Ref } from "solid-js"
-import type { JSX } from "../../jsx-runtime"
+import type { JSX } from "../../jsx-runtime.js"
 
 // ============================================================================
 // Core Type System

@@ -1371,12 +1371,11 @@ describe("Textarea - Selection Tests", () => {
 
       // Scroll up with mouse wheel
       await currentMouse.scroll(editor.x, editor.y + 1, "up")
-      await Bun.sleep(100)
+      currentRenderer.pause()
+      await currentRenderer.idle()
 
       const selectionAfter = editor.getSelection()
       const selectedTextAfter = editor.getSelectedText()
-
-      currentRenderer.pause()
 
       // Selection should not change when scrolling viewport
       expect(selectionAfter).not.toBeNull()
@@ -1567,7 +1566,7 @@ describe("Textarea - Selection Tests", () => {
 })
 
 function countSelectedCells(
-  bg: Float32Array,
+  bg: Uint16Array,
   bufferWidth: number,
   editor: { x: number; y: number; height: number; width: number },
   r: number,

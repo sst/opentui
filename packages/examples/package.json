@@ -15,7 +15,8 @@
   "scripts": {
     "dev": "bun src/index.ts",
     "build": "bun scripts/build.ts",
-    "build:host": "bun scripts/build.ts --host"
+    "build:host": "bun scripts/build.ts --host",
+    "dev:node": "node scripts/run-node26.mjs"
   },
   "dependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",

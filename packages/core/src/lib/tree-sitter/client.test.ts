@@ -2,9 +2,12 @@ import { test, expect, beforeEach, afterEach, beforeAll, describe } from "bun:te
 import { TreeSitterClient } from "./client.js"
 import { tmpdir } from "os"
 import { join } from "path"
+import { existsSync } from "fs"
 import { mkdir, writeFile, unlink } from "fs/promises"
 import { getDataPaths } from "../data-paths.js"
-import { getTreeSitterClient } from "./index.js"
+import { clearEnvCache } from "../env.js"
+import { destroySingleton } from "../singleton.js"
+import { destroyTreeSitterClient, getTreeSitterClient } from "./index.js"
 
 describe("TreeSitterClient", () => {
   let client: TreeSitterClient
@@ -32,6 +35,38 @@ describe("TreeSitterClient", () => {
   test("should initialize successfully", async () => {
     await client.initialize()
     expect(client.isInitialized()).toBe(true)
+  })
+
+  test("should lazily start the worker during initialize when auto start is disabled", async () => {
+    const lazyClient = new TreeSitterClient({ dataPath }, { autoStartWorker: false })
+
+    try {
+      await lazyClient.initialize()
+
+      expect(lazyClient.isInitialized()).toBe(true)
+      expect(await lazyClient.preloadParser("javascript")).toBe(true)
+    } finally {
+      await lazyClient.destroy()
+    }
+  })
+
+  test("should initialize with a URL worker path override", async () => {
+    const workerPath = existsSync(new URL("./parser.worker.js", import.meta.url))
+      ? new URL("./parser.worker.js", import.meta.url)
+      : new URL("./parser.worker.ts", import.meta.url)
+    const urlClient = new TreeSitterClient({
+      dataPath,
+      workerPath,
+    })
+
+    try {
+      await urlClient.initialize()
+
+      expect(urlClient.isInitialized()).toBe(true)
+      expect(await urlClient.preloadParser("javascript")).toBe(true)
+    } finally {
+      await urlClient.destroy()
+    }
   })
 
   test("should wait for default parsers before resolving concurrent initialization", async () => {
@@ -1105,9 +1140,11 @@ describe("TreeSitterClient Edge Cases", () => {
   let dataPath: string
 
   const edgeCaseDataPath = join(tmpdir(), "tree-sitter-edge-case-test-data")
+  const reactiveDataPathRoot = join(tmpdir(), "tree-sitter-reactive-data-path-test")
 
   beforeAll(async () => {
     await mkdir(edgeCaseDataPath, { recursive: true })
+    await mkdir(reactiveDataPathRoot, { recursive: true })
   })
 
   beforeEach(async () => {
@@ -1141,6 +1178,7 @@ describe("TreeSitterClient Edge Cases", () => {
 
     // Start init but don't await
     const initPromise = client.initialize()
+    void initPromise.catch(() => {})
 
     // Immediately destroy
     await client.destroy()
@@ -1167,8 +1205,14 @@ describe("TreeSitterClient Edge Cases", () => {
   })
 
   test("should handle data path changes with reactive getTreeSitterClient", async () => {
+    const originalXdgDataHome = process.env.XDG_DATA_HOME
+
+    process.env.XDG_DATA_HOME = reactiveDataPathRoot
+    clearEnvCache()
+    destroySingleton("data-paths-opentui")
+    await destroyTreeSitterClient()
+
     const dataPathsManager = getDataPaths()
-    const originalAppName = dataPathsManager.appName
     let client: any
 
     try {
@@ -1192,11 +1236,32 @@ describe("TreeSitterClient Edge Cases", () => {
       const hasParser = await client.preloadParser("javascript")
       expect(hasParser).toBe(true)
     } finally {
-      if (client) {
-        await client.destroy()
-      }
+      await destroyTreeSitterClient()
+      destroySingleton("data-paths-opentui")
 
-      dataPathsManager.appName = originalAppName
+      if (originalXdgDataHome === undefined) {
+        delete process.env.XDG_DATA_HOME
+      } else {
+        process.env.XDG_DATA_HOME = originalXdgDataHome
+      }
+      clearEnvCache()
     }
+  })
+
+  test("should remove the reactive data path listener when the singleton client is destroyed", async () => {
+    await destroyTreeSitterClient()
+    destroySingleton("data-paths-opentui")
+
+    const dataPathsManager = getDataPaths()
+
+    expect(dataPathsManager.listenerCount("paths:changed")).toBe(0)
+
+    getTreeSitterClient()
+    expect(dataPathsManager.listenerCount("paths:changed")).toBe(1)
+
+    await destroyTreeSitterClient()
+    expect(dataPathsManager.listenerCount("paths:changed")).toBe(0)
+
+    destroySingleton("data-paths-opentui")
   })
 })

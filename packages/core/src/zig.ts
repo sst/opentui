@@ -184,6 +184,7 @@ registerEnvVar({
 const CURSOR_STYLE_TO_ID = { block: 0, line: 1, underline: 2, default: 3 } as const
 const CURSOR_ID_TO_STYLE = ["block", "line", "underline", "default"] as const
 const MOUSE_STYLE_TO_ID = { default: 0, pointer: 1, text: 2, crosshair: 3, move: 4, "not-allowed": 5 } as const
+const MAX_FFI_U32 = 0xffff_ffff
 // Global singleton state for FFI tracing to prevent duplicate exit handlers
 let globalTraceSymbols: Record<string, number[]> | null = null
 let globalFFILogPath: string | null = null
@@ -191,6 +192,30 @@ let exitHandlerRegistered = false
 
 function toNumber(value: number | bigint): number {
   return typeof value === "bigint" ? Number(value) : value
+}
+
+function toSafeByteCount(value: number | bigint, label: string): number {
+  if (typeof value !== "bigint") {
+    return value
+  }
+
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new RangeError(`${label} exceeds JavaScript safe integer range`)
+  }
+
+  return Number(value)
+}
+
+function toSafeFFIU32Length(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_FFI_U32) {
+    throw new RangeError(`${label} exceeds native u32 length limit`)
+  }
+
+  return value
+}
+
+function ptrOrNull(value: ArrayBufferView): Pointer | null {
+  return value.byteLength === 0 ? null : ptr(value)
 }
 
 function rgbaPtr(value: RGBA): Pointer {
@@ -225,7 +250,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     setTerminalEnvVar: {
-      args: ["u32", "ptr", "usize", "ptr", "usize"],
+      args: ["u32", "ptr", "u32", "ptr", "u32"],
       returns: "bool",
     },
     destroyRenderer: {
@@ -304,7 +329,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     rendererSetPaletteState: {
-      args: ["u32", "ptr", "usize", "ptr", "ptr", "u32"],
+      args: ["u32", "ptr", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
 
@@ -318,7 +343,7 @@ function getOpenTUILib(libPath?: string) {
     },
 
     createOptimizedBuffer: {
-      args: ["u32", "u32", "bool", "u8", "ptr", "usize"],
+      args: ["u32", "u32", "bool", "u8", "ptr", "u32"],
       returns: "u32",
     },
     destroyOptimizedBuffer: {
@@ -367,15 +392,15 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferGetId: {
-      args: ["u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "ptr", "u32"],
+      returns: "u32",
     },
     bufferGetRealCharSize: {
       args: ["u32"],
       returns: "u32",
     },
     bufferWriteResolvedChars: {
-      args: ["u32", "ptr", "usize", "bool"],
+      args: ["u32", "ptr", "u32", "bool"],
       returns: "u32",
     },
 
@@ -396,7 +421,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferColorMatrix: {
-      args: ["u32", "ptr", "ptr", "usize", "f32", "u8"],
+      args: ["u32", "ptr", "ptr", "u32", "f32", "u8"],
       returns: "void",
     },
     bufferColorMatrixUniform: {
@@ -463,11 +488,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     setTerminalTitle: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "void",
     },
     copyToClipboardOSC52: {
-      args: ["u32", "u8", "ptr", "usize"],
+      args: ["u32", "u8", "ptr", "u32"],
       returns: "bool",
     },
     clearClipboardOSC52: {
@@ -475,16 +500,16 @@ function getOpenTUILib(libPath?: string) {
       returns: "bool",
     },
     triggerNotification: {
-      args: ["u32", "ptr", "usize", "ptr", "usize"],
+      args: ["u32", "ptr", "u32", "ptr", "u32"],
       returns: "bool",
     },
 
     bufferDrawSuperSampleBuffer: {
-      args: ["u32", "u32", "u32", "ptr", "usize", "u8", "u32"],
+      args: ["u32", "u32", "u32", "ptr", "u32", "u8", "u32"],
       returns: "void",
     },
     bufferDrawPackedBuffer: {
-      args: ["u32", "ptr", "usize", "u32", "u32", "u32", "u32"],
+      args: ["u32", "ptr", "u32", "u32", "u32", "u32", "u32"],
       returns: "void",
     },
     bufferDrawGrayscaleBuffer: {
@@ -617,7 +642,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     writeOut: {
-      args: ["u32", "ptr", "u64"],
+      args: ["u32", "ptr", "u32"],
       returns: "void",
     },
 
@@ -672,11 +697,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferRegisterMemBuffer: {
-      args: ["u32", "ptr", "usize", "bool"],
+      args: ["u32", "ptr", "u32", "bool"],
       returns: "u16",
     },
     textBufferReplaceMemBuffer: {
-      args: ["u32", "u8", "ptr", "usize", "bool"],
+      args: ["u32", "u8", "ptr", "u32", "bool"],
       returns: "bool",
     },
     textBufferClearMemRegistry: {
@@ -688,7 +713,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferAppend: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "void",
     },
     textBufferAppendFromMemId: {
@@ -696,11 +721,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferLoadFile: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "bool",
     },
     textBufferSetStyledText: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "void",
     },
     textBufferGetLineCount: {
@@ -708,8 +733,8 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     textBufferGetPlainText: {
-      args: ["u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "ptr", "u32"],
+      returns: "u32",
     },
     textBufferAddHighlightByCharRange: {
       args: ["u32", "ptr"],
@@ -740,7 +765,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "ptr",
     },
     textBufferFreeLineHighlights: {
-      args: ["ptr", "usize"],
+      args: ["ptr", "u32"],
       returns: "void",
     },
     textBufferGetHighlightCount: {
@@ -748,12 +773,12 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     textBufferGetTextRange: {
-      args: ["u32", "u32", "u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "u32", "u32", "ptr", "u32"],
+      returns: "u32",
     },
     textBufferGetTextRangeByCoords: {
-      args: ["u32", "u32", "u32", "u32", "u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "u32", "u32", "u32", "u32", "ptr", "u32"],
+      returns: "u32",
     },
 
     // TextBufferView functions
@@ -826,12 +851,12 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferViewGetSelectedText: {
-      args: ["u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "ptr", "u32"],
+      returns: "u32",
     },
     textBufferViewGetPlainText: {
-      args: ["u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "ptr", "u32"],
+      returns: "u32",
     },
     textBufferViewSetTabIndicator: {
       args: ["u32", "u32"],
@@ -918,7 +943,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferSetText: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "void",
     },
     editBufferSetTextFromMem: {
@@ -926,7 +951,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferReplaceText: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "void",
     },
     editBufferReplaceTextFromMem: {
@@ -934,15 +959,15 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferGetText: {
-      args: ["u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "ptr", "u32"],
+      returns: "u32",
     },
     editBufferInsertChar: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "void",
     },
     editBufferInsertText: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "void",
     },
     editBufferDeleteChar: {
@@ -1014,12 +1039,12 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferUndo: {
-      args: ["u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "ptr", "u32"],
+      returns: "u32",
     },
     editBufferRedo: {
-      args: ["u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "ptr", "u32"],
+      returns: "u32",
     },
     editBufferCanUndo: {
       args: ["u32"],
@@ -1062,12 +1087,12 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     editBufferGetTextRange: {
-      args: ["u32", "u32", "u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "u32", "u32", "ptr", "u32"],
+      returns: "u32",
     },
     editBufferGetTextRangeByCoords: {
-      args: ["u32", "u32", "u32", "u32", "u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "u32", "u32", "u32", "u32", "ptr", "u32"],
+      returns: "u32",
     },
 
     // EditorView selection and editing methods
@@ -1100,16 +1125,16 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewGetSelectedTextBytes: {
-      args: ["u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "ptr", "u32"],
+      returns: "u32",
     },
     editorViewGetCursor: {
       args: ["u32", "ptr", "ptr"],
       returns: "void",
     },
     editorViewGetText: {
-      args: ["u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "ptr", "u32"],
+      returns: "u32",
     },
 
     // EditorView VisualCursor methods
@@ -1155,7 +1180,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewSetPlaceholderStyledText: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "void",
     },
     editorViewSetTabIndicator: {
@@ -1169,7 +1194,7 @@ function getOpenTUILib(libPath?: string) {
 
     getArenaAllocatedBytes: {
       args: [],
-      returns: "usize",
+      returns: "u64",
     },
     getBuildOptions: {
       args: ["ptr"],
@@ -1190,16 +1215,16 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     syntaxStyleRegister: {
-      args: ["u32", "ptr", "usize", "ptr", "ptr", "u32"],
+      args: ["u32", "ptr", "u32", "ptr", "ptr", "u32"],
       returns: "u32",
     },
     syntaxStyleResolveByName: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "u32",
     },
     syntaxStyleGetStyleCount: {
       args: ["u32"],
-      returns: "usize",
+      returns: "u32",
     },
 
     // Terminal capability functions
@@ -1208,17 +1233,17 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     processCapabilityResponse: {
-      args: ["u32", "ptr", "usize"],
+      args: ["u32", "ptr", "u32"],
       returns: "void",
     },
 
     // Unicode encoding API
     encodeUnicode: {
-      args: ["ptr", "usize", "ptr", "ptr", "u8"],
+      args: ["ptr", "u32", "ptr", "ptr", "u8"],
       returns: "bool",
     },
     freeUnicode: {
-      args: ["ptr", "usize"],
+      args: ["ptr", "u32"],
       returns: "void",
     },
     bufferDrawChar: {
@@ -1244,8 +1269,8 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     audioGetPlaybackDeviceName: {
-      args: ["u32", "u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["u32", "u32", "ptr", "u32"],
+      returns: "u32",
     },
     audioIsPlaybackDeviceDefault: {
       args: ["u32", "u32"],
@@ -1272,7 +1297,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioLoad: {
-      args: ["u32", "ptr", "u64", "ptr"],
+      args: ["u32", "ptr", "u32", "ptr"],
       returns: "i32",
     },
     audioUnload: {
@@ -1292,7 +1317,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioCreateGroup: {
-      args: ["u32", "ptr", "u64", "ptr"],
+      args: ["u32", "ptr", "u32", "ptr"],
       returns: "i32",
     },
     audioSetGroupVolume: {
@@ -1334,7 +1359,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     streamWrite: {
-      args: ["ptr", "ptr", "u64"],
+      args: ["ptr", "ptr", "u32"],
       returns: "i32",
     },
     streamCommit: {
@@ -2241,10 +2266,8 @@ class FFIRenderLib implements RenderLib {
     }
 
     const logCallback = this.opentui.createCallback(
-      (level: number, msgPtr: Pointer, msgLenBigInt: bigint | number) => {
+      (level: number, msgPtr: Pointer, msgLen: number) => {
         try {
-          const msgLen = typeof msgLenBigInt === "bigint" ? Number(msgLenBigInt) : msgLenBigInt
-
           if (msgLen === 0 || !msgPtr) {
             return
           }
@@ -2274,7 +2297,7 @@ class FFIRenderLib implements RenderLib {
         }
       },
       {
-        args: ["u8", "ptr", "usize"],
+        args: ["u8", "ptr", "u32"],
         returns: "void",
       },
     )
@@ -2318,11 +2341,8 @@ class FFIRenderLib implements RenderLib {
     }
 
     const eventCallback = this.opentui.createCallback(
-      (namePtr: Pointer, nameLenBigInt: bigint | number, dataPtr: Pointer, dataLenBigInt: bigint | number) => {
+      (namePtr: Pointer, nameLen: number, dataPtr: Pointer, dataLen: number) => {
         try {
-          const nameLen = typeof nameLenBigInt === "bigint" ? Number(nameLenBigInt) : nameLenBigInt
-          const dataLen = typeof dataLenBigInt === "bigint" ? Number(dataLenBigInt) : dataLenBigInt
-
           if (nameLen === 0 || !namePtr) {
             return
           }
@@ -2342,7 +2362,7 @@ class FFIRenderLib implements RenderLib {
         }
       },
       {
-        args: ["ptr", "usize", "ptr", "usize"],
+        args: ["ptr", "u32", "ptr", "u32"],
         returns: "void",
       },
     )
@@ -2408,7 +2428,13 @@ class FFIRenderLib implements RenderLib {
   public setTerminalEnvVar(renderer: Pointer, key: string, value: string): boolean {
     const keyBytes = this.encoder.encode(key)
     const valueBytes = this.encoder.encode(value)
-    return this.opentui.symbols.setTerminalEnvVar(renderer, keyBytes, keyBytes.length, valueBytes, valueBytes.length)
+    return this.opentui.symbols.setTerminalEnvVar(
+      renderer,
+      ptrOrNull(keyBytes),
+      keyBytes.byteLength,
+      ptrOrNull(valueBytes),
+      valueBytes.byteLength,
+    )
   }
 
   public destroyRenderer(renderer: Pointer): void {
@@ -2581,9 +2607,8 @@ class FFIRenderLib implements RenderLib {
   public bufferGetId(buffer: Pointer): string {
     const maxLen = 256
     const outBuffer = new Uint8Array(maxLen)
-    const actualLen = this.opentui.symbols.bufferGetId(buffer, outBuffer, maxLen)
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
-    return this.decoder.decode(outBuffer.slice(0, len))
+    const actualLen = this.opentui.symbols.bufferGetId(buffer, ptr(outBuffer), maxLen)
+    return this.decoder.decode(outBuffer.slice(0, actualLen))
   }
 
   public bufferGetRealCharSize(buffer: Pointer): number {
@@ -2591,13 +2616,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public bufferWriteResolvedChars(buffer: Pointer, outputBuffer: Uint8Array, addLineBreaks: boolean): number {
-    const bytesWritten = this.opentui.symbols.bufferWriteResolvedChars(
+    return this.opentui.symbols.bufferWriteResolvedChars(
       buffer,
-      outputBuffer,
-      outputBuffer.length,
+      ptrOrNull(outputBuffer),
+      outputBuffer.byteLength,
       ffiBool(addLineBreaks),
     )
-    return typeof bytesWritten === "bigint" ? Number(bytesWritten) : bytesWritten
   }
 
   public getBufferWidth(buffer: Pointer): number {
@@ -2622,11 +2646,19 @@ class FFIRenderLib implements RenderLib {
     attributes?: number,
   ) {
     const textBytes = this.encoder.encode(text)
-    const textLength = textBytes.byteLength
     const bg = optionalRgbaPtr(bgColor)
     const fg = rgbaPtr(color)
 
-    this.opentui.symbols.bufferDrawText(buffer, textBytes, textLength, x, y, fg, bg, attributes ?? 0)
+    this.opentui.symbols.bufferDrawText(
+      buffer,
+      ptrOrNull(textBytes),
+      textBytes.byteLength,
+      x,
+      y,
+      fg,
+      bg,
+      attributes ?? 0,
+    )
   }
 
   public bufferSetCellWithAlphaBlending(
@@ -2784,12 +2816,12 @@ class FFIRenderLib implements RenderLib {
 
     this.opentui.symbols.bufferDrawGrid(
       buffer,
-      borderChars,
+      ptr(borderChars),
       rgbaPtr(borderFg),
       rgbaPtr(borderBg),
-      columnOffsets,
+      ptr(columnOffsets),
       columnCount,
-      rowOffsets,
+      ptr(rowOffsets),
       rowCount,
       ptr(optionsBuffer),
     )
@@ -2810,12 +2842,12 @@ class FFIRenderLib implements RenderLib {
     bottomTitle: string | null,
   ): void {
     const titleBytes = title ? this.encoder.encode(title) : null
-    const titleLen = title ? titleBytes!.length : 0
-    const titlePtr = title ? titleBytes : null
+    const titleLen = titleBytes?.byteLength ?? 0
+    const titlePtr = titleBytes ? ptr(titleBytes) : null
 
     const bottomTitleBytes = bottomTitle ? this.encoder.encode(bottomTitle) : null
-    const bottomTitleLen = bottomTitle ? bottomTitleBytes!.length : 0
-    const bottomTitlePtr = bottomTitle ? bottomTitleBytes : null
+    const bottomTitleLen = bottomTitleBytes?.byteLength ?? 0
+    const bottomTitlePtr = bottomTitleBytes ? ptr(bottomTitleBytes) : null
 
     this.opentui.symbols.bufferDrawBox(
       buffer,
@@ -2823,7 +2855,7 @@ class FFIRenderLib implements RenderLib {
       y,
       width,
       height,
-      borderChars,
+      ptr(borderChars),
       packedOptions,
       rgbaPtr(borderColor),
       rgbaPtr(backgroundColor),
@@ -2842,12 +2874,12 @@ class FFIRenderLib implements RenderLib {
   // Link API
   public linkAlloc(url: string): number {
     const urlBytes = this.encoder.encode(url)
-    return this.opentui.symbols.linkAlloc(urlBytes, urlBytes.length)
+    return this.opentui.symbols.linkAlloc(ptrOrNull(urlBytes), urlBytes.byteLength)
   }
 
   public linkGetUrl(linkId: number, maxLen: number = 512): string {
     const outBuffer = new Uint8Array(maxLen)
-    const actualLen = this.opentui.symbols.linkGetUrl(linkId, outBuffer, maxLen)
+    const actualLen = this.opentui.symbols.linkGetUrl(linkId, ptrOrNull(outBuffer), maxLen)
     return this.decoder.decode(outBuffer.slice(0, actualLen))
   }
 
@@ -2962,8 +2994,8 @@ class FFIRenderLib implements RenderLib {
       height,
       ffiBool(respectAlpha),
       widthMethodCode,
-      idBytes,
-      idBytes.length,
+      ptr(idBytes),
+      idBytes.byteLength,
     )
     if (!bufferPtr) {
       throw new Error(`Failed to create optimized buffer: ${width}x${height}`)
@@ -3003,26 +3035,28 @@ class FFIRenderLib implements RenderLib {
 
   public setTerminalTitle(renderer: Pointer, title: string) {
     const titleBytes = this.encoder.encode(title)
-    this.opentui.symbols.setTerminalTitle(renderer, titleBytes, titleBytes.length)
+    this.opentui.symbols.setTerminalTitle(renderer, ptrOrNull(titleBytes), titleBytes.byteLength)
   }
 
   public copyToClipboardOSC52(renderer: Pointer, target: number, payload: Uint8Array): boolean {
-    return this.opentui.symbols.copyToClipboardOSC52(renderer, target, payload, payload.length)
+    return Boolean(this.opentui.symbols.copyToClipboardOSC52(renderer, target, ptrOrNull(payload), payload.byteLength))
   }
 
   public clearClipboardOSC52(renderer: Pointer, target: number): boolean {
-    return this.opentui.symbols.clearClipboardOSC52(renderer, target)
+    return Boolean(this.opentui.symbols.clearClipboardOSC52(renderer, target))
   }
 
   public triggerNotification(renderer: Pointer, message: string, title?: string): boolean {
     const messageBytes = this.encoder.encode(message)
     const titleBytes = title === undefined ? null : this.encoder.encode(title)
-    return this.opentui.symbols.triggerNotification(
-      renderer,
-      messageBytes,
-      messageBytes.length,
-      titleBytes,
-      titleBytes?.length ?? 0,
+    return Boolean(
+      this.opentui.symbols.triggerNotification(
+        renderer,
+        messageBytes,
+        messageBytes.length,
+        titleBytes,
+        titleBytes?.length ?? 0,
+      ),
     )
   }
 
@@ -3135,7 +3169,7 @@ class FFIRenderLib implements RenderLib {
   public writeOut(renderer: Pointer, data: string | Uint8Array): void {
     const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data
     if (bytes.length === 0) return
-    this.opentui.symbols.writeOut(renderer, ptr(bytes), bytes.length)
+    this.opentui.symbols.writeOut(renderer, ptrOrNull(bytes), bytes.byteLength)
   }
 
   // TextBuffer methods
@@ -3180,8 +3214,8 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferSetDefaultAttributes(buffer: Pointer, attributes: number | null): void {
-    const attrValue = attributes === null ? null : new Uint8Array([attributes])
-    this.opentui.symbols.textBufferSetDefaultAttributes(buffer, attrValue)
+    const attrValue = attributes === null ? null : new Uint32Array([attributes])
+    this.opentui.symbols.textBufferSetDefaultAttributes(buffer, attrValue ? ptr(attrValue) : null)
   }
 
   public textBufferResetDefaults(buffer: Pointer): void {
@@ -3197,7 +3231,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferRegisterMemBuffer(buffer: Pointer, bytes: Uint8Array, owned: boolean = false): number {
-    const result = this.opentui.symbols.textBufferRegisterMemBuffer(buffer, bytes, bytes.length, ffiBool(owned))
+    const result = this.opentui.symbols.textBufferRegisterMemBuffer(
+      buffer,
+      ptrOrNull(bytes),
+      bytes.byteLength,
+      ffiBool(owned),
+    )
     if (result === 0xffff) {
       throw new Error("Failed to register memory buffer")
     }
@@ -3210,7 +3249,13 @@ class FFIRenderLib implements RenderLib {
     bytes: Uint8Array,
     owned: boolean = false,
   ): boolean {
-    return this.opentui.symbols.textBufferReplaceMemBuffer(buffer, memId, bytes, bytes.length, ffiBool(owned))
+    return this.opentui.symbols.textBufferReplaceMemBuffer(
+      buffer,
+      memId,
+      ptrOrNull(bytes),
+      bytes.byteLength,
+      ffiBool(owned),
+    )
   }
 
   public textBufferClearMemRegistry(buffer: Pointer): void {
@@ -3222,7 +3267,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferAppend(buffer: Pointer, bytes: Uint8Array): void {
-    this.opentui.symbols.textBufferAppend(buffer, bytes, bytes.length)
+    this.opentui.symbols.textBufferAppend(buffer, ptrOrNull(bytes), bytes.byteLength)
   }
 
   public textBufferAppendFromMemId(buffer: Pointer, memId: number): void {
@@ -3231,7 +3276,7 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferLoadFile(buffer: Pointer, path: string): boolean {
     const pathBytes = this.encoder.encode(path)
-    return this.opentui.symbols.textBufferLoadFile(buffer, pathBytes, pathBytes.length)
+    return this.opentui.symbols.textBufferLoadFile(buffer, ptrOrNull(pathBytes), pathBytes.byteLength)
   }
 
   public textBufferSetStyledText(
@@ -3251,15 +3296,14 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.textBufferGetLineCount(buffer)
   }
 
-  private textBufferGetPlainText(buffer: Pointer, outPtr: Pointer, maxLen: number): number {
-    const result = this.opentui.symbols.textBufferGetPlainText(buffer, outPtr, maxLen)
-    return typeof result === "bigint" ? Number(result) : result
+  private textBufferGetPlainText(buffer: Pointer, outPtr: Pointer | null, maxLen: number): number {
+    return this.opentui.symbols.textBufferGetPlainText(buffer, outPtr, maxLen)
   }
 
   public getPlainTextBytes(buffer: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
 
-    const actualLen = this.textBufferGetPlainText(buffer, ptr(outBuffer), maxLength)
+    const actualLen = this.textBufferGetPlainText(buffer, ptrOrNull(outBuffer), maxLength)
 
     if (actualLen === 0) {
       return null
@@ -3280,11 +3324,11 @@ class FFIRenderLib implements RenderLib {
       buffer,
       startOffset,
       endOffset,
-      ptr(outBuffer),
+      ptrOrNull(outBuffer),
       maxLength,
     )
 
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    const len = actualLen
 
     if (len === 0) {
       return null
@@ -3309,11 +3353,11 @@ class FFIRenderLib implements RenderLib {
       startCol,
       endRow,
       endCol,
-      ptr(outBuffer),
+      ptrOrNull(outBuffer),
       maxLength,
     )
 
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    const len = actualLen
 
     if (len === 0) {
       return null
@@ -3380,7 +3424,7 @@ class FFIRenderLib implements RenderLib {
   ): boolean {
     const bg = optionalRgbaPtr(bgColor)
     const fg = optionalRgbaPtr(fgColor)
-    return this.opentui.symbols.textBufferViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+    return Boolean(this.opentui.symbols.textBufferViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg))
   }
 
   public textBufferViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
@@ -3400,7 +3444,9 @@ class FFIRenderLib implements RenderLib {
   ): boolean {
     const bg = optionalRgbaPtr(bgColor)
     const fg = optionalRgbaPtr(fgColor)
-    return this.opentui.symbols.textBufferViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+    return Boolean(
+      this.opentui.symbols.textBufferViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg),
+    )
   }
 
   public textBufferViewResetLocalSelection(view: Pointer): void {
@@ -3476,20 +3522,18 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferViewGetLogicalLineInfoDirect(view, outPtr)
   }
 
-  private textBufferViewGetSelectedText(view: Pointer, outPtr: Pointer, maxLen: number): number {
-    const result = this.opentui.symbols.textBufferViewGetSelectedText(view, outPtr, maxLen)
-    return typeof result === "bigint" ? Number(result) : result
+  private textBufferViewGetSelectedText(view: Pointer, outPtr: Pointer | null, maxLen: number): number {
+    return this.opentui.symbols.textBufferViewGetSelectedText(view, outPtr, maxLen)
   }
 
-  private textBufferViewGetPlainText(view: Pointer, outPtr: Pointer, maxLen: number): number {
-    const result = this.opentui.symbols.textBufferViewGetPlainText(view, outPtr, maxLen)
-    return typeof result === "bigint" ? Number(result) : result
+  private textBufferViewGetPlainText(view: Pointer, outPtr: Pointer | null, maxLen: number): number {
+    return this.opentui.symbols.textBufferViewGetPlainText(view, outPtr, maxLen)
   }
 
   public textBufferViewGetSelectedTextBytes(view: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
 
-    const actualLen = this.textBufferViewGetSelectedText(view, ptr(outBuffer), maxLength)
+    const actualLen = this.textBufferViewGetSelectedText(view, ptrOrNull(outBuffer), maxLength)
 
     if (actualLen === 0) {
       return null
@@ -3501,7 +3545,7 @@ class FFIRenderLib implements RenderLib {
   public textBufferViewGetPlainTextBytes(view: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
 
-    const actualLen = this.textBufferViewGetPlainText(view, ptr(outBuffer), maxLength)
+    const actualLen = this.textBufferViewGetPlainText(view, ptrOrNull(outBuffer), maxLength)
 
     if (actualLen === 0) {
       return null
@@ -3560,16 +3604,16 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferSetSyntaxStyle(buffer: Pointer, style: Pointer | null): void {
-    this.opentui.symbols.textBufferSetSyntaxStyle(buffer, style)
+    this.opentui.symbols.textBufferSetSyntaxStyle(buffer, style ?? 0)
   }
 
   public textBufferGetLineHighlights(buffer: Pointer, lineIdx: number): Array<Highlight> {
-    const outCountBuf = new BigUint64Array(1)
+    const outCountBuf = new Uint32Array(1)
 
     const nativePtr = this.opentui.symbols.textBufferGetLineHighlightsPtr(buffer, lineIdx, ptr(outCountBuf))
     if (!nativePtr) return []
 
-    const count = Number(outCountBuf[0])
+    const count = outCountBuf[0]
     const byteLen = count * HighlightStruct.size
     const raw = toArrayBuffer(nativePtr, 0, byteLen)
     const results = HighlightStruct.unpackList(raw, count)
@@ -3585,7 +3629,7 @@ class FFIRenderLib implements RenderLib {
 
   public getArenaAllocatedBytes(): number {
     const result = this.opentui.symbols.getArenaAllocatedBytes()
-    return typeof result === "bigint" ? Number(result) : result
+    return toSafeByteCount(result, "Arena allocated bytes")
   }
 
   public getBuildOptions(): BuildOptions {
@@ -3749,7 +3793,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editBufferSetText(buffer: Pointer, textBytes: Uint8Array): void {
-    this.opentui.symbols.editBufferSetText(buffer, textBytes, textBytes.length)
+    this.opentui.symbols.editBufferSetText(buffer, ptrOrNull(textBytes), textBytes.byteLength)
   }
 
   public editBufferSetTextFromMem(buffer: Pointer, memId: number): void {
@@ -3757,7 +3801,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editBufferReplaceText(buffer: Pointer, textBytes: Uint8Array): void {
-    this.opentui.symbols.editBufferReplaceText(buffer, textBytes, textBytes.length)
+    this.opentui.symbols.editBufferReplaceText(buffer, ptrOrNull(textBytes), textBytes.byteLength)
   }
 
   public editBufferReplaceTextFromMem(buffer: Pointer, memId: number): void {
@@ -3766,20 +3810,20 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferGetText(buffer: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
-    const actualLen = this.opentui.symbols.editBufferGetText(buffer, ptr(outBuffer), maxLength)
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    const actualLen = this.opentui.symbols.editBufferGetText(buffer, ptrOrNull(outBuffer), maxLength)
+    const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
   }
 
   public editBufferInsertChar(buffer: Pointer, char: string): void {
     const charBytes = this.encoder.encode(char)
-    this.opentui.symbols.editBufferInsertChar(buffer, charBytes, charBytes.length)
+    this.opentui.symbols.editBufferInsertChar(buffer, ptrOrNull(charBytes), charBytes.byteLength)
   }
 
   public editBufferInsertText(buffer: Pointer, text: string): void {
     const textBytes = this.encoder.encode(text)
-    this.opentui.symbols.editBufferInsertText(buffer, textBytes, textBytes.length)
+    this.opentui.symbols.editBufferInsertText(buffer, ptrOrNull(textBytes), textBytes.byteLength)
   }
 
   public editBufferDeleteChar(buffer: Pointer): void {
@@ -3864,26 +3908,26 @@ class FFIRenderLib implements RenderLib {
 
   public editBufferUndo(buffer: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
-    const actualLen = this.opentui.symbols.editBufferUndo(buffer, ptr(outBuffer), maxLength)
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    const actualLen = this.opentui.symbols.editBufferUndo(buffer, ptrOrNull(outBuffer), maxLength)
+    const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
   }
 
   public editBufferRedo(buffer: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
-    const actualLen = this.opentui.symbols.editBufferRedo(buffer, ptr(outBuffer), maxLength)
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    const actualLen = this.opentui.symbols.editBufferRedo(buffer, ptrOrNull(outBuffer), maxLength)
+    const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
   }
 
   public editBufferCanUndo(buffer: Pointer): boolean {
-    return this.opentui.symbols.editBufferCanUndo(buffer)
+    return Boolean(this.opentui.symbols.editBufferCanUndo(buffer))
   }
 
   public editBufferCanRedo(buffer: Pointer): boolean {
-    return this.opentui.symbols.editBufferCanRedo(buffer)
+    return Boolean(this.opentui.symbols.editBufferCanRedo(buffer))
   }
 
   public editBufferClearHistory(buffer: Pointer): void {
@@ -3938,10 +3982,10 @@ class FFIRenderLib implements RenderLib {
       buffer,
       startOffset,
       endOffset,
-      ptr(outBuffer),
+      ptrOrNull(outBuffer),
       maxLength,
     )
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
   }
@@ -3961,10 +4005,10 @@ class FFIRenderLib implements RenderLib {
       startCol,
       endRow,
       endCol,
-      ptr(outBuffer),
+      ptrOrNull(outBuffer),
       maxLength,
     )
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
   }
@@ -4009,16 +4053,18 @@ class FFIRenderLib implements RenderLib {
   ): boolean {
     const bg = optionalRgbaPtr(bgColor)
     const fg = optionalRgbaPtr(fgColor)
-    return this.opentui.symbols.editorViewSetLocalSelection(
-      view,
-      anchorX,
-      anchorY,
-      focusX,
-      focusY,
-      bg,
-      fg,
-      ffiBool(updateCursor),
-      ffiBool(followCursor),
+    return Boolean(
+      this.opentui.symbols.editorViewSetLocalSelection(
+        view,
+        anchorX,
+        anchorY,
+        focusX,
+        focusY,
+        bg,
+        fg,
+        ffiBool(updateCursor),
+        ffiBool(followCursor),
+      ),
     )
   }
 
@@ -4041,16 +4087,18 @@ class FFIRenderLib implements RenderLib {
   ): boolean {
     const bg = optionalRgbaPtr(bgColor)
     const fg = optionalRgbaPtr(fgColor)
-    return this.opentui.symbols.editorViewUpdateLocalSelection(
-      view,
-      anchorX,
-      anchorY,
-      focusX,
-      focusY,
-      bg,
-      fg,
-      ffiBool(updateCursor),
-      ffiBool(followCursor),
+    return Boolean(
+      this.opentui.symbols.editorViewUpdateLocalSelection(
+        view,
+        anchorX,
+        anchorY,
+        focusX,
+        focusY,
+        bg,
+        fg,
+        ffiBool(updateCursor),
+        ffiBool(followCursor),
+      ),
     )
   }
 
@@ -4060,8 +4108,8 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewGetSelectedTextBytes(view: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
-    const actualLen = this.opentui.symbols.editorViewGetSelectedTextBytes(view, ptr(outBuffer), maxLength)
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    const actualLen = this.opentui.symbols.editorViewGetSelectedTextBytes(view, ptrOrNull(outBuffer), maxLength)
+    const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
   }
@@ -4075,8 +4123,8 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewGetText(view: Pointer, maxLength: number): Uint8Array | null {
     const outBuffer = new Uint8Array(maxLength)
-    const actualLen = this.opentui.symbols.editorViewGetText(view, ptr(outBuffer), maxLength)
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    const actualLen = this.opentui.symbols.editorViewGetText(view, ptrOrNull(outBuffer), maxLength)
+    const len = actualLen
     if (len === 0) return null
     return outBuffer.slice(0, len)
   }
@@ -4197,7 +4245,7 @@ class FFIRenderLib implements RenderLib {
 
   public processCapabilityResponse(renderer: Pointer, response: string): void {
     const responseBytes = this.encoder.encode(response)
-    this.opentui.symbols.processCapabilityResponse(renderer, responseBytes, responseBytes.length)
+    this.opentui.symbols.processCapabilityResponse(renderer, ptrOrNull(responseBytes), responseBytes.byteLength)
   }
 
   public encodeUnicode(
@@ -4207,12 +4255,12 @@ class FFIRenderLib implements RenderLib {
     const textBytes = this.encoder.encode(text)
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
 
-    const outPtrBuffer = new ArrayBuffer(8) // Pointer size
-    const outLenBuffer = new ArrayBuffer(8) // usize
+    const outPtrBuffer = new ArrayBuffer(8) // Pointer-sized out slot
+    const outLenBuffer = new ArrayBuffer(8) // Native length out slot
 
     const success = this.opentui.symbols.encodeUnicode(
-      textBytes,
-      textBytes.length,
+      ptrOrNull(textBytes),
+      textBytes.byteLength,
       ptr(outPtrBuffer),
       ptr(outLenBuffer),
       widthMethodCode,
@@ -4225,12 +4273,13 @@ class FFIRenderLib implements RenderLib {
     const outPtrView = new BigUint64Array(outPtrBuffer)
     const outLenView = new BigUint64Array(outLenBuffer)
 
-    const resultPtr = toPointer(outPtrView[0])
     const resultLen = Number(outLenView[0])
 
     if (resultLen === 0) {
-      return { ptr: resultPtr, data: [] }
+      return { ptr: 0 as Pointer, data: [] }
     }
+
+    const resultPtr = toPointer(outPtrView[0])
 
     // Convert pointer to ArrayBuffer and use EncodedCharStruct to unpack the list
     const byteLen = resultLen * EncodedCharStruct.size
@@ -4312,7 +4361,8 @@ class FFIRenderLib implements RenderLib {
 
   public audioLoad(engine: Pointer, data: Uint8Array): { status: number; soundId: number | null } {
     const outBuffer = new ArrayBuffer(4)
-    const status = this.opentui.symbols.audioLoad(engine, ptr(data), data.length, ptr(outBuffer))
+    const dataLength = toSafeFFIU32Length(data.byteLength, "Audio data length")
+    const status = this.opentui.symbols.audioLoad(engine, ptr(data), dataLength, ptr(outBuffer))
     if (status !== 0) {
       return { status, soundId: null }
     }
@@ -4355,7 +4405,8 @@ class FFIRenderLib implements RenderLib {
   public audioCreateGroup(engine: Pointer, name: string): { status: number; groupId: number | null } {
     const outBuffer = new ArrayBuffer(4)
     const nameBytes = this.encoder.encode(name)
-    const status = this.opentui.symbols.audioCreateGroup(engine, ptr(nameBytes), nameBytes.length, ptr(outBuffer))
+    const nameLength = toSafeFFIU32Length(nameBytes.byteLength, "Audio group name length")
+    const status = this.opentui.symbols.audioCreateGroup(engine, ptr(nameBytes), nameLength, ptr(outBuffer))
     if (status !== 0) {
       return { status, groupId: null }
     }
@@ -4376,7 +4427,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public audioEnableTap(engine: Pointer, enabled: boolean, capacityFrames: number): number {
-    return this.opentui.symbols.audioEnableTap(engine, enabled, capacityFrames)
+    return this.opentui.symbols.audioEnableTap(engine, ffiBool(enabled), capacityFrames)
   }
 
   public audioReadTap(
@@ -4448,7 +4499,7 @@ class FFIRenderLib implements RenderLib {
 
   public streamWrite(stream: Pointer, data: Uint8Array | string): number {
     const bytes = typeof data === "string" ? this.encoder.encode(data) : data
-    return this.opentui.symbols.streamWrite(stream, ptr(bytes), bytes.length)
+    return this.opentui.symbols.streamWrite(stream, ptrOrNull(bytes), bytes.byteLength)
   }
 
   public streamCommit(stream: Pointer): number {
@@ -4519,18 +4570,24 @@ class FFIRenderLib implements RenderLib {
     const nameBytes = this.encoder.encode(name)
     const fgPtr = optionalRgbaPtr(fg)
     const bgPtr = optionalRgbaPtr(bg)
-    return this.opentui.symbols.syntaxStyleRegister(style, nameBytes, nameBytes.length, fgPtr, bgPtr, attributes)
+    return this.opentui.symbols.syntaxStyleRegister(
+      style,
+      ptrOrNull(nameBytes),
+      nameBytes.byteLength,
+      fgPtr,
+      bgPtr,
+      attributes,
+    )
   }
 
   public syntaxStyleResolveByName(style: SyntaxStyleHandle, name: string): number | null {
     const nameBytes = this.encoder.encode(name)
-    const id = this.opentui.symbols.syntaxStyleResolveByName(style, nameBytes, nameBytes.length)
+    const id = this.opentui.symbols.syntaxStyleResolveByName(style, ptrOrNull(nameBytes), nameBytes.byteLength)
     return id === 0 ? null : id
   }
 
   public syntaxStyleGetStyleCount(style: SyntaxStyleHandle): number {
-    const result = this.opentui.symbols.syntaxStyleGetStyleCount(style)
-    return typeof result === "bigint" ? Number(result) : result
+    return this.opentui.symbols.syntaxStyleGetStyleCount(style)
   }
 
   public editorViewSetPlaceholderStyledText(

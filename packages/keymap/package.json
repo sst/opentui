@@ -61,6 +61,7 @@
   "scripts": {
     "build": "bun run scripts/build.ts",
     "publish": "bun run scripts/publish.ts",
+    "test:dist": "bun run scripts/test-packed-consumer.ts",
     "test": "bun run scripts/test.ts"
   },
   "dependencies": {

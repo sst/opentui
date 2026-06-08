@@ -14,13 +14,19 @@ OpenTUI is a native terminal UI core written in Zig with TypeScript bindings. Th
 
 ## Installation
 
-OpenTUI is currently [Bun](https://bun.sh) exclusive but Deno and Node support in-progress.
+OpenTUI's renderer examples currently use [Bun](https://bun.sh). Published portable entrypoints can be imported from Node.js without Bun or FFI flags, including `@opentui/keymap` and import-only `@opentui/core` usage. Creating a native renderer from Node is a separate runtime path and currently targets Node 26.x with experimental FFI enabled.
 
 ```bash
 mkdir my-tui && cd my-tui
 bun init -y
 bun add @opentui/core
 ```
+
+## Runtime support
+
+Import-only package use does not require native FFI. For example, `await import("@opentui/keymap")` and `await import("@opentui/core")` can load in Node without `--experimental-ffi`.
+
+Renderer support is different. Calling `createCliRenderer()` or APIs that load and call OpenTUI's native Zig renderer needs native FFI. Under Node, that path currently requires Node 26.3.0 with `--experimental-ffi` and, when using Node permissions, `--allow-ffi` plus the filesystem permissions your app needs. OpenTUI does not install Node; select the required version before running Node-specific examples or scripts.
 
 ## Hello world
 

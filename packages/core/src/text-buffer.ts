@@ -48,8 +48,8 @@ export class TextBuffer {
 
     if (this._memId === undefined) {
       this._memId = this.lib.textBufferRegisterMemBuffer(this.bufferPtr, this._textBytes, false)
-    } else {
-      this.lib.textBufferReplaceMemBuffer(this.bufferPtr, this._memId, this._textBytes, false)
+    } else if (!this.lib.textBufferReplaceMemBuffer(this.bufferPtr, this._memId, this._textBytes, false)) {
+      this._memId = this.lib.textBufferRegisterMemBuffer(this.bufferPtr, this._textBytes, false)
     }
 
     this.lib.textBufferSetTextFromMem(this.bufferPtr, this._memId)
