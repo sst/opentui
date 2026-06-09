@@ -109,16 +109,6 @@ link_in_bun_cache "@opentui+keymap@*" "@opentui/keymap" "$OPENTUI_ROOT/packages/
 echo "Linking @opentui/qrcode..."
 link_in_bun_cache "@opentui+qrcode@*" "@opentui/qrcode" "$OPENTUI_ROOT/packages/qrcode"
 
-# Link yoga-layout (required by core)
-echo "Linking yoga-layout..."
-if [ -d "$OPENTUI_ROOT/node_modules/yoga-layout" ]; then
-  link_in_bun_cache "yoga-layout@*" "yoga-layout" "$OPENTUI_ROOT/node_modules/yoga-layout"
-elif [ -d "$OPENTUI_ROOT/packages/core/node_modules/yoga-layout" ]; then
-  link_in_bun_cache "yoga-layout@*" "yoga-layout" "$OPENTUI_ROOT/packages/core/node_modules/yoga-layout"
-else
-  echo "⚠ Warning: yoga-layout not found in OpenTUI node_modules"
-fi
-
 # Link web-tree-sitter (required by core)
 echo "Linking web-tree-sitter..."
 if [ -d "$OPENTUI_ROOT/node_modules/web-tree-sitter" ]; then
