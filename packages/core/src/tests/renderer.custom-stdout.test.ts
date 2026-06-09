@@ -146,6 +146,27 @@ test("process.stdout: no feed is allocated (stdout-direct path)", async () => {
   expect(() => renderer.destroy()).not.toThrow()
 })
 
+test("stdout-direct renderer retries a native frame rejected by backpressure", async () => {
+  const renderer = new CliRenderer(createTestStdin(), createPlainStdout(), 80, 24, {
+    consoleMode: "disabled",
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  const rendererAny = renderer as any
+  const originalRender = rendererAny.lib.render.bind(rendererAny.lib)
+  let calls = 0
+  rendererAny.lib.render = (...args: Parameters<typeof originalRender>) => {
+    calls++
+    if (calls === 1) return 1
+    return originalRender(...args)
+  }
+
+  renderer.requestRender()
+  await new Promise<void>((resolve) => setTimeout(resolve, 50))
+
+  expect(calls).toBeGreaterThanOrEqual(2)
+})
+
 test("omitting stdin/stdout uses process streams", async () => {
   const renderer = await createCliRenderer({
     bufferedOutput: "memory",

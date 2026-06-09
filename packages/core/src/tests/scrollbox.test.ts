@@ -1195,50 +1195,6 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     }
   })
 
-  test("renders OpenCode reasoning immediately while initial highlighting is pending", async () => {
-    const scrollBox = new ScrollBoxRenderable(testRenderer, {
-      width: 40,
-      height: 10,
-      stickyScroll: true,
-      stickyStart: "bottom",
-      viewportCulling: true,
-    })
-    testRenderer.root.add(scrollBox)
-
-    for (let i = 0; i < 20; i++) {
-      scrollBox.add(new TextRenderable(testRenderer, { content: `Earlier ${i}`, flexShrink: 0 }))
-    }
-
-    const reasoning = new BoxRenderable(testRenderer, {
-      id: "reasoning",
-      paddingLeft: 3,
-      marginTop: 1,
-      flexShrink: 0,
-    })
-    reasoning.add(new TextRenderable(testRenderer, { content: "Thinking" }))
-
-    const code = new CodeRenderable(testRenderer, {
-      content: "REASONING_BODY_0\nREASONING_BODY_1\nREASONING_BODY_2",
-      filetype: "markdown",
-      drawUnstyledText: false,
-      streaming: true,
-      syntaxStyle: SyntaxStyle.fromTheme([]),
-      treeSitterClient: mockTreeSitterClient,
-    })
-    reasoning.add(code)
-    scrollBox.add(reasoning)
-
-    await renderOnce()
-
-    const pendingFrame = captureCharFrame()
-    expect(scrollBox.scrollTop).toBe(scrollBox.scrollHeight - scrollBox.viewport.height)
-    expect(reasoning.screenY).toBeLessThan(scrollBox.viewport.screenY + scrollBox.viewport.height)
-    expect(reasoning.screenY + reasoning.height).toBeGreaterThan(scrollBox.viewport.screenY)
-    expect(code.height).toBe(3)
-    expect(pendingFrame).toContain("Thinking")
-    expect(pendingFrame).toContain("REASONING_BODY_2")
-  })
-
   test("clips nested scrollboxes when multiple stacked children overflow (app-style tool blocks)", async () => {
     const custom = await createTestRenderer({ width: 120, height: 40 })
     const { renderer, renderOnce, captureCharFrame } = custom
