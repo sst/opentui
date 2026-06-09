@@ -17,7 +17,7 @@ env:
 jobs:
   build:
     name: Build Native Libraries
-    runs-on: blacksmith-6vcpu-macos-15
+    runs-on: blacksmith-12vcpu-macos-15
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -54,11 +54,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: blacksmith-6vcpu-macos-15
+          - os: blacksmith-12vcpu-macos-15
             platform: darwin-arm64
-          - os: blacksmith-4vcpu-ubuntu-2404
+          - os: blacksmith-8vcpu-ubuntu-2404
             platform: linux-x64
-          - os: blacksmith-4vcpu-windows-2025
+          - os: blacksmith-8vcpu-windows-2025
             platform: win32-x64
     runs-on: ${{ matrix.os }}
     defaults:
