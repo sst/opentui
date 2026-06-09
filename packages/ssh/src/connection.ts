@@ -38,11 +38,13 @@ const toRemoteAddress = (address: string | undefined, port: number | undefined):
 export function createConnectionHandler(dependencies: ConnectionDependencies): {
   onConnection: (client: Connection, info: ClientInfo) => void
   closeAll: () => Promise<void>
+  setAccepting: (accepting: boolean) => void
 } {
   const { authenticator, middlewares, handler, safe, idleTimeoutMs, maxTimeoutMs, sessionLimits } = dependencies
   const clients = new Set<Connection>()
   const bridges = new Map<SessionBridge, () => void>()
   let activeSessions = 0
+  let acceptingSessions = false
 
   const onConnection = (client: Connection, info: ClientInfo) => {
     clients.add(client)
@@ -87,7 +89,11 @@ export function createConnectionHandler(dependencies: ConnectionDependencies): {
         })
 
         sshSession.on("shell", (accept, reject) => {
-          if (connectionSessions >= sessionLimits.perConnection || activeSessions >= sessionLimits.global) {
+          if (
+            !acceptingSessions ||
+            connectionSessions >= sessionLimits.perConnection ||
+            activeSessions >= sessionLimits.global
+          ) {
             reject?.()
             return
           }
@@ -142,6 +148,7 @@ export function createConnectionHandler(dependencies: ConnectionDependencies): {
   }
 
   const closeAll = async () => {
+    acceptingSessions = false
     const draining = Promise.all([...bridges.keys()].map((bridge) => bridge.destroy()))
     let timeout: ReturnType<typeof setTimeout> | undefined
     await Promise.race([
@@ -164,5 +171,11 @@ export function createConnectionHandler(dependencies: ConnectionDependencies): {
     clients.clear()
   }
 
-  return { onConnection, closeAll }
+  return {
+    onConnection,
+    closeAll,
+    setAccepting(accepting) {
+      acceptingSessions = accepting
+    },
+  }
 }

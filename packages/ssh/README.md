@@ -317,12 +317,13 @@ const server = createServer({
 
 - **the handler + `session.onClose`** are the per-session lifecycle: set up on
   entry, tear down on disconnect. Anything reusable/cross-cutting is a middleware.
-- **`onError(err)`** is the single error sink. Every contained error lands here —
+- **`onError(err)`** is the runtime error sink. Contained application and transport errors land here —
   a throwing handler/middleware, a throwing `onResize`/`onClose`, a throwing auth
   predicate, connection- and server-level `ssh2` errors. Defaults to
   `console.error`. It is _reporting_, not reacting — to react to a session, use
   middleware / `onClose`; to observe lifecycle, use the `logging` middleware. (A
-  bind failure rejects `listen()` rather than coming here.)
+  bind failure rejects `listen()` rather than coming here; logging sink failures
+  are isolated and ignored so observability cannot affect a session.)
 - **`idleTimeout`** reaps a session after that long with **no client input**
   (re-armed on every keystroke). Per-session: only the idle session is dropped;
   active sessions and the listener are untouched. Durations must be between `1ms`

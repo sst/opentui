@@ -48,10 +48,28 @@ export function resolveHostKey(config: Pick<ServerConfig, "hostKey">): {
   let hostKeyPems: (string | Buffer)[]
   let source: string
 
+  if (hostKey !== undefined && (!hostKey || typeof hostKey !== "object" || Array.isArray(hostKey))) {
+    throw new ConfigError("hostKey must contain either path or pem")
+  }
+  if (hostKey && "pem" in hostKey && "path" in hostKey) {
+    throw new ConfigError("hostKey must contain either path or pem, not both")
+  }
   if (hostKey && "pem" in hostKey) {
+    if (
+      !(
+        typeof hostKey.pem === "string" ||
+        Buffer.isBuffer(hostKey.pem) ||
+        (Array.isArray(hostKey.pem) && hostKey.pem.every((pem) => typeof pem === "string" || Buffer.isBuffer(pem)))
+      )
+    ) {
+      throw new ConfigError("hostKey.pem must be a key or array of keys")
+    }
     hostKeyPems = Array.isArray(hostKey.pem) ? hostKey.pem : [hostKey.pem]
     source = "provided"
   } else if (hostKey && "path" in hostKey) {
+    if (typeof hostKey.path !== "string" || hostKey.path.length === 0) {
+      throw new ConfigError("hostKey.path must be a non-empty string")
+    }
     if (existsSync(hostKey.path)) {
       hostKeyPems = [readFileSync(hostKey.path)]
       source = `loaded ${hostKey.path}`
@@ -81,10 +99,12 @@ export function resolveHostKey(config: Pick<ServerConfig, "hostKey">): {
         }
       }
     }
-  } else {
+  } else if (hostKey === undefined) {
     // No host key configured: ephemeral ed25519 (regenerated each start).
     hostKeyPems = [generateParseableHostKey()]
     source = "ephemeral"
+  } else {
+    throw new ConfigError("hostKey must contain either path or pem")
   }
 
   const keys = hostKeyPems.map((pem) => parseOneKey(pem))

@@ -304,6 +304,36 @@ export function resolveAuth(auth: AuthConfig | undefined, onError: (err: unknown
   // "open" (or omitted) is the no-auth default, normalized to { none: true }; a
   // AuthMethods set passes through. The public `AuthConfig` sum forbids mixing the two.
   const isOpen = auth === undefined || auth === "open"
+  if (!isOpen) {
+    if (!auth || typeof auth !== "object" || Array.isArray(auth)) throw new ConfigError("invalid auth configuration")
+    if ("none" in auth) throw new ConfigError('auth.none is invalid — use auth: "open" for no authentication')
+    if (auth.password !== undefined && typeof auth.password !== "function") {
+      throw new ConfigError("auth.password must be a function")
+    }
+    if (auth.keyboardInteractive !== undefined && typeof auth.keyboardInteractive !== "function") {
+      throw new ConfigError("auth.keyboardInteractive must be a function")
+    }
+    if (
+      auth.publicKey !== undefined &&
+      auth.publicKey !== "any" &&
+      (!auth.publicKey || typeof auth.publicKey !== "object" || Array.isArray(auth.publicKey))
+    ) {
+      throw new ConfigError('auth.publicKey must be "any" or a policy object')
+    }
+    if (typeof auth.publicKey === "object") {
+      if (auth.publicKey.allow !== undefined && typeof auth.publicKey.allow !== "function") {
+        throw new ConfigError("auth.publicKey.allow must be a function")
+      }
+      const authorizedKeys = auth.publicKey.authorizedKeys
+      if (
+        authorizedKeys !== undefined &&
+        typeof authorizedKeys !== "string" &&
+        !(Array.isArray(authorizedKeys) && authorizedKeys.every((key) => typeof key === "string"))
+      ) {
+        throw new ConfigError("auth.publicKey.authorizedKeys must be a path or array of public keys")
+      }
+    }
+  }
   const authConfig: NormalizedAuthConfig = isOpen ? { none: true } : auth
 
   // The static allowlist nests under publicKey; parse it once here, not per

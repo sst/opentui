@@ -32,6 +32,7 @@ test("an authentication decision is ignored after the connection closes", async 
     sessionLimits: { perConnection: 1, global: 100 },
   })
   handler.onConnection(client, { ip: "127.0.0.1", port: 1234 } as ClientInfo)
+  handler.setAccepting(true)
   client.emit("authentication", {
     method: "none",
     username: "late",
@@ -86,6 +87,7 @@ test("closeAll waits for a logically closed bridge to finish draining", async ()
     sessionLimits: { perConnection: 1, global: 100 },
   })
   handler.onConnection(client, { ip: "127.0.0.1", port: 1234 } as ClientInfo)
+  handler.setAccepting(true)
   client.emit("ready")
   client.emit("session", () => sshSession)
   sshSession.emit("shell", () => channel)
@@ -143,6 +145,7 @@ test("closeAll force-closes a client that never drains", async () => {
     sessionLimits: { perConnection: 1, global: 100 },
   })
   handler.onConnection(client, { ip: "127.0.0.1", port: 1234 } as ClientInfo)
+  handler.setAccepting(true)
   client.emit("ready")
   client.emit("session", () => sshSession)
   sshSession.emit("shell", () => channel)
@@ -151,6 +154,74 @@ test("closeAll force-closes a client that never drains", async () => {
 
   await handler.closeAll()
   expect(socketDestroyCalls).toBe(1)
+})
+
+test("closeAll rejects shells requested after shutdown begins", async () => {
+  let rawCallback: (() => void) | undefined
+  const channel = Object.assign(new EventEmitter(), {
+    write(_data: Buffer | string, callback?: () => void) {
+      rawCallback = callback
+      return false
+    },
+    pause() {},
+    resume() {},
+    exit() {},
+    close() {},
+  })
+  const client = Object.assign(new EventEmitter(), {
+    end() {},
+    _sock: { destroy() {} },
+  }) as unknown as Connection
+  const handler = createConnectionHandler({
+    authenticator: {
+      advertisedMethods: () => ["none"],
+      authenticate: async () => ({ type: "reject", methods: ["none"] }),
+      handle: async () => ({ type: "accept", identity: { method: "none", username: "x" } }),
+    },
+    middlewares: [
+      (session) => {
+        session.write("pending")
+      },
+    ],
+    handler: () => {},
+    safe: createSafeInvoke(() => {}),
+    idleTimeoutMs: undefined,
+    maxTimeoutMs: undefined,
+    sessionLimits: { perConnection: 2, global: 2 },
+  })
+  handler.onConnection(client, { ip: "127.0.0.1", port: 1234 } as ClientInfo)
+  handler.setAccepting(true)
+  client.emit("ready")
+
+  const firstSession = new EventEmitter()
+  client.emit("session", () => firstSession)
+  firstSession.emit(
+    "shell",
+    () => channel,
+    () => {},
+  )
+  await Promise.resolve()
+  await Promise.resolve()
+
+  const closing = handler.closeAll()
+  await Promise.resolve()
+  let accepted = 0
+  let rejected = 0
+  const lateSession = new EventEmitter()
+  client.emit("session", () => lateSession)
+  lateSession.emit(
+    "shell",
+    () => {
+      accepted++
+      return channel
+    },
+    () => rejected++,
+  )
+
+  expect(accepted).toBe(0)
+  expect(rejected).toBe(1)
+  rawCallback?.()
+  await closing
 })
 
 test("a bridge setup failure releases reserved capacity", () => {
@@ -173,6 +244,7 @@ test("a bridge setup failure releases reserved capacity", () => {
     sessionLimits: { perConnection: 1, global: 1 },
   })
   handler.onConnection(client, { ip: "127.0.0.1", port: 1234 } as ClientInfo)
+  handler.setAccepting(true)
   client.emit("ready")
 
   let accepts = 0

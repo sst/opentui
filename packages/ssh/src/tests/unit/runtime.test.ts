@@ -6,6 +6,7 @@ import { utils } from "ssh2"
 import { formatBanner } from "../../banner.js"
 import { ConfigError } from "../../errors.js"
 import { resolveRuntime } from "../../runtime.js"
+import type { AuthConfig, ServerConfig } from "../../types.js"
 import { HOST_KEY } from "../support.js"
 
 /** The one-line `authorized_keys` form of HOST_KEY's public half, for allowlist tests. */
@@ -54,9 +55,64 @@ test("empty credentials (no methods) throw a ConfigError instead of locking ever
   expect(() => resolveRuntime({ auth: {}, hostKey: { pem: HOST_KEY } })).toThrow(/no authentication methods/i)
 })
 
+test("object-form auth cannot enable none authentication at runtime", () => {
+  expect(() =>
+    resolveRuntime({
+      auth: { none: true, password: () => false } as unknown as { password: () => boolean },
+      hostKey: { pem: HOST_KEY },
+    }),
+  ).toThrow(ConfigError)
+})
+
+test("object-form auth rejects none even when it is false", () => {
+  expect(() =>
+    resolveRuntime({
+      auth: { none: false, password: () => true } as unknown as { password: () => boolean },
+      hostKey: { pem: HOST_KEY },
+    }),
+  ).toThrow(ConfigError)
+})
+
+test("malformed runtime auth values throw ConfigError", () => {
+  for (const auth of [null, true, "password", { password: true }, { keyboardInteractive: "yes" }]) {
+    expect(() => resolveRuntime({ auth: auth as unknown as AuthConfig, hostKey: { pem: HOST_KEY } })).toThrow(
+      ConfigError,
+    )
+  }
+})
+
+test("malformed public-key policy fields throw ConfigError", () => {
+  for (const publicKey of [[], { allow: true }, { authorizedKeys: 42 }, { authorizedKeys: [PUBLIC_KEY_LINE, 42] }]) {
+    expect(() =>
+      resolveRuntime({
+        auth: { publicKey } as unknown as AuthConfig,
+        hostKey: { pem: HOST_KEY },
+      }),
+    ).toThrow(ConfigError)
+  }
+})
+
 test("an empty host-key list is rejected instead of creating an unusable server", () => {
   expect(() => resolveRuntime({ hostKey: { pem: [] } })).toThrow(ConfigError)
   expect(() => resolveRuntime({ hostKey: { pem: [] } })).toThrow(/host key/i)
+})
+
+test("a present malformed host-key value throws ConfigError instead of becoming ephemeral", () => {
+  for (const hostKey of [
+    {},
+    null,
+    true,
+    42,
+    "key",
+    { path: 42 },
+    { path: "" },
+    { pem: null },
+    { path: "key", pem: HOST_KEY },
+  ]) {
+    expect(() => resolveRuntime({ hostKey: hostKey as unknown as NonNullable<ServerConfig["hostKey"]> })).toThrow(
+      ConfigError,
+    )
+  }
 })
 
 test("a host-key list rejects if any configured key is invalid", () => {

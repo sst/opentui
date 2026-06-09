@@ -241,9 +241,11 @@ export interface ServerConfig<A extends AuthConfig = "open"> {
   /** Startup summary printed on listen(). Default true; set false to silence. */
   startupBanner?: boolean
   /**
-   * The single error sink — the *report* path. Every error the package contains
-   * lands here: a throwing handler/middleware, a throwing `onResize`/`onClose`, a
-   * throwing auth predicate, and per-connection / server-level ssh2 errors.
+   * The single runtime error sink — the *report* path. Contained application and
+   * transport errors land here: a throwing handler/middleware, a throwing
+   * `onResize`/`onClose`, a throwing auth predicate, and per-connection /
+   * server-level ssh2 errors. Logging sink failures are isolated and ignored so
+   * observability cannot affect a session.
    * Defaults to `console.error`. A bind failure during `listen()` rejects the
    * `listen()` promise instead of coming here.
    *

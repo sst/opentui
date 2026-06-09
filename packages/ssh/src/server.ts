@@ -75,6 +75,7 @@ function buildServer<Id extends Identity>(
             bindingAttempts--
             sshServer.removeListener("error", onError)
             reportsServerErrors = true
+            connectionHandler.setAccepting(true)
             const addressInfo = sshServer.address()
             const actualPort = typeof addressInfo === "object" && addressInfo ? addressInfo.port : port
             const boundHost = typeof addressInfo === "object" && addressInfo ? addressInfo.address : host
@@ -92,6 +93,7 @@ function buildServer<Id extends Identity>(
       })
     },
     async close() {
+      connectionHandler.setAccepting(false)
       await connectionHandler.closeAll()
       return new Promise<void>((resolve) => {
         sshServer.close(() => resolve())
