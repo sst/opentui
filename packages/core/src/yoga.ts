@@ -420,6 +420,10 @@ export class Node {
     return Node.fromPointer(config ? lib().yogaNodeCreateWithConfig(config.ptr) : lib().yogaNodeCreate())
   }
 
+  static createForOpenTUI(): Node {
+    return Node.fromPointer(lib().yogaNodeCreateForOpenTUI())
+  }
+
   static createDefault(): Node {
     return Node.create()
   }

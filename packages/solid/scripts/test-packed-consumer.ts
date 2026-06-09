@@ -38,6 +38,7 @@ const corePackageJson = JSON.parse(readFileSync(join(coreRootDir, "package.json"
 const nativePackageName = `${corePackageJson.name}-${process.platform}-${process.arch}`
 const nativePackageDir = join(coreRootDir, "node_modules", nativePackageName)
 const solidJsVersion = packageJson.peerDependencies?.["solid-js"] ?? "1.9.12"
+const commandTimeoutMs = 5 * 60 * 1000
 
 function runCommand(
   command: string,
@@ -49,6 +50,7 @@ function runCommand(
   const result = spawnSync(command, commandArgs, {
     cwd,
     stdio: options.stdio ?? "inherit",
+    timeout: commandTimeoutMs,
   })
 
   if (result.error) {
@@ -71,6 +73,7 @@ function runCommandExpectFailure(
   const result = spawnSync(command, commandArgs, {
     cwd,
     stdio: "pipe",
+    timeout: commandTimeoutMs,
   })
 
   if (result.error) {
@@ -382,22 +385,22 @@ function installAndTest(nodeDir: string): void {
 
   const nodeRealDir = realpathSync(nodeDir)
   const nodePermissionDirs = [...new Set([nodeDir, nodeRealDir])]
-  runCommand(nodePath, ["-e", `import(${JSON.stringify(packageJson.name)})`], nodeDir, "Node import smoke check failed")
+  const nodeFfiArgs = [
+    "--disable-warning=SecurityWarning",
+    "--disable-warning=ExperimentalWarning",
+    "--permission",
+    ...nodePermissionDirs.map((path) => `--allow-fs-read=${path}`),
+    ...nodePermissionDirs.map((path) => `--allow-fs-write=${path}`),
+    "--allow-ffi",
+    "--experimental-ffi",
+  ]
   runCommand(
     nodePath,
-    [
-      "--disable-warning=SecurityWarning",
-      "--disable-warning=ExperimentalWarning",
-      "--permission",
-      ...nodePermissionDirs.map((path) => `--allow-fs-read=${path}`),
-      ...nodePermissionDirs.map((path) => `--allow-fs-write=${path}`),
-      "--allow-ffi",
-      "--experimental-ffi",
-      "index.mjs",
-    ],
+    [...nodeFfiArgs, "-e", `import(${JSON.stringify(packageJson.name)})`],
     nodeDir,
-    "Node solid dist smoke tests failed",
+    "Node import smoke check failed",
   )
+  runCommand(nodePath, [...nodeFfiArgs, "index.mjs"], nodeDir, "Node solid dist smoke tests failed")
 
   assertNodeStaticImportFailure(
     nodeDir,
