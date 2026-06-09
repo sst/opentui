@@ -54,9 +54,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-latest
+          - os: blacksmith-6vcpu-macos-15
             platform: darwin-arm64
-          - os: ubuntu-latest
+          - os: blacksmith-4vcpu-ubuntu-2404
             platform: linux-x64
           - os: blacksmith-4vcpu-windows-2025
             platform: win32-x64
