@@ -147,31 +147,8 @@ export function createAuthenticator(
   const reject = (): AuthOutcome => ({ type: "reject", methods: advertisedMethods() })
 
   const allowFn = typeof auth.publicKey === "object" ? auth.publicKey.allow : undefined
-  const inAllowlist = (attempt: PublicKeyAttempt) => authorizedKeys?.has(attempt.key.blob.toString("base64")) ?? false
-
-  // Static admission is shared by the probe and signed pass; the dynamic predicate
-  // only runs after signature verification.
-  const staticAdmits = (attempt: PublicKeyAttempt): boolean => auth.publicKey === "any" || inAllowlist(attempt)
-
-  /**
-   * Probe pass: decide whether the client should sign this key. Do not run
-   * `allow` yet; it should only inspect a verified key.
-   */
-  const probeAdmits = (attempt: PublicKeyAttempt): boolean => {
-    if (staticAdmits(attempt)) return true
-    return typeof allowFn === "function"
-  }
-
-  /**
-   * Signed pass: the key is proven, so the dynamic `allow` predicate can safely
-   * make the final admission decision.
-   */
-  const verifiedAdmits = async (attempt: PublicKeyAttempt, fingerprint: string): Promise<boolean> => {
-    if (staticAdmits(attempt)) return true
-    return typeof allowFn === "function"
-      ? await guard(() => allowFn({ username: attempt.username, fingerprint, publicKey: attempt.key }))
-      : false
-  }
+  const staticAdmits = (attempt: PublicKeyAttempt): boolean =>
+    auth.publicKey === "any" || authorizedKeys?.has(attempt.key.blob.toString("base64")) === true
 
   const authenticate = async (attempt: AuthAttempt): Promise<AuthOutcome> => {
     switch (attempt.method) {
@@ -199,8 +176,10 @@ export function createAuthenticator(
 
         // First pass: tell the client whether this key is worth signing.
         if (!attempt.signature) {
-          return probeAdmits(attempt) ? { type: "acceptProbe" } : reject()
+          if (staticAdmits(attempt) || typeof allowFn === "function") return { type: "acceptProbe" }
+          return reject()
         }
+        const signature = attempt.signature
 
         // Signed pass only: fingerprint feeds the `allow` predicate and identity.
         const fingerprint = sha256Fingerprint(attempt.key.blob)
@@ -208,16 +187,18 @@ export function createAuthenticator(
         // ssh2 provides the signature but does not verify it for us. Do not mint
         // an identity until the signature verifies over the signed blob.
         if (!attempt.blob) return reject()
+        const blob = attempt.blob
         const parsed = parseAttemptKey(attempt.key)
-        let verified = false
-        try {
-          verified = parsed?.verify(attempt.blob, attempt.signature, attempt.hashAlgo) === true
-        } catch (err) {
-          onError(err)
-        }
+        const verified = await guard(() => parsed?.verify(blob, signature, attempt.hashAlgo) === true)
         if (!verified) return reject()
         // Key proven; now apply the admission policy.
-        if (!(await verifiedAdmits(attempt, fingerprint))) return reject()
+        if (!staticAdmits(attempt)) {
+          if (!allowFn) return reject()
+          const allowed = await guard(() =>
+            allowFn({ username: attempt.username, fingerprint, publicKey: attempt.key }),
+          )
+          if (!allowed) return reject()
+        }
         return {
           type: "accept",
           identity: { method: "publickey", username: attempt.username, fingerprint, publicKey: attempt.key },
@@ -313,18 +294,15 @@ export function resolveAuth(auth: AuthConfig | undefined, onError: (err: unknown
     if (auth.keyboardInteractive !== undefined && typeof auth.keyboardInteractive !== "function") {
       throw new ConfigError("auth.keyboardInteractive must be a function")
     }
-    if (
-      auth.publicKey !== undefined &&
-      auth.publicKey !== "any" &&
-      (!auth.publicKey || typeof auth.publicKey !== "object" || Array.isArray(auth.publicKey))
-    ) {
-      throw new ConfigError('auth.publicKey must be "any" or a policy object')
-    }
-    if (typeof auth.publicKey === "object") {
-      if (auth.publicKey.allow !== undefined && typeof auth.publicKey.allow !== "function") {
+    const publicKey = auth.publicKey
+    if (publicKey !== undefined && publicKey !== "any") {
+      if (!publicKey || typeof publicKey !== "object" || Array.isArray(publicKey)) {
+        throw new ConfigError('auth.publicKey must be "any" or a policy object')
+      }
+      if (publicKey.allow !== undefined && typeof publicKey.allow !== "function") {
         throw new ConfigError("auth.publicKey.allow must be a function")
       }
-      const authorizedKeys = auth.publicKey.authorizedKeys
+      const authorizedKeys = publicKey.authorizedKeys
       if (
         authorizedKeys !== undefined &&
         typeof authorizedKeys !== "string" &&
@@ -358,7 +336,5 @@ export function resolveAuth(auth: AuthConfig | undefined, onError: (err: unknown
   }
 
   // No-auth servers are wide open; listen() warns when one listens outside localhost.
-  const noneOnly = methods.length === 1 && methods[0] === "none"
-
-  return { authenticator, noneOnly, authorizedKeys }
+  return { authenticator, noneOnly: isOpen, authorizedKeys }
 }

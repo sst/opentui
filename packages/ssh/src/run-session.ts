@@ -38,11 +38,8 @@ export function runSession(
   const context = session.context as Record<string, unknown>
 
   const dispatch = async (index: number): Promise<void> => {
-    if (index === middlewares.length) {
-      // Leaf: enterApp owns the renderer lifecycle and resolves at teardown.
-      await bridge.enterApp(handler)
-      return
-    }
+    // The leaf owns the renderer lifecycle and resolves at teardown.
+    if (index === middlewares.length) return bridge.enterApp(handler)
     const mw = middlewares[index]!
     // Calling next() twice would re-run the rest of the chain; reject it.
     // Contained by safe() → onError.

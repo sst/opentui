@@ -93,7 +93,6 @@ function buildServer<Id extends Identity>(
       })
     },
     async close() {
-      connectionHandler.setAccepting(false)
       await connectionHandler.closeAll()
       return new Promise<void>((resolve) => {
         sshServer.close(() => resolve())

@@ -157,11 +157,9 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
 
   let closed = false
   let channelClosed = false // set when the client hung up — don't poke a dead channel
-  let transportClosing = false
   let stdoutFinished = false
   let pendingRawWrites = 0
   let transportCloseTimer: ReturnType<typeof setTimeout> | undefined
-  let transportClosedResolved = false
   let resolveTransportClosed!: () => void
   const transportClosed = new Promise<void>((resolve) => {
     resolveTransportClosed = resolve
@@ -240,8 +238,6 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
 
   // All session-ending paths funnel through this idempotent teardown.
   const settleTransportClosed = () => {
-    if (transportClosedResolved) return
-    transportClosedResolved = true
     if (transportCloseTimer) clearTimeout(transportCloseTimer)
     resolveTransportClosed()
   }
@@ -254,7 +250,7 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
   }
 
   const finishTransportClose = () => {
-    if (!transportClosing || !stdoutFinished || pendingRawWrites > 0 || channelClosed) return
+    if (!closed || !stdoutFinished || pendingRawWrites > 0 || channelClosed) return
     closeTransport()
   }
 
@@ -264,8 +260,7 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
     if (idleTimer) clearTimeout(idleTimer)
     if (maxTimer) clearTimeout(maxTimer)
     ignoreErrors(() => renderer?.destroy())
-    if (!channelClosed && !transportClosing) {
-      transportClosing = true
+    if (!channelClosed) {
       transportCloseTimer = setTimeout(closeTransport, TRANSPORT_DRAIN_TIMEOUT_MS)
       // Core can enqueue final terminal-restoration bytes during destroy. End the
       // adapter on the next microtask and let its pending writes drain before close.

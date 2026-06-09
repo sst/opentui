@@ -10,6 +10,7 @@ const { utils } = ssh2
 /** SSH key helpers: fingerprinting, single-key parse normalization, and host-key resolution. */
 
 const HOST_KEYGEN_ATTEMPTS = 20
+const isKeyInput = (value: unknown): value is string | Buffer => typeof value === "string" || Buffer.isBuffer(value)
 
 /** OpenSSH-style SHA256 fingerprint of a raw public-key blob (`ssh-keygen -lf` form, e.g. `SHA256:nThbg6kX…`). */
 export function sha256Fingerprint(publicKeyBlob: Buffer): string {
@@ -48,25 +49,19 @@ export function resolveHostKey(config: Pick<ServerConfig, "hostKey">): {
   let hostKeyPems: (string | Buffer)[]
   let source: string
 
-  if (hostKey !== undefined && (!hostKey || typeof hostKey !== "object" || Array.isArray(hostKey))) {
+  if (hostKey === undefined) {
+    hostKeyPems = [generateParseableHostKey()]
+    source = "ephemeral"
+  } else if (!hostKey || typeof hostKey !== "object" || Array.isArray(hostKey)) {
     throw new ConfigError("hostKey must contain either path or pem")
-  }
-  if (hostKey && "pem" in hostKey && "path" in hostKey) {
-    throw new ConfigError("hostKey must contain either path or pem, not both")
-  }
-  if (hostKey && "pem" in hostKey) {
-    if (
-      !(
-        typeof hostKey.pem === "string" ||
-        Buffer.isBuffer(hostKey.pem) ||
-        (Array.isArray(hostKey.pem) && hostKey.pem.every((pem) => typeof pem === "string" || Buffer.isBuffer(pem)))
-      )
-    ) {
+  } else if ("pem" in hostKey) {
+    if ("path" in hostKey) throw new ConfigError("hostKey must contain either path or pem, not both")
+    if (!(isKeyInput(hostKey.pem) || (Array.isArray(hostKey.pem) && hostKey.pem.every(isKeyInput)))) {
       throw new ConfigError("hostKey.pem must be a key or array of keys")
     }
     hostKeyPems = Array.isArray(hostKey.pem) ? hostKey.pem : [hostKey.pem]
     source = "provided"
-  } else if (hostKey && "path" in hostKey) {
+  } else if ("path" in hostKey) {
     if (typeof hostKey.path !== "string" || hostKey.path.length === 0) {
       throw new ConfigError("hostKey.path must be a non-empty string")
     }
@@ -99,10 +94,6 @@ export function resolveHostKey(config: Pick<ServerConfig, "hostKey">): {
         }
       }
     }
-  } else if (hostKey === undefined) {
-    // No host key configured: ephemeral ed25519 (regenerated each start).
-    hostKeyPems = [generateParseableHostKey()]
-    source = "ephemeral"
   } else {
     throw new ConfigError("hostKey must contain either path or pem")
   }
