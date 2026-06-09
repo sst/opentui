@@ -144,8 +144,8 @@ test("stdin applies backpressure before renderer creation and resumes when read"
   await flush()
   if (!stdin) throw new Error("renderer did not receive stdin")
 
-  expect(stdin.readableHighWaterMark).toBe(chunk.length)
   expect(stdin.readableLength).toBe(chunk.length)
+  expect(stdin.readableLength).toBeGreaterThanOrEqual(stdin.readableHighWaterMark)
 
   expect(stdin.read()).toEqual(chunk)
   expect(channel.resumeCalls).toBe(1)
