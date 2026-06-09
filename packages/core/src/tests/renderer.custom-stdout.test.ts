@@ -221,6 +221,20 @@ test("feed-backed renderer retries one skipped frame after feed idle", async () 
   expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
 })
 
+test("feed-backed renderer retries immediately when feed pressure outlasts the frame interval", async () => {
+  const { renderer, clock } = createRetryRenderer(true)
+  const idle = deferFeedIdle(renderer)
+  let calls = 0
+  mockNativeRender(renderer, () => (calls++ === 0 ? 1 : 0))
+
+  await (renderer as any).loop()
+  clock.advance(100)
+  await idle.resolve()
+  clock.advance(0)
+
+  expect(calls).toBe(2)
+})
+
 test("feed-backed renderer coalesces requests while waiting for feed idle", async () => {
   const { renderer, clock } = createRetryRenderer(true)
   const idle = deferFeedIdle(renderer)
@@ -290,6 +304,26 @@ test("native failure does not retry and recovers on a later render request", asy
   expect(frames).toBe(1)
 })
 
+test("running renderer recovers from native failure on a later render request", async () => {
+  const { renderer, clock } = createRetryRenderer()
+  const originalError = console.error
+  console.error = () => {}
+  destroyFns.unshift(() => {
+    console.error = originalError
+  })
+  let calls = 0
+  mockNativeRender(renderer, () => (calls++ === 0 ? 2 : 0))
+
+  renderer.start()
+  expect(calls).toBe(1)
+  expect(renderer.isRunning).toBe(true)
+
+  renderer.requestRender()
+  clock.advance(17)
+
+  expect(calls).toBe(2)
+})
+
 test("feed-backed native failure does not wait for feed idle or retry", async () => {
   const { renderer, clock } = createRetryRenderer(true)
   const idle = deferFeedIdle(renderer)
@@ -352,6 +386,50 @@ for (const control of ["pause", "stop", "suspend", "destroy"] as const) {
     expect(calls).toBe(1)
   })
 }
+
+for (const [control, state] of [
+  ["pause", "paused"],
+  ["stop", "stopped"],
+] as const) {
+  test(`one-shot render requested while ${state} retries after feed idle`, async () => {
+    const { renderer, clock } = createRetryRenderer(true)
+    const idle = deferFeedIdle(renderer)
+    let calls = 0
+    mockNativeRender(renderer, () => (calls++ === 0 ? 1 : 0))
+
+    renderer[control]()
+    renderer.requestRender()
+    clock.advance(17)
+    expect(calls).toBe(1)
+
+    await idle.resolve()
+    clock.advance(17)
+
+    expect(calls).toBe(2)
+  })
+}
+
+test("cancelling a skipped frame with an immediate rerender request resolves idle", async () => {
+  const { renderer } = createRetryRenderer(true)
+  const idle = deferFeedIdle(renderer)
+  renderer.setFrameCallback(async () => {
+    renderer.requestRender()
+  })
+  mockNativeRender(renderer, () => 1)
+
+  await (renderer as any).loop()
+  renderer.pause()
+  const idlePromise = renderer.idle()
+  let idleResolved = false
+  void idlePromise.then(() => {
+    idleResolved = true
+  })
+
+  await idle.resolve()
+  await Promise.resolve()
+
+  expect(idleResolved).toBe(true)
+})
 
 test("running renderer resumes after feed idle", async () => {
   const { renderer, clock } = createRetryRenderer(true)
@@ -558,6 +636,43 @@ test("split-footer custom stdout retains captured commits when native fails and 
 
   expect(rendererAny.externalOutputQueue.size).toBe(0)
   expect(stdout.getWrittenBytes().toString("binary")).toContain("captured-while-native-failed")
+})
+
+test("split-footer native failure without a feed does not schedule automatic retries", async () => {
+  const clock = new ManualClock()
+  const stdout = createPlainStdout()
+  const renderer = new CliRenderer(createTestStdin(), stdout, 80, 24, {
+    screenMode: "split-footer",
+    consoleMode: "disabled",
+    bufferedOutput: "memory",
+    clock,
+  })
+  ;(renderer as any).updateScheduled = false
+  clock.runAll()
+  destroyFns.push(() => renderer.destroy())
+
+  const rendererAny = renderer as any
+  const originalCommit = rendererAny.lib.commitSplitFooterSnapshot
+  const originalError = console.error
+  let calls = 0
+  rendererAny.lib.commitSplitFooterSnapshot = () => {
+    calls++
+    return { renderOffset: rendererAny.renderOffset, status: 2 }
+  }
+  console.error = () => {}
+  destroyFns.unshift(() => {
+    rendererAny.lib.commitSplitFooterSnapshot = originalCommit
+    console.error = originalError
+  })
+
+  stdout.write("captured-while-native-failed\n")
+  await rendererAny.loop()
+  expect(calls).toBe(1)
+
+  clock.advance(1000)
+
+  expect(calls).toBe(1)
+  expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
 })
 
 test("capture-to-passthrough flushes queued split-footer commits while feed is backpressured", async () => {
