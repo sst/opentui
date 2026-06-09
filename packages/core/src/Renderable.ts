@@ -199,9 +199,18 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 }
 
-const yogaConfig: Config = Yoga.Config.create()
-yogaConfig.setUseWebDefaults(false)
-yogaConfig.setPointScaleFactor(1)
+let yogaConfig: Config | undefined
+
+function getYogaConfig(): Config {
+  if (!yogaConfig) {
+    const config = Yoga.Config.create()
+    config.setUseWebDefaults(false)
+    config.setPointScaleFactor(1)
+    yogaConfig = config
+  }
+
+  return yogaConfig
+}
 
 interface LayoutGenerationContext extends RenderContext {
   __otuiLayoutGeneration?: number
@@ -318,8 +327,7 @@ export abstract class Renderable extends BaseRenderable {
     this._liveCount = this._live && this._visible ? 1 : 0
     this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
 
-    // TODO: use a global yoga config
-    this.yogaNode = Yoga.Node.create(yogaConfig)
+    this.yogaNode = Yoga.Node.create(getYogaConfig())
     this.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
     this.setupYogaProperties(options)
 
@@ -1774,7 +1782,7 @@ export class RootRenderable extends Renderable {
       this.yogaNode.free()
     }
 
-    this.yogaNode = Yoga.Node.create(yogaConfig)
+    this.yogaNode = Yoga.Node.create(getYogaConfig())
     this.yogaNode.setWidth(ctx.width)
     this.yogaNode.setHeight(ctx.height)
     this.yogaNode.setFlexDirection(FlexDirection.Column)
