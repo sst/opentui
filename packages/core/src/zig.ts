@@ -1296,6 +1296,10 @@ function getOpenTUILib(libPath?: string) {
       args: [],
       returns: "ptr",
     },
+    yogaNodeCreateForOpenTUI: {
+      args: [],
+      returns: "ptr",
+    },
     yogaNodeCreateWithConfig: {
       args: ["ptr"],
       returns: "ptr",
@@ -2148,6 +2152,7 @@ export interface RenderLib extends AudioEngineLib {
   yogaConfigSetExperimentalFeatureEnabled: (config: Pointer, feature: number, enabled: boolean) => void
   yogaConfigIsExperimentalFeatureEnabled: (config: Pointer, feature: number) => boolean
   yogaNodeCreate: () => Pointer
+  yogaNodeCreateForOpenTUI: () => Pointer
   yogaNodeCreateWithConfig: (config: Pointer) => Pointer
   yogaNodeFree: (node: Pointer) => void
   yogaNodeFreeRecursive: (node: Pointer) => void
@@ -3477,6 +3482,12 @@ class FFIRenderLib implements RenderLib {
   public yogaNodeCreate(): Pointer {
     const node = this.opentui.symbols.yogaNodeCreate()
     if (!node) throw new Error("Failed to create Yoga node")
+    return node
+  }
+
+  public yogaNodeCreateForOpenTUI(): Pointer {
+    const node = this.opentui.symbols.yogaNodeCreateForOpenTUI()
+    if (!node) throw new Error("Failed to create OpenTUI Yoga node")
     return node
   }
 

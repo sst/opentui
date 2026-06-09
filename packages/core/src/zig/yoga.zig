@@ -74,6 +74,8 @@ const CallbackContext = struct {
 const JsMeasureCallback = *const fn (?*anyopaque, f32, u32, f32, u32) callconv(.c) void;
 const JsDirtiedCallback = *const fn () callconv(.c) void;
 const callback_allocator = std.heap.c_allocator;
+var opentui_config: YGConfigRef = null;
+var opentui_config_mutex: std.Thread.Mutex = .{};
 
 threadlocal var tls_measure_width: f32 = 0;
 threadlocal var tls_measure_height: f32 = 0;
@@ -136,6 +138,20 @@ fn toWrap(value: u32) c.YGWrap {
 
 fn undefinedValue() c.YGValue {
     return .{ .value = std.math.nan(f32), .unit = c.YGUnitUndefined };
+}
+
+fn getOpenTUIConfig() YGConfigRef {
+    opentui_config_mutex.lock();
+    defer opentui_config_mutex.unlock();
+
+    if (opentui_config == null) {
+        const config = c.YGConfigNew();
+        c.YGConfigSetUseWebDefaults(config, false);
+        c.YGConfigSetPointScaleFactor(config, 1);
+        opentui_config = config;
+    }
+
+    return opentui_config;
 }
 
 fn pointValue(value: f32) c.YGValue {
@@ -268,6 +284,10 @@ export fn yogaConfigIsExperimentalFeatureEnabled(config: YGConfigConstRef, featu
 
 export fn yogaNodeCreate() YGNodeRef {
     return c.YGNodeNew();
+}
+
+export fn yogaNodeCreateForOpenTUI() YGNodeRef {
+    return c.YGNodeNewWithConfig(getOpenTUIConfig());
 }
 
 export fn yogaNodeCreateWithConfig(config: YGConfigConstRef) YGNodeRef {
@@ -595,6 +615,19 @@ test "Yoga wrapper computes basic flex layout" {
     yogaNodeGetComputedLayout(child, &layout);
     try std.testing.expectApproxEqAbs(@as(f32, 100), layout.width, 0.001);
     try std.testing.expectApproxEqAbs(@as(f32, 100), layout.height, 0.001);
+}
+
+test "OpenTUI Yoga nodes use the native fixed config" {
+    const first = yogaNodeCreateForOpenTUI();
+    defer yogaNodeFree(first);
+    const second = yogaNodeCreateForOpenTUI();
+    defer yogaNodeFree(second);
+
+    const first_config = c.YGNodeGetConfig(first);
+    const second_config = c.YGNodeGetConfig(second);
+    try std.testing.expect(first_config == second_config);
+    try std.testing.expect(!c.YGConfigGetUseWebDefaults(first_config));
+    try std.testing.expectEqual(@as(f32, 1), c.YGConfigGetPointScaleFactor(first_config));
 }
 
 test "Yoga wrapper packs style values" {

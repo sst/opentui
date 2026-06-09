@@ -1,5 +1,5 @@
 import { EventEmitter } from "events"
-import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "./yoga.js"
+import Yoga, { Direction, Display, Edge, FlexDirection, type Node as YogaNode } from "./yoga.js"
 import { OptimizedBuffer } from "./buffer.js"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
 import type { MouseEventType } from "./lib/parse.mouse.js"
@@ -199,19 +199,6 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 }
 
-let yogaConfig: Config | undefined
-
-function getYogaConfig(): Config {
-  if (!yogaConfig) {
-    const config = Yoga.Config.create()
-    config.setUseWebDefaults(false)
-    config.setPointScaleFactor(1)
-    yogaConfig = config
-  }
-
-  return yogaConfig
-}
-
 interface LayoutGenerationContext extends RenderContext {
   __otuiLayoutGeneration?: number
   __otuiRenderListRevision?: number
@@ -327,7 +314,7 @@ export abstract class Renderable extends BaseRenderable {
     this._liveCount = this._live && this._visible ? 1 : 0
     this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
 
-    this.yogaNode = Yoga.Node.create(getYogaConfig())
+    this.yogaNode = Yoga.Node.createForOpenTUI()
     this.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
     this.setupYogaProperties(options)
 
@@ -1782,7 +1769,7 @@ export class RootRenderable extends Renderable {
       this.yogaNode.free()
     }
 
-    this.yogaNode = Yoga.Node.create(getYogaConfig())
+    this.yogaNode = Yoga.Node.createForOpenTUI()
     this.yogaNode.setWidth(ctx.width)
     this.yogaNode.setHeight(ctx.height)
     this.yogaNode.setFlexDirection(FlexDirection.Column)
