@@ -134,6 +134,43 @@ test("publickey: a signature from the WRONG private key is rejected", async () =
   expect(spoofed.type).toBe("reject")
 })
 
+test("fuzz: mutated public-key proofs always fail closed", async () => {
+  const key = genKey()
+  const valid = pkAttempt({ pubPem: key.public, privPem: key.private })
+  if (valid.method !== "publickey" || !valid.signature || !valid.blob) throw new Error("invalid fuzz fixture")
+  const auth = createAuthenticator({ publicKey: "any" })
+
+  for (let seed = 1; seed <= 256; seed++) {
+    const signature = Buffer.from(valid.signature)
+    const blob = Buffer.from(valid.blob)
+    if (seed % 2 === 0) {
+      signature[seed % signature.length] ^= (seed * 17) & 0xff || 1
+    } else {
+      blob[seed % blob.length] ^= (seed * 29) & 0xff || 1
+    }
+    const outcome = await auth.authenticate({ ...valid, signature, blob })
+    expect(outcome.type).toBe("reject")
+  }
+})
+
+test("fuzz: malformed public keys and signatures never authenticate", async () => {
+  const auth = createAuthenticator({ publicKey: "any" })
+
+  for (let seed = 1; seed <= 256; seed++) {
+    const bytes = Buffer.alloc(seed % 97)
+    for (let i = 0; i < bytes.length; i++) bytes[i] = (seed * 31 + i * 17) & 0xff
+    const outcome = await auth.authenticate({
+      method: "publickey",
+      username: `fuzz-${seed}`,
+      key: { algorithm: seed % 2 ? "ssh-ed25519" : `invalid-${seed}`, blob: bytes },
+      blob: Buffer.from(`blob-${seed}`),
+      signature: Buffer.from(bytes).reverse(),
+      hashAlgo: seed % 3 === 0 ? `invalid-${seed}` : undefined,
+    })
+    expect(outcome.type).toBe("reject")
+  }
+})
+
 for (const [name, key, hashAlgo] of [
   ["RSA SHA-256", () => utils.generateKeyPairSync("rsa", { bits: 2048 }), "sha256"],
   ["RSA SHA-512", () => utils.generateKeyPairSync("rsa", { bits: 2048 }), "sha512"],

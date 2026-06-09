@@ -556,3 +556,45 @@ test("pty dimensions are clamped before renderer creation and resize", async () 
   expect(bridge.session.rows).toBe(MAX_PTY.rows)
   expect(resized).toEqual([MAX_PTY.cols, MAX_PTY.rows])
 })
+
+test("fuzz: arbitrary PTY dimensions remain finite, positive, and bounded", async () => {
+  const values = [
+    Number.NaN,
+    Number.NEGATIVE_INFINITY,
+    Number.POSITIVE_INFINITY,
+    -Number.MAX_VALUE,
+    -1,
+    -0,
+    0,
+    Number.MIN_VALUE,
+    1,
+    1.5,
+    MAX_PTY.cols,
+    MAX_PTY.rows,
+    Number.MAX_SAFE_INTEGER,
+    Number.MAX_VALUE,
+  ]
+  for (let seed = 1; seed <= 128; seed++) values.push(((seed * 2_654_435_761) % 2_000_000) - 1_000_000)
+
+  for (let i = 0; i < values.length; i++) {
+    let created: { width?: number; height?: number } | undefined
+    const { bridge } = testBridge({
+      pty: { term: "fuzz", cols: values[i]!, rows: values[values.length - 1 - i]!, hasPty: true },
+      createRenderer: ((options: Parameters<RendererFactory>[0]) => {
+        created = { width: options!.width, height: options!.height }
+        return rendererStub({ width: options!.width, height: options!.height })
+      }) as unknown as RendererFactory,
+    })
+    const entered = bridge.enterApp(() => {})
+    await flush()
+
+    expect(created?.width).toBeGreaterThan(0)
+    expect(created?.width).toBeLessThanOrEqual(MAX_PTY.cols)
+    expect(created?.height).toBeGreaterThan(0)
+    expect(created?.height).toBeLessThanOrEqual(MAX_PTY.rows)
+    expect(Number.isInteger(created?.width)).toBe(true)
+    expect(Number.isInteger(created?.height)).toBe(true)
+    bridge.destroy()
+    await entered
+  }
+})

@@ -89,6 +89,20 @@ test("numeric timeouts must be finite positive values no longer than 24 hours", 
   expect(() => resolveRuntime({ maxTimeout: 0, hostKey: { pem: HOST_KEY } })).toThrow(ConfigError)
 })
 
+test("fuzz: arbitrary timeout strings either parse within bounds or throw ConfigError", () => {
+  for (let seed = 1; seed <= 512; seed++) {
+    const value = String.fromCharCode(...Array.from({ length: seed % 24 }, (_, i) => 32 + ((seed * 41 + i * 23) % 95)))
+    try {
+      const ms = resolveRuntime({ idleTimeout: value, hostKey: { pem: HOST_KEY } }).idleTimeoutMs
+      expect(ms).toBeInteger()
+      expect(ms!).toBeGreaterThan(0)
+      expect(ms!).toBeLessThanOrEqual(86_400_000)
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError)
+    }
+  }
+})
+
 test("public-key policy must have an admitting rule", () => {
   expect(() => resolveRuntime({ auth: { publicKey: {} }, hostKey: { pem: HOST_KEY } })).toThrow(ConfigError)
   expect(() => resolveRuntime({ auth: { publicKey: { authorizedKeys: [] } }, hostKey: { pem: HOST_KEY } })).toThrow(

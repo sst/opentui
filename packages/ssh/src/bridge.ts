@@ -24,7 +24,8 @@ const UNKNOWN_REMOTE_ADDRESS: RemoteAddress = { address: "unknown" }
 
 function clampPtyDimension(value: number, fallback: number, max: number): number {
   if (!Number.isFinite(value) || value <= 0) return fallback
-  return Math.min(Math.floor(value), max)
+  const integer = Math.floor(value)
+  return integer > 0 ? Math.min(integer, max) : fallback
 }
 
 function normalizePtyInfo(pty: PtyInfo): PtyInfo {

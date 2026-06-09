@@ -26,6 +26,29 @@ test("default logging escapes client-controlled control characters", async () =>
   }
 })
 
+test("fuzz: default logging never emits client-controlled control bytes", async () => {
+  const log = spyOn(console, "log").mockImplementation(() => {})
+  try {
+    for (let seed = 1; seed <= 256; seed++) {
+      const value = String.fromCharCode(...Array.from({ length: 32 }, (_, i) => (seed * 37 + i * 19) & 0xff))
+      await logging()(
+        {
+          identity: { method: "none", username: value },
+          remoteAddress: { address: "127.0.0.1", port: 22 },
+          term: value,
+          cols: 80,
+          rows: 24,
+        } as MiddlewareSession,
+        (() => Promise.resolve({})) as never,
+      )
+    }
+
+    for (const [line] of log.mock.calls) expect(String(line)).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
+  } finally {
+    log.mockRestore()
+  }
+})
+
 test("a throwing logging sink cannot prevent the session from running", async () => {
   let nextCalls = 0
   const middleware = logging({
