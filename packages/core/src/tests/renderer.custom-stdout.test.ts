@@ -61,6 +61,8 @@ function createRetryRenderer(feedBacked = false): { renderer: CliRenderer; clock
       clock,
     },
   )
+  ;(renderer as any).updateScheduled = false
+  clock.runAll()
   destroyFns.push(() => renderer.destroy())
   return { renderer, clock }
 }
@@ -74,13 +76,28 @@ function mockNativeRender(renderer: CliRenderer, render: (...args: any[]) => num
   })
 }
 
-async function renderAndAdvanceRetry(renderer: CliRenderer, clock: ManualClock): Promise<void> {
-  await (renderer as any).loop()
-  if ((renderer as any)._feed) {
-    await (renderer as any)._feed.idle()
-    await Promise.resolve()
+function deferFeedIdle(renderer: CliRenderer): { resolve: () => Promise<void>; calls: () => number } {
+  const feed = (renderer as any)._feed
+  const originalIdle = feed.idle.bind(feed)
+  let resolve = () => {}
+  let calls = 0
+  feed.idle = () => {
+    calls++
+    return new Promise<void>((done) => {
+      resolve = done
+    })
   }
-  clock.advance(17)
+  destroyFns.unshift(() => {
+    feed.idle = originalIdle
+  })
+  return {
+    resolve: async () => {
+      resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    },
+    calls: () => calls,
+  }
 }
 
 function forceNativeSplitSkip(renderer: CliRenderer): () => void {
@@ -182,181 +199,174 @@ test("process.stdout: no feed is allocated (stdout-direct path)", async () => {
   expect(() => renderer.destroy()).not.toThrow()
 })
 
-test("stdout-direct renderer retries a native frame rejected by backpressure", async () => {
-  const { renderer, clock } = createRetryRenderer()
-
-  let calls = 0
-  mockNativeRender(renderer, () => {
-    calls++
-    if (calls === 1) return 1
-    return 0
-  })
-
-  await renderAndAdvanceRetry(renderer, clock)
-
-  expect(calls).toBeGreaterThanOrEqual(2)
-})
-
-test("stdout-direct renderer retries repeated rejection once per frame until accepted", async () => {
-  const { renderer, clock } = createRetryRenderer()
-
-  let calls = 0
-  mockNativeRender(renderer, () => {
-    calls++
-    if (calls < 4) return 1
-    return 0
-  })
-
-  await (renderer as any).loop()
-  clock.advance(17)
-  clock.advance(17)
-  clock.advance(17)
-
-  expect(calls).toBe(4)
-  expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
-})
-
-test("stdout-direct renderer coalesces updates while a rejected frame waits for retry", async () => {
-  const { renderer, clock } = createRetryRenderer()
-
-  let calls = 0
-  mockNativeRender(renderer, () => {
-    calls++
-    if (calls === 1) {
-      renderer.requestRender()
-      renderer.requestRender()
-      return 1
-    }
-    return 0
-  })
-
-  await (renderer as any).loop()
-  clock.advance(17)
-  clock.advance(17)
-
-  expect(calls).toBe(3)
-  expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
-})
-
-test("stdout-direct renderer preserves forced repaint until a rejected frame succeeds", async () => {
-  const { renderer, clock } = createRetryRenderer()
-
-  const rendererAny = renderer as any
-  const forceValues: boolean[] = []
-  rendererAny.forceFullRepaintRequested = true
-  mockNativeRender(renderer, (_rendererPtr: unknown, force: boolean) => {
-    forceValues.push(force)
-    if (forceValues.length === 1) return 1
-    return 0
-  })
-
-  await renderAndAdvanceRetry(renderer, clock)
-
-  expect(forceValues).toEqual([true, true])
-  expect(rendererAny.forceFullRepaintRequested).toBe(false)
-})
-
-test("stdout-direct renderer emits a frame event only after rejected output succeeds", async () => {
-  const { renderer, clock } = createRetryRenderer()
-
+test("feed-backed renderer retries one skipped frame after feed idle", async () => {
+  const { renderer, clock } = createRetryRenderer(true)
+  const idle = deferFeedIdle(renderer)
   let calls = 0
   let frames = 0
-  mockNativeRender(renderer, () => {
-    calls++
-    if (calls === 1) return 1
-    return 0
-  })
+  mockNativeRender(renderer, () => (calls++ === 0 ? 1 : 0))
   renderer.on(CliRenderEvents.FRAME, () => frames++)
 
-  await renderAndAdvanceRetry(renderer, clock)
+  await (renderer as any).loop()
+  expect(calls).toBe(1)
+  expect(frames).toBe(0)
+  expect(idle.calls()).toBe(1)
 
-  expect(calls).toBeGreaterThanOrEqual(2)
-  expect(frames).toBe(calls - 1)
+  await idle.resolve()
+  expect(renderer.getSchedulerState().hasScheduledRender).toBe(true)
+  clock.advance(17)
+
+  expect(calls).toBe(2)
+  expect(frames).toBe(1)
   expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
 })
 
-test("stdout-direct renderer cancels a rejected-frame retry when suspended", async () => {
-  const { renderer, clock } = createRetryRenderer()
-
-  let calls = 0
-  mockNativeRender(renderer, () => {
-    calls++
-    return 1
-  })
-
-  await (renderer as any).loop()
-  expect(renderer.getSchedulerState().hasScheduledRender).toBe(true)
-  renderer.suspend()
-  clock.advance(17)
-
-  expect(calls).toBe(1)
-  expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
-})
-
-test("stdout-direct renderer cancels a rejected-frame retry when destroyed", async () => {
-  const { renderer, clock } = createRetryRenderer()
-
-  let calls = 0
-  mockNativeRender(renderer, () => {
-    calls++
-    return 1
-  })
-
-  await (renderer as any).loop()
-  expect(renderer.getSchedulerState().hasScheduledRender).toBe(true)
-  renderer.destroy()
-  clock.advance(17)
-
-  expect(calls).toBe(1)
-})
-
-test("feed-backed renderer retries after native rejection", async () => {
+test("feed-backed renderer coalesces requests while waiting for feed idle", async () => {
   const { renderer, clock } = createRetryRenderer(true)
+  const idle = deferFeedIdle(renderer)
+  const observed: number[] = []
+  let state = 1
+  let calls = 0
+  renderer.setFrameCallback(async () => {
+    observed.push(state)
+  })
+  mockNativeRender(renderer, () => (calls++ === 0 ? 1 : 0))
 
+  await (renderer as any).loop()
+  state = 2
+  renderer.requestRender()
+  renderer.requestRender()
+  renderer.requestRender()
+  expect(calls).toBe(1)
+
+  await idle.resolve()
+  clock.advance(17)
+  await Promise.resolve()
+
+  expect(calls).toBe(2)
+  expect(observed).toEqual([1, 2])
+})
+
+test("feed-backed renderer waits for each repeated skip", async () => {
+  const { renderer, clock } = createRetryRenderer(true)
+  const firstIdle = deferFeedIdle(renderer)
+  let calls = 0
+  mockNativeRender(renderer, () => (calls++ < 2 ? 1 : 0))
+
+  await (renderer as any).loop()
+  await firstIdle.resolve()
+  clock.advance(17)
+  expect(calls).toBe(2)
+  expect(firstIdle.calls()).toBe(2)
+
+  await firstIdle.resolve()
+  clock.advance(17)
+  expect(calls).toBe(3)
+})
+
+test("native failure does not retry and recovers on a later render request", async () => {
+  const { renderer, clock } = createRetryRenderer()
+  const originalError = console.error
+  const errors: unknown[][] = []
+  console.error = (...args: unknown[]) => errors.push(args)
+  destroyFns.unshift(() => {
+    console.error = originalError
+  })
+  let calls = 0
+  let frames = 0
+  mockNativeRender(renderer, () => (calls++ === 0 ? 2 : 0))
+  renderer.on(CliRenderEvents.FRAME, () => frames++)
+
+  await (renderer as any).loop()
+  clock.advance(1000)
+  expect(calls).toBe(1)
+  expect(frames).toBe(0)
+  expect(errors).toHaveLength(1)
+  expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
+
+  renderer.intermediateRender()
+
+  expect(calls).toBe(2)
+  expect(frames).toBe(1)
+})
+
+test("feed-backed native failure does not wait for feed idle or retry", async () => {
+  const { renderer, clock } = createRetryRenderer(true)
+  const idle = deferFeedIdle(renderer)
+  const originalError = console.error
+  console.error = () => {}
+  destroyFns.unshift(() => {
+    console.error = originalError
+  })
   let calls = 0
   mockNativeRender(renderer, () => {
     calls++
-    if (calls === 1) return 1
-    return 0
+    return 2
   })
 
-  await renderAndAdvanceRetry(renderer, clock)
+  await (renderer as any).loop()
+  clock.advance(1000)
 
-  expect(calls).toBeGreaterThanOrEqual(2)
+  expect(calls).toBe(1)
+  expect(idle.calls()).toBe(0)
   expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
 })
 
-test("stdout-direct renderer retries a failed native frame", async () => {
+test("unexpected skip without a feed does not retry", async () => {
   const { renderer, clock } = createRetryRenderer()
-
+  const originalError = console.error
+  const errors: unknown[][] = []
+  console.error = (...args: unknown[]) => errors.push(args)
+  destroyFns.unshift(() => {
+    console.error = originalError
+  })
   let calls = 0
   mockNativeRender(renderer, () => {
     calls++
-    if (calls === 1) return 2
-    return 0
+    return 1
   })
 
-  await renderAndAdvanceRetry(renderer, clock)
+  await (renderer as any).loop()
+  clock.advance(1000)
 
-  expect(calls).toBeGreaterThanOrEqual(2)
+  expect(calls).toBe(1)
+  expect(errors).toHaveLength(1)
   expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
 })
 
-test("running stdout-direct renderer retries a rejected native frame", () => {
-  const { renderer, clock } = createRetryRenderer()
-  let calls = 0
-  mockNativeRender(renderer, () => {
-    calls++
-    return calls === 1 ? 1 : 0
+for (const control of ["pause", "stop", "suspend", "destroy"] as const) {
+  test(`${control} cancels a feed-idle retry`, async () => {
+    const { renderer, clock } = createRetryRenderer(true)
+    const idle = deferFeedIdle(renderer)
+    let calls = 0
+    mockNativeRender(renderer, () => {
+      calls++
+      return 1
+    })
+
+    await (renderer as any).loop()
+    renderer[control]()
+    await idle.resolve()
+    clock.advance(17)
+
+    expect(calls).toBe(1)
   })
+}
+
+test("running renderer resumes after feed idle", async () => {
+  const { renderer, clock } = createRetryRenderer(true)
+  const idle = deferFeedIdle(renderer)
+  let calls = 0
+  mockNativeRender(renderer, () => (calls++ === 0 ? 1 : 0))
 
   renderer.start()
+  expect(calls).toBe(1)
+  await idle.resolve()
   clock.advance(17)
 
   expect(calls).toBe(2)
   expect(renderer.isRunning).toBe(true)
   renderer.pause()
-  expect(renderer.getSchedulerState().hasScheduledRender).toBe(false)
 })
 
 test("omitting stdin/stdout uses process streams", async () => {

@@ -955,6 +955,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _detachFeed: (() => void) | null = null
   private _detachFeedError: (() => void) | null = null
   private feedIdleRenderScheduled = false
+  private ordinaryFrameWaitingForFeed = false
 
   public get controlState(): RendererControlState {
     return this._controlState
@@ -1411,7 +1412,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.feedIdleRenderScheduled = true
     feed.idle().then(() => {
       this.feedIdleRenderScheduled = false
-      if (this._isDestroyed) {
+      const ordinaryFrameWasWaiting = this.ordinaryFrameWaitingForFeed
+      this.ordinaryFrameWaitingForFeed = false
+      if (
+        this._isDestroyed ||
+        (ordinaryFrameWasWaiting &&
+          (this._controlState === RendererControlState.EXPLICIT_PAUSED ||
+            this._controlState === RendererControlState.EXPLICIT_STOPPED ||
+            this._controlState === RendererControlState.EXPLICIT_SUSPENDED))
+      ) {
         this.resolveIdleIfNeeded()
         return
       }
@@ -1419,6 +1428,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.scheduleBackpressureRetryTimer()
       this.resolveIdleIfNeeded()
     })
+  }
+
+  private handleNativeRenderRejection(status: number): "retryable-skip" | "failed" {
+    if (status === NATIVE_RENDER_STATUS_SKIPPED && this._feed) {
+      this.ordinaryFrameWaitingForFeed = true
+      this.scheduleRenderAfterFeedIdle()
+      return "retryable-skip"
+    }
+
+    console.error(
+      status === NATIVE_RENDER_STATUS_SKIPPED
+        ? "[CliRenderer] Native frame render unexpectedly skipped without a feed"
+        : "[CliRenderer] Native frame render failed; waiting for the next render request to force repaint",
+    )
+    return "failed"
   }
 
   private scheduleBackpressureRetryTimer(): void {
@@ -1446,6 +1470,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (this._isRunning) {
+      return
+    }
+
+    if (this.ordinaryFrameWaitingForFeed) {
       return
     }
 
@@ -4403,7 +4431,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
             this.clock.clearTimeout(this.renderTimeout!)
             this.renderTimeout = null
           }
-        } else if (nativeStatus === "skipped") {
+        } else if (nativeStatus === "blocked") {
           const overallFrameTime = performance.now() - overallStart
 
           if (this._isRunning || this.immediateRerenderRequested) {
@@ -4418,8 +4446,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
             this.clock.clearTimeout(this.renderTimeout!)
             this.renderTimeout = null
           }
-        } else {
+        } else if (nativeStatus === "backpressured") {
           this.scheduleRenderAfterBackpressure()
+        } else if (nativeStatus === "failed") {
+          this.immediateRerenderRequested = false
+          this.renderTimeout = null
         }
       }
     } finally {
@@ -4436,7 +4467,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.loop()
   }
 
-  private renderNative(): "rendered" | "backpressured" | "skipped" {
+  private renderNative(): "rendered" | "retryable-skip" | "failed" | "blocked" | "backpressured" {
     if (this.renderingNative) {
       console.error("Rendering called concurrently")
       throw new Error("Rendering called concurrently")
@@ -4446,7 +4477,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     try {
       if (this.isSplitCursorSeedFrameBlocked()) {
-        return "skipped"
+        return "blocked"
       }
 
       if (this._splitHeight > 0 && this._externalOutputMode === "capture-stdout") {
@@ -4469,8 +4500,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const force = this.forceFullRepaintRequested
       const nativeStatus = this.lib.render(this.rendererPtr, force)
       if (nativeStatus === NATIVE_RENDER_STATUS_SKIPPED || nativeStatus === NATIVE_RENDER_STATUS_FAILED) {
-        this.scheduleRenderAfterFeedIdle()
-        return "backpressured"
+        return this.handleNativeRenderRejection(nativeStatus)
       }
 
       this.forceFullRepaintRequested = false
