@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Workaround for bug in Zig 0.15.2 (fixed in next version)
@@ -20,7 +24,7 @@ jobs:
     name: Test (${{ matrix.os }})
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [blacksmith-8vcpu-ubuntu-2404, blacksmith-8vcpu-windows-2025]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -64,7 +68,7 @@ jobs:
   build-complete:
     name: QRCode - Build and Test
     needs: [test]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: always()
     steps:
       - name: Check test results

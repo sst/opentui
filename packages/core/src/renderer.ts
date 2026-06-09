@@ -4245,7 +4245,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
     rendererTracker.renderers.delete(this)
     if (rendererTracker.renderers.size === 0) {
-      process.stdin.pause()
       void destroyTreeSitterClient().catch((error) => {
         console.error("Failed to destroy tree-sitter client:", error)
       })

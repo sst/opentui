@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NODE_VERSION: 26.3.0
@@ -17,7 +21,7 @@ env:
 jobs:
   build:
     name: Build Native Libraries
-    runs-on: macos-latest
+    runs-on: blacksmith-12vcpu-macos-15
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -54,11 +58,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-latest
+          - os: blacksmith-12vcpu-macos-15
             platform: darwin-arm64
-          - os: ubuntu-latest
+          - os: blacksmith-8vcpu-ubuntu-2404
             platform: linux-x64
-          - os: windows-latest
+          - os: blacksmith-8vcpu-windows-2025
             platform: win32-x64
     runs-on: ${{ matrix.os }}
     defaults:
@@ -83,8 +87,6 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
-          # Keep Zig's cache path on the workspace drive, but do not restore/save
-          # stale .zig-cache archives on Windows; Zig 0.15.2 can fail with missing cache files.
           use-cache: ${{ runner.os != 'Windows' }}
           cache-key: build-core-test
 
@@ -124,11 +126,16 @@ jobs:
         working-directory: packages/core
         run: bun run test:js:node
 
+      - name: Test packed distribution
+        if: runner.os == 'Linux'
+        working-directory: packages/core
+        run: bun run test:dist --skip-build
+
   # Gate job for branch protection
   build-complete:
     name: Core - Build and Test
     needs: [test]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: always()
     steps:
       - name: Check test results

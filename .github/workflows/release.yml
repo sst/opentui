@@ -15,7 +15,7 @@ jobs:
   # Extract version and check if it's a dry run
   prepare:
     name: Prepare Release
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       version: ${{ steps.extract.outputs.version }}
       fullTag: ${{ steps.extract.outputs.fullTag }}
@@ -57,7 +57,7 @@ jobs:
   validate-version:
     name: Validate Version
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout code
@@ -131,7 +131,7 @@ jobs:
   sign-windows-artifacts:
     name: Sign Windows DLL Artifacts
     needs: [prepare, build-native]
-    runs-on: windows-2025-vs2026
+    runs-on: blacksmith-8vcpu-windows-2025
     permissions:
       id-token: write
       contents: read
@@ -291,7 +291,7 @@ jobs:
   github-release:
     name: Create GitHub Release
     needs: [prepare, build-examples, npm-publish]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout code

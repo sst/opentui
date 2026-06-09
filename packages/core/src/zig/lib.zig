@@ -2469,17 +2469,15 @@ export fn textBufferClearAllHighlights(tb_handle: NativeHandle) void {
     object_ptr.clearAllHighlights();
 }
 
-export fn textBufferSetSyntaxStyle(tb_handle: NativeHandle, style_handle: NativeHandle) void {
-    const tb_ptr = acquireTextBuffer(tb_handle) orelse return;
+export fn textBufferSetSyntaxStyle(tb_handle: NativeHandle, style_handle: NativeHandle) bool {
+    const tb_ptr = acquireTextBuffer(tb_handle) orelse return false;
     if (style_handle == INVALID_HANDLE) {
         tb_ptr.setSyntaxStyle(null);
-        return;
+        return true;
     }
-    const style_ptr = acquireSyntaxStyle(style_handle) orelse {
-        tb_ptr.setSyntaxStyle(null);
-        return;
-    };
+    const style_ptr = acquireSyntaxStyle(style_handle) orelse return false;
     tb_ptr.setSyntaxStyle(style_ptr);
+    return tb_ptr.getSyntaxStyle() == style_ptr;
 }
 
 export fn textBufferGetLineHighlightsPtr(

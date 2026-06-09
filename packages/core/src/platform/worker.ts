@@ -67,6 +67,7 @@ interface WorkerRuntimeBridge {
 
 type GlobalWithWorker = typeof globalThis & {
   Worker?: PlatformWorkerConstructor
+  __opentuiWorkerMessageBridge?: true
   close?: () => void
   postMessage?: (value: unknown) => void
 }
@@ -169,6 +170,7 @@ function createNodeWorkerConstructor(node: NodeWorkerThreadsModule): PlatformWor
     private readonly errorListeners = new Set<WorkerErrorHandler>()
     private readonly messageListeners = new Set<WorkerMessageHandler>()
     private readonly worker: NodeWorkerThread
+    private terminationPromise: Promise<number> | undefined
 
     constructor(specifier: string | URL, options: PlatformWorkerOptions = {}) {
       const resolvedSpecifier = resolveWorkerImportSpecifier(specifier)
@@ -188,9 +190,20 @@ function createNodeWorkerConstructor(node: NodeWorkerThreadsModule): PlatformWor
     }
 
     terminate(): Promise<number> {
+      if (this.terminationPromise) {
+        return this.terminationPromise
+      }
+
       this.worker.off("message", this.handleMessage)
       this.worker.off("error", this.handleError)
-      return this.worker.terminate()
+      const termination = this.worker.terminate().catch((error: unknown) => {
+        this.terminationPromise = undefined
+        this.worker.on("message", this.handleMessage)
+        this.worker.on("error", this.handleError)
+        throw error
+      })
+      this.terminationPromise = termination
+      return termination
     }
 
     addEventListener(type: "message" | "error", listener: WorkerMessageHandler | WorkerErrorHandler): void {
@@ -240,10 +253,31 @@ function createWorkerBootstrapSource(specifier: string): string {
   return `
     import { parentPort } from "node:worker_threads"
 
+    const pendingMessages = []
+    let messageHandler = null
+
     globalThis.self ??= globalThis
     globalThis.postMessage ??= (value) => parentPort?.postMessage(value)
+    globalThis.__opentuiWorkerMessageBridge = true
+    Object.defineProperty(globalThis, "onmessage", {
+      configurable: true,
+      get: () => messageHandler,
+      set: (handler) => {
+        messageHandler = typeof handler === "function" ? handler : null
+        if (!messageHandler) return
+
+        const messages = pendingMessages.splice(0)
+        for (const data of messages) {
+          messageHandler({ data })
+        }
+      },
+    })
     parentPort?.on("message", (data) => {
-      globalThis.onmessage?.({ data })
+      if (messageHandler) {
+        messageHandler({ data })
+      } else {
+        pendingMessages.push(data)
+      }
     })
 
     await import(${JSON.stringify(specifier)})
@@ -285,6 +319,10 @@ function isRuntimeSpecifier(specifier: string): boolean {
 
 function loadWorkerRuntime(node: NodeWorkerThreadsModule | undefined): WorkerRuntimeBridge | undefined {
   if (node?.parentPort && node.isMainThread === false) {
+    if (globalWithWorker.__opentuiWorkerMessageBridge) {
+      return createGlobalWorkerRuntimeBridge()
+    }
+
     return {
       postMessage(value: unknown): void {
         node.parentPort?.postMessage(value)
@@ -307,23 +345,56 @@ function loadWorkerRuntime(node: NodeWorkerThreadsModule | undefined): WorkerRun
     return undefined
   }
 
+  return createGlobalWorkerRuntimeBridge()
+}
+
+function createGlobalWorkerRuntimeBridge(): WorkerRuntimeBridge {
+  interface HandlerRegistration {
+    active: boolean
+    fallbackHandler: AnyWorkerMessageHandler | null
+    listener: AnyWorkerMessageHandler
+    previous?: HandlerRegistration
+  }
+
+  let currentRegistration: HandlerRegistration | undefined
+
   return {
     postMessage(value: unknown): void {
       globalWithWorker.postMessage?.(value)
     },
     setMessageHandler<T>(handler: WorkerMessageHandler<T>): () => void {
       const previousHandler = getGlobalWorkerMessageHandler()
+      if (currentRegistration && previousHandler !== currentRegistration.listener) {
+        currentRegistration = undefined
+      }
+
       const listener: WorkerMessageHandler<T> = (event): void => {
         const normalizedEvent = normalizeWorkerMessageEvent<T>(event)
         void handler(normalizedEvent)
       }
+      const registration: HandlerRegistration = {
+        active: true,
+        fallbackHandler: currentRegistration ? currentRegistration.fallbackHandler : previousHandler,
+        listener,
+        previous: currentRegistration,
+      }
 
+      currentRegistration = registration
       setGlobalWorkerMessageHandler(listener)
 
       return () => {
-        if (getGlobalWorkerMessageHandler() === listener) {
-          setGlobalWorkerMessageHandler(previousHandler)
+        registration.active = false
+        if (currentRegistration !== registration || getGlobalWorkerMessageHandler() !== listener) {
+          return
         }
+
+        let previous = registration.previous
+        while (previous && !previous.active) {
+          previous = previous.previous
+        }
+
+        currentRegistration = previous
+        setGlobalWorkerMessageHandler(previous?.listener ?? registration.fallbackHandler)
       }
     },
   }

@@ -18,7 +18,7 @@ jobs:
       (contains(github.event.comment.body, ' /pkg-preview') ||
         startsWith(github.event.comment.body, '/pkg-preview')) &&
       contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
-    runs-on: macos-latest
+    runs-on: blacksmith-12vcpu-macos-15
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v6

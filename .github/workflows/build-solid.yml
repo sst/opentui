@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NODE_VERSION: 26.3.0
@@ -18,7 +22,7 @@ jobs:
     name: Bun Test (${{ matrix.os }})
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [blacksmith-8vcpu-ubuntu-2404, blacksmith-8vcpu-windows-2025]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -58,7 +62,7 @@ jobs:
 
   node-source:
     name: Node Source Lane
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     defaults:
       run:
         shell: bash
@@ -98,7 +102,7 @@ jobs:
 
   packed-consumer:
     name: Packed Consumer Smoke
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     defaults:
       run:
         shell: bash
@@ -140,7 +144,7 @@ jobs:
   build-complete:
     name: Solid - Build and Test
     needs: [bun-test, node-source, packed-consumer]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: always()
     steps:
       - name: Check test results

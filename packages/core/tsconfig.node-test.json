@@ -8,6 +8,10 @@
   "include": [
     "src/platform/ffi.test.ts",
     "src/platform/runtime.test.ts",
+    "src/platform/worker.node-test.ts",
+    "src/platform/worker-startup.fixture.ts",
+    "src/platform/worker-onmessage-startup.fixture.ts",
+    "src/platform/worker-handler-cleanup.fixture.ts",
     "src/lib/bunfs.test.ts",
     "src/lib/border.test.ts",
     "src/lib/clipboard.test.ts",

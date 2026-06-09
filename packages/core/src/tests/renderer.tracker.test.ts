@@ -159,3 +159,44 @@ test("renderer with custom stdin does not pause process.stdin on destroy", async
 
   expect(pauseCalled).toBe(false)
 })
+
+test("destroying process stdin owner pauses it while a custom renderer remains", async () => {
+  const processRenderer = await createCliRenderer({
+    stdin: process.stdin,
+    stdout: createTestStdout(),
+    bufferedOutput: "memory",
+  })
+  destroyFns.push(() => processRenderer.destroy())
+  const customRenderer = await createCliRenderer({
+    stdin: createTestStdin(),
+    stdout: createTestStdout(),
+    bufferedOutput: "memory",
+  })
+  destroyFns.push(() => customRenderer.destroy())
+
+  pauseCalled = false
+  processRenderer.destroy()
+
+  expect(pauseCalled).toBe(true)
+})
+
+test("destroying final custom renderer does not pause process stdin again", async () => {
+  const processRenderer = await createCliRenderer({
+    stdin: process.stdin,
+    stdout: createTestStdout(),
+    bufferedOutput: "memory",
+  })
+  destroyFns.push(() => processRenderer.destroy())
+  const customRenderer = await createCliRenderer({
+    stdin: createTestStdin(),
+    stdout: createTestStdout(),
+    bufferedOutput: "memory",
+  })
+  destroyFns.push(() => customRenderer.destroy())
+
+  processRenderer.destroy()
+  pauseCalled = false
+  customRenderer.destroy()
+
+  expect(pauseCalled).toBe(false)
+})

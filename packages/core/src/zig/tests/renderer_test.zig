@@ -347,6 +347,32 @@ test "renderer - resize updates dimensions" {
     try std.testing.expectEqual(@as(u32, 40), cli_renderer.height);
 }
 
+test "renderer - resize clears stale hit grid coordinates" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var test_cli_renderer = try TestRenderer.create(
+        std.testing.allocator,
+        4,
+        2,
+        pool,
+    );
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
+
+    cli_renderer.addToCurrentHitGridClipped(2, 0, 1, 1, 99);
+    try std.testing.expectEqual(@as(u32, 99), cli_renderer.checkHit(2, 0));
+
+    try cli_renderer.resize(2, 2);
+
+    try std.testing.expectEqual(@as(u32, 0), cli_renderer.checkHit(0, 1));
+
+    _ = cli_renderer.render(false);
+    try std.testing.expect(cli_renderer.getHitGridDirty());
+}
+
 test "renderer - background color setting" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

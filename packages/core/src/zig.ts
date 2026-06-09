@@ -758,7 +758,7 @@ function getOpenTUILib(libPath?: string) {
     },
     textBufferSetSyntaxStyle: {
       args: ["u32", "u32"],
-      returns: "void",
+      returns: "bool",
     },
     textBufferGetLineHighlightsPtr: {
       args: ["u32", "u32", "ptr"],
@@ -2180,7 +2180,7 @@ export interface RenderLib extends AudioEngineLib {
   textBufferRemoveHighlightsByRef: (buffer: TextBufferHandle, hlRef: number) => void
   textBufferClearLineHighlights: (buffer: TextBufferHandle, lineIdx: number) => void
   textBufferClearAllHighlights: (buffer: TextBufferHandle) => void
-  textBufferSetSyntaxStyle: (buffer: TextBufferHandle, style: SyntaxStyleHandle | null) => void
+  textBufferSetSyntaxStyle: (buffer: TextBufferHandle, style: SyntaxStyleHandle | null) => boolean
   textBufferGetLineHighlights: (buffer: TextBufferHandle, lineIdx: number) => Array<Highlight>
   textBufferGetHighlightCount: (buffer: TextBufferHandle) => number
 
@@ -3603,8 +3603,8 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferClearAllHighlights(buffer)
   }
 
-  public textBufferSetSyntaxStyle(buffer: Pointer, style: Pointer | null): void {
-    this.opentui.symbols.textBufferSetSyntaxStyle(buffer, style ?? 0)
+  public textBufferSetSyntaxStyle(buffer: Pointer, style: Pointer | null): boolean {
+    return this.opentui.symbols.textBufferSetSyntaxStyle(buffer, style ?? 0)
   }
 
   public textBufferGetLineHighlights(buffer: Pointer, lineIdx: number): Array<Highlight> {

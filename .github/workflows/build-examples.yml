@@ -14,7 +14,7 @@ permissions:
 jobs:
   build-examples:
     name: Build Example Executables
-    runs-on: macos-latest
+    runs-on: blacksmith-12vcpu-macos-15
 
     steps:
       - name: Checkout code

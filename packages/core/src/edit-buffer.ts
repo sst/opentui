@@ -362,8 +362,9 @@ export class EditBuffer extends EventEmitter {
 
   public setSyntaxStyle(style: SyntaxStyle | null): void {
     this.guard()
-    this._syntaxStyle = style ?? undefined
-    this.lib.textBufferSetSyntaxStyle(this.textBufferPtr, style?.ptr ?? null)
+    if (this.lib.textBufferSetSyntaxStyle(this.textBufferPtr, style?.ptr ?? null)) {
+      this._syntaxStyle = style ?? undefined
+    }
   }
 
   public getSyntaxStyle(): SyntaxStyle | null {

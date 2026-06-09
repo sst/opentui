@@ -174,6 +174,25 @@ await expectBunOnlyFailure(
 console.log("Node dist smoke test passed")
 `,
   )
+
+  writeFileSync(
+    join(nodeDir, "require.cjs"),
+    `const assert = require("node:assert/strict")
+
+for (const specifier of [${JSON.stringify(packageJson.name)}, ${JSON.stringify(`${packageJson.name}/testing`)}, ${JSON.stringify(`${packageJson.name}/tree-sitter/update-assets`)}]) {
+  assert.throws(
+    () => require(specifier),
+    (error) => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
+    \`Expected \${specifier} to remain import-only in Node\`,
+  )
+}
+
+const workerPath = require.resolve(${JSON.stringify(`${packageJson.name}/parser.worker`)})
+assert.match(workerPath, /parser\\.worker\\.js$/)
+
+console.log("Node CommonJS export smoke test passed")
+`,
+  )
 }
 
 function writeBunTest(bunDir: string): void {
@@ -228,6 +247,7 @@ function installAndTest(nodeDir: string, bunDir: string): void {
   runCommand("npm", ["install", "--ignore-scripts", "--no-package-lock"], nodeDir, "Node dist test install failed")
   runCommand(nodePath, ["-e", `import(${JSON.stringify(packageJson.name)})`], nodeDir, "Node import smoke check failed")
   runCommand(nodePath, ["index.mjs"], nodeDir, "Node dist smoke tests failed")
+  runCommand(nodePath, ["require.cjs"], nodeDir, "Node CommonJS export smoke tests failed")
 
   assertNodeStaticImportFailure(
     nodeDir,

@@ -38,6 +38,7 @@ const nodePath = requireNode26()
 const emittedAllowlist = [
   ".node-test/src/platform/ffi.test.js",
   ".node-test/src/platform/runtime.test.js",
+  ".node-test/src/platform/worker.node-test.js",
   ".node-test/src/lib/bunfs.test.js",
   ".node-test/src/lib/border.test.js",
   ".node-test/src/lib/clipboard.test.js",

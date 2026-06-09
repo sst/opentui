@@ -14,7 +14,7 @@ env:
 
 jobs:
   release:
-    runs-on: macos-latest
+    runs-on: blacksmith-12vcpu-macos-15
 
     steps:
       - uses: actions/checkout@v6

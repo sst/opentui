@@ -200,8 +200,9 @@ export class TextBuffer {
 
   public setSyntaxStyle(style: SyntaxStyle | null): void {
     this.guard()
-    this._syntaxStyle = style ?? undefined
-    this.lib.textBufferSetSyntaxStyle(this.bufferPtr, style?.ptr ?? null)
+    if (this.lib.textBufferSetSyntaxStyle(this.bufferPtr, style?.ptr ?? null)) {
+      this._syntaxStyle = style ?? undefined
+    }
   }
 
   public getSyntaxStyle(): SyntaxStyle | null {

@@ -50,6 +50,11 @@ interface TreeSitterClientInternalOptions {
   autoStartWorker?: boolean
 }
 
+interface PendingRequest {
+  resolve: (response: any) => void
+  reject: (error: Error) => void
+}
+
 let DEFAULT_PARSER_OVERRIDES: FiletypeParserOptions[] = []
 
 export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
@@ -73,12 +78,16 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   private initializeResolvers:
     | { resolve: () => void; reject: (error: Error) => void; timeoutId: ReturnType<typeof setTimeout> }
     | undefined
-  private messageCallbacks: Map<string, (response: any) => void> = new Map()
+  private messageCallbacks = new Map<string, PendingRequest>()
   private messageIdCounter: number = 0
   private editQueues: Map<number, ProcessQueue<EditQueueItem>> = new Map()
   private debouncer: DebounceController
   private options: TreeSitterClientOptions
   private destroyCallbacks = new Set<() => void>()
+  private lifecycleGeneration = 0
+  private rejectInitialization: ((error: Error) => void) | undefined
+  private destroyPromise: Promise<void> | undefined
+  private workerTerminationFailed = false
 
   constructor(options: TreeSitterClientOptions, internalOptions: TreeSitterClientInternalOptions = {}) {
     super()
@@ -132,20 +141,59 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       }
 
       console.error("TreeSitter worker error:", error.message)
-
-      // If we're still initializing, reject the init promise
-      if (this.initializeResolvers) {
-        clearTimeout(this.initializeResolvers.timeoutId)
-        this.initializeResolvers.reject(new Error(`Worker error: ${error.message}`))
-        this.initializeResolvers = undefined
-      }
-
+      const workerError = new Error(`Worker error: ${error.message}`, { cause: error.error })
+      this.handleWorkerFailure(worker, workerError)
       this.emitError(`Worker error: ${error.message}`)
     }
   }
 
   private sendWorkerMessage(message: TreeSitterWorkerRequest): void {
-    this.worker?.postMessage(message)
+    if (!this.worker) {
+      throw new Error("TreeSitter worker is not available")
+    }
+    this.worker.postMessage(message)
+  }
+
+  private rejectPendingRequests(error: Error): void {
+    const requests = Array.from(this.messageCallbacks.values())
+    this.messageCallbacks.clear()
+    for (const request of requests) {
+      request.reject(error)
+    }
+  }
+
+  private rejectActiveInitialization(error: Error): void {
+    if (this.initializeResolvers) {
+      clearTimeout(this.initializeResolvers.timeoutId)
+      this.initializeResolvers.reject(error)
+      this.initializeResolvers = undefined
+    }
+    this.rejectInitialization?.(error)
+    this.rejectInitialization = undefined
+  }
+
+  private handleWorkerFailure(worker: TreeSitterWorkerHandle, error: Error): void {
+    if (this.worker !== worker) {
+      return
+    }
+
+    worker.onmessage = null
+    worker.onerror = null
+    this.worker = undefined
+    this.lifecycleGeneration++
+    this.initialized = false
+    this.initializePromise = undefined
+    this.rejectActiveInitialization(error)
+    this.rejectPendingRequests(error)
+    this.editQueues.clear()
+    this.buffers.clear()
+    this.debouncer.clear()
+
+    try {
+      void Promise.resolve(worker.terminate()).catch(() => {})
+    } catch {
+      // The worker has already failed; cleanup is best effort.
+    }
   }
 
   // Path resolution stays in the client for now; runtime-specific Worker construction lives in platform/worker.
@@ -177,13 +225,24 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return
     }
 
+    const onmessage = worker.onmessage
+    const onerror = worker.onerror
     worker.onmessage = null
     worker.onerror = null
     this.worker = undefined
 
-    const termination = worker.terminate()
-    if (termination && typeof (termination as PromiseLike<number>).then === "function") {
-      await termination
+    try {
+      const termination = worker.terminate()
+      if (termination && typeof (termination as PromiseLike<number>).then === "function") {
+        await termination
+      }
+    } catch (error) {
+      if (!this.worker) {
+        worker.onmessage = onmessage
+        worker.onerror = onerror
+        this.worker = worker
+      }
+      throw error
     }
   }
 
@@ -199,6 +258,13 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   async initialize(): Promise<void> {
+    if (this.destroyPromise) {
+      throw new Error("Cannot initialize while client is being destroyed")
+    }
+    if (this.workerTerminationFailed) {
+      throw new Error("Cannot initialize after worker termination failed; retry destroy()")
+    }
+
     if (this.initializePromise) {
       return this.initializePromise
     }
@@ -207,12 +273,39 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       this.startWorker()
     }
 
-    this.initializePromise = this.initializeClient()
+    const worker = this.worker!
+    const generation = this.lifecycleGeneration
+    let rejectCancellation!: (error: Error) => void
+    const cancellation = new Promise<never>((_, reject) => {
+      rejectCancellation = reject
+    })
+    const initialization = Promise.race([this.initializeClient(generation, worker), cancellation])
+    this.rejectInitialization = rejectCancellation
+    this.initializePromise = initialization
+
+    void initialization.then(
+      () => {
+        if (this.initializePromise === initialization) {
+          this.rejectInitialization = undefined
+        }
+      },
+      () => {
+        if (this.initializePromise === initialization) {
+          this.rejectInitialization = undefined
+        }
+      },
+    )
 
     return this.initializePromise
   }
 
-  private async initializeClient(): Promise<void> {
+  private assertCurrentInitialization(generation: number, worker: TreeSitterWorkerHandle): void {
+    if (this.lifecycleGeneration !== generation || this.worker !== worker || this.destroyPromise) {
+      throw new Error("TreeSitter initialization was invalidated")
+    }
+  }
+
+  private async initializeClient(generation: number, worker: TreeSitterWorkerHandle): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const timeoutMs = this.options.initTimeout ?? 10000 // Default to 10 seconds
       const timeoutId = setTimeout(() => {
@@ -229,19 +322,25 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       })
     })
 
-    await this.registerDefaultParsers()
+    this.assertCurrentInitialization(generation, worker)
+    await this.registerDefaultParsers(generation, worker)
+    this.assertCurrentInitialization(generation, worker)
     this.initialized = true
   }
 
-  private async registerDefaultParsers(): Promise<void> {
+  private async registerDefaultParsers(
+    generation: number = this.lifecycleGeneration,
+    worker: TreeSitterWorkerHandle = this.worker!,
+  ): Promise<void> {
     const defaultParsers = await getParsers()
+    this.assertCurrentInitialization(generation, worker)
     const overriddenFiletypes = new Set(DEFAULT_PARSER_OVERRIDES.map((parser) => parser.filetype))
 
     for (const parser of [
       ...defaultParsers.filter((parser) => !overriddenFiletypes.has(parser.filetype)),
       ...DEFAULT_PARSER_OVERRIDES,
     ]) {
-      this.addFiletypeParser(parser)
+      worker.postMessage({ type: "ADD_FILETYPE_PARSER", filetypeParser: this.resolveFiletypeParser(parser) })
     }
   }
 
@@ -259,7 +358,11 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   public addFiletypeParser(filetypeParser: FiletypeParserOptions): void {
-    const resolvedParser: FiletypeParserOptions = {
+    this.sendWorkerMessage({ type: "ADD_FILETYPE_PARSER", filetypeParser: this.resolveFiletypeParser(filetypeParser) })
+  }
+
+  private resolveFiletypeParser(filetypeParser: FiletypeParserOptions): FiletypeParserOptions {
+    return {
       ...filetypeParser,
       aliases: filetypeParser.aliases
         ? [...new Set(filetypeParser.aliases.filter((alias) => alias !== filetypeParser.filetype))]
@@ -270,14 +373,18 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         injections: filetypeParser.queries.injections?.map((path) => this.resolvePath(path)),
       },
     }
-    this.sendWorkerMessage({ type: "ADD_FILETYPE_PARSER", filetypeParser: resolvedParser })
   }
 
   public async getPerformance(): Promise<PerformanceStats> {
     const messageId = `performance_${this.messageIdCounter++}`
-    return new Promise<PerformanceStats>((resolve) => {
-      this.messageCallbacks.set(messageId, resolve)
-      this.sendWorkerMessage({ type: "GET_PERFORMANCE", messageId })
+    return new Promise<PerformanceStats>((resolve, reject) => {
+      this.messageCallbacks.set(messageId, { resolve, reject })
+      try {
+        this.sendWorkerMessage({ type: "GET_PERFORMANCE", messageId })
+      } catch (error) {
+        this.messageCallbacks.delete(messageId)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
     })
   }
 
@@ -294,14 +401,19 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     }
 
     const messageId = `oneshot_${this.messageIdCounter++}`
-    return new Promise((resolve) => {
-      this.messageCallbacks.set(messageId, resolve)
-      this.sendWorkerMessage({
-        type: "ONESHOT_HIGHLIGHT",
-        content,
-        filetype,
-        messageId,
-      })
+    return new Promise((resolve, reject) => {
+      this.messageCallbacks.set(messageId, { resolve, reject })
+      try {
+        this.sendWorkerMessage({
+          type: "ONESHOT_HIGHLIGHT",
+          content,
+          filetype,
+          messageId,
+        })
+      } catch (error) {
+        this.messageCallbacks.delete(messageId)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
     })
   }
 
@@ -346,7 +458,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         const callback = this.messageCallbacks.get(message.messageId)
         if (callback) {
           this.messageCallbacks.delete(message.messageId)
-          callback({ hasParser: message.hasParser, warning: message.warning, error: message.error })
+          callback.resolve({ hasParser: message.hasParser, warning: message.warning, error: message.error })
         }
         return
       }
@@ -355,7 +467,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         const callback = this.messageCallbacks.get(message.messageId)
         if (callback) {
           this.messageCallbacks.delete(message.messageId)
-          callback({ hasParser: message.hasParser })
+          callback.resolve({ hasParser: message.hasParser })
         }
         return
       }
@@ -364,7 +476,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         const callback = this.messageCallbacks.get(`dispose_${message.bufferId}`)
         if (callback) {
           this.messageCallbacks.delete(`dispose_${message.bufferId}`)
-          callback(true)
+          callback.resolve(true)
         }
 
         this.emit("buffer:disposed", message.bufferId)
@@ -375,7 +487,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         const callback = this.messageCallbacks.get(message.messageId)
         if (callback) {
           this.messageCallbacks.delete(message.messageId)
-          callback(message.performance)
+          callback.resolve(message.performance)
         }
         return
       }
@@ -384,7 +496,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         const callback = this.messageCallbacks.get(message.messageId)
         if (callback) {
           this.messageCallbacks.delete(message.messageId)
-          callback({ highlights: message.highlights, warning: message.warning, error: message.error })
+          callback.resolve({ highlights: message.highlights, warning: message.warning, error: message.error })
         }
         return
       }
@@ -393,7 +505,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         const callback = this.messageCallbacks.get(message.messageId)
         if (callback) {
           this.messageCallbacks.delete(message.messageId)
-          callback({ error: message.error })
+          callback.resolve({ error: message.error })
         }
         return
       }
@@ -402,7 +514,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         const callback = this.messageCallbacks.get(message.messageId)
         if (callback) {
           this.messageCallbacks.delete(message.messageId)
-          callback({ error: message.error })
+          callback.resolve({ error: message.error })
         }
         return
       }
@@ -426,13 +538,18 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
   public async preloadParser(filetype: string): Promise<boolean> {
     const messageId = `has_parser_${this.messageIdCounter++}`
-    const response = await new Promise<{ hasParser: boolean; warning?: string; error?: string }>((resolve) => {
-      this.messageCallbacks.set(messageId, resolve)
-      this.sendWorkerMessage({
-        type: "PRELOAD_PARSER",
-        filetype,
-        messageId,
-      })
+    const response = await new Promise<{ hasParser: boolean; warning?: string; error?: string }>((resolve, reject) => {
+      this.messageCallbacks.set(messageId, { resolve, reject })
+      try {
+        this.sendWorkerMessage({
+          type: "PRELOAD_PARSER",
+          filetype,
+          messageId,
+        })
+      } catch (error) {
+        this.messageCallbacks.delete(messageId)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
     })
     return response.hasParser
   }
@@ -465,16 +582,21 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.buffers.set(id, { id, content, filetype, version, hasParser: false })
 
     const messageId = `init_${this.messageIdCounter++}`
-    const response = await new Promise<{ hasParser: boolean; warning?: string; error?: string }>((resolve) => {
-      this.messageCallbacks.set(messageId, resolve)
-      this.sendWorkerMessage({
-        type: "INITIALIZE_PARSER",
-        bufferId: id,
-        version,
-        content,
-        filetype,
-        messageId,
-      })
+    const response = await new Promise<{ hasParser: boolean; warning?: string; error?: string }>((resolve, reject) => {
+      this.messageCallbacks.set(messageId, { resolve, reject })
+      try {
+        this.sendWorkerMessage({
+          type: "INITIALIZE_PARSER",
+          bufferId: id,
+          version,
+          content,
+          filetype,
+          messageId,
+        })
+      } catch (error) {
+        this.messageCallbacks.delete(messageId)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
     })
 
     if (!response.hasParser) {
@@ -548,9 +670,9 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     }
 
     if (this.worker) {
-      await new Promise<boolean>((resolve) => {
+      await new Promise<boolean>((resolve, reject) => {
         const messageId = `dispose_${bufferId}`
-        this.messageCallbacks.set(messageId, resolve)
+        this.messageCallbacks.set(messageId, { resolve, reject })
         try {
           this.sendWorkerMessage({
             type: "DISPOSE_BUFFER",
@@ -558,6 +680,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
           })
         } catch (error) {
           console.error("Error disposing buffer", error)
+          this.messageCallbacks.delete(messageId)
           resolve(false)
         }
 
@@ -575,7 +698,26 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.debouncer.clearDebounce(`reset-${bufferId}`)
   }
 
-  public async destroy(): Promise<void> {
+  public destroy(): Promise<void> {
+    if (this.destroyPromise) {
+      return this.destroyPromise
+    }
+
+    let resolveDestroy!: () => void
+    let rejectDestroy!: (error: unknown) => void
+    const destroyPromise = new Promise<void>((resolve, reject) => {
+      resolveDestroy = resolve
+      rejectDestroy = reject
+    })
+    this.destroyPromise = destroyPromise
+
+    const destroyError = new Error("Client destroyed during initialization")
+    this.lifecycleGeneration++
+    this.initialized = false
+    this.initializePromise = undefined
+    this.rejectActiveInitialization(destroyError)
+    this.rejectPendingRequests(new Error("TreeSitter client destroyed"))
+
     for (const callback of this.destroyCallbacks) {
       try {
         callback()
@@ -585,34 +727,29 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     }
     this.destroyCallbacks.clear()
 
-    if (this.initializeResolvers) {
-      clearTimeout(this.initializeResolvers.timeoutId)
-      // Reject pending initialization promise to prevent hanging awaits
-      this.initializeResolvers.reject(new Error("Client destroyed during initialization"))
-      this.initializeResolvers = undefined
-    }
-
-    for (const [messageId, callback] of this.messageCallbacks.entries()) {
-      if (typeof callback === "function") {
-        try {
-          callback({ error: "Client destroyed" })
-        } catch (e) {
-          // Ignore errors during cleanup
-        }
-      }
-    }
-    this.messageCallbacks.clear()
-
     clearDebounceScope("tree-sitter-client")
     this.debouncer.clear()
 
     this.editQueues.clear()
     this.buffers.clear()
 
-    await this.stopWorker()
-
-    this.initialized = false
-    this.initializePromise = undefined
+    void this.stopWorker().then(
+      () => {
+        this.workerTerminationFailed = false
+        if (this.destroyPromise === destroyPromise) {
+          this.destroyPromise = undefined
+        }
+        resolveDestroy()
+      },
+      (error) => {
+        this.workerTerminationFailed = true
+        if (this.destroyPromise === destroyPromise) {
+          this.destroyPromise = undefined
+        }
+        rejectDestroy(error)
+      },
+    )
+    return destroyPromise
   }
 
   public async resetBuffer(bufferId: number, version: number, content: string): Promise<void> {
@@ -655,18 +792,26 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     if (this.initialized && this.worker) {
       const messageId = `update_datapath_${this.messageIdCounter++}`
       return new Promise<void>((resolve, reject) => {
-        this.messageCallbacks.set(messageId, (response: any) => {
-          if (response.error) {
-            reject(new Error(response.error))
-          } else {
-            resolve()
-          }
+        this.messageCallbacks.set(messageId, {
+          resolve: (response: any) => {
+            if (response.error) {
+              reject(new Error(response.error))
+            } else {
+              resolve()
+            }
+          },
+          reject,
         })
-        this.sendWorkerMessage({
-          type: "UPDATE_DATA_PATH",
-          dataPath,
-          messageId,
-        })
+        try {
+          this.sendWorkerMessage({
+            type: "UPDATE_DATA_PATH",
+            dataPath,
+            messageId,
+          })
+        } catch (error) {
+          this.messageCallbacks.delete(messageId)
+          reject(error instanceof Error ? error : new Error(String(error)))
+        }
       })
     }
   }
@@ -678,17 +823,25 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     const messageId = `clear_cache_${this.messageIdCounter++}`
     return new Promise<void>((resolve, reject) => {
-      this.messageCallbacks.set(messageId, (response: any) => {
-        if (response.error) {
-          reject(new Error(response.error))
-        } else {
-          resolve()
-        }
+      this.messageCallbacks.set(messageId, {
+        resolve: (response: any) => {
+          if (response.error) {
+            reject(new Error(response.error))
+          } else {
+            resolve()
+          }
+        },
+        reject,
       })
-      this.sendWorkerMessage({
-        type: "CLEAR_CACHE",
-        messageId,
-      })
+      try {
+        this.sendWorkerMessage({
+          type: "CLEAR_CACHE",
+          messageId,
+        })
+      } catch (error) {
+        this.messageCallbacks.delete(messageId)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
     })
   }
 }
