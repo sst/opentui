@@ -666,6 +666,7 @@ test("split-footer native failure without a feed does not schedule automatic ret
   })
 
   stdout.write("captured-while-native-failed\n")
+  rendererAny.updateScheduled = false
   await rendererAny.loop()
   expect(calls).toBe(1)
 
