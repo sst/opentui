@@ -89,6 +89,41 @@ test("numeric timeouts must be finite positive values no longer than 24 hours", 
   expect(() => resolveRuntime({ maxTimeout: 0, hostKey: { pem: HOST_KEY } })).toThrow(ConfigError)
 })
 
+test("session limits resolve defaults and partial overrides", () => {
+  expect(resolveRuntime({ hostKey: { pem: HOST_KEY } }).sessionLimits).toEqual({ perConnection: 1, global: 100 })
+  expect(
+    resolveRuntime({ limits: { session: { perConnection: 3 } }, hostKey: { pem: HOST_KEY } }).sessionLimits,
+  ).toEqual({ perConnection: 3, global: 100 })
+  expect(resolveRuntime({ limits: { session: { global: 7 } }, hostKey: { pem: HOST_KEY } }).sessionLimits).toEqual({
+    perConnection: 1,
+    global: 7,
+  })
+})
+
+test("session limits must be positive safe integers", () => {
+  for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+    expect(() => resolveRuntime({ limits: { session: { perConnection: value } }, hostKey: { pem: HOST_KEY } })).toThrow(
+      ConfigError,
+    )
+    expect(() => resolveRuntime({ limits: { session: { global: value } }, hostKey: { pem: HOST_KEY } })).toThrow(
+      ConfigError,
+    )
+  }
+  expect(
+    resolveRuntime({
+      limits: { session: { perConnection: Number.MAX_SAFE_INTEGER, global: Number.MAX_SAFE_INTEGER } },
+      hostKey: { pem: HOST_KEY },
+    }).sessionLimits,
+  ).toEqual({ perConnection: Number.MAX_SAFE_INTEGER, global: Number.MAX_SAFE_INTEGER })
+
+  expect(() =>
+    resolveRuntime({
+      limits: { session: { global: null as unknown as number } },
+      hostKey: { pem: HOST_KEY },
+    }),
+  ).toThrow(ConfigError)
+})
+
 test("fuzz: arbitrary timeout strings either parse within bounds or throw ConfigError", () => {
   for (let seed = 1; seed <= 512; seed++) {
     const value = String.fromCharCode(...Array.from({ length: seed % 24 }, (_, i) => 32 + ((seed * 41 + i * 23) % 95)))

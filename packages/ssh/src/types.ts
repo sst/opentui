@@ -229,6 +229,15 @@ export interface ServerConfig<A extends AuthConfig = "open"> {
   idleTimeout?: string | number
   /** Disconnect after this absolute session lifetime, e.g. "1h" or ms. Optional. */
   maxTimeout?: string | number
+  /** Resource limits for renderer-backed SSH shell sessions. */
+  limits?: {
+    session?: {
+      /** Maximum live shell sessions on one SSH connection. Default 1. */
+      perConnection?: number
+      /** Maximum live shell sessions across this server. Default 100. */
+      global?: number
+    }
+  }
   /** Startup summary printed on listen(). Default true; set false to silence. */
   startupBanner?: boolean
   /**

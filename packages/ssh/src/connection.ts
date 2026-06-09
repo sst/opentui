@@ -4,6 +4,7 @@ import { createSessionBridge, DEFAULT_PTY, type PtyInfo, type SessionBridge } fr
 import { type RuntimeMiddleware, runSession } from "./run-session.js"
 import { ignoreErrors, type SafeInvoke } from "./safe.js"
 import type { Identity, RemoteAddress, SessionHandler } from "./types.js"
+import type { ResolvedSessionLimits } from "./runtime.js"
 
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 1_000
 
@@ -15,6 +16,7 @@ export interface ConnectionDependencies {
   safe: SafeInvoke
   idleTimeoutMs: number | undefined
   maxTimeoutMs: number | undefined
+  sessionLimits: ResolvedSessionLimits
 }
 
 const normalizeAddress = (address: string | undefined): string => {
@@ -37,13 +39,15 @@ export function createConnectionHandler(dependencies: ConnectionDependencies): {
   onConnection: (client: Connection, info: ClientInfo) => void
   closeAll: () => Promise<void>
 } {
-  const { authenticator, middlewares, handler, safe, idleTimeoutMs, maxTimeoutMs } = dependencies
+  const { authenticator, middlewares, handler, safe, idleTimeoutMs, maxTimeoutMs, sessionLimits } = dependencies
   const clients = new Set<Connection>()
-  const bridges = new Set<SessionBridge>()
+  const bridges = new Map<SessionBridge, () => void>()
+  let activeSessions = 0
 
   const onConnection = (client: Connection, info: ClientInfo) => {
     clients.add(client)
     let connected = true
+    let connectionSessions = 0
 
     // Updated once authentication accepts a real identity.
     let identity: Identity = { method: "none", username: "unknown" }
@@ -82,24 +86,50 @@ export function createConnectionHandler(dependencies: ConnectionDependencies): {
           activeBridge?.resize(info.cols, info.rows)
         })
 
-        sshSession.on("shell", (accept) => {
-          const channel = accept()
-          // Keep each shell's teardown tied to its own bridge; `activeBridge` may
-          // be replaced if the client opens another shell on the same SSH session.
-          const shellBridge = createSessionBridge(channel, {
-            pty,
-            identity,
-            idleTimeoutMs,
-            maxTimeoutMs,
-            safe,
-            remoteAddress,
-          })
-          activeBridge = shellBridge
-          bridges.add(shellBridge)
-          shellBridge.session.onClose(() => {
-            void shellBridge.destroy().finally(() => bridges.delete(shellBridge))
-          })
-          runSession(middlewares, handler, shellBridge, safe)
+        sshSession.on("shell", (accept, reject) => {
+          if (connectionSessions >= sessionLimits.perConnection || activeSessions >= sessionLimits.global) {
+            reject?.()
+            return
+          }
+
+          connectionSessions++
+          activeSessions++
+          let released = false
+          const release = () => {
+            if (released) return
+            released = true
+            connectionSessions--
+            activeSessions--
+          }
+
+          let channel: ReturnType<typeof accept> | undefined
+          try {
+            channel = accept()
+            // Keep each shell's teardown tied to its own bridge; `activeBridge` may
+            // be replaced if the client opens another shell on the same SSH session.
+            const shellBridge = createSessionBridge(channel, {
+              pty,
+              identity,
+              idleTimeoutMs,
+              maxTimeoutMs,
+              safe,
+              remoteAddress,
+            })
+            activeBridge = shellBridge
+            bridges.set(shellBridge, release)
+            shellBridge.session.onClose(() => {
+              void shellBridge.destroy().finally(() => {
+                bridges.delete(shellBridge)
+                release()
+              })
+            })
+            runSession(middlewares, handler, shellBridge, safe)
+          } catch (error) {
+            const acceptedChannel = channel
+            if (acceptedChannel) ignoreErrors(() => acceptedChannel.close())
+            release()
+            safe.report(error)
+          }
         })
       })
     })
@@ -112,7 +142,7 @@ export function createConnectionHandler(dependencies: ConnectionDependencies): {
   }
 
   const closeAll = async () => {
-    const draining = Promise.all([...bridges].map((bridge) => bridge.destroy()))
+    const draining = Promise.all([...bridges.keys()].map((bridge) => bridge.destroy()))
     let timeout: ReturnType<typeof setTimeout> | undefined
     await Promise.race([
       draining,
@@ -121,6 +151,7 @@ export function createConnectionHandler(dependencies: ConnectionDependencies): {
       }),
     ])
     if (timeout) clearTimeout(timeout)
+    for (const release of bridges.values()) release()
     bridges.clear()
     for (const client of clients) {
       ignoreErrors(() => client.end())

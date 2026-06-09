@@ -55,7 +55,7 @@ compile error (the builder has no `listen()` until you `serve`).
 ```ts
 const server = createServer({
   // optional, all with sensible defaults:
-  // auth, hostKey, idleTimeout, maxTimeout, startupBanner, onError
+  // auth, hostKey, idleTimeout, maxTimeout, limits, startupBanner, onError
 })
   .use(logging()) // optional middleware (see "Middleware" below)
   .serve((session) => {
@@ -270,6 +270,26 @@ its fingerprint so clients can verify it. When multiple PEMs are provided, every
 fingerprint is returned and printed in the same order.
 
 ## Lifecycle, errors & shutdown
+
+Renderer-backed shell sessions are bounded by default to one per SSH connection
+and 100 across the server. Excess shell requests are rejected without closing the
+SSH connection or reporting an error. Adjust both positive-integer limits when an
+application intentionally needs more concurrency:
+
+```ts
+const server = createServer({
+  limits: {
+    session: {
+      perConnection: 2,
+      global: 200,
+    },
+  },
+}).serve(handler)
+```
+
+Capacity remains reserved until the shell transport finishes teardown. These
+limits bound application renderers; they do not replace authentication, network
+access controls, connection-rate limiting, or process resource limits.
 
 There is no lifecycle event bus and no pluggable logger — the work splits by
 **verb**, with no overlap:

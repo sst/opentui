@@ -116,10 +116,13 @@ test("two shells on one connection have independent lifecycles", async () => {
   // single connection, close the first, and the second must stay fully live.
   const sessions: Session[] = []
   let closeCount = 0
-  const server = mkServer((s) => {
-    sessions.push(s)
-    s.onClose(() => closeCount++)
-  })
+  const server = mkServer(
+    (s) => {
+      sessions.push(s)
+      s.onClose(() => closeCount++)
+    },
+    { limits: { session: { perConnection: 2 } } },
+  )
   const { port } = await server.listen(0)
 
   const conn = await new Promise<Client>((resolve, reject) => {

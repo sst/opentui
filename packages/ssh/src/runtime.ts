@@ -7,6 +7,7 @@ import type { AuthConfig, ServerConfig } from "./types.js"
 
 const MAX_DURATION_MS = 24 * 60 * 60 * 1_000
 const DURATION_UNITS = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 } as const
+const DEFAULT_SESSION_LIMITS = { perConnection: 1, global: 100 } as const
 
 /** Parse a duration into milliseconds: a number is ms; "10m"/"30s"/"500ms" is unit-suffixed. */
 function parseDuration(name: string, value: string | number): number {
@@ -21,6 +22,17 @@ function parseDuration(name: string, value: string | number): number {
   }
   if (!Number.isSafeInteger(ms) || ms <= 0 || ms > MAX_DURATION_MS) throw new ConfigError(`invalid ${name}: ${value}`)
   return ms
+}
+
+function parseLimit(name: string, value: number | undefined, fallback: number): number {
+  const limit = value === undefined ? fallback : value
+  if (!Number.isSafeInteger(limit) || limit <= 0) throw new ConfigError(`invalid ${name}: ${limit}`)
+  return limit
+}
+
+export interface ResolvedSessionLimits {
+  perConnection: number
+  global: number
 }
 
 /**
@@ -38,6 +50,8 @@ export interface ResolvedRuntime {
   idleTimeoutMs: number | undefined
   /** Absolute session lifetime in ms, or undefined when no `maxTimeout` was set. */
   maxTimeoutMs: number | undefined
+  /** Hard bounds for concurrently retained renderer-backed shells. */
+  sessionLimits: ResolvedSessionLimits
   /** The error sink, closed over `onError`. */
   safe: SafeInvoke
   /** True when `none` is the only advertised method — listen() warns outside localhost. */
@@ -55,6 +69,14 @@ export function resolveRuntime(config: ServerConfig<AuthConfig>): ResolvedRuntim
   const { hostKeyPems, fingerprints, algorithms, source } = resolveHostKey(config)
   const idleTimeoutMs = config.idleTimeout != null ? parseDuration("idleTimeout", config.idleTimeout) : undefined
   const maxTimeoutMs = config.maxTimeout != null ? parseDuration("maxTimeout", config.maxTimeout) : undefined
+  const sessionLimits: ResolvedSessionLimits = {
+    perConnection: parseLimit(
+      "limits.session.perConnection",
+      config.limits?.session?.perConnection,
+      DEFAULT_SESSION_LIMITS.perConnection,
+    ),
+    global: parseLimit("limits.session.global", config.limits?.session?.global, DEFAULT_SESSION_LIMITS.global),
+  }
 
   // One error sink for handler, callback, connection, and server errors.
   const onError = config.onError ?? ((err: unknown) => console.error(err))
@@ -66,5 +88,15 @@ export function resolveRuntime(config: ServerConfig<AuthConfig>): ResolvedRuntim
 
   const banner: BannerDescriptor = { algorithms, source, methods: authenticator.advertisedMethods(), authorizedKeys }
 
-  return { hostKeys: hostKeyPems, fingerprints, authenticator, idleTimeoutMs, maxTimeoutMs, safe, noneOnly, banner }
+  return {
+    hostKeys: hostKeyPems,
+    fingerprints,
+    authenticator,
+    idleTimeoutMs,
+    maxTimeoutMs,
+    sessionLimits,
+    safe,
+    noneOnly,
+    banner,
+  }
 }

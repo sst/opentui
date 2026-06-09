@@ -29,6 +29,7 @@ test("an authentication decision is ignored after the connection closes", async 
     safe: createSafeInvoke(() => {}),
     idleTimeoutMs: undefined,
     maxTimeoutMs: undefined,
+    sessionLimits: { perConnection: 1, global: 100 },
   })
   handler.onConnection(client, { ip: "127.0.0.1", port: 1234 } as ClientInfo)
   client.emit("authentication", {
@@ -82,6 +83,7 @@ test("closeAll waits for a logically closed bridge to finish draining", async ()
     safe: createSafeInvoke(() => {}),
     idleTimeoutMs: undefined,
     maxTimeoutMs: undefined,
+    sessionLimits: { perConnection: 1, global: 100 },
   })
   handler.onConnection(client, { ip: "127.0.0.1", port: 1234 } as ClientInfo)
   client.emit("ready")
@@ -138,6 +140,7 @@ test("closeAll force-closes a client that never drains", async () => {
     safe: createSafeInvoke(() => {}),
     idleTimeoutMs: undefined,
     maxTimeoutMs: undefined,
+    sessionLimits: { perConnection: 1, global: 100 },
   })
   handler.onConnection(client, { ip: "127.0.0.1", port: 1234 } as ClientInfo)
   client.emit("ready")
@@ -148,4 +151,46 @@ test("closeAll force-closes a client that never drains", async () => {
 
   await handler.closeAll()
   expect(socketDestroyCalls).toBe(1)
+})
+
+test("a bridge setup failure releases reserved capacity", () => {
+  const errors: unknown[] = []
+  const client = Object.assign(new EventEmitter(), {
+    end() {},
+    _sock: { destroy() {} },
+  }) as unknown as Connection
+  const handler = createConnectionHandler({
+    authenticator: {
+      advertisedMethods: () => ["none"],
+      authenticate: async () => ({ type: "reject", methods: ["none"] }),
+      handle: async () => ({ type: "accept", identity: { method: "none", username: "x" } }),
+    },
+    middlewares: [],
+    handler: () => {},
+    safe: createSafeInvoke((error) => errors.push(error)),
+    idleTimeoutMs: undefined,
+    maxTimeoutMs: undefined,
+    sessionLimits: { perConnection: 1, global: 1 },
+  })
+  handler.onConnection(client, { ip: "127.0.0.1", port: 1234 } as ClientInfo)
+  client.emit("ready")
+
+  let accepts = 0
+  let rejects = 0
+  for (let i = 0; i < 2; i++) {
+    const sshSession = new EventEmitter()
+    client.emit("session", () => sshSession)
+    sshSession.emit(
+      "shell",
+      () => {
+        accepts++
+        return {}
+      },
+      () => rejects++,
+    )
+  }
+
+  expect(accepts).toBe(2)
+  expect(rejects).toBe(0)
+  expect(errors).toHaveLength(2)
 })

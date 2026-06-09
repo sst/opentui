@@ -67,7 +67,10 @@ export interface Harness {
   /** Track a server for teardown; returns it. */
   track(server: Server): Server
   /** Stand up a tracked open-auth server (shared host key, banner off). */
-  mkServer(handler: SessionHandler, extra?: Pick<ServerConfig, "idleTimeout" | "maxTimeout" | "onError">): Server
+  mkServer(
+    handler: SessionHandler,
+    extra?: Pick<ServerConfig, "idleTimeout" | "maxTimeout" | "limits" | "onError">,
+  ): Server
   /** mkdtemp under os.tmpdir(), tracked for removal. */
   tmpDir(prefix?: string): string
   /** Connect a tracked client (no shell); resolve once ready. */

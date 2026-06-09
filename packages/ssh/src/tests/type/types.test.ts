@@ -126,6 +126,16 @@ function _handlerNarrowing() {
     // @ts-expect-error — typed configs can omit auth at runtime, so none is still possible
     void s.identity.fingerprint
   })
+
+  createServer({ limits: { session: { perConnection: 2, global: 200 } } }).serve(() => {})
+  createServer({ limits: { session: { perConnection: 2 } } }).serve(() => {})
+  createServer({ limits: { session: { global: 200 } } }).serve(() => {})
+  // @ts-expect-error session limits are numeric
+  createServer({ limits: { session: { perConnection: "2" } } }).serve(() => {})
+  // @ts-expect-error unlimited session limits are unsupported
+  createServer({ limits: { session: { global: null } } }).serve(() => {})
+  // @ts-expect-error misspelled session limit field
+  createServer({ limits: { session: { perClient: 2 } } }).serve(() => {})
 }
 
 // `.use(...)` accumulates each link's contribution (inferred from `next({...})`)

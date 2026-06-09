@@ -41,6 +41,7 @@ function buildServer<Id extends Identity>(
     safe: runtime.safe,
     idleTimeoutMs: runtime.idleTimeoutMs,
     maxTimeoutMs: runtime.maxTimeoutMs,
+    sessionLimits: runtime.sessionLimits,
   })
 
   const sshServer = new Ssh2Server({ hostKeys: runtime.hostKeys }, connectionHandler.onConnection)
