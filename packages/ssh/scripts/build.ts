@@ -18,6 +18,7 @@ interface PackageJson {
   type?: string
   dependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+  engines?: Record<string, string>
 }
 
 const __filename = fileURLToPath(import.meta.url)
@@ -108,6 +109,7 @@ writeFileSync(
       },
       dependencies: packageJson.dependencies,
       peerDependencies: processedPeerDependencies,
+      engines: packageJson.engines,
     },
     null,
     2,

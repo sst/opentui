@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from "node:crypto"
 import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
-import { type ParsedKey, utils } from "ssh2"
+import ssh2, { type ParsedKey } from "ssh2"
 import { ConfigError } from "./errors.js"
 import type { ServerConfig } from "./types.js"
+
+const { utils } = ssh2
 
 /** SSH key helpers: fingerprinting, single-key parse normalization, and host-key resolution. */
 
@@ -86,6 +88,7 @@ export function resolveHostKey(config: Pick<ServerConfig, "hostKey">): {
   }
 
   const keys = hostKeyPems.map((pem) => parseOneKey(pem))
+  if (keys.length === 0) throw new ConfigError("hostKey.pem must contain at least one host key")
   if (keys.some((key) => !key)) throw new ConfigError(`could not parse host key (${source})`)
   return {
     hostKeyPems,

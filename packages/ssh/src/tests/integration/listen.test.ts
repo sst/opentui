@@ -1,3 +1,4 @@
+import { createServer as createNetServer } from "node:net"
 import { afterEach, expect, test } from "bun:test"
 import { createServer } from "../../index.js"
 import type { Server } from "../../types.js"
@@ -61,4 +62,47 @@ test("close is idempotent and the same server can listen again", async () => {
 
   const second = await server.listen(0)
   expect(second.port).toBeGreaterThan(0)
+})
+
+test("a relisten bind failure rejects without reaching onError", async () => {
+  const reported: unknown[] = []
+  server = createServer({
+    auth: "open",
+    startupBanner: false,
+    hostKey: { pem: HOST_KEY },
+    onError: (error) => reported.push(error),
+  }).serve(() => {})
+  const { port } = await server.listen(0)
+  await server.close()
+
+  const blocker = createNetServer()
+  await new Promise<void>((resolve, reject) => {
+    blocker.once("error", reject).listen(port, "127.0.0.1", resolve)
+  })
+  try {
+    await expect(server.listen(port)).rejects.toMatchObject({ code: "EADDRINUSE" })
+    await expect(server.listen(port)).rejects.toMatchObject({ code: "EADDRINUSE" })
+    expect(reported).toEqual([])
+  } finally {
+    await new Promise<void>((resolve) => blocker.close(() => resolve()))
+  }
+})
+
+test("a duplicate relisten does not corrupt bind-error routing", async () => {
+  const reported: unknown[] = []
+  server = createServer({
+    auth: "open",
+    startupBanner: false,
+    hostKey: { pem: HOST_KEY },
+    onError: (error) => reported.push(error),
+  }).serve(() => {})
+  await server.listen(0)
+  await server.close()
+
+  const first = server.listen(0)
+  const duplicate = server.listen(0).catch((error: unknown) => error)
+  const info = await first
+  await expect(duplicate).resolves.toMatchObject({ code: "ERR_SERVER_ALREADY_LISTEN" })
+  expect(info.port).toBeGreaterThan(0)
+  expect(reported).toEqual([])
 })

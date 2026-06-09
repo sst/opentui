@@ -227,8 +227,11 @@ test("a channel error tears down without waiting for close", async () => {
   let rendererDestroyCalls = 0
   let closeCalls = 0
   const channel = fakeChannel()
+  const reported: unknown[] = []
+  const error = new Error("transport failed")
   const { bridge } = testBridge({
     channel,
+    safe: createSafeInvoke((value) => reported.push(value)),
     createRenderer: (async () =>
       rendererStub({
         destroy() {
@@ -240,7 +243,7 @@ test("a channel error tears down without waiting for close", async () => {
   const entered = bridge.enterApp(() => {})
   await flush()
 
-  channel.emit("error", new Error("transport failed"))
+  channel.emit("error", error)
   await entered
 
   expect(bridge.closed).toBe(true)
@@ -248,6 +251,7 @@ test("a channel error tears down without waiting for close", async () => {
   expect(closeCalls).toBe(1)
   expect(channel.exitCalls).toBe(0)
   expect(channel.closeCalls).toBe(0)
+  expect(reported).toEqual([error])
 })
 
 test("onClose registered AFTER the session closed still fires — no lost app teardown", () => {

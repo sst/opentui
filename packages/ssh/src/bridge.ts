@@ -286,9 +286,10 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
     resolveTransportClosed()
     void destroy()
   })
-  channel.on("error", () => {
+  channel.on("error", (error: Error) => {
     channelClosed = true
     resolveTransportClosed()
+    safe.report(error)
     void destroy()
   })
 

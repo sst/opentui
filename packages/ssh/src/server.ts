@@ -1,4 +1,4 @@
-import { Server as Ssh2Server } from "ssh2"
+import ssh2 from "ssh2"
 import { formatBanner } from "./banner.js"
 import { createConnectionHandler } from "./connection.js"
 import type { RuntimeMiddleware } from "./run-session.js"
@@ -15,6 +15,8 @@ import type {
   ServerConfig,
   SessionHandler,
 } from "./types.js"
+
+const { Server: Ssh2Server } = ssh2
 
 /** Loopback listeners skip the no-auth exposure warning. */
 const isLoopback = (h: string) => h === "127.0.0.1" || h === "::1" || h === "localhost"
@@ -43,6 +45,10 @@ function buildServer<Id extends Identity>(
 
   const sshServer = new Ssh2Server({ hostKeys: runtime.hostKeys }, connectionHandler.onConnection)
   let reportsServerErrors = false
+  let bindingAttempts = 0
+  sshServer.on("error", (err: Error) => {
+    if (bindingAttempts === 0 && reportsServerErrors) runtime.safe.report(err)
+  })
 
   return {
     listen(port = 2222, host = "127.0.0.1") {
@@ -57,23 +63,31 @@ function buildServer<Id extends Identity>(
               "or proxies, gets a session. Set `auth` to restrict access.",
           )
         }
-        const onError = (err: Error) => reject(err)
+        bindingAttempts++
+        const onError = (err: Error) => {
+          bindingAttempts--
+          reject(err)
+        }
         sshServer.once("error", onError)
-        sshServer.listen(port, host, () => {
-          sshServer.removeListener("error", onError)
-          if (!reportsServerErrors) {
+        try {
+          sshServer.listen(port, host, () => {
+            bindingAttempts--
+            sshServer.removeListener("error", onError)
             reportsServerErrors = true
-            sshServer.on("error", (err: Error) => runtime.safe.report(err))
-          }
-          const addressInfo = sshServer.address()
-          const actualPort = typeof addressInfo === "object" && addressInfo ? addressInfo.port : port
-          const boundHost = typeof addressInfo === "object" && addressInfo ? addressInfo.address : host
-          const info: ListenInfo = { host: boundHost, port: actualPort, fingerprints: runtime.fingerprints }
-          if (config.startupBanner !== false) {
-            console.log(formatBanner(info, runtime.banner).join("\n"))
-          }
-          resolve(info)
-        })
+            const addressInfo = sshServer.address()
+            const actualPort = typeof addressInfo === "object" && addressInfo ? addressInfo.port : port
+            const boundHost = typeof addressInfo === "object" && addressInfo ? addressInfo.address : host
+            const info: ListenInfo = { host: boundHost, port: actualPort, fingerprints: runtime.fingerprints }
+            if (config.startupBanner !== false) {
+              console.log(formatBanner(info, runtime.banner).join("\n"))
+            }
+            resolve(info)
+          })
+        } catch (error) {
+          bindingAttempts--
+          sshServer.removeListener("error", onError)
+          reject(error)
+        }
       })
     },
     async close() {

@@ -120,6 +120,8 @@ jobs:
           bun run test:dist --skip-build
           cd ../keymap
           bun run test:dist --skip-build
+          cd ../ssh
+          bun run test:dist --skip-build
 
       - name: Publish packages (dry-run)
         if: ${{ inputs.isDryRun }}

@@ -221,6 +221,20 @@ function _loggingIdentityNarrowing() {
     .serve(() => {})
 }
 
+function _loggingEventNarrowing() {
+  logging({
+    log(event) {
+      if (event.type === "disconnect") {
+        const duration: number = event.durationMs
+        void duration
+      } else {
+        const duration: undefined = event.durationMs
+        void duration
+      }
+    },
+  })
+}
+
 test("type-proof compiles (assertions verified by tsc)", () => {
   expect(typeof _rendererVisibility).toBe("function")
   expect(idNone.method).toBe("none")
@@ -229,4 +243,5 @@ test("type-proof compiles (assertions verified by tsc)", () => {
   expect(typeof _handlerNarrowing).toBe("function")
   expect(typeof _contextAccumulation).toBe("function")
   expect(typeof _loggingIdentityNarrowing).toBe("function")
+  expect(typeof _loggingEventNarrowing).toBe("function")
 })

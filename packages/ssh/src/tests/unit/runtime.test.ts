@@ -54,6 +54,15 @@ test("empty credentials (no methods) throw a ConfigError instead of locking ever
   expect(() => resolveRuntime({ auth: {}, hostKey: { pem: HOST_KEY } })).toThrow(/no authentication methods/i)
 })
 
+test("an empty host-key list is rejected instead of creating an unusable server", () => {
+  expect(() => resolveRuntime({ hostKey: { pem: [] } })).toThrow(ConfigError)
+  expect(() => resolveRuntime({ hostKey: { pem: [] } })).toThrow(/host key/i)
+})
+
+test("a host-key list rejects if any configured key is invalid", () => {
+  expect(() => resolveRuntime({ hostKey: { pem: [HOST_KEY, "not a key"] } })).toThrow(ConfigError)
+})
+
 test("idleTimeout resolves to ms: a unit string is scaled, a number passes through", () => {
   const unit = resolveRuntime({ idleTimeout: "10m", hostKey: { pem: HOST_KEY } })
   expect(unit.idleTimeoutMs).toBe(600_000)
