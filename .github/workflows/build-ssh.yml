@@ -57,6 +57,11 @@ jobs:
           cd packages/ssh
           bun run build
 
+      - name: Typecheck
+        run: |
+          cd packages/ssh
+          bun run typecheck
+
       - name: Run tests
         run: |
           cd packages/ssh

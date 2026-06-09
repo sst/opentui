@@ -21,12 +21,32 @@ import type { SessionHandler } from "../../types.js"
  * `write()`/`exit()`/`close()`. Counts peer-disconnect calls so idempotency can
  * be proven.
  */
-function fakeChannel(): EventEmitter & { exitCalls: number; closeCalls: number } {
-  const ch = new EventEmitter() as EventEmitter & { exitCalls: number; closeCalls: number }
+function fakeChannel(): EventEmitter & {
+  exitCalls: number
+  closeCalls: number
+  pauseCalls: number
+  resumeCalls: number
+} {
+  const ch = new EventEmitter() as EventEmitter & {
+    exitCalls: number
+    closeCalls: number
+    pauseCalls: number
+    resumeCalls: number
+  }
   ch.exitCalls = 0
   ch.closeCalls = 0
+  ch.pauseCalls = 0
+  ch.resumeCalls = 0
   return Object.assign(ch, {
     write: () => true,
+    pause: () => {
+      ch.pauseCalls++
+      return ch
+    },
+    resume: () => {
+      ch.resumeCalls++
+      return ch
+    },
     exit: () => {
       ch.exitCalls++
       return true
@@ -94,6 +114,41 @@ test("destroy is per-session — closing one bridge leaves another untouched", (
   expect(bClosed).toBe(false)
   expect(chB.exitCalls).toBe(0)
   expect(chB.closeCalls).toBe(0)
+})
+
+test("stdin applies backpressure before renderer creation and resumes when read", async () => {
+  const channel = fakeChannel()
+  let stdin: NodeJS.ReadStream | undefined
+  const { bridge } = testBridge({
+    channel,
+    createRenderer: (async (options: Parameters<RendererFactory>[0]) => {
+      stdin = options!.stdin
+      return rendererStub()
+    }) as unknown as RendererFactory,
+  })
+
+  // Input can arrive while middleware is still deciding whether to enter the app.
+  const chunk = Buffer.alloc(64 * 1024)
+  channel.emit("data", chunk)
+  expect(channel.pauseCalls).toBe(1)
+
+  const entered = bridge.enterApp(() => {})
+  await flush()
+  if (!stdin) throw new Error("renderer did not receive stdin")
+
+  expect(stdin.readableHighWaterMark).toBe(chunk.length)
+  expect(stdin.readableLength).toBe(chunk.length)
+
+  expect(stdin.read()).toEqual(chunk)
+  expect(channel.resumeCalls).toBe(1)
+
+  channel.emit("data", chunk)
+  expect(channel.pauseCalls).toBe(2)
+  expect(stdin.read()).toEqual(chunk)
+  expect(channel.resumeCalls).toBe(2)
+
+  bridge.destroy()
+  await entered
 })
 
 test("onClose registered AFTER the session closed still fires — no lost app teardown", () => {

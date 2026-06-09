@@ -42,7 +42,7 @@ function buildServer<Id extends Identity>(
   })
 
   const sshServer = new Ssh2Server({ hostKeys: runtime.hostKeys }, connectionHandler.onConnection)
-  sshServer.on("error", (err: Error) => runtime.safe.report(err))
+  let reportsServerErrors = false
 
   return {
     listen(port = 2222, host = "127.0.0.1") {
@@ -61,6 +61,10 @@ function buildServer<Id extends Identity>(
         sshServer.once("error", onError)
         sshServer.listen(port, host, () => {
           sshServer.removeListener("error", onError)
+          if (!reportsServerErrors) {
+            reportsServerErrors = true
+            sshServer.on("error", (err: Error) => runtime.safe.report(err))
+          }
           const addressInfo = sshServer.address()
           const actualPort = typeof addressInfo === "object" && addressInfo ? addressInfo.port : port
           const boundHost = typeof addressInfo === "object" && addressInfo ? addressInfo.address : host

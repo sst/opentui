@@ -41,11 +41,20 @@ function normalizePtyInfo(pty: PtyInfo): PtyInfo {
  *  - stdout: a Writable the renderer's NativeSpanFeed writes frames to.
  */
 function createSessionStreams(channel: ServerChannel, cols: number, rows: number, onActivity?: () => void) {
-  // A no-op read() keeps stdin flowing without auto-ending.
-  const stdin = new Readable({ read() {} })
+  let inputPaused = false
+  const stdin = new Readable({
+    read() {
+      if (!inputPaused) return
+      inputPaused = false
+      channel.resume()
+    },
+  })
   const onData = (chunk: Buffer) => {
     onActivity?.() // client input resets the idle-timeout clock
-    stdin.push(chunk)
+    if (!stdin.push(chunk) && !inputPaused) {
+      inputPaused = true
+      channel.pause()
+    }
   }
   channel.on("data", onData)
 

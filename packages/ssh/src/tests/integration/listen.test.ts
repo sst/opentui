@@ -25,9 +25,16 @@ test("listen() rejects when the port is already in use", async () => {
   const { port } = await server.listen(0)
 
   // A bind failure surfaces by rejecting listen(), not via onError.
-  const second = createServer({ auth: "open", startupBanner: false, hostKey: { pem: HOST_KEY } }).serve(() => {})
+  const reported: unknown[] = []
+  const second = createServer({
+    auth: "open",
+    startupBanner: false,
+    hostKey: { pem: HOST_KEY },
+    onError: (error) => reported.push(error),
+  }).serve(() => {})
   try {
     await expect(second.listen(port)).rejects.toThrow(/Failed to listen/)
+    expect(reported).toEqual([])
   } finally {
     await second.close()
   }
