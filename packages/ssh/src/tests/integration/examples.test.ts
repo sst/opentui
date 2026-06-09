@@ -17,11 +17,14 @@ for (const [name, entrypoint, extraArgs] of [
   test(`${name} example compiles`, () => {
     const outdir = mkdtempSync(join(tmpdir(), `opentui-ssh-${name.toLowerCase()}-`))
     try {
-      const result = Bun.spawnSync(["bun", "build", entrypoint, "--target", "bun", "--outdir", outdir, ...extraArgs], {
-        cwd: packageRoot,
-        stdout: "pipe",
-        stderr: "pipe",
-      })
+      const result = Bun.spawnSync(
+        ["bun", "build", entrypoint, "--target", "bun", "--packages", "external", "--outdir", outdir, ...extraArgs],
+        {
+          cwd: packageRoot,
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      )
       expect(result.exitCode, result.stderr.toString()).toBe(0)
     } finally {
       rmSync(outdir, { recursive: true, force: true })
