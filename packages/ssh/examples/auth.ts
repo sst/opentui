@@ -55,7 +55,7 @@ const server = createServer({
   // The renderer is torn down for you on disconnect.
 })
 
-// listen() prints the startup banner itself (host, fingerprint, auth methods).
+// listen() prints the startup banner itself (host, fingerprints, auth methods).
 await server.listen(PORT)
 
 process.on("SIGINT", async () => {

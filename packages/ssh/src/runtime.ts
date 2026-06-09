@@ -30,8 +30,8 @@ function parseDuration(name: string, value: string | number): number {
 export interface ResolvedRuntime {
   /** Host-key PEM(s) handed to the ssh2 `Server`. */
   hostKeys: (string | Buffer)[]
-  /** SHA256 fingerprint of the host key, surfaced in `ListenInfo` and the banner. */
-  fingerprint: string
+  /** SHA256 fingerprints of every configured host key. */
+  fingerprints: string[]
   /** The security core, normalized off `auth` (+ any static allowlist). */
   authenticator: Authenticator
   /** Idle reap budget in ms, or undefined when no `idleTimeout` was set. */
@@ -52,7 +52,7 @@ export interface ResolvedRuntime {
  * the config admits no one (empty credentials).
  */
 export function resolveRuntime(config: ServerConfig<AuthConfig>): ResolvedRuntime {
-  const { hostKeyPems, fingerprint, algorithm, source } = resolveHostKey(config)
+  const { hostKeyPems, fingerprints, algorithms, source } = resolveHostKey(config)
   const idleTimeoutMs = config.idleTimeout != null ? parseDuration("idleTimeout", config.idleTimeout) : undefined
   const maxTimeoutMs = config.maxTimeout != null ? parseDuration("maxTimeout", config.maxTimeout) : undefined
 
@@ -64,7 +64,7 @@ export function resolveRuntime(config: ServerConfig<AuthConfig>): ResolvedRuntim
   // Auth failures from user predicates are reported through the same sink.
   const { authenticator, noneOnly, authorizedKeys } = resolveAuth(config.auth, safe.report)
 
-  const banner: BannerDescriptor = { algorithm, source, methods: authenticator.advertisedMethods(), authorizedKeys }
+  const banner: BannerDescriptor = { algorithms, source, methods: authenticator.advertisedMethods(), authorizedKeys }
 
-  return { hostKeys: hostKeyPems, fingerprint, authenticator, idleTimeoutMs, maxTimeoutMs, safe, noneOnly, banner }
+  return { hostKeys: hostKeyPems, fingerprints, authenticator, idleTimeoutMs, maxTimeoutMs, safe, noneOnly, banner }
 }

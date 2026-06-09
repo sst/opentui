@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect, test } from "bun:test"
-import { Client, type ConnectConfig } from "ssh2"
+import { Client, utils, type ConnectConfig } from "ssh2"
 import { TextRenderable } from "@opentui/core"
 import { createServer } from "../../index.js"
 import { parseOneKey, sha256Fingerprint } from "../../keys.js"
@@ -101,6 +101,21 @@ test("publickey 'any' accepts and identifies the client key", async () => {
   }
 })
 
+for (const [name, pair, algorithm] of [
+  ["RSA", () => utils.generateKeyPairSync("rsa", { bits: 2048 }), "ssh-rsa"],
+  ["ECDSA P-256", () => utils.generateKeyPairSync("ecdsa", { bits: 256 }), "ecdsa-sha2-nistp256"],
+] as const) {
+  test(`publickey authentication accepts a live ${name} client`, async () => {
+    const key = pair()
+    const identity = await captureIdentity({ publicKey: "any" }, { username: "alice", privateKey: key.private })
+    expect(identity.method).toBe("publickey")
+    if (identity.method === "publickey") {
+      expect(identity.fingerprint).toBe(fingerprintOf(key.public))
+      expect(identity.publicKey.algorithm).toBe(algorithm)
+    }
+  })
+}
+
 test("authorizedKeys allowlist (file path) is read from disk", async () => {
   const dir = tmpDir("ssh-authkeys-")
   const listed = genKey()
@@ -136,4 +151,40 @@ test("keyboard-interactive bridges prompts and accepts a correct answer", async 
   const identity = await captureIdentity(auth, { username: "frank", tryKeyboard: true }, { kbAnswers: ["1234"] })
   expect(identity.method).toBe("keyboard-interactive")
   expect(identity.username).toBe("frank")
+})
+
+test("disconnecting during asynchronous authentication creates no session", async () => {
+  const started = deferred<void>()
+  const decision = deferred<boolean>()
+  let sessions = 0
+  const errors: unknown[] = []
+  const server = track(
+    createServer({
+      auth: {
+        password: async () => {
+          started.resolve()
+          return decision.promise
+        },
+      },
+      startupBanner: false,
+      hostKey: { pem: HOST_KEY },
+      onError: (error) => errors.push(error),
+    }).serve(() => {
+      sessions++
+    }),
+  )
+  const { port } = await server.listen(0)
+  const conn = new Client()
+  conns.push(conn)
+  const closed = new Promise<void>((resolve) => conn.on("close", () => resolve()))
+  conn.on("error", () => {}).connect({ host: "127.0.0.1", port, username: "late", password: "secret" })
+
+  await started.promise
+  conn.end()
+  await closed
+  decision.resolve(true)
+  await new Promise((resolve) => setTimeout(resolve, 25))
+
+  expect(sessions).toBe(0)
+  expect(errors).toEqual([])
 })

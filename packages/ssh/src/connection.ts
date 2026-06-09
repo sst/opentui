@@ -5,6 +5,8 @@ import { type RuntimeMiddleware, runSession } from "./run-session.js"
 import { ignoreErrors, type SafeInvoke } from "./safe.js"
 import type { Identity, RemoteAddress, SessionHandler } from "./types.js"
 
+const SHUTDOWN_DRAIN_TIMEOUT_MS = 1_000
+
 /** What the connection handler needs from the resolved runtime and sealed chain. */
 export interface ConnectionDependencies {
   authenticator: Authenticator
@@ -33,7 +35,7 @@ const toRemoteAddress = (address: string | undefined, port: number | undefined):
  */
 export function createConnectionHandler(dependencies: ConnectionDependencies): {
   onConnection: (client: Connection, info: ClientInfo) => void
-  closeAll: () => void
+  closeAll: () => Promise<void>
 } {
   const { authenticator, middlewares, handler, safe, idleTimeoutMs, maxTimeoutMs } = dependencies
   const clients = new Set<Connection>()
@@ -41,6 +43,7 @@ export function createConnectionHandler(dependencies: ConnectionDependencies): {
 
   const onConnection = (client: Connection, info: ClientInfo) => {
     clients.add(client)
+    let connected = true
 
     // Updated once authentication accepts a real identity.
     let identity: Identity = { method: "none", username: "unknown" }
@@ -50,6 +53,7 @@ export function createConnectionHandler(dependencies: ConnectionDependencies): {
 
     client.on("authentication", async (ctx) => {
       const outcome = await authenticator.handle(ctx)
+      if (!connected) return
       if (outcome.type === "reject") return ctx.reject(outcome.methods)
       if (outcome.type === "accept") identity = outcome.identity
       return ctx.accept()
@@ -92,20 +96,31 @@ export function createConnectionHandler(dependencies: ConnectionDependencies): {
           })
           activeBridge = shellBridge
           bridges.add(shellBridge)
-          shellBridge.session.onClose(() => bridges.delete(shellBridge))
+          shellBridge.session.onClose(() => {
+            void shellBridge.destroy().finally(() => bridges.delete(shellBridge))
+          })
           runSession(middlewares, handler, shellBridge, safe)
         })
       })
     })
 
-    client.on("close", () => clients.delete(client))
+    client.on("close", () => {
+      connected = false
+      clients.delete(client)
+    })
     client.on("error", (err: Error) => safe.report(err))
   }
 
-  const closeAll = () => {
-    for (const bridge of bridges) {
-      ignoreErrors(() => bridge.destroy())
-    }
+  const closeAll = async () => {
+    const draining = Promise.all([...bridges].map((bridge) => bridge.destroy()))
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([
+      draining,
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, SHUTDOWN_DRAIN_TIMEOUT_MS)
+      }),
+    ])
+    if (timeout) clearTimeout(timeout)
     bridges.clear()
     for (const client of clients) {
       ignoreErrors(() => client.end())

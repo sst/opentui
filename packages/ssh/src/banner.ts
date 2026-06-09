@@ -3,8 +3,8 @@ import type { ListenInfo } from "./types.js"
 
 /** Data a startup banner is rendered from; a function of config alone. */
 export interface BannerDescriptor {
-  /** Host-key algorithm, e.g. "ssh-ed25519". */
-  algorithm: string
+  /** Host-key algorithms in fingerprint order. */
+  algorithms: string[]
   /** Where the host key came from: "provided" / "ephemeral" / "loaded …" / "generated …". */
   source: string
   /** Advertised auth methods, in banner order. */
@@ -18,7 +18,9 @@ export function formatBanner(info: ListenInfo, descriptor: BannerDescriptor): st
   const displayHost = info.host === "0.0.0.0" || info.host === "::" ? "localhost" : info.host
   const lines = [
     `@opentui/ssh  ▸  ssh://${displayHost}:${info.port}`,
-    `host key      ${info.fingerprint}  (${descriptor.algorithm}, ${descriptor.source})`,
+    ...info.fingerprints.map(
+      (fingerprint, index) => `host key      ${fingerprint}  (${descriptor.algorithms[index]}, ${descriptor.source})`,
+    ),
     `auth          ${descriptor.methods.join(", ")}`,
   ]
   if (descriptor.authorizedKeys?.size) {

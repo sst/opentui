@@ -249,7 +249,8 @@ export interface ServerConfig<A extends AuthConfig = "open"> {
 export interface ListenInfo {
   host: string
   port: number
-  fingerprint: string
+  /** SHA256 fingerprints for every configured host key, in configuration order. */
+  fingerprints: string[]
 }
 
 /**

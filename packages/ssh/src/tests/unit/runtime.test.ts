@@ -28,7 +28,7 @@ test("resolves the open default: a none-only authenticator, no idle budget", () 
   expect(rt.authenticator.advertisedMethods()).toEqual(["none"]) // auth omitted ⇒ open ⇒ none
   expect(rt.noneOnly).toBe(true) // wide open — listen() warns outside localhost
   expect(rt.idleTimeoutMs).toBeUndefined()
-  expect(rt.fingerprint).toMatch(/^SHA256:/) // host key fingerprint, surfaced for ListenInfo
+  expect(rt.fingerprints[0]).toMatch(/^SHA256:/) // host key fingerprint, surfaced for ListenInfo
   expect(rt.hostKeys).toEqual([HOST_KEY]) // host-key PEMs passed through to the ssh2 Server
 
   const explicit = resolveRuntime({ auth: "open", hostKey: { pem: HOST_KEY } })
@@ -116,10 +116,10 @@ test("authorizedKeys file must contain only valid keys and at least one key", ()
 
 test("the banner describes the bind: address, host key, and advertised methods", () => {
   const rt = resolveRuntime({ auth: { password: () => true }, hostKey: { pem: HOST_KEY } })
-  const banner = formatBanner({ host: "127.0.0.1", port: 2222, fingerprint: rt.fingerprint }, rt.banner).join("\n")
+  const banner = formatBanner({ host: "127.0.0.1", port: 2222, fingerprints: rt.fingerprints }, rt.banner).join("\n")
 
   expect(banner).toContain("ssh://127.0.0.1:2222") // the reachable address
-  expect(banner).toContain(rt.fingerprint) // the host key the client will pin
+  expect(banner).toContain(rt.fingerprints[0]!) // the host key the client will pin
   expect(banner).toContain("provided") // host key source (a supplied pem)
   expect(banner).toContain("password") // the advertised method
 })
@@ -129,12 +129,12 @@ test("the banner lists the authorized-key count only when an allowlist is config
     auth: { publicKey: { authorizedKeys: [PUBLIC_KEY_LINE] } },
     hostKey: { pem: HOST_KEY },
   })
-  expect(formatBanner({ host: "127.0.0.1", port: 2222, fingerprint: "x" }, withKeys.banner).join("\n")).toContain(
+  expect(formatBanner({ host: "127.0.0.1", port: 2222, fingerprints: ["x"] }, withKeys.banner).join("\n")).toContain(
     "1 keys",
   )
 
   const open = resolveRuntime({ hostKey: { pem: HOST_KEY } })
-  expect(formatBanner({ host: "127.0.0.1", port: 2222, fingerprint: "x" }, open.banner).join("\n")).not.toContain(
+  expect(formatBanner({ host: "127.0.0.1", port: 2222, fingerprints: ["x"] }, open.banner).join("\n")).not.toContain(
     "authorized",
   )
 })
@@ -143,9 +143,9 @@ test("with no hostKey configured, an ephemeral key is generated fresh each resol
   const a = resolveRuntime({})
   const b = resolveRuntime({})
 
-  expect(a.fingerprint).toMatch(/^SHA256:/)
-  expect(a.fingerprint).not.toBe(b.fingerprint) // regenerated per start, not pinned
-  expect(formatBanner({ host: "127.0.0.1", port: 2222, fingerprint: a.fingerprint }, a.banner).join("\n")).toContain(
+  expect(a.fingerprints[0]).toMatch(/^SHA256:/)
+  expect(a.fingerprints[0]).not.toBe(b.fingerprints[0]) // regenerated per start, not pinned
+  expect(formatBanner({ host: "127.0.0.1", port: 2222, fingerprints: a.fingerprints }, a.banner).join("\n")).toContain(
     "ephemeral",
   )
 })

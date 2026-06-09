@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import type { CliRenderer } from "@opentui/core"
 import { createServer } from "../../index.js"
+import { logging } from "../../logging.js"
 import type { AuthConfig, Identity, IdentityFor, Middleware, ServerConfig } from "../../types.js"
 
 // Compile-time proof for `IdentityFor<A>`; assertions are checked by `tsc --noEmit`.
@@ -192,6 +193,34 @@ function _rendererVisibility() {
     })
 }
 
+function _loggingIdentityNarrowing() {
+  createServer({ auth: { publicKey: "any" } })
+    .use(
+      logging<Publickey>({
+        log(event) {
+          const fingerprint: string = event.identity.fingerprint
+          const method: "publickey" = event.identity.method
+          void fingerprint
+          void method
+        },
+      }),
+    )
+    .serve(() => {})
+
+  createServer({ auth: "open" })
+    .use(
+      logging<None>({
+        log(event) {
+          const method: "none" = event.identity.method
+          void method
+          // @ts-expect-error open authentication has no public-key fingerprint
+          void event.identity.fingerprint
+        },
+      }),
+    )
+    .serve(() => {})
+}
+
 test("type-proof compiles (assertions verified by tsc)", () => {
   expect(typeof _rendererVisibility).toBe("function")
   expect(idNone.method).toBe("none")
@@ -199,4 +228,5 @@ test("type-proof compiles (assertions verified by tsc)", () => {
   expect(_fp).toBe("SHA256:abc")
   expect(typeof _handlerNarrowing).toBe("function")
   expect(typeof _contextAccumulation).toBe("function")
+  expect(typeof _loggingIdentityNarrowing).toBe("function")
 })

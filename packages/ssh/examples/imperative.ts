@@ -51,9 +51,9 @@ const server = createServer({
   // The renderer is destroyed for you on disconnect — no onClose needed here.
 })
 
-const { host, port, fingerprint } = await server.listen(PORT)
+const { host, port, fingerprints } = await server.listen(PORT)
 console.log(`@opentui/ssh  ▸  ssh://${host === "0.0.0.0" ? "localhost" : host}:${port}`)
-console.log(`host key      ${fingerprint}`)
+console.log(`host keys     ${fingerprints.join(" ")}`)
 console.log("waiting for connections… (Ctrl-C to stop)")
 
 process.on("SIGINT", async () => {

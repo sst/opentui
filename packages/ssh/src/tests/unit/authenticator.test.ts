@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import type { AuthAttempt } from "../../auth.js"
+import { utils } from "ssh2"
 import { createAuthenticator } from "../../auth.js"
 import { parseOneKey, sha256Fingerprint } from "../../keys.js"
 import { generateParseableKey as genKey } from "../support.js"
@@ -24,6 +25,7 @@ function pkAttempt(opts: {
   blob?: Buffer
   signature?: Buffer
   username?: string
+  hashAlgo?: string
 }): AuthAttempt {
   const pub = parse(opts.pubPem)
   const data = pub.getPublicSSH() as Buffer
@@ -31,7 +33,7 @@ function pkAttempt(opts: {
   let signature = opts.signature
   if (signature === undefined && opts.privPem) {
     const priv = parse(opts.privPem)
-    signature = priv.sign(blob) as Buffer
+    signature = priv.sign(blob, opts.hashAlgo) as Buffer
   }
   return {
     method: "publickey",
@@ -39,7 +41,7 @@ function pkAttempt(opts: {
     key: { algorithm: pub.type, blob: data },
     blob,
     signature,
-    hashAlgo: undefined,
+    hashAlgo: opts.hashAlgo,
   }
 }
 
@@ -131,6 +133,20 @@ test("publickey: a signature from the WRONG private key is rejected", async () =
   const spoofed = await auth.authenticate(pkAttempt({ pubPem: real.public, blob, signature: sig }))
   expect(spoofed.type).toBe("reject")
 })
+
+for (const [name, key, hashAlgo] of [
+  ["RSA SHA-256", () => utils.generateKeyPairSync("rsa", { bits: 2048 }), "sha256"],
+  ["RSA SHA-512", () => utils.generateKeyPairSync("rsa", { bits: 2048 }), "sha512"],
+  ["ECDSA P-256", () => utils.generateKeyPairSync("ecdsa", { bits: 256 }), undefined],
+] as const) {
+  test(`publickey verifies ${name} signatures`, async () => {
+    const pair = key()
+    const outcome = await createAuthenticator({ publicKey: "any" }).authenticate(
+      pkAttempt({ pubPem: pair.public, privPem: pair.private, hashAlgo }),
+    )
+    expect(outcome.type).toBe("accept")
+  })
+}
 
 // `allow` decides on the verified pass (proof of possession), so the gate is
 // asserted on signed attempts.

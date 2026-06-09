@@ -106,7 +106,7 @@ export interface SessionBridge {
    */
   enterApp(handler: SessionHandler): Promise<void>
   resize(cols: number, rows: number): void
-  destroy(): void
+  destroy(): Promise<void>
 }
 
 /** What `createSessionBridge` needs to wire one ssh2 shell channel into a session. */
@@ -155,6 +155,13 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
 
   let closed = false
   let channelClosed = false // set when the client hung up — don't poke a dead channel
+  let transportClosing = false
+  let stdoutFinished = false
+  let pendingRawWrites = 0
+  let resolveTransportClosed!: () => void
+  const transportClosed = new Promise<void>((resolve) => {
+    resolveTransportClosed = resolve
+  })
   let idleTimer: ReturnType<typeof setTimeout> | undefined
   let maxTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -195,17 +202,21 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
     },
     write(data) {
       if (closed) return
-      channel.write(data)
+      pendingRawWrites++
+      channel.write(data, () => {
+        pendingRawWrites--
+        finishTransportClose()
+      })
     },
     end() {
-      destroy()
+      void destroy()
     },
     deny(reason): never {
       // Keep deny reasons on the main screen by writing before the renderer exists.
       if (reason && !closed) {
-        channel.write(/\r?\n$/.test(reason) ? reason : `${reason}\r\n`)
+        session.write(/\r?\n$/.test(reason) ? reason : `${reason}\r\n`)
       }
-      destroy()
+      void destroy()
       throw new DenyError(reason)
     },
   }
@@ -224,19 +235,34 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
   }
 
   // All session-ending paths funnel through this idempotent teardown.
-  const destroy = () => {
-    if (closed) return
+  const finishTransportClose = () => {
+    if (!transportClosing || !stdoutFinished || pendingRawWrites > 0 || channelClosed) return
+    ignoreErrors(() => channel.exit(0))
+    ignoreErrors(() => channel.close())
+    resolveTransportClosed()
+  }
+
+  const destroy = (): Promise<void> => {
+    if (closed) return transportClosed
     closed = true
     if (idleTimer) clearTimeout(idleTimer)
     if (maxTimer) clearTimeout(maxTimer)
     ignoreErrors(() => renderer?.destroy())
-    // Send an exit status before closing so common SSH clients terminate promptly.
-    if (!channelClosed) {
-      ignoreErrors(() => channel.exit(0))
-      ignoreErrors(() => channel.close())
+    if (!channelClosed && !transportClosing) {
+      transportClosing = true
+      // Core can enqueue final terminal-restoration bytes during destroy. End the
+      // adapter on the next microtask and let its pending writes drain before close.
+      queueMicrotask(() => {
+        stdout.end(() => {
+          stdoutFinished = true
+          finishTransportClose()
+        })
+      })
     }
     detach()
     closeListeners.forEach((listener) => safe(listener))
+    if (channelClosed) resolveTransportClosed()
+    return transportClosed
   }
 
   // Reap a session that goes quiet for too long. Armed at start and re-armed on
@@ -257,7 +283,13 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
   // Mark the channel gone before teardown so we do not write to a dead peer.
   channel.on("close", () => {
     channelClosed = true
-    destroy()
+    resolveTransportClosed()
+    void destroy()
+  })
+  channel.on("error", () => {
+    channelClosed = true
+    resolveTransportClosed()
+    void destroy()
   })
 
   // Use current dimensions so resizes during middleware are honored.

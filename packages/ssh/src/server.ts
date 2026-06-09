@@ -68,7 +68,7 @@ function buildServer<Id extends Identity>(
           const addressInfo = sshServer.address()
           const actualPort = typeof addressInfo === "object" && addressInfo ? addressInfo.port : port
           const boundHost = typeof addressInfo === "object" && addressInfo ? addressInfo.address : host
-          const info: ListenInfo = { host: boundHost, port: actualPort, fingerprint: runtime.fingerprint }
+          const info: ListenInfo = { host: boundHost, port: actualPort, fingerprints: runtime.fingerprints }
           if (config.startupBanner !== false) {
             console.log(formatBanner(info, runtime.banner).join("\n"))
           }
@@ -76,9 +76,9 @@ function buildServer<Id extends Identity>(
         })
       })
     },
-    close() {
+    async close() {
+      await connectionHandler.closeAll()
       return new Promise<void>((resolve) => {
-        connectionHandler.closeAll()
         sshServer.close(() => resolve())
       })
     },

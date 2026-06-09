@@ -1,11 +1,28 @@
-import { existsSync, readFileSync, statSync } from "node:fs"
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect, spyOn, test } from "bun:test"
 import { utils } from "ssh2"
 import { createServer } from "../../index.js"
+import { parseOneKey, sha256Fingerprint } from "../../keys.js"
 import { createHarness, HOST_KEY } from "../support.js"
 
 const { track, tmpDir } = createHarness()
+
+test("listen reports every configured host-key fingerprint", async () => {
+  const ed25519 = utils.generateKeyPairSync("ed25519").private
+  const rsa = utils.generateKeyPairSync("rsa", { bits: 2048 }).private
+  const expected = [ed25519, rsa].map((pem) => {
+    const key = parseOneKey(pem)
+    if (!key) throw new Error("generated host key did not parse")
+    return sha256Fingerprint(key.getPublicSSH() as Buffer)
+  })
+  const server = track(
+    createServer({ auth: "open", startupBanner: false, hostKey: { pem: [ed25519, rsa] } }).serve(() => {}),
+  )
+  const info = await server.listen(0)
+
+  expect(info.fingerprints).toEqual(expected)
+})
 
 test("generates and persists a missing host key with 0600 permissions", async () => {
   const path = join(tmpDir(), "host_key")
@@ -26,7 +43,35 @@ test("reuses the same host key (stable fingerprint) across restarts", async () =
   const infoA = await a.listen(0)
   const b = track(createServer({ hostKey: { path }, auth: "open", startupBanner: false }).serve(() => {}))
   const infoB = await b.listen(0)
-  expect(infoB.fingerprint).toBe(infoA.fingerprint)
+  expect(infoB.fingerprints).toEqual(infoA.fingerprints)
+})
+
+test("concurrent creators converge on the persisted host key", async () => {
+  const dir = tmpDir("ssh-hostkey-race-")
+  const path = join(dir, "host_key")
+  const barrier = join(dir, "go")
+  const fixture = new URL("./hostkey-race.fixture.ts", import.meta.url).pathname
+  const children = Array.from({ length: 12 }, () =>
+    Bun.spawn([process.execPath, fixture, path, barrier], { stdout: "pipe", stderr: "pipe" }),
+  )
+  writeFileSync(barrier, "")
+
+  const results = await Promise.all(
+    children.map(async (child) => {
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      if (exitCode !== 0) throw new Error(stderr)
+      return JSON.parse(stdout) as { fingerprint: string }
+    }),
+  )
+  const persisted = parseOneKey(readFileSync(path))
+  if (!persisted) throw new Error("persisted host key did not parse")
+  const persistedFingerprint = sha256Fingerprint(persisted.getPublicSSH() as Buffer)
+
+  expect(new Set(results.map((result) => result.fingerprint))).toEqual(new Set([persistedFingerprint]))
 })
 
 test("generated host keys are validated before persisting and retried", () => {

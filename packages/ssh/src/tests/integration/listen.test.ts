@@ -12,12 +12,13 @@ afterEach(async () => {
   server = undefined
 })
 
-test("listen() resolves with host, port, and a host-key fingerprint", async () => {
+test("listen() resolves with host, port, and host-key fingerprints", async () => {
   server = createServer({ auth: "open", startupBanner: false, hostKey: { pem: HOST_KEY } }).serve(() => {})
   const info = await server.listen(0)
   expect(info.port).toBeGreaterThan(0)
   expect(info.host).toBeTruthy()
-  expect(info.fingerprint).toMatch(/^SHA256:/)
+  expect(info.fingerprints).toHaveLength(1)
+  expect(info.fingerprints[0]).toMatch(/^SHA256:/)
 })
 
 test("listen() rejects when the port is already in use", async () => {
@@ -38,4 +39,26 @@ test("listen() rejects when the port is already in use", async () => {
   } finally {
     await second.close()
   }
+})
+
+test("concurrent listen rejects the duplicate without disturbing the listener", async () => {
+  server = createServer({ auth: "open", startupBanner: false, hostKey: { pem: HOST_KEY } }).serve(() => {})
+  const first = server.listen(0)
+  const duplicate = server.listen(0).catch((error: unknown) => error)
+  const info = await first
+
+  await expect(duplicate).resolves.toMatchObject({ code: "ERR_SERVER_ALREADY_LISTEN" })
+  expect(info.port).toBeGreaterThan(0)
+})
+
+test("close is idempotent and the same server can listen again", async () => {
+  server = createServer({ auth: "open", startupBanner: false, hostKey: { pem: HOST_KEY } }).serve(() => {})
+  const first = await server.listen(0)
+  expect(first.port).toBeGreaterThan(0)
+
+  await Promise.all([server.close(), server.close()])
+  await server.close()
+
+  const second = await server.listen(0)
+  expect(second.port).toBeGreaterThan(0)
 })

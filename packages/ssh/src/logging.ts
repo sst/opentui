@@ -5,11 +5,11 @@ import type { Identity, Middleware, RemoteAddress } from "./types.js"
  * never reports errors (those flow to `onError`, the one error sink); it only
  * marks a session starting and ending.
  */
-export interface LogEvent {
+export interface LogEvent<Id extends Identity = Identity> {
   /** "connect" at session start, "disconnect" at teardown. */
   type: "connect" | "disconnect"
   /** Who connected, narrowed to the server's configured auth. */
-  identity: Identity
+  identity: Id
   remoteAddress: RemoteAddress
   term: string
   cols: number
@@ -18,9 +18,9 @@ export interface LogEvent {
   durationMs?: number
 }
 
-export interface LoggingOptions {
+export interface LoggingOptions<Id extends Identity = Identity> {
   /** Sink for events. Defaults to a one-line `console.log` formatter. */
-  log?: (event: LogEvent) => void
+  log?: (event: LogEvent<Id>) => void
 }
 
 const formatAddress = (address: RemoteAddress): string =>
@@ -52,8 +52,8 @@ function formatLogEvent(event: LogEvent): string {
  *   .serve((s) => mountApp(s.renderer))
  * ```
  */
-export function logging(options: LoggingOptions = {}): Middleware {
-  const sink = options.log ?? ((event: LogEvent) => console.log(formatLogEvent(event)))
+export function logging<Id extends Identity = Identity>(options: LoggingOptions<Id> = {}): Middleware<Id> {
+  const sink = options.log ?? ((event: LogEvent<Id>) => console.log(formatLogEvent(event)))
   return async (session, next) => {
     const start = Date.now()
     sink({

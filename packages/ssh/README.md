@@ -60,7 +60,7 @@ const server = createServer({
 await server.listen() // defaults to port 2222 on 127.0.0.1; pass (port, host) to change
 ```
 
-`listen(port = 2222, host = "127.0.0.1")` returns `{ host, port, fingerprint }`.
+`listen(port = 2222, host = "127.0.0.1")` returns `{ host, port, fingerprints }`.
 Pass `0` for an ephemeral port. Pass a host like `"0.0.0.0"` or `"::"` to listen
 on all interfaces, which is common in containers. Listening on a host other than
 `localhost`, `127.0.0.1`, or `::1` with no auth logs a warning (it never throws — an
@@ -261,7 +261,8 @@ hostKey: {
 ```
 
 The first run with a `path` generates and saves an ed25519 key; `listen()` prints
-its fingerprint so clients can verify it.
+its fingerprint so clients can verify it. When multiple PEMs are provided, every
+fingerprint is returned and printed in the same order.
 
 ## Lifecycle, errors & shutdown
 
@@ -303,9 +304,9 @@ const server = createServer({
   and `24h`.
 - **`maxTimeout`** reaps a session after that absolute lifetime, even when the
   client keeps sending input. Durations must be between `1ms` and `24h`.
-- **`listen()`** binds, prints the startup banner (URL, host-key fingerprint,
+- **`listen()`** binds, prints the startup banner (URL, host-key fingerprints,
   auth methods, allowlist fingerprints) to stdout unless `startupBanner: false`,
-  and returns `{ host, port, fingerprint }`.
+  and returns `{ host, port, fingerprints }`.
 - **`close()`** stops accepting, destroys live renderers, and closes the listener
   — a graceful, global shutdown.
 

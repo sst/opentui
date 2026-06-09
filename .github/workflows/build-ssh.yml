@@ -67,6 +67,12 @@ jobs:
           cd packages/ssh
           bun run test
 
+      - name: Test packed distribution
+        if: runner.os == 'Linux'
+        run: |
+          cd packages/ssh
+          bun run test:dist
+
   # Gate job for branch protection
   build-complete:
     name: SSH - Build and Test

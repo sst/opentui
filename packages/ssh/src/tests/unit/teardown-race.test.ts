@@ -26,19 +26,26 @@ function fakeChannel(): EventEmitter & {
   closeCalls: number
   pauseCalls: number
   resumeCalls: number
+  writes: Buffer[]
 } {
   const ch = new EventEmitter() as EventEmitter & {
     exitCalls: number
     closeCalls: number
     pauseCalls: number
     resumeCalls: number
+    writes: Buffer[]
   }
   ch.exitCalls = 0
   ch.closeCalls = 0
   ch.pauseCalls = 0
   ch.resumeCalls = 0
+  ch.writes = []
   return Object.assign(ch, {
-    write: () => true,
+    write: (data: Buffer | string, callback?: () => void) => {
+      ch.writes.push(Buffer.from(data))
+      callback?.()
+      return true
+    },
     pause: () => {
       ch.pauseCalls++
       return ch
@@ -78,13 +85,14 @@ function testBridge(
   return { channel, bridge }
 }
 
-test("destroy is idempotent — a second call tells the peer only once", () => {
+test("destroy is idempotent — a second call tells the peer only once", async () => {
   const { channel, bridge } = testBridge()
   let closes = 0
   bridge.session.onClose(() => closes++)
 
   bridge.destroy()
   bridge.destroy()
+  await flush()
 
   expect(closes).toBe(1)
   expect(channel.exitCalls).toBe(1) // peer disconnected once, not twice
@@ -149,6 +157,97 @@ test("stdin applies backpressure before renderer creation and resumes when read"
 
   bridge.destroy()
   await entered
+})
+
+test("renderer shutdown output flushes before the SSH channel closes", async () => {
+  const channel = fakeChannel()
+  const order: string[] = []
+  let stdout: NodeJS.WriteStream | undefined
+  Object.assign(channel, {
+    write(data: Buffer | string) {
+      channel.writes.push(Buffer.from(data))
+      order.push(`write:${data.toString()}`)
+      return false
+    },
+    close() {
+      channel.closeCalls++
+      order.push("close")
+    },
+  })
+  const { bridge } = testBridge({
+    channel,
+    createRenderer: (async (options: Parameters<RendererFactory>[0]) => {
+      stdout = options!.stdout
+      return rendererStub({
+        destroy() {
+          queueMicrotask(() => stdout!.write("SHUTDOWN", () => order.push("flushed")))
+        },
+      })
+    }) as unknown as RendererFactory,
+  })
+
+  const entered = bridge.enterApp(() => {})
+  await flush()
+  bridge.destroy()
+  await Promise.resolve()
+
+  expect(order).toEqual(["write:SHUTDOWN"])
+  expect(channel.closeCalls).toBe(0)
+
+  channel.emit("drain")
+  await flush()
+  await entered
+  expect(order).toEqual(["write:SHUTDOWN", "flushed", "close"])
+})
+
+test("raw session writes drain before the SSH channel closes", async () => {
+  const channel = fakeChannel()
+  let rawCallback: (() => void) | undefined
+  Object.assign(channel, {
+    write(data: Buffer | string, callback?: () => void) {
+      channel.writes.push(Buffer.from(data))
+      rawCallback = callback
+      return false
+    },
+  })
+  const { bridge } = testBridge({ channel })
+
+  bridge.session.write("RAW")
+  bridge.destroy()
+  await flush()
+  expect(channel.closeCalls).toBe(0)
+  expect(Buffer.concat(channel.writes).toString()).toBe("RAW")
+
+  rawCallback?.()
+  await flush()
+  expect(channel.closeCalls).toBe(1)
+})
+
+test("a channel error tears down without waiting for close", async () => {
+  let rendererDestroyCalls = 0
+  let closeCalls = 0
+  const channel = fakeChannel()
+  const { bridge } = testBridge({
+    channel,
+    createRenderer: (async () =>
+      rendererStub({
+        destroy() {
+          rendererDestroyCalls++
+        },
+      })) as unknown as RendererFactory,
+  })
+  bridge.session.onClose(() => closeCalls++)
+  const entered = bridge.enterApp(() => {})
+  await flush()
+
+  channel.emit("error", new Error("transport failed"))
+  await entered
+
+  expect(bridge.closed).toBe(true)
+  expect(rendererDestroyCalls).toBe(1)
+  expect(closeCalls).toBe(1)
+  expect(channel.exitCalls).toBe(0)
+  expect(channel.closeCalls).toBe(0)
 })
 
 test("onClose registered AFTER the session closed still fires — no lost app teardown", () => {

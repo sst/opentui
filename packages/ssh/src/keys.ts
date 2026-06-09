@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { createHash, randomUUID } from "node:crypto"
+import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { type ParsedKey, utils } from "ssh2"
 import { ConfigError } from "./errors.js"
@@ -35,11 +35,11 @@ function generateParseableHostKey(): string {
   throw new ConfigError("could not generate a parseable ed25519 host key")
 }
 
-/** Resolve host-key PEM(s) + fingerprint: explicit PEM, persisted path, or ephemeral. */
+/** Resolve host-key PEM(s) + fingerprints: explicit PEM, persisted path, or ephemeral. */
 export function resolveHostKey(config: Pick<ServerConfig, "hostKey">): {
   hostKeyPems: (string | Buffer)[]
-  fingerprint: string
-  algorithm: string
+  fingerprints: string[]
+  algorithms: string[]
   source: string
 } {
   const hostKey = config.hostKey
@@ -59,9 +59,25 @@ export function resolveHostKey(config: Pick<ServerConfig, "hostKey">): {
       // Windows has no POSIX mode bits, so there the key inherits the directory ACL.
       const pem = generateParseableHostKey()
       mkdirSync(dirname(hostKey.path), { recursive: true, mode: 0o700 })
-      writeFileSync(hostKey.path, pem, { mode: 0o600 })
-      hostKeyPems = [pem]
-      source = `generated ${hostKey.path}`
+      const temporaryPath = `${hostKey.path}.${process.pid}.${randomUUID()}.tmp`
+      try {
+        writeFileSync(temporaryPath, pem, { mode: 0o600, flag: "wx" })
+        try {
+          linkSync(temporaryPath, hostKey.path)
+          hostKeyPems = [pem]
+          source = `generated ${hostKey.path}`
+        } catch (error) {
+          if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error
+          hostKeyPems = [readFileSync(hostKey.path)]
+          source = `loaded ${hostKey.path}`
+        }
+      } finally {
+        try {
+          unlinkSync(temporaryPath)
+        } catch {
+          // The temporary file may not exist if creation failed.
+        }
+      }
     }
   } else {
     // No host key configured: ephemeral ed25519 (regenerated each start).
@@ -69,8 +85,12 @@ export function resolveHostKey(config: Pick<ServerConfig, "hostKey">): {
     source = "ephemeral"
   }
 
-  const key = parseOneKey(hostKeyPems[0]!)
-  if (!key) throw new ConfigError(`could not parse host key (${source})`)
-  const blob = key.getPublicSSH()
-  return { hostKeyPems, fingerprint: sha256Fingerprint(blob as Buffer), algorithm: key.type, source }
+  const keys = hostKeyPems.map((pem) => parseOneKey(pem))
+  if (keys.some((key) => !key)) throw new ConfigError(`could not parse host key (${source})`)
+  return {
+    hostKeyPems,
+    fingerprints: keys.map((key) => sha256Fingerprint(key!.getPublicSSH() as Buffer)),
+    algorithms: keys.map((key) => key!.type),
+    source,
+  }
 }
