@@ -1416,19 +1416,28 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return
       }
 
-      if (this._isRunning) {
-        if (!this.renderTimeout && !this.rendering) {
-          this.renderTimeout = this.clock.setTimeout(() => {
-            this.renderTimeout = null
-            this.loop()
-          }, 0)
-        }
-        return
-      }
-
-      this.requestRender()
+      this.scheduleBackpressureRetryTimer()
       this.resolveIdleIfNeeded()
     })
+  }
+
+  private scheduleBackpressureRetryTimer(): void {
+    if (this.renderTimeout || this._isDestroyed || this._controlState === RendererControlState.EXPLICIT_SUSPENDED)
+      return
+
+    this.renderTimeout = this.clock.setTimeout(() => {
+      this.renderTimeout = null
+      this.loop()
+    }, this.minTargetFrameTime)
+  }
+
+  private scheduleRenderAfterBackpressure(): void {
+    if (this._feed) {
+      this.scheduleRenderAfterFeedIdle()
+      return
+    }
+
+    this.scheduleBackpressureRetryTimer()
   }
 
   public requestRender() {
@@ -4410,8 +4419,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
             this.renderTimeout = null
           }
         } else {
-          this.immediateRerenderRequested = false
-          this.renderTimeout = null
+          this.scheduleRenderAfterBackpressure()
         }
       }
     } finally {
