@@ -2,8 +2,9 @@ import { expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 
-const packageRoot = new URL("../../..", import.meta.url).pathname
+const packageRoot = fileURLToPath(new URL("../../..", import.meta.url))
 for (const [name, entrypoint, extraArgs] of [
   ["minimal", "examples/minimal.ts", []],
   ["imperative", "examples/imperative.ts", []],
@@ -18,7 +19,18 @@ for (const [name, entrypoint, extraArgs] of [
     const outdir = mkdtempSync(join(tmpdir(), `opentui-ssh-${name.toLowerCase()}-`))
     try {
       const result = Bun.spawnSync(
-        ["bun", "build", entrypoint, "--target", "bun", "--packages", "external", "--outdir", outdir, ...extraArgs],
+        [
+          process.execPath,
+          "build",
+          entrypoint,
+          "--target",
+          "bun",
+          "--packages",
+          "external",
+          "--outdir",
+          outdir,
+          ...extraArgs,
+        ],
         {
           cwd: packageRoot,
           stdout: "pipe",

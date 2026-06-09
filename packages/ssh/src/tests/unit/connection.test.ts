@@ -266,3 +266,63 @@ test("a bridge setup failure releases reserved capacity", () => {
   expect(rejects).toBe(0)
   expect(errors).toHaveLength(2)
 })
+
+test("per-connection and global limits reject before accepting a shell", async () => {
+  const connectionHandler = createConnectionHandler({
+    authenticator: {
+      advertisedMethods: () => ["none"],
+      authenticate: async () => ({ type: "reject", methods: ["none"] }),
+      handle: async () => ({ type: "accept", identity: { method: "none", username: "x" } }),
+    },
+    middlewares: [() => new Promise(() => {})],
+    handler: () => {},
+    safe: createSafeInvoke(() => {}),
+    idleTimeoutMs: undefined,
+    maxTimeoutMs: undefined,
+    sessionLimits: { perConnection: 1, global: 2 },
+  })
+  connectionHandler.setAccepting(true)
+
+  const connect = () => {
+    const client = Object.assign(new EventEmitter(), {
+      end() {},
+      _sock: { destroy() {} },
+    }) as unknown as Connection
+    connectionHandler.onConnection(client, { ip: "127.0.0.1", port: 1234 } as ClientInfo)
+    client.emit("ready")
+    return client
+  }
+  const requestShell = (client: Connection) => {
+    const sshSession = new EventEmitter()
+    const channel = Object.assign(new EventEmitter(), {
+      write(_data: Buffer | string, callback?: () => void) {
+        callback?.()
+        return true
+      },
+      pause() {},
+      resume() {},
+      exit() {},
+      close() {},
+    })
+    let accepted = 0
+    let rejected = 0
+    client.emit("session", () => sshSession)
+    sshSession.emit(
+      "shell",
+      () => {
+        accepted++
+        return channel
+      },
+      () => rejected++,
+    )
+    return { accepted, rejected }
+  }
+
+  const firstClient = connect()
+  expect(requestShell(firstClient)).toEqual({ accepted: 1, rejected: 0 })
+  expect(requestShell(firstClient)).toEqual({ accepted: 0, rejected: 1 })
+  expect(requestShell(connect())).toEqual({ accepted: 1, rejected: 0 })
+  expect(requestShell(connect())).toEqual({ accepted: 0, rejected: 1 })
+
+  await connectionHandler.closeAll()
+})

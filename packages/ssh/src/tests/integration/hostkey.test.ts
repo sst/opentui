@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { expect, spyOn, test } from "bun:test"
 import { utils } from "ssh2"
 import { createServer } from "../../index.js"
@@ -50,7 +51,7 @@ test("concurrent creators converge on the persisted host key", async () => {
   const dir = tmpDir("ssh-hostkey-race-")
   const path = join(dir, "host_key")
   const barrier = join(dir, "go")
-  const fixture = new URL("./hostkey-race.fixture.ts", import.meta.url).pathname
+  const fixture = fileURLToPath(new URL("./hostkey-race.fixture.ts", import.meta.url))
   const children = Array.from({ length: 12 }, () =>
     Bun.spawn([process.execPath, fixture, path, barrier], { stdout: "pipe", stderr: "pipe" }),
   )
