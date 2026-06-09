@@ -36,6 +36,7 @@ export interface CodeOptions extends TextBufferOptions {
   conceal?: boolean
   drawUnstyledText?: boolean
   streaming?: boolean
+  initialStyledText?: StyledText
   baseHighlight?: string
   onHighlight?: OnHighlightCallback
   onChunks?: OnChunksCallback
@@ -55,6 +56,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private _drawUnstyledText: boolean
   private _shouldRenderTextBuffer: boolean = true
   private _streaming: boolean
+  private _initialStyledText?: StyledText
   private _hadInitialContent: boolean = false
   private _lastHighlights: SimpleHighlight[] = []
   private _baseHighlight?: string
@@ -82,12 +84,17 @@ export class CodeRenderable extends TextBufferRenderable {
     this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
     this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
+    this._initialStyledText = options.initialStyledText
     this._baseHighlight = options.baseHighlight
     this._onHighlight = options.onHighlight
     this._onChunks = options.onChunks
 
     if (this._content.length > 0) {
-      this.textBuffer.setText(this._content)
+      if (this._initialStyledText && this._drawUnstyledText) {
+        this.textBuffer.setStyledText(this._initialStyledText)
+      } else {
+        this.textBuffer.setText(this._content)
+      }
       this.updateTextInfo()
       this._shouldRenderTextBuffer = this._drawUnstyledText || !this._filetype
     }
@@ -105,12 +112,16 @@ export class CodeRenderable extends TextBufferRenderable {
       this._highlightsDirty = true
       this._highlightSnapshotId++
 
-      if (this._streaming && !this._drawUnstyledText && this._filetype) {
+      if (this._streaming && this._filetype && !this._drawUnstyledText) {
         this.requestRender()
         return
       }
 
-      this.textBuffer.setText(value)
+      if (this._initialStyledText && this._drawUnstyledText) {
+        this.textBuffer.setStyledText(this._initialStyledText)
+      } else {
+        this.textBuffer.setText(value)
+      }
       this.setRenderedLineSources(undefined)
       this.updateTextInfo()
     }
@@ -200,6 +211,13 @@ export class CodeRenderable extends TextBufferRenderable {
     return this._streaming
   }
 
+  set initialStyledText(value: StyledText | undefined) {
+    if (this._initialStyledText !== value) {
+      this._initialStyledText = value
+      this._highlightsDirty = true
+    }
+  }
+
   set streaming(value: boolean) {
     if (this._streaming !== value) {
       this._streaming = value
@@ -284,7 +302,11 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._streaming && !isInitialContent) {
       this._shouldRenderTextBuffer = true
     } else if (shouldDrawUnstyledNow) {
-      this.textBuffer.setText(content)
+      if (this._initialStyledText) {
+        this.textBuffer.setStyledText(this._initialStyledText)
+      } else {
+        this.textBuffer.setText(content)
+      }
       this.setRenderedLineSources(undefined)
       this._shouldRenderTextBuffer = true
     } else {

@@ -99,6 +99,14 @@ fn emptyLineInfo(outPtr: *ExternalLineInfo) void {
     };
 }
 
+fn sliceFromPtrLen(ptr: ?[*]const u8, len: u32) []const u8 {
+    if (len == 0) {
+        return "";
+    }
+
+    return ptr.?[0..@as(usize, len)];
+}
+
 inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
     return .{
         .bgColor = bg,
@@ -112,7 +120,7 @@ comptime {
     _ = native_yoga;
 }
 
-export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.c) void) void {
+export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: u32) callconv(.c) void) void {
     logger.setLogCallback(callback);
 }
 
@@ -302,9 +310,9 @@ export fn audioGetPlaybackDeviceCount(engine_handle: NativeHandle) u32 {
     return native_audio.getPlaybackDeviceCount(object_ptr);
 }
 
-export fn audioGetPlaybackDeviceName(engine_handle: NativeHandle, index: u32, out_ptr: [*]u8, max_len: usize) usize {
+export fn audioGetPlaybackDeviceName(engine_handle: NativeHandle, index: u32, out_ptr: [*]u8, max_len: u32) u32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return 0;
-    return native_audio.getPlaybackDeviceName(object_ptr, index, out_ptr, max_len);
+    return @intCast(native_audio.getPlaybackDeviceName(object_ptr, index, out_ptr, @as(usize, max_len)));
 }
 
 export fn audioIsPlaybackDeviceDefault(engine_handle: NativeHandle, index: u32) bool {
@@ -337,9 +345,9 @@ export fn audioStop(engine_handle: NativeHandle) i32 {
     return native_audio.stop(object_ptr);
 }
 
-export fn audioLoad(engine_handle: NativeHandle, data_ptr: ?[*]const u8, data_len: usize, out_sound_id: ?*u32) i32 {
+export fn audioLoad(engine_handle: NativeHandle, data_ptr: ?[*]const u8, data_len: u32, out_sound_id: ?*u32) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    return native_audio.load(object_ptr, data_ptr, data_len, out_sound_id);
+    return native_audio.load(object_ptr, data_ptr, @as(usize, data_len), out_sound_id);
 }
 
 export fn audioUnload(engine_handle: NativeHandle, sound_id: u32) i32 {
@@ -362,9 +370,9 @@ export fn audioSetVoiceGroup(engine_handle: NativeHandle, voice_id: u32, group_i
     return native_audio.setVoiceGroup(object_ptr, voice_id, group_id);
 }
 
-export fn audioCreateGroup(engine_handle: NativeHandle, name_ptr: ?[*]const u8, name_len: usize, out_group_id: ?*u32) i32 {
+export fn audioCreateGroup(engine_handle: NativeHandle, name_ptr: ?[*]const u8, name_len: u32, out_group_id: ?*u32) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    return native_audio.createGroup(object_ptr, name_ptr, name_len, out_group_id);
+    return native_audio.createGroup(object_ptr, name_ptr, @as(usize, name_len), out_group_id);
 }
 
 export fn audioSetGroupVolume(engine_handle: NativeHandle, group_id: u32, volume: f32) i32 {
@@ -397,8 +405,8 @@ export fn audioGetStats(engine_handle: NativeHandle, out_stats: ?*native_audio.S
     return native_audio.getStats(object_ptr, out_stats);
 }
 
-export fn getArenaAllocatedBytes() usize {
-    return arena.queryCapacity();
+export fn getArenaAllocatedBytes() u64 {
+    return @intCast(arena.queryCapacity());
 }
 
 export fn getBuildOptions(out_ptr: *ExternalBuildOptions) void {
@@ -495,10 +503,10 @@ export fn createRenderer(
     return renderer_handle;
 }
 
-export fn setTerminalEnvVar(renderer_handle: NativeHandle, keyPtr: [*]const u8, keyLen: usize, valuePtr: [*]const u8, valueLen: usize) bool {
+export fn setTerminalEnvVar(renderer_handle: NativeHandle, keyPtr: ?[*]const u8, keyLen: u32, valuePtr: ?[*]const u8, valueLen: u32) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
-    const key = keyPtr[0..keyLen];
-    const value = valuePtr[0..valueLen];
+    const key = sliceFromPtrLen(keyPtr, keyLen);
+    const value = sliceFromPtrLen(valuePtr, valueLen);
     return object_ptr.setTerminalEnvVar(key, value);
 }
 
@@ -694,7 +702,7 @@ export fn commitSplitFooterSnapshot(
     ));
 }
 
-export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: [*]const u8, idLen: usize) NativeHandle {
+export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: ?[*]const u8, idLen: u32) NativeHandle {
     if (width == 0 or height == 0) {
         logger.warn("Invalid buffer dimensions: {}x{}", .{ width, height });
         return INVALID_HANDLE;
@@ -703,7 +711,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
-    const id = idPtr[0..idLen];
+    const id = sliceFromPtrLen(idPtr, idLen);
 
     const bufferPtr = buffer.OptimizedBuffer.init(globalAllocator, width, height, .{
         .respectAlpha = respectAlpha,
@@ -813,9 +821,9 @@ export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *Exter
     };
 }
 
-export fn processCapabilityResponse(renderer_handle: NativeHandle, responsePtr: [*]const u8, responseLen: usize) void {
+export fn processCapabilityResponse(renderer_handle: NativeHandle, responsePtr: ?[*]const u8, responseLen: u32) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
-    const response = responsePtr[0..responseLen];
+    const response = sliceFromPtrLen(responsePtr, responseLen);
     object_ptr.processCapabilityResponse(response);
 }
 
@@ -827,7 +835,7 @@ export fn setCursorColor(renderer_handle: NativeHandle, color: [*]const u16) voi
 export fn rendererSetPaletteState(
     renderer_handle: NativeHandle,
     palettePtr: [*]const u16,
-    paletteLen: usize,
+    paletteLen: u32,
     defaultFgPtr: [*]const u16,
     defaultBgPtr: [*]const u16,
     paletteEpoch: u32,
@@ -928,16 +936,16 @@ export fn clearTerminal(renderer_handle: NativeHandle) void {
     object_ptr.clearTerminal();
 }
 
-export fn setTerminalTitle(renderer_handle: NativeHandle, titlePtr: [*]const u8, titleLen: usize) void {
+export fn setTerminalTitle(renderer_handle: NativeHandle, titlePtr: ?[*]const u8, titleLen: u32) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
-    const title = titlePtr[0..titleLen];
+    const title = sliceFromPtrLen(titlePtr, titleLen);
     object_ptr.setTerminalTitle(title);
 }
 
-export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, payloadPtr: [*]const u8, payloadLen: usize) bool {
+export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, payloadPtr: ?[*]const u8, payloadLen: u32) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
     const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
-    const payload = payloadPtr[0..payloadLen];
+    const payload = sliceFromPtrLen(payloadPtr, payloadLen);
     return object_ptr.copyToClipboardOSC52(targetEnum, payload);
 }
 
@@ -947,10 +955,10 @@ export fn clearClipboardOSC52(renderer_handle: NativeHandle, target: u8) bool {
     return object_ptr.clearClipboardOSC52(targetEnum);
 }
 
-export fn triggerNotification(renderer_handle: NativeHandle, messagePtr: [*]const u8, messageLen: usize, titlePtr: ?[*]const u8, titleLen: usize) bool {
+export fn triggerNotification(renderer_handle: NativeHandle, messagePtr: [*]const u8, messageLen: u32, titlePtr: ?[*]const u8, titleLen: u32) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
-    const message = messagePtr[0..messageLen];
-    const title = if (titlePtr) |ptr| ptr[0..titleLen] else null;
+    const message = messagePtr[0..@as(usize, messageLen)];
+    const title = if (titlePtr) |ptr| ptr[0..@as(usize, titleLen)] else null;
     return object_ptr.triggerNotification(message, title);
 }
 
@@ -990,12 +998,15 @@ export fn bufferSetRespectAlpha(buffer_handle: NativeHandle, respectAlpha: bool)
     object_ptr.setRespectAlpha(respectAlpha);
 }
 
-export fn bufferGetId(buffer_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
+export fn bufferGetId(buffer_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
     const id = object_ptr.getId();
-    const copyLen = @min(id.len, maxLen);
-    @memcpy(outPtr[0..copyLen], id[0..copyLen]);
-    return copyLen;
+    const copyLen = @min(id.len, @as(usize, maxLen));
+    @memcpy(out[0..copyLen], id[0..copyLen]);
+    return @intCast(copyLen);
 }
 
 export fn bufferGetRealCharSize(buffer_handle: NativeHandle) u32 {
@@ -1003,16 +1014,19 @@ export fn bufferGetRealCharSize(buffer_handle: NativeHandle) u32 {
     return object_ptr.getRealCharSize();
 }
 
-export fn bufferWriteResolvedChars(buffer_handle: NativeHandle, outputPtr: [*]u8, outputLen: usize, addLineBreaks: bool) u32 {
+export fn bufferWriteResolvedChars(buffer_handle: NativeHandle, outputPtr: ?[*]u8, outputLen: u32, addLineBreaks: bool) u32 {
     const object_ptr = acquireBuffer(buffer_handle) orelse return 0;
-    const output_slice = outputPtr[0..outputLen];
+    if (outputLen == 0) return 0;
+
+    const output = outputPtr orelse return 0;
+    const output_slice = output[0..@as(usize, outputLen)];
     return object_ptr.writeResolvedChars(output_slice, addLineBreaks) catch 0;
 }
 
-export fn bufferDrawText(buffer_handle: NativeHandle, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const u16, bg: ?[*]const u16, attributes: u32) void {
+export fn bufferDrawText(buffer_handle: NativeHandle, text: ?[*]const u8, textLen: u32, x: u32, y: u32, fg: [*]const u16, bg: ?[*]const u16, attributes: u32) void {
     const object_ptr = acquireBuffer(buffer_handle) orelse return;
     object_ptr.drawText(
-        text[0..textLen],
+        sliceFromPtrLen(text, textLen),
         x,
         y,
         ptrToRGBA(fg),
@@ -1041,11 +1055,11 @@ export fn bufferFillRect(buffer_handle: NativeHandle, x: u32, y: u32, width: u32
     object_ptr.fillRect(x, y, width, height, ptrToRGBA(bg));
 }
 
-export fn bufferColorMatrix(buffer_handle: NativeHandle, matrixPtr: [*]const f32, cellMaskPtr: [*]const f32, cellMaskCount: usize, strength: f32, target: u8) void {
+export fn bufferColorMatrix(buffer_handle: NativeHandle, matrixPtr: [*]const f32, cellMaskPtr: [*]const f32, cellMaskCount: u32, strength: f32, target: u8) void {
     const object_ptr = acquireBuffer(buffer_handle) orelse return;
     if (cellMaskCount == 0) return;
     const matrix = matrixPtr[0..16];
-    const len = cellMaskCount * 3;
+    const len = @as(usize, cellMaskCount) * 3;
     const cellMask = cellMaskPtr[0..len];
     const targetEnum: buffer_effects.ColorTarget = @enumFromInt(target);
     buffer_effects.colorMatrix(object_ptr, matrix, cellMask, strength, targetEnum);
@@ -1058,7 +1072,7 @@ export fn bufferColorMatrixUniform(buffer_handle: NativeHandle, matrixPtr: [*]co
     buffer_effects.colorMatrixUniform(object_ptr, matrix, strength, targetEnum);
 }
 
-export fn bufferDrawPackedBuffer(buffer_handle: NativeHandle, data: [*]const u8, dataLen: usize, posX: u32, posY: u32, terminalWidthCells: u32, terminalHeightCells: u32) void {
+export fn bufferDrawPackedBuffer(buffer_handle: NativeHandle, data: [*]const u8, dataLen: u32, posX: u32, posY: u32, terminalWidthCells: u32, terminalHeightCells: u32) void {
     const object_ptr = acquireBuffer(buffer_handle) orelse return;
     object_ptr.drawPackedBuffer(data, dataLen, posX, posY, terminalWidthCells, terminalHeightCells);
 }
@@ -1125,23 +1139,26 @@ export fn bufferClearOpacity(buffer_handle: NativeHandle) void {
     object_ptr.clearOpacity();
 }
 
-export fn bufferDrawSuperSampleBuffer(buffer_handle: NativeHandle, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
+export fn bufferDrawSuperSampleBuffer(buffer_handle: NativeHandle, x: u32, y: u32, pixelData: [*]const u8, len: u32, format: u8, alignedBytesPerRow: u32) void {
     const object_ptr = acquireBuffer(buffer_handle) orelse return;
     object_ptr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow);
 }
 
-export fn linkAlloc(urlPtr: [*]const u8, urlLen: usize) u32 {
-    const url = urlPtr[0..urlLen];
+export fn linkAlloc(urlPtr: ?[*]const u8, urlLen: u32) u32 {
+    const url = sliceFromPtrLen(urlPtr, urlLen);
     const link_pool = link.initGlobalLinkPool(globalArena);
     return link_pool.alloc(url) catch 0;
 }
 
-export fn linkGetUrl(id: u32, outPtr: [*]u8, maxLen: usize) usize {
+export fn linkGetUrl(id: u32, outPtr: ?[*]u8, maxLen: u32) u32 {
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
     const link_pool = link.initGlobalLinkPool(globalArena);
     const url_bytes = link_pool.get(id) catch return 0;
-    const copyLen = @min(url_bytes.len, maxLen);
-    @memcpy(outPtr[0..copyLen], url_bytes[0..copyLen]);
-    return copyLen;
+    const copyLen = @min(url_bytes.len, @as(usize, maxLen));
+    @memcpy(out[0..copyLen], url_bytes[0..copyLen]);
+    return @intCast(copyLen);
 }
 
 export fn attributesWithLink(baseAttributes: u32, linkId: u32) u32 {
@@ -1356,10 +1373,10 @@ export fn resumeRenderer(renderer_handle: NativeHandle) void {
     object_ptr.resumeRenderer();
 }
 
-export fn writeOut(renderer_handle: NativeHandle, dataPtr: [*]const u8, dataLen: usize) void {
+export fn writeOut(renderer_handle: NativeHandle, dataPtr: ?[*]const u8, dataLen: u32) void {
     const object_ptr = acquireRenderer(renderer_handle) orelse return;
-    if (dataLen == 0) return;
-    const data = dataPtr[0..dataLen];
+    const data = sliceFromPtrLen(dataPtr, dataLen);
+    if (data.len == 0) return;
     object_ptr.writeOut(data);
 }
 
@@ -1447,16 +1464,16 @@ export fn textBufferSetTabWidth(tb_handle: NativeHandle, width: u8) void {
     object_ptr.setTabWidth(width);
 }
 
-export fn textBufferRegisterMemBuffer(tb_handle: NativeHandle, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
+export fn textBufferRegisterMemBuffer(tb_handle: NativeHandle, dataPtr: ?[*]const u8, dataLen: u32, owned: bool) u16 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return 0xFFFF;
-    const data = dataPtr[0..dataLen];
+    const data = sliceFromPtrLen(dataPtr, dataLen);
     const mem_id = object_ptr.registerMemBuffer(data, owned) catch return 0xFFFF;
     return @intCast(mem_id);
 }
 
-export fn textBufferReplaceMemBuffer(tb_handle: NativeHandle, id: u8, dataPtr: [*]const u8, dataLen: usize, owned: bool) bool {
+export fn textBufferReplaceMemBuffer(tb_handle: NativeHandle, id: u8, dataPtr: ?[*]const u8, dataLen: u32, owned: bool) bool {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return false;
-    const data = dataPtr[0..dataLen];
+    const data = sliceFromPtrLen(dataPtr, dataLen);
     object_ptr.replaceMemBuffer(id, data, owned) catch return false;
     return true;
 }
@@ -1471,9 +1488,9 @@ export fn textBufferSetTextFromMem(tb_handle: NativeHandle, id: u8) void {
     object_ptr.setTextFromMemId(id) catch {};
 }
 
-export fn textBufferAppend(tb_handle: NativeHandle, dataPtr: [*]const u8, dataLen: usize) void {
+export fn textBufferAppend(tb_handle: NativeHandle, dataPtr: ?[*]const u8, dataLen: u32) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
-    const data = dataPtr[0..dataLen];
+    const data = sliceFromPtrLen(dataPtr, dataLen);
     object_ptr.append(data) catch {};
 }
 
@@ -1482,21 +1499,21 @@ export fn textBufferAppendFromMemId(tb_handle: NativeHandle, id: u8) void {
     object_ptr.appendFromMemId(id) catch {};
 }
 
-export fn textBufferLoadFile(tb_handle: NativeHandle, pathPtr: [*]const u8, pathLen: usize) bool {
+export fn textBufferLoadFile(tb_handle: NativeHandle, pathPtr: ?[*]const u8, pathLen: u32) bool {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return false;
-    const path = pathPtr[0..pathLen];
+    const path = sliceFromPtrLen(pathPtr, pathLen);
     object_ptr.loadFile(path) catch return false;
     return true;
 }
 
 export fn textBufferSetStyledText(
     tb_handle: NativeHandle,
-    chunksPtr: [*]const text_buffer.StyledChunk,
-    chunkCount: usize,
+    chunksPtr: ?[*]const text_buffer.StyledChunk,
+    chunkCount: u32,
 ) void {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return;
     if (chunkCount == 0) return;
-    const chunks = chunksPtr[0..chunkCount];
+    const chunks = chunksPtr.?[0..@as(usize, chunkCount)];
     object_ptr.setStyledText(chunks) catch {};
 }
 
@@ -1505,10 +1522,13 @@ export fn textBufferGetLineCount(tb_handle: NativeHandle) u32 {
     return object_ptr.getLineCount();
 }
 
-export fn textBufferGetPlainText(tb_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferGetPlainText(tb_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
-    const outBuffer = outPtr[0..maxLen];
-    return object_ptr.getPlainTextIntoBuffer(outBuffer);
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
+    const outBuffer = out[0..@as(usize, maxLen)];
+    return @intCast(object_ptr.getPlainTextIntoBuffer(outBuffer));
 }
 
 // TextBufferView functions (Array-based for backward compatibility)
@@ -1645,16 +1665,22 @@ export fn textBufferViewGetLogicalLineInfoDirect(view_handle: NativeHandle, outP
     };
 }
 
-export fn textBufferViewGetSelectedText(view_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferViewGetSelectedText(view_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireTextBufferView(view_handle) orelse return 0;
-    const outBuffer = outPtr[0..maxLen];
-    return object_ptr.getSelectedTextIntoBuffer(outBuffer);
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
+    const outBuffer = out[0..@as(usize, maxLen)];
+    return @intCast(object_ptr.getSelectedTextIntoBuffer(outBuffer));
 }
 
-export fn textBufferViewGetPlainText(view_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferViewGetPlainText(view_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireTextBufferView(view_handle) orelse return 0;
-    const outBuffer = outPtr[0..maxLen];
-    return object_ptr.getPlainTextIntoBuffer(outBuffer);
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
+    const outBuffer = out[0..@as(usize, maxLen)];
+    return @intCast(object_ptr.getPlainTextIntoBuffer(outBuffer));
 }
 
 export fn textBufferViewSetTabIndicator(view_handle: NativeHandle, indicator: u32) void {
@@ -1747,9 +1773,9 @@ export fn editBufferGetTextBuffer(edit_handle: NativeHandle) NativeHandle {
     return handles.getOrInsertBorrowed(.text_buffer, erasePtr(object_ptr.getTextBuffer()), edit_handle) catch INVALID_HANDLE;
 }
 
-export fn editBufferInsertText(edit_handle: NativeHandle, textPtr: [*]const u8, textLen: usize) void {
+export fn editBufferInsertText(edit_handle: NativeHandle, textPtr: ?[*]const u8, textLen: u32) void {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return;
-    const text = textPtr[0..textLen];
+    const text = sliceFromPtrLen(textPtr, textLen);
     object_ptr.insertText(text) catch {};
 }
 
@@ -1879,21 +1905,27 @@ export fn editBufferGetLineStartOffset(edit_handle: NativeHandle, row: u32) u32 
     return text_buffer_iterators.coordsToOffset(object_ptr.tb.rope(), row, 0) orelse 0;
 }
 
-export fn editBufferGetTextRange(edit_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
+export fn editBufferGetTextRange(edit_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
-    const outBuffer = outPtr[0..maxLen];
-    return object_ptr.getTextRange(start_offset, end_offset, outBuffer) catch 0;
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
+    const outBuffer = out[0..@as(usize, maxLen)];
+    return @intCast(object_ptr.getTextRange(start_offset, end_offset, outBuffer) catch 0);
 }
 
-export fn editBufferGetTextRangeByCoords(edit_handle: NativeHandle, start_row: u32, start_col: u32, end_row: u32, end_col: u32, outPtr: [*]u8, maxLen: usize) usize {
+export fn editBufferGetTextRangeByCoords(edit_handle: NativeHandle, start_row: u32, start_col: u32, end_row: u32, end_col: u32, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
-    const outBuffer = outPtr[0..maxLen];
-    return object_ptr.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
+    const outBuffer = out[0..@as(usize, maxLen)];
+    return @intCast(object_ptr.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer));
 }
 
-export fn editBufferSetText(edit_handle: NativeHandle, textPtr: [*]const u8, textLen: usize) void {
+export fn editBufferSetText(edit_handle: NativeHandle, textPtr: ?[*]const u8, textLen: u32) void {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return;
-    const text = textPtr[0..textLen];
+    const text = sliceFromPtrLen(textPtr, textLen);
     object_ptr.setText(text) catch {};
 }
 
@@ -1902,9 +1934,9 @@ export fn editBufferSetTextFromMem(edit_handle: NativeHandle, mem_id: u8) void {
     object_ptr.setTextFromMemId(mem_id) catch {};
 }
 
-export fn editBufferReplaceText(edit_handle: NativeHandle, textPtr: [*]const u8, textLen: usize) void {
+export fn editBufferReplaceText(edit_handle: NativeHandle, textPtr: ?[*]const u8, textLen: u32) void {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return;
-    const text = textPtr[0..textLen];
+    const text = sliceFromPtrLen(textPtr, textLen);
     object_ptr.replaceText(text) catch {};
 }
 
@@ -1913,15 +1945,18 @@ export fn editBufferReplaceTextFromMem(edit_handle: NativeHandle, mem_id: u8) vo
     object_ptr.replaceTextFromMemId(mem_id) catch {};
 }
 
-export fn editBufferGetText(edit_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
+export fn editBufferGetText(edit_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
-    const outBuffer = outPtr[0..maxLen];
-    return object_ptr.getText(outBuffer);
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
+    const outBuffer = out[0..@as(usize, maxLen)];
+    return @intCast(object_ptr.getText(outBuffer));
 }
 
-export fn editBufferInsertChar(edit_handle: NativeHandle, charPtr: [*]const u8, charLen: usize) void {
+export fn editBufferInsertChar(edit_handle: NativeHandle, charPtr: ?[*]const u8, charLen: u32) void {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return;
-    const text = charPtr[0..charLen];
+    const text = sliceFromPtrLen(charPtr, charLen);
     object_ptr.insertText(text) catch {};
 }
 
@@ -1963,20 +1998,26 @@ export fn editBufferDebugLogRope(edit_handle: NativeHandle) void {
     object_ptr.debugLogRope();
 }
 
-export fn editBufferUndo(edit_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
+export fn editBufferUndo(edit_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
     const prev_meta = object_ptr.undo() catch return 0;
-    const copyLen = @min(prev_meta.len, maxLen);
-    @memcpy(outPtr[0..copyLen], prev_meta[0..copyLen]);
-    return copyLen;
+    const copyLen = @min(prev_meta.len, @as(usize, maxLen));
+    @memcpy(out[0..copyLen], prev_meta[0..copyLen]);
+    return @intCast(copyLen);
 }
 
-export fn editBufferRedo(edit_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
+export fn editBufferRedo(edit_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireEditBuffer(edit_handle) orelse return 0;
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
     const next_meta = object_ptr.redo() catch return 0;
-    const copyLen = @min(next_meta.len, maxLen);
-    @memcpy(outPtr[0..copyLen], next_meta[0..copyLen]);
-    return copyLen;
+    const copyLen = @min(next_meta.len, @as(usize, maxLen));
+    @memcpy(out[0..copyLen], next_meta[0..copyLen]);
+    return @intCast(copyLen);
 }
 
 export fn editBufferCanUndo(edit_handle: NativeHandle) bool {
@@ -2172,10 +2213,13 @@ export fn editorViewResetLocalSelection(view_handle: NativeHandle) void {
     object_ptr.text_buffer_view.resetLocalSelection();
 }
 
-export fn editorViewGetSelectedTextBytes(view_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
+export fn editorViewGetSelectedTextBytes(view_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireEditorView(view_handle) orelse return 0;
-    const outBuffer = outPtr[0..maxLen];
-    return object_ptr.text_buffer_view.getSelectedTextIntoBuffer(outBuffer);
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
+    const outBuffer = out[0..@as(usize, maxLen)];
+    return @intCast(object_ptr.text_buffer_view.getSelectedTextIntoBuffer(outBuffer));
 }
 
 // EditorView cursor and text methods
@@ -2190,10 +2234,13 @@ export fn editorViewGetCursor(view_handle: NativeHandle, outRow: *u32, outCol: *
     outCol.* = cursor.col;
 }
 
-export fn editorViewGetText(view_handle: NativeHandle, outPtr: [*]u8, maxLen: usize) usize {
+export fn editorViewGetText(view_handle: NativeHandle, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireEditorView(view_handle) orelse return 0;
-    const outBuffer = outPtr[0..maxLen];
-    return object_ptr.getText(outBuffer);
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
+    const outBuffer = out[0..@as(usize, maxLen)];
+    return @intCast(object_ptr.getText(outBuffer));
 }
 
 // ===== EditorView VisualCursor Exports =====
@@ -2310,15 +2357,15 @@ export fn editorViewGetVisualEOL(view_handle: NativeHandle, outPtr: *ExternalVis
 
 export fn editorViewSetPlaceholderStyledText(
     view_handle: NativeHandle,
-    chunksPtr: [*]const text_buffer.StyledChunk,
-    chunkCount: usize,
+    chunksPtr: ?[*]const text_buffer.StyledChunk,
+    chunkCount: u32,
 ) void {
     const object_ptr = acquireEditorView(view_handle) orelse return;
     if (chunkCount == 0) {
         object_ptr.setPlaceholderStyledText(&[_]text_buffer.StyledChunk{}) catch {};
         return;
     }
-    const chunks = chunksPtr[0..chunkCount];
+    const chunks = chunksPtr.?[0..@as(usize, chunkCount)];
     object_ptr.setPlaceholderStyledText(chunks) catch {};
 }
 
@@ -2424,23 +2471,21 @@ export fn textBufferClearAllHighlights(tb_handle: NativeHandle) void {
     object_ptr.clearAllHighlights();
 }
 
-export fn textBufferSetSyntaxStyle(tb_handle: NativeHandle, style_handle: NativeHandle) void {
-    const tb_ptr = acquireTextBuffer(tb_handle) orelse return;
+export fn textBufferSetSyntaxStyle(tb_handle: NativeHandle, style_handle: NativeHandle) bool {
+    const tb_ptr = acquireTextBuffer(tb_handle) orelse return false;
     if (style_handle == INVALID_HANDLE) {
         tb_ptr.setSyntaxStyle(null);
-        return;
+        return true;
     }
-    const style_ptr = acquireSyntaxStyle(style_handle) orelse {
-        tb_ptr.setSyntaxStyle(null);
-        return;
-    };
+    const style_ptr = acquireSyntaxStyle(style_handle) orelse return false;
     tb_ptr.setSyntaxStyle(style_ptr);
+    return tb_ptr.getSyntaxStyle() == style_ptr;
 }
 
 export fn textBufferGetLineHighlightsPtr(
     tb_handle: NativeHandle,
     line_idx: u32,
-    out_count: *usize,
+    out_count: *u32,
 ) ?[*]const ExternalHighlight {
     const object_ptr = acquireTextBuffer(tb_handle) orelse {
         out_count.* = 0;
@@ -2465,12 +2510,12 @@ export fn textBufferGetLineHighlightsPtr(
         };
     }
 
-    out_count.* = highs.len;
+    out_count.* = @intCast(highs.len);
     return slice.ptr;
 }
 
-export fn textBufferFreeLineHighlights(ptr: [*]const ExternalHighlight, count: usize) void {
-    globalAllocator.free(@constCast(ptr)[0..count]);
+export fn textBufferFreeLineHighlights(ptr: [*]const ExternalHighlight, count: u32) void {
+    globalAllocator.free(@constCast(ptr)[0..@as(usize, count)]);
 }
 
 export fn textBufferGetHighlightCount(tb_handle: NativeHandle) u32 {
@@ -2478,16 +2523,22 @@ export fn textBufferGetHighlightCount(tb_handle: NativeHandle) u32 {
     return object_ptr.getHighlightCount();
 }
 
-export fn textBufferGetTextRange(tb_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferGetTextRange(tb_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
-    const outBuffer = outPtr[0..maxLen];
-    return object_ptr.getTextRange(start_offset, end_offset, outBuffer);
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
+    const outBuffer = out[0..@as(usize, maxLen)];
+    return @intCast(object_ptr.getTextRange(start_offset, end_offset, outBuffer));
 }
 
-export fn textBufferGetTextRangeByCoords(tb_handle: NativeHandle, start_row: u32, start_col: u32, end_row: u32, end_col: u32, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferGetTextRangeByCoords(tb_handle: NativeHandle, start_row: u32, start_col: u32, end_row: u32, end_col: u32, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
-    const outBuffer = outPtr[0..maxLen];
-    return object_ptr.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
+    if (maxLen == 0) return 0;
+
+    const out = outPtr orelse return 0;
+    const outBuffer = out[0..@as(usize, maxLen)];
+    return @intCast(object_ptr.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer));
 }
 
 // SyntaxStyle functions
@@ -2508,9 +2559,9 @@ export fn destroySyntaxStyle(style_handle: NativeHandle) void {
     handles.finishDestroy(token.handle);
 }
 
-export fn syntaxStyleRegister(style_handle: NativeHandle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const u16, bg: ?[*]const u16, attributes: u32) u32 {
+export fn syntaxStyleRegister(style_handle: NativeHandle, namePtr: ?[*]const u8, nameLen: u32, fg: ?[*]const u16, bg: ?[*]const u16, attributes: u32) u32 {
     const object_ptr = acquireSyntaxStyle(style_handle) orelse return 0;
-    const name = namePtr[0..nameLen];
+    const name = sliceFromPtrLen(namePtr, nameLen);
     return object_ptr.registerStyleDefinition(name, .{
         .fg = optionalPtrToRGBA(fg),
         .bg = optionalPtrToRGBA(bg),
@@ -2518,15 +2569,15 @@ export fn syntaxStyleRegister(style_handle: NativeHandle, namePtr: [*]const u8, 
     }) catch 0;
 }
 
-export fn syntaxStyleResolveByName(style_handle: NativeHandle, namePtr: [*]const u8, nameLen: usize) u32 {
+export fn syntaxStyleResolveByName(style_handle: NativeHandle, namePtr: ?[*]const u8, nameLen: u32) u32 {
     const object_ptr = acquireSyntaxStyle(style_handle) orelse return 0;
-    const name = namePtr[0..nameLen];
+    const name = sliceFromPtrLen(namePtr, nameLen);
     return object_ptr.resolveByName(name) orelse 0;
 }
 
-export fn syntaxStyleGetStyleCount(style_handle: NativeHandle) usize {
+export fn syntaxStyleGetStyleCount(style_handle: NativeHandle) u32 {
     const object_ptr = acquireSyntaxStyle(style_handle) orelse return 0;
-    return object_ptr.getStyleCount();
+    return @intCast(object_ptr.getStyleCount());
 }
 
 // Unicode encoding API
@@ -2537,13 +2588,13 @@ pub const EncodedChar = extern struct {
 };
 
 export fn encodeUnicode(
-    textPtr: [*]const u8,
-    textLen: usize,
+    textPtr: ?[*]const u8,
+    textLen: u32,
     outPtr: *?[*]EncodedChar,
     outLenPtr: *usize,
     widthMethod: u8,
 ) bool {
-    const text = textPtr[0..textLen];
+    const text = sliceFromPtrLen(textPtr, textLen);
 
     if (text.len == 0) {
         outPtr.* = @ptrFromInt(0);
@@ -2665,12 +2716,12 @@ export fn encodeUnicode(
     return true;
 }
 
-export fn freeUnicode(charsPtr: ?[*]const EncodedChar, charsLen: usize) void {
+export fn freeUnicode(charsPtr: ?[*]const EncodedChar, charsLen: u32) void {
     if (charsLen == 0 or charsPtr == null) {
         return;
     }
 
-    const chars = charsPtr.?[0..charsLen];
+    const chars = charsPtr.?[0..@as(usize, charsLen)];
     const pool = gp.initGlobalPool(globalArena);
 
     for (chars) |encoded_char| {

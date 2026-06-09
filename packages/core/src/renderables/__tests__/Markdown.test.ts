@@ -28,6 +28,8 @@ let renderOnce: () => Promise<void>
 let captureFrame: () => string
 let captureSpans: () => CapturedFrame
 let markdownTreeSitterClient: TreeSitterClient
+let mockTreeSitterClients: MockTreeSitterClient[] = []
+const HIGHLIGHT_TIMEOUT_MS = 5000
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -42,6 +44,7 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
+  mockTreeSitterClients = []
   const testRenderer = await createTestRenderer({ width: 60, height: 40 })
   renderer = testRenderer.renderer
   mockMouse = testRenderer.mockMouse
@@ -53,6 +56,11 @@ beforeEach(async () => {
 afterEach(async () => {
   if (renderer) {
     renderer.destroy()
+  }
+
+  for (const client of mockTreeSitterClients) {
+    client.resolveAllHighlightOnce()
+    await client.destroy()
   }
 })
 
@@ -67,35 +75,68 @@ function createMarkdownRenderable(options: MarkdownOptions): MarkdownRenderable 
   })
 }
 
-async function renderMarkdownRenderable(md: MarkdownRenderable, timeoutMs: number = 2000): Promise<void> {
-  const hasPendingMarkdownParagraphHighlights = (): boolean => {
-    const children = [...md.getChildren()]
+function createMockTreeSitterClient(): MockTreeSitterClient {
+  const client = new MockTreeSitterClient()
+  mockTreeSitterClients.push(client)
+  return client
+}
 
-    while (children.length > 0) {
-      const child = children.pop()!
-      if (child instanceof CodeRenderable && child.filetype === "markdown" && child.isHighlighting) {
-        return true
-      }
-      children.push(...child.getChildren())
+async function flushAsync(): Promise<void> {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
+async function waitForHighlight(codeRenderable: CodeRenderable): Promise<void> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      codeRenderable.highlightingDone,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error("Timed out waiting for CodeRenderable highlighting")),
+          HIGHLIGHT_TIMEOUT_MS,
+        )
+      }),
+    ])
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId)
     }
-
-    return false
   }
 
-  const startedAt = Date.now()
+  await flushAsync()
+}
 
+function getPendingMarkdownParagraphHighlights(md: MarkdownRenderable): CodeRenderable[] {
+  const children = [...md.getChildren()]
+  const pending: CodeRenderable[] = []
+
+  while (children.length > 0) {
+    const child = children.pop()!
+    if (child instanceof CodeRenderable && child.filetype === "markdown" && child.isHighlighting) {
+      pending.push(child)
+    }
+    children.push(...child.getChildren())
+  }
+
+  return pending
+}
+
+async function renderMarkdownRenderable(md: MarkdownRenderable): Promise<void> {
   await renderOnce()
 
-  while (hasPendingMarkdownParagraphHighlights() && Date.now() - startedAt < timeoutMs) {
-    await Bun.sleep(10)
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const pendingHighlights = getPendingMarkdownParagraphHighlights(md)
+    if (pendingHighlights.length === 0) {
+      await renderOnce()
+      return
+    }
+
+    await Promise.all(pendingHighlights.map((codeBlock) => waitForHighlight(codeBlock)))
     await renderOnce()
   }
 
-  if (hasPendingMarkdownParagraphHighlights()) {
-    throw new Error("Timed out waiting for markdown paragraph highlights")
-  }
-
-  await renderOnce()
+  throw new Error("Timed out waiting for markdown paragraph highlights")
 }
 
 async function renderMarkdown(markdown: string, conceal: boolean = true): Promise<string> {
@@ -1081,7 +1122,7 @@ const x = 1;
 })
 
 test("code block concealment is disabled by default", async () => {
-  const mockTreeSitterClient = new MockTreeSitterClient()
+  const mockTreeSitterClient = createMockTreeSitterClient()
   mockTreeSitterClient.setMockResult({
     highlights: [[0, 1, "conceal", { conceal: "" }]],
   })
@@ -1098,8 +1139,9 @@ test("code block concealment is disabled by default", async () => {
   await renderer.idle()
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
+  const codeBlock = md._blockStates[0]?.renderable as CodeRenderable
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(10)
+  await waitForHighlight(codeBlock)
   await renderer.idle()
 
   const frame = captureFrame()
@@ -1107,7 +1149,7 @@ test("code block concealment is disabled by default", async () => {
 })
 
 test("code block concealment can be enabled with concealCode", async () => {
-  const mockTreeSitterClient = new MockTreeSitterClient()
+  const mockTreeSitterClient = createMockTreeSitterClient()
   mockTreeSitterClient.setMockResult({
     highlights: [[0, 1, "conceal", { conceal: "" }]],
   })
@@ -1125,8 +1167,9 @@ test("code block concealment can be enabled with concealCode", async () => {
   await renderer.idle()
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
+  const codeBlock = md._blockStates[0]?.renderable as CodeRenderable
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(10)
+  await waitForHighlight(codeBlock)
   await renderer.idle()
 
   const frame = captureFrame()
@@ -1135,7 +1178,7 @@ test("code block concealment can be enabled with concealCode", async () => {
 })
 
 test("toggling concealCode updates existing code block renderables", async () => {
-  const mockTreeSitterClient = new MockTreeSitterClient()
+  const mockTreeSitterClient = createMockTreeSitterClient()
   mockTreeSitterClient.setMockResult({
     highlights: [[0, 1, "conceal", { conceal: "" }]],
   })
@@ -1153,8 +1196,9 @@ test("toggling concealCode updates existing code block renderables", async () =>
   await renderer.idle()
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
+  const codeBlock = md._blockStates[0]?.renderable as CodeRenderable
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(10)
+  await waitForHighlight(codeBlock)
   await renderer.idle()
 
   const frameBefore = captureFrame()
@@ -1166,7 +1210,7 @@ test("toggling concealCode updates existing code block renderables", async () =>
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(10)
+  await waitForHighlight(codeBlock)
   await renderer.idle()
 
   const frameAfter = captureFrame()
@@ -1416,8 +1460,10 @@ test("streaming structured list updates keep previous item text visible while hi
   renderer.root.add(md)
   await renderOnce()
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+  const initialHighlights = getPendingMarkdownParagraphHighlights(md)
+  expect(initialHighlights.length).toBeGreaterThan(0)
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(0)
+  await Promise.all(initialHighlights.map((codeBlock) => waitForHighlight(codeBlock)))
   await renderOnce()
 
   const settledFrame = captureFrame()
@@ -1433,6 +1479,8 @@ test("streaming structured list updates keep previous item text visible while hi
   await renderOnce()
   clock.advance(16)
   await renderOnce()
+  const updatedHighlights = getPendingMarkdownParagraphHighlights(md)
+  expect(updatedHighlights.length).toBeGreaterThan(0)
 
   const framesBeforeHighlight = recorder.recordedFrames.map((recorded) => recorded.frame)
   expect(framesBeforeHighlight.length).toBeGreaterThan(0)
@@ -1444,7 +1492,7 @@ test("streaming structured list updates keep previous item text visible while hi
 
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(0)
+  await Promise.all(updatedHighlights.map((codeBlock) => waitForHighlight(codeBlock)))
   await renderOnce()
   recorder.stop()
 
@@ -1483,8 +1531,10 @@ test("streaming nested structured list updates keep previous nested text visible
   renderer.root.add(md)
   await renderOnce()
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+  const initialHighlights = getPendingMarkdownParagraphHighlights(md)
+  expect(initialHighlights.length).toBeGreaterThan(0)
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(0)
+  await Promise.all(initialHighlights.map((codeBlock) => waitForHighlight(codeBlock)))
   await renderOnce()
 
   const settledFrame = captureFrame()
@@ -1500,6 +1550,8 @@ test("streaming nested structured list updates keep previous nested text visible
   await renderOnce()
   clock.advance(16)
   await renderOnce()
+  const updatedHighlights = getPendingMarkdownParagraphHighlights(md)
+  expect(updatedHighlights.length).toBeGreaterThan(0)
 
   const framesBeforeHighlight = recorder.recordedFrames.map((recorded) => recorded.frame)
   expect(framesBeforeHighlight.length).toBeGreaterThan(0)
@@ -1511,7 +1563,7 @@ test("streaming nested structured list updates keep previous nested text visible
 
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(0)
+  await Promise.all(updatedHighlights.map((codeBlock) => waitForHighlight(codeBlock)))
   await renderOnce()
   recorder.stop()
 
@@ -1756,7 +1808,7 @@ test("blockquote updates quote text and bar colors when syntaxStyle changes", as
 })
 
 test("fenced diff blocks color added and removed lines", async () => {
-  const mockTreeSitterClient = new MockTreeSitterClient()
+  const mockTreeSitterClient = createMockTreeSitterClient()
   mockTreeSitterClient.setMockResult({
     highlights: [
       [0, 5, "diff.minus"],
@@ -1784,7 +1836,7 @@ test("fenced diff blocks color added and removed lines", async () => {
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(10)
+  await waitForHighlight(codeBlock as CodeRenderable)
   await renderOnce()
 
   expect(findSpanContaining(captureSpans(), "- old")?.fg?.toInts()).toEqual(RGBA.fromValues(1, 0, 0, 1).toInts())
@@ -3035,7 +3087,7 @@ test("streaming mode keeps trailing tokens unstable", async () => {
 })
 
 test("streaming code blocks with concealCode=true do not flash unconcealed markdown", async () => {
-  const mockTreeSitterClient = new MockTreeSitterClient()
+  const mockTreeSitterClient = createMockTreeSitterClient()
   mockTreeSitterClient.setMockResult({
     highlights: [[0, 1, "conceal", { conceal: "" }]],
   })
@@ -3058,8 +3110,9 @@ test("streaming code blocks with concealCode=true do not flash unconcealed markd
 
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
+  const codeBlock = md._blockStates[1]?.renderable as CodeRenderable
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(10)
+  await waitForHighlight(codeBlock)
   await renderer.idle()
 
   recorder.stop()

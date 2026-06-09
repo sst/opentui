@@ -251,7 +251,7 @@ describe("BoxRenderable - transparent border blending", () => {
     await renderOnce()
 
     const buffer = testRenderer.currentRenderBuffer
-    expect(buffer.buffers.char[0]).toBe("┃".codePointAt(0))
+    expect(buffer.buffers.char[0]).toBe("┃".codePointAt(0)!)
     expect({
       fg: RGBA.fromArray(buffer.buffers.fg.slice(0, 4)).toInts(),
       bg: RGBA.fromArray(buffer.buffers.bg.slice(0, 4)).toInts(),

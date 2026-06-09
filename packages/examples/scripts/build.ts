@@ -54,6 +54,14 @@ if (!bunWebgpuVersion) {
 const workspaceAliasPlugin: BunPlugin = {
   name: "workspace-alias",
   setup(build) {
+    build.onResolve({ filter: /^@opentui\/core-(?:darwin|linux|win32)-/ }, (args) => {
+      if (existsSync(join(coreRoot, "node_modules", args.path))) return
+
+      // Bun resolves unreachable dynamic imports while compiling. Keep absent
+      // optional native variants external so host-only builds need only the host package.
+      return { path: args.path, external: true }
+    })
+
     build.onResolve({ filter: /^@opentui\/core$/ }, () => ({
       path: join(coreRoot, "src", "index.ts"),
     }))

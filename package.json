@@ -9,6 +9,7 @@
     "build": "cd packages/core && bun run build && cd ../qrcode && bun run build && cd ../three && bun run build && cd ../solid && bun run build && cd ../react && bun run build && cd ../keymap && bun run build",
     "build:examples": "cd packages/examples && bun run build",
     "clean": "bun scripts/clean.ts",
+    "examples:node": "node packages/examples/scripts/run-node26.mjs",
     "fmt": "oxfmt --write .",
     "fmt:check": "oxfmt --check .",
     "lint": "oxlint .",

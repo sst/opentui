@@ -34,6 +34,10 @@ afterEach(async () => {
   if (currentRenderer) {
     currentRenderer.destroy()
   }
+  if (mockClient) {
+    mockClient.resolveAllHighlightOnce()
+    await mockClient.destroy()
+  }
 })
 
 // When highlights conceal formatting characters (like **), line lengths change,

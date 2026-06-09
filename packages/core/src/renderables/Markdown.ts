@@ -5,7 +5,7 @@ import type { TextChunk } from "../text-buffer.js"
 import { createTextAttributes } from "../utils.js"
 import type { BorderStyle } from "../lib/border.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
-import { type MarkedToken, type Token, type Tokens } from "marked"
+import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
 import { CodeRenderable, type OnChunksCallback } from "./Code.js"
 import { BoxRenderable } from "./Box.js"
 import { StyledText } from "../lib/styled-text.js"
@@ -465,6 +465,21 @@ export class MarkdownRenderable extends Renderable {
     return this.createChunk(text, "default")
   }
 
+  private createInitialStyledText(token: MarkedToken): StyledText | undefined {
+    if (!this._streaming) return undefined
+
+    const chunks: TextChunk[] = []
+    if ("tokens" in token && Array.isArray(token.tokens)) {
+      this.renderInlineContent(token.tokens, chunks)
+    }
+
+    if (chunks.length === 0 && "text" in token && typeof token.text === "string") {
+      this.renderInlineContent(Lexer.lexInline(token.text), chunks)
+    }
+
+    return chunks.length > 0 ? new StyledText(chunks) : undefined
+  }
+
   private renderInlineContent(tokens: Token[], chunks: TextChunk[]): void {
     for (const token of tokens) {
       this.renderInlineToken(token as MarkedToken, chunks)
@@ -618,6 +633,7 @@ export class MarkdownRenderable extends Renderable {
     marginBottom: number = 0,
     onChunks: OnChunksCallback = this._linkifyMarkdownChunks,
     baseHighlight?: string,
+    initialStyledText?: StyledText,
   ): CodeRenderable {
     return new CodeRenderable(this.ctx, {
       id,
@@ -627,8 +643,9 @@ export class MarkdownRenderable extends Renderable {
       fg: this._fg,
       bg: this._bg,
       conceal: this._conceal,
-      drawUnstyledText: false,
+      drawUnstyledText: initialStyledText !== undefined,
       streaming: true,
+      initialStyledText,
       baseHighlight,
       onChunks,
       treeSitterClient: this._treeSitterClient,
@@ -896,14 +913,30 @@ export class MarkdownRenderable extends Renderable {
 
   private createListChildRenderable(token: MarkedToken, id: string): Renderable | null {
     if (token.type === "text" || token.type === "paragraph") {
-      return this.createMarkdownCodeRenderable(this.normalizeScrollbackMarkdownBlockRaw(token.raw), id)
+      return this.createMarkdownCodeRenderable(
+        this.normalizeScrollbackMarkdownBlockRaw(token.raw),
+        id,
+        0,
+        this._linkifyMarkdownChunks,
+        undefined,
+        this.createInitialStyledText(token),
+      )
     }
     if (token.type === "list") return this.createListRenderable(token as Tokens.List, id)
     if (token.type === "code") return this.createCodeRenderable(token as Tokens.Code, id)
     if (token.type === "blockquote") return this.createBlockquoteRenderable(token, id)
     if (token.type === "hr") return this.createHorizontalRuleRenderable(id)
     if (token.type === "table") return this.createTableBlock(token as Tokens.Table, id).renderable
-    return token.raw ? this.createMarkdownCodeRenderable(token.raw, id) : null
+    return token.raw
+      ? this.createMarkdownCodeRenderable(
+          token.raw,
+          id,
+          0,
+          this._linkifyMarkdownChunks,
+          undefined,
+          this.createInitialStyledText(token),
+        )
+      : null
   }
 
   private createHorizontalRuleRenderable(id: string, marginBottom: number = 0): BoxRenderable {
@@ -940,16 +973,18 @@ export class MarkdownRenderable extends Renderable {
     content: string,
     marginBottom: number,
     baseHighlight?: string,
+    initialStyledText?: StyledText,
   ): void {
-    renderable.content = content
+    renderable.initialStyledText = initialStyledText
     renderable.filetype = "markdown"
     renderable.syntaxStyle = this._syntaxStyle
     renderable.fg = this._fg
     renderable.bg = this._bg
     renderable.conceal = this._conceal
-    renderable.drawUnstyledText = false
+    renderable.drawUnstyledText = initialStyledText !== undefined
     renderable.streaming = true
     renderable.baseHighlight = baseHighlight
+    renderable.content = content
     renderable.marginBottom = marginBottom
   }
 
@@ -1471,7 +1506,14 @@ export class MarkdownRenderable extends Renderable {
       return { renderable: undefined, canUpdateInPlace: true }
     }
 
-    const renderable = this.createMarkdownCodeRenderable(markdownRaw, id)
+    const renderable = this.createMarkdownCodeRenderable(
+      markdownRaw,
+      id,
+      0,
+      this._linkifyMarkdownChunks,
+      undefined,
+      this.createInitialStyledText(token),
+    )
     renderable.marginTop = marginTop
     return { renderable, canUpdateInPlace: true }
   }
@@ -1532,7 +1574,14 @@ export class MarkdownRenderable extends Renderable {
       return null
     }
 
-    return this.createMarkdownCodeRenderable(token.raw, id, marginBottom)
+    return this.createMarkdownCodeRenderable(
+      token.raw,
+      id,
+      marginBottom,
+      this._linkifyMarkdownChunks,
+      undefined,
+      this.createInitialStyledText(token),
+    )
   }
 
   private createCustomRenderable(
@@ -1682,7 +1731,13 @@ export class MarkdownRenderable extends Renderable {
     }
 
     if (state.renderable instanceof CodeRenderable) {
-      this.applyMarkdownCodeRenderable(state.renderable, this.getTopLevelBlockRaw(token) ?? token.raw, marginBottom)
+      this.applyMarkdownCodeRenderable(
+        state.renderable,
+        this.getTopLevelBlockRaw(token) ?? token.raw,
+        marginBottom,
+        undefined,
+        this.createInitialStyledText(token),
+      )
       return
     }
 
@@ -1691,6 +1746,9 @@ export class MarkdownRenderable extends Renderable {
       this.getTopLevelBlockRaw(token) ?? token.raw,
       `${this.id}-block-${index}`,
       marginBottom,
+      this._linkifyMarkdownChunks,
+      undefined,
+      this.createInitialStyledText(token),
     )
     this.add(markdownRenderable, index)
     state.renderable = markdownRenderable
@@ -2042,6 +2100,8 @@ export class MarkdownRenderable extends Renderable {
           state.renderable,
           this.getTopLevelBlockRaw(state.token) ?? state.token.raw,
           marginBottom,
+          undefined,
+          this.createInitialStyledText(state.token),
         )
         continue
       }
@@ -2051,6 +2111,9 @@ export class MarkdownRenderable extends Renderable {
         this.getTopLevelBlockRaw(state.token) ?? state.token.raw,
         `${this.id}-block-${i}`,
         marginBottom,
+        this._linkifyMarkdownChunks,
+        undefined,
+        this.createInitialStyledText(state.token),
       )
       this.add(markdownRenderable, i)
       state.renderable = markdownRenderable

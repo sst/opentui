@@ -71,7 +71,7 @@ describe("useMouse configuration", () => {
     const { renderer } = await createTestRenderer({
       useMouse: true,
       exitOnCtrlC: false,
-      useAlternateScreen: false,
+      screenMode: "main-screen",
     })
 
     expect(renderer.useMouse).toBe(true)

@@ -680,11 +680,12 @@ pub export fn destroyNativeSpanFeed(stream: ?*Stream) void {
 /// but a write that would exceed it returns err_no_space without writing
 /// any bytes. A write that exactly fills the chunk succeeds; the next
 /// write will move to a new chunk (committing the full one first).
-pub export fn streamWrite(stream: ?*Stream, src_ptr: ?*const u8, len: usize) i32 {
-    if (stream == null or src_ptr == null) return Status.err_invalid;
+pub export fn streamWrite(stream: ?*Stream, src_ptr: ?[*]const u8, len: u32) i32 {
+    if (stream == null) return Status.err_invalid;
     const s = stream.?;
     if (len == 0) return Status.ok;
-    const src = @as([*]const u8, @ptrCast(src_ptr.?))[0..len];
+    if (src_ptr == null) return Status.err_invalid;
+    const src = src_ptr.?[0..@as(usize, len)];
     s.write(src) catch |err| return errorToStatus(err);
     return Status.ok;
 }

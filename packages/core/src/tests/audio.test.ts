@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import { Audio } from "../audio.js"
+import { resolveRenderLib } from "../zig.js"
 
 const SAMPLE_RATE = 48_000
 
@@ -253,4 +254,50 @@ test("Audio supports immutable custom sample rate", () => {
   expect(mixed).not.toBeNull()
   if (!mixed) return
   expect(mixed.some((sample) => Math.abs(sample) > 0.001)).toBe(true)
+})
+
+test("audioLoad rejects oversized payload lengths before truncating to u32", () => {
+  const lib = resolveRenderLib()
+  const engine = lib.createAudioEngine()
+  expect(engine).not.toBeNull()
+  if (engine == null) return
+
+  const oversized = {
+    buffer: new ArrayBuffer(1),
+    byteOffset: 0,
+    byteLength: 0x1_0000_0000,
+    length: 0x1_0000_0000,
+  } as unknown as Uint8Array
+
+  try {
+    expect(() => lib.audioLoad(engine, oversized)).toThrow("Audio data length exceeds native u32 length limit")
+  } finally {
+    lib.destroyAudioEngine(engine)
+  }
+})
+
+test("audioCreateGroup rejects oversized encoded name lengths before truncating to u32", () => {
+  const lib = resolveRenderLib()
+  const engine = lib.createAudioEngine()
+  expect(engine).not.toBeNull()
+  if (engine == null) return
+
+  const originalEncode = lib.encoder.encode
+  const oversized = {
+    buffer: new ArrayBuffer(1),
+    byteOffset: 0,
+    byteLength: 0x1_0000_0000,
+    length: 0x1_0000_0000,
+  } as unknown as Uint8Array
+
+  ;(lib.encoder as { encode: (input: string) => Uint8Array }).encode = () => oversized
+
+  try {
+    expect(() => lib.audioCreateGroup(engine, "oversized")).toThrow(
+      "Audio group name length exceeds native u32 length limit",
+    )
+  } finally {
+    ;(lib.encoder as { encode: (input: string) => Uint8Array }).encode = originalEncode
+    lib.destroyAudioEngine(engine)
+  }
 })

@@ -54,10 +54,21 @@ test("requestRender() does not stall after a backward clock jump", async () => {
 
 test("requestRender() uses SystemClock by default when no clock is injected", async () => {
   const originalNow = globalThis.performance.now
+  const originalSetTimeout = globalThis.setTimeout
+  const originalClearTimeout = globalThis.clearTimeout
+  const defaultClock = new ManualClock()
   let nowValue = 10_000
   let defaultRenderer: TestRenderer | null = null
 
   globalThis.performance.now = () => nowValue
+  globalThis.setTimeout = ((handler: (...args: unknown[]) => void, timeout?: number, ...args: unknown[]) => {
+    return defaultClock.setTimeout(() => handler(...args), timeout ?? 0)
+  }) as typeof globalThis.setTimeout
+  globalThis.clearTimeout = ((handle?: ReturnType<typeof globalThis.setTimeout>) => {
+    if (handle !== undefined) {
+      defaultClock.clearTimeout(handle)
+    }
+  }) as typeof globalThis.clearTimeout
 
   try {
     ;({ renderer: defaultRenderer } = await createTestRenderer({ maxFps: 60 }))
@@ -76,12 +87,15 @@ test("requestRender() uses SystemClock by default when no clock is injected", as
     }
 
     defaultRenderer.requestRender()
-    await Bun.sleep(20)
+    defaultClock.advance(20)
+    await Promise.resolve()
 
     expect(renderCalled).toBe(true)
   } finally {
     defaultRenderer?.destroy()
     globalThis.performance.now = originalNow
+    globalThis.setTimeout = originalSetTimeout
+    globalThis.clearTimeout = originalClearTimeout
   }
 })
 
