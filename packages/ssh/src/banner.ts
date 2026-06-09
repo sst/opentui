@@ -16,8 +16,9 @@ export interface BannerDescriptor {
 /** Startup-summary lines for `listen()`: pure formatting over a {@link BannerDescriptor} and bind. */
 export function formatBanner(info: ListenInfo, descriptor: BannerDescriptor): string[] {
   const displayHost = info.host === "0.0.0.0" || info.host === "::" ? "localhost" : info.host
+  const urlHost = displayHost.includes(":") ? `[${displayHost}]` : displayHost
   const lines = [
-    `@opentui/ssh  ▸  ssh://${displayHost}:${info.port}`,
+    `@opentui/ssh  ▸  ssh://${urlHost}:${info.port}`,
     ...info.fingerprints.map(
       (fingerprint, index) => `host key      ${fingerprint}  (${descriptor.algorithms[index]}, ${descriptor.source})`,
     ),

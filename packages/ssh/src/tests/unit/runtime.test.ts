@@ -133,6 +133,13 @@ test("the banner describes the bind: address, host key, and advertised methods",
   expect(banner).toContain("password") // the advertised method
 })
 
+test("the banner formats an IPv6 bind as a valid SSH URL", () => {
+  const rt = resolveRuntime({ hostKey: { pem: HOST_KEY } })
+  const banner = formatBanner({ host: "::1", port: 2222, fingerprints: rt.fingerprints }, rt.banner)
+
+  expect(banner[0]).toContain("ssh://[::1]:2222")
+})
+
 test("the banner lists the authorized-key count only when an allowlist is configured", () => {
   const withKeys = resolveRuntime({
     auth: { publicKey: { authorizedKeys: [PUBLIC_KEY_LINE] } },

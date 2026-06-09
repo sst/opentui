@@ -59,9 +59,14 @@ function formatLogEvent(event: LogEvent): string {
  */
 export function logging<Id extends Identity = Identity>(options: LoggingOptions<Id> = {}): Middleware<Id> {
   const sink = options.log ?? ((event: LogEvent<Id>) => console.log(formatLogEvent(event)))
+  const emit = (event: LogEvent<Id>) => {
+    try {
+      void Promise.resolve(sink(event)).catch(() => {})
+    } catch {}
+  }
   return async (session, next) => {
     const start = Date.now()
-    sink({
+    emit({
       type: "connect",
       identity: session.identity,
       remoteAddress: session.remoteAddress,
@@ -72,7 +77,7 @@ export function logging<Id extends Identity = Identity>(options: LoggingOptions<
     try {
       return await next()
     } finally {
-      sink({
+      emit({
         type: "disconnect",
         identity: session.identity,
         remoteAddress: session.remoteAddress,

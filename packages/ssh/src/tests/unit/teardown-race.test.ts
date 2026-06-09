@@ -223,6 +223,59 @@ test("raw session writes drain before the SSH channel closes", async () => {
   expect(channel.closeCalls).toBe(1)
 })
 
+test("session teardown force-closes a client that never drains", async () => {
+  const channel = fakeChannel()
+  Object.assign(channel, {
+    write(data: Buffer | string) {
+      channel.writes.push(Buffer.from(data))
+      return false
+    },
+  })
+  let stdout: NodeJS.WriteStream | undefined
+  const { bridge } = testBridge({
+    channel,
+    createRenderer: (async (options: Parameters<RendererFactory>[0]) => {
+      stdout = options!.stdout
+      return rendererStub({
+        destroy() {
+          stdout!.write("SHUTDOWN")
+        },
+      })
+    }) as unknown as RendererFactory,
+  })
+
+  const entered = bridge.enterApp(() => {})
+  await flush()
+  const closed = await Promise.race([
+    bridge.destroy().then(() => true),
+    new Promise<false>((resolve) => setTimeout(() => resolve(false), 1_500)),
+  ])
+
+  expect(closed).toBe(true)
+  expect(channel.closeCalls).toBe(1)
+  await entered
+})
+
+test("session teardown force-closes when a raw write callback never runs", async () => {
+  const channel = fakeChannel()
+  Object.assign(channel, {
+    write(data: Buffer | string) {
+      channel.writes.push(Buffer.from(data))
+      return false
+    },
+  })
+  const { bridge } = testBridge({ channel })
+
+  bridge.session.write("RAW")
+  const closed = await Promise.race([
+    bridge.destroy().then(() => true),
+    new Promise<false>((resolve) => setTimeout(() => resolve(false), 1_500)),
+  ])
+
+  expect(closed).toBe(true)
+  expect(channel.closeCalls).toBe(1)
+})
+
 test("a channel error tears down without waiting for close", async () => {
   let rendererDestroyCalls = 0
   let closeCalls = 0

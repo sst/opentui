@@ -25,3 +25,54 @@ test("default logging escapes client-controlled control characters", async () =>
     log.mockRestore()
   }
 })
+
+test("a throwing logging sink cannot prevent the session from running", async () => {
+  let nextCalls = 0
+  const middleware = logging({
+    log() {
+      throw new Error("sink failed")
+    },
+  })
+
+  await middleware(
+    {
+      identity: { method: "none", username: "alice" },
+      remoteAddress: { address: "127.0.0.1", port: 22 },
+      term: "xterm",
+      cols: 80,
+      rows: 24,
+    } as MiddlewareSession,
+    (() => {
+      nextCalls++
+      return Promise.resolve({})
+    }) as never,
+  )
+
+  expect(nextCalls).toBe(1)
+})
+
+test("a rejected asynchronous logging sink is contained", async () => {
+  let nextCalls = 0
+  const middleware = logging({
+    async log() {
+      throw new Error("async sink failed")
+    },
+  })
+
+  await middleware(
+    {
+      identity: { method: "none", username: "alice" },
+      remoteAddress: { address: "127.0.0.1", port: 22 },
+      term: "xterm",
+      cols: 80,
+      rows: 24,
+    } as MiddlewareSession,
+    (() => {
+      nextCalls++
+      return Promise.resolve({})
+    }) as never,
+  )
+  await Promise.resolve()
+
+  expect(nextCalls).toBe(1)
+})

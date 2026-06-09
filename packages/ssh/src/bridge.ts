@@ -18,6 +18,7 @@ export interface PtyInfo {
 
 export const DEFAULT_PTY: PtyInfo = { term: "xterm-256color", cols: 80, rows: 24, hasPty: false }
 export const MAX_PTY = { cols: 500, rows: 200 } as const
+const TRANSPORT_DRAIN_TIMEOUT_MS = 1_000
 
 const UNKNOWN_REMOTE_ADDRESS: RemoteAddress = { address: "unknown" }
 
@@ -158,6 +159,8 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
   let transportClosing = false
   let stdoutFinished = false
   let pendingRawWrites = 0
+  let transportCloseTimer: ReturnType<typeof setTimeout> | undefined
+  let transportClosedResolved = false
   let resolveTransportClosed!: () => void
   const transportClosed = new Promise<void>((resolve) => {
     resolveTransportClosed = resolve
@@ -235,11 +238,23 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
   }
 
   // All session-ending paths funnel through this idempotent teardown.
-  const finishTransportClose = () => {
-    if (!transportClosing || !stdoutFinished || pendingRawWrites > 0 || channelClosed) return
+  const settleTransportClosed = () => {
+    if (transportClosedResolved) return
+    transportClosedResolved = true
+    if (transportCloseTimer) clearTimeout(transportCloseTimer)
+    resolveTransportClosed()
+  }
+
+  const closeTransport = () => {
+    if (channelClosed) return settleTransportClosed()
     ignoreErrors(() => channel.exit(0))
     ignoreErrors(() => channel.close())
-    resolveTransportClosed()
+    settleTransportClosed()
+  }
+
+  const finishTransportClose = () => {
+    if (!transportClosing || !stdoutFinished || pendingRawWrites > 0 || channelClosed) return
+    closeTransport()
   }
 
   const destroy = (): Promise<void> => {
@@ -250,6 +265,7 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
     ignoreErrors(() => renderer?.destroy())
     if (!channelClosed && !transportClosing) {
       transportClosing = true
+      transportCloseTimer = setTimeout(closeTransport, TRANSPORT_DRAIN_TIMEOUT_MS)
       // Core can enqueue final terminal-restoration bytes during destroy. End the
       // adapter on the next microtask and let its pending writes drain before close.
       queueMicrotask(() => {
@@ -261,7 +277,7 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
     }
     detach()
     closeListeners.forEach((listener) => safe(listener))
-    if (channelClosed) resolveTransportClosed()
+    if (channelClosed) settleTransportClosed()
     return transportClosed
   }
 
@@ -283,12 +299,12 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
   // Mark the channel gone before teardown so we do not write to a dead peer.
   channel.on("close", () => {
     channelClosed = true
-    resolveTransportClosed()
+    settleTransportClosed()
     void destroy()
   })
   channel.on("error", (error: Error) => {
     channelClosed = true
-    resolveTransportClosed()
+    settleTransportClosed()
     safe.report(error)
     void destroy()
   })

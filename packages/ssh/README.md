@@ -57,7 +57,7 @@ const server = createServer({
   // optional, all with sensible defaults:
   // auth, hostKey, idleTimeout, maxTimeout, startupBanner, onError
 })
-  .use(logging) // optional middleware (see "Middleware" below)
+  .use(logging()) // optional middleware (see "Middleware" below)
   .serve((session) => {
     /* mount your app on session.renderer — REQUIRED */
   })

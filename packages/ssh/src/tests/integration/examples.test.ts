@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -22,3 +22,17 @@ for (const [name, entrypoint, extraArgs] of [
     }
   })
 }
+
+test("documentation uses the logging middleware factory correctly", () => {
+  const readme = readFileSync(join(packageRoot, "README.md"), "utf8")
+  const shapeExample = readme.slice(readme.indexOf("## The shape"), readme.indexOf("### `Session`"))
+
+  expect(shapeExample).toContain(".use(logging())")
+  expect(shapeExample).not.toContain(".use(logging) ")
+})
+
+test("the imperative example does not claim the remote Ctrl-C behavior closes the session", () => {
+  const example = readFileSync(join(packageRoot, "examples/imperative.ts"), "utf8")
+
+  expect(example).not.toContain("Ctrl-C closes the session")
+})

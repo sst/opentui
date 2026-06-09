@@ -8,7 +8,7 @@
  *   ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null guest@localhost
  *
  * You get a bordered box rendered by @opentui/core, wired to the SSH channel.
- * Resize your terminal — the box tracks it live. Ctrl-C closes the session.
+ * Resize your terminal — the box tracks it live. Disconnect to close the session.
  */
 import { BoxRenderable, TextRenderable } from "@opentui/core"
 import { createServer } from "../src/index.js"
