@@ -115,6 +115,8 @@ Current properties:
 
 This means normal buffered output does not currently report backpressure, but it also does not reliably surface every output-capacity failure.
 
+The buffered sink callback currently returns `void`, so actual stdout or memory-sink failures cannot be reported through native status. Expand `BufferedWriteFn` to return an explicit fixed-width write status and propagate sink failure through `endFrame()`. Update every portable FFI callback implementation and test it in Bun, Node, and Deno where supported. The project is not complete while direct sink failures are silently swallowed.
+
 ### Feed Backend
 
 The feed backend is used for custom stdout transports.
@@ -183,6 +185,89 @@ If output then fails, native sets `force_full_repaint = true`, but the pending f
 
 Therefore, the first implementation must retry by rebuilding the application frame. Native-only replay must not be attempted until native frame submission becomes transactional or explicitly retains a pending frame.
 
+### Partial Feed Emission
+
+A feed-backed frame can fail after part of its terminal output has already been committed. `NativeSpanFeed` can auto-commit a full chunk while native is still generating the same logical frame. A later chunk allocation, queue push, write, or final commit can then fail.
+
+Consequences:
+
+- A rejected attempt does not necessarily mean that no bytes reached the downstream transport.
+- The terminal may have received an incomplete synchronized-update envelope.
+- Retrying a screen repaint can repair terminal state only if the retry emits a complete force repaint and closes any interrupted synchronization state.
+- Split-scrollback appends are not generally idempotent. Replaying an append can duplicate rows.
+- Fatal cleanup after partial emission must perform a best-effort synchronized-update reset and terminal-state restoration where the transport remains writable.
+
+The final implementation must eliminate partial feed frame publication rather than attempting to make arbitrary partial frames replayable.
+
+Implement a transactional feed-frame staging path:
+
+1. Encode the complete ordinary frame or complete split batch into a native growable staging buffer.
+2. Do not publish any feed span while encoding.
+3. Validate and allocate every feed chunk/span required by the complete staged frame.
+4. Publish all spans only after every allocation and queue-capacity check succeeds.
+5. If preparation fails, publish nothing and return `outputState=none`.
+6. Commit renderer visual state only after feed publication succeeds.
+
+This staging buffer provides the concrete intrinsic-size proof:
+
+- If the staged byte length exceeds a configured hard maximum even with zero occupied/pinned chunks, return fatal `capacity_limit`.
+- If it can fit after existing chunks/spans drain, return retryable queue/pinned pressure.
+- Allocation failure while building staging is `resource_exhausted/out_of_memory`.
+
+During migration, before transactional staging is active, report `outputState=partial` when auto-commit may have occurred. The migration-only recovery algorithm is:
+
+1. Wait for already published spans to drain.
+2. Emit a best-effort `syncReset` control sequence through the same still-writable feed.
+3. Rebuild and force a complete screen repaint.
+4. Never replay split appends from a partially published batch; fail the split batch and rebuild its complete logical output from the application queue.
+
+If the downstream transport has failed, do not attempt terminal repair. Transition to output unavailable and close the feed as defined below.
+
+The native result reports whether output was committed:
+
+```ts
+interface NativeRenderResult {
+  renderOffset: number
+  disposition: NativeRenderDisposition
+  reason: NativeRenderReason
+  outputState: "none" | "partial" | "complete"
+}
+```
+
+The packed result carries this field directly. Do not infer it from disposition.
+
+### Split-Footer Batch Semantics
+
+Split-footer output is a multi-call batch. Native retains `splitBatchActive` and related state between the first and final snapshot. A failure in the middle or final call can leave the batch active if handle validation fails before entering the renderer.
+
+Before TypeScript can safely classify or retry split-footer failures, replace the multi-call submission protocol with one atomic `commitSplitFooterBatchV2` call. TypeScript passes an array of fixed-width snapshot descriptors. Native validates every renderer and snapshot handle before starting output or mutating split-scrollback state.
+
+The implementation must define:
+
+- No snapshot in a failed V2 batch is accepted.
+- `renderOffset` advances only after complete batch publication succeeds.
+- TypeScript calls `recordSplitCommit()` and drops queued commits only after complete batch success.
+- Transactional feed staging prevents partial batch auto-commit.
+- Native resets all temporary batch state before returning on every path.
+- The V2 API has no externally visible intermediate continuation result.
+
+Keep the old multi-call API only for old TypeScript compatibility. New TypeScript must use the atomic V2 API.
+
+### Buffered Writer Failure Propagation
+
+The buffered writer can return `BufferFull`, but native rendering currently uses `catch {}` throughout frame generation and continues mutating renderer state. Changing only `BufferedBackend.endFrame()` is insufficient.
+
+Propagate writer errors through `prepareRenderFrameWithWriter()` and every output helper. Do not mutate committed renderer state while encoding. Specifically defer these operations until output acceptance:
+
+- Synchronizing cells into `currentRenderBuffer`.
+- Clearing `nextRenderBuffer`.
+- Swapping hit grids.
+- Updating cursor tracking.
+- Updating palette epoch tracking.
+- Clearing force-full-repaint state.
+
+After the backend accepts the complete frame, perform a commit pass that copies changed cells and commits the deferred state. This makes native frame preparation transactional for both buffered and feed backends. Cover failures at the beginning, middle, cursor-restoration, and synchronized-update-reset portions of a frame.
+
 ## Measured Cost Of Whole-Tree Retry
 
 The following measurements were collected on a 120 by 40 renderer with nested Box and Text renderables while forcing every native frame to be rejected:
@@ -208,7 +293,7 @@ The final design must satisfy these invariants:
 3. Feed pressure uses feed readiness rather than polling.
 4. Repeated rejection does not run at 60 FPS forever.
 5. Known permanent failures are never retried automatically.
-6. Unknown failures have a finite automatic retry budget.
+6. Unknown failures decode to fatal `internal_error` and are not retried automatically. Only the temporary migration-only `legacy_unclassified` reason receives the legacy retry policy.
 7. A rejected frame does not emit a successful `FRAME` event.
 8. A rejected frame does not update successful-frame statistics.
 9. Force-full-repaint state remains active until a frame succeeds.
@@ -217,7 +302,7 @@ The final design must satisfy these invariants:
 12. Fatal failure does not leave `idle()` waiting forever.
 13. Every native failure is observable with a structured reason.
 14. Split-footer and ordinary rendering use the same failure vocabulary.
-15. Existing successful-frame scheduling remains unchanged.
+15. Existing successful-frame scheduling and visual behavior remain unchanged except for accepted-frame statistics being corrected to exclude rejected attempts.
 
 ## Proposed Native Result Contract
 
@@ -244,6 +329,7 @@ pub const RenderReason = enum(u8) {
     pending_output = 1,
     output_queue_full = 2,
     output_busy = 3,
+    legacy_unclassified = 4, // Migration only; remove after Phase 2.
 
     // Resource conditions with a finite automatic retry budget.
     out_of_memory = 10,
@@ -256,32 +342,83 @@ pub const RenderReason = enum(u8) {
     capacity_limit = 24,
     invalid_feed_state = 25,
     internal_error = 26,
+    transport_failed = 27,
+};
+```
+
+```zig
+pub const OutputState = enum(u8) {
+    none = 0,
+    partial = 1, // Migration-only once transactional staging is complete.
+    complete = 2,
 };
 ```
 
 ### Packed Result
 
-The existing ABI returns a small integer for ordinary render and a packed integer for split-footer operations. Standardize both paths on a packed result.
+The existing ABI returns a small integer for ordinary render and a packed integer for split-footer operations. Add V2 operations that standardize both paths on the same packed result while preserving old exports for compatibility.
 
 ```zig
-pub const RenderResult = extern struct {
+pub const RenderResult = struct {
     render_offset: u32,
-    disposition: u8,
-    reason: u8,
-    reserved: u16,
+    disposition: RenderDisposition,
+    reason: RenderReason,
+    output_state: OutputState,
+    result_version: u8,
 };
 ```
 
-If returning a struct is undesirable for portable FFI, encode it in `u64`:
+Use a packed `u64` for portable FFI:
 
 ```text
 bits 0..31:  render offset
 bits 32..39: disposition
 bits 40..47: reason
-bits 48..63: reserved
+bits 48..55: output state
+bits 56..63: ABI result version
 ```
 
 Use explicit-width types only. Do not expose backend-specific pointer or ABI types.
+
+### ABI Versioning And Diagnostic Details
+
+Adding packed `renderV2()` avoids changing the existing `render()` ABI. TypeScript and native artifacts must still detect whether the V2 contract is available rather than silently falling back.
+
+Preserve the existing `render` export for old TypeScript and add a versioned `renderV2` export returning packed `u64`. New TypeScript must require `renderV2` and verify the result-version byte. This gives symmetric compatibility: old TypeScript continues calling the unchanged old export, while new TypeScript rejects native artifacts without `renderV2`. Do not change the return ABI of the existing symbol.
+
+Add an explicit native ABI version or feature query as an additional startup check. The loader must reject an incompatible native library with an actionable error. Update every boundary:
+
+- `packages/core/src/zig/lib.zig` export signatures.
+- `packages/core/src/zig.ts` symbol definitions.
+- `RenderLib` interface and platform facade.
+- Bun FFI loading.
+- Node portable FFI loading.
+- Deno loading if supported by the current portable runtime layer.
+- Test mocks.
+- Optional platform-native packages.
+- Distribution smoke tests.
+
+The compact render result cannot carry required details such as attempted size, configured capacity, or operation. Add a concrete side channel:
+
+```zig
+pub const RenderFailureDetails = extern struct {
+    operation: u8,
+    output_state: u8,
+    reserved: u16,
+    attempted_bytes: u64,
+    available_bytes: u64,
+    configured_limit: u64,
+};
+```
+
+Expose `getLastRenderFailureDetails(renderer, outPtr)` using a caller-provided fixed-width struct. Define these semantics:
+
+- Details describe the most recent unsuccessful native render operation.
+- A successful render clears the record.
+- Access is same-thread with renderer calls unless synchronization is added.
+- Invalid renderer handles are fully represented by the packed `renderV2` result; their optional details are zeroed because renderer-local details cannot be read.
+- Details contain explicit-width numbers only.
+- Operation distinguishes ordinary render, split repaint, split batch validation, split batch continuation, and split batch finalization.
 
 ### TypeScript Representation
 
@@ -293,6 +430,7 @@ type NativeRenderReason =
   | "pending-output"
   | "output-queue-full"
   | "output-busy"
+  | "legacy-unclassified"
   | "out-of-memory"
   | "invalid-renderer"
   | "invalid-buffer"
@@ -301,11 +439,13 @@ type NativeRenderReason =
   | "capacity-limit"
   | "invalid-feed-state"
   | "internal-error"
+  | "transport-failed"
 
 interface NativeRenderResult {
   renderOffset: number
   disposition: NativeRenderDisposition
   reason: NativeRenderReason
+  outputState: "none" | "partial" | "complete"
 }
 ```
 
@@ -347,7 +487,7 @@ retryable / output_queue_full
 
 Recovery:
 
-- Wait for `feed.idle()` or a more precise below-high-water event if added.
+- Wait for `feed.idle()`. A future below-high-water event may optimize latency but is not required by this plan.
 - Retry after readiness.
 
 #### Output Busy
@@ -450,12 +590,37 @@ Recovery:
 - Mark output unavailable.
 - Require transport or renderer reconstruction.
 
+Native feed closure and downstream JavaScript transport failure are different conditions. Native only knows whether `NativeSpanFeed` is closed. TypeScript owns the caller's `Writable` and must separately observe:
+
+- A synchronous exception from `stdout.write()`.
+- An error passed to the write callback.
+- The `error` event.
+- The `close` event.
+- `destroyed` or `writableEnded` before a write.
+
+Add a TypeScript transport-failure path and a distinct reason such as `transport_failed`. Register and detach listeners with renderer lifecycle cleanup. Once the sink is unavailable:
+
+- Increment retry generation so all readiness continuations become stale.
+- Mark output unavailable before detaching handlers.
+- Detach the feed data handler so no new writes target the failed sink.
+- Let already-entered write callbacks settle; ignore their results after the generation change.
+- Discard queued feed spans because they cannot reach the failed transport.
+- Close the feed after in-flight handlers release their chunk references.
+- Stop native submission.
+- Mark output unavailable.
+- Emit one deduplicated structured failure event.
+- Do not continue automatic render retries.
+
+`idle()` resolves after retry scheduling is cancelled and in-flight handlers have settled or feed close has completed. It does not wait for an unavailable transport to recover. Renderer destruction remains safe and idempotent after this transition.
+
+The existing feed `Closed` event must not be described as proof that the downstream `Writable` closed.
+
 #### Frame Too Large
 
 Condition:
 
 - Generated ANSI output exceeds the fixed buffered output capacity.
-- A single frame cannot fit in the configured feed/chunk constraints.
+- Native can prove the complete encoded frame exceeds a fixed, non-drainable per-frame capacity.
 
 Native result:
 
@@ -466,7 +631,7 @@ fatal / frame_too_large
 Recovery:
 
 - No retry with unchanged capacity.
-- Report required and available capacity where possible.
+- Report attempted bytes, available bytes, and configured capacity through `RenderFailureDetails`.
 - Preserve full-repaint state.
 - Allow explicit recovery after capacity or dimensions change.
 
@@ -474,8 +639,8 @@ Recovery:
 
 Condition:
 
-- Feed growth would exceed configured `max_bytes`.
-- Growth policy forbids expansion required by the frame.
+- Native can prove the complete frame cannot fit after all drainable spans and pinned chunks are released.
+- The configured hard limit is lower than the intrinsic complete-frame requirement.
 
 Native result:
 
@@ -485,8 +650,10 @@ fatal / capacity_limit
 
 Recovery:
 
-- No automatic retry.
-- Require feed configuration or renderer replacement.
+- Do not classify `NoSpace`, `MaxBytes`, or a blocking growth policy as fatal from the error tag alone. Finite `max_bytes` can be temporarily exhausted because existing chunks are pinned; the same write may succeed after drain.
+- Record whether the failure is caused by temporary occupancy or an intrinsic frame requirement.
+- No automatic retry only after native proves the same complete frame cannot fit after drain.
+- Require feed configuration or renderer replacement for a proven intrinsic capacity failure.
 
 #### Invalid Feed State
 
@@ -529,18 +696,73 @@ Recovery:
 
 ## Retry Policy
 
-### Consecutive Retry State
+### Renderer Failure State Model
 
-Add renderer state:
+Implement explicit renderer states rather than distributing fatal/retry booleans across unrelated fields:
 
 ```ts
-private nativeRetryCount = 0
-private nativeRetryTimer: TimerHandle | null = null
-private nativeRetryReason: NativeRenderReason | null = null
-private nativeRenderCircuitOpen = false
+type NativeSubmissionState =
+  | { type: "healthy" }
+  | { type: "waiting-readiness"; reason: NativeRenderReason; attempt: number; generation: number }
+  | { type: "backing-off"; reason: NativeRenderReason; attempt: number; dueAt: number; generation: number }
+  | { type: "resource-circuit-open"; reason: NativeRenderReason; generation: number }
+  | { type: "recoverable-after-reconfigure"; reason: NativeRenderReason; generation: number }
+  | { type: "output-unavailable"; reason: NativeRenderReason; generation: number }
+  | { type: "renderer-unusable"; reason: NativeRenderReason; generation: number }
 ```
 
-Do not overload unrelated state if explicit fields make cancellation and observability safer. If the existing `renderTimeout` remains the retry timer, document that ownership clearly and ensure all control paths cancel it.
+Use a monotonically increasing generation token. `feed.idle()` promises cannot be cancelled, so every readiness continuation must capture the current generation and verify it before scheduling work. Increment the generation on:
+
+- Pause.
+- Stop.
+- Suspend.
+- Destroy.
+- Fatal transition.
+- Circuit-open transition.
+- Output transport replacement or mode transition.
+- Renderer reconfiguration that invalidates the pending attempt.
+
+### Public Operation Behavior By State
+
+Define and test the following behavior:
+
+| State | `requestRender()` | `start()` / live | `resize()` | `resume()` | `idle()` |
+| --- | --- | --- | --- | --- | --- |
+| healthy | Normal | Normal | Normal | Normal | Resolves when quiescent |
+| waiting-readiness | Mark application update pending; do not poll | Preserve requested running state | Mark update pending | Preserve wait if still valid | Remains pending |
+| backing-off | Coalesce update into pending retry | Preserve requested running state | Coalesce and require full repaint | Preserve retry if valid | Remains pending |
+| resource-circuit-open | Perform one explicit probe | Do not start continuous probes | Any actual dimension change performs one explicit probe because it can reduce frame size | One explicit probe | Resolves because scheduler is quiescent |
+| recoverable-after-reconfigure | Record dirty state; no submission | No automatic submission | Probe only if resize can fix the reason | No submission without reconfiguration | Resolves |
+| output-unavailable | No submission; emit/query existing failure | No submission | Preserve dirty state | No submission | Resolves |
+| renderer-unusable | Safe no-op; state remains queryable | Same | Same | Same | Resolves |
+
+For an unusable renderer, preserve safe no-op behavior for render-triggering and lifecycle cleanup methods. Expose `getNativeSubmissionState(): NativeSubmissionState` so callers can inspect the terminal condition. Methods that already throw after destruction retain their existing behavior; this project does not add new throws to `requestRender()`, resize, pause, stop, suspend, resume, or destroy. Do not introduce implicit renderer reconstruction.
+
+Keep `idle(): Promise<void>` backward compatible: it resolves when scheduling is quiescent, including circuit-open or fatal states. Failure is communicated through the structured event and queryable state. Do not make existing `idle()` calls reject. A future separate API may offer reject-on-failure semantics.
+
+### Retry State Transitions
+
+Use these exact event semantics:
+
+- `submit-success`: reset attempt count, retry reason, circuit, readiness wait, and generation-specific pending state.
+- `submit-retryable(reason)`: increment the consecutive count for that reason and schedule readiness/backoff.
+- `readiness-resolved(generation)`: no-op if generation or state changed; otherwise schedule one retry timer.
+- `backoff-fired(generation)`: no-op if generation or state changed; otherwise submit one newly built frame.
+- `explicit-request`: mark application update pending; if a resource circuit is open, allow exactly one probe.
+- `submit-resource-failure`: advance finite resource retry budget or open circuit.
+- `submit-fatal`: cancel scheduling, increment generation, transition to reason-specific fatal state, and emit once.
+- `pause/stop/suspend/destroy`: cancel timers, increment generation, and prevent stale readiness continuations.
+- `reconfigure`: increment generation, clear only recoverable failure states covered by that reconfiguration, force repaint, and perform one probe.
+
+Counters are consecutive per reason. A different reason starts a new sequence but retains a total diagnostic count. Only successful native acceptance resets all retry history. A new application update does not reset pressure history.
+
+For the legacy multi-call split API, only final batch acceptance counts as `submit-success`; intermediate continuation must not reset retry state. New TypeScript uses atomic `commitSplitFooterBatchV2`, which has only complete success or complete failure.
+
+### Retry Metrics And Timer Ownership
+
+`NativeSubmissionState` is the single source of lifecycle truth. Keep only orthogonal metrics outside it, such as total rejected attempts by reason and total recovery count. Do not duplicate retry reason, attempt, or circuit-open state in independent booleans.
+
+Use one dedicated `nativeRetryTimer` rather than overloading the ordinary frame-loop `renderTimeout`. This makes pause, stop, suspend, destroy, idle accounting, and diagnostics explicit. Every timer callback captures and verifies the retry generation.
 
 ### Retryable Pressure With Feed Readiness
 
@@ -601,7 +823,7 @@ For a fatal result:
 3. Preserve full-repaint state if the renderer could recover after explicit reconfiguration.
 4. Mark the renderer or output unavailable when appropriate.
 5. Emit a structured error event.
-6. Resolve or reject `idle()` waiters; never leave them hanging.
+6. Resolve `idle()` waiters once scheduling is quiescent; never leave them hanging.
 7. Do not emit `FRAME`.
 8. Do not update successful-frame statistics.
 9. Do not automatically retry on resize unless the failure reason is explicitly recoverable through resize.
@@ -617,27 +839,66 @@ On the next successful native frame:
 5. Emit exactly one successful frame event for that accepted attempt.
 6. Resume normal scheduling.
 
+### Whole-Tree Retry Semantics
+
+With the current buffers, a retry is a new logical frame, not replay of the rejected logical frame. Define this explicitly:
+
+- Every retry increments `frameId`.
+- Frame callbacks run again.
+- Render hooks run again for selected renderables.
+- A one-shot animation request consumed by the rejected attempt remains consumed; application state produced by it must remain reflected in the next rebuilt frame.
+- Delta time continues from the prior loop attempt according to the existing TypeScript clock.
+- Native `lastRenderTime` advances only after accepted output. Move its update into the native state-commit phase and test accumulated delta across rejected attempts.
+- `CliRenderEvents.FRAME` means accepted native frame, not loop attempt.
+
+Because callbacks can have side effects, add an explicit `applicationUpdatePending` bit. Calls to `requestRender()` during a rejected attempt set it. After the retry succeeds, schedule one additional frame if this bit indicates that updates arrived after the rebuilt frame's relevant callback phase. Do not infer this solely from the retry timer.
+
+Test one-shot animation callbacks, asynchronous frame callbacks, render-time requests, frame IDs, and delta time across rejection.
+
+### Statistics Semantics
+
+Separate these counters:
+
+- Render loop attempts.
+- Native submission attempts.
+- Accepted frames.
+- Rejected attempts by disposition and reason.
+- Retry count.
+- Time spent rebuilding rejected frames.
+
+Existing `renderStats.frameCount` currently advances before native acceptance. Moving accepted-frame counters after successful submission is an intentional behavior change. FPS exposed to users should count accepted frames. Attempt counters belong in debug/native-failure statistics.
+
 ## Structured Error Reporting
 
-Add a renderer event for native render failures.
+Add a discriminated renderer event for native submission transitions.
 
 ```ts
-interface NativeRenderFailureEvent {
-  disposition: "resource-exhausted" | "fatal"
-  reason: NativeRenderReason
-  attempts: number
-  message: string
-  details?: Record<string, string | number | boolean>
-}
+type NativeRenderTransitionEvent =
+  | {
+      type: "failure"
+      disposition: "retryable" | "resource-exhausted" | "fatal"
+      reason: NativeRenderReason
+      attempts: number
+      message: string
+      details?: Record<string, string | number | boolean>
+    }
+  | {
+      type: "recovery"
+      previousReason: NativeRenderReason
+      attempts: number
+      durationMs: number
+    }
 ```
 
 Suggested event:
 
 ```ts
-CliRenderEvents.NATIVE_RENDER_FAILURE
+CliRenderEvents.NATIVE_RENDER_TRANSITION
 ```
 
 The event must not include pointers or backend-specific ABI values.
+
+Retryable failures are observable through this event and scheduler/debug state, but must be rate-limited by transition. Emit on the first failure, reason change, entry into backoff, circuit opening, fatal transition, and recovery. Do not emit on every repeated attempt.
 
 Log only when there is no listener or according to existing renderer error-reporting conventions. Avoid logging on every retry. Log transitions:
 
@@ -645,6 +906,19 @@ Log only when there is no listener or according to existing renderer error-repor
 - Entry into backoff.
 - Circuit opened.
 - Recovery after previous failure.
+
+The existing feed error callback and downstream `Writable` events must feed the same deduplicated failure transition. Assign one transition ID or generation so a feed error, native result, and transport event from the same incident do not produce duplicate user-visible errors. Listener exceptions must be caught and must not interfere with scheduler cleanup.
+
+Extend `getSchedulerState()` with:
+
+```ts
+retryState: "none" | "waiting-readiness" | "scheduled" | "circuit-open" | "fatal"
+retryReason: NativeRenderReason | null
+retryAttempt: number
+retryDueAt: number | null
+```
+
+Include readiness waits in `hasScheduledRender` or document a separate `hasPendingWork` field.
 
 ## Step-By-Step Implementation
 
@@ -671,7 +945,9 @@ Acceptance gate:
 5. Update ordinary `render`, `repaintSplitFooter`, and `commitSplitFooterSnapshot` to return the same packed contract.
 6. Add TypeScript decoding with exhaustive switches.
 7. Treat unknown values as fatal internal errors.
-8. Keep existing behavior temporarily by mapping old outcomes to equivalent new dispositions.
+8. Add a temporary `retryable / legacy_unclassified` reason for the old generic `failed` behavior so Phase 1 truly has no behavior change.
+9. Add ABI version/feature detection and fail loading on mixed old-native/new-TypeScript artifacts.
+10. Update every runtime FFI facade and packaged native artifact listed in the ABI section.
 
 Tests:
 
@@ -679,6 +955,8 @@ Tests:
 - TypeScript decoding for every disposition/reason.
 - Unknown disposition/reason decoding.
 - Ordinary and split-footer APIs return identical vocabulary.
+- Old native/new TypeScript and new native/old TypeScript compatibility rejection.
+- Bun, Node, and Deno decoding where supported.
 
 Acceptance gate:
 
@@ -692,14 +970,17 @@ Acceptance gate:
 2. Map `Busy` to retryable output busy.
 3. Map queue high-water and prior pending bytes separately.
 4. Map `OutOfMemory` to resource exhaustion.
-5. Map `MaxBytes` to fatal capacity limit.
+5. Preserve operation and occupancy context for `NoSpace` and `MaxBytes`; classify them as fatal only when intrinsic complete-frame size is proven.
 6. Map closed-feed `Invalid` to fatal output closed.
 7. Map protocol-state `Invalid` to fatal invalid feed state.
 8. Return fatal invalid renderer when handle acquisition fails.
 9. Return fatal invalid buffer when split snapshot acquisition fails.
-10. Audit buffered writer `BufferFull` handling; stop swallowing it.
-11. Return fatal frame too large when fixed output capacity is exceeded.
-12. Add details such as capacity and attempted size where practical.
+10. Implement the chosen buffered writer-error propagation design; do not merely change `endFrame()`.
+11. Return fatal frame too large only when fixed output capacity is proven insufficient.
+12. Add and populate the failure-details side channel.
+13. Add downstream TypeScript `Writable` error/close handling.
+14. Add split-batch atomic validation or explicit abort/reset before retry policy work.
+15. Remove `legacy_unclassified` after every path is classified.
 
 Tests:
 
@@ -711,8 +992,15 @@ Tests:
 - Queue high-water.
 - Pending prior bytes.
 - Maximum feed bytes exceeded.
+- Finite maximum bytes temporarily exhausted by pinned chunks, then successful after release.
+- Blocking growth policy temporarily full, then successful after drain.
 - Allocation failure using failing allocator.
 - Fixed buffered frame capacity exceeded.
+- Buffered overflow at early, middle, cursor-restoration, and sync-reset output.
+- Writable callback error, synchronous throw, error event, and close event.
+- Split batch failure at first, middle, and final positions.
+- Invalid middle snapshot leaves no active native batch.
+- Partial feed auto-commit followed by repair or fatal cleanup.
 
 Acceptance gate:
 
@@ -722,7 +1010,7 @@ Acceptance gate:
 ### Phase 3: Implement The TypeScript Retry State Machine
 
 1. Add a single method to process native render results.
-2. Keep the normal successful-frame branch unchanged.
+2. Keep normal successful-frame scheduling and visual behavior unchanged except for the intentional accepted-frame statistics correction defined above.
 3. Add event-driven feed retry for pending output and queue pressure.
 4. Add one timer latch for non-event retry.
 5. Add consecutive retry count.
@@ -773,7 +1061,7 @@ Acceptance gate:
 2. Cancel pending timers and feed-idle retry state.
 3. Define renderer viability per fatal reason.
 4. Invalid renderer: mark renderer unusable.
-5. Invalid split buffer: drop only the invalid commit and preserve renderer viability.
+5. Invalid split buffer: atomic V2 prevalidation rejects the entire unstarted batch. Drop the invalid commit, retain the other logical commits for a newly constructed batch where valid, and preserve renderer viability. No native split state or render offset may have changed.
 6. Output closed: mark transport unavailable.
 7. Frame too large/capacity limit: block automatic retries pending explicit reconfiguration.
 8. Internal error: stop automatic retries and surface diagnostics.
@@ -923,6 +1211,13 @@ Acceptance targets:
 - Fatal failure no retry.
 - Fatal event payload.
 - Native mock restoration between tests.
+- Feed readiness resolving after pause, stop, suspend, destroy, fatal transition, and output-mode transition.
+- Alternating retry reasons and per-reason counter semantics.
+- One-shot animation requests across rejection.
+- Async frame callback pending during cancellation and fatal transition.
+- Frame IDs and delta time across retries.
+- Failure event listener throwing.
+- Retry generation invalidated by renderer/output replacement.
 
 ### Integration Tests
 
@@ -933,6 +1228,12 @@ Acceptance targets:
 - Resize during retry.
 - Output mode transition during retry.
 - Renderer suspend/resume during retry.
+- Partial feed output followed by successful full repaint.
+- Split batch rejection at first, middle, and final commit.
+- Split render offset does not advance on unaccepted finalization.
+- Split rows are neither duplicated nor dropped after recovery.
+- Downstream transport callback error, synchronous throw, error event, and close.
+- Fatal-state behavior for every public render-triggering API.
 
 ### Full Verification Commands
 
@@ -1007,7 +1308,7 @@ Mitigation:
 Mitigation:
 
 - Include retry timer, feed wait, and circuit transition in idle state.
-- Resolve or reject idle on fatal transition.
+- Resolve idle once fatal-state scheduling and in-flight transport cleanup are quiescent; report failure through state and transition events.
 
 ### Risk: Fatal Failure Revived By Resize
 
@@ -1072,3 +1373,8 @@ The work is complete only when all of the following are true:
 13. Formatting, lint, build, and diff checks pass.
 14. Benchmarks confirm persistent failures cannot consume a large CPU fraction at fixed 60 FPS.
 15. Documentation accurately distinguishes proven renderer behavior from unproven application-level causes.
+16. Feed frame publication and native committed-state updates are transactional.
+17. Atomic split V2 batches cannot leave active batch state, advance offsets, duplicate rows, or drop valid queued commits after failure.
+18. Downstream `Writable` and buffered sink failures transition to output unavailable without retry loops or leaked feed references.
+19. V2 ABI compatibility is verified for every supported runtime and rejects incompatible native artifacts.
+20. Partial-output migration behavior is tested and no V2 feed frame can report partial publication.
