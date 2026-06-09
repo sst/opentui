@@ -4,12 +4,12 @@ const c = @cImport({
     @cInclude("yoga/Yoga.h");
 });
 
-const YGNodeRef = c.YGNodeRef;
-const YGNodeConstRef = c.YGNodeConstRef;
-const YGConfigRef = c.YGConfigRef;
-const YGConfigConstRef = c.YGConfigConstRef;
+pub const YGNodeRef = c.YGNodeRef;
+pub const YGNodeConstRef = c.YGNodeConstRef;
+pub const YGConfigRef = c.YGConfigRef;
+pub const YGConfigConstRef = c.YGConfigConstRef;
 
-const YogaEnumKind = enum(u32) {
+pub const YogaEnumKind = enum(u32) {
     direction = 0,
     flex_direction = 1,
     justify_content = 2,
@@ -23,14 +23,14 @@ const YogaEnumKind = enum(u32) {
     box_sizing = 10,
 };
 
-const YogaFloatKind = enum(u32) {
+pub const YogaFloatKind = enum(u32) {
     flex = 0,
     flex_grow = 1,
     flex_shrink = 2,
     aspect_ratio = 3,
 };
 
-const YogaValueKind = enum(u32) {
+pub const YogaValueKind = enum(u32) {
     width = 0,
     height = 1,
     min_width = 2,
@@ -50,11 +50,24 @@ const YogaEdgeLayoutKind = enum(u32) {
     border = 2,
 };
 
-const YogaUnit = enum(u32) {
+pub const YogaUnit = enum(u32) {
     undefined = 0,
     point = 1,
     percent = 2,
     auto = 3,
+};
+
+pub const YogaDirection = enum(u32) {
+    inherit = 0,
+    ltr = 1,
+    rtl = 2,
+};
+
+pub const YogaFlexDirection = enum(u32) {
+    column = 0,
+    column_reverse = 1,
+    row = 2,
+    row_reverse = 3,
 };
 
 pub const ExternalYogaLayout = extern struct {
@@ -242,11 +255,11 @@ fn internalDirtiedFunc(node: YGNodeConstRef) callconv(.c) void {
     }
 }
 
-export fn yogaConfigCreate() YGConfigRef {
+pub export fn yogaConfigCreate() YGConfigRef {
     return c.YGConfigNew();
 }
 
-export fn yogaConfigFree(config: YGConfigRef) void {
+pub export fn yogaConfigFree(config: YGConfigRef) void {
     c.YGConfigFree(config);
 }
 
@@ -254,7 +267,7 @@ export fn yogaConfigSetUseWebDefaults(config: YGConfigRef, enabled: bool) void {
     c.YGConfigSetUseWebDefaults(config, enabled);
 }
 
-export fn yogaConfigGetUseWebDefaults(config: YGConfigConstRef) bool {
+pub export fn yogaConfigGetUseWebDefaults(config: YGConfigConstRef) bool {
     return c.YGConfigGetUseWebDefaults(config);
 }
 
@@ -262,7 +275,7 @@ export fn yogaConfigSetPointScaleFactor(config: YGConfigRef, point_scale_factor:
     c.YGConfigSetPointScaleFactor(config, point_scale_factor);
 }
 
-export fn yogaConfigGetPointScaleFactor(config: YGConfigConstRef) f32 {
+pub export fn yogaConfigGetPointScaleFactor(config: YGConfigConstRef) f32 {
     return c.YGConfigGetPointScaleFactor(config);
 }
 
@@ -282,19 +295,19 @@ export fn yogaConfigIsExperimentalFeatureEnabled(config: YGConfigConstRef, featu
     return c.YGConfigIsExperimentalFeatureEnabled(config, toExperimentalFeature(feature));
 }
 
-export fn yogaNodeCreate() YGNodeRef {
+pub export fn yogaNodeCreate() YGNodeRef {
     return c.YGNodeNew();
 }
 
-export fn yogaNodeCreateForOpenTUI() YGNodeRef {
+pub export fn yogaNodeCreateForOpenTUI() YGNodeRef {
     return c.YGNodeNewWithConfig(getOpenTUIConfig());
 }
 
-export fn yogaNodeCreateWithConfig(config: YGConfigConstRef) YGNodeRef {
+pub export fn yogaNodeCreateWithConfig(config: YGConfigConstRef) YGNodeRef {
     return c.YGNodeNewWithConfig(config);
 }
 
-export fn yogaNodeFree(node: YGNodeRef) void {
+pub export fn yogaNodeFree(node: YGNodeRef) void {
     freeContext(node);
     c.YGNodeFree(node);
 }
@@ -313,7 +326,7 @@ export fn yogaNodeCopyStyle(dst_node: YGNodeRef, src_node: YGNodeConstRef) void 
     c.YGNodeCopyStyle(dst_node, src_node);
 }
 
-export fn yogaNodeInsertChild(node: YGNodeRef, child: YGNodeRef, index: u32) void {
+pub export fn yogaNodeInsertChild(node: YGNodeRef, child: YGNodeRef, index: u32) void {
     c.YGNodeInsertChild(node, child, index);
 }
 
@@ -337,7 +350,7 @@ export fn yogaNodeGetParent(node: YGNodeRef) YGNodeRef {
     return c.YGNodeGetParent(node);
 }
 
-export fn yogaNodeCalculateLayout(node: YGNodeRef, width: f32, height: f32, direction: u32) void {
+pub export fn yogaNodeCalculateLayout(node: YGNodeRef, width: f32, height: f32, direction: u32) void {
     c.YGNodeCalculateLayout(node, width, height, toDirection(direction));
 }
 
@@ -373,7 +386,7 @@ export fn yogaNodeGetAlwaysFormsContainingBlock(node: YGNodeConstRef) bool {
     return c.YGNodeGetAlwaysFormsContainingBlock(node);
 }
 
-export fn yogaNodeGetComputedLayout(node: YGNodeConstRef, out_ptr: *ExternalYogaLayout) void {
+pub export fn yogaNodeGetComputedLayout(node: YGNodeConstRef, out_ptr: *ExternalYogaLayout) void {
     out_ptr.* = .{
         .left = c.YGNodeLayoutGetLeft(node),
         .top = c.YGNodeLayoutGetTop(node),
@@ -393,7 +406,7 @@ export fn yogaNodeLayoutGetEdge(node: YGNodeConstRef, kind: u32, edge: u32) f32 
     };
 }
 
-export fn yogaNodeStyleSetEnum(node: YGNodeRef, kind: u32, value: u32) void {
+pub export fn yogaNodeStyleSetEnum(node: YGNodeRef, kind: u32, value: u32) void {
     switch (@as(YogaEnumKind, @enumFromInt(kind))) {
         .direction => c.YGNodeStyleSetDirection(node, toDirection(value)),
         .flex_direction => c.YGNodeStyleSetFlexDirection(node, toFlexDirection(value)),
@@ -425,7 +438,7 @@ export fn yogaNodeStyleGetEnum(node: YGNodeConstRef, kind: u32) u32 {
     };
 }
 
-export fn yogaNodeStyleSetFloat(node: YGNodeRef, kind: u32, value: f32) void {
+pub export fn yogaNodeStyleSetFloat(node: YGNodeRef, kind: u32, value: f32) void {
     switch (@as(YogaFloatKind, @enumFromInt(kind))) {
         .flex => c.YGNodeStyleSetFlex(node, value),
         .flex_grow => c.YGNodeStyleSetFlexGrow(node, value),
@@ -451,7 +464,7 @@ export fn yogaNodeStyleGetBorder(node: YGNodeConstRef, edge: u32) f32 {
     return c.YGNodeStyleGetBorder(node, toEdge(edge));
 }
 
-export fn yogaNodeStyleSetValue(node: YGNodeRef, kind: u32, edge_or_gutter: u32, unit: u32, value: f32) void {
+pub export fn yogaNodeStyleSetValue(node: YGNodeRef, kind: u32, edge_or_gutter: u32, unit: u32, value: f32) void {
     const value_kind = @as(YogaValueKind, @enumFromInt(kind));
     const value_unit = @as(YogaUnit, @enumFromInt(unit));
     const undefined_value = std.math.nan(f32);
@@ -526,7 +539,7 @@ export fn yogaNodeStyleSetValue(node: YGNodeRef, kind: u32, edge_or_gutter: u32,
     }
 }
 
-export fn yogaNodeStyleGetValue(node: YGNodeConstRef, kind: u32, edge_or_gutter: u32) u64 {
+pub export fn yogaNodeStyleGetValue(node: YGNodeConstRef, kind: u32, edge_or_gutter: u32) u64 {
     const value = switch (@as(YogaValueKind, @enumFromInt(kind))) {
         .width => c.YGNodeStyleGetWidth(node),
         .height => c.YGNodeStyleGetHeight(node),
@@ -546,7 +559,7 @@ export fn yogaNodeStyleGetValue(node: YGNodeConstRef, kind: u32, edge_or_gutter:
     return packValue(value);
 }
 
-export fn yogaNodeSetMeasureFunc(node: YGNodeRef, callback: ?*const anyopaque) void {
+pub export fn yogaNodeSetMeasureFunc(node: YGNodeRef, callback: ?*const anyopaque) void {
     if (callback) |callback_ptr| {
         const ctx = getOrCreateContext(node);
         ctx.measure_callback = callback_ptr;
@@ -569,7 +582,7 @@ export fn yogaNodeHasMeasureFunc(node: YGNodeConstRef) bool {
     return c.YGNodeHasMeasureFunc(node);
 }
 
-export fn yogaNodeSetDirtiedFunc(node: YGNodeRef, callback: ?*const anyopaque) void {
+pub export fn yogaNodeSetDirtiedFunc(node: YGNodeRef, callback: ?*const anyopaque) void {
     if (callback) |callback_ptr| {
         const ctx = getOrCreateContext(node);
         ctx.dirtied_callback = callback_ptr;
@@ -591,4 +604,12 @@ export fn yogaNodeUnsetDirtiedFunc(node: YGNodeRef) void {
 export fn yogaStoreMeasureResult(width: f32, height: f32) void {
     tls_measure_width = width;
     tls_measure_height = height;
+}
+
+pub fn yogaNodeGetConfig(node: YGNodeRef) YGConfigConstRef {
+    return c.YGNodeGetConfig(node);
+}
+
+pub fn yogaNodeHasContext(node: YGNodeConstRef) bool {
+    return c.YGNodeGetContext(node) != null;
 }
