@@ -1195,7 +1195,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     }
   })
 
-  test("OpenCode reasoning reserves visible scrollbox space while initial highlighting is pending", async () => {
+  test("renders OpenCode reasoning immediately while initial highlighting is pending", async () => {
     const scrollBox = new ScrollBoxRenderable(testRenderer, {
       width: 40,
       height: 10,
@@ -1236,18 +1236,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     expect(reasoning.screenY + reasoning.height).toBeGreaterThan(scrollBox.viewport.screenY)
     expect(code.height).toBe(3)
     expect(pendingFrame).toContain("Thinking")
-    expect(pendingFrame).not.toContain("REASONING_BODY")
-
-    scrollBox.viewportCulling = false
-    await renderOnce()
-    expect(captureCharFrame()).not.toContain("REASONING_BODY")
-    scrollBox.viewportCulling = true
-
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await code.highlightingDone
-    await renderOnce()
-
-    expect(captureCharFrame()).toContain("REASONING_BODY_2")
+    expect(pendingFrame).toContain("REASONING_BODY_2")
   })
 
   test("clips nested scrollboxes when multiple stacked children overflow (app-style tool blocks)", async () => {
