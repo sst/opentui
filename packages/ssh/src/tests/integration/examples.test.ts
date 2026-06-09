@@ -5,6 +5,12 @@ import { join } from "node:path"
 
 const packageRoot = new URL("../../..", import.meta.url).pathname
 for (const [name, entrypoint, extraArgs] of [
+  ["minimal", "examples/minimal.ts", []],
+  ["imperative", "examples/imperative.ts", []],
+  ["auth", "examples/auth.ts", []],
+  ["authorized keys", "examples/authorized-keys.ts", []],
+  ["lifecycle", "examples/lifecycle.ts", []],
+  ["middleware", "examples/middleware.ts", []],
   ["React", "examples/react.tsx", []],
   ["Solid", "examples/solid.tsx", ["--jsx-import-source", "@opentui/solid"]],
 ] as const) {

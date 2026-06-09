@@ -1,5 +1,6 @@
 import { createServer as createNetServer } from "node:net"
 import { afterEach, expect, test } from "bun:test"
+import { Client } from "ssh2"
 import { createServer } from "../../index.js"
 import type { Server } from "../../types.js"
 import { HOST_KEY } from "../support.js"
@@ -20,6 +21,28 @@ test("listen() resolves with host, port, and host-key fingerprints", async () =>
   expect(info.host).toBeTruthy()
   expect(info.fingerprints).toHaveLength(1)
   expect(info.fingerprints[0]).toMatch(/^SHA256:/)
+})
+
+test("listen() accepts an SSH connection over IPv6 loopback when available", async () => {
+  server = createServer({ auth: "open", startupBanner: false, hostKey: { pem: HOST_KEY } }).serve(() => {})
+  let info: Awaited<ReturnType<Server["listen"]>>
+  try {
+    info = await server.listen(0, "::1")
+  } catch (error) {
+    if (error instanceof Error && "code" in error && ["EADDRNOTAVAIL", "EAFNOSUPPORT"].includes(String(error.code))) {
+      return
+    }
+    throw error
+  }
+
+  const client = new Client()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      client.on("ready", resolve).on("error", reject).connect({ host: "::1", port: info.port, username: "guest" })
+    })
+  } finally {
+    client.end()
+  }
 })
 
 test("listen() rejects when the port is already in use", async () => {

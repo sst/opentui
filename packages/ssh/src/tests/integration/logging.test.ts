@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { createServer, logging, type LogEvent } from "../../index.js"
-import { createHarness, HOST_KEY, sleep } from "../support.js"
+import { createHarness, HOST_KEY, sleep, waitFor } from "../support.js"
 
 /**
  * The logging middleware is pure observability: a "connect" event at session
@@ -59,4 +59,30 @@ test("disconnect still logs when the handler throws — error goes to onError, n
   expect(events.map((e) => e.type)).toEqual(["connect", "disconnect"])
   expect(errors).toHaveLength(1)
   expect((errors[0] as Error).message).toBe("boom")
+})
+
+test("a failing logging sink does not block a live session", async () => {
+  let handlerCalls = 0
+  let sinkCalls = 0
+  const server = track(
+    createServer({ auth: "open", startupBanner: false, hostKey: { pem: HOST_KEY } })
+      .use(
+        logging({
+          log: () => {
+            sinkCalls++
+            throw new Error("sink failed")
+          },
+        }),
+      )
+      .serve((session) => {
+        handlerCalls++
+        session.end()
+      }),
+  )
+
+  await openShell(server)
+  await waitFor(() => handlerCalls === 1 && sinkCalls === 2)
+
+  expect(handlerCalls).toBe(1)
+  expect(sinkCalls).toBe(2)
 })
