@@ -35,7 +35,14 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
-          cache-key: build-core-native
+          use-cache: false
+
+      - name: Restore Zig cache
+        uses: actions/cache@v5
+        with:
+          path: .zig-cache
+          key: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-${{ github.run_id }}-${{ github.job }}
+          restore-keys: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-
 
       - name: Install dependencies
         run: bun install
@@ -87,8 +94,15 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
-          use-cache: ${{ runner.os != 'Windows' }}
-          cache-key: build-core-test
+          use-cache: false
+
+      - name: Restore Zig cache
+        if: runner.os != 'Windows'
+        uses: actions/cache@v5
+        with:
+          path: .zig-cache
+          key: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-${{ github.run_id }}-${{ github.job }}
+          restore-keys: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-
 
       - name: Install dependencies
         run: bun install

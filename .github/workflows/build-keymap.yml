@@ -40,10 +40,15 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-          # Keep Zig's cache path on the workspace drive, but do not restore/save
-          # stale .zig-cache archives on Windows; Zig 0.15.2 can fail with missing cache files.
-          use-cache: ${{ runner.os != 'Windows' }}
-          cache-key: build-keymap
+          use-cache: false
+
+      - name: Restore Zig cache
+        if: runner.os != 'Windows'
+        uses: actions/cache@v5
+        with:
+          path: .zig-cache
+          key: zig-v1-${{ runner.os }}-0.15.2-${{ github.run_id }}-${{ github.job }}
+          restore-keys: zig-v1-${{ runner.os }}-0.15.2-
 
       - name: Install dependencies
         run: bun install
@@ -71,7 +76,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -87,6 +92,14 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          use-cache: false
+
+      - name: Restore Zig cache
+        uses: actions/cache@v5
+        with:
+          path: .zig-cache
+          key: zig-v1-${{ runner.os }}-0.15.2-${{ github.run_id }}-${{ github.job }}
+          restore-keys: zig-v1-${{ runner.os }}-0.15.2-
 
       - name: Install dependencies
         run: bun install

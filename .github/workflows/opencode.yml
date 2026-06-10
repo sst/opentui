@@ -26,9 +26,9 @@ jobs:
           persist-credentials: false
 
       - name: Run opencode
-        uses: sst/opencode/github@77fc88c8ade8e5a620ebbe1197f3a572d29ae91a # latest
+        uses: sst/opencode/github@1daf535e6bd4ee34aa95ca0e72bbee78c47cd46c # dev
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
-          model: anthropic/claude-opus-4-8
+          model: anthropic/claude-fable-5
           variant: max
