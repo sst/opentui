@@ -25,7 +25,7 @@ const App = (props: { name: string; onQuit: () => void }) => {
   onCleanup(() => clearInterval(timer))
 
   useKeyboard((key) => {
-    if (key.name === "q") props.onQuit()
+    if (key.name === "q" || (key.ctrl && key.name === "c")) props.onQuit()
   })
 
   return (
@@ -42,7 +42,7 @@ const App = (props: { name: string; onQuit: () => void }) => {
       justifyContent="center"
     >
       <text fg="#e2e8f0">Hello, {props.name}! 👋</text>
-      <text fg="#67e8f9">connected for {secs()}s · press q to quit</text>
+      <text fg="#67e8f9">connected for {secs()}s · press q or Ctrl-C to quit</text>
     </box>
   )
 }

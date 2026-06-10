@@ -8,7 +8,7 @@
  *   ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null guest@localhost
  *
  * You get a bordered box rendered by @opentui/core, wired to the SSH channel.
- * Resize your terminal — the box tracks it live. Disconnect to close the session.
+ * Resize your terminal — the box tracks it live. Press q or Ctrl-C to close the session.
  */
 import { BoxRenderable, TextRenderable } from "@opentui/core"
 import { createServer } from "../src/index.js"
@@ -43,11 +43,15 @@ const server = createServer({
 
   box.add(new TextRenderable(renderer, { content: `Hello, ${identity.username}! 👋`, fg: "#e2e8f0" }))
   box.add(new TextRenderable(renderer, { content: "Served imperatively over SSH.", fg: "#67e8f9" }))
+  box.add(new TextRenderable(renderer, { content: "Press q or Ctrl-C to quit.", fg: "#94a3b8" }))
   box.add(sizeText)
   renderer.root.add(box)
   update()
 
   session.onResize(update)
+  renderer.keyInput.on("keypress", (key) => {
+    if (key.name === "q" || (key.ctrl && key.name === "c")) session.end()
+  })
   // The renderer is destroyed for you on disconnect — no onClose needed here.
 })
 

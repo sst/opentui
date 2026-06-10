@@ -80,13 +80,15 @@ const server = createServer({
       alignItems: "center",
       justifyContent: "center",
     })
-    box.add(new TextRenderable(renderer, { content: "you made it past the gate · press q to quit", fg: "#e2e8f0" }))
+    box.add(
+      new TextRenderable(renderer, { content: "you made it past the gate · press q or Ctrl-C to quit", fg: "#e2e8f0" }),
+    )
     box.add(new TextRenderable(renderer, { content: `key:  ${identity.fingerprint}`, fg: "#d8b4fe" }))
     box.add(new TextRenderable(renderer, { content: `role: ${context.roles.join(", ")}`, fg: "#d8b4fe" }))
     renderer.root.add(box)
 
     renderer.keyInput.on("keypress", (key) => {
-      if (key.name === "q") session.end()
+      if (key.name === "q" || (key.ctrl && key.name === "c")) session.end()
     })
     // The renderer is torn down for you on disconnect.
   })

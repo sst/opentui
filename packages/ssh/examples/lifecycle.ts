@@ -9,7 +9,8 @@
  *       guest@localhost
  *
  * Stop typing: after 10s of no input idleTimeout reaps the session and the
- * client exits. Ctrl-C shuts the server down gracefully.
+ * client exits. Press q or Ctrl-C to close the remote session immediately;
+ * Ctrl-C in the server terminal shuts the server down gracefully.
  *
  * Lifecycle hooks:
  *   - observe connect/disconnect → `logging()` middleware
@@ -51,7 +52,12 @@ const server = createServer({
     })
     box.add(new TextRenderable(renderer, { content: `Hello, ${identity.username}! 👋`, fg: "#e2e8f0" }))
     box.add(new TextRenderable(renderer, { content: "stop typing for 10s and I'll disconnect you", fg: "#fca5a5" }))
+    box.add(new TextRenderable(renderer, { content: "Press q or Ctrl-C to quit now.", fg: "#94a3b8" }))
     renderer.root.add(box)
+
+    renderer.keyInput.on("keypress", (key) => {
+      if (key.name === "q" || (key.ctrl && key.name === "c")) session.end()
+    })
 
     // Per-session disconnect: your own cleanup. The renderer is torn down for you.
     session.onClose(() => {

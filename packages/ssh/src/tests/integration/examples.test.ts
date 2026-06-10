@@ -52,16 +52,21 @@ test("documentation uses the logging middleware factory correctly", () => {
   expect(shapeExample).not.toContain(".use(logging) ")
 })
 
-test("the imperative example does not claim the remote Ctrl-C behavior closes the session", () => {
-  const example = readFileSync(join(packageRoot, "examples/imperative.ts"), "utf8")
+for (const entrypoint of [
+  "minimal.ts",
+  "imperative.ts",
+  "auth.ts",
+  "authorized-keys.ts",
+  "lifecycle.ts",
+  "middleware.ts",
+  "react.tsx",
+  "solid.tsx",
+]) {
+  test(`${entrypoint} lets the remote user quit with q or Ctrl-C`, () => {
+    const example = readFileSync(join(packageRoot, "examples", entrypoint), "utf8")
 
-  expect(example).not.toContain("Ctrl-C closes the session")
-})
-
-test("the minimal example lets the remote user quit", () => {
-  const example = readFileSync(join(packageRoot, "examples/minimal.ts"), "utf8")
-
-  expect(example).toContain('key.name === "q"')
-  expect(example).toContain('key.ctrl && key.name === "c"')
-  expect(example).toContain("session.end()")
-})
+    expect(example).toContain('key.name === "q"')
+    expect(example).toContain('key.ctrl && key.name === "c"')
+    expect(example).toContain("session.end()")
+  })
+}

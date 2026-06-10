@@ -46,7 +46,7 @@ function App({ name }: { name: string }) {
       titleAlignment="center"
     >
       <text content={`Hello, ${name}! 👋`} fg="#e2e8f0" />
-      <text content="↑/↓ to recolor · q to quit" fg={color} />
+      <text content="↑/↓ to recolor · q or Ctrl-C to quit" fg={color} />
     </box>
   )
 }
@@ -60,9 +60,9 @@ const server = createServer({
   const root = createRoot(session.renderer)
   root.render(<App name={session.identity.username} />)
 
-  // q quits this session (and only this one).
+  // These keys quit this session (and only this one).
   session.renderer.keyInput.on("keypress", (key) => {
-    if (key.name === "q") session.end()
+    if (key.name === "q" || (key.ctrl && key.name === "c")) session.end()
   })
 
   // Tear the React tree down when the client disconnects.

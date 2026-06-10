@@ -42,10 +42,11 @@ const server = createServer({
   box.add(new TextRenderable(renderer, { content: `Welcome, ${identity.username}!`, fg: "#e2e8f0" }))
   box.add(new TextRenderable(renderer, { content: `key: ${identity.fingerprint}`, fg: "#86efac" }))
   box.add(new TextRenderable(renderer, { content: `allowlist: ${AUTHORIZED_KEYS}`, fg: "#94a3b8" }))
+  box.add(new TextRenderable(renderer, { content: "Press q or Ctrl-C to quit.", fg: "#94a3b8" }))
   renderer.root.add(box)
 
   renderer.keyInput.on("keypress", (key) => {
-    if (key.name === "q") session.end()
+    if (key.name === "q" || (key.ctrl && key.name === "c")) session.end()
   })
 })
 
