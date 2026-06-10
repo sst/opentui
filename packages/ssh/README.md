@@ -138,9 +138,11 @@ createServer().serve(async (session) => {
 })
 ```
 
-> `@opentui/react` / `@opentui/solid` are **not** dependencies of this package —
-> the framework examples import them only to demonstrate the hand-off. Solid also
-> needs its JSX preload: `bun --preload @opentui/solid/preload examples/solid.tsx`.
+> `@opentui/react` / `@opentui/solid` are **not** runtime dependencies of this
+> package — the framework examples use workspace dev dependencies only to
+> demonstrate the hand-off. Run the Solid example with
+> `bun run packages/ssh/examples/solid.tsx`; its launcher registers the required
+> JSX transform before loading the app.
 
 ## Auth & type-flowing identity
 

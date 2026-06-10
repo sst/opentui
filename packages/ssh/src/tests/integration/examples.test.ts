@@ -63,7 +63,8 @@ for (const entrypoint of [
   "solid.tsx",
 ]) {
   test(`${entrypoint} lets the remote user quit with q or Ctrl-C`, () => {
-    const example = readFileSync(join(packageRoot, "examples", entrypoint), "utf8")
+    const implementation = entrypoint === "solid.tsx" ? "solid-app.tsx" : entrypoint
+    const example = readFileSync(join(packageRoot, "examples", implementation), "utf8")
 
     expect(example).toContain('key.name === "q"')
     expect(example).toContain('key.ctrl && key.name === "c"')

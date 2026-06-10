@@ -16,5 +16,5 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "exclude": ["dist", "examples/react.tsx", "examples/solid.tsx"]
+  "exclude": ["dist", "examples/react.tsx", "examples/solid.tsx", "examples/solid-app.tsx"]
 }

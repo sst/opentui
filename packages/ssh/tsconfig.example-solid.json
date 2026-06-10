@@ -13,6 +13,6 @@
       "@opentui/solid/*": ["../solid/dist/*"]
     }
   },
-  "include": ["examples/solid.tsx", "src/**/*.ts"],
+  "include": ["examples/solid.tsx", "examples/solid-app.tsx", "src/**/*.ts"],
   "exclude": ["dist", "src/tests", "examples/react.tsx"]
 }

@@ -14,5 +14,5 @@
     }
   },
   "include": ["examples/react.tsx", "src/**/*.ts"],
-  "exclude": ["dist", "src/tests", "examples/solid.tsx"]
+  "exclude": ["dist", "src/tests", "examples/solid.tsx", "examples/solid-app.tsx"]
 }
