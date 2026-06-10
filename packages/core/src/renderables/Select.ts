@@ -1,18 +1,19 @@
-import { OptimizedBuffer } from "../buffer"
-import { fonts, measureText, renderFontToFrameBuffer } from "../lib/ascii.font"
-import type { KeyEvent } from "../lib/KeyHandler"
-import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
-import { Renderable, type RenderableOptions } from "../Renderable"
-import type { RenderContext } from "../types"
+import { OptimizedBuffer } from "../buffer.js"
+import { fonts, measureText, renderFontToFrameBuffer } from "../lib/ascii.font.js"
+import type { KeyEvent } from "../lib/KeyHandler.js"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import type { RenderContext } from "../types.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
-  getKeyBindingKey,
   buildKeyBindingsMap,
-  type KeyAliasMap,
+  getKeyBindingAction,
   defaultKeyAliases,
   mergeKeyAliases,
-} from "../lib/keymapping"
+} from "../lib/keybinding.internal.js"
+
+type KeyAliasMap = Record<string, string>
 
 export interface SelectOption {
   name: string
@@ -163,10 +164,11 @@ export class SelectRenderable extends Renderable {
   }
 
   private refreshFrameBuffer(): void {
-    if (!this.frameBuffer || this._options.length === 0) return
+    if (!this.frameBuffer) return
 
     const bgColor = this._focused ? this._focusedBackgroundColor : this._backgroundColor
     this.frameBuffer.clear(bgColor)
+    if (this._options.length === 0) return
 
     const contentX = 0
     const contentY = 0
@@ -327,16 +329,7 @@ export class SelectRenderable extends Renderable {
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
-    const bindingKey = getKeyBindingKey({
-      name: key.name,
-      ctrl: key.ctrl,
-      shift: key.shift,
-      meta: key.meta,
-      super: key.super,
-      action: "move-up" as SelectAction,
-    })
-
-    const action = this._keyBindingsMap.get(bindingKey)
+    const action = getKeyBindingAction(this._keyBindingsMap, key)
 
     if (action) {
       switch (action) {

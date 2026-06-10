@@ -26,11 +26,11 @@ fn benchInsertOperations(
     {
         const name = "EditBuffer insert 1k times at start";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode, null);
                 defer eb.deinit();
 
                 const text = "Hello, world! ";
@@ -52,7 +52,7 @@ fn benchInsertOperations(
                 break :blk s;
             } else null;
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -68,11 +68,11 @@ fn benchInsertOperations(
     {
         const name = "EditBuffer insert 500 multi-line blocks";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode, null);
                 defer eb.deinit();
 
                 const text = "Line 1\nLine 2\nLine 3\n";
@@ -93,7 +93,7 @@ fn benchInsertOperations(
                 break :blk s;
             } else null;
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -105,7 +105,7 @@ fn benchInsertOperations(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchDeleteOperations(
@@ -123,11 +123,11 @@ fn benchDeleteOperations(
     {
         const name = "EditBuffer backspace 500 chars";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode, null);
                 defer eb.deinit();
 
                 // Build up text
@@ -153,7 +153,7 @@ fn benchDeleteOperations(
                 break :blk s;
             } else null;
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -169,11 +169,11 @@ fn benchDeleteOperations(
     {
         const name = "EditBuffer delete 50-line range";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode, null);
                 defer eb.deinit();
 
                 // Build up text with many lines
@@ -198,7 +198,7 @@ fn benchDeleteOperations(
                 break :blk s;
             } else null;
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -210,7 +210,7 @@ fn benchDeleteOperations(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchMixedOperations(
@@ -228,11 +228,11 @@ fn benchMixedOperations(
     {
         const name = "EditBuffer mixed operations (300 lines)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode, null);
                 defer eb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -264,7 +264,7 @@ fn benchMixedOperations(
                 break :blk s;
             } else null;
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -276,7 +276,7 @@ fn benchMixedOperations(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchWordBoundaryOperations(
@@ -294,11 +294,11 @@ fn benchWordBoundaryOperations(
     {
         const name = "EditBuffer getNextWordBoundary 1k times";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode, null);
                 defer eb.deinit();
 
                 // Build text with many words
@@ -328,7 +328,7 @@ fn benchWordBoundaryOperations(
                 break :blk s;
             } else null;
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -344,11 +344,11 @@ fn benchWordBoundaryOperations(
     {
         const name = "EditBuffer getPrevWordBoundary 1k times";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode, null);
                 defer eb.deinit();
 
                 // Build text with many words
@@ -381,7 +381,7 @@ fn benchWordBoundaryOperations(
                 break :blk s;
             } else null;
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -397,11 +397,11 @@ fn benchWordBoundaryOperations(
     {
         const name = "EditBuffer word boundary multi-line 500 times";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode, null);
                 defer eb.deinit();
 
                 // Build multi-line text with words
@@ -431,7 +431,7 @@ fn benchWordBoundaryOperations(
                 break :blk s;
             } else null;
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -443,7 +443,7 @@ fn benchWordBoundaryOperations(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 pub fn run(
@@ -472,5 +472,5 @@ pub fn run(
     const word_boundary_results = try benchWordBoundaryOperations(allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, word_boundary_results);
 
-    return try all_results.toOwnedSlice(allocator);
+    return all_results.toOwnedSlice(allocator);
 }

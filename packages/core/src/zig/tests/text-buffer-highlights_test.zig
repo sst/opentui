@@ -1,5 +1,6 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
+const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 const ss = @import("../syntax-style.zig");
@@ -249,6 +250,45 @@ test "TextBuffer highlights - setSyntaxStyle and getSyntaxStyle" {
     try std.testing.expect(tb.getSyntaxStyle() == null);
 }
 
+test "TextBuffer highlights - rejects syntax style when destroy listener allocation fails" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    var failing_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 2 });
+    var syntax_style = try ss.SyntaxStyle.init(failing_allocator.allocator());
+    defer syntax_style.deinit();
+    defer tb.deinit();
+
+    tb.setSyntaxStyle(syntax_style);
+
+    try std.testing.expect(failing_allocator.has_induced_failure);
+    try std.testing.expect(tb.getSyntaxStyle() == null);
+}
+
+test "TextBuffer highlights - preserves syntax style when replacement listener allocation fails" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    var first_style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer first_style.deinit();
+    var failing_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 2 });
+    var second_style = try ss.SyntaxStyle.init(failing_allocator.allocator());
+    defer second_style.deinit();
+
+    tb.setSyntaxStyle(first_style);
+    tb.setSyntaxStyle(second_style);
+
+    try std.testing.expect(failing_allocator.has_induced_failure);
+    try std.testing.expectEqual(@as(?*const ss.SyntaxStyle, first_style), tb.getSyntaxStyle());
+}
+
 test "TextBuffer highlights - integration with SyntaxStyle" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -261,9 +301,9 @@ test "TextBuffer highlights - integration with SyntaxStyle" {
     var syntax_style = try ss.SyntaxStyle.init(std.testing.allocator);
     defer syntax_style.deinit();
 
-    const keyword_id = try syntax_style.registerStyle("keyword", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
-    const string_id = try syntax_style.registerStyle("string", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
-    const comment_id = try syntax_style.registerStyle("comment", RGBA{ 0.5, 0.5, 0.5, 1.0 }, null, 0);
+    const keyword_id = try syntax_style.registerStyle("keyword", ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0), null, 0);
+    const string_id = try syntax_style.registerStyle("string", ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0), null, 0);
+    const comment_id = try syntax_style.registerStyle("comment", ansi.rgbaFromFloats(0.5, 0.5, 0.5, 1.0), null, 0);
 
     try tb.setText("function hello() // comment");
     tb.setSyntaxStyle(syntax_style);

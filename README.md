@@ -19,8 +19,10 @@ bun create tui
 This monorepo contains the following packages:
 
 - [`@opentui/core`](packages/core) - TypeScript bindings for OpenTUI's native Zig core, with an imperative API and all primitives.
+- [`@opentui/three`](packages/three) - Three.js WebGPU renderer for OpenTUI.
 - [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
 - [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
+- [`@opentui/examples`](packages/examples) - Example browser and standalone examples executable build.
 
 ## Install
 
@@ -36,17 +38,19 @@ bun install @opentui/core
 
 Teach your AI coding assistant OpenTUI's APIs and patterns.
 
-**For [OpenCode](https://opencode.ai) (includes `/opentui` command):**
+**Universal skill install with [`npx skills`](https://skills.sh):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/msmps/opentui-skill/main/install.sh | bash
+npx skills add anomalyco/opentui --skill opentui
 ```
 
-**For other AI coding assistants:**
+Install globally for every project:
 
 ```bash
-npx skills add msmps/opentui-skill
+npx skills add anomalyco/opentui --skill opentui -g
 ```
+
+OpenCode uses the same install command. No separate installer is needed.
 
 ## Try Examples
 
@@ -55,7 +59,7 @@ You can quickly try out OpenTUI examples without cloning the repository:
 **For macOS, Linux, WSL, Git Bash:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/core/src/examples/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/examples/install.sh | sh
 ```
 
 **For Windows (PowerShell/CMD):**
@@ -68,8 +72,8 @@ Download the latest release directly from [GitHub Releases](https://github.com/a
 
 ```bash
 bun install
-cd packages/core
-bun run src/examples/index.ts
+cd packages/examples
+bun run dev
 ```
 
 ## Development

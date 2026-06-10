@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { testRender } from "../index"
+import { testRender } from "../index.js"
 import { For, Show, createSignal } from "solid-js"
-import type { ScrollBoxRenderable } from "../../core/src/renderables"
-import { SyntaxStyle } from "../../core/src/syntax-style"
+import type { ScrollBoxRenderable } from "../../core/src/renderables/index.js"
+import { SyntaxStyle } from "../../core/src/syntax-style.js"
 import { MockTreeSitterClient } from "@opentui/core/testing"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>

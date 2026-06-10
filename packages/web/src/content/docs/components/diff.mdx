@@ -41,16 +41,39 @@ renderer.root.add(diff)
 
 > Not available yet. Use `DiffRenderable` for now.
 
+## Split view scroll sync
+
+When `view: "split"` is active, you can link the vertical scroll of both panes. Scrolling one pane then moves the other:
+
+```typescript
+const diff = new DiffRenderable(renderer, {
+  id: "diff",
+  view: "split",
+  syncScroll: true,
+  diff: patch,
+  syntaxStyle,
+})
+
+// Toggle at runtime
+diff.syncScroll = false
+```
+
+Scroll sync is a no-op in the unified view.
+
 ## Properties
 
 | Property              | Type                            | Default     | Description                           |
 | --------------------- | ------------------------------- | ----------- | ------------------------------------- |
 | `diff`                | `string`                        | `""`        | Unified diff string                   |
 | `view`                | `"unified"` or `"split"`        | `"unified"` | Layout style                          |
+| `syncScroll`          | `boolean`                       | `false`     | Link vertical scroll in split view    |
 | `filetype`            | `string`                        | -           | Syntax highlighting language          |
+| `fg`                  | `string` or `RGBA`              | -           | Base foreground for inner code panes  |
 | `syntaxStyle`         | `SyntaxStyle`                   | -           | Syntax style for code                 |
 | `wrapMode`            | `"word"`, `"char"`, or `"none"` | -           | Code wrapping mode                    |
 | `conceal`             | `boolean`                       | `false`     | Conceal markup when highlighting      |
+| `selectionBg`         | `string` or `RGBA`              | -           | Selection background in code panes    |
+| `selectionFg`         | `string` or `RGBA`              | -           | Selection foreground in code panes    |
 | `treeSitterClient`    | `TreeSitterClient`              | -           | Custom Tree-sitter client             |
 | `showLineNumbers`     | `boolean`                       | `true`      | Show line numbers                     |
 | `lineNumberFg`        | `string` or `RGBA`              | `#888888`   | Line number text color                |

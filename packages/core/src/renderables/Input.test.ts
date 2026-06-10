@@ -1,7 +1,8 @@
 import { describe, expect, it, afterAll, beforeAll } from "bun:test"
-import { InputRenderable, type InputRenderableOptions, InputRenderableEvents } from "./Input"
-import { createTestRenderer } from "../testing/test-renderer"
-import type { KeyEvent } from "../lib/KeyHandler"
+import { InputRenderable, type InputRenderableOptions, InputRenderableEvents } from "./Input.js"
+import { decodePasteBytes } from "../lib/paste.js"
+import { createTestRenderer } from "../testing/test-renderer.js"
+import type { KeyEvent } from "../lib/KeyHandler.js"
 
 const { renderer, mockInput } = await createTestRenderer({})
 
@@ -26,7 +27,7 @@ describe("InputRenderable", () => {
 
   describe("Initialization", () => {
     it("should initialize properly with default options", () => {
-      const { input, root } = createInputRenderable({ width: 20, height: 1 })
+      const { input, root } = createInputRenderable({ width: 20 })
 
       expect(input.x).toBeDefined()
       expect(input.y).toBeDefined()
@@ -110,7 +111,7 @@ describe("InputRenderable", () => {
 
   describe("Single Input Key Handling", () => {
     it("should handle text input when focused", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       input.focus()
 
@@ -142,7 +143,7 @@ describe("InputRenderable", () => {
     })
 
     it("should not handle key events when not focused", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       // Don't focus the input
       expect(input.focused).toBe(false)
@@ -230,7 +231,6 @@ describe("InputRenderable", () => {
       const { input } = createInputRenderable({
         value: "hello",
         width: 20,
-        height: 1,
       })
 
       input.focus()
@@ -305,6 +305,37 @@ describe("InputRenderable", () => {
       expect(input.value).toBe("abc")
     })
 
+    it("should respect minLength when submitting", () => {
+      const { input } = createInputRenderable({
+        minLength: 3,
+        value: "hi",
+      })
+
+      input.focus()
+
+      let changeEventFired = false
+      let enterEventFired = false
+
+      input.on(InputRenderableEvents.CHANGE, () => {
+        changeEventFired = true
+      })
+
+      input.on(InputRenderableEvents.ENTER, () => {
+        enterEventFired = true
+      })
+
+      expect(input.submit()).toBe(false)
+      expect(changeEventFired).toBe(false)
+      expect(enterEventFired).toBe(false)
+
+      mockInput.pressKey("!")
+
+      expect(input.value).toBe("hi!")
+      expect(input.submit()).toBe(true)
+      expect(changeEventFired).toBe(true)
+      expect(enterEventFired).toBe(true)
+    })
+
     it("should handle cursor position with text insertion", () => {
       const { input } = createInputRenderable({
         value: "hello",
@@ -324,9 +355,8 @@ describe("InputRenderable", () => {
 
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         onPaste: (event) => {
-          pasteText = event.text
+          pasteText = decodePasteBytes(event.bytes)
           pasteCalled = true
         },
       })
@@ -338,6 +368,18 @@ describe("InputRenderable", () => {
       expect(input.value).toBe("pasted text")
       expect(pasteCalled).toBe(true)
       expect(pasteText).toBe("pasted text")
+    })
+
+    it("should strip ANSI sequences from pasted text before inserting", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+      })
+
+      input.focus()
+
+      mockInput.pasteBracketedText("hi \x1b[31mred\x1b[0m")
+
+      expect(input.value).toBe("hi red")
     })
   })
 
@@ -515,7 +557,7 @@ describe("InputRenderable", () => {
 
   describe("Input Value Management", () => {
     it("should handle value setting programmatically", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       input.value = "programmatic"
       expect(input.value).toBe("programmatic")
@@ -548,7 +590,7 @@ describe("InputRenderable", () => {
     })
 
     it("should emit input events when value changes programmatically", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       let inputEventFired = false
       let inputValue = ""
@@ -590,7 +632,7 @@ describe("InputRenderable", () => {
     })
 
     it("should handle color property changes", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       input.backgroundColor = "#ff0000"
       input.textColor = "#00ff00"
@@ -608,7 +650,6 @@ describe("InputRenderable", () => {
     it("should not handle key events when preventDefault is called by global handler", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "initial",
       })
 
@@ -653,7 +694,6 @@ describe("InputRenderable", () => {
     it("should handle multiple global handlers with preventDefault", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
       })
 
       let firstHandlerCalled = false
@@ -697,7 +737,6 @@ describe("InputRenderable", () => {
     it("should respect preventDefault from global handler registered AFTER input focus", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "initial",
       })
 
@@ -752,7 +791,6 @@ describe("InputRenderable", () => {
     it("should handle dynamic preventDefault conditions", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "",
       })
 
@@ -811,7 +849,6 @@ describe("InputRenderable", () => {
   it("should respect preventDefault from onKeyDown handler", () => {
     const { input } = createInputRenderable({
       width: 20,
-      height: 1,
       value: "initial",
     })
 
@@ -845,6 +882,73 @@ describe("InputRenderable", () => {
     expect(input.value).toBe("initialb")
   })
 
+  it("should handle Kitty keypad digits, operators, and enter", async () => {
+    const { renderer: kittyRenderer } = await createTestRenderer({ kittyKeyboard: true })
+
+    const pressKittyKey = async (sequence: string): Promise<void> => {
+      await new Promise<void>((resolve) => {
+        kittyRenderer.keyInput.once("keypress", () => {
+          resolve()
+        })
+
+        kittyRenderer.stdin.emit("data", Buffer.from(sequence))
+      })
+
+      await Promise.resolve()
+    }
+
+    const input = new InputRenderable(kittyRenderer, {
+      width: 40,
+    })
+
+    try {
+      let enterEventCount = 0
+      input.on(InputRenderableEvents.ENTER, () => {
+        enterEventCount += 1
+      })
+
+      kittyRenderer.root.add(input)
+      input.focus()
+
+      const printableKeypadKeys = [
+        ["\x1b[57399u", "0"],
+        ["\x1b[57400u", "1"],
+        ["\x1b[57401u", "2"],
+        ["\x1b[57402u", "3"],
+        ["\x1b[57403u", "4"],
+        ["\x1b[57404u", "5"],
+        ["\x1b[57405u", "6"],
+        ["\x1b[57406u", "7"],
+        ["\x1b[57407u", "8"],
+        ["\x1b[57408u", "9"],
+        ["\x1b[57409u", "."],
+        ["\x1b[57410u", "/"],
+        ["\x1b[57411u", "*"],
+        ["\x1b[57412u", "-"],
+        ["\x1b[57413u", "+"],
+        ["\x1b[57415u", "="],
+        ["\x1b[57416u", ","],
+      ] as const
+
+      for (const [sequence] of printableKeypadKeys) {
+        await pressKittyKey(sequence)
+      }
+
+      expect(input.value).toBe("0123456789./*-+=,")
+
+      await pressKittyKey("\x1b[57400;5u")
+      expect(input.value).toBe("0123456789./*-+=,")
+
+      await pressKittyKey("\x1b[57414u")
+
+      expect(enterEventCount).toBe(1)
+      expect(input.value).toBe("0123456789./*-+=,")
+    } finally {
+      input.destroyRecursively()
+      kittyRenderer.destroy()
+    }
+  })
+
   describe("Shift+Space Key Handling with modifyOtherKeys", () => {
     let modRenderer: any
     let modMockInput: any
@@ -867,7 +971,6 @@ describe("InputRenderable", () => {
     } {
       const inputRenderable = new InputRenderable(modRenderer, {
         width: 20,
-        height: 1,
         ...options,
       })
       modRenderer.root.add(inputRenderable)
@@ -931,7 +1034,7 @@ describe("InputRenderable", () => {
 
   describe("Edge Cases", () => {
     it("should handle non-printable characters", () => {
-      const { input } = createInputRenderable({ width: 20, height: 1 })
+      const { input } = createInputRenderable({ width: 20 })
 
       input.focus()
 
@@ -1018,7 +1121,6 @@ describe("InputRenderable", () => {
     it("should support custom key bindings", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
         keyBindings: [
           { name: "k", ctrl: true, action: "line-end" },
@@ -1041,7 +1143,6 @@ describe("InputRenderable", () => {
     it("should support key aliases", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         keyAliasMap: {
           enter: "return",
         },
@@ -1063,7 +1164,6 @@ describe("InputRenderable", () => {
     it("should merge custom bindings with defaults", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
         keyBindings: [{ name: "x", ctrl: true, action: "line-home" }],
       })
@@ -1082,7 +1182,6 @@ describe("InputRenderable", () => {
     it("should override default bindings with custom ones", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
         keyBindings: [
           { name: "left", action: "line-end" }, // Override left to move to end
@@ -1100,7 +1199,6 @@ describe("InputRenderable", () => {
     it("should support Emacs-style bindings by default", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
       })
 
@@ -1134,7 +1232,6 @@ describe("InputRenderable", () => {
     it("should allow updating key bindings dynamically", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
       })
 
@@ -1158,7 +1255,6 @@ describe("InputRenderable", () => {
     it("should allow updating key aliases dynamically", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
       })
 
       input.focus()
@@ -1181,7 +1277,6 @@ describe("InputRenderable", () => {
     it("should handle modifiers in custom bindings", () => {
       const { input } = createInputRenderable({
         width: 20,
-        height: 1,
         value: "hello",
         keyBindings: [
           { name: "left", shift: true, action: "line-home" },

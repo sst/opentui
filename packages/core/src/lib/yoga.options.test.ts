@@ -16,7 +16,7 @@ import {
   parseOverflow,
   parsePositionType,
   parseWrap,
-} from "./yoga.options"
+} from "./yoga.options.js"
 import {
   BoxSizing,
   Align,

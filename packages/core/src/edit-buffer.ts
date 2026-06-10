@@ -1,9 +1,14 @@
-import { resolveRenderLib, type LogicalCursor, type RenderLib } from "./zig"
-import { type Pointer } from "bun:ffi"
-import { type WidthMethod, type Highlight } from "./types"
-import { RGBA } from "./lib/RGBA"
+import {
+  resolveRenderLib,
+  type EditBufferHandle,
+  type LogicalCursor,
+  type RenderLib,
+  type TextBufferHandle,
+} from "./zig.js"
+import { type WidthMethod, type Highlight } from "./types.js"
+import { RGBA } from "./lib/RGBA.js"
 import { EventEmitter } from "events"
-import type { SyntaxStyle } from "./syntax-style"
+import type { SyntaxStyle } from "./syntax-style.js"
 
 export type { LogicalCursor }
 
@@ -16,8 +21,8 @@ export class EditBuffer extends EventEmitter {
   private static nativeEventsSubscribed = false
 
   private lib: RenderLib
-  private bufferPtr: Pointer
-  private textBufferPtr: Pointer
+  private bufferPtr: EditBufferHandle
+  private textBufferPtr: TextBufferHandle
   public readonly id: number
   private _destroyed: boolean = false
   private _textBytes: Uint8Array[] = []
@@ -25,7 +30,7 @@ export class EditBuffer extends EventEmitter {
   private _singleTextMemId: number | null = null
   private _syntaxStyle?: SyntaxStyle
 
-  constructor(lib: RenderLib, ptr: Pointer) {
+  constructor(lib: RenderLib, ptr: EditBufferHandle) {
     super()
     this.lib = lib
     this.bufferPtr = ptr
@@ -67,7 +72,7 @@ export class EditBuffer extends EventEmitter {
     if (this._destroyed) throw new Error("EditBuffer is destroyed")
   }
 
-  public get ptr(): Pointer {
+  public get ptr(): EditBufferHandle {
     this.guard()
     return this.bufferPtr
   }
@@ -357,8 +362,9 @@ export class EditBuffer extends EventEmitter {
 
   public setSyntaxStyle(style: SyntaxStyle | null): void {
     this.guard()
-    this._syntaxStyle = style ?? undefined
-    this.lib.textBufferSetSyntaxStyle(this.textBufferPtr, style?.ptr ?? null)
+    if (this.lib.textBufferSetSyntaxStyle(this.textBufferPtr, style?.ptr ?? null)) {
+      this._syntaxStyle = style ?? undefined
+    }
   }
 
   public getSyntaxStyle(): SyntaxStyle | null {

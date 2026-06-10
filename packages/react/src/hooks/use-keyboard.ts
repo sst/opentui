@@ -1,7 +1,7 @@
 import type { KeyEvent } from "@opentui/core"
 import { useEffect } from "react"
-import { useAppContext } from "../components/app"
-import { useEffectEvent } from "./use-event"
+import { useAppContext } from "../components/app.js"
+import { useEffectEvent } from "./use-event.js"
 
 export interface UseKeyboardOptions {
   /** Include release events - callback receives events with eventType: "release" */

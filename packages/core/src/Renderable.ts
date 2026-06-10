@@ -1,9 +1,9 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
-import { OptimizedBuffer } from "./buffer"
-import type { KeyEvent, PasteEvent } from "./lib/KeyHandler"
-import type { MouseEventType } from "./lib/parse.mouse"
-import type { Selection } from "./lib/selection"
+import { OptimizedBuffer } from "./buffer.js"
+import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
+import type { MouseEventType } from "./lib/parse.mouse.js"
+import type { Selection } from "./lib/selection.js"
 import {
   parseAlign,
   parseAlignItems,
@@ -18,10 +18,10 @@ import {
   type OverflowString,
   type PositionTypeString,
   type WrapString,
-} from "./lib/yoga.options"
-import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode"
-import type { MouseEvent } from "./renderer"
-import type { RenderContext } from "./types"
+} from "./lib/yoga.options.js"
+import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode.js"
+import type { MouseEvent } from "./renderer.js"
+import type { RenderContext } from "./types.js"
 import {
   validateOptions,
   isPositionType,
@@ -32,7 +32,7 @@ import {
   isPaddingType,
   isPositionTypeType,
   isOverflowType,
-} from "./lib/renderable.validations"
+} from "./lib/renderable.validations.js"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 
@@ -46,6 +46,7 @@ export enum LayoutEvents {
 export enum RenderableEvents {
   FOCUSED = "focused",
   BLURRED = "blurred",
+  DESTROYED = "destroyed",
 }
 
 export interface Position {
@@ -104,7 +105,9 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   live?: boolean
   opacity?: number
 
-  // hooks for custom render logic
+  // Draw-only hooks for custom rendering/decorations. They run after layout
+  // and viewport culling, so do not mutate layout, children, or reactive state here.
+  // Culled children do not run these hooks.
   renderBefore?: (this: T, buffer: OptimizedBuffer, deltaTime: number) => void
   renderAfter?: (this: T, buffer: OptimizedBuffer, deltaTime: number) => void
 
@@ -209,6 +212,10 @@ export abstract class Renderable extends BaseRenderable {
   protected _translateY: number = 0
   protected _x: number = 0
   protected _y: number = 0
+  // Render hot paths only need absolute terminal coordinates. Cache them during
+  // layout so render-time code does not keep walking parent chains via x/y.
+  protected _screenX: number = 0
+  protected _screenY: number = 0
   protected _width: number | "auto" | `${number}%`
   protected _height: number | "auto" | `${number}%`
   protected _widthValue: number = 0
@@ -220,6 +227,7 @@ export abstract class Renderable extends BaseRenderable {
 
   protected _focusable: boolean = false
   protected _focused: boolean = false
+  protected _hasFocusedDescendant: boolean = false
   protected keypressHandler: ((key: KeyEvent) => void) | null = null
   protected pasteHandler: ((event: PasteEvent) => void) | null = null
 
@@ -248,6 +256,9 @@ export abstract class Renderable extends BaseRenderable {
   private childrenPrimarySortDirty: boolean = true
   private childrenSortedByPrimaryAxis: Renderable[] = []
   private _shouldUpdateBefore: Set<Renderable> = new Set()
+
+  // Frame id of the last updateFromLayout(); -1 ensures the first call runs.
+  private _lastLayoutFrame: number = -1
 
   public onLifecyclePass: (() => void) | null = null
 
@@ -381,8 +392,8 @@ export abstract class Renderable extends BaseRenderable {
   public focus(): void {
     if (this._isDestroyed || this._focused || !this._focusable) return
 
-    this._ctx.focusRenderable(this)
     this._focused = true
+    this._ctx.focusRenderable(this)
     this.requestRender()
 
     this.keypressHandler = (key: KeyEvent) => {
@@ -407,12 +418,27 @@ export abstract class Renderable extends BaseRenderable {
 
     this.ctx._internalKeyInput.onInternal("keypress", this.keypressHandler)
     this.ctx._internalKeyInput.onInternal("paste", this.pasteHandler)
+    this.propagateFocusChange(true)
     this.emit(RenderableEvents.FOCUSED)
+  }
+
+  protected propagateFocusChange(hasFocus: boolean): void {
+    let parent = this.parent
+    while (parent) {
+      if (parent._hasFocusedDescendant !== hasFocus) {
+        parent._hasFocusedDescendant = hasFocus
+        parent.markDirty()
+      }
+      parent = parent.parent
+    }
+
+    this.requestRender()
   }
 
   public blur(): void {
     if (!this._focused || !this._focusable) return
 
+    this._ctx.blurRenderable(this)
     this._focused = false
     this.requestRender()
 
@@ -426,11 +452,16 @@ export abstract class Renderable extends BaseRenderable {
       this.pasteHandler = null
     }
 
+    this.propagateFocusChange(false)
     this.emit(RenderableEvents.BLURRED)
   }
 
   public get focused(): boolean {
     return this._focused
+  }
+
+  public get hasFocusedDescendant(): boolean {
+    return this._hasFocusedDescendant
   }
 
   public get live(): boolean {
@@ -480,9 +511,13 @@ export abstract class Renderable extends BaseRenderable {
     return this._translateX
   }
 
+  // Translate updates bypass layout, so keep the absolute screen cache current
+  // here to make same-frame sort/cull/render reads observe the new position.
   public set translateX(value: number) {
     if (this._translateX === value) return
     this._translateX = value
+    const parentScreenX = this.parent ? this.parent._screenX : 0
+    this._screenX = parentScreenX + this._x + this._translateX
     if (this.parent) this.parent.childrenPrimarySortDirty = true
     this.requestRender()
   }
@@ -494,8 +529,22 @@ export abstract class Renderable extends BaseRenderable {
   public set translateY(value: number) {
     if (this._translateY === value) return
     this._translateY = value
+    const parentScreenY = this.parent ? this.parent._screenY : 0
+    this._screenY = parentScreenY + this._y + this._translateY
     if (this.parent) this.parent.childrenPrimarySortDirty = true
     this.requestRender()
+  }
+
+  // Use the cached parent screen position plus this node's current local offset.
+  // That keeps culling/sorting in sync even before this node refreshes _screenX/Y.
+  public get screenX(): number {
+    const parentScreenX = this.parent ? this.parent._screenX : 0
+    return parentScreenX + this._x + this._translateX
+  }
+
+  public get screenY(): number {
+    const parentScreenY = this.parent ? this.parent._screenY : 0
+    return parentScreenY + this._y + this._translateY
   }
 
   public get x(): number {
@@ -565,17 +614,19 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set width(value: number | "auto" | `${number}%`) {
-    if (isDimensionType(value)) {
-      this._width = value
-      this.yogaNode.setWidth(value)
-
-      if (typeof value === "number" && this._flexShrink === 1) {
-        this._flexShrink = 0
-        this.yogaNode.setFlexShrink(0)
-      }
-
-      this.requestRender()
+    if (!isDimensionType(value) || this._width === value) {
+      return
     }
+
+    this._width = value
+    this.yogaNode.setWidth(value)
+
+    if (typeof value === "number" && this._flexShrink === 1) {
+      this._flexShrink = 0
+      this.yogaNode.setFlexShrink(0)
+    }
+
+    this.requestRender()
   }
 
   public get height(): number {
@@ -583,17 +634,19 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set height(value: number | "auto" | `${number}%`) {
-    if (isDimensionType(value)) {
-      this._height = value
-      this.yogaNode.setHeight(value)
-
-      if (typeof value === "number" && this._flexShrink === 1) {
-        this._flexShrink = 0
-        this.yogaNode.setFlexShrink(0)
-      }
-
-      this.requestRender()
+    if (!isDimensionType(value) || this._height === value) {
+      return
     }
+
+    this._height = value
+    this.yogaNode.setHeight(value)
+
+    if (typeof value === "number" && this._flexShrink === 1) {
+      this._flexShrink = 0
+      this.yogaNode.setFlexShrink(0)
+    }
+
+    this.requestRender()
   }
 
   public get zIndex(): number {
@@ -632,8 +685,10 @@ export abstract class Renderable extends BaseRenderable {
 
     const sorted = [...this._childrenInLayoutOrder]
     sorted.sort((a, b) => {
-      const va = axis === "y" ? a.y : a.x
-      const vb = axis === "y" ? b.y : b.x
+      // Viewport culling compares against screen-space bounds, so primary-axis
+      // ordering has to use absolute positions instead of parent-relative x/y.
+      const va = axis === "y" ? a.screenY : a.screenX
+      const vb = axis === "y" ? b.screenY : b.screenX
       return va - vb
     })
 
@@ -939,6 +994,14 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
+  public get marginTop(): number | "auto" | `${number}%` {
+    const margin = this.yogaNode.getMargin(Edge.Top) as unknown
+    if (typeof margin === "number") return margin
+    if (typeof margin === "object" && margin && "value" in margin && typeof margin.value === "number")
+      return margin.value
+    return 0
+  }
+
   public set marginRight(margin: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(margin)) {
       this.yogaNode.setMargin(Edge.Right, margin)
@@ -1014,6 +1077,11 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public updateFromLayout(): void {
+    // Yoga layout is stable within a frame; skip the FFI round-trip on repeat calls.
+    const frameId = this._ctx.frameId
+    if (this._lastLayoutFrame === frameId) return
+    this._lastLayoutFrame = frameId
+
     const layout = this.yogaNode.getComputedLayout()
 
     const oldX = this._x
@@ -1023,6 +1091,12 @@ export abstract class Renderable extends BaseRenderable {
 
     this._x = layout.left
     this._y = layout.top
+    // Layout is updated top-down, so the parent cache is already current here.
+    // Recomputing once per layout pass keeps render-time coordinate reads cheap.
+    const parentScreenX = this.parent ? this.parent._screenX : 0
+    const parentScreenY = this.parent ? this.parent._screenY : 0
+    this._screenX = parentScreenX + this._x + this._translateX
+    this._screenY = parentScreenY + this._y + this._translateY
 
     const newWidth = Math.max(layout.width, 1)
     const newHeight = Math.max(layout.height, 1)
@@ -1074,7 +1148,10 @@ export abstract class Renderable extends BaseRenderable {
 
     try {
       const widthMethod = this._ctx.widthMethod
-      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, { respectAlpha: true, id: `framebuffer-${this.id}` })
+      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, {
+        respectAlpha: true,
+        id: `framebuffer-${this.id}`,
+      })
     } catch (error) {
       console.error(`Failed to create frame buffer for ${this.id}:`, error)
       this.frameBuffer = null
@@ -1336,17 +1413,31 @@ export abstract class Renderable extends BaseRenderable {
         y: scissorRect.y,
         width: scissorRect.width,
         height: scissorRect.height,
-        screenX: this.x,
-        screenY: this.y,
+        screenX: this._screenX,
+        screenY: this._screenY,
       })
     }
-    const visibleChildren = this._getVisibleChildren()
-    for (const child of this._childrenInZIndexOrder) {
-      if (!visibleChildren.includes(child.num)) {
-        child.updateFromLayout()
-        continue
+    // Most renderables expose all children. Skip building a visible-child list
+    // unless a subclass actually performs viewport/style-based child filtering.
+    if (!this._hasVisibleChildFilter()) {
+      for (const child of this._childrenInZIndexOrder) {
+        child.updateLayout(deltaTime, renderList)
       }
-      child.updateLayout(deltaTime, renderList)
+    } else {
+      // Refresh every child's layout before culling reads their screen
+      // coordinates; otherwise culling runs against last frame's positions
+      // and drops content that shifted this frame. The per-frame guard in
+      // updateFromLayout keeps this at one FFI call per child per frame.
+      for (const child of this._childrenInZIndexOrder) {
+        if (child.isDestroyed) continue
+        child.updateFromLayout()
+      }
+      const visibleChildren = this._getVisibleChildren()
+      const visibleChildSet = new Set(visibleChildren)
+      for (const child of this._childrenInZIndexOrder) {
+        if (!visibleChildSet.has(child.num)) continue
+        child.updateLayout(deltaTime, renderList)
+      }
     }
 
     if (shouldPushScissor) {
@@ -1363,6 +1454,8 @@ export abstract class Renderable extends BaseRenderable {
       renderBuffer = this.frameBuffer
     }
 
+    // Layout and culling are already finalized for this frame. These hooks are
+    // only safe for drawing into the buffer; avoid renderable/reactive mutations.
     if (this.renderBefore) {
       this.renderBefore.call(this, renderBuffer, deltaTime)
     }
@@ -1373,12 +1466,23 @@ export abstract class Renderable extends BaseRenderable {
       this.renderAfter.call(this, renderBuffer, deltaTime)
     }
 
+    // Hooks may move the renderable mid-frame, so sample the cached absolute
+    // position after they run before hit-grid writes or framebuffer compositing.
+    const screenX = this._screenX
+    const screenY = this._screenY
+
     this.markClean()
-    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
+    this._ctx.addToHitGrid(screenX, screenY, this.width, this.height, this.num)
 
     if (this.buffered && this.frameBuffer) {
-      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+      buffer.drawFrameBuffer(screenX, screenY, this.frameBuffer)
     }
+  }
+
+  protected _hasVisibleChildFilter(): boolean {
+    // Presume an override of _getVisibleChildren means this subclass is using
+    // the legacy filtering hook, so existing custom renderables keep working.
+    return this._getVisibleChildren !== Renderable.prototype._getVisibleChildren
   }
 
   protected _getVisibleChildren(): number[] {
@@ -1390,10 +1494,15 @@ export abstract class Renderable extends BaseRenderable {
     // Override this method to provide custom rendering
   }
 
-  protected getScissorRect(): { x: number; y: number; width: number; height: number } {
+  protected getScissorRect(): {
+    x: number
+    y: number
+    width: number
+    height: number
+  } {
     return {
-      x: this.buffered ? 0 : this.x,
-      y: this.buffered ? 0 : this.y,
+      x: this.buffered ? 0 : this._screenX,
+      y: this.buffered ? 0 : this._screenY,
       width: this.width,
       height: this.height,
     }
@@ -1414,6 +1523,7 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     this._isDestroyed = true
+    this.emit(RenderableEvents.DESTROYED)
 
     if (this.parent) {
       this.parent.remove(this.id)
@@ -1606,7 +1716,14 @@ export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
 
   constructor(ctx: RenderContext) {
-    super(ctx, { id: "__root__", zIndex: 0, visible: true, width: ctx.width, height: ctx.height, enableLayout: true })
+    super(ctx, {
+      id: "__root__",
+      zIndex: 0,
+      visible: true,
+      width: ctx.width,
+      height: ctx.height,
+      enableLayout: true,
+    })
 
     if (this.yogaNode) {
       this.yogaNode.free()

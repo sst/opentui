@@ -98,8 +98,8 @@ test "no_zwj: findGraphemeInfo splits ZWJ sequences" {
 
     const text = "Hi👩‍🚀Bye";
 
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
-    try utf8.findGraphemeInfo(text, 4, false, .no_zwj, testing.allocator, &result_no_zwj);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .unicode, &result_unicode);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .no_zwj, &result_no_zwj);
 
     // unicode: 1 grapheme (the whole ZWJ sequence)
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);

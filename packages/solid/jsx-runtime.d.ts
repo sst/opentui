@@ -1,4 +1,3 @@
-import { Renderable } from "@opentui/core"
 import type {
   AsciiFontProps,
   BoxProps,
@@ -14,14 +13,18 @@ import type {
   TabSelectProps,
   TextareaProps,
   TextProps,
-} from "./src/types/elements"
-import type { DomNode } from "./dist"
+} from "./src/types/elements.js"
+import type { JSX as SolidJSX } from "solid-js"
 
-declare namespace JSX {
-  // Replace Node with Renderable
-  type Element = DomNode | ArrayElement | string | number | boolean | null | undefined
+type JsxComponent = (props: Record<string, unknown>) => unknown
 
-  type ArrayElement = Array<Element>
+export declare function jsx(type: string | JsxComponent, props?: Record<string, unknown> | null): JSX.Element
+export declare const jsxs: typeof jsx
+export declare function jsxDEV(type: string | JsxComponent, props?: Record<string, unknown> | null): JSX.Element
+export declare function Fragment(props: { children?: JSX.Element }): JSX.Element
+
+export declare namespace JSX {
+  type Element = SolidJSX.Element
 
   interface IntrinsicElements extends ExtendedIntrinsicElements<OpenTUIComponents> {
     box: BoxProps

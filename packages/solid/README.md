@@ -128,6 +128,8 @@ Returns the current component catalogue that powers JSX tag lookup.
 
 - `useRenderer()`
 - `onResize(callback)`
+- `onFocus(callback)`
+- `onBlur(callback)`
 - `useTerminalDimensions()`
 - `useKeyboard(handler, options?)`
 - `usePaste(handler)`
@@ -162,6 +164,8 @@ import { Dynamic } from "@opentui/solid"
 - `box`: layout container with borders, padding, and flex settings
 - `scrollbox`: scrollable container
 - `ascii_font`: ASCII art text renderer
+
+QR code support is available from `@opentui/qrcode/solid` and must be registered explicitly with `registerQRCode()`.
 
 ### Input
 

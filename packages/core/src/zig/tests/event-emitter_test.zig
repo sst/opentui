@@ -32,8 +32,8 @@ test "EventEmitter - can add listener with on" {
     var emitter = Emitter.init(std.testing.allocator);
     defer emitter.deinit();
 
-    var counter = Counter{ .count = 0 };
-    const listener = Emitter.Listener{
+    var counter: Counter = .{ .count = 0 };
+    const listener: Emitter.Listener = .{
         .ctx = &counter,
         .handle = Counter.increment,
     };
@@ -50,15 +50,15 @@ test "EventEmitter - can add multiple listeners to same event" {
     var emitter = Emitter.init(std.testing.allocator);
     defer emitter.deinit();
 
-    var counter1 = Counter{ .count = 0 };
-    var counter2 = Counter{ .count = 0 };
+    var counter1: Counter = .{ .count = 0 };
+    var counter2: Counter = .{ .count = 0 };
 
-    const listener1 = Emitter.Listener{
+    const listener1: Emitter.Listener = .{
         .ctx = &counter1,
         .handle = Counter.increment,
     };
 
-    const listener2 = Emitter.Listener{
+    const listener2: Emitter.Listener = .{
         .ctx = &counter2,
         .handle = Counter.increment,
     };
@@ -75,15 +75,15 @@ test "EventEmitter - can add listeners to different events" {
     var emitter = Emitter.init(std.testing.allocator);
     defer emitter.deinit();
 
-    var counter1 = Counter{ .count = 0 };
-    var counter2 = Counter{ .count = 0 };
+    var counter1: Counter = .{ .count = 0 };
+    var counter2: Counter = .{ .count = 0 };
 
-    const listener1 = Emitter.Listener{
+    const listener1: Emitter.Listener = .{
         .ctx = &counter1,
         .handle = Counter.increment,
     };
 
-    const listener2 = Emitter.Listener{
+    const listener2: Emitter.Listener = .{
         .ctx = &counter2,
         .handle = Counter.reset,
     };
@@ -103,21 +103,21 @@ test "EventEmitter - emit calls all listeners for event" {
     var emitter = Emitter.init(std.testing.allocator);
     defer emitter.deinit();
 
-    var counter1 = Counter{ .count = 0 };
-    var counter2 = Counter{ .count = 0 };
-    var counter3 = Counter{ .count = 0 };
+    var counter1: Counter = .{ .count = 0 };
+    var counter2: Counter = .{ .count = 0 };
+    var counter3: Counter = .{ .count = 0 };
 
-    const listener1 = Emitter.Listener{
+    const listener1: Emitter.Listener = .{
         .ctx = &counter1,
         .handle = Counter.increment,
     };
 
-    const listener2 = Emitter.Listener{
+    const listener2: Emitter.Listener = .{
         .ctx = &counter2,
         .handle = Counter.increment,
     };
 
-    const listener3 = Emitter.Listener{
+    const listener3: Emitter.Listener = .{
         .ctx = &counter3,
         .handle = Counter.increment,
     };
@@ -144,8 +144,8 @@ test "EventEmitter - can remove listener with off" {
     var emitter = Emitter.init(std.testing.allocator);
     defer emitter.deinit();
 
-    var counter = Counter{ .count = 0 };
-    const listener = Emitter.Listener{
+    var counter: Counter = .{ .count = 0 };
+    const listener: Emitter.Listener = .{
         .ctx = &counter,
         .handle = Counter.increment,
     };
@@ -166,15 +166,15 @@ test "EventEmitter - off removes only matching listener by reference" {
     var emitter = Emitter.init(std.testing.allocator);
     defer emitter.deinit();
 
-    var counter1 = Counter{ .count = 0 };
-    var counter2 = Counter{ .count = 0 };
+    var counter1: Counter = .{ .count = 0 };
+    var counter2: Counter = .{ .count = 0 };
 
-    const listener1 = Emitter.Listener{
+    const listener1: Emitter.Listener = .{
         .ctx = &counter1,
         .handle = Counter.increment,
     };
 
-    const listener2 = Emitter.Listener{
+    const listener2: Emitter.Listener = .{
         .ctx = &counter2,
         .handle = Counter.increment,
     };
@@ -210,8 +210,8 @@ test "EventEmitter - multiple emits increment counter correctly" {
     var emitter = Emitter.init(std.testing.allocator);
     defer emitter.deinit();
 
-    var counter = Counter{ .count = 0 };
-    const listener = Emitter.Listener{
+    var counter: Counter = .{ .count = 0 };
+    const listener: Emitter.Listener = .{
         .ctx = &counter,
         .handle = Counter.increment,
     };
@@ -230,8 +230,8 @@ test "EventEmitter - listeners are isolated per event type" {
     var emitter = Emitter.init(std.testing.allocator);
     defer emitter.deinit();
 
-    var counter = Counter{ .count = 0 };
-    const listener = Emitter.Listener{
+    var counter: Counter = .{ .count = 0 };
+    const listener: Emitter.Listener = .{
         .ctx = &counter,
         .handle = Counter.increment,
     };

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test"
-import { createMockMouse, MouseButtons } from "./mock-mouse"
+import { createMockMouse, MouseButtons } from "./mock-mouse.js"
 import { PassThrough } from "stream"
 
 class MockRenderer {

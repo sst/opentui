@@ -1,7 +1,7 @@
 ---
 title: Lifecycle and cleanup
 description: Managing renderer lifecycle and terminal cleanup
-order: 6
+order: 10
 ---
 
 # Lifecycle and cleanup
@@ -31,22 +31,18 @@ const renderer = await createCliRenderer()
 renderer.destroy()
 ```
 
-For reliable cleanup, handle errors and signals in your app:
+For reliable cleanup, keep renderer teardown in the same control flow as your app startup:
 
 ```typescript
+import { createCliRenderer } from "@opentui/core"
+
 const renderer = await createCliRenderer()
 
-process.on("uncaughtException", (error) => {
-  console.error("Uncaught exception:", error)
+try {
+  // ... your application code ...
+} finally {
   renderer.destroy()
-  process.exit(1)
-})
-
-process.on("unhandledRejection", (reason) => {
-  console.error("Unhandled rejection:", reason)
-  renderer.destroy()
-  process.exit(1)
-})
+}
 ```
 
 ## Signal handling
@@ -63,7 +59,6 @@ OpenTUI listens for common exit signals and calls `destroy()` when it receives t
 | `SIGBREAK` | Ctrl+Break on Windows    |
 | `SIGPIPE`  | Broken pipe              |
 | `SIGBUS`   | Bus error                |
-| `SIGFPE`   | Floating point exception |
 
 You can customize which signals trigger cleanup:
 
@@ -86,7 +81,7 @@ By default, Ctrl+C calls `destroy()`. If you want to handle Ctrl+C yourself, dis
 ```typescript
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,
-  exitSignals: ["SIGTERM", "SIGQUIT", "SIGABRT", "SIGHUP", "SIGBREAK", "SIGPIPE", "SIGBUS", "SIGFPE"],
+  exitSignals: ["SIGTERM", "SIGQUIT", "SIGABRT", "SIGHUP", "SIGBREAK", "SIGPIPE", "SIGBUS"],
 })
 
 renderer.keyInput.on("keypress", (key) => {
@@ -118,7 +113,46 @@ The `destroy()` method cleans up these resources:
 - Destroys all renderables in the tree
 - Restores stdin raw mode
 - Resets terminal state (cursor, alternate screen, etc.)
+- Flushes pending split-footer captured output
 - Frees native resources
+
+## Custom stream sessions
+
+For socket, SSH, or pty sessions, give each connection its own renderer. Destroy it before closing the transport:
+
+```typescript
+import { createCliRenderer, type CliRenderer } from "@opentui/core"
+
+interface TerminalSession {
+  renderer: CliRenderer
+  closeTransport: () => void
+}
+
+async function startSession(
+  stdin: NodeJS.ReadStream,
+  stdout: NodeJS.WriteStream,
+  closeTransport: () => void,
+): Promise<TerminalSession> {
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    width: stdout.columns || 80,
+    height: stdout.rows || 24,
+    exitOnCtrlC: false,
+    exitSignals: [],
+  })
+
+  return { renderer, closeTransport }
+}
+
+async function closeSession(session: TerminalSession): Promise<void> {
+  session.renderer.destroy()
+  await new Promise<void>((resolve) => queueMicrotask(resolve))
+  session.closeTransport()
+}
+```
+
+Use `exitOnCtrlC: false` and `exitSignals: []` when a long-lived server process owns many renderer sessions. A `stdin` or `stdout` stream cannot be shared by active renderers; `destroy()` releases it.
 
 ## Troubleshooting
 

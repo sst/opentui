@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { SyntaxStyle } from "./syntax-style"
-import { RGBA } from "./lib/RGBA"
-import type { StyleDefinition, ThemeTokenStyle } from "./syntax-style"
+import { SyntaxStyle } from "./syntax-style.js"
+import { RGBA } from "./lib/RGBA.js"
+import type { StyleDefinition, ThemeTokenStyle } from "./syntax-style.js"
 
 describe("NativeSyntaxStyle", () => {
   let style: SyntaxStyle
@@ -311,7 +311,7 @@ describe("NativeSyntaxStyle", () => {
     it("should return a valid pointer", () => {
       const ptr = style.ptr
       expect(ptr).toBeDefined()
-      expect(typeof ptr).toBe("number")
+      expect(typeof ptr === "number" || typeof ptr === "bigint").toBe(true)
     })
 
     it("should return same pointer for same instance", () => {

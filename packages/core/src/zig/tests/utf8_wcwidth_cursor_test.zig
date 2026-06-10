@@ -204,7 +204,7 @@ test "wcwidth: findGraphemeInfo with emoji" {
     defer result.deinit(testing.allocator);
 
     const text = "👋🏿"; // Wave + skin tone modifier
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
@@ -218,7 +218,7 @@ test "wcwidth: findGraphemeInfo with ZWJ sequence" {
     defer result.deinit(testing.allocator);
 
     const text = "👩‍🚀"; // Woman + ZWJ + Rocket
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
@@ -232,7 +232,7 @@ test "wcwidth: findGraphemeInfo with combining marks" {
     defer result.deinit(testing.allocator);
 
     const text = "e\u{0301}"; // e + combining acute
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo(testing.allocator, text, 4, false, .wcwidth, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
     try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);

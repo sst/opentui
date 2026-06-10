@@ -66,14 +66,14 @@ fn benchIsAsciiOnly(
             defer temp.deinit();
             const text = try generateAsciiText(temp.allocator(), 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.isAsciiOnly(text);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -93,14 +93,14 @@ fn benchIsAsciiOnly(
             defer temp.deinit();
             const text = try generateAsciiText(temp.allocator(), 100 * 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.isAsciiOnly(text);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -120,14 +120,14 @@ fn benchIsAsciiOnly(
             defer temp.deinit();
             const text = try generateAsciiText(temp.allocator(), 1024 * 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.isAsciiOnly(text);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -147,14 +147,14 @@ fn benchIsAsciiOnly(
             defer temp.deinit();
             const text = try generateMixedText(temp.allocator(), 10 * 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.isAsciiOnly(text);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -195,14 +195,14 @@ fn benchFindLineBreaks(
             var line_result = utf8.LineBreakResult.init(alloc);
             defer line_result.deinit();
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 try utf8.findLineBreaks(test_text, &line_result);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -231,14 +231,14 @@ fn benchFindLineBreaks(
             var line_result = utf8.LineBreakResult.init(alloc);
             defer line_result.deinit();
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 try utf8.findLineBreaks(test_text, &line_result);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -267,14 +267,14 @@ fn benchFindLineBreaks(
             var line_result = utf8.LineBreakResult.init(alloc);
             defer line_result.deinit();
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 try utf8.findLineBreaks(test_text, &line_result);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -310,14 +310,14 @@ fn benchFindWrapBreaks(
             var wrap_result = utf8.WrapBreakResult.init(alloc);
             defer wrap_result.deinit();
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 try utf8.findWrapBreaks(text, &wrap_result, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -341,14 +341,14 @@ fn benchFindWrapBreaks(
             var wrap_result = utf8.WrapBreakResult.init(alloc);
             defer wrap_result.deinit();
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 try utf8.findWrapBreaks(text, &wrap_result, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -380,14 +380,14 @@ fn benchFindWrapPosByWidth(
             defer temp.deinit();
             const text = try generateAsciiText(temp.allocator(), 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.findWrapPosByWidth(text, 40, 4, true, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -407,14 +407,14 @@ fn benchFindWrapPosByWidth(
             defer temp.deinit();
             const text = try generateAsciiText(temp.allocator(), 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.findWrapPosByWidth(text, 120, 4, true, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -434,14 +434,14 @@ fn benchFindWrapPosByWidth(
             defer temp.deinit();
             const text = try generateMixedText(temp.allocator(), 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.findWrapPosByWidth(text, 80, 4, false, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -461,14 +461,14 @@ fn benchFindWrapPosByWidth(
             defer temp.deinit();
             const text = try generateUnicodeHeavyText(temp.allocator(), 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.findWrapPosByWidth(text, 80, 4, false, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -500,14 +500,14 @@ fn benchFindPosByWidth(
             defer temp.deinit();
             const text = try generateAsciiText(temp.allocator(), 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.findPosByWidth(text, 500, 4, true, true, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -527,14 +527,14 @@ fn benchFindPosByWidth(
             defer temp.deinit();
             const text = try generateAsciiText(temp.allocator(), 100 * 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.findPosByWidth(text, 90000, 4, true, true, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -554,14 +554,14 @@ fn benchFindPosByWidth(
             defer temp.deinit();
             const text = try generateMixedText(temp.allocator(), 10 * 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.findPosByWidth(text, 5000, 4, false, true, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -593,14 +593,14 @@ fn benchCalculateTextWidth(
             defer temp.deinit();
             const text = try generateAsciiText(temp.allocator(), 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.calculateTextWidth(text, 4, true, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -620,14 +620,14 @@ fn benchCalculateTextWidth(
             defer temp.deinit();
             const text = try generateAsciiText(temp.allocator(), 100 * 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.calculateTextWidth(text, 4, true, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -647,14 +647,14 @@ fn benchCalculateTextWidth(
             defer temp.deinit();
             const text = try generateAsciiText(temp.allocator(), 1024 * 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.calculateTextWidth(text, 4, true, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -683,14 +683,14 @@ fn benchCalculateTextWidth(
                 }
             }
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.calculateTextWidth(text.items, 4, false, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -710,14 +710,14 @@ fn benchCalculateTextWidth(
             defer temp.deinit();
             const text = try generateMixedText(temp.allocator(), 10 * 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.calculateTextWidth(text, 4, false, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -737,14 +737,14 @@ fn benchCalculateTextWidth(
             defer temp.deinit();
             const text = try generateUnicodeHeavyText(temp.allocator(), 10 * 1024);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
                 _ = utf8.calculateTextWidth(text, 4, false, .unicode);
                 stats.record(timer.read());
             }
 
-            try results.append(results_alloc, BenchResult{
+            try results.append(results_alloc, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),

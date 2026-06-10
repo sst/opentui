@@ -51,7 +51,7 @@ pub fn walkLines(
         else
             line_start_weight - i;
 
-        callback(ctx, LineInfo{
+        callback(ctx, .{
             .line_idx = i,
             .col_offset = col_offset,
             .width_cols = width_cols,
@@ -91,7 +91,7 @@ pub fn walkLinesAndSegments(
                 walk_ctx.chunk_idx_in_line += 1;
                 walk_ctx.line_width_cols += chunk.width;
             } else if (seg.isBreak()) {
-                walk_ctx.line_callback(walk_ctx.user_ctx, LineInfo{
+                walk_ctx.line_callback(walk_ctx.user_ctx, .{
                     .line_idx = walk_ctx.current_line_idx,
                     .col_offset = walk_ctx.current_col_offset,
                     .width_cols = walk_ctx.line_width_cols,
@@ -111,7 +111,7 @@ pub fn walkLinesAndSegments(
         }
     };
 
-    var walk_ctx = WalkContext{
+    var walk_ctx: WalkContext = .{
         .user_ctx = ctx,
         .seg_callback = segment_callback,
         .line_callback = line_end_callback,
@@ -124,7 +124,7 @@ pub fn walkLinesAndSegments(
     const has_content_after_break = walk_ctx.line_start_seg < walk_ctx.current_seg_idx;
 
     if (has_content_after_break or had_breaks) {
-        line_end_callback(ctx, LineInfo{
+        line_end_callback(ctx, .{
             .line_idx = walk_ctx.current_line_idx,
             .col_offset = walk_ctx.current_col_offset,
             .width_cols = walk_ctx.line_width_cols,
@@ -198,7 +198,7 @@ pub fn offsetToCoords(rope: *UnifiedRope, offset: u32) ?Coords {
             // Offset belongs to this line if it's before the next line starts
             // (newline offset at end of non-final line maps to col==line_width)
             if (offset < next_line_start_weight or (offset == total_weight and mid + 1 == linestart_count)) {
-                return Coords{
+                return .{
                     .row = mid,
                     .col = offset - line_start_weight,
                 };
@@ -414,7 +414,6 @@ pub fn extractTextBetweenOffsets(
         start: u32,
         end: u32,
         line_count: u32,
-        line_had_content: bool = false,
 
         fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
             _ = line_idx;
@@ -429,8 +428,6 @@ pub fn extractTextBetweenOffsets(
                 ctx.col_offset.* = chunk_end_offset;
                 return;
             }
-
-            ctx.line_had_content = true;
 
             const chunk_bytes = chunk.getBytes(ctx.mem_registry);
             const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
@@ -468,20 +465,20 @@ pub fn extractTextBetweenOffsets(
         fn line_end_callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
-            // Add newline if we had content and range extends beyond this line's newline
-            if (ctx.line_had_content and line_info.line_idx < ctx.line_count - 1 and ctx.col_offset.* + 1 < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
+            // Add newline when the newline offset is inside the selected range,
+            // even for empty logical lines.
+            const newline_offset = ctx.col_offset.*;
+            if (line_info.line_idx < ctx.line_count - 1 and newline_offset >= ctx.start and newline_offset < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
                 ctx.out_buffer[ctx.out_index.*] = '\n';
                 ctx.out_index.* += 1;
             }
 
             // Account for newline in display offset
             ctx.col_offset.* += 1;
-
-            ctx.line_had_content = false;
         }
     };
 
-    var ctx = Context{
+    var ctx: Context = .{
         .rope = rope,
         .mem_registry = mem_registry,
         .tab_width = tab_width,

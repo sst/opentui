@@ -1,0 +1,16 @@
+{
+  "name": "@opentui/solid-examples",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@opentui/core": "workspace:*",
+    "@opentui/three": "workspace:*",
+    "@opentui/solid": "workspace:*",
+    "solid-js": "1.9.12"
+  },
+  "scripts": {
+    "dev": "bun --preload ../scripts/preload.ts index.tsx",
+    "build": "bun build.ts",
+    "build:all": "bun build.ts --all"
+  }
+}

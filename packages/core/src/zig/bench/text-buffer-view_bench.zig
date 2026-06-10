@@ -45,7 +45,7 @@ pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes:
         current_bytes += 1;
     }
 
-    return try buffer.toOwnedSlice(allocator);
+    return buffer.toOwnedSlice(allocator);
 }
 
 pub fn generateLargeTextSingleLine(allocator: std.mem.Allocator, target_bytes: usize) ![]u8 {
@@ -62,7 +62,7 @@ pub fn generateLargeTextSingleLine(allocator: std.mem.Allocator, target_bytes: u
         pattern_idx += 1;
     }
 
-    return try buffer.toOwnedSlice(allocator);
+    return buffer.toOwnedSlice(allocator);
 }
 
 fn computeLargeTextStats(lines: u32, target_bytes: usize) struct { bytes: usize, line_count: usize } {
@@ -107,7 +107,7 @@ fn benchSetText(
         const name = "TextBuffer setText small (3 lines, 40 bytes)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
             const text = "Hello, world!\nSecond line\nThird line";
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
@@ -129,7 +129,7 @@ fn benchSetText(
                 break :blk mem;
             } else null;
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -157,7 +157,7 @@ fn benchSetText(
             const text = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
             defer allocator.free(text);
 
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
@@ -179,7 +179,7 @@ fn benchSetText(
                 break :blk mem;
             } else null;
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -191,7 +191,7 @@ fn benchSetText(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchWrap(
@@ -203,7 +203,7 @@ fn benchWrap(
     iterations: usize,
     show_mem: bool,
 ) !BenchResult {
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     var final_tb_mem: usize = 0;
     var final_view_mem: usize = 0;
     const link_pool = link.initGlobalLinkPool(allocator);
@@ -261,7 +261,7 @@ fn benchMeasureForDimensionsLayout(
 ) !BenchResult {
     const steps: usize = 200;
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     var final_tb_mem: usize = 0;
     var final_view_mem: usize = 0;
     const link_pool = link.initGlobalLinkPool(allocator);
@@ -455,5 +455,5 @@ pub fn run(
         try all_results.append(allocator, bench_result);
     }
 
-    return try all_results.toOwnedSlice(allocator);
+    return all_results.toOwnedSlice(allocator);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, test } from "bun:test"
-import { testRender } from "../index"
+import { testRender } from "../index.js"
 import { createSignal, createEffect, createMemo, For, Show, Switch, Match, Index, ErrorBoundary } from "solid-js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
@@ -305,6 +305,57 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(children[0]!.id).toBe("first")
       expect(children[1]!.id).toBe("second")
       expect(children[2]!.id).toBe("third")
+    })
+
+    it("should reinsert multiple fragment children with <Show> before the following static sibling", async () => {
+      const [showContent, setShowContent] = createSignal(true)
+      const expectedVisibleIds = [
+        "top",
+        "fragment-title",
+        "fragment-alpha",
+        "fragment-bravo",
+        "fragment-charlie",
+        "bottom",
+      ]
+      const expectedHiddenIds = ["top", "bottom"]
+
+      testSetup = await testRender(
+        () => (
+          <box id="container">
+            <box id="top" />
+            <Show when={showContent()}>
+              <>
+                <box id="fragment-title" />
+                <box id="fragment-alpha" />
+                <box id="fragment-bravo" />
+                <box id="fragment-charlie" />
+              </>
+            </Show>
+            <box id="bottom" />
+          </box>
+        ),
+        { width: 40, height: 20 },
+      )
+
+      const getOrderedIds = () => {
+        const ids = new Set(expectedVisibleIds)
+        const container = testSetup.renderer.root.findDescendantById("container")!
+        return container
+          .getChildren()
+          .map((child) => child.id)
+          .filter((id) => ids.has(id))
+      }
+
+      await testSetup.renderOnce()
+      expect(getOrderedIds()).toEqual(expectedVisibleIds)
+
+      setShowContent(false)
+      await testSetup.renderOnce()
+      expect(getOrderedIds()).toEqual(expectedHiddenIds)
+
+      setShowContent(true)
+      await testSetup.renderOnce()
+      expect(getOrderedIds()).toEqual(expectedVisibleIds)
     })
   })
 

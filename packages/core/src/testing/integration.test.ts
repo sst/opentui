@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test"
-import { createMockMouse, MouseButtons } from "./mock-mouse"
-import { MouseParser } from "../lib/parse.mouse"
+import { createMockMouse, MouseButtons } from "./mock-mouse.js"
+import { MouseParser } from "../lib/parse.mouse.js"
 
 class MockRenderer {
   public stdin: { emit: (event: string, data: Buffer) => void }

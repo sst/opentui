@@ -153,13 +153,7 @@ export class MouseParser {
     let type: MouseEventType
     let scrollInfo: ScrollInfo | undefined
 
-    if (isScroll && pressRelease === "M") {
-      type = "scroll"
-      scrollInfo = {
-        direction: scrollDirection!,
-        delta: 1,
-      }
-    } else if (isMotion) {
+    if (isMotion) {
       const isDragging = this.mouseButtonsPressed.size > 0
 
       if (button === 3) {
@@ -168,6 +162,12 @@ export class MouseParser {
         type = "drag"
       } else {
         type = "move"
+      }
+    } else if (isScroll && pressRelease === "M") {
+      type = "scroll"
+      scrollInfo = {
+        direction: scrollDirection!,
+        delta: 1,
       }
     } else {
       type = pressRelease === "M" ? "down" : "up"
@@ -205,16 +205,16 @@ export class MouseParser {
     let actualButton: number
     let scrollInfo: ScrollInfo | undefined
 
-    if (isScroll) {
+    if (isMotion) {
+      type = "move"
+      actualButton = button === 3 ? -1 : button
+    } else if (isScroll) {
       type = "scroll"
       actualButton = 0
       scrollInfo = {
         direction: scrollDirection!,
         delta: 1,
       }
-    } else if (isMotion) {
-      type = "move"
-      actualButton = button === 3 ? -1 : button
     } else {
       type = button === 3 ? "up" : "down"
       actualButton = button === 3 ? 0 : button

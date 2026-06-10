@@ -1,9 +1,9 @@
 import os from "os"
 import path from "path"
 import { EventEmitter } from "events"
-import { singleton } from "./singleton"
-import { env, registerEnvVar } from "./env"
-import { isValidDirectoryName } from "./validate-dir-name"
+import { singleton } from "./singleton.js"
+import { env, registerEnvVar } from "./env.js"
+import { isValidDirectoryName } from "./validate-dir-name.js"
 
 // Register environment variables for XDG directories
 registerEnvVar({

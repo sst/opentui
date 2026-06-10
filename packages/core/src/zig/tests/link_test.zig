@@ -69,6 +69,36 @@ test "LinkPool - alloc never returns sentinel zero ID" {
     }
 }
 
+test "LinkPool - stale ID stays invalid after generation exhaustion" {
+    var pool = LinkPool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const stale_id = try pool.alloc("https://example.com/stale");
+    try pool.incref(stale_id);
+    try pool.decref(stale_id);
+
+    var exhausted_id: link.IdPayload = undefined;
+    var generation: u32 = 2;
+    while (generation <= link.GEN_MASK) : (generation += 1) {
+        const id = try pool.alloc("https://example.com/rotate");
+        try pool.incref(id);
+        try pool.decref(id);
+        if (generation == link.GEN_MASK) exhausted_id = id;
+    }
+
+    try std.testing.expectError(LinkPoolError.WrongGeneration, pool.incref(exhausted_id));
+    try std.testing.expectEqual(@as(u64, 0), pool.getLiveSlotCount());
+
+    const live_id = try pool.alloc("https://example.com/live");
+    try pool.incref(live_id);
+    defer pool.decref(live_id) catch {};
+
+    try std.testing.expect(stale_id != live_id);
+    try std.testing.expectError(LinkPoolError.WrongGeneration, pool.get(stale_id));
+    try std.testing.expectEqualSlices(u8, "https://example.com/live", try pool.get(live_id));
+    try std.testing.expectEqual(@as(u64, 1), pool.getLiveSlotCount());
+}
+
 test "LinkTracker - add/remove keeps one pool ref per ID" {
     var pool = LinkPool.init(std.testing.allocator);
     defer pool.deinit();
@@ -119,6 +149,33 @@ test "LinkTracker - clear releases tracked IDs" {
     try std.testing.expect(!tracker.hasAny());
     try std.testing.expectEqual(@as(u32, 0), try pool.getRefcount(id1));
     try std.testing.expectEqual(@as(u32, 0), try pool.getRefcount(id2));
+}
+
+test "LinkTracker - clear only decrefs once per ID with multiple cell refs" {
+    var pool = LinkPool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const id = try pool.alloc("https://example.com/shared");
+
+    var tracker_a = LinkTracker.init(std.testing.allocator, &pool);
+    defer tracker_a.deinit();
+
+    var tracker_b = LinkTracker.init(std.testing.allocator, &pool);
+    defer tracker_b.deinit();
+
+    tracker_a.addCellRef(id);
+    tracker_a.addCellRef(id);
+    tracker_a.addCellRef(id);
+
+    tracker_b.addCellRef(id);
+
+    try std.testing.expectEqual(@as(u32, 2), try pool.getRefcount(id));
+
+    // Clear tracker A should decref once (2 -> 1).
+    tracker_a.clear();
+
+    try std.testing.expectEqual(@as(u32, 1), try pool.getRefcount(id));
+    try std.testing.expectEqualSlices(u8, "https://example.com/shared", try pool.get(id));
 }
 
 test "LinkPool - leak repro: alloc-only IDs accumulate live slots" {

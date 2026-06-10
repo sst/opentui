@@ -1,7 +1,9 @@
 import { test, expect } from "bun:test"
-import { InternalKeyHandler, KeyEvent } from "./KeyHandler"
-import { type ParseKeypressOptions, parseKeypress } from "./parse.keypress"
-import { createTestRenderer } from "../testing/test-renderer"
+import { InternalKeyHandler, KeyEvent } from "./KeyHandler.js"
+import { type ParseKeypressOptions, parseKeypress } from "./parse.keypress.js"
+import { decodePasteBytes } from "./paste.js"
+import { createTestRenderer } from "../testing/test-renderer.js"
+import { pasteBytes } from "../testing/mock-keys.js"
 
 const { renderer, mockInput } = await createTestRenderer({})
 
@@ -67,41 +69,41 @@ test("KeyHandler - emits keypress events", () => {
 test("KeyHandler - handles paste via processPaste", async () => {
   const handler = createKeyHandler()
 
-  let receivedPaste: string | undefined
+  let receivedPaste: Uint8Array | undefined
   handler.on("paste", (event) => {
-    receivedPaste = event.text
+    receivedPaste = event.bytes
   })
 
-  handler.processPaste("pasted content")
+  handler.processPaste(pasteBytes("pasted content"))
 
-  expect(receivedPaste).toBe("pasted content")
+  expect(receivedPaste).toEqual(pasteBytes("pasted content"))
 })
 
 test("KeyHandler - processPaste handles content directly", () => {
   const handler = createKeyHandler()
 
-  let receivedPaste: string | undefined
+  let receivedPaste: Uint8Array | undefined
   handler.on("paste", (event) => {
-    receivedPaste = event.text
+    receivedPaste = event.bytes
   })
 
   // processPaste receives the full content, no chunking
-  handler.processPaste("chunk1chunk2chunk3")
+  handler.processPaste(pasteBytes("chunk1chunk2chunk3"))
 
-  expect(receivedPaste).toBe("chunk1chunk2chunk3")
+  expect(receivedPaste).toEqual(pasteBytes("chunk1chunk2chunk3"))
 })
 
-test("KeyHandler - strips ANSI codes in paste", () => {
+test("KeyHandler - preserves raw ANSI bytes in paste", () => {
   const handler = createKeyHandler()
 
-  let receivedPaste: string | undefined
+  let receivedPaste: Uint8Array | undefined
   handler.on("paste", (event) => {
-    receivedPaste = event.text
+    receivedPaste = event.bytes
   })
 
-  handler.processPaste("text with \x1b[31mred\x1b[0m color")
+  handler.processPaste(pasteBytes("text with \x1b[31mred\x1b[0m color"))
 
-  expect(receivedPaste).toBe("text with red color")
+  expect(receivedPaste).toEqual(pasteBytes("text with \x1b[31mred\x1b[0m color"))
 })
 
 test("KeyHandler - constructor creates a handler", () => {
@@ -325,14 +327,14 @@ test("InternalKeyHandler - paste events work with priority system", () => {
   const callOrder: string[] = []
 
   handler.on("paste", (event) => {
-    callOrder.push(`regular:${event.text}`)
+    callOrder.push(`regular:${decodePasteBytes(event.bytes)}`)
   })
 
   handler.onInternal("paste", (event) => {
-    callOrder.push(`internal:${event.text}`)
+    callOrder.push(`internal:${decodePasteBytes(event.bytes)}`)
   })
 
-  handler.processPaste("hello")
+  handler.processPaste(pasteBytes("hello"))
 
   expect(callOrder).toEqual(["regular:hello", "internal:hello"])
 })
@@ -346,7 +348,7 @@ test("InternalKeyHandler - paste preventDefault prevents internal handlers", () 
 
   handler.on("paste", (event) => {
     regularHandlerCalled = true
-    receivedText = event.text
+    receivedText = decodePasteBytes(event.bytes)
     event.preventDefault()
   })
 
@@ -354,7 +356,7 @@ test("InternalKeyHandler - paste preventDefault prevents internal handlers", () 
     internalHandlerCalled = true
   })
 
-  handler.processPaste("test paste")
+  handler.processPaste(pasteBytes("test paste"))
 
   expect(regularHandlerCalled).toBe(true)
   expect(receivedText).toBe("test paste")
@@ -365,17 +367,17 @@ test("KeyHandler - emits paste event even with empty content", () => {
   const handler = createKeyHandler()
 
   let pasteEventReceived = false
-  let receivedPaste = "not-empty"
+  let receivedPaste: Uint8Array = pasteBytes("not-empty")
 
   handler.on("paste", (event) => {
     pasteEventReceived = true
-    receivedPaste = event.text
+    receivedPaste = event.bytes
   })
 
-  handler.processPaste("")
+  handler.processPaste(pasteBytes(""))
 
   expect(pasteEventReceived).toBe(true)
-  expect(receivedPaste).toBe("")
+  expect(receivedPaste).toEqual(pasteBytes(""))
 })
 
 test("KeyHandler - filters out mouse events", () => {
@@ -593,7 +595,7 @@ test("KeyHandler - paste handler error is caught and logged", () => {
   })
 
   // Should not throw - error is caught and logged
-  expect(() => handler.processPaste("test")).not.toThrow()
+  expect(() => handler.processPaste(pasteBytes("test"))).not.toThrow()
 
   expect(handlerCalled).toBe(true)
 })
@@ -653,7 +655,7 @@ test("KeyHandler - error in one event type does not prevent other event types fr
 
   // Both should not throw - errors are caught and logged
   expect(() => dispatchInput(handler, "a")).not.toThrow()
-  expect(() => handler.processPaste("test")).not.toThrow()
+  expect(() => handler.processPaste(pasteBytes("test"))).not.toThrow()
 
   expect(keypressCalled).toBe(true)
   expect(pasteCalled).toBe(true)

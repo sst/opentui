@@ -1,10 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "../../testing"
-import { LineNumberRenderable } from "../LineNumberRenderable"
-import { CodeRenderable } from "../Code"
-import { ScrollBoxRenderable } from "../ScrollBox"
-import { SyntaxStyle } from "../../syntax-style"
-import { RGBA } from "../../lib/RGBA"
+import { createTestRenderer, type TestRenderer } from "../../testing.js"
+import { LineNumberRenderable } from "../LineNumberRenderable.js"
+import { CodeRenderable } from "../Code.js"
+import { ScrollBoxRenderable } from "../ScrollBox.js"
+import { SyntaxStyle } from "../../syntax-style.js"
+import { RGBA } from "../../lib/RGBA.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>

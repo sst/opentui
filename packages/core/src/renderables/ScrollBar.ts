@@ -1,10 +1,11 @@
-import type { OptimizedBuffer } from "../buffer"
-import { parseColor, RGBA, type ColorInput } from "../lib"
-import type { KeyEvent } from "../lib/KeyHandler"
-import { Renderable, type RenderableOptions } from "../Renderable"
-import type { RenderContext, Timeout } from "../types"
-import { type BoxOptions } from "./Box"
-import { SliderRenderable, type SliderOptions } from "./Slider"
+import type { OptimizedBuffer } from "../buffer.js"
+import { parseColor, RGBA, type ColorInput } from "../lib/index.js"
+import type { KeyEvent } from "../lib/KeyHandler.js"
+import { stringWidth } from "../platform/runtime.js"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import type { RenderContext, Timeout } from "../types.js"
+import { type BoxOptions } from "./Box.js"
+import { SliderRenderable, type SliderOptions } from "./Slider.js"
 
 export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable> {
   orientation: "vertical" | "horizontal"
@@ -344,7 +345,7 @@ export class ArrowRenderable extends Renderable {
     }
 
     if (!options.width) {
-      this.width = Bun.stringWidth(this.getArrowChar())
+      this.width = stringWidth(this.getArrowChar())
     }
   }
 

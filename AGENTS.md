@@ -15,6 +15,15 @@ The build is only needed when changing native code.
 
 Don't use bun-specific APIs. Generated code should work in Bun, Node.js and Deno runtimes.
 
+## Portable FFI Types
+
+- In portable FFI code, stay within the `node:ffi`/`bun:ffi` type intersection.
+- Avoid backend-specific ABI names in shared definitions: no `usize`, `napi_env`, or `napi_value`. Use explicit widths like `u32`/`u64`.
+- Treat `i64`/`u64` as `bigint`, and native booleans as `0`/`1`.
+- For pointer params, pass `ptr(view)` explicitly and keep shared `Pointer` values as `number | bigint`.
+- For C strings, encode to bytes and pass pointers; do not assume raw JS strings or portable native string return normalization.
+- Create callbacks through the loaded library/platform facade, not `new JSCallback(...)`, and only assume same-thread callback behavior.
+
 ## Testing
 
 Use `bun test` to run tests from the packages directories for a specific package.
@@ -46,7 +55,7 @@ FROM THE `packages/core` DIRECTORY.
 ## Typescript Code Style
 
 - **Runtime**: Bun with TypeScript
-- **Formatting**: Prettier (semi: false, printWidth: 120)
+- **Formatting**: oxfmt (semi: false, printWidth: 120)
 - **Imports**: Use explicit imports, group by: built-ins, external deps, internal modules
 - **Types**: Strict TypeScript, use interfaces for options/configs, explicit return types for public APIs
 - **Naming**: camelCase for variables/functions, PascalCase for classes/interfaces, UPPER_CASE for constants

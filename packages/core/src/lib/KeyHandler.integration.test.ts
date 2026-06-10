@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test"
-import { InternalKeyHandler, KeyEvent } from "./KeyHandler"
-import { parseKeypress } from "./parse.keypress"
+import { InternalKeyHandler, KeyEvent } from "./KeyHandler.js"
+import { parseKeypress } from "./parse.keypress.js"
 
 /**
  * Integration tests demonstrating real-world scenarios with stopPropagation

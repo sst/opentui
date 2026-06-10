@@ -199,7 +199,7 @@ test "Rope - walk all items" {
         }
     };
 
-    var ctx = Context{};
+    var ctx: Context = .{};
     try rope.walk(&ctx, Context.walker);
 
     try std.testing.expectEqual(@as(u32, 60), ctx.sum);
@@ -231,7 +231,7 @@ test "Rope - walk with early exit" {
         }
     };
 
-    var ctx = Context{};
+    var ctx: Context = .{};
     try rope.walk(&ctx, Context.walker);
 
     try std.testing.expectEqual(@as(u32, 2), ctx.count);
@@ -344,7 +344,7 @@ const Chunk = struct {
 };
 
 // Static empty chunk rope node for Line.empty()
-const empty_chunk_leaf_node = rope_mod.Rope(Chunk).Node{
+const empty_chunk_leaf_node: rope_mod.Rope(Chunk).Node = .{
     .leaf = .{
         .data = Chunk.empty(),
     },
@@ -730,7 +730,7 @@ test "Rope - undo/redo with nested ropes" {
     const allocator = arena.allocator();
 
     const chunks1 = [_]Chunk{.{ .data = "Line 1", .width = 6 }};
-    const line1 = Line{
+    const line1: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks1),
         .line_id = 1,
     };
@@ -741,7 +741,7 @@ test "Rope - undo/redo with nested ropes" {
     try rope.store_undo("before append");
 
     const chunks2 = [_]Chunk{.{ .data = "Line 2", .width = 6 }};
-    const line2 = Line{
+    const line2: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks2),
         .line_id = 2,
     };
@@ -1468,8 +1468,8 @@ const WeightedItem = struct {
 const WeightedRope = rope_mod.Rope(WeightedItem);
 
 fn splitWeightedItemCallback(
-    ctx: ?*anyopaque,
     allocator: std.mem.Allocator,
+    ctx: ?*anyopaque,
     leaf: *const WeightedItem,
     weight_in_leaf: u32,
 ) error{ OutOfBounds, OutOfMemory }!WeightedRope.Node.LeafSplitResult {
@@ -2356,7 +2356,7 @@ test "Rope - integration all features working together" {
             return .{};
         }
     };
-    var ctx = Context{};
+    var ctx: Context = .{};
     try rope.walk(&ctx, Context.walker);
     try std.testing.expectEqual(@as(u32, 3), ctx.count);
 }

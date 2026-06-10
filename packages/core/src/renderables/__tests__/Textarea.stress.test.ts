@@ -1,7 +1,7 @@
 import { describe, expect, it, afterAll, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer"
-import { ManualClock } from "../../testing/manual-clock"
-import { createTextareaRenderable } from "./renderable-test-utils"
+import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
+import { ManualClock } from "../../testing/manual-clock.js"
+import { createTextareaRenderable } from "./renderable-test-utils.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -20,7 +20,7 @@ describe("Textarea - Stress Tests", () => {
     } = await createTestRenderer({
       width: 80,
       height: 24,
-      stdinParserClock: currentClock,
+      clock: currentClock,
     }))
   })
 
@@ -112,7 +112,7 @@ describe("Textarea - Stress Tests", () => {
       const startY = i % 5
       const endX = (i + 10) % 30
       const endY = (i + 3) % 8
-      await currentMouse.drag(startX, startY, endX, endY)
+      await currentMouse.drag(startX, startY, endX, endY, 0, { delayMs: 0 })
     }
 
     // Text should remain unchanged or only contain valid selections/edits
@@ -135,7 +135,7 @@ describe("Textarea - Stress Tests", () => {
       if (i % 3 === 0) {
         currentMockInput.pressKey("x")
       }
-      await currentMouse.click(i % 40, i % 10)
+      await currentMouse.click(i % 40, i % 10, 0, { delayMs: 0 })
       if (i % 5 === 0) {
         currentMockInput.pressKey("y")
       }
@@ -468,7 +468,7 @@ describe("Textarea - Stress Tests", () => {
 
     for (let i = 0; i < 10000; i++) {
       const button = buttonCodes[i % buttonCodes.length]
-      const modifier = modifiers[(i / buttonCodes.length) % modifiers.length | 0]
+      const modifier = modifiers[((i / buttonCodes.length) % modifiers.length) | 0]
       const code = button | modifier
       const x = (i % 40) + 1
       const y = (i % 10) + 1

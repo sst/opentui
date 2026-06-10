@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { isBunfsPath, getBunfsRootPath } from "./bunfs"
+import { isBunfsPath, getBunfsRootPath } from "./bunfs.js"
 
 describe("bunfs", () => {
   test("isBunfsPath detects $bunfs paths", () => {

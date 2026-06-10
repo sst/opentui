@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, afterEach } from "bun:test"
-import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing"
-import { BoxRenderable } from "../renderables"
-import type { MousePointerStyle } from "../types"
+import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
+import { BoxRenderable } from "../renderables/index.js"
+import type { MousePointerStyle } from "../types.js"
 
 describe("mouse pointer style", () => {
   let renderer: TestRenderer

@@ -34,7 +34,7 @@ fn benchInsertOperations(
     {
         const name = "Rope sequential append 10k items";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -47,7 +47,7 @@ fn benchInsertOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -63,7 +63,7 @@ fn benchInsertOperations(
     {
         const name = "Rope sequential prepend 10k items";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -76,7 +76,7 @@ fn benchInsertOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -92,7 +92,7 @@ fn benchInsertOperations(
     {
         const name = "Rope random insert 5k items";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -111,7 +111,7 @@ fn benchInsertOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -143,7 +143,7 @@ fn benchDeleteOperations(
     {
         const name = "Rope sequential delete 5k from end";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -156,7 +156,7 @@ fn benchDeleteOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -172,7 +172,7 @@ fn benchDeleteOperations(
     {
         const name = "Rope sequential delete 5k from beginning";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -185,7 +185,7 @@ fn benchDeleteOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -201,7 +201,7 @@ fn benchDeleteOperations(
     {
         const name = "Rope random delete 5k items";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -217,7 +217,7 @@ fn benchDeleteOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -249,7 +249,7 @@ fn benchBulkOperations(
     {
         const name = "Rope insert_slice 10x1k items";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -266,7 +266,7 @@ fn benchBulkOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -282,7 +282,7 @@ fn benchBulkOperations(
     {
         const name = "Rope delete_range 10x500 items";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -297,7 +297,7 @@ fn benchBulkOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -313,7 +313,7 @@ fn benchBulkOperations(
     {
         const name = "Rope split/concat 100 cycles at midpoint";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -328,7 +328,7 @@ fn benchBulkOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -344,7 +344,7 @@ fn benchBulkOperations(
     {
         const name = "Rope concat two 5k-item ropes";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -356,7 +356,7 @@ fn benchBulkOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -388,7 +388,7 @@ fn benchAccessPatterns(
     {
         const name = "Rope sequential get all 10k items";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -401,7 +401,7 @@ fn benchAccessPatterns(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -417,7 +417,7 @@ fn benchAccessPatterns(
     {
         const name = "Rope random get 10k accesses";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -433,7 +433,7 @@ fn benchAccessPatterns(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -449,7 +449,7 @@ fn benchAccessPatterns(
     {
         const name = "Rope walk all 10k items";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 defer arena.deinit();
@@ -464,13 +464,13 @@ fn benchAccessPatterns(
                         return .{};
                     }
                 };
-                var ctx = Ctx{};
+                var ctx: Ctx = .{};
                 var timer = try std.time.Timer.start();
                 try rope.walk(&ctx, Ctx.walker);
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),

@@ -1,5 +1,9 @@
 import { test, expect, describe } from "bun:test"
-import { isCapabilityResponse, isPixelResolutionResponse, parsePixelResolution } from "./terminal-capability-detection"
+import {
+  isCapabilityResponse,
+  isPixelResolutionResponse,
+  parsePixelResolution,
+} from "./terminal-capability-detection.js"
 
 describe("isCapabilityResponse", () => {
   test("detects DECRPM responses", () => {
@@ -46,6 +50,12 @@ describe("isCapabilityResponse", () => {
     expect(isCapabilityResponse("\x1b[?31u")).toBe(true)
   })
 
+  test("detects notification capability responses", () => {
+    expect(isCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body\x07")).toBe(true)
+    expect(isCapabilityResponse("\x1b]1337;Capabilities=T2NoH\x1b\\")).toBe(true)
+  })
+
   test("does not detect regular keypresses", () => {
     expect(isCapabilityResponse("a")).toBe(false)
     expect(isCapabilityResponse("A")).toBe(false)
@@ -74,6 +84,12 @@ describe("isCapabilityResponse", () => {
   test("does not detect mouse sequences", () => {
     expect(isCapabilityResponse("\x1b[<35;20;5m")).toBe(false)
     expect(isCapabilityResponse("\x1b[<0;10;10M")).toBe(false)
+  })
+
+  test("does not detect arbitrary OSC sequences as capabilities", () => {
+    expect(isCapabilityResponse("\x1b]9;hello\x1b\\")).toBe(false)
+    expect(isCapabilityResponse("\x1b]777;notify;title;body\x1b\\")).toBe(false)
+    expect(isCapabilityResponse("\x1b]99;i=other:p=?;p=title\x1b\\")).toBe(false)
   })
 })
 
@@ -146,7 +162,7 @@ describe("renderer capabilities event", () => {
    * multiple emissions and handle them reactively.
    */
   test("kitty terminal emits capabilities event for each response", async () => {
-    const { createTestRenderer } = await import("../testing/test-renderer")
+    const { createTestRenderer } = await import("../testing/test-renderer.js")
     const { renderer } = await createTestRenderer({})
 
     const events: any[] = []
@@ -180,6 +196,7 @@ describe("renderer capabilities event", () => {
     // After xtversion (event 9): kitty_keyboard should be true
     expect(events[8].kitty_keyboard).toBe(true)
     expect(events[8].kitty_graphics).toBe(true)
+    expect(events[8].notifications).toBe(true)
     expect(events[8].terminal.name).toBe("kitty")
     expect(events[8].terminal.version).toBe("0.42.2")
 
