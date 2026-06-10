@@ -25,8 +25,12 @@ const server = createServer().serve((session) => {
     justifyContent: "center",
     alignItems: "center",
   })
-  box.add(new TextRenderable(renderer, { content: "Hello over SSH! 👋" }))
+  box.add(new TextRenderable(renderer, { content: "Hello over SSH! 👋\nPress q or Ctrl-C to quit." }))
   renderer.root.add(box)
+
+  renderer.keyInput.on("keypress", (key) => {
+    if (key.name === "q" || (key.ctrl && key.name === "c")) session.end()
+  })
   // @opentui/ssh owns the renderer it created and destroys it on disconnect;
   // wire session.onClose only for your own cleanup (e.g. root.unmount()).
 })

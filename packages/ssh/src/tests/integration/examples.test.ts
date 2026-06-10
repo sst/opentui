@@ -57,3 +57,11 @@ test("the imperative example does not claim the remote Ctrl-C behavior closes th
 
   expect(example).not.toContain("Ctrl-C closes the session")
 })
+
+test("the minimal example lets the remote user quit", () => {
+  const example = readFileSync(join(packageRoot, "examples/minimal.ts"), "utf8")
+
+  expect(example).toContain('key.name === "q"')
+  expect(example).toContain('key.ctrl && key.name === "c"')
+  expect(example).toContain("session.end()")
+})
