@@ -261,6 +261,25 @@ test("feed-backed renderer coalesces requests while waiting for feed idle", asyn
   expect(observed).toEqual([1, 2])
 })
 
+test("starting a feed-backed renderer waits for a skipped frame's feed idle", async () => {
+  const { renderer, clock } = createRetryRenderer(true)
+  const idle = deferFeedIdle(renderer)
+  let calls = 0
+  mockNativeRender(renderer, () => (calls++ === 0 ? 1 : 0))
+
+  await (renderer as any).loop()
+  renderer.start()
+
+  expect(renderer.isRunning).toBe(true)
+  expect(calls).toBe(1)
+
+  await idle.resolve()
+  clock.advance(17)
+
+  expect(calls).toBe(2)
+  renderer.pause()
+})
+
 test("feed-backed renderer waits for each repeated skip", async () => {
   const { renderer, clock } = createRetryRenderer(true)
   const firstIdle = deferFeedIdle(renderer)
@@ -600,6 +619,44 @@ test("split-footer custom stdout retains captured commits when native skips", as
   } finally {
     restoreNative()
   }
+})
+
+test("split-footer coalesces render requests while waiting for feed idle", async () => {
+  const clock = new ManualClock()
+  const stdout = createCollectingStdout(80, 24)
+  const renderer = new CliRenderer(createTestStdin(), stdout, 80, 24, {
+    screenMode: "split-footer",
+    consoleMode: "disabled",
+    clock,
+  })
+  ;(renderer as any).updateScheduled = false
+  clock.runAll()
+  destroyFns.push(() => renderer.destroy())
+
+  const idle = deferFeedIdle(renderer)
+  const rendererAny = renderer as any
+  const originalCommit = rendererAny.lib.commitSplitFooterSnapshot
+  let calls = 0
+  rendererAny.lib.commitSplitFooterSnapshot = () => {
+    calls++
+    return { renderOffset: rendererAny.renderOffset, status: 1 }
+  }
+  destroyFns.unshift(() => {
+    rendererAny.lib.commitSplitFooterSnapshot = originalCommit
+  })
+
+  stdout.write("first\n")
+  rendererAny.updateScheduled = false
+  await rendererAny.loop()
+  expect(calls).toBe(1)
+
+  stdout.write("second\n")
+  renderer.requestRender()
+  clock.advance(17)
+  await Promise.resolve()
+
+  expect(calls).toBe(1)
+  expect(idle.calls()).toBe(1)
 })
 
 test("split-footer custom stdout retains captured commits when native fails and retries", async () => {

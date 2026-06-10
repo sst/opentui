@@ -1482,6 +1482,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
+    // A skipped feed-backed frame already owns the next scheduling attempt through
+    // feed.idle(). Coalesce normal invalidations into that retry so split-footer
+    // output and UI updates cannot start competing render passes while the feed is busy.
+    if (this.feedIdleRenderScheduled) {
+      return
+    }
+
     if (this._isRunning) {
       if (!this.rendering && !this.renderTimeout && !this.ordinaryFrameWaitingForFeed) {
         this.scheduleRenderTimer()
@@ -4350,6 +4357,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.frameCount = 0
     this.lastFpsTime = this.lastTime
     this.currentFps = 0
+
+    // Starting continuous mode must not bypass an existing feed-idle retry. Keep
+    // _isRunning true, but let the idle callback schedule the first loop once the
+    // feed is ready; a successful frame will then resume the normal cadence.
+    if (this.feedIdleRenderScheduled) return
 
     this.loop()
   }
