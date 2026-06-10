@@ -271,12 +271,14 @@ test("starting a feed-backed renderer waits for a skipped frame's feed idle", as
   renderer.start()
 
   expect(renderer.isRunning).toBe(true)
+  clock.advance(100)
   expect(calls).toBe(1)
 
   await idle.resolve()
-  clock.advance(17)
+  clock.advance(0)
 
   expect(calls).toBe(2)
+  expect(renderer.isRunning).toBe(true)
   renderer.pause()
 })
 
@@ -639,24 +641,32 @@ test("split-footer coalesces render requests while waiting for feed idle", async
   let calls = 0
   rendererAny.lib.commitSplitFooterSnapshot = () => {
     calls++
-    return { renderOffset: rendererAny.renderOffset, status: 1 }
+    return { renderOffset: rendererAny.renderOffset, status: calls === 1 ? 1 : 0 }
   }
   destroyFns.unshift(() => {
     rendererAny.lib.commitSplitFooterSnapshot = originalCommit
   })
 
   stdout.write("first\n")
-  rendererAny.updateScheduled = false
-  await rendererAny.loop()
+  clock.advance(17)
+  await Promise.resolve()
   expect(calls).toBe(1)
 
   stdout.write("second\n")
   renderer.requestRender()
-  clock.advance(17)
+  clock.advance(100)
   await Promise.resolve()
 
   expect(calls).toBe(1)
   expect(idle.calls()).toBe(1)
+  expect(rendererAny.externalOutputQueue.size).toBe(2)
+
+  await idle.resolve()
+  clock.advance(0)
+  await Promise.resolve()
+
+  expect(calls).toBe(3)
+  expect(rendererAny.externalOutputQueue.size).toBe(0)
 })
 
 test("split-footer custom stdout retains captured commits when native fails and retries", async () => {
