@@ -160,6 +160,18 @@ fn addMiniaudioShim(
     });
 }
 
+fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, macos_sdk_path: ?[]const u8) void {
+    const flags: []const []const u8 = switch (target.result.os.tag) {
+        .macos => &.{ "-std=c99", "-ffp-contract=off", "-isysroot", macos_sdk_path.? },
+        else => &.{ "-std=c99", "-ffp-contract=off" },
+    };
+
+    artifact.addCSourceFile(.{
+        .file = b.path("image-shim.c"),
+        .flags = flags,
+    });
+}
+
 fn addMacOSSDKSearchPaths(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
     const include_path = b.pathJoin(&.{ sdk_path, "usr", "include" });
     const framework_path = b.pathJoin(&.{ sdk_path, "System", "Library", "Frameworks" });
@@ -186,12 +198,14 @@ fn addNativeAudioDependencies(
     macos_sdk_path: ?[]const u8,
 ) void {
     addMiniaudioShim(b, artifact, target, macos_sdk_path);
+    addImageShim(b, artifact, target, macos_sdk_path);
 
     switch (target.result.os.tag) {
         .macos => addMacOSSystemLibraries(b, artifact, macos_sdk_path.?),
         .linux => {
             artifact.linkSystemLibrary("dl");
             artifact.linkSystemLibrary("pthread");
+            artifact.linkSystemLibrary("m");
         },
         else => {},
     }
