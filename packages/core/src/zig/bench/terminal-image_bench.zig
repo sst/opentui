@@ -9,6 +9,7 @@ const Scenario = struct {
     name: []const u8,
     width: u32,
     height: u32,
+    colors: usize = 255,
     pattern: enum { flat, gradient, baseline, photo, noise, transparent },
 };
 
@@ -16,11 +17,20 @@ const scenarios = [_]Scenario{
     .{ .name = "Sixel 160x240 flat", .width = 160, .height = 240, .pattern = .flat },
     .{ .name = "Sixel 160x240 gradient", .width = 160, .height = 240, .pattern = .gradient },
     .{ .name = "Sixel 160x240 original baseline", .width = 160, .height = 240, .pattern = .baseline },
+    .{ .name = "Sixel 160x240 original baseline 128 colors", .width = 160, .height = 240, .colors = 128, .pattern = .baseline },
+    .{ .name = "Sixel 160x240 original baseline 64 colors", .width = 160, .height = 240, .colors = 64, .pattern = .baseline },
     .{ .name = "Sixel 160x240 photo-like", .width = 160, .height = 240, .pattern = .photo },
     .{ .name = "Sixel 160x240 noise", .width = 160, .height = 240, .pattern = .noise },
     .{ .name = "Sixel 160x240 transparent", .width = 160, .height = 240, .pattern = .transparent },
     .{ .name = "Sixel 320x480 photo-like", .width = 320, .height = 480, .pattern = .photo },
 };
+
+fn writeScenario(allocator: std.mem.Allocator, writer: anytype, value: *const image.Image, colors: usize) !void {
+    if (colors == 255) return terminal_image.writeSixelPayload(allocator, writer, value);
+    var quantized = try terminal_image.quantizeSixel(allocator, value, colors);
+    defer quantized.deinit();
+    try terminal_image.writeSixelIndexedPayload(allocator, writer, quantized.indices, quantized.palette[0..quantized.palette_len], value.width(), value.height());
+}
 
 const CountingWriter = struct {
     bytes: usize = 0,
@@ -77,9 +87,11 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
     for (scenarios) |scenario| {
         const count_name = try std.fmt.allocPrint(allocator, "{s} count-only", .{scenario.name});
+        const quantize_name = "Sixel 160x240 original baseline quantize-only";
         const run_materialized = bench_utils.matchesBenchFilter(scenario.name, bench_filter);
         const run_counted = bench_utils.matchesBenchFilter(count_name, bench_filter);
-        if (!run_materialized and !run_counted) continue;
+        const run_quantized = scenario.pattern == .baseline and scenario.colors == 255 and bench_utils.matchesBenchFilter(quantize_name, bench_filter);
+        if (!run_materialized and !run_counted and !run_quantized) continue;
         var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
         defer _ = gpa.deinit();
         const work_allocator = gpa.allocator();
@@ -91,14 +103,14 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         var output: std.ArrayList(u8) = .empty;
         defer output.deinit(work_allocator);
 
-        try terminal_image.writeSixelPayload(work_allocator, output.writer(work_allocator), value);
+        try writeScenario(work_allocator, output.writer(work_allocator), value, scenario.colors);
         const iterations: usize = if (scenario.width > 160) 20 else 50;
         if (run_materialized) {
             var stats: bench_utils.BenchStats = .{};
             for (0..iterations) |_| {
                 output.clearRetainingCapacity();
                 var timer = try std.time.Timer.start();
-                try terminal_image.writeSixelPayload(work_allocator, output.writer(work_allocator), value);
+                try writeScenario(work_allocator, output.writer(work_allocator), value, scenario.colors);
                 stats.record(timer.read());
             }
             const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
@@ -122,7 +134,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             for (0..iterations) |_| {
                 var counting: CountingWriter = .{};
                 var timer = try std.time.Timer.start();
-                try terminal_image.writeSixelPayload(work_allocator, &counting, value);
+                try writeScenario(work_allocator, &counting, value, scenario.colors);
                 count_stats.record(timer.read());
                 if (counting.bytes != output.items.len) return error.IncorrectSixelByteCount;
             }
@@ -133,6 +145,27 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
                 .max_ns = count_stats.max_ns,
                 .total_ns = count_stats.total_ns,
                 .iterations = count_stats.count,
+                .mem_stats = null,
+            });
+        }
+        if (run_quantized) {
+            var quantize_stats: bench_utils.BenchStats = .{};
+            var checksum: usize = 0;
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                var quantized = try terminal_image.quantizeSixel(work_allocator, value, scenario.colors);
+                quantize_stats.record(timer.read());
+                checksum +%= quantized.palette_len + quantized.indices[0];
+                quantized.deinit();
+            }
+            if (checksum == 0) return error.InvalidQuantizeBenchmark;
+            try results.append(allocator, .{
+                .name = quantize_name,
+                .min_ns = quantize_stats.min_ns,
+                .avg_ns = quantize_stats.avg(),
+                .max_ns = quantize_stats.max_ns,
+                .total_ns = quantize_stats.total_ns,
+                .iterations = quantize_stats.count,
                 .mem_stats = null,
             });
         }
