@@ -419,6 +419,9 @@ pub fn build(b: *std.Build) void {
         .name = "opentui-bench",
         .root_module = bench_mod,
     });
+    bench_exe.linkLibC();
+    addImageShim(b, bench_exe, native_target, macos_sdk_path);
+    if (native_target.result.os.tag == .macos) addMacOSSDKSearchPaths(b, bench_exe, macos_sdk_path.?);
     const run_bench = b.addRunArtifact(bench_exe);
     if (b.args) |args| {
         run_bench.addArgs(args);
