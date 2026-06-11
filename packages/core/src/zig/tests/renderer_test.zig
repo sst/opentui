@@ -7,6 +7,8 @@ const gp = @import("../grapheme.zig");
 const ss = @import("../syntax-style.zig");
 const link = @import("../link.zig");
 const ansi = @import("../ansi.zig");
+const image = @import("../image.zig");
+const handles = @import("../handles.zig");
 const test_renderer_mod = @import("test-renderer.zig");
 
 const CliRenderer = renderer.CliRenderer;
@@ -51,6 +53,71 @@ const SlowThreadSafeOutput = struct {
         std.Thread.sleep(self.delay_ns);
     }
 };
+test "renderer emits Kitty image once and leaves unchanged frame empty" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+    test_renderer.renderer.terminal.multiplexer = .none;
+
+    try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t,f=32,s=1,v=1,i=") != null);
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "c=1,r=1,x=0,y=0,w=1,h=1,C=1,z=-1499999999") != null);
+
+    try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+}
+
+test "renderer emits Sixel only with known pixel dimensions" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.sixel = true;
+    test_renderer.renderer.terminal.multiplexer = .none;
+
+    try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+}
+
+test "buffered backend grows and commits a complete large frame" {
+    var memory = TestMemoryOutput.init(std.testing.allocator);
+    defer memory.deinit();
+    var backend = try renderer.BufferedBackend.create(std.testing.allocator, memory.bufferedOutput());
+    defer backend.deinit();
+    backend.beginFrame();
+    var writer = backend.writer();
+    const oversized = try std.testing.allocator.alloc(u8, renderer.OUTPUT_BUFFER_SIZE + 1);
+    defer std.testing.allocator.free(oversized);
+    @memset(oversized, 42);
+    try writer.writeAll(oversized);
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
+    try std.testing.expectEqual(oversized.len, memory.bytes.items.len);
+    try std.testing.expectEqualSlices(u8, oversized, memory.bytes.items);
+}
 
 fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
     const pool = gp.initGlobalPool(allocator);
@@ -1498,6 +1565,36 @@ test "renderer - commitSplitFooterSnapshot writes append before footer repaint i
     }
 
     try std.testing.expectEqual(@as(usize, 1), sync_count);
+}
+
+test "renderer - split scrollback omits image graphics and fallback markers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 3, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    const snapshot = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = pool, .link_pool = &local_link_pool });
+    defer snapshot.deinit();
+    try std.testing.expect(try snapshot.drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1));
+    _ = test_renderer.renderer.resetSplitScrollback(2, 2);
+    _ = test_renderer.renderer.commitSplitFooterSnapshotBatched(snapshot, 2, false, true, 2, false, true, true);
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_G") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1bP0;1;0q") == null);
+    for (buffer.quadrantChars) |char| {
+        if (char == ' ') continue;
+        var encoded: [4]u8 = undefined;
+        const len = try std.unicode.utf8Encode(@intCast(char), &encoded);
+        try std.testing.expect(std.mem.indexOf(u8, output, encoded[0..len]) == null);
+    }
 }
 
 test "renderer - commitSplitFooterSnapshot settling phase moves footer downward" {

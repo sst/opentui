@@ -147,6 +147,19 @@ export const NativeImageInfoStruct = defineStruct([
   ["hasAlpha", "u32"],
 ])
 
+export const ImageDrawOptionsStruct = defineStruct([
+  ["x", "i32"],
+  ["y", "i32"],
+  ["width", "u32"],
+  ["height", "u32"],
+  ["pixelWidth", "u32"],
+  ["pixelHeight", "u32"],
+  ["sourceX", "u32"],
+  ["sourceY", "u32"],
+  ["sourceWidth", "u32"],
+  ["sourceHeight", "u32"],
+])
+
 export const LineInfoStruct = defineStruct([
   ["startCols", ["u32"]],
   ["startColsLen", "u32", { lengthOf: "startCols" }],

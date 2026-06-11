@@ -1270,6 +1270,42 @@ export fn bufferDrawSuperSampleBuffer(buffer_handle: NativeHandle, x: u32, y: u3
     object_ptr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow);
 }
 
+pub const ExternalImageDrawOptions = extern struct {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    pixel_width: u32,
+    pixel_height: u32,
+    source_x: u32,
+    source_y: u32,
+    source_width: u32,
+    source_height: u32,
+};
+
+export fn bufferDrawImage(
+    buffer_handle: NativeHandle,
+    image_handle: NativeHandle,
+    options: *const ExternalImageDrawOptions,
+) bool {
+    const buffer_ptr = acquireBuffer(buffer_handle) orelse return false;
+    const image_ptr = acquireImage(image_handle) orelse return false;
+    return buffer_ptr.drawImage(
+        image_ptr,
+        image_handle,
+        options.x,
+        options.y,
+        options.width,
+        options.height,
+        options.pixel_width,
+        options.pixel_height,
+        options.source_x,
+        options.source_y,
+        options.source_width,
+        options.source_height,
+    ) catch false;
+}
+
 export fn linkAlloc(urlPtr: ?[*]const u8, urlLen: u32) u32 {
     const url = sliceFromPtrLen(urlPtr, urlLen);
     const link_pool = link.initGlobalLinkPool(globalArena);
