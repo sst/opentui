@@ -185,6 +185,8 @@ fn appendImageSwitchBenchmarks(
         "Image switch cover warm payload",
         "Image switch fit draw placement",
         "Image switch cover draw placement",
+        "Image switch cover Sixel encode 128 colors",
+        "Image switch cover Sixel encode 64 colors",
     };
     var run_any = false;
     for (names) |name| run_any = run_any or bench_utils.matchesBenchFilter(name, bench_filter);
@@ -278,6 +280,29 @@ fn appendImageSwitchBenchmarks(
             output.clearRetainingCapacity();
             var timer = try std.time.Timer.start();
             try terminal_image.writeSixelPayload(work_allocator, output.writer(work_allocator), scenario.source);
+            stats.record(timer.read());
+        }
+        const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+            const values = try allocator.alloc(bench_utils.MemStat, 1);
+            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            break :blk values;
+        } else null;
+        try appendResult(allocator, results, scenario.name, stats, mem_stats);
+    }
+
+    for ([_]struct { name: []const u8, colors: usize }{
+        .{ .name = names[14], .colors = 128 },
+        .{ .name = names[15], .colors = 64 },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(work_allocator);
+        try writeScenario(work_allocator, output.writer(work_allocator), cover_resized, scenario.colors);
+        var stats: bench_utils.BenchStats = .{};
+        for (0..iterations) |_| {
+            output.clearRetainingCapacity();
+            var timer = try std.time.Timer.start();
+            try writeScenario(work_allocator, output.writer(work_allocator), cover_resized, scenario.colors);
             stats.record(timer.read());
         }
         const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
