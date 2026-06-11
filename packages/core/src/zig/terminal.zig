@@ -149,6 +149,9 @@ multiplexer: Multiplexer = .none,
 osc52_support: Osc52Support = .unknown,
 is_foot: bool = false,
 skip_graphics_query: bool = false,
+graphics_disabled: bool = false,
+kitty_graphics_queried: bool = false,
+sixel_queried: bool = false,
 skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
 sixel_query_pending: bool = false,
@@ -650,6 +653,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
     self.is_foot = self.term_info.from_xtversion and std.ascii.indexOfIgnoreCase(self.getTerminalName(), "foot") != null;
     self.skip_graphics_query = false;
+    self.graphics_disabled = false;
     self.skip_explicit_width_query = false;
 
     // Always just try to enable bracketed paste, even if it was reported as not supported
@@ -745,6 +749,11 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     if (env_map.get("OPENTUI_GRAPHICS")) |val| {
         if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) {
             self.skip_graphics_query = true;
+            self.graphics_disabled = true;
+            self.kitty_graphics_queried = false;
+            self.sixel_queried = false;
+            self.caps.kitty_graphics = false;
+            self.caps.sixel = false;
         } else if (std.mem.eql(u8, val, "true") or std.mem.eql(u8, val, "1")) {
             self.skip_graphics_query = false;
         }
@@ -1072,6 +1081,7 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
 ///
 /// Parsing these is not complete yet
 fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
+    if (self.graphics_disabled) return;
     var offset: usize = 0;
     while (std.mem.indexOfPos(u8, response, offset, "\x1b_G")) |start| {
         const end = std.mem.indexOfPos(u8, response, start + 3, "\x1b\\") orelse return;
@@ -1080,6 +1090,7 @@ fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
         var fields = std.mem.splitScalar(u8, frame[0..control_end], ',');
         while (fields.next()) |field| {
             if (std.mem.eql(u8, field, "i=31337")) {
+                self.kitty_graphics_queried = true;
                 self.caps.kitty_graphics = true;
                 return;
             }
@@ -1089,6 +1100,7 @@ fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
 }
 
 fn parseSixelDeviceAttributes(self: *Terminal, response: []const u8) void {
+    if (self.graphics_disabled) return;
     var offset: usize = 0;
     while (std.mem.indexOfPos(u8, response, offset, "\x1b[?")) |start| {
         var end = start + 3;
@@ -1101,11 +1113,83 @@ fn parseSixelDeviceAttributes(self: *Terminal, response: []const u8) void {
         var params = std.mem.splitScalar(u8, response[start + 3 .. end], ';');
         while (params.next()) |param| {
             if (std.mem.eql(u8, param, "4")) {
+                self.sixel_queried = true;
                 self.caps.sixel = true;
                 return;
             }
         }
         offset = end + 1;
+    }
+}
+
+fn semanticVersionAtLeast(version: []const u8, required_major: u32, required_minor: u32) bool {
+    const suffix_start = std.mem.indexOfScalar(u8, version, '-');
+    const core = if (suffix_start) |index| version[0..index] else version;
+    var parts = std.mem.splitScalar(u8, core, '.');
+    const major_text = parts.next() orelse return false;
+    const minor_text = parts.next() orelse return false;
+    const patch_text = parts.next() orelse return false;
+    if (parts.next() != null) return false;
+    const major = std.fmt.parseInt(u32, major_text, 10) catch return false;
+    const minor = std.fmt.parseInt(u32, minor_text, 10) catch return false;
+    const patch = std.fmt.parseInt(u32, patch_text, 10) catch return false;
+    if (major > required_major or (major == required_major and minor > required_minor)) return true;
+    if (major != required_major or minor != required_minor) return false;
+    if (patch > 0) return true;
+    const suffix = if (suffix_start) |index| version[index + 1 ..] else return true;
+    var suffix_parts = std.mem.splitScalar(u8, suffix, '-');
+    const commits = suffix_parts.next() orelse return false;
+    const revision = suffix_parts.next() orelse return false;
+    if (suffix_parts.next() != null or commits.len == 0 or revision.len < 2 or revision[0] != 'g') return false;
+    _ = std.fmt.parseInt(u32, commits, 10) catch return false;
+    for (revision[1..]) |char| if (!std.ascii.isHex(char)) return false;
+    return true;
+}
+
+fn wezTermBuildAtLeast(version: []const u8, required_date: u32) bool {
+    var parts = std.mem.splitAny(u8, version, "-._");
+    const date_text = parts.next() orelse return false;
+    const time_text = parts.next() orelse return false;
+    const hash_text = parts.next() orelse return false;
+    if (date_text.len != 8 or time_text.len != 6 or hash_text.len != 8) return false;
+    while (parts.next()) |supplement| if (supplement.len == 0) return false;
+    for (date_text) |char| if (!std.ascii.isDigit(char)) return false;
+    for (time_text) |char| if (!std.ascii.isDigit(char)) return false;
+    for (hash_text) |char| if (!std.ascii.isHex(char)) return false;
+    const year = std.fmt.parseInt(u16, date_text[0..4], 10) catch return false;
+    const month = std.fmt.parseInt(u8, date_text[4..6], 10) catch return false;
+    const day = std.fmt.parseInt(u8, date_text[6..8], 10) catch return false;
+    if (month < 1 or month > 12) return false;
+    const leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0);
+    const days = [_]u8{ 31, if (leap) 29 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    if (day < 1 or day > days[month - 1]) return false;
+    const hour = std.fmt.parseInt(u8, time_text[0..2], 10) catch return false;
+    const minute = std.fmt.parseInt(u8, time_text[2..4], 10) catch return false;
+    const second = std.fmt.parseInt(u8, time_text[4..6], 10) catch return false;
+    if (hour > 23 or minute > 59 or second > 59) return false;
+    const date = std.fmt.parseInt(u32, date_text, 10) catch return false;
+    return date >= required_date;
+}
+
+fn applyKnownGraphicsIdentity(self: *Terminal) void {
+    if (self.graphics_disabled or self.multiplexer != .none or !self.term_info.from_xtversion) return;
+    const name = self.getTerminalName();
+    const version = self.getTerminalVersion();
+
+    if (std.ascii.eqlIgnoreCase(name, "kitty")) {
+        self.caps.kitty_graphics = true;
+        return;
+    }
+    if (std.ascii.eqlIgnoreCase(name, "ghostty")) {
+        self.caps.kitty_graphics = true;
+        return;
+    }
+    if (std.ascii.eqlIgnoreCase(name, "foot") and semanticVersionAtLeast(version, 1, 2)) {
+        self.caps.sixel = true;
+        return;
+    }
+    if (std.ascii.eqlIgnoreCase(name, "wezterm") and wezTermBuildAtLeast(version, 20200620)) {
+        self.caps.sixel = true;
     }
 }
 
@@ -1197,8 +1281,9 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         }
     }
 
-    // Kitty detection
-    if (std.mem.indexOf(u8, response, "kitty")) |_| {
+    // Exact Kitty identity features. Graphics identity is applied after a
+    // complete XTVERSION response determines the direct endpoint.
+    if (self.term_info.from_xtversion and std.ascii.eqlIgnoreCase(self.getTerminalName(), "kitty")) {
         self.caps.kitty_keyboard = true;
         self.caps.unicode = .unicode;
         self.caps.rgb = true;
@@ -1600,6 +1685,11 @@ fn canWriteClipboard(self: *Terminal) bool {
 fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     if (term_str.len == 0) return;
 
+    self.term_info.name_len = 0;
+    self.term_info.version_len = 0;
+    self.caps.kitty_graphics = self.kitty_graphics_queried;
+    self.caps.sixel = self.sixel_queried;
+
     if (std.mem.indexOf(u8, term_str, "(")) |paren_pos| {
         const name_len = @min(paren_pos, self.term_info.name.len);
         @memcpy(self.term_info.name[0..name_len], term_str[0..name_len]);
@@ -1647,6 +1737,7 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     }
 
     self.enforceNotificationProtocolForMultiplexer();
+    self.applyKnownGraphicsIdentity();
 }
 
 pub fn isXtversionTmux(self: *Terminal) bool {
