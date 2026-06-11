@@ -8,3 +8,8 @@ Upstream source SHA-256 before the local alignment fix:
 The scalar coefficient-copy macros use `memcpy` locally. The upstream casts can
 perform unaligned `uint64_t` loads when coefficient rows are only 4-byte aligned,
 which is undefined behavior and traps under Zig's safety checks on Apple Silicon.
+
+`stb_image.h` is pinned to commit
+`f0569113c93ad095470c54bf34a17b36646bbbb5`, version 2.30, and compiled with
+only its JPEG decoder enabled. SHA-256:
+`594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3`.
