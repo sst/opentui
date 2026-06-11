@@ -61,6 +61,11 @@ const SixelError = struct { r: i32 = 0, g: i32 = 0, b: i32 = 0 };
 const SIXEL_HISTOGRAM_SIDE = 33;
 const SIXEL_HISTOGRAM_LEN = SIXEL_HISTOGRAM_SIDE * SIXEL_HISTOGRAM_SIDE * SIXEL_HISTOGRAM_SIDE;
 
+// Wu quantization uses a fixed 5-bit RGB moment cube for deterministic, bounded palette generation:
+// https://doi.org/10.1016/B978-0-08-050754-5.50035-9
+// Remapping uses serpentine Floyd-Steinberg diffusion for better gradients with only two error rows:
+// https://steveomohundro.com/wp-content/uploads/2009/03/omohundro90_floyd_steinberg_dithering.pdf
+
 const QuantizedSixel = struct {
     allocator: std.mem.Allocator,
     palette: [256]SixelColor,

@@ -149,6 +149,9 @@ const SixelCacheEntry = struct {
 const SIXEL_CACHE_MAX_BYTES = 32 * 1024 * 1024;
 const SIXEL_CACHE_MAX_ENTRIES = 256;
 
+// Cache the transformed, encoded payload: crop, size, opacity, and source identity determine its bytes;
+// terminal position and DCS/tmux framing do not. Byte and entry limits bound payload and metadata retention.
+
 pub const CliRenderer = struct {
     width: u32,
     height: u32,
