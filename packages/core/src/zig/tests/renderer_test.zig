@@ -201,6 +201,46 @@ test "renderer repaints a final blocks placement over Sixel" {
     try std.testing.expect(block > sixel);
 }
 
+test "renderer does not retransmit Sixel when overlay text changes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 2, 1, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    _ = test_renderer.renderer.render(true);
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try next.drawText("1", 1, 0, fg, bg, 0);
+    _ = test_renderer.renderer.render(false);
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.indexOfScalar(u8, test_renderer.memory.lastWrite(), '1') != null);
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try next.drawText("2", 1, 0, fg, bg, 0);
+    _ = test_renderer.renderer.render(false);
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.indexOfScalar(u8, test_renderer.memory.lastWrite(), '2') != null);
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    _ = test_renderer.renderer.render(false);
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+}
+
 test "buffered backend grows and commits a complete large frame" {
     var memory = TestMemoryOutput.init(std.testing.allocator);
     defer memory.deinit();

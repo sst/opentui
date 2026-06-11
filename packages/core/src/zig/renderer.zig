@@ -1468,7 +1468,11 @@ pub const CliRenderer = struct {
                     if (x < 0 or x >= self.width) continue;
                     const current = self.currentRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
                     const next = self.nextRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
-                    if (current.char != next.char or current.attributes != next.attributes or !buf.rgbaEqual(current.fg, next.fg) or !buf.rgbaEqual(current.bg, next.bg)) return true;
+                    if (current.char != next.char or current.attributes != next.attributes or !buf.rgbaEqual(current.fg, next.fg) or !buf.rgbaEqual(current.bg, next.bg)) {
+                        // Existing overlay cells are repainted by normal cell diffing. The Sixel
+                        // image only needs retransmission when an overlay disappears and exposes it.
+                        if (!gp.isImageChar(current.char) and gp.isImageChar(next.char) and self.protocolForImageChar(next.char) == .sixel) return true;
+                    }
                 }
             }
         }
