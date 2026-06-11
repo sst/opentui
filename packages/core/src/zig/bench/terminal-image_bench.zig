@@ -1,5 +1,8 @@
 const std = @import("std");
 const bench_utils = @import("../bench-utils.zig");
+const ansi = @import("../ansi.zig");
+const buffer = @import("../buffer.zig");
+const gp = @import("../grapheme.zig");
 const image = @import("../image.zig");
 const terminal_image = @import("../terminal-image.zig");
 
@@ -143,6 +146,241 @@ fn appendDragonGeometryBenchmarks(
     }
 }
 
+fn appendResult(
+    allocator: std.mem.Allocator,
+    results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
+    name: []const u8,
+    stats: bench_utils.BenchStats,
+    mem_stats: ?[]const bench_utils.MemStat,
+) !void {
+    try results.append(allocator, .{
+        .name = name,
+        .min_ns = stats.min_ns,
+        .avg_ns = stats.avg(),
+        .max_ns = stats.max_ns,
+        .total_ns = stats.total_ns,
+        .iterations = stats.count,
+        .mem_stats = mem_stats,
+    });
+}
+
+fn appendImageSwitchBenchmarks(
+    allocator: std.mem.Allocator,
+    results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
+    show_mem: bool,
+    bench_filter: ?[]const u8,
+) !void {
+    const names = [_][]const u8{
+        "Image switch fit extract full",
+        "Image switch cover extract crop",
+        "Image switch fit area resize",
+        "Image switch cover area resize",
+        "Image switch fit extract+resize",
+        "Image switch cover extract+resize",
+        "Image switch fit Sixel encode",
+        "Image switch cover Sixel encode",
+        "Image switch fit cold pipeline",
+        "Image switch cover cold pipeline",
+        "Image switch fit warm payload",
+        "Image switch cover warm payload",
+        "Image switch fit draw placement",
+        "Image switch cover draw placement",
+    };
+    var run_any = false;
+    for (names) |name| run_any = run_any or bench_utils.matchesBenchFilter(name, bench_filter);
+    if (!run_any) return;
+
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    defer _ = gpa.deinit();
+    const work_allocator = gpa.allocator();
+    const encoded = try std.fs.cwd().readFileAlloc(work_allocator, "../../../examples/src/assets/image-demo.gif", 2 * 1024 * 1024);
+    defer work_allocator.free(encoded);
+    const decoded = try image.decode(work_allocator, encoded, .{});
+    defer decoded.deinit();
+
+    const Geometry = struct { x: u32, y: u32, width: u32, height: u32, output_width: u32, output_height: u32 };
+    const fit = Geometry{ .x = 0, .y = 0, .width = 256, .height = 384, .output_width = 576, .output_height = 875 };
+    const cover = Geometry{ .x = 19, .y = 0, .width = 218, .height = 384, .output_width = 576, .output_height = 1015 };
+    const iterations: usize = 20;
+
+    const fit_crop = try image.extract(work_allocator, decoded, fit.x, fit.y, fit.width, fit.height);
+    defer fit_crop.deinit();
+    const cover_crop = try image.extract(work_allocator, decoded, cover.x, cover.y, cover.width, cover.height);
+    defer cover_crop.deinit();
+    const fit_resized = try image.resize(work_allocator, fit_crop, fit.output_width, fit.output_height, .area);
+    defer fit_resized.deinit();
+    const cover_resized = try image.resize(work_allocator, cover_crop, cover.output_width, cover.output_height, .area);
+    defer cover_resized.deinit();
+    var fit_payload: std.ArrayList(u8) = .empty;
+    defer fit_payload.deinit(work_allocator);
+    try terminal_image.writeSixelPayload(work_allocator, fit_payload.writer(work_allocator), fit_resized);
+    var cover_payload: std.ArrayList(u8) = .empty;
+    defer cover_payload.deinit(work_allocator);
+    try terminal_image.writeSixelPayload(work_allocator, cover_payload.writer(work_allocator), cover_resized);
+
+    for ([_]struct { name: []const u8, geometry: Geometry }{
+        .{ .name = names[0], .geometry = fit },
+        .{ .name = names[1], .geometry = cover },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var stats: bench_utils.BenchStats = .{};
+        for (0..iterations) |_| {
+            var timer = try std.time.Timer.start();
+            const extracted = try image.extract(work_allocator, decoded, scenario.geometry.x, scenario.geometry.y, scenario.geometry.width, scenario.geometry.height);
+            stats.record(timer.read());
+            extracted.deinit();
+        }
+        try appendResult(allocator, results, scenario.name, stats, null);
+    }
+
+    for ([_]struct { name: []const u8, source: *const image.Image, geometry: Geometry }{
+        .{ .name = names[2], .source = fit_crop, .geometry = fit },
+        .{ .name = names[3], .source = cover_crop, .geometry = cover },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var stats: bench_utils.BenchStats = .{};
+        for (0..iterations) |_| {
+            var timer = try std.time.Timer.start();
+            const resized = try image.resize(work_allocator, scenario.source, scenario.geometry.output_width, scenario.geometry.output_height, .area);
+            stats.record(timer.read());
+            resized.deinit();
+        }
+        try appendResult(allocator, results, scenario.name, stats, null);
+    }
+
+    for ([_]struct { name: []const u8, geometry: Geometry }{
+        .{ .name = names[4], .geometry = fit },
+        .{ .name = names[5], .geometry = cover },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var stats: bench_utils.BenchStats = .{};
+        for (0..iterations) |_| {
+            var timer = try std.time.Timer.start();
+            const extracted = try image.extract(work_allocator, decoded, scenario.geometry.x, scenario.geometry.y, scenario.geometry.width, scenario.geometry.height);
+            const resized = try image.resize(work_allocator, extracted, scenario.geometry.output_width, scenario.geometry.output_height, .area);
+            stats.record(timer.read());
+            resized.deinit();
+            extracted.deinit();
+        }
+        try appendResult(allocator, results, scenario.name, stats, null);
+    }
+
+    for ([_]struct { name: []const u8, source: *const image.Image, payload_bytes: usize }{
+        .{ .name = names[6], .source = fit_resized, .payload_bytes = fit_payload.items.len },
+        .{ .name = names[7], .source = cover_resized, .payload_bytes = cover_payload.items.len },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(work_allocator);
+        try output.ensureTotalCapacity(work_allocator, scenario.payload_bytes);
+        var stats: bench_utils.BenchStats = .{};
+        for (0..iterations) |_| {
+            output.clearRetainingCapacity();
+            var timer = try std.time.Timer.start();
+            try terminal_image.writeSixelPayload(work_allocator, output.writer(work_allocator), scenario.source);
+            stats.record(timer.read());
+        }
+        const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+            const values = try allocator.alloc(bench_utils.MemStat, 1);
+            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            break :blk values;
+        } else null;
+        try appendResult(allocator, results, scenario.name, stats, mem_stats);
+    }
+
+    for ([_]struct { name: []const u8, geometry: Geometry, payload_bytes: usize }{
+        .{ .name = names[8], .geometry = fit, .payload_bytes = fit_payload.items.len },
+        .{ .name = names[9], .geometry = cover, .payload_bytes = cover_payload.items.len },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(work_allocator);
+        try output.ensureTotalCapacity(work_allocator, scenario.payload_bytes);
+        var stats: bench_utils.BenchStats = .{};
+        for (0..iterations) |_| {
+            output.clearRetainingCapacity();
+            var timer = try std.time.Timer.start();
+            const extracted = try image.extract(work_allocator, decoded, scenario.geometry.x, scenario.geometry.y, scenario.geometry.width, scenario.geometry.height);
+            const resized = try image.resize(work_allocator, extracted, scenario.geometry.output_width, scenario.geometry.output_height, .area);
+            try terminal_image.writeSixelPayload(work_allocator, output.writer(work_allocator), resized);
+            stats.record(timer.read());
+            resized.deinit();
+            extracted.deinit();
+        }
+        const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+            const values = try allocator.alloc(bench_utils.MemStat, 1);
+            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            break :blk values;
+        } else null;
+        try appendResult(allocator, results, scenario.name, stats, mem_stats);
+    }
+
+    for ([_]struct { name: []const u8, payload: []const u8 }{
+        .{ .name = names[10], .payload = fit_payload.items },
+        .{ .name = names[11], .payload = cover_payload.items },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var stats: bench_utils.BenchStats = .{};
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(work_allocator);
+        try output.ensureTotalCapacity(work_allocator, scenario.payload.len + 32);
+        var checksum: usize = 0;
+        for (0..100) |_| {
+            output.clearRetainingCapacity();
+            var timer = try std.time.Timer.start();
+            try terminal_image.writeSixelFramedPayload(output.writer(work_allocator), scenario.payload, false);
+            stats.record(timer.read());
+            checksum +%= output.items.len + output.items[output.items.len / 2];
+        }
+        if (checksum == 0) return error.InvalidWarmPayloadBenchmark;
+        const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+            const values = try allocator.alloc(bench_utils.MemStat, 1);
+            values[0] = .{ .name = "Payload", .bytes = scenario.payload.len };
+            break :blk values;
+        } else null;
+        try appendResult(allocator, results, scenario.name, stats, mem_stats);
+    }
+
+    const draw_buffer = try buffer.OptimizedBuffer.init(work_allocator, 40, 32, .{
+        .pool = gp.initGlobalPool(work_allocator),
+        .id = "image-switch-bench",
+    });
+    defer draw_buffer.deinit();
+    for ([_]struct {
+        name: []const u8,
+        cell_width: u32,
+        cell_height: u32,
+        geometry: Geometry,
+    }{
+        .{ .name = names[12], .cell_width = 36, .cell_height = 25, .geometry = fit },
+        .{ .name = names[13], .cell_width = 36, .cell_height = 29, .geometry = cover },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var stats: bench_utils.BenchStats = .{};
+        for (0..100) |_| {
+            draw_buffer.clear(ansi.rgbColor(0, 0, 0, 0), null);
+            var timer = try std.time.Timer.start();
+            if (!try draw_buffer.drawImage(
+                decoded,
+                1,
+                0,
+                0,
+                scenario.cell_width,
+                scenario.cell_height,
+                scenario.geometry.output_width,
+                scenario.geometry.output_height,
+                scenario.geometry.x,
+                scenario.geometry.y,
+                scenario.geometry.width,
+                scenario.geometry.height,
+                .sixel,
+            )) return error.ImagePlacementFailed;
+            stats.record(timer.read());
+        }
+        try appendResult(allocator, results, scenario.name, stats, null);
+    }
+}
+
 pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
     var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
     for (scenarios) |scenario| {
@@ -231,5 +469,6 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         }
     }
     try appendDragonGeometryBenchmarks(allocator, &results, show_mem, bench_filter);
+    try appendImageSwitchBenchmarks(allocator, &results, show_mem, bench_filter);
     return results.toOwnedSlice(allocator);
 }
