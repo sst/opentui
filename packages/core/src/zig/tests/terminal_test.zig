@@ -62,11 +62,196 @@ test "parseXtversion - full kitty response" {
     try testing.expect(term.caps.osc52);
 }
 
-test "graphics detection - terminal name alone does not enable graphics" {
+test "graphics identity - exact direct Kitty enables Kitty graphics only" {
+    var kitty = Terminal.init(.{});
+    kitty.processCapabilityResponse("\x1bP>|kitty(0.46.2)\x1b\\");
+    try testing.expect(kitty.caps.kitty_graphics);
+    try testing.expect(!kitty.caps.sixel);
+
+    var substring = Terminal.init(.{});
+    substring.processCapabilityResponse("\x1bP>|notkitty(1.0)\x1b\\");
+    try testing.expect(!substring.caps.kitty_graphics);
+    try testing.expect(!substring.caps.sixel);
+
+    var uppercase = Terminal.init(.{});
+    uppercase.processCapabilityResponse("\x1bP>|KITTY(0.47.2)\x1b\\");
+    try testing.expect(uppercase.caps.kitty_graphics);
+}
+
+test "graphics identity - exact direct Ghostty enables Kitty graphics only" {
     var term = Terminal.init(.{});
-    term.processCapabilityResponse("\x1bP>|kitty(0.46.2)\x1b\\");
+    term.processCapabilityResponse("\x1bP>|ghostty 1.3.1\x1b\\");
+    try testing.expect(term.caps.kitty_graphics);
+    try testing.expect(!term.caps.sixel);
+
+    var substring = Terminal.init(.{});
+    substring.processCapabilityResponse("\x1bP>|ghostty-wrapper 1.3.1\x1b\\");
+    try testing.expect(!substring.caps.kitty_graphics);
+}
+
+test "graphics identity - foot enables Sixel from version 1.2" {
+    var supported = Terminal.init(.{});
+    supported.processCapabilityResponse("\x1bP>|foot(1.2.0)\x1b\\");
+    try testing.expect(!supported.caps.kitty_graphics);
+    try testing.expect(supported.caps.sixel);
+
+    var old = Terminal.init(.{});
+    old.processCapabilityResponse("\x1bP>|foot(1.1.0)\x1b\\");
+    try testing.expect(!old.caps.sixel);
+
+    var unknown_version = Terminal.init(.{});
+    unknown_version.processCapabilityResponse("\x1bP>|foot\x1b\\");
+    try testing.expect(!unknown_version.caps.sixel);
+
+    var later_minor = Terminal.init(.{});
+    later_minor.processCapabilityResponse("\x1bP>|foot(1.10.0)\x1b\\");
+    try testing.expect(later_minor.caps.sixel);
+
+    var patch_release = Terminal.init(.{});
+    patch_release.processCapabilityResponse("\x1bP>|foot(1.2.3)\x1b\\");
+    try testing.expect(patch_release.caps.sixel);
+
+    var malformed = Terminal.init(.{});
+    malformed.processCapabilityResponse("\x1bP>|foot(next)\x1b\\");
+    try testing.expect(!malformed.caps.sixel);
+
+    var incomplete = Terminal.init(.{});
+    incomplete.processCapabilityResponse("\x1bP>|foot(1.2)\x1b\\");
+    try testing.expect(!incomplete.caps.sixel);
+
+    var malformed_patch = Terminal.init(.{});
+    malformed_patch.processCapabilityResponse("\x1bP>|foot(1.2.invalid)\x1b\\");
+    try testing.expect(!malformed_patch.caps.sixel);
+
+    var prerelease = Terminal.init(.{});
+    prerelease.processCapabilityResponse("\x1bP>|foot(1.2.0-rc1)\x1b\\");
+    try testing.expect(!prerelease.caps.sixel);
+
+    var git_build = Terminal.init(.{});
+    git_build.processCapabilityResponse("\x1bP>|foot(1.2.0-36-g7db8e06f)\x1b\\");
+    try testing.expect(git_build.caps.sixel);
+}
+
+test "graphics identity - WezTerm enables Sixel from documented build" {
+    var supported = Terminal.init(.{});
+    supported.processCapabilityResponse("\x1bP>|WezTerm 20200620-160318-e00b076c\x1b\\");
+    try testing.expect(supported.caps.sixel);
+    try testing.expect(!supported.caps.kitty_graphics);
+
+    var old = Terminal.init(.{});
+    old.processCapabilityResponse("\x1bP>|WezTerm 20200619-000000-old\x1b\\");
+    try testing.expect(!old.caps.sixel);
+
+    var malformed = Terminal.init(.{});
+    malformed.processCapabilityResponse("\x1bP>|WezTerm nightly\x1b\\");
+    try testing.expect(!malformed.caps.sixel);
+
+    var missing_separator = Terminal.init(.{});
+    missing_separator.processCapabilityResponse("\x1bP>|WezTerm 20200620invalid\x1b\\");
+    try testing.expect(!missing_separator.caps.sixel);
+
+    var invalid_date = Terminal.init(.{});
+    invalid_date.processCapabilityResponse("\x1bP>|WezTerm 20201340-160318-abcdef12\x1b\\");
+    try testing.expect(!invalid_date.caps.sixel);
+
+    var invalid_time = Terminal.init(.{});
+    invalid_time.processCapabilityResponse("\x1bP>|WezTerm 20200620-256199-abcdef12\x1b\\");
+    try testing.expect(!invalid_time.caps.sixel);
+
+    var invalid_hash = Terminal.init(.{});
+    invalid_hash.processCapabilityResponse("\x1bP>|WezTerm 20200620-160318-invalid!\x1b\\");
+    try testing.expect(!invalid_hash.caps.sixel);
+
+    var extra_field = Terminal.init(.{});
+    extra_field.processCapabilityResponse("\x1bP>|WezTerm 20200620-160318-abcdef12-extra\x1b\\");
+    try testing.expect(extra_field.caps.sixel);
+
+    var empty_extra = Terminal.init(.{});
+    empty_extra.processCapabilityResponse("\x1bP>|WezTerm 20200620-160318-abcdef12-\x1b\\");
+    try testing.expect(!empty_extra.caps.sixel);
+
+    var dot_decorated = Terminal.init(.{});
+    dot_decorated.processCapabilityResponse("\x1bP>|WezTerm 20200620.160318.abcdef12.package\x1b\\");
+    try testing.expect(dot_decorated.caps.sixel);
+
+    var underscore_decorated = Terminal.init(.{});
+    underscore_decorated.processCapabilityResponse("\x1bP>|WezTerm 20200620_160318_abcdef12_package\x1b\\");
+    try testing.expect(underscore_decorated.caps.sixel);
+}
+
+test "graphics identity - multiplexers do not imply outer graphics" {
+    var tmux = Terminal.init(.{});
+    tmux.processCapabilityResponse("\x1bP>|tmux 3.5a\x1b\\");
+    try testing.expect(!tmux.caps.kitty_graphics);
+    try testing.expect(!tmux.caps.sixel);
+
+    var zellij = Terminal.init(.{});
+    zellij.processCapabilityResponse("\x1bP>|Zellij 0.41.2\x1b\\");
+    try testing.expect(!zellij.caps.kitty_graphics);
+    try testing.expect(!zellij.caps.sixel);
+}
+
+test "graphics identity - query response upgrades an unknown terminal" {
+    var term = Terminal.init(.{});
+    term.processCapabilityResponse("\x1bP>|unknown 1.0\x1b\\");
+    try testing.expect(!term.caps.kitty_graphics);
+    term.processCapabilityResponse("\x1b_Gi=31337;OK\x1b\\");
+    try testing.expect(term.caps.kitty_graphics);
+
+    var old_foot = Terminal.init(.{});
+    old_foot.processCapabilityResponse("\x1bP>|foot(1.1.0)\x1b\\");
+    try testing.expect(!old_foot.caps.sixel);
+    old_foot.processCapabilityResponse("\x1b[?62;1;2;4;6c");
+    try testing.expect(old_foot.caps.sixel);
+
+    term.processCapabilityResponse("\x1bP>|another-unknown 2.0\x1b\\");
+    try testing.expect(term.caps.kitty_graphics);
+}
+
+test "graphics identity - a new identity replaces only identity-derived capabilities" {
+    var term = Terminal.init(.{});
+    term.processCapabilityResponse("\x1bP>|kitty(0.47.2)\x1b\\");
+    try testing.expect(term.caps.kitty_graphics);
+    term.processCapabilityResponse("\x1bP>|unknown 1.0\x1b\\");
+    try testing.expect(!term.caps.kitty_graphics);
+}
+
+test "graphics identity - malformed XTVERSION cannot reuse environment version" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM_PROGRAM", "foot");
+    try env.put("TERM_PROGRAM_VERSION", "1.20.2");
+    var term = Terminal.init(.{ .env_map = &env });
+    term.processCapabilityResponse("\x1bP>|foot(\x1b\\");
+    try testing.expectEqualStrings("", term.getTerminalVersion());
+    try testing.expect(!term.caps.sixel);
+}
+
+test "graphics identity - environment name alone is not authoritative" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM_PROGRAM", "kitty");
+    try env.put("TERM_PROGRAM_VERSION", "0.47.2");
+    const term = Terminal.init(.{ .env_map = &env });
+    try testing.expect(!term.term_info.from_xtversion);
     try testing.expect(!term.caps.kitty_graphics);
     try testing.expect(!term.caps.sixel);
+}
+
+test "graphics identity - explicit graphics disable blocks identity and queries" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_GRAPHICS", "0");
+
+    var kitty = Terminal.init(.{ .env_map = &env });
+    kitty.processCapabilityResponse("\x1bP>|kitty(0.47.2)\x1b\\");
+    kitty.processCapabilityResponse("\x1b_Gi=31337;OK\x1b\\");
+    try testing.expect(!kitty.caps.kitty_graphics);
+
+    var foot = Terminal.init(.{ .env_map = &env });
+    foot.processCapabilityResponse("\x1bP>|foot(1.20.2)\x1b\\");
+    foot.processCapabilityResponse("\x1b[?62;1;2;4;6c");
+    try testing.expect(!foot.caps.sixel);
 }
 
 test "graphics detection - kitty response matches exact id in the same APC" {

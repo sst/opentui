@@ -206,7 +206,7 @@ describe("renderer capabilities event", () => {
 
     // After xtversion (event 9): kitty_keyboard should be true
     expect(events[8].kitty_keyboard).toBe(true)
-    expect(events[8].kitty_graphics).toBe(false)
+    expect(events[8].kitty_graphics).toBe(true)
     expect(events[8].notifications).toBe(true)
     expect(events[8].terminal.name).toBe("kitty")
     expect(events[8].terminal.version).toBe("0.42.2")
