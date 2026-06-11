@@ -33,7 +33,7 @@ export class ImageLoadError extends Error {
 
 export interface ImageLoadOptions {
   signal?: AbortSignal
-  fetch?: typeof globalThis.fetch
+  fetch?: (input: URL, init?: RequestInit) => Promise<Response>
 }
 
 export interface ImageInfo {
@@ -238,12 +238,7 @@ export class NativeImage {
     options.signal?.throwIfAborted()
     if (source instanceof Uint8Array || source instanceof ArrayBuffer) return NativeImage.decode(source)
 
-    const url =
-      source instanceof URL
-        ? source
-        : source.startsWith("http:") || source.startsWith("https:") || source.startsWith("file:")
-          ? new URL(source)
-          : null
+    const url = source instanceof URL ? source : /^(?:https?|file):/i.test(source) ? new URL(source) : null
     if (!url || url.protocol === "file:") {
       const path = url ?? source
       let data: Uint8Array

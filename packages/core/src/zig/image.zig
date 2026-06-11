@@ -21,6 +21,7 @@ extern fn ot_image_gif_decode_first_frame(
     expected_height: u32,
 ) c_int;
 extern fn ot_image_jpeg_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32) c_int;
+extern fn ot_image_jpeg_header_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32) c_int;
 extern fn ot_image_jpeg_decode(
     data: [*]const u8,
     data_len: u32,
@@ -323,7 +324,7 @@ fn scanPng(data: []const u8) !PngMetadata {
     return result;
 }
 
-pub fn probe(data: []const u8, limits: Limits, out: *Info) Status {
+fn probeInternal(data: []const u8, limits: Limits, out: *Info, validate_jpeg: bool) Status {
     if (data.len == 0 or data.len > std.math.maxInt(u32)) return .invalid_argument;
     if (data.len > limits.max_encoded_bytes) return .memory_limit;
     const format = detectFormat(data);
@@ -331,10 +332,22 @@ pub fn probe(data: []const u8, limits: Limits, out: *Info) Status {
     if (format == .jpeg) {
         var width: u32 = 0;
         var height: u32 = 0;
-        const result = ot_image_jpeg_probe(data.ptr, @intCast(data.len), &width, &height);
+        const result = ot_image_jpeg_header_probe(data.ptr, @intCast(data.len), &width, &height);
         if (result == 2) return .out_of_memory;
         if (result != 0) return .malformed_input;
         _ = checkedPixelBytes(width, height, limits) catch |err| return statusFromError(err);
+        if (validate_jpeg) {
+            var validated_width: u32 = 0;
+            var validated_height: u32 = 0;
+            const validation_result = ot_image_jpeg_probe(
+                data.ptr,
+                @intCast(data.len),
+                &validated_width,
+                &validated_height,
+            );
+            if (validation_result == 2) return .out_of_memory;
+            if (validation_result != 0 or validated_width != width or validated_height != height) return .malformed_input;
+        }
         out.* = .{
             .width = width,
             .height = height,
@@ -413,6 +426,10 @@ pub fn probe(data: []const u8, limits: Limits, out: *Info) Status {
     return .ok;
 }
 
+pub fn probe(data: []const u8, limits: Limits, out: *Info) Status {
+    return probeInternal(data, limits, out, true);
+}
+
 fn allocateImage(allocator: Allocator, metadata: Info) !*Image {
     const len = try checkedPixelBytes(metadata.width, metadata.height, .{});
     const image = try allocator.create(Image);
@@ -460,7 +477,7 @@ pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, heig
 
 pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
     var image_info: Info = .{};
-    const probe_status = probe(data, limits, &image_info);
+    const probe_status = probeInternal(data, limits, &image_info, false);
     if (probe_status != .ok) return switch (probe_status) {
         .unsupported_format => error.UnsupportedFormat,
         .unsupported_feature => error.UnsupportedFeature,

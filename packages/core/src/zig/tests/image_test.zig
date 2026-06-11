@@ -55,9 +55,23 @@ test "GIF first frame uses logical canvas dimensions and frame offset" {
     defer decoded.deinit();
     try std.testing.expectEqual(@as(u32, 3), decoded.width());
     try std.testing.expectEqual(@as(u32, 3), decoded.height());
+    try std.testing.expectEqual(@as(u32, 0), decoded.info().has_alpha);
     const center = (1 * 3 + 1) * 4;
     try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels[center .. center + 4]);
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0 }, decoded.pixels[0..4]);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels[0..4]);
+}
+
+test "GIF first frame honors a nonzero logical background palette index" {
+    const encoded = "R0lGODlhAwADAPAAAP8AAAAAACH5BAAAAAAALAEAAQABAAEAAAICRAEAOw==";
+    const gif = try decodeBase64(encoded);
+    defer std.testing.allocator.free(gif);
+    gif[11] = 1;
+
+    const decoded = try image.decode(std.testing.allocator, gif, .{});
+    defer decoded.deinit();
+    const center = (1 * 3 + 1) * 4;
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 255 }, decoded.pixels[0..4]);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels[center .. center + 4]);
 }
 
 test "animated GIF decode returns only the first displayed frame" {
@@ -92,6 +106,123 @@ test "baseline and progressive JPEG decode to opaque RGBA" {
             if (index % 4 == 0) try std.testing.expectEqual(@as(u8, 255), channel);
         }
     }
+}
+
+test "JPEG decode rejects EOI bytes embedded in a comment without a terminal EOI marker" {
+    const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==";
+    const jpeg = try decodeBase64(encoded);
+    defer std.testing.allocator.free(jpeg);
+
+    const malformed = try std.testing.allocator.alloc(u8, jpeg.len + 4);
+    defer std.testing.allocator.free(malformed);
+    @memcpy(malformed[0..2], jpeg[0..2]);
+    @memcpy(malformed[2..8], &[_]u8{ 0xFF, 0xFE, 0x00, 0x04, 0xFF, 0xD9 });
+    @memcpy(malformed[8..], jpeg[2 .. jpeg.len - 2]);
+
+    try std.testing.expectError(error.MalformedInput, image.decode(std.testing.allocator, malformed, .{}));
+}
+
+test "JPEG decode rejects EOI before the first scan" {
+    const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==";
+    const jpeg = try decodeBase64(encoded);
+    defer std.testing.allocator.free(jpeg);
+    const sos = std.mem.indexOf(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
+
+    const malformed = try std.testing.allocator.alloc(u8, sos + 2);
+    defer std.testing.allocator.free(malformed);
+    @memcpy(malformed[0..sos], jpeg[0..sos]);
+    @memcpy(malformed[sos..], &[_]u8{ 0xFF, 0xD9 });
+
+    try std.testing.expectError(error.MalformedInput, image.decode(std.testing.allocator, malformed, .{}));
+}
+
+test "JPEG decode rejects a scan without entropy data" {
+    const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==";
+    const jpeg = try decodeBase64(encoded);
+    defer std.testing.allocator.free(jpeg);
+    const sos = std.mem.indexOf(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
+    const scan_header_length = std.mem.readInt(u16, jpeg[sos + 2 ..][0..2], .big);
+    const after_scan_header = sos + 2 + scan_header_length;
+
+    const malformed = try std.testing.allocator.alloc(u8, after_scan_header + 2);
+    defer std.testing.allocator.free(malformed);
+    @memcpy(malformed[0..after_scan_header], jpeg[0..after_scan_header]);
+    @memcpy(malformed[after_scan_header..], &[_]u8{ 0xFF, 0xD9 });
+
+    try std.testing.expectError(error.MalformedInput, image.decode(std.testing.allocator, malformed, .{}));
+}
+
+test "JPEG decode rejects an incomplete entropy-coded scan" {
+    const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==";
+    const jpeg = try decodeBase64(encoded);
+    defer std.testing.allocator.free(jpeg);
+    const sos = std.mem.indexOf(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
+    const scan_header_length = std.mem.readInt(u16, jpeg[sos + 2 ..][0..2], .big);
+    const after_scan_header = sos + 2 + scan_header_length;
+
+    const malformed = try std.testing.allocator.alloc(u8, after_scan_header + 3);
+    defer std.testing.allocator.free(malformed);
+    @memcpy(malformed[0 .. after_scan_header + 1], jpeg[0 .. after_scan_header + 1]);
+    @memcpy(malformed[after_scan_header + 1 ..], &[_]u8{ 0xFF, 0xD9 });
+
+    try std.testing.expectError(error.MalformedInput, image.decode(std.testing.allocator, malformed, .{}));
+}
+
+test "JPEG probe applies dimension limits before full scan validation" {
+    const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==";
+    const jpeg = try decodeBase64(encoded);
+    defer std.testing.allocator.free(jpeg);
+    const sos = std.mem.indexOf(u8, jpeg, &[_]u8{ 0xFF, 0xDA }) orelse return error.TestUnexpectedResult;
+    const scan_header_length = std.mem.readInt(u16, jpeg[sos + 2 ..][0..2], .big);
+    const after_scan_header = sos + 2 + scan_header_length;
+
+    const malformed = try std.testing.allocator.alloc(u8, after_scan_header + 3);
+    defer std.testing.allocator.free(malformed);
+    @memcpy(malformed[0 .. after_scan_header + 1], jpeg[0 .. after_scan_header + 1]);
+    @memcpy(malformed[after_scan_header + 1 ..], &[_]u8{ 0xFF, 0xD9 });
+
+    var info: image.Info = .{};
+    try std.testing.expectEqual(image.Status.dimension_limit, image.probe(malformed, .{ .max_pixels = 0 }, &info));
+    try std.testing.expectEqual(image.Status.malformed_input, image.probe(malformed, .{}, &info));
+}
+
+test "progressive JPEG decode rejects a final scan without entropy data" {
+    const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wgARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAAB//EABUBAQEAAAAAAAAAAAAAAAAAAAYI/9oADAMBAAIQAxAAAAE5C1T/AP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEABj8Cf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAT8hf//aAAwDAQACAAMAAAAQ/wD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EH//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EH//2Q==";
+    const jpeg = try decodeBase64(encoded);
+    defer std.testing.allocator.free(jpeg);
+
+    var search_start: usize = 0;
+    var final_sos: ?usize = null;
+    while (std.mem.indexOfPos(u8, jpeg, search_start, &[_]u8{ 0xFF, 0xDA })) |sos| {
+        final_sos = sos;
+        search_start = sos + 2;
+    }
+    const sos = final_sos orelse return error.TestUnexpectedResult;
+    const scan_header_length = std.mem.readInt(u16, jpeg[sos + 2 ..][0..2], .big);
+    const after_scan_header = sos + 2 + scan_header_length;
+
+    const malformed = try std.testing.allocator.alloc(u8, after_scan_header + 2);
+    defer std.testing.allocator.free(malformed);
+    @memcpy(malformed[0..after_scan_header], jpeg[0..after_scan_header]);
+    @memcpy(malformed[after_scan_header..], &[_]u8{ 0xFF, 0xD9 });
+
+    try std.testing.expectError(error.MalformedInput, image.decode(std.testing.allocator, malformed, .{}));
+}
+
+test "JPEG decode accepts trailing data after a complete stream" {
+    const encoded = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==";
+    const jpeg = try decodeBase64(encoded);
+    defer std.testing.allocator.free(jpeg);
+
+    const with_trailing_data = try std.testing.allocator.alloc(u8, jpeg.len + 3);
+    defer std.testing.allocator.free(with_trailing_data);
+    @memcpy(with_trailing_data[0..jpeg.len], jpeg);
+    @memcpy(with_trailing_data[jpeg.len..], &[_]u8{ 1, 2, 3 });
+
+    const decoded = try image.decode(std.testing.allocator, with_trailing_data, .{});
+    defer decoded.deinit();
+    try std.testing.expectEqual(@as(u32, 3), decoded.width());
+    try std.testing.expectEqual(@as(u32, 2), decoded.height());
 }
 
 test "lossy lossless and alpha WebP decode to canonical RGBA" {

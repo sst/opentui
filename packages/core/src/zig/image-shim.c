@@ -19,6 +19,7 @@
 #define STB_IMAGE_STATIC
 #define STBI_ONLY_JPEG
 #define STBI_NO_STDIO
+#define STBI_STRICT_JPEG
 #include "vendor/stb/stb_image.h"
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -134,7 +135,26 @@ static int ot_image_init_gif_decoder(wuffs_gif__decoder *decoder) {
     if (!wuffs_base__status__is_ok(&status)) return OT_IMAGE_SHIM_INVALID;
     wuffs_gif__decoder__set_quirk_enabled(
         decoder, WUFFS_GIF__QUIRK_IMAGE_BOUNDS_ARE_STRICT, true);
+    wuffs_gif__decoder__set_quirk_enabled(
+        decoder, WUFFS_GIF__QUIRK_HONOR_BACKGROUND_COLOR, true);
     return OT_IMAGE_SHIM_OK;
+}
+
+static wuffs_base__color_u32_argb_premul ot_image_gif_background_color(
+        const uint8_t *data, uint32_t data_len,
+        wuffs_base__color_u32_argb_premul decoded_background) {
+    if ((decoded_background >> 24) == 0 || data_len < 13 || (data[10] & 0x80) == 0) {
+        return decoded_background;
+    }
+
+    uint32_t palette_entries = 2u << (data[10] & 0x07);
+    uint32_t background_index = data[11];
+    uint32_t palette_offset = 13u + (background_index * 3u);
+    if (background_index >= palette_entries || palette_offset + 3u > data_len) {
+        return decoded_background;
+    }
+    return 0xFF000000u | ((uint32_t)data[palette_offset] << 16) |
+           ((uint32_t)data[palette_offset + 1] << 8) | data[palette_offset + 2];
 }
 
 int ot_image_gif_probe(const uint8_t *data, uint32_t data_len, uint32_t *width,
@@ -210,7 +230,19 @@ int ot_image_gif_decode_first_frame(const uint8_t *data, uint32_t data_len, uint
         return OT_IMAGE_SHIM_INVALID;
     }
 
-    memset(output, 0, (size_t)required);
+    wuffs_base__color_u32_argb_premul background_color =
+        wuffs_base__frame_config__background_color(&frame_config);
+    background_color = ot_image_gif_background_color(data, data_len, background_color);
+    if (!wuffs_base__color_u32_argb_premul__is_valid(background_color)) {
+        free(decoder);
+        return OT_IMAGE_SHIM_INVALID;
+    }
+    status = wuffs_base__pixel_buffer__set_color_u32_fill_rect(
+        &pixel_buffer, wuffs_base__make_rect_ie_u32(0, 0, expected_width, expected_height), background_color);
+    if (!wuffs_base__status__is_ok(&status)) {
+        free(decoder);
+        return OT_IMAGE_SHIM_INVALID;
+    }
     wuffs_base__range_ii_u64 workbuf_range = wuffs_gif__decoder__workbuf_len(decoder);
     uint64_t workbuf_len = workbuf_range.max_incl;
     if (workbuf_len > SIZE_MAX) {
@@ -231,7 +263,49 @@ int ot_image_gif_decode_first_frame(const uint8_t *data, uint32_t data_len, uint
     return wuffs_base__status__is_ok(&status) ? OT_IMAGE_SHIM_OK : OT_IMAGE_SHIM_INVALID;
 }
 
-int ot_image_jpeg_probe(const uint8_t *data, uint32_t data_len, uint32_t *width, uint32_t *height) {
+static int ot_image_jpeg_has_complete_structure(const uint8_t *data, uint32_t data_len) {
+    if (!data || data_len < 4 || data[0] != 0xFF || data[1] != 0xD8) return 0;
+
+    uint32_t pos = 2;
+    int entropy_data = 0;
+    int saw_scan = 0;
+    while (pos < data_len) {
+        uint8_t marker = 0;
+        if (entropy_data) {
+            while (pos < data_len) {
+                if (data[pos++] != 0xFF) continue;
+                while (pos < data_len && data[pos] == 0xFF) ++pos;
+                if (pos >= data_len) return 0;
+                marker = data[pos++];
+                if (marker == 0x00 || (marker >= 0xD0 && marker <= 0xD7)) continue;
+                break;
+            }
+            if (marker == 0) return 0;
+        } else {
+            if (data[pos++] != 0xFF) return 0;
+            while (pos < data_len && data[pos] == 0xFF) ++pos;
+            if (pos >= data_len) return 0;
+            marker = data[pos++];
+            if (marker == 0x00 || marker == 0xD8) return 0;
+        }
+
+        if (marker == 0xD9) return saw_scan;
+        if (marker == 0x01) continue;
+        if (marker >= 0xD0 && marker <= 0xD7) {
+            entropy_data = 0;
+            continue;
+        }
+        if (pos + 2 > data_len) return 0;
+        uint32_t segment_len = ((uint32_t)data[pos] << 8) | data[pos + 1];
+        if (segment_len < 2 || segment_len > data_len - pos) return 0;
+        pos += segment_len;
+        if (marker == 0xDA) saw_scan = 1;
+        entropy_data = marker == 0xDA || (entropy_data && marker == 0xDC);
+    }
+    return 0;
+}
+
+int ot_image_jpeg_header_probe(const uint8_t *data, uint32_t data_len, uint32_t *width, uint32_t *height) {
     if (!data || data_len == 0 || data_len > INT32_MAX || !width || !height) return OT_IMAGE_SHIM_INVALID;
     int w = 0;
     int h = 0;
@@ -244,17 +318,28 @@ int ot_image_jpeg_probe(const uint8_t *data, uint32_t data_len, uint32_t *width,
     return OT_IMAGE_SHIM_OK;
 }
 
+int ot_image_jpeg_probe(const uint8_t *data, uint32_t data_len, uint32_t *width, uint32_t *height) {
+    if (!data || data_len == 0 || data_len > INT32_MAX || !width || !height) return OT_IMAGE_SHIM_INVALID;
+    if (!ot_image_jpeg_has_complete_structure(data, data_len)) return OT_IMAGE_SHIM_INVALID;
+    int w = 0;
+    int h = 0;
+    int channels = 0;
+    uint8_t *decoded = stbi_load_from_memory(data, (int)data_len, &w, &h, &channels, 4);
+    if (!decoded) return OT_IMAGE_SHIM_INVALID;
+    stbi_image_free(decoded);
+    if (w <= 0 || h <= 0) return OT_IMAGE_SHIM_INVALID;
+    *width = (uint32_t)w;
+    *height = (uint32_t)h;
+    return OT_IMAGE_SHIM_OK;
+}
+
 int ot_image_jpeg_decode(const uint8_t *data, uint32_t data_len, uint8_t *output,
                          uint64_t output_len, uint32_t expected_width, uint32_t expected_height) {
     if (!data || data_len == 0 || data_len > INT32_MAX || !output ||
         expected_width == 0 || expected_height == 0) return OT_IMAGE_SHIM_INVALID;
     uint64_t required = (uint64_t)expected_width * (uint64_t)expected_height * 4u;
     if (required > output_len || required > SIZE_MAX) return OT_IMAGE_SHIM_OUTPUT_TOO_SMALL;
-    int has_eoi = 0;
-    for (uint32_t i = 1; i < data_len; ++i) {
-        if (data[i - 1] == 0xFF && data[i] == 0xD9) has_eoi = 1;
-    }
-    if (!has_eoi) return OT_IMAGE_SHIM_INVALID;
+    if (!ot_image_jpeg_has_complete_structure(data, data_len)) return OT_IMAGE_SHIM_INVALID;
 
     int width = 0;
     int height = 0;
