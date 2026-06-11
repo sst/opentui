@@ -72,6 +72,7 @@ import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 import * as nativeAudioDemo from "./native-audio-demo.js"
 import * as audioStreamingDemo from "./audio-streaming-demo.js"
 import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
+import * as nativeImageDemo from "./native-image-demo.js"
 
 type ExampleCategory =
   | "Layout & Composition"
@@ -527,6 +528,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       description: "Grayscale buffer rendering with 1x vs 2x supersampled intensity",
       run: grayscaleBufferDemo.run,
       destroy: grayscaleBufferDemo.destroy,
+    },
+    {
+      name: "Native Image Lab",
+      description: "PNG, JPEG, WebP, and GIF loading from paths, URLs, bytes, and HTTP",
+      run: nativeImageDemo.run,
+      destroy: nativeImageDemo.destroy,
     },
     {
       name: "Opacity Demo",
