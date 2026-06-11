@@ -149,7 +149,7 @@ multiplexer: Multiplexer = .none,
 osc52_support: Osc52Support = .unknown,
 is_foot: bool = false,
 skip_graphics_query: bool = false,
-graphics_disabled: bool = false,
+graphics_enabled: bool = true,
 kitty_graphics_queried: bool = false,
 sixel_queried: bool = false,
 skip_explicit_width_query: bool = false,
@@ -653,7 +653,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
     self.is_foot = self.term_info.from_xtversion and std.ascii.indexOfIgnoreCase(self.getTerminalName(), "foot") != null;
     self.skip_graphics_query = false;
-    self.graphics_disabled = false;
+    self.graphics_enabled = true;
     self.skip_explicit_width_query = false;
 
     // Always just try to enable bracketed paste, even if it was reported as not supported
@@ -749,7 +749,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     if (env_map.get("OPENTUI_GRAPHICS")) |val| {
         if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) {
             self.skip_graphics_query = true;
-            self.graphics_disabled = true;
+            self.graphics_enabled = false;
             self.kitty_graphics_queried = false;
             self.sixel_queried = false;
             self.caps.kitty_graphics = false;
@@ -1081,7 +1081,7 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
 ///
 /// Parsing these is not complete yet
 fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
-    if (self.graphics_disabled) return;
+    if (!self.graphics_enabled) return;
     var offset: usize = 0;
     while (std.mem.indexOfPos(u8, response, offset, "\x1b_G")) |start| {
         const end = std.mem.indexOfPos(u8, response, start + 3, "\x1b\\") orelse return;
@@ -1100,7 +1100,7 @@ fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
 }
 
 fn parseSixelDeviceAttributes(self: *Terminal, response: []const u8) void {
-    if (self.graphics_disabled) return;
+    if (!self.graphics_enabled) return;
     var offset: usize = 0;
     while (std.mem.indexOfPos(u8, response, offset, "\x1b[?")) |start| {
         var end = start + 3;
@@ -1172,7 +1172,7 @@ fn wezTermBuildAtLeast(version: []const u8, required_date: u32) bool {
 }
 
 fn applyKnownGraphicsIdentity(self: *Terminal) void {
-    if (self.graphics_disabled or self.multiplexer != .none or !self.term_info.from_xtversion) return;
+    if (!self.graphics_enabled or self.multiplexer != .none or !self.term_info.from_xtversion) return;
     const name = self.getTerminalName();
     const version = self.getTerminalVersion();
 
