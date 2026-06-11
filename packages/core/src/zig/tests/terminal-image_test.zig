@@ -91,6 +91,17 @@ test "sixel uses a fixed 27 color palette deterministically" {
     try std.testing.expectEqual(@as(usize, 27), std.mem.count(u8, first.items, ";2;"));
 }
 
+test "sixel indexed encoding preserves the supplied palette" {
+    const indices = [_]u8{ 0, 1, 0, 1 };
+    const palette = [_][3]u8{ .{ 12, 34, 56 }, .{ 210, 180, 90 } };
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeSixelIndexedPayload(std.testing.allocator, output.writer(std.testing.allocator), &indices, &palette, 4, 1);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "#0;2;5;13;22") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "#1;2;82;71;35") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "#0@?@$") != null);
+}
+
 test "sixel Bayer dithering preserves exact colors and spatial averages" {
     for (0..4) |y| {
         for (0..4) |x| {
@@ -131,4 +142,74 @@ test "sixel dithering is deterministic for a full color image" {
     try terminal_image.writeSixel(std.testing.allocator, first.writer(std.testing.allocator), value, false);
     try terminal_image.writeSixel(std.testing.allocator, second.writer(std.testing.allocator), value, false);
     try std.testing.expectEqualSlices(u8, first.items, second.items);
+}
+
+test "adaptive Sixel palette quality by color limit" {
+    const width = 160;
+    const height = 240;
+    const pixels = try std.testing.allocator.alloc(u8, width * height * 4);
+    defer std.testing.allocator.free(pixels);
+    for (0..width * height) |index| {
+        const x = index % width;
+        const y = index / width;
+        const offset = index * 4;
+        pixels[offset] = @truncate(x * 13 + y * 3);
+        pixels[offset + 1] = @truncate(x * 5 + y * 11);
+        pixels[offset + 2] = @truncate(x * 7 + y * 17);
+        pixels[offset + 3] = 255;
+    }
+    const value = try image.createFromRgba(std.testing.allocator, pixels, width, height, width * 4);
+    defer value.deinit();
+    const weights = [_]u64{ 2, 4, 3 };
+    for ([_]usize{ 64, 128, 255 }) |color_limit| {
+        var quantized = try terminal_image.quantizeSixel(std.testing.allocator, value, color_limit);
+        defer quantized.deinit();
+        var error_sum: u64 = 0;
+        for (quantized.indices, 0..) |palette_index, pixel| {
+            const color = quantized.palette[palette_index];
+            const offset = pixel * 4;
+            for (0..3) |channel| {
+                const difference = @as(i32, pixels[offset + channel]) - color[channel];
+                error_sum += @as(u64, @intCast(difference * difference)) * weights[channel];
+            }
+        }
+        const rmse = @sqrt(@as(f64, @floatFromInt(error_sum)) / (width * height * 9));
+        var filtered_error: f64 = 0;
+        var blocks: usize = 0;
+        var block_y: usize = 0;
+        while (block_y < height) : (block_y += 4) {
+            var block_x: usize = 0;
+            while (block_x < width) : (block_x += 4) {
+                for (0..3) |channel| {
+                    var source_sum: i32 = 0;
+                    var output_sum: i32 = 0;
+                    for (block_y..@min(block_y + 4, height)) |y| {
+                        for (block_x..@min(block_x + 4, width)) |x| {
+                            const pixel = y * width + x;
+                            source_sum += pixels[pixel * 4 + channel];
+                            output_sum += quantized.palette[quantized.indices[pixel]][channel];
+                        }
+                    }
+                    const difference = @as(f64, @floatFromInt(source_sum - output_sum)) / 16.0;
+                    filtered_error += difference * difference * @as(f64, @floatFromInt(weights[channel]));
+                }
+                blocks += 1;
+            }
+        }
+        const filtered_rmse = @sqrt(filtered_error / @as(f64, @floatFromInt(blocks * 9)));
+        const maximum_rmse: f64 = switch (color_limit) {
+            64 => 20,
+            128 => 17,
+            255 => 14,
+            else => unreachable,
+        };
+        const maximum_filtered_rmse: f64 = switch (color_limit) {
+            64 => 4.5,
+            128 => 3.5,
+            255 => 3.2,
+            else => unreachable,
+        };
+        try std.testing.expect(rmse <= maximum_rmse);
+        try std.testing.expect(filtered_rmse <= maximum_filtered_rmse);
+    }
 }
