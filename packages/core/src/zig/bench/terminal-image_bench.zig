@@ -83,6 +83,66 @@ fn fillPixels(pixels: []u8, scenario: Scenario) void {
     }
 }
 
+fn appendDragonGeometryBenchmarks(
+    allocator: std.mem.Allocator,
+    results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
+    show_mem: bool,
+    bench_filter: ?[]const u8,
+) !void {
+    const names = [_][]const u8{
+        "Sixel dragon fit 200x300",
+        "Sixel dragon cover 300x300",
+        "Sixel dragon cover 300x300 128 colors",
+        "Sixel dragon cover 300x300 64 colors",
+    };
+    var run_any = false;
+    for (names) |name| run_any = run_any or bench_utils.matchesBenchFilter(name, bench_filter);
+    if (!run_any) return;
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    defer _ = gpa.deinit();
+    const work_allocator = gpa.allocator();
+    const encoded = try std.fs.cwd().readFileAlloc(work_allocator, "../../../examples/src/assets/image-demo.gif", 2 * 1024 * 1024);
+    defer work_allocator.free(encoded);
+    const decoded = try image.decode(work_allocator, encoded, .{});
+    defer decoded.deinit();
+    const geometries = [_]struct { x: u32, y: u32, width: u32, height: u32, output_width: u32, output_height: u32, colors: usize }{
+        .{ .x = 0, .y = 0, .width = 256, .height = 384, .output_width = 200, .output_height = 300, .colors = 255 },
+        .{ .x = 0, .y = 64, .width = 256, .height = 256, .output_width = 300, .output_height = 300, .colors = 255 },
+        .{ .x = 0, .y = 64, .width = 256, .height = 256, .output_width = 300, .output_height = 300, .colors = 128 },
+        .{ .x = 0, .y = 64, .width = 256, .height = 256, .output_width = 300, .output_height = 300, .colors = 64 },
+    };
+    for (names, geometries) |name, geometry| {
+        if (!bench_utils.matchesBenchFilter(name, bench_filter)) continue;
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(work_allocator);
+        var stats: bench_utils.BenchStats = .{};
+        for (0..10) |_| {
+            output.clearRetainingCapacity();
+            var timer = try std.time.Timer.start();
+            const cropped = try image.extract(work_allocator, decoded, geometry.x, geometry.y, geometry.width, geometry.height);
+            defer cropped.deinit();
+            const resized = try image.resize(work_allocator, cropped, geometry.output_width, geometry.output_height, .area);
+            defer resized.deinit();
+            try writeScenario(work_allocator, output.writer(work_allocator), resized, geometry.colors);
+            stats.record(timer.read());
+        }
+        const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+            const values = try allocator.alloc(bench_utils.MemStat, 1);
+            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            break :blk values;
+        } else null;
+        try results.append(allocator, .{
+            .name = name,
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
+            .iterations = stats.count,
+            .mem_stats = mem_stats,
+        });
+    }
+}
+
 pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
     var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
     for (scenarios) |scenario| {
@@ -170,5 +230,6 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             });
         }
     }
+    try appendDragonGeometryBenchmarks(allocator, &results, show_mem, bench_filter);
     return results.toOwnedSlice(allocator);
 }

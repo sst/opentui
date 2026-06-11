@@ -365,9 +365,6 @@ pub fn writeSixelIndexedPayload(
     const mask_count = std.math.mul(usize, palette.len, width) catch return error.InvalidImageData;
     const masks = try allocator.alloc(u8, mask_count);
     defer allocator.free(masks);
-    const bank_count = (@as(usize, width) + 63) / 64;
-    const bank_presence = try allocator.alloc(u8, palette.len * bank_count);
-    defer allocator.free(bank_presence);
     var buffered = BufferedWriter(@TypeOf(writer)){ .writer = writer };
     const output = &buffered;
     var generations = [_]u32{0} ** 256;
@@ -401,11 +398,9 @@ pub fn writeSixelIndexedPayload(
                 if (generations[palette_index] != generation) {
                     generations[palette_index] = generation;
                     @memset(masks[@as(usize, palette_index) * width ..][0..width], 0);
-                    @memset(bank_presence[@as(usize, palette_index) * bank_count ..][0..bank_count], 0);
                     last_nonzero[palette_index] = 0;
                 }
                 masks[@as(usize, palette_index) * width + x] |= @as(u8, 1) << @intCast(bit);
-                bank_presence[@as(usize, palette_index) * bank_count + x / 64] = 1;
                 last_nonzero[palette_index] = @max(last_nonzero[palette_index], x + 1);
             }
         }
@@ -416,16 +411,6 @@ pub fn writeSixelIndexedPayload(
             try writeUnsigned(output, palette_index);
             var x: usize = 0;
             while (x < plane.len) {
-                if (x % 64 == 0 and bank_presence[palette_index * bank_count + x / 64] == 0) {
-                    const run = @min(64, plane.len - x);
-                    if (run >= 4) {
-                        try output.writeByte('!');
-                        try writeUnsigned(output, run);
-                        try output.writeByte('?');
-                    } else for (0..run) |_| try output.writeByte('?');
-                    x += run;
-                    continue;
-                }
                 const mask = plane[x];
                 const char: u8 = '?' + mask;
                 var run: usize = 1;
