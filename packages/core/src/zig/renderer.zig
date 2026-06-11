@@ -130,6 +130,25 @@ const CommittedImage = struct {
 
 const ImageProtocol = enum { fallback, sixel, kitty };
 
+const SixelCacheKey = struct {
+    image_handle: u32,
+    source_x: u32,
+    source_y: u32,
+    source_width: u32,
+    source_height: u32,
+    pixel_width: u32,
+    pixel_height: u32,
+    opacity: u8,
+};
+
+const SixelCacheEntry = struct {
+    payload: []u8,
+    last_used: u64,
+};
+
+const SIXEL_CACHE_MAX_BYTES = 32 * 1024 * 1024;
+const SIXEL_CACHE_MAX_ENTRIES = 256;
+
 pub const CliRenderer = struct {
     width: u32,
     height: u32,
@@ -236,6 +255,11 @@ pub const CliRenderer = struct {
     last_rendered_palette_epoch: ?u32 = null,
     force_full_repaint: bool = false,
     palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .{},
+    sixelCache: std.AutoHashMapUnmanaged(SixelCacheKey, SixelCacheEntry) = .{},
+    sixelCacheBytes: usize = 0,
+    sixelCacheClock: u64 = 0,
+    sixelCacheHits: u64 = 0,
+    sixelCacheMisses: u64 = 0,
 
     pub const OutputTarget = union(enum) {
         stdout,
@@ -402,6 +426,9 @@ pub const CliRenderer = struct {
         self.statSamples.cellsUpdated.deinit(self.allocator);
         self.statSamples.frameCallbackTime.deinit(self.allocator);
         self.palette_index_cache.deinit(self.allocator);
+        var sixel_cache = self.sixelCache.iterator();
+        while (sixel_cache.next()) |entry| self.allocator.free(entry.value_ptr.payload);
+        self.sixelCache.deinit(self.allocator);
 
         self.allocator.free(self.currentHitGrid);
         self.allocator.free(self.nextHitGrid);
@@ -1564,6 +1591,25 @@ pub const CliRenderer = struct {
         for (self.nextRenderBuffer.image_placements.items) |placement| {
             if (self.nextPlacementProtocol(placement) != .sixel) continue;
             if (placement.pixel_width == 0 or placement.pixel_height == 0 or placement.x < 0 or placement.y < 0) continue;
+            const cache_key = SixelCacheKey{
+                .image_handle = placement.image_handle,
+                .source_x = placement.source_x,
+                .source_y = placement.source_y,
+                .source_width = placement.source_width,
+                .source_height = placement.source_height,
+                .pixel_width = placement.pixel_width,
+                .pixel_height = placement.pixel_height,
+                .opacity = placement.opacity,
+            };
+            self.advanceSixelCacheClock();
+            if (self.sixelCache.getPtr(cache_key)) |cached| {
+                cached.last_used = self.sixelCacheClock;
+                self.sixelCacheHits += 1;
+                try ansi.ANSI.moveToOutput(writer, @intCast(placement.x + 1), @intCast(placement.y + 1 + @as(i32, @intCast(self.renderOffset))));
+                try terminal_image.writeSixelFramedPayload(writer, cached.payload, self.terminal.isInTmux());
+                continue;
+            }
+            self.sixelCacheMisses += 1;
             const source = placement.image;
             const cropped = try native_image.extract(
                 self.allocator,
@@ -1581,8 +1627,47 @@ pub const CliRenderer = struct {
                     if (index % 4 == 3) resized.pixels[index] = @intCast((@as(u16, resized.pixels[index]) * placement.opacity + 127) / 255);
                 }
             }
+            var payload: std.ArrayList(u8) = .empty;
+            defer payload.deinit(self.allocator);
+            try terminal_image.writeSixelPayload(self.allocator, payload.writer(self.allocator), resized);
             try ansi.ANSI.moveToOutput(writer, @intCast(placement.x + 1), @intCast(placement.y + 1 + @as(i32, @intCast(self.renderOffset))));
-            try terminal_image.writeSixel(self.allocator, writer, resized, self.terminal.isInTmux());
+            try terminal_image.writeSixelFramedPayload(writer, payload.items, self.terminal.isInTmux());
+            self.cacheSixelPayload(cache_key, &payload);
+        }
+    }
+
+    fn cacheSixelPayload(self: *CliRenderer, key: SixelCacheKey, payload: *std.ArrayList(u8)) void {
+        if (payload.items.len > SIXEL_CACHE_MAX_BYTES) return;
+        const owned = payload.toOwnedSlice(self.allocator) catch return;
+        self.sixelCache.ensureUnusedCapacity(self.allocator, 1) catch {
+            self.allocator.free(owned);
+            return;
+        };
+        while ((self.sixelCacheBytes + owned.len > SIXEL_CACHE_MAX_BYTES or self.sixelCache.count() >= SIXEL_CACHE_MAX_ENTRIES) and self.sixelCache.count() > 0) {
+            var iterator = self.sixelCache.iterator();
+            var oldest_key: ?SixelCacheKey = null;
+            var oldest_tick: u64 = std.math.maxInt(u64);
+            while (iterator.next()) |entry| {
+                if (oldest_key == null or entry.value_ptr.last_used < oldest_tick) {
+                    oldest_tick = entry.value_ptr.last_used;
+                    oldest_key = entry.key_ptr.*;
+                }
+            }
+            const removed = self.sixelCache.fetchRemove(oldest_key.?) orelse break;
+            self.sixelCacheBytes -= removed.value.payload.len;
+            self.allocator.free(removed.value.payload);
+        }
+        self.sixelCache.putAssumeCapacity(key, .{ .payload = owned, .last_used = self.sixelCacheClock });
+        self.sixelCacheBytes += owned.len;
+    }
+
+    fn advanceSixelCacheClock(self: *CliRenderer) void {
+        if (self.sixelCacheClock == std.math.maxInt(u64)) {
+            var iterator = self.sixelCache.iterator();
+            while (iterator.next()) |entry| entry.value_ptr.last_used = 0;
+            self.sixelCacheClock = 1;
+        } else {
+            self.sixelCacheClock += 1;
         }
     }
 
