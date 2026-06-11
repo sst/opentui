@@ -123,6 +123,13 @@ pub const Blend = enum(u32) {
     destination_over = 2,
 };
 
+pub const RenderProtocol = enum(u32) {
+    auto,
+    kitty,
+    sixel,
+    blocks,
+};
+
 pub const Image = struct {
     allocator: Allocator,
     pixels: []u8,

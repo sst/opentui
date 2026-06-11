@@ -900,6 +900,7 @@ pub const ExternalCapabilities = extern struct {
     explicit_cursor_positioning: bool,
     remote: bool,
     multiplexer: u8,
+    image_protocol: u8,
     term_name_ptr: [*]const u8,
     term_name_len: usize,
     term_version_ptr: [*]const u8,
@@ -939,6 +940,7 @@ export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *Exter
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .remote = caps.remote,
         .multiplexer = @intFromEnum(term.multiplexer),
+        .image_protocol = @intFromEnum(term.image_protocol),
         .term_name_ptr = &term.term_info.name,
         .term_name_len = term.term_info.name_len,
         .term_version_ptr = &term.term_info.version,
@@ -1281,6 +1283,7 @@ pub const ExternalImageDrawOptions = extern struct {
     source_y: u32,
     source_width: u32,
     source_height: u32,
+    protocol: u32,
 };
 
 export fn bufferDrawImage(
@@ -1290,6 +1293,7 @@ export fn bufferDrawImage(
 ) bool {
     const buffer_ptr = acquireBuffer(buffer_handle) orelse return false;
     const image_ptr = acquireImage(image_handle) orelse return false;
+    const protocol = std.meta.intToEnum(native_image.RenderProtocol, options.protocol) catch return false;
     return buffer_ptr.drawImage(
         image_ptr,
         image_handle,
@@ -1303,6 +1307,7 @@ export fn bufferDrawImage(
         options.source_y,
         options.source_width,
         options.source_height,
+        protocol,
     ) catch false;
 }
 

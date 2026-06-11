@@ -22,6 +22,7 @@ import {
   type Highlight,
   type LineInfo,
   type MousePointerStyle,
+  type ImageRenderProtocol,
 } from "./types.js"
 export type {
   LineInfo,
@@ -160,6 +161,12 @@ registerEnvVar({
   description: "Override Kitty graphics detection with the exact value true, 1, false, or 0",
   type: "string",
   required: false,
+})
+registerEnvVar({
+  name: "OPENTUI_IMAGE_PROTOCOL",
+  description: "Override image rendering protocol: auto, kitty, sixel, or blocks",
+  type: "string",
+  default: "auto",
 })
 registerEnvVar({
   name: "OPENTUI_FORCE_NOZWJ",
@@ -2161,6 +2168,7 @@ export interface RenderLib extends AudioEngineLib {
     sourceY: number,
     sourceWidth: number,
     sourceHeight: number,
+    protocol: ImageRenderProtocol,
   ) => boolean
   bufferDrawPackedBuffer: (
     buffer: OptimizedBufferHandle,
@@ -3251,7 +3259,9 @@ class FFIRenderLib implements RenderLib {
     sourceY: number,
     sourceWidth: number,
     sourceHeight: number,
+    protocol: ImageRenderProtocol,
   ): boolean {
+    const protocolId = { auto: 0, kitty: 1, sixel: 2, blocks: 3 }[protocol]
     const options = ImageDrawOptionsStruct.pack({
       x,
       y,
@@ -3263,6 +3273,7 @@ class FFIRenderLib implements RenderLib {
       sourceY,
       sourceWidth,
       sourceHeight,
+      protocol: protocolId,
     })
     return this.opentui.symbols.bufferDrawImage(buffer, image, ptr(options))
   }
@@ -5009,6 +5020,7 @@ class FFIRenderLib implements RenderLib {
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
       remote: caps.remote,
       multiplexer: caps.multiplexer,
+      image_protocol: caps.image_protocol,
       terminal: {
         name: caps.term_name ?? "",
         version: caps.term_version ?? "",

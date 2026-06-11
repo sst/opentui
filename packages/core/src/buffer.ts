@@ -2,6 +2,7 @@ import { RGBA } from "./lib/index.js"
 import { resolveRenderLib, type OptimizedBufferHandle, type RenderLib } from "./zig.js"
 import { type Pointer, type PointerInput, toArrayBuffer, toPointer, ptr } from "./platform/ffi.js"
 import type { NativeImage } from "./image.js"
+import type { ImageRenderProtocol } from "./types.js"
 
 function requireInteger(value: number, name: string, min: number, max: number): void {
   if (!Number.isSafeInteger(value) || value < min || value > max) {
@@ -391,6 +392,7 @@ export class OptimizedBuffer {
     sourceY: number = 0,
     sourceWidth: number = image.width,
     sourceHeight: number = image.height,
+    protocol: ImageRenderProtocol = "auto",
   ): boolean {
     this.guard()
     requireInteger(x, "x", -0x80000000, 0x7fffffff)
@@ -419,6 +421,7 @@ export class OptimizedBuffer {
       sourceY,
       sourceWidth,
       sourceHeight,
+      protocol,
     )
   }
 
