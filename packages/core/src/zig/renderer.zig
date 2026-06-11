@@ -125,6 +125,7 @@ const CommittedImage = struct {
     source_width: u32,
     source_height: u32,
     opacity: u8,
+    protocol: ImageProtocol,
 };
 
 const ImageProtocol = enum { fallback, sixel, kitty };
@@ -136,8 +137,6 @@ pub const CliRenderer = struct {
     nextRenderBuffer: *OptimizedBuffer,
     currentImages: std.ArrayListUnmanaged(CommittedImage) = .{},
     pendingImages: std.ArrayListUnmanaged(CommittedImage) = .{},
-    currentImageProtocol: ImageProtocol = .fallback,
-    pendingImageProtocol: ImageProtocol = .fallback,
     imageIdSalt: u32,
     imageRenderFailed: bool = false,
     pool: *gp.GraphemePool,
@@ -470,8 +469,9 @@ pub const CliRenderer = struct {
     pub fn performShutdownSequence(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
 
-        if (self.currentImageProtocol == .kitty) {
+        if (self.hasCommittedProtocol(.kitty)) {
             for (self.currentImages.items) |current| {
+                if (current.protocol != .kitty) continue;
                 var delete_buf: [128]u8 = undefined;
                 var delete_stream = std.io.fixedBufferStream(&delete_buf);
                 terminal_image.writeKittyDelete(
@@ -485,7 +485,6 @@ pub const CliRenderer = struct {
             }
         }
         self.currentImages.clearRetainingCapacity();
-        self.currentImageProtocol = .fallback;
 
         // Build the shutdown ANSI sequence into a stack buffer, then emit.
         var shutdownBuf: [4096]u8 = undefined;
@@ -1369,20 +1368,31 @@ pub const CliRenderer = struct {
     }
 
     fn imageStateChanged(self: *CliRenderer) bool {
-        if (self.currentImageProtocol != self.desiredImageProtocol()) return true;
         const next = self.nextRenderBuffer.image_placements.items;
         if (next.len != self.currentImages.items.len) return true;
         for (next, self.currentImages.items) |a, b| {
             if (a.placement_id != b.placement_id or a.image_handle != b.image_handle or a.x != b.x or a.y != b.y or a.width != b.width or a.height != b.height or
                 a.pixel_width != b.pixel_width or a.pixel_height != b.pixel_height) return true;
             if (a.source_x != b.source_x or a.source_y != b.source_y or a.source_width != b.source_width or a.source_height != b.source_height or a.opacity != b.opacity) return true;
+            if (self.nextPlacementProtocol(a) != b.protocol) return true;
         }
         return false;
     }
 
-    fn desiredImageProtocol(self: *CliRenderer) ImageProtocol {
+    fn resolveImageProtocol(self: *CliRenderer, requested: native_image.RenderProtocol) ImageProtocol {
+        const configured = if (requested == .auto) self.terminal.image_protocol else switch (requested) {
+            .auto => unreachable,
+            .kitty => Terminal.ImageProtocol.kitty,
+            .sixel => Terminal.ImageProtocol.sixel,
+            .blocks => Terminal.ImageProtocol.blocks,
+        };
+        switch (configured) {
+            .kitty => return .kitty,
+            .sixel => return .sixel,
+            .blocks => return .fallback,
+            .auto => {},
+        }
         // Multiplexers need pane-aware placeholder/native graphics handling.
-        // Raw passthrough placements cannot follow pane movement or redraws.
         if (self.terminal.isInTmux()) return .fallback;
         const caps = self.terminal.getCapabilities();
         if (caps.kitty_graphics) return .kitty;
@@ -1390,8 +1400,34 @@ pub const CliRenderer = struct {
         return .fallback;
     }
 
+    fn hasCommittedProtocol(self: *CliRenderer, protocol: ImageProtocol) bool {
+        for (self.currentImages.items) |image| if (image.protocol == protocol) return true;
+        return false;
+    }
+
+    fn hasNextProtocol(self: *CliRenderer, protocol: ImageProtocol) bool {
+        for (self.nextRenderBuffer.image_placements.items) |placement| {
+            if (self.nextPlacementProtocol(placement) == protocol) return true;
+        }
+        return false;
+    }
+
+    fn nextPlacementProtocol(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement) ImageProtocol {
+        const protocol = self.resolveImageProtocol(placement.protocol);
+        if (protocol == .sixel and (placement.pixel_width == 0 or placement.pixel_height == 0)) return .fallback;
+        return protocol;
+    }
+
+    fn protocolForImageChar(self: *CliRenderer, char: u32) ImageProtocol {
+        if (!gp.isImageChar(char)) return .fallback;
+        const id = gp.imageIdFromChar(char);
+        if (id == 0 or id > self.nextRenderBuffer.image_placements.items.len) return .fallback;
+        return self.nextPlacementProtocol(self.nextRenderBuffer.image_placements.items[id - 1]);
+    }
+
     fn sixelCellsChanged(self: *CliRenderer) bool {
         for (self.nextRenderBuffer.image_placements.items) |placement| {
+            if (self.nextPlacementProtocol(placement) != .sixel) continue;
             var py: u32 = 0;
             while (py < placement.height) : (py += 1) {
                 const y = placement.y + @as(i32, @intCast(py));
@@ -1431,9 +1467,9 @@ pub const CliRenderer = struct {
                 .source_width = placement.source_width,
                 .source_height = placement.source_height,
                 .opacity = placement.opacity,
+                .protocol = self.nextPlacementProtocol(placement),
             });
         }
-        self.pendingImageProtocol = self.desiredImageProtocol();
     }
 
     fn commitPendingImageState(self: *CliRenderer) void {
@@ -1443,7 +1479,6 @@ pub const CliRenderer = struct {
         }
         std.mem.swap(std.ArrayListUnmanaged(CommittedImage), &self.currentImages, &self.pendingImages);
         self.pendingImages.clearRetainingCapacity();
-        self.currentImageProtocol = self.pendingImageProtocol;
     }
 
     fn kittyImageId(self: *CliRenderer, image_handle: u32, placement_id: u32) u32 {
@@ -1464,9 +1499,10 @@ pub const CliRenderer = struct {
         const tmux = self.terminal.isInTmux();
         const next = self.nextRenderBuffer.image_placements.items;
         for (self.currentImages.items) |current| {
+            if (current.protocol != .kitty) continue;
             var placement_found = false;
             for (next) |placement| {
-                if (placement.placement_id == current.placement_id and placement.image_handle == current.image_handle) placement_found = true;
+                if (self.nextPlacementProtocol(placement) == .kitty and placement.placement_id == current.placement_id and placement.image_handle == current.image_handle) placement_found = true;
             }
             if (!placement_found) try terminal_image.writeKittyDelete(
                 writer,
@@ -1477,9 +1513,10 @@ pub const CliRenderer = struct {
             );
         }
         for (next) |placement| {
+            if (self.nextPlacementProtocol(placement) != .kitty) continue;
             var previous: ?CommittedImage = null;
             for (self.currentImages.items) |current| {
-                if (current.placement_id == placement.placement_id and current.image_handle == placement.image_handle) {
+                if (current.protocol == .kitty and current.placement_id == placement.placement_id and current.image_handle == placement.image_handle) {
                     previous = current;
                     break;
                 }
@@ -1525,6 +1562,7 @@ pub const CliRenderer = struct {
 
     fn writeSixelImages(self: *CliRenderer, writer: anytype) !void {
         for (self.nextRenderBuffer.image_placements.items) |placement| {
+            if (self.nextPlacementProtocol(placement) != .sixel) continue;
             if (placement.pixel_width == 0 or placement.pixel_height == 0 or placement.x < 0 or placement.y < 0) continue;
             const source = placement.image;
             const cropped = try native_image.extract(
@@ -1557,7 +1595,7 @@ pub const CliRenderer = struct {
         var cellsUpdated: u32 = 0;
         const palette_force = self.last_rendered_palette_epoch == null or self.last_rendered_palette_epoch.? != self.palette_epoch;
         const images_changed = self.imageStateChanged();
-        const sixel_changed = self.desiredImageProtocol() == .sixel and self.sixelCellsChanged();
+        const sixel_changed = self.sixelCellsChanged();
         const graphics_changed = images_changed or sixel_changed or (force and self.nextRenderBuffer.image_placements.items.len > 0);
         const should_force = force or self.force_full_repaint or palette_force or graphics_changed;
 
@@ -1568,25 +1606,7 @@ pub const CliRenderer = struct {
         self.imageRenderFailed = false;
         self.applyPendingSplitFooterTransition(writer, &frame_started);
 
-        const protocol = self.desiredImageProtocol();
-        if (images_changed and self.currentImageProtocol == .kitty and protocol != .kitty) {
-            if (!frame_started) {
-                beginRenderFrame(writer);
-                frame_started = true;
-            }
-            for (self.currentImages.items) |current| {
-                terminal_image.writeKittyDelete(
-                    writer,
-                    self.kittyImageId(current.image_handle, current.placement_id),
-                    null,
-                    true,
-                    self.terminal.isInTmux(),
-                ) catch {
-                    self.force_full_repaint = true;
-                };
-            }
-        }
-        if (graphics_changed and protocol == .kitty) {
+        if (graphics_changed and (self.hasCommittedProtocol(.kitty) or self.hasNextProtocol(.kitty))) {
             if (!frame_started) {
                 beginRenderFrame(writer);
                 frame_started = true;
@@ -1642,7 +1662,7 @@ pub const CliRenderer = struct {
                     frame_started = true;
                 }
 
-                if (gp.isImageChar(cell.char) and self.desiredImageProtocol() != .fallback) {
+                if (gp.isImageChar(cell.char) and self.protocolForImageChar(cell.char) != .fallback) {
                     writer.writeAll(ansi.ANSI.reset) catch {};
                     ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
                     writer.writeByte(' ') catch {};
@@ -1746,7 +1766,7 @@ pub const CliRenderer = struct {
             }
         }
 
-        if (graphics_changed and protocol == .sixel) {
+        if (graphics_changed and self.hasNextProtocol(.sixel)) {
             if (!frame_started) {
                 beginRenderFrame(writer);
                 frame_started = true;
@@ -1766,7 +1786,7 @@ pub const CliRenderer = struct {
                         const x_i = placement.x + @as(i32, @intCast(px));
                         if (x_i < 0 or x_i >= self.width) continue;
                         const cell = self.nextRenderBuffer.get(@intCast(x_i), @intCast(y_i)) orelse continue;
-                        if (gp.isImageChar(cell.char)) continue;
+                        if (gp.isImageChar(cell.char) and self.protocolForImageChar(cell.char) != .fallback) continue;
                         ansi.ANSI.moveToOutput(writer, @intCast(x_i + 1), @intCast(y_i + 1 + @as(i32, @intCast(self.renderOffset)))) catch {};
                         self.emitColor(writer, cell.fg, false);
                         self.emitColor(writer, cell.bg, true);
@@ -1932,8 +1952,9 @@ pub const CliRenderer = struct {
     }
 
     pub fn clearTerminal(self: *CliRenderer) void {
-        if (self.currentImageProtocol == .kitty) {
+        if (self.hasCommittedProtocol(.kitty)) {
             for (self.currentImages.items) |current| {
+                if (current.protocol != .kitty) continue;
                 var delete_buf: [128]u8 = undefined;
                 var stream = std.io.fixedBufferStream(&delete_buf);
                 terminal_image.writeKittyDelete(
@@ -1948,7 +1969,6 @@ pub const CliRenderer = struct {
         }
         self.writeOut(ansi.ANSI.clearAndHome);
         self.currentImages.clearRetainingCapacity();
-        self.currentImageProtocol = .fallback;
         self.force_full_repaint = true;
     }
 

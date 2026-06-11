@@ -26,7 +26,7 @@ test "OptimizedBuffer draws image reservation markers" {
         0,   0, 255, 255, 255, 255, 255, 255,
     }, 2, 2, 8);
     defer source.deinit();
-    try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 0, 0, 0, 0, 2, 2));
+    try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 0, 0, 0, 0, 2, 2, .auto));
     try std.testing.expect(gp.isImageChar(target.get(0, 0).?.char));
 }
 
@@ -40,7 +40,7 @@ test "OptimizedBuffer clips image placements and source crop to scissor" {
     const source = try image.createFromRgba(std.testing.allocator, &([_]u8{ 255, 0, 0, 255 } ** 16), 4, 4, 16);
     defer source.deinit();
     try target.pushScissorRect(1, 0, 2, 2);
-    try std.testing.expect(try target.drawImage(source, 1, -1, 0, 4, 2, 40, 20, 0, 0, 4, 4));
+    try std.testing.expect(try target.drawImage(source, 1, -1, 0, 4, 2, 40, 20, 0, 0, 4, 4, .auto));
     const placement = target.image_placements.items[0];
     try std.testing.expectEqual(@as(i32, 1), placement.x);
     try std.testing.expectEqual(@as(u32, 2), placement.width);
@@ -57,7 +57,7 @@ test "OptimizedBuffer retains image data for deferred protocol rendering" {
     const target = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = &pool, .link_pool = &link_pool });
     defer target.deinit();
     const source = try image.createFromRgba(std.testing.allocator, &[_]u8{ 7, 8, 9, 255 }, 1, 1, 4);
-    try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1));
+    try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
     source.deinit();
     try std.testing.expectEqual(@as(u8, 7), target.image_placements.items[0].image.pixels[0]);
 }

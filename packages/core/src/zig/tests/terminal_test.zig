@@ -254,6 +254,30 @@ test "graphics identity - explicit graphics disable blocks identity and queries"
     try testing.expect(!foot.caps.sixel);
 }
 
+test "image protocol override - parses every forced protocol" {
+    const cases = [_]struct { value: []const u8, expected: Terminal.ImageProtocol }{
+        .{ .value = "auto", .expected = .auto },
+        .{ .value = "kitty", .expected = .kitty },
+        .{ .value = "sixel", .expected = .sixel },
+        .{ .value = "blocks", .expected = .blocks },
+    };
+    for (cases) |case| {
+        var env = std.process.EnvMap.init(testing.allocator);
+        defer env.deinit();
+        try env.put("OPENTUI_IMAGE_PROTOCOL", case.value);
+        const term = Terminal.init(.{ .env_map = &env });
+        try testing.expectEqual(case.expected, term.image_protocol);
+    }
+}
+
+test "image protocol override - ignores invalid value" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_IMAGE_PROTOCOL", "invalid");
+    const term = Terminal.init(.{ .env_map = &env });
+    try testing.expectEqual(Terminal.ImageProtocol.auto, term.image_protocol);
+}
+
 test "graphics detection - kitty response matches exact id in the same APC" {
     var term = Terminal.init(.{});
     term.processCapabilityResponse("\x1b_Gi=31337;OK\x1b\\");

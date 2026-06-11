@@ -53,6 +53,13 @@ pub const RemoteMode = enum(u8) {
     remote,
 };
 
+pub const ImageProtocol = enum(u8) {
+    auto,
+    kitty,
+    sixel,
+    blocks,
+};
+
 pub const Multiplexer = enum(u8) {
     none,
     tmux,
@@ -150,6 +157,7 @@ osc52_support: Osc52Support = .unknown,
 is_foot: bool = false,
 skip_graphics_query: bool = false,
 graphics_enabled: bool = true,
+image_protocol: ImageProtocol = .auto,
 kitty_graphics_queried: bool = false,
 sixel_queried: bool = false,
 skip_explicit_width_query: bool = false,
@@ -654,6 +662,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     self.is_foot = self.term_info.from_xtversion and std.ascii.indexOfIgnoreCase(self.getTerminalName(), "foot") != null;
     self.skip_graphics_query = false;
     self.graphics_enabled = true;
+    self.image_protocol = .auto;
     self.skip_explicit_width_query = false;
 
     // Always just try to enable bracketed paste, even if it was reported as not supported
@@ -756,6 +765,18 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             self.caps.sixel = false;
         } else if (std.mem.eql(u8, val, "true") or std.mem.eql(u8, val, "1")) {
             self.skip_graphics_query = false;
+        }
+    }
+
+    if (env_map.get("OPENTUI_IMAGE_PROTOCOL")) |value| {
+        if (std.ascii.eqlIgnoreCase(value, "auto")) {
+            self.image_protocol = .auto;
+        } else if (std.ascii.eqlIgnoreCase(value, "kitty")) {
+            self.image_protocol = .kitty;
+        } else if (std.ascii.eqlIgnoreCase(value, "sixel")) {
+            self.image_protocol = .sixel;
+        } else if (std.ascii.eqlIgnoreCase(value, "blocks")) {
+            self.image_protocol = .blocks;
         }
     }
 
