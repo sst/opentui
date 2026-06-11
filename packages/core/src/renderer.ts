@@ -1435,7 +1435,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
   }
 
-  private handleNativeRenderRejection(status: number): "retryable-skip" | "failed" {
+  private handleNativeRenderRejection(status: number): "retryable-skip" | "backpressured" | "failed" {
     if (status === NATIVE_RENDER_STATUS_SKIPPED && this._feed) {
       this.ordinaryFrameWaitingForFeed = true
       this.ordinaryFrameWaitControlState = this._controlState
@@ -1444,6 +1444,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (status === NATIVE_RENDER_STATUS_SKIPPED) {
+      if (this._useThread && this._usesProcessStdout) return "backpressured"
       console.error("[CliRenderer] Native frame render unexpectedly skipped without a feed")
       return "failed"
     }

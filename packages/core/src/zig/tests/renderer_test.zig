@@ -17,6 +17,27 @@ const RGBA = text_buffer.RGBA;
 const TestMemoryOutput = test_renderer_mod.TestMemoryOutput;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
+const SlowThreadSafeOutput = struct {
+    delay_ns: u64,
+    writes: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+    payloads: [2][64]u8 = [_][64]u8{[_]u8{0} ** 64} ** 2,
+    lengths: [2]usize = [_]usize{0} ** 2,
+
+    fn bufferedOutput(self: *SlowThreadSafeOutput) @import("../renderer-output.zig").BufferedOutput {
+        return .{ .ctx = self, .write_fn = write, .thread_safe = true };
+    }
+
+    fn write(ctx: *anyopaque, data: []const u8) void {
+        const self: *SlowThreadSafeOutput = @ptrCast(@alignCast(ctx));
+        const index = self.writes.fetchAdd(1, .monotonic);
+        if (index < self.payloads.len) {
+            self.lengths[index] = @min(data.len, self.payloads[index].len);
+            @memcpy(self.payloads[index][0..self.lengths[index]], data[0..self.lengths[index]]);
+        }
+        std.Thread.sleep(self.delay_ns);
+    }
+};
+
 fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
@@ -2331,4 +2352,33 @@ test "threaded buffered destroy: no stale write after shutdown ANSI" {
 
     // The protocol invariant we assert: setUseThread toggles do not panic
     // or deadlock, and internal state is clean for destroy() to run.
+}
+
+test "threaded buffered backend skips instead of blocking behind output" {
+    var output = SlowThreadSafeOutput{ .delay_ns = 200 * std.time.ns_per_ms };
+    var backend = try renderer.BufferedBackend.create(std.testing.allocator, output.bufferedOutput());
+    defer backend.deinit(std.testing.allocator);
+    backend.setUseThread(true);
+
+    backend.beginFrame();
+    try backend.writer().writeAll("large graphics frame");
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
+
+    var timer = try std.time.Timer.start();
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.skipped, backend.prepareFrame());
+    try std.testing.expect(timer.read() < 100 * std.time.ns_per_ms);
+
+    backend.setUseThread(false);
+    try std.testing.expectEqualStrings("large graphics frame", output.payloads[0][0..output.lengths[0]]);
+
+    backend.setUseThread(true);
+    backend.beginFrame();
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
+
+    backend.beginFrame();
+    try backend.writer().writeAll("next graphics frame");
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
+    backend.setUseThread(false);
+    try std.testing.expectEqual(@as(u32, 2), output.writes.load(.monotonic));
+    try std.testing.expectEqualStrings("next graphics frame", output.payloads[1][0..output.lengths[1]]);
 }
