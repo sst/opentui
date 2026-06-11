@@ -39,6 +39,34 @@ describe("ImageRenderable image loading", () => {
     }
   })
 
+  test("defaults to aspect-preserving fit", async () => {
+    const renderable = new ImageRenderable(renderer, {
+      source: await readFile(new URL("rgba.png", FIXTURES)),
+    })
+    await renderable.loadPromise
+    try {
+      expect(renderable.fit).toBe("fit")
+      expect(renderable.getFittedSize(60, 40, 2)).toEqual({ width: 60, height: 30 })
+    } finally {
+      renderable.destroy()
+    }
+  })
+
+  test("calculates fit, cover, and fill using terminal cell aspect", async () => {
+    const renderable = new ImageRenderable(renderer, {
+      source: await readFile(new URL("rgba.png", FIXTURES)),
+      fit: "cover",
+    })
+    await renderable.loadPromise
+    try {
+      expect(renderable.getFittedSize(60, 40, 2)).toEqual({ width: 80, height: 40 })
+      renderable.fit = "fill"
+      expect(renderable.getFittedSize(60, 40, 2)).toEqual({ width: 60, height: 40 })
+    } finally {
+      renderable.destroy()
+    }
+  })
+
   test("reports decode failures without installing an image", async () => {
     const onError = mock(() => {})
     const renderable = new ImageRenderable(renderer, {

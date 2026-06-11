@@ -43,7 +43,7 @@ const P = {
   cards: ["#111c2d", "#17192e", "#211827", "#14231f"],
 } as const
 
-type FitMode = "contain" | "cover"
+type FitMode = "fit" | "cover"
 type Rotation = 0 | 90 | 180 | 270
 
 interface PreviewOptions {
@@ -55,7 +55,7 @@ interface PreviewOptions {
 }
 
 class NativeImagePreview extends ImageRenderable {
-  private fitMode: FitMode = "contain"
+  private fitMode: FitMode = "fit"
   private resizeKernel: ResizeKernel = "area"
   private rotation: Rotation = 0
   private derivedImage: NativeImage | null = null
@@ -85,6 +85,7 @@ class NativeImagePreview extends ImageRenderable {
   public setDisplayOptions(fitMode: FitMode, resizeKernel: ResizeKernel, rotation: Rotation): void {
     if (this.fitMode === fitMode && this.resizeKernel === resizeKernel && this.rotation === rotation) return
     this.fitMode = fitMode
+    this.fit = fitMode
     this.resizeKernel = resizeKernel
     this.rotation = rotation
     this.invalidateDerivedImage()
@@ -123,15 +124,16 @@ class NativeImagePreview extends ImageRenderable {
     let resized: NativeImage | null = null
     try {
       const working = this.rotation === 0 ? source : (rotated = source.rotate(this.rotation))
-      const scale =
-        this.fitMode === "contain"
-          ? Math.min(targetWidth / working.width, targetHeight / working.height)
-          : Math.max(targetWidth / working.width, targetHeight / working.height)
-      const width = Math.max(1, Math.round(working.width * scale))
-      const height = Math.max(1, Math.round(working.height * scale))
+      const { width, height } = this.getFittedSize(
+        targetWidth,
+        targetHeight,
+        this.cellAspectRatio,
+        working.width,
+        working.height,
+      )
       resized = working.resize({ width, height, kernel: this.resizeKernel })
 
-      if (this.fitMode === "contain") {
+      if (this.fitMode === "fit") {
         const horizontal = targetWidth - width
         const vertical = targetHeight - height
         this.derivedImage = resized.extend({
@@ -187,7 +189,7 @@ let server: Server | null = null
 let keyListener: ((key: KeyEvent) => void) | null = null
 let controlsText: TextRenderable | null = null
 let previews: NativeImagePreview[] = []
-let fitMode: FitMode = "contain"
+let fitMode: FitMode = "fit"
 let resizeKernel: ResizeKernel = "area"
 let rotation: Rotation = 0
 
@@ -412,7 +414,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   updateControls()
 
   keyListener = (key: KeyEvent) => {
-    if (key.name === "f") fitMode = fitMode === "contain" ? "cover" : "contain"
+    if (key.name === "f") fitMode = fitMode === "fit" ? "cover" : "fit"
     else if (key.name === "k") resizeKernel = resizeKernel === "area" ? "nearest" : "area"
     else if (key.name === "r") rotation = ((rotation + 90) % 360) as Rotation
     else return
@@ -430,7 +432,7 @@ export function destroy(renderer: CliRenderer): void {
   root = null
   previews = []
   controlsText = null
-  fitMode = "contain"
+  fitMode = "fit"
   resizeKernel = "area"
   rotation = 0
   server?.close()
