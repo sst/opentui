@@ -25,10 +25,10 @@ test "sixel encoding writes palette raster and terminator" {
     defer value.deinit();
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeSixel(output.writer(std.testing.allocator), value, false);
+    try terminal_image.writeSixel(std.testing.allocator, output.writer(std.testing.allocator), value, false);
     try std.testing.expect(std.mem.startsWith(u8, output.items, "\x1bP0;1;0q\"1;1;1;1"));
     try std.testing.expect(std.mem.endsWith(u8, output.items, "\x1b\\"));
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "#12") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "#0;2;100;0;0") != null);
 }
 
 test "kitty tmux passthrough doubles inner escape bytes" {
@@ -50,6 +50,43 @@ test "sixel encoding uses RLE for repeated columns and omits transparent pixels"
     defer value.deinit();
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
-    try terminal_image.writeSixel(output.writer(std.testing.allocator), value, false);
+    try terminal_image.writeSixel(std.testing.allocator, output.writer(std.testing.allocator), value, false);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "!4@") != null);
+}
+
+test "sixel palette is derived from source colors" {
+    const pixels = [_]u8{
+        123, 45,  201, 255,
+        17,  231, 89,  255,
+    };
+    const value = try image.createFromRgba(std.testing.allocator, &pixels, 2, 1, 8);
+    defer value.deinit();
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeSixel(std.testing.allocator, output.writer(std.testing.allocator), value, false);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, ";2;48;18;79") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, ";2;7;91;35") != null);
+}
+
+test "sixel palette caps at 256 colors deterministically" {
+    const width = 512;
+    const pixels = try std.testing.allocator.alloc(u8, width * 4);
+    defer std.testing.allocator.free(pixels);
+    for (0..width) |index| {
+        const offset = index * 4;
+        pixels[offset] = @intCast(((index >> 6) & 0x1F) << 3);
+        pixels[offset + 1] = @intCast(((index >> 3) & 0x1F) << 3);
+        pixels[offset + 2] = @intCast((index & 0x1F) << 3);
+        pixels[offset + 3] = 255;
+    }
+    const value = try image.createFromRgba(std.testing.allocator, pixels, width, 1, width * 4);
+    defer value.deinit();
+    var first: std.ArrayList(u8) = .empty;
+    defer first.deinit(std.testing.allocator);
+    var second: std.ArrayList(u8) = .empty;
+    defer second.deinit(std.testing.allocator);
+    try terminal_image.writeSixel(std.testing.allocator, first.writer(std.testing.allocator), value, false);
+    try terminal_image.writeSixel(std.testing.allocator, second.writer(std.testing.allocator), value, false);
+    try std.testing.expectEqualSlices(u8, first.items, second.items);
+    try std.testing.expectEqual(@as(usize, 256), std.mem.count(u8, first.items, ";2;"));
 }

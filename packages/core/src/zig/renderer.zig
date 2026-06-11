@@ -1582,7 +1582,7 @@ pub const CliRenderer = struct {
                 }
             }
             try ansi.ANSI.moveToOutput(writer, @intCast(placement.x + 1), @intCast(placement.y + 1 + @as(i32, @intCast(self.renderOffset))));
-            try terminal_image.writeSixel(writer, resized, self.terminal.isInTmux());
+            try terminal_image.writeSixel(self.allocator, writer, resized, self.terminal.isInTmux());
         }
     }
 
