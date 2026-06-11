@@ -1,5 +1,6 @@
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { NativeImage, type ImageSource } from "../image.js"
+import type { OptimizedBuffer } from "../buffer.js"
 import type { RenderContext } from "../types.js"
 
 export type ImageFit = "fit" | "cover" | "fill"
@@ -73,7 +74,7 @@ export class ImageRenderable extends Renderable {
   }
 
   public get cellAspectRatio(): number {
-    const resolution = this._ctx.resolution
+    const resolution = this._ctx.terminalWidth > 0 && this._ctx.terminalHeight > 0 ? this._ctx.resolution : null
     if (!resolution || this._ctx.terminalWidth <= 0 || this._ctx.terminalHeight <= 0) return 2
     const cellWidth = resolution.width / this._ctx.terminalWidth
     const cellHeight = resolution.height / this._ctx.terminalHeight
@@ -107,6 +108,52 @@ export class ImageRenderable extends Renderable {
 
   public get loadError(): unknown {
     return this._loadError
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    if (!this._image || this.width <= 0 || this.height <= 0) return
+    const fitted =
+      this._fit === "cover" ? { width: this.width, height: this.height } : this.getFittedSize(this.width, this.height)
+    if (fitted.width <= 0 || fitted.height <= 0) return
+    const originX = this.buffered ? 0 : this._screenX
+    const originY = this.buffered ? 0 : this._screenY
+    const x = originX + Math.floor((this.width - fitted.width) / 2)
+    const y = originY + Math.floor((this.height - fitted.height) / 2)
+    const resolution = this._ctx.terminalWidth > 0 && this._ctx.terminalHeight > 0 ? this._ctx.resolution : null
+    const pixelWidth = resolution
+      ? Math.max(1, Math.round((fitted.width * resolution.width) / this._ctx.terminalWidth))
+      : 0
+    const pixelHeight = resolution
+      ? Math.max(1, Math.round((fitted.height * resolution.height) / this._ctx.terminalHeight))
+      : 0
+    let sourceX = 0
+    let sourceY = 0
+    let sourceWidth = this._image.width
+    let sourceHeight = this._image.height
+    if (this._fit === "cover") {
+      const targetAspect = this.width / (this.height * this.cellAspectRatio)
+      const sourceAspect = sourceWidth / sourceHeight
+      if (sourceAspect > targetAspect) {
+        sourceWidth = Math.max(1, Math.round(sourceHeight * targetAspect))
+        sourceX = Math.floor((this._image.width - sourceWidth) / 2)
+      } else {
+        sourceHeight = Math.max(1, Math.round(sourceWidth / targetAspect))
+        sourceY = Math.floor((this._image.height - sourceHeight) / 2)
+      }
+    }
+    buffer.drawImage(
+      this._image,
+      x,
+      y,
+      fitted.width,
+      fitted.height,
+      pixelWidth,
+      pixelHeight,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+    )
   }
 
   private async load(source: ImageSource, generation: number, controller: AbortController): Promise<void> {

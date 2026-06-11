@@ -307,6 +307,10 @@ export class NativeImage {
     return this.handle
   }
 
+  public get ptr(): ImageHandle {
+    return this.guard()
+  }
+
   private wrap(result: { status: number; handle: ImageHandle | null }): NativeImage {
     checkStatus(result.status)
     if (!result.handle) throw imageError(10)

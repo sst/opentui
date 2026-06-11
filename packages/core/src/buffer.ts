@@ -1,6 +1,13 @@
 import { RGBA } from "./lib/index.js"
 import { resolveRenderLib, type OptimizedBufferHandle, type RenderLib } from "./zig.js"
 import { type Pointer, type PointerInput, toArrayBuffer, toPointer, ptr } from "./platform/ffi.js"
+import type { NativeImage } from "./image.js"
+
+function requireInteger(value: number, name: string, min: number, max: number): void {
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new RangeError(`${name} must be an integer from ${min} to ${max}`)
+  }
+}
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
 import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
 import type { TextBufferView } from "./text-buffer-view.js"
@@ -369,6 +376,49 @@ export class OptimizedBuffer {
       pixelDataLength,
       format,
       alignedBytesPerRow,
+    )
+  }
+
+  public drawImage(
+    image: NativeImage,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    pixelWidth: number = 0,
+    pixelHeight: number = 0,
+    sourceX: number = 0,
+    sourceY: number = 0,
+    sourceWidth: number = image.width,
+    sourceHeight: number = image.height,
+  ): boolean {
+    this.guard()
+    requireInteger(x, "x", -0x80000000, 0x7fffffff)
+    requireInteger(y, "y", -0x80000000, 0x7fffffff)
+    requireInteger(width, "width", 1, 0x7fffffff)
+    requireInteger(height, "height", 1, 0x7fffffff)
+    requireInteger(pixelWidth, "pixelWidth", 0, 0x7fffffff)
+    requireInteger(pixelHeight, "pixelHeight", 0, 0x7fffffff)
+    requireInteger(sourceX, "sourceX", 0, 0xffffffff)
+    requireInteger(sourceY, "sourceY", 0, 0xffffffff)
+    requireInteger(sourceWidth, "sourceWidth", 1, 0xffffffff)
+    requireInteger(sourceHeight, "sourceHeight", 1, 0xffffffff)
+    if (x + width > 0x7fffffff || y + height > 0x7fffffff) {
+      throw new RangeError("image destination coordinates and dimensions exceed i32 bounds")
+    }
+    return this.lib.bufferDrawImage(
+      this.bufferPtr,
+      image.ptr,
+      x,
+      y,
+      width,
+      height,
+      pixelWidth,
+      pixelHeight,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
     )
   }
 
