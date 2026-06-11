@@ -108,6 +108,9 @@ export interface RenderContext extends EventEmitter {
   clearHitGridScissorRects: () => void
   width: number
   height: number
+  terminalWidth: number
+  terminalHeight: number
+  resolution: { width: number; height: number } | null
   /** Monotonic, bumped once per `loop()` iteration. Lets renderables dedupe per-frame work. */
   frameId: number
   requestRender: () => void
