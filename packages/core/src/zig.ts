@@ -65,6 +65,7 @@ import {
   BuildOptionsStruct,
   AllocatorStatsStruct,
   NativeRenderStatsStruct,
+  NativeImageInfoStruct,
 } from "./zig-structs.js"
 import type {
   NativeSpanFeedOptions,
@@ -83,6 +84,7 @@ import type {
   BuildOptions,
   AllocatorStats,
   NativeRenderStats,
+  NativeImageInfo,
 } from "./zig-structs.js"
 export const NativeAudioStreamState = NativeAudioStreamStateValue
 export type NativeAudioStreamState = NativeAudioStreamStateType
@@ -112,6 +114,7 @@ export type SyntaxStyleHandle = NativeHandle<"syntax_style">
 export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
 export type NativeRenderableHandle = NativeHandle<"native_renderable">
+export type ImageHandle = NativeHandle<"image">
 let targetLibPath: string | undefined
 let targetLibError: Error | undefined
 
@@ -1239,6 +1242,19 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "u32",
     },
+
+    imageInfo: { args: ["ptr", "u32", "ptr"], returns: "u32" },
+    imageDecode: { args: ["ptr", "u32", "ptr"], returns: "u32" },
+    imageCreateFromRgba: { args: ["ptr", "u64", "u32", "u32", "u32", "ptr"], returns: "u32" },
+    imageDestroy: { args: ["u32"], returns: "void" },
+    imageGetInfo: { args: ["u32", "ptr"], returns: "u32" },
+    imageClone: { args: ["u32", "ptr"], returns: "u32" },
+    imageCopyPixels: { args: ["u32", "ptr", "u64", "u32", "u8"], returns: "u32" },
+    imageResize: { args: ["u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
+    imageExtract: { args: ["u32", "u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
+    imageExtend: { args: ["u32", "u32", "u32", "u32", "u32", "ptr", "ptr"], returns: "u32" },
+    imageTransform: { args: ["u32", "u32", "ptr"], returns: "u32" },
+    imageComposite: { args: ["u32", "u32", "i32", "i32", "u32", "u8", "ptr"], returns: "u32" },
 
     // Terminal capability functions
     getTerminalCapabilities: {
@@ -2618,6 +2634,49 @@ export interface RenderLib extends AudioEngineLib {
   ) => number
   syntaxStyleResolveByName: (style: SyntaxStyleHandle, name: string) => number | null
   syntaxStyleGetStyleCount: (style: SyntaxStyleHandle) => number
+
+  imageInfo: (data: Uint8Array) => { status: number; info: NativeImageInfo }
+  imageDecode: (data: Uint8Array) => { status: number; handle: ImageHandle | null }
+  imageCreateFromRgba: (
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    stride: number,
+  ) => { status: number; handle: ImageHandle | null }
+  imageDestroy: (image: ImageHandle) => void
+  imageGetInfo: (image: ImageHandle) => { status: number; info: NativeImageInfo }
+  imageClone: (image: ImageHandle) => { status: number; handle: ImageHandle | null }
+  imageCopyPixels: (image: ImageHandle, destination: Uint8Array, stride: number, bgra: boolean) => number
+  imageResize: (
+    image: ImageHandle,
+    width: number,
+    height: number,
+    filter: number,
+  ) => { status: number; handle: ImageHandle | null }
+  imageExtract: (
+    image: ImageHandle,
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ) => { status: number; handle: ImageHandle | null }
+  imageExtend: (
+    image: ImageHandle,
+    top: number,
+    right: number,
+    bottom: number,
+    left: number,
+    background: Uint8Array,
+  ) => { status: number; handle: ImageHandle | null }
+  imageTransform: (image: ImageHandle, operation: number) => { status: number; handle: ImageHandle | null }
+  imageComposite: (
+    base: ImageHandle,
+    overlay: ImageHandle,
+    left: number,
+    top: number,
+    blend: number,
+    opacity: number,
+  ) => { status: number; handle: ImageHandle | null }
 
   getTerminalCapabilities: (renderer: RendererHandle) => TerminalCapabilities
   processCapabilityResponse: (renderer: RendererHandle, response: string) => void
@@ -5487,6 +5546,125 @@ class FFIRenderLib implements RenderLib {
 
   public syntaxStyleGetStyleCount(style: SyntaxStyleHandle): number {
     return this.opentui.symbols.syntaxStyleGetStyleCount(style)
+  }
+
+  private imageHandleResult(status: number, output: Uint32Array): { status: number; handle: ImageHandle | null } {
+    return { status, handle: status === 0 && output[0] !== 0 ? (output[0] as ImageHandle) : null }
+  }
+
+  public imageInfo(data: Uint8Array): { status: number; info: NativeImageInfo } {
+    const length = toSafeFFIU32Length(data.byteLength, "image data")
+    const output = new ArrayBuffer(NativeImageInfoStruct.size)
+    const status = this.opentui.symbols.imageInfo(ptrOrNull(data), length, ptr(output))
+    return { status, info: NativeImageInfoStruct.unpack(output) }
+  }
+
+  public imageDecode(data: Uint8Array): { status: number; handle: ImageHandle | null } {
+    const length = toSafeFFIU32Length(data.byteLength, "image data")
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(this.opentui.symbols.imageDecode(ptrOrNull(data), length, ptr(output)), output)
+  }
+
+  public imageCreateFromRgba(
+    pixels: Uint8Array,
+    width: number,
+    height: number,
+    stride: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.imageCreateFromRgba(
+      ptrOrNull(pixels),
+      BigInt(pixels.byteLength),
+      width,
+      height,
+      stride,
+      ptr(output),
+    )
+    return this.imageHandleResult(status, output)
+  }
+
+  public imageDestroy(image: ImageHandle): void {
+    this.opentui.symbols.imageDestroy(image)
+  }
+
+  public imageGetInfo(image: ImageHandle): { status: number; info: NativeImageInfo } {
+    const output = new ArrayBuffer(NativeImageInfoStruct.size)
+    const status = this.opentui.symbols.imageGetInfo(image, ptr(output))
+    return { status, info: NativeImageInfoStruct.unpack(output) }
+  }
+
+  public imageClone(image: ImageHandle): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(this.opentui.symbols.imageClone(image, ptr(output)), output)
+  }
+
+  public imageCopyPixels(image: ImageHandle, destination: Uint8Array, stride: number, bgra: boolean): number {
+    return this.opentui.symbols.imageCopyPixels(
+      image,
+      ptrOrNull(destination),
+      BigInt(destination.byteLength),
+      stride,
+      bgra ? 1 : 0,
+    )
+  }
+
+  public imageResize(
+    image: ImageHandle,
+    width: number,
+    height: number,
+    filter: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(this.opentui.symbols.imageResize(image, width, height, filter, ptr(output)), output)
+  }
+
+  public imageExtract(
+    image: ImageHandle,
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(
+      this.opentui.symbols.imageExtract(image, left, top, width, height, ptr(output)),
+      output,
+    )
+  }
+
+  public imageExtend(
+    image: ImageHandle,
+    top: number,
+    right: number,
+    bottom: number,
+    left: number,
+    background: Uint8Array,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(
+      this.opentui.symbols.imageExtend(image, top, right, bottom, left, ptr(background), ptr(output)),
+      output,
+    )
+  }
+
+  public imageTransform(image: ImageHandle, operation: number): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(this.opentui.symbols.imageTransform(image, operation, ptr(output)), output)
+  }
+
+  public imageComposite(
+    base: ImageHandle,
+    overlay: ImageHandle,
+    left: number,
+    top: number,
+    blend: number,
+    opacity: number,
+  ): { status: number; handle: ImageHandle | null } {
+    const output = new Uint32Array(1)
+    return this.imageHandleResult(
+      this.opentui.symbols.imageComposite(base, overlay, left, top, blend, opacity, ptr(output)),
+      output,
+    )
   }
 
   public editorViewSetPlaceholderStyledText(
