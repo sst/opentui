@@ -125,6 +125,28 @@ export const EncodedCharStruct = defineStruct([
   ["char", "u32"],
 ])
 
+export interface NativeImageInfo {
+  width: number
+  height: number
+  sourceWidth: number
+  sourceHeight: number
+  format: number
+  colorStatus: number
+  orientation: number
+  hasAlpha: number
+}
+
+export const NativeImageInfoStruct = defineStruct([
+  ["width", "u32"],
+  ["height", "u32"],
+  ["sourceWidth", "u32"],
+  ["sourceHeight", "u32"],
+  ["format", "u32"],
+  ["colorStatus", "u32"],
+  ["orientation", "u32"],
+  ["hasAlpha", "u32"],
+])
+
 export const LineInfoStruct = defineStruct([
   ["startCols", ["u32"]],
   ["startColsLen", "u32", { lengthOf: "startCols" }],
