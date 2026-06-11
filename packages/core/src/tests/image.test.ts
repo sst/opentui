@@ -1,5 +1,9 @@
+import { createServer } from "node:http"
+import { readFile } from "node:fs/promises"
+import { fileURLToPath } from "node:url"
+
 import { describe, expect, test } from "bun:test"
-import { NativeImage, imageInfo } from "../image.js"
+import { ImageError, ImageLoadError, NativeImage, imageInfo } from "../image.js"
 
 const PNG_1X1 = Uint8Array.from(
   Buffer.from(
@@ -7,6 +11,18 @@ const PNG_1X1 = Uint8Array.from(
     "base64",
   ),
 )
+
+const FIXTURES = new URL("./fixtures/images/", import.meta.url)
+const FORMATS = [
+  ["rgba.png", "png", false],
+  ["baseline.jpg", "jpeg", false],
+  ["progressive.jpg", "jpeg", false],
+  ["lossy.webp", "webp", false],
+  ["lossless.webp", "webp", false],
+  ["alpha.webp", "webp", true],
+  ["first-frame.gif", "gif", false],
+  ["transparent.gif", "gif", true],
+] as const
 
 describe("NativeImage", () => {
   test("inspects and decodes PNG data", () => {
@@ -28,7 +44,71 @@ describe("NativeImage", () => {
   })
 
   test("rejects unsupported encoded formats", () => {
-    expect(() => imageInfo(Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8))).toThrow("unsupported image format")
+    const bytes = Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8)
+    for (const operation of [() => imageInfo(bytes), () => NativeImage.decode(bytes)]) {
+      try {
+        operation()
+        throw new Error("expected image operation to fail")
+      } catch (error) {
+        expect(error).toBeInstanceOf(ImageError)
+        expect((error as ImageError).code).toBe("unsupported-format")
+      }
+    }
+  })
+
+  test("inspects and decodes every required encoded format", async () => {
+    for (const [name, format, hasAlpha] of FORMATS) {
+      const bytes = await readFile(new URL(name, FIXTURES))
+      const inspected = imageInfo(bytes)
+      const image = NativeImage.decode(bytes)
+      try {
+        expect(inspected.format).toBe(format)
+        expect(inspected.hasAlpha).toBe(hasAlpha)
+        expect(image.info()).toEqual({ ...inspected, orientation: 1 })
+        expect(image.raw().data).toHaveLength(image.width * image.height * 4)
+      } finally {
+        image.dispose()
+      }
+    }
+  })
+
+  test("reports malformed data for every recognized format", async () => {
+    for (const [name] of FORMATS) {
+      const bytes = await readFile(new URL(name, FIXTURES))
+      const truncated = bytes.subarray(0, Math.max(2, Math.floor(bytes.byteLength / 2)))
+      expect(() => NativeImage.decode(truncated)).toThrow("malformed image data")
+    }
+  })
+
+  test("all image operations work for every decoded format", async () => {
+    for (const [name] of FORMATS) {
+      const image = NativeImage.decode(await readFile(new URL(name, FIXTURES)))
+      const clone = image.clone()
+      const resized = image.resize({ width: 1, height: 1 })
+      const extracted = image.extract({ left: 0, top: 0, width: 1, height: 1 })
+      const rotated = image.rotate(90)
+      const flipped = image.flip()
+      const flopped = image.flop()
+      const composited = image.composite(extracted)
+      try {
+        expect(clone.info()).toEqual(image.info())
+        expect([resized.width, resized.height]).toEqual([1, 1])
+        expect([extracted.width, extracted.height]).toEqual([1, 1])
+        expect([rotated.width, rotated.height]).toEqual([image.height, image.width])
+        expect(flipped.raw().data).toHaveLength(image.width * image.height * 4)
+        expect(flopped.raw().data).toHaveLength(image.width * image.height * 4)
+        expect(composited.raw().data).toHaveLength(image.width * image.height * 4)
+      } finally {
+        composited.dispose()
+        flopped.dispose()
+        flipped.dispose()
+        rotated.dispose()
+        extracted.dispose()
+        resized.dispose()
+        clone.dispose()
+        image.dispose()
+      }
+    }
   })
 
   test("constructs and exports immutable RGBA images", () => {
@@ -104,6 +184,106 @@ describe("NativeImage", () => {
       expect(() => image.copyTo(new Uint8Array(3))).toThrow("too small")
     } finally {
       image.dispose()
+    }
+  })
+
+  test("loads encoded bytes and ArrayBuffer sources", async () => {
+    const bytes = await readFile(new URL("rgba.png", FIXTURES))
+    const fromView = await NativeImage.load(bytes.subarray(0))
+    const fromBuffer = await NativeImage.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength))
+    try {
+      expect(fromView.info().format).toBe("png")
+      expect(fromBuffer.info()).toEqual(fromView.info())
+    } finally {
+      fromBuffer.dispose()
+      fromView.dispose()
+    }
+  })
+
+  test("loads local paths and file URLs", async () => {
+    const url = new URL("rgba.png", FIXTURES)
+    const fromPath = await NativeImage.load(fileURLToPath(url))
+    const fromUrl = await NativeImage.load(url)
+    const fromUrlString = await NativeImage.load(url.href)
+    try {
+      expect(fromPath.info().format).toBe("png")
+      expect(fromUrl.info()).toEqual(fromPath.info())
+      expect(fromUrlString.info()).toEqual(fromPath.info())
+    } finally {
+      fromUrlString.dispose()
+      fromUrl.dispose()
+      fromPath.dispose()
+    }
+  })
+
+  test("reports filesystem failures", async () => {
+    try {
+      await NativeImage.load(fileURLToPath(new URL("missing.png", FIXTURES)))
+      throw new Error("expected load to fail")
+    } catch (error) {
+      expect(error).toBeInstanceOf(ImageLoadError)
+      expect((error as ImageLoadError).code).toBe("file-read")
+      expect((error as ImageLoadError).cause).toBeDefined()
+    }
+  })
+
+  test("loads HTTP responses by bytes and reports status failures", async () => {
+    const fixture = await readFile(new URL("lossless.webp", FIXTURES))
+    const server = createServer((request, response) => {
+      if (request.url === "/image.not-an-extension") {
+        response.writeHead(200, { "content-type": "text/plain" })
+        response.end(fixture)
+      } else {
+        response.writeHead(404)
+        response.end("missing")
+      }
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("missing test server address")
+    const base = `http://127.0.0.1:${address.port}`
+    try {
+      const image = await NativeImage.load(`${base}/image.not-an-extension`)
+      try {
+        expect(image.info().format).toBe("webp")
+      } finally {
+        image.dispose()
+      }
+
+      try {
+        await NativeImage.load(new URL("/missing", base))
+        throw new Error("expected HTTP load to fail")
+      } catch (error) {
+        expect(error).toBeInstanceOf(ImageLoadError)
+        expect((error as ImageLoadError).code).toBe("http-status")
+        expect((error as ImageLoadError).status).toBe(404)
+      }
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    }
+  })
+
+  test("loads HTTPS URLs through fetch and reports network failures", async () => {
+    const fixture = await readFile(new URL("transparent.gif", FIXTURES))
+    const image = await NativeImage.load(new URL("https://images.test/image"), {
+      fetch: async () => new Response(fixture),
+    })
+    try {
+      expect(image.info().format).toBe("gif")
+    } finally {
+      image.dispose()
+    }
+
+    try {
+      await NativeImage.load(new URL("https://images.test/failure"), {
+        fetch: async () => {
+          throw new Error("offline")
+        },
+      })
+      throw new Error("expected network load to fail")
+    } catch (error) {
+      expect(error).toBeInstanceOf(ImageLoadError)
+      expect((error as ImageLoadError).code).toBe("network")
     }
   })
 })

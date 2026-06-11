@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define WUFFS_IMPLEMENTATION
 #define WUFFS_CONFIG__STATIC_FUNCTIONS
@@ -8,19 +9,30 @@
 #define WUFFS_CONFIG__MODULE__ADLER32
 #define WUFFS_CONFIG__MODULE__CRC32
 #define WUFFS_CONFIG__MODULE__DEFLATE
+#define WUFFS_CONFIG__MODULE__LZW
 #define WUFFS_CONFIG__MODULE__ZLIB
+#define WUFFS_CONFIG__MODULE__GIF
 #define WUFFS_CONFIG__MODULE__PNG
 #include "vendor/wuffs/wuffs-v0.3.c"
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_STATIC
+#define STBI_ONLY_JPEG
+#define STBI_NO_STDIO
+#include "vendor/stb/stb_image.h"
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_STATIC
 #include "vendor/stb/stb_image_resize2.h"
+
+#include "src/webp/decode.h"
 
 enum {
     OT_IMAGE_SHIM_OK = 0,
     OT_IMAGE_SHIM_INVALID = 1,
     OT_IMAGE_SHIM_OUT_OF_MEMORY = 2,
     OT_IMAGE_SHIM_OUTPUT_TOO_SMALL = 3,
+    OT_IMAGE_SHIM_UNSUPPORTED = 4,
 };
 
 static int ot_image_init_png_decoder(wuffs_png__decoder *decoder) {
@@ -114,6 +126,195 @@ int ot_image_png_decode(const uint8_t *data, uint32_t data_len, uint8_t *output,
     free(workbuf);
     free(decoder);
     return wuffs_base__status__is_ok(&status) ? OT_IMAGE_SHIM_OK : OT_IMAGE_SHIM_INVALID;
+}
+
+static int ot_image_init_gif_decoder(wuffs_gif__decoder *decoder) {
+    wuffs_base__status status = wuffs_gif__decoder__initialize(
+        decoder, sizeof(*decoder), WUFFS_VERSION, 0);
+    if (!wuffs_base__status__is_ok(&status)) return OT_IMAGE_SHIM_INVALID;
+    wuffs_gif__decoder__set_quirk_enabled(
+        decoder, WUFFS_GIF__QUIRK_IMAGE_BOUNDS_ARE_STRICT, true);
+    return OT_IMAGE_SHIM_OK;
+}
+
+int ot_image_gif_probe(const uint8_t *data, uint32_t data_len, uint32_t *width,
+                       uint32_t *height, uint32_t *has_alpha) {
+    if (!data || data_len == 0 || !width || !height || !has_alpha) return OT_IMAGE_SHIM_INVALID;
+
+    wuffs_gif__decoder *decoder = malloc(sizeof(*decoder));
+    if (!decoder) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+    int result = ot_image_init_gif_decoder(decoder);
+    if (result != OT_IMAGE_SHIM_OK) {
+        free(decoder);
+        return result;
+    }
+
+    wuffs_base__io_buffer src = wuffs_base__ptr_u8__reader((uint8_t *)data, data_len, true);
+    wuffs_base__image_config config = wuffs_base__null_image_config();
+    wuffs_base__status status = wuffs_gif__decoder__decode_image_config(decoder, &config, &src);
+    if (!wuffs_base__status__is_ok(&status) || !wuffs_base__pixel_config__is_valid(&config.pixcfg)) {
+        free(decoder);
+        return OT_IMAGE_SHIM_INVALID;
+    }
+
+    *width = wuffs_base__pixel_config__width(&config.pixcfg);
+    *height = wuffs_base__pixel_config__height(&config.pixcfg);
+    *has_alpha = wuffs_base__image_config__first_frame_is_opaque(&config) ? 0u : 1u;
+    free(decoder);
+    return (*width > 0 && *height > 0) ? OT_IMAGE_SHIM_OK : OT_IMAGE_SHIM_INVALID;
+}
+
+int ot_image_gif_decode_first_frame(const uint8_t *data, uint32_t data_len, uint8_t *output,
+                                    uint64_t output_len, uint32_t expected_width,
+                                    uint32_t expected_height) {
+    if (!data || data_len == 0 || !output || expected_width == 0 || expected_height == 0) {
+        return OT_IMAGE_SHIM_INVALID;
+    }
+    uint64_t required = (uint64_t)expected_width * (uint64_t)expected_height * 4u;
+    if (required > output_len || required > SIZE_MAX) return OT_IMAGE_SHIM_OUTPUT_TOO_SMALL;
+
+    wuffs_gif__decoder *decoder = malloc(sizeof(*decoder));
+    if (!decoder) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+    int result = ot_image_init_gif_decoder(decoder);
+    if (result != OT_IMAGE_SHIM_OK) {
+        free(decoder);
+        return result;
+    }
+
+    wuffs_base__io_buffer src = wuffs_base__ptr_u8__reader((uint8_t *)data, data_len, true);
+    wuffs_base__image_config config = wuffs_base__null_image_config();
+    wuffs_base__status status = wuffs_gif__decoder__decode_image_config(decoder, &config, &src);
+    if (!wuffs_base__status__is_ok(&status) ||
+        wuffs_base__pixel_config__width(&config.pixcfg) != expected_width ||
+        wuffs_base__pixel_config__height(&config.pixcfg) != expected_height) {
+        free(decoder);
+        return OT_IMAGE_SHIM_INVALID;
+    }
+
+    wuffs_base__frame_config frame_config = wuffs_base__null_frame_config();
+    status = wuffs_gif__decoder__decode_frame_config(decoder, &frame_config, &src);
+    if (!wuffs_base__status__is_ok(&status)) {
+        free(decoder);
+        return OT_IMAGE_SHIM_INVALID;
+    }
+
+    wuffs_base__pixel_config output_config = wuffs_base__null_pixel_config();
+    wuffs_base__pixel_config__set(&output_config, WUFFS_BASE__PIXEL_FORMAT__RGBA_NONPREMUL,
+                                  WUFFS_BASE__PIXEL_SUBSAMPLING__NONE,
+                                  expected_width, expected_height);
+    wuffs_base__pixel_buffer pixel_buffer;
+    status = wuffs_base__pixel_buffer__set_from_slice(
+        &pixel_buffer, &output_config, wuffs_base__make_slice_u8(output, (size_t)required));
+    if (!wuffs_base__status__is_ok(&status)) {
+        free(decoder);
+        return OT_IMAGE_SHIM_INVALID;
+    }
+
+    memset(output, 0, (size_t)required);
+    wuffs_base__range_ii_u64 workbuf_range = wuffs_gif__decoder__workbuf_len(decoder);
+    uint64_t workbuf_len = workbuf_range.max_incl;
+    if (workbuf_len > SIZE_MAX) {
+        free(decoder);
+        return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+    }
+    uint8_t *workbuf = workbuf_len ? malloc((size_t)workbuf_len) : NULL;
+    if (workbuf_len && !workbuf) {
+        free(decoder);
+        return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+    }
+
+    status = wuffs_gif__decoder__decode_frame(
+        decoder, &pixel_buffer, &src, WUFFS_BASE__PIXEL_BLEND__SRC_OVER,
+        wuffs_base__make_slice_u8(workbuf, (size_t)workbuf_len), NULL);
+    free(workbuf);
+    free(decoder);
+    return wuffs_base__status__is_ok(&status) ? OT_IMAGE_SHIM_OK : OT_IMAGE_SHIM_INVALID;
+}
+
+int ot_image_jpeg_probe(const uint8_t *data, uint32_t data_len, uint32_t *width, uint32_t *height) {
+    if (!data || data_len == 0 || data_len > INT32_MAX || !width || !height) return OT_IMAGE_SHIM_INVALID;
+    int w = 0;
+    int h = 0;
+    int channels = 0;
+    if (!stbi_info_from_memory(data, (int)data_len, &w, &h, &channels) || w <= 0 || h <= 0) {
+        return OT_IMAGE_SHIM_INVALID;
+    }
+    *width = (uint32_t)w;
+    *height = (uint32_t)h;
+    return OT_IMAGE_SHIM_OK;
+}
+
+int ot_image_jpeg_decode(const uint8_t *data, uint32_t data_len, uint8_t *output,
+                         uint64_t output_len, uint32_t expected_width, uint32_t expected_height) {
+    if (!data || data_len == 0 || data_len > INT32_MAX || !output ||
+        expected_width == 0 || expected_height == 0) return OT_IMAGE_SHIM_INVALID;
+    uint64_t required = (uint64_t)expected_width * (uint64_t)expected_height * 4u;
+    if (required > output_len || required > SIZE_MAX) return OT_IMAGE_SHIM_OUTPUT_TOO_SMALL;
+    int has_eoi = 0;
+    for (uint32_t i = 1; i < data_len; ++i) {
+        if (data[i - 1] == 0xFF && data[i] == 0xD9) has_eoi = 1;
+    }
+    if (!has_eoi) return OT_IMAGE_SHIM_INVALID;
+
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    uint8_t *decoded = stbi_load_from_memory(data, (int)data_len, &width, &height, &channels, 4);
+    if (!decoded) return OT_IMAGE_SHIM_INVALID;
+    if ((uint32_t)width != expected_width || (uint32_t)height != expected_height) {
+        stbi_image_free(decoded);
+        return OT_IMAGE_SHIM_INVALID;
+    }
+    memcpy(output, decoded, (size_t)required);
+    stbi_image_free(decoded);
+    return OT_IMAGE_SHIM_OK;
+}
+
+int ot_image_webp_probe(const uint8_t *data, uint32_t data_len, uint32_t *width,
+                        uint32_t *height, uint32_t *has_alpha) {
+    if (!data || data_len == 0 || !width || !height || !has_alpha) return OT_IMAGE_SHIM_INVALID;
+    WebPBitstreamFeatures features;
+    VP8StatusCode status = WebPGetFeatures(data, data_len, &features);
+    if (status != VP8_STATUS_OK) return status == VP8_STATUS_OUT_OF_MEMORY ? OT_IMAGE_SHIM_OUT_OF_MEMORY : OT_IMAGE_SHIM_INVALID;
+    if (features.has_animation) return OT_IMAGE_SHIM_UNSUPPORTED;
+    if (features.width <= 0 || features.height <= 0) return OT_IMAGE_SHIM_INVALID;
+    *width = (uint32_t)features.width;
+    *height = (uint32_t)features.height;
+    *has_alpha = features.has_alpha ? 1u : 0u;
+    return OT_IMAGE_SHIM_OK;
+}
+
+int ot_image_webp_decode(const uint8_t *data, uint32_t data_len, uint8_t *output,
+                         uint64_t output_len, uint32_t expected_width, uint32_t expected_height) {
+    if (!data || data_len == 0 || !output || expected_width == 0 || expected_height == 0) {
+        return OT_IMAGE_SHIM_INVALID;
+    }
+    uint64_t required = (uint64_t)expected_width * (uint64_t)expected_height * 4u;
+    if (required > output_len || required > SIZE_MAX || expected_width > INT32_MAX) {
+        return OT_IMAGE_SHIM_OUTPUT_TOO_SMALL;
+    }
+
+    WebPDecoderConfig config;
+    if (!WebPInitDecoderConfig(&config)) return OT_IMAGE_SHIM_INVALID;
+    VP8StatusCode status = WebPGetFeatures(data, data_len, &config.input);
+    if (status != VP8_STATUS_OK) return status == VP8_STATUS_OUT_OF_MEMORY ? OT_IMAGE_SHIM_OUT_OF_MEMORY : OT_IMAGE_SHIM_INVALID;
+    if (config.input.has_animation) return OT_IMAGE_SHIM_UNSUPPORTED;
+    if ((uint32_t)config.input.width != expected_width || (uint32_t)config.input.height != expected_height) {
+        return OT_IMAGE_SHIM_INVALID;
+    }
+
+    config.output.colorspace = MODE_RGBA;
+    config.output.is_external_memory = 1;
+    config.output.u.RGBA.rgba = output;
+    config.output.u.RGBA.stride = (int)(expected_width * 4u);
+    config.output.u.RGBA.size = (size_t)required;
+    config.options.use_threads = 0;
+    status = WebPDecode(data, data_len, &config);
+    WebPFreeDecBuffer(&config.output);
+    if (status == VP8_STATUS_OK) return OT_IMAGE_SHIM_OK;
+    if (status == VP8_STATUS_OUT_OF_MEMORY) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
+    if (status == VP8_STATUS_UNSUPPORTED_FEATURE) return OT_IMAGE_SHIM_UNSUPPORTED;
+    return OT_IMAGE_SHIM_INVALID;
 }
 
 int ot_image_resize_rgba(const uint8_t *input, uint32_t input_width, uint32_t input_height,
