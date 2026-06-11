@@ -13,3 +13,6 @@ which is undefined behavior and traps under Zig's safety checks on Apple Silicon
 `f0569113c93ad095470c54bf34a17b36646bbbb5`, version 2.30, and compiled with
 only its JPEG decoder enabled. SHA-256:
 `594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3`.
+
+`STBI_STRICT_JPEG` is an OpenTUI-local extension that rejects streams when
+decoding needs synthetic zero bits after reaching a marker or end of input.
