@@ -55,42 +55,243 @@ pub fn writeKittyDelete(writer: anytype, id: u32, placement_id: ?u32, free_image
 }
 
 const SixelColor = struct { r: u8, g: u8, b: u8 };
-const BAYER_4X4 = [16]u8{ 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
+const SixelMoment = struct { count: u64 = 0, r: u64 = 0, g: u64 = 0, b: u64 = 0, square: u64 = 0 };
+const SixelBox = struct { r0: u8 = 0, r1: u8 = 32, g0: u8 = 0, g1: u8 = 32, b0: u8 = 0, b1: u8 = 32 };
+const SixelAxis = enum { r, g, b };
+const SixelCut = struct { axis: SixelAxis, at: u8, score: f64 };
+const SIXEL_HISTOGRAM_SIDE = 33;
+const SIXEL_HISTOGRAM_LEN = SIXEL_HISTOGRAM_SIDE * SIXEL_HISTOGRAM_SIDE * SIXEL_HISTOGRAM_SIDE;
+const BAYER_4X4 = [16]i8{ 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
 
-// A fixed 3x3x3 RGB cube avoids per-image palette construction. Local Bayer dithering keeps gradient
-// detail without Floyd-Steinberg's serial dependency chain: https://github.com/hpjansson/chafa/blob/master/chafa/internal/chafa-dither.c
-fn paletteColor(index: u8) SixelColor {
-    return .{
-        .r = @intCast((@as(u16, index / 9) * 255 + 1) / 2),
-        .g = @intCast((@as(u16, (index / 3) % 3) * 255 + 1) / 2),
-        .b = @intCast((@as(u16, index % 3) * 255 + 1) / 2),
-    };
+pub const QuantizedSixel = struct {
+    allocator: std.mem.Allocator,
+    palette: [255][3]u8,
+    palette_len: usize,
+    indices: []u8,
+
+    pub fn deinit(self: *QuantizedSixel) void {
+        self.allocator.free(self.indices);
+    }
+};
+
+// Wu's fixed RGB moment cube gives a deterministic adaptive palette; tagging its final boxes maps
+// pixels without a nearest-color search: https://github.com/erich666/GraphicsGems/blob/master/gemsii/quantizer.c
+fn momentIndex(r: usize, g: usize, b: usize) usize {
+    return (r * SIXEL_HISTOGRAM_SIDE + g) * SIXEL_HISTOGRAM_SIDE + b;
 }
 
-fn makeQuantize3() [16][256]u8 {
+fn makeDithered5() [16][256]u8 {
     @setEvalBranchQuota(16 * 256 * 4);
     var result: [16][256]u8 = undefined;
     for (0..16) |threshold| {
         for (0..256) |value| {
-            const scaled = value * 2;
-            const lower = scaled / 255;
-            const remainder = scaled % 255;
-            result[threshold][value] = @intCast(@min(lower + @intFromBool(remainder * 32 > (@as(usize, BAYER_4X4[threshold]) * 2 + 1) * 255), 2));
+            result[threshold][value] = @intCast(std.math.clamp(@as(i16, @intCast(value)) + BAYER_4X4[threshold] - 7, 0, 255) >> 3);
         }
     }
     return result;
 }
 
-const QUANTIZE_3 = makeQuantize3();
+const DITHERED_5 = makeDithered5();
 
-fn paletteIndex(r: u8, g: u8, b: u8, x: usize, y: usize) u8 {
-    const threshold = (y & 3) * 4 + (x & 3);
-    return QUANTIZE_3[threshold][r] * 9 + QUANTIZE_3[threshold][g] * 3 + QUANTIZE_3[threshold][b];
+fn addMoment(target: *SixelMoment, value: SixelMoment) void {
+    target.count += value.count;
+    target.r += value.r;
+    target.g += value.g;
+    target.b += value.b;
+    target.square += value.square;
 }
 
-pub fn sixelQuantizedColor(r: u8, g: u8, b: u8, x: usize, y: usize) [3]u8 {
-    const color = paletteColor(paletteIndex(r, g, b, x, y));
-    return .{ color.r, color.g, color.b };
+fn volumeValue(comptime field: []const u8, moments: []const SixelMoment, box: SixelBox) u64 {
+    const value = @as(i128, @field(moments[momentIndex(box.r1, box.g1, box.b1)], field)) -
+        @as(i128, @field(moments[momentIndex(box.r1, box.g1, box.b0)], field)) -
+        @as(i128, @field(moments[momentIndex(box.r1, box.g0, box.b1)], field)) +
+        @as(i128, @field(moments[momentIndex(box.r1, box.g0, box.b0)], field)) -
+        @as(i128, @field(moments[momentIndex(box.r0, box.g1, box.b1)], field)) +
+        @as(i128, @field(moments[momentIndex(box.r0, box.g1, box.b0)], field)) +
+        @as(i128, @field(moments[momentIndex(box.r0, box.g0, box.b1)], field)) -
+        @as(i128, @field(moments[momentIndex(box.r0, box.g0, box.b0)], field));
+    return @intCast(value);
+}
+
+const BoxStats = struct { count: u64, r: u64, g: u64, b: u64 };
+
+fn volumeStats(moments: []const SixelMoment, box: SixelBox) BoxStats {
+    const corners = [_]*const SixelMoment{
+        &moments[momentIndex(box.r1, box.g1, box.b1)], &moments[momentIndex(box.r1, box.g1, box.b0)],
+        &moments[momentIndex(box.r1, box.g0, box.b1)], &moments[momentIndex(box.r1, box.g0, box.b0)],
+        &moments[momentIndex(box.r0, box.g1, box.b1)], &moments[momentIndex(box.r0, box.g1, box.b0)],
+        &moments[momentIndex(box.r0, box.g0, box.b1)], &moments[momentIndex(box.r0, box.g0, box.b0)],
+    };
+    var result = BoxStats{ .count = 0, .r = 0, .g = 0, .b = 0 };
+    inline for (.{ "count", "r", "g", "b" }) |field| {
+        const value = @as(i128, @field(corners[0], field)) - @as(i128, @field(corners[1], field)) -
+            @as(i128, @field(corners[2], field)) + @as(i128, @field(corners[3], field)) -
+            @as(i128, @field(corners[4], field)) + @as(i128, @field(corners[5], field)) +
+            @as(i128, @field(corners[6], field)) - @as(i128, @field(corners[7], field));
+        @field(result, field) = @intCast(value);
+    }
+    return result;
+}
+
+fn statsEnergy(stats: BoxStats) f64 {
+    if (stats.count == 0) return 0;
+    const r: f64 = @floatFromInt(stats.r);
+    const g: f64 = @floatFromInt(stats.g);
+    const b: f64 = @floatFromInt(stats.b);
+    return (2.0 * r * r + 4.0 * g * g + 3.0 * b * b) / (8.0 * @as(f64, @floatFromInt(stats.count)));
+}
+
+fn boxVariance(moments: []const SixelMoment, box: SixelBox) f64 {
+    return @max(0, @as(f64, @floatFromInt(volumeValue("square", moments, box))) - statsEnergy(volumeStats(moments, box)));
+}
+
+fn bestBoxCut(moments: []const SixelMoment, box: SixelBox) ?SixelCut {
+    var best: ?SixelCut = null;
+    inline for ([_]SixelAxis{ .r, .g, .b }) |axis| {
+        const low = switch (axis) {
+            .r => box.r0,
+            .g => box.g0,
+            .b => box.b0,
+        };
+        const high = switch (axis) {
+            .r => box.r1,
+            .g => box.g1,
+            .b => box.b1,
+        };
+        var at = low + 1;
+        while (at < high) : (at += 1) {
+            var first = box;
+            var second = box;
+            switch (axis) {
+                .r => {
+                    first.r1 = at;
+                    second.r0 = at;
+                },
+                .g => {
+                    first.g1 = at;
+                    second.g0 = at;
+                },
+                .b => {
+                    first.b1 = at;
+                    second.b0 = at;
+                },
+            }
+            const first_stats = volumeStats(moments, first);
+            const second_stats = volumeStats(moments, second);
+            if (first_stats.count == 0 or second_stats.count == 0) continue;
+            const score = statsEnergy(first_stats) + statsEnergy(second_stats);
+            if (best == null or score > best.?.score) best = .{ .axis = axis, .at = at, .score = score };
+        }
+    }
+    return best;
+}
+
+pub fn quantizeSixel(allocator: std.mem.Allocator, image: *const native_image.Image, max_colors: usize) !QuantizedSixel {
+    if (max_colors == 0 or max_colors > 255) return error.InvalidArgument;
+    const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
+    if (image.pixels.len < std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData) return error.InvalidImageData;
+    const moments = try allocator.alloc(SixelMoment, SIXEL_HISTOGRAM_LEN);
+    defer allocator.free(moments);
+    @memset(moments, .{});
+    var active_bins: usize = 0;
+    for (0..pixel_count) |pixel| {
+        const offset = pixel * 4;
+        if (image.pixels[offset + 3] < 128) continue;
+        const r = image.pixels[offset];
+        const g = image.pixels[offset + 1];
+        const b = image.pixels[offset + 2];
+        const bin = &moments[momentIndex(@as(usize, r >> 3) + 1, @as(usize, g >> 3) + 1, @as(usize, b >> 3) + 1)];
+        if (bin.count == 0) active_bins += 1;
+        bin.count += 1;
+        bin.r += r;
+        bin.g += g;
+        bin.b += b;
+        bin.square += (2 * @as(u64, r) * r + 4 * @as(u64, g) * g + 3 * @as(u64, b) * b + 4) >> 3;
+    }
+    for (1..SIXEL_HISTOGRAM_SIDE) |r| {
+        var area = [_]SixelMoment{.{}} ** SIXEL_HISTOGRAM_SIDE;
+        for (1..SIXEL_HISTOGRAM_SIDE) |g| {
+            var line: SixelMoment = .{};
+            for (1..SIXEL_HISTOGRAM_SIDE) |b| {
+                addMoment(&line, moments[momentIndex(r, g, b)]);
+                addMoment(&area[b], line);
+                var cumulative = moments[momentIndex(r - 1, g, b)];
+                addMoment(&cumulative, area[b]);
+                moments[momentIndex(r, g, b)] = cumulative;
+            }
+        }
+    }
+    var result = QuantizedSixel{ .allocator = allocator, .palette = undefined, .palette_len = 0, .indices = try allocator.alloc(u8, pixel_count) };
+    errdefer allocator.free(result.indices);
+    if (active_bins == 0) {
+        @memset(result.indices, 255);
+        return result;
+    }
+    var boxes: [255]SixelBox = undefined;
+    var variances = [_]f64{0} ** 255;
+    boxes[0] = .{};
+    variances[0] = boxVariance(moments, boxes[0]);
+    var box_count: usize = 1;
+    while (box_count < @min(active_bins, max_colors)) {
+        var split_index: ?usize = null;
+        var highest: f64 = 0;
+        for (variances[0..box_count], 0..) |variance, index| if (variance > highest) {
+            highest = variance;
+            split_index = index;
+        };
+        if (split_index == null) break;
+        const cut = bestBoxCut(moments, boxes[split_index.?]) orelse {
+            variances[split_index.?] = 0;
+            continue;
+        };
+        var second = boxes[split_index.?];
+        switch (cut.axis) {
+            .r => {
+                boxes[split_index.?].r1 = cut.at;
+                second.r0 = cut.at;
+            },
+            .g => {
+                boxes[split_index.?].g1 = cut.at;
+                second.g0 = cut.at;
+            },
+            .b => {
+                boxes[split_index.?].b1 = cut.at;
+                second.b0 = cut.at;
+            },
+        }
+        boxes[box_count] = second;
+        variances[split_index.?] = boxVariance(moments, boxes[split_index.?]);
+        variances[box_count] = boxVariance(moments, second);
+        box_count += 1;
+    }
+    result.palette_len = box_count;
+    var tags = [_]u8{0} ** (32 * 32 * 32);
+    for (boxes[0..box_count], 0..) |box, palette_index| {
+        const stats = volumeStats(moments, box);
+        result.palette[palette_index] = .{
+            @intCast((stats.r + stats.count / 2) / stats.count),
+            @intCast((stats.g + stats.count / 2) / stats.count),
+            @intCast((stats.b + stats.count / 2) / stats.count),
+        };
+        for (box.r0..box.r1) |r| {
+            for (box.g0..box.g1) |g| {
+                for (box.b0..box.b1) |b| tags[(r << 10) | (g << 5) | b] = @intCast(palette_index);
+            }
+        }
+    }
+    for (0..image.height()) |y| {
+        for (0..image.width()) |x| {
+            const pixel = y * image.width() + x;
+            const offset = pixel * 4;
+            const matrix_index = (y & 3) * 4 + (x & 3);
+            result.indices[pixel] = if (image.pixels[offset + 3] < 128) 255 else tags[
+                (@as(usize, DITHERED_5[matrix_index][image.pixels[offset]]) << 10) |
+                    (@as(usize, DITHERED_5[matrix_index][image.pixels[offset + 1]]) << 5) |
+                    DITHERED_5[matrix_index][image.pixels[offset + 2]]
+            ];
+        }
+    }
+    return result;
 }
 
 fn writeUnsigned(writer: anytype, value: usize) !void {
@@ -138,65 +339,107 @@ fn BufferedWriter(comptime Writer: type) type {
 }
 
 pub fn writeSixelPayload(allocator: std.mem.Allocator, writer: anytype, image: *const native_image.Image) !void {
-    const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
-    const expected_bytes = std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData;
-    if (image.pixels.len < expected_bytes) return error.InvalidImageData;
-    const mask_count = std.math.mul(usize, 27, image.width()) catch return error.InvalidImageData;
+    var quantized = try quantizeSixel(allocator, image, 255);
+    defer quantized.deinit();
+    try writeSixelIndexedPayload(
+        allocator,
+        writer,
+        quantized.indices,
+        quantized.palette[0..quantized.palette_len],
+        image.width(),
+        image.height(),
+    );
+}
+
+pub fn writeSixelIndexedPayload(
+    allocator: std.mem.Allocator,
+    writer: anytype,
+    indices: []const u8,
+    palette: []const [3]u8,
+    width: u32,
+    height: u32,
+) !void {
+    if (palette.len == 0 or palette.len > 256) return error.InvalidImageData;
+    const pixel_count = std.math.mul(usize, width, height) catch return error.InvalidImageData;
+    if (indices.len < pixel_count) return error.InvalidImageData;
+    const mask_count = std.math.mul(usize, palette.len, width) catch return error.InvalidImageData;
     const masks = try allocator.alloc(u8, mask_count);
     defer allocator.free(masks);
+    const bank_count = (@as(usize, width) + 63) / 64;
+    const bank_presence = try allocator.alloc(u8, palette.len * bank_count);
+    defer allocator.free(bank_presence);
     var buffered = BufferedWriter(@TypeOf(writer)){ .writer = writer };
     const output = &buffered;
-    var generations = [_]u32{0} ** 27;
-    var last_nonzero = [_]usize{0} ** 27;
+    var generations = [_]u32{0} ** 256;
+    var last_nonzero = [_]usize{0} ** 256;
     try output.writeAll("0;1;0q\"1;1;");
-    try writeUnsigned(output, image.width());
+    try writeUnsigned(output, width);
     try output.writeByte(';');
-    try writeUnsigned(output, image.height());
-    for (0..27) |index| {
-        const color = paletteColor(@intCast(index));
+    try writeUnsigned(output, height);
+    for (palette, 0..) |color, index| {
         try output.writeByte('#');
         try writeUnsigned(output, index);
         try output.writeAll(";2;");
-        try writeUnsigned(output, (@as(u16, color.r) * 100 + 127) / 255);
-        try output.writeByte(';');
-        try writeUnsigned(output, (@as(u16, color.g) * 100 + 127) / 255);
-        try output.writeByte(';');
-        try writeUnsigned(output, (@as(u16, color.b) * 100 + 127) / 255);
+        for (color, 0..) |channel, channel_index| {
+            try writeUnsigned(output, (@as(u16, channel) * 100 + 127) / 255);
+            if (channel_index < 2) try output.writeByte(';');
+        }
     }
 
-    const height: usize = image.height();
+    const output_height: usize = height;
     var band_y: usize = 0;
     var generation: u32 = 0;
-    while (band_y < height) : (band_y += 6) {
+    while (band_y < output_height) : (band_y += 6) {
         generation += 1;
         for (0..6) |bit| {
             const y = band_y + bit;
-            if (y >= height) continue;
-            for (0..image.width()) |x| {
-                const pixel = @as(usize, y) * image.width() + x;
-                if (image.pixels[pixel * 4 + 3] < 128) continue;
-                const palette_index = paletteIndex(image.pixels[pixel * 4], image.pixels[pixel * 4 + 1], image.pixels[pixel * 4 + 2], x, y);
+            if (y >= output_height) continue;
+            for (0..width) |x| {
+                const palette_index = indices[y * width + x];
+                if (palette_index == 255) continue;
+                if (palette_index >= palette.len) return error.InvalidImageData;
                 if (generations[palette_index] != generation) {
                     generations[palette_index] = generation;
-                    @memset(masks[@as(usize, palette_index) * image.width() ..][0..image.width()], 0);
+                    @memset(masks[@as(usize, palette_index) * width ..][0..width], 0);
+                    @memset(bank_presence[@as(usize, palette_index) * bank_count ..][0..bank_count], 0);
                     last_nonzero[palette_index] = 0;
                 }
-                masks[@as(usize, palette_index) * image.width() + x] |= @as(u8, 1) << @intCast(bit);
+                masks[@as(usize, palette_index) * width + x] |= @as(u8, 1) << @intCast(bit);
+                bank_presence[@as(usize, palette_index) * bank_count + x / 64] = 1;
                 last_nonzero[palette_index] = @max(last_nonzero[palette_index], x + 1);
             }
         }
-
-        for (0..27) |palette| {
-            if (generations[palette] != generation) continue;
-            const plane = masks[palette * image.width() ..][0..last_nonzero[palette]];
+        for (0..palette.len) |palette_index| {
+            if (generations[palette_index] != generation) continue;
+            const plane = masks[palette_index * width ..][0..last_nonzero[palette_index]];
             try output.writeByte('#');
-            try writeUnsigned(output, palette);
-            for (plane) |*value| value.* += '?';
-            // Literal planes trade compression for throughput; payload caching avoids repeating this work.
-            try output.writeAll(plane);
+            try writeUnsigned(output, palette_index);
+            var x: usize = 0;
+            while (x < plane.len) {
+                if (x % 64 == 0 and bank_presence[palette_index * bank_count + x / 64] == 0) {
+                    const run = @min(64, plane.len - x);
+                    if (run >= 4) {
+                        try output.writeByte('!');
+                        try writeUnsigned(output, run);
+                        try output.writeByte('?');
+                    } else for (0..run) |_| try output.writeByte('?');
+                    x += run;
+                    continue;
+                }
+                const mask = plane[x];
+                const char: u8 = '?' + mask;
+                var run: usize = 1;
+                while (x + run < plane.len and plane[x + run] == mask) : (run += 1) {}
+                if (run >= 4) {
+                    try output.writeByte('!');
+                    try writeUnsigned(output, run);
+                    try output.writeByte(char);
+                } else for (0..run) |_| try output.writeByte(char);
+                x += run;
+            }
             try output.writeByte('$');
         }
-        if (band_y + 6 < height) try output.writeByte('-');
+        if (band_y + 6 < output_height) try output.writeByte('-');
     }
     try output.flush();
 }
