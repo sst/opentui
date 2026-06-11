@@ -29,6 +29,90 @@ test "PNG probe and decode return canonical red RGBA" {
     try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels);
 }
 
+test "GIF probe and first frame decode preserve logical canvas transparency" {
+    const gif = try decodeBase64("R0lGODlhAgACAPAAAAAAAP8AACH5BAEAAAAALAAAAAACAAIAAAIDDBAFADs=");
+    defer std.testing.allocator.free(gif);
+    var info: image.Info = .{};
+    try std.testing.expectEqual(image.Status.ok, image.probe(gif, .{}, &info));
+    try std.testing.expectEqual(@as(u32, @intFromEnum(image.Format.gif)), info.format);
+    try std.testing.expectEqual(@as(u32, 2), info.width);
+    try std.testing.expectEqual(@as(u32, 2), info.height);
+    try std.testing.expectEqual(@as(u32, 1), info.has_alpha);
+
+    const decoded = try image.decode(std.testing.allocator, gif, .{});
+    defer decoded.deinit();
+    try std.testing.expectEqual(info, decoded.info());
+    try std.testing.expectEqualSlices(u8, &[_]u8{
+        255, 0, 0, 255, 0,   0, 0, 0,
+        0,   0, 0, 0,   255, 0, 0, 255,
+    }, decoded.pixels);
+}
+
+test "GIF first frame uses logical canvas dimensions and frame offset" {
+    const gif = try decodeBase64("R0lGODlhAwADAPAAAP8AAAAAACH5BAAAAAAALAEAAQABAAEAAAICRAEAOw==");
+    defer std.testing.allocator.free(gif);
+    const decoded = try image.decode(std.testing.allocator, gif, .{});
+    defer decoded.deinit();
+    try std.testing.expectEqual(@as(u32, 3), decoded.width());
+    try std.testing.expectEqual(@as(u32, 3), decoded.height());
+    const center = (1 * 3 + 1) * 4;
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels[center .. center + 4]);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 0 }, decoded.pixels[0..4]);
+}
+
+test "animated GIF decode returns only the first displayed frame" {
+    const gif = try decodeBase64("R0lGODlhAgACAPAAAP8AAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAgACAAACAoRRACH5BAAKAAAALAAAAAACAAIAgAAA/wAAAAIChFEAOw==");
+    defer std.testing.allocator.free(gif);
+    const decoded = try image.decode(std.testing.allocator, gif, .{});
+    defer decoded.deinit();
+    var offset: usize = 0;
+    while (offset < decoded.pixels.len) : (offset += 4) {
+        try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels[offset .. offset + 4]);
+    }
+}
+
+test "baseline and progressive JPEG decode to opaque RGBA" {
+    const fixtures = [_][]const u8{
+        "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==",
+        "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wgARCAACAAMDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAAB//EABUBAQEAAAAAAAAAAAAAAAAAAAYI/9oADAMBAAIQAxAAAAE5C1T/AP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEABj8Cf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAT8hf//aAAwDAQACAAMAAAAQ/wD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EH//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EH//2Q==",
+    };
+    for (fixtures) |encoded| {
+        const jpeg = try decodeBase64(encoded);
+        defer std.testing.allocator.free(jpeg);
+        var info: image.Info = .{};
+        try std.testing.expectEqual(image.Status.ok, image.probe(jpeg, .{}, &info));
+        try std.testing.expectEqual(@as(u32, @intFromEnum(image.Format.jpeg)), info.format);
+        try std.testing.expectEqual(@as(u32, 3), info.width);
+        try std.testing.expectEqual(@as(u32, 2), info.height);
+        try std.testing.expectEqual(@as(u32, 0), info.has_alpha);
+        const decoded = try image.decode(std.testing.allocator, jpeg, .{});
+        defer decoded.deinit();
+        try std.testing.expectEqual(info, decoded.info());
+        for (decoded.pixels[3..], 0..) |channel, index| {
+            if (index % 4 == 0) try std.testing.expectEqual(@as(u8, 255), channel);
+        }
+    }
+}
+
+test "lossy lossless and alpha WebP decode to canonical RGBA" {
+    const fixtures = [_]struct { encoded: []const u8, has_alpha: u32 }{
+        .{ .encoded = "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoDAAIAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=", .has_alpha = 0 },
+        .{ .encoded = "UklGRhwAAABXRUJQVlA4TA8AAAAvAkAAAAcQ/Y/+ByKi/wEA", .has_alpha = 0 },
+        .{ .encoded = "UklGRh4AAABXRUJQVlA4TBEAAAAvAUAAEA8Q8x/zH4wViOh/CAA=", .has_alpha = 1 },
+    };
+    for (fixtures) |fixture| {
+        const webp = try decodeBase64(fixture.encoded);
+        defer std.testing.allocator.free(webp);
+        var info: image.Info = .{};
+        try std.testing.expectEqual(image.Status.ok, image.probe(webp, .{}, &info));
+        try std.testing.expectEqual(@as(u32, @intFromEnum(image.Format.webp)), info.format);
+        try std.testing.expectEqual(fixture.has_alpha, info.has_alpha);
+        const decoded = try image.decode(std.testing.allocator, webp, .{});
+        defer decoded.deinit();
+        try std.testing.expectEqual(info, decoded.info());
+    }
+}
+
 test "PNG probe distinguishes unsupported input, corruption, and limits" {
     var info: image.Info = .{};
     try std.testing.expectEqual(image.Status.unsupported_format, image.probe("not png", .{}, &info));
@@ -80,8 +164,8 @@ test "extend fills every edge and preserves source pixels" {
     defer source.deinit();
     const output = try image.extend(std.testing.allocator, source, 1, 2, 1, 1, .{ 1, 2, 3, 4 });
     defer output.deinit();
-    try std.testing.expectEqual(@as(u32, 4), output.width);
-    try std.testing.expectEqual(@as(u32, 3), output.height);
+    try std.testing.expectEqual(@as(u32, 4), output.width());
+    try std.testing.expectEqual(@as(u32, 3), output.height());
     try std.testing.expectEqualSlices(u8, &[_]u8{ 10, 20, 30, 40 }, output.pixels[20..24]);
     try std.testing.expectEqualSlices(u8, &[_]u8{ 1, 2, 3, 4 }, output.pixels[0..4]);
 }
@@ -96,8 +180,8 @@ test "orthogonal transforms map pixels exactly" {
 
     const rotated = try image.transform(std.testing.allocator, source, .rotate_90);
     defer rotated.deinit();
-    try std.testing.expectEqual(@as(u32, 2), rotated.width);
-    try std.testing.expectEqual(@as(u32, 3), rotated.height);
+    try std.testing.expectEqual(@as(u32, 2), rotated.width());
+    try std.testing.expectEqual(@as(u32, 3), rotated.height());
     try std.testing.expectEqualSlices(u8, &[_]u8{
         4, 0, 0, 255, 1, 0, 0, 255,
         5, 0, 0, 255, 2, 0, 0, 255,

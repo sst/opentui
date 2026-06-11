@@ -1,11 +1,40 @@
+import { readFile } from "node:fs/promises"
+
 import { resolveRenderLib, type ImageHandle, type RenderLib } from "./zig.js"
 import type { NativeImageInfo } from "./zig-structs.js"
 
-export type ImageFormat = "png" | "raw-rgba"
+export type ImageFormat = "png" | "raw-rgba" | "jpeg" | "webp" | "gif"
 export type ImageColorStatus = "assumed-srgb" | "explicit-srgb"
 export type ResizeKernel = "default" | "area" | "triangle" | "cubic-bspline" | "catmull-rom" | "mitchell" | "nearest"
 export type BlendMode = "source-over" | "source" | "destination-over"
 export type PixelFormat = "rgba8" | "bgra8"
+export type ImageSource = string | URL | Uint8Array | ArrayBuffer
+
+export type ImageLoadErrorCode = "file-read" | "network" | "http-status" | "unsupported-url-scheme"
+
+export class ImageLoadError extends Error {
+  public readonly code: ImageLoadErrorCode
+  public readonly source: string
+  public readonly status?: number
+
+  constructor(
+    code: ImageLoadErrorCode,
+    source: string,
+    message: string,
+    options?: { cause?: unknown; status?: number },
+  ) {
+    super(message, { cause: options?.cause })
+    this.name = "ImageLoadError"
+    this.code = code
+    this.source = source
+    this.status = options?.status
+  }
+}
+
+export interface ImageLoadOptions {
+  signal?: AbortSignal
+  fetch?: typeof globalThis.fetch
+}
 
 export interface ImageInfo {
   width: number
@@ -68,7 +97,48 @@ const STATUS_MESSAGES = [
   "out of memory",
   "image output buffer is too small",
   "internal image error",
+  "unsupported image feature",
 ] as const
+
+export type ImageErrorCode =
+  | "invalid-handle"
+  | "unsupported-format"
+  | "unsupported-color-space"
+  | "malformed-data"
+  | "dimension-limit"
+  | "memory-limit"
+  | "invalid-argument"
+  | "out-of-memory"
+  | "output-too-small"
+  | "internal-error"
+  | "unsupported-feature"
+
+const STATUS_CODES: readonly ImageErrorCode[] = [
+  "internal-error",
+  "invalid-handle",
+  "unsupported-format",
+  "unsupported-color-space",
+  "malformed-data",
+  "dimension-limit",
+  "memory-limit",
+  "invalid-argument",
+  "out-of-memory",
+  "output-too-small",
+  "internal-error",
+  "unsupported-feature",
+]
+
+export class ImageError extends Error {
+  public readonly code: ImageErrorCode
+  public readonly status: number
+
+  constructor(status: number) {
+    super(`Native image operation failed: ${STATUS_MESSAGES[status] ?? `unknown status ${status}`}`)
+    this.name = "ImageError"
+    this.status = status
+    this.code = STATUS_CODES[status] ?? "internal-error"
+  }
+}
 
 const FILTER_IDS: Record<ResizeKernel, number> = {
   default: 0,
@@ -87,7 +157,7 @@ const BLEND_IDS: Record<BlendMode, number> = {
 }
 
 function imageError(status: number): Error {
-  return new Error(`Native image operation failed: ${STATUS_MESSAGES[status] ?? `unknown status ${status}`}`)
+  return new ImageError(status)
 }
 
 function checkStatus(status: number): void {
@@ -115,7 +185,8 @@ function requireByte(value: number, name: string): number {
 }
 
 function unpackInfo(info: NativeImageInfo): ImageInfo {
-  const format: ImageFormat = info.format === 1 ? "png" : "raw-rgba"
+  const format = (["unknown", "png", "raw-rgba", "jpeg", "webp", "gif"] as const)[info.format]
+  if (!format || format === "unknown") throw new Error(`Unknown native image format ${info.format}`)
   return {
     width: info.width,
     height: info.height,
@@ -128,10 +199,16 @@ function unpackInfo(info: NativeImageInfo): ImageInfo {
   }
 }
 
-export function imageInfo(data: Uint8Array): ImageInfo {
-  if (!(data instanceof Uint8Array) || data.byteLength === 0)
-    throw new TypeError("image data must be a non-empty Uint8Array")
-  const result = resolveRenderLib().imageInfo(data)
+function encodedBytes(data: Uint8Array | ArrayBuffer): Uint8Array {
+  if (data instanceof Uint8Array) return data
+  if (data instanceof ArrayBuffer) return new Uint8Array(data)
+  throw new TypeError("image data must be a Uint8Array or ArrayBuffer")
+}
+
+export function imageInfo(data: Uint8Array | ArrayBuffer): ImageInfo {
+  const bytes = encodedBytes(data)
+  if (bytes.byteLength === 0) throw new TypeError("image data must not be empty")
+  const result = resolveRenderLib().imageInfo(bytes)
   checkStatus(result.status)
   return unpackInfo(result.info)
 }
@@ -147,14 +224,66 @@ export class NativeImage {
     this.imageInfo = info
   }
 
-  public static decode(data: Uint8Array): NativeImage {
-    if (!(data instanceof Uint8Array) || data.byteLength === 0)
-      throw new TypeError("image data must be a non-empty Uint8Array")
+  public static decode(data: Uint8Array | ArrayBuffer): NativeImage {
+    const bytes = encodedBytes(data)
+    if (bytes.byteLength === 0) throw new TypeError("image data must not be empty")
     const lib = resolveRenderLib()
-    const result = lib.imageDecode(data)
+    const result = lib.imageDecode(bytes)
     checkStatus(result.status)
     if (!result.handle) throw imageError(10)
     return NativeImage.fromHandle(lib, result.handle)
+  }
+
+  public static async load(source: ImageSource, options: ImageLoadOptions = {}): Promise<NativeImage> {
+    options.signal?.throwIfAborted()
+    if (source instanceof Uint8Array || source instanceof ArrayBuffer) return NativeImage.decode(source)
+
+    const url =
+      source instanceof URL
+        ? source
+        : source.startsWith("http:") || source.startsWith("https:") || source.startsWith("file:")
+          ? new URL(source)
+          : null
+    if (!url || url.protocol === "file:") {
+      const path = url ?? source
+      let data: Uint8Array
+      try {
+        data = await readFile(path, { signal: options.signal })
+      } catch (error) {
+        if (options.signal?.aborted) throw options.signal.reason
+        throw new ImageLoadError("file-read", String(source), `Failed to read image: ${String(source)}`, {
+          cause: error,
+        })
+      }
+      options.signal?.throwIfAborted()
+      return NativeImage.decode(data)
+    }
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new ImageLoadError("unsupported-url-scheme", url.href, `Unsupported image URL scheme: ${url.protocol}`)
+    }
+
+    let response: Response
+    try {
+      response = await (options.fetch ?? globalThis.fetch)(url, { signal: options.signal })
+    } catch (error) {
+      if (options.signal?.aborted) throw options.signal.reason
+      throw new ImageLoadError("network", url.href, `Failed to fetch image: ${url.href}`, { cause: error })
+    }
+    if (!response.ok) {
+      throw new ImageLoadError("http-status", url.href, `Failed to fetch image: HTTP ${response.status}`, {
+        status: response.status,
+      })
+    }
+    let data: ArrayBuffer
+    try {
+      data = await response.arrayBuffer()
+    } catch (error) {
+      if (options.signal?.aborted) throw options.signal.reason
+      throw new ImageLoadError("network", url.href, `Failed to read image response: ${url.href}`, { cause: error })
+    }
+    options.signal?.throwIfAborted()
+    return NativeImage.decode(data)
   }
 
   public static fromRgba(pixels: Uint8Array, width: number, height: number, stride = width * 4): NativeImage {

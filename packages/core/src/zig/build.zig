@@ -162,13 +162,81 @@ fn addMiniaudioShim(
 
 fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, macos_sdk_path: ?[]const u8) void {
     const flags: []const []const u8 = switch (target.result.os.tag) {
-        .macos => &.{ "-std=c99", "-ffp-contract=off", "-isysroot", macos_sdk_path.? },
-        else => &.{ "-std=c99", "-ffp-contract=off" },
+        .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-isysroot", macos_sdk_path.? },
+        else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden" },
     };
 
     artifact.addCSourceFile(.{
         .file = b.path("image-shim.c"),
         .flags = flags,
+    });
+
+    const webp_flags: []const []const u8 = switch (target.result.os.tag) {
+        .macos => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern", "-isysroot", macos_sdk_path.? },
+        else => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern" },
+    };
+    artifact.addIncludePath(b.path("vendor/libwebp"));
+    artifact.addCSourceFiles(.{
+        .root = b.path("vendor/libwebp"),
+        .files = &.{
+            "src/dec/alpha_dec.c",
+            "src/dec/buffer_dec.c",
+            "src/dec/frame_dec.c",
+            "src/dec/idec_dec.c",
+            "src/dec/io_dec.c",
+            "src/dec/quant_dec.c",
+            "src/dec/tree_dec.c",
+            "src/dec/vp8_dec.c",
+            "src/dec/vp8l_dec.c",
+            "src/dec/webp_dec.c",
+            "src/dsp/alpha_processing.c",
+            "src/dsp/cpu.c",
+            "src/dsp/dec.c",
+            "src/dsp/dec_clip_tables.c",
+            "src/dsp/filters.c",
+            "src/dsp/lossless.c",
+            "src/dsp/rescaler.c",
+            "src/dsp/upsampling.c",
+            "src/dsp/yuv.c",
+            "src/utils/bit_reader_utils.c",
+            "src/utils/color_cache_utils.c",
+            "src/utils/filters_utils.c",
+            "src/utils/huffman_utils.c",
+            "src/utils/palette.c",
+            "src/utils/quant_levels_dec_utils.c",
+            "src/utils/random_utils.c",
+            "src/utils/rescaler_utils.c",
+            "src/utils/thread_utils.c",
+            "src/utils/utils.c",
+        },
+        .flags = webp_flags,
+    });
+
+    const arch_files: []const []const u8 = switch (target.result.cpu.arch) {
+        .x86_64 => &.{
+            "src/dsp/alpha_processing_sse2.c",
+            "src/dsp/dec_sse2.c",
+            "src/dsp/filters_sse2.c",
+            "src/dsp/lossless_sse2.c",
+            "src/dsp/rescaler_sse2.c",
+            "src/dsp/upsampling_sse2.c",
+            "src/dsp/yuv_sse2.c",
+        },
+        .aarch64 => &.{
+            "src/dsp/alpha_processing_neon.c",
+            "src/dsp/dec_neon.c",
+            "src/dsp/filters_neon.c",
+            "src/dsp/lossless_neon.c",
+            "src/dsp/rescaler_neon.c",
+            "src/dsp/upsampling_neon.c",
+            "src/dsp/yuv_neon.c",
+        },
+        else => &.{},
+    };
+    artifact.addCSourceFiles(.{
+        .root = b.path("vendor/libwebp"),
+        .files = arch_files,
+        .flags = webp_flags,
     });
 }
 
