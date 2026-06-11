@@ -13,6 +13,7 @@ import {
   TextRenderable,
   createCliRenderer,
   type ImageSource,
+  type ImageRenderProtocol,
   type KeyEvent,
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
@@ -52,13 +53,18 @@ interface GalleryItem {
 let root: BoxRenderable | null = null
 let server: Server | null = null
 let keyListener: ((key: KeyEvent) => void) | null = null
+let capabilityListener: (() => void) | null = null
 let controlsText: TextRenderable | null = null
 let previews: ImageRenderable[] = []
 let fitMode: FitMode = "fit"
+let protocol: ImageRenderProtocol = "auto"
+
+const protocols: ImageRenderProtocol[] = ["auto", "kitty", "sixel", "blocks"]
 
 function updateControls(): void {
   if (!controlsText) return
-  controlsText.content = `F  ${fitMode.toUpperCase()}     AUTO  KITTY → SIXEL → BLOCKS     ESC  MENU`
+  const effective = previews[0]?.effectiveProtocol ?? "blocks"
+  controlsText.content = `F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     ESC  MENU`
 }
 
 function createCard(renderer: CliRenderer, item: GalleryItem, index: number): BoxRenderable {
@@ -130,6 +136,7 @@ function createCard(renderer: CliRenderer, item: GalleryItem, index: number): Bo
     id: `native-image-preview-${index}`,
     source: item.source,
     fit: fitMode,
+    protocol,
     width: "100%",
     height: "auto",
     flexGrow: 1,
@@ -283,22 +290,31 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   keyListener = (key: KeyEvent) => {
     if (key.name === "f") fitMode = fitMode === "fit" ? "cover" : "fit"
+    else if (key.name === "p") protocol = protocols[(protocols.indexOf(protocol) + 1) % protocols.length]
     else return
 
-    for (const preview of previews) preview.fit = fitMode
+    for (const preview of previews) {
+      preview.fit = fitMode
+      preview.protocol = protocol
+    }
     updateControls()
   }
   renderer.keyInput.on("keypress", keyListener)
+  capabilityListener = updateControls
+  renderer.on("capabilities", capabilityListener)
 }
 
 export function destroy(renderer: CliRenderer): void {
   if (keyListener) renderer.keyInput.off("keypress", keyListener)
+  if (capabilityListener) renderer.off("capabilities", capabilityListener)
   keyListener = null
+  capabilityListener = null
   root?.destroy()
   root = null
   previews = []
   controlsText = null
   fitMode = "fit"
+  protocol = "auto"
   server?.close()
   server = null
 }
