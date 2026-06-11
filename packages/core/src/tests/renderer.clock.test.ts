@@ -180,6 +180,75 @@ test("threaded output backpressure retries a skipped native frame", async () => 
   }
 })
 
+test("fps counts rendered frames and excludes dropped frames", async () => {
+  const internals = renderer as unknown as {
+    renderNative: () => "rendered" | "retryable-skip" | "backpressured" | "blocked" | "failed"
+    lastTime: number
+    lastFpsTime: number
+    frameCount: number
+    currentFps: number
+    renderStats: { fps: number; frameCount: number }
+  }
+  const originalRenderNative = internals.renderNative
+  const statuses: Array<"rendered" | "retryable-skip" | "backpressured" | "blocked" | "failed"> = [
+    "rendered",
+    "retryable-skip",
+    "rendered",
+    "backpressured",
+    "blocked",
+    "failed",
+    "retryable-skip",
+    "rendered",
+    "rendered",
+  ]
+  internals.renderNative = () => statuses.shift() ?? "retryable-skip"
+  internals.lastTime = 0
+  internals.lastFpsTime = 0
+  internals.frameCount = 0
+  internals.currentFps = 0
+  internals.renderStats.fps = 0
+  try {
+    for (const time of [100, 200, 300, 1000]) {
+      clock.setTime(time)
+      await renderOnce()
+      renderer.pause()
+    }
+    expect(renderer.getStats().fps).toBe(2)
+
+    for (const time of [1100, 1500, 2000]) {
+      clock.setTime(time)
+      await renderOnce()
+      renderer.pause()
+    }
+    expect(renderer.getStats().fps).toBe(0)
+
+    for (const time of [2100, 3000]) {
+      clock.setTime(time)
+      await renderOnce()
+      renderer.pause()
+    }
+    expect(renderer.getStats().fps).toBe(2)
+    expect(internals.renderStats.frameCount).toBe(9)
+  } finally {
+    internals.renderNative = originalRenderNative
+  }
+})
+
+test("starting the render loop resets stale fps immediately", () => {
+  const internals = renderer as unknown as {
+    currentFps: number
+    renderStats: { fps: number }
+  }
+  internals.currentFps = 42
+  internals.renderStats.fps = 42
+  try {
+    renderer.start()
+    expect(renderer.getStats().fps).toBe(0)
+  } finally {
+    renderer.pause()
+  }
+})
+
 test("start() does not double-schedule frames when a render was already queued", async () => {
   let renderCalls = 0
 
