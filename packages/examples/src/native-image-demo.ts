@@ -22,13 +22,13 @@ import {
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 // @ts-ignore Bun embeds imported assets and returns their runtime paths.
-import pngPath from "./assets/concrete.png" with { type: "image/png" }
+import gifPath from "./assets/image-demo.gif" with { type: "image/gif" }
 // @ts-ignore Bun embeds imported assets and returns their runtime paths.
-import jpegPath from "./assets/image-demo.jpg" with { type: "image/jpeg" }
+import pngPath from "./assets/image-demo.png" with { type: "image/png" }
+// @ts-ignore Bun embeds imported assets and returns their runtime paths.
+import jpegPath from "./assets/dragon.jpg" with { type: "image/jpeg" }
 // @ts-ignore Bun embeds imported assets and returns their runtime paths.
 import webpPath from "./assets/image-demo.webp" with { type: "image/webp" }
-// @ts-ignore Bun embeds imported assets and returns their runtime paths.
-import gifPath from "./assets/image-demo.gif" with { type: "image/gif" }
 
 const P = {
   page: "#090d18",
