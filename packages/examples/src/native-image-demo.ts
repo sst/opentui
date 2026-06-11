@@ -197,7 +197,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const header = new BoxRenderable(renderer, {
     id: "native-image-header",
     width: "100%",
-    height: 6,
+    height: 4,
     flexGrow: 0,
     flexShrink: 0,
     flexDirection: "row",
@@ -214,32 +214,6 @@ export async function run(renderer: CliRenderer): Promise<void> {
       attributes: TextAttributes.BOLD,
     }),
   )
-  const headerCopy = new BoxRenderable(renderer, {
-    id: "native-image-header-copy",
-    width: "auto",
-    height: "100%",
-    flexGrow: 1,
-    flexShrink: 1,
-    alignItems: "flex-end",
-    justifyContent: "center",
-    flexDirection: "column",
-    backgroundColor: P.header,
-  })
-  headerCopy.add(
-    new TextRenderable(renderer, {
-      id: "native-image-subtitle",
-      content: "ONE RGBA PIPELINE · FOUR FORMATS · FOUR SOURCE TYPES",
-      fg: P.cyan,
-    }),
-  )
-  headerCopy.add(
-    new TextRenderable(renderer, {
-      id: "native-image-caption",
-      content: "decode  →  transform  →  supersample",
-      fg: P.muted,
-    }),
-  )
-  header.add(headerCopy)
   root.add(header)
 
   const gallery = new BoxRenderable(renderer, {

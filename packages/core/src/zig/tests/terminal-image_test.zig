@@ -28,7 +28,7 @@ test "sixel encoding writes palette raster and terminator" {
     try terminal_image.writeSixel(std.testing.allocator, output.writer(std.testing.allocator), value, false);
     try std.testing.expect(std.mem.startsWith(u8, output.items, "\x1bP0;1;0q\"1;1;1;1"));
     try std.testing.expect(std.mem.endsWith(u8, output.items, "\x1b\\"));
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "#0;2;100;0;0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "#18;2;100;0;0") != null);
 }
 
 test "sixel encoding does not open a DCS when payload generation fails" {
@@ -55,7 +55,7 @@ test "kitty tmux passthrough doubles inner escape bytes" {
     try std.testing.expect(std.mem.endsWith(u8, output.items, "\x1b\x1b\\\x1b\\"));
 }
 
-test "sixel encoding uses RLE for repeated columns and omits transparent pixels" {
+test "sixel encoding writes contiguous planes and omits transparent pixels" {
     const pixels = [_]u8{
         255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255,
         0,   0, 0, 0,
@@ -65,24 +65,10 @@ test "sixel encoding uses RLE for repeated columns and omits transparent pixels"
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
     try terminal_image.writeSixel(std.testing.allocator, output.writer(std.testing.allocator), value, false);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "!4@") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "#18@@@@$") != null);
 }
 
-test "sixel palette is derived from source colors" {
-    const pixels = [_]u8{
-        123, 45,  201, 255,
-        17,  231, 89,  255,
-    };
-    const value = try image.createFromRgba(std.testing.allocator, &pixels, 2, 1, 8);
-    defer value.deinit();
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeSixel(std.testing.allocator, output.writer(std.testing.allocator), value, false);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, ";2;48;18;79") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, ";2;7;91;35") != null);
-}
-
-test "sixel palette caps at 256 colors deterministically" {
+test "sixel uses a fixed 27 color palette deterministically" {
     const width = 512;
     const pixels = try std.testing.allocator.alloc(u8, width * 4);
     defer std.testing.allocator.free(pixels);
@@ -102,31 +88,24 @@ test "sixel palette caps at 256 colors deterministically" {
     try terminal_image.writeSixel(std.testing.allocator, first.writer(std.testing.allocator), value, false);
     try terminal_image.writeSixel(std.testing.allocator, second.writer(std.testing.allocator), value, false);
     try std.testing.expectEqualSlices(u8, first.items, second.items);
-    try std.testing.expectEqual(@as(usize, 256), std.mem.count(u8, first.items, ";2;"));
+    try std.testing.expectEqual(@as(usize, 27), std.mem.count(u8, first.items, ";2;"));
 }
 
-test "sixel palette preserves a low frequency distant color" {
-    const width = 257;
-    const pixels = try std.testing.allocator.alloc(u8, width * 4);
-    defer std.testing.allocator.free(pixels);
-    for (0..256) |index| {
-        const offset = index * 4;
-        pixels[offset] = @intCast(((index >> 5) & 0x1f) << 3);
-        pixels[offset + 1] = 0;
-        pixels[offset + 2] = @intCast((index & 0x1f) << 3);
-        pixels[offset + 3] = 255;
+test "sixel Bayer dithering preserves exact colors and spatial averages" {
+    for (0..4) |y| {
+        for (0..4) |x| {
+            try std.testing.expectEqual([3]u8{ 128, 0, 255 }, terminal_image.sixelQuantizedColor(128, 0, 255, x, y));
+        }
     }
-    pixels[256 * 4] = 255;
-    pixels[256 * 4 + 1] = 255;
-    pixels[256 * 4 + 2] = 255;
-    pixels[256 * 4 + 3] = 255;
 
-    const value = try image.createFromRgba(std.testing.allocator, pixels, width, 1, width * 4);
-    defer value.deinit();
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
-    try terminal_image.writeSixel(std.testing.allocator, output.writer(std.testing.allocator), value, false);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, ";2;100;100;100") != null);
+    for (0..256) |value| {
+        var sum: u32 = 0;
+        for (0..4) |y| {
+            for (0..4) |x| sum += terminal_image.sixelQuantizedColor(@intCast(value), 0, 0, x, y)[0];
+        }
+        const average = @as(f64, @floatFromInt(sum)) / 16.0;
+        try std.testing.expect(@abs(average - @as(f64, @floatFromInt(value))) <= 8.0);
+    }
 }
 
 test "sixel dithering is deterministic for a full color image" {
