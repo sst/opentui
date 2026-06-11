@@ -151,6 +151,7 @@ is_foot: bool = false,
 skip_graphics_query: bool = false,
 skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
+sixel_query_pending: bool = false,
 capability_queries_pending: bool = false,
 startup_cursor_query_pending: bool = false,
 startup_cursor_query_captured: bool = false,
@@ -284,6 +285,7 @@ pub fn exitAltScreen(self: *Terminal, tty: anytype) !void {
 pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
     self.graphics_query_pending = !self.skip_graphics_query;
+    self.sixel_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
     self.startup_cursor_query_pending = true;
     self.startup_cursor_query_captured = false;
@@ -319,6 +321,16 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         self.capability_queries_pending = true;
     }
 
+    if (!self.skip_graphics_query) {
+        if (self.isInTmux()) {
+            try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
+            try tty.writeAll(ansi.ANSI.primaryDeviceAttrsTmux);
+        } else {
+            try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
+            try tty.writeAll(ansi.ANSI.primaryDeviceAttrs);
+        }
+    }
+
     if (!self.skip_explicit_width_query) {
         try tty.writeAll(ansi.ANSI.home ++
             ansi.ANSI.explicitWidthQuery ++
@@ -335,6 +347,10 @@ pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
     var sent = false;
     const is_tmux = self.isInTmux();
 
+    // Initial probes were already sent using environment-derived multiplexer
+    // state. Only XTVERSION can justify a differently wrapped retry.
+    if (!self.term_info.from_xtversion) return false;
+
     // Re-send capability queries DCS wrapped if tmux detected via xtversion
     // Only needed if we got xtversion response indicating tmux
     if (self.capability_queries_pending) {
@@ -349,11 +365,17 @@ pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
     if (self.graphics_query_pending and !self.skip_graphics_query) {
         if (is_tmux) {
             try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
-        } else {
-            try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
+            sent = true;
         }
         self.graphics_query_pending = false;
-        sent = true;
+    }
+
+    if (self.sixel_query_pending and !self.skip_graphics_query) {
+        if (is_tmux) {
+            try tty.writeAll(ansi.ANSI.primaryDeviceAttrsTmux);
+            sent = true;
+        }
+        self.sixel_query_pending = false;
     }
 
     return sent;
@@ -1049,10 +1071,50 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
 /// alacritty - '\x1B[?1016;0$y\x1B[?2027;0$y\x1B[?2031;0$y\x1B[?1004;2$y\x1B[?2004;2$y\x1B[?2026;2$y\x1B[1;1R\x1B[1;1R\x1B[?0u\x1B[?6c'
 ///
 /// Parsing these is not complete yet
+fn parseKittyGraphicsResponse(self: *Terminal, response: []const u8) void {
+    var offset: usize = 0;
+    while (std.mem.indexOfPos(u8, response, offset, "\x1b_G")) |start| {
+        const end = std.mem.indexOfPos(u8, response, start + 3, "\x1b\\") orelse return;
+        const frame = response[start + 3 .. end];
+        const control_end = std.mem.indexOfScalar(u8, frame, ';') orelse frame.len;
+        var fields = std.mem.splitScalar(u8, frame[0..control_end], ',');
+        while (fields.next()) |field| {
+            if (std.mem.eql(u8, field, "i=31337")) {
+                self.caps.kitty_graphics = true;
+                return;
+            }
+        }
+        offset = end + 2;
+    }
+}
+
+fn parseSixelDeviceAttributes(self: *Terminal, response: []const u8) void {
+    var offset: usize = 0;
+    while (std.mem.indexOfPos(u8, response, offset, "\x1b[?")) |start| {
+        var end = start + 3;
+        while (end < response.len and (std.ascii.isDigit(response[end]) or response[end] == ';')) : (end += 1) {}
+        if (end >= response.len) return;
+        if (response[end] != 'c') {
+            offset = end + 1;
+            continue;
+        }
+        var params = std.mem.splitScalar(u8, response[start + 3 .. end], ';');
+        while (params.next()) |param| {
+            if (std.mem.eql(u8, param, "4")) {
+                self.caps.sixel = true;
+                return;
+            }
+        }
+        offset = end + 1;
+    }
+}
+
 pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     self.parseOsc99NotificationQuery(response);
     self.parseItermCapabilities(response);
     self.parseXtgettcapMs(response);
+    self.parseKittyGraphicsResponse(response);
+    self.parseSixelDeviceAttributes(response);
 
     // DECRPM responses
     if (std.mem.indexOf(u8, response, "1016;2$y")) |_| {
@@ -1138,11 +1200,9 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     // Kitty detection
     if (std.mem.indexOf(u8, response, "kitty")) |_| {
         self.caps.kitty_keyboard = true;
-        self.caps.kitty_graphics = true;
         self.caps.unicode = .unicode;
         self.caps.rgb = true;
         self.caps.ansi256 = true;
-        self.caps.sixel = true;
         self.caps.bracketed_paste = true;
         self.caps.hyperlinks = true;
     }
@@ -1172,36 +1232,6 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
 
     if (std.mem.indexOf(u8, response, "alacritty")) |_| {
         self.caps.explicit_cursor_positioning = true;
-    }
-
-    // Sixel detection via device attributes (capability 4 in DA1 response ending with 'c')
-    if (std.mem.indexOf(u8, response, ";c")) |pos| {
-        var start: usize = 0;
-        if (pos >= 4) {
-            start = pos;
-            while (start > 0 and response[start] != '\x1b') {
-                start -= 1;
-            }
-
-            const da_response = response[start .. pos + 2];
-
-            if (std.mem.indexOf(u8, da_response, "\x1b[?") == 0) {
-                if (std.mem.indexOf(u8, da_response, "4;") != null or std.mem.indexOf(u8, da_response, ";4;") != null or std.mem.indexOf(u8, da_response, ";4c") != null) {
-                    self.caps.sixel = true;
-                }
-            }
-        }
-    }
-
-    // Kitty graphics response: ESC_Gi=31337;OK ESC\ or ESC_Gi=31337;EERROR... ESC\
-    // We look for our specific query ID (31337) to avoid false positives
-    if (std.mem.indexOf(u8, response, "\x1b_G")) |_| {
-        if (std.mem.indexOf(u8, response, "i=31337")) |_| {
-            // Got a response to our graphics query with our ID
-            // If it contains "OK" or even an error, the protocol is supported
-            // (errors mean the query was understood, just parameters were wrong)
-            self.caps.kitty_graphics = true;
-        }
     }
 
     if (!self.caps.osc52 and isOsc52Term(response)) {

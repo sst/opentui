@@ -66,6 +66,7 @@ import {
   AllocatorStatsStruct,
   NativeRenderStatsStruct,
   NativeImageInfoStruct,
+  ImageDrawOptionsStruct,
 } from "./zig-structs.js"
 import type {
   NativeSpanFeedOptions,
@@ -523,6 +524,10 @@ function getOpenTUILib(libPath?: string) {
     bufferDrawSuperSampleBuffer: {
       args: ["u32", "u32", "u32", "ptr", "u32", "u8", "u32"],
       returns: "void",
+    },
+    bufferDrawImage: {
+      args: ["u32", "u32", "ptr"],
+      returns: "bool",
     },
     bufferDrawPackedBuffer: {
       args: ["u32", "ptr", "u32", "u32", "u32", "u32", "u32"],
@@ -2210,6 +2215,20 @@ export interface RenderLib extends AudioEngineLib {
     format: "bgra8unorm" | "rgba8unorm",
     alignedBytesPerRow: number,
   ) => void
+  bufferDrawImage: (
+    buffer: OptimizedBufferHandle,
+    image: ImageHandle,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    pixelWidth: number,
+    pixelHeight: number,
+    sourceX: number,
+    sourceY: number,
+    sourceWidth: number,
+    sourceHeight: number,
+  ) => boolean
   bufferDrawPackedBuffer: (
     buffer: OptimizedBufferHandle,
     dataPtr: Pointer,
@@ -3284,6 +3303,35 @@ class FFIRenderLib implements RenderLib {
       formatId,
       alignedBytesPerRow,
     )
+  }
+
+  public bufferDrawImage(
+    buffer: OptimizedBufferHandle,
+    image: ImageHandle,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    pixelWidth: number,
+    pixelHeight: number,
+    sourceX: number,
+    sourceY: number,
+    sourceWidth: number,
+    sourceHeight: number,
+  ): boolean {
+    const options = ImageDrawOptionsStruct.pack({
+      x,
+      y,
+      width,
+      height,
+      pixelWidth,
+      pixelHeight,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+    })
+    return this.opentui.symbols.bufferDrawImage(buffer, image, ptr(options))
   }
 
   public bufferDrawPackedBuffer(

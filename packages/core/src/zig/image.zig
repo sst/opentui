@@ -127,6 +127,7 @@ pub const Image = struct {
     allocator: Allocator,
     pixels: []u8,
     metadata: Info,
+    ref_count: u32 = 1,
 
     pub fn width(self: *const Image) u32 {
         return self.metadata.width;
@@ -137,8 +138,16 @@ pub const Image = struct {
     }
 
     pub fn deinit(self: *Image) void {
+        std.debug.assert(self.ref_count > 0);
+        self.ref_count -= 1;
+        if (self.ref_count > 0) return;
         self.allocator.free(self.pixels);
         self.allocator.destroy(self);
+    }
+
+    pub fn retain(self: *Image) void {
+        std.debug.assert(self.ref_count < std.math.maxInt(u32));
+        self.ref_count += 1;
     }
 
     pub fn info(self: *const Image) Info {

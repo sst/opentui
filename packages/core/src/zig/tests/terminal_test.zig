@@ -51,7 +51,7 @@ test "parseXtversion - with prefix data" {
 
 test "parseXtversion - full kitty response" {
     var term = Terminal.init(.{});
-    const response = "\x1b[?1016;2$y\x1b[?2027;0$y\x1b[?2031;2$y\x1b[?1004;1$y\x1b[?2026;2$y\x1b[1;2R\x1b[1;3R\x1bP>|kitty(0.40.1)\x1b\\\x1b[?0u\x1b_Gi=1;EINVAL:Zero width/height not allowed\x1b\\\x1b[?62;c";
+    const response = "\x1b[?1016;2$y\x1b[?2027;0$y\x1b[?2031;2$y\x1b[?1004;1$y\x1b[?2026;2$y\x1b[1;2R\x1b[1;3R\x1bP>|kitty(0.40.1)\x1b\\\x1b[?0u\x1b_Gi=31337;OK\x1b\\\x1b[?62;c";
     term.processCapabilityResponse(response);
 
     try testing.expectEqualStrings("kitty", term.getTerminalName());
@@ -60,6 +60,41 @@ test "parseXtversion - full kitty response" {
     try testing.expect(term.caps.kitty_keyboard);
     try testing.expect(term.caps.kitty_graphics);
     try testing.expect(term.caps.osc52);
+}
+
+test "graphics detection - terminal name alone does not enable graphics" {
+    var term = Terminal.init(.{});
+    term.processCapabilityResponse("\x1bP>|kitty(0.46.2)\x1b\\");
+    try testing.expect(!term.caps.kitty_graphics);
+    try testing.expect(!term.caps.sixel);
+}
+
+test "graphics detection - kitty response matches exact id in the same APC" {
+    var term = Terminal.init(.{});
+    term.processCapabilityResponse("\x1b_Gi=31337;OK\x1b\\");
+    try testing.expect(term.caps.kitty_graphics);
+
+    var wrong = Terminal.init(.{});
+    wrong.processCapabilityResponse("\x1b_Gi=313370;OK\x1b\\");
+    try testing.expect(!wrong.caps.kitty_graphics);
+
+    var split = Terminal.init(.{});
+    split.processCapabilityResponse("\x1b_Gi=1;OK\x1b\\unrelated i=31337");
+    try testing.expect(!split.caps.kitty_graphics);
+}
+
+test "graphics detection - parses exact sixel DA1 parameter" {
+    var direct = Terminal.init(.{});
+    direct.processCapabilityResponse("\x1b[?1;2;4c");
+    try testing.expect(direct.caps.sixel);
+
+    var later = Terminal.init(.{});
+    later.processCapabilityResponse("\x1b[?62;22c\x1b[?62;1;2;4;6c");
+    try testing.expect(later.caps.sixel);
+
+    var absent = Terminal.init(.{});
+    absent.processCapabilityResponse("\x1b[?62;14;40c");
+    try testing.expect(!absent.caps.sixel);
 }
 
 test "parseXtversion - full ghostty response" {
@@ -598,7 +633,7 @@ test "sendPendingQueries - sends wrapped queries after tmux detected via xtversi
     try testing.expect(!term.graphics_query_pending);
 }
 
-test "sendPendingQueries - sends unwrapped graphics query for non-tmux terminal" {
+test "sendPendingQueries - clears already-sent direct graphics probes after non-tmux xtversion" {
     var term = Terminal.init(.{});
     term.multiplexer = .none;
     term.capability_queries_pending = true;
@@ -614,24 +649,22 @@ test "sendPendingQueries - sends unwrapped graphics query for non-tmux terminal"
 
     const did_send = try term.sendPendingQueries(&writer);
 
-    try testing.expect(did_send);
+    try testing.expect(!did_send);
 
     const output = writer.getWritten();
 
     // Should NOT send DCS wrapped capability queries (not tmux)
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
 
-    // Should send unwrapped graphics query
-    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") != null);
+    // Initial startup already sent the direct graphics query.
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") == null);
 
     // Should clear pending flags
     try testing.expect(!term.capability_queries_pending);
     try testing.expect(!term.graphics_query_pending);
 }
 
-test "sendPendingQueries - sends unwrapped graphics query even without xtversion response" {
-    // This covers terminals that support kitty graphics but don't respond to xtversion.
-    // The graphics query should still be sent (unwrapped) so we can detect graphics support.
+test "sendPendingQueries - waits for xtversion before any passthrough retry" {
     var term = Terminal.init(.{});
     term.multiplexer = .none;
     term.term_info.from_xtversion = false;
@@ -643,20 +676,19 @@ test "sendPendingQueries - sends unwrapped graphics query even without xtversion
 
     const did_send = try term.sendPendingQueries(&writer);
 
-    try testing.expect(did_send);
+    try testing.expect(!did_send);
 
     const output = writer.getWritten();
 
-    // Should send unwrapped graphics query (not tmux, so no DCS wrapper)
-    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") != null);
+    // Initial startup already sent the direct graphics query.
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") == null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
 
-    // Should clear graphics pending flag
-    try testing.expect(!term.graphics_query_pending);
+    try testing.expect(term.graphics_query_pending);
 
     // Capability queries should NOT be re-sent (no xtversion means we don't know if tmux,
     // but they were already sent unwrapped in queryTerminalSend)
-    try testing.expect(!term.capability_queries_pending);
+    try testing.expect(term.capability_queries_pending);
 }
 
 test "sendPendingQueries - skips graphics when skip_graphics_query is set" {
