@@ -291,6 +291,7 @@ pub fn quantizeSixel(allocator: std.mem.Allocator, image: *const native_image.Im
             ];
         }
     }
+
     return result;
 }
 
@@ -359,7 +360,7 @@ pub fn writeSixelIndexedPayload(
     width: u32,
     height: u32,
 ) !void {
-    if (palette.len == 0 or palette.len > 256) return error.InvalidImageData;
+    if (palette.len == 0 or palette.len > 255) return error.InvalidImageData;
     const pixel_count = std.math.mul(usize, width, height) catch return error.InvalidImageData;
     if (indices.len < pixel_count) return error.InvalidImageData;
     const mask_count = std.math.mul(usize, palette.len, width) catch return error.InvalidImageData;
@@ -404,9 +405,12 @@ pub fn writeSixelIndexedPayload(
                 last_nonzero[palette_index] = @max(last_nonzero[palette_index], x + 1);
             }
         }
+        var first_plane = true;
         for (0..palette.len) |palette_index| {
             if (generations[palette_index] != generation) continue;
             const plane = masks[palette_index * width ..][0..last_nonzero[palette_index]];
+            if (!first_plane) try output.writeByte('$');
+            first_plane = false;
             try output.writeByte('#');
             try writeUnsigned(output, palette_index);
             var x: usize = 0;
@@ -422,7 +426,6 @@ pub fn writeSixelIndexedPayload(
                 } else for (0..run) |_| try output.writeByte(char);
                 x += run;
             }
-            try output.writeByte('$');
         }
         if (band_y + 6 < output_height) try output.writeByte('-');
     }

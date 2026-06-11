@@ -2,6 +2,99 @@ const std = @import("std");
 const terminal_image = @import("../terminal-image.zig");
 const image = @import("../image.zig");
 
+const DecodedSixel = struct {
+    indices: []u8,
+    width: usize,
+    height: usize,
+
+    fn deinit(self: DecodedSixel) void {
+        std.testing.allocator.free(self.indices);
+    }
+};
+
+fn parseUnsigned(bytes: []const u8, position: *usize) !usize {
+    const start = position.*;
+    var value: usize = 0;
+    while (position.* < bytes.len and std.ascii.isDigit(bytes[position.*])) : (position.* += 1) {
+        value = value * 10 + bytes[position.*] - '0';
+    }
+    if (position.* == start) return error.InvalidSixel;
+    return value;
+}
+
+fn decodeSixelIndices(payload: []const u8) !DecodedSixel {
+    const quote = std.mem.indexOfScalar(u8, payload, '"') orelse return error.InvalidSixel;
+    var position = quote + 1;
+    _ = try parseUnsigned(payload, &position);
+    if (position >= payload.len or payload[position] != ';') return error.InvalidSixel;
+    position += 1;
+    _ = try parseUnsigned(payload, &position);
+    if (position >= payload.len or payload[position] != ';') return error.InvalidSixel;
+    position += 1;
+    const width = try parseUnsigned(payload, &position);
+    if (position >= payload.len or payload[position] != ';') return error.InvalidSixel;
+    position += 1;
+    const height = try parseUnsigned(payload, &position);
+    const indices = try std.testing.allocator.alloc(u8, width * height);
+    errdefer std.testing.allocator.free(indices);
+    @memset(indices, 255);
+
+    var selected: ?u8 = null;
+    var x: usize = 0;
+    var band_y: usize = 0;
+    while (position < payload.len) {
+        const byte = payload[position];
+        position += 1;
+        switch (byte) {
+            '#' => {
+                selected = @intCast(try parseUnsigned(payload, &position));
+                if (position < payload.len and payload[position] == ';') {
+                    // Skip color mode and three color components.
+                    for (0..4) |_| {
+                        if (position >= payload.len or payload[position] != ';') return error.InvalidSixel;
+                        position += 1;
+                        _ = try parseUnsigned(payload, &position);
+                    }
+                }
+            },
+            '!' => {
+                const count = try parseUnsigned(payload, &position);
+                if (position >= payload.len) return error.InvalidSixel;
+                const data = payload[position];
+                position += 1;
+                if (data < '?' or data > '~') return error.InvalidSixel;
+                for (0..count) |_| {
+                    const mask = data - '?';
+                    for (0..6) |bit| {
+                        const y = band_y + bit;
+                        if (selected != null and x < width and y < height and mask & (@as(u8, 1) << @intCast(bit)) != 0) {
+                            indices[y * width + x] = selected.?;
+                        }
+                    }
+                    x += 1;
+                }
+            },
+            '$' => x = 0,
+            '-' => {
+                x = 0;
+                band_y += 6;
+            },
+            '?'...'~' => {
+                const mask = byte - '?';
+                for (0..6) |bit| {
+                    const y = band_y + bit;
+                    if (selected != null and x < width and y < height and mask & (@as(u8, 1) << @intCast(bit)) != 0) {
+                        indices[y * width + x] = selected.?;
+                    }
+                }
+                x += 1;
+            },
+            else => {},
+        }
+    }
+    return .{ .indices = indices, .width = width, .height = height };
+}
+
 test "kitty transmission chunks RGBA payloads and places without cursor movement" {
     const pixels = try std.testing.allocator.alloc(u8, 3073);
     defer std.testing.allocator.free(pixels);
@@ -99,7 +192,104 @@ test "sixel indexed encoding preserves the supplied palette" {
     try terminal_image.writeSixelIndexedPayload(std.testing.allocator, output.writer(std.testing.allocator), &indices, &palette, 4, 1);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "#0;2;5;13;22") != null);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "#1;2;82;71;35") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "#0@?@$") != null);
+    const decoded = try decodeSixelIndices(output.items);
+    defer decoded.deinit();
+    try std.testing.expectEqualSlices(u8, &indices, decoded.indices);
+}
+
+test "sixel indexed encoding reserves index 255 for transparency" {
+    const palette = [_][3]u8{.{ 0, 0, 0 }} ** 256;
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try std.testing.expectError(
+        error.InvalidImageData,
+        terminal_image.writeSixelIndexedPayload(std.testing.allocator, output.writer(std.testing.allocator), &[_]u8{255}, &palette, 1, 1),
+    );
+    try std.testing.expectEqual(@as(usize, 0), output.items.len);
+}
+
+test "sixel indexed scheduling preserves cursor resets bands and transparency" {
+    const width = 65;
+    const height = 13;
+    const palette = [_][3]u8{ .{ 255, 0, 0 }, .{ 0, 255, 0 }, .{ 0, 0, 255 } };
+    const indices = try std.testing.allocator.alloc(u8, width * height);
+    defer std.testing.allocator.free(indices);
+    @memset(indices, 255);
+    indices[0] = 0;
+    indices[64] = 1;
+    indices[1 * width + 40] = 0;
+    indices[2 * width + 40] = 1;
+    indices[6 * width + 63] = 2;
+    indices[12 * width] = 1;
+    indices[12 * width + 64] = 0;
+
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeSixelIndexedPayload(std.testing.allocator, output.writer(std.testing.allocator), indices, &palette, width, height);
+    const decoded = try decodeSixelIndices(output.items);
+    defer decoded.deinit();
+    try std.testing.expectEqual(width, decoded.width);
+    try std.testing.expectEqual(height, decoded.height);
+    try std.testing.expectEqualSlices(u8, indices, decoded.indices);
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, output.items, "-"));
+    try std.testing.expect(std.mem.indexOfScalar(u8, output.items, '$') != null);
+}
+
+test "sixel indexed scheduling handles cover-sized geometry" {
+    const width = 576;
+    const height = 1015;
+    const palette = [_][3]u8{ .{ 255, 255, 255 }, .{ 64, 128, 255 } };
+    const indices = try std.testing.allocator.alloc(u8, width * height);
+    defer std.testing.allocator.free(indices);
+    @memset(indices, 255);
+    indices[0] = 0;
+    indices[width - 1] = 1;
+    indices[63] = 1;
+    indices[64] = 0;
+    indices[(height - 1) * width] = 1;
+    indices[height * width - 1] = 0;
+
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeSixelIndexedPayload(std.testing.allocator, output.writer(std.testing.allocator), indices, &palette, width, height);
+    const decoded = try decodeSixelIndices(output.items);
+    defer decoded.deinit();
+    try std.testing.expectEqualSlices(u8, indices, decoded.indices);
+    try std.testing.expect(output.items.len < 10_000);
+}
+
+test "sixel indexed scheduling handles width and band boundaries" {
+    const palette = [_][3]u8{ .{ 255, 255, 255 }, .{ 32, 96, 192 } };
+    for ([_]usize{ 1, 5, 6, 7, 12, 13 }) |height| {
+        for ([_]usize{ 1, 63, 64, 65, 127, 128, 129 }) |width| {
+            const indices = try std.testing.allocator.alloc(u8, width * height);
+            defer std.testing.allocator.free(indices);
+            @memset(indices, 255);
+            indices[0] = 0;
+            indices[width - 1] = 1;
+            indices[(height - 1) * width] = 1;
+            indices[height * width - 1] = 0;
+            if (width > 64) {
+                indices[63] = 1;
+                indices[64] = 0;
+            }
+
+            var output: std.ArrayList(u8) = .empty;
+            defer output.deinit(std.testing.allocator);
+            try terminal_image.writeSixelIndexedPayload(
+                std.testing.allocator,
+                output.writer(std.testing.allocator),
+                indices,
+                &palette,
+                @intCast(width),
+                @intCast(height),
+            );
+            const decoded = try decodeSixelIndices(output.items);
+            defer decoded.deinit();
+            try std.testing.expectEqualSlices(u8, indices, decoded.indices);
+            try std.testing.expect(std.mem.indexOf(u8, output.items, "$-") == null);
+        }
+    }
 }
 
 test "sixel dithering is deterministic for a full color image" {
