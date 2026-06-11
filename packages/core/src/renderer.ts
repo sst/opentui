@@ -435,6 +435,7 @@ class ExternalOutputQueue {
 }
 
 const CHAR_FLAG_CONTINUATION = 0xc0000000 >>> 0
+const CHAR_FLAG_IMAGE = 0x40000000 >>> 0
 const CHAR_FLAG_MASK = 0xc0000000 >>> 0
 
 class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderContext {
@@ -2342,7 +2343,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       while (x > 0) {
         const cp = chars[y * snapshot.width + x - 1]
-        if (cp === 0 || (cp & CHAR_FLAG_MASK) === CHAR_FLAG_CONTINUATION) {
+        if (cp === 0 || (cp & CHAR_FLAG_MASK) === CHAR_FLAG_CONTINUATION || (cp & CHAR_FLAG_MASK) === CHAR_FLAG_IMAGE) {
           x -= 1
           continue
         }

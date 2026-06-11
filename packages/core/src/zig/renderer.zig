@@ -9,6 +9,8 @@ const Terminal = @import("terminal.zig");
 const logger = @import("logger.zig");
 const NativeSpanFeed = @import("native-span-feed.zig");
 const output = @import("renderer-output.zig");
+const terminal_image = @import("terminal-image.zig");
+const native_image = @import("image.zig");
 
 pub const RGBA = ansi.RGBA;
 pub const OptimizedBuffer = buf.OptimizedBuffer;
@@ -69,7 +71,7 @@ fn snapshotRowEnd(snapshot: *const OptimizedBuffer, row: u32, limit: u32) u32 {
             continue;
         };
 
-        if (cell.char == 0 or gp.isContinuationChar(cell.char)) {
+        if (cell.char == 0 or gp.isContinuationChar(cell.char) or gp.isImageChar(cell.char)) {
             x -= 1;
             continue;
         }
@@ -109,11 +111,35 @@ const SplitFooterTransition = struct {
     }
 };
 
+const CommittedImage = struct {
+    placement_id: u32,
+    image_handle: u32,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    pixel_width: u32,
+    pixel_height: u32,
+    source_x: u32,
+    source_y: u32,
+    source_width: u32,
+    source_height: u32,
+    opacity: u8,
+};
+
+const ImageProtocol = enum { fallback, sixel, kitty };
+
 pub const CliRenderer = struct {
     width: u32,
     height: u32,
     currentRenderBuffer: *OptimizedBuffer,
     nextRenderBuffer: *OptimizedBuffer,
+    currentImages: std.ArrayListUnmanaged(CommittedImage) = .{},
+    pendingImages: std.ArrayListUnmanaged(CommittedImage) = .{},
+    currentImageProtocol: ImageProtocol = .fallback,
+    pendingImageProtocol: ImageProtocol = .fallback,
+    imageIdSalt: u32,
+    imageRenderFailed: bool = false,
     pool: *gp.GraphemePool,
     backgroundColor: RGBA,
     renderOffset: u32,
@@ -296,6 +322,7 @@ pub const CliRenderer = struct {
             .height = height,
             .currentRenderBuffer = currentBuffer,
             .nextRenderBuffer = nextBuffer,
+            .imageIdSalt = 1 + @as(u32, @truncate(@as(u128, @bitCast(std.time.nanoTimestamp())) ^ @as(u128, @intFromPtr(self)))) % (std.math.maxInt(u32) - gp.IMAGE_ID_MASK - 1),
             .pool = pool,
             .backgroundColor = ansi.rgbColor(0, 0, 0, 0),
             .renderOffset = 0,
@@ -364,6 +391,8 @@ pub const CliRenderer = struct {
 
         self.currentRenderBuffer.deinit();
         self.nextRenderBuffer.deinit();
+        self.currentImages.deinit(self.allocator);
+        self.pendingImages.deinit(self.allocator);
 
         // Free stat sample arrays
         self.statSamples.lastFrameTime.deinit(self.allocator);
@@ -440,6 +469,23 @@ pub const CliRenderer = struct {
 
     pub fn performShutdownSequence(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
+
+        if (self.currentImageProtocol == .kitty) {
+            for (self.currentImages.items) |current| {
+                var delete_buf: [128]u8 = undefined;
+                var delete_stream = std.io.fixedBufferStream(&delete_buf);
+                terminal_image.writeKittyDelete(
+                    delete_stream.writer(),
+                    self.kittyImageId(current.image_handle, current.placement_id),
+                    null,
+                    true,
+                    self.terminal.isInTmux(),
+                ) catch {};
+                self.backend.writeOut(delete_stream.getWritten());
+            }
+        }
+        self.currentImages.clearRetainingCapacity();
+        self.currentImageProtocol = .fallback;
 
         // Build the shutdown ANSI sequence into a stack buffer, then emit.
         var shutdownBuf: [4096]u8 = undefined;
@@ -734,11 +780,13 @@ pub const CliRenderer = struct {
     }
 
     fn finishSkippedFrame(self: *CliRenderer) RenderStatus {
+        self.pendingImages.clearRetainingCapacity();
         self.clearSkippedFrameState();
         return .skipped;
     }
 
     fn finishFailedFrame(self: *CliRenderer) RenderStatus {
+        self.pendingImages.clearRetainingCapacity();
         self.force_full_repaint = true;
         return .failed;
     }
@@ -778,6 +826,7 @@ pub const CliRenderer = struct {
         if (status == .failed) {
             return self.finishFailedFrame();
         }
+        self.commitPendingImageState();
 
         self.collectFrameStats(deltaTime);
         return status;
@@ -964,6 +1013,7 @@ pub const CliRenderer = struct {
                         if (status == .failed) {
                             result_status = self.finishFailedFrame();
                         } else {
+                            self.commitPendingImageState();
                             result_status = status;
                             self.collectFrameStats(deltaTime);
                         }
@@ -1020,6 +1070,7 @@ pub const CliRenderer = struct {
                     if (status == .failed) {
                         result_status = self.finishFailedFrame();
                     } else {
+                        self.commitPendingImageState();
                         result_status = status;
                         self.collectFrameStats(self.splitBatchDeltaTime);
                     }
@@ -1105,7 +1156,7 @@ pub const CliRenderer = struct {
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
                 }
 
-                if (cell.char == 0) {
+                if (cell.char == 0 or gp.isImageChar(cell.char)) {
                     writer.writeByte(' ') catch {};
                 } else if (gp.isGraphemeChar(cell.char)) {
                     const gid: u32 = gp.graphemeIdFromChar(cell.char);
@@ -1303,7 +1354,10 @@ pub const CliRenderer = struct {
                 write_status = b.endFrame();
             },
         }
-        return renderStatusFromWrite(write_status);
+        const status = renderStatusFromWrite(write_status);
+        if (status == .failed) return self.finishFailedFrame();
+        self.commitPendingImageState();
+        return status;
     }
 
     pub fn getNextBuffer(self: *CliRenderer) *OptimizedBuffer {
@@ -1314,6 +1368,186 @@ pub const CliRenderer = struct {
         return self.currentRenderBuffer;
     }
 
+    fn imageStateChanged(self: *CliRenderer) bool {
+        if (self.currentImageProtocol != self.desiredImageProtocol()) return true;
+        const next = self.nextRenderBuffer.image_placements.items;
+        if (next.len != self.currentImages.items.len) return true;
+        for (next, self.currentImages.items) |a, b| {
+            if (a.placement_id != b.placement_id or a.image_handle != b.image_handle or a.x != b.x or a.y != b.y or a.width != b.width or a.height != b.height or
+                a.pixel_width != b.pixel_width or a.pixel_height != b.pixel_height) return true;
+            if (a.source_x != b.source_x or a.source_y != b.source_y or a.source_width != b.source_width or a.source_height != b.source_height or a.opacity != b.opacity) return true;
+        }
+        return false;
+    }
+
+    fn desiredImageProtocol(self: *CliRenderer) ImageProtocol {
+        // Multiplexers need pane-aware placeholder/native graphics handling.
+        // Raw passthrough placements cannot follow pane movement or redraws.
+        if (self.terminal.isInTmux()) return .fallback;
+        const caps = self.terminal.getCapabilities();
+        if (caps.kitty_graphics) return .kitty;
+        if (caps.sixel) return .sixel;
+        return .fallback;
+    }
+
+    fn sixelCellsChanged(self: *CliRenderer) bool {
+        for (self.nextRenderBuffer.image_placements.items) |placement| {
+            var py: u32 = 0;
+            while (py < placement.height) : (py += 1) {
+                const y = placement.y + @as(i32, @intCast(py));
+                if (y < 0 or y >= self.height) continue;
+                var px: u32 = 0;
+                while (px < placement.width) : (px += 1) {
+                    const x = placement.x + @as(i32, @intCast(px));
+                    if (x < 0 or x >= self.width) continue;
+                    const current = self.currentRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
+                    const next = self.nextRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
+                    if (current.char != next.char or current.attributes != next.attributes or !buf.rgbaEqual(current.fg, next.fg) or !buf.rgbaEqual(current.bg, next.bg)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    fn stageImageState(self: *CliRenderer) void {
+        self.pendingImages.clearRetainingCapacity();
+        self.pendingImages.ensureTotalCapacity(self.allocator, self.nextRenderBuffer.image_placements.items.len) catch {
+            self.imageRenderFailed = true;
+            self.force_full_repaint = true;
+            return;
+        };
+        for (self.nextRenderBuffer.image_placements.items) |placement| {
+            self.pendingImages.appendAssumeCapacity(.{
+                .image_handle = placement.image_handle,
+                .placement_id = placement.placement_id,
+                .x = placement.x,
+                .y = placement.y,
+                .width = placement.width,
+                .height = placement.height,
+                .pixel_width = placement.pixel_width,
+                .pixel_height = placement.pixel_height,
+                .source_x = placement.source_x,
+                .source_y = placement.source_y,
+                .source_width = placement.source_width,
+                .source_height = placement.source_height,
+                .opacity = placement.opacity,
+            });
+        }
+        self.pendingImageProtocol = self.desiredImageProtocol();
+    }
+
+    fn commitPendingImageState(self: *CliRenderer) void {
+        if (self.imageRenderFailed) {
+            self.pendingImages.clearRetainingCapacity();
+            return;
+        }
+        std.mem.swap(std.ArrayListUnmanaged(CommittedImage), &self.currentImages, &self.pendingImages);
+        self.pendingImages.clearRetainingCapacity();
+        self.currentImageProtocol = self.pendingImageProtocol;
+    }
+
+    fn kittyImageId(self: *CliRenderer, image_handle: u32, placement_id: u32) u32 {
+        _ = image_handle;
+        return self.imageIdSalt + placement_id;
+    }
+
+    fn imageWithOpacity(source: *const native_image.Image, opacity: u8) !?*native_image.Image {
+        if (opacity == 255) return null;
+        const copy = try source.clone();
+        for (3..copy.pixels.len) |index| {
+            if (index % 4 == 3) copy.pixels[index] = @intCast((@as(u16, copy.pixels[index]) * opacity + 127) / 255);
+        }
+        return copy;
+    }
+
+    fn writeKittyImages(self: *CliRenderer, writer: anytype, force_place: bool) !void {
+        const tmux = self.terminal.isInTmux();
+        const next = self.nextRenderBuffer.image_placements.items;
+        for (self.currentImages.items) |current| {
+            var placement_found = false;
+            for (next) |placement| {
+                if (placement.placement_id == current.placement_id and placement.image_handle == current.image_handle) placement_found = true;
+            }
+            if (!placement_found) try terminal_image.writeKittyDelete(
+                writer,
+                self.kittyImageId(current.image_handle, current.placement_id),
+                null,
+                true,
+                tmux,
+            );
+        }
+        for (next) |placement| {
+            var previous: ?CommittedImage = null;
+            for (self.currentImages.items) |current| {
+                if (current.placement_id == placement.placement_id and current.image_handle == placement.image_handle) {
+                    previous = current;
+                    break;
+                }
+            }
+            if (previous == null) {
+                const source = placement.image;
+                const opacity_image = try imageWithOpacity(source, placement.opacity);
+                defer if (opacity_image) |value| value.deinit();
+                try terminal_image.writeKittyTransmit(writer, opacity_image orelse source, self.kittyImageId(placement.image_handle, placement.placement_id), tmux);
+            } else if (force_place or previous.?.x != placement.x or previous.?.y != placement.y or previous.?.width != placement.width or previous.?.height != placement.height or
+                previous.?.source_x != placement.source_x or previous.?.source_y != placement.source_y or previous.?.source_width != placement.source_width or
+                previous.?.source_height != placement.source_height or previous.?.opacity != placement.opacity)
+            {
+                const image_id = self.kittyImageId(placement.image_handle, placement.placement_id);
+                if (previous.?.opacity != placement.opacity) {
+                    try terminal_image.writeKittyDelete(writer, image_id, null, true, tmux);
+                    const source = placement.image;
+                    const opacity_image = try imageWithOpacity(source, placement.opacity);
+                    defer if (opacity_image) |value| value.deinit();
+                    try terminal_image.writeKittyTransmit(writer, opacity_image orelse source, image_id, tmux);
+                } else {
+                    try terminal_image.writeKittyDelete(writer, image_id, placement.placement_id, false, tmux);
+                }
+            } else continue;
+            if (placement.x < 0 or placement.y < 0) continue;
+            try terminal_image.writeKittyPlacement(
+                writer,
+                self.kittyImageId(placement.image_handle, placement.placement_id),
+                placement.placement_id,
+                @intCast(placement.x),
+                @intCast(placement.y + @as(i32, @intCast(self.renderOffset))),
+                placement.width,
+                placement.height,
+                placement.source_x,
+                placement.source_y,
+                placement.source_width,
+                placement.source_height,
+                -1_500_000_000 + @as(i32, @intCast(placement.placement_id)),
+                tmux,
+            );
+        }
+    }
+
+    fn writeSixelImages(self: *CliRenderer, writer: anytype) !void {
+        for (self.nextRenderBuffer.image_placements.items) |placement| {
+            if (placement.pixel_width == 0 or placement.pixel_height == 0 or placement.x < 0 or placement.y < 0) continue;
+            const source = placement.image;
+            const cropped = try native_image.extract(
+                self.allocator,
+                source,
+                placement.source_x,
+                placement.source_y,
+                placement.source_width,
+                placement.source_height,
+            );
+            defer cropped.deinit();
+            const resized = try native_image.resize(self.allocator, cropped, placement.pixel_width, placement.pixel_height, .area);
+            defer resized.deinit();
+            if (placement.opacity < 255) {
+                for (3..resized.pixels.len) |index| {
+                    if (index % 4 == 3) resized.pixels[index] = @intCast((@as(u16, resized.pixels[index]) * placement.opacity + 127) / 255);
+                }
+            }
+            try ansi.ANSI.moveToOutput(writer, @intCast(placement.x + 1), @intCast(placement.y + 1 + @as(i32, @intCast(self.renderOffset))));
+            try terminal_image.writeSixel(writer, resized, self.terminal.isInTmux());
+        }
+    }
+
     /// Generic over the writer type so each backend can provide its own writer
     /// (buffered frame append or feed streaming) without dispatch in the render path.
     /// `sync_started` is true only when the caller already opened the
@@ -1322,13 +1556,46 @@ pub const CliRenderer = struct {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
         const palette_force = self.last_rendered_palette_epoch == null or self.last_rendered_palette_epoch.? != self.palette_epoch;
-        const should_force = force or self.force_full_repaint or palette_force;
+        const images_changed = self.imageStateChanged();
+        const sixel_changed = self.desiredImageProtocol() == .sixel and self.sixelCellsChanged();
+        const graphics_changed = images_changed or sixel_changed or (force and self.nextRenderBuffer.image_placements.items.len > 0);
+        const should_force = force or self.force_full_repaint or palette_force or graphics_changed;
 
         // Lazy frame start is the core no-op suppression mechanism. If diffing,
         // cursor state, and pointer state are unchanged, frame_started stays false
         // and we emit nothing at all for this tick.
         var frame_started = sync_started;
+        self.imageRenderFailed = false;
         self.applyPendingSplitFooterTransition(writer, &frame_started);
+
+        const protocol = self.desiredImageProtocol();
+        if (images_changed and self.currentImageProtocol == .kitty and protocol != .kitty) {
+            if (!frame_started) {
+                beginRenderFrame(writer);
+                frame_started = true;
+            }
+            for (self.currentImages.items) |current| {
+                terminal_image.writeKittyDelete(
+                    writer,
+                    self.kittyImageId(current.image_handle, current.placement_id),
+                    null,
+                    true,
+                    self.terminal.isInTmux(),
+                ) catch {
+                    self.force_full_repaint = true;
+                };
+            }
+        }
+        if (graphics_changed and protocol == .kitty) {
+            if (!frame_started) {
+                beginRenderFrame(writer);
+                frame_started = true;
+            }
+            self.writeKittyImages(writer, force) catch {
+                self.force_full_repaint = true;
+                self.imageRenderFailed = true;
+            };
+        }
 
         var currentFg: ?RGBA = null;
         var currentBg: ?RGBA = null;
@@ -1375,6 +1642,20 @@ pub const CliRenderer = struct {
                     frame_started = true;
                 }
 
+                if (gp.isImageChar(cell.char) and self.desiredImageProtocol() != .fallback) {
+                    writer.writeAll(ansi.ANSI.reset) catch {};
+                    ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
+                    writer.writeByte(' ') catch {};
+                    currentFg = null;
+                    currentBg = null;
+                    currentAttributes = null;
+                    runStart = -1;
+                    runLength = 0;
+                    self.currentRenderBuffer.syncCell(x, y, cell);
+                    cellsUpdated += 1;
+                    continue;
+                }
+
                 const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg);
                 const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg);
                 const sameAttributes = fgMatch and bgMatch and currentAttributes != null and cell.attributes == currentAttributes.?;
@@ -1418,7 +1699,11 @@ pub const CliRenderer = struct {
                 }
 
                 // Handle grapheme characters
-                if (gp.isGraphemeChar(cell.char)) {
+                if (gp.isImageChar(cell.char)) {
+                    const fallback = buf.quadrantChars[gp.imageFallbackFromChar(cell.char)];
+                    const len = std.unicode.utf8Encode(@intCast(fallback), &utf8Buf) catch unreachable;
+                    writer.writeAll(utf8Buf[0..len]) catch {};
+                } else if (gp.isGraphemeChar(cell.char)) {
                     const gid: u32 = gp.graphemeIdFromChar(cell.char);
                     const bytes = self.pool.get(gid) catch |err| {
                         self.performShutdownSequence();
@@ -1458,6 +1743,44 @@ pub const CliRenderer = struct {
                 self.currentRenderBuffer.syncCell(x, y, nextCell.?);
 
                 cellsUpdated += 1;
+            }
+        }
+
+        if (graphics_changed and protocol == .sixel) {
+            if (!frame_started) {
+                beginRenderFrame(writer);
+                frame_started = true;
+            }
+            self.writeSixelImages(writer) catch {
+                self.force_full_repaint = true;
+                self.imageRenderFailed = true;
+            };
+            // Cells that replaced reservation markers were painted after the image.
+            for (self.nextRenderBuffer.image_placements.items) |placement| {
+                var py: u32 = 0;
+                while (py < placement.height) : (py += 1) {
+                    const y_i = placement.y + @as(i32, @intCast(py));
+                    if (y_i < 0 or y_i >= self.height) continue;
+                    var px: u32 = 0;
+                    while (px < placement.width) : (px += 1) {
+                        const x_i = placement.x + @as(i32, @intCast(px));
+                        if (x_i < 0 or x_i >= self.width) continue;
+                        const cell = self.nextRenderBuffer.get(@intCast(x_i), @intCast(y_i)) orelse continue;
+                        if (gp.isImageChar(cell.char)) continue;
+                        ansi.ANSI.moveToOutput(writer, @intCast(x_i + 1), @intCast(y_i + 1 + @as(i32, @intCast(self.renderOffset)))) catch {};
+                        self.emitColor(writer, cell.fg, false);
+                        self.emitColor(writer, cell.bg, true);
+                        ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
+                        if (gp.isGraphemeChar(cell.char)) {
+                            const bytes = self.pool.get(gp.graphemeIdFromChar(cell.char)) catch continue;
+                            writer.writeAll(bytes) catch {};
+                        } else if (!gp.isContinuationChar(cell.char)) {
+                            const draw_char = if (gp.isImageChar(cell.char)) buf.quadrantChars[gp.imageFallbackFromChar(cell.char)] else cell.char;
+                            const len = std.unicode.utf8Encode(@intCast(draw_char), &utf8Buf) catch continue;
+                            writer.writeAll(utf8Buf[0..len]) catch {};
+                        }
+                    }
+                }
             }
         }
 
@@ -1580,7 +1903,13 @@ pub const CliRenderer = struct {
         self.renderStats.cellsUpdated = cellsUpdated;
         self.renderStats.renderTime = renderTime;
         self.last_rendered_palette_epoch = self.palette_epoch;
-        self.force_full_repaint = false;
+        if (self.imageRenderFailed) {
+            self.force_full_repaint = true;
+            self.pendingImages.clearRetainingCapacity();
+        } else {
+            self.force_full_repaint = false;
+            self.stageImageState();
+        }
 
         self.nextRenderBuffer.clear(self.backgroundColor, null);
 
@@ -1603,7 +1932,24 @@ pub const CliRenderer = struct {
     }
 
     pub fn clearTerminal(self: *CliRenderer) void {
+        if (self.currentImageProtocol == .kitty) {
+            for (self.currentImages.items) |current| {
+                var delete_buf: [128]u8 = undefined;
+                var stream = std.io.fixedBufferStream(&delete_buf);
+                terminal_image.writeKittyDelete(
+                    stream.writer(),
+                    self.kittyImageId(current.image_handle, current.placement_id),
+                    null,
+                    true,
+                    self.terminal.isInTmux(),
+                ) catch {};
+                self.writeOut(stream.getWritten());
+            }
+        }
         self.writeOut(ansi.ANSI.clearAndHome);
+        self.currentImages.clearRetainingCapacity();
+        self.currentImageProtocol = .fallback;
+        self.force_full_repaint = true;
     }
 
     pub fn writeOut(self: *CliRenderer, data: []const u8) void {

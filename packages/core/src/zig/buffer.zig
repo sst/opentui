@@ -9,6 +9,7 @@ const assert = std.debug.assert;
 
 const gp = @import("grapheme.zig");
 const link = @import("link.zig");
+const native_image = @import("image.zig");
 
 const logger = @import("logger.zig");
 const utf8 = @import("utf8.zig");
@@ -157,6 +158,23 @@ fn applyOpacity(color: RGBA, opacity: u8) RGBA {
 
 /// Optimized buffer for terminal rendering
 pub const OptimizedBuffer = struct {
+    pub const ImagePlacement = struct {
+        placement_id: u32,
+        image_handle: u32,
+        image: *native_image.Image,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        pixel_width: u32,
+        pixel_height: u32,
+        source_x: u32,
+        source_y: u32,
+        source_width: u32,
+        source_height: u32,
+        opacity: u8,
+    };
+
     buffer: struct {
         char: []u32,
         fg: []RGBA,
@@ -177,6 +195,7 @@ pub const OptimizedBuffer = struct {
     id: []const u8,
     scissor_stack: std.ArrayListUnmanaged(ClipRect),
     opacity_stack: std.ArrayListUnmanaged(f32),
+    image_placements: std.ArrayListUnmanaged(ImagePlacement),
 
     const InitOptions = struct {
         respectAlpha: bool = false,
@@ -247,6 +266,7 @@ pub const OptimizedBuffer = struct {
             .id = owned_id,
             .scissor_stack = scissor_stack,
             .opacity_stack = opacity_stack,
+            .image_placements = .{},
         };
 
         @memset(self.buffer.char, 0);
@@ -277,7 +297,9 @@ pub const OptimizedBuffer = struct {
         const allocator = self.allocator;
         defer allocator.destroy(self);
 
+        self.clearImagePlacements();
         self.opacity_stack.deinit(self.allocator);
+        self.image_placements.deinit(self.allocator);
         self.scissor_stack.deinit(self.allocator);
         self.link_tracker.deinit();
         self.grapheme_tracker.deinit();
@@ -433,10 +455,16 @@ pub const OptimizedBuffer = struct {
         const cellChar = char orelse DEFAULT_SPACE_CHAR;
         self.link_tracker.clear();
         self.grapheme_tracker.clear();
+        self.clearImagePlacements();
         @memset(self.buffer.char, @intCast(cellChar));
         @memset(self.buffer.attributes, 0);
         @memset(self.buffer.fg, ansi.rgbColor(255, 255, 255, 255));
         @memset(self.buffer.bg, bg);
+    }
+
+    fn clearImagePlacements(self: *OptimizedBuffer) void {
+        for (self.image_placements.items) |placement| placement.image.deinit();
+        self.image_placements.clearRetainingCapacity();
     }
 
     /// Write a single cell and update link tracker. No grapheme tracking,
@@ -682,7 +710,14 @@ pub const OptimizedBuffer = struct {
         while (i < total_cells) : (i += 1) {
             const char_code = self.buffer.char[i];
 
-            if (gp.isGraphemeChar(char_code)) {
+            if (gp.isImageChar(char_code)) {
+                const fallback = quadrantChars[gp.imageFallbackFromChar(char_code)];
+                var utf8_bytes: [4]u8 = undefined;
+                const utf8_len = std.unicode.utf8Encode(@intCast(fallback), &utf8_bytes) catch unreachable;
+                if (bytes_written + utf8_len > output_buffer.len) return BufferError.BufferTooSmall;
+                @memcpy(output_buffer[bytes_written .. bytes_written + utf8_len], utf8_bytes[0..utf8_len]);
+                bytes_written += @intCast(utf8_len);
+            } else if (gp.isGraphemeChar(char_code)) {
                 const gid = gp.graphemeIdFromChar(char_code);
                 if (self.pool.get(gid)) |grapheme_bytes| {
                     if (bytes_written + grapheme_bytes.len > output_buffer.len) {
@@ -1170,6 +1205,7 @@ pub const OptimizedBuffer = struct {
 
         const graphemeAware = self.grapheme_tracker.hasAny() or frameBuffer.grapheme_tracker.hasAny();
         const linkAware = self.link_tracker.hasAny() or frameBuffer.link_tracker.hasAny();
+        const imageAware = self.image_placements.items.len != 0 or frameBuffer.image_placements.items.len != 0;
 
         // Calculate clipping once for both paths
         const clippedRect = self.clipRectToScissor(startDestX, startDestY, destWidth, destHeight) orelse return;
@@ -1178,7 +1214,53 @@ pub const OptimizedBuffer = struct {
         const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
 
-        if (!graphemeAware and !frameBuffer.respectAlpha and !linkAware) {
+        const image_id_map = self.allocator.alloc(u32, frameBuffer.image_placements.items.len + 1) catch return;
+        defer self.allocator.free(image_id_map);
+        @memset(image_id_map, 0);
+        self.image_placements.ensureTotalCapacity(
+            self.allocator,
+            self.image_placements.items.len + frameBuffer.image_placements.items.len,
+        ) catch return;
+        for (frameBuffer.image_placements.items, 1..) |placement, source_id| {
+            if (self.image_placements.items.len >= gp.IMAGE_ID_MASK) break;
+            const full_x = destX + placement.x - @as(i32, @intCast(srcX));
+            const full_y = destY + placement.y - @as(i32, @intCast(srcY));
+            const x0 = @max(full_x, clippedStartX);
+            const y0 = @max(full_y, clippedStartY);
+            const x1 = @min(full_x + @as(i32, @intCast(placement.width)), clippedEndX + 1);
+            const y1 = @min(full_y + @as(i32, @intCast(placement.height)), clippedEndY + 1);
+            if (x0 >= x1 or y0 >= y1) continue;
+            const left: u32 = @intCast(x0 - full_x);
+            const top: u32 = @intCast(y0 - full_y);
+            const right: u32 = @intCast(x1 - full_x);
+            const bottom: u32 = @intCast(y1 - full_y);
+            const source_start_x = placement.source_x + @as(u32, @intCast((@as(u64, left) * placement.source_width) / placement.width));
+            const source_start_y = placement.source_y + @as(u32, @intCast((@as(u64, top) * placement.source_height) / placement.height));
+            const source_end_x = placement.source_x + @as(u32, @intCast((@as(u64, right) * placement.source_width + placement.width - 1) / placement.width));
+            const source_end_y = placement.source_y + @as(u32, @intCast((@as(u64, bottom) * placement.source_height + placement.height - 1) / placement.height));
+            const visible_width: u32 = @intCast(x1 - x0);
+            const visible_height: u32 = @intCast(y1 - y0);
+            self.image_placements.appendAssumeCapacity(.{
+                .placement_id = @intCast(self.image_placements.items.len + 1),
+                .image_handle = placement.image_handle,
+                .image = placement.image,
+                .x = x0,
+                .y = y0,
+                .width = visible_width,
+                .height = visible_height,
+                .pixel_width = if (placement.pixel_width == 0) 0 else @intCast((@as(u64, visible_width) * placement.pixel_width + placement.width - 1) / placement.width),
+                .pixel_height = if (placement.pixel_height == 0) 0 else @intCast((@as(u64, visible_height) * placement.pixel_height + placement.height - 1) / placement.height),
+                .source_x = source_start_x,
+                .source_y = source_start_y,
+                .source_width = source_end_x - source_start_x,
+                .source_height = source_end_y - source_start_y,
+                .opacity = @intCast(mulDiv255(placement.opacity, opacityToU8(self.getCurrentOpacity()))),
+            });
+            placement.image.retain();
+            image_id_map[source_id] = @intCast(self.image_placements.items.len);
+        }
+
+        if (!graphemeAware and !frameBuffer.respectAlpha and !linkAware and !imageAware) {
             // Fast path: direct memory copy
             var dY = clippedStartY;
 
@@ -1221,7 +1303,11 @@ pub const OptimizedBuffer = struct {
                 const srcIndex = frameBuffer.coordsToIndex(sX, sY);
                 if (srcIndex >= frameBuffer.buffer.char.len) continue;
 
-                const srcChar = frameBuffer.buffer.char[srcIndex];
+                var srcChar = frameBuffer.buffer.char[srcIndex];
+                if (gp.isImageChar(srcChar)) {
+                    const mapped_id = image_id_map[gp.imageIdFromChar(srcChar)];
+                    if (mapped_id != 0) srcChar = gp.packImageCell(mapped_id, gp.imageFallbackFromChar(srcChar));
+                }
                 const srcFg = frameBuffer.buffer.fg[srcIndex];
                 const srcBg = frameBuffer.buffer.bg[srcIndex];
                 const srcAttr = frameBuffer.buffer.attributes[srcIndex];
@@ -2101,6 +2187,104 @@ pub const OptimizedBuffer = struct {
         };
     }
 
+    pub fn drawImage(
+        self: *OptimizedBuffer,
+        image: *const native_image.Image,
+        image_handle: u32,
+        pos_x: i32,
+        pos_y: i32,
+        width: u32,
+        height: u32,
+        pixel_width: u32,
+        pixel_height: u32,
+        source_x: u32,
+        source_y: u32,
+        source_width: u32,
+        source_height: u32,
+    ) !bool {
+        if (width == 0 or height == 0 or source_width == 0 or source_height == 0 or
+            source_x >= image.width() or source_y >= image.height() or source_width > image.width() - source_x or
+            source_height > image.height() - source_y or self.image_placements.items.len >= gp.IMAGE_ID_MASK) return false;
+        var clip_x0 = @max(pos_x, 0);
+        var clip_y0 = @max(pos_y, 0);
+        var clip_x1 = @min(pos_x + @as(i32, @intCast(width)), @as(i32, @intCast(self.width)));
+        var clip_y1 = @min(pos_y + @as(i32, @intCast(height)), @as(i32, @intCast(self.height)));
+        if (self.getCurrentScissorRect()) |scissor| {
+            clip_x0 = @max(clip_x0, scissor.x);
+            clip_y0 = @max(clip_y0, scissor.y);
+            clip_x1 = @min(clip_x1, scissor.x + @as(i32, @intCast(scissor.width)));
+            clip_y1 = @min(clip_y1, scissor.y + @as(i32, @intCast(scissor.height)));
+        }
+        if (clip_x0 >= clip_x1 or clip_y0 >= clip_y1) return false;
+
+        const left: u32 = @intCast(clip_x0 - pos_x);
+        const top: u32 = @intCast(clip_y0 - pos_y);
+        const right: u32 = @intCast(clip_x1 - pos_x);
+        const bottom: u32 = @intCast(clip_y1 - pos_y);
+        const clipped_source_x = source_x + @as(u32, @intCast((@as(u64, left) * source_width) / width));
+        const clipped_source_y = source_y + @as(u32, @intCast((@as(u64, top) * source_height) / height));
+        const source_end_x = source_x + @as(u32, @intCast((@as(u64, right) * source_width + width - 1) / width));
+        const source_end_y = source_y + @as(u32, @intCast((@as(u64, bottom) * source_height + height - 1) / height));
+        const clipped_width: u32 = @intCast(clip_x1 - clip_x0);
+        const clipped_height: u32 = @intCast(clip_y1 - clip_y0);
+        const clipped_pixel_width = if (pixel_width == 0) 0 else @as(u32, @intCast((@as(u64, clipped_width) * pixel_width + width - 1) / width));
+        const clipped_pixel_height = if (pixel_height == 0) 0 else @as(u32, @intCast((@as(u64, clipped_height) * pixel_height + height - 1) / height));
+        const placement_id: u32 = @intCast(self.image_placements.items.len + 1);
+        try self.image_placements.append(self.allocator, .{
+            .placement_id = placement_id,
+            .image_handle = image_handle,
+            .image = @constCast(image),
+            .x = clip_x0,
+            .y = clip_y0,
+            .width = clipped_width,
+            .height = clipped_height,
+            .pixel_width = clipped_pixel_width,
+            .pixel_height = clipped_pixel_height,
+            .source_x = clipped_source_x,
+            .source_y = clipped_source_y,
+            .source_width = source_end_x - clipped_source_x,
+            .source_height = source_end_y - clipped_source_y,
+            .opacity = opacityToU8(self.getCurrentOpacity()),
+        });
+        @constCast(image).retain();
+        const clipped_placement = self.image_placements.items[placement_id - 1];
+
+        var cell_y: u32 = 0;
+        while (cell_y < clipped_height) : (cell_y += 1) {
+            const dest_y = clip_y0 + @as(i32, @intCast(cell_y));
+            var cell_x: u32 = 0;
+            while (cell_x < clipped_width) : (cell_x += 1) {
+                const dest_x = clip_x0 + @as(i32, @intCast(cell_x));
+
+                var pixels: [4]RGBA = undefined;
+                inline for (0..4) |quadrant| {
+                    const sample_x = cell_x * 2 + @as(u32, @intCast(quadrant & 1));
+                    const sample_y = cell_y * 2 + @as(u32, @intCast(quadrant >> 1));
+                    const sx = clipped_placement.source_x + @min(clipped_placement.source_width - 1, @as(u32, @intCast((@as(u64, sample_x) * clipped_placement.source_width) / (@as(u64, clipped_width) * 2))));
+                    const sy = clipped_placement.source_y + @min(clipped_placement.source_height - 1, @as(u32, @intCast((@as(u64, sample_y) * clipped_placement.source_height) / (@as(u64, clipped_height) * 2))));
+                    const offset = (@as(usize, sy) * image.width() + sx) * 4;
+                    pixels[quadrant] = ansi.rgbColor(
+                        image.pixels[offset],
+                        image.pixels[offset + 1],
+                        image.pixels[offset + 2],
+                        image.pixels[offset + 3],
+                    );
+                }
+                const rendered = renderQuadrantBlock(pixels);
+                const fallback = quadrantIndex(rendered.char);
+                self.setCellWithAlphaBlending(
+                    @intCast(dest_x),
+                    @intCast(dest_y),
+                    gp.packImageCell(placement_id, fallback),
+                    rendered.fg,
+                    rendered.bg,
+                    0,
+                );
+            }
+        }
+        return true;
+    }
+
     /// Draw a buffer of pixel data using super sampling (2x2 pixels per character cell)
     /// alignedBytesPerRow: The number of bytes per row in the pixelData buffer, considering alignment/padding.
     pub fn drawSuperSampleBuffer(
@@ -2385,7 +2569,7 @@ fn getPixelColor(idx: usize, data: [*]const u8, dataLen: usize, bgra: bool) RGBA
     return ansi.rgbColor(rByte, gByte, bByte, aByte);
 }
 
-const quadrantChars = [_]u32{
+pub const quadrantChars = [_]u32{
     32, // 0000
     0x2597, // 0001 BR ░
     0x2596, // 0010 BL ░
@@ -2403,6 +2587,13 @@ const quadrantChars = [_]u32{
     0x259B, // 1110 TL+TR+BL ░
     0x2588, // 1111 Full Block █
 };
+
+fn quadrantIndex(char: u32) u4 {
+    for (quadrantChars, 0..) |candidate, index| {
+        if (candidate == char) return @intCast(index);
+    }
+    return 15;
+}
 
 fn colorDistance(a: RGBA, b: RGBA) f32 {
     const dr = @as(f32, @floatFromInt(ansi.red(a))) - @as(f32, @floatFromInt(ansi.red(b)));
