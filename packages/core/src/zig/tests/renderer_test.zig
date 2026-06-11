@@ -241,6 +241,71 @@ test "renderer does not retransmit Sixel when overlay text changes" {
     try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
 }
 
+test "renderer does not clear Sixel for alpha styling on image markers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 2, 1, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    _ = test_renderer.renderer.render(true);
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    next.fillRect(0, 0, 2, 1, ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5));
+    _ = test_renderer.renderer.render(false);
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    _ = test_renderer.renderer.render(false);
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+}
+
+test "renderer clears old Sixel pixels when replacing an image" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 2, 1, pool);
+    defer test_renderer.deinit();
+    const opaque_image = try image.createFromRgba(std.testing.allocator, &[_]u8{
+        255, 0, 0, 255, 255, 0, 0, 255,
+    }, 2, 1, 8);
+    const replacement = try image.createFromRgba(std.testing.allocator, &[_]u8{
+        0, 0, 0, 0, 0, 0, 255, 255,
+    }, 2, 1, 8);
+    const opaque_handle = try handles.insert(.image, @ptrCast(opaque_image));
+    const replacement_handle = try handles.insert(.image, @ptrCast(replacement));
+    defer {
+        const replacement_token = handles.beginDestroy(replacement_handle, .image, image.Image).?;
+        replacement_token.ptr.deinit();
+        handles.finishDestroy(replacement_token.handle);
+        const opaque_token = handles.beginDestroy(opaque_handle, .image, image.Image).?;
+        opaque_token.ptr.deinit();
+        handles.finishDestroy(opaque_token.handle);
+    }
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(opaque_image, opaque_handle, 0, 0, 2, 1, 2, 2, 0, 0, 2, 1, .sixel));
+    _ = test_renderer.renderer.render(true);
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(replacement, replacement_handle, 0, 0, 2, 1, 2, 2, 0, 0, 2, 1, .sixel));
+    _ = test_renderer.renderer.render(false);
+    const output = test_renderer.memory.lastWrite();
+    const sixel = std.mem.indexOf(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
+    try std.testing.expect(std.mem.indexOfScalar(u8, output[0..sixel], ' ') != null);
+}
+
 test "buffered backend grows and commits a complete large frame" {
     var memory = TestMemoryOutput.init(std.testing.allocator);
     defer memory.deinit();
