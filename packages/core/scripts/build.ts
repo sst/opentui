@@ -292,6 +292,14 @@ export default module.default
     )
 
     if (existsSync(licensePath)) copyFileSync(licensePath, join(nativeDir, "LICENSE"))
+    for (const [source, destination] of [
+      [join(rootDir, "src", "zig", "vendor", "wuffs", "LICENSE"), "LICENSE-WUFFS"],
+      [join(rootDir, "src", "zig", "vendor", "stb", "LICENSE"), "LICENSE-STB"],
+      [join(rootDir, "src", "zig", "vendor", "libwebp", "COPYING"), "LICENSE-LIBWEBP"],
+      [join(rootDir, "src", "zig", "vendor", "libwebp", "PATENTS"), "PATENTS-LIBWEBP"],
+    ] as const) {
+      if (existsSync(source)) copyFileSync(source, join(nativeDir, destination))
+    }
     console.log("Built:", nativeName)
   }
 }

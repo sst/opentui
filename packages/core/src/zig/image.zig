@@ -11,6 +11,33 @@ extern fn ot_image_png_decode(
     expected_width: u32,
     expected_height: u32,
 ) c_int;
+extern fn ot_image_gif_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32, has_alpha: *u32) c_int;
+extern fn ot_image_gif_decode_first_frame(
+    data: [*]const u8,
+    data_len: u32,
+    output: [*]u8,
+    output_len: u64,
+    expected_width: u32,
+    expected_height: u32,
+) c_int;
+extern fn ot_image_jpeg_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32) c_int;
+extern fn ot_image_jpeg_decode(
+    data: [*]const u8,
+    data_len: u32,
+    output: [*]u8,
+    output_len: u64,
+    expected_width: u32,
+    expected_height: u32,
+) c_int;
+extern fn ot_image_webp_probe(data: [*]const u8, data_len: u32, width: *u32, height: *u32, has_alpha: *u32) c_int;
+extern fn ot_image_webp_decode(
+    data: [*]const u8,
+    data_len: u32,
+    output: [*]u8,
+    output_len: u64,
+    expected_width: u32,
+    expected_height: u32,
+) c_int;
 extern fn ot_image_resize_rgba(
     input: [*]const u8,
     input_width: u32,
@@ -35,12 +62,16 @@ pub const Status = enum(u32) {
     out_of_memory = 8,
     output_too_small = 9,
     internal_error = 10,
+    unsupported_feature = 11,
 };
 
 pub const Format = enum(u32) {
     unknown = 0,
     png = 1,
     raw_rgba = 2,
+    jpeg = 3,
+    webp = 4,
+    gif = 5,
 };
 
 pub const ColorStatus = enum(u32) {
@@ -94,10 +125,15 @@ pub const Blend = enum(u32) {
 pub const Image = struct {
     allocator: Allocator,
     pixels: []u8,
-    width: u32,
-    height: u32,
-    format: Format,
-    color_status: ColorStatus,
+    metadata: Info,
+
+    pub fn width(self: *const Image) u32 {
+        return self.metadata.width;
+    }
+
+    pub fn height(self: *const Image) u32 {
+        return self.metadata.height;
+    }
 
     pub fn deinit(self: *Image) void {
         self.allocator.free(self.pixels);
@@ -105,20 +141,11 @@ pub const Image = struct {
     }
 
     pub fn info(self: *const Image) Info {
-        return .{
-            .width = self.width,
-            .height = self.height,
-            .source_width = self.width,
-            .source_height = self.height,
-            .format = @intFromEnum(self.format),
-            .color_status = @intFromEnum(self.color_status),
-            .orientation = 1,
-            .has_alpha = 1,
-        };
+        return self.metadata;
     }
 
     pub fn clone(self: *const Image) !*Image {
-        return createFromRgba(self.allocator, self.pixels, self.width, self.height, self.width * 4);
+        return copyImage(self.allocator, self.pixels, self.metadata);
     }
 };
 
@@ -127,6 +154,14 @@ const srgb_chromaticities = [_]u32{ 31_270, 32_900, 64_000, 33_000, 30_000, 60_0
 
 fn readU32Be(bytes: []const u8) u32 {
     return std.mem.readInt(u32, bytes[0..4], .big);
+}
+
+fn detectFormat(data: []const u8) Format {
+    if (data.len >= png_signature.len and std.mem.eql(u8, data[0..png_signature.len], &png_signature)) return .png;
+    if (data.len >= 6 and (std.mem.eql(u8, data[0..6], "GIF87a") or std.mem.eql(u8, data[0..6], "GIF89a"))) return .gif;
+    if (data.len >= 2 and data[0] == 0xFF and data[1] == 0xD8) return .jpeg;
+    if (data.len >= 12 and std.mem.eql(u8, data[0..4], "RIFF") and std.mem.eql(u8, data[8..12], "WEBP")) return .webp;
+    return .unknown;
 }
 
 fn checkedPixelBytes(width: u32, height: u32, limits: Limits) !usize {
@@ -143,6 +178,7 @@ fn checkedPixelBytes(width: u32, height: u32, limits: Limits) !usize {
 pub fn statusFromError(err: anyerror) Status {
     return switch (err) {
         error.UnsupportedFormat => .unsupported_format,
+        error.UnsupportedFeature => .unsupported_feature,
         error.DimensionLimit => .dimension_limit,
         error.MemoryLimit => .memory_limit,
         error.OutOfMemory => .out_of_memory,
@@ -213,6 +249,8 @@ fn scanPng(data: []const u8) !PngMetadata {
     var gamma_supported = false;
     var saw_chrm = false;
     var chrm_supported = false;
+    var saw_idat = false;
+    var saw_iend = false;
 
     while (offset <= data.len -| 12) {
         const length: usize = readU32Be(data[offset..][0..4]);
@@ -261,12 +299,15 @@ fn scanPng(data: []const u8) !PngMetadata {
         } else if (std.mem.eql(u8, kind, "eXIf")) {
             if (metadata) |*value| value.orientation = parseExifOrientation(payload);
         } else if (std.mem.eql(u8, kind, "IDAT")) {
-            break;
+            saw_idat = true;
         } else if (std.mem.eql(u8, kind, "IEND")) {
+            if (length != 0 or !saw_idat or chunk_end != data.len) return error.MalformedInput;
+            saw_iend = true;
             break;
         }
         offset = chunk_end;
     }
+    if (!saw_iend) return error.MalformedInput;
     var result = metadata orelse return error.MalformedInput;
     if (saw_cicp and cicp_supported) {
         result.color_status = .explicit_srgb;
@@ -285,6 +326,68 @@ fn scanPng(data: []const u8) !PngMetadata {
 pub fn probe(data: []const u8, limits: Limits, out: *Info) Status {
     if (data.len == 0 or data.len > std.math.maxInt(u32)) return .invalid_argument;
     if (data.len > limits.max_encoded_bytes) return .memory_limit;
+    const format = detectFormat(data);
+    if (format == .unknown) return .unsupported_format;
+    if (format == .jpeg) {
+        var width: u32 = 0;
+        var height: u32 = 0;
+        const result = ot_image_jpeg_probe(data.ptr, @intCast(data.len), &width, &height);
+        if (result == 2) return .out_of_memory;
+        if (result != 0) return .malformed_input;
+        _ = checkedPixelBytes(width, height, limits) catch |err| return statusFromError(err);
+        out.* = .{
+            .width = width,
+            .height = height,
+            .source_width = width,
+            .source_height = height,
+            .format = @intFromEnum(Format.jpeg),
+            .color_status = @intFromEnum(ColorStatus.assumed_srgb),
+            .orientation = 1,
+            .has_alpha = 0,
+        };
+        return .ok;
+    }
+    if (format == .webp) {
+        var width: u32 = 0;
+        var height: u32 = 0;
+        var has_alpha: u32 = 0;
+        const result = ot_image_webp_probe(data.ptr, @intCast(data.len), &width, &height, &has_alpha);
+        if (result == 2) return .out_of_memory;
+        if (result == 4) return .unsupported_feature;
+        if (result != 0) return .malformed_input;
+        _ = checkedPixelBytes(width, height, limits) catch |err| return statusFromError(err);
+        out.* = .{
+            .width = width,
+            .height = height,
+            .source_width = width,
+            .source_height = height,
+            .format = @intFromEnum(Format.webp),
+            .color_status = @intFromEnum(ColorStatus.assumed_srgb),
+            .orientation = 1,
+            .has_alpha = has_alpha,
+        };
+        return .ok;
+    }
+    if (format == .gif) {
+        var width: u32 = 0;
+        var height: u32 = 0;
+        var has_alpha: u32 = 0;
+        const result = ot_image_gif_probe(data.ptr, @intCast(data.len), &width, &height, &has_alpha);
+        if (result == 2) return .out_of_memory;
+        if (result != 0) return .malformed_input;
+        _ = checkedPixelBytes(width, height, limits) catch |err| return statusFromError(err);
+        out.* = .{
+            .width = width,
+            .height = height,
+            .source_width = width,
+            .source_height = height,
+            .format = @intFromEnum(Format.gif),
+            .color_status = @intFromEnum(ColorStatus.assumed_srgb),
+            .orientation = 1,
+            .has_alpha = has_alpha,
+        };
+        return .ok;
+    }
     const metadata = scanPng(data) catch |err| return statusFromError(err);
     _ = checkedPixelBytes(metadata.width, metadata.height, limits) catch |err| return statusFromError(err);
 
@@ -310,18 +413,22 @@ pub fn probe(data: []const u8, limits: Limits, out: *Info) Status {
     return .ok;
 }
 
-fn allocateImage(allocator: Allocator, width: u32, height: u32, format: Format, color_status: ColorStatus) !*Image {
-    const len = try checkedPixelBytes(width, height, .{});
+fn allocateImage(allocator: Allocator, metadata: Info) !*Image {
+    const len = try checkedPixelBytes(metadata.width, metadata.height, .{});
     const image = try allocator.create(Image);
     errdefer allocator.destroy(image);
     image.* = .{
         .allocator = allocator,
         .pixels = try allocator.alloc(u8, len),
-        .width = width,
-        .height = height,
-        .format = format,
-        .color_status = color_status,
+        .metadata = metadata,
     };
+    return image;
+}
+
+fn copyImage(allocator: Allocator, pixels: []const u8, metadata: Info) !*Image {
+    const image = try allocateImage(allocator, metadata);
+    errdefer image.deinit();
+    @memcpy(image.pixels, pixels);
     return image;
 }
 
@@ -332,7 +439,16 @@ pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, heig
     const required = std.math.add(u64, preceding_rows, row_bytes) catch return error.InvalidArgument;
     if (required > pixels.len) return error.InvalidArgument;
 
-    const image = try allocateImage(allocator, width, height, .raw_rgba, .explicit_srgb);
+    const image = try allocateImage(allocator, .{
+        .width = width,
+        .height = height,
+        .source_width = width,
+        .source_height = height,
+        .format = @intFromEnum(Format.raw_rgba),
+        .color_status = @intFromEnum(ColorStatus.explicit_srgb),
+        .orientation = 1,
+        .has_alpha = 1,
+    });
     errdefer image.deinit();
     for (0..height) |y| {
         const src_offset = y * stride;
@@ -346,6 +462,8 @@ pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
     var image_info: Info = .{};
     const probe_status = probe(data, limits, &image_info);
     if (probe_status != .ok) return switch (probe_status) {
+        .unsupported_format => error.UnsupportedFormat,
+        .unsupported_feature => error.UnsupportedFeature,
         .unsupported_color_space => error.UnsupportedColorSpace,
         .dimension_limit => error.DimensionLimit,
         .memory_limit => error.MemoryLimit,
@@ -357,15 +475,47 @@ pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
     const source = try allocator.alloc(u8, source_len);
     var source_owned = true;
     defer if (source_owned) allocator.free(source);
-    const decode_status = ot_image_png_decode(
-        data.ptr,
-        @intCast(data.len),
-        source.ptr,
-        source.len,
-        image_info.source_width,
-        image_info.source_height,
-    );
-    if (decode_status != 0) return if (decode_status == 2) error.OutOfMemory else error.MalformedInput;
+    const format: Format = @enumFromInt(image_info.format);
+    const decode_status = switch (format) {
+        .png => ot_image_png_decode(
+            data.ptr,
+            @intCast(data.len),
+            source.ptr,
+            source.len,
+            image_info.source_width,
+            image_info.source_height,
+        ),
+        .gif => ot_image_gif_decode_first_frame(
+            data.ptr,
+            @intCast(data.len),
+            source.ptr,
+            source.len,
+            image_info.source_width,
+            image_info.source_height,
+        ),
+        .jpeg => ot_image_jpeg_decode(
+            data.ptr,
+            @intCast(data.len),
+            source.ptr,
+            source.len,
+            image_info.source_width,
+            image_info.source_height,
+        ),
+        .webp => ot_image_webp_decode(
+            data.ptr,
+            @intCast(data.len),
+            source.ptr,
+            source.len,
+            image_info.source_width,
+            image_info.source_height,
+        ),
+        else => return error.UnsupportedFormat,
+    };
+    if (decode_status != 0) return switch (decode_status) {
+        2 => error.OutOfMemory,
+        4 => error.UnsupportedFeature,
+        else => error.MalformedInput,
+    };
 
     const color_status: ColorStatus = @enumFromInt(image_info.color_status);
     if (image_info.orientation == 1) {
@@ -373,10 +523,16 @@ pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
         image.* = .{
             .allocator = allocator,
             .pixels = source,
-            .width = image_info.source_width,
-            .height = image_info.source_height,
-            .format = .png,
-            .color_status = color_status,
+            .metadata = .{
+                .width = image_info.width,
+                .height = image_info.height,
+                .source_width = image_info.source_width,
+                .source_height = image_info.source_height,
+                .format = image_info.format,
+                .color_status = @intFromEnum(color_status),
+                .orientation = 1,
+                .has_alpha = image_info.has_alpha,
+            },
         };
         source_owned = false;
         return image;
@@ -385,10 +541,16 @@ pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
     const unoriented = Image{
         .allocator = allocator,
         .pixels = source,
-        .width = image_info.source_width,
-        .height = image_info.source_height,
-        .format = .png,
-        .color_status = color_status,
+        .metadata = .{
+            .width = image_info.source_width,
+            .height = image_info.source_height,
+            .source_width = image_info.source_width,
+            .source_height = image_info.source_height,
+            .format = image_info.format,
+            .color_status = @intFromEnum(color_status),
+            .orientation = 1,
+            .has_alpha = image_info.has_alpha,
+        },
     };
     return try orient(allocator, &unoriented, @intCast(image_info.orientation));
 }
@@ -406,30 +568,28 @@ fn copyPixel(dst: []u8, dst_width: u32, dx: u32, dy: u32, src: []const u8, src_w
 fn orient(allocator: Allocator, source: *const Image, orientation: u8) !*Image {
     if (orientation == 1) return source.clone();
     const swap = orientation >= 5 and orientation <= 8;
-    const output = try allocateImage(
-        allocator,
-        if (swap) source.height else source.width,
-        if (swap) source.width else source.height,
-        source.format,
-        source.color_status,
-    );
+    var metadata = source.metadata;
+    metadata.width = if (swap) source.height() else source.width();
+    metadata.height = if (swap) source.width() else source.height();
+    metadata.orientation = 1;
+    const output = try allocateImage(allocator, metadata);
     errdefer output.deinit();
 
-    for (0..output.height) |dy_usize| {
-        for (0..output.width) |dx_usize| {
+    for (0..output.height()) |dy_usize| {
+        for (0..output.width()) |dx_usize| {
             const dx: u32 = @intCast(dx_usize);
             const dy: u32 = @intCast(dy_usize);
             const coords: [2]u32 = switch (orientation) {
-                2 => .{ source.width - 1 - dx, dy },
-                3 => .{ source.width - 1 - dx, source.height - 1 - dy },
-                4 => .{ dx, source.height - 1 - dy },
+                2 => .{ source.width() - 1 - dx, dy },
+                3 => .{ source.width() - 1 - dx, source.height() - 1 - dy },
+                4 => .{ dx, source.height() - 1 - dy },
                 5 => .{ dy, dx },
-                6 => .{ dy, source.height - 1 - dx },
-                7 => .{ source.width - 1 - dy, source.height - 1 - dx },
-                8 => .{ source.width - 1 - dy, dx },
+                6 => .{ dy, source.height() - 1 - dx },
+                7 => .{ source.width() - 1 - dy, source.height() - 1 - dx },
+                8 => .{ source.width() - 1 - dy, dx },
                 else => return error.InvalidArgument,
             };
-            copyPixel(output.pixels, output.width, dx, dy, source.pixels, source.width, coords[0], coords[1]);
+            copyPixel(output.pixels, output.width(), dx, dy, source.pixels, source.width(), coords[0], coords[1]);
         }
     }
     return output;
@@ -446,16 +606,19 @@ pub fn transform(allocator: Allocator, source: *const Image, operation: Transfor
 }
 
 pub fn extract(allocator: Allocator, source: *const Image, left: u32, top: u32, width: u32, height: u32) !*Image {
-    if (width == 0 or height == 0 or left > source.width or top > source.height or
-        width > source.width - left or height > source.height - top)
+    if (width == 0 or height == 0 or left > source.width() or top > source.height() or
+        width > source.width() - left or height > source.height() - top)
     {
         return error.InvalidArgument;
     }
-    if (left == 0 and top == 0 and width == source.width and height == source.height) return source.clone();
+    if (left == 0 and top == 0 and width == source.width() and height == source.height()) return source.clone();
 
-    const output = try allocateImage(allocator, width, height, source.format, source.color_status);
+    var metadata = source.metadata;
+    metadata.width = width;
+    metadata.height = height;
+    const output = try allocateImage(allocator, metadata);
     errdefer output.deinit();
-    const src_stride = source.width * 4;
+    const src_stride = source.width() * 4;
     const dst_stride = width * 4;
     for (0..height) |y| {
         const src_offset = @as(usize, top + @as(u32, @intCast(y))) * src_stride + @as(usize, left) * 4;
@@ -474,18 +637,22 @@ pub fn extend(
     left: u32,
     background: [4]u8,
 ) !*Image {
-    const width = std.math.add(u32, source.width, left) catch return error.InvalidArgument;
+    const width = std.math.add(u32, source.width(), left) catch return error.InvalidArgument;
     const final_width = std.math.add(u32, width, right) catch return error.InvalidArgument;
-    const height = std.math.add(u32, source.height, top) catch return error.InvalidArgument;
+    const height = std.math.add(u32, source.height(), top) catch return error.InvalidArgument;
     const final_height = std.math.add(u32, height, bottom) catch return error.InvalidArgument;
-    const output = try allocateImage(allocator, final_width, final_height, source.format, source.color_status);
+    var metadata = source.metadata;
+    metadata.width = final_width;
+    metadata.height = final_height;
+    if (background[3] < 255) metadata.has_alpha = 1;
+    const output = try allocateImage(allocator, metadata);
     errdefer output.deinit();
 
     var index: usize = 0;
     while (index < output.pixels.len) : (index += 4) @memcpy(output.pixels[index .. index + 4], &background);
-    const src_stride = source.width * 4;
+    const src_stride = source.width() * 4;
     const dst_stride = final_width * 4;
-    for (0..source.height) |y| {
+    for (0..source.height()) |y| {
         const src_offset = y * src_stride;
         const dst_offset = @as(usize, top + @as(u32, @intCast(y))) * dst_stride + @as(usize, left) * 4;
         @memcpy(output.pixels[dst_offset .. dst_offset + src_stride], source.pixels[src_offset .. src_offset + src_stride]);
@@ -495,14 +662,17 @@ pub fn extend(
 
 pub fn resize(allocator: Allocator, source: *const Image, width: u32, height: u32, filter: ResizeFilter) !*Image {
     if (width == 0 or height == 0) return error.InvalidArgument;
-    if (width == source.width and height == source.height) return source.clone();
-    const output = try allocateImage(allocator, width, height, source.format, source.color_status);
+    if (width == source.width() and height == source.height()) return source.clone();
+    var metadata = source.metadata;
+    metadata.width = width;
+    metadata.height = height;
+    const output = try allocateImage(allocator, metadata);
     errdefer output.deinit();
     if (ot_image_resize_rgba(
         source.pixels.ptr,
-        source.width,
-        source.height,
-        source.width * 4,
+        source.width(),
+        source.height(),
+        source.width() * 4,
         output.pixels.ptr,
         width,
         height,
@@ -555,21 +725,21 @@ pub fn composite(
     mode: Blend,
     opacity: u8,
 ) !*Image {
-    const output = try createFromRgba(allocator, base.pixels, base.width, base.height, base.width * 4);
+    const output = try copyImage(allocator, base.pixels, base.metadata);
     errdefer output.deinit();
 
     const start_x: u32 = if (left < 0) @intCast(-@as(i64, left)) else 0;
     const start_y: u32 = if (top < 0) @intCast(-@as(i64, top)) else 0;
     const dest_x: u32 = if (left < 0) 0 else @intCast(left);
     const dest_y: u32 = if (top < 0) 0 else @intCast(top);
-    if (start_x >= overlay.width or start_y >= overlay.height or dest_x >= base.width or dest_y >= base.height) return output;
-    const copy_width = @min(overlay.width - start_x, base.width - dest_x);
-    const copy_height = @min(overlay.height - start_y, base.height - dest_y);
+    if (start_x >= overlay.width() or start_y >= overlay.height() or dest_x >= base.width() or dest_y >= base.height()) return output;
+    const copy_width = @min(overlay.width() - start_x, base.width() - dest_x);
+    const copy_height = @min(overlay.height() - start_y, base.height() - dest_y);
 
     for (0..copy_height) |y| {
         for (0..copy_width) |x| {
-            const dst_offset = pixelOffset(base.width, dest_x + @as(u32, @intCast(x)), dest_y + @as(u32, @intCast(y)));
-            const src_offset = pixelOffset(overlay.width, start_x + @as(u32, @intCast(x)), start_y + @as(u32, @intCast(y)));
+            const dst_offset = pixelOffset(base.width(), dest_x + @as(u32, @intCast(x)), dest_y + @as(u32, @intCast(y)));
+            const src_offset = pixelOffset(overlay.width(), start_x + @as(u32, @intCast(x)), start_y + @as(u32, @intCast(y)));
             const dst: *[4]u8 = @ptrCast(output.pixels[dst_offset .. dst_offset + 4].ptr);
             const src: *const [4]u8 = @ptrCast(overlay.pixels[src_offset .. src_offset + 4].ptr);
             blendPixel(dst, src, mode, opacity);
@@ -579,19 +749,19 @@ pub fn composite(
 }
 
 pub fn copyPixels(image: *const Image, destination: []u8, stride: u32, bgra: bool) Status {
-    const row_bytes = image.width * 4;
+    const row_bytes = image.width() * 4;
     if (stride < row_bytes) return .invalid_argument;
-    const preceding_rows = std.math.mul(u64, stride, image.height - 1) catch return .invalid_argument;
+    const preceding_rows = std.math.mul(u64, stride, image.height() - 1) catch return .invalid_argument;
     const required = std.math.add(u64, preceding_rows, row_bytes) catch return .invalid_argument;
     if (required > destination.len) return .output_too_small;
-    for (0..image.height) |y| {
+    for (0..image.height()) |y| {
         const src_offset = y * row_bytes;
         const dst_offset = y * stride;
         if (!bgra) {
             @memcpy(destination[dst_offset .. dst_offset + row_bytes], image.pixels[src_offset .. src_offset + row_bytes]);
             continue;
         }
-        for (0..image.width) |x| {
+        for (0..image.width()) |x| {
             const src = src_offset + x * 4;
             const dst = dst_offset + x * 4;
             destination[dst + 0] = image.pixels[src + 2];
