@@ -28,9 +28,10 @@ describe("native image demo", () => {
     expect([...frame].filter((char) => "▀▄▌▐▖▗▘▝▚▞▙▛▜▟█".includes(char)).length).toBeGreaterThan(100)
 
     setup.mockInput.pressKey("f")
+    setup.mockInput.pressKey("p")
     await setup.flush()
     const updated = setup.captureCharFrame()
     expect(updated).toContain("COVER")
-    expect(updated).toContain("KITTY → SIXEL → BLOCKS")
+    expect(updated).toContain("KITTY → KITTY")
   })
 })

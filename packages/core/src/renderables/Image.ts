@@ -1,13 +1,14 @@
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { NativeImage, type ImageSource } from "../image.js"
 import type { OptimizedBuffer } from "../buffer.js"
-import type { RenderContext } from "../types.js"
+import type { ImageRenderProtocol, RenderContext } from "../types.js"
 
 export type ImageFit = "fit" | "cover" | "fill"
 
 export interface ImageRenderableOptions extends RenderableOptions<ImageRenderable> {
   source?: ImageSource
   fit?: ImageFit
+  protocol?: ImageRenderProtocol
   onLoad?: (image: NativeImage) => void
   onError?: (error: unknown) => void
 }
@@ -22,11 +23,13 @@ export class ImageRenderable extends Renderable {
   private readonly _onLoad?: (image: NativeImage) => void
   private readonly _onError?: (error: unknown) => void
   private _fit: ImageFit
+  private _protocol: ImageRenderProtocol
   public loadPromise: Promise<void> | null = null
 
   constructor(ctx: RenderContext, options: ImageRenderableOptions) {
     super(ctx, options)
     this._fit = options.fit ?? "fit"
+    this._protocol = options.protocol ?? "auto"
     this._onLoad = options.onLoad
     this._onError = options.onError
     if (options.source !== undefined) this.source = options.source
@@ -71,6 +74,28 @@ export class ImageRenderable extends Renderable {
     if (this._fit === value) return
     this._fit = value
     this.requestRender()
+  }
+
+  public get protocol(): ImageRenderProtocol {
+    return this._protocol
+  }
+
+  public set protocol(value: ImageRenderProtocol) {
+    if (this._protocol === value) return
+    this._protocol = value
+    this.requestRender()
+  }
+
+  public get effectiveProtocol(): Exclude<ImageRenderProtocol, "auto"> {
+    if (this._protocol !== "auto")
+      return this._protocol === "sixel" && !this._ctx.resolution ? "blocks" : this._protocol
+    const capabilities = this._ctx.capabilities
+    const configured = capabilities?.image_protocol ?? "auto"
+    if (configured !== "auto") return configured === "sixel" && !this._ctx.resolution ? "blocks" : configured
+    if (!capabilities || capabilities.multiplexer === "tmux") return "blocks"
+    if (capabilities.kitty_graphics) return "kitty"
+    if (capabilities.sixel && this._ctx.resolution) return "sixel"
+    return "blocks"
   }
 
   public get cellAspectRatio(): number {
@@ -153,6 +178,7 @@ export class ImageRenderable extends Renderable {
       sourceY,
       sourceWidth,
       sourceHeight,
+      this._protocol,
     )
   }
 

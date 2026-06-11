@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { ImageRenderable } from "../renderables/Image.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import { setRendererCapabilities } from "../testing/terminal-capabilities.js"
 
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
 
@@ -62,6 +63,51 @@ describe("ImageRenderable image loading", () => {
       expect(renderable.getFittedSize(60, 40, 2)).toEqual({ width: 80, height: 40 })
       renderable.fit = "fill"
       expect(renderable.getFittedSize(60, 40, 2)).toEqual({ width: 60, height: 40 })
+    } finally {
+      renderable.destroy()
+    }
+  })
+
+  test("exposes requested and effective image protocols", async () => {
+    const renderable = new ImageRenderable(renderer, {
+      source: await readFile(new URL("rgba.png", FIXTURES)),
+      protocol: "blocks",
+    })
+    await renderable.loadPromise
+    try {
+      expect(renderable.protocol).toBe("blocks")
+      expect(renderable.effectiveProtocol).toBe("blocks")
+      renderable.protocol = "kitty"
+      expect(renderable.effectiveProtocol).toBe("kitty")
+      renderable.protocol = "auto"
+      expect(renderable.effectiveProtocol).toBe("blocks")
+    } finally {
+      renderable.destroy()
+    }
+  })
+
+  test("resolves auto from environment default then detected capabilities", async () => {
+    const renderable = new ImageRenderable(renderer, {
+      source: await readFile(new URL("rgba.png", FIXTURES)),
+    })
+    await renderable.loadPromise
+    try {
+      setRendererCapabilities(renderer, { image_protocol: "sixel" })
+      expect(renderable.effectiveProtocol).toBe("blocks")
+      setRendererCapabilities(renderer, { image_protocol: "auto", kitty_graphics: true })
+      expect(renderable.effectiveProtocol).toBe("kitty")
+      setRendererCapabilities(renderer, { image_protocol: "auto", sixel: true })
+      expect(renderable.effectiveProtocol).toBe("blocks")
+      ;(renderer as unknown as { _resolution: { width: number; height: number } | null })._resolution = {
+        width: 800,
+        height: 480,
+      }
+      setRendererCapabilities(renderer, { image_protocol: "sixel" })
+      expect(renderable.effectiveProtocol).toBe("sixel")
+      setRendererCapabilities(renderer, { image_protocol: "auto", sixel: true })
+      expect(renderable.effectiveProtocol).toBe("sixel")
+      setRendererCapabilities(renderer, { image_protocol: "auto", kitty_graphics: true, multiplexer: "tmux" })
+      expect(renderable.effectiveProtocol).toBe("blocks")
     } finally {
       renderable.destroy()
     }

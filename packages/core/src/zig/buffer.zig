@@ -173,6 +173,7 @@ pub const OptimizedBuffer = struct {
         source_width: u32,
         source_height: u32,
         opacity: u8,
+        protocol: native_image.RenderProtocol,
     };
 
     buffer: struct {
@@ -1255,6 +1256,7 @@ pub const OptimizedBuffer = struct {
                 .source_width = source_end_x - source_start_x,
                 .source_height = source_end_y - source_start_y,
                 .opacity = @intCast(mulDiv255(placement.opacity, opacityToU8(self.getCurrentOpacity()))),
+                .protocol = placement.protocol,
             });
             placement.image.retain();
             image_id_map[source_id] = @intCast(self.image_placements.items.len);
@@ -2201,6 +2203,7 @@ pub const OptimizedBuffer = struct {
         source_y: u32,
         source_width: u32,
         source_height: u32,
+        protocol: native_image.RenderProtocol,
     ) !bool {
         if (width == 0 or height == 0 or source_width == 0 or source_height == 0 or
             source_x >= image.width() or source_y >= image.height() or source_width > image.width() - source_x or
@@ -2245,6 +2248,7 @@ pub const OptimizedBuffer = struct {
             .source_width = source_end_x - clipped_source_x,
             .source_height = source_end_y - clipped_source_y,
             .opacity = opacityToU8(self.getCurrentOpacity()),
+            .protocol = protocol,
         });
         @constCast(image).retain();
         const clipped_placement = self.image_placements.items[placement_id - 1];
