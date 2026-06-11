@@ -440,6 +440,9 @@ const CHAR_FLAG_MASK = 0xc0000000 >>> 0
 class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderContext {
   public width: number
   public height: number
+  public terminalWidth: number
+  public terminalHeight: number
+  public resolution = null
   public frameId = 0
   public widthMethod: WidthMethod
   public capabilities: TerminalCapabilities | null = null
@@ -454,6 +457,8 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
     super()
     this.width = width
     this.height = height
+    this.terminalWidth = width
+    this.terminalHeight = height
     this.widthMethod = widthMethod
     this.keyInput = new KeyHandler()
     this._internalKeyInput = new InternalKeyHandler()
