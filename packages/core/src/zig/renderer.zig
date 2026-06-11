@@ -1749,6 +1749,11 @@ pub const CliRenderer = struct {
 
                 const cell = nextCell.?;
 
+                if (!should_force and gp.isImageChar(cell.char) and self.protocolForImageChar(cell.char) != .fallback and gp.isImageChar(currentCell.?.char)) {
+                    self.currentRenderBuffer.syncCell(x, y, cell);
+                    continue;
+                }
+
                 if (!frame_started) {
                     beginRenderFrame(writer);
                     frame_started = true;
