@@ -134,6 +134,7 @@ pub const Image = struct {
     allocator: Allocator,
     pixels: []u8,
     metadata: Info,
+    encoded_png: ?[]u8 = null,
     ref_count: u32 = 1,
 
     pub fn width(self: *const Image) u32 {
@@ -148,6 +149,7 @@ pub const Image = struct {
         std.debug.assert(self.ref_count > 0);
         self.ref_count -= 1;
         if (self.ref_count > 0) return;
+        if (self.encoded_png) |bytes| self.allocator.free(bytes);
         self.allocator.free(self.pixels);
         self.allocator.destroy(self);
     }
@@ -563,9 +565,13 @@ pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
     const color_status: ColorStatus = @enumFromInt(image_info.color_status);
     if (image_info.orientation == 1) {
         const image = try allocator.create(Image);
+        errdefer allocator.destroy(image);
+        const encoded_png = if (format == .png) try allocator.dupe(u8, data) else null;
+        errdefer if (encoded_png) |bytes| allocator.free(bytes);
         image.* = .{
             .allocator = allocator,
             .pixels = source,
+            .encoded_png = encoded_png,
             .metadata = .{
                 .width = image_info.width,
                 .height = image_info.height,
