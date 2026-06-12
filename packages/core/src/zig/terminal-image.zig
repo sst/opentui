@@ -61,7 +61,6 @@ const SixelAxis = enum { r, g, b };
 const SixelCut = struct { axis: SixelAxis, at: u8, score: f64 };
 const SIXEL_HISTOGRAM_SIDE = 33;
 const SIXEL_HISTOGRAM_LEN = SIXEL_HISTOGRAM_SIDE * SIXEL_HISTOGRAM_SIDE * SIXEL_HISTOGRAM_SIDE;
-const BAYER_4X4 = [16]i8{ 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
 
 pub const QuantizedSixel = struct {
     allocator: std.mem.Allocator,
@@ -79,19 +78,6 @@ pub const QuantizedSixel = struct {
 fn momentIndex(r: usize, g: usize, b: usize) usize {
     return (r * SIXEL_HISTOGRAM_SIDE + g) * SIXEL_HISTOGRAM_SIDE + b;
 }
-
-fn makeDithered5() [16][256]u8 {
-    @setEvalBranchQuota(16 * 256 * 4);
-    var result: [16][256]u8 = undefined;
-    for (0..16) |threshold| {
-        for (0..256) |value| {
-            result[threshold][value] = @intCast(std.math.clamp(@as(i16, @intCast(value)) + BAYER_4X4[threshold] - 7, 0, 255) >> 3);
-        }
-    }
-    return result;
-}
-
-const DITHERED_5 = makeDithered5();
 
 fn addMoment(target: *SixelMoment, value: SixelMoment) void {
     target.count += value.count;
@@ -265,6 +251,20 @@ pub fn quantizeSixel(allocator: std.mem.Allocator, image: *const native_image.Im
         box_count += 1;
     }
     result.palette_len = box_count;
+    // Common colors get shorter palette selectors, reducing repeated #N designations in each band.
+    var box_counts: [255]u64 = undefined;
+    for (boxes[0..box_count], 0..) |box, index| box_counts[index] = volumeStats(moments, box).count;
+    for (1..box_count) |index| {
+        const box = boxes[index];
+        const count = box_counts[index];
+        var destination = index;
+        while (destination > 0 and box_counts[destination - 1] < count) : (destination -= 1) {
+            boxes[destination] = boxes[destination - 1];
+            box_counts[destination] = box_counts[destination - 1];
+        }
+        boxes[destination] = box;
+        box_counts[destination] = count;
+    }
     var tags = [_]u8{0} ** (32 * 32 * 32);
     for (boxes[0..box_count], 0..) |box, palette_index| {
         const stats = volumeStats(moments, box);
@@ -283,11 +283,10 @@ pub fn quantizeSixel(allocator: std.mem.Allocator, image: *const native_image.Im
         for (0..image.width()) |x| {
             const pixel = y * image.width() + x;
             const offset = pixel * 4;
-            const matrix_index = (y & 3) * 4 + (x & 3);
             result.indices[pixel] = if (image.pixels[offset + 3] < 128) 255 else tags[
-                (@as(usize, DITHERED_5[matrix_index][image.pixels[offset]]) << 10) |
-                    (@as(usize, DITHERED_5[matrix_index][image.pixels[offset + 1]]) << 5) |
-                    DITHERED_5[matrix_index][image.pixels[offset + 2]]
+                (@as(usize, image.pixels[offset] >> 3) << 10) |
+                    (@as(usize, image.pixels[offset + 1] >> 3) << 5) |
+                    (image.pixels[offset + 2] >> 3)
             ];
         }
     }
