@@ -95,14 +95,30 @@ fn decodeSixelIndices(payload: []const u8) !DecodedSixel {
     return .{ .indices = indices, .width = width, .height = height };
 }
 
+fn decodeKittyChunks(payload: []const u8) ![]u8 {
+    var decoded: std.ArrayList(u8) = .empty;
+    errdefer decoded.deinit(std.testing.allocator);
+    var offset: usize = 0;
+    while (std.mem.indexOfPos(u8, payload, offset, "\x1b_G")) |start| {
+        const separator = std.mem.indexOfScalarPos(u8, payload, start + 3, ';') orelse return error.InvalidKittyPayload;
+        const end = std.mem.indexOfPos(u8, payload, separator + 1, "\x1b\\") orelse return error.InvalidKittyPayload;
+        const encoded = payload[separator + 1 .. end];
+        const decoded_len = try std.base64.standard.Decoder.calcSizeForSlice(encoded);
+        const destination = try decoded.addManyAsSlice(std.testing.allocator, decoded_len);
+        try std.base64.standard.Decoder.decode(destination, encoded);
+        offset = end + 2;
+    }
+    return decoded.toOwnedSlice(std.testing.allocator);
+}
+
 test "kitty transmission chunks RGBA payloads and places without cursor movement" {
-    const pixels = try std.testing.allocator.alloc(u8, 3073);
+    const pixels = try std.testing.allocator.alloc(u8, 1025 * 4);
     defer std.testing.allocator.free(pixels);
     @memset(pixels, 42);
     const value = image.Image{
         .allocator = std.testing.allocator,
         .pixels = pixels,
-        .metadata = .{ .width = 1, .height = 1 },
+        .metadata = .{ .width = 1025, .height = 1, .has_alpha = 1 },
     };
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(std.testing.allocator);
@@ -111,6 +127,61 @@ test "kitty transmission chunks RGBA payloads and places without cursor movement
     try std.testing.expect(std.mem.indexOf(u8, output.items, "i=7,m=1,q=2;") != null);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "\x1b_Gm=0,q=2;") != null);
     try std.testing.expect(std.mem.indexOf(u8, output.items, "a=p,i=7,p=8,c=4,r=5,x=0,y=0,w=1,h=1,C=1,z=-99") != null);
+}
+
+test "kitty transmission uses RGB only when every pixel is opaque" {
+    const opaque_image = try image.createFromRgba(std.testing.allocator, &[_]u8{ 1, 2, 3, 255 }, 1, 1, 4);
+    defer opaque_image.deinit();
+    var rgb: std.ArrayList(u8) = .empty;
+    defer rgb.deinit(std.testing.allocator);
+    try terminal_image.writeKittyTransmit(rgb.writer(std.testing.allocator), opaque_image, 1, false);
+    try std.testing.expect(std.mem.indexOf(u8, rgb.items, "f=24") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rgb.items, ";AQID\x1b\\") != null);
+
+    const transparent = try image.createFromRgba(std.testing.allocator, &[_]u8{ 1, 2, 3, 4 }, 1, 1, 4);
+    defer transparent.deinit();
+    var rgba: std.ArrayList(u8) = .empty;
+    defer rgba.deinit(std.testing.allocator);
+    try terminal_image.writeKittyTransmit(rgba.writer(std.testing.allocator), transparent, 1, false);
+    try std.testing.expect(std.mem.indexOf(u8, rgba.items, "f=32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rgba.items, ";AQIDBA==\x1b\\") != null);
+}
+
+test "kitty transmission rejects truncated image storage before writing" {
+    var pixels = [_]u8{ 1, 2, 3 };
+    const value = image.Image{
+        .allocator = std.testing.allocator,
+        .pixels = &pixels,
+        .metadata = .{ .width = 1, .height = 1 },
+    };
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try std.testing.expectError(error.InvalidImageData, terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), &value, 1, false));
+    try std.testing.expectEqual(@as(usize, 0), output.items.len);
+}
+
+test "kitty RGB transmission preserves pixels across chunk boundaries" {
+    const width = 2050;
+    const height = 1;
+    const pixels = try std.testing.allocator.alloc(u8, width * height * 4);
+    defer std.testing.allocator.free(pixels);
+    const expected = try std.testing.allocator.alloc(u8, width * height * 3);
+    defer std.testing.allocator.free(expected);
+    for (0..width) |pixel| {
+        pixels[pixel * 4] = @truncate(pixel);
+        pixels[pixel * 4 + 1] = @truncate(pixel * 3);
+        pixels[pixel * 4 + 2] = @truncate(pixel * 7);
+        pixels[pixel * 4 + 3] = 255;
+        @memcpy(expected[pixel * 3 ..][0..3], pixels[pixel * 4 ..][0..3]);
+    }
+    const value = try image.createFromRgba(std.testing.allocator, pixels, width, height, width * 4);
+    defer value.deinit();
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), value, 1, false);
+    const decoded = try decodeKittyChunks(output.items);
+    defer std.testing.allocator.free(decoded);
+    try std.testing.expectEqualSlices(u8, expected, decoded);
 }
 
 test "sixel encoding writes palette raster and terminator" {

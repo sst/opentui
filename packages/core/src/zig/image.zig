@@ -465,6 +465,14 @@ fn copyImage(allocator: Allocator, pixels: []const u8, metadata: Info) !*Image {
     return image;
 }
 
+fn pixelsHaveTransparency(pixels: []const u8) bool {
+    var offset: usize = 3;
+    while (offset < pixels.len) : (offset += 4) {
+        if (pixels[offset] != 255) return true;
+    }
+    return false;
+}
+
 pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, height: u32, stride: u32) !*Image {
     const row_bytes = std.math.mul(u32, width, 4) catch return error.InvalidArgument;
     if (stride < row_bytes) return error.InvalidArgument;
@@ -480,13 +488,14 @@ pub fn createFromRgba(allocator: Allocator, pixels: []const u8, width: u32, heig
         .format = @intFromEnum(Format.raw_rgba),
         .color_status = @intFromEnum(ColorStatus.explicit_srgb),
         .orientation = 1,
-        .has_alpha = 1,
+        .has_alpha = 0,
     });
     errdefer image.deinit();
     for (0..height) |y| {
         const src_offset = y * stride;
         const dst_offset = y * row_bytes;
         @memcpy(image.pixels[dst_offset .. dst_offset + row_bytes], pixels[src_offset .. src_offset + row_bytes]);
+        if (image.metadata.has_alpha == 0 and pixelsHaveTransparency(pixels[src_offset .. src_offset + row_bytes])) image.metadata.has_alpha = 1;
     }
     return image;
 }
@@ -549,6 +558,7 @@ pub fn decode(allocator: Allocator, data: []const u8, limits: Limits) !*Image {
         4 => error.UnsupportedFeature,
         else => error.MalformedInput,
     };
+    image_info.has_alpha = @intFromBool(pixelsHaveTransparency(source));
 
     const color_status: ColorStatus = @enumFromInt(image_info.color_status);
     if (image_info.orientation == 1) {

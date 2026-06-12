@@ -1,13 +1,56 @@
 const std = @import("std");
 const native_image = @import("image.zig");
 
+pub const KittyPixelFormat = enum { auto, rgb, rgba };
+
 pub fn writeKittyTransmit(writer: anytype, image: *const native_image.Image, id: u32, tmux: bool) !void {
+    return writeKittyTransmitFormat(writer, image, id, tmux, .auto);
+}
+
+pub fn writeKittyTransmitFormat(writer: anytype, image: *const native_image.Image, id: u32, tmux: bool, requested_format: KittyPixelFormat) !void {
     const raw_chunk = 3072;
+    const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
+    const rgba_len = std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData;
+    if (image.pixels.len < rgba_len) return error.InvalidImageData;
+    const format: KittyPixelFormat = if (requested_format == .auto)
+        (if (image.metadata.has_alpha == 0) .rgb else .rgba)
+    else
+        requested_format;
+    if (format == .rgb) {
+        var raw: [raw_chunk]u8 = undefined;
+        const rgb_len = std.math.mul(usize, pixel_count, 3) catch return error.InvalidImageData;
+        var rgb_offset: usize = 0;
+        var first = true;
+        while (rgb_offset < rgb_len) {
+            const chunk_len = @min(raw.len, rgb_len - rgb_offset);
+            const first_pixel = rgb_offset / 3;
+            const chunk_pixels = chunk_len / 3;
+            for (0..chunk_pixels) |index| {
+                const source = (first_pixel + index) * 4;
+                @memcpy(raw[index * 3 ..][0..3], image.pixels[source..][0..3]);
+            }
+            const more = rgb_offset + chunk_len < rgb_len;
+            if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
+            if (first) {
+                try writer.print("a=t,f=24,s={d},v={d},i={d},m={d},q=2;", .{ image.width(), image.height(), id, @intFromBool(more) });
+            } else {
+                try writer.print("m={d},q=2;", .{@intFromBool(more)});
+            }
+            var encoded: [4096]u8 = undefined;
+            const encoded_len = std.base64.standard.Encoder.calcSize(chunk_len);
+            const payload = std.base64.standard.Encoder.encode(encoded[0..encoded_len], raw[0..chunk_len]);
+            try writer.writeAll(payload);
+            if (tmux) try writer.writeAll("\x1b\x1b\\\x1b\\") else try writer.writeAll("\x1b\\");
+            rgb_offset += chunk_len;
+            first = false;
+        }
+        return;
+    }
     var offset: usize = 0;
     var first = true;
-    while (offset < image.pixels.len) {
-        const end = @min(offset + raw_chunk, image.pixels.len);
-        const more = end < image.pixels.len;
+    while (offset < rgba_len) {
+        const end = @min(offset + raw_chunk, rgba_len);
+        const more = end < rgba_len;
         if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
         if (first) {
             try writer.print("a=t,f=32,s={d},v={d},i={d},m={d},q=2;", .{ image.width(), image.height(), id, @intFromBool(more) });
