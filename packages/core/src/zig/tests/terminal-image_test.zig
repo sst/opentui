@@ -184,6 +184,23 @@ test "sixel adaptive palette caps at 255 colors deterministically" {
     try std.testing.expectEqual(@as(usize, 255), std.mem.count(u8, first.items, ";2;"));
 }
 
+test "sixel adaptive palette assigns shorter indices to common colors" {
+    const width = 100;
+    const pixels = try std.testing.allocator.alloc(u8, width * 4);
+    defer std.testing.allocator.free(pixels);
+    for (0..width) |index| {
+        const offset = index * 4;
+        const color: [4]u8 = if (index < 90) .{ 240, 32, 16, 255 } else .{ 8, 64, 224, 255 };
+        @memcpy(pixels[offset..][0..4], &color);
+    }
+    const value = try image.createFromRgba(std.testing.allocator, pixels, width, 1, width * 4);
+    defer value.deinit();
+    var quantized = try terminal_image.quantizeSixel(std.testing.allocator, value, 2);
+    defer quantized.deinit();
+    try std.testing.expectEqual(@as(usize, 2), quantized.palette_len);
+    try std.testing.expectEqual(@as(usize, 90), std.mem.count(u8, quantized.indices, &[_]u8{0}));
+}
+
 test "sixel indexed encoding preserves the supplied palette" {
     const indices = [_]u8{ 0, 1, 0, 1 };
     const palette = [_][3]u8{ .{ 12, 34, 56 }, .{ 210, 180, 90 } };
@@ -371,15 +388,15 @@ test "adaptive Sixel palette quality by color limit" {
         }
         const filtered_rmse = @sqrt(filtered_error / @as(f64, @floatFromInt(blocks * 9)));
         const maximum_rmse: f64 = switch (color_limit) {
-            64 => 20,
-            128 => 17,
-            255 => 14,
+            64 => 19,
+            128 => 15.5,
+            255 => 12.2,
             else => unreachable,
         };
         const maximum_filtered_rmse: f64 = switch (color_limit) {
-            64 => 4.5,
-            128 => 3.5,
-            255 => 3.2,
+            64 => 4.3,
+            128 => 2.7,
+            255 => 2.5,
             else => unreachable,
         };
         try std.testing.expect(rmse <= maximum_rmse);
