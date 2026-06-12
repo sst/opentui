@@ -268,6 +268,16 @@ test "image creation copies strided RGBA input" {
     try std.testing.expectEqualSlices(u8, &[_]u8{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }, value.pixels);
 }
 
+test "image creation records actual transparency" {
+    const opaque_image = try image.createFromRgba(std.testing.allocator, &[_]u8{ 1, 2, 3, 255 }, 1, 1, 4);
+    defer opaque_image.deinit();
+    try std.testing.expectEqual(@as(u32, 0), opaque_image.metadata.has_alpha);
+
+    const transparent = try image.createFromRgba(std.testing.allocator, &[_]u8{ 1, 2, 3, 254 }, 1, 1, 4);
+    defer transparent.deinit();
+    try std.testing.expectEqual(@as(u32, 1), transparent.metadata.has_alpha);
+}
+
 test "image creation rejects invalid stride and short input" {
     const pixels = [_]u8{0} ** 16;
     try std.testing.expectError(error.InvalidArgument, image.createFromRgba(std.testing.allocator, &pixels, 2, 2, 7));
