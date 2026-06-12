@@ -1523,9 +1523,11 @@ pub const CliRenderer = struct {
     fn imageWithOpacity(source: *const native_image.Image, opacity: u8) !?*native_image.Image {
         if (opacity == 255) return null;
         const copy = try source.clone();
-        for (3..copy.pixels.len) |index| {
-            if (index % 4 == 3) copy.pixels[index] = @intCast((@as(u16, copy.pixels[index]) * opacity + 127) / 255);
+        var index: usize = 3;
+        while (index < copy.pixels.len) : (index += 4) {
+            copy.pixels[index] = @intCast((@as(u16, copy.pixels[index]) * opacity + 127) / 255);
         }
+        copy.metadata.has_alpha = 1;
         return copy;
     }
 

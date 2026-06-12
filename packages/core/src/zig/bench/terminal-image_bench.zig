@@ -46,6 +46,10 @@ const CountingWriter = struct {
         _ = value;
         self.bytes += 1;
     }
+
+    pub fn print(self: *CountingWriter, comptime format: []const u8, args: anytype) !void {
+        self.bytes += std.fmt.count(format, args);
+    }
 };
 
 fn fillPixels(pixels: []u8, scenario: Scenario) void {
@@ -162,6 +166,161 @@ fn appendResult(
         .iterations = stats.count,
         .mem_stats = mem_stats,
     });
+}
+
+fn appendKittyBenchmarks(
+    allocator: std.mem.Allocator,
+    results: *std.ArrayListUnmanaged(bench_utils.BenchResult),
+    show_mem: bool,
+    bench_filter: ?[]const u8,
+) !void {
+    const names = [_][]const u8{
+        "Kitty source auto direct",
+        "Kitty cover auto direct",
+        "Kitty cover auto count-only",
+        "Kitty cover placement",
+        "Kitty cover forced RGBA direct",
+        "Kitty cover forced RGB direct",
+        "Kitty video create+auto direct",
+        "Kitty video create+RGBA direct",
+        "Kitty cover opacity preparation",
+    };
+    var run_any = false;
+    for (names) |name| run_any = run_any or bench_utils.matchesBenchFilter(name, bench_filter);
+    if (!run_any) return;
+
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    defer _ = gpa.deinit();
+    const work_allocator = gpa.allocator();
+    const encoded = try std.fs.cwd().readFileAlloc(work_allocator, "../../../examples/src/assets/image-demo.gif", 2 * 1024 * 1024);
+    defer work_allocator.free(encoded);
+    const decoded = try image.decode(work_allocator, encoded, .{});
+    defer decoded.deinit();
+    const cropped = try image.extract(work_allocator, decoded, 19, 0, 218, 384);
+    defer cropped.deinit();
+    const cover = try image.resize(work_allocator, cropped, 576, 1015, .area);
+    defer cover.deinit();
+
+    for ([_]struct { name: []const u8, source: *const image.Image }{
+        .{ .name = names[0], .source = decoded },
+        .{ .name = names[1], .source = cover },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(work_allocator);
+        try output.ensureTotalCapacity(work_allocator, scenario.source.pixels.len * 4 / 3 + 8192);
+        var stats: bench_utils.BenchStats = .{};
+        for (0..20) |_| {
+            output.clearRetainingCapacity();
+            var timer = try std.time.Timer.start();
+            try terminal_image.writeKittyTransmit(output.writer(work_allocator), scenario.source, 7, false);
+            stats.record(timer.read());
+        }
+        const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+            const values = try allocator.alloc(bench_utils.MemStat, 1);
+            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            break :blk values;
+        } else null;
+        try appendResult(allocator, results, scenario.name, stats, mem_stats);
+    }
+
+    if (bench_utils.matchesBenchFilter(names[2], bench_filter)) {
+        var stats: bench_utils.BenchStats = .{};
+        for (0..20) |_| {
+            var counting: CountingWriter = .{};
+            var timer = try std.time.Timer.start();
+            try terminal_image.writeKittyTransmit(&counting, cover, 7, false);
+            stats.record(timer.read());
+        }
+        try appendResult(allocator, results, names[2], stats, null);
+    }
+
+    if (bench_utils.matchesBenchFilter(names[3], bench_filter)) {
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(work_allocator);
+        var stats: bench_utils.BenchStats = .{};
+        for (0..1000) |_| {
+            output.clearRetainingCapacity();
+            var timer = try std.time.Timer.start();
+            try terminal_image.writeKittyPlacement(output.writer(work_allocator), 7, 8, 0, 0, 36, 29, 0, 0, 576, 1015, -1, false);
+            stats.record(timer.read());
+        }
+        const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+            const values = try allocator.alloc(bench_utils.MemStat, 1);
+            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            break :blk values;
+        } else null;
+        try appendResult(allocator, results, names[3], stats, mem_stats);
+    }
+
+    for ([_]struct { name: []const u8, format: terminal_image.KittyPixelFormat }{
+        .{ .name = names[4], .format = .rgba },
+        .{ .name = names[5], .format = .rgb },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(work_allocator);
+        try output.ensureTotalCapacity(work_allocator, cover.pixels.len * 4 / 3 + 8192);
+        var stats: bench_utils.BenchStats = .{};
+        for (0..20) |_| {
+            output.clearRetainingCapacity();
+            var timer = try std.time.Timer.start();
+            try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), cover, 7, false, scenario.format);
+            stats.record(timer.read());
+        }
+        const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+            const values = try allocator.alloc(bench_utils.MemStat, 1);
+            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            break :blk values;
+        } else null;
+        try appendResult(allocator, results, scenario.name, stats, mem_stats);
+    }
+
+    const video_pixels = try work_allocator.alloc(u8, 576 * 1015 * 4);
+    defer work_allocator.free(video_pixels);
+    fillPixels(video_pixels, .{ .name = "", .width = 576, .height = 1015, .pattern = .photo });
+    for ([_]struct { name: []const u8, format: terminal_image.KittyPixelFormat }{
+        .{ .name = names[6], .format = .auto },
+        .{ .name = names[7], .format = .rgba },
+    }) |scenario| {
+        if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(work_allocator);
+        try output.ensureTotalCapacity(work_allocator, video_pixels.len * 4 / 3 + 8192);
+        var stats: bench_utils.BenchStats = .{};
+        for (0..20) |_| {
+            output.clearRetainingCapacity();
+            var timer = try std.time.Timer.start();
+            const value = try image.createFromRgba(work_allocator, video_pixels, 576, 1015, 576 * 4);
+            try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), value, 7, false, scenario.format);
+            value.deinit();
+            stats.record(timer.read());
+        }
+        const mem_stats: ?[]const bench_utils.MemStat = if (show_mem) blk: {
+            const values = try allocator.alloc(bench_utils.MemStat, 1);
+            values[0] = .{ .name = "Payload", .bytes = output.items.len };
+            break :blk values;
+        } else null;
+        try appendResult(allocator, results, scenario.name, stats, mem_stats);
+    }
+
+    if (bench_utils.matchesBenchFilter(names[8], bench_filter)) {
+        var stats: bench_utils.BenchStats = .{};
+        var checksum: u64 = 0;
+        for (0..100) |_| {
+            var timer = try std.time.Timer.start();
+            const copy = try cover.clone();
+            var index: usize = 3;
+            while (index < copy.pixels.len) : (index += 4) {
+                copy.pixels[index] = @intCast((@as(u16, copy.pixels[index]) * 128 + 127) / 255);
+            }
+            stats.record(timer.read());
+            checksum +%= copy.pixels[3];
+            copy.deinit();
+        }
+        if (checksum == 0) return error.InvalidKittyOpacityBenchmark;
+        try appendResult(allocator, results, names[8], stats, null);
+    }
 }
 
 fn appendImageSwitchBenchmarks(
@@ -493,6 +652,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             });
         }
     }
+    try appendKittyBenchmarks(allocator, &results, show_mem, bench_filter);
     try appendDragonGeometryBenchmarks(allocator, &results, show_mem, bench_filter);
     try appendImageSwitchBenchmarks(allocator, &results, show_mem, bench_filter);
     return results.toOwnedSlice(allocator);
