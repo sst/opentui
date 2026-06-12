@@ -168,6 +168,7 @@ pub const OutputBackend = union(enum) {
 pub const BufferedBackend = struct {
     const BufferId = enum { A, B };
 
+    allocator: Allocator,
     output: BufferedOutput,
     ownedStdoutOutput: ?*StdoutOutput = null,
     ownedMemoryOutput: ?*MemoryOutput = null,
@@ -201,6 +202,7 @@ pub const BufferedBackend = struct {
         errdefer allocator.free(b_buf);
 
         return BufferedBackend{
+            .allocator = allocator,
             .output = output,
             .outputA = a_buf,
             .outputB = b_buf,
@@ -329,16 +331,16 @@ pub const BufferedBackend = struct {
             &self.outputLenA
         else
             &self.outputLenB;
-        const buffer = if (self.activeBuffer == .A)
-            self.outputA
-        else
-            self.outputB;
+        const required = bufferLen.* + data.len;
 
-        if (bufferLen.* + data.len > buffer.len) {
-            return error.BufferFull;
+        const buffer = if (self.activeBuffer == .A) &self.outputA else &self.outputB;
+
+        if (required > buffer.*.len) {
+            const capacity = @max(required, buffer.*.len * 2);
+            buffer.* = self.allocator.realloc(buffer.*, capacity) catch return error.BufferFull;
         }
 
-        @memcpy(buffer[bufferLen.*..][0..data.len], data);
+        @memcpy(buffer.*[bufferLen.*..][0..data.len], data);
         bufferLen.* += data.len;
         return data.len;
     }

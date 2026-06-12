@@ -793,6 +793,51 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
     try std.testing.expect(std.mem.indexOf(u8, second_output, "👋") == null);
 }
 
+test "renderer - grows frame output instead of committing cells whose ANSI was dropped" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const width: u32 = 1000;
+    const height: u32 = 160;
+    for ([_]bool{ false, true }) |threaded| {
+        var test_cli_renderer = if (threaded)
+            try TestRenderer.createThreadSafe(std.testing.allocator, width, height, pool)
+        else
+            try TestRenderer.create(std.testing.allocator, width, height, pool);
+        defer test_cli_renderer.deinit();
+        const cli_renderer = test_cli_renderer.renderer;
+        if (threaded) cli_renderer.setUseThread(true);
+        const next = cli_renderer.getNextBuffer();
+        const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+
+        for (0..height) |y| {
+            for (0..width) |x| {
+                const value: u8 = @intCast((x + y * width) % 255);
+                const fg = ansi.rgbColor(value, 255 - value, value / 2, 255);
+                next.set(@intCast(x), @intCast(y), .{ .char = 'X', .fg = fg, .bg = bg, .attributes = 0 });
+            }
+        }
+        try next.drawText("EARLY_SCROLL_CHANGED", 0, 0, ansi.rgbaFromFloats(1, 1, 1, 1), bg, 0);
+        try next.drawText(
+            "FULL_TOOL_RESULT_MARKER",
+            width - 24,
+            height - 1,
+            ansi.rgbaFromFloats(1, 1, 1, 1),
+            bg,
+            0,
+        );
+
+        _ = cli_renderer.render(false);
+        if (threaded) cli_renderer.setUseThread(false);
+        const output = test_cli_renderer.lastOutput();
+        const current = cli_renderer.getCurrentBuffer();
+
+        try std.testing.expect(current.get(width - 24, height - 1).?.char == 'F');
+        try std.testing.expect(std.mem.indexOf(u8, output, "EARLY_SCROLL_CHANGED") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "FULL_TOOL_RESULT_MARKER") != null);
+    }
+}
+
 test "renderer - hyperlinks enabled with OSC 8 output" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
