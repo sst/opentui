@@ -459,8 +459,8 @@ if (buildLib) {
       default: "./runtime-plugin-support-configure.node.js",
     },
     "./yoga": {
-      import: "./yoga.js",
       types: "./yoga.d.ts",
+      import: "./yoga.js",
     },
     // Conditional exports select the first matching key in declaration order. Bun
     // matches `bun` for both import and require, while Node ESM falls through to

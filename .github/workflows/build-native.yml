@@ -33,7 +33,14 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
-          cache-key: build-native
+          use-cache: false
+
+      - name: Restore Zig cache
+        uses: actions/cache@v5
+        with:
+          path: .zig-cache
+          key: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-${{ github.run_id }}-${{ github.job }}
+          restore-keys: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-
 
       - name: Install dependencies
         run: bun install
@@ -52,6 +59,8 @@ jobs:
           cd ../solid
           bun run build
           cd ../keymap
+          bun run build
+          cd ../ssh
           bun run build
 
       - name: Verify build outputs
@@ -87,8 +96,10 @@ jobs:
           test -f packages/solid/dist/package.json || (echo "❌ solid dist/package.json missing!" && exit 1)
           test -d packages/keymap/dist || (echo "❌ keymap dist missing!" && exit 1)
           test -f packages/keymap/dist/package.json || (echo "❌ keymap dist/package.json missing!" && exit 1)
+          test -d packages/ssh/dist || (echo "❌ ssh dist missing!" && exit 1)
+          test -f packages/ssh/dist/package.json || (echo "❌ ssh dist/package.json missing!" && exit 1)
 
-          echo "✅ All required build outputs verified (8 native targets, 6 package dists)"
+          echo "✅ All required build outputs verified (8 native targets, 7 package dists)"
 
       # Create separate zips for each platform's native binaries
       - name: Package native binaries - darwin-x64
@@ -234,6 +245,13 @@ jobs:
             echo "✅ Keymap dist packaged"
           else
             echo "⚠️  Keymap dist not found (skipping)"
+          fi
+
+          if [ -d packages/ssh/dist ]; then
+            cp -r packages/ssh/dist artifacts/npm-packages/ssh-dist
+            echo "✅ SSH dist packaged"
+          else
+            echo "⚠️  SSH dist not found (skipping)"
           fi
 
           cd artifacts

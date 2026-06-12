@@ -16,11 +16,11 @@ OpenTUI Keymap is a host-agnostic binding engine for terminals and the browser. 
 
 ```bash
 bun add @opentui/keymap
-# or
-npm install @opentui/keymap
 ```
 
-The bare keymap package is JavaScript-only and can be imported from Node without Bun or native FFI flags. OpenTUI renderer integration is separate: importing the OpenTUI host helpers is supported, but actually creating a native renderer on Node follows the Node 26 experimental FFI requirements in [Getting started](/docs/getting-started#runtime-support).
+The keymap package contains only JavaScript. You can import it in Node.js without installing Bun or enabling native FFI.
+You can also import the OpenTUI host helpers. However, creating a native renderer in Node.js requires Node.js 26.3.0 with
+experimental FFI. For details, see [Getting started](/docs/getting-started#runtime-support).
 
 Live demo: [HTML keymap demo](/demos/keymap-html/)
 

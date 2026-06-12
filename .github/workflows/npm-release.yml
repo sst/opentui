@@ -33,7 +33,14 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-          cache-key: npm-release
+          use-cache: false
+
+      - name: Restore Zig cache
+        uses: actions/cache@v5
+        with:
+          path: .zig-cache
+          key: zig-v1-${{ runner.os }}-0.15.2-${{ github.run_id }}-${{ github.job }}
+          restore-keys: zig-v1-${{ runner.os }}-0.15.2-
 
       - name: Generate snapshot version
         id: version_scheme
@@ -61,6 +68,7 @@ jobs:
           cd ../solid && bun run build
           cd ../react && bun run build
           cd ../keymap && bun run build
+          cd ../ssh && bun run build
 
       - name: Run packed Node smoke tests
         run: |
@@ -69,6 +77,8 @@ jobs:
           cd ../solid
           bun run test:dist --skip-build
           cd ../keymap
+          bun run test:dist --skip-build
+          cd ../ssh
           bun run test:dist --skip-build
 
       - name: Publish packages
