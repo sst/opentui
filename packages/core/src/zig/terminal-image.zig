@@ -12,6 +12,29 @@ pub fn writeKittyTransmitFormat(writer: anytype, image: *const native_image.Imag
     const pixel_count = std.math.mul(usize, image.width(), image.height()) catch return error.InvalidImageData;
     const rgba_len = std.math.mul(usize, pixel_count, 4) catch return error.InvalidImageData;
     if (image.pixels.len < rgba_len) return error.InvalidImageData;
+    if (requested_format == .auto) {
+        if (image.encoded_png) |png| {
+            var offset: usize = 0;
+            var first = true;
+            while (offset < png.len) {
+                const end = @min(offset + raw_chunk, png.len);
+                const more = end < png.len;
+                if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
+                if (first) {
+                    try writer.print("a=t,f=100,i={d},m={d},q=2;", .{ id, @intFromBool(more) });
+                } else {
+                    try writer.print("m={d},q=2;", .{@intFromBool(more)});
+                }
+                var encoded: [4096]u8 = undefined;
+                const payload = std.base64.standard.Encoder.encode(encoded[0..std.base64.standard.Encoder.calcSize(end - offset)], png[offset..end]);
+                try writer.writeAll(payload);
+                if (tmux) try writer.writeAll("\x1b\x1b\\\x1b\\") else try writer.writeAll("\x1b\\");
+                offset = end;
+                first = false;
+            }
+            return;
+        }
+    }
     const format: KittyPixelFormat = if (requested_format == .auto)
         (if (image.metadata.has_alpha == 0) .rgb else .rgba)
     else
