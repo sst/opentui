@@ -1314,7 +1314,13 @@ pub const OptimizedBuffer = struct {
                 const srcBg = frameBuffer.buffer.bg[srcIndex];
                 const srcAttr = frameBuffer.buffer.attributes[srcIndex];
 
-                if (ansi.alpha(srcBg) == 0 and ansi.alpha(srcFg) == 0) continue;
+                if (ansi.alpha(srcBg) == 0 and ansi.alpha(srcFg) == 0) {
+                    if (gp.isImageChar(srcChar)) {
+                        const current = self.get(@intCast(dX), @intCast(dY)) orelse continue;
+                        self.set(@intCast(dX), @intCast(dY), makeCell(srcChar, current.fg, current.bg, current.attributes));
+                    }
+                    continue;
+                }
 
                 if (graphemeAware) {
                     if (gp.isContinuationChar(srcChar)) {
@@ -2251,42 +2257,61 @@ pub const OptimizedBuffer = struct {
             .protocol = protocol,
         });
         @constCast(image).retain();
-        const clipped_placement = self.image_placements.items[placement_id - 1];
 
         var cell_y: u32 = 0;
         while (cell_y < clipped_height) : (cell_y += 1) {
-            const dest_y = clip_y0 + @as(i32, @intCast(cell_y));
+            const dest_y: u32 = @intCast(clip_y0 + @as(i32, @intCast(cell_y)));
             var cell_x: u32 = 0;
             while (cell_x < clipped_width) : (cell_x += 1) {
-                const dest_x = clip_x0 + @as(i32, @intCast(cell_x));
+                const dest_x: u32 = @intCast(clip_x0 + @as(i32, @intCast(cell_x)));
+                const current = self.get(dest_x, dest_y) orelse continue;
+                self.set(dest_x, dest_y, makeCell(gp.packImageCell(placement_id, 0), current.fg, current.bg, current.attributes));
+            }
+        }
+        return true;
+    }
+
+    pub fn materializeImageFallback(self: *OptimizedBuffer, placement_id: u32) void {
+        if (placement_id == 0 or placement_id > self.image_placements.items.len) return;
+        const placement = self.image_placements.items[placement_id - 1];
+        var cell_y: u32 = 0;
+        while (cell_y < placement.height) : (cell_y += 1) {
+            const dest_y: u32 = @intCast(placement.y + @as(i32, @intCast(cell_y)));
+            var cell_x: u32 = 0;
+            while (cell_x < placement.width) : (cell_x += 1) {
+                const dest_x: u32 = @intCast(placement.x + @as(i32, @intCast(cell_x)));
+                const current = self.get(dest_x, dest_y) orelse continue;
+                if (!gp.isImageChar(current.char) or gp.imageIdFromChar(current.char) != placement_id) continue;
 
                 var pixels: [4]RGBA = undefined;
                 inline for (0..4) |quadrant| {
                     const sample_x = cell_x * 2 + @as(u32, @intCast(quadrant & 1));
                     const sample_y = cell_y * 2 + @as(u32, @intCast(quadrant >> 1));
-                    const sx = clipped_placement.source_x + @min(clipped_placement.source_width - 1, @as(u32, @intCast((@as(u64, sample_x) * clipped_placement.source_width) / (@as(u64, clipped_width) * 2))));
-                    const sy = clipped_placement.source_y + @min(clipped_placement.source_height - 1, @as(u32, @intCast((@as(u64, sample_y) * clipped_placement.source_height) / (@as(u64, clipped_height) * 2))));
-                    const offset = (@as(usize, sy) * image.width() + sx) * 4;
+                    const sx = placement.source_x + @min(placement.source_width - 1, @as(u32, @intCast((@as(u64, sample_x) * placement.source_width) / (@as(u64, placement.width) * 2))));
+                    const sy = placement.source_y + @min(placement.source_height - 1, @as(u32, @intCast((@as(u64, sample_y) * placement.source_height) / (@as(u64, placement.height) * 2))));
+                    const offset = (@as(usize, sy) * placement.image.width() + sx) * 4;
                     pixels[quadrant] = ansi.rgbColor(
-                        image.pixels[offset],
-                        image.pixels[offset + 1],
-                        image.pixels[offset + 2],
-                        image.pixels[offset + 3],
+                        placement.image.pixels[offset],
+                        placement.image.pixels[offset + 1],
+                        placement.image.pixels[offset + 2],
+                        placement.image.pixels[offset + 3],
                     );
                 }
                 const rendered = renderQuadrantBlock(pixels);
-                const fallback = quadrantIndex(rendered.char);
-                self.setCellWithAlphaBlending(
-                    @intCast(dest_x),
-                    @intCast(dest_y),
-                    gp.packImageCell(placement_id, fallback),
-                    rendered.fg,
-                    rendered.bg,
-                    0,
-                );
+                const fallback = makeCell(gp.packImageCell(placement_id, quadrantIndex(rendered.char)), rendered.fg, rendered.bg, 0);
+                if (placement.opacity == 255 and !isRGBAWithAlpha(fallback.fg) and !isRGBAWithAlpha(fallback.bg)) {
+                    self.setRaw(dest_x, dest_y, fallback);
+                } else {
+                    const effective = makeCell(
+                        fallback.char,
+                        applyOpacity(fallback.fg, placement.opacity),
+                        applyOpacity(fallback.bg, placement.opacity),
+                        fallback.attributes,
+                    );
+                    self.setRaw(dest_x, dest_y, self.blendCells(effective, current));
+                }
             }
         }
-        return true;
     }
 
     /// Draw a buffer of pixel data using super sampling (2x2 pixels per character cell)
