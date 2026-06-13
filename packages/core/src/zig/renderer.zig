@@ -1479,6 +1479,14 @@ pub const CliRenderer = struct {
         return false;
     }
 
+    fn materializeFallbackImages(self: *CliRenderer) void {
+        for (self.nextRenderBuffer.image_placements.items) |placement| {
+            if (self.nextPlacementProtocol(placement) == .fallback) {
+                self.nextRenderBuffer.materializeImageFallback(placement.placement_id);
+            }
+        }
+    }
+
     fn stageImageState(self: *CliRenderer) void {
         self.pendingImages.clearRetainingCapacity();
         self.pendingImages.ensureTotalCapacity(self.allocator, self.nextRenderBuffer.image_placements.items.len) catch {
@@ -1688,6 +1696,7 @@ pub const CliRenderer = struct {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
         const palette_force = self.last_rendered_palette_epoch == null or self.last_rendered_palette_epoch.? != self.palette_epoch;
+        self.materializeFallbackImages();
         const images_changed = self.imageStateChanged();
         const sixel_changed = self.sixelCellsChanged();
         const graphics_changed = images_changed or sixel_changed or (force and self.nextRenderBuffer.image_placements.items.len > 0);

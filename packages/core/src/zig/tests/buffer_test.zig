@@ -26,8 +26,33 @@ test "OptimizedBuffer draws image reservation markers" {
         0,   0, 255, 255, 255, 255, 255, 255,
     }, 2, 2, 8);
     defer source.deinit();
+    const before = target.get(0, 0).?;
     try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 0, 0, 0, 0, 2, 2, .auto));
-    try std.testing.expect(gp.isImageChar(target.get(0, 0).?.char));
+    const marker = target.get(0, 0).?;
+    try std.testing.expect(gp.isImageChar(marker.char));
+    try std.testing.expectEqual(@as(u4, 0), gp.imageFallbackFromChar(marker.char));
+    try std.testing.expect(buffer_mod.rgbaEqual(before.fg, marker.fg));
+    try std.testing.expect(buffer_mod.rgbaEqual(before.bg, marker.bg));
+}
+
+test "OptimizedBuffer materializes block fallback on demand" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+    const source = try image.createFromRgba(std.testing.allocator, &[_]u8{
+        255, 0, 0,   255, 0,   255, 0,   255,
+        0,   0, 255, 255, 255, 255, 255, 255,
+    }, 2, 2, 8);
+    defer source.deinit();
+
+    try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 0, 0, 0, 0, 2, 2, .auto));
+    target.materializeImageFallback(1);
+    const cell = target.get(0, 0).?;
+    try std.testing.expect(gp.isImageChar(cell.char));
+    try std.testing.expect(gp.imageFallbackFromChar(cell.char) != 0);
 }
 
 test "OptimizedBuffer clips image placements and source crop to scissor" {
@@ -60,6 +85,24 @@ test "OptimizedBuffer retains image data for deferred protocol rendering" {
     try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
     source.deinit();
     try std.testing.expectEqual(@as(u8, 7), target.image_placements.items[0].image.pixels[0]);
+}
+
+test "OptimizedBuffer copies transparent image reservation markers from frame buffers" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const source_buffer = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer source_buffer.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+    const source = try image.createFromRgba(std.testing.allocator, &[_]u8{ 7, 8, 9, 255 }, 1, 1, 4);
+    defer source.deinit();
+
+    try std.testing.expect(try source_buffer.drawImage(source, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+    target.drawFrameBuffer(0, 0, source_buffer, null, null, null, null);
+    try std.testing.expect(gp.isImageChar(target.get(0, 0).?.char));
+    try std.testing.expectEqual(@as(usize, 1), target.image_placements.items.len);
 }
 
 fn initBufferForOomRegression(allocator: std.mem.Allocator) !void {
