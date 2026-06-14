@@ -232,7 +232,10 @@ export class SelectRenderable extends Renderable {
   ): void {
     if (!this.frameBuffer) return
 
-    const scrollPercent = this._selectedIndex / Math.max(1, this._options.length - 1)
+    // Reflect the viewport's scroll position (scrollOffset), not the cursor
+    // position (selectedIndex), so the indicator tracks what is actually visible.
+    const maxScrollOffset = Math.max(1, this._options.length - this.maxVisibleItems)
+    const scrollPercent = this.scrollOffset / maxScrollOffset
     const indicatorHeight = Math.max(1, contentHeight - 2)
     const indicatorY = contentY + 1 + Math.floor(scrollPercent * indicatorHeight)
     const indicatorX = contentX + contentWidth - 1

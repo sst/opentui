@@ -524,6 +524,48 @@ describe("SelectRenderable", () => {
     })
   })
 
+  describe("Scroll Indicator", () => {
+    // height 5 + showDescription:false => linesPerItem 1 => maxVisibleItems 5.
+    // 20 options (> 5) so the indicator is shown; maxScrollOffset = 20 - 5 = 15.
+    const manyOptions: SelectOption[] = Array.from({ length: 20 }, (_, i) => ({
+      name: `Item ${i}`,
+      description: "",
+    }))
+
+    const indicatorRow = (): number =>
+      captureCharFrame()
+        .split("\n")
+        .findIndex((line) => line.includes("█"))
+
+    test("tracks viewport scroll position rather than the selected index", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: manyOptions,
+        showScrollIndicator: true,
+        showDescription: false,
+      })
+
+      // At the top of the list the indicator sits on the first indicator row.
+      await renderOnce()
+      expect(indicatorRow()).toBe(1)
+
+      // Selecting the last item scrolls the viewport fully to the bottom, so the
+      // indicator must sit on the last indicator row.
+      select.setSelectedIndex(manyOptions.length - 1)
+      await renderOnce()
+      expect(indicatorRow()).toBe(4)
+
+      // Regression: the viewport is still pinned to the bottom (scrollOffset is
+      // clamped at its maximum), so the indicator must STAY at the bottom even
+      // though the selected index moved up. The previous selectedIndex-based
+      // calculation incorrectly moved the indicator off the bottom here.
+      select.setSelectedIndex(manyOptions.length - 3)
+      await renderOnce()
+      expect(indicatorRow()).toBe(4)
+    })
+  })
+
   describe("Property Changes", () => {
     test("should update showScrollIndicator", async () => {
       const { select } = await createSelectRenderable(currentRenderer, {
