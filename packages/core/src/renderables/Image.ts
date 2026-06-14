@@ -1,7 +1,7 @@
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { NativeImage, type ImageSource } from "../image.js"
 import type { OptimizedBuffer } from "../buffer.js"
-import type { ImageRenderProtocol, RenderContext } from "../types.js"
+import type { ImageRenderProtocol, RenderContext, TerminalCapabilities } from "../types.js"
 
 export type ImageFit = "fit" | "cover" | "fill"
 
@@ -11,6 +11,20 @@ export interface ImageRenderableOptions extends RenderableOptions<ImageRenderabl
   protocol?: ImageRenderProtocol
   onLoad?: (image: NativeImage) => void
   onError?: (error: unknown) => void
+}
+
+export function resolveImageRenderProtocol(
+  requested: ImageRenderProtocol,
+  capabilities: TerminalCapabilities | null,
+  hasResolution: boolean,
+): Exclude<ImageRenderProtocol, "auto"> {
+  if (requested !== "auto") return requested === "sixel" && !hasResolution ? "blocks" : requested
+  const configured = capabilities?.image_protocol ?? "auto"
+  if (configured !== "auto") return configured === "sixel" && !hasResolution ? "blocks" : configured
+  if (!capabilities || capabilities.multiplexer === "tmux") return "blocks"
+  if (capabilities.kitty_graphics) return "kitty"
+  if (capabilities.sixel && hasResolution) return "sixel"
+  return "blocks"
 }
 
 export class ImageRenderable extends Renderable {
@@ -87,15 +101,7 @@ export class ImageRenderable extends Renderable {
   }
 
   public get effectiveProtocol(): Exclude<ImageRenderProtocol, "auto"> {
-    if (this._protocol !== "auto")
-      return this._protocol === "sixel" && !this._ctx.resolution ? "blocks" : this._protocol
-    const capabilities = this._ctx.capabilities
-    const configured = capabilities?.image_protocol ?? "auto"
-    if (configured !== "auto") return configured === "sixel" && !this._ctx.resolution ? "blocks" : configured
-    if (!capabilities || capabilities.multiplexer === "tmux") return "blocks"
-    if (capabilities.kitty_graphics) return "kitty"
-    if (capabilities.sixel && this._ctx.resolution) return "sixel"
-    return "blocks"
+    return resolveImageRenderProtocol(this._protocol, this._ctx.capabilities, this._ctx.resolution !== null)
   }
 
   public get cellAspectRatio(): number {
