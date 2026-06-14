@@ -60,19 +60,19 @@ ssh -p 2222 localhost
 
 The handler receives a `Session`:
 
-| Field | Description |
-| --- | --- |
-| `renderer` | `CliRenderer` bound to the SSH channel. Destroyed automatically on disconnect. |
-| `identity` | Auth result narrowed to the configured methods. |
-| `context` | Typed values contributed by upstream middleware. |
-| `term` | Client `TERM` value. |
-| `cols`, `rows` | Current terminal size. |
-| `hasPty` | Whether the client requested a PTY. |
-| `remoteAddress` | Client socket endpoint for logging, rate limiting, and policy. |
-| `onResize(cb)` | Runs after the renderer has already been resized. |
-| `onClose(cb)` | Runs when the client disconnects. Use it for app-owned cleanup. |
-| `write(data)` | Writes raw terminal bytes, bypassing frame diffing. |
-| `end()` | Force-closes this session. |
+| Field           | Description                                                                    |
+| --------------- | ------------------------------------------------------------------------------ |
+| `renderer`      | `CliRenderer` bound to the SSH channel. Destroyed automatically on disconnect. |
+| `identity`      | Auth result narrowed to the configured methods.                                |
+| `context`       | Typed values contributed by upstream middleware.                               |
+| `term`          | Client `TERM` value.                                                           |
+| `cols`, `rows`  | Current terminal size.                                                         |
+| `hasPty`        | Whether the client requested a PTY.                                            |
+| `remoteAddress` | Client socket endpoint for logging, rate limiting, and policy.                 |
+| `onResize(cb)`  | Runs after the renderer has already been resized.                              |
+| `onClose(cb)`   | Runs when the client disconnects. Use it for app-owned cleanup.                |
+| `write(data)`   | Writes raw terminal bytes, bypassing frame diffing.                            |
+| `end()`         | Force-closes this session.                                                     |
 
 Middleware receives a `MiddlewareSession` without `renderer`. The renderer is only created after the middleware chain authorizes the session.
 
@@ -134,14 +134,14 @@ createServer({
 
 Supported auth configs:
 
-| Config | Behavior |
-| --- | --- |
-| `auth: "open"` or omitted | No authentication. |
-| `publicKey: "any"` | Accept any verified public key and expose its fingerprint. |
-| `publicKey: { authorizedKeys }` | Allow keys from an `authorized_keys` path or string array. |
-| `publicKey: { allow }` | Run a dynamic allow/deny predicate after signature verification. |
-| `password` | Run a password predicate. |
-| `keyboardInteractive` | Run an SSH keyboard-interactive prompt flow. |
+| Config                          | Behavior                                                         |
+| ------------------------------- | ---------------------------------------------------------------- |
+| `auth: "open"` or omitted       | No authentication.                                               |
+| `publicKey: "any"`              | Accept any verified public key and expose its fingerprint.       |
+| `publicKey: { authorizedKeys }` | Allow keys from an `authorized_keys` path or string array.       |
+| `publicKey: { allow }`          | Run a dynamic allow/deny predicate after signature verification. |
+| `password`                      | Run a password predicate.                                        |
+| `keyboardInteractive`           | Run an SSH keyboard-interactive prompt flow.                     |
 
 Public-key auth verifies the client signature, so `publicKey: "any"` proves possession of the private key and identifies the session by fingerprint.
 

@@ -41,7 +41,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 | `layout`, `flexbox`, `yoga`, `positioning`                 | `docs/core-concepts/layout.mdx`   |
 | `keyboard`, `input`, `keybindings`, `paste`, `focus`       | `docs/core-concepts/keyboard.mdx` |
 | `testing`, `test-renderer`, `snapshots`, `frames`          | `docs/core-concepts/testing.mdx`  |
-| `ssh`, `remote`, `server`, `host-key`, `authorized-keys`    | `docs/ssh/overview.mdx`           |
+| `ssh`, `remote`, `server`, `host-key`, `authorized-keys`   | `docs/ssh/overview.mdx`           |
 | `react`, `jsx`, `hooks`, `animation`, `testing`            | `docs/bindings/react.mdx`         |
 | `solid`, `signals`, `jsx`, `hooks`, `animation`, `testing` | `docs/bindings/solid.mdx`         |
 | `plugins`, `plugin`, `slots`, `registry`, `extensions`     | `docs/plugins/slots.mdx`          |
