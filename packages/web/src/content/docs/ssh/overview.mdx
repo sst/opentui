@@ -1,0 +1,203 @@
+---
+title: SSH
+description: Serve OpenTUI apps to SSH clients
+order: 1
+navTitle: Overview
+skill:
+  entry: true
+  intents: [ssh, remote, server, host-key, authorized-keys]
+---
+
+# SSH
+
+`@opentui/ssh` turns each incoming SSH shell session into a pre-wired OpenTUI `CliRenderer`. Input, output, terminal size, resize events, and disconnect teardown are bound to the SSH channel, so your app can render with the imperative core API, React, or Solid.
+
+Install the package with core:
+
+```bash
+bun add @opentui/core @opentui/ssh
+```
+
+Supported runtimes are Bun 1.3.0 and newer, and Node.js 26.3.0.
+
+## Minimal Server
+
+`createServer(config).serve(handler)` returns a startable server. Configuration such as auth, host keys, timeouts, limits, and error reporting belongs in `createServer()`. The per-session app handler belongs in `serve()`.
+
+```ts
+import { BoxRenderable, TextRenderable } from "@opentui/core"
+import { createServer } from "@opentui/ssh"
+
+const server = createServer({
+  hostKey: { path: "./host_key" },
+  auth: { publicKey: "any" },
+}).serve((session) => {
+  const box = new BoxRenderable(session.renderer, {
+    width: "100%",
+    height: "100%",
+    border: true,
+    borderStyle: "rounded",
+    justifyContent: "center",
+    alignItems: "center",
+  })
+
+  box.add(new TextRenderable(session.renderer, { content: `Hello, ${session.identity.username}!` }))
+  session.renderer.root.add(box)
+})
+
+await server.listen(2222)
+```
+
+Connect from another terminal:
+
+```bash
+ssh -p 2222 localhost
+```
+
+`listen(port = 2222, host = "127.0.0.1")` returns `{ host, port, fingerprints }`. Pass `0` for an ephemeral port, or a host like `0.0.0.0` when intentionally exposing the server outside localhost. If you listen on a non-loopback host without auth, the package logs a warning.
+
+## Session
+
+The handler receives a `Session`:
+
+| Field | Description |
+| --- | --- |
+| `renderer` | `CliRenderer` bound to the SSH channel. Destroyed automatically on disconnect. |
+| `identity` | Auth result narrowed to the configured methods. |
+| `context` | Typed values contributed by upstream middleware. |
+| `term` | Client `TERM` value. |
+| `cols`, `rows` | Current terminal size. |
+| `hasPty` | Whether the client requested a PTY. |
+| `remoteAddress` | Client socket endpoint for logging, rate limiting, and policy. |
+| `onResize(cb)` | Runs after the renderer has already been resized. |
+| `onClose(cb)` | Runs when the client disconnects. Use it for app-owned cleanup. |
+| `write(data)` | Writes raw terminal bytes, bypassing frame diffing. |
+| `end()` | Force-closes this session. |
+
+Middleware receives a `MiddlewareSession` without `renderer`. The renderer is only created after the middleware chain authorizes the session.
+
+## Framework Hand-Offs
+
+The SSH package depends on `@opentui/core`, not on React or Solid. Framework roots adopt the renderer supplied by the session.
+
+### Imperative
+
+```ts
+import { BoxRenderable } from "@opentui/core"
+import { createServer } from "@opentui/ssh"
+
+createServer().serve((session) => {
+  session.renderer.root.add(new BoxRenderable(session.renderer, { border: true }))
+})
+```
+
+### React
+
+```tsx
+import { createRoot } from "@opentui/react"
+import { createServer } from "@opentui/ssh"
+
+createServer().serve((session) => {
+  const root = createRoot(session.renderer)
+  root.render(<App name={session.identity.username} />)
+  session.onClose(() => root.unmount())
+})
+```
+
+### Solid
+
+```tsx
+import { render } from "@opentui/solid"
+import { createServer } from "@opentui/ssh"
+
+createServer().serve(async (session) => {
+  await render(() => <App name={session.identity.username} />, session.renderer)
+})
+```
+
+## Auth
+
+Auth defaults to `"open"` for local development. Configure credential methods before exposing a server publicly:
+
+```ts
+createServer({
+  auth: {
+    publicKey: { authorizedKeys: "./authorized_keys" },
+    password: async ({ username, password }) => checkPassword(username, password),
+  },
+}).serve((session) => {
+  if (session.identity.method === "publickey") {
+    session.identity.fingerprint
+  }
+})
+```
+
+Supported auth configs:
+
+| Config | Behavior |
+| --- | --- |
+| `auth: "open"` or omitted | No authentication. |
+| `publicKey: "any"` | Accept any verified public key and expose its fingerprint. |
+| `publicKey: { authorizedKeys }` | Allow keys from an `authorized_keys` path or string array. |
+| `publicKey: { allow }` | Run a dynamic allow/deny predicate after signature verification. |
+| `password` | Run a password predicate. |
+| `keyboardInteractive` | Run an SSH keyboard-interactive prompt flow. |
+
+Public-key auth verifies the client signature, so `publicKey: "any"` proves possession of the private key and identifies the session by fingerprint.
+
+## Middleware
+
+Use `.use()` for cross-cutting session behavior: setup/teardown, gates, and context enrichment. Middleware runs in registration order, and `await next()` resolves when the session ends.
+
+```ts
+import { createServer, logging, type Middleware } from "@opentui/ssh"
+
+const requirePty: Middleware = (session, next) => {
+  if (!session.hasPty) session.deny("PTY required")
+  return next()
+}
+
+createServer({ auth: { publicKey: "any" } })
+  .use(logging())
+  .use(requirePty)
+  .use((session, next) => next({ startedAt: Date.now() }))
+  .serve((session) => {
+    session.context.startedAt
+    session.renderer.root
+  })
+```
+
+`logging()` is the built-in observability middleware. It emits connect and disconnect events, including duration, without replacing `onError`.
+
+## Host Keys And Shutdown
+
+Persist a host key in production so clients can verify the server identity:
+
+```ts
+createServer({
+  hostKey: { path: "./host_key" },
+}).serve(handler)
+```
+
+If the path is missing, the package generates and saves an ed25519 key. You can also provide PEM directly with `hostKey: { pem }`. Omitting `hostKey` creates an ephemeral key on each start, which is convenient for development but unsuitable for stable client trust.
+
+Use timeouts, session limits, and `close()` to bound server lifetime and resource use:
+
+```ts
+const server = createServer({
+  idleTimeout: "10m",
+  maxTimeout: "1h",
+  limits: {
+    session: {
+      perConnection: 1,
+      global: 100,
+    },
+  },
+  onError: (err) => console.error(err),
+}).serve(handler)
+
+await server.listen()
+await server.close()
+```
+
+For complete examples, see `packages/ssh/examples` and the package README at `packages/ssh/README.md`.

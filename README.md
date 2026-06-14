@@ -22,6 +22,9 @@ This monorepo contains the following packages:
 - [`@opentui/three`](packages/three) - Three.js WebGPU renderer for OpenTUI.
 - [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
 - [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
+- [`@opentui/keymap`](packages/keymap) - Shared key binding, command, and sequence engine for OpenTUI and browser hosts.
+- [`@opentui/qrcode`](packages/qrcode) - QR code renderable and React/Solid adapters.
+- [`@opentui/ssh`](packages/ssh) - Serve OpenTUI apps over SSH.
 - [`@opentui/examples`](packages/examples) - Example browser and standalone examples executable build.
 
 ## Install
@@ -84,8 +87,8 @@ See the [Development Guide](packages/core/docs/development.md) for building, tes
 
 - [Website docs](https://opentui.com/docs/getting-started) - Guides and API references
 - [Development Guide](packages/core/docs/development.md) - Building, testing, and local dev linking
-- [Getting Started](packages/core/docs/getting-started.md) - API and usage guide
-- [Environment Variables](packages/core/docs/env-vars.md) - Configuration options
+- [Getting Started](packages/web/src/content/docs/getting-started.mdx) - API and usage guide
+- [Environment Variables](packages/web/src/content/docs/reference/env-vars.mdx) - Configuration options
 
 ## Showcase
 

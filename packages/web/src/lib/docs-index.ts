@@ -8,6 +8,7 @@ export type DocSectionId =
   | "components"
   | "bindings"
   | "keymap"
+  | "ssh"
   | "reference"
 
 export interface SkillMetadata {
@@ -74,7 +75,8 @@ export const DOC_SECTION_CONFIG: Record<DocSectionId, { title: string; order: nu
   components: { title: "Components", order: 4 },
   bindings: { title: "Bindings", order: 5 },
   keymap: { title: "Keymap", order: 6 },
-  reference: { title: "Reference", order: 7 },
+  ssh: { title: "SSH", order: 7 },
+  reference: { title: "Reference", order: 8 },
 }
 
 let docsIndexPromise: Promise<DocsIndex> | undefined

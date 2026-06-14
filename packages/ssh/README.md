@@ -2,6 +2,8 @@
 
 Serve OpenTUI apps over SSH.
 
+Website docs: https://opentui.com/docs/ssh/overview
+
 `@opentui/ssh` turns an incoming SSH session into a fully-wired OpenTUI
 [`CliRenderer`](../core) whose input/output is the SSH channel and whose
 dimensions track the client's PTY. What you render onto it is up to you — the

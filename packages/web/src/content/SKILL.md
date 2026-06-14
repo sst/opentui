@@ -21,6 +21,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 - Testing: `/docs/core-concepts/testing`
 - Audio: `/docs/core-concepts/audio`
 - Keymap: `/docs/keymap/overview`
+- SSH: `/docs/ssh/overview`
 - React: `/docs/bindings/react`
 - Solid: `/docs/bindings/solid`
 - Components: `/docs/components/text`, `/docs/components/input`
@@ -40,6 +41,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 | `layout`, `flexbox`, `yoga`, `positioning`                 | `docs/core-concepts/layout.mdx`   |
 | `keyboard`, `input`, `keybindings`, `paste`, `focus`       | `docs/core-concepts/keyboard.mdx` |
 | `testing`, `test-renderer`, `snapshots`, `frames`          | `docs/core-concepts/testing.mdx`  |
+| `ssh`, `remote`, `server`, `host-key`, `authorized-keys`    | `docs/ssh/overview.mdx`           |
 | `react`, `jsx`, `hooks`, `animation`, `testing`            | `docs/bindings/react.mdx`         |
 | `solid`, `signals`, `jsx`, `hooks`, `animation`, `testing` | `docs/bindings/solid.mdx`         |
 | `plugins`, `plugin`, `slots`, `registry`, `extensions`     | `docs/plugins/slots.mdx`          |
@@ -55,6 +57,7 @@ For concrete component requests, jump straight to `docs/components/<name>.mdx` a
 - `docs/core-concepts/renderer.mdx`
 - `docs/core-concepts/audio.mdx`
 - `docs/keymap/overview.mdx`
+- `docs/ssh/overview.mdx`
 - `docs/core-concepts/layout.mdx`
 - `docs/core-concepts/keyboard.mdx`
 - `docs/bindings/react.mdx`
