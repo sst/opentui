@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test"
-import { TextNodeRenderable, isTextNodeRenderable } from "./TextNode.js"
+import { TextNodeRenderable, RootTextNodeRenderable, isTextNodeRenderable } from "./TextNode.js"
+import type { RenderContext } from "../types.js"
+import type { TextRenderable } from "./Text.js"
 import { RGBA } from "../lib/RGBA.js"
 import { StyledText, red, bold, t } from "../lib/styled-text.js"
 
@@ -1079,5 +1081,67 @@ describe("TextNodeRenderable", () => {
       // Verify correct position
       expect(root.children.indexOf(insertChild)).toBe(4)
     })
+  })
+})
+
+describe("TextNodeRenderable render request propagation", () => {
+  function makeCtx() {
+    let count = 0
+    const ctx = {
+      requestRender: () => {
+        count++
+      },
+    } as unknown as RenderContext
+    return { ctx, getCount: () => count }
+  }
+
+  function makeRoot(ctx: RenderContext) {
+    return new RootTextNodeRenderable(ctx, { id: "root" }, undefined as unknown as TextRenderable)
+  }
+
+  it("forwards a detached node's render request to the retained RenderContext", () => {
+    const { ctx, getCount } = makeCtx()
+    const root = makeRoot(ctx)
+
+    const child = new TextNodeRenderable({ id: "child" })
+    root.add(child)
+
+    // Simulate a transient detach during a list re-diff / reorder / re-key.
+    root.remove("child")
+    expect(child.parent).toBeNull()
+
+    // The detached node is still being mutated (e.g. streaming text deltas).
+    const before = getCount()
+    child.add("streamed delta")
+
+    // Without the ctx fallback this render request would be silently dropped.
+    expect(getCount()).toBeGreaterThan(before)
+  })
+
+  it("propagates the RenderContext to nested descendants so they self-heal when detached", () => {
+    const { ctx, getCount } = makeCtx()
+    const root = makeRoot(ctx)
+
+    const parent = new TextNodeRenderable({ id: "parent" })
+    const grandchild = new TextNodeRenderable({ id: "grandchild" })
+    parent.add(grandchild)
+    root.add(parent)
+
+    // Detach the whole subtree.
+    root.remove("parent")
+    expect(parent.parent).toBeNull()
+
+    const before = getCount()
+    grandchild.add("deep delta")
+    expect(getCount()).toBeGreaterThan(before)
+  })
+
+  it("does not reach the RenderContext for a node that was never attached", () => {
+    const { ctx, getCount } = makeCtx()
+    expect(typeof ctx.requestRender).toBe("function")
+
+    const orphan = new TextNodeRenderable({ id: "orphan" })
+    orphan.add("text")
+    expect(getCount()).toBe(0)
   })
 })

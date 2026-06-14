@@ -40,6 +40,7 @@ export class TextNodeRenderable extends BaseRenderable {
   private _link?: { url: string }
   private _children: (string | TextNodeRenderable)[] = []
   public parent: TextNodeRenderable | null = null
+  protected _ctx?: RenderContext
 
   constructor(options: TextNodeOptions) {
     super(options)
@@ -61,7 +62,28 @@ export class TextNodeRenderable extends BaseRenderable {
 
   public requestRender(): void {
     this.markDirty()
-    this.parent?.requestRender()
+    if (this.parent) {
+      this.parent.requestRender()
+    } else {
+      // Detached (parent === null) but possibly still being mutated: fall back to
+      // the retained RenderContext so the render request is not silently dropped.
+      this._ctx?.requestRender()
+    }
+  }
+
+  /**
+   * Propagate the active RenderContext down this text-node subtree. The reference is
+   * retained even after the node is later detached (parent === null) so a still-updating
+   * detached node can keep reaching the renderer via requestRender().
+   */
+  protected setRenderContext(ctx: RenderContext | undefined): void {
+    if (this._ctx === ctx) return
+    this._ctx = ctx
+    for (const child of this._children) {
+      if (typeof child !== "string") {
+        child.setRenderContext(ctx)
+      }
+    }
   }
 
   public add(obj: TextNodeRenderable | StyledText | string, index?: number): number {
@@ -82,6 +104,7 @@ export class TextNodeRenderable extends BaseRenderable {
       if (index !== undefined) {
         this._children.splice(index, 0, obj)
         obj.parent = this
+        obj.setRenderContext(this._ctx)
         this.requestRender()
         return index
       }
@@ -89,6 +112,7 @@ export class TextNodeRenderable extends BaseRenderable {
       const insertIndex = this._children.length
       this._children.push(obj)
       obj.parent = this
+      obj.setRenderContext(this._ctx)
       this.requestRender()
       return insertIndex
     }
@@ -97,14 +121,20 @@ export class TextNodeRenderable extends BaseRenderable {
       const textNodes = styledTextToTextNodes(obj)
       if (index !== undefined) {
         this._children.splice(index, 0, ...textNodes)
-        textNodes.forEach((node) => (node.parent = this))
+        textNodes.forEach((node) => {
+          node.parent = this
+          node.setRenderContext(this._ctx)
+        })
         this.requestRender()
         return index
       }
 
       const insertIndex = this._children.length
       this._children.push(...textNodes)
-      textNodes.forEach((node) => (node.parent = this))
+      textNodes.forEach((node) => {
+        node.parent = this
+        node.setRenderContext(this._ctx)
+      })
       this.requestRender()
       return insertIndex
     }
@@ -116,6 +146,7 @@ export class TextNodeRenderable extends BaseRenderable {
     this._children[index] = obj
     if (typeof obj !== "string") {
       obj.parent = this
+      obj.setRenderContext(this._ctx)
     }
     this.requestRender()
   }
@@ -138,10 +169,14 @@ export class TextNodeRenderable extends BaseRenderable {
     } else if (isTextNodeRenderable(child)) {
       this._children.splice(anchorIndex, 0, child)
       child.parent = this
+      child.setRenderContext(this._ctx)
     } else if (child instanceof StyledText) {
       const textNodes = styledTextToTextNodes(child)
       this._children.splice(anchorIndex, 0, ...textNodes)
-      textNodes.forEach((node) => (node.parent = this))
+      textNodes.forEach((node) => {
+        node.parent = this
+        node.setRenderContext(this._ctx)
+      })
     } else {
       throw new Error("Child must be a string, TextNodeRenderable, or StyledText instance")
     }
@@ -316,6 +351,7 @@ export class RootTextNodeRenderable extends TextNodeRenderable {
   ) {
     super(options)
     this.textParent = textParent
+    this._ctx = ctx
   }
 
   public requestRender(): void {
