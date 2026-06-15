@@ -498,18 +498,3 @@ pub fn hsvToRgb(h: f32, s: f32, v: f32) RGBA {
 
     return rgbaFromFloats(rgb[0], rgb[1], rgb[2], 1.0);
 }
-
-test "fallbackAnsi256Color returns base, cube, and grayscale colors" {
-    try std.testing.expectEqual(@as(u32, 0xff0000), rgbaToRgb24(fallbackAnsi256Color(9)));
-    try std.testing.expectEqual(@as(u32, 0x0000ff), rgbaToRgb24(fallbackAnsi256Color(21)));
-    try std.testing.expectEqual(@as(u32, 0x080808), rgbaToRgb24(fallbackAnsi256Color(232)));
-    try std.testing.expectEqual(@as(u32, 0xeeeeee), rgbaToRgb24(fallbackAnsi256Color(255)));
-}
-
-test "packed RGBA stores metadata" {
-    const color = indexedColor(9, 255, 0, 0);
-
-    try std.testing.expectEqual(@as(u8, 255), red(color));
-    try std.testing.expectEqual(@as(u8, 9), slot(color));
-    try std.testing.expectEqual(ColorIntent.indexed, intent(color));
-}

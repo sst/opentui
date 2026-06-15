@@ -1960,7 +1960,7 @@ test "OptimizedBuffer - drawBox transparent border preserves destination backgro
     try std.testing.expect(!buf.link_tracker.hasAny());
 
     const border_chars = [_]u32{ 0x250c, 0x2510, 0x2514, 0x2518, 0x2500, 0x2502, 0, 0, 0, 0, 0 };
-    try buf.drawBox(0, 0, 4, 4, &border_chars, .{ .left = true }, green_fg, transparent_bg, false, null, 0, null, 0);
+    try buf.drawBox(0, 0, 4, 4, &border_chars, .{ .left = true }, green_fg, transparent_bg, green_fg, false, null, 0, null, 0);
 
     const cell = buf.get(0, 1).?;
     try std.testing.expectEqual(@as(u32, 0x2502), cell.char);
@@ -1994,7 +1994,7 @@ test "OptimizedBuffer - drawBox transparent border foreground blends against box
     buf.clear(transparent, null);
 
     const border_chars = [_]u32{ 0x250c, 0x2510, 0x2514, 0x2518, 0x2500, 0x2502, 0, 0, 0, 0, 0 };
-    try buf.drawBox(0, 0, 4, 4, &border_chars, .{ .left = true }, transparent, panel, true, null, 0, null, 0);
+    try buf.drawBox(0, 0, 4, 4, &border_chars, .{ .left = true }, transparent, panel, transparent, true, null, 0, null, 0);
 
     const cell = buf.get(0, 1).?;
     try std.testing.expectEqual(@as(u32, 0x2502), cell.char);

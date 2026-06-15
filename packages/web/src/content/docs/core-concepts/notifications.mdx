@@ -36,7 +36,7 @@ Terminal and OS settings decide how the notification is presented. Some terminal
 
 tmux does not forward raw notification OSC sequences. When OpenTUI detects `renderer.capabilities?.multiplexer === "tmux"`, notification output is wrapped in tmux DCS passthrough. tmux must allow passthrough for the outer terminal to receive the notification:
 
-```tmux
+```text
 set -g allow-passthrough on
 ```
 

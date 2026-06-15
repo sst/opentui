@@ -21,6 +21,8 @@ const SupportedTarget = struct {
 const SUPPORTED_TARGETS = [_]SupportedTarget{
     .{ .zig_target = "x86_64-linux-gnu.2.17", .output_name = "x86_64-linux", .description = "Linux x86_64" },
     .{ .zig_target = "aarch64-linux-gnu.2.17", .output_name = "aarch64-linux", .description = "Linux aarch64" },
+    .{ .zig_target = "x86_64-linux-musl", .output_name = "x86_64-linux-musl", .description = "Linux x86_64 (musl)" },
+    .{ .zig_target = "aarch64-linux-musl", .output_name = "aarch64-linux-musl", .description = "Linux aarch64 (musl)" },
     .{ .zig_target = "x86_64-macos", .output_name = "x86_64-macos", .description = "macOS x86_64 (Intel)" },
     .{ .zig_target = "aarch64-macos", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
     .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
@@ -31,6 +33,34 @@ const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.
 
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
+
+const YOGA_CXX_FLAGS = [_][]const u8{
+    "-std=c++20",
+    "-fexceptions",
+    "-frtti",
+};
+
+const YOGA_CXX_SOURCES = [_][]const u8{
+    "yoga/YGConfig.cpp",
+    "yoga/YGEnums.cpp",
+    "yoga/YGNode.cpp",
+    "yoga/YGNodeLayout.cpp",
+    "yoga/YGNodeStyle.cpp",
+    "yoga/YGPixelGrid.cpp",
+    "yoga/YGValue.cpp",
+    "yoga/algorithm/AbsoluteLayout.cpp",
+    "yoga/algorithm/Baseline.cpp",
+    "yoga/algorithm/Cache.cpp",
+    "yoga/algorithm/CalculateLayout.cpp",
+    "yoga/algorithm/FlexLine.cpp",
+    "yoga/algorithm/PixelGrid.cpp",
+    "yoga/config/Config.cpp",
+    "yoga/debug/AssertFatal.cpp",
+    "yoga/debug/Log.cpp",
+    "yoga/event/event.cpp",
+    "yoga/node/LayoutResults.cpp",
+    "yoga/node/Node.cpp",
+};
 
 fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
     if (builtin.os.tag != .linux) {
@@ -167,6 +197,18 @@ fn addNativeAudioDependencies(
     }
 }
 
+fn addYogaDependencies(b: *std.Build, artifact: *std.Build.Step.Compile) void {
+    const yoga_dep = b.dependency("yoga", .{});
+
+    artifact.linkLibCpp();
+    artifact.addIncludePath(yoga_dep.path(""));
+    artifact.addCSourceFiles(.{
+        .root = yoga_dep.path(""),
+        .files = &YOGA_CXX_SOURCES,
+        .flags = &YOGA_CXX_FLAGS,
+    });
+}
+
 /// Apply dependencies to a module
 fn applyDependencies(
     b: *std.Build,
@@ -278,6 +320,7 @@ pub fn build(b: *std.Build) void {
         std.process.exit(1);
     }
     addNativeAudioDependencies(b, test_artifact, native_target, macos_sdk_path);
+    addYogaDependencies(b, test_artifact);
 
     const run_test = b.addRunArtifact(test_artifact);
     test_step.dependOn(&run_test.step);
@@ -317,6 +360,7 @@ pub fn build(b: *std.Build) void {
         std.process.exit(1);
     }
     addNativeAudioDependencies(b, bench_ffi_lib, native_target, macos_sdk_path);
+    addYogaDependencies(b, bench_ffi_lib);
     const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
     bench_ffi_step.dependOn(&install_bench_ffi.step);
     bench_step.dependOn(bench_ffi_step);
@@ -448,6 +492,7 @@ fn buildTarget(
     });
 
     addNativeAudioDependencies(b, lib, target, macos_sdk_path);
+    addYogaDependencies(b, lib);
 
     const install_dir = b.addInstallArtifact(lib, .{
         .dest_dir = .{

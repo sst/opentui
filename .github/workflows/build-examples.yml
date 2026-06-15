@@ -7,16 +7,14 @@ on:
         description: "Version being released"
         required: true
         type: string
-      isDryRun:
-        description: "Whether this is a dry run release"
-        required: false
-        type: boolean
-        default: false
+
+permissions:
+  contents: read
 
 jobs:
   build-examples:
     name: Build Example Executables
-    runs-on: macos-latest
+    runs-on: blacksmith-12vcpu-macos-15
 
     steps:
       - name: Checkout code
@@ -25,7 +23,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       - name: Install dependencies FIRST (before copying built packages)
         run: |
@@ -36,7 +34,7 @@ jobs:
           echo "✅ Base dependencies installed"
 
       - name: Download npm packages artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: npm-packages-${{ inputs.version }}
 
@@ -79,6 +77,8 @@ jobs:
           rm -rf packages/core/node_modules/@opentui/core-darwin-arm64
           rm -rf packages/core/node_modules/@opentui/core-linux-x64
           rm -rf packages/core/node_modules/@opentui/core-linux-arm64
+          rm -rf packages/core/node_modules/@opentui/core-linux-x64-musl
+          rm -rf packages/core/node_modules/@opentui/core-linux-arm64-musl
           rm -rf packages/core/node_modules/@opentui/core-win32-x64
           rm -rf packages/core/node_modules/@opentui/core-win32-arm64
 

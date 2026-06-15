@@ -27,6 +27,7 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 | `OPENTUI_FORCE_UNICODE`         | `boolean` | `false` | Force Mode 2026 Unicode support in terminal capabilities        |
 | `OPENTUI_GRAPHICS`              | `boolean` | `true`  | Enable Kitty graphics protocol detection                        |
 | `OPENTUI_FORCE_NOZWJ`           | `boolean` | `false` | Use no_zwj width method (Unicode without ZWJ joining)           |
+| `OPENTUI_LIBC`                  | `string`  | unset   | Select Linux native libc package (`glibc`, `musl`)              |
 | `OPENTUI_FORCE_EXPLICIT_WIDTH`  | `string`  | -       | Force explicit width detection (`true`/`1` or `false`/`0`)      |
 | `OPENTUI_NOTIFICATION_PROTOCOL` | `string`  | `auto`  | Force notification protocol (`osc9`, `osc777`, `osc99`, `none`) |
 | `OPENTUI_NOTIFICATIONS`         | `boolean` | `true`  | Disable terminal notification detection when false              |
@@ -41,6 +42,7 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 ## Notes
 
 - `OPENTUI_FORCE_EXPLICIT_WIDTH=false` skips OSC 66 queries on older terminals.
+- Linux uses the glibc native package by default. Set `OPENTUI_LIBC=musl` before importing OpenTUI, or define `process.env.OPENTUI_LIBC` as `"musl"` at standalone build time, to use the musl native package. See [Standalone Executables](/docs/reference/standalone-executables).
 - `OPENTUI_NOTIFICATION_PROTOCOL=none` disables notifications. Protocol overrides should only be used when terminal detection cannot identify a supported notification protocol.
 - `OPENTUI_NOTIFICATIONS=0`, `false`, or `off` disables notifications without changing other terminal capability detection.
 - `OTUI_PALETTE_IDLE_TIMEOUT_MS` bounds palette detection when a terminal reports OSC support but does not answer follow-up color queries.

@@ -319,6 +319,8 @@ const complex = new BoxRenderable(renderer, {
 })
 ```
 
+`renderBefore` and `renderAfter` are draw-only hooks for custom rendering and decorations. They run after layout and viewport culling, so do not mutate layout props, children, visibility, or reactive state from them.
+
 ## Lifecycle Methods
 
 Override these methods in custom renderables:

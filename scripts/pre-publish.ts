@@ -66,6 +66,11 @@ const ALL_PACKAGES: PackageConfig[] = [
     distDir: join(rootDir, "packages", "keymap", "dist"),
     requiresCore: true,
   },
+  {
+    name: "@opentui/ssh",
+    rootDir: join(rootDir, "packages", "ssh"),
+    distDir: join(rootDir, "packages", "ssh", "dist"),
+  },
 ]
 
 const PACKAGES = ALL_PACKAGES

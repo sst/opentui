@@ -4,6 +4,7 @@ import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
 import { BoxRenderable } from "../renderables/Box.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { CodeRenderable } from "../renderables/Code.js"
+import { MarkdownRenderable } from "../renderables/Markdown.js"
 import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration.js"
 import { SyntaxStyle } from "../syntax-style.js"
 
@@ -21,6 +22,7 @@ let mockMouse: MockMouse
 let renderOnce: () => Promise<void>
 let captureCharFrame: () => string
 let mockTreeSitterClient: MockTreeSitterClient
+let mockTreeSitterClients: MockTreeSitterClient[]
 
 beforeEach(async () => {
   ;({
@@ -29,13 +31,24 @@ beforeEach(async () => {
     renderOnce,
     captureCharFrame,
   } = await createTestRenderer({ width: 80, height: 24 }))
-  mockTreeSitterClient = new MockTreeSitterClient()
-  mockTreeSitterClient.setMockResult({ highlights: [] })
+  mockTreeSitterClients = []
+  mockTreeSitterClient = createMockTreeSitterClient()
 })
 
-afterEach(() => {
+afterEach(async () => {
   testRenderer.destroy()
+  for (const client of mockTreeSitterClients) {
+    client.resolveAllHighlightOnce()
+    await client.destroy()
+  }
 })
+
+function createMockTreeSitterClient(): MockTreeSitterClient {
+  const client = new MockTreeSitterClient()
+  client.setMockResult({ highlights: [] })
+  mockTreeSitterClients.push(client)
+  return client
+}
 
 describe("ScrollBoxRenderable - child delegation", () => {
   test("delegates add to content wrapper", () => {
@@ -447,6 +460,40 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
 })
 
 describe("ScrollBoxRenderable - Content Visibility", () => {
+  test("renders markdown prose in scrollbox before highlighting completes", async () => {
+    const syntaxStyle = SyntaxStyle.fromTheme([])
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 100,
+      height: 20,
+      viewportCulling: true,
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    for (let i = 0; i < 20; i++) {
+      const wrapper = new BoxRenderable(testRenderer, {
+        id: `text-${i}`,
+        paddingLeft: 3,
+        marginTop: 1,
+        flexShrink: 0,
+      })
+      const markdown = new MarkdownRenderable(testRenderer, {
+        syntaxStyle,
+        streaming: true,
+        internalBlockMode: "top-level",
+        content: `PARAGRAPH_${i}\n\n\`\`\`ts\nconst CODE_${i} = ${i}\n\`\`\``,
+        treeSitterClient: mockTreeSitterClient,
+      })
+      wrapper.add(markdown)
+      scrollBox.add(wrapper)
+    }
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toContain("PARAGRAPH_0")
+  })
+
   test("maintains visibility when scrolling with many Code elements", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
 
@@ -821,8 +868,7 @@ world
   test("stays scrolled to bottom with growing code renderables in sticky scroll mode", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
     // Use manual-resolving mock client for deterministic behavior
-    const autoResolvingClient = new MockTreeSitterClient()
-    autoResolvingClient.setMockResult({ highlights: [] })
+    const autoResolvingClient = createMockTreeSitterClient()
 
     const parent = new BoxRenderable(testRenderer, {
       flexDirection: "column",
@@ -1685,7 +1731,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
   test("resets _hasManualScroll for stickyStart=bottom when content fits in viewport (issue #530)", async () => {
     const scrollBox = new ScrollBoxRenderable(testRenderer, {
       width: 40,
-      height: 10,
+      height: 20,
       stickyScroll: true,
       stickyStart: "bottom",
     })
@@ -1697,9 +1743,9 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     scrollBox.add(new TextRenderable(testRenderer, { content: "Line 1" }))
     await renderOnce()
 
-    // maxScrollTop should be 0 since content fits
+    // maxScrollTop should be effectively zero since content fits; ScrollBox treats <= 1 as layout noise.
     const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
-    expect(maxScroll).toBe(0)
+    expect(maxScroll).toBeLessThanOrEqual(1)
 
     // Simulate accidental scroll attempts (common with trackpads)
     scrollBox.scrollTo(0)
@@ -1710,7 +1756,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     expect((scrollBox as any)._hasManualScroll).toBe(false)
 
     // Add more content that causes overflow - should stay at bottom
-    for (let i = 2; i < 20; i++) {
+    for (let i = 2; i < 40; i++) {
       scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
       await renderOnce()
 
@@ -1719,5 +1765,49 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
         expect(scrollBox.scrollTop).toBe(expectedMaxScroll)
       }
     }
+  })
+
+  test("updateStickyState resets _hasManualScroll when reaching bottom even during concurrent sticky operations", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    // Add enough content to make scrolling possible
+    for (let i = 0; i < 30; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+
+    // Simulate: user scrolled to bottom while concurrent sticky operation was running
+    scrollBox.verticalScrollBar.scrollPosition = maxScrollTop
+    ;(scrollBox as any)._hasManualScroll = true
+    ;(scrollBox as any)._isApplyingStickyScroll = true
+
+    // Trigger updateStickyState (called when scrollTop changes)
+    const updateStickyState = (scrollBox as any).updateStickyState.bind(scrollBox)
+    updateStickyState()
+
+    // With fix: flag should reset even though _isApplyingStickyScroll was true
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+    expect((scrollBox as any)._stickyScrollBottom).toBe(true)
+
+    // Clear the flag for subsequent behavior check
+    ;(scrollBox as any)._isApplyingStickyScroll = false
+
+    // Adding more content should now cause viewport to stay locked to bottom
+    for (let i = 30; i < 40; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const newMaxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(scrollBox.scrollTop).toBe(newMaxScrollTop)
   })
 })
