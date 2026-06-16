@@ -791,7 +791,13 @@ test "processCapabilityResponse - XTGETTCAP Ms only establishes positive support
     try testing.expect(named_negative.caps.osc52);
 
     var unknown: Terminal = .{};
+    unknown.processCapabilityResponse("\x1bP1+r4d73\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r4d73=\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
     unknown.processCapabilityResponse("\x1bP1+r4d73=abc\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r4d73=zz\x1b\\");
     try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
     unknown.processCapabilityResponse("\x1bP1+r544e=787465726d\x1b\\");
     try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
@@ -818,6 +824,27 @@ test "writeClipboard - generates basic OSC52 sequence" {
     const output = writer.getWritten();
     // Should be: ESC]52;c;aGVsbG8=ESC\
     try testing.expectEqualStrings("\x1b]52;c;aGVsbG8=\x1b\\", output);
+}
+
+test "writeClipboard - maps every selection target to its OSC 52 byte" {
+    const cases = [_]struct {
+        target: Terminal.ClipboardTarget,
+        expected: []const u8,
+    }{
+        .{ .target = .clipboard, .expected = "\x1b]52;c;eA==\x1b\\" },
+        .{ .target = .primary, .expected = "\x1b]52;p;eA==\x1b\\" },
+        .{ .target = .select, .expected = "\x1b]52;s;eA==\x1b\\" },
+        .{ .target = .secondary, .expected = "\x1b]52;q;eA==\x1b\\" },
+    };
+
+    for (cases) |case| {
+        var term: Terminal = .{};
+        var writer = TestWriter.init(testing.allocator);
+        defer writer.deinit();
+
+        try term.writeClipboard(&writer, case.target, "x");
+        try testing.expectEqualStrings(case.expected, writer.getWritten());
+    }
 }
 
 test "writeNotification - returns false when unsupported" {
@@ -955,11 +982,11 @@ test "writeClipboard - supports different targets" {
     try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;p;") != null);
 
     writer.reset();
-    try term.writeClipboard(&writer, .secondary, "test");
+    try term.writeClipboard(&writer, .select, "test");
     try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;s;") != null);
 
     writer.reset();
-    try term.writeClipboard(&writer, .query, "test");
+    try term.writeClipboard(&writer, .secondary, "test");
     try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;q;") != null);
 }
 

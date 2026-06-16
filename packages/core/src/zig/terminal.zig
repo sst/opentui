@@ -101,18 +101,18 @@ pub const MousePointerStyle = enum(u8) {
     }
 };
 
-pub const ClipboardTarget = enum {
-    clipboard, // "c"
-    primary, // "p"
-    secondary, // "s"
-    query, // "q"
+pub const ClipboardTarget = enum(u8) {
+    clipboard = 0, // "c"
+    primary = 1, // "p"
+    select = 2, // "s"
+    secondary = 3, // "q"
 
     pub fn toChar(self: ClipboardTarget) u8 {
         return switch (self) {
             .clipboard => 'c',
             .primary => 'p',
-            .secondary => 's',
-            .query => 'q',
+            .select => 's',
+            .secondary => 'q',
         };
     }
 };
@@ -1226,24 +1226,17 @@ fn parseXtgettcapMs(self: *Terminal, response: []const u8) void {
         if (!std.mem.eql(u8, body[1..3], "+r")) continue;
 
         const result = body[3..];
-        const separator = std.mem.indexOfScalar(u8, result, '=');
-        const name = if (separator) |index| result[0..index] else result;
-        if (!std.ascii.eqlIgnoreCase(name, "4d73")) continue;
+        const separator = std.mem.indexOfScalar(u8, result, '=') orelse continue;
+        if (!std.ascii.eqlIgnoreCase(result[0..separator], "4d73")) continue;
 
-        if (separator) |index| {
-            const value = result[index + 1 ..];
-            if (value.len % 2 != 0) continue;
-            for (value) |byte| {
-                if (!std.ascii.isHex(byte)) break;
-            } else {
-                self.osc52_support = .supported;
-                self.caps.osc52 = true;
-            }
-            continue;
+        const value = result[separator + 1 ..];
+        if (value.len == 0 or value.len % 2 != 0) continue;
+        for (value) |byte| {
+            if (!std.ascii.isHex(byte)) break;
+        } else {
+            self.osc52_support = .supported;
+            self.caps.osc52 = true;
         }
-
-        self.osc52_support = .supported;
-        self.caps.osc52 = true;
     }
 }
 

@@ -16,6 +16,13 @@ describe("clipboard", () => {
     renderer = null
   })
 
+  it("preserves the native selection target ABI", () => {
+    expect(ClipboardTarget.Clipboard).toBe(0)
+    expect(ClipboardTarget.Primary).toBe(1)
+    expect(ClipboardTarget.Select).toBe(2)
+    expect(ClipboardTarget.Secondary).toBe(3)
+  })
+
   it("passes raw UTF-8 bytes to the native encoder", () => {
     let received: Uint8Array | undefined
     const lib = {
@@ -49,8 +56,8 @@ describe("clipboard", () => {
 
     expect(renderer.copyToClipboardOSC52("test")).toBe(true)
     expect(renderer.copyToClipboardOSC52("test", ClipboardTarget.Primary)).toBe(true)
+    expect(renderer.copyToClipboardOSC52("test", ClipboardTarget.Select)).toBe(true)
     expect(renderer.copyToClipboardOSC52("test", ClipboardTarget.Secondary)).toBe(true)
-    expect(renderer.copyToClipboardOSC52("test", ClipboardTarget.Query)).toBe(true)
     expect(renderer.clearClipboardOSC52()).toBe(true)
   })
 })

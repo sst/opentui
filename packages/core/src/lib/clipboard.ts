@@ -6,8 +6,8 @@ import type { RendererHandle, RenderLib } from "../zig.js"
 export enum ClipboardTarget {
   Clipboard = 0,
   Primary = 1,
-  Secondary = 2,
-  Query = 3,
+  Select = 2,
+  Secondary = 3,
 }
 
 export class Clipboard {

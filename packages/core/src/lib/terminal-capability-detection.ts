@@ -37,8 +37,9 @@ export function isCapabilityResponse(sequence: string): boolean {
     return true
   }
 
-  // XTGETTCAP Ms: xterm returns a bare negative response, while some terminals repeat the capability name.
-  if (/\x1bP(?:1\+r4d73(?:=(?:[0-9a-fA-F]{2})*)?|0\+r(?:4d73)?)\x1b\\/i.test(sequence)) {
+  // XTGETTCAP Ms: consume replies to our query here; native parsing separately
+  // validates whether a positive value is sufficient evidence of support.
+  if (/\x1bP(?:1\+r4d73(?:=[^\x1b]*)?|0\+r(?:4d73)?)\x1b\\/i.test(sequence)) {
     return true
   }
 
