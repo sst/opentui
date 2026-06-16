@@ -97,6 +97,8 @@ registerEnvVar({
   default: false,
 })
 
+const DEFAULT_ALLOWED_LINK_SCHEMES = ["http://", "https://", "mailto:"] as const
+
 export interface CliRendererConfig {
   // Read input from this stream. Defaults to process.stdin. Any `Readable`
   // works; capabilities like `setRawMode` are duck-typed and used when present.
@@ -160,6 +162,10 @@ export interface CliRendererConfig {
 
   // Pass options to the built-in console overlay.
   consoleOptions?: Omit<ConsoleOptions, "clock">
+
+  // Restrict emitted OSC8 hyperlinks to these URI schemes.
+  // Defaults to http, https, and mailto.
+  allowedLinkSchemes?: readonly string[]
 
   // Run these hooks after each render pass.
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
@@ -957,6 +963,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private feedIdleRenderScheduled = false
   private ordinaryFrameWaitingForFeed = false
   private ordinaryFrameWaitControlState: RendererControlState | null = null
+  public readonly allowedLinkSchemes: ReadonlySet<string>
 
   public get controlState(): RendererControlState {
     return this._controlState
@@ -1085,6 +1092,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._terminalHeight = height
     this._useThread = config.useThread
     this._externalOutputMode = externalOutputMode
+    this.allowedLinkSchemes = new Set(config.allowedLinkSchemes ?? DEFAULT_ALLOWED_LINK_SCHEMES)
 
     this.width = initialGeometry.renderWidth
     this.height = initialGeometry.renderHeight

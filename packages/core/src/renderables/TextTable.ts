@@ -590,7 +590,9 @@ export class TextTableRenderable extends Renderable {
 
   private createCell(content: TextTableCellContent): TextTableCellState {
     const styledText = this.toStyledText(content)
-    const textBuffer = TextBuffer.create(this._ctx.widthMethod)
+    const textBuffer = TextBuffer.create(this._ctx.widthMethod, {
+      allowedLinkSchemes: this._ctx.allowedLinkSchemes,
+    })
     const syntaxStyle = SyntaxStyle.create()
 
     textBuffer.setDefaultFg(this._defaultFg)

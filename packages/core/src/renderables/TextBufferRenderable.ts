@@ -72,7 +72,9 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       : this._defaultOptions.tabIndicatorColor
     this._truncate = options.truncate ?? this._defaultOptions.truncate
 
-    this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
+    this.textBuffer = TextBuffer.create(this._ctx.widthMethod, {
+      allowedLinkSchemes: this._ctx.allowedLinkSchemes,
+    })
     this.textBufferView = TextBufferView.create(this.textBuffer)
     this._firstLineOffset = ctx.claimFirstLineOffset?.(this) ?? 0
 
