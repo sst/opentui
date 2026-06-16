@@ -13,9 +13,14 @@ export interface TextChunk {
   link?: { url: string }
 }
 
+export interface TextBufferOptions {
+  allowedLinkSchemes?: ReadonlySet<string>
+}
+
 export class TextBuffer {
   private lib: RenderLib
   private bufferPtr: TextBufferHandle
+  private allowedLinkSchemes?: ReadonlySet<string>
   private _length: number = 0
   private _byteSize: number = 0
   private _lineInfo?: LineInfo
@@ -25,14 +30,15 @@ export class TextBuffer {
   private _memId?: number
   private _appendedChunks: Uint8Array[] = []
 
-  constructor(lib: RenderLib, ptr: TextBufferHandle) {
+  constructor(lib: RenderLib, ptr: TextBufferHandle, options: TextBufferOptions) {
     this.lib = lib
     this.bufferPtr = ptr
+    this.allowedLinkSchemes = options.allowedLinkSchemes
   }
 
-  static create(widthMethod: WidthMethod): TextBuffer {
+  static create(widthMethod: WidthMethod, options: TextBufferOptions): TextBuffer {
     const lib = resolveRenderLib()
-    return lib.createTextBuffer(widthMethod)
+    return lib.createTextBuffer(widthMethod, options)
   }
 
   // Fail loud and clear
@@ -85,11 +91,33 @@ export class TextBuffer {
   public setStyledText(text: StyledText): void {
     this.guard()
 
-    this.lib.textBufferSetStyledText(this.bufferPtr, text.chunks)
+    this.lib.textBufferSetStyledText(this.bufferPtr, this.applyHyperlinkPolicy(text.chunks))
 
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)
     this._lineInfo = undefined
+  }
+
+  private applyHyperlinkPolicy(chunks: TextChunk[]): TextChunk[] {
+    const allowedLinkSchemes = this.allowedLinkSchemes
+    if (!allowedLinkSchemes) return chunks
+
+    let changed = false
+    const nextChunks = chunks.map((chunk) => {
+      const url = chunk.link?.url
+      if (!url) return chunk
+
+      const matchingSchema = [...allowedLinkSchemes].some((scheme) => url.trim().toLowerCase().startsWith(scheme))
+      if (matchingSchema) return chunk
+
+      changed = true
+      return {
+        ...chunk,
+        link: undefined,
+      }
+    })
+
+    return changed ? nextChunks : chunks
   }
 
   public setDefaultFg(fg: RGBA | null): void {

@@ -125,6 +125,7 @@ export interface RenderContext extends EventEmitter {
   focusRenderable: (renderable: Renderable) => void
   blurRenderable: (renderable: Renderable) => void
   claimFirstLineOffset?: (renderable?: Renderable) => number
+  allowedLinkSchemes?: ReadonlySet<string>
   registerLifecyclePass: (renderable: Renderable) => void
   unregisterLifecyclePass: (renderable: Renderable) => void
   getLifecyclePasses: () => Set<Renderable>

@@ -25,7 +25,7 @@ export type { LineInfo, AllocatorStats, BuildOptions, NativeRenderStats }
 
 import { RGBA } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
-import { TextBuffer } from "./text-buffer.js"
+import { TextBuffer, type TextBufferOptions } from "./text-buffer.js"
 import { env, registerEnvVar } from "./lib/env.js"
 import {
   StyledChunkStruct,
@@ -2193,7 +2193,7 @@ export interface RenderLib extends AudioEngineLib {
   createYogaDirtiedCallback: (callback: NativeYogaDirtiedCallback) => FFICallbackInstance
 
   // TextBuffer methods
-  createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
+  createTextBuffer: (widthMethod: WidthMethod, options?: TextBufferOptions) => TextBuffer
   destroyTextBuffer: (buffer: TextBufferHandle) => void
   textBufferGetLength: (buffer: TextBufferHandle) => number
   textBufferGetByteSize: (buffer: TextBufferHandle) => number
@@ -3661,14 +3661,14 @@ class FFIRenderLib implements RenderLib {
   }
 
   // TextBuffer methods
-  public createTextBuffer(widthMethod: WidthMethod): TextBuffer {
+  public createTextBuffer(widthMethod: WidthMethod, options: TextBufferOptions = {}): TextBuffer {
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
     const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode)
     if (!bufferPtr) {
       throw new Error(`Failed to create TextBuffer`)
     }
 
-    return new TextBuffer(this, bufferPtr)
+    return new TextBuffer(this, bufferPtr, options)
   }
 
   public destroyTextBuffer(buffer: Pointer): void {
