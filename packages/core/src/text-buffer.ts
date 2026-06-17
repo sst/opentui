@@ -30,13 +30,13 @@ export class TextBuffer {
   private _memId?: number
   private _appendedChunks: Uint8Array[] = []
 
-  constructor(lib: RenderLib, ptr: TextBufferHandle, options: TextBufferLinkOptions) {
+  constructor(lib: RenderLib, ptr: TextBufferHandle, options: TextBufferLinkOptions = {}) {
     this.lib = lib
     this.bufferPtr = ptr
     this.allowedLinkSchemes = options.allowedLinkSchemes
   }
 
-  static create(widthMethod: WidthMethod, options: TextBufferLinkOptions): TextBuffer {
+  static create(widthMethod: WidthMethod, options: TextBufferLinkOptions = {}): TextBuffer {
     const lib = resolveRenderLib()
     return lib.createTextBuffer(widthMethod, options)
   }
