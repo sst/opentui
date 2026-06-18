@@ -89,6 +89,24 @@ test "renderer - create and destroy" {
     try std.testing.expectEqual(@as(u32, 24), cli_renderer.height);
 }
 
+test "renderer - clipboard allocates one exact encoded sequence" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 80, 24, pool);
+    defer test_renderer.deinit();
+
+    const payload = [_]u8{'A'} ** 2048;
+    try std.testing.expect(test_renderer.renderer.copyToClipboardOSC52(.clipboard, &payload));
+
+    const output = test_renderer.lastOutput();
+    try std.testing.expectEqual(std.base64.standard.Encoder.calcSize(payload.len) + 9, output.len);
+    try std.testing.expect(std.mem.startsWith(u8, output, "\x1b]52;c;QUFB"));
+    try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x1b\\"));
+}
+
 test "renderer - simple text rendering to currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

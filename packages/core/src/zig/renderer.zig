@@ -1953,17 +1953,24 @@ pub const CliRenderer = struct {
         self.writeOut(stream.getWritten());
     }
 
-    pub fn copyToClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget, payload: []const u8) bool {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.writeClipboard(stream.writer(), target, payload) catch return false;
-        self.writeOut(stream.getWritten());
+    pub fn copyToClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget, text_utf8: []const u8) bool {
+        const output_len = self.terminal.clipboardSequenceSize(text_utf8.len) catch return false;
+        const output_bytes = self.allocator.alloc(u8, output_len) catch return false;
+        defer self.allocator.free(output_bytes);
+
+        var stream = std.io.fixedBufferStream(output_bytes);
+        self.terminal.writeClipboard(stream.writer(), target, text_utf8) catch return false;
+        const written = stream.getWritten();
+        std.debug.assert(written.len == output_len);
+        self.writeOut(written);
         return true;
     }
 
     pub fn clearClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget) bool {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.writeClipboard(stream.writer(), target, "") catch return false;
-        self.writeOut(stream.getWritten());
+        var stream: std.ArrayListUnmanaged(u8) = .{};
+        defer stream.deinit(self.allocator);
+        self.terminal.writeClipboard(stream.writer(self.allocator), target, "") catch return false;
+        self.writeOut(stream.items);
         return true;
     }
 

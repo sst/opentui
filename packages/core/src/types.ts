@@ -57,6 +57,7 @@ export enum TargetChannel {
 
 export type WidthMethod = "wcwidth" | "unicode"
 export type TerminalMultiplexer = "none" | "tmux" | "zellij" | "screen" | "unknown"
+export type TerminalCapabilityState = "unknown" | "supported" | "unsupported"
 
 export interface TerminalInfo {
   name: string
@@ -80,6 +81,7 @@ export interface TerminalCapabilities {
   bracketed_paste: boolean
   hyperlinks: boolean
   osc52: boolean
+  osc52_support: TerminalCapabilityState
   notifications: boolean
   explicit_cursor_positioning: boolean
   remote: boolean

@@ -1601,6 +1601,22 @@ test("capability responses should not trigger keypress events", async () => {
   expect(keypresses).toHaveLength(0)
 })
 
+test("malformed XTGETTCAP Ms replies do not reach application input handlers", async () => {
+  const received: string[] = []
+  currentRenderer.addInputHandler((sequence) => {
+    received.push(sequence)
+    return false
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1bP1+r4d73\x1b\\"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1bP1+r4d73=\x1b\\"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1bP1+r4d73=abc\x1b\\"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1bP1+r4d73=zz\x1b\\"))
+  advanceCurrentClock()
+
+  expect(received).toHaveLength(0)
+})
+
 test("capability response followed by keypress", async () => {
   const keypresses: KeyEvent[] = []
   currentRenderer.keyInput.on("keypress", (event) => {

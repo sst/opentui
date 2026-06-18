@@ -2105,7 +2105,7 @@ export interface RenderLib extends AudioEngineLib {
   setDebugOverlay: (renderer: RendererHandle, enabled: boolean, corner: DebugOverlayCorner) => void
   clearTerminal: (renderer: RendererHandle) => void
   setTerminalTitle: (renderer: RendererHandle, title: string) => void
-  copyToClipboardOSC52: (renderer: RendererHandle, target: number, payload: Uint8Array) => boolean
+  copyToClipboardOSC52: (renderer: RendererHandle, target: number, textUtf8: Uint8Array) => boolean
   clearClipboardOSC52: (renderer: RendererHandle, target: number) => boolean
   triggerNotification: (renderer: RendererHandle, message: string, title?: string) => boolean
   addToHitGrid: (renderer: RendererHandle, x: number, y: number, width: number, height: number, id: number) => void
@@ -3303,8 +3303,11 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setTerminalTitle(renderer, ptrOrNull(titleBytes), titleBytes.byteLength)
   }
 
-  public copyToClipboardOSC52(renderer: Pointer, target: number, payload: Uint8Array): boolean {
-    return Boolean(this.opentui.symbols.copyToClipboardOSC52(renderer, target, ptrOrNull(payload), payload.byteLength))
+  public copyToClipboardOSC52(renderer: Pointer, target: number, textUtf8: Uint8Array): boolean {
+    if (textUtf8.byteLength > 0xffffffff) return false
+    return Boolean(
+      this.opentui.symbols.copyToClipboardOSC52(renderer, target, ptrOrNull(textUtf8), textUtf8.byteLength),
+    )
   }
 
   public clearClipboardOSC52(renderer: Pointer, target: number): boolean {
@@ -4719,6 +4722,7 @@ class FFIRenderLib implements RenderLib {
       bracketed_paste: caps.bracketed_paste,
       hyperlinks: caps.hyperlinks,
       osc52: caps.osc52,
+      osc52_support: caps.osc52_support,
       notifications: caps.notifications,
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
       remote: caps.remote,

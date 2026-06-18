@@ -87,6 +87,7 @@ export const VisualCursorStruct = defineStruct([
 
 const UnicodeMethodEnum = defineEnum({ wcwidth: 0, unicode: 1 }, "u8")
 const TerminalMultiplexerEnum = defineEnum({ none: 0, tmux: 1, zellij: 2, screen: 3, unknown: 4 }, "u8")
+const Osc52SupportEnum = defineEnum({ unknown: 0, supported: 1, unsupported: 2 }, "u8")
 
 export const TerminalCapabilitiesStruct = defineStruct([
   ["kitty_keyboard", "bool_u8"],
@@ -113,6 +114,7 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["term_version", "char*"],
   ["term_version_len", "u64", { lengthOf: "term_version" }],
   ["term_from_xtversion", "bool_u8"],
+  ["osc52_support", Osc52SupportEnum],
 ])
 
 export const EncodedCharStruct = defineStruct([
