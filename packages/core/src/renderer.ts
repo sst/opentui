@@ -3857,7 +3857,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public isOsc52Supported(): boolean {
-    return this._capabilities?.osc52 ?? this.clipboard.isOsc52Supported()
+    return this._capabilities ? this._capabilities.osc52_support !== "unsupported" : this.clipboard.isOsc52Supported()
   }
 
   public dumpHitGrid(): void {

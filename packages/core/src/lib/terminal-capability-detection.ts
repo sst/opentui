@@ -37,6 +37,12 @@ export function isCapabilityResponse(sequence: string): boolean {
     return true
   }
 
+  // XTGETTCAP Ms: consume replies to our query here; native parsing separately
+  // validates whether a positive value is sufficient evidence of support.
+  if (/\x1bP(?:1\+r4d73(?:=[^\x1b]*)?|0\+r(?:4d73)?)\x1b\\/i.test(sequence)) {
+    return true
+  }
+
   // Kitty graphics response: ESC _ G ... ESC \
   // Matches any graphics response including OK, errors, etc.
   // This is for filtering capability responses from user input

@@ -781,6 +781,7 @@ pub const ExternalCapabilities = extern struct {
     term_version_ptr: [*]const u8,
     term_version_len: usize,
     term_from_xtversion: bool,
+    osc52_support: u8,
 };
 
 export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *ExternalCapabilities) void {
@@ -809,6 +810,7 @@ export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *Exter
         .bracketed_paste = caps.bracketed_paste,
         .hyperlinks = caps.hyperlinks,
         .osc52 = caps.osc52,
+        .osc52_support = @intFromEnum(term.osc52_support),
         .notifications = caps.notifications,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .remote = caps.remote,
@@ -942,11 +944,11 @@ export fn setTerminalTitle(renderer_handle: NativeHandle, titlePtr: ?[*]const u8
     object_ptr.setTerminalTitle(title);
 }
 
-export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, payloadPtr: ?[*]const u8, payloadLen: u32) bool {
+export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, text_ptr: ?[*]const u8, text_len: u32) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
     const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
-    const payload = sliceFromPtrLen(payloadPtr, payloadLen);
-    return object_ptr.copyToClipboardOSC52(targetEnum, payload);
+    const text_utf8 = sliceFromPtrLen(text_ptr, text_len);
+    return object_ptr.copyToClipboardOSC52(targetEnum, text_utf8);
 }
 
 export fn clearClipboardOSC52(renderer_handle: NativeHandle, target: u8) bool {

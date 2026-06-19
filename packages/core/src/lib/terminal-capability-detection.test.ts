@@ -32,6 +32,17 @@ describe("isCapabilityResponse", () => {
     expect(isCapabilityResponse("\x1bP>|tmux 3.5a\x1b\\")).toBe(true)
   })
 
+  test("detects XTGETTCAP Ms responses", () => {
+    expect(isCapabilityResponse("\x1bP1+r4d73=2570312573\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r4d73\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r4d73=\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP0+r\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP0+r4D73\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r544e=787465726d\x1b\\")).toBe(false)
+    expect(isCapabilityResponse("\x1bP1+r4d73=abc\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r4d73=zz\x1b\\")).toBe(true)
+  })
+
   test("detects Kitty graphics responses", () => {
     expect(isCapabilityResponse("\x1b_Gi=1;OK\x1b\\")).toBe(true)
     expect(isCapabilityResponse("\x1b_Gi=1;EINVAL:Zero width/height not allowed\x1b\\")).toBe(true)

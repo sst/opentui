@@ -70,6 +70,7 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as corePluginSlotsDemo from "./core-plugin-slots-demo.js"
 import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 import * as nativeAudioDemo from "./native-audio-demo.js"
+import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
 
 type ExampleCategory =
   | "Layout & Composition"
@@ -571,6 +572,13 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       description: "WAV-based native mixer with sound groups and live meter stats",
       run: nativeAudioDemo.run,
       destroy: nativeAudioDemo.destroy,
+    },
+    {
+      name: "Clipboard & Paste Test Bed",
+      description:
+        "OSC 52 copy, paste transport, and editor semantics diagnostics with a selectable, copyable event log",
+      run: clipboardPasteDemo.run,
+      destroy: clipboardPasteDemo.destroy,
     },
     {
       name: "Focus Restore Demo",
