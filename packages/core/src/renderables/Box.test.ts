@@ -407,6 +407,26 @@ describe("BoxRenderable - no-op rendering", () => {
     expect(called).toBe(true)
   })
 
+  test("skips drawBox when shouldFill is false even with a visible background color", () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "no-fill-box",
+      width: 10,
+      height: 5,
+      backgroundColor: "#112233",
+      shouldFill: false,
+    })
+
+    let called = false
+    const buffer = {
+      drawBox() {
+        called = true
+      },
+    }
+
+    ;(box as any).renderSelf(buffer)
+    expect(called).toBe(false)
+  })
+
   test("still draws boxes with borders", () => {
     const box = new BoxRenderable(testRenderer, {
       id: "bordered-box",
@@ -470,5 +490,103 @@ describe("BoxRenderable - no-op rendering", () => {
     expect(captureFrame().split("\n")[0].slice(0, 10)).toBe("┌─Test───┐")
     expect(getCellForeground(0, 0)).toEqual([0, 0, 255, 255])
     expect(getCellForeground(2, 0)).toEqual([0, 0, 255, 255])
+  })
+})
+
+describe("BoxRenderable - customBorderChars", () => {
+  test("renders custom border characters instead of the default border style", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "custom-border-box",
+      width: 10,
+      height: 3,
+      border: true,
+      customBorderChars: {
+        topLeft: "+",
+        topRight: "+",
+        bottomLeft: "+",
+        bottomRight: "+",
+        horizontal: "-",
+        vertical: "|",
+        topT: "+",
+        bottomT: "+",
+        leftT: "+",
+        rightT: "+",
+        cross: "+",
+      },
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    const lines = captureFrame().split("\n")
+    expect(lines[0].slice(0, 10)).toBe("+--------+")
+    expect(lines[1].slice(0, 10)).toBe("|        |")
+    expect(lines[2].slice(0, 10)).toBe("+--------+")
+  })
+})
+
+describe("BoxRenderable - focusedBorderColor", () => {
+  test("uses focusedBorderColor when the box is focused", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "focused-border-box",
+      focusable: true,
+      border: true,
+      width: 10,
+      height: 3,
+      borderColor: "#111111",
+      focusedBorderColor: "#ff00ff",
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    // Initially unfocused, should use normal borderColor
+    expect(getCellForeground(0, 0)).toEqual([17, 17, 17, 255])
+
+    // Focus the box
+    box.focus()
+    await renderOnce()
+
+    // Now should use focusedBorderColor
+    expect(getCellForeground(0, 0)).toEqual([255, 0, 255, 255])
+  })
+})
+
+describe("BoxRenderable - gaps (rowGap and columnGap)", () => {
+  test("applies rowGap and columnGap to yoga layout", async () => {
+    const parent = new BoxRenderable(testRenderer, {
+      id: "gap-parent",
+      width: 10,
+      height: 10,
+      flexDirection: "row", // row direction means children are side by side
+      flexWrap: "wrap",
+      columnGap: 2,
+      rowGap: 3,
+    })
+
+    const child1 = new BoxRenderable(testRenderer, { id: "c1", width: 4, height: 4 })
+    const child2 = new BoxRenderable(testRenderer, { id: "c2", width: 4, height: 4 })
+    const child3 = new BoxRenderable(testRenderer, { id: "c3", width: 4, height: 4 })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.add(child3)
+    
+    testRenderer.root.add(parent)
+    await renderOnce()
+
+    // Row direction, parent width 10.
+    // c1 is at x=0, width=4. 
+    // columnGap is 2, so c2 is at x=6, width=4. Total width = 10.
+    expect(child1.screenX).toBe(0)
+    expect(child1.screenY).toBe(0)
+    
+    expect(child2.screenX).toBe(6)
+    expect(child2.screenY).toBe(0)
+    
+    // c3 wraps to the next row.
+    // rowGap is 3, so c3 should be at y = 4 (height of c1) + 3 (rowGap) = 7.
+    expect(child3.screenX).toBe(0)
+    expect(child3.screenY).toBe(7)
   })
 })

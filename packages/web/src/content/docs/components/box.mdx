@@ -75,6 +75,26 @@ renderer.root.add(
 {
   borderStyle: "heavy"
 } // Heavy lines: ┏━┓┃┗━┛
+
+// Specific border sides
+{
+  border: ["left", "right"]
+} // Only shows left and right borders
+```
+
+### Custom border characters
+
+You can supply an object matching the `BorderCharacters` interface to fully override the border drawing characters:
+
+```typescript
+{
+  border: true,
+  customBorderChars: {
+    topLeft: "+", topRight: "+", bottomLeft: "+", bottomRight: "+",
+    horizontal: "-", vertical: "|",
+    topT: "+", bottomT: "+", leftT: "+", rightT: "+", cross: "+"
+  }
+}
 ```
 
 ## Titles
@@ -140,6 +160,22 @@ const container = Box(
 )
 ```
 
+### Row and column gaps
+
+Instead of a single `gap`, you can specify vertical and horizontal gaps independently:
+
+```typescript
+const gridContainer = Box(
+  {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    rowGap: 2,    // 2 rows of vertical space between wrapped lines
+    columnGap: 4, // 4 columns of horizontal space between items
+  },
+  // ...children
+)
+```
+
 ## Mouse events
 
 Handle mouse interactions on the box:
@@ -163,26 +199,51 @@ const button = new BoxRenderable(renderer, {
 })
 ```
 
+## Focus state
+
+A Box can receive focus and change its border color automatically when focused. This is especially useful for interactive panels or custom input components.
+
+```typescript
+const interactiveBox = new BoxRenderable(renderer, {
+  id: "focusable-panel",
+  width: 20,
+  height: 5,
+  border: true,
+  focusable: true,
+  borderColor: "#444444",
+  focusedBorderColor: "#00AAFF",
+})
+
+// Focus the box programmatically or via keyboard navigation
+interactiveBox.focus()
+```
+
 ## Properties
 
-| Property               | Type               | Default        | Description                       |
-| ---------------------- | ------------------ | -------------- | --------------------------------- |
-| `width`                | `number \| string` | -              | Width in characters or percentage |
-| `height`               | `number \| string` | -              | Height in rows or percentage      |
-| `backgroundColor`      | `string \| RGBA`   | -              | Background fill color             |
-| `border`               | `boolean`          | `false`        | Show border                       |
-| `borderStyle`          | `string`           | `"single"`     | Border style                      |
-| `borderColor`          | `string \| RGBA`   | -              | Border color                      |
-| `title`                | `string`           | -              | Title text in border              |
-| `titleColor`           | `string \| RGBA`   | -              | Color of the title text           |
-| `titleAlignment`       | `string`           | `"left"`       | Title position                    |
-| `bottomTitle`          | `string`           | -              | Bottom title text in border       |
-| `bottomTitleAlignment` | `string`           | `"left"`       | Bottom title position             |
-| `padding`              | `number`           | `0`            | Internal padding                  |
-| `gap`                  | `number \| string` | -              | Gap between children              |
-| `flexDirection`        | `string`           | `"column"`     | Child layout direction            |
-| `justifyContent`       | `string`           | `"flex-start"` | Main axis alignment               |
-| `alignItems`           | `string`           | `"stretch"`    | Cross axis alignment              |
+| Property               | Type                       | Default        | Description                       |
+| ---------------------- | -------------------------- | -------------- | --------------------------------- |
+| `width`                | `number \| string`         | -              | Width in characters or percentage |
+| `height`               | `number \| string`         | -              | Height in rows or percentage      |
+| `backgroundColor`      | `string \| RGBA`           | -              | Background fill color             |
+| `shouldFill`           | `boolean`                  | `true`         | Fill the background               |
+| `border`               | `boolean \| BorderSides[]` | `false`        | Show border (or array of sides)   |
+| `borderStyle`          | `string`                   | `"single"`     | Border style                      |
+| `borderColor`          | `string \| RGBA`           | -              | Border color                      |
+| `customBorderChars`    | `BorderCharacters`         | -              | Custom border characters          |
+| `focusedBorderColor`   | `string \| RGBA`           | `"#00AAFF"`    | Border color when focused         |
+| `focusable`            | `boolean`                  | `false`        | Can the box receive focus         |
+| `title`                | `string`                   | -              | Title text in border              |
+| `titleColor`           | `string \| RGBA`           | -              | Color of the title text           |
+| `titleAlignment`       | `string`                   | `"left"`       | Title position                    |
+| `bottomTitle`          | `string`                   | -              | Bottom title text in border       |
+| `bottomTitleAlignment` | `string`                   | `"left"`       | Bottom title position             |
+| `padding`              | `number`                   | `0`            | Internal padding                  |
+| `gap`                  | `number \| string`         | -              | Gap between children              |
+| `rowGap`               | `number \| string`         | -              | Vertical gap between children     |
+| `columnGap`            | `number \| string`         | -              | Horizontal gap between children   |
+| `flexDirection`        | `string`                   | `"column"`     | Child layout direction            |
+| `justifyContent`       | `string`                   | `"flex-start"` | Main axis alignment               |
+| `alignItems`           | `string`                   | `"stretch"`    | Cross axis alignment              |
 
 ## Example: Card component
 
