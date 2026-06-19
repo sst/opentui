@@ -32,6 +32,17 @@ describe("isCapabilityResponse", () => {
     expect(isCapabilityResponse("\x1bP>|tmux 3.5a\x1b\\")).toBe(true)
   })
 
+  test("detects XTGETTCAP Ms responses", () => {
+    expect(isCapabilityResponse("\x1bP1+r4d73=2570312573\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r4d73\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r4d73=\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP0+r\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP0+r4D73\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r544e=787465726d\x1b\\")).toBe(false)
+    expect(isCapabilityResponse("\x1bP1+r4d73=abc\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1bP1+r4d73=zz\x1b\\")).toBe(true)
+  })
+
   test("detects Kitty graphics responses", () => {
     expect(isCapabilityResponse("\x1b_Gi=1;OK\x1b\\")).toBe(true)
     expect(isCapabilityResponse("\x1b_Gi=1;EINVAL:Zero width/height not allowed\x1b\\")).toBe(true)
@@ -48,6 +59,12 @@ describe("isCapabilityResponse", () => {
     expect(isCapabilityResponse("\x1b[?0u")).toBe(true)
     expect(isCapabilityResponse("\x1b[?1u")).toBe(true)
     expect(isCapabilityResponse("\x1b[?31u")).toBe(true)
+  })
+
+  test("detects notification capability responses", () => {
+    expect(isCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body\x1b\\")).toBe(true)
+    expect(isCapabilityResponse("\x1b]99;i=opentui-notifications:p=?;p=title,body\x07")).toBe(true)
+    expect(isCapabilityResponse("\x1b]1337;Capabilities=T2NoH\x1b\\")).toBe(true)
   })
 
   test("does not detect regular keypresses", () => {
@@ -78,6 +95,12 @@ describe("isCapabilityResponse", () => {
   test("does not detect mouse sequences", () => {
     expect(isCapabilityResponse("\x1b[<35;20;5m")).toBe(false)
     expect(isCapabilityResponse("\x1b[<0;10;10M")).toBe(false)
+  })
+
+  test("does not detect arbitrary OSC sequences as capabilities", () => {
+    expect(isCapabilityResponse("\x1b]9;hello\x1b\\")).toBe(false)
+    expect(isCapabilityResponse("\x1b]777;notify;title;body\x1b\\")).toBe(false)
+    expect(isCapabilityResponse("\x1b]99;i=other:p=?;p=title\x1b\\")).toBe(false)
   })
 })
 
@@ -184,6 +207,7 @@ describe("renderer capabilities event", () => {
     // After xtversion (event 9): kitty_keyboard should be true
     expect(events[8].kitty_keyboard).toBe(true)
     expect(events[8].kitty_graphics).toBe(true)
+    expect(events[8].notifications).toBe(true)
     expect(events[8].terminal.name).toBe("kitty")
     expect(events[8].terminal.version).toBe("0.42.2")
 

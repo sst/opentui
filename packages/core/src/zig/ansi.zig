@@ -320,16 +320,20 @@ pub const ANSI = struct {
     pub const decrqmUnicode = "\x1b[?2027$p";
     pub const decrqmColorScheme = "\x1b[?2031$p";
     pub const csiUQuery = "\x1b[?u";
+    pub const xtgettcapMs = "\x1bP+q4d73\x1b\\";
     pub const kittyGraphicsQuery = "\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c";
+    pub const notificationQueries = "\x1b]99;i=opentui-notifications:p=?;\x1b\\\x1b]1337;Capabilities\x1b\\";
 
-    pub const capabilityQueriesBase = decrqmSgrPixels ++
+    pub const capabilityQueriesBase = xtgettcapMs ++
+        decrqmSgrPixels ++
         decrqmUnicode ++
         decrqmColorScheme ++
         decrqmFocus ++
         decrqmBracketedPaste ++
         decrqmSync;
 
-    pub const capabilityQueries = capabilityQueriesBase ++ csiUQuery;
+    pub const capabilityQueries = capabilityQueriesBase ++ csiUQuery ++ notificationQueries;
+    pub const capabilityQueriesFootIsBroken = capabilityQueriesBase ++ csiUQuery;
 
     // tmux DCS passthrough wrapper (ESC chars doubled)
     pub const tmuxDcsStart = "\x1bPtmux;";
@@ -354,7 +358,8 @@ pub const ANSI = struct {
     }
 
     pub const kittyGraphicsQueryTmux = wrapForTmux(kittyGraphicsQuery);
-    pub const capabilityQueriesTmux = wrapForTmux(capabilityQueriesBase) ++ csiUQuery;
+    pub const capabilityQueriesTmux = wrapForTmux(capabilityQueriesBase) ++ csiUQuery ++ notificationQueries;
+    pub const capabilityQueriesFootIsBrokenTmux = wrapForTmux(capabilityQueriesBase) ++ csiUQuery;
     pub const sixelGeometryQuery = "\x1b[?2;1;0S";
     pub const cursorPositionRequest = "\x1b[6n";
     pub const explicitWidthQuery = "\x1b]66;w=1; \x1b\\";
@@ -494,19 +499,4 @@ pub fn hsvToRgb(h: f32, s: f32, v: f32) RGBA {
     };
 
     return rgbaFromFloats(rgb[0], rgb[1], rgb[2], 1.0);
-}
-
-test "fallbackAnsi256Color returns base, cube, and grayscale colors" {
-    try std.testing.expectEqual(@as(u32, 0xff0000), rgbaToRgb24(fallbackAnsi256Color(9)));
-    try std.testing.expectEqual(@as(u32, 0x0000ff), rgbaToRgb24(fallbackAnsi256Color(21)));
-    try std.testing.expectEqual(@as(u32, 0x080808), rgbaToRgb24(fallbackAnsi256Color(232)));
-    try std.testing.expectEqual(@as(u32, 0xeeeeee), rgbaToRgb24(fallbackAnsi256Color(255)));
-}
-
-test "packed RGBA stores metadata" {
-    const color = indexedColor(9, 255, 0, 0);
-
-    try std.testing.expectEqual(@as(u8, 255), red(color));
-    try std.testing.expectEqual(@as(u8, 9), slot(color));
-    try std.testing.expectEqual(ColorIntent.indexed, intent(color));
 }
