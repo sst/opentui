@@ -50,6 +50,7 @@ function updateDisplays() {
   const scrollIndicator = selectElement.showScrollIndicator ? "on" : "off"
   const description = selectElement.showDescription ? "on" : "off"
   const wrap = selectElement.wrapSelection ? "on" : "off"
+  const selectionIndicator = selectElement.showSelectionIndicator ? "on" : "off"
 
   const keyLegendText = t`${bold(fg("#FFFFFF")("Key Controls:"))}
 ↑/↓ or j/k: Navigate items
@@ -58,7 +59,8 @@ Enter: Select item
 F: Toggle focus
 D: Toggle descriptions
 S: Toggle scroll indicator
-W: Toggle wrap selection`
+W: Toggle wrap selection
+I: Toggle selection indicator`
 
   if (keyLegendDisplay) {
     keyLegendDisplay.content = keyLegendText
@@ -76,7 +78,7 @@ W: Toggle wrap selection`
 
 ${fg(focusColor)(focusText)}
 
-${fg("#CCCCCC")(`Scroll indicator: ${scrollIndicator} | Description: ${description} | Wrap: ${wrap}`)}
+${fg("#CCCCCC")(`Scroll indicator: ${scrollIndicator} | Description: ${description} | Wrap: ${wrap} | Selection indicator: ${selectionIndicator}`)}
 
 ${fg(lastActionColor)(lastActionText)}`
 
@@ -198,6 +200,12 @@ export function run(rendererInstance: CliRenderer): void {
       const newState = !selectElement?.wrapSelection
       selectElement!.wrapSelection = newState
       lastActionText = `Wrap selection ${newState ? "enabled" : "disabled"}`
+      lastActionColor = "#FFCC00"
+      updateDisplays()
+    } else if (key.name === "i") {
+      const newState = !selectElement?.showSelectionIndicator
+      selectElement!.showSelectionIndicator = newState
+      lastActionText = `Selection indicator ${newState ? "enabled" : "disabled"}`
       lastActionColor = "#FFCC00"
       updateDisplays()
     }

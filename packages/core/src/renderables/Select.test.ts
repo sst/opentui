@@ -91,6 +91,7 @@ describe("SelectRenderable", () => {
       expect(select.showScrollIndicator).toBe(false)
       expect(select.showDescription).toBe(true)
       expect(select.wrapSelection).toBe(false)
+      expect(select.showSelectionIndicator).toBe(true)
     })
 
     test("should initialize with custom selected index", async () => {
@@ -164,6 +165,57 @@ describe("SelectRenderable", () => {
 
       expect(select.getSelectedIndex()).toBe(sampleOptions.length - 1)
       expect(select.getSelectedOption()).toEqual(sampleOptions[sampleOptions.length - 1])
+    })
+  })
+
+  describe("showSelectionIndicator", () => {
+    test("should render the indicator and its gutter by default", async () => {
+      await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        showDescription: false,
+      })
+
+      const frame = captureCharFrame().split("\n")
+      const selectedLine = frame.find((line) => line.includes("Option 1"))!
+      expect(selectedLine).toContain("▶ Option 1")
+      // left padding(1) + indicator width(2) = 3
+      expect(selectedLine.indexOf("Option 1")).toBe(3)
+    })
+
+    test("should drop the indicator and its gutter when disabled", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        showDescription: false,
+        showSelectionIndicator: false,
+      })
+
+      expect(select.showSelectionIndicator).toBe(false)
+
+      const frame = captureCharFrame().split("\n")
+      const selectedLine = frame.find((line) => line.includes("Option 1"))!
+      expect(frame.every((line) => !line.includes("▶"))).toBe(true)
+      // no 2-column gutter (only padding(2))
+      expect(selectedLine.indexOf("Option 1")).toBe(1)
+    })
+
+    test("should toggle the indicator at runtime via the setter", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        showDescription: false,
+      })
+
+      expect(captureCharFrame()).toContain("▶ Option 1")
+
+      select.showSelectionIndicator = false
+      await renderOnce()
+
+      expect(captureCharFrame()).not.toContain("▶")
     })
   })
 
