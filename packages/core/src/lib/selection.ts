@@ -1,5 +1,6 @@
 import { Renderable } from "../Renderable.js"
 import type { ViewportBounds } from "../types.js"
+import { stringWidth } from "../platform/runtime.js"
 import { coordinateToCharacterIndex, fonts } from "./ascii.font.js"
 
 class SelectionAnchor {
@@ -112,7 +113,11 @@ export class Selection {
 
   getSelectedText(): string {
     const selectedTextsByLine = new Map<number, Array<{ x: number; text: string }>>()
-    const selectedRenderables = this._selectedRenderables
+    const anchor = this.anchor
+    const focus = this.focus
+    const selectionStart = anchor.y < focus.y || (anchor.y === focus.y && anchor.x <= focus.x) ? anchor : focus
+    let baselineX = Number.POSITIVE_INFINITY
+    const selectedRenderables = [...this._selectedRenderables]
       // Sort by reading order: top-to-bottom, then left-to-right
       .sort((a, b) => {
         const aY = a.y
@@ -128,23 +133,48 @@ export class Selection {
       const text = renderable.getSelectedText()
       if (!text) continue
       const lines = text.split("\n")
+      const firstSelectedY = Math.max(renderable.y, selectionStart.y)
       for (let index = 0; index < lines.length; index += 1) {
-        const y = renderable.y + index
+        const y = firstSelectedY + index
+        const x = y === selectionStart.y ? Math.max(renderable.x, selectionStart.x) : renderable.x
         const line = selectedTextsByLine.get(y) ?? []
-        line.push({ x: renderable.x, text: lines[index] })
+        const selectedLine = lines[index]
+        line.push({ x, text: selectedLine })
         selectedTextsByLine.set(y, line)
+        if (selectedLine !== "") {
+          baselineX = Math.min(baselineX, x)
+        }
       }
     }
 
-    return [...selectedTextsByLine.entries()]
-      .sort(([leftY], [rightY]) => leftY - rightY)
-      .map(([, line]) =>
-        line
-          .sort((left, right) => left.x - right.x)
-          .map((segment) => segment.text)
-          .join(""),
-      )
-      .join("\n")
+    const sortedEntries = [...selectedTextsByLine.entries()].sort(([leftY], [rightY]) => leftY - rightY)
+    if (sortedEntries.length === 0) return ""
+
+    const lineStartX = Number.isFinite(baselineX) ? baselineX : 0
+    const selectedLines: string[] = []
+
+    for (const [, line] of sortedEntries) {
+      if (line.every((segment) => segment.text === "")) {
+        selectedLines.push("")
+        continue
+      }
+
+      let cursorX = lineStartX
+      let selectedLine = ""
+
+      for (const segment of line.sort((left, right) => left.x - right.x)) {
+        if (segment.x > cursorX) {
+          selectedLine += " ".repeat(segment.x - cursorX)
+        }
+
+        selectedLine += segment.text
+        cursorX = Math.max(cursorX, segment.x + stringWidth(segment.text))
+      }
+
+      selectedLines.push(selectedLine)
+    }
+
+    return selectedLines.join("\n")
   }
 }
 
