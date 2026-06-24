@@ -114,7 +114,7 @@ test("selected text preserves visual gaps between same-row renderables", () => {
   expect(renderer.getSelection()?.getSelectedText()).toBe("Hello  World")
 })
 
-test("selected text keeps newlines between different rows", () => {
+test("selected text preserves vertical gaps between different rows", () => {
   const top = new TextRenderable(renderer, {
     content: "First row",
     left: 0,
@@ -139,7 +139,8 @@ test("selected text keeps newlines between different rows", () => {
   renderer.startSelection(top, top.x, top.y)
   renderer.updateSelection(bottom, bottom.x + bottom.width, bottom.y, { finishDragging: true })
 
-  expect(renderer.getSelection()?.getSelectedText()).toBe("First row\nSecond row")
+  const gapLines = Math.max(bottom.y - top.y - 1, 0)
+  expect(renderer.getSelection()?.getSelectedText()).toBe(["First row", ...Array(gapLines).fill(""), "Second row"].join("\n"))
 })
 
 test("selected text preserves blank lines within multiline renderables", () => {
@@ -159,6 +160,35 @@ test("selected text preserves blank lines within multiline renderables", () => {
   renderer.updateSelection(text, text.x + 6, text.y + 2, { finishDragging: true })
 
   expect(renderer.getSelection()?.getSelectedText()).toBe("First\n\nSecond")
+})
+
+test("selected text preserves vertical gaps between separated rows", () => {
+  const top = new TextRenderable(renderer, {
+    content: "First row",
+    left: 0,
+    top: 0,
+    width: 9,
+    height: 1,
+    selectable: true,
+  })
+  const bottom = new TextRenderable(renderer, {
+    content: "Second row",
+    left: 0,
+    top: 3,
+    width: 10,
+    height: 1,
+    selectable: true,
+  })
+
+  renderer.root.add(top)
+  renderer.root.add(bottom)
+  renderOnce()
+
+  renderer.startSelection(top, top.x, top.y)
+  renderer.updateSelection(bottom, bottom.x + bottom.width, bottom.y, { finishDragging: true })
+
+  const gapLines = Math.max(bottom.y - top.y - 1, 0)
+  expect(renderer.getSelection()?.getSelectedText()).toBe(["First row", ...Array(gapLines).fill(""), "Second row"].join("\n"))
 })
 
 test("selected text merges multiline same-row renderables by visual row", () => {

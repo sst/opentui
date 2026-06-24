@@ -112,7 +112,7 @@ export class Selection {
   }
 
   getSelectedText(): string {
-    const selectedTextsByLine = new Map<number, Array<{ x: number; text: string }>>()
+    const selectedTextsByLine = new Map<number, Array<{ x: number; text: string; spanEndY: number }>>()
     const anchor = this.anchor
     const focus = this.focus
     const selectionStart = anchor.y < focus.y || (anchor.y === focus.y && anchor.x <= focus.x) ? anchor : focus
@@ -134,12 +134,20 @@ export class Selection {
       if (!text) continue
       const lines = text.split("\n")
       const firstSelectedY = Math.max(renderable.y, selectionStart.y)
+      const visualEndY = renderable.y + renderable.height - 1
       for (let index = 0; index < lines.length; index += 1) {
         const y = firstSelectedY + index
+        const selectedLine = lines[index]
+        // Some renderables include newline delimiter rows outside their visual
+        // bounds. Skip those boundary-only empties so we can synthesize gaps from
+        // actual vertical spacing instead of double-counting them.
+        if (selectedLine === "" && (y < renderable.y || y > visualEndY)) {
+          continue
+        }
+
         const x = y === selectionStart.y ? Math.max(renderable.x, selectionStart.x) : renderable.x
         const line = selectedTextsByLine.get(y) ?? []
-        const selectedLine = lines[index]
-        line.push({ x, text: selectedLine })
+        line.push({ x, text: selectedLine, spanEndY: visualEndY })
         selectedTextsByLine.set(y, line)
         if (selectedLine !== "") {
           baselineX = Math.min(baselineX, x)
@@ -152,10 +160,20 @@ export class Selection {
 
     const lineStartX = Number.isFinite(baselineX) ? baselineX : 0
     const selectedLines: string[] = []
+    let previousSpanEndY: number | null = null
 
-    for (const [, line] of sortedEntries) {
+    for (const [y, line] of sortedEntries) {
+      if (previousSpanEndY !== null && y > previousSpanEndY + 1) {
+        for (let gapY = previousSpanEndY + 1; gapY < y; gapY += 1) {
+          selectedLines.push("")
+        }
+      }
+
+      const currentSpanEndY = line.reduce((max, segment) => Math.max(max, segment.spanEndY), y)
+
       if (line.every((segment) => segment.text === "")) {
         selectedLines.push("")
+        previousSpanEndY = previousSpanEndY === null ? currentSpanEndY : Math.max(previousSpanEndY, currentSpanEndY)
         continue
       }
 
@@ -172,6 +190,7 @@ export class Selection {
       }
 
       selectedLines.push(selectedLine)
+      previousSpanEndY = previousSpanEndY === null ? currentSpanEndY : Math.max(previousSpanEndY, currentSpanEndY)
     }
 
     return selectedLines.join("\n")

@@ -1029,9 +1029,11 @@ Outro line below table.`
 
   const selectedText = renderer.getSelection()?.getSelectedText() ?? ""
 
+  expect(selectedText).toContain("table.\n\nComponent")
   expect(selectedText).toContain("Authentication")
   expect(selectedText).toContain("Payments API")
   expect(selectedText).toContain("Retry + idempotency")
+  expect(selectedText).toContain("Ranking + typo fix\n\nOutro line below table.")
 })
 
 // Code block tests
