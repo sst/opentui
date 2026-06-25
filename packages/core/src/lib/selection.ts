@@ -117,6 +117,8 @@ export class Selection {
     const focus = this.focus
     const selectionStart = anchor.y < focus.y || (anchor.y === focus.y && anchor.x <= focus.x) ? anchor : focus
     let baselineX = Number.POSITIVE_INFINITY
+    let firstSelectedTextX: number | null = null
+    let preserveFirstLineIndentation = false
     const selectedRenderables = [...this._selectedRenderables]
       // Sort by reading order: top-to-bottom, then left-to-right
       .sort((a, b) => {
@@ -135,6 +137,7 @@ export class Selection {
       const lines = text.split("\n")
       const firstSelectedY = Math.max(renderable.y, selectionStart.y)
       const visualEndY = renderable.y + renderable.height - 1
+
       for (let index = 0; index < lines.length; index += 1) {
         const y = firstSelectedY + index
         const selectedLine = lines[index]
@@ -149,7 +152,13 @@ export class Selection {
         const line = selectedTextsByLine.get(y) ?? []
         line.push({ x, text: selectedLine, spanEndY: visualEndY })
         selectedTextsByLine.set(y, line)
+
         if (selectedLine !== "") {
+          if (firstSelectedTextX === null) {
+            firstSelectedTextX = x
+            preserveFirstLineIndentation = x === renderable.x
+          }
+
           baselineX = Math.min(baselineX, x)
         }
       }
@@ -158,7 +167,12 @@ export class Selection {
     const sortedEntries = [...selectedTextsByLine.entries()].sort(([leftY], [rightY]) => leftY - rightY)
     if (sortedEntries.length === 0) return ""
 
-    const lineStartX = Number.isFinite(baselineX) ? baselineX : 0
+    const lineStartX =
+      firstSelectedTextX === null
+        ? 0
+        : preserveFirstLineIndentation && Number.isFinite(baselineX)
+          ? baselineX
+          : firstSelectedTextX
     const selectedLines: string[] = []
     let previousSpanEndY: number | null = null
 

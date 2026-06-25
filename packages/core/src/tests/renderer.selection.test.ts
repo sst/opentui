@@ -114,7 +114,7 @@ test("selected text preserves visual gaps between same-row renderables", () => {
   expect(renderer.getSelection()?.getSelectedText()).toBe("Hello  World")
 })
 
-test("selected text preserves vertical gaps between different rows", () => {
+test("selected text joins adjacent rows with a single newline", () => {
   const top = new TextRenderable(renderer, {
     content: "First row",
     left: 0,
@@ -188,6 +188,94 @@ test("selected text preserves vertical gaps between separated rows", () => {
   renderer.updateSelection(bottom, bottom.x + bottom.width, bottom.y, { finishDragging: true })
 
   const gapLines = Math.max(bottom.y - top.y - 1, 0)
+  expect(renderer.getSelection()?.getSelectedText()).toBe(["First row", ...Array(gapLines).fill(""), "Second row"].join("\n"))
+})
+
+test("selected text preserves first-line indentation when selection starts at local column zero", () => {
+  const top = new TextRenderable(renderer, {
+    content: "First row",
+    left: 4,
+    top: 0,
+    width: 9,
+    height: 1,
+    selectable: true,
+  })
+  const bottom = new TextRenderable(renderer, {
+    content: "Second row",
+    left: 0,
+    top: 1,
+    width: 10,
+    height: 1,
+    selectable: true,
+  })
+
+  renderer.root.add(top)
+  renderer.root.add(bottom)
+  renderOnce()
+
+  renderer.startSelection(top, top.x, top.y)
+  renderer.updateSelection(bottom, bottom.x + bottom.width, bottom.y, { finishDragging: true })
+
+  const gapLines = Math.max(bottom.y - top.y - 1, 0)
+  expect(renderer.getSelection()?.getSelectedText()).toBe(["    First row", ...Array(gapLines).fill(""), "Second row"].join("\n"))
+})
+
+test("selected text does not synthesize skipped indentation on the first copied line", () => {
+  const top = new TextRenderable(renderer, {
+    content: "First row",
+    left: 4,
+    top: 0,
+    width: 9,
+    height: 1,
+    selectable: true,
+  })
+  const bottom = new TextRenderable(renderer, {
+    content: "Second row",
+    left: 0,
+    top: 1,
+    width: 10,
+    height: 1,
+    selectable: true,
+  })
+
+  renderer.root.add(top)
+  renderer.root.add(bottom)
+  renderOnce()
+
+  renderer.startSelection(top, top.x + 1, top.y)
+  renderer.updateSelection(bottom, bottom.x + bottom.width, bottom.y, { finishDragging: true })
+
+  const gapLines = Math.max(bottom.y - top.y - 1, 0)
+  expect(renderer.getSelection()?.getSelectedText()).toBe(["irst row", ...Array(gapLines).fill(""), "Second row"].join("\n"))
+})
+
+test("selected text does not infer blank rows from renderable height", () => {
+  const top = new TextRenderable(renderer, {
+    content: "First row",
+    left: 0,
+    top: 0,
+    width: 9,
+    height: 3,
+    selectable: true,
+  })
+  const bottom = new TextRenderable(renderer, {
+    content: "Second row",
+    left: 0,
+    top: 4,
+    width: 10,
+    height: 1,
+    selectable: true,
+  })
+
+  renderer.root.add(top)
+  renderer.root.add(bottom)
+  renderOnce()
+
+  renderer.startSelection(top, top.x, top.y)
+  renderer.updateSelection(bottom, bottom.x + bottom.width, bottom.y, { finishDragging: true })
+
+  const topVisualEndY = top.y + top.height - 1
+  const gapLines = Math.max(bottom.y - topVisualEndY - 1, 0)
   expect(renderer.getSelection()?.getSelectedText()).toBe(["First row", ...Array(gapLines).fill(""), "Second row"].join("\n"))
 })
 

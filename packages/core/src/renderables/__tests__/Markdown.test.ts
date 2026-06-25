@@ -1358,6 +1358,27 @@ test("selection across top-level ordered list copies marker and text on same lin
   expect(renderer.getSelection()?.getSelectedText()).toBe(" 9. Nine\n10. Ten")
 })
 
+test("selection across top-level ordered list does not add skipped leading indentation", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-structured-ordered-list-selection-partial-indent",
+    content: `9. Nine
+10. Ten`,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const list = md._blockStates[0]?.renderable
+  expect(list).toBeInstanceOf(BoxRenderable)
+
+  await mockMouse.drag(list!.x + 1, list!.y, list!.x + 20, list!.y + 1)
+  await renderer.idle()
+
+  expect(renderer.getSelection()?.getSelectedText()).toBe("9. Nine\n10. Ten")
+})
+
 test("selection across nested unordered list preserves visual indentation", async () => {
   const md = createMarkdownRenderable({
     id: "markdown-nested-structured-list-selection",
