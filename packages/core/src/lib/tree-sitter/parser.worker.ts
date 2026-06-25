@@ -15,6 +15,7 @@ import type {
 } from "./types.js"
 import { DownloadUtils } from "./download-utils.js"
 import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
+import { importWebTreeSitterWasm, resolveWebTreeSitterWasmPath } from "./web-tree-sitter-wasm.js"
 import { resolveBundledFilePath } from "../../platform/runtime.js"
 import {
   isWorkerRuntime,
@@ -96,8 +97,8 @@ class ParserWorker {
       await mkdir(path.join(this.tsDataPath, "queries"), { recursive: true })
 
       let treeWasm = await resolveBundledFilePath(
-        () => import("web-tree-sitter/tree-sitter.wasm" as string, { with: { type: "wasm" } }),
-        () => import.meta.resolve("web-tree-sitter/tree-sitter.wasm"),
+        importWebTreeSitterWasm,
+        resolveWebTreeSitterWasmPath,
         import.meta.url,
       )
 
