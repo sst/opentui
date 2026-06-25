@@ -17,6 +17,23 @@ interface ColorStop {
   shadow: string
 }
 
+interface Oklch {
+  lightness: number
+  chroma: number
+  hue: number
+}
+
+interface AmbientStop {
+  background: Oklch
+  foreground: Oklch
+}
+
+interface ColorCycleSpeed {
+  name: string
+  hold: number
+  transition: number
+}
+
 interface Vec2 {
   x: number
   y: number
@@ -33,7 +50,29 @@ const COLOR_STOPS: readonly ColorStop[] = [
   { background: "#050505", foreground: "#FF4B16", shadow: "#B9360F" },
   { background: "#151126", foreground: "#C3ACFF", shadow: "#7862B8" },
 ]
-const COLOR_STOP_DURATION = 900
+const AMBIENT_STOPS: readonly AmbientStop[] = [
+  {
+    background: { lightness: 0.18, chroma: 0.025, hue: 195 },
+    foreground: { lightness: 0.88, chroma: 0.15, hue: 190 },
+  },
+  {
+    background: { lightness: 0.18, chroma: 0.03, hue: 292 },
+    foreground: { lightness: 0.82, chroma: 0.14, hue: 292 },
+  },
+  {
+    background: { lightness: 0.18, chroma: 0.035, hue: 335 },
+    foreground: { lightness: 0.79, chroma: 0.22, hue: 335 },
+  },
+  {
+    background: { lightness: 0.18, chroma: 0.025, hue: 35 },
+    foreground: { lightness: 0.73, chroma: 0.2, hue: 35 },
+  },
+]
+const COLOR_CYCLE_SPEEDS: readonly ColorCycleSpeed[] = [
+  { name: "slow", hold: 1000, transition: 2400 },
+  { name: "normal", hold: 700, transition: 1600 },
+  { name: "fast", hold: 350, transition: 850 },
+]
 const RECEIVER_HALF_SIZE = 5
 const RECEIVER_DEPTH = 4
 const LIGHT_DEPTH = -4
@@ -61,6 +100,8 @@ let windEnabled = true
 let autoLight = false
 let helpVisible = false
 let elapsed = 0
+let colorElapsed = 0
+let colorCycleSpeedIndex = 1
 let frameAccumulator = 0
 let sceneWidth = 0
 let sceneHeight = 0
@@ -155,6 +196,77 @@ function smoothstep(edgeStart: number, edgeEnd: number, value: number): number {
   return progress * progress * (3 - 2 * progress)
 }
 
+function interpolateHue(from: number, to: number, progress: number): number {
+  const difference = ((to - from + 540) % 360) - 180
+  return (from + difference * progress + 360) % 360
+}
+
+function interpolateOklch(from: Oklch, to: Oklch, progress: number): Oklch {
+  return {
+    lightness: from.lightness + (to.lightness - from.lightness) * progress,
+    chroma: from.chroma + (to.chroma - from.chroma) * progress,
+    hue: interpolateHue(from.hue, to.hue, progress),
+  }
+}
+
+function linearToSrgb(channel: number): number {
+  const value = channel <= 0.0031308 ? channel * 12.92 : 1.055 * channel ** (1 / 2.4) - 0.055
+  return Math.max(0, Math.min(1, value))
+}
+
+function oklchToHex(color: Oklch): string {
+  const radians = (color.hue * Math.PI) / 180
+  const a = color.chroma * Math.cos(radians)
+  const b = color.chroma * Math.sin(radians)
+  const lPrime = color.lightness + 0.3963377774 * a + 0.2158037573 * b
+  const mPrime = color.lightness - 0.1055613458 * a - 0.0638541728 * b
+  const sPrime = color.lightness - 0.0894841775 * a - 1.291485548 * b
+  const l = lPrime ** 3
+  const m = mPrime ** 3
+  const s = sPrime ** 3
+  const channels = [
+    linearToSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    linearToSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    linearToSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+  ]
+  return `#${channels
+    .map((channel) =>
+      Math.round(channel * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`
+}
+
+function ambientPalette(time: number): ColorStop {
+  const speed = COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!
+  const segmentDuration = speed.hold + speed.transition
+  const position = time / segmentDuration
+  const index = Math.floor(position) % AMBIENT_STOPS.length
+  const nextIndex = (index + 1) % AMBIENT_STOPS.length
+  const segmentTime = time % segmentDuration
+  const progress =
+    segmentTime <= speed.hold ? 0 : smoothstep(0, 1, Math.min(1, (segmentTime - speed.hold) / speed.transition))
+  const from = AMBIENT_STOPS[index]!
+  const to = AMBIENT_STOPS[nextIndex]!
+  const background = interpolateOklch(from.background, to.background, progress)
+  const foreground = interpolateOklch(from.foreground, to.foreground, progress)
+  const shadow: Oklch = {
+    lightness: foreground.lightness * 0.64,
+    chroma: foreground.chroma * 0.68,
+    hue: foreground.hue,
+  }
+  return {
+    background: oklchToHex(background),
+    foreground: oklchToHex(foreground),
+    shadow: oklchToHex(shadow),
+  }
+}
+
+function activePalette(): ColorStop {
+  return colorCycling ? ambientPalette(colorElapsed) : COLOR_STOPS[colorIndex]!
+}
+
 function hashNoise(x: number, y: number): number {
   const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453
   return value - Math.floor(value)
@@ -204,7 +316,7 @@ function buildReceiver(width: number, height: number): StyledText {
   const polygon = convexHull(casterVertices(casterCenter, wind).map((vertex) => projectShadow(vertex, light)))
   const lightDistance = Math.hypot(light.x, light.y)
   const penumbra = 0.5 + lightDistance * 0.035
-  const palette = COLOR_STOPS[colorIndex]!
+  const palette = activePalette()
   const chunks = []
 
   for (let row = 0; row < height; row++) {
@@ -255,7 +367,8 @@ function updateControls(): void {
   const texture = shadowGlyphIndex === -1 ? "adaptive" : SHADOW_GLYPHS[shadowGlyphIndex]!
   helpText.content = [
     "Mouse       move light source",
-    `C           colors: ${colorCycling ? "cycling" : "fixed"}`,
+    `C           colors: ${colorCycling ? COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.name : "fixed"}`,
+    "Shift+C     change color speed",
     "1 2 3 4     select fixed color",
     `W           wind: ${windEnabled ? "moving" : "frozen"}`,
     `L           light: ${autoLight ? "automatic" : "mouse"}`,
@@ -274,7 +387,7 @@ function setHelpVisible(visible: boolean): void {
 }
 
 function updateColors(): void {
-  const { background, foreground } = COLOR_STOPS[colorIndex]!
+  const { background, foreground } = activePalette()
   rendererInstance?.setBackgroundColor(background)
   if (view) view.backgroundColor = background
   if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
@@ -290,12 +403,10 @@ function updateColors(): void {
 
 function updateLightFromMouse(event: MouseEvent): void {
   const renderer = rendererInstance
-  if (!renderer || !receiverText) return
-  autoLight = false
+  if (!renderer || !receiverText || autoLight) return
   lightX = (Math.max(0, Math.min(renderer.width - 1, event.x)) / Math.max(1, renderer.width - 1)) * 2 - 1
   lightY = (Math.max(0, Math.min(renderer.height - 1, event.y)) / Math.max(1, renderer.height - 1)) * 2 - 1
   receiverText.content = buildReceiver(sceneWidth, sceneHeight)
-  updateControls()
 }
 
 function renderArtwork(renderer: CliRenderer): void {
@@ -359,14 +470,14 @@ function createHelpModal(renderer: CliRenderer): void {
   helpModal = new BoxRenderable(renderer, {
     id: "opentui-logo-help-modal",
     width: renderer.width < 60 ? "90%" : 48,
-    height: 12,
+    height: 13,
     paddingLeft: 2,
     paddingRight: 2,
     paddingTop: 1,
     border: true,
     borderStyle: "double",
-    borderColor: COLOR_STOPS[colorIndex]!.foreground,
-    backgroundColor: COLOR_STOPS[colorIndex]!.background,
+    borderColor: activePalette().foreground,
+    backgroundColor: activePalette().background,
     title: "Controls",
     titleAlignment: "center",
     onMouseDown: (event: MouseEvent) => event.stopPropagation(),
@@ -374,7 +485,7 @@ function createHelpModal(renderer: CliRenderer): void {
   helpText = new TextRenderable(renderer, {
     id: "opentui-logo-help-text",
     content: "",
-    fg: COLOR_STOPS[colorIndex]!.foreground,
+    fg: activePalette().foreground,
     selectable: false,
   })
   helpModal.add(helpText)
@@ -393,6 +504,8 @@ export function run(renderer: CliRenderer): void {
   autoLight = false
   helpVisible = false
   elapsed = 0
+  colorElapsed = 0
+  colorCycleSpeedIndex = 1
   frameAccumulator = 0
   renderer.start()
 
@@ -413,24 +526,18 @@ export function run(renderer: CliRenderer): void {
   createHelpModal(renderer)
 
   frameHandler = async (deltaTime: number) => {
-    if (windEnabled || colorCycling || autoLight) elapsed += deltaTime
+    if (windEnabled || autoLight) elapsed += deltaTime
+    if (colorCycling) colorElapsed += deltaTime
     frameAccumulator += deltaTime
     if (frameAccumulator < 1000 / 12) return
     frameAccumulator %= 1000 / 12
-    if (colorCycling) {
-      const nextColorIndex = Math.floor(elapsed / COLOR_STOP_DURATION) % COLOR_STOPS.length
-      if (nextColorIndex !== colorIndex) {
-        colorIndex = nextColorIndex
-        updateColors()
-        return
-      }
-    }
     if (autoLight) {
       const lightTime = elapsed * 0.00018
       lightX = Math.sin(lightTime * 1.07) * 0.86
       lightY = Math.sin(lightTime * 0.73 + 1.1) * 0.78
     }
-    if ((windEnabled || autoLight) && receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+    if (colorCycling) updateColors()
+    else if ((windEnabled || autoLight) && receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
   }
   renderer.setFrameCallback(frameHandler)
 
@@ -443,13 +550,20 @@ export function run(renderer: CliRenderer): void {
       key.preventDefault()
     } else if (helpVisible) {
       return
+    } else if (key.name === "c" && key.shift && !key.ctrl && !key.meta) {
+      colorCycleSpeedIndex = (colorCycleSpeedIndex + 1) % COLOR_CYCLE_SPEEDS.length
+      colorElapsed = 0
+      if (colorCycling) updateColors()
+      else updateControls()
     } else if (key.name === "c" && !key.ctrl && !key.meta && !key.shift) {
       colorCycling = !colorCycling
-      if (!colorCycling) colorIndex = 0
+      if (colorCycling) colorElapsed = 0
+      else colorIndex = 0
       updateColors()
     } else if (/^[1-4]$/.test(key.sequence) && !key.ctrl && !key.meta && !key.shift) {
       colorCycling = false
       colorIndex = Number(key.sequence) - 1
+      colorElapsed = 0
       updateColors()
     } else if (key.name === "s" && !key.ctrl && !key.meta && !key.shift) {
       shadowEnabled = !shadowEnabled
@@ -469,6 +583,7 @@ export function run(renderer: CliRenderer): void {
       updateControls()
     } else if (key.name === "r" && !key.ctrl && !key.meta && !key.shift) {
       elapsed = 0
+      colorElapsed = 0
       frameAccumulator = 0
       colorIndex = 0
       lightX = 0.35
