@@ -31,7 +31,7 @@ const COLOR_STOPS: readonly ColorStop[] = [
   { background: "#031B1C", foreground: "#24F4EE", shadow: "#149E99" },
   { background: "#24031F", foreground: "#FF37CA", shadow: "#A92387" },
   { background: "#050505", foreground: "#FF4B16", shadow: "#B9360F" },
-  { background: "#FF4438", foreground: "#EDFF66", shadow: "#C72F26" },
+  { background: "#151126", foreground: "#C3ACFF", shadow: "#7862B8" },
 ]
 const COLOR_STOP_DURATION = 900
 const RECEIVER_HALF_SIZE = 5
@@ -46,7 +46,9 @@ let artwork: BoxRenderable | null = null
 let receiverText: TextRenderable | null = null
 let logoPlate: BoxRenderable | null = null
 let logoText: TextRenderable | null = null
-let controlsText: TextRenderable | null = null
+let helpOverlay: BoxRenderable | null = null
+let helpModal: BoxRenderable | null = null
+let helpText: TextRenderable | null = null
 let rendererInstance: CliRenderer | null = null
 let keyHandler: ((key: KeyEvent) => void) | null = null
 let resizeHandler: (() => void) | null = null
@@ -56,6 +58,7 @@ let colorCycling = false
 let shadowEnabled = true
 let shadowGlyphIndex = -1
 let windEnabled = true
+let helpVisible = false
 let elapsed = 0
 let frameAccumulator = 0
 let sceneWidth = 0
@@ -247,12 +250,25 @@ function buildReceiver(width: number, height: number): StyledText {
 }
 
 function updateControls(): void {
-  if (!controlsText) return
+  if (!helpText) return
   const texture = shadowGlyphIndex === -1 ? "adaptive" : SHADOW_GLYPHS[shadowGlyphIndex]!
-  controlsText.content =
-    sceneWidth < 45
-      ? `C:${colorCycling ? "cycle" : "fixed"} W:${windEnabled ? "wind" : "still"} S:${shadowEnabled ? "on" : "off"} G:${texture}`
-      : `C:${colorCycling ? "cycle" : "fixed"}  W:${windEnabled ? "wind" : "still"}  S:${shadowEnabled ? "on" : "off"}  G:${texture}  mouse:light`
+  helpText.content = [
+    "Mouse       move light source",
+    `C           colors: ${colorCycling ? "cycling" : "fixed"}`,
+    "1 2 3 4     select fixed color",
+    `W           wind: ${windEnabled ? "moving" : "frozen"}`,
+    `S           shadow: ${shadowEnabled ? "visible" : "hidden"}`,
+    `G           texture: ${texture}`,
+    "R           reset scene",
+    "? / Esc     close help",
+  ].join("\n")
+}
+
+function setHelpVisible(visible: boolean): void {
+  helpVisible = visible
+  if (helpOverlay) helpOverlay.visible = visible
+  updateControls()
+  rendererInstance?.requestRender()
 }
 
 function updateColors(): void {
@@ -262,7 +278,11 @@ function updateColors(): void {
   if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
   if (logoPlate) logoPlate.backgroundColor = foreground
   if (logoText) logoText.fg = background
-  if (controlsText) controlsText.fg = foreground
+  if (helpModal) {
+    helpModal.backgroundColor = background
+    helpModal.borderColor = foreground
+  }
+  if (helpText) helpText.fg = foreground
   updateControls()
 }
 
@@ -287,7 +307,7 @@ function renderArtwork(renderer: CliRenderer): void {
   artwork = new BoxRenderable(renderer, {
     id: "opentui-logo-shadow-artwork",
     width,
-    height: height + plateHeight + 1,
+    height: height + plateHeight,
     flexDirection: "column",
     flexShrink: 0,
   })
@@ -310,18 +330,53 @@ function renderArtwork(renderer: CliRenderer): void {
     fg: COLOR_STOPS[0]!.background,
     selectable: true,
   })
-  controlsText = new TextRenderable(renderer, {
-    id: "opentui-logo-shadow-controls",
-    content: "",
-    fg: COLOR_STOPS[0]!.foreground,
-    selectable: false,
-  })
   logoPlate.add(logoText)
   artwork.add(receiverText)
   artwork.add(logoPlate)
-  artwork.add(controlsText)
   view?.add(artwork)
   updateColors()
+}
+
+function createHelpModal(renderer: CliRenderer): void {
+  helpOverlay?.destroyRecursively()
+  helpOverlay = new BoxRenderable(renderer, {
+    id: "opentui-logo-help-overlay",
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    visible: helpVisible,
+    zIndex: 100,
+    onMouseDown: () => setHelpVisible(false),
+  })
+  helpModal = new BoxRenderable(renderer, {
+    id: "opentui-logo-help-modal",
+    width: renderer.width < 60 ? "90%" : 48,
+    height: 12,
+    paddingLeft: 2,
+    paddingRight: 2,
+    paddingTop: 1,
+    border: true,
+    borderStyle: "double",
+    borderColor: COLOR_STOPS[colorIndex]!.foreground,
+    backgroundColor: COLOR_STOPS[colorIndex]!.background,
+    title: "Controls",
+    titleAlignment: "center",
+    onMouseDown: (event: MouseEvent) => event.stopPropagation(),
+  })
+  helpText = new TextRenderable(renderer, {
+    id: "opentui-logo-help-text",
+    content: "",
+    fg: COLOR_STOPS[colorIndex]!.foreground,
+    selectable: false,
+  })
+  helpModal.add(helpText)
+  helpOverlay.add(helpModal)
+  renderer.root.add(helpOverlay)
+  updateControls()
 }
 
 export function run(renderer: CliRenderer): void {
@@ -331,6 +386,7 @@ export function run(renderer: CliRenderer): void {
   shadowEnabled = true
   shadowGlyphIndex = -1
   windEnabled = true
+  helpVisible = false
   elapsed = 0
   frameAccumulator = 0
   renderer.start()
@@ -349,6 +405,7 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(view)
   renderArtwork(renderer)
+  createHelpModal(renderer)
 
   frameHandler = async (deltaTime: number) => {
     if (windEnabled || colorCycling) elapsed += deltaTime
@@ -368,7 +425,15 @@ export function run(renderer: CliRenderer): void {
   renderer.setFrameCallback(frameHandler)
 
   keyHandler = (key: KeyEvent) => {
-    if (key.name === "c" && !key.ctrl && !key.meta && !key.shift) {
+    if (key.sequence === "?") {
+      setHelpVisible(!helpVisible)
+      key.preventDefault()
+    } else if (key.name === "escape" && helpVisible) {
+      setHelpVisible(false)
+      key.preventDefault()
+    } else if (helpVisible) {
+      return
+    } else if (key.name === "c" && !key.ctrl && !key.meta && !key.shift) {
       colorCycling = !colorCycling
       if (!colorCycling) colorIndex = 0
       updateColors()
@@ -397,7 +462,10 @@ export function run(renderer: CliRenderer): void {
       updateColors()
     }
   }
-  resizeHandler = () => renderArtwork(renderer)
+  resizeHandler = () => {
+    renderArtwork(renderer)
+    createHelpModal(renderer)
+  }
   renderer.keyInput.on("keypress", keyHandler)
   renderer.on("resize", resizeHandler)
 }
@@ -413,7 +481,10 @@ export function destroy(renderer: CliRenderer): void {
   receiverText = null
   logoPlate = null
   logoText = null
-  controlsText = null
+  helpOverlay?.destroyRecursively()
+  helpOverlay = null
+  helpModal = null
+  helpText = null
   rendererInstance = null
   frameHandler = null
   keyHandler = null
