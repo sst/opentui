@@ -72,6 +72,7 @@ import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 import * as nativeAudioDemo from "./native-audio-demo.js"
 import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
 import * as opentuiLogoDemo from "./opentui-logo-demo.js"
+import * as opentuiLogoTunnelDemo from "./opentui-logo-tunnel-demo.js"
 
 type ExampleCategory =
   | "Layout & Composition"
@@ -539,6 +540,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       description: "OpenTUI wordmark rendered with Unicode half-block characters",
       run: opentuiLogoDemo.run,
       destroy: opentuiLogoDemo.destroy,
+    },
+    {
+      name: "OpenTUI Logo Tunnel",
+      description: "Animated perspective tunnel and original OpenTUI wordmark drawn with Unicode",
+      run: opentuiLogoTunnelDemo.run,
+      destroy: opentuiLogoTunnelDemo.destroy,
     },
     {
       name: "Timeline Example",
