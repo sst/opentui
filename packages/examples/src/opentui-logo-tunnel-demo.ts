@@ -58,6 +58,7 @@ let colorCycling = false
 let shadowEnabled = true
 let shadowGlyphIndex = -1
 let windEnabled = true
+let autoLight = false
 let helpVisible = false
 let elapsed = 0
 let frameAccumulator = 0
@@ -257,6 +258,7 @@ function updateControls(): void {
     `C           colors: ${colorCycling ? "cycling" : "fixed"}`,
     "1 2 3 4     select fixed color",
     `W           wind: ${windEnabled ? "moving" : "frozen"}`,
+    `L           light: ${autoLight ? "automatic" : "mouse"}`,
     `S           shadow: ${shadowEnabled ? "visible" : "hidden"}`,
     `G           texture: ${texture}`,
     "R           reset scene",
@@ -289,9 +291,11 @@ function updateColors(): void {
 function updateLightFromMouse(event: MouseEvent): void {
   const renderer = rendererInstance
   if (!renderer || !receiverText) return
+  autoLight = false
   lightX = (Math.max(0, Math.min(renderer.width - 1, event.x)) / Math.max(1, renderer.width - 1)) * 2 - 1
   lightY = (Math.max(0, Math.min(renderer.height - 1, event.y)) / Math.max(1, renderer.height - 1)) * 2 - 1
   receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+  updateControls()
 }
 
 function renderArtwork(renderer: CliRenderer): void {
@@ -386,6 +390,7 @@ export function run(renderer: CliRenderer): void {
   shadowEnabled = true
   shadowGlyphIndex = -1
   windEnabled = true
+  autoLight = false
   helpVisible = false
   elapsed = 0
   frameAccumulator = 0
@@ -408,7 +413,7 @@ export function run(renderer: CliRenderer): void {
   createHelpModal(renderer)
 
   frameHandler = async (deltaTime: number) => {
-    if (windEnabled || colorCycling) elapsed += deltaTime
+    if (windEnabled || colorCycling || autoLight) elapsed += deltaTime
     frameAccumulator += deltaTime
     if (frameAccumulator < 1000 / 12) return
     frameAccumulator %= 1000 / 12
@@ -420,7 +425,12 @@ export function run(renderer: CliRenderer): void {
         return
       }
     }
-    if (windEnabled && receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+    if (autoLight) {
+      const lightTime = elapsed * 0.00018
+      lightX = Math.sin(lightTime * 1.07) * 0.86
+      lightY = Math.sin(lightTime * 0.73 + 1.1) * 0.78
+    }
+    if ((windEnabled || autoLight) && receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
   }
   renderer.setFrameCallback(frameHandler)
 
@@ -449,6 +459,10 @@ export function run(renderer: CliRenderer): void {
       windEnabled = !windEnabled
       if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
       updateControls()
+    } else if (key.name === "l" && !key.ctrl && !key.meta && !key.shift) {
+      autoLight = !autoLight
+      if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+      updateControls()
     } else if (key.name === "g" && !key.ctrl && !key.meta && !key.shift) {
       shadowGlyphIndex = shadowGlyphIndex === SHADOW_GLYPHS.length - 1 ? -1 : shadowGlyphIndex + 1
       if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
@@ -459,6 +473,7 @@ export function run(renderer: CliRenderer): void {
       colorIndex = 0
       lightX = 0.35
       lightY = -0.25
+      autoLight = false
       updateColors()
     }
   }
