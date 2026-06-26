@@ -17,6 +17,7 @@ const PROVIDER_TRANSFER_IDLE_TIMEOUT_NS = 30 * std.time.ns_per_s;
 pub const Progress = enum { pending, ready, unsupported, failed };
 pub const SelectionResult = enum { ok, pending, committed, unsupported, failed };
 const FlushResult = enum { complete, pending, failed };
+const FlushOutcome = struct { result: c_int, errno: std.posix.E };
 
 pub const Failure = enum {
     none,
@@ -105,6 +106,9 @@ pub const Connection = struct {
     clipboard_provider: ?*Provider = null,
     primary_provider: ?*Provider = null,
     provider_cursor: u8 = 0,
+    flush_outcome_override: ?FlushOutcome = null,
+    test_marshal_count: u8 = 0,
+    test_flush_marshal_count: u8 = 0,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -402,6 +406,14 @@ pub const Connection = struct {
     }
 
     fn flushOutput(self: *Connection) FlushResult {
+        if (comptime builtin.is_test) {
+            if (self.flush_outcome_override) |outcome| {
+                self.test_flush_marshal_count = self.test_marshal_count;
+                const flush_result = classifyFlush(outcome.result, outcome.errno);
+                self.output_pending = flush_result == .pending;
+                return flush_result;
+            }
+        }
         const result = self.symbols.wl_display_flush(self.display.?);
         const flush_result = classifyFlush(result, if (result < 0) std.posix.errno(result) else .SUCCESS);
         self.output_pending = flush_result == .pending;
@@ -540,6 +552,7 @@ pub const Connection = struct {
         flags: u32,
         arguments: []const WlArgument,
     ) ?*WlProxy {
+        if (comptime builtin.is_test) self.test_marshal_count += 1;
         var empty: [1]WlArgument = undefined;
         const pointer: [*]WlArgument = if (arguments.len == 0) &empty else @constCast(arguments.ptr);
         return self.symbols.wl_proxy_marshal_array_flags(proxy, opcode, interface, version, flags, pointer);
@@ -837,6 +850,72 @@ test "Wayland flush completion distinguishes EAGAIN from completion and hard fai
     try std.testing.expectEqual(FlushResult.complete, classifyFlush(0, .SUCCESS));
     try std.testing.expectEqual(FlushResult.pending, classifyFlush(-1, .AGAIN));
     try std.testing.expectEqual(FlushResult.failed, classifyFlush(-1, .PIPE));
+}
+
+test "Wayland writes and clears settle deterministically after marshalling for every flush outcome" {
+    const TestCase = struct {
+        flush: FlushOutcome,
+        selection: SelectionResult,
+        output_pending: bool,
+        phase: Phase,
+    };
+    const cases = [_]TestCase{
+        .{ .flush = .{ .result = 0, .errno = .SUCCESS }, .selection = .ok, .output_pending = false, .phase = .ready },
+        .{ .flush = .{ .result = -1, .errno = .AGAIN }, .selection = .committed, .output_pending = true, .phase = .ready },
+        .{ .flush = .{ .result = -1, .errno = .PIPE }, .selection = .committed, .output_pending = false, .phase = .failed },
+    };
+
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_add_listener = testAddListener;
+    symbols.wl_proxy_destroy = testDestroyProxy;
+    symbols.wl_proxy_get_version = testProxyVersion;
+
+    for (cases) |case| {
+        var write = testReadyConnection(&symbols, case.flush);
+        try std.testing.expectEqual(case.selection, write.publishText(false, &.{}));
+        try std.testing.expectEqual(case.output_pending, write.output_pending);
+        try std.testing.expectEqual(case.phase, write.phase);
+        try std.testing.expectEqual(@as(u8, 4), write.test_flush_marshal_count);
+        write.releaseProviders();
+
+        var clear = testReadyConnection(&symbols, case.flush);
+        try std.testing.expectEqual(case.selection, clear.clearSelection(false));
+        try std.testing.expectEqual(case.output_pending, clear.output_pending);
+        try std.testing.expectEqual(case.phase, clear.phase);
+        try std.testing.expectEqual(@as(u8, 1), clear.test_flush_marshal_count);
+    }
+}
+
+fn testReadyConnection(symbols: *const linux.WaylandSymbols, flush: FlushOutcome) Connection {
+    var connection = Connection.init(std.testing.allocator, symbols, "", "", 1);
+    connection.display = @ptrFromInt(1);
+    connection.manager = @ptrFromInt(2);
+    connection.device = @ptrFromInt(3);
+    connection.phase = .ready;
+    connection.flush_outcome_override = flush;
+    return connection;
+}
+
+fn testMarshal(
+    _: *WlProxy,
+    _: u32,
+    _: ?*const WlInterface,
+    _: u32,
+    _: u32,
+    _: [*]WlArgument,
+) callconv(.c) ?*WlProxy {
+    return @ptrFromInt(4);
+}
+
+fn testAddListener(_: *WlProxy, _: [*]const *const anyopaque, _: ?*anyopaque) callconv(.c) c_int {
+    return 0;
+}
+
+fn testDestroyProxy(_: *WlProxy) callconv(.c) void {}
+
+fn testProxyVersion(_: *WlProxy) callconv(.c) u32 {
+    return 1;
 }
 
 test "Wayland MIME retention ignores irrelevant metadata without consuming the bounded set" {
