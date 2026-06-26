@@ -5,14 +5,15 @@ import {
   type CliRenderer,
   type KeyEvent,
   type MouseEvent,
+  type OptimizedBuffer,
   NativeVideo,
-  StyledText,
+  RGBA,
   TextRenderable,
+  VRenderable,
   createCliRenderer,
-  fg,
 } from "@opentui/core"
 
-import { AUDIO_ANALYSIS_FRAMES, AudioRhythmAnalyzer } from "./lib/audio-rhythm-analyzer.js"
+import { AUDIO_ANALYSIS_FRAMES, AUDIO_SPECTRUM_BANDS, AudioRhythmAnalyzer } from "./lib/audio-rhythm-analyzer.js"
 import { AudioAnalysisBuffer, audioDecayDeltaMs, audioTapReadFrames } from "./lib/audio-analysis-buffer.js"
 import { AudioVisualChoreographer } from "./lib/audio-visual-choreographer.js"
 import { parseShadowCinemaArgs } from "./lib/shadow-cinema-args.js"
@@ -57,6 +58,13 @@ interface ShadowMemory {
   detail: Float32Array
   capturedAt: number
   strength: number
+}
+
+interface ReceiverPalette {
+  foreground: RGBA
+  shadow: RGBA
+  accent: RGBA
+  spectrum: readonly RGBA[]
 }
 
 const LOGO_SOURCE = ["▄▄▄ ▄▄▄ ▄▄▄ ▄▄  █▄▄ ▄ ▄ ▄", "█ █ █ █ █ ▀ █ █ █ ▄ █ █ █", "▀▀▀ █▀▀ ▀▀▀ ▀ ▀ ▀▀▀ ▀▀▀ ▀"]
@@ -114,7 +122,7 @@ const COLOR_CYCLE_SPEEDS: readonly ColorCycleSpeed[] = [
 const RECEIVER_HALF_SIZE = 5
 const PRESENTATION_FPS = 24
 const PRESENTATION_INTERVAL_SECONDS = 1 / PRESENTATION_FPS
-const PRESENTATION_INTERVAL_MS = 1000 / PRESENTATION_FPS
+const PALETTE_UPDATE_INTERVAL_MS = 125
 const AUDIO_CHANNELS = 2
 const AUDIO_TAP_CAPACITY_FRAMES = AUDIO_ANALYSIS_FRAMES * 16
 const AUDIO_DECAY_GRACE_MS = 75
@@ -133,7 +141,7 @@ const shadowMemories: ShadowMemory[] = []
 let rendererInstance: CliRenderer | null = null
 let view: BoxRenderable | null = null
 let artwork: BoxRenderable | null = null
-let receiverText: TextRenderable | null = null
+let receiverRenderable: VRenderable | null = null
 let logoPlate: BoxRenderable | null = null
 let logoText: TextRenderable | null = null
 let helpOverlay: BoxRenderable | null = null
@@ -147,12 +155,13 @@ let frameHandler: ((deltaTime: number) => Promise<void>) | null = null
 let prepareTimer: ReturnType<typeof setTimeout> | null = null
 let elapsedMs = 0
 let colorElapsedMs = 0
-let frameAccumulatorMs = 0
+let paletteAccumulatorMs = 0
 let playbackStartedAtMs = 0
 let playbackPositionSeconds = 0
 let lastAudioTapFrame = 0n
 let lastAudioAnalysisAtMs = 0
 let audioAnalysisStalled = false
+let lastHelpSecond = -1
 let lastShadowMemoryAtMs = Number.NEGATIVE_INFINITY
 let paused = false
 let muted = false
@@ -163,6 +172,10 @@ let shadowGlyphIndex = -1
 let equalizerProjectionVisible = true
 let helpVisible = false
 let videoName = ""
+let renderedPalette: ColorStop = COLOR_STOPS[0]!
+let receiverPalette = createReceiverPalette(renderedPalette)
+
+const TRANSPARENT = RGBA.fromValues(0, 0, 0, 0)
 
 function smoothstep(edgeStart: number, edgeEnd: number, value: number): number {
   const progress = Math.max(0, Math.min(1, (value - edgeStart) / (edgeEnd - edgeStart)))
@@ -272,6 +285,17 @@ function audioSpectrumColor(band: number, palette: ColorStop): string {
   return `#${channels.join("")}`
 }
 
+function createReceiverPalette(palette: ColorStop): ReceiverPalette {
+  return {
+    foreground: RGBA.fromHex(palette.foreground),
+    shadow: RGBA.fromHex(palette.shadow),
+    accent: RGBA.fromHex(palette.accent),
+    spectrum: Array.from({ length: AUDIO_SPECTRUM_BANDS }, (_, band) =>
+      RGBA.fromHex(audioSpectrumColor(band, palette)),
+    ),
+  }
+}
+
 function audioField(point: Vec2, center: Vec2): { strength: number; band: number } {
   const dx = point.x - center.x
   const dy = point.y - center.y
@@ -338,17 +362,17 @@ function shadowGlyph(strength: number): (typeof SHADOW_GLYPHS)[number] {
     : SHADOW_GLYPHS[shadowGlyphIndex]!
 }
 
-function buildReceiver(): StyledText {
-  const palette = activePalette()
+function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: number): void {
+  const palette = receiverPalette
   const haloCenter = videoCenter()
-  const chunks = []
   for (let row = 0; row < RECEIVER_HEIGHT; row += 1) {
     for (let column = 0; column < RECEIVER_WIDTH; column += 1) {
       const border = row === 0 || row === RECEIVER_HEIGHT - 1 || column === 0 || column === RECEIVER_WIDTH - 1
       if (border) {
         const position =
           row === 0 || row === RECEIVER_HEIGHT - 1 ? column / (RECEIVER_WIDTH - 1) : row / (RECEIVER_HEIGHT - 1)
-        const spectrum = rhythmAnalyzer.spectrum[audioSpectrumBand(position)] ?? 0
+        const band = audioSpectrumBand(position)
+        const spectrum = rhythmAnalyzer.spectrum[band] ?? 0
         const glyph =
           row === 0 && column === 0
             ? "┌"
@@ -365,8 +389,12 @@ function buildReceiver(): StyledText {
                     : spectrum > 0.5
                       ? "║"
                       : "│"
-        chunks.push(
-          fg(spectrum > 0.16 ? audioSpectrumColor(audioSpectrumBand(position), palette) : palette.foreground)(glyph),
+        buffer.setCell(
+          originX + column,
+          originY + row,
+          glyph,
+          spectrum > 0.16 ? palette.spectrum[band]! : palette.foreground,
+          TRANSPARENT,
         )
         continue
       }
@@ -385,13 +413,13 @@ function buildReceiver(): StyledText {
         const strength = Math.max(contourStrength, sample.intensity * 0.62)
         const glyph = shadowGlyph(strength)
         const color = sample.edge > 0.26 ? palette.accent : palette.foreground
-        chunks.push(fg(color)(glyph))
+        buffer.setCell(originX + column, originY + row, glyph, color, TRANSPARENT)
         continue
       }
 
       if (field && field.strength > 0.075) {
         const glyph = AUDIO_FIELD_GLYPHS[Math.min(AUDIO_FIELD_GLYPHS.length - 1, Math.floor(field.strength * 5))]!
-        chunks.push(fg(audioSpectrumColor(field.band, palette))(glyph))
+        buffer.setCell(originX + column, originY + row, glyph, palette.spectrum[field.band]!, TRANSPARENT)
         continue
       }
 
@@ -404,18 +432,19 @@ function buildReceiver(): StyledText {
           memoryStrength = Math.max(memoryStrength, detail * (1 - age) * Math.min(1, memory.strength * 12))
         }
       }
-      if (memoryStrength > 0.08) chunks.push(fg(palette.shadow)(memoryStrength > 0.24 ? "∙" : "⋅"))
-      else chunks.push({ __isChunk: true as const, text: " " })
+      if (memoryStrength > 0.08) {
+        buffer.setCell(originX + column, originY + row, memoryStrength > 0.24 ? "∙" : "⋅", palette.shadow, TRANSPARENT)
+      } else {
+        buffer.setCell(originX + column, originY + row, " ", palette.foreground, TRANSPARENT)
+      }
     }
-    if (row < RECEIVER_HEIGHT - 1) chunks.push({ __isChunk: true as const, text: "\n" })
   }
-  return new StyledText(chunks)
 }
 
 function refreshScene(captureMemory = false): void {
-  if (!receiverText) return
+  if (!receiverRenderable) return
   if (captureMemory) captureShadowMemory()
-  receiverText.content = buildReceiver()
+  rendererInstance?.requestRender()
 }
 
 function formatTime(seconds: number): string {
@@ -428,6 +457,7 @@ function updateControls(): void {
   if (!helpText) return
   const glyph = shadowGlyphIndex === -1 ? "adaptive" : SHADOW_GLYPHS[shadowGlyphIndex]!
   const currentTime = video?.state.currentTime ?? playbackPositionSeconds
+  lastHelpSecond = Math.floor(currentTime)
   const playback = `${paused ? "paused" : "playing"} ${formatTime(currentTime)}/${formatTime(video?.info.duration ?? 0)}`
   const controls = [
     `Space       ${paused ? "resume" : "pause"} playback`,
@@ -547,7 +577,7 @@ function consumeAudioFrames(deltaTime: number): void {
 }
 
 function createScene(renderer: CliRenderer): void {
-  const palette = activePalette()
+  const palette = renderedPalette
   view = new BoxRenderable(renderer, {
     id: "shadow-cinema-spike",
     width: "100%",
@@ -564,10 +594,11 @@ function createScene(renderer: CliRenderer): void {
     flexDirection: "column",
     flexShrink: 0,
   })
-  receiverText = new TextRenderable(renderer, {
+  receiverRenderable = new VRenderable(renderer, {
     id: "shadow-cinema-receiver",
-    content: buildReceiver(),
-    selectable: false,
+    width: RECEIVER_WIDTH,
+    height: RECEIVER_HEIGHT,
+    render: (buffer, _deltaTime, renderable) => renderReceiver(buffer, renderable.x, renderable.y),
   })
   logoPlate = new BoxRenderable(renderer, {
     id: "shadow-cinema-logo-plate",
@@ -584,7 +615,7 @@ function createScene(renderer: CliRenderer): void {
     selectable: false,
   })
   logoPlate.add(logoText)
-  artwork.add(receiverText)
+  artwork.add(receiverRenderable)
   artwork.add(logoPlate)
   view.add(artwork)
   renderer.root.add(view)
@@ -606,7 +637,7 @@ function setHelpVisible(visible: boolean): void {
 
 function createHelpModal(renderer: CliRenderer): void {
   helpOverlay?.destroyRecursively()
-  const palette = activePalette()
+  const palette = renderedPalette
   helpOverlay = new BoxRenderable(renderer, {
     id: "shadow-cinema-help-overlay",
     position: "absolute",
@@ -647,8 +678,11 @@ function createHelpModal(renderer: CliRenderer): void {
   updateControls()
 }
 
-function applyPalette(refreshReceiver = true): void {
+function applyPalette(updateChrome = true): void {
   const palette = activePalette()
+  renderedPalette = palette
+  receiverPalette = createReceiverPalette(palette)
+  if (!updateChrome) return
   rendererInstance?.setBackgroundColor(palette.background)
   if (view) view.backgroundColor = palette.background
   if (logoPlate) logoPlate.backgroundColor = palette.foreground
@@ -658,7 +692,7 @@ function applyPalette(refreshReceiver = true): void {
     helpModal.borderColor = palette.foreground
   }
   if (helpText) helpText.fg = palette.foreground
-  if (refreshReceiver) refreshScene()
+  refreshScene()
   updateControls()
 }
 
@@ -694,7 +728,6 @@ function seekPlayback(targetSeconds: number): void {
   playbackPositionSeconds = target
   playbackStartedAtMs = performance.now()
   elapsedMs = target * 1000
-  frameAccumulatorMs = 0
   resetAnalyzers(video.readAudioTapFrames(1, AUDIO_CHANNELS).endFrame)
   const state = video.update(target)
   const targetFrame = video.takeFrame()
@@ -711,17 +744,18 @@ function seekPlayback(targetSeconds: number): void {
   if (!paused) {
     video.play()
   }
-  applyPalette(false)
   refreshScene()
   updateControls()
 }
 
 export async function run(renderer: CliRenderer, videoPath: string): Promise<void> {
   rendererInstance = renderer
+  renderer.targetFps = PRESENTATION_FPS
+  renderer.maxFps = PRESENTATION_FPS
   videoName = basename(videoPath)
   elapsedMs = 0
   colorElapsedMs = 0
-  frameAccumulatorMs = 0
+  paletteAccumulatorMs = 0
   playbackPositionSeconds = 0
   playbackStartedAtMs = performance.now()
   paused = false
@@ -732,6 +766,9 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
   shadowGlyphIndex = -1
   equalizerProjectionVisible = true
   helpVisible = false
+  lastHelpSecond = -1
+  renderedPalette = activePalette()
+  receiverPalette = createReceiverPalette(renderedPalette)
 
   const nextVideo = NativeVideo.open(resolve(videoPath))
   try {
@@ -746,6 +783,7 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
     resetAnalyzers(nextVideo.readAudioTapFrames(1, AUDIO_CHANNELS).endFrame)
     createScene(renderer)
     createHelpModal(renderer)
+    applyPalette()
     renderer.start()
     nextVideo.play()
     schedulePreparation()
@@ -766,16 +804,17 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
       audioAnalysisStalled = true
     }
     choreography.update(elapsedMs, rhythmAnalyzer)
-    frameAccumulatorMs += deltaTime
-    const presentVideoFrame = frameAccumulatorMs >= PRESENTATION_INTERVAL_MS
-    if (presentVideoFrame) {
-      frameAccumulatorMs %= PRESENTATION_INTERVAL_MS
-      const targetSeconds = playbackPositionSeconds + (performance.now() - playbackStartedAtMs) / 1000
-      consumeVideoFrame(targetSeconds)
+    if (colorCycling) {
+      paletteAccumulatorMs += deltaTime
+      if (paletteAccumulatorMs >= PALETTE_UPDATE_INTERVAL_MS) {
+        paletteAccumulatorMs %= PALETTE_UPDATE_INTERVAL_MS
+        applyPalette(false)
+      }
     }
-    applyPalette(false)
-    refreshScene(presentVideoFrame)
-    if (helpVisible) updateControls()
+    const targetSeconds = playbackPositionSeconds + (performance.now() - playbackStartedAtMs) / 1000
+    consumeVideoFrame(targetSeconds)
+    refreshScene(true)
+    if (helpVisible && Math.floor(video.state.currentTime) !== lastHelpSecond) updateControls()
   }
   renderer.setFrameCallback(frameHandler)
 
@@ -875,7 +914,7 @@ export function destroy(renderer: CliRenderer): void {
   renderer.setBackgroundColor("transparent")
   view = null
   artwork = null
-  receiverText = null
+  receiverRenderable = null
   logoPlate = null
   logoText = null
   helpOverlay = null
@@ -904,6 +943,8 @@ if (import.meta.main) {
 
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
+    targetFps: PRESENTATION_FPS,
+    maxFps: PRESENTATION_FPS,
     onDestroy: () => {
       if (rendererInstance) destroy(rendererInstance)
     },
