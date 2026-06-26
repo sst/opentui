@@ -17,6 +17,7 @@ import {
 
 import { AUDIO_ANALYSIS_FRAMES, AudioRhythmAnalyzer } from "./lib/audio-rhythm-analyzer.js"
 import { audioLightPosition, audioShadowResponse, automaticLightPosition } from "./lib/audio-light-motion.js"
+import { AudioVisualChoreographer } from "./lib/audio-visual-choreographer.js"
 import { parseAudioFileArgs } from "./lib/audio-file-args.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
@@ -51,6 +52,20 @@ interface Vec2 {
 
 interface Vec3 extends Vec2 {
   z: number
+}
+
+interface SceneGeometry {
+  main: Vec2[]
+  bass: Vec2[]
+  treble: Vec2[]
+  center: Vec2
+  penumbra: number
+  wind: number
+}
+
+interface ShadowMemory {
+  polygon: Vec2[]
+  capturedAt: number
 }
 
 type LightMode = "mouse" | "automatic" | "audio"
@@ -100,8 +115,13 @@ const AUDIO_FIELD_GLYPHS = ["·", "∙", "◦", "○", "●"] as const
 const DEFAULT_AUDIO_TRACK_PATH = fileURLToPath(new URL("./koop.wav", import.meta.url))
 const AUDIO_SAMPLE_RATE = 48_000
 const AUDIO_CHANNELS = 2
+const SHADOW_MEMORY_MAX = 5
+const SHADOW_MEMORY_INTERVAL_MS = 130
+const SHADOW_MEMORY_LIFETIME_MS = 900
 const EMPTY_PCM = new Float32Array()
 const rhythmAnalyzer = new AudioRhythmAnalyzer()
+const choreography = new AudioVisualChoreographer()
+const shadowMemories: ShadowMemory[] = []
 
 let view: BoxRenderable | null = null
 let artwork: BoxRenderable | null = null
@@ -136,6 +156,8 @@ let sceneWidth = 0
 let sceneHeight = 0
 let lightX = 0.35
 let lightY = -0.25
+let sceneGeometry: SceneGeometry | null = null
+let lastShadowMemoryAt = Number.NEGATIVE_INFINITY
 
 function rotateCaster(point: Vec3, center: Vec2, wind: number): Vec3 {
   const pitch = 0.38 + Math.sin(wind * 0.73) * 0.08
@@ -348,6 +370,78 @@ function expandPolygon(polygon: Vec2[], expansion: number): Vec2[] {
   }))
 }
 
+function translatePolygon(polygon: Vec2[], offsetX: number, offsetY: number): Vec2[] {
+  return polygon.map((point) => ({ x: point.x + offsetX, y: point.y + offsetY }))
+}
+
+function polygonCenter(polygon: Vec2[]): Vec2 {
+  return polygon.reduce(
+    (center, point) => ({ x: center.x + point.x / polygon.length, y: center.y + point.y / polygon.length }),
+    { x: 0, y: 0 },
+  )
+}
+
+function computeSceneGeometry(): SceneGeometry {
+  const wind = elapsed * 0.00022
+  const directionLength = Math.hypot(lightX, lightY)
+  const direction =
+    directionLength < 0.05 ? { x: 0.8, y: -0.6 } : { x: lightX / directionLength, y: lightY / directionLength }
+  const lightRadius = RECEIVER_HALF_SIZE * (1.35 + Math.min(1, directionLength) * 0.65)
+  const light: Vec3 = { x: direction.x * lightRadius, y: direction.y * lightRadius, z: LIGHT_DEPTH }
+  const casterCenter = {
+    x: direction.x * (RECEIVER_HALF_SIZE - CASTER_HALF_SIZE * 0.25) - direction.y * Math.sin(wind * 0.81) * 0.22,
+    y: direction.y * (RECEIVER_HALF_SIZE - CASTER_HALF_SIZE * 0.25) + direction.x * Math.sin(wind * 0.81) * 0.22,
+  }
+  const projected = casterVertices(casterCenter, wind).map((vertex, index) => {
+    const point = projectShadow(vertex, light)
+    const impact = lightMode === "audio" ? choreography.impact : 0
+    if (impact <= 0) return point
+    const polarity = index % 2 === 0 ? -1 : 1
+    return {
+      x: point.x + polarity * impact * (0.28 + rhythmAnalyzer.stereoWidth * 0.22),
+      y: point.y + ((index % 3) - 1) * impact * 0.2,
+    }
+  })
+  const response = lightMode === "audio" ? audioShadowResponse(rhythmAnalyzer) : { expansion: 0, edgeLift: 0 }
+  const main = expandPolygon(convexHull(projected), response.expansion)
+  const stereoCenter = rhythmAnalyzer.stereoBalance * 0.38
+  const stereoSpread = rhythmAnalyzer.stereoWidth * 0.34
+  const bass = translatePolygon(
+    expandPolygon(main, 0.05 + rhythmAnalyzer.bass * 0.08),
+    stereoCenter - stereoSpread,
+    0.08,
+  )
+  const treble = translatePolygon(expandPolygon(main, -0.035), stereoCenter + stereoSpread, -0.05)
+  const lightDistance = Math.hypot(light.x, light.y)
+  return {
+    main,
+    bass,
+    treble,
+    center: polygonCenter(main),
+    penumbra: (0.5 + lightDistance * 0.035) * (1 + response.edgeLift),
+    wind,
+  }
+}
+
+function resetAudioVisualState(preserveSchedule = true): void {
+  if (preserveSchedule) choreography.cancel(elapsed)
+  else choreography.reset(elapsed)
+  shadowMemories.length = 0
+  lastShadowMemoryAt = Number.NEGATIVE_INFINITY
+  if (logoText) logoText.content = ORIGINAL_LOGO
+}
+
+function captureShadowMemory(geometry: SceneGeometry): void {
+  for (let index = shadowMemories.length - 1; index >= 0; index -= 1) {
+    if (elapsed - shadowMemories[index]!.capturedAt > SHADOW_MEMORY_LIFETIME_MS) shadowMemories.splice(index, 1)
+  }
+  if (lightMode !== "audio" || rhythmAnalyzer.level < 0.18) return
+  if (elapsed - lastShadowMemoryAt < SHADOW_MEMORY_INTERVAL_MS) return
+  shadowMemories.push({ polygon: geometry.main.map((point) => ({ ...point })), capturedAt: elapsed })
+  if (shadowMemories.length > SHADOW_MEMORY_MAX) shadowMemories.shift()
+  lastShadowMemoryAt = elapsed
+}
+
 function audioSpectrumBand(position: number): number {
   const mirrored = 1 - Math.abs(Math.max(0, Math.min(1, position)) * 2 - 1)
   return Math.min(rhythmAnalyzer.spectrum.length - 1, Math.floor(mirrored * rhythmAnalyzer.spectrum.length))
@@ -385,28 +479,7 @@ function audioField(point: Vec2, center: Vec2, wind: number): { strength: number
   return { strength: Math.min(1, strength + Number(spark) * 0.35), band, spark }
 }
 
-function buildReceiver(width: number, height: number): StyledText {
-  const wind = elapsed * 0.00022
-  const directionLength = Math.hypot(lightX, lightY)
-  const direction =
-    directionLength < 0.05 ? { x: 0.8, y: -0.6 } : { x: lightX / directionLength, y: lightY / directionLength }
-  const lightRadius = RECEIVER_HALF_SIZE * (1.35 + Math.min(1, directionLength) * 0.65)
-  const light: Vec3 = { x: direction.x * lightRadius, y: direction.y * lightRadius, z: LIGHT_DEPTH }
-  const casterCenter = {
-    x: direction.x * (RECEIVER_HALF_SIZE - CASTER_HALF_SIZE * 0.25) - direction.y * Math.sin(wind * 0.81) * 0.22,
-    y: direction.y * (RECEIVER_HALF_SIZE - CASTER_HALF_SIZE * 0.25) + direction.x * Math.sin(wind * 0.81) * 0.22,
-  }
-  const shadowResponse = lightMode === "audio" ? audioShadowResponse(rhythmAnalyzer) : { expansion: 0, edgeLift: 0 }
-  const polygon = expandPolygon(
-    convexHull(casterVertices(casterCenter, wind).map((vertex) => projectShadow(vertex, light))),
-    shadowResponse.expansion,
-  )
-  const shadowCenter = polygon.reduce(
-    (center, point) => ({ x: center.x + point.x / polygon.length, y: center.y + point.y / polygon.length }),
-    { x: 0, y: 0 },
-  )
-  const lightDistance = Math.hypot(light.x, light.y)
-  const penumbra = (0.5 + lightDistance * 0.035) * (1 + shadowResponse.edgeLift)
+function buildReceiver(width: number, height: number, geometry: SceneGeometry): StyledText {
   const palette = activePalette()
   const chunks = []
 
@@ -449,9 +522,24 @@ function buildReceiver(width: number, height: number): StyledText {
         x: ((column + 0.5) / width) * RECEIVER_HALF_SIZE * 2 - RECEIVER_HALF_SIZE,
         y: ((row + 0.5) / height) * RECEIVER_HALF_SIZE * 2 - RECEIVER_HALF_SIZE,
       }
-      const strength = shadowEnabled ? shadowStrength(point, polygon, penumbra, wind) : 0
-      const field = audioField(point, shadowCenter, wind)
-      if (field.strength > strength * 0.9 && field.strength > 0.055) {
+      const strength = shadowEnabled ? shadowStrength(point, geometry.main, geometry.penumbra, geometry.wind) : 0
+      const mainEdgeDistance = distanceToPolygon(point, geometry.main)
+      const trebleEdge =
+        lightMode === "audio"
+          ? (1 - smoothstep(0.02, 0.3, distanceToPolygon(point, geometry.treble))) * rhythmAnalyzer.treble
+          : 0
+      if (strength > 0.1) {
+        const glyph =
+          shadowGlyphIndex === -1
+            ? SHADOW_GLYPHS[Math.min(SHADOW_GLYPHS.length - 1, Math.floor(strength * SHADOW_GLYPHS.length))]!
+            : SHADOW_GLYPHS[shadowGlyphIndex]!
+        const color = trebleEdge > 0.42 && mainEdgeDistance < 0.24 ? palette.accent : palette.shadow
+        chunks.push(fg(color)(glyph))
+        continue
+      }
+
+      const field = audioField(point, geometry.center, geometry.wind)
+      if (field.strength > 0.075) {
         const glyphIndex = Math.min(
           AUDIO_FIELD_GLYPHS.length - 1,
           Math.floor(field.strength * AUDIO_FIELD_GLYPHS.length),
@@ -460,19 +548,48 @@ function buildReceiver(width: number, height: number): StyledText {
         chunks.push(fg(audioSpectrumColor(field.band, palette))(glyph))
         continue
       }
-      if (strength <= 0.025) {
-        chunks.push({ __isChunk: true as const, text: " " })
+
+      const bassStrength =
+        lightMode === "audio" && shadowEnabled
+          ? shadowStrength(point, geometry.bass, geometry.penumbra * 1.3, geometry.wind) * rhythmAnalyzer.bass * 0.42
+          : 0
+      if (bassStrength > 0.12) {
+        const glyphIndex = Math.min(2, Math.floor(bassStrength * 4))
+        chunks.push(fg(palette.accent)(AUDIO_FIELD_GLYPHS[glyphIndex]!))
         continue
       }
-      const glyph =
-        shadowGlyphIndex === -1
-          ? SHADOW_GLYPHS[Math.min(SHADOW_GLYPHS.length - 1, Math.floor(strength * SHADOW_GLYPHS.length))]!
-          : SHADOW_GLYPHS[shadowGlyphIndex]!
-      chunks.push(fg(palette.shadow)(glyph))
+
+      let memoryStrength = 0
+      for (const memory of shadowMemories) {
+        const age = (elapsed - memory.capturedAt) / SHADOW_MEMORY_LIFETIME_MS
+        if (age < 0 || age > 1) continue
+        const memoryShape = pointInPolygon(point, memory.polygon)
+          ? 1
+          : 1 - smoothstep(0, 0.18, distanceToPolygon(point, memory.polygon))
+        const sparse = hashNoise(column + Math.floor(memory.capturedAt / 130), row) > 0.38 + age * 0.42
+        if (sparse) memoryStrength = Math.max(memoryStrength, memoryShape * (1 - age) * 0.42)
+      }
+      if (memoryStrength > 0.08) {
+        chunks.push(fg(palette.shadow)(memoryStrength > 0.24 ? "∙" : "⋅"))
+        continue
+      }
+
+      if (trebleEdge > 0.18) {
+        chunks.push(fg(palette.accent)(trebleEdge > 0.55 ? "✦" : "·"))
+        continue
+      }
+      chunks.push({ __isChunk: true as const, text: " " })
     }
     if (row < height - 1) chunks.push({ __isChunk: true as const, text: "\n" })
   }
   return new StyledText(chunks)
+}
+
+function refreshScene(captureMemory = false): void {
+  if (!receiverText || sceneWidth <= 0 || sceneHeight <= 0) return
+  sceneGeometry = computeSceneGeometry()
+  if (captureMemory) captureShadowMemory(sceneGeometry)
+  receiverText.content = buildReceiver(sceneWidth, sceneHeight, sceneGeometry)
 }
 
 function updateControls(): void {
@@ -502,6 +619,7 @@ function updateControls(): void {
 
 function startAudioLight(): void {
   rhythmAnalyzer.reset()
+  resetAudioVisualState()
   if (!audio || !audioSound || audioStatus === "unavailable") return
   audioVoice = audio.play(audioSound, { volume: 1, pan: 0, loop: true })
   audioStatus = audioVoice ? "playing" : "unavailable"
@@ -511,6 +629,7 @@ function stopAudioLight(): void {
   if (audio && audioVoice) audio.stopVoice(audioVoice)
   audioVoice = null
   rhythmAnalyzer.reset()
+  resetAudioVisualState()
   if (audioStatus === "playing") audioStatus = "ready"
 }
 
@@ -520,6 +639,12 @@ async function initializeAudio(): Promise<void> {
   nextAudio.on("error", () => {
     if (audio !== nextAudio) return
     audioStatus = "unavailable"
+    const failedVoice = audioVoice
+    audioVoice = null
+    if (failedVoice) nextAudio.stopVoice(failedVoice)
+    rhythmAnalyzer.reset()
+    resetAudioVisualState()
+    refreshScene()
     updateControls()
   })
 
@@ -550,11 +675,11 @@ function setHelpVisible(visible: boolean): void {
   rendererInstance?.requestRender()
 }
 
-function updateColors(): void {
+function updateColors(refreshReceiver = true): void {
   const { background, foreground } = activePalette()
   rendererInstance?.setBackgroundColor(background)
   if (view) view.backgroundColor = background
-  if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+  if (refreshReceiver) refreshScene()
   if (logoPlate) logoPlate.backgroundColor = foreground
   if (logoText) logoText.fg = background
   if (helpModal) {
@@ -570,7 +695,7 @@ function updateLightFromMouse(event: MouseEvent): void {
   if (!renderer || !receiverText || lightMode !== "mouse") return
   lightX = (Math.max(0, Math.min(renderer.width - 1, event.x)) / Math.max(1, renderer.width - 1)) * 2 - 1
   lightY = (Math.max(0, Math.min(renderer.height - 1, event.y)) / Math.max(1, renderer.height - 1)) * 2 - 1
-  receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+  refreshScene()
 }
 
 function renderArtwork(renderer: CliRenderer): void {
@@ -582,6 +707,7 @@ function renderArtwork(renderer: CliRenderer): void {
   const plateHeight = compact ? 5 : 7
   sceneWidth = width
   sceneHeight = height
+  sceneGeometry = computeSceneGeometry()
 
   artwork = new BoxRenderable(renderer, {
     id: "opentui-logo-shadow-artwork",
@@ -592,7 +718,7 @@ function renderArtwork(renderer: CliRenderer): void {
   })
   receiverText = new TextRenderable(renderer, {
     id: "opentui-logo-shadow-receiver",
-    content: buildReceiver(width, height),
+    content: buildReceiver(width, height, sceneGeometry),
     selectable: false,
   })
   logoPlate = new BoxRenderable(renderer, {
@@ -675,6 +801,7 @@ export async function run(renderer: CliRenderer, options: LogoTunnelOptions = {}
   frameAccumulator = 0
   audioStatus = "loading"
   rhythmAnalyzer.reset()
+  resetAudioVisualState(false)
   renderer.start()
 
   view?.destroyRecursively()
@@ -704,12 +831,11 @@ export async function run(renderer: CliRenderer, options: LogoTunnelOptions = {}
     if (lightMode !== "mouse") {
       if (lightMode === "audio" && audio && audioVoice) {
         const analysis = audio.readTapFrames(AUDIO_ANALYSIS_FRAMES, AUDIO_CHANNELS)
-        rhythmAnalyzer.update(
-          analysis && analysis.framesRead > 0 ? analysis.frames : EMPTY_PCM,
-          AUDIO_CHANNELS,
-          AUDIO_SAMPLE_RATE,
-          frameDelta,
-        )
+        const frames =
+          analysis && analysis.framesRead > 0
+            ? analysis.frames.subarray(0, analysis.framesRead * AUDIO_CHANNELS)
+            : EMPTY_PCM
+        rhythmAnalyzer.update(frames, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, frameDelta)
       } else if (lightMode === "audio") {
         rhythmAnalyzer.update(EMPTY_PCM, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, frameDelta)
       }
@@ -718,9 +844,9 @@ export async function run(renderer: CliRenderer, options: LogoTunnelOptions = {}
       lightX = position.x
       lightY = position.y
     }
-    if (colorCycling) updateColors()
-    else if ((windEnabled || lightMode !== "mouse") && receiverText)
-      receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+    if (lightMode === "audio") choreography.update(elapsed, rhythmAnalyzer)
+    if (windEnabled || lightMode !== "mouse" || colorCycling) refreshScene(lightMode === "audio")
+    if (colorCycling) updateColors(false)
   }
   renderer.setFrameCallback(frameHandler)
 
@@ -748,11 +874,11 @@ export async function run(renderer: CliRenderer, options: LogoTunnelOptions = {}
       updateColors()
     } else if (key.name === "s" && !key.ctrl && !key.meta && !key.shift) {
       shadowEnabled = !shadowEnabled
-      if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+      refreshScene()
       updateControls()
     } else if (key.name === "w" && !key.ctrl && !key.meta && !key.shift) {
       windEnabled = !windEnabled
-      if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+      refreshScene()
       updateControls()
     } else if (key.name === "l" && !key.ctrl && !key.meta && !key.shift) {
       if (lightMode === "mouse") {
@@ -764,11 +890,11 @@ export async function run(renderer: CliRenderer, options: LogoTunnelOptions = {}
         lightMode = "mouse"
         stopAudioLight()
       }
-      if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+      refreshScene()
       updateControls()
     } else if (key.name === "g" && !key.ctrl && !key.meta && !key.shift) {
       shadowGlyphIndex = shadowGlyphIndex === SHADOW_GLYPHS.length - 1 ? -1 : shadowGlyphIndex + 1
-      if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+      refreshScene()
       updateControls()
     } else if (key.name === "r" && !key.ctrl && !key.meta && !key.shift) {
       elapsed = 0
@@ -783,6 +909,7 @@ export async function run(renderer: CliRenderer, options: LogoTunnelOptions = {}
     }
   }
   resizeHandler = () => {
+    resetAudioVisualState()
     renderArtwork(renderer)
     createHelpModal(renderer)
   }

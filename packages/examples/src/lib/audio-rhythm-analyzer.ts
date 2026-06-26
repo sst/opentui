@@ -17,13 +17,21 @@ export class AudioRhythmAnalyzer {
   bass = 0
   mid = 0
   treble = 0
+  stereoBalance = 0
+  stereoWidth = 0
   readonly spectrum = new Float32Array(AUDIO_SPECTRUM_BANDS)
 
   private readonly fft = new FFT(AUDIO_ANALYSIS_FRAMES)
   private readonly fftInput = new Float32Array(AUDIO_ANALYSIS_FRAMES)
   private readonly fftOutput = this.fft.createComplexArray()
+  private readonly sideFftInput = new Float32Array(AUDIO_ANALYSIS_FRAMES)
+  private readonly sideFftOutput = this.fft.createComplexArray()
   private bassFilter = 0
   private midFilter = 0
+  private leftBassFilter = 0
+  private rightBassFilter = 0
+  private leftMidFilter = 0
+  private rightMidFilter = 0
   private bassBaseline = 0.01
   private previousBassRms = 0
 
@@ -41,25 +49,45 @@ export class AudioRhythmAnalyzer {
     let bassEnergy = 0
     let midEnergy = 0
     let trebleEnergy = 0
+    let leftEnergy = 0
+    let rightEnergy = 0
+    let sideEnergy = 0
     for (let frame = 0; frame < frameCount; frame += 1) {
       const offset = frame * channelCount
+      const left = pcm[offset] ?? 0
+      const right = channelCount > 1 ? (pcm[offset + 1] ?? left) : left
       let sample = 0
       for (let channel = 0; channel < channelCount; channel += 1) sample += pcm[offset + channel] ?? 0
       sample /= channelCount
-      this.fftInput[frame] = sample * (0.5 - 0.5 * Math.cos((Math.PI * 2 * frame) / Math.max(1, frameCount - 1)))
+      const window = 0.5 - 0.5 * Math.cos((Math.PI * 2 * frame) / Math.max(1, frameCount - 1))
+      this.fftInput[frame] = sample * window
+      this.sideFftInput[frame] = (left - right) * 0.5 * window
       this.bassFilter += bassFilterRate * (sample - this.bassFilter)
       this.midFilter += midFilterRate * (sample - this.midFilter)
-      const mid = this.midFilter - this.bassFilter
-      const treble = sample - this.midFilter
+      this.leftBassFilter += bassFilterRate * (left - this.leftBassFilter)
+      this.rightBassFilter += bassFilterRate * (right - this.rightBassFilter)
+      this.leftMidFilter += midFilterRate * (left - this.leftMidFilter)
+      this.rightMidFilter += midFilterRate * (right - this.rightMidFilter)
+      const mid =
+        Math.hypot(this.leftMidFilter - this.leftBassFilter, this.rightMidFilter - this.rightBassFilter) / Math.SQRT2
+      const treble = Math.hypot(left - this.leftMidFilter, right - this.rightMidFilter) / Math.SQRT2
       sampleEnergy += sample * sample
-      bassEnergy += this.bassFilter * this.bassFilter
+      bassEnergy += (this.leftBassFilter * this.leftBassFilter + this.rightBassFilter * this.rightBassFilter) * 0.5
       midEnergy += mid * mid
       trebleEnergy += treble * treble
+      leftEnergy += left * left
+      rightEnergy += right * right
+      const side = (left - right) * 0.5
+      sideEnergy += side * side
     }
     this.fftInput.fill(0, frameCount)
+    this.sideFftInput.fill(0, frameCount)
     this.updateSpectrum(sampleRate, deltaMs)
 
-    const rms = Math.sqrt(sampleEnergy / frameCount)
+    const monoRms = Math.sqrt(sampleEnergy / frameCount)
+    const leftRms = Math.sqrt(leftEnergy / frameCount)
+    const rightRms = Math.sqrt(rightEnergy / frameCount)
+    const rms = Math.max(monoRms, Math.hypot(leftRms, rightRms) / Math.SQRT2)
     const bassRms = Math.sqrt(bassEnergy / frameCount)
     const midRms = Math.sqrt(midEnergy / frameCount)
     const trebleRms = Math.sqrt(trebleEnergy / frameCount)
@@ -69,6 +97,11 @@ export class AudioRhythmAnalyzer {
     this.bass = this.updateBand(this.bass, Math.min(1, Math.sqrt(bassRms) * 1.5), deltaMs)
     this.mid = this.updateBand(this.mid, Math.min(1, Math.sqrt(midRms) * 1.35), deltaMs)
     this.treble = this.updateBand(this.treble, Math.min(1, Math.sqrt(trebleRms) * 1.2), deltaMs)
+    const stereoTotal = leftRms + rightRms
+    const balanceTarget = stereoTotal > 0.0001 ? (rightRms - leftRms) / stereoTotal : 0
+    const widthTarget = Math.min(1, Math.sqrt(sideEnergy / frameCount) / Math.max(0.001, rms))
+    this.stereoBalance = this.updateSigned(this.stereoBalance, balanceTarget, deltaMs)
+    this.stereoWidth = this.updateBand(this.stereoWidth, widthTarget, deltaMs)
 
     const onset = Math.max(0, bassRms - this.previousBassRms) / Math.max(0.01, this.bassBaseline)
     const bassFocus = Math.min(1, bassRms / Math.max(0.001, rms))
@@ -84,10 +117,17 @@ export class AudioRhythmAnalyzer {
     this.bass = 0
     this.mid = 0
     this.treble = 0
+    this.stereoBalance = 0
+    this.stereoWidth = 0
     this.spectrum.fill(0)
     this.fftInput.fill(0)
+    this.sideFftInput.fill(0)
     this.bassFilter = 0
     this.midFilter = 0
+    this.leftBassFilter = 0
+    this.rightBassFilter = 0
+    this.leftMidFilter = 0
+    this.rightMidFilter = 0
     this.bassBaseline = 0.01
     this.previousBassRms = 0
   }
@@ -99,11 +139,14 @@ export class AudioRhythmAnalyzer {
     this.bass *= decay
     this.mid *= decay
     this.treble *= decay
+    this.stereoBalance *= decay
+    this.stereoWidth *= decay
     for (let band = 0; band < this.spectrum.length; band += 1) this.spectrum[band] *= decay
   }
 
   private updateSpectrum(sampleRate: number, deltaMs: number): void {
     this.fft.realTransform(this.fftOutput, this.fftInput)
+    this.fft.realTransform(this.sideFftOutput, this.sideFftInput)
     const frequencyRatio = SPECTRUM_HIGH_HZ / SPECTRUM_LOW_HZ
     for (let band = 0; band < this.spectrum.length; band += 1) {
       const lowHz = SPECTRUM_LOW_HZ * frequencyRatio ** (band / this.spectrum.length)
@@ -117,7 +160,9 @@ export class AudioRhythmAnalyzer {
       for (let bin = lowBin; bin <= highBin; bin += 1) {
         const real = this.fftOutput[bin * 2] ?? 0
         const imaginary = this.fftOutput[bin * 2 + 1] ?? 0
-        peak = Math.max(peak, Math.hypot(real, imaginary) / (AUDIO_ANALYSIS_FRAMES * 0.5))
+        const sideReal = this.sideFftOutput[bin * 2] ?? 0
+        const sideImaginary = this.sideFftOutput[bin * 2 + 1] ?? 0
+        peak = Math.max(peak, Math.hypot(real, imaginary, sideReal, sideImaginary) / (AUDIO_ANALYSIS_FRAMES * 0.5))
       }
       const target = Math.min(1, Math.sqrt(peak) * 1.45)
       this.spectrum[band] = this.updateBand(this.spectrum[band] ?? 0, target, deltaMs)
@@ -127,6 +172,11 @@ export class AudioRhythmAnalyzer {
   private updateBand(current: number, target: number, deltaMs: number): number {
     const timeConstantMs = target > current ? 45 : 240
     const rate = 1 - Math.exp(-Math.max(0, deltaMs) / timeConstantMs)
+    return current + (target - current) * rate
+  }
+
+  private updateSigned(current: number, target: number, deltaMs: number): number {
+    const rate = 1 - Math.exp(-Math.max(0, deltaMs) / 70)
     return current + (target - current) * rate
   }
 }

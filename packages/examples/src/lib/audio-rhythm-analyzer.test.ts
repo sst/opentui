@@ -14,6 +14,16 @@ function sineWave(frequency: number, amplitude: number): Float32Array {
   return pcm
 }
 
+function stereoSineWave(frequency: number, leftAmplitude: number, rightAmplitude: number): Float32Array {
+  const pcm = new Float32Array(AUDIO_ANALYSIS_FRAMES * 2)
+  for (let frame = 0; frame < AUDIO_ANALYSIS_FRAMES; frame += 1) {
+    const sample = Math.sin((frame * Math.PI * 2 * frequency) / SAMPLE_RATE)
+    pcm[frame * 2] = sample * leftAmplitude
+    pcm[frame * 2 + 1] = sample * rightAmplitude
+  }
+  return pcm
+}
+
 test("silence produces no audio-reactive motion", () => {
   const analyzer = new AudioRhythmAnalyzer()
 
@@ -68,6 +78,28 @@ test("spectrum resolves tones into distinct logarithmic bands", () => {
   expect(bassAnalyzer.spectrum).toHaveLength(AUDIO_SPECTRUM_BANDS)
   expect(bassPeak).toBeLessThan(5)
   expect(treblePeak).toBeGreaterThan(10)
+})
+
+test("stereo balance follows channel energy", () => {
+  const leftAnalyzer = new AudioRhythmAnalyzer()
+  const rightAnalyzer = new AudioRhythmAnalyzer()
+
+  leftAnalyzer.update(stereoSineWave(400, 0.8, 0.05), 2, SAMPLE_RATE, 80)
+  rightAnalyzer.update(stereoSineWave(400, 0.05, 0.8), 2, SAMPLE_RATE, 80)
+
+  expect(leftAnalyzer.stereoBalance).toBeLessThan(-0.3)
+  expect(rightAnalyzer.stereoBalance).toBeGreaterThan(0.3)
+})
+
+test("anti-phase stereo retains energy for spatial choreography", () => {
+  const analyzer = new AudioRhythmAnalyzer()
+
+  analyzer.update(stereoSineWave(100, 0.8, -0.8), 2, SAMPLE_RATE, 80)
+
+  expect(analyzer.level).toBeGreaterThan(0.5)
+  expect(analyzer.bass).toBeGreaterThan(0.2)
+  expect(analyzer.stereoWidth).toBeGreaterThan(0.4)
+  expect(Math.max(...analyzer.spectrum)).toBeGreaterThan(0.2)
 })
 
 test("pulse decays and reset clears analyzer state", () => {
