@@ -1,14 +1,23 @@
+import { basename, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
+
 import {
+  Audio,
   BoxRenderable,
   type CliRenderer,
   type KeyEvent,
   type MouseEvent,
   StyledText,
   TextRenderable,
+  type AudioSound,
+  type AudioVoice,
   createCliRenderer,
   fg,
 } from "@opentui/core"
 
+import { AUDIO_ANALYSIS_FRAMES, AudioRhythmAnalyzer } from "./lib/audio-rhythm-analyzer.js"
+import { audioLightPosition, audioShadowResponse, automaticLightPosition } from "./lib/audio-light-motion.js"
+import { parseAudioFileArgs } from "./lib/audio-file-args.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 interface ColorStop {
@@ -43,6 +52,12 @@ interface Vec3 extends Vec2 {
   z: number
 }
 
+type LightMode = "mouse" | "automatic" | "audio"
+
+interface LogoTunnelOptions {
+  audioFile?: string
+}
+
 const ORIGINAL_LOGO = ["▄▄▄ ▄▄▄ ▄▄▄ ▄▄  █▄▄ ▄ ▄ ▄", "█ █ █ █ █ ▀ █ █ █ ▄ █ █ █", "▀▀▀ █▀▀ ▀▀▀ ▀ ▀ ▀▀▀ ▀▀▀ ▀"].join("\n")
 const COLOR_STOPS: readonly ColorStop[] = [
   { background: "#031B1C", foreground: "#24F4EE", shadow: "#149E99" },
@@ -69,6 +84,7 @@ const AMBIENT_STOPS: readonly AmbientStop[] = [
   },
 ]
 const COLOR_CYCLE_SPEEDS: readonly ColorCycleSpeed[] = [
+  { name: "slowest", hold: 2000, transition: 4000 },
   { name: "slow", hold: 1000, transition: 2400 },
   { name: "normal", hold: 700, transition: 1600 },
   { name: "fast", hold: 350, transition: 850 },
@@ -79,6 +95,11 @@ const LIGHT_DEPTH = -4
 const CASTER_DEPTH = 1.4
 const CASTER_HALF_SIZE = 1.35
 const SHADOW_GLYPHS = ["⋅", "∙", "•", "⦁", "●"] as const
+const DEFAULT_AUDIO_TRACK_PATH = fileURLToPath(new URL("./koop.wav", import.meta.url))
+const AUDIO_SAMPLE_RATE = 48_000
+const AUDIO_CHANNELS = 2
+const EMPTY_PCM = new Float32Array()
+const rhythmAnalyzer = new AudioRhythmAnalyzer()
 
 let view: BoxRenderable | null = null
 let artwork: BoxRenderable | null = null
@@ -92,16 +113,22 @@ let rendererInstance: CliRenderer | null = null
 let keyHandler: ((key: KeyEvent) => void) | null = null
 let resizeHandler: (() => void) | null = null
 let frameHandler: ((deltaTime: number) => Promise<void>) | null = null
+let audio: Audio | null = null
+let audioSound: AudioSound | null = null
+let audioVoice: AudioVoice | null = null
+let audioStatus: "loading" | "ready" | "playing" | "unavailable" = "loading"
+let audioTrackPath = DEFAULT_AUDIO_TRACK_PATH
+let audioTrackName = basename(DEFAULT_AUDIO_TRACK_PATH)
 let colorIndex = 0
 let colorCycling = false
 let shadowEnabled = true
 let shadowGlyphIndex = -1
 let windEnabled = true
-let autoLight = false
+let lightMode: LightMode = "mouse"
 let helpVisible = false
 let elapsed = 0
 let colorElapsed = 0
-let colorCycleSpeedIndex = 1
+let colorCycleSpeedIndex = 2
 let frameAccumulator = 0
 let sceneWidth = 0
 let sceneHeight = 0
@@ -302,6 +329,17 @@ function shadowStrength(point: Vec2, polygon: Vec2[], penumbra: number, wind: nu
   return (1 - smoothstep(0, penumbra * (0.72 + dapple * 0.55), distance)) * (0.32 + dapple * 0.42)
 }
 
+function expandPolygon(polygon: Vec2[], expansion: number): Vec2[] {
+  if (expansion === 0) return polygon
+  const center = polygon.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 })
+  center.x /= polygon.length
+  center.y /= polygon.length
+  return polygon.map((point) => ({
+    x: center.x + (point.x - center.x) * (1 + expansion),
+    y: center.y + (point.y - center.y) * (1 + expansion),
+  }))
+}
+
 function buildReceiver(width: number, height: number): StyledText {
   const wind = elapsed * 0.00022
   const directionLength = Math.hypot(lightX, lightY)
@@ -313,9 +351,13 @@ function buildReceiver(width: number, height: number): StyledText {
     x: direction.x * (RECEIVER_HALF_SIZE - CASTER_HALF_SIZE * 0.25) - direction.y * Math.sin(wind * 0.81) * 0.22,
     y: direction.y * (RECEIVER_HALF_SIZE - CASTER_HALF_SIZE * 0.25) + direction.x * Math.sin(wind * 0.81) * 0.22,
   }
-  const polygon = convexHull(casterVertices(casterCenter, wind).map((vertex) => projectShadow(vertex, light)))
+  const shadowResponse = lightMode === "audio" ? audioShadowResponse(rhythmAnalyzer) : { expansion: 0, edgeLift: 0 }
+  const polygon = expandPolygon(
+    convexHull(casterVertices(casterCenter, wind).map((vertex) => projectShadow(vertex, light))),
+    shadowResponse.expansion,
+  )
   const lightDistance = Math.hypot(light.x, light.y)
-  const penumbra = 0.5 + lightDistance * 0.035
+  const penumbra = (0.5 + lightDistance * 0.035) * (1 + shadowResponse.edgeLift)
   const palette = activePalette()
   const chunks = []
 
@@ -365,18 +407,69 @@ function buildReceiver(width: number, height: number): StyledText {
 function updateControls(): void {
   if (!helpText) return
   const texture = shadowGlyphIndex === -1 ? "adaptive" : SHADOW_GLYPHS[shadowGlyphIndex]!
+  const lightStatus =
+    lightMode === "audio"
+      ? audioStatus === "playing"
+        ? `audio (${audioTrackName})`
+        : audioStatus === "loading"
+          ? "audio (loading)"
+          : "audio (unavailable)"
+      : lightMode
   helpText.content = [
     "Mouse       move light source",
     `C           colors: ${colorCycling ? COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.name : "fixed"}`,
-    "Shift+C     change color speed",
+    `Shift+C     color speed: ${COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.name}`,
     "1 2 3 4     select fixed color",
     `W           wind: ${windEnabled ? "moving" : "frozen"}`,
-    `L           light: ${autoLight ? "automatic" : "mouse"}`,
+    `L           light: ${lightStatus}`,
     `S           shadow: ${shadowEnabled ? "visible" : "hidden"}`,
     `G           texture: ${texture}`,
     "R           reset scene",
     "? / Esc     close help",
   ].join("\n")
+}
+
+function startAudioLight(): void {
+  rhythmAnalyzer.reset()
+  if (!audio || !audioSound || audioStatus === "unavailable") return
+  audioVoice = audio.play(audioSound, { volume: 1, pan: 0, loop: true })
+  audioStatus = audioVoice ? "playing" : "unavailable"
+}
+
+function stopAudioLight(): void {
+  if (audio && audioVoice) audio.stopVoice(audioVoice)
+  audioVoice = null
+  rhythmAnalyzer.reset()
+  if (audioStatus === "playing") audioStatus = "ready"
+}
+
+async function initializeAudio(): Promise<void> {
+  const nextAudio = Audio.create({ autoStart: false, sampleRate: AUDIO_SAMPLE_RATE, playbackChannels: AUDIO_CHANNELS })
+  audio = nextAudio
+  nextAudio.on("error", () => {
+    if (audio !== nextAudio) return
+    audioStatus = "unavailable"
+    updateControls()
+  })
+
+  const tapEnabled = nextAudio.enableTap(AUDIO_ANALYSIS_FRAMES * 2)
+  const nextSound = await nextAudio.loadSoundFile(audioTrackPath)
+  if (audio !== nextAudio) {
+    nextAudio.dispose()
+    return
+  }
+  if (!tapEnabled || !nextSound || !nextAudio.start()) {
+    audioStatus = "unavailable"
+    nextAudio.dispose()
+    audio = null
+    updateControls()
+    return
+  }
+
+  audioSound = nextSound
+  audioStatus = "ready"
+  if (lightMode === "audio") startAudioLight()
+  updateControls()
 }
 
 function setHelpVisible(visible: boolean): void {
@@ -403,7 +496,7 @@ function updateColors(): void {
 
 function updateLightFromMouse(event: MouseEvent): void {
   const renderer = rendererInstance
-  if (!renderer || !receiverText || autoLight) return
+  if (!renderer || !receiverText || lightMode !== "mouse") return
   lightX = (Math.max(0, Math.min(renderer.width - 1, event.x)) / Math.max(1, renderer.width - 1)) * 2 - 1
   lightY = (Math.max(0, Math.min(renderer.height - 1, event.y)) / Math.max(1, renderer.height - 1)) * 2 - 1
   receiverText.content = buildReceiver(sceneWidth, sceneHeight)
@@ -494,19 +587,23 @@ function createHelpModal(renderer: CliRenderer): void {
   updateControls()
 }
 
-export function run(renderer: CliRenderer): void {
+export async function run(renderer: CliRenderer, options: LogoTunnelOptions = {}): Promise<void> {
   rendererInstance = renderer
+  audioTrackPath = options.audioFile ? resolve(options.audioFile) : DEFAULT_AUDIO_TRACK_PATH
+  audioTrackName = basename(audioTrackPath)
   colorIndex = 0
   colorCycling = false
   shadowEnabled = true
   shadowGlyphIndex = -1
   windEnabled = true
-  autoLight = false
+  lightMode = "mouse"
   helpVisible = false
   elapsed = 0
   colorElapsed = 0
-  colorCycleSpeedIndex = 1
+  colorCycleSpeedIndex = 2
   frameAccumulator = 0
+  audioStatus = "loading"
+  rhythmAnalyzer.reset()
   renderer.start()
 
   view?.destroyRecursively()
@@ -526,18 +623,33 @@ export function run(renderer: CliRenderer): void {
   createHelpModal(renderer)
 
   frameHandler = async (deltaTime: number) => {
-    if (windEnabled || autoLight) elapsed += deltaTime
+    if (windEnabled || lightMode !== "mouse") elapsed += deltaTime
     if (colorCycling) colorElapsed += deltaTime
     frameAccumulator += deltaTime
-    if (frameAccumulator < 1000 / 12) return
-    frameAccumulator %= 1000 / 12
-    if (autoLight) {
-      const lightTime = elapsed * 0.00018
-      lightX = Math.sin(lightTime * 1.07) * 0.86
-      lightY = Math.sin(lightTime * 0.73 + 1.1) * 0.78
+    const frameInterval = 1000 / (lightMode === "audio" ? 24 : 12)
+    if (frameAccumulator < frameInterval) return
+    const frameDelta = frameAccumulator
+    frameAccumulator %= frameInterval
+    if (lightMode !== "mouse") {
+      if (lightMode === "audio" && audio && audioVoice) {
+        const analysis = audio.readTapFrames(AUDIO_ANALYSIS_FRAMES, AUDIO_CHANNELS)
+        rhythmAnalyzer.update(
+          analysis && analysis.framesRead > 0 ? analysis.frames : EMPTY_PCM,
+          AUDIO_CHANNELS,
+          AUDIO_SAMPLE_RATE,
+          frameDelta,
+        )
+      } else if (lightMode === "audio") {
+        rhythmAnalyzer.update(EMPTY_PCM, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, frameDelta)
+      }
+      const position =
+        lightMode === "audio" ? audioLightPosition(elapsed, rhythmAnalyzer) : automaticLightPosition(elapsed)
+      lightX = position.x
+      lightY = position.y
     }
     if (colorCycling) updateColors()
-    else if ((windEnabled || autoLight) && receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
+    else if ((windEnabled || lightMode !== "mouse") && receiverText)
+      receiverText.content = buildReceiver(sceneWidth, sceneHeight)
   }
   renderer.setFrameCallback(frameHandler)
 
@@ -548,8 +660,6 @@ export function run(renderer: CliRenderer): void {
     } else if (key.name === "escape" && helpVisible) {
       setHelpVisible(false)
       key.preventDefault()
-    } else if (helpVisible) {
-      return
     } else if (key.name === "c" && key.shift && !key.ctrl && !key.meta) {
       colorCycleSpeedIndex = (colorCycleSpeedIndex + 1) % COLOR_CYCLE_SPEEDS.length
       colorElapsed = 0
@@ -574,7 +684,15 @@ export function run(renderer: CliRenderer): void {
       if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
       updateControls()
     } else if (key.name === "l" && !key.ctrl && !key.meta && !key.shift) {
-      autoLight = !autoLight
+      if (lightMode === "mouse") {
+        lightMode = "automatic"
+      } else if (lightMode === "automatic") {
+        lightMode = "audio"
+        startAudioLight()
+      } else {
+        lightMode = "mouse"
+        stopAudioLight()
+      }
       if (receiverText) receiverText.content = buildReceiver(sceneWidth, sceneHeight)
       updateControls()
     } else if (key.name === "g" && !key.ctrl && !key.meta && !key.shift) {
@@ -588,7 +706,8 @@ export function run(renderer: CliRenderer): void {
       colorIndex = 0
       lightX = 0.35
       lightY = -0.25
-      autoLight = false
+      lightMode = "mouse"
+      stopAudioLight()
       updateColors()
     }
   }
@@ -598,12 +717,18 @@ export function run(renderer: CliRenderer): void {
   }
   renderer.keyInput.on("keypress", keyHandler)
   renderer.on("resize", resizeHandler)
+  await initializeAudio()
 }
 
 export function destroy(renderer: CliRenderer): void {
   if (frameHandler) renderer.removeFrameCallback(frameHandler)
   if (keyHandler) renderer.keyInput.off("keypress", keyHandler)
   if (resizeHandler) renderer.off("resize", resizeHandler)
+  stopAudioLight()
+  audio?.dispose()
+  audio = null
+  audioSound = null
+  audioStatus = "loading"
   view?.destroyRecursively()
   renderer.setBackgroundColor("transparent")
   view = null
@@ -622,6 +747,15 @@ export function destroy(renderer: CliRenderer): void {
 }
 
 if (import.meta.main) {
+  let options: LogoTunnelOptions
+  try {
+    const args = parseAudioFileArgs(process.argv.slice(2))
+    options = { audioFile: args.filePath }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    process.stderr.write(`${message}\nUsage: bun src/opentui-logo-tunnel-demo.ts [-f <audio-file>]\n`)
+    process.exit(1)
+  }
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
     onDestroy: () => {
@@ -631,5 +765,5 @@ if (import.meta.main) {
     },
   })
   setupCommonDemoKeys(renderer)
-  run(renderer)
+  await run(renderer, options)
 }
