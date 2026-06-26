@@ -106,6 +106,90 @@ pub const XcbGetSelectionOwnerReply = extern struct {
     length: u32,
     owner: u32,
 };
+pub const XcbSetup = extern struct {
+    status: u8,
+    pad0: u8,
+    protocol_major_version: u16,
+    protocol_minor_version: u16,
+    length: u16,
+    release_number: u32,
+    resource_id_base: u32,
+    resource_id_mask: u32,
+    motion_buffer_size: u32,
+    vendor_length: u16,
+    maximum_request_length: u16,
+    roots_length: u8,
+    pixmap_formats_length: u8,
+    image_byte_order: u8,
+    bitmap_format_bit_order: u8,
+    bitmap_format_scanline_unit: u8,
+    bitmap_format_scanline_pad: u8,
+    min_keycode: u8,
+    max_keycode: u8,
+    pad1: [4]u8,
+};
+pub const XcbScreen = extern struct {
+    root: u32,
+    default_colormap: u32,
+    white_pixel: u32,
+    black_pixel: u32,
+    current_input_masks: u32,
+    width_in_pixels: u16,
+    height_in_pixels: u16,
+    width_in_millimeters: u16,
+    height_in_millimeters: u16,
+    min_installed_maps: u16,
+    max_installed_maps: u16,
+    root_visual: u32,
+    backing_stores: u8,
+    save_unders: u8,
+    root_depth: u8,
+    allowed_depths_length: u8,
+};
+pub const XcbScreenIterator = extern struct {
+    data: *XcbScreen,
+    remaining: c_int,
+    index: c_int,
+};
+pub const XcbPropertyNotifyEvent = extern struct {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    window: u32,
+    atom: u32,
+    time: u32,
+    state: u8,
+    pad1: [3]u8,
+};
+pub const XcbSelectionClearEvent = extern struct {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    time: u32,
+    owner: u32,
+    selection: u32,
+};
+pub const XcbSelectionRequestEvent = extern struct {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    time: u32,
+    owner: u32,
+    requestor: u32,
+    selection: u32,
+    target: u32,
+    property: u32,
+};
+pub const XcbSelectionNotifyEvent = extern struct {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    time: u32,
+    requestor: u32,
+    selection: u32,
+    target: u32,
+    property: u32,
+};
 
 const LibraryKind = enum { wayland, x11 };
 const LoadLibraryFn = *const fn (context: *anyopaque, kind: LibraryKind) bool;
@@ -137,18 +221,24 @@ pub const XcbSymbols = struct {
     xcb_connection_has_error: *const fn (*XcbConnection) callconv(.c) c_int,
     xcb_disconnect: *const fn (*XcbConnection) callconv(.c) void,
     xcb_get_file_descriptor: *const fn (*XcbConnection) callconv(.c) c_int,
+    xcb_get_setup: *const fn (*XcbConnection) callconv(.c) *const XcbSetup,
+    xcb_setup_roots_iterator: *const fn (*const XcbSetup) callconv(.c) XcbScreenIterator,
+    xcb_screen_next: *const fn (*XcbScreenIterator) callconv(.c) void,
     xcb_poll_for_event: *const fn (*XcbConnection) callconv(.c) ?*XcbGenericEvent,
     xcb_poll_for_reply: *const fn (*XcbConnection, u32, *?*anyopaque, *?*XcbGenericError) callconv(.c) c_int,
     xcb_discard_reply: *const fn (*XcbConnection, u32) callconv(.c) void,
+    xcb_request_check: *const fn (*XcbConnection, XcbCookie) callconv(.c) ?*XcbGenericError,
     xcb_flush: *const fn (*XcbConnection) callconv(.c) c_int,
     xcb_generate_id: *const fn (*XcbConnection) callconv(.c) u32,
     xcb_create_window: *const fn (*XcbConnection, u8, u32, u32, i16, i16, u16, u16, u16, u16, u32, u32, ?*const anyopaque) callconv(.c) XcbCookie,
+    xcb_change_window_attributes: *const fn (*XcbConnection, u32, u32, ?*const anyopaque) callconv(.c) XcbCookie,
     xcb_destroy_window: *const fn (*XcbConnection, u32) callconv(.c) XcbCookie,
     xcb_intern_atom: *const fn (*XcbConnection, u8, u16, [*]const u8) callconv(.c) XcbCookie,
     xcb_intern_atom_reply: *const fn (*XcbConnection, XcbCookie, ?*?*XcbGenericError) callconv(.c) ?*XcbInternAtomReply,
     xcb_get_property: *const fn (*XcbConnection, u8, u32, u32, u32, u32, u32) callconv(.c) XcbCookie,
     xcb_get_property_reply: *const fn (*XcbConnection, XcbCookie, ?*?*XcbGenericError) callconv(.c) ?*XcbGetPropertyReply,
     xcb_change_property: *const fn (*XcbConnection, u8, u32, u32, u32, u8, u32, ?*const anyopaque) callconv(.c) XcbCookie,
+    xcb_change_property_checked: *const fn (*XcbConnection, u8, u32, u32, u32, u8, u32, ?*const anyopaque) callconv(.c) XcbCookie,
     xcb_delete_property: *const fn (*XcbConnection, u32, u32) callconv(.c) XcbCookie,
     xcb_convert_selection: *const fn (*XcbConnection, u32, u32, u32, u32, u32) callconv(.c) XcbCookie,
     xcb_set_selection_owner: *const fn (*XcbConnection, u32, u32, u32) callconv(.c) XcbCookie,
@@ -392,4 +482,8 @@ test "clipboard XCB ABI types match the core protocol layouts" {
     try std.testing.expectEqual(@as(usize, 12), @sizeOf(XcbGetSelectionOwnerReply));
     try std.testing.expectEqual(@as(usize, 36), @sizeOf(XcbGenericEvent));
     try std.testing.expectEqual(@as(usize, 36), @sizeOf(XcbGenericError));
+    try std.testing.expectEqual(@as(usize, 40), @sizeOf(XcbSetup));
+    try std.testing.expectEqual(@as(usize, 40), @sizeOf(XcbScreen));
+    try std.testing.expectEqual(@as(usize, 28), @sizeOf(XcbSelectionRequestEvent));
+    try std.testing.expectEqual(@as(usize, 24), @sizeOf(XcbSelectionNotifyEvent));
 }

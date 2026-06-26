@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const handles = @import("handles.zig");
 const clipboard_linux = @import("clipboard-linux.zig");
 const clipboard_wayland = @import("clipboard-wayland.zig");
+const clipboard_x11 = @import("clipboard-x11.zig");
 
 const Allocator = std.mem.Allocator;
 pub const Handle = handles.Handle;
@@ -70,6 +71,10 @@ const ErrorCode = enum(i32) {
     wayland_flush = 102,
     wayland_provider = 103,
     wayland_transfer = 104,
+    x11_protocol = 200,
+    x11_flush = 201,
+    x11_provider = 202,
+    x11_transfer = 203,
 };
 
 extern "c" fn pthread_mach_thread_np(thread: std.c.pthread_t) std.c.mach_port_t;
@@ -130,6 +135,13 @@ const Operation = struct {
     preference_offset: usize = 4,
     candidate_failed: bool = false,
     implemented_candidate_attempted: bool = false,
+    mechanism: ?clipboard_linux.Mechanism = null,
+    x11_read: clipboard_x11.ReadState = .{},
+    x11_write: clipboard_x11.WriteState = .{},
+    x11_targets: [5]u32 = undefined,
+    x11_target_count: u8 = 0,
+    x11_target_index: u8 = 0,
+    mutation_sequence: u64 = 0,
     timeout_ms: u32 = 0,
     started_ns: i128 = 0,
 
@@ -159,9 +171,14 @@ const Operation = struct {
         operation.mutex.lock();
         defer operation.mutex.unlock();
         if (operation.status != .pending) return .already_terminal;
+        if (operation.x11_write.committed) {
+            operation.status = if (operation.kind == .write) .written else .cleared;
+            return .already_terminal;
+        }
         operation.cancel_requested = true;
         if (operation.kind != .test_read) {
             operation.cleanupTransfer();
+            operation.cleanupX11();
             operation.status = .cancelled;
         }
         return .requested;
@@ -179,6 +196,12 @@ const Operation = struct {
             operation.mutex.unlock();
             return status;
         }
+        if (operation.x11_write.committed) {
+            operation.status = if (operation.kind == .write) .written else .cleared;
+            const status = operation.status;
+            operation.mutex.unlock();
+            return status;
+        }
         if (operation.cancel_requested) {
             operation.status = .cancelled;
             operation.mutex.unlock();
@@ -187,6 +210,7 @@ const Operation = struct {
         const elapsed_ns = std.time.nanoTimestamp() - operation.started_ns;
         if (elapsed_ns >= @as(i128, operation.timeout_ms) * std.time.ns_per_ms) {
             operation.cleanupTransfer();
+            operation.cleanupX11();
             operation.status = .timed_out;
             operation.mutex.unlock();
             return .timed_out;
@@ -215,6 +239,7 @@ const Operation = struct {
         if (operation.result_mime.len > 0) operation.allocator.free(operation.result_mime);
         operation.transfer_data.deinit(operation.allocator);
         operation.cleanupTransfer();
+        operation.cleanupX11();
         operation.allocator.destroy(operation);
     }
 
@@ -232,6 +257,13 @@ const Operation = struct {
         operation.error_code = @intFromEnum(code);
         operation.diagnostic = diagnostic;
     }
+
+    fn cleanupX11(operation: *Operation) void {
+        if (comptime builtin.os.tag != .linux) return;
+        const x11 = operation.service.x11 orelse return;
+        x11.cleanupRead(&operation.x11_read);
+        x11.cleanupWrite(&operation.x11_write);
+    }
 };
 
 const Service = struct {
@@ -240,10 +272,20 @@ const Service = struct {
     max_provider_transfers: u32,
     route: clipboard_linux.Route,
     wayland: ?*clipboard_wayland.Connection = null,
+    x11: ?*clipboard_x11.Connection = null,
+    drain_mechanism: clipboard_linux.Mechanism = .wayland,
     requested_wayland_seat: []u8,
     environment_wayland_seat: []u8,
     shutting_down: bool = false,
+    next_mutation_sequence: u64 = 1,
     operations: std.ArrayListUnmanaged(*Operation) = .{},
+
+    fn takeMutationSequence(service: *Service) u64 {
+        const sequence = service.next_mutation_sequence;
+        std.debug.assert(sequence != std.math.maxInt(u64));
+        service.next_mutation_sequence += 1;
+        return sequence;
+    }
 
     fn removeOperation(service: *Service, operation: *Operation) void {
         for (service.operations.items, 0..) |candidate, index| {
@@ -263,6 +305,7 @@ const Service = struct {
         }
         if (comptime builtin.os.tag == .linux) {
             if (service.wayland) |wayland| wayland.releaseProviders();
+            if (service.x11) |x11| x11.releaseProviders();
         }
     }
 
@@ -286,6 +329,10 @@ const Service = struct {
                 wayland.deinit();
                 service.allocator.destroy(wayland);
             }
+            if (service.x11) |x11| {
+                x11.deinit();
+                service.allocator.destroy(x11);
+            }
         }
         if (service.requested_wayland_seat.len > 0) service.allocator.free(service.requested_wayland_seat);
         if (service.environment_wayland_seat.len > 0) service.allocator.free(service.environment_wayland_seat);
@@ -294,14 +341,29 @@ const Service = struct {
 
     fn driveOperation(service: *Service, operation: *Operation) OperationStatus {
         if (comptime builtin.os.tag != .linux) return service.finishOperation(operation, .unsupported);
+        if (operation.kind == .read and !implementsNativeReadType(operation.request)) {
+            return service.finishOperation(operation, .unsupported);
+        }
         const libraries = switch (service.route) {
             .unsupported => return service.finishOperation(operation, .unsupported),
             .linux => |libraries| libraries,
         };
-        if (!libraries.wayland) return service.finishOperation(operation, .unsupported);
+        operation.mechanism = operation.mechanism orelse clipboard_linux.firstMechanism(libraries) orelse
+            return service.finishOperation(operation, .unsupported);
+        return switch (operation.mechanism.?) {
+            .wayland => service.driveWayland(operation, libraries),
+            .x11 => service.driveX11(operation),
+        };
+    }
+
+    fn driveWayland(
+        service: *Service,
+        operation: *Operation,
+        libraries: clipboard_linux.Libraries,
+    ) OperationStatus {
         if (service.wayland == null) {
             const symbols = clipboard_linux.waylandSymbols() orelse
-                return service.finishOperation(operation, .unsupported);
+                return service.fallbackWayland(operation, libraries, .unavailable);
             const wayland = service.allocator.create(clipboard_wayland.Connection) catch {
                 operation.rememberFailure(.out_of_memory, "Failed to allocate Wayland clipboard connection");
                 return service.finishOperation(operation, .failed);
@@ -318,8 +380,54 @@ const Service = struct {
         return switch (service.wayland.?.drive()) {
             .pending => .pending,
             .ready => service.driveWaylandOperation(operation),
-            .unsupported => service.finishOperation(operation, .unsupported),
+            .unsupported => service.fallbackWayland(operation, libraries, .unsupported),
             .failed => service.finishWaylandFailure(operation),
+        };
+    }
+
+    fn fallbackWayland(
+        service: *Service,
+        operation: *Operation,
+        libraries: clipboard_linux.Libraries,
+        outcome: clipboard_linux.MechanismOutcome,
+    ) OperationStatus {
+        const next = clipboard_linux.fallbackMechanism(libraries, .wayland, outcome) orelse
+            return service.finishOperation(operation, .unsupported);
+        operation.cleanupTransfer();
+        operation.mechanism = next;
+        operation.preference_offset = 4;
+        operation.candidate_failed = false;
+        operation.implemented_candidate_attempted = false;
+        return .pending;
+    }
+
+    fn ensureX11(service: *Service, operation: *Operation) ?OperationStatus {
+        if (service.x11 == null) {
+            const symbols = clipboard_linux.xcbSymbols() orelse
+                return service.finishOperation(operation, .unsupported);
+            const x11 = service.allocator.create(clipboard_x11.Connection) catch {
+                operation.rememberFailure(.out_of_memory, "Failed to allocate X11 clipboard connection");
+                return service.finishOperation(operation, .failed);
+            };
+            x11.* = clipboard_x11.Connection.init(service.allocator, symbols, service.max_provider_transfers);
+            service.x11 = x11;
+        }
+        return switch (service.x11.?.drive()) {
+            .pending => .pending,
+            .ready => null,
+            .unsupported => service.finishOperation(operation, .unsupported),
+            .failed => service.finishX11Failure(operation),
+        };
+    }
+
+    fn driveX11(service: *Service, operation: *Operation) OperationStatus {
+        if (service.ensureX11(operation)) |status| return status;
+        service.driveX11EventUnit();
+        return switch (operation.kind) {
+            .read => service.driveX11Read(operation),
+            .write => service.driveX11Write(operation),
+            .clear => service.driveX11Clear(operation),
+            .test_read => unreachable,
         };
     }
 
@@ -339,7 +447,7 @@ const Service = struct {
         switch (result) {
             .ok, .committed => std.debug.assert(selectionRequestCommitted(result)),
             .pending => unreachable,
-            .unsupported => return service.finishOperation(operation, .unsupported),
+            .unsupported => return service.fallbackCurrentWayland(operation),
             .failed => return service.finishWaylandFailure(operation),
         }
         operation.request = &.{};
@@ -352,7 +460,7 @@ const Service = struct {
         switch (result) {
             .ok, .committed => std.debug.assert(selectionRequestCommitted(result)),
             .pending => unreachable,
-            .unsupported => return service.finishOperation(operation, .unsupported),
+            .unsupported => return service.fallbackCurrentWayland(operation),
             .failed => return service.finishWaylandFailure(operation),
         }
         return service.finishOperation(operation, .cleared);
@@ -405,10 +513,10 @@ const Service = struct {
 
         const primary = operation.selection == .primary;
         if (primary and !service.wayland.?.primary_supported) {
-            return service.finishOperation(operation, .unsupported);
+            return service.fallbackCurrentWayland(operation);
         }
-        const any_implemented = implementsWaylandReadType(operation.request);
-        if (!any_implemented) return service.finishOperation(operation, .unsupported);
+        const any_implemented = implementsNativeReadType(operation.request);
+        if (!any_implemented) return service.fallbackCurrentWayland(operation);
         const offer = service.wayland.?.currentOffer(primary) orelse
             return service.finishOperation(operation, .empty);
         var implemented = false;
@@ -432,7 +540,7 @@ const Service = struct {
         ));
     }
 
-    fn implementsWaylandReadType(request: []const u8) bool {
+    fn implementsNativeReadType(request: []const u8) bool {
         var offset: usize = 4;
         while (offset < request.len) {
             const length = std.mem.readInt(u32, request[offset..][0..4], .little);
@@ -476,6 +584,170 @@ const Service = struct {
     fn rememberWaylandReadFailure(_: *Service, operation: *Operation) OperationStatus {
         operation.candidate_failed = true;
         return .pending;
+    }
+
+    fn fallbackCurrentWayland(service: *Service, operation: *Operation) OperationStatus {
+        const libraries = switch (service.route) {
+            .unsupported => return service.finishOperation(operation, .unsupported),
+            .linux => |libraries| libraries,
+        };
+        return service.fallbackWayland(operation, libraries, .unsupported);
+    }
+
+    fn driveX11EventUnit(service: *Service) void {
+        const x11 = service.x11 orelse return;
+        const event = x11.pollEvent() orelse return;
+        defer std.c.free(event);
+        if (x11.consumeRetiredTimestampEvent(event)) return;
+        for (service.operations.items) |candidate| {
+            if (candidate.mechanism != .x11) continue;
+            if (candidate.kind == .read and x11.routeReadEvent(&candidate.x11_read, event)) return;
+            if ((candidate.kind == .write or candidate.kind == .clear) and
+                x11.routeWriteEvent(&candidate.x11_write, event))
+            {
+                if (candidate.kind == .write and candidate.x11_write.committed) candidate.request = &.{};
+                return;
+            }
+        }
+        x11.handleProviderEvent(event);
+    }
+
+    fn driveX11Read(service: *Service, operation: *Operation) OperationStatus {
+        const x11 = service.x11.?;
+        switch (x11.driveRead(&operation.x11_read, &operation.transfer_data, operation.max_bytes)) {
+            .pending => {
+                if (operation.x11_read.phase != .idle) return .pending;
+            },
+            .ready => {
+                const empty_png = operation.result_mime.len > 0 and
+                    std.ascii.eqlIgnoreCase(operation.result_mime, "image/png") and
+                    operation.transfer_data.items.len == 0;
+                if (!empty_png) {
+                    operation.result = operation.transfer_data.toOwnedSlice(operation.allocator) catch {
+                        operation.rememberFailure(.out_of_memory, "Failed to allocate X11 clipboard result");
+                        return service.finishOperation(operation, .failed);
+                    };
+                    x11.cleanupRead(&operation.x11_read);
+                    return service.finishOperation(operation, .read);
+                }
+                x11.cleanupRead(&operation.x11_read);
+                operation.transfer_data.clearRetainingCapacity();
+                operation.x11_target_index = operation.x11_target_count;
+            },
+            .refused => operation.x11_target_index += 1,
+            .limit_exceeded => {
+                x11.cleanupRead(&operation.x11_read);
+                return service.finishOperation(operation, .limit_exceeded);
+            },
+            .failed => {
+                x11.cleanupRead(&operation.x11_read);
+                operation.rememberFailure(.x11_transfer, "X11 clipboard property transfer failed");
+                return service.finishOperation(operation, .failed);
+            },
+        }
+
+        while (true) {
+            if (operation.x11_target_index < operation.x11_target_count) {
+                operation.x11_read.phase = .refused;
+                if (!x11.beginRead(
+                    &operation.x11_read,
+                    operation.selection == .primary,
+                    operation.x11_targets[operation.x11_target_index],
+                    operation.max_bytes,
+                )) {
+                    operation.rememberFailure(.x11_flush, "Failed to request X11 clipboard conversion");
+                    return service.finishOperation(operation, .failed);
+                }
+                return .pending;
+            }
+            if (operation.result_mime.len > 0) {
+                operation.allocator.free(operation.result_mime);
+                operation.result_mime = &.{};
+            }
+            if (operation.preference_offset >= operation.request.len) {
+                return service.finishOperation(
+                    operation,
+                    if (operation.implemented_candidate_attempted) .empty else .unsupported,
+                );
+            }
+            const length = std.mem.readInt(u32, operation.request[operation.preference_offset..][0..4], .little);
+            operation.preference_offset += 4;
+            const preferred = operation.request[operation.preference_offset .. operation.preference_offset + length];
+            operation.preference_offset += length;
+            const targets = x11.targetAtoms(preferred, &operation.x11_targets);
+            if (targets.len == 0) continue;
+            operation.implemented_candidate_attempted = true;
+            operation.result_mime = operation.allocator.dupe(u8, preferred) catch {
+                operation.rememberFailure(.out_of_memory, "Failed to allocate X11 clipboard MIME result");
+                return service.finishOperation(operation, .failed);
+            };
+            operation.x11_target_count = @intCast(targets.len);
+            operation.x11_target_index = 0;
+        }
+    }
+
+    fn driveX11Write(service: *Service, operation: *Operation) OperationStatus {
+        const x11 = service.x11.?;
+        if (service.hasEarlierSelectionMutation(operation)) return .pending;
+        if (operation.x11_write.selection == 0 and !operation.x11_write.committed and !operation.x11_write.failed) {
+            return switch (x11.beginWrite(
+                &operation.x11_write,
+                operation.selection == .primary,
+                operation.request,
+            )) {
+                .pending => .pending,
+                .unsupported => service.finishOperation(operation, .unsupported),
+                .failed => service.finishX11Failure(operation),
+                .ok, .committed => unreachable,
+            };
+        }
+        return switch (x11.driveWrite(&operation.x11_write)) {
+            .pending => .pending,
+            .ok, .committed => blk: {
+                operation.request = &.{};
+                break :blk service.finishOperation(operation, .written);
+            },
+            .unsupported => service.finishOperation(operation, .unsupported),
+            .failed => service.finishX11Failure(operation),
+        };
+    }
+
+    fn driveX11Clear(service: *Service, operation: *Operation) OperationStatus {
+        const x11 = service.x11.?;
+        if (service.hasEarlierSelectionMutation(operation)) return .pending;
+        if (operation.x11_write.selection == 0 and !operation.x11_write.committed and !operation.x11_write.failed) {
+            return switch (x11.beginClear(&operation.x11_write, operation.selection == .primary)) {
+                .pending => .pending,
+                .unsupported => service.finishOperation(operation, .unsupported),
+                .failed => service.finishX11Failure(operation),
+                .ok, .committed => unreachable,
+            };
+        }
+        return switch (x11.driveWrite(&operation.x11_write)) {
+            .pending => .pending,
+            .ok, .committed => service.finishOperation(operation, .cleared),
+            .unsupported => service.finishOperation(operation, .unsupported),
+            .failed => service.finishX11Failure(operation),
+        };
+    }
+
+    fn finishX11Failure(service: *Service, operation: *Operation) OperationStatus {
+        const failure = if (service.x11) |x11| x11.takeFailure() else .protocol;
+        switch (failure) {
+            .none, .connection, .protocol, .atom => operation.rememberFailure(.x11_protocol, "X11 clipboard protocol failed"),
+            .flush => operation.rememberFailure(.x11_flush, "X11 clipboard output flush failed"),
+            .provider => operation.rememberFailure(.x11_provider, "X11 clipboard provider failed"),
+        }
+        return service.finishOperation(operation, .failed);
+    }
+
+    fn hasEarlierSelectionMutation(service: *const Service, operation: *const Operation) bool {
+        for (service.operations.items) |candidate| {
+            if (candidate.status != .pending) continue;
+            if (candidate.kind != .write and candidate.kind != .clear) continue;
+            if (candidate.mutation_sequence < operation.mutation_sequence) return true;
+        }
+        return false;
     }
 
     fn finishOperation(_: *Service, operation: *Operation, status: OperationStatus) OperationStatus {
@@ -673,6 +945,7 @@ fn startImmediateOperation(
         .started_ns = std.time.nanoTimestamp(),
         .max_bytes = max_bytes,
         .selection = selection,
+        .mutation_sequence = if (kind == .write or kind == .clear) service.takeMutationSequence() else 0,
     };
     const operation_handle = handles.insertOwnedChild(
         .clipboard_operation,
@@ -860,14 +1133,25 @@ pub fn drainService(service_handle: Handle) u8 {
     const service = acquireService(service_handle) orelse return 2;
     if (service.shutting_down) return 0;
     if (comptime builtin.os.tag != .linux) return 0;
-    const wayland = service.wayland orelse return 0;
-    return switch (wayland.drive()) {
-        .failed => blk: {
-            wayland.retireProviders();
-            break :blk if (wayland.driveProviderUnit()) 1 else 0;
+    var active = false;
+    const mechanism = service.drain_mechanism;
+    service.drain_mechanism = if (mechanism == .wayland) .x11 else .wayland;
+    switch (mechanism) {
+        .wayland => if (service.wayland) |wayland| {
+            switch (wayland.drive()) {
+                .failed => wayland.retireProviders(),
+                else => {},
+            }
+            active = wayland.driveProviderUnit();
         },
-        else => if (wayland.driveProviderUnit()) 1 else 0,
-    };
+        .x11 => if (service.x11) |x11| {
+            service.driveX11EventUnit();
+            active = x11.driveProviderUnit();
+        },
+    }
+    if (service.wayland) |wayland| active = active or wayland.hasWork();
+    if (service.x11) |x11| active = active or x11.hasWork();
+    return if (active) 1 else 0;
 }
 
 test "clipboard status values are stable" {
@@ -998,4 +1282,27 @@ test "clipboard failed operations always publish a portable diagnostic" {
     try std.testing.expectEqual(OperationStatus.failed, service.finishOperation(&operation, .failed));
     try std.testing.expect(operation.error_code != 0);
     try std.testing.expect(operation.diagnostic.len > 0);
+}
+
+test "clipboard mutation ordering is stable when operation storage is reordered" {
+    var service: Service = undefined;
+    var earlier: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = &service,
+        .kind = .write,
+        .mutation_sequence = 2,
+        .worker_joined = true,
+    };
+    var later: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = &service,
+        .kind = .clear,
+        .mutation_sequence = 3,
+        .worker_joined = true,
+    };
+    var storage = [_]*Operation{ &later, &earlier };
+    service.operations = .{ .items = &storage, .capacity = storage.len };
+
+    try std.testing.expect(service.hasEarlierSelectionMutation(&later));
+    try std.testing.expect(!service.hasEarlierSelectionMutation(&earlier));
 }
