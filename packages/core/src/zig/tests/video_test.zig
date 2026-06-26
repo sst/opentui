@@ -693,3 +693,18 @@ test "video dropping a stale frame resynchronizes production to the clock" {
     value.drainPreparation();
     try std.testing.expect(value.state.prepared_pts_us > 1_900_000);
 }
+
+test "video audio tap observes playback without consuming decoder audio" {
+    const value = try openVideo();
+    defer value.deinit();
+    try value.enableAudioTap(true, 256);
+
+    var samples: [512]f32 = undefined;
+    var end_frame: u64 = 99;
+    try std.testing.expectEqual(@as(u32, 0), try value.readAudioTap(&samples, 256, 2, &end_frame));
+    try std.testing.expectEqual(@as(u64, 0), end_frame);
+    try std.testing.expectEqual(@as(u32, 4096), try value.refillAudio(4096));
+    try std.testing.expectEqual(@as(u32, 4096), audio.getPcmQueuedFrames(value.audio_engine.?));
+
+    try value.enableAudioTap(false, 0);
+}

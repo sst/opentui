@@ -646,6 +646,26 @@ export fn videoReadAudio(video_handle: NativeHandle, out_samples: ?[*]f32, sampl
     return @intFromEnum(native_video.Status.ok);
 }
 
+export fn videoEnableAudioTap(video_handle: NativeHandle, enabled: bool, capacity_frames: u32) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.enableAudioTap(enabled, capacity_frames) catch |err| return @intFromEnum(native_video.statusFromError(err));
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoReadAudioTap(video_handle: NativeHandle, out_samples: ?[*]f32, sample_capacity: u32, frame_count: u32, channels: u8, out_frames: ?*u32, out_end_frame: ?*u64) u32 {
+    const frames_output = out_frames orelse return @intFromEnum(native_video.Status.invalid_argument);
+    const end_frame_output = out_end_frame orelse return @intFromEnum(native_video.Status.invalid_argument);
+    frames_output.* = 0;
+    end_frame_output.* = 0;
+    if (channels == 0 or (frame_count > 0 and out_samples == null)) return @intFromEnum(native_video.Status.invalid_argument);
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    const required = std.math.mul(u32, frame_count, channels) catch return @intFromEnum(native_video.Status.invalid_argument);
+    if (required > sample_capacity) return @intFromEnum(native_video.Status.invalid_argument);
+    const samples = if (frame_count == 0) &[_]f32{} else out_samples.?[0 .. @as(usize, frame_count) * channels];
+    frames_output.* = value.readAudioTap(@constCast(samples), frame_count, channels, end_frame_output) catch |err| return @intFromEnum(native_video.statusFromError(err));
+    return @intFromEnum(native_video.Status.ok);
+}
+
 export fn videoGetError(video_handle: NativeHandle, out_ptr: ?[*]u8, max_len: u32) u32 {
     if (out_ptr == null or max_len == 0) return 0;
     const value = acquireVideo(video_handle) orelse return 0;

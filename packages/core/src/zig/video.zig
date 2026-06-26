@@ -680,6 +680,24 @@ pub const Video = struct {
         return self.decodeAudio(samples, capacity_frames);
     }
 
+    pub fn enableAudioTap(self: *Video, enabled: bool, capacity_frames: u32) !void {
+        const engine = self.audio_engine orelse return error.InvalidArgument;
+        const status = audio.enableTap(engine, enabled, capacity_frames);
+        if (status == audio.Status.err_no_space) return error.OutOfMemory;
+        if (status != audio.Status.ok) return error.InvalidArgument;
+    }
+
+    pub fn readAudioTap(self: *Video, samples: []f32, frame_count: u32, channels: u8, end_frame: *u64) !u32 {
+        const engine = self.audio_engine orelse return error.InvalidArgument;
+        const required = std.math.mul(usize, @as(usize, frame_count), @as(usize, channels)) catch
+            return error.InvalidArgument;
+        if (samples.len < required) return error.InvalidArgument;
+        var frames_read: u32 = 0;
+        const status = audio.readTapPositioned(engine, samples.ptr, frame_count, channels, &frames_read, end_frame);
+        if (status != audio.Status.ok) return error.InvalidArgument;
+        return frames_read;
+    }
+
     pub fn refillAudio(self: *Video, max_frames: u32) !u32 {
         const engine = self.audio_engine orelse return 0;
         const buffer = self.audio_buffer orelse return 0;

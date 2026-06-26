@@ -386,6 +386,91 @@ test "audio - enableTap and readTap return captured frames" {
     try expectStatusOk(audio.enableTap(engine, false, 0));
 }
 
+test "audio - a busy tap reader never blocks mixing" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    const mono_samples = [_]i16{ 1000, -1000, 4000, -4000, 1000, -1000 };
+    const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
+    try expectStatusOk(audio.startMixer(engine));
+    _ = try playLoop(engine, sound_id, 0, 0.35);
+    try expectStatusOk(audio.enableTap(engine, true, 256));
+
+    var mixed: [256]f32 = [_]f32{0} ** 256;
+    {
+        engine.tap_lock.lock();
+        defer engine.tap_lock.unlock();
+        try expectStatusOk(audio.mixToBuffer(engine, mixed[0..].ptr, 128, 2));
+    }
+
+    try testing.expect(hasSignal(&mixed));
+    var tapped: [128]f32 = [_]f32{0} ** 128;
+    var frames_read: u32 = 99;
+    try expectStatusOk(audio.readTap(engine, tapped[0..].ptr, 64, 2, &frames_read));
+    try testing.expectEqual(@as(u32, 0), frames_read);
+}
+
+test "audio - skipped tap capture creates a positioned gap" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    const mono_samples = [_]i16{ 1000, -1000, 4000, -4000, 1000, -1000 };
+    const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
+    try expectStatusOk(audio.startMixer(engine));
+    _ = try playLoop(engine, sound_id, 0, 0.35);
+    try expectStatusOk(audio.enableTap(engine, true, 256));
+
+    var mixed: [256]f32 = [_]f32{0} ** 256;
+    try expectStatusOk(audio.mixToBuffer(engine, mixed[0..].ptr, 128, 2));
+
+    var initial: [256]f32 = [_]f32{0} ** 256;
+    var frames_read: u32 = 0;
+    var end_frame: u64 = 0;
+    try expectStatusOk(audio.readTapPositioned(engine, initial[0..].ptr, 128, 2, &frames_read, &end_frame));
+    try testing.expectEqual(@as(u32, 128), frames_read);
+    try testing.expectEqual(@as(u64, 128), end_frame);
+
+    {
+        engine.tap_lock.lock();
+        defer engine.tap_lock.unlock();
+        try expectStatusOk(audio.mixToBuffer(engine, mixed[0..].ptr, 128, 2));
+    }
+    try expectStatusOk(audio.mixToBuffer(engine, mixed[0..].ptr, 128, 2));
+
+    var resumed: [256]f32 = [_]f32{0} ** 256;
+    try expectStatusOk(audio.readTapPositioned(engine, resumed[0..].ptr, 128, 2, &frames_read, &end_frame));
+    try testing.expectEqual(@as(u32, 128), frames_read);
+    try testing.expectEqual(@as(u64, 384), end_frame);
+    try testing.expectEqual(@as(u64, 256), end_frame - frames_read);
+}
+
+test "audio - re-enabling a tap starts at the current output timeline" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    const mono_samples = [_]i16{ 1000, -1000, 4000, -4000, 1000, -1000 };
+    const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
+    try expectStatusOk(audio.startMixer(engine));
+    _ = try playLoop(engine, sound_id, 0, 0.35);
+
+    var mixed: [256]f32 = [_]f32{0} ** 256;
+    try expectStatusOk(audio.mixToBuffer(engine, mixed[0..].ptr, 128, 2));
+    try expectStatusOk(audio.enableTap(engine, true, 256));
+
+    var tapped: [256]f32 = [_]f32{0} ** 256;
+    var frames_read: u32 = 0;
+    var end_frame: u64 = 0;
+    try expectStatusOk(audio.readTapPositioned(engine, tapped[0..].ptr, 128, 2, &frames_read, &end_frame));
+    try testing.expectEqual(@as(u32, 0), frames_read);
+    try testing.expectEqual(@as(u64, 128), end_frame);
+
+    try expectStatusOk(audio.mixToBuffer(engine, mixed[0..].ptr, 128, 2));
+    try expectStatusOk(audio.readTapPositioned(engine, tapped[0..].ptr, 128, 2, &frames_read, &end_frame));
+    try testing.expectEqual(@as(u32, 128), frames_read);
+    try testing.expectEqual(@as(u64, 256), end_frame);
+    try testing.expectEqual(@as(u64, 128), end_frame - frames_read);
+}
+
 test "audio - pcm stream preserves frames and reports consumption" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);

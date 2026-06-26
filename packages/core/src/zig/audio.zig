@@ -86,6 +86,7 @@ pub const Engine = struct {
     allocator: std.mem.Allocator,
     started: bool = false,
     lock: std.Thread.Mutex = .{},
+    tap_lock: std.Thread.Mutex = .{},
     context: c.ma_context = undefined,
     context_initialized: bool = false,
     core: c.ma_engine = undefined,
@@ -107,6 +108,8 @@ pub const Engine = struct {
     tap_capacity_frames: u32 = 0,
     tap_write_frame: u32 = 0,
     tap_frame_count: u32 = 0,
+    tap_frames_written: u64 = 0,
+    tap_timeline_frames: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
     tap_buffer: ?[]f32 = null,
     pcm_ring: c.ma_pcm_rb = undefined,
     pcm_ring_initialized: bool = false,
@@ -149,6 +152,8 @@ pub const Engine = struct {
             .tap_capacity_frames = 0,
             .tap_write_frame = 0,
             .tap_frame_count = 0,
+            .tap_frames_written = 0,
+            .tap_timeline_frames = std.atomic.Value(u64).init(0),
             .tap_buffer = null,
             .pcm_ring = undefined,
             .pcm_ring_initialized = false,
@@ -198,10 +203,12 @@ pub const Engine = struct {
         self.groups.deinit(self.allocator);
         self.playback_devices.deinit(self.allocator);
 
+        self.tap_lock.lock();
         if (self.tap_buffer) |buffer| {
             self.allocator.free(buffer);
             self.tap_buffer = null;
         }
+        self.tap_lock.unlock();
 
         if (self.context_initialized) {
             _ = c.ma_context_uninit(&self.context);
@@ -326,9 +333,18 @@ fn copyPlaybackDeviceName(device: *const c.ma_device_info, out_ptr: [*]u8, max_l
 }
 
 fn writeTapFrames(engine: *Engine, source: []const f32, frame_count: u32, channels: u8) void {
+    const frame_end = engine.tap_timeline_frames.fetchAdd(frame_count, .monotonic) +% frame_count;
+    if (!engine.tap_lock.tryLock()) return;
+    defer engine.tap_lock.unlock();
     if (!engine.tap_enabled or frame_count == 0 or channels == 0) return;
     const tap_buffer = engine.tap_buffer orelse return;
     if (engine.tap_capacity_frames == 0) return;
+
+    const frame_start = frame_end -% frame_count;
+    if (frame_start != engine.tap_frames_written) {
+        engine.tap_write_frame = 0;
+        engine.tap_frame_count = 0;
+    }
 
     const source_channels: usize = channels;
     const tap_channels: usize = engine.tap_channels;
@@ -350,6 +366,11 @@ fn writeTapFrames(engine: *Engine, source: []const f32, frame_count: u32, channe
             engine.tap_frame_count += 1;
         }
     }
+    engine.tap_frames_written = frame_end;
+}
+
+fn skipTapFrames(engine: *Engine, frame_count: u32) void {
+    _ = engine.tap_timeline_frames.fetchAdd(frame_count, .monotonic);
 }
 
 fn clearVoice(voice: *Voice) void {
@@ -1036,14 +1057,15 @@ pub fn setMasterVolume(engine: *Engine, volume: f32) i32 {
 
 pub fn enableTap(engine: *Engine, enabled: bool, capacity_frames: u32) i32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.tap_lock.lock();
+    defer e.tap_lock.unlock();
 
     if (!enabled) {
         e.tap_enabled = false;
         e.tap_capacity_frames = 0;
         e.tap_write_frame = 0;
         e.tap_frame_count = 0;
+        e.tap_frames_written = e.tap_timeline_frames.load(.monotonic);
         if (e.tap_buffer) |buffer| {
             e.allocator.free(buffer);
             e.tap_buffer = null;
@@ -1066,16 +1088,22 @@ pub fn enableTap(engine: *Engine, enabled: bool, capacity_frames: u32) i32 {
     e.tap_capacity_frames = capacity_frames;
     e.tap_write_frame = 0;
     e.tap_frame_count = 0;
+    e.tap_frames_written = e.tap_timeline_frames.load(.monotonic);
     return Status.ok;
 }
 
 pub fn readTap(engine: *Engine, out_ptr: ?[*]f32, frame_count: u32, channels: u8, out_frames_read: ?*u32) i32 {
+    return readTapPositioned(engine, out_ptr, frame_count, channels, out_frames_read, null);
+}
+
+pub fn readTapPositioned(engine: *Engine, out_ptr: ?[*]f32, frame_count: u32, channels: u8, out_frames_read: ?*u32, out_end_frame: ?*u64) i32 {
     if (out_ptr == null or out_frames_read == null) return Status.err_invalid;
     if (channels == 0) return Status.err_invalid;
 
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.tap_lock.lock();
+    defer e.tap_lock.unlock();
+    if (out_end_frame) |value| value.* = e.tap_frames_written;
 
     const out = @as([*]f32, @ptrCast(out_ptr.?))[0 .. @as(usize, frame_count) * @as(usize, channels)];
     @memset(out, 0);
@@ -1214,6 +1242,7 @@ fn audioCallback(device_ptr: ?*c.ma_device, output_ptr: ?*anyopaque, input_ptr: 
 
     if (!engine.lock.tryLock()) {
         @memset(out, 0);
+        skipTapFrames(engine, @intCast(frame_count));
         incrementLockMisses(engine);
         return;
     }
@@ -1221,6 +1250,7 @@ fn audioCallback(device_ptr: ?*c.ma_device, output_ptr: ?*anyopaque, input_ptr: 
 
     if (!engine.started) {
         @memset(out, 0);
+        skipTapFrames(engine, @intCast(frame_count));
         updateStatsFromBuffer(engine, out, @intCast(frame_count), stats_channels);
         reapFinishedVoices(engine);
         return;

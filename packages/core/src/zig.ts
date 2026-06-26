@@ -1298,6 +1298,8 @@ function getOpenTUILib(libPath?: string) {
     videoResetOutputTiming: { args: ["u32"], returns: "u32" },
     videoGetCurrentFrame: { args: ["u32", "u64", "ptr", "ptr"], returns: "u32" },
     videoReadAudio: { args: ["u32", "ptr", "u32", "u32", "ptr"], returns: "u32" },
+    videoEnableAudioTap: { args: ["u32", "u32", "u32"], returns: "u32" },
+    videoReadAudioTap: { args: ["u32", "ptr", "u32", "u32", "u8", "ptr", "ptr"], returns: "u32" },
     videoGetError: { args: ["u32", "ptr", "u32"], returns: "u32" },
     videoGetOpenError: { args: ["ptr", "u32"], returns: "u32" },
 
@@ -2694,6 +2696,13 @@ export interface RenderLib extends AudioEngineLib {
     output: Float32Array,
     capacityFrames: number,
   ) => { status: number; frames: number }
+  videoEnableAudioTap: (video: VideoHandle, enabled: boolean, capacityFrames: number) => number
+  videoReadAudioTap: (
+    video: VideoHandle,
+    output: Float32Array,
+    frameCount: number,
+    channels: number,
+  ) => { status: number; frames: number; endFrame: bigint }
   videoGetError: (video: VideoHandle) => string
   videoGetOpenError: () => string
 
@@ -5737,6 +5746,25 @@ class FFIRenderLib implements RenderLib {
       ptr(framesOutput),
     )
     return { status, frames: framesOutput[0] }
+  }
+
+  public videoEnableAudioTap(video: VideoHandle, enabled: boolean, capacityFrames: number): number {
+    return this.opentui.symbols.videoEnableAudioTap(video, ffiBool(enabled), capacityFrames)
+  }
+
+  public videoReadAudioTap(video: VideoHandle, output: Float32Array, frameCount: number, channels: number) {
+    const framesOutput = new Uint32Array(1)
+    const endFrameOutput = new BigUint64Array(1)
+    const status = this.opentui.symbols.videoReadAudioTap(
+      video,
+      ptrOrNull(output),
+      output.length,
+      frameCount,
+      channels,
+      ptr(framesOutput),
+      ptr(endFrameOutput),
+    )
+    return { status, frames: framesOutput[0], endFrame: endFrameOutput[0] }
   }
 
   public videoGetError(video: VideoHandle): string {

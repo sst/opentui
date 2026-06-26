@@ -262,6 +262,33 @@ export class NativeVideo {
     return result.frames
   }
 
+  public enableAudioTap(capacityFrames = 8192): void {
+    if (!Number.isInteger(capacityFrames) || capacityFrames <= 0) {
+      throw new RangeError("audio tap capacity must be a positive integer")
+    }
+    const status = this.lib.videoEnableAudioTap(this.guard(), true, capacityFrames)
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
+  }
+
+  public disableAudioTap(): void {
+    const status = this.lib.videoEnableAudioTap(this.guard(), false, 0)
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
+  }
+
+  public readAudioTapFrames(
+    frameCount: number,
+    channels = 2,
+  ): { frames: Float32Array; framesRead: number; endFrame: bigint } {
+    if (!Number.isInteger(frameCount) || frameCount <= 0) throw new RangeError("audio tap frame count must be positive")
+    if (!Number.isInteger(channels) || channels < 1 || channels > 2) {
+      throw new RangeError("audio tap channels must be 1 or 2")
+    }
+    const frames = new Float32Array(frameCount * channels)
+    const result = this.lib.videoReadAudioTap(this.guard(), frames, frameCount, channels)
+    if (result.status !== 0) throw videoError(this.lib, this.handle, result.status)
+    return { frames, framesRead: result.frames, endFrame: result.endFrame }
+  }
+
   public dispose(): void {
     if (!this.handle) return
     this.lib.videoDestroy(this.handle)
