@@ -116,6 +116,94 @@ test("reports motion magnitude, centroid, and direction for a moving subject", (
   expect(Math.abs(second.motionCentroid.x)).toBeLessThan(0.1)
   expect(second.motionDirection.x).toBeGreaterThan(0.8)
   expect(Math.abs(second.motionDirection.y)).toBeLessThan(0.01)
+  expect(second.isSceneCut).toBe(false)
+})
+
+test("detects a hard scene cut without treating local motion as a cut", () => {
+  const firstFrame = frame(20)
+  const secondFrame = frame(20)
+  for (let row = 0; row < VIDEO_FRAME_HEIGHT; row += 1) {
+    for (let column = 0; column < VIDEO_FRAME_WIDTH / 2; column += 1) {
+      const left = (row * VIDEO_FRAME_WIDTH + column) * 4
+      const right = (row * VIDEO_FRAME_WIDTH + VIDEO_FRAME_WIDTH - column - 1) * 4
+      firstFrame.fill(230, left, left + 3)
+      secondFrame.fill(230, right, right + 3)
+    }
+  }
+  const first = analyzeVideoFrame(firstFrame, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+  const cut = analyzeVideoFrame(secondFrame, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT, first)
+
+  expect(cut.isSceneCut).toBe(true)
+  expect(cut.sceneCutScore).toBeGreaterThan(0.7)
+})
+
+test("does not classify a full-frame exposure flash as a scene cut", () => {
+  const scene = frame(25)
+  for (let row = 12; row < 92; row += 1) {
+    for (let column = 20; column < 82; column += 1) {
+      const offset = (row * VIDEO_FRAME_WIDTH + column) * 4
+      scene.fill(170, offset, offset + 3)
+    }
+  }
+  const before = analyzeVideoFrame(scene, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+  const flash = analyzeVideoFrame(frame(255), VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT, before)
+  const recovered = analyzeVideoFrame(scene, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT, flash)
+
+  expect(flash.isSceneCut).toBe(false)
+  expect(recovered.isSceneCut).toBe(false)
+})
+
+test("reports a framing target for an off-center subject outside the centered crop", () => {
+  const rgba = frame(20)
+  for (let row = 25; row < 82; row += 1) {
+    for (let column = 145; column < 181; column += 1) {
+      const offset = (row * VIDEO_FRAME_WIDTH + column) * 4
+      rgba[offset] = 230
+      rgba[offset + 1] = 230
+      rgba[offset + 2] = 230
+    }
+  }
+
+  const analysis = analyzeVideoFrame(rgba, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+
+  expect(analysis.framingTarget!.x).toBeGreaterThan(0.45)
+  expect(Math.abs(analysis.framingTarget!.y)).toBeLessThan(0.2)
+})
+
+test("crop tracking does not manufacture motion in a static source frame", () => {
+  const rgba = frame()
+  for (let row = 0; row < VIDEO_FRAME_HEIGHT; row += 1) {
+    for (let column = 0; column < VIDEO_FRAME_WIDTH; column += 1) {
+      const value = 25 + ((column * 7 + Math.floor(column / 11) * 31 + row * 3) % 190)
+      const offset = (row * VIDEO_FRAME_WIDTH + column) * 4
+      rgba.fill(value, offset, offset + 3)
+    }
+  }
+  const first = analyzeVideoFrame(rgba, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT, null, { cropCenter: { x: 0, y: 0 } })
+  const tracked = analyzeVideoFrame(rgba, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT, first, {
+    cropCenter: { x: 0.2, y: 0 },
+  })
+
+  expect(tracked.motionMagnitude).toBeLessThan(0.018)
+  expect(Math.abs(tracked.motionDirection.x)).toBeLessThan(0.08)
+})
+
+test("crop tracking preserves genuine source motion", () => {
+  const firstFrame = frame(25)
+  const secondFrame = frame(25)
+  for (let row = 8; row < 20; row += 1) {
+    for (let column = 18; column < 27; column += 1) fillContentCell(firstFrame, column, row, 230)
+    for (let column = 28; column < 37; column += 1) fillContentCell(secondFrame, column, row, 230)
+  }
+  const first = analyzeVideoFrame(firstFrame, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT, null, {
+    cropCenter: { x: 0, y: 0 },
+  })
+  const tracked = analyzeVideoFrame(secondFrame, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT, first, {
+    cropCenter: { x: 0.04, y: 0 },
+  })
+
+  expect(tracked.motionMagnitude).toBeGreaterThan(0.018)
+  expect(tracked.motionDirection.x).toBeGreaterThan(0.1)
 })
 
 test("cover-crops a 16:9 frame into the terminal-corrected square receiver", () => {

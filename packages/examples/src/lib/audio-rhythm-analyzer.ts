@@ -17,6 +17,9 @@ export class AudioRhythmAnalyzer {
   bass = 0
   mid = 0
   treble = 0
+  bassTransient = 0
+  midTransient = 0
+  trebleTransient = 0
   stereoBalance = 0
   stereoWidth = 0
   readonly spectrum = new Float32Array(AUDIO_SPECTRUM_BANDS)
@@ -33,7 +36,11 @@ export class AudioRhythmAnalyzer {
   private leftMidFilter = 0
   private rightMidFilter = 0
   private bassBaseline = 0.01
+  private midBaseline = 0.01
+  private trebleBaseline = 0.01
   private previousBassRms = 0
+  private previousMidRms = 0
+  private previousTrebleRms = 0
 
   update(pcm: Float32Array, channels: number, sampleRate: number, deltaMs: number): void {
     const channelCount = Math.max(1, Math.floor(channels))
@@ -97,6 +104,31 @@ export class AudioRhythmAnalyzer {
     this.bass = this.updateBand(this.bass, Math.min(1, Math.sqrt(bassRms) * 1.5), deltaMs)
     this.mid = this.updateBand(this.mid, Math.min(1, Math.sqrt(midRms) * 1.35), deltaMs)
     this.treble = this.updateBand(this.treble, Math.min(1, Math.sqrt(trebleRms) * 1.2), deltaMs)
+    const bandTotal = bassRms + midRms + trebleRms
+    this.bassTransient = this.updateTransient(
+      bassRms,
+      this.previousBassRms,
+      this.bassBaseline,
+      bandTotal,
+      this.bassTransient,
+      deltaMs,
+    )
+    this.midTransient = this.updateTransient(
+      midRms,
+      this.previousMidRms,
+      this.midBaseline,
+      bandTotal,
+      this.midTransient,
+      deltaMs,
+    )
+    this.trebleTransient = this.updateTransient(
+      trebleRms,
+      this.previousTrebleRms,
+      this.trebleBaseline,
+      bandTotal,
+      this.trebleTransient,
+      deltaMs,
+    )
     const stereoTotal = leftRms + rightRms
     const balanceTarget = stereoTotal > 0.0001 ? (rightRms - leftRms) / stereoTotal : 0
     const widthTarget = Math.min(1, Math.sqrt(sideEnergy / frameCount) / Math.max(0.001, rms))
@@ -108,7 +140,11 @@ export class AudioRhythmAnalyzer {
     const nextPulse = Math.min(1, onset * bassFocus * 1.8)
     this.pulse = Math.max(nextPulse, this.pulse * Math.exp(-Math.max(0, deltaMs) / PULSE_DECAY_MS))
     this.bassBaseline += (bassRms - this.bassBaseline) * BASELINE_RATE
+    this.midBaseline += (midRms - this.midBaseline) * BASELINE_RATE
+    this.trebleBaseline += (trebleRms - this.trebleBaseline) * BASELINE_RATE
     this.previousBassRms = bassRms
+    this.previousMidRms = midRms
+    this.previousTrebleRms = trebleRms
   }
 
   reset(): void {
@@ -117,6 +153,9 @@ export class AudioRhythmAnalyzer {
     this.bass = 0
     this.mid = 0
     this.treble = 0
+    this.bassTransient = 0
+    this.midTransient = 0
+    this.trebleTransient = 0
     this.stereoBalance = 0
     this.stereoWidth = 0
     this.spectrum.fill(0)
@@ -129,7 +168,11 @@ export class AudioRhythmAnalyzer {
     this.leftMidFilter = 0
     this.rightMidFilter = 0
     this.bassBaseline = 0.01
+    this.midBaseline = 0.01
+    this.trebleBaseline = 0.01
     this.previousBassRms = 0
+    this.previousMidRms = 0
+    this.previousTrebleRms = 0
   }
 
   private decay(deltaMs: number): void {
@@ -139,6 +182,9 @@ export class AudioRhythmAnalyzer {
     this.bass *= decay
     this.mid *= decay
     this.treble *= decay
+    this.bassTransient *= decay
+    this.midTransient *= decay
+    this.trebleTransient *= decay
     this.stereoBalance *= decay
     this.stereoWidth *= decay
     for (let band = 0; band < this.spectrum.length; band += 1) this.spectrum[band] *= decay
@@ -173,6 +219,20 @@ export class AudioRhythmAnalyzer {
     const timeConstantMs = target > current ? 45 : 240
     const rate = 1 - Math.exp(-Math.max(0, deltaMs) / timeConstantMs)
     return current + (target - current) * rate
+  }
+
+  private updateTransient(
+    value: number,
+    previous: number,
+    baseline: number,
+    bandTotal: number,
+    current: number,
+    deltaMs: number,
+  ): number {
+    const onset = Math.max(0, value - previous) / Math.max(0.01, baseline)
+    const focus = value / Math.max(0.001, bandTotal)
+    const next = Math.min(1, onset * 0.5) * Math.min(1, focus * 1.4)
+    return Math.max(next, current * Math.exp(-Math.max(0, deltaMs) / 140))
   }
 
   private updateSigned(current: number, target: number, deltaMs: number): number {

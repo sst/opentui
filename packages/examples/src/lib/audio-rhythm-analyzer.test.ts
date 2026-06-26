@@ -46,6 +46,20 @@ test("bass drives a stronger onset than treble", () => {
   expect(bassAnalyzer.pulse).toBeGreaterThan(trebleAnalyzer.pulse * 2)
 })
 
+test("isolated frequency onsets produce distinct transient channels", () => {
+  const bassAnalyzer = new AudioRhythmAnalyzer()
+  const midAnalyzer = new AudioRhythmAnalyzer()
+  const trebleAnalyzer = new AudioRhythmAnalyzer()
+
+  bassAnalyzer.update(sineWave(80, 0.8), 2, SAMPLE_RATE, 80)
+  midAnalyzer.update(sineWave(900, 0.8), 2, SAMPLE_RATE, 80)
+  trebleAnalyzer.update(sineWave(6_000, 0.8), 2, SAMPLE_RATE, 80)
+
+  expect(bassAnalyzer.bassTransient).toBeGreaterThan(bassAnalyzer.midTransient)
+  expect(midAnalyzer.midTransient).toBeGreaterThan(midAnalyzer.bassTransient)
+  expect(trebleAnalyzer.trebleTransient).toBeGreaterThan(trebleAnalyzer.midTransient)
+})
+
 test("equalizer envelopes separate bass, mid, and treble", () => {
   const bassAnalyzer = new AudioRhythmAnalyzer()
   const midAnalyzer = new AudioRhythmAnalyzer()
@@ -98,5 +112,8 @@ test("pulse decays and reset clears analyzer state", () => {
   analyzer.reset()
   expect(analyzer.level).toBe(0)
   expect(analyzer.pulse).toBe(0)
+  expect(analyzer.bassTransient).toBe(0)
+  expect(analyzer.midTransient).toBe(0)
+  expect(analyzer.trebleTransient).toBe(0)
   expect(Math.max(...analyzer.spectrum)).toBe(0)
 })

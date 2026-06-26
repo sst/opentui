@@ -53,8 +53,22 @@ export interface VideoFrameAnalysis {
   motionCentroid: MotionVector
   motionDirection: MotionVector
   luminanceCentroid: MotionVector
+  cropCenter: MotionVector
+  framingTarget: MotionVector | null
+  sceneCutScore: number
+  isSceneCut: boolean
   sceneColor: VideoFrameColor | null
   accentColor: VideoFrameColor | null
+  sourceHistogram: Float32Array
+  sourceStructure: Float32Array
+  sceneReferenceStructure: Float32Array | null
+  sourceLuminance: Float32Array
+  sourceWidth: number
+  sourceHeight: number
+}
+
+export interface VideoFrameAnalysisOptions {
+  cropCenter?: MotionVector
 }
 
 const EMPTY_VECTOR: MotionVector = { x: 0, y: 0 }
@@ -199,11 +213,113 @@ function normalizeLuminance(luminance: Float32Array): Float32Array {
   return intensity
 }
 
+function sourceHistogram(luminance: Float32Array): Float32Array {
+  const histogram = new Float32Array(16)
+  for (const value of luminance) histogram[Math.min(histogram.length - 1, Math.floor(value * histogram.length))]! += 1
+  for (let index = 0; index < histogram.length; index += 1) histogram[index]! /= luminance.length
+  return histogram
+}
+
+function histogramDistance(left: Float32Array, right: Float32Array): number {
+  let distance = 0
+  for (let index = 0; index < left.length; index += 1) distance += Math.abs((left[index] ?? 0) - (right[index] ?? 0))
+  return Math.min(1, distance * 0.5)
+}
+
+const STRUCTURE_WIDTH = 12
+const STRUCTURE_HEIGHT = 8
+
+function sourceStructure(luminance: Float32Array, width: number, height: number): Float32Array {
+  const gridWidth = STRUCTURE_WIDTH
+  const gridHeight = STRUCTURE_HEIGHT
+  const means = new Float32Array(gridWidth * gridHeight)
+  let frameMean = 0
+  for (const value of luminance) frameMean += value
+  frameMean /= luminance.length
+  let variance = 0
+  for (const value of luminance) variance += (value - frameMean) ** 2
+  const deviation = Math.max(0.08, Math.sqrt(variance / luminance.length))
+  for (let gridY = 0; gridY < gridHeight; gridY += 1) {
+    const top = Math.floor((gridY * height) / gridHeight)
+    const bottom = Math.max(top + 1, Math.floor(((gridY + 1) * height) / gridHeight))
+    for (let gridX = 0; gridX < gridWidth; gridX += 1) {
+      const left = Math.floor((gridX * width) / gridWidth)
+      const right = Math.max(left + 1, Math.floor(((gridX + 1) * width) / gridWidth))
+      let total = 0
+      for (let row = top; row < bottom; row += 1) {
+        for (let column = left; column < right; column += 1) total += luminance[row * width + column] ?? 0
+      }
+      const mean = total / ((bottom - top) * (right - left))
+      means[gridY * gridWidth + gridX] = Math.max(-1, Math.min(1, (mean - frameMean) / deviation))
+    }
+  }
+  return means
+}
+
+function structureEnergy(structure: Float32Array): number {
+  let energy = 0
+  for (const value of structure) energy += Math.abs(value)
+  return energy / structure.length
+}
+
+function structureDistance(left: Float32Array, right: Float32Array): number {
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (let offsetY = -2; offsetY <= 2; offsetY += 1) {
+    for (let offsetX = -3; offsetX <= 3; offsetX += 1) {
+      let distance = 0
+      let samples = 0
+      for (let row = Math.max(0, -offsetY); row < Math.min(STRUCTURE_HEIGHT, STRUCTURE_HEIGHT - offsetY); row += 1) {
+        for (
+          let column = Math.max(0, -offsetX);
+          column < Math.min(STRUCTURE_WIDTH, STRUCTURE_WIDTH - offsetX);
+          column += 1
+        ) {
+          const leftIndex = row * STRUCTURE_WIDTH + column
+          const rightIndex = (row + offsetY) * STRUCTURE_WIDTH + column + offsetX
+          distance += Math.abs((left[leftIndex] ?? 0) - (right[rightIndex] ?? 0))
+          samples += 1
+        }
+      }
+      bestDistance = Math.min(bestDistance, distance / samples)
+    }
+  }
+  return Math.min(1, bestDistance)
+}
+
+function calculateFramingTarget(luminance: Float32Array, width: number, height: number): MotionVector | null {
+  const bins = new Uint32Array(32)
+  for (const value of luminance) bins[Math.min(bins.length - 1, Math.floor(value * bins.length))]! += 1
+  let backgroundBin = 0
+  for (let index = 1; index < bins.length; index += 1) {
+    if (bins[index]! > bins[backgroundBin]!) backgroundBin = index
+  }
+  const background = (backgroundBin + 0.5) / bins.length
+  let total = 0
+  let weightedX = 0
+  let weightedY = 0
+  for (let row = 1; row < height - 1; row += 2) {
+    for (let column = 1; column < width - 1; column += 2) {
+      const index = row * width + column
+      const contrast = Math.max(0, Math.abs((luminance[index] ?? 0) - background) - 0.035)
+      const edge = Math.hypot(
+        (luminance[index + 1] ?? 0) - (luminance[index - 1] ?? 0),
+        (luminance[index + width] ?? 0) - (luminance[index - width] ?? 0),
+      )
+      const weight = contrast * 0.7 + edge * 0.3
+      total += weight
+      weightedX += weight * normalizedCoordinate(column, width)
+      weightedY += weight * normalizedCoordinate(row, height)
+    }
+  }
+  return total > width * height * 0.002 ? { x: weightedX / total, y: weightedY / total } : null
+}
+
 export function analyzeVideoFrame(
   rgba: Uint8Array,
   sourceWidth: number,
   sourceHeight: number,
   previous: VideoFrameAnalysis | null = null,
+  options: VideoFrameAnalysisOptions = {},
 ): VideoFrameAnalysis {
   if (!Number.isInteger(sourceWidth) || !Number.isInteger(sourceHeight) || sourceWidth <= 0 || sourceHeight <= 0) {
     throw new RangeError("video frame dimensions must be positive integers")
@@ -218,12 +334,25 @@ export function analyzeVideoFrame(
       ((rgba[offset] ?? 0) * 0.2126 + (rgba[offset + 1] ?? 0) * 0.7152 + (rgba[offset + 2] ?? 0) * 0.0722) / 255
   }
   const sourceAspect = sourceWidth / sourceHeight
+  const histogram = sourceHistogram(sourceLuminance)
+  const structure = sourceStructure(sourceLuminance, sourceWidth, sourceHeight)
+  const sourceFramingTarget = calculateFramingTarget(sourceLuminance, sourceWidth, sourceHeight)
   const receiverAspect = RECEIVER_WIDTH / RECEIVER_HEIGHT / TERMINAL_CELL_ASPECT
   const cropWidth = sourceAspect > receiverAspect ? Math.max(1, Math.round(sourceHeight * receiverAspect)) : sourceWidth
   const cropHeight =
     sourceAspect > receiverAspect ? sourceHeight : Math.max(1, Math.round(sourceWidth / receiverAspect))
-  const cropLeft = Math.floor((sourceWidth - cropWidth) / 2)
-  const cropTop = Math.floor((sourceHeight - cropHeight) / 2)
+  const movableWidth = sourceWidth - cropWidth
+  const movableHeight = sourceHeight - cropHeight
+  const framingTarget = sourceFramingTarget
+    ? {
+        x: movableWidth > 0 ? Math.max(-1, Math.min(1, sourceFramingTarget.x / (movableWidth / sourceWidth))) : 0,
+        y: movableHeight > 0 ? Math.max(-1, Math.min(1, sourceFramingTarget.y / (movableHeight / sourceHeight))) : 0,
+      }
+    : null
+  const cropCenterX = Math.max(-1, Math.min(1, options.cropCenter?.x ?? 0))
+  const cropCenterY = Math.max(-1, Math.min(1, options.cropCenter?.y ?? 0))
+  const cropLeft = Math.round(((sourceWidth - cropWidth) * (cropCenterX + 1)) / 2)
+  const cropTop = Math.round(((sourceHeight - cropHeight) * (cropCenterY + 1)) / 2)
   const cropLuminance = new Float32Array(cropWidth * cropHeight)
   for (let row = 0; row < cropHeight; row += 1) {
     const sourceStart = (cropTop + row) * sourceWidth + cropLeft
@@ -231,7 +360,12 @@ export function analyzeVideoFrame(
   }
   const cropIntensity = normalizeLuminance(cropLuminance)
   const luminance = new Float32Array(RECEIVER_CELL_COUNT)
+  const previousLuminance = new Float32Array(RECEIVER_CELL_COUNT)
   const intensity = new Float32Array(RECEIVER_CELL_COUNT)
+  const previousSource =
+    previous && previous.sourceWidth === sourceWidth && previous.sourceHeight === sourceHeight
+      ? previous.sourceLuminance
+      : null
   const hueWeights = new Float32Array(COLOR_HUE_BINS)
   const hueLightness = new Float32Array(COLOR_HUE_BINS)
   const hueA = new Float32Array(COLOR_HUE_BINS)
@@ -248,6 +382,7 @@ export function analyzeVideoFrame(
       const sourceRight =
         cropLeft + Math.max(sourceLeft - cropLeft + 1, Math.floor(((column + 1) * cropWidth) / RECEIVER_WIDTH))
       let rawTotal = 0
+      let previousRawTotal = 0
       let intensityTotal = 0
       let redTotal = 0
       let greenTotal = 0
@@ -258,6 +393,7 @@ export function analyzeVideoFrame(
           const sourceIndex = sourceY * sourceWidth + sourceX
           const cropIndex = (sourceY - cropTop) * cropWidth + sourceX - cropLeft
           rawTotal += sourceLuminance[sourceIndex] ?? 0
+          if (previousSource) previousRawTotal += previousSource[sourceIndex] ?? 0
           intensityTotal += cropIntensity[cropIndex] ?? 0
           const rgbaOffset = sourceIndex * 4
           redTotal += rgba[rgbaOffset] ?? 0
@@ -268,6 +404,7 @@ export function analyzeVideoFrame(
       }
       const index = row * RECEIVER_WIDTH + column
       luminance[index] = rawTotal / sampleCount
+      previousLuminance[index] = previousSource ? previousRawTotal / sampleCount : luminance[index]!
       intensity[index] = intensityTotal / sampleCount
       const color = rgbToOklab(redTotal / sampleCount, greenTotal / sampleCount, blueTotal / sampleCount)
       const lightnessWeight = smoothColorWindow(color.lightness)
@@ -337,16 +474,21 @@ export function analyzeVideoFrame(
 
   const difference = new Float32Array(RECEIVER_CELL_COUNT)
   let differenceTotal = 0
-  if (previous) {
+  if (previousSource) {
     for (let index = 0; index < difference.length; index += 1) {
-      const value = Math.abs((luminance[index] ?? 0) - (previous.luminance[index] ?? 0))
+      const value = Math.abs((luminance[index] ?? 0) - (previousLuminance[index] ?? 0))
       difference[index] = value
       differenceTotal += value
     }
   }
   const luminanceCentroid = calculateCentroid(luminance)
-  const previousCentroid = previous?.luminanceCentroid ?? luminanceCentroid
+  const previousCentroid = previousSource ? calculateCentroid(previousLuminance) : luminanceCentroid
   const edges = calculateEdges(intensity)
+  const structureValid = structureEnergy(structure) >= 0.08
+  const previousReference = previous?.sceneReferenceStructure ?? null
+  const spatialDistance = structureValid && previousReference ? structureDistance(structure, previousReference) : 0
+  const exposureDistance = previous ? histogramDistance(histogram, previous.sourceHistogram) : 0
+  const sceneCutScore = Math.min(1, spatialDistance * (1 + exposureDistance * 0.35))
   return {
     luminance,
     intensity,
@@ -360,8 +502,18 @@ export function analyzeVideoFrame(
       y: luminanceCentroid.y - previousCentroid.y,
     },
     luminanceCentroid,
+    cropCenter: { x: cropCenterX, y: cropCenterY },
+    framingTarget,
+    sceneCutScore,
+    isSceneCut: sceneCutScore >= 0.48,
     sceneColor: stableSceneColor,
     accentColor,
+    sourceHistogram: histogram,
+    sourceStructure: structure,
+    sceneReferenceStructure: structureValid ? structure : previousReference,
+    sourceLuminance,
+    sourceWidth,
+    sourceHeight,
   }
 }
 

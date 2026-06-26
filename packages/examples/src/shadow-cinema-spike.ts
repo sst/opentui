@@ -16,6 +16,7 @@ import {
 import { AUDIO_ANALYSIS_FRAMES, AUDIO_SPECTRUM_BANDS, AudioRhythmAnalyzer } from "./lib/audio-rhythm-analyzer.js"
 import { AudioAnalysisBuffer, audioDecayDeltaMs, audioTapReadFrames } from "./lib/audio-analysis-buffer.js"
 import { AudioVisualChoreographer } from "./lib/audio-visual-choreographer.js"
+import { SubjectCropTracker, sampleFlowingContour } from "./lib/cinematic-motion.js"
 import { parseShadowCinemaArgs } from "./lib/shadow-cinema-args.js"
 import {
   RECEIVER_HEIGHT,
@@ -63,6 +64,7 @@ interface ShadowMemory {
   detail: Float32Array
   capturedAt: number
   strength: number
+  velocityCells: Vec2
 }
 
 interface ReceiverPalette {
@@ -143,12 +145,14 @@ const EMPTY_PCM = new Float32Array()
 const SHADOW_MEMORY_MAX = 5
 const SHADOW_MEMORY_INTERVAL_MS = 120
 const SHADOW_MEMORY_LIFETIME_MS = 850
+const SCENE_CUT_REVEAL_MS = 220
 const SHADOW_GLYPHS = ["⋅", "∙", "•", "⦁", "●"] as const
 const AUDIO_FIELD_GLYPHS = ["·", "∙", "◦", "○", "●"] as const
 
 const rhythmAnalyzer = new AudioRhythmAnalyzer()
 const audioAnalysisBuffer = new AudioAnalysisBuffer(AUDIO_ANALYSIS_FRAMES, AUDIO_CHANNELS)
 const choreography = new AudioVisualChoreographer()
+const cropTracker = new SubjectCropTracker()
 const shadowMemories: ShadowMemory[] = []
 
 let rendererInstance: CliRenderer | null = null
@@ -177,6 +181,7 @@ let lastAudioAnalysisAtMs = 0
 let audioAnalysisStalled = false
 let lastHelpSecond = -1
 let lastShadowMemoryAtMs = Number.NEGATIVE_INFINITY
+let lastSceneCutAtMs = Number.NEGATIVE_INFINITY
 let paused = false
 let muted = false
 let colorMode: ColorMode = "video"
@@ -337,9 +342,20 @@ function smoothVideoColor(previous: VideoFrameColor | null, next: VideoFrameColo
 }
 
 function updateVideoColors(analysis: VideoFrameAnalysis): void {
-  smoothedSceneColor = smoothVideoColor(smoothedSceneColor, analysis.sceneColor)
-  smoothedAccentColor = smoothVideoColor(smoothedAccentColor, analysis.accentColor)
-  const chromeResponseMs = Math.max(1600, COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.responseMs * 3)
+  const responseMs = analysis.isSceneCut ? 90 : COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.responseMs
+  smoothedSceneColor = smoothVideoFrameColor(
+    smoothedSceneColor,
+    analysis.sceneColor,
+    PRESENTATION_INTERVAL_SECONDS * 1000,
+    responseMs,
+  )
+  smoothedAccentColor = smoothVideoFrameColor(
+    smoothedAccentColor,
+    analysis.accentColor,
+    PRESENTATION_INTERVAL_SECONDS * 1000,
+    responseMs,
+  )
+  const chromeResponseMs = analysis.isSceneCut ? 450 : Math.max(1600, responseMs * 3)
   smoothedChromeSceneColor = smoothVideoFrameColor(
     smoothedChromeSceneColor,
     analysis.sceneColor,
@@ -412,11 +428,22 @@ function captureShadowMemory(): void {
     if (elapsedMs - shadowMemories[index]!.capturedAt > SHADOW_MEMORY_LIFETIME_MS) shadowMemories.splice(index, 1)
   }
   const motion = frameAnalysis?.motionMagnitude ?? 0
-  if (!frameAnalysis || motion < 0.018 || elapsedMs - lastShadowMemoryAtMs < SHADOW_MEMORY_INTERVAL_MS) return
+  const sceneCutSettling = elapsedMs - lastSceneCutAtMs < SCENE_CUT_REVEAL_MS
+  if (
+    !frameAnalysis ||
+    sceneCutSettling ||
+    motion < 0.018 ||
+    elapsedMs - lastShadowMemoryAtMs < SHADOW_MEMORY_INTERVAL_MS
+  )
+    return
   shadowMemories.push({
     detail: frameAnalysis.detail.slice(),
     capturedAt: elapsedMs,
     strength: motion,
+    velocityCells: {
+      x: Math.max(-6, Math.min(6, frameAnalysis.motionDirection.x * RECEIVER_WIDTH * 3)),
+      y: Math.max(-4, Math.min(4, frameAnalysis.motionDirection.y * RECEIVER_HEIGHT * 3)),
+    },
   })
   if (shadowMemories.length > SHADOW_MEMORY_MAX) shadowMemories.shift()
   lastShadowMemoryAtMs = elapsedMs
@@ -428,22 +455,27 @@ function videoSample(
 ): { intensity: number; edge: number; detail: number; difference: number } {
   if (!frameAnalysis) return { intensity: 0, edge: 0, detail: 0, difference: 0 }
   const displacement = Math.min(2, Math.round(frameAnalysis.motionMagnitude * 18))
-  const impactDisplacement = Math.round(choreography.impact * (2 + rhythmAnalyzer.stereoWidth * 2))
+  const bassDisplacement = choreography.bassImpact * (2 + rhythmAnalyzer.stereoWidth * 2)
+  const midDisplacement = Math.round(choreography.midImpact * (1 + rhythmAnalyzer.stereoWidth * 2))
   const impactPolarity = (row + Math.floor(column / 4)) % 2 === 0 ? -1 : 1
+  const centerX = (RECEIVER_WIDTH - 1) * 0.5
+  const centerY = (RECEIVER_HEIGHT - 1) * 0.5
+  const radialX = ((column - centerX) / centerX) * bassDisplacement
+  const radialY = ((row - centerY) / centerY) * bassDisplacement * 0.5
   const sourceColumn = Math.max(
     0,
     Math.min(
       RECEIVER_WIDTH - 1,
-      column - Math.sign(frameAnalysis.motionDirection.x) * displacement + impactPolarity * impactDisplacement,
+      Math.round(
+        column - Math.sign(frameAnalysis.motionDirection.x) * displacement - radialX + impactPolarity * midDisplacement,
+      ),
     ),
   )
   const sourceRow = Math.max(
     0,
     Math.min(
       RECEIVER_HEIGHT - 1,
-      row -
-        Math.sign(frameAnalysis.motionDirection.y) * displacement -
-        impactPolarity * Math.ceil(impactDisplacement * 0.5),
+      row - Math.sign(frameAnalysis.motionDirection.y) * displacement - Math.round(radialY),
     ),
   )
   const index = sourceRow * RECEIVER_WIDTH + sourceColumn
@@ -506,13 +538,31 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
       const field = equalizerProjectionVisible ? audioField(point, haloCenter) : null
 
       const contourStrength = Math.min(1, sample.detail + sample.difference * 0.9)
+      const cutAge = elapsedMs - lastSceneCutAtMs
+      const cutReveal = cutAge >= 0 && cutAge < SCENE_CUT_REVEAL_MS ? cutAge / SCENE_CUT_REVEAL_MS : 1
+      const revealed = hashNoise(column * 0.73, row * 1.37) <= cutReveal
       const tonalAnchor =
         hashNoise(column * 1.7 + row * 0.13, row * 2.3 + column * 0.17) > 0.94 - sample.intensity * 0.16
-      if (contourStrength > 0.14 || tonalAnchor) {
+      if (revealed && (contourStrength > 0.14 || tonalAnchor)) {
         const strength = Math.max(contourStrength, sample.intensity * 0.62)
         const glyph = shadowGlyph(strength)
         const color = sample.edge > 0.26 ? palette.accent : palette.foreground
         buffer.setCell(originX + column, originY + row, glyph, color, palette.background)
+        continue
+      }
+
+      const trebleSparkle = choreography.trebleImpact
+      if (
+        trebleSparkle > 0.12 &&
+        hashNoise(column + Math.floor(elapsedMs / 45), row * 2.1) > 0.992 - trebleSparkle * 0.012
+      ) {
+        buffer.setCell(
+          originX + column,
+          originY + row,
+          trebleSparkle > 0.62 ? "•" : "⋅",
+          palette.accent,
+          palette.background,
+        )
         continue
       }
 
@@ -526,7 +576,15 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
       for (const memory of shadowMemories) {
         const age = (elapsedMs - memory.capturedAt) / SHADOW_MEMORY_LIFETIME_MS
         if (age < 0 || age > 1) continue
-        const detail = memory.detail[row * RECEIVER_WIDTH + column] ?? 0
+        const detail = sampleFlowingContour(
+          memory.detail,
+          RECEIVER_WIDTH,
+          RECEIVER_HEIGHT,
+          column,
+          row,
+          memory.velocityCells,
+          (elapsedMs - memory.capturedAt) / 1000,
+        )
         if (hashNoise(column + Math.floor(memory.capturedAt / 120), row) > 0.48 + age * 0.38) {
           memoryStrength = Math.max(memoryStrength, detail * (1 - age) * Math.min(1, memory.strength * 12))
         }
@@ -600,10 +658,24 @@ function resetAnalyzers(audioTapFrame: bigint): void {
   smoothedChromeSceneColor = null
   smoothedChromeAccentColor = null
   shadowMemories.length = 0
+  cropTracker.reset()
   lastShadowMemoryAtMs = Number.NEGATIVE_INFINITY
+  lastSceneCutAtMs = Number.NEGATIVE_INFINITY
   lastAudioTapFrame = audioTapFrame
   lastAudioAnalysisAtMs = elapsedMs
   audioAnalysisStalled = false
+}
+
+function analyzePresentedFrame(rgba: Uint8Array, width: number, height: number): void {
+  const analysis = analyzeVideoFrame(rgba, width, height, frameAnalysis, { cropCenter: cropTracker.center })
+  cropTracker.update(analysis.framingTarget, PRESENTATION_INTERVAL_SECONDS * 1000, analysis.isSceneCut)
+  if (analysis.isSceneCut) {
+    shadowMemories.length = 0
+    lastShadowMemoryAtMs = Number.NEGATIVE_INFINITY
+    lastSceneCutAtMs = elapsedMs
+  }
+  frameAnalysis = analysis
+  updateVideoColors(analysis)
 }
 
 function loopVideo(): void {
@@ -629,8 +701,7 @@ function consumeVideoFrame(targetSeconds: number): void {
       const late = state.framePts + PRESENTATION_INTERVAL_SECONDS * 1.5 < state.currentTime
       if (!late) {
         const raw = nextImage.raw("rgba8")
-        frameAnalysis = analyzeVideoFrame(raw.data, raw.width, raw.height, frameAnalysis)
-        updateVideoColors(frameAnalysis)
+        analyzePresentedFrame(raw.data, raw.width, raw.height)
         video.frameSubmitted(output.frameCount)
       }
     } finally {
@@ -845,8 +916,7 @@ function seekPlayback(targetSeconds: number): void {
   if (targetFrame) {
     try {
       const raw = targetFrame.raw("rgba8")
-      frameAnalysis = analyzeVideoFrame(raw.data, raw.width, raw.height)
-      updateVideoColors(frameAnalysis)
+      analyzePresentedFrame(raw.data, raw.width, raw.height)
       video.frameSubmitted(rendererInstance?.getOutputWriteSample().frameCount ?? 0)
     } finally {
       targetFrame.dispose()
@@ -903,8 +973,7 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
     if (initialFrame) {
       try {
         const raw = initialFrame.raw("rgba8")
-        frameAnalysis = analyzeVideoFrame(raw.data, raw.width, raw.height)
-        updateVideoColors(frameAnalysis)
+        analyzePresentedFrame(raw.data, raw.width, raw.height)
         nextVideo.frameSubmitted(renderer.getOutputWriteSample().frameCount)
       } finally {
         initialFrame.dispose()
