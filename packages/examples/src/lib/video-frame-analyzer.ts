@@ -430,6 +430,11 @@ export function analyzeVideoFrame(
     hueCellCounts[(center + COLOR_HUE_BINS - 1) % COLOR_HUE_BINS]! +
     hueCellCounts[center]! +
     hueCellCounts[(center + 1) % COLOR_HUE_BINS]!
+  const hueNeighborhoodSceneScore = (center: number): number => {
+    const cellCount = hueNeighborhoodCellCount(center)
+    const averageWeight = hueNeighborhoodWeight(center) / Math.max(1, cellCount)
+    return cellCount * (1 - Math.min(0.15, averageWeight * 4))
+  }
   const hueBinDistance = (left: number, right: number): number => {
     const distance = Math.abs(left - right)
     return Math.min(distance, COLOR_HUE_BINS - distance)
@@ -437,7 +442,17 @@ export function analyzeVideoFrame(
   let sceneBin = -1
   for (let bin = 0; bin < COLOR_HUE_BINS; bin += 1) {
     if (hueNeighborhoodCellCount(bin) < RECEIVER_CELL_COUNT * 0.02) continue
-    if (sceneBin === -1 || hueNeighborhoodWeight(bin) > hueNeighborhoodWeight(sceneBin)) sceneBin = bin
+    if (hueNeighborhoodWeight(bin) <= 0.04) continue
+    const score = hueNeighborhoodSceneScore(bin)
+    const sceneScore = sceneBin < 0 ? Number.NEGATIVE_INFINITY : hueNeighborhoodSceneScore(sceneBin)
+    const equallyRepresented = Math.abs(score - sceneScore) < 0.000001
+    if (
+      sceneBin === -1 ||
+      score > sceneScore ||
+      (equallyRepresented && hueNeighborhoodWeight(bin) < hueNeighborhoodWeight(sceneBin))
+    ) {
+      sceneBin = bin
+    }
   }
   let accentBin = -1
   for (let bin = 0; bin < COLOR_HUE_BINS; bin += 1) {

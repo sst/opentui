@@ -292,6 +292,52 @@ test("a sparse saturated highlight cannot suppress a represented scene color", (
   expect(analysis.sceneColor!.hue).toBeLessThan(280)
 })
 
+test("a smaller saturated warm region does not overpower a broad muted cool scene", () => {
+  const rgba = colorFrame(72, 104, 138)
+  for (let row = 0; row < RECEIVER_HEIGHT; row += 1) {
+    for (let column = 0; column < 17; column += 1) fillColorContentCell(rgba, column, row, 190, 70, 35)
+  }
+
+  const analysis = analyzeVideoFrame(rgba, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+
+  expect(analysis.sceneColor).not.toBeNull()
+  expect(analysis.sceneColor!.hue).toBeGreaterThan(230)
+  expect(analysis.sceneColor!.hue).toBeLessThan(270)
+  expect(analysis.accentColor).not.toBeNull()
+  expect(analysis.accentColor!.hue).toBeGreaterThan(30)
+  expect(analysis.accentColor!.hue).toBeLessThan(60)
+})
+
+test("equally represented cool and warm families prefer the cooler scene family", () => {
+  const rgba = colorFrame(60, 105, 150)
+  for (let row = 0; row < RECEIVER_HEIGHT; row += 1) {
+    for (let column = 0; column < RECEIVER_WIDTH / 2; column += 1) {
+      fillColorContentCell(rgba, column, row, 175, 78, 45)
+    }
+  }
+
+  const analysis = analyzeVideoFrame(rgba, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+
+  expect(analysis.sceneColor).not.toBeNull()
+  expect(analysis.sceneColor!.hue).toBeGreaterThan(230)
+  expect(analysis.sceneColor!.hue).toBeLessThan(270)
+})
+
+test("a vivid warm majority remains the scene color beside near-neutral cool gray", () => {
+  const rgba = colorFrame(190, 70, 35)
+  for (let row = 0; row < RECEIVER_HEIGHT; row += 1) {
+    for (let column = 32; column < RECEIVER_WIDTH; column += 1) {
+      fillColorContentCell(rgba, column, row, 98, 102, 113)
+    }
+  }
+
+  const analysis = analyzeVideoFrame(rgba, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+
+  expect(analysis.sceneColor).not.toBeNull()
+  expect(analysis.sceneColor!.hue).toBeGreaterThan(30)
+  expect(analysis.sceneColor!.hue).toBeLessThan(50)
+})
+
 test("bright saturated colors remain eligible for extraction", () => {
   const analysis = analyzeVideoFrame(colorFrame(255, 255, 0), VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
   expect(analysis.sceneColor).not.toBeNull()

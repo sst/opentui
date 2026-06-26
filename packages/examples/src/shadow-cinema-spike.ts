@@ -307,15 +307,15 @@ function activeChromePalette(): ColorStop {
 }
 
 function videoColorPalette(scene: VideoFrameColor, accent: VideoFrameColor): ColorStop {
-  const backgroundLightness = Math.max(0.14, Math.min(0.3, scene.lightness * 0.48))
+  const backgroundLightness = Math.max(0.12, Math.min(0.24, scene.lightness * 0.4))
   const foregroundLightness = Math.max(0.76, Math.min(0.93, scene.lightness + 0.2))
   const accentLightness = Math.max(0.78, Math.min(0.94, accent.lightness + 0.16))
-  const foregroundChroma = Math.max(0.11, Math.min(0.24, scene.chroma * 1.35))
+  const foregroundChroma = Math.max(0.085, Math.min(0.22, scene.chroma * 1.2))
   const accentChroma = Math.max(0.13, Math.min(0.26, accent.chroma * 1.4))
   return {
     background: oklchToHex({
       lightness: backgroundLightness,
-      chroma: Math.max(0.035, Math.min(0.09, scene.chroma * 0.55)),
+      chroma: Math.max(0.012, Math.min(0.045, scene.chroma * 0.28)),
       hue: scene.hue,
     }),
     foreground: oklchToHex({
@@ -325,7 +325,7 @@ function videoColorPalette(scene: VideoFrameColor, accent: VideoFrameColor): Col
     }),
     shadow: oklchToHex({
       lightness: backgroundLightness + (foregroundLightness - backgroundLightness) * 0.52,
-      chroma: foregroundChroma * 0.68,
+      chroma: foregroundChroma * 0.42,
       hue: scene.hue,
     }),
     accent: oklchToHex({
