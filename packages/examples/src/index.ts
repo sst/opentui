@@ -576,7 +576,7 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
     {
       name: "Clipboard & Paste Test Bed",
       description:
-        "OSC 52 copy, paste transport, and editor semantics diagnostics with a selectable, copyable event log",
+        "Native host and OSC 52 clipboard reads, writes, clears, disposal, paste transport, and editor diagnostics",
       run: clipboardPasteDemo.run,
       destroy: clipboardPasteDemo.destroy,
     },

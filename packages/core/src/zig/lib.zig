@@ -360,8 +360,19 @@ export fn destroyAudioEngine(engine_handle: NativeHandle) void {
     handles.finishDestroy(token.handle);
 }
 
-export fn clipboardServiceCreate(max_operations: u32) NativeHandle {
-    return clipboard.createService(globalAllocator, max_operations);
+export fn clipboardServiceCreate(
+    max_operations: u32,
+    max_provider_transfers: u32,
+    wayland_seat_pointer: ?[*]const u8,
+    wayland_seat_length: u32,
+) NativeHandle {
+    return clipboard.createService(
+        globalAllocator,
+        max_operations,
+        max_provider_transfers,
+        wayland_seat_pointer,
+        wayland_seat_length,
+    );
 }
 
 export fn clipboardServiceBeginShutdown(service_handle: NativeHandle) u8 {
@@ -376,6 +387,10 @@ export fn clipboardServiceDestroy(service_handle: NativeHandle) u8 {
     return @intFromEnum(clipboard.destroyService(service_handle));
 }
 
+export fn clipboardServiceDrain(service_handle: NativeHandle) u8 {
+    return clipboard.drainService(service_handle);
+}
+
 export fn clipboardTestOperationStart(
     service_handle: NativeHandle,
     request_pointer: ?[*]const u8,
@@ -388,6 +403,58 @@ export fn clipboardTestOperationStart(
         request_pointer,
         request_length,
         delay_ms,
+        out_operation_handle,
+    ));
+}
+
+export fn clipboardReadOperationStart(
+    service_handle: NativeHandle,
+    request_pointer: ?[*]const u8,
+    request_length: u32,
+    selection: u8,
+    max_bytes: u32,
+    timeout_ms: u32,
+    out_operation_handle: ?*NativeHandle,
+) u8 {
+    return @intFromEnum(clipboard.startReadOperation(
+        service_handle,
+        request_pointer,
+        request_length,
+        selection,
+        max_bytes,
+        timeout_ms,
+        out_operation_handle,
+    ));
+}
+
+export fn clipboardWriteOperationStart(
+    service_handle: NativeHandle,
+    text_pointer: ?[*]const u8,
+    text_length: u32,
+    selection: u8,
+    timeout_ms: u32,
+    out_operation_handle: ?*NativeHandle,
+) u8 {
+    return @intFromEnum(clipboard.startWriteOperation(
+        service_handle,
+        text_pointer,
+        text_length,
+        selection,
+        timeout_ms,
+        out_operation_handle,
+    ));
+}
+
+export fn clipboardClearOperationStart(
+    service_handle: NativeHandle,
+    selection: u8,
+    timeout_ms: u32,
+    out_operation_handle: ?*NativeHandle,
+) u8 {
+    return @intFromEnum(clipboard.startClearOperation(
+        service_handle,
+        selection,
+        timeout_ms,
         out_operation_handle,
     ));
 }

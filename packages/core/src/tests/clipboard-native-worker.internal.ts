@@ -11,11 +11,15 @@ import {
 } from "../zig.js"
 
 const symbols = {
-  clipboardServiceCreate: { args: ["u32"], returns: "u32" },
+  clipboardServiceCreate: { args: ["u32", "u32", "ptr", "u32"], returns: "u32" },
   clipboardServiceBeginShutdown: { args: ["u32"], returns: "u8" },
   clipboardServicePollShutdown: { args: ["u32"], returns: "u8" },
   clipboardServiceDestroy: { args: ["u32"], returns: "u8" },
+  clipboardServiceDrain: { args: ["u32"], returns: "u8" },
   clipboardTestOperationStart: { args: ["u32", "ptr", "u32", "u32", "ptr"], returns: "u8" },
+  clipboardReadOperationStart: { args: ["u32", "ptr", "u32", "u8", "u32", "u32", "ptr"], returns: "u8" },
+  clipboardWriteOperationStart: { args: ["u32", "ptr", "u32", "u8", "u32", "ptr"], returns: "u8" },
+  clipboardClearOperationStart: { args: ["u32", "u8", "u32", "ptr"], returns: "u8" },
   clipboardOperationPoll: { args: ["u32"], returns: "u8" },
   clipboardOperationCancel: { args: ["u32"], returns: "u8" },
   clipboardOperationResultMimeLength: { args: ["u32", "ptr"], returns: "u8" },
@@ -76,7 +80,7 @@ export class ClipboardNativeWorkerTestLib {
   }
 
   createService(maxOperations: number): ClipboardServiceHandle | null {
-    const handle = this.library.symbols.clipboardServiceCreate(maxOperations)
+    const handle = this.library.symbols.clipboardServiceCreate(maxOperations, 16, null, 0)
     if (handle === 0) return null
     const service = handle as ClipboardServiceHandle
     this.services.add(service)
@@ -117,6 +121,54 @@ export class ClipboardNativeWorkerTestLib {
     const operation = output[0] === 0 ? null : (output[0] as ClipboardOperationHandle)
     if (operation) this.operations.add(operation)
     return { status, operation }
+  }
+
+  startRead(
+    service: ClipboardServiceHandle,
+    request: Uint8Array,
+    selection: number,
+    maxBytes: number,
+    timeoutMs: number,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    return this.startOperation((output) =>
+      this.library.symbols.clipboardReadOperationStart(
+        service,
+        request.byteLength === 0 ? null : ptr(request),
+        request.byteLength,
+        selection,
+        maxBytes,
+        timeoutMs,
+        ptr(output),
+      ),
+    )
+  }
+
+  startWrite(
+    service: ClipboardServiceHandle,
+    text: Uint8Array,
+    selection: number,
+    timeoutMs: number,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    return this.startOperation((output) =>
+      this.library.symbols.clipboardWriteOperationStart(
+        service,
+        text.byteLength === 0 ? null : ptr(text),
+        text.byteLength,
+        selection,
+        timeoutMs,
+        ptr(output),
+      ),
+    )
+  }
+
+  startClear(
+    service: ClipboardServiceHandle,
+    selection: number,
+    timeoutMs: number,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    return this.startOperation((output) =>
+      this.library.symbols.clipboardClearOperationStart(service, selection, timeoutMs, ptr(output)),
+    )
   }
 
   poll(operation: ClipboardOperationHandle): NativeClipboardOperationStatus {
@@ -178,5 +230,16 @@ export class ClipboardNativeWorkerTestLib {
     const output = new Uint32Array(1)
     const status = symbol(operation, output)
     return { status, length: output[0] }
+  }
+
+  private startOperation(start: (output: Uint32Array) => number): {
+    status: NativeClipboardStartStatus
+    operation: ClipboardOperationHandle | null
+  } {
+    const output = new Uint32Array(1)
+    const status = start(output)
+    const operation = output[0] === 0 ? null : (output[0] as ClipboardOperationHandle)
+    if (operation) this.operations.add(operation)
+    return { status, operation }
   }
 }

@@ -569,7 +569,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "bool",
     },
     clipboardServiceCreate: {
-      args: ["u32"],
+      args: ["u32", "u32", "ptr", "u32"],
       returns: "u32",
     },
     clipboardServiceBeginShutdown: {
@@ -582,6 +582,22 @@ function getOpenTUILib(libPath?: string) {
     },
     clipboardServiceDestroy: {
       args: ["u32"],
+      returns: "u8",
+    },
+    clipboardServiceDrain: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardReadOperationStart: {
+      args: ["u32", "ptr", "u32", "u8", "u32", "u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardWriteOperationStart: {
+      args: ["u32", "ptr", "u32", "u8", "u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardClearOperationStart: {
+      args: ["u32", "u8", "u32", "ptr"],
       returns: "u8",
     },
     clipboardOperationPoll: {
@@ -2250,10 +2266,33 @@ export interface RenderLib extends AudioEngineLib {
   setTerminalTitle: (renderer: RendererHandle, title: string) => void
   copyToClipboardOSC52: (renderer: RendererHandle, target: number, textUtf8: Uint8Array) => boolean
   clearClipboardOSC52: (renderer: RendererHandle, target: number) => boolean
-  clipboardServiceCreate: (maxOperations: number) => ClipboardServiceHandle | null
+  clipboardServiceCreate: (
+    maxOperations: number,
+    maxProviderTransfers: number,
+    waylandSeat?: string,
+  ) => ClipboardServiceHandle | null
   clipboardServiceBeginShutdown: (service: ClipboardServiceHandle) => NativeClipboardShutdownStatus
   clipboardServicePollShutdown: (service: ClipboardServiceHandle) => NativeClipboardShutdownStatus
   clipboardServiceDestroy: (service: ClipboardServiceHandle) => NativeClipboardDestroyStatus
+  clipboardServiceDrain: (service: ClipboardServiceHandle) => number
+  clipboardReadOperationStart: (
+    service: ClipboardServiceHandle,
+    request: Uint8Array,
+    selection: number,
+    maxBytes: number,
+    timeoutMs: number,
+  ) => { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null }
+  clipboardWriteOperationStart: (
+    service: ClipboardServiceHandle,
+    textUtf8: Uint8Array,
+    selection: number,
+    timeoutMs: number,
+  ) => { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null }
+  clipboardClearOperationStart: (
+    service: ClipboardServiceHandle,
+    selection: number,
+    timeoutMs: number,
+  ) => { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null }
   clipboardOperationPoll: (operation: ClipboardOperationHandle) => NativeClipboardOperationStatus
   clipboardOperationCancel: (operation: ClipboardOperationHandle) => NativeClipboardCancelStatus
   clipboardOperationResultMimeLength: (operation: ClipboardOperationHandle) => {
@@ -3534,8 +3573,18 @@ class FFIRenderLib implements RenderLib {
     return Boolean(this.opentui.symbols.clearClipboardOSC52(renderer, target))
   }
 
-  public clipboardServiceCreate(maxOperations: number): ClipboardServiceHandle | null {
-    const handle = this.opentui.symbols.clipboardServiceCreate(toSafeFFIU32Length(maxOperations, "maxOperations"))
+  public clipboardServiceCreate(
+    maxOperations: number,
+    maxProviderTransfers: number,
+    waylandSeat?: string,
+  ): ClipboardServiceHandle | null {
+    const seat = waylandSeat === undefined ? null : this.encoder.encode(waylandSeat)
+    const handle = this.opentui.symbols.clipboardServiceCreate(
+      toSafeFFIU32Length(maxOperations, "maxOperations"),
+      toSafeFFIU32Length(maxProviderTransfers, "maxProviderTransfers"),
+      seat === null ? null : ptrOrNull(seat),
+      seat?.byteLength ?? 0,
+    )
     if (handle === 0) return null
     const service = handle as ClipboardServiceHandle
     this.clipboardServices.add(service)
@@ -3557,6 +3606,74 @@ class FFIRenderLib implements RenderLib {
     const status = this.opentui.symbols.clipboardServiceDestroy(service)
     if (status === NativeClipboardDestroyStatus.Destroyed) this.clipboardServices.delete(service)
     return status
+  }
+
+  public clipboardServiceDrain(service: ClipboardServiceHandle): number {
+    if (!this.clipboardServices.has(service)) return 2
+    return this.opentui.symbols.clipboardServiceDrain(service)
+  }
+
+  private clipboardStartResult(
+    status: NativeClipboardStartStatus,
+    output: Uint32Array,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    return {
+      status,
+      operation: output[0] === 0 ? null : (output[0] as ClipboardOperationHandle),
+    }
+  }
+
+  public clipboardReadOperationStart(
+    service: ClipboardServiceHandle,
+    request: Uint8Array,
+    selection: number,
+    maxBytes: number,
+    timeoutMs: number,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.clipboardReadOperationStart(
+      service,
+      ptrOrNull(request),
+      toSafeFFIU32Length(request.byteLength, "clipboard read request"),
+      selection,
+      toSafeFFIU32Length(maxBytes, "clipboard read byte limit"),
+      toSafeFFIU32Length(timeoutMs, "clipboard read timeout"),
+      ptr(output),
+    )
+    return this.clipboardStartResult(status, output)
+  }
+
+  public clipboardWriteOperationStart(
+    service: ClipboardServiceHandle,
+    textUtf8: Uint8Array,
+    selection: number,
+    timeoutMs: number,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.clipboardWriteOperationStart(
+      service,
+      ptrOrNull(textUtf8),
+      toSafeFFIU32Length(textUtf8.byteLength, "clipboard write text"),
+      selection,
+      toSafeFFIU32Length(timeoutMs, "clipboard write timeout"),
+      ptr(output),
+    )
+    return this.clipboardStartResult(status, output)
+  }
+
+  public clipboardClearOperationStart(
+    service: ClipboardServiceHandle,
+    selection: number,
+    timeoutMs: number,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.clipboardClearOperationStart(
+      service,
+      selection,
+      toSafeFFIU32Length(timeoutMs, "clipboard clear timeout"),
+      ptr(output),
+    )
+    return this.clipboardStartResult(status, output)
   }
 
   public clipboardOperationPoll(operation: ClipboardOperationHandle): NativeClipboardOperationStatus {
