@@ -62,6 +62,51 @@ pub const WlArgument = extern union {
     h: i32,
 };
 
+pub const XcbConnection = opaque {};
+pub const XcbGenericEvent = extern struct {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    pad: [7]u32,
+    full_sequence: u32,
+};
+pub const XcbGenericError = extern struct {
+    response_type: u8,
+    error_code: u8,
+    sequence: u16,
+    resource_id: u32,
+    minor_code: u16,
+    major_code: u8,
+    pad0: u8,
+    pad: [5]u32,
+    full_sequence: u32,
+};
+pub const XcbCookie = extern struct { sequence: u32 };
+pub const XcbInternAtomReply = extern struct {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    length: u32,
+    atom: u32,
+};
+pub const XcbGetPropertyReply = extern struct {
+    response_type: u8,
+    format: u8,
+    sequence: u16,
+    length: u32,
+    atom_type: u32,
+    bytes_after: u32,
+    value_length: u32,
+    pad0: [12]u8,
+};
+pub const XcbGetSelectionOwnerReply = extern struct {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    length: u32,
+    owner: u32,
+};
+
 const LibraryKind = enum { wayland, x11 };
 const LoadLibraryFn = *const fn (context: *anyopaque, kind: LibraryKind) bool;
 pub const MIN_WAYLAND_CLIENT_VERSION = "1.25.0";
@@ -88,26 +133,28 @@ pub const WaylandSymbols = struct {
 };
 
 pub const XcbSymbols = struct {
-    xcb_connect: *const anyopaque,
-    xcb_connection_has_error: *const anyopaque,
-    xcb_disconnect: *const anyopaque,
-    xcb_get_file_descriptor: *const anyopaque,
-    xcb_poll_for_event: *const anyopaque,
-    xcb_flush: *const anyopaque,
-    xcb_generate_id: *const anyopaque,
-    xcb_create_window: *const anyopaque,
-    xcb_destroy_window: *const anyopaque,
-    xcb_intern_atom: *const anyopaque,
-    xcb_intern_atom_reply: *const anyopaque,
-    xcb_get_property: *const anyopaque,
-    xcb_get_property_reply: *const anyopaque,
-    xcb_change_property: *const anyopaque,
-    xcb_delete_property: *const anyopaque,
-    xcb_convert_selection: *const anyopaque,
-    xcb_set_selection_owner: *const anyopaque,
-    xcb_get_selection_owner: *const anyopaque,
-    xcb_get_selection_owner_reply: *const anyopaque,
-    xcb_send_event: *const anyopaque,
+    xcb_connect: *const fn (?[*:0]const u8, ?*c_int) callconv(.c) ?*XcbConnection,
+    xcb_connection_has_error: *const fn (*XcbConnection) callconv(.c) c_int,
+    xcb_disconnect: *const fn (*XcbConnection) callconv(.c) void,
+    xcb_get_file_descriptor: *const fn (*XcbConnection) callconv(.c) c_int,
+    xcb_poll_for_event: *const fn (*XcbConnection) callconv(.c) ?*XcbGenericEvent,
+    xcb_poll_for_reply: *const fn (*XcbConnection, u32, *?*anyopaque, *?*XcbGenericError) callconv(.c) c_int,
+    xcb_discard_reply: *const fn (*XcbConnection, u32) callconv(.c) void,
+    xcb_flush: *const fn (*XcbConnection) callconv(.c) c_int,
+    xcb_generate_id: *const fn (*XcbConnection) callconv(.c) u32,
+    xcb_create_window: *const fn (*XcbConnection, u8, u32, u32, i16, i16, u16, u16, u16, u16, u32, u32, ?*const anyopaque) callconv(.c) XcbCookie,
+    xcb_destroy_window: *const fn (*XcbConnection, u32) callconv(.c) XcbCookie,
+    xcb_intern_atom: *const fn (*XcbConnection, u8, u16, [*]const u8) callconv(.c) XcbCookie,
+    xcb_intern_atom_reply: *const fn (*XcbConnection, XcbCookie, ?*?*XcbGenericError) callconv(.c) ?*XcbInternAtomReply,
+    xcb_get_property: *const fn (*XcbConnection, u8, u32, u32, u32, u32, u32) callconv(.c) XcbCookie,
+    xcb_get_property_reply: *const fn (*XcbConnection, XcbCookie, ?*?*XcbGenericError) callconv(.c) ?*XcbGetPropertyReply,
+    xcb_change_property: *const fn (*XcbConnection, u8, u32, u32, u32, u8, u32, ?*const anyopaque) callconv(.c) XcbCookie,
+    xcb_delete_property: *const fn (*XcbConnection, u32, u32) callconv(.c) XcbCookie,
+    xcb_convert_selection: *const fn (*XcbConnection, u32, u32, u32, u32, u32) callconv(.c) XcbCookie,
+    xcb_set_selection_owner: *const fn (*XcbConnection, u32, u32, u32) callconv(.c) XcbCookie,
+    xcb_get_selection_owner: *const fn (*XcbConnection, u32) callconv(.c) XcbCookie,
+    xcb_get_selection_owner_reply: *const fn (*XcbConnection, XcbCookie, ?*?*XcbGenericError) callconv(.c) ?*XcbGetSelectionOwnerReply,
+    xcb_send_event: *const fn (*XcbConnection, u8, u32, u32, [*]const u8) callconv(.c) XcbCookie,
 };
 
 fn CachedLibrary(comptime Symbols: type) type {
@@ -336,4 +383,13 @@ test "clipboard linux environment recognizes WSL kernel releases without environ
 test "clipboard Wayland backend declares the minimum bounded-dispatch library version" {
     try std.testing.expectEqualStrings("1.25.0", MIN_WAYLAND_CLIENT_VERSION);
     try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_dispatch_pending_single")) != .optional);
+}
+
+test "clipboard XCB ABI types match the core protocol layouts" {
+    try std.testing.expectEqual(@as(usize, 4), @sizeOf(XcbCookie));
+    try std.testing.expectEqual(@as(usize, 12), @sizeOf(XcbInternAtomReply));
+    try std.testing.expectEqual(@as(usize, 32), @sizeOf(XcbGetPropertyReply));
+    try std.testing.expectEqual(@as(usize, 12), @sizeOf(XcbGetSelectionOwnerReply));
+    try std.testing.expectEqual(@as(usize, 36), @sizeOf(XcbGenericEvent));
+    try std.testing.expectEqual(@as(usize, 36), @sizeOf(XcbGenericError));
 }
