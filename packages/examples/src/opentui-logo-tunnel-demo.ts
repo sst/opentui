@@ -24,6 +24,7 @@ interface ColorStop {
   background: string
   foreground: string
   shadow: string
+  accent: string
 }
 
 interface Oklch {
@@ -60,10 +61,10 @@ interface LogoTunnelOptions {
 
 const ORIGINAL_LOGO = ["▄▄▄ ▄▄▄ ▄▄▄ ▄▄  █▄▄ ▄ ▄ ▄", "█ █ █ █ █ ▀ █ █ █ ▄ █ █ █", "▀▀▀ █▀▀ ▀▀▀ ▀ ▀ ▀▀▀ ▀▀▀ ▀"].join("\n")
 const COLOR_STOPS: readonly ColorStop[] = [
-  { background: "#031B1C", foreground: "#24F4EE", shadow: "#149E99" },
-  { background: "#24031F", foreground: "#FF37CA", shadow: "#A92387" },
-  { background: "#050505", foreground: "#FF4B16", shadow: "#B9360F" },
-  { background: "#151126", foreground: "#C3ACFF", shadow: "#7862B8" },
+  { background: "#031B1C", foreground: "#24F4EE", shadow: "#149E99", accent: "#FF4FD8" },
+  { background: "#24031F", foreground: "#FF37CA", shadow: "#A92387", accent: "#46E6FF" },
+  { background: "#050505", foreground: "#FF4B16", shadow: "#B9360F", accent: "#4D8DFF" },
+  { background: "#151126", foreground: "#C3ACFF", shadow: "#7862B8", accent: "#65FBD2" },
 ]
 const AMBIENT_STOPS: readonly AmbientStop[] = [
   {
@@ -95,6 +96,7 @@ const LIGHT_DEPTH = -4
 const CASTER_DEPTH = 1.4
 const CASTER_HALF_SIZE = 1.35
 const SHADOW_GLYPHS = ["⋅", "∙", "•", "⦁", "●"] as const
+const AUDIO_FIELD_GLYPHS = ["·", "∙", "◦", "○", "●"] as const
 const DEFAULT_AUDIO_TRACK_PATH = fileURLToPath(new URL("./koop.wav", import.meta.url))
 const AUDIO_SAMPLE_RATE = 48_000
 const AUDIO_CHANNELS = 2
@@ -283,10 +285,16 @@ function ambientPalette(time: number): ColorStop {
     chroma: foreground.chroma * 0.68,
     hue: foreground.hue,
   }
+  const accent: Oklch = {
+    lightness: Math.min(0.88, foreground.lightness + 0.04),
+    chroma: Math.max(0.14, foreground.chroma),
+    hue: (foreground.hue + 85) % 360,
+  }
   return {
     background: oklchToHex(background),
     foreground: oklchToHex(foreground),
     shadow: oklchToHex(shadow),
+    accent: oklchToHex(accent),
   }
 }
 
@@ -340,6 +348,43 @@ function expandPolygon(polygon: Vec2[], expansion: number): Vec2[] {
   }))
 }
 
+function audioSpectrumBand(position: number): number {
+  const mirrored = 1 - Math.abs(Math.max(0, Math.min(1, position)) * 2 - 1)
+  return Math.min(rhythmAnalyzer.spectrum.length - 1, Math.floor(mirrored * rhythmAnalyzer.spectrum.length))
+}
+
+function audioSpectrumColor(band: number, palette: ColorStop): string {
+  const progress = band / Math.max(1, rhythmAnalyzer.spectrum.length - 1)
+  const blend = smoothstep(0, 1, progress)
+  const accent = Number.parseInt(palette.accent.slice(1), 16)
+  const foreground = Number.parseInt(palette.foreground.slice(1), 16)
+  const channels = [16, 8, 0].map((shift) => {
+    const from = (accent >> shift) & 0xff
+    const to = (foreground >> shift) & 0xff
+    return Math.round(from + (to - from) * blend)
+      .toString(16)
+      .padStart(2, "0")
+  })
+  return `#${channels.join("")}`
+}
+
+function audioField(point: Vec2, center: Vec2, wind: number): { strength: number; band: number; spark: boolean } {
+  if (lightMode !== "audio" || rhythmAnalyzer.level < 0.015) return { strength: 0, band: 0, spark: false }
+  const dx = point.x - center.x
+  const dy = point.y - center.y
+  const distance = Math.hypot(dx, dy)
+  const angle = (Math.atan2(dy, dx) + Math.PI) / (Math.PI * 2)
+  const band = audioSpectrumBand(angle)
+  const bandLevel = rhythmAnalyzer.spectrum[band] ?? 0
+  const orbitRadius = 1.15 + bandLevel * 2.35 + rhythmAnalyzer.pulse * 0.35
+  const halo = 1 - smoothstep(0.08, 0.48 + rhythmAnalyzer.treble * 0.15, Math.abs(distance - orbitRadius))
+  const shimmer = 0.72 + Math.sin(angle * Math.PI * 18 + wind * 16) * 0.28
+  const strength = halo * bandLevel * shimmer
+  const sparkNoise = hashNoise(Math.floor(point.x * 3.7) + Math.floor(elapsed / 85), Math.floor(point.y * 4.1) + band)
+  const spark = rhythmAnalyzer.treble > 0.25 && strength > 0.12 && sparkNoise > 0.9 - rhythmAnalyzer.treble * 0.08
+  return { strength: Math.min(1, strength + Number(spark) * 0.35), band, spark }
+}
+
 function buildReceiver(width: number, height: number): StyledText {
   const wind = elapsed * 0.00022
   const directionLength = Math.hypot(lightX, lightY)
@@ -356,6 +401,10 @@ function buildReceiver(width: number, height: number): StyledText {
     convexHull(casterVertices(casterCenter, wind).map((vertex) => projectShadow(vertex, light))),
     shadowResponse.expansion,
   )
+  const shadowCenter = polygon.reduce(
+    (center, point) => ({ x: center.x + point.x / polygon.length, y: center.y + point.y / polygon.length }),
+    { x: 0, y: 0 },
+  )
   const lightDistance = Math.hypot(light.x, light.y)
   const penumbra = (0.5 + lightDistance * 0.035) * (1 + shadowResponse.edgeLift)
   const palette = activePalette()
@@ -368,6 +417,10 @@ function buildReceiver(width: number, height: number): StyledText {
       const isLeft = column === 0
       const isRight = column === width - 1
       if (isTop || isBottom || isLeft || isRight) {
+        const edgePosition = isTop || isBottom ? column / Math.max(1, width - 1) : row / Math.max(1, height - 1)
+        const spectrumBand = audioSpectrumBand(edgePosition)
+        const spectrumLevel = lightMode === "audio" ? (rhythmAnalyzer.spectrum[spectrumBand] ?? 0) : 0
+        const borderColor = spectrumLevel > 0.16 ? audioSpectrumColor(spectrumBand, palette) : palette.foreground
         const glyph =
           isTop && isLeft
             ? "┌"
@@ -378,9 +431,17 @@ function buildReceiver(width: number, height: number): StyledText {
                 : isBottom && isRight
                   ? "┘"
                   : isTop || isBottom
-                    ? "─"
-                    : "│"
-        chunks.push(fg(palette.foreground)(glyph))
+                    ? spectrumLevel > 0.58
+                      ? "═"
+                      : spectrumLevel > 0.25
+                        ? "━"
+                        : "─"
+                    : spectrumLevel > 0.58
+                      ? "║"
+                      : spectrumLevel > 0.25
+                        ? "┃"
+                        : "│"
+        chunks.push(fg(borderColor)(glyph))
         continue
       }
 
@@ -389,6 +450,16 @@ function buildReceiver(width: number, height: number): StyledText {
         y: ((row + 0.5) / height) * RECEIVER_HALF_SIZE * 2 - RECEIVER_HALF_SIZE,
       }
       const strength = shadowEnabled ? shadowStrength(point, polygon, penumbra, wind) : 0
+      const field = audioField(point, shadowCenter, wind)
+      if (field.strength > strength * 0.9 && field.strength > 0.055) {
+        const glyphIndex = Math.min(
+          AUDIO_FIELD_GLYPHS.length - 1,
+          Math.floor(field.strength * AUDIO_FIELD_GLYPHS.length),
+        )
+        const glyph = field.spark ? "✦" : AUDIO_FIELD_GLYPHS[glyphIndex]!
+        chunks.push(fg(audioSpectrumColor(field.band, palette))(glyph))
+        continue
+      }
       if (strength <= 0.025) {
         chunks.push({ __isChunk: true as const, text: " " })
         continue

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { AUDIO_ANALYSIS_FRAMES, AudioRhythmAnalyzer } from "./audio-rhythm-analyzer.js"
+import { AUDIO_ANALYSIS_FRAMES, AUDIO_SPECTRUM_BANDS, AudioRhythmAnalyzer } from "./audio-rhythm-analyzer.js"
 
 const SAMPLE_RATE = 48_000
 
@@ -56,6 +56,20 @@ test("equalizer envelopes separate bass, mid, and treble", () => {
   expect(trebleAnalyzer.treble).toBeGreaterThan(trebleAnalyzer.mid)
 })
 
+test("spectrum resolves tones into distinct logarithmic bands", () => {
+  const bassAnalyzer = new AudioRhythmAnalyzer()
+  const trebleAnalyzer = new AudioRhythmAnalyzer()
+
+  bassAnalyzer.update(sineWave(100, 0.7), 2, SAMPLE_RATE, 80)
+  trebleAnalyzer.update(sineWave(6_000, 0.7), 2, SAMPLE_RATE, 80)
+  const bassPeak = bassAnalyzer.spectrum.indexOf(Math.max(...bassAnalyzer.spectrum))
+  const treblePeak = trebleAnalyzer.spectrum.indexOf(Math.max(...trebleAnalyzer.spectrum))
+
+  expect(bassAnalyzer.spectrum).toHaveLength(AUDIO_SPECTRUM_BANDS)
+  expect(bassPeak).toBeLessThan(5)
+  expect(treblePeak).toBeGreaterThan(10)
+})
+
 test("pulse decays and reset clears analyzer state", () => {
   const analyzer = new AudioRhythmAnalyzer()
   const steadyBass = sineWave(80, 0.8)
@@ -68,4 +82,5 @@ test("pulse decays and reset clears analyzer state", () => {
   analyzer.reset()
   expect(analyzer.level).toBe(0)
   expect(analyzer.pulse).toBe(0)
+  expect(Math.max(...analyzer.spectrum)).toBe(0)
 })

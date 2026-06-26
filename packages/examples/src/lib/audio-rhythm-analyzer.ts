@@ -1,6 +1,11 @@
+import FFT from "fft.js"
+
 export const AUDIO_ANALYSIS_FRAMES = 1024
+export const AUDIO_SPECTRUM_BANDS = 16
 
 const BASS_CUTOFF_HZ = 180
+const SPECTRUM_LOW_HZ = 55
+const SPECTRUM_HIGH_HZ = 14_000
 const ENVELOPE_ATTACK = 0.55
 const ENVELOPE_RELEASE = 0.16
 const BASELINE_RATE = 0.06
@@ -12,7 +17,11 @@ export class AudioRhythmAnalyzer {
   bass = 0
   mid = 0
   treble = 0
+  readonly spectrum = new Float32Array(AUDIO_SPECTRUM_BANDS)
 
+  private readonly fft = new FFT(AUDIO_ANALYSIS_FRAMES)
+  private readonly fftInput = new Float32Array(AUDIO_ANALYSIS_FRAMES)
+  private readonly fftOutput = this.fft.createComplexArray()
   private bassFilter = 0
   private midFilter = 0
   private bassBaseline = 0.01
@@ -37,6 +46,7 @@ export class AudioRhythmAnalyzer {
       let sample = 0
       for (let channel = 0; channel < channelCount; channel += 1) sample += pcm[offset + channel] ?? 0
       sample /= channelCount
+      this.fftInput[frame] = sample * (0.5 - 0.5 * Math.cos((Math.PI * 2 * frame) / Math.max(1, frameCount - 1)))
       this.bassFilter += bassFilterRate * (sample - this.bassFilter)
       this.midFilter += midFilterRate * (sample - this.midFilter)
       const mid = this.midFilter - this.bassFilter
@@ -46,6 +56,8 @@ export class AudioRhythmAnalyzer {
       midEnergy += mid * mid
       trebleEnergy += treble * treble
     }
+    this.fftInput.fill(0, frameCount)
+    this.updateSpectrum(sampleRate, deltaMs)
 
     const rms = Math.sqrt(sampleEnergy / frameCount)
     const bassRms = Math.sqrt(bassEnergy / frameCount)
@@ -72,6 +84,8 @@ export class AudioRhythmAnalyzer {
     this.bass = 0
     this.mid = 0
     this.treble = 0
+    this.spectrum.fill(0)
+    this.fftInput.fill(0)
     this.bassFilter = 0
     this.midFilter = 0
     this.bassBaseline = 0.01
@@ -85,6 +99,29 @@ export class AudioRhythmAnalyzer {
     this.bass *= decay
     this.mid *= decay
     this.treble *= decay
+    for (let band = 0; band < this.spectrum.length; band += 1) this.spectrum[band] *= decay
+  }
+
+  private updateSpectrum(sampleRate: number, deltaMs: number): void {
+    this.fft.realTransform(this.fftOutput, this.fftInput)
+    const frequencyRatio = SPECTRUM_HIGH_HZ / SPECTRUM_LOW_HZ
+    for (let band = 0; band < this.spectrum.length; band += 1) {
+      const lowHz = SPECTRUM_LOW_HZ * frequencyRatio ** (band / this.spectrum.length)
+      const highHz = SPECTRUM_LOW_HZ * frequencyRatio ** ((band + 1) / this.spectrum.length)
+      const lowBin = Math.max(1, Math.floor((lowHz * AUDIO_ANALYSIS_FRAMES) / sampleRate))
+      const highBin = Math.min(
+        AUDIO_ANALYSIS_FRAMES / 2 - 1,
+        Math.max(lowBin, Math.ceil((highHz * AUDIO_ANALYSIS_FRAMES) / sampleRate)),
+      )
+      let peak = 0
+      for (let bin = lowBin; bin <= highBin; bin += 1) {
+        const real = this.fftOutput[bin * 2] ?? 0
+        const imaginary = this.fftOutput[bin * 2 + 1] ?? 0
+        peak = Math.max(peak, Math.hypot(real, imaginary) / (AUDIO_ANALYSIS_FRAMES * 0.5))
+      }
+      const target = Math.min(1, Math.sqrt(peak) * 1.45)
+      this.spectrum[band] = this.updateBand(this.spectrum[band] ?? 0, target, deltaMs)
+    }
   }
 
   private updateBand(current: number, target: number, deltaMs: number): number {
