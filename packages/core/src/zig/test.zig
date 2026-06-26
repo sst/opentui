@@ -37,6 +37,9 @@ const handles_tests = @import("tests/handles_test.zig");
 const yoga_tests = @import("tests/yoga_test.zig");
 const ansi_tests = @import("tests/ansi_test.zig");
 const clipboard_tests = @import("clipboard.zig");
+const clipboard_linux_tests = @import("clipboard-linux.zig");
+const clipboard_wayland_protocol_tests = @import("clipboard-wayland-protocol.zig");
+const clipboard_wayland_tests = @import("clipboard-wayland.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -80,5 +83,8 @@ comptime {
     _ = yoga_tests;
     _ = ansi_tests;
     _ = clipboard_tests;
+    _ = clipboard_linux_tests;
+    _ = clipboard_wayland_protocol_tests;
+    _ = clipboard_wayland_tests;
     // _ = example_tests;
 }
