@@ -41,6 +41,9 @@ const image_tests = @import("tests/image_test.zig");
 const terminal_image_tests = @import("tests/terminal-image_test.zig");
 const lib_tests = @import("lib.zig");
 const clipboard_tests = @import("clipboard.zig");
+const clipboard_linux_tests = @import("clipboard-linux.zig");
+const clipboard_wayland_protocol_tests = @import("clipboard-wayland-protocol.zig");
+const clipboard_wayland_tests = @import("clipboard-wayland.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -88,5 +91,8 @@ comptime {
     _ = terminal_image_tests;
     _ = lib_tests;
     _ = clipboard_tests;
+    _ = clipboard_linux_tests;
+    _ = clipboard_wayland_protocol_tests;
+    _ = clipboard_wayland_tests;
     // _ = example_tests;
 }
