@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test"
 
-import { RECEIVER_HEIGHT, RECEIVER_WIDTH, VIDEO_FRAME_WIDTH, analyzeVideoFrame } from "./video-frame-analyzer.js"
+import {
+  RECEIVER_HEIGHT,
+  RECEIVER_WIDTH,
+  VIDEO_FRAME_WIDTH,
+  analyzeVideoFrame,
+  smoothVideoFrameColor,
+  type VideoFrameColor,
+} from "./video-frame-analyzer.js"
 
 const VIDEO_FRAME_HEIGHT = Math.round(VIDEO_FRAME_WIDTH / (16 / 9))
 const SOURCE_CROP_WIDTH = VIDEO_FRAME_HEIGHT
@@ -17,7 +24,28 @@ function frame(fill = 0): Uint8Array {
   return rgba
 }
 
+function colorFrame(red: number, green: number, blue: number): Uint8Array {
+  const rgba = frame()
+  for (let offset = 0; offset < rgba.length; offset += 4) {
+    rgba[offset] = red
+    rgba[offset + 1] = green
+    rgba[offset + 2] = blue
+  }
+  return rgba
+}
+
 function fillContentCell(rgba: Uint8Array, column: number, row: number, value: number): void {
+  fillColorContentCell(rgba, column, row, value, value, value)
+}
+
+function fillColorContentCell(
+  rgba: Uint8Array,
+  column: number,
+  row: number,
+  red: number,
+  green: number,
+  blue: number,
+): void {
   const sourceTop = Math.floor((row * VIDEO_FRAME_HEIGHT) / RECEIVER_HEIGHT)
   const sourceBottom = Math.max(sourceTop + 1, Math.floor(((row + 1) * VIDEO_FRAME_HEIGHT) / RECEIVER_HEIGHT))
   const sourceLeft = SOURCE_CROP_LEFT + Math.floor((column * SOURCE_CROP_WIDTH) / RECEIVER_WIDTH)
@@ -27,9 +55,9 @@ function fillContentCell(rgba: Uint8Array, column: number, row: number, value: n
   for (let sourceY = sourceTop; sourceY < sourceBottom; sourceY += 1) {
     for (let sourceX = sourceLeft; sourceX < sourceRight; sourceX += 1) {
       const source = (sourceY * VIDEO_FRAME_WIDTH + sourceX) * 4
-      rgba[source] = value
-      rgba[source + 1] = value
-      rgba[source + 2] = value
+      rgba[source] = red
+      rgba[source + 1] = green
+      rgba[source + 2] = blue
     }
   }
 }
@@ -119,6 +147,119 @@ test("excluded cover-crop pixels do not control retained contrast", () => {
   const brightSidesAnalysis = analyzeVideoFrame(brightSides, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
 
   expect(brightSidesAnalysis.intensity).toEqual(baselineAnalysis.intensity)
+})
+
+test("extracts scene and accent colors from the retained crop", () => {
+  const analysis = analyzeVideoFrame(colorFrame(220, 45, 35), VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+
+  expect(analysis.sceneColor).not.toBeNull()
+  expect(analysis.accentColor).not.toBeNull()
+  expect(analysis.sceneColor!.hue).toBeGreaterThan(20)
+  expect(analysis.sceneColor!.hue).toBeLessThan(40)
+  expect(analysis.sceneColor!.chroma).toBeGreaterThan(0.15)
+})
+
+test("excluded cover-crop colors do not affect extracted colors", () => {
+  const baseline = colorFrame(35, 180, 80)
+  const coloredSides = baseline.slice()
+  for (let row = 0; row < VIDEO_FRAME_HEIGHT; row += 1) {
+    for (let column = 0; column < SOURCE_CROP_LEFT; column += 1) {
+      for (const sourceColumn of [column, VIDEO_FRAME_WIDTH - column - 1]) {
+        const offset = (row * VIDEO_FRAME_WIDTH + sourceColumn) * 4
+        coloredSides[offset] = 220
+        coloredSides[offset + 1] = 30
+        coloredSides[offset + 2] = 180
+      }
+    }
+  }
+
+  const baselineColor = analyzeVideoFrame(baseline, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT).sceneColor
+  const coloredSidesColor = analyzeVideoFrame(coloredSides, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT).sceneColor
+
+  expect(coloredSidesColor).toEqual(baselineColor)
+})
+
+test("neutral frames do not invent a video hue", () => {
+  const analysis = analyzeVideoFrame(frame(120), VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+  expect(analysis.sceneColor).toBeNull()
+  expect(analysis.accentColor).toBeNull()
+})
+
+test("a tiny saturated region does not control the scene palette", () => {
+  const rgba = frame(120)
+  fillColorContentCell(rgba, 12, 12, 220, 20, 20)
+  const analysis = analyzeVideoFrame(rgba, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+  expect(analysis.sceneColor).toBeNull()
+})
+
+test("a sparse saturated highlight cannot suppress a represented scene color", () => {
+  const rgba = frame(120)
+  for (let column = 4; column < 44; column += 1) fillColorContentCell(rgba, column, 12, 60, 90, 170)
+  for (let column = 46; column < 56; column += 1) fillColorContentCell(rgba, column, 12, 230, 20, 190)
+
+  const analysis = analyzeVideoFrame(rgba, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+
+  expect(analysis.sceneColor).not.toBeNull()
+  expect(analysis.sceneColor!.hue).toBeGreaterThan(250)
+  expect(analysis.sceneColor!.hue).toBeLessThan(280)
+})
+
+test("bright saturated colors remain eligible for extraction", () => {
+  const analysis = analyzeVideoFrame(colorFrame(255, 255, 0), VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+  expect(analysis.sceneColor).not.toBeNull()
+  expect(analysis.sceneColor!.hue).toBeGreaterThan(100)
+  expect(analysis.sceneColor!.hue).toBeLessThan(120)
+})
+
+test("complementary mixtures select a represented hue instead of their cancellation residual", () => {
+  const rgba = colorFrame(0, 255, 0)
+  for (let row = 0; row < RECEIVER_HEIGHT; row += 1) {
+    for (let column = 36; column < RECEIVER_WIDTH; column += 1) {
+      const sourceTop = Math.floor((row * VIDEO_FRAME_HEIGHT) / RECEIVER_HEIGHT)
+      const sourceBottom = Math.max(sourceTop + 1, Math.floor(((row + 1) * VIDEO_FRAME_HEIGHT) / RECEIVER_HEIGHT))
+      const sourceLeft = SOURCE_CROP_LEFT + Math.floor((column * SOURCE_CROP_WIDTH) / RECEIVER_WIDTH)
+      const sourceRight =
+        SOURCE_CROP_LEFT +
+        Math.max(sourceLeft - SOURCE_CROP_LEFT + 1, Math.floor(((column + 1) * SOURCE_CROP_WIDTH) / RECEIVER_WIDTH))
+      for (let sourceY = sourceTop; sourceY < sourceBottom; sourceY += 1) {
+        for (let sourceX = sourceLeft; sourceX < sourceRight; sourceX += 1) {
+          const offset = (sourceY * VIDEO_FRAME_WIDTH + sourceX) * 4
+          rgba[offset] = 255
+          rgba[offset + 1] = 0
+          rgba[offset + 2] = 255
+        }
+      }
+    }
+  }
+  const analysis = analyzeVideoFrame(rgba, VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
+  expect(analysis.sceneColor).not.toBeNull()
+  expect(analysis.sceneColor!.hue).toBeGreaterThan(130)
+  expect(analysis.sceneColor!.hue).toBeLessThan(155)
+  expect(analysis.accentColor).not.toBeNull()
+  expect(analysis.accentColor!.hue).toBeGreaterThan(315)
+  expect(analysis.accentColor!.hue).toBeLessThan(345)
+})
+
+test("video color smoothing follows the shortest path across hue wrap", () => {
+  const color = (hue: number): VideoFrameColor => {
+    const radians = (hue * Math.PI) / 180
+    return {
+      lightness: 0.6,
+      a: Math.cos(radians) * 0.15,
+      b: Math.sin(radians) * 0.15,
+      chroma: 0.15,
+      hue,
+      confidence: 1,
+    }
+  }
+  const smoothed = smoothVideoFrameColor(color(359), color(1), 250, 250)!
+  expect(Math.min(smoothed.hue, 360 - smoothed.hue)).toBeLessThan(1)
+})
+
+test("video color smoothing holds the previous color through neutral frames", () => {
+  const previous: VideoFrameColor = { lightness: 0.6, a: 0.1, b: 0.05, chroma: 0.112, hue: 26.6, confidence: 0.8 }
+  expect(smoothVideoFrameColor(previous, null, 100, 400)).toBe(previous)
+  expect(smoothVideoFrameColor(null, previous, 100, 400)).toBe(previous)
 })
 
 test("rejects frames that do not match their dimensions", () => {

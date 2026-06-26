@@ -3,6 +3,40 @@ export const RECEIVER_WIDTH = 56
 export const RECEIVER_HEIGHT = 28
 export const RECEIVER_CELL_COUNT = RECEIVER_WIDTH * RECEIVER_HEIGHT
 const TERMINAL_CELL_ASPECT = 2
+const COLOR_HUE_BINS = 24
+
+export interface VideoFrameColor {
+  lightness: number
+  a: number
+  b: number
+  chroma: number
+  hue: number
+  confidence: number
+}
+
+export function smoothVideoFrameColor(
+  previous: VideoFrameColor | null,
+  next: VideoFrameColor | null,
+  deltaMs: number,
+  responseMs: number,
+): VideoFrameColor | null {
+  if (!next) return previous
+  if (!previous) return next
+  const safeDeltaMs = Number.isFinite(deltaMs) ? Math.max(0, Math.min(250, deltaMs)) : 0
+  const progress = 1 - Math.exp(-safeDeltaMs / Math.max(1, responseMs))
+  const lightness = previous.lightness + (next.lightness - previous.lightness) * progress
+  const a = previous.a + (next.a - previous.a) * progress
+  const b = previous.b + (next.b - previous.b) * progress
+  const chroma = Math.hypot(a, b)
+  return {
+    lightness,
+    a,
+    b,
+    chroma,
+    hue: (Math.atan2(b, a) * 180) / Math.PI + (b < 0 ? 360 : 0),
+    confidence: previous.confidence + (next.confidence - previous.confidence) * progress,
+  }
+}
 
 export interface MotionVector {
   x: number
@@ -19,9 +53,58 @@ export interface VideoFrameAnalysis {
   motionCentroid: MotionVector
   motionDirection: MotionVector
   luminanceCentroid: MotionVector
+  sceneColor: VideoFrameColor | null
+  accentColor: VideoFrameColor | null
 }
 
 const EMPTY_VECTOR: MotionVector = { x: 0, y: 0 }
+
+function srgbToLinear(channel: number): number {
+  const value = channel / 255
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+}
+
+function rgbToOklab(red: number, green: number, blue: number): VideoFrameColor {
+  const r = srgbToLinear(red)
+  const g = srgbToLinear(green)
+  const b = srgbToLinear(blue)
+  const lRoot = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+  const mRoot = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+  const sRoot = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+  const lightness = 0.2104542553 * lRoot + 0.793617785 * mRoot - 0.0040720468 * sRoot
+  const a = 1.9779984951 * lRoot - 2.428592205 * mRoot + 0.4505937099 * sRoot
+  const bValue = 0.0259040371 * lRoot + 0.7827717662 * mRoot - 0.808675766 * sRoot
+  const chroma = Math.hypot(a, bValue)
+  return {
+    lightness,
+    a,
+    b: bValue,
+    chroma,
+    hue: (Math.atan2(bValue, a) * 180) / Math.PI + (bValue < 0 ? 360 : 0),
+    confidence: 0,
+  }
+}
+
+function accumulatedColor(
+  lightness: number,
+  a: number,
+  b: number,
+  weight: number,
+  totalWeight: number,
+): VideoFrameColor {
+  const normalizedLightness = lightness / weight
+  const normalizedA = a / weight
+  const normalizedB = b / weight
+  const chroma = Math.hypot(normalizedA, normalizedB)
+  return {
+    lightness: normalizedLightness,
+    a: normalizedA,
+    b: normalizedB,
+    chroma,
+    hue: (Math.atan2(normalizedB, normalizedA) * 180) / Math.PI + (normalizedB < 0 ? 360 : 0),
+    confidence: Math.min(1, weight / Math.max(0.000001, totalWeight)),
+  }
+}
 
 function normalizedCoordinate(index: number, length: number): number {
   return ((index + 0.5) / length) * 2 - 1
@@ -149,6 +232,13 @@ export function analyzeVideoFrame(
   const cropIntensity = normalizeLuminance(cropLuminance)
   const luminance = new Float32Array(RECEIVER_CELL_COUNT)
   const intensity = new Float32Array(RECEIVER_CELL_COUNT)
+  const hueWeights = new Float32Array(COLOR_HUE_BINS)
+  const hueLightness = new Float32Array(COLOR_HUE_BINS)
+  const hueA = new Float32Array(COLOR_HUE_BINS)
+  const hueB = new Float32Array(COLOR_HUE_BINS)
+  const hueCellCounts = new Uint16Array(COLOR_HUE_BINS)
+  let sceneWeight = 0
+  let colorCellCount = 0
   for (let row = 0; row < RECEIVER_HEIGHT; row += 1) {
     const sourceTop = cropTop + Math.floor((row * cropHeight) / RECEIVER_HEIGHT)
     const sourceBottom =
@@ -159,6 +249,9 @@ export function analyzeVideoFrame(
         cropLeft + Math.max(sourceLeft - cropLeft + 1, Math.floor(((column + 1) * cropWidth) / RECEIVER_WIDTH))
       let rawTotal = 0
       let intensityTotal = 0
+      let redTotal = 0
+      let greenTotal = 0
+      let blueTotal = 0
       let sampleCount = 0
       for (let sourceY = sourceTop; sourceY < sourceBottom; sourceY += 1) {
         for (let sourceX = sourceLeft; sourceX < sourceRight; sourceX += 1) {
@@ -166,14 +259,81 @@ export function analyzeVideoFrame(
           const cropIndex = (sourceY - cropTop) * cropWidth + sourceX - cropLeft
           rawTotal += sourceLuminance[sourceIndex] ?? 0
           intensityTotal += cropIntensity[cropIndex] ?? 0
+          const rgbaOffset = sourceIndex * 4
+          redTotal += rgba[rgbaOffset] ?? 0
+          greenTotal += rgba[rgbaOffset + 1] ?? 0
+          blueTotal += rgba[rgbaOffset + 2] ?? 0
           sampleCount += 1
         }
       }
       const index = row * RECEIVER_WIDTH + column
       luminance[index] = rawTotal / sampleCount
       intensity[index] = intensityTotal / sampleCount
+      const color = rgbToOklab(redTotal / sampleCount, greenTotal / sampleCount, blueTotal / sampleCount)
+      const lightnessWeight = smoothColorWindow(color.lightness)
+      const weight = Math.max(0, color.chroma - 0.018) * lightnessWeight
+      if (weight > 0) {
+        colorCellCount += 1
+        sceneWeight += weight
+        const hueBin = Math.min(COLOR_HUE_BINS - 1, Math.floor((color.hue / 360) * COLOR_HUE_BINS))
+        hueCellCounts[hueBin]! += 1
+        hueWeights[hueBin]! += weight
+        hueLightness[hueBin]! += color.lightness * weight
+        hueA[hueBin]! += color.a * weight
+        hueB[hueBin]! += color.b * weight
+      }
     }
   }
+
+  const hueNeighborhoodWeight = (center: number): number =>
+    hueWeights[(center + COLOR_HUE_BINS - 1) % COLOR_HUE_BINS]! +
+    hueWeights[center]! +
+    hueWeights[(center + 1) % COLOR_HUE_BINS]!
+  const hueNeighborhoodCellCount = (center: number): number =>
+    hueCellCounts[(center + COLOR_HUE_BINS - 1) % COLOR_HUE_BINS]! +
+    hueCellCounts[center]! +
+    hueCellCounts[(center + 1) % COLOR_HUE_BINS]!
+  const hueBinDistance = (left: number, right: number): number => {
+    const distance = Math.abs(left - right)
+    return Math.min(distance, COLOR_HUE_BINS - distance)
+  }
+  let sceneBin = -1
+  for (let bin = 0; bin < COLOR_HUE_BINS; bin += 1) {
+    if (hueNeighborhoodCellCount(bin) < RECEIVER_CELL_COUNT * 0.02) continue
+    if (sceneBin === -1 || hueNeighborhoodWeight(bin) > hueNeighborhoodWeight(sceneBin)) sceneBin = bin
+  }
+  let accentBin = -1
+  for (let bin = 0; bin < COLOR_HUE_BINS; bin += 1) {
+    if (sceneBin < 0) break
+    if (hueBinDistance(bin, sceneBin) <= 2) continue
+    if (hueNeighborhoodCellCount(bin) < RECEIVER_CELL_COUNT * 0.02) continue
+    if (accentBin === -1 || hueNeighborhoodWeight(bin) > hueNeighborhoodWeight(accentBin)) accentBin = bin
+  }
+  const neighborhoodColor = (center: number): { color: VideoFrameColor; cellCount: number } | null => {
+    if (center < 0) return null
+    let weight = 0
+    let lightness = 0
+    let a = 0
+    let b = 0
+    let cellCount = 0
+    for (const offset of [-1, 0, 1]) {
+      const bin = (center + offset + COLOR_HUE_BINS) % COLOR_HUE_BINS
+      weight += hueWeights[bin]!
+      lightness += hueLightness[bin]!
+      a += hueA[bin]!
+      b += hueB[bin]!
+      cellCount += hueCellCounts[bin]!
+    }
+    if (weight <= 0.04 || cellCount < RECEIVER_CELL_COUNT * 0.02) return null
+    return { color: accumulatedColor(lightness, a, b, weight, sceneWeight), cellCount }
+  }
+  const sceneNeighborhood = neighborhoodColor(sceneBin)
+  const accentNeighborhood = neighborhoodColor(accentBin)
+  const stableSceneColor = sceneNeighborhood?.color ?? null
+  const accentColor = accentNeighborhood?.color ?? stableSceneColor
+  if (stableSceneColor) stableSceneColor.confidence = sceneNeighborhood!.cellCount / RECEIVER_CELL_COUNT
+  if (accentColor)
+    accentColor.confidence = (accentNeighborhood?.cellCount ?? sceneNeighborhood?.cellCount ?? 0) / RECEIVER_CELL_COUNT
 
   const difference = new Float32Array(RECEIVER_CELL_COUNT)
   let differenceTotal = 0
@@ -200,5 +360,13 @@ export function analyzeVideoFrame(
       y: luminanceCentroid.y - previousCentroid.y,
     },
     luminanceCentroid,
+    sceneColor: stableSceneColor,
+    accentColor,
   }
+}
+
+function smoothColorWindow(lightness: number): number {
+  const dark = Math.max(0, Math.min(1, (lightness - 0.08) / 0.14))
+  const bright = Math.max(0, Math.min(1, (0.995 - lightness) / 0.095))
+  return dark * bright
 }

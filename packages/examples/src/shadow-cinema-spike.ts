@@ -20,9 +20,11 @@ import { parseShadowCinemaArgs } from "./lib/shadow-cinema-args.js"
 import {
   RECEIVER_HEIGHT,
   RECEIVER_WIDTH,
+  type VideoFrameColor,
   type VideoFrameAnalysis,
   VIDEO_FRAME_WIDTH,
   analyzeVideoFrame,
+  smoothVideoFrameColor,
 } from "./lib/video-frame-analyzer.js"
 
 interface ColorStop {
@@ -43,10 +45,13 @@ interface AmbientStop {
   foreground: Oklch
 }
 
+type ColorMode = "video" | "ambient" | "fixed"
+
 interface ColorCycleSpeed {
   name: string
-  hold: number
-  transition: number
+  responseMs: number
+  holdMs: number
+  transitionMs: number
 }
 
 interface Vec2 {
@@ -61,6 +66,7 @@ interface ShadowMemory {
 }
 
 interface ReceiverPalette {
+  background: RGBA
   foreground: RGBA
   shadow: RGBA
   accent: RGBA
@@ -95,6 +101,12 @@ const COLOR_STOPS: readonly ColorStop[] = [
   { background: "#050505", foreground: "#FF4B16", shadow: "#B9360F", accent: "#4D8DFF" },
   { background: "#151126", foreground: "#C3ACFF", shadow: "#7862B8", accent: "#65FBD2" },
 ]
+const VIDEO_COLOR_FALLBACK: ColorStop = {
+  background: "#0B1113",
+  foreground: "#D5E1E3",
+  shadow: "#728184",
+  accent: "#E8C774",
+}
 const AMBIENT_STOPS: readonly AmbientStop[] = [
   {
     background: { lightness: 0.18, chroma: 0.025, hue: 195 },
@@ -114,15 +126,16 @@ const AMBIENT_STOPS: readonly AmbientStop[] = [
   },
 ]
 const COLOR_CYCLE_SPEEDS: readonly ColorCycleSpeed[] = [
-  { name: "slowest", hold: 2000, transition: 4000 },
-  { name: "slow", hold: 1000, transition: 2400 },
-  { name: "normal", hold: 700, transition: 1600 },
-  { name: "fast", hold: 350, transition: 850 },
+  { name: "slowest", responseMs: 1100, holdMs: 2000, transitionMs: 4000 },
+  { name: "slow", responseMs: 700, holdMs: 1000, transitionMs: 2400 },
+  { name: "normal", responseMs: 420, holdMs: 700, transitionMs: 1600 },
+  { name: "fast", responseMs: 220, holdMs: 350, transitionMs: 850 },
 ]
 const RECEIVER_HALF_SIZE = 5
 const PRESENTATION_FPS = 24
 const PRESENTATION_INTERVAL_SECONDS = 1 / PRESENTATION_FPS
 const PALETTE_UPDATE_INTERVAL_MS = 125
+const CHROME_PALETTE_UPDATE_INTERVAL_MS = 250
 const AUDIO_CHANNELS = 2
 const AUDIO_TAP_CAPACITY_FRAMES = AUDIO_ANALYSIS_FRAMES * 16
 const AUDIO_DECAY_GRACE_MS = 75
@@ -154,8 +167,9 @@ let resizeHandler: (() => void) | null = null
 let frameHandler: ((deltaTime: number) => Promise<void>) | null = null
 let prepareTimer: ReturnType<typeof setTimeout> | null = null
 let elapsedMs = 0
-let colorElapsedMs = 0
+let ambientElapsedMs = 0
 let paletteAccumulatorMs = 0
+let chromePaletteAccumulatorMs = 0
 let playbackStartedAtMs = 0
 let playbackPositionSeconds = 0
 let lastAudioTapFrame = 0n
@@ -165,21 +179,70 @@ let lastHelpSecond = -1
 let lastShadowMemoryAtMs = Number.NEGATIVE_INFINITY
 let paused = false
 let muted = false
-let colorCycling = true
+let colorMode: ColorMode = "video"
 let colorIndex = 0
 let colorCycleSpeedIndex = 2
 let shadowGlyphIndex = -1
 let equalizerProjectionVisible = true
 let helpVisible = false
 let videoName = ""
+let previousRendererTargetFps: number | null = null
+let previousRendererMaxFps: number | null = null
 let renderedPalette: ColorStop = COLOR_STOPS[0]!
-let receiverPalette = createReceiverPalette(renderedPalette)
+let chromePalette: ColorStop = renderedPalette
+let receiverPalette = createReceiverPalette(renderedPalette, chromePalette)
+let smoothedSceneColor: VideoFrameColor | null = null
+let smoothedAccentColor: VideoFrameColor | null = null
+let smoothedChromeSceneColor: VideoFrameColor | null = null
+let smoothedChromeAccentColor: VideoFrameColor | null = null
 
 const TRANSPARENT = RGBA.fromValues(0, 0, 0, 0)
 
 function smoothstep(edgeStart: number, edgeEnd: number, value: number): number {
   const progress = Math.max(0, Math.min(1, (value - edgeStart) / (edgeEnd - edgeStart)))
   return progress * progress * (3 - 2 * progress)
+}
+
+function linearToSrgb(channel: number): number {
+  return channel <= 0.0031308 ? channel * 12.92 : 1.055 * channel ** (1 / 2.4) - 0.055
+}
+
+function oklchLinearChannels(color: Oklch): readonly [number, number, number] {
+  const radians = (color.hue * Math.PI) / 180
+  const a = color.chroma * Math.cos(radians)
+  const b = color.chroma * Math.sin(radians)
+  const lPrime = color.lightness + 0.3963377774 * a + 0.2158037573 * b
+  const mPrime = color.lightness - 0.1055613458 * a - 0.0638541728 * b
+  const sPrime = color.lightness - 0.0894841775 * a - 1.291485548 * b
+  const l = lPrime ** 3
+  const m = mPrime ** 3
+  const s = sPrime ** 3
+  return [
+    linearToSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    linearToSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    linearToSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+  ]
+}
+
+function oklchToHex(color: Oklch): string {
+  let mapped = color
+  let best = { ...color, chroma: 0 }
+  for (let iteration = 0, low = 0, high = color.chroma; iteration < 8; iteration += 1) {
+    const channels = oklchLinearChannels(mapped)
+    if (channels.every((channel) => channel >= 0 && channel <= 1)) {
+      low = mapped.chroma
+      best = mapped
+    } else high = mapped.chroma
+    mapped = { ...color, chroma: (low + high) * 0.5 }
+  }
+  const channels = oklchLinearChannels(best)
+  return `#${channels
+    .map((channel) =>
+      Math.round(Math.max(0, Math.min(1, channel)) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`
 }
 
 function interpolateHue(from: number, to: number, progress: number): number {
@@ -195,43 +258,14 @@ function interpolateOklch(from: Oklch, to: Oklch, progress: number): Oklch {
   }
 }
 
-function linearToSrgb(channel: number): number {
-  const value = channel <= 0.0031308 ? channel * 12.92 : 1.055 * channel ** (1 / 2.4) - 0.055
-  return Math.max(0, Math.min(1, value))
-}
-
-function oklchToHex(color: Oklch): string {
-  const radians = (color.hue * Math.PI) / 180
-  const a = color.chroma * Math.cos(radians)
-  const b = color.chroma * Math.sin(radians)
-  const lPrime = color.lightness + 0.3963377774 * a + 0.2158037573 * b
-  const mPrime = color.lightness - 0.1055613458 * a - 0.0638541728 * b
-  const sPrime = color.lightness - 0.0894841775 * a - 1.291485548 * b
-  const l = lPrime ** 3
-  const m = mPrime ** 3
-  const s = sPrime ** 3
-  const channels = [
-    linearToSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
-    linearToSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
-    linearToSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
-  ]
-  return `#${channels
-    .map((channel) =>
-      Math.round(channel * 255)
-        .toString(16)
-        .padStart(2, "0"),
-    )
-    .join("")}`
-}
-
 function ambientPalette(timeMs: number): ColorStop {
   const speed = COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!
-  const segmentDuration = speed.hold + speed.transition
+  const segmentDuration = speed.holdMs + speed.transitionMs
   const position = timeMs / segmentDuration
   const index = Math.floor(position) % AMBIENT_STOPS.length
   const segmentTime = timeMs % segmentDuration
   const progress =
-    segmentTime <= speed.hold ? 0 : smoothstep(0, 1, Math.min(1, (segmentTime - speed.hold) / speed.transition))
+    segmentTime <= speed.holdMs ? 0 : smoothstep(0, 1, Math.min(1, (segmentTime - speed.holdMs) / speed.transitionMs))
   const from = AMBIENT_STOPS[index]!
   const to = AMBIENT_STOPS[(index + 1) % AMBIENT_STOPS.length]!
   const background = interpolateOklch(from.background, to.background, progress)
@@ -253,7 +287,71 @@ function ambientPalette(timeMs: number): ColorStop {
 }
 
 function activePalette(): ColorStop {
-  return colorCycling ? ambientPalette(colorElapsedMs) : COLOR_STOPS[colorIndex]!
+  if (colorMode === "fixed") return COLOR_STOPS[colorIndex]!
+  if (colorMode === "ambient") return ambientPalette(ambientElapsedMs)
+  if (smoothedSceneColor) return videoColorPalette(smoothedSceneColor, smoothedAccentColor ?? smoothedSceneColor)
+  return VIDEO_COLOR_FALLBACK
+}
+
+function activeChromePalette(): ColorStop {
+  if (colorMode !== "video") return activePalette()
+  if (smoothedChromeSceneColor) {
+    return videoColorPalette(smoothedChromeSceneColor, smoothedChromeAccentColor ?? smoothedChromeSceneColor)
+  }
+  return VIDEO_COLOR_FALLBACK
+}
+
+function videoColorPalette(scene: VideoFrameColor, accent: VideoFrameColor): ColorStop {
+  const backgroundLightness = Math.max(0.14, Math.min(0.3, scene.lightness * 0.48))
+  const foregroundLightness = Math.max(0.76, Math.min(0.93, scene.lightness + 0.2))
+  const accentLightness = Math.max(0.78, Math.min(0.94, accent.lightness + 0.16))
+  const foregroundChroma = Math.max(0.11, Math.min(0.24, scene.chroma * 1.35))
+  const accentChroma = Math.max(0.13, Math.min(0.26, accent.chroma * 1.4))
+  return {
+    background: oklchToHex({
+      lightness: backgroundLightness,
+      chroma: Math.max(0.035, Math.min(0.09, scene.chroma * 0.55)),
+      hue: scene.hue,
+    }),
+    foreground: oklchToHex({
+      lightness: foregroundLightness,
+      chroma: foregroundChroma,
+      hue: scene.hue,
+    }),
+    shadow: oklchToHex({
+      lightness: backgroundLightness + (foregroundLightness - backgroundLightness) * 0.52,
+      chroma: foregroundChroma * 0.68,
+      hue: scene.hue,
+    }),
+    accent: oklchToHex({
+      lightness: accentLightness,
+      chroma: accentChroma,
+      hue: accent.hue,
+    }),
+  }
+}
+
+function smoothVideoColor(previous: VideoFrameColor | null, next: VideoFrameColor | null): VideoFrameColor | null {
+  const responseMs = COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.responseMs
+  return smoothVideoFrameColor(previous, next, PRESENTATION_INTERVAL_SECONDS * 1000, responseMs)
+}
+
+function updateVideoColors(analysis: VideoFrameAnalysis): void {
+  smoothedSceneColor = smoothVideoColor(smoothedSceneColor, analysis.sceneColor)
+  smoothedAccentColor = smoothVideoColor(smoothedAccentColor, analysis.accentColor)
+  const chromeResponseMs = Math.max(1600, COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.responseMs * 3)
+  smoothedChromeSceneColor = smoothVideoFrameColor(
+    smoothedChromeSceneColor,
+    analysis.sceneColor,
+    PRESENTATION_INTERVAL_SECONDS * 1000,
+    chromeResponseMs,
+  )
+  smoothedChromeAccentColor = smoothVideoFrameColor(
+    smoothedChromeAccentColor,
+    analysis.accentColor,
+    PRESENTATION_INTERVAL_SECONDS * 1000,
+    chromeResponseMs,
+  )
 }
 
 function hashNoise(x: number, y: number): number {
@@ -285,8 +383,9 @@ function audioSpectrumColor(band: number, palette: ColorStop): string {
   return `#${channels.join("")}`
 }
 
-function createReceiverPalette(palette: ColorStop): ReceiverPalette {
+function createReceiverPalette(palette: ColorStop, stablePalette: ColorStop): ReceiverPalette {
   return {
+    background: RGBA.fromHex(stablePalette.background),
     foreground: RGBA.fromHex(palette.foreground),
     shadow: RGBA.fromHex(palette.shadow),
     accent: RGBA.fromHex(palette.accent),
@@ -394,7 +493,7 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
           originY + row,
           glyph,
           spectrum > 0.16 ? palette.spectrum[band]! : palette.foreground,
-          TRANSPARENT,
+          palette.background,
         )
         continue
       }
@@ -413,13 +512,13 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
         const strength = Math.max(contourStrength, sample.intensity * 0.62)
         const glyph = shadowGlyph(strength)
         const color = sample.edge > 0.26 ? palette.accent : palette.foreground
-        buffer.setCell(originX + column, originY + row, glyph, color, TRANSPARENT)
+        buffer.setCell(originX + column, originY + row, glyph, color, palette.background)
         continue
       }
 
       if (field && field.strength > 0.075) {
         const glyph = AUDIO_FIELD_GLYPHS[Math.min(AUDIO_FIELD_GLYPHS.length - 1, Math.floor(field.strength * 5))]!
-        buffer.setCell(originX + column, originY + row, glyph, palette.spectrum[field.band]!, TRANSPARENT)
+        buffer.setCell(originX + column, originY + row, glyph, palette.spectrum[field.band]!, palette.background)
         continue
       }
 
@@ -433,9 +532,15 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
         }
       }
       if (memoryStrength > 0.08) {
-        buffer.setCell(originX + column, originY + row, memoryStrength > 0.24 ? "∙" : "⋅", palette.shadow, TRANSPARENT)
+        buffer.setCell(
+          originX + column,
+          originY + row,
+          memoryStrength > 0.24 ? "∙" : "⋅",
+          palette.shadow,
+          palette.background,
+        )
       } else {
-        buffer.setCell(originX + column, originY + row, " ", palette.foreground, TRANSPARENT)
+        buffer.setCell(originX + column, originY + row, " ", TRANSPARENT, palette.background)
       }
     }
   }
@@ -454,7 +559,7 @@ function formatTime(seconds: number): string {
 }
 
 function updateControls(): void {
-  if (!helpText) return
+  if (!helpText || !helpVisible) return
   const glyph = shadowGlyphIndex === -1 ? "adaptive" : SHADOW_GLYPHS[shadowGlyphIndex]!
   const currentTime = video?.state.currentTime ?? playbackPositionSeconds
   lastHelpSecond = Math.floor(currentTime)
@@ -465,7 +570,7 @@ function updateControls(): void {
     "Shift+←/→   seek -/+5s",
     `M           audio: ${muted ? "muted" : "unmuted"}`,
     "R           restart video",
-    `C           colors: ${colorCycling ? COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.name : `fixed ${colorIndex + 1}`}`,
+    `C           colors: ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}`,
     `Shift+C     color speed: ${COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.name}`,
     "1 2 3 4     select fixed palette",
     `G           glyph: ${glyph}`,
@@ -478,7 +583,7 @@ function updateControls(): void {
       ? [
           `Space ${playback}  M ${muted ? "muted" : "audio"}  R restart`,
           "←/→ seek .25s  Shift+←/→ seek 5s",
-          `C colors ${colorCycling ? COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.name : `fixed ${colorIndex + 1}`}  Shift+C speed  1-4 fixed`,
+          `C colors ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}  Shift+C speed  1-4 fixed`,
           `G glyph ${glyph}  E equalizer ${equalizerProjectionVisible ? "on" : "off"}`,
           "? / Esc close  Q quit",
         ].join("\n")
@@ -490,6 +595,10 @@ function resetAnalyzers(audioTapFrame: bigint): void {
   audioAnalysisBuffer.reset()
   choreography.reset(elapsedMs)
   frameAnalysis = null
+  smoothedSceneColor = null
+  smoothedAccentColor = null
+  smoothedChromeSceneColor = null
+  smoothedChromeAccentColor = null
   shadowMemories.length = 0
   lastShadowMemoryAtMs = Number.NEGATIVE_INFINITY
   lastAudioTapFrame = audioTapFrame
@@ -521,6 +630,7 @@ function consumeVideoFrame(targetSeconds: number): void {
       if (!late) {
         const raw = nextImage.raw("rgba8")
         frameAnalysis = analyzeVideoFrame(raw.data, raw.width, raw.height, frameAnalysis)
+        updateVideoColors(frameAnalysis)
         video.frameSubmitted(output.frameCount)
       }
     } finally {
@@ -577,7 +687,7 @@ function consumeAudioFrames(deltaTime: number): void {
 }
 
 function createScene(renderer: CliRenderer): void {
-  const palette = renderedPalette
+  const palette = chromePalette
   view = new BoxRenderable(renderer, {
     id: "shadow-cinema-spike",
     width: "100%",
@@ -637,7 +747,7 @@ function setHelpVisible(visible: boolean): void {
 
 function createHelpModal(renderer: CliRenderer): void {
   helpOverlay?.destroyRecursively()
-  const palette = renderedPalette
+  const palette = chromePalette
   helpOverlay = new BoxRenderable(renderer, {
     id: "shadow-cinema-help-overlay",
     position: "absolute",
@@ -681,17 +791,18 @@ function createHelpModal(renderer: CliRenderer): void {
 function applyPalette(updateChrome = true): void {
   const palette = activePalette()
   renderedPalette = palette
-  receiverPalette = createReceiverPalette(palette)
+  if (updateChrome) chromePalette = activeChromePalette()
+  receiverPalette = createReceiverPalette(palette, chromePalette)
   if (!updateChrome) return
-  rendererInstance?.setBackgroundColor(palette.background)
-  if (view) view.backgroundColor = palette.background
-  if (logoPlate) logoPlate.backgroundColor = palette.foreground
-  if (logoText) logoText.fg = palette.background
+  rendererInstance?.setBackgroundColor(chromePalette.background)
+  if (view) view.backgroundColor = chromePalette.background
+  if (logoPlate) logoPlate.backgroundColor = colorMode === "video" ? chromePalette.accent : chromePalette.foreground
+  if (logoText) logoText.fg = chromePalette.background
   if (helpModal) {
-    helpModal.backgroundColor = palette.background
-    helpModal.borderColor = palette.foreground
+    helpModal.backgroundColor = chromePalette.background
+    helpModal.borderColor = chromePalette.foreground
   }
-  if (helpText) helpText.fg = palette.foreground
+  if (helpText) helpText.fg = chromePalette.foreground
   refreshScene()
   updateControls()
 }
@@ -735,6 +846,7 @@ function seekPlayback(targetSeconds: number): void {
     try {
       const raw = targetFrame.raw("rgba8")
       frameAnalysis = analyzeVideoFrame(raw.data, raw.width, raw.height)
+      updateVideoColors(frameAnalysis)
       video.frameSubmitted(rendererInstance?.getOutputWriteSample().frameCount ?? 0)
     } finally {
       targetFrame.dispose()
@@ -744,23 +856,23 @@ function seekPlayback(targetSeconds: number): void {
   if (!paused) {
     video.play()
   }
+  applyPalette()
   refreshScene()
   updateControls()
 }
 
 export async function run(renderer: CliRenderer, videoPath: string): Promise<void> {
   rendererInstance = renderer
-  renderer.targetFps = PRESENTATION_FPS
-  renderer.maxFps = PRESENTATION_FPS
   videoName = basename(videoPath)
   elapsedMs = 0
-  colorElapsedMs = 0
+  ambientElapsedMs = 0
   paletteAccumulatorMs = 0
+  chromePaletteAccumulatorMs = 0
   playbackPositionSeconds = 0
   playbackStartedAtMs = performance.now()
   paused = false
   muted = false
-  colorCycling = true
+  colorMode = "video"
   colorIndex = 0
   colorCycleSpeedIndex = 2
   shadowGlyphIndex = -1
@@ -768,7 +880,8 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
   helpVisible = false
   lastHelpSecond = -1
   renderedPalette = activePalette()
-  receiverPalette = createReceiverPalette(renderedPalette)
+  chromePalette = renderedPalette
+  receiverPalette = createReceiverPalette(renderedPalette, chromePalette)
 
   const nextVideo = NativeVideo.open(resolve(videoPath))
   try {
@@ -779,8 +892,27 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
     nextVideo.configureOutput(VIDEO_FRAME_WIDTH, decodeHeight, true)
     nextVideo.enableAudioTap(AUDIO_TAP_CAPACITY_FRAMES)
     nextVideo.setMuted(false)
+    previousRendererTargetFps = renderer.targetFps
+    previousRendererMaxFps = renderer.maxFps
+    renderer.targetFps = PRESENTATION_FPS
+    renderer.maxFps = PRESENTATION_FPS
     video = nextVideo
     resetAnalyzers(nextVideo.readAudioTapFrames(1, AUDIO_CHANNELS).endFrame)
+    nextVideo.update(0)
+    const initialFrame = nextVideo.takeFrame()
+    if (initialFrame) {
+      try {
+        const raw = initialFrame.raw("rgba8")
+        frameAnalysis = analyzeVideoFrame(raw.data, raw.width, raw.height)
+        updateVideoColors(frameAnalysis)
+        nextVideo.frameSubmitted(renderer.getOutputWriteSample().frameCount)
+      } finally {
+        initialFrame.dispose()
+      }
+    }
+    renderedPalette = activePalette()
+    chromePalette = renderedPalette
+    receiverPalette = createReceiverPalette(renderedPalette, chromePalette)
     createScene(renderer)
     createHelpModal(renderer)
     applyPalette()
@@ -788,6 +920,7 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
     nextVideo.play()
     schedulePreparation()
   } catch (error) {
+    restoreRendererCadence(renderer)
     nextVideo.dispose()
     video = null
     throw error
@@ -796,7 +929,6 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
   frameHandler = async (deltaTime: number) => {
     if (paused || !video) return
     elapsedMs += deltaTime
-    if (colorCycling) colorElapsedMs += deltaTime
     consumeAudioFrames(deltaTime)
     const decayDeltaMs = audioDecayDeltaMs(elapsedMs, lastAudioAnalysisAtMs, deltaTime, AUDIO_DECAY_GRACE_MS)
     if (decayDeltaMs > 0) {
@@ -804,11 +936,15 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
       audioAnalysisStalled = true
     }
     choreography.update(elapsedMs, rhythmAnalyzer)
-    if (colorCycling) {
+    if (colorMode !== "fixed") {
+      if (colorMode === "ambient") ambientElapsedMs += deltaTime
       paletteAccumulatorMs += deltaTime
+      chromePaletteAccumulatorMs += deltaTime
       if (paletteAccumulatorMs >= PALETTE_UPDATE_INTERVAL_MS) {
         paletteAccumulatorMs %= PALETTE_UPDATE_INTERVAL_MS
-        applyPalette(false)
+        const updateChrome = colorMode === "ambient" || chromePaletteAccumulatorMs >= CHROME_PALETTE_UPDATE_INTERVAL_MS
+        if (updateChrome) chromePaletteAccumulatorMs %= CHROME_PALETTE_UPDATE_INTERVAL_MS
+        applyPalette(updateChrome)
       }
     }
     const targetSeconds = playbackPositionSeconds + (performance.now() - playbackStartedAtMs) / 1000
@@ -856,19 +992,20 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
       key.preventDefault()
     } else if (key.name === "c" && key.shift && !key.ctrl && !key.meta) {
       colorCycleSpeedIndex = (colorCycleSpeedIndex + 1) % COLOR_CYCLE_SPEEDS.length
-      colorElapsedMs = 0
-      if (colorCycling) applyPalette()
+      if (colorMode === "ambient") ambientElapsedMs = 0
+      if (colorMode !== "fixed") applyPalette()
       else updateControls()
       key.preventDefault()
     } else if (key.name === "c" && !key.ctrl && !key.meta && !key.shift) {
-      colorCycling = !colorCycling
-      if (colorCycling) colorElapsedMs = 0
+      colorMode = colorMode === "video" ? "ambient" : "video"
+      if (colorMode === "ambient") ambientElapsedMs = 0
+      paletteAccumulatorMs = 0
+      chromePaletteAccumulatorMs = 0
       applyPalette()
       key.preventDefault()
     } else if (/^[1-4]$/.test(key.sequence) && !key.ctrl && !key.meta && !key.shift) {
-      colorCycling = false
+      colorMode = "fixed"
       colorIndex = Number(key.sequence) - 1
-      colorElapsedMs = 0
       applyPalette()
       key.preventDefault()
     } else if (key.name === "g" && !key.ctrl && !key.meta && !key.shift) {
@@ -889,6 +1026,13 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
   }
   renderer.keyInput.on("keypress", keyHandler)
   renderer.on("resize", resizeHandler)
+}
+
+function restoreRendererCadence(renderer: CliRenderer): void {
+  if (previousRendererTargetFps !== null) renderer.targetFps = previousRendererTargetFps
+  if (previousRendererMaxFps !== null) renderer.maxFps = previousRendererMaxFps
+  previousRendererTargetFps = null
+  previousRendererMaxFps = null
 }
 
 export function destroy(renderer: CliRenderer): void {
@@ -912,6 +1056,7 @@ export function destroy(renderer: CliRenderer): void {
   view?.destroyRecursively()
   helpOverlay?.destroyRecursively()
   renderer.setBackgroundColor("transparent")
+  restoreRendererCadence(renderer)
   view = null
   artwork = null
   receiverRenderable = null
