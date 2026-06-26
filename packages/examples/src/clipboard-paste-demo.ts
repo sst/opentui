@@ -6,9 +6,12 @@ import {
   BoxRenderable,
   CliRenderEvents,
   type CliRenderer,
+  type ClipboardSelection,
   createCliRenderer,
+  createHostClipboard,
   decodePasteBytes,
   fg,
+  type HostClipboardService,
   type KeyEvent,
   type PasteEvent,
   ScrollBoxRenderable,
@@ -109,13 +112,19 @@ let keypressHandler: ((event: KeyEvent) => void) | null = null
 let pasteHandler: ((event: PasteEvent) => void) | null = null
 let capabilityHandler: (() => void) | null = null
 let selectionHandler: ((selection: Selection) => void) | null = null
+let hostClipboard: HostClipboardService | null = null
 let selectedFixture = 0
+let hostSelection: ClipboardSelection = "clipboard"
 let fixturePayloadEmitted = false
 let lastLoggedCapability = ""
 let copyStatus: Status = { tone: "muted", text: "not attempted" }
 let pasteStatus: Status = { tone: "muted", text: "waiting for a PasteEvent" }
 let editorStatus: Status = { tone: "muted", text: "waiting for default insertion" }
 let roundTripStatus: Status = { tone: "muted", text: "not evaluated" }
+let hostReadStatus: Status = { tone: "muted", text: "not attempted" }
+let hostWriteStatus: Status = { tone: "muted", text: "not attempted" }
+let hostClearStatus: Status = { tone: "muted", text: "not attempted" }
+let hostDisposeStatus: Status = { tone: "muted", text: "service active" }
 
 function fixture(): Fixture {
   return FIXTURES[selectedFixture]!
@@ -138,6 +147,15 @@ function hexPrefix(bytes: Uint8Array, count = 12): string {
   const slice = bytes.slice(0, count)
   const hex = Array.from(slice, (byte) => byte.toString(16).padStart(2, "0")).join("")
   return bytes.length > count ? `${hex}…` : hex
+}
+
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes).buffer)
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function timestamp(): string {
@@ -233,7 +251,197 @@ function updateChecks(renderer: CliRenderer): void {
 ${label("Copy OSC 52")} ${statusChunk(copyStatus)}
 ${label("Paste event")} ${statusChunk(pasteStatus)}
 ${label("Editor text")} ${statusChunk(editorStatus)}
-${label("Round trip")} ${statusChunk(roundTripStatus)}`
+${label("Round trip")} ${statusChunk(roundTripStatus)}
+${label("Host target")} ${fg(P.violet)(hostSelection)}
+${label("Host read")} ${statusChunk(hostReadStatus)}
+${label("Host write")} ${statusChunk(hostWriteStatus)}
+${label("Host clear")} ${statusChunk(hostClearStatus)}
+${label("Host dispose")} ${statusChunk(hostDisposeStatus)}`
+}
+
+function createHostService(renderer: CliRenderer): void {
+  try {
+    hostClipboard = createHostClipboard()
+    hostDisposeStatus = { tone: "ok", text: "service active" }
+  } catch (error) {
+    hostClipboard = null
+    hostDisposeStatus = { tone: "bad", text: `creation failed: ${errorMessage(error)}` }
+    addLog(renderer, "bad", "native host service creation failed", errorMessage(error))
+  }
+  updateChecks(renderer)
+}
+
+async function readHostClipboard(renderer: CliRenderer): Promise<void> {
+  const service = hostClipboard
+  if (!service) {
+    hostReadStatus = { tone: "bad", text: "service unavailable" }
+    updateChecks(renderer)
+    return
+  }
+
+  hostReadStatus = { tone: "info", text: `reading ${hostSelection} (PNG, then text)` }
+  updateChecks(renderer)
+  try {
+    const result = await service.read({ preferredTypes: ["image/png", "text/plain"], selection: hostSelection })
+    if (service !== hostClipboard) return
+    if (result.status !== "read") {
+      hostReadStatus = { tone: result.status === "failed" ? "bad" : "warn", text: result.status }
+      addLog(
+        renderer,
+        hostReadStatus.tone,
+        `host read ← ${hostSelection} · ${result.status}`,
+        result.status === "failed" ? errorMessage(result.error) : undefined,
+      )
+      updateChecks(renderer)
+      return
+    }
+
+    const { mimeType, bytes } = result.representation
+    const digest = await sha256(bytes)
+    if (service !== hostClipboard) return
+    const exactFixture = mimeType === "text/plain" && new TextDecoder().decode(bytes) === fixture().payload
+    hostReadStatus = {
+      tone: exactFixture ? "ok" : "info",
+      text: `${mimeType} · ${bytes.length} B${exactFixture ? " · exact fixture" : ""}`,
+    }
+    addLog(
+      renderer,
+      hostReadStatus.tone,
+      `host read ← ${hostSelection} · ${mimeType} · ${bytes.length} B${exactFixture ? " · exact fixture" : ""}`,
+      `sha256 ${digest} · hex ${hexPrefix(bytes, 8)}`,
+    )
+  } catch (error) {
+    if (service !== hostClipboard) return
+    hostReadStatus = { tone: "bad", text: `rejected: ${errorMessage(error)}` }
+    addLog(renderer, "bad", `host read rejected · ${hostSelection}`, errorMessage(error))
+  }
+  updateChecks(renderer)
+}
+
+async function writeHostClipboard(renderer: CliRenderer): Promise<void> {
+  const service = hostClipboard
+  if (!service) {
+    hostWriteStatus = { tone: "bad", text: "service unavailable" }
+    updateChecks(renderer)
+    return
+  }
+
+  const current = fixture()
+  const selection = hostSelection
+  hostWriteStatus = { tone: "info", text: `writing ${byteLength(current.payload)} B to ${selection}` }
+  updateChecks(renderer)
+  try {
+    const result = await service.writeText(current.payload, { selection })
+    if (service !== hostClipboard) return
+    if (result.status !== "written") {
+      hostWriteStatus = { tone: result.status === "failed" ? "bad" : "warn", text: result.status }
+      addLog(
+        renderer,
+        hostWriteStatus.tone,
+        `host write → ${selection} · ${result.status}`,
+        result.status === "failed" ? errorMessage(result.error) : undefined,
+      )
+      updateChecks(renderer)
+      return
+    }
+
+    const persisted = await service.read({ preferredTypes: ["text/plain"], selection })
+    if (service !== hostClipboard) return
+    const exact =
+      persisted.status === "read" &&
+      persisted.representation.mimeType === "text/plain" &&
+      new TextDecoder().decode(persisted.representation.bytes) === current.payload
+    hostWriteStatus = exact
+      ? { tone: "ok", text: `written ${byteLength(current.payload)} B · persistent self-read exact` }
+      : {
+          tone: "warn",
+          text: `written; self-read ${persisted.status}${persisted.status === "failed" ? " failed" : ""}`,
+        }
+    addLog(
+      renderer,
+      exact ? "ok" : "warn",
+      `host write → ${selection} · written ${byteLength(current.payload)} B`,
+      exact ? "provider remained readable after write settled" : `post-write self-read: ${persisted.status}`,
+    )
+  } catch (error) {
+    if (service !== hostClipboard) return
+    hostWriteStatus = { tone: "bad", text: `rejected: ${errorMessage(error)}` }
+    addLog(renderer, "bad", `host write rejected · ${selection}`, errorMessage(error))
+  }
+  updateChecks(renderer)
+}
+
+async function clearHostClipboard(renderer: CliRenderer): Promise<void> {
+  const service = hostClipboard
+  if (!service) {
+    hostClearStatus = { tone: "bad", text: "service unavailable" }
+    updateChecks(renderer)
+    return
+  }
+
+  const selection = hostSelection
+  hostClearStatus = { tone: "info", text: `clearing ${selection}` }
+  updateChecks(renderer)
+  try {
+    const result = await service.clear({ selection })
+    if (service !== hostClipboard) return
+    hostClearStatus = {
+      tone: result.status === "cleared" ? "ok" : result.status === "failed" ? "bad" : "warn",
+      text: result.status,
+    }
+    addLog(
+      renderer,
+      hostClearStatus.tone,
+      `host clear → ${selection} · ${result.status}`,
+      result.status === "failed" ? errorMessage(result.error) : "native clear; not an empty-text write",
+    )
+  } catch (error) {
+    if (service !== hostClipboard) return
+    hostClearStatus = { tone: "bad", text: `rejected: ${errorMessage(error)}` }
+    addLog(renderer, "bad", `host clear rejected · ${selection}`, errorMessage(error))
+  }
+  updateChecks(renderer)
+}
+
+async function recycleHostClipboard(renderer: CliRenderer): Promise<void> {
+  const service = hostClipboard
+  if (!service) {
+    createHostService(renderer)
+    return
+  }
+
+  hostDisposeStatus = { tone: "info", text: "disposing twice" }
+  updateChecks(renderer)
+  const first = service.dispose()
+  const second = service.dispose()
+  const samePromise = first === second
+  try {
+    await Promise.all([first, second])
+    let rejectedAfterDispose = false
+    try {
+      await service.read({ preferredTypes: ["text/plain"], selection: hostSelection })
+    } catch {
+      rejectedAfterDispose = true
+    }
+    if (service !== hostClipboard) return
+    hostClipboard = null
+    const disposalStatus: Status = {
+      tone: samePromise && rejectedAfterDispose ? "ok" : "warn",
+      text: `disposed x2 · same promise ${samePromise ? "yes" : "no"} · post-op ${rejectedAfterDispose ? "rejected" : "resolved"}`,
+    }
+    hostDisposeStatus = disposalStatus
+    addLog(renderer, disposalStatus.tone, "host dispose x2 completed", disposalStatus.text)
+    createHostService(renderer)
+    hostDisposeStatus = {
+      tone: disposalStatus.tone,
+      text: `${disposalStatus.text} · recreated`,
+    }
+  } catch (error) {
+    if (service !== hostClipboard) return
+    hostDisposeStatus = { tone: "bad", text: `failed: ${errorMessage(error)}` }
+    addLog(renderer, "bad", "host dispose failed", errorMessage(error))
+  }
+  updateChecks(renderer)
 }
 
 function resetTest(renderer: CliRenderer, reason: string): void {
@@ -267,6 +475,7 @@ function panel(renderer: CliRenderer, id: string, title: string, height?: number
 
 export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor(P.bg)
+  createHostService(renderer)
 
   container = new BoxRenderable(renderer, {
     id: "clipboard-paste-container",
@@ -279,10 +488,11 @@ export function run(renderer: CliRenderer): void {
 
   const header = new TextRenderable(renderer, {
     id: "clipboard-paste-header",
-    height: 2,
+    height: 3,
     marginBottom: 1,
-    content: t`${bold(fg(P.cyan)("CLIPBOARD + PASTE TEST BED"))} ${fg(P.muted)("— OSC 52 → PasteEvent → textarea")}
-${bold(fg(P.amber)("1-4"))} ${fg(P.muted)("fixture")}  ${bold(fg(P.amber)("Ctrl+Y"))} ${fg(P.muted)("copy")}  ${bold(fg(P.amber)("Ctrl+K"))} ${fg(P.muted)("clear")}  ${bold(fg(P.amber)("Ctrl+R"))} ${fg(P.muted)("reset")}  ${bold(fg(P.amber)("drag-select"))} ${fg(P.muted)("copies via OSC 52")}`,
+    content: t`${bold(fg(P.cyan)("CLIPBOARD + PASTE TEST BED"))} ${fg(P.muted)("— OSC 52 + native host clipboard + PasteEvent")}
+${bold(fg(P.amber)("1-4"))} ${fg(P.muted)("fixture")}  ${bold(fg(P.amber)("Ctrl+Y/K"))} ${fg(P.muted)("OSC copy/clear")}  ${bold(fg(P.amber)("Ctrl+W/G/D"))} ${fg(P.muted)("host write/read/clear")}
+${bold(fg(P.amber)("Ctrl+P"))} ${fg(P.muted)("clipboard/primary")}  ${bold(fg(P.amber)("Ctrl+U"))} ${fg(P.muted)("dispose x2 + recreate")}  ${bold(fg(P.amber)("Ctrl+R"))} ${fg(P.muted)("reset editor")}`,
   })
 
   tabsText = new TextRenderable(renderer, {
@@ -328,7 +538,7 @@ ${bold(fg(P.amber)("1-4"))} ${fg(P.muted)("fixture")}  ${bold(fg(P.amber)("Ctrl+
   })
   editorPanel.add(editor)
 
-  const checksPanel = panel(renderer, "clipboard-paste-checks-panel", "Checks", 7)
+  const checksPanel = panel(renderer, "clipboard-paste-checks-panel", "Checks", 12)
   checksPanel.marginBottom = 1
   checksText = new TextRenderable(renderer, {
     id: "clipboard-paste-checks",
@@ -471,6 +681,38 @@ ${bold(fg(P.amber)("1-4"))} ${fg(P.muted)("fixture")}  ${bold(fg(P.amber)("Ctrl+
       return
     }
 
+    if (event.ctrl && event.name === "w") {
+      event.preventDefault()
+      void writeHostClipboard(renderer)
+      return
+    }
+
+    if (event.ctrl && event.name === "g") {
+      event.preventDefault()
+      void readHostClipboard(renderer)
+      return
+    }
+
+    if (event.ctrl && event.name === "d") {
+      event.preventDefault()
+      void clearHostClipboard(renderer)
+      return
+    }
+
+    if (event.ctrl && event.name === "p") {
+      event.preventDefault()
+      hostSelection = hostSelection === "clipboard" ? "primary" : "clipboard"
+      updateChecks(renderer)
+      addLog(renderer, "info", `host selection → ${hostSelection}`)
+      return
+    }
+
+    if (event.ctrl && event.name === "u") {
+      event.preventDefault()
+      void recycleHostClipboard(renderer)
+      return
+    }
+
     if (event.ctrl && event.name === "r") {
       event.preventDefault()
       resetTest(renderer, "reset")
@@ -530,6 +772,9 @@ export function destroy(renderer: CliRenderer): void {
   if (capabilityHandler) renderer.off(CliRenderEvents.CAPABILITIES, capabilityHandler)
   if (selectionHandler) renderer.off(CliRenderEvents.SELECTION, selectionHandler)
   renderer.clearSelection()
+  const service = hostClipboard
+  hostClipboard = null
+  void service?.dispose()
   container?.destroyRecursively()
   container = null
   tabsText = null
@@ -544,6 +789,10 @@ export function destroy(renderer: CliRenderer): void {
   keypressHandler = null
   capabilityHandler = null
   selectionHandler = null
+  hostReadStatus = { tone: "muted", text: "not attempted" }
+  hostWriteStatus = { tone: "muted", text: "not attempted" }
+  hostClearStatus = { tone: "muted", text: "not attempted" }
+  hostDisposeStatus = { tone: "muted", text: "service inactive" }
 }
 
 if (import.meta.main) {

@@ -2,11 +2,8 @@
 // Delegates to native Zig implementation for ANSI sequence generation.
 
 import type { RendererHandle, RenderLib } from "../zig.js"
-import {
-  createHostClipboardWithBackend,
-  createUnsupportedHostClipboardBackend,
-  validateClipboardText,
-} from "./host-clipboard.internal.js"
+import { createHostClipboardWithBackend, validateClipboardText } from "./host-clipboard.internal.js"
+import { createNativeHostClipboardBackend } from "./host-clipboard.native.js"
 
 export interface ClipboardRepresentation {
   // Identifies the content with a canonical, lowercase MIME essence without parameters.
@@ -198,7 +195,7 @@ const runTrackedOperation = <T>(
 }
 
 export const createHostClipboard = (options: HostClipboardOptions = {}): HostClipboardService =>
-  createHostClipboardWithBackend(options, createUnsupportedHostClipboardBackend)
+  createHostClipboardWithBackend(options, createNativeHostClipboardBackend)
 
 const validateDestination = (destination: ClipboardWriteDestination): void => {
   if (
