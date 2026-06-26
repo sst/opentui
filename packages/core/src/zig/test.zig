@@ -40,6 +40,7 @@ const clipboard_tests = @import("clipboard.zig");
 const clipboard_linux_tests = @import("clipboard-linux.zig");
 const clipboard_wayland_protocol_tests = @import("clipboard-wayland-protocol.zig");
 const clipboard_wayland_tests = @import("clipboard-wayland.zig");
+const clipboard_x11_tests = @import("clipboard-x11.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -86,5 +87,6 @@ comptime {
     _ = clipboard_linux_tests;
     _ = clipboard_wayland_protocol_tests;
     _ = clipboard_wayland_tests;
+    _ = clipboard_x11_tests;
     // _ = example_tests;
 }
