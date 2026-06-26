@@ -37,6 +37,16 @@ async function shutdown(lib: ClipboardNativeWorkerTestLib, service: ClipboardSer
   expect(lib.destroyService(service)).toBe(NativeClipboardDestroyStatus.InvalidHandle)
 }
 
+function readRequest(mimeType: string): Uint8Array {
+  const mime = new TextEncoder().encode(mimeType)
+  const request = new Uint8Array(8 + mime.byteLength)
+  const view = new DataView(request.buffer)
+  view.setUint32(0, 1, true)
+  view.setUint32(4, mime.byteLength, true)
+  request.set(mime, 8)
+  return request
+}
+
 test("native clipboard worker uses callback-free copied request and result memory", async () => {
   const lib = new ClipboardNativeWorkerTestLib()
   const otherLib = new ClipboardNativeWorkerTestLib()
@@ -98,11 +108,31 @@ test("native clipboard worker uses callback-free copied request and result memor
   const isolated = lib.start(secondService, expected, 0)
   expect(isolated.status).toBe(NativeClipboardStartStatus.Ok)
   expect(isolated.operation).not.toBeNull()
+
   await shutdown(lib, firstService)
   expect(lib.poll(cancelled.operation)).toBe(NativeClipboardOperationStatus.InvalidHandle)
   if (isolated.operation) {
     expect(await waitForOperation(lib, isolated.operation)).toBe(NativeClipboardOperationStatus.Read)
     expect(lib.destroyOperation(isolated.operation)).toBe(NativeClipboardDestroyStatus.Destroyed)
+  }
+
+  const malformed = lib.startRead(secondService, new Uint8Array([1, 0, 0, 0]), 0, 1024, 100)
+  expect(malformed).toEqual({ status: NativeClipboardStartStatus.InvalidArgument, operation: null })
+  const unsupported = lib.startRead(secondService, readRequest("application/x-opentui-test"), 0, 1024, 100)
+  expect(unsupported.status).toBe(NativeClipboardStartStatus.Ok)
+  expect(unsupported.operation).not.toBeNull()
+  if (unsupported.operation) {
+    expect(await waitForOperation(lib, unsupported.operation)).toBe(NativeClipboardOperationStatus.Unsupported)
+    expect(lib.destroyOperation(unsupported.operation)).toBe(NativeClipboardDestroyStatus.Destroyed)
+  }
+  const invalidWrite = lib.startWrite(secondService, new Uint8Array([0]), 0, 100)
+  expect(invalidWrite).toEqual({ status: NativeClipboardStartStatus.InvalidArgument, operation: null })
+  const timedOut = lib.startClear(secondService, 1, 0)
+  expect(timedOut.status).toBe(NativeClipboardStartStatus.Ok)
+  expect(timedOut.operation).not.toBeNull()
+  if (timedOut.operation) {
+    expect(lib.poll(timedOut.operation)).toBe(NativeClipboardOperationStatus.TimedOut)
+    expect(lib.destroyOperation(timedOut.operation)).toBe(NativeClipboardDestroyStatus.Destroyed)
   }
   await shutdown(lib, secondService)
   lib.dispose()
