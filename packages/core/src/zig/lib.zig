@@ -23,6 +23,7 @@ const native_renderable = @import("native-renderable.zig");
 const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
+const clipboard = @import("clipboard.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -357,6 +358,78 @@ export fn destroyAudioEngine(engine_handle: NativeHandle) void {
     const token = handles.beginDestroy(engine_handle, .audio_engine, native_audio.Engine) orelse return;
     native_audio.destroy(token.ptr);
     handles.finishDestroy(token.handle);
+}
+
+export fn clipboardServiceCreate(max_operations: u32) NativeHandle {
+    return clipboard.createService(globalAllocator, max_operations);
+}
+
+export fn clipboardServiceBeginShutdown(service_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.beginServiceShutdown(service_handle));
+}
+
+export fn clipboardServicePollShutdown(service_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.pollServiceShutdown(service_handle));
+}
+
+export fn clipboardServiceDestroy(service_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.destroyService(service_handle));
+}
+
+export fn clipboardTestOperationStart(
+    service_handle: NativeHandle,
+    request_pointer: ?[*]const u8,
+    request_length: u32,
+    delay_ms: u32,
+    out_operation_handle: ?*NativeHandle,
+) u8 {
+    return @intFromEnum(clipboard.startTestOperation(
+        service_handle,
+        request_pointer,
+        request_length,
+        delay_ms,
+        out_operation_handle,
+    ));
+}
+
+export fn clipboardOperationPoll(operation_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.pollOperation(operation_handle));
+}
+
+export fn clipboardOperationCancel(operation_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.cancelOperation(operation_handle));
+}
+
+export fn clipboardOperationResultMimeLength(operation_handle: NativeHandle, out_length: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultMimeLength(operation_handle, out_length));
+}
+
+export fn clipboardOperationResultMimeCopy(operation_handle: NativeHandle, out_pointer: ?[*]u8, capacity: u32) u8 {
+    return @intFromEnum(clipboard.resultMimeCopy(operation_handle, out_pointer, capacity));
+}
+
+export fn clipboardOperationResultDataLength(operation_handle: NativeHandle, out_length: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultDataLength(operation_handle, out_length));
+}
+
+export fn clipboardOperationResultDataCopy(operation_handle: NativeHandle, out_pointer: ?[*]u8, capacity: u32) u8 {
+    return @intFromEnum(clipboard.resultDataCopy(operation_handle, out_pointer, capacity));
+}
+
+export fn clipboardOperationResultErrorCode(operation_handle: NativeHandle, out_error_code: ?*i32) u8 {
+    return @intFromEnum(clipboard.resultErrorCode(operation_handle, out_error_code));
+}
+
+export fn clipboardOperationResultDiagnosticLength(operation_handle: NativeHandle, out_length: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultDiagnosticLength(operation_handle, out_length));
+}
+
+export fn clipboardOperationResultDiagnosticCopy(operation_handle: NativeHandle, out_pointer: ?[*]u8, capacity: u32) u8 {
+    return @intFromEnum(clipboard.resultDiagnosticCopy(operation_handle, out_pointer, capacity));
+}
+
+export fn clipboardOperationDestroy(operation_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.destroyOperation(operation_handle));
 }
 
 export fn audioRefreshPlaybackDevices(engine_handle: NativeHandle) i32 {
