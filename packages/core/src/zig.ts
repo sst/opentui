@@ -131,6 +131,58 @@ export type SyntaxStyleHandle = NativeHandle<"syntax_style">
 export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
 export type NativeRenderableHandle = NativeHandle<"native_renderable">
+export type ClipboardServiceHandle = number & { readonly __nativeHandle: "clipboard_service" }
+export type ClipboardOperationHandle = number & { readonly __nativeHandle: "clipboard_operation" }
+
+export enum NativeClipboardOperationStatus {
+  Pending = 0,
+  Read = 1,
+  Empty = 2,
+  Written = 3,
+  Cleared = 4,
+  Unsupported = 5,
+  Cancelled = 6,
+  TimedOut = 7,
+  LimitExceeded = 8,
+  Failed = 9,
+  InvalidHandle = 10,
+}
+
+export enum NativeClipboardStartStatus {
+  Ok = 0,
+  InvalidService = 1,
+  ShuttingDown = 2,
+  LimitExceeded = 3,
+  InvalidArgument = 4,
+  OutOfMemory = 5,
+  WorkerStartFailed = 6,
+}
+
+export enum NativeClipboardCancelStatus {
+  Requested = 0,
+  AlreadyTerminal = 1,
+  InvalidHandle = 2,
+}
+
+export enum NativeClipboardCopyStatus {
+  Ok = 0,
+  BufferTooSmall = 1,
+  InvalidHandle = 2,
+  InvalidState = 3,
+  InvalidArgument = 4,
+}
+
+export enum NativeClipboardDestroyStatus {
+  Destroyed = 0,
+  NotReady = 1,
+  InvalidHandle = 2,
+}
+
+export enum NativeClipboardShutdownStatus {
+  Pending = 0,
+  Ready = 1,
+  InvalidHandle = 2,
+}
 let targetLibPath = nativePackage.default
 
 if (isBunfsPath(targetLibPath)) {
@@ -515,6 +567,62 @@ function getOpenTUILib(libPath?: string) {
     clearClipboardOSC52: {
       args: ["u32", "u8"],
       returns: "bool",
+    },
+    clipboardServiceCreate: {
+      args: ["u32"],
+      returns: "u32",
+    },
+    clipboardServiceBeginShutdown: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardServicePollShutdown: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardServiceDestroy: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardOperationPoll: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardOperationCancel: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardOperationResultMimeLength: {
+      args: ["u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardOperationResultMimeCopy: {
+      args: ["u32", "ptr", "u32"],
+      returns: "u8",
+    },
+    clipboardOperationResultDataLength: {
+      args: ["u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardOperationResultDataCopy: {
+      args: ["u32", "ptr", "u32"],
+      returns: "u8",
+    },
+    clipboardOperationResultErrorCode: {
+      args: ["u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardOperationResultDiagnosticLength: {
+      args: ["u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardOperationResultDiagnosticCopy: {
+      args: ["u32", "ptr", "u32"],
+      returns: "u8",
+    },
+    clipboardOperationDestroy: {
+      args: ["u32"],
+      returns: "u8",
     },
     triggerNotification: {
       args: ["u32", "ptr", "u32", "ptr", "u32"],
@@ -2142,6 +2250,41 @@ export interface RenderLib extends AudioEngineLib {
   setTerminalTitle: (renderer: RendererHandle, title: string) => void
   copyToClipboardOSC52: (renderer: RendererHandle, target: number, textUtf8: Uint8Array) => boolean
   clearClipboardOSC52: (renderer: RendererHandle, target: number) => boolean
+  clipboardServiceCreate: (maxOperations: number) => ClipboardServiceHandle | null
+  clipboardServiceBeginShutdown: (service: ClipboardServiceHandle) => NativeClipboardShutdownStatus
+  clipboardServicePollShutdown: (service: ClipboardServiceHandle) => NativeClipboardShutdownStatus
+  clipboardServiceDestroy: (service: ClipboardServiceHandle) => NativeClipboardDestroyStatus
+  clipboardOperationPoll: (operation: ClipboardOperationHandle) => NativeClipboardOperationStatus
+  clipboardOperationCancel: (operation: ClipboardOperationHandle) => NativeClipboardCancelStatus
+  clipboardOperationResultMimeLength: (operation: ClipboardOperationHandle) => {
+    status: NativeClipboardCopyStatus
+    length: number
+  }
+  clipboardOperationResultMimeCopy: (
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ) => NativeClipboardCopyStatus
+  clipboardOperationResultDataLength: (operation: ClipboardOperationHandle) => {
+    status: NativeClipboardCopyStatus
+    length: number
+  }
+  clipboardOperationResultDataCopy: (
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ) => NativeClipboardCopyStatus
+  clipboardOperationResultErrorCode: (operation: ClipboardOperationHandle) => {
+    status: NativeClipboardCopyStatus
+    errorCode: number
+  }
+  clipboardOperationResultDiagnosticLength: (operation: ClipboardOperationHandle) => {
+    status: NativeClipboardCopyStatus
+    length: number
+  }
+  clipboardOperationResultDiagnosticCopy: (
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ) => NativeClipboardCopyStatus
+  clipboardOperationDestroy: (operation: ClipboardOperationHandle) => NativeClipboardDestroyStatus
   triggerNotification: (renderer: RendererHandle, message: string, title?: string) => boolean
   addToHitGrid: (renderer: RendererHandle, x: number, y: number, width: number, height: number, id: number) => void
   clearCurrentHitGrid: (renderer: RendererHandle) => void
@@ -2549,6 +2692,8 @@ export interface RenderLib extends AudioEngineLib {
 
 class FFIRenderLib implements RenderLib {
   private opentui: ReturnType<typeof getOpenTUILib>
+  private disposed = false
+  private clipboardServices = new Set<ClipboardServiceHandle>()
   public readonly encoder: TextEncoder = new TextEncoder()
   public readonly decoder: TextDecoder = new TextDecoder()
   private logCallbackWrapper: FFICallbackInstance | null = null
@@ -2649,6 +2794,11 @@ class FFIRenderLib implements RenderLib {
   }
 
   public dispose(): void {
+    if (this.disposed) return
+    if (this.clipboardServices.size > 0) {
+      throw new Error("Cannot dispose OpenTUI native library while clipboard services are active")
+    }
+    this.disposed = true
     try {
       if (this.eventSinkPtr) {
         this.opentui.symbols.destroyEventSink(this.eventSinkPtr)
@@ -3382,6 +3532,115 @@ class FFIRenderLib implements RenderLib {
 
   public clearClipboardOSC52(renderer: Pointer, target: number): boolean {
     return Boolean(this.opentui.symbols.clearClipboardOSC52(renderer, target))
+  }
+
+  public clipboardServiceCreate(maxOperations: number): ClipboardServiceHandle | null {
+    const handle = this.opentui.symbols.clipboardServiceCreate(toSafeFFIU32Length(maxOperations, "maxOperations"))
+    if (handle === 0) return null
+    const service = handle as ClipboardServiceHandle
+    this.clipboardServices.add(service)
+    return service
+  }
+
+  public clipboardServiceBeginShutdown(service: ClipboardServiceHandle): NativeClipboardShutdownStatus {
+    if (!this.clipboardServices.has(service)) return NativeClipboardShutdownStatus.InvalidHandle
+    return this.opentui.symbols.clipboardServiceBeginShutdown(service)
+  }
+
+  public clipboardServicePollShutdown(service: ClipboardServiceHandle): NativeClipboardShutdownStatus {
+    if (!this.clipboardServices.has(service)) return NativeClipboardShutdownStatus.InvalidHandle
+    return this.opentui.symbols.clipboardServicePollShutdown(service)
+  }
+
+  public clipboardServiceDestroy(service: ClipboardServiceHandle): NativeClipboardDestroyStatus {
+    if (!this.clipboardServices.has(service)) return NativeClipboardDestroyStatus.InvalidHandle
+    const status = this.opentui.symbols.clipboardServiceDestroy(service)
+    if (status === NativeClipboardDestroyStatus.Destroyed) this.clipboardServices.delete(service)
+    return status
+  }
+
+  public clipboardOperationPoll(operation: ClipboardOperationHandle): NativeClipboardOperationStatus {
+    return this.opentui.symbols.clipboardOperationPoll(operation)
+  }
+
+  public clipboardOperationCancel(operation: ClipboardOperationHandle): NativeClipboardCancelStatus {
+    return this.opentui.symbols.clipboardOperationCancel(operation)
+  }
+
+  private clipboardResultLength(
+    symbol: (operation: ClipboardOperationHandle, output: Pointer) => number,
+    operation: ClipboardOperationHandle,
+  ): { status: NativeClipboardCopyStatus; length: number } {
+    const output = new Uint32Array(1)
+    const status = symbol(operation, ptr(output))
+    return { status, length: output[0] }
+  }
+
+  public clipboardOperationResultMimeLength(operation: ClipboardOperationHandle): {
+    status: NativeClipboardCopyStatus
+    length: number
+  } {
+    return this.clipboardResultLength(this.opentui.symbols.clipboardOperationResultMimeLength, operation)
+  }
+
+  public clipboardOperationResultMimeCopy(
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ): NativeClipboardCopyStatus {
+    return this.opentui.symbols.clipboardOperationResultMimeCopy(
+      operation,
+      ptrOrNull(output),
+      toSafeFFIU32Length(output.byteLength, "clipboard MIME output"),
+    )
+  }
+
+  public clipboardOperationResultDataLength(operation: ClipboardOperationHandle): {
+    status: NativeClipboardCopyStatus
+    length: number
+  } {
+    return this.clipboardResultLength(this.opentui.symbols.clipboardOperationResultDataLength, operation)
+  }
+
+  public clipboardOperationResultDataCopy(
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ): NativeClipboardCopyStatus {
+    return this.opentui.symbols.clipboardOperationResultDataCopy(
+      operation,
+      ptrOrNull(output),
+      toSafeFFIU32Length(output.byteLength, "clipboard data output"),
+    )
+  }
+
+  public clipboardOperationResultErrorCode(operation: ClipboardOperationHandle): {
+    status: NativeClipboardCopyStatus
+    errorCode: number
+  } {
+    const output = new Int32Array(1)
+    const status = this.opentui.symbols.clipboardOperationResultErrorCode(operation, ptr(output))
+    return { status, errorCode: output[0] }
+  }
+
+  public clipboardOperationResultDiagnosticLength(operation: ClipboardOperationHandle): {
+    status: NativeClipboardCopyStatus
+    length: number
+  } {
+    return this.clipboardResultLength(this.opentui.symbols.clipboardOperationResultDiagnosticLength, operation)
+  }
+
+  public clipboardOperationResultDiagnosticCopy(
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ): NativeClipboardCopyStatus {
+    return this.opentui.symbols.clipboardOperationResultDiagnosticCopy(
+      operation,
+      ptrOrNull(output),
+      toSafeFFIU32Length(output.byteLength, "clipboard diagnostic output"),
+    )
+  }
+
+  public clipboardOperationDestroy(operation: ClipboardOperationHandle): NativeClipboardDestroyStatus {
+    return this.opentui.symbols.clipboardOperationDestroy(operation)
   }
 
   public triggerNotification(renderer: Pointer, message: string, title?: string): boolean {

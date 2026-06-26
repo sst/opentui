@@ -122,6 +122,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/renderable.snapshot.test.js",
   ".node-test/src/tests/allocator-stats.test.js",
   ".node-test/src/tests/audio.test.js",
+  ".node-test/src/tests/clipboard-native-worker.test.js",
   ".node-test/src/tests/destroy-on-exit.test.js",
   ".node-test/src/tests/destroy-during-render.test.js",
   ".node-test/src/tests/ffi-borrowed-pointer-callsites.test.js",
