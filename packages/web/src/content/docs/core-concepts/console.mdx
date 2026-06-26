@@ -1,7 +1,7 @@
 ---
 title: Console overlay
 description: Built-in debugging console for TUI applications
-order: 4
+order: 7
 ---
 
 # Console overlay
@@ -25,6 +25,12 @@ console.log("This appears in the overlay")
 console.error("Errors are color-coded red")
 console.warn("Warnings appear in yellow")
 ```
+
+## Console vs stdout
+
+`consoleMode` controls only the overlay surface. To disable global `console.*` capture, set `OTUI_USE_CONSOLE=false`.
+
+`externalOutputMode` controls writes through the renderer's configured `stdout.write`. `stderr` is separate.
 
 ## Configuration options
 

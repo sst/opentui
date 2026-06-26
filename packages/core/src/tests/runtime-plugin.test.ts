@@ -65,11 +65,11 @@ describe("runtime plugin", () => {
     createRuntimePlugin().setup(build as any)
 
     const coreResolution = await resolveSpecifier(resolveHandlers, "@opentui/core")
-    const core3dResolution = await resolveSpecifier(resolveHandlers, "@opentui/core/3d")
+    const threeResolution = await resolveSpecifier(resolveHandlers, "@opentui/three")
     const coreTestingResolution = await resolveSpecifier(resolveHandlers, "@opentui/core/testing")
 
     expect(coreResolution).toEqual({ path: runtimeModuleIdForSpecifier("@opentui/core") })
-    expect(core3dResolution).toBeUndefined()
+    expect(threeResolution).toBeUndefined()
     expect(coreTestingResolution).toEqual({ path: runtimeModuleIdForSpecifier("@opentui/core/testing") })
 
     if (!coreResolution || !coreTestingResolution) {
@@ -100,32 +100,32 @@ describe("runtime plugin", () => {
     expect(typeof coreTestingModule.exports.createTestRenderer).toBe("function")
   })
 
-  it("registers @opentui/core/3d only when added explicitly", async () => {
+  it("registers @opentui/three only when added explicitly", async () => {
     const { build, resolveHandlers, modules } = createMockBuild()
 
     createRuntimePlugin({
       additional: {
-        "@opentui/core/3d": { ThreeRenderable: "three-value" },
+        "@opentui/three": { ThreeRenderable: "three-value" },
       },
     }).setup(build as any)
 
-    const core3dResolution = await resolveSpecifier(resolveHandlers, "@opentui/core/3d")
+    const threeResolution = await resolveSpecifier(resolveHandlers, "@opentui/three")
 
-    expect(core3dResolution).toEqual({ path: runtimeModuleIdForSpecifier("@opentui/core/3d") })
+    expect(threeResolution).toEqual({ path: runtimeModuleIdForSpecifier("@opentui/three") })
 
-    if (!core3dResolution) {
-      throw new Error("Expected @opentui/core/3d runtime module resolution")
+    if (!threeResolution) {
+      throw new Error("Expected @opentui/three runtime module resolution")
     }
 
-    const core3dModuleFactory = modules.get(core3dResolution.path)
+    const threeModuleFactory = modules.get(threeResolution.path)
 
-    expect(core3dModuleFactory).toBeDefined()
+    expect(threeModuleFactory).toBeDefined()
 
-    if (!core3dModuleFactory) {
-      throw new Error("Expected @opentui/core/3d runtime module factory")
+    if (!threeModuleFactory) {
+      throw new Error("Expected @opentui/three runtime module factory")
     }
 
-    expect(await core3dModuleFactory()).toEqual({
+    expect(await threeModuleFactory()).toEqual({
       exports: { ThreeRenderable: "three-value" },
       loader: "object",
     })
@@ -203,15 +203,6 @@ describe("runtime plugin", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[runtime-plugin.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[runtime-plugin.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("core=core-value;coreTesting=true;sync=sync-value;async=async-value")
@@ -227,17 +218,152 @@ describe("runtime plugin", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[runtime-plugin-resolve-roots.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[runtime-plugin-resolve-roots.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("marker=resolved-from-external-root")
+  })
+
+  it("rewrites runtime specifiers in node_modules modules by default", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-runtime-specifier.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("marker=resolved-from-node-modules-runtime-specifier")
+  })
+
+  it("does not crash when prescan sees import-like strings for missing files", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-import-like-string.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("marker=resolved-with-import-like-string:true")
+  })
+
+  it("rewrites runtime specifiers in node_modules .mjs modules", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-mjs.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("marker=resolved-from-node-modules-mjs")
+  })
+
+  it("rewrites runtime specifiers across node_modules ESM cycles", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-cycle.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain(
+      "a=resolved-from-node-modules-cycle;b=resolved-from-node-modules-cycle;aBase=resolved-from-node-modules-cycle",
+    )
+  })
+
+  it("does not keep stale node_modules package type across plugin instances", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-package-type-cache.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("marker=resolved-after-package-type-change")
+  })
+
+  it("rewrites bare imports for scoped node_modules package siblings when enabled", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-scoped-package-bare-rewrite.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain(
+      "entry=entry-runtime-marker;scoped=scoped-runtime-marker:resolved-from-scoped-package-parent",
+    )
+  })
+
+  it("does not rewrite non-runtime bare imports in node_modules modules by default", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-no-bare-rewrite.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("errorContainsMissingBareDependency=true")
+  })
+
+  it("rewrites runtime specifiers when Bun canonicalizes a symlinked import path", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-path-alias.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("aliasPathCanonicalized=true")
+    expect(stdout).toContain("marker=resolved-from-path-alias")
+  })
+
+  it("rewrites runtime specifiers for file URL imports on Windows", () => {
+    if (process.platform !== "win32") {
+      return
+    }
+
+    const fixturePath = join(import.meta.dir, "runtime-plugin-windows-file-url.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("marker=resolved-from-windows-file-url")
   })
 })

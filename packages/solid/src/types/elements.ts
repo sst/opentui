@@ -28,7 +28,7 @@ import type {
   TextRenderable,
 } from "@opentui/core"
 import type { Ref } from "solid-js"
-import type { JSX } from "../../jsx-runtime"
+import type { JSX } from "../../jsx-runtime.js"
 
 // ============================================================================
 // Core Type System
@@ -48,6 +48,7 @@ export type NonStyledProps =
 /** Solid-specific props for all components */
 export type ElementProps<TRenderable = unknown> = {
   ref?: Ref<TRenderable>
+  [eventName: `on:${string}`]: ((...args: any[]) => void) | undefined
 }
 
 /** Base type for any renderable constructor */
@@ -74,11 +75,11 @@ export type GetNonStyledProperties<TConstructor> =
   TConstructor extends RenderableConstructor<TextRenderable>
     ? NonStyledProps | "content"
     : TConstructor extends RenderableConstructor<BoxRenderable>
-      ? NonStyledProps | "title"
+      ? NonStyledProps | "title" | "bottomTitle"
       : TConstructor extends RenderableConstructor<ASCIIFontRenderable>
         ? NonStyledProps | "text" | "selectable"
         : TConstructor extends RenderableConstructor<InputRenderable>
-          ? NonStyledProps | "placeholder" | "value"
+          ? NonStyledProps | "minLength" | "maxLength" | "placeholder" | "value"
           : TConstructor extends RenderableConstructor<CodeRenderable>
             ? NonStyledProps | "content" | "filetype" | "syntaxStyle" | "treeSitterClient"
             : TConstructor extends RenderableConstructor<MarkdownRenderable>

@@ -2,6 +2,7 @@
 
 import { performance } from "node:perf_hooks"
 import { OptimizedBuffer } from "../buffer.js"
+import { RGBA } from "../lib/RGBA.js"
 
 type Scenario = { width: number; height: number; mode: "uniform" | "mask25" | "mask100" }
 type ScenarioResult = {
@@ -69,14 +70,8 @@ function fillBufferColors(buffer: OptimizedBuffer): void {
   const { fg, bg } = buffer.buffers
 
   for (let i = 0; i < fg.length; i += 4) {
-    fg[i] = Math.random()
-    fg[i + 1] = Math.random()
-    fg[i + 2] = Math.random()
-    fg[i + 3] = 1
-    bg[i] = Math.random()
-    bg[i + 1] = Math.random()
-    bg[i + 2] = Math.random()
-    bg[i + 3] = 1
+    fg.set(RGBA.fromValues(Math.random(), Math.random(), Math.random(), 1).buffer, i)
+    bg.set(RGBA.fromValues(Math.random(), Math.random(), Math.random(), 1).buffer, i)
   }
 }
 

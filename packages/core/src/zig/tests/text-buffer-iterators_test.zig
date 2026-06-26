@@ -32,7 +32,7 @@ test "walkLines - empty rope" {
         }
     };
 
-    var ctx = Context{};
+    var ctx: Context = .{};
     iter_mod.walkLines(&rope, &ctx, Context.callback, true);
 
     try testing.expectEqual(@as(u32, 1), ctx.count);
@@ -44,8 +44,8 @@ test "walkLines - single text segment" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -65,7 +65,7 @@ test "walkLines - single text segment" {
         }
     };
 
-    var ctx = Context{ .lines = .{}, .allocator = allocator };
+    var ctx: Context = .{ .lines = .{}, .allocator = allocator };
     defer ctx.lines.deinit(allocator);
 
     iter_mod.walkLines(&rope, &ctx, Context.callback, true);
@@ -80,8 +80,8 @@ test "walkLines - text + break + text" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -90,9 +90,9 @@ test "walkLines - text + break + text" {
             .flags = 0,
         },
     });
-    try rope.append(Segment{ .brk = {} });
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .brk = {} });
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
@@ -112,7 +112,7 @@ test "walkLines - text + break + text" {
         }
     };
 
-    var ctx = Context{ .lines = .{}, .allocator = allocator };
+    var ctx: Context = .{ .lines = .{}, .allocator = allocator };
     defer ctx.lines.deinit(allocator);
 
     iter_mod.walkLines(&rope, &ctx, Context.callback, true);
@@ -134,8 +134,8 @@ test "walkLines - exclude newlines in offset" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -144,9 +144,9 @@ test "walkLines - exclude newlines in offset" {
             .flags = 0,
         },
     });
-    try rope.append(Segment{ .brk = {} });
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .brk = {} });
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
@@ -166,7 +166,7 @@ test "walkLines - exclude newlines in offset" {
         }
     };
 
-    var ctx = Context{ .lines = .{}, .allocator = allocator };
+    var ctx: Context = .{ .lines = .{}, .allocator = allocator };
     defer ctx.lines.deinit(allocator);
 
     iter_mod.walkLines(&rope, &ctx, Context.callback, false);
@@ -188,8 +188,8 @@ test "coordsToOffset - valid coordinates" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -198,9 +198,9 @@ test "coordsToOffset - valid coordinates" {
             .flags = 0,
         },
     });
-    try rope.append(Segment{ .brk = {} });
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .brk = {} });
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
@@ -229,8 +229,8 @@ test "offsetToCoords - valid offsets" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -239,9 +239,9 @@ test "offsetToCoords - valid offsets" {
             .flags = 0,
         },
     });
-    try rope.append(Segment{ .brk = {} });
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .brk = {} });
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
@@ -278,8 +278,8 @@ test "Helper functions" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -288,9 +288,9 @@ test "Helper functions" {
             .flags = 0,
         },
     });
-    try rope.append(Segment{ .brk = {} });
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .brk = {} });
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,
@@ -311,8 +311,8 @@ test "coordsToOffset and offsetToCoords - round trip" {
     const allocator = arena.allocator();
 
     var rope = try UnifiedRope.init(allocator);
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 0,
@@ -321,9 +321,9 @@ test "coordsToOffset and offsetToCoords - round trip" {
             .flags = 0,
         },
     });
-    try rope.append(Segment{ .brk = {} });
-    try rope.append(Segment{ .linestart = {} });
-    try rope.append(Segment{
+    try rope.append(.{ .brk = {} });
+    try rope.append(.{ .linestart = {} });
+    try rope.append(.{
         .text = TextChunk{
             .mem_id = 0,
             .byte_start = 10,

@@ -1,7 +1,7 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { DiffRenderable } from "./Diff.js"
 import { SyntaxStyle } from "../syntax-style.js"
-import { RGBA } from "../lib/RGBA.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
 import { createMockMouse, createTestRenderer, type TestRenderer } from "../testing.js"
 import { MockTreeSitterClient } from "../testing/mock-tree-sitter-client.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
@@ -616,6 +616,80 @@ test("DiffRenderable - custom colors applied correctly", async () => {
   // Should not crash with custom colors
   const frame = captureFrame()
   expect(frame).toContain('console.log("Hello")')
+})
+
+test("DiffRenderable - line number fg/bg colors update after construction", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    lineNumberFg: "#445566",
+    lineNumberBg: "#101820",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const findCharPosition = (char: string): { x: number; y: number } | null => {
+    const buffer = currentRenderer.currentRenderBuffer
+    const charBuffer = buffer.buffers.char
+    const codePoint = char.codePointAt(0)
+    if (codePoint === undefined) return null
+
+    for (let y = 0; y < buffer.height; y++) {
+      for (let x = 0; x < buffer.width; x++) {
+        if (charBuffer[y * buffer.width + x] === codePoint) {
+          return { x, y }
+        }
+      }
+    }
+
+    return null
+  }
+
+  const getColorAt = (channel: "fg" | "bg", x: number, y: number) => {
+    const buffer = currentRenderer.currentRenderBuffer
+    const colorBuffer = channel === "fg" ? buffer.buffers.fg : buffer.buffers.bg
+    const offset = (y * buffer.width + x) * 4
+
+    return {
+      r: (colorBuffer[offset] & 0xff) / 255,
+      g: (colorBuffer[offset + 1] & 0xff) / 255,
+      b: (colorBuffer[offset + 2] & 0xff) / 255,
+      a: (colorBuffer[offset + 3] & 0xff) / 255,
+    }
+  }
+
+  const expectColorClose = (
+    actual: { r: number; g: number; b: number; a: number },
+    expected: { r: number; g: number; b: number; a: number },
+  ) => {
+    expect(actual.r).toBeCloseTo(expected.r, 2)
+    expect(actual.g).toBeCloseTo(expected.g, 2)
+    expect(actual.b).toBeCloseTo(expected.b, 2)
+    expect(actual.a).toBeCloseTo(expected.a, 2)
+  }
+
+  const initialPos = findCharPosition("1")
+  expect(initialPos).not.toBeNull()
+  expectColorClose(getColorAt("fg", initialPos!.x, initialPos!.y), parseColor("#445566"))
+  expectColorClose(getColorAt("bg", initialPos!.x, initialPos!.y), parseColor("#101820"))
+
+  diffRenderable.lineNumberFg = "#ff00ff"
+  diffRenderable.lineNumberBg = "#2a2a2a"
+  await renderOnce()
+
+  const updatedPos = findCharPosition("1")
+  expect(updatedPos).not.toBeNull()
+  expectColorClose(getColorAt("fg", updatedPos!.x, updatedPos!.y), parseColor("#ff00ff"))
+  expectColorClose(getColorAt("bg", updatedPos!.x, updatedPos!.y), parseColor("#2a2a2a"))
 })
 
 test("DiffRenderable - line numbers hidden for empty alignment lines in split view", async () => {
@@ -1799,7 +1873,7 @@ test("DiffRenderable - invalid diff format shows error with raw diff", async () 
   expect(frame).toMatchSnapshot("invalid diff format with error")
 
   // Should contain error message (the error from parsePatch)
-  expect(frame).toContain("Unknown line")
+  expect(frame).toContain("Error parsing diff")
 
   // Should show the raw diff content
   expect(frame).toContain("@@ -a,b +c,d @@")
@@ -2801,10 +2875,10 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
  }`
 
   // contentExamples[1] - Real Session: Text Demo
-  const textDemoDiff = `Index: packages/core/src/examples/index.ts
+  const textDemoDiff = `Index: packages/examples/src/index.ts
 ===================================================================
---- packages/core/src/examples/index.ts	before
-+++ packages/core/src/examples/index.ts	after
+--- packages/examples/src/index.ts	before
++++ packages/examples/src/index.ts	after
 @@ -56,6 +56,7 @@
  import * as terminalDemo from "./terminal"
  import * as diffDemo from "./diff-demo"
@@ -3024,4 +3098,116 @@ test("DiffRenderable - line highlighting works in split view", async () => {
   diffRenderable.highlightLines(0, 2, "#00ff00")
   diffRenderable.clearHighlightLines(0, 2)
   diffRenderable.clearAllLineColors()
+})
+
+const threeHunkDiff = `--- a/file.js
++++ b/file.js
+@@ -1,3 +1,3 @@
+ function first() {
+-  return 1;
++  return "one";
+ }
+@@ -15,4 +15,5 @@
+ function second() {
+   var x = 10;
++  var y = 20;
+   return x;
+ }
+@@ -30,3 +31,3 @@
+ function third() {
+-  console.log("old");
++  console.log("new");
+ }`
+
+test("DiffRenderable - getHunkRowOffsets returns the first row of each hunk (unified)", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({ default: { fg: RGBA.fromValues(1, 1, 1, 1) } })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: threeHunkDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Hunks flatten into one column: 4 lines, then 5 lines, then 4 lines.
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 4, 9])
+})
+
+test("DiffRenderable - getHunkRowOffsets accounts for wrapped lines (unified)", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({ default: { fg: RGBA.fromValues(1, 1, 1, 1) } })
+
+  const longLine = "x".repeat(220)
+  const wrappingDiff = `--- a/file.js
++++ b/file.js
+@@ -1,3 +1,3 @@
+ const short = 1;
+-const removed = 2;
++const ${longLine} = 2;
+ const after = 3;
+@@ -20,3 +20,4 @@
+ function second() {
+   var value = 10;
++  var added = 20;
+   return value;
+@@ -40,3 +41,3 @@
+ function third() {
+-  console.log("old");
++  console.log("new");
+ }`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: wrappingDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "char",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCode = (diffRenderable as any).leftCodeRenderable
+  const sources: number[] = leftCode.lineInfo.lineSources
+
+  // The wrapped line in the first hunk pushes the later hunks down by extra visual rows.
+  expect(sources.length).toBeGreaterThan(12)
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([sources.indexOf(0), sources.indexOf(4), sources.indexOf(8)])
+})
+
+test("DiffRenderable - getHunkRowOffsets uses split-view rows (split)", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({ default: { fg: RGBA.fromValues(1, 1, 1, 1) } })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: threeHunkDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Split view pairs adds/removes side by side, so the add-only second hunk leaves the
+  // left column one row shorter than the unified flattening.
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 3, 8])
+})
+
+test("DiffRenderable - getHunkRowOffsets is empty without a diff", async () => {
+  const diffRenderable = new DiffRenderable(currentRenderer, { id: "test-diff" })
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([])
 })

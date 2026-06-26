@@ -1,4 +1,4 @@
-import { Edge, Gutter } from "yoga-layout"
+import { Edge, Gutter } from "../yoga.js"
 import { type RenderableOptions, Renderable } from "../Renderable.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import {
@@ -22,7 +22,10 @@ export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> exte
   customBorderChars?: BorderCharacters
   shouldFill?: boolean
   title?: string
+  titleColor?: string | RGBA
   titleAlignment?: "left" | "center" | "right"
+  bottomTitle?: string
+  bottomTitleAlignment?: "left" | "center" | "right"
   focusedBorderColor?: ColorInput
   focusable?: boolean
   gap?: number | `${number}%`
@@ -51,7 +54,10 @@ export class BoxRenderable extends Renderable {
   protected borderSides: BorderSidesConfig
   public shouldFill: boolean
   protected _title?: string
+  protected _titleColor?: RGBA
   protected _titleAlignment: "left" | "center" | "right"
+  protected _bottomTitle?: string
+  protected _bottomTitleAlignment: "left" | "center" | "right"
 
   protected _defaultOptions = {
     backgroundColor: "transparent",
@@ -60,6 +66,7 @@ export class BoxRenderable extends Renderable {
     borderColor: "#FFFFFF",
     shouldFill: true,
     titleAlignment: "left",
+    bottomTitleAlignment: "left",
     focusedBorderColor: "#00AAFF",
   } satisfies Partial<BoxOptions>
 
@@ -86,7 +93,10 @@ export class BoxRenderable extends Renderable {
     this.borderSides = getBorderSides(this._border)
     this.shouldFill = options.shouldFill ?? this._defaultOptions.shouldFill
     this._title = options.title
+    this._titleColor = options.titleColor ? parseColor(options.titleColor) : undefined
     this._titleAlignment = options.titleAlignment || this._defaultOptions.titleAlignment
+    this._bottomTitle = options.bottomTitle
+    this._bottomTitleAlignment = options.bottomTitleAlignment || this._defaultOptions.bottomTitleAlignment
 
     this.applyYogaBorders()
 
@@ -197,6 +207,18 @@ export class BoxRenderable extends Renderable {
     }
   }
 
+  public get titleColor(): RGBA | undefined {
+    return this._titleColor
+  }
+
+  public set titleColor(value: string | RGBA | undefined) {
+    const newColor = value ? parseColor(value) : undefined
+    if (this._titleColor !== newColor) {
+      this._titleColor = newColor
+      this.requestRender()
+    }
+  }
+
   public get titleAlignment(): "left" | "center" | "right" {
     return this._titleAlignment
   }
@@ -208,12 +230,45 @@ export class BoxRenderable extends Renderable {
     }
   }
 
+  public get bottomTitle(): string | undefined {
+    return this._bottomTitle
+  }
+
+  public set bottomTitle(value: string | undefined) {
+    if (this._bottomTitle !== value) {
+      this._bottomTitle = value
+      this.requestRender()
+    }
+  }
+
+  public get bottomTitleAlignment(): "left" | "center" | "right" {
+    return this._bottomTitleAlignment
+  }
+
+  public set bottomTitleAlignment(value: "left" | "center" | "right") {
+    if (this._bottomTitleAlignment !== value) {
+      this._bottomTitleAlignment = value
+      this.requestRender()
+    }
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
-    const currentBorderColor = this._focused ? this._focusedBorderColor : this._borderColor
+    const hasBorder = this.borderSides.top || this.borderSides.right || this.borderSides.bottom || this.borderSides.left
+    const hasVisibleFill = this.shouldFill && this._backgroundColor.a > 0
+    // Many boxes are used only for layout. Skip drawBox entirely when a box
+    // would not draw pixels so wrapper nodes do not pay the FFI/native cost.
+    if (!hasBorder && !hasVisibleFill) {
+      return
+    }
+
+    const hasFocusWithin = this._focusable && (this._focused || this._hasFocusedDescendant)
+    const currentBorderColor = hasFocusWithin ? this._focusedBorderColor : this._borderColor
+    const screenX = this._screenX
+    const screenY = this._screenY
 
     buffer.drawBox({
-      x: this.x,
-      y: this.y,
+      x: screenX,
+      y: screenY,
       width: this.width,
       height: this.height,
       borderStyle: this._borderStyle,
@@ -223,7 +278,10 @@ export class BoxRenderable extends Renderable {
       backgroundColor: this._backgroundColor,
       shouldFill: this.shouldFill,
       title: this._title,
+      titleColor: this._titleColor ?? currentBorderColor,
       titleAlignment: this._titleAlignment,
+      bottomTitle: this._bottomTitle,
+      bottomTitleAlignment: this._bottomTitleAlignment,
     })
   }
 

@@ -72,6 +72,7 @@ pub const LineBreakResult = struct {
 
     pub fn deinit(self: *LineBreakResult) void {
         self.breaks.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn reset(self: *LineBreakResult) void {
@@ -92,6 +93,7 @@ pub const TabStopResult = struct {
 
     pub fn deinit(self: *TabStopResult) void {
         self.positions.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn reset(self: *TabStopResult) void {
@@ -123,6 +125,7 @@ pub const WrapBreakResult = struct {
 
     pub fn deinit(self: *WrapBreakResult) void {
         self.breaks.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn reset(self: *WrapBreakResult) void {
@@ -185,6 +188,8 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
         0x3001, // IDEOGRAPHIC COMMA
         0x3002, // IDEOGRAPHIC FULL STOP
         0xFF01, // FULLWIDTH EXCLAMATION MARK
+        0xFF0C, // FULLWIDTH COMMA
+        0xFF1A, // FULLWIDTH COLON
         0xFF1F, // FULLWIDTH QUESTION MARK
         => true,
         else => false,
@@ -669,7 +674,6 @@ inline fn eawToWidth(cp: u21, eaw: uucode.types.EastAsianWidth) i16 {
     if (cp >= 0x2630 and cp <= 0x2637) return 2;
     if (cp >= 0x2648 and cp <= 0x2653) return 2;
     if (cp == 0x267F or cp == 0x2693 or cp == 0x269B) return 2;
-    if (cp == 0x26A0 or cp == 0x26A1) return 2;
     if (cp >= 0x26AA and cp <= 0x26AB) return 2;
     if (cp >= 0x26BD and cp <= 0x26BE) return 2;
     if (cp >= 0x26C4 and cp <= 0x26C5) return 2;
@@ -752,6 +756,7 @@ inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
     } else if (byte < 0x80 and byte >= 32 and byte <= 126) {
         return 1;
     } else if (byte >= 0x80) {
+        if (codepoint > 0x10FFFF) return 0;
         const eaw = uucode.get(.east_asian_width, codepoint);
         const w = eawToWidth(codepoint, eaw);
         return if (w > 0) @intCast(w) else 0;
@@ -1645,6 +1650,7 @@ pub const GraphemeInfoResult = struct {
 
     pub fn deinit(self: *GraphemeInfoResult) void {
         self.graphemes.deinit();
+        self.* = undefined;
     }
 
     pub fn reset(self: *GraphemeInfoResult) void {
@@ -1655,27 +1661,27 @@ pub const GraphemeInfoResult = struct {
 /// Find all grapheme clusters in text and return info for multi-byte graphemes and tabs
 /// This is a proxy function that dispatches to the appropriate implementation based on width_method
 pub fn findGraphemeInfo(
+    allocator: std.mem.Allocator,
     text: []const u8,
     tab_width: u8,
     isASCIIOnly: bool,
     width_method: WidthMethod,
-    allocator: std.mem.Allocator,
     result: *std.ArrayListUnmanaged(GraphemeInfo),
 ) !void {
     switch (width_method) {
-        .unicode, .no_zwj => try findGraphemeInfoUnicode(text, tab_width, isASCIIOnly, width_method, allocator, result),
-        .wcwidth => try findGraphemeInfoWCWidth(text, tab_width, isASCIIOnly, allocator, result),
+        .unicode, .no_zwj => try findGraphemeInfoUnicode(allocator, text, tab_width, isASCIIOnly, width_method, result),
+        .wcwidth => try findGraphemeInfoWCWidth(allocator, text, tab_width, isASCIIOnly, result),
     }
 }
 
 /// Find all grapheme clusters using Unicode grapheme cluster segmentation
 /// This version treats grapheme clusters as single units for width calculation
 fn findGraphemeInfoUnicode(
+    allocator: std.mem.Allocator,
     text: []const u8,
     tab_width: u8,
     isASCIIOnly: bool,
     width_method: WidthMethod,
-    allocator: std.mem.Allocator,
     result: *std.ArrayListUnmanaged(GraphemeInfo),
 ) !void {
     // In wcwidth mode, always process to capture combining marks on ASCII
@@ -1717,7 +1723,7 @@ fn findGraphemeInfoUnicode(
                     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
                         if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                             const cluster_byte_len = (pos + i) - cluster_start;
-                            try result.append(allocator, GraphemeInfo{
+                            try result.append(allocator, .{
                                 .byte_offset = @intCast(cluster_start),
                                 .byte_len = @intCast(cluster_byte_len),
                                 .width = @intCast(cluster_width_state.width),
@@ -1763,7 +1769,7 @@ fn findGraphemeInfoUnicode(
                 if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
                     if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                         const cluster_byte_len = (pos + i) - cluster_start;
-                        try result.append(allocator, GraphemeInfo{
+                        try result.append(allocator, .{
                             .byte_offset = @intCast(cluster_start),
                             .byte_len = @intCast(cluster_byte_len),
                             .width = @intCast(cluster_width_state.width),
@@ -1808,7 +1814,7 @@ fn findGraphemeInfoUnicode(
             if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
                 if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                     const cluster_byte_len = pos - cluster_start;
-                    try result.append(allocator, GraphemeInfo{
+                    try result.append(allocator, .{
                         .byte_offset = @intCast(cluster_start),
                         .byte_len = @intCast(cluster_byte_len),
                         .width = @intCast(cluster_width_state.width),
@@ -1840,7 +1846,7 @@ fn findGraphemeInfoUnicode(
     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
         if (cluster_width_state.width > 0 or width_method == .wcwidth) {
             const cluster_byte_len = text.len - cluster_start;
-            try result.append(allocator, GraphemeInfo{
+            try result.append(allocator, .{
                 .byte_offset = @intCast(cluster_start),
                 .byte_len = @intCast(cluster_byte_len),
                 .width = @intCast(cluster_width_state.width),
@@ -1853,10 +1859,10 @@ fn findGraphemeInfoUnicode(
 /// Find all grapheme clusters using wcwidth-style codepoint-by-codepoint processing
 /// This version treats each codepoint as a separate character (tmux/wcwidth behavior)
 fn findGraphemeInfoWCWidth(
+    allocator: std.mem.Allocator,
     text: []const u8,
     tab_width: u8,
     isASCIIOnly: bool,
-    allocator: std.mem.Allocator,
     result: *std.ArrayListUnmanaged(GraphemeInfo),
 ) !void {
     // wcwidth mode should still produce the same grapheme cluster boundaries as Unicode
@@ -1900,7 +1906,7 @@ fn findGraphemeInfoWCWidth(
 
         if (is_break) {
             if (cluster_started and (cluster_is_multibyte or cluster_is_tab)) {
-                try result.append(allocator, GraphemeInfo{
+                try result.append(allocator, .{
                     .byte_offset = @intCast(cluster_start),
                     .byte_len = @intCast(pos - cluster_start),
                     .width = @intCast(cluster_width_state.width),
@@ -1934,7 +1940,7 @@ fn findGraphemeInfoWCWidth(
     // Commit final cluster
     if (cluster_started) {
         if (cluster_is_multibyte or cluster_is_tab) {
-            try result.append(allocator, GraphemeInfo{
+            try result.append(allocator, .{
                 .byte_offset = @intCast(cluster_start),
                 .byte_len = @intCast(text.len - cluster_start),
                 .width = @intCast(cluster_width_state.width),

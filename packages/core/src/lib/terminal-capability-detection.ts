@@ -9,6 +9,8 @@
  * - Kitty Keyboard Query: ESC[?Nu where N is 0,1,2,etc
  * - DA1 (Device Attributes): ESC[?...c
  * - Pixel Resolution: ESC[4;height;widtht
+ * - OSC 99 notification capability query response
+ * - iTerm2 OSC 1337 feature-reporting response
  */
 
 /**
@@ -35,6 +37,12 @@ export function isCapabilityResponse(sequence: string): boolean {
     return true
   }
 
+  // XTGETTCAP Ms: consume replies to our query here; native parsing separately
+  // validates whether a positive value is sufficient evidence of support.
+  if (/\x1bP(?:1\+r4d73(?:=[^\x1b]*)?|0\+r(?:4d73)?)\x1b\\/i.test(sequence)) {
+    return true
+  }
+
   // Kitty graphics response: ESC _ G ... ESC \
   // Matches any graphics response including OK, errors, etc.
   // This is for filtering capability responses from user input
@@ -49,6 +57,17 @@ export function isCapabilityResponse(sequence: string): boolean {
 
   // DA1 (Device Attributes): ESC[?...c
   if (/\x1b\[\?[0-9;]*c/.test(sequence)) {
+    return true
+  }
+
+  // Kitty desktop notification capability query response.
+  if (/\x1b\]99;[^\x07\x1b]*i=opentui-notifications[^\x07\x1b]*p=\?[\s\S]*?(?:\x07|\x1b\\)/.test(sequence)) {
+    return true
+  }
+
+  // iTerm2 feature reporting response. The native parser decides whether the
+  // feature string contains the Notifications feature code.
+  if (/\x1b\]1337;Capabilities=[\s\S]*?(?:\x07|\x1b\\)/.test(sequence)) {
     return true
   }
 

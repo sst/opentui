@@ -1,6 +1,6 @@
 {
   "name": "@opentui/solid",
-  "version": "0.1.91",
+  "version": "0.4.2",
   "description": "SolidJS renderer for OpenTUI",
   "repository": {
     "type": "git",
@@ -16,6 +16,8 @@
     "build": "bun scripts/build.ts",
     "build:examples": "bun examples/build.ts",
     "publish": "bun scripts/publish.ts",
+    "test:dist": "bun scripts/test-packed-consumer.ts",
+    "test:js:node": "bun scripts/test-node.ts",
     "test": "bun test"
   },
   "exports": {
@@ -30,16 +32,32 @@
       "import": "./scripts/solid-plugin.ts"
     },
     "./runtime-plugin-support": {
+      "types": "./scripts/runtime-plugin-support.ts",
       "import": "./scripts/runtime-plugin-support.ts"
     },
-    "./jsx-runtime": "./jsx-runtime.d.ts",
-    "./jsx-dev-runtime": "./jsx-runtime.d.ts"
+    "./runtime-plugin-support/configure": {
+      "types": "./scripts/runtime-plugin-support-configure.ts",
+      "import": "./scripts/runtime-plugin-support-configure.ts"
+    },
+    "./components": {
+      "types": "./components.ts",
+      "import": "./components.ts"
+    },
+    "./jsx-runtime": {
+      "types": "./jsx-runtime.d.ts",
+      "import": "./jsx-runtime.ts"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./jsx-dev-runtime.d.ts",
+      "import": "./jsx-dev-runtime.ts"
+    }
   },
   "devDependencies": {
+    "@opentui/keymap": "workspace:*",
     "@types/babel__core": "7.20.5",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
-    "solid-js": "1.9.11",
+    "solid-js": "1.9.12",
     "typescript": "^5"
   },
   "dependencies": {
@@ -47,11 +65,11 @@
     "@babel/preset-typescript": "7.27.1",
     "@opentui/core": "workspace:*",
     "babel-plugin-module-resolver": "5.0.2",
-    "babel-preset-solid": "1.9.10",
+    "babel-preset-solid": "1.9.12",
     "entities": "7.0.1",
     "s-js": "^0.4.9"
   },
   "peerDependencies": {
-    "solid-js": "1.9.11"
+    "solid-js": "1.9.12"
   }
 }

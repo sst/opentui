@@ -8,6 +8,7 @@ test("first parse returns all tokens", () => {
   expect(state.content).toBe("# Hello\n\nParagraph")
   expect(state.tokens.length).toBeGreaterThan(0)
   expect(state.tokens[0].type).toBe("heading")
+  expect(state.stableTokenCount).toBe(Math.max(0, state.tokens.length - 2))
 })
 
 test("reuses unchanged tokens when appending content", () => {
@@ -17,6 +18,7 @@ test("reuses unchanged tokens when appending content", () => {
   // First tokens should be same object reference (reused)
   expect(state2.tokens[0]).toBe(state1.tokens[0]) // heading
   expect(state2.tokens[1]).toBe(state1.tokens[1]) // paragraph
+  expect(state2.stableTokenCount).toBe(state2.tokens.length)
 })
 
 test("trailing unstable tokens are re-parsed", () => {
@@ -55,6 +57,26 @@ test("handles empty previous state", () => {
 
   expect(state.tokens.length).toBeGreaterThan(0)
   expect(state.tokens[0].type).toBe("heading")
+})
+
+test("parseMarkdownIncremental reports stableTokenCount for the reused prefix", () => {
+  const first = parseMarkdownIncremental("# Hello\n\nPara 1\n\n", null, 2)
+  const second = parseMarkdownIncremental("# Hello\n\nPara 1\n\nPara 2", first, 2)
+
+  expect(second.stableTokenCount).toBe(1)
+  expect(second.tokens[0]).toBe(first.tokens[0])
+})
+
+test("stableTokenCount equals tokens.length when trailingUnstable is zero", () => {
+  const state = parseMarkdownIncremental("# Hello\n\nPara 1", null, 0)
+
+  expect(state.stableTokenCount).toBe(state.tokens.length)
+})
+
+test("initial parse keeps a conservative unstable tail", () => {
+  const state = parseMarkdownIncremental("# Hello\n\nPara 1\n\nPara 2", null, 2)
+
+  expect(state.stableTokenCount).toBe(Math.max(0, state.tokens.length - 2))
 })
 
 test("handles content truncation", () => {
@@ -189,6 +211,7 @@ test("falls back to full re-parse when incremental tail parse fails", () => {
     const table = state2.tokens.find((token) => token.type === "table") as any
 
     expect(lexCalls).toBeGreaterThanOrEqual(2)
+    expect(state2.stableTokenCount).toBe(0)
     expect(table).toBeDefined()
     expect(table.rows.length).toBe(2)
   } finally {
@@ -211,6 +234,7 @@ test("returns empty token list when both incremental and full parse fail", () =>
   try {
     const state2 = parseMarkdownIncremental(content2, state1, 2)
     expect(state2.tokens).toEqual([])
+    expect(state2.stableTokenCount).toBe(0)
   } finally {
     lexerRef.lex = originalLex
   }

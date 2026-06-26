@@ -2,6 +2,10 @@
 title: Plugin Slots
 description: Shared slot registry API used by core, React, and Solid
 order: 1
+navTitle: Overview
+skill:
+  entry: true
+  intents: [plugins, plugin, slots, registry, extensions]
 ---
 
 # Plugin slots
@@ -53,6 +57,11 @@ The context can be any object. `PluginContext` is a type alias for `object` — 
 
 ```typescript
 import { createSlotRegistry } from "@opentui/core"
+
+type AppSlots = {
+  statusbar: { user: string }
+  sidebar: { section: "left" | "right" }
+}
 
 const context = { appName: "my-app", version: "1.0.0" }
 

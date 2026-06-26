@@ -13,7 +13,7 @@ import type { PasteMetadata } from "./paste.js"
 
 export { SystemClock, type Clock, type TimerHandle } from "./clock.js"
 
-export type StdinResponseProtocol = "csi" | "osc" | "dcs" | "apc" | "unknown"
+export type StdinResponseProtocol = "csi" | "cpr" | "osc" | "dcs" | "apc" | "unknown"
 
 // The four event types the parser produces. Everything stdin sends becomes
 // exactly one of these.
@@ -45,6 +45,7 @@ export interface StdinParserProtocolContext {
   privateCapabilityRepliesActive: boolean
   pixelResolutionQueryActive: boolean
   explicitWidthCprActive: boolean
+  startupCursorCprActive: boolean
 }
 
 export interface StdinParserOptions {
@@ -77,6 +78,17 @@ type ParserState =
       hasDigit: boolean
       firstParamValue: number | null
     }
+  | {
+      // Startup cursor CPR cancellation can happen before the parser has enough
+      // bytes to distinguish a stale reply from ordinary CSI input. This state
+      // keeps consuming that one pending reply until it is either discarded as
+      // CPR noise or handed back to normal CSI parsing.
+      tag: "csi_parametric_ignored"
+      semicolons: number
+      segments: number
+      hasDigit: boolean
+      firstParamValue: number | null
+    }
   | { tag: "csi_private_reply"; semicolons: number; hasDigit: boolean; sawDollar: boolean }
   | { tag: "csi_private_reply_deferred"; semicolons: number; hasDigit: boolean; sawDollar: boolean }
   | { tag: "osc"; sawEsc: boolean }
@@ -95,9 +107,10 @@ interface PasteCollector {
   totalLength: number
 }
 
-// 10ms is enough to distinguish a lone ESC keypress from the start of an
-// escape sequence on all but the slowest connections.
-const DEFAULT_TIMEOUT_MS = 10
+// 20ms is to distinguish a lone ESC keypress from the start of an
+// escape sequence. Gemini/Claude uses 50ms, Codex uses 20ms, trying
+// this as a balanced default for now.
+const DEFAULT_TIMEOUT_MS = 20
 const DEFAULT_MAX_PENDING_BYTES = 64 * 1024
 const INITIAL_PENDING_CAPACITY = 256
 const ESC = 0x1b
@@ -111,6 +124,7 @@ const DEFAULT_PROTOCOL_CONTEXT: StdinParserProtocolContext = {
   privateCapabilityRepliesActive: false,
   pixelResolutionQueryActive: false,
   explicitWidthCprActive: false,
+  startupCursorCprActive: false,
 }
 // rxvt uses $-terminated CSI sequences for shifted function keys (e.g. ESC[2$).
 // Standard CSI treats $ as an intermediate byte, not a final, so we match these
@@ -328,6 +342,35 @@ function parsePositiveDecimalPrefix(sequence: Uint8Array, start: number, endExcl
   return sawDigit ? value : null
 }
 
+// Returns the leading kitty codepoint from field 1, like `97` in `97:65`.
+// The CSI scanner uses this at `;` boundaries to recognize alternate-key
+// forms (`codepoint[:shifted[:base]]`). That keeps split kitty sequences
+// pending, instead of flushing them as unknown on timeout.
+function parseKittyFirstFieldCodepoint(sequence: Uint8Array, start: number, endExclusive: number): number | null {
+  if (start >= endExclusive) return null
+
+  let firstColon = -1
+  for (let index = start; index < endExclusive; index += 1) {
+    if (sequence[index] === 0x3a) {
+      firstColon = index
+      break
+    }
+  }
+
+  if (firstColon === -1) return null
+
+  const codepoint = parsePositiveDecimalPrefix(sequence, start, firstColon)
+  if (codepoint === null) return null
+
+  // Remaining bytes in field 1 must stay kitty-compatible: digits or colons.
+  for (let index = firstColon + 1; index < endExclusive; index += 1) {
+    const byte = sequence[index]!
+    if (byte !== 0x3a && !isAsciiDigit(byte)) return null
+  }
+
+  return codepoint
+}
+
 function canStillBeKittyU(state: ParametricCsiLike): boolean {
   return state.semicolons >= 1
 }
@@ -340,6 +383,14 @@ function canStillBeExplicitWidthCpr(state: ParametricCsiLike): boolean {
   return state.firstParamValue === 1 && state.semicolons === 1
 }
 
+function canStillBeStartupCursorCpr(state: ParametricCsiLike): boolean {
+  return state.semicolons === 1
+}
+
+function canStillBeStartupCursorCprPrefix(state: ParametricCsiLike): boolean {
+  return state.segments === 1 && state.semicolons <= 1
+}
+
 function canStillBePixelResolution(state: ParametricCsiLike): boolean {
   return state.firstParamValue === 4 && state.semicolons === 2
 }
@@ -348,6 +399,7 @@ function canDeferParametricCsi(state: ParametricCsiLike, context: StdinParserPro
   return (
     (context.kittyKeyboardEnabled && (canStillBeKittyU(state) || canStillBeKittySpecial(state))) ||
     (context.explicitWidthCprActive && canStillBeExplicitWidthCpr(state)) ||
+    (context.startupCursorCprActive && canStillBeStartupCursorCpr(state)) ||
     (context.pixelResolutionQueryActive && canStillBePixelResolution(state))
   )
 }
@@ -379,6 +431,10 @@ function canCompleteDeferredParametricCsi(
     return true
   }
 
+  if (context.startupCursorCprActive && state.hasDigit && state.semicolons === 1 && byte === 0x52) {
+    return true
+  }
+
   if (
     context.pixelResolutionQueryActive &&
     state.hasDigit &&
@@ -390,6 +446,14 @@ function canCompleteDeferredParametricCsi(
   }
 
   return false
+}
+
+function classifyParametricCsiProtocol(state: ParametricCsiLike, finalByte: number): StdinResponseProtocol {
+  if (finalByte === 0x52 && state.semicolons === 1 && state.segments === 1 && state.hasDigit) {
+    return "cpr"
+  }
+
+  return "csi"
 }
 
 function canDeferPrivateReplyCsi(context: StdinParserProtocolContext): boolean {
@@ -404,6 +468,7 @@ function canCompleteDeferredPrivateReplyCsi(
   if (!context.privateCapabilityRepliesActive) return false
   if (state.sawDollar) return state.hasDigit && byte === 0x79
   if (byte === 0x63) return state.hasDigit || state.semicolons > 0
+  if (byte === 0x6e) return state.hasDigit
   return state.hasDigit && byte === 0x75
 }
 
@@ -420,6 +485,13 @@ function concatBytes(left: Uint8Array, right: Uint8Array): Uint8Array {
   combined.set(left, 0)
   combined.set(right, left.length)
   return combined
+}
+
+function withEscPrefix(bytes: Uint8Array): Uint8Array {
+  const prefixed = new Uint8Array(bytes.length + 1)
+  prefixed[0] = ESC
+  prefixed.set(bytes, 1)
+  return prefixed
 }
 
 function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
@@ -536,6 +608,7 @@ export class StdinParser {
       privateCapabilityRepliesActive: options.protocolContext?.privateCapabilityRepliesActive ?? false,
       pixelResolutionQueryActive: options.protocolContext?.pixelResolutionQueryActive ?? false,
       explicitWidthCprActive: options.protocolContext?.explicitWidthCprActive ?? false,
+      startupCursorCprActive: options.protocolContext?.startupCursorCprActive ?? false,
     }
   }
 
@@ -547,6 +620,80 @@ export class StdinParser {
     this.ensureAlive()
     this.protocolContext = { ...this.protocolContext, ...patch }
     this.reconcileDeferredStateWithProtocolContext()
+    this.reconcileTimeoutState()
+  }
+
+  // A startup CPR can be split either after `ESC[` or after the first `;`.
+  // Normalize both shapes into one ignore-state so leaving split-footer can
+  // cancel the stale reply without also swallowing unrelated CSI sequences.
+  private getAbortableStartupCursorCprState(): Extract<ParserState, { tag: "csi_parametric_ignored" }> | null {
+    if (this.pending.length === 0) {
+      return null
+    }
+
+    switch (this.state.tag) {
+      case "csi": {
+        const bytes = this.pending.view()
+        const firstParamStart = this.unitStart + 2
+        if (this.cursor < firstParamStart) {
+          return null
+        }
+
+        let firstParamValue: number | null = null
+        for (let index = firstParamStart; index < this.cursor; index += 1) {
+          const byte = bytes[index]!
+          if (!isAsciiDigit(byte)) {
+            return null
+          }
+
+          firstParamValue = (firstParamValue ?? 0) * 10 + (byte - 0x30)
+        }
+
+        return {
+          tag: "csi_parametric_ignored",
+          semicolons: 0,
+          segments: 1,
+          hasDigit: this.cursor > firstParamStart,
+          firstParamValue,
+        }
+      }
+
+      case "csi_parametric":
+      case "csi_parametric_deferred":
+        if (
+          !canStillBeStartupCursorCprPrefix(this.state) ||
+          (this.protocolContext.explicitWidthCprActive && canStillBeExplicitWidthCpr(this.state))
+        ) {
+          return null
+        }
+
+        return {
+          tag: "csi_parametric_ignored",
+          semicolons: this.state.semicolons,
+          segments: this.state.segments,
+          hasDigit: this.state.hasDigit,
+          firstParamValue: this.state.firstParamValue,
+        }
+    }
+
+    return null
+  }
+
+  public abortPendingStartupCursorCpr(): void {
+    this.ensureAlive()
+
+    const nextState = this.getAbortableStartupCursorCprState()
+    if (!nextState) {
+      return
+    }
+
+    this.state = nextState
+
+    if (this.pendingSinceMs === null) {
+      this.markPending()
+    }
+
+    this.forceFlush = false
     this.reconcileTimeoutState()
   }
 
@@ -641,11 +788,23 @@ export class StdinParser {
   public flushTimeout(nowMsValue: number = this.clock.now()): void {
     this.ensureAlive()
 
-    if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
+    if (
+      this.pendingSinceMs !== null &&
+      (nowMsValue < this.pendingSinceMs || nowMsValue - this.pendingSinceMs < this.timeoutMs)
+    ) {
       return
     }
 
-    if (nowMsValue < this.pendingSinceMs || nowMsValue - this.pendingSinceMs < this.timeoutMs) {
+    this.tryForceFlush()
+  }
+
+  // Sets forceFlush when there are pending bytes outside of a paste.
+  // Extracted so the setTimeout callback in reconcileTimeoutState() can
+  // bypass flushTimeout()'s elapsed-time comparison. Timer scheduling and
+  // clock.now() sampling can disagree by a small amount; re-checking elapsed
+  // time in the callback can skip a flush and leave pending bytes stuck.
+  private tryForceFlush(): void {
+    if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
       return
     }
 
@@ -984,7 +1143,14 @@ export class StdinParser {
           }
 
           if (byte === 0x3b) {
-            const firstParamValue = parsePositiveDecimalPrefix(bytes, this.unitStart + 2, this.cursor)
+            const firstParamStart = this.unitStart + 2
+            const firstParamEnd = this.cursor
+            let firstParamValue = parsePositiveDecimalPrefix(bytes, firstParamStart, firstParamEnd)
+
+            if (firstParamValue === null && this.protocolContext.kittyKeyboardEnabled) {
+              firstParamValue = parseKittyFirstFieldCodepoint(bytes, firstParamStart, firstParamEnd)
+            }
+
             if (firstParamValue !== null) {
               this.cursor += 1
               this.state = {
@@ -1173,7 +1339,8 @@ export class StdinParser {
 
           if (byte >= 0x40 && byte <= 0x7e) {
             const end = this.cursor + 1
-            this.emitKeyOrResponse("csi", decodeUtf8(bytes.subarray(this.unitStart, end)))
+            const protocol = classifyParametricCsiProtocol(this.state, byte)
+            this.emitKeyOrResponse(protocol, decodeUtf8(bytes.subarray(this.unitStart, end)))
             this.state = { tag: "ground" }
             this.consumePrefix(end)
             continue
@@ -1220,6 +1387,76 @@ export class StdinParser {
           }
 
           this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.cursor)
+          continue
+        }
+
+        case "csi_parametric_ignored": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (byte === ESC) {
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (isAsciiDigit(byte)) {
+            this.cursor += 1
+            this.state = {
+              tag: "csi_parametric_ignored",
+              semicolons: this.state.semicolons,
+              segments: this.state.segments,
+              hasDigit: true,
+              firstParamValue:
+                this.state.semicolons === 0
+                  ? (this.state.firstParamValue ?? 0) * 10 + (byte - 0x30)
+                  : this.state.firstParamValue,
+            }
+            continue
+          }
+
+          if (byte === 0x3b && this.state.semicolons === 0 && this.state.hasDigit) {
+            // `CSI 1;...R` is also used by the explicit-width probe, so once we
+            // learn that first param we must hand control back to normal CSI
+            // parsing instead of discarding the rest of the reply.
+            if (this.protocolContext.explicitWidthCprActive && this.state.firstParamValue === 1) {
+              this.state = { tag: "csi" }
+              continue
+            }
+
+            this.cursor += 1
+            this.state = {
+              tag: "csi_parametric_ignored",
+              semicolons: 1,
+              segments: 1,
+              hasDigit: false,
+              firstParamValue: this.state.firstParamValue,
+            }
+            continue
+          }
+
+          if (byte === 0x52 && this.state.semicolons === 1 && this.state.hasDigit) {
+            const end = this.cursor + 1
+            this.state = { tag: "ground" }
+            this.consumePrefix(end)
+            continue
+          }
+
+          if (this.state.semicolons === 0) {
+            this.state = { tag: "csi" }
+            continue
+          }
+
           this.state = { tag: "ground" }
           this.consumePrefix(this.cursor)
           continue
@@ -1292,7 +1529,7 @@ export class StdinParser {
 
           if (byte >= 0x40 && byte <= 0x7e) {
             const end = this.cursor + 1
-            this.emitKeyOrResponse("csi", decodeUtf8(bytes.subarray(this.unitStart, end)))
+            this.emitOpaqueResponse("csi", bytes.subarray(this.unitStart, end))
             this.state = { tag: "ground" }
             this.consumePrefix(end)
             continue
@@ -1462,8 +1699,9 @@ export class StdinParser {
         }
 
         // Delayed SGR mouse continuation after `esc_recovery` has consumed the
-        // leading `[`. Consume the rest of `<digits;digits;digitsM/m` as one
-        // opaque response so split mouse bytes never leak into text.
+        // leading `[`. Reconstruct the already-flushed ESC for valid mouse
+        // reports so wheel/click input still works; keep malformed or partial
+        // bytes opaque so they never leak into text input.
         case "esc_less_mouse": {
           if (this.cursor >= bytes.length) {
             if (!this.forceFlush) {
@@ -1484,7 +1722,13 @@ export class StdinParser {
 
           if (byte === 0x4d || byte === 0x6d) {
             const end = this.cursor + 1
-            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, end))
+            const rawBytes = bytes.subarray(this.unitStart, end)
+            const prefixed = withEscPrefix(rawBytes)
+            if (isMouseSgrSequence(prefixed)) {
+              this.emitMouse(prefixed, "sgr")
+            } else {
+              this.emitOpaqueResponse("unknown", rawBytes)
+            }
             this.state = { tag: "ground" }
             this.consumePrefix(end)
             continue
@@ -1497,8 +1741,9 @@ export class StdinParser {
         }
 
         // Delayed X10 mouse continuation after `esc_recovery` has consumed the
-        // leading `[`. Consume `[M` plus its three raw payload bytes as one
-        // opaque response so split mouse bytes never leak into text.
+        // leading `[`. Reconstruct the already-flushed ESC for valid mouse
+        // reports so wheel/click input still works; keep malformed or partial
+        // bytes opaque so they never leak into text input.
         case "esc_less_x10_mouse": {
           const end = this.unitStart + 5
 
@@ -1514,7 +1759,8 @@ export class StdinParser {
             continue
           }
 
-          this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, end))
+          const rawBytes = bytes.subarray(this.unitStart, end)
+          this.emitMouse(withEscPrefix(rawBytes), "x10")
           this.state = { tag: "ground" }
           this.consumePrefix(end)
           continue
@@ -1726,7 +1972,7 @@ export class StdinParser {
       }
 
       try {
-        this.flushTimeout(this.clock.now())
+        this.tryForceFlush()
         this.onTimeoutFlush?.()
       } catch (error) {
         console.error("stdin parser timeout flush failed", error)

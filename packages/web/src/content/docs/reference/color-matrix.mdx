@@ -1,0 +1,160 @@
+---
+title: Color matrix
+description: Per-cell and uniform RGBA matrix transforms on FrameBuffer
+order: 3
+---
+
+# Color matrix
+
+`FrameBuffer` supports native 4x4 RGBA matrix transforms through two methods: `colorMatrix(...)` and
+`colorMatrixUniform(...)`.
+
+Use `colorMatrix(...)` when you want to transform specific cells with per-cell strengths. Use
+`colorMatrixUniform(...)` when you want to apply one transform to the entire buffer.
+
+Both methods work on normalized RGBA values (`0.0` to `1.0`) and can target foreground, background, or both channels.
+
+## API
+
+```typescript
+import { TargetChannel } from "@opentui/core"
+
+frameBuffer.colorMatrix(
+  matrix: Float32Array,
+  cellMask: Float32Array,
+  strength = 1.0,
+  target = TargetChannel.Both,
+)
+
+frameBuffer.colorMatrixUniform(
+  matrix: Float32Array,
+  strength = 1.0,
+  target = TargetChannel.Both,
+)
+```
+
+## Matrix format
+
+Matrix must be exactly 16 floats in row-major order.
+
+Each row defines one output channel:
+
+```text
+Row 0: [r->r, g->r, b->r, a->r]  // output red
+Row 1: [r->g, g->g, b->g, a->g]  // output green
+Row 2: [r->b, g->b, b->b, a->b]  // output blue
+Row 3: [r->a, g->a, b->a, a->a]  // output alpha
+```
+
+Each cell is transformed in two stages:
+
+```text
+newColor = M * color
+output = original + (newColor - original) * strength
+```
+
+This means `strength = 0.0` keeps original color, and `strength = 1.0` applies full matrix result.
+
+## Target channels
+
+Use the `TargetChannel` enum to choose which color buffers are affected:
+
+- `TargetChannel.FG` (`1`): foreground only
+- `TargetChannel.BG` (`2`): background only
+- `TargetChannel.Both` (`3`): foreground + background
+
+## `colorMatrix` cell mask format
+
+`cellMask` uses packed triplets:
+
+```text
+[x, y, perCellStrength, x, y, perCellStrength, ...]
+```
+
+- `x` and `y` are cell coordinates
+- `perCellStrength` is multiplied by method `strength`
+- incomplete trailing values (not a multiple of 3) are ignored
+- out-of-bounds or non-finite coordinates are skipped
+- non-finite effective strengths are skipped
+
+This method is useful for effects that only affect part of the buffer, such as scanlines, vignettes, or localized color
+grading.
+
+## `colorMatrixUniform` behavior
+
+`colorMatrixUniform` applies the same matrix to every pixel in the selected channel(s).
+
+- optimized path processes 4 pixels at a time with SIMD
+- scalar fallback handles any remaining pixels
+- `strength === 0` or non-finite `strength` returns early
+
+Use this method for full-frame color grading and global post-processing.
+
+## No clamping
+
+Result values are not clamped to `[0, 1]`. Matrix coefficients and strengths can push channels above `1.0` or below
+`0.0`.
+
+## Example: invert whole buffer
+
+```typescript
+import { INVERT_MATRIX, TargetChannel } from "@opentui/core"
+
+frameBuffer.colorMatrixUniform(INVERT_MATRIX, 1.0, TargetChannel.Both)
+```
+
+## Example: apply sepia to selected cells
+
+```typescript
+import { SEPIA_MATRIX, TargetChannel } from "@opentui/core"
+
+// Affect only three cells at custom strengths
+const cellMask = new Float32Array([
+  5,
+  2,
+  1.0, // full sepia at (5,2)
+  6,
+  2,
+  0.5, // half sepia at (6,2)
+  7,
+  2,
+  0.25, // subtle sepia at (7,2)
+])
+
+frameBuffer.colorMatrix(SEPIA_MATRIX, cellMask, 1.0, TargetChannel.FG)
+```
+
+## Example: custom saturation matrix
+
+```typescript
+import { TargetChannel } from "@opentui/core"
+
+function createSaturationMatrix(saturation: number): Float32Array {
+  const rw = 0.299
+  const gw = 0.587
+  const bw = 0.114
+  const inv = 1 - saturation
+
+  return new Float32Array([
+    rw * inv + saturation,
+    gw * inv,
+    bw * inv,
+    0,
+    rw * inv,
+    gw * inv + saturation,
+    bw * inv,
+    0,
+    rw * inv,
+    gw * inv,
+    bw * inv + saturation,
+    0,
+    0,
+    0,
+    0,
+    1,
+  ])
+}
+
+const saturation = createSaturationMatrix(1.25)
+frameBuffer.colorMatrixUniform(saturation, 0.8, TargetChannel.Both)
+```

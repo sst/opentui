@@ -2,6 +2,8 @@ const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const iter_mod = @import("../text-buffer-iterators.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
+const seg_mod = @import("../text-buffer-segment.zig");
+const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 
@@ -708,7 +710,6 @@ test "TextBufferView word wrapping - CJK boundary width" {
     try std.testing.expectEqual(@as(u32, 2), vlines[1].width_cols);
 }
 
-
 test "TextBufferView word wrapping - compare char vs word mode" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -833,7 +834,6 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     const text = "hello my good friend";
     const mem_id = try tb.registerMemBuffer(text, false);
 
-    const seg_mod = @import("../text-buffer-segment.zig");
     const Segment = seg_mod.Segment;
 
     const chunk1 = tb.createChunk(mem_id, 0, 14); // "hello my good "
@@ -843,10 +843,10 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     var segments: std.ArrayListUnmanaged(Segment) = .{};
     defer segments.deinit(std.testing.allocator);
 
-    try segments.append(std.testing.allocator, Segment{ .linestart = {} });
-    try segments.append(std.testing.allocator, Segment{ .text = chunk1 });
-    try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
-    try segments.append(std.testing.allocator, Segment{ .text = chunk3 });
+    try segments.append(std.testing.allocator, .{ .linestart = {} });
+    try segments.append(std.testing.allocator, .{ .text = chunk1 });
+    try segments.append(std.testing.allocator, .{ .text = chunk2 });
+    try segments.append(std.testing.allocator, .{ .text = chunk3 });
 
     try tb.rope().setSegments(segments.items);
 
@@ -2343,6 +2343,30 @@ test "TextBufferView measureForDimensions - word wrap" {
     try std.testing.expect(result.width_cols_max <= 10);
 }
 
+test "TextBufferView word wrap - first line offset reduces initial line width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText(" located");
+    view.setWrapMode(.word);
+    view.setWrapWidth(20);
+    view.setFirstLineOffset(17);
+
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 1), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 7), vlines[1].width_cols);
+}
+
 test "TextBufferView measureForDimensions - empty buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -2379,7 +2403,7 @@ test "TextBufferView truncation - basic truncate single line" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 5 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 5 });
 
     const vlines = view.getVirtualLines();
 
@@ -2405,7 +2429,7 @@ test "TextBufferView truncation - multiline with truncate" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 12, .height = 5 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 12, .height = 5 });
 
     const vlines = view.getVirtualLines();
 
@@ -2435,7 +2459,7 @@ test "TextBufferView truncation - with wrapping disabled" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 15, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 15, .height = 1 });
 
     const vlines = view.getVirtualLines();
 
@@ -2459,7 +2483,7 @@ test "TextBufferView truncation - toggle truncate on and off" {
     try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
 
     // Without truncation
     view.setTruncate(false);
@@ -2491,7 +2515,7 @@ test "TextBufferView truncation - very small viewport" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 3, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 3, .height = 1 });
 
     const vlines = view.getVirtualLines();
 
@@ -2515,7 +2539,7 @@ test "TextBufferView truncation - verify ellipsis chunk injection" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
 
     const vlines = view.getVirtualLines();
 
@@ -2551,7 +2575,7 @@ test "TextBufferView truncation - works with wrapping" {
     view.setTruncate(true);
     view.setWrapMode(.char);
     view.setWrapWidth(10);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 15, .height = 5 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 15, .height = 5 });
 
     const vlines = view.getVirtualLines();
 
@@ -2576,7 +2600,7 @@ test "TextBufferView truncation - verify prefix and suffix content" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
 
     const vlines = view.getVirtualLines();
     const chunks = vlines[0].chunks.items;
@@ -3500,10 +3524,10 @@ test "TextBufferView - tab indicator set and get" {
     try std.testing.expect(view.getTabIndicatorColor() == null);
 
     view.setTabIndicator(@as(u32, '·'));
-    view.setTabIndicatorColor(RGBA{ 0.4, 0.4, 0.4, 1.0 });
+    view.setTabIndicatorColor(ansi.rgbaFromFloats(0.4, 0.4, 0.4, 1.0));
 
     try std.testing.expectEqual(@as(u32, '·'), view.getTabIndicator().?);
-    try std.testing.expectEqual(@as(f32, 0.4), view.getTabIndicatorColor().?[0]);
+    try std.testing.expectEqual(@as(u8, 102), ansi.red(view.getTabIndicatorColor().?));
 }
 
 test "TextBufferView findVisualLineIndex - finds correct line for wrapped text" {
@@ -3561,19 +3585,18 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     const text = "hello world ddddddddd";
     const mem_id = try tb.registerMemBuffer(text, false);
 
-    const seg_mod = @import("../text-buffer-segment.zig");
     const Segment = seg_mod.Segment;
 
     var segments: std.ArrayListUnmanaged(Segment) = .{};
     defer segments.deinit(std.testing.allocator);
 
-    try segments.append(std.testing.allocator, Segment{ .linestart = {} });
+    try segments.append(std.testing.allocator, .{ .linestart = {} });
 
     const chunk1 = tb.createChunk(mem_id, 0, 17);
-    try segments.append(std.testing.allocator, Segment{ .text = chunk1 });
+    try segments.append(std.testing.allocator, .{ .text = chunk1 });
 
     const chunk2 = tb.createChunk(mem_id, 17, 21);
-    try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
+    try segments.append(std.testing.allocator, .{ .text = chunk2 });
 
     try tb.rope().setSegments(segments.items);
     view.virtual_lines_dirty = true;

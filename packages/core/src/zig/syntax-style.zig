@@ -5,6 +5,8 @@ const events = @import("event-emitter.zig");
 
 pub const RGBA = buffer.RGBA;
 
+/// Foreground, background, and text attributes for a syntax highlight style.
+/// Color intent (rgb, indexed, default) is embedded in the RGBA values.
 pub const StyleDefinition = struct {
     fg: ?RGBA,
     bg: ?RGBA,
@@ -57,20 +59,19 @@ pub const SyntaxStyle = struct {
     }
 
     pub fn deinit(self: *SyntaxStyle) void {
+        const global_allocator = self.global_allocator;
+        defer global_allocator.destroy(self);
+
         self.emitter.emit(.Destroy);
         self.emitter.deinit();
         self.arena.deinit();
-        self.global_allocator.destroy(self.arena);
-        self.global_allocator.destroy(self);
+        global_allocator.destroy(self.arena);
+        self.* = undefined;
     }
 
-    pub fn registerStyle(self: *SyntaxStyle, name: []const u8, fg: ?RGBA, bg: ?RGBA, attributes: u32) SyntaxStyleError!u32 {
+    fn putStyle(self: *SyntaxStyle, name: []const u8, definition: StyleDefinition) SyntaxStyleError!u32 {
         if (self.name_to_id.get(name)) |existing_id| {
-            try self.id_to_style.put(self.allocator, existing_id, StyleDefinition{
-                .fg = fg,
-                .bg = bg,
-                .attributes = attributes,
-            });
+            try self.id_to_style.put(self.allocator, existing_id, definition);
             return existing_id;
         }
 
@@ -80,13 +81,21 @@ pub const SyntaxStyle = struct {
         const owned_name = self.allocator.dupe(u8, name) catch return SyntaxStyleError.OutOfMemory;
 
         try self.name_to_id.put(self.allocator, owned_name, id);
-        try self.id_to_style.put(self.allocator, id, StyleDefinition{
+        try self.id_to_style.put(self.allocator, id, definition);
+
+        return id;
+    }
+
+    pub fn registerStyle(self: *SyntaxStyle, name: []const u8, fg: ?RGBA, bg: ?RGBA, attributes: u32) SyntaxStyleError!u32 {
+        return self.registerStyleDefinition(name, .{
             .fg = fg,
             .bg = bg,
             .attributes = attributes,
         });
+    }
 
-        return id;
+    pub fn registerStyleDefinition(self: *SyntaxStyle, name: []const u8, definition: StyleDefinition) SyntaxStyleError!u32 {
+        return self.putStyle(name, definition);
     }
 
     pub fn resolveById(self: *const SyntaxStyle, id: u32) ?StyleDefinition {
@@ -118,7 +127,7 @@ pub const SyntaxStyle = struct {
             return cached;
         }
 
-        var merged = StyleDefinition{
+        var merged: StyleDefinition = .{
             .fg = null,
             .bg = null,
             .attributes = 0,
@@ -126,8 +135,12 @@ pub const SyntaxStyle = struct {
 
         for (ids) |id| {
             if (self.resolveById(id)) |style| {
-                if (style.fg) |fg| merged.fg = fg;
-                if (style.bg) |bg| merged.bg = bg;
+                if (style.fg) |fg| {
+                    merged.fg = fg;
+                }
+                if (style.bg) |bg| {
+                    merged.bg = bg;
+                }
                 // Attributes are OR'd together
                 merged.attributes |= style.attributes;
             }

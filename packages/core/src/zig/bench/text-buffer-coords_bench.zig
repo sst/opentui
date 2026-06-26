@@ -18,7 +18,7 @@ fn createTestBuffer(allocator: std.mem.Allocator, line_count: u32, chars_per_lin
 
     for (0..line_count) |i| {
         // Add text segment
-        try segments.append(allocator, Segment{
+        try segments.append(allocator, .{
             .text = TextChunk{
                 .mem_id = 0,
                 .byte_start = 0,
@@ -29,11 +29,11 @@ fn createTestBuffer(allocator: std.mem.Allocator, line_count: u32, chars_per_lin
         });
         // Add line break (except for last line)
         if (i < line_count - 1) {
-            try segments.append(allocator, Segment{ .brk = {} });
+            try segments.append(allocator, .{ .brk = {} });
         }
     }
 
-    return try UnifiedRope.from_slice(allocator, segments.items);
+    return UnifiedRope.from_slice(allocator, segments.items);
 }
 
 fn benchCoordsToOffsetCurrent(
@@ -48,7 +48,7 @@ fn benchCoordsToOffsetCurrent(
     {
         const name = "[CURRENT] coordsToOffset: 100 calls, 100 lines";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -65,7 +65,7 @@ fn benchCoordsToOffsetCurrent(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -81,7 +81,7 @@ fn benchCoordsToOffsetCurrent(
     {
         const name = "[CURRENT] coordsToOffset: 100 calls, 1k lines";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -97,7 +97,7 @@ fn benchCoordsToOffsetCurrent(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -113,7 +113,7 @@ fn benchCoordsToOffsetCurrent(
     {
         const name = "[CURRENT] coordsToOffset: 100 calls, 10k lines";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -129,7 +129,7 @@ fn benchCoordsToOffsetCurrent(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -145,7 +145,7 @@ fn benchCoordsToOffsetCurrent(
     {
         const name = "[CURRENT] coordsToOffset: 100 calls to LAST line, 1k lines (worst case)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -160,7 +160,7 @@ fn benchCoordsToOffsetCurrent(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -172,7 +172,7 @@ fn benchCoordsToOffsetCurrent(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchOffsetToCoordsCurrent(
@@ -187,7 +187,7 @@ fn benchOffsetToCoordsCurrent(
     {
         const name = "[CURRENT] offsetToCoords: 100 calls, 100 lines";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -207,7 +207,7 @@ fn benchOffsetToCoordsCurrent(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -223,7 +223,7 @@ fn benchOffsetToCoordsCurrent(
     {
         const name = "[CURRENT] offsetToCoords: 100 calls, 1k lines";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -243,7 +243,7 @@ fn benchOffsetToCoordsCurrent(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -259,7 +259,7 @@ fn benchOffsetToCoordsCurrent(
     {
         const name = "[CURRENT] offsetToCoords: 100 calls, 10k lines";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -279,7 +279,7 @@ fn benchOffsetToCoordsCurrent(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -291,7 +291,7 @@ fn benchOffsetToCoordsCurrent(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchGetLineCount(
@@ -306,7 +306,7 @@ fn benchGetLineCount(
     {
         const name = "getLineCount: 100k calls (already O(1) via metrics)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -321,7 +321,7 @@ fn benchGetLineCount(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -333,7 +333,7 @@ fn benchGetLineCount(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 pub fn run(
@@ -358,5 +358,5 @@ pub fn run(
     const count_results = try benchGetLineCount(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, count_results);
 
-    return try all_results.toOwnedSlice(allocator);
+    return all_results.toOwnedSlice(allocator);
 }

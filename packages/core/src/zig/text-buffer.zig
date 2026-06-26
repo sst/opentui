@@ -33,18 +33,26 @@ pub const SyntaxStyle = ss.SyntaxStyle;
 
 pub const TextBuffer = UnifiedTextBuffer;
 
+/// A styled text chunk passed from TypeScript across the FFI boundary.
+/// Each chunk carries raw text bytes, optional packed RGBA colors, text
+/// attributes, and an optional hyperlink URL.
+///
+/// The color pointers point to 4 consecutive u16 values in the packed RGBA
+/// format defined by ansi.zig. Use utils.ptrToRGBA to read them.
 pub const StyledChunk = extern struct {
     text_ptr: [*]const u8,
     text_len: usize,
-    fg_ptr: ?[*]const f32,
-    bg_ptr: ?[*]const f32,
+    /// Optional foreground color as 4 packed u16 values (see ansi.RGBA).
+    fg_ptr: ?[*]const u16,
+    /// Optional background color as 4 packed u16 values (see ansi.RGBA).
+    bg_ptr: ?[*]const u16,
     attributes: u32,
     link_ptr: ?[*]const u8 = null,
     link_len: usize = 0,
 };
 
 pub const UnifiedTextBuffer = struct {
-    const Self = @This();
+    const Self = UnifiedTextBuffer;
 
     mem_registry: MemRegistry,
     default_fg: ?RGBA,
@@ -76,6 +84,7 @@ pub const UnifiedTextBuffer = struct {
     // Maps line_idx to highlights for that line
     line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)),
     line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)),
+    internal_highlight_count: usize,
     highlight_batch_depth: u32,
     dirty_span_lines: std.AutoHashMap(usize, void),
 
@@ -148,7 +157,7 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn getWrapOffsetsFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const utf8.WrapBreak {
-        return chunk.getWrapOffsets(&self.mem_registry, self.allocator, self.width_method);
+        return chunk.getWrapOffsets(self.allocator, &self.mem_registry, self.width_method);
     }
 
     /// Accessor: walk all lines and segments via callbacks.
@@ -210,6 +219,7 @@ pub const UnifiedTextBuffer = struct {
             .content_epoch = 0,
             .line_highlights = .{},
             .line_spans = .{},
+            .internal_highlight_count = 0,
             .highlight_batch_depth = 0,
             .dirty_span_lines = dirty_span_lines,
             .styled_text_mem_id = null,
@@ -222,6 +232,9 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        const global_allocator = self.global_allocator;
+        defer global_allocator.destroy(self);
+
         if (self.syntax_style) |style| {
             (@constCast(style)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
@@ -254,8 +267,8 @@ pub const UnifiedTextBuffer = struct {
 
         self.mem_registry.deinit();
         self.arena.deinit();
-        self.global_allocator.destroy(self.arena);
-        self.global_allocator.destroy(self);
+        global_allocator.destroy(self.arena);
+        self.* = undefined;
     }
 
     // View registration (same as original)
@@ -353,6 +366,7 @@ pub const UnifiedTextBuffer = struct {
             hl_list.deinit(self.global_allocator);
         }
         self.line_highlights.clearRetainingCapacity();
+        self.internal_highlight_count = 0;
 
         for (self.line_spans.items) |*span_list| {
             span_list.deinit(self.global_allocator);
@@ -402,13 +416,15 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn setSyntaxStyle(self: *Self, syntax_style: ?*const SyntaxStyle) void {
+        if (self.syntax_style == syntax_style) return;
+
+        if (syntax_style) |style| {
+            (@constCast(style)).onDestroy(@ptrCast(self), onSyntaxStyleDestroyed) catch return;
+        }
         if (self.syntax_style) |prev| {
             (@constCast(prev)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
         self.syntax_style = syntax_style;
-        if (syntax_style) |style| {
-            _ = (@constCast(style)).onDestroy(@ptrCast(self), onSyntaxStyleDestroyed) catch {};
-        }
     }
 
     pub fn getSyntaxStyle(self: *const Self) ?*const SyntaxStyle {
@@ -431,6 +447,7 @@ pub const UnifiedTextBuffer = struct {
 
     /// Set the text content using SIMD-optimized line break detection
     pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
+        self.clearInternalHighlights();
         self.clear();
         const mem_id = try self.mem_registry.register(text, false);
         try self.setTextInternal(mem_id, text);
@@ -439,6 +456,7 @@ pub const UnifiedTextBuffer = struct {
     /// Set text from a pre-registered memory ID
     pub fn setTextFromMemId(self: *Self, mem_id: u8) TextBufferError!void {
         const text = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
+        self.clearInternalHighlights();
         self.clear();
         try self.setTextInternal(mem_id, text);
     }
@@ -508,7 +526,7 @@ pub const UnifiedTextBuffer = struct {
 
         const chunk_width: u16 = @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method)));
 
-        return TextChunk{
+        return .{
             .mem_id = mem_id,
             .byte_start = byte_start,
             .byte_end = byte_end,
@@ -535,7 +553,7 @@ pub const UnifiedTextBuffer = struct {
         errdefer segments.deinit(allocator);
 
         if (prepend_linestart) {
-            try segments.append(allocator, Segment{ .linestart = {} });
+            try segments.append(allocator, .{ .linestart = {} });
         }
 
         var local_start: u32 = 0;
@@ -550,19 +568,19 @@ pub const UnifiedTextBuffer = struct {
 
             if (local_end > local_start) {
                 const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + local_end);
-                try segments.append(allocator, Segment{ .text = chunk });
+                try segments.append(allocator, .{ .text = chunk });
                 total_width += chunk.width;
             }
 
-            try segments.append(allocator, Segment{ .brk = {} });
-            try segments.append(allocator, Segment{ .linestart = {} });
+            try segments.append(allocator, .{ .brk = {} });
+            try segments.append(allocator, .{ .linestart = {} });
 
             local_start = break_pos + 1;
         }
 
         if (local_start < text.len) {
             const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + @as(u32, @intCast(text.len)));
-            try segments.append(allocator, Segment{ .text = chunk });
+            try segments.append(allocator, .{ .text = chunk });
             total_width += chunk.width;
         }
 
@@ -581,7 +599,7 @@ pub const UnifiedTextBuffer = struct {
 
     /// Register a memory buffer
     pub fn registerMemBuffer(self: *Self, data: []const u8, owned: bool) TextBufferError!u8 {
-        return try self.mem_registry.register(data, owned);
+        return self.mem_registry.register(data, owned);
     }
 
     pub fn replaceMemBuffer(self: *Self, mem_id: u8, data: []const u8, owned: bool) TextBufferError!void {
@@ -612,11 +630,11 @@ pub const UnifiedTextBuffer = struct {
         const had_content = self._rope.count() > 1;
 
         if (had_content) {
-            try self._rope.append(Segment{ .brk = {} });
-            try self._rope.append(Segment{ .linestart = {} });
+            try self._rope.append(.{ .brk = {} });
+            try self._rope.append(.{ .linestart = {} });
         }
 
-        try self._rope.append(Segment{ .text = chunk });
+        try self._rope.append(.{ .text = chunk });
 
         self.markAllViewsDirty();
     }
@@ -659,7 +677,7 @@ pub const UnifiedTextBuffer = struct {
             }
         };
 
-        var ctx = Context{
+        var ctx: Context = .{
             .buffer = self,
             .out_buffer = out_buffer,
             .out_index = &out_index,
@@ -711,6 +729,19 @@ pub const UnifiedTextBuffer = struct {
         priority: u8,
         hl_ref: u16,
     ) TextBufferError!void {
+        return self.addHighlightInternal(line_idx, col_start, col_end, style_id, priority, hl_ref, false);
+    }
+
+    fn addHighlightInternal(
+        self: *Self,
+        line_idx: usize,
+        col_start: u32,
+        col_end: u32,
+        style_id: u32,
+        priority: u8,
+        hl_ref: u16,
+        internal: bool,
+    ) TextBufferError!void {
         const line_count = self.getLineCount();
         if (line_idx >= line_count) {
             return TextBufferError.InvalidIndex;
@@ -722,15 +753,19 @@ pub const UnifiedTextBuffer = struct {
 
         try self.ensureLineHighlightStorage(line_idx);
 
-        const hl = Highlight{
+        const hl: Highlight = .{
             .col_start = col_start,
             .col_end = col_end,
             .style_id = style_id,
             .priority = priority,
             .hl_ref = hl_ref,
+            .internal = internal,
         };
 
         try self.line_highlights.items[line_idx].append(self.global_allocator, hl);
+        if (internal) {
+            self.internal_highlight_count += 1;
+        }
 
         if (self.highlight_batch_depth == 0) {
             try self.rebuildLineSpans(line_idx);
@@ -813,7 +848,7 @@ pub const UnifiedTextBuffer = struct {
 
             // Emit span for the segment leading up to this event
             if (event.col > current_col) {
-                try self.line_spans.items[line_idx].append(self.global_allocator, StyleSpan{
+                try self.line_spans.items[line_idx].append(self.global_allocator, .{
                     .col = current_col,
                     .style_id = current_style,
                     .next_col = event.col,
@@ -834,7 +869,7 @@ pub const UnifiedTextBuffer = struct {
         if (events.items.len > 0 and active.count() == 0) {
             const line_width = self.lineWidthAt(@intCast(line_idx));
             if (current_col < line_width) {
-                try self.line_spans.items[line_idx].append(self.global_allocator, StyleSpan{
+                try self.line_spans.items[line_idx].append(self.global_allocator, .{
                     .col = current_col,
                     .style_id = 0, // No style (default)
                     .next_col = line_width,
@@ -868,6 +903,18 @@ pub const UnifiedTextBuffer = struct {
         priority: u8,
         hl_ref: u16,
     ) TextBufferError!void {
+        return self.addHighlightByCharRangeInternal(char_start, char_end, style_id, priority, hl_ref, false);
+    }
+
+    fn addHighlightByCharRangeInternal(
+        self: *Self,
+        char_start: u32,
+        char_end: u32,
+        style_id: u32,
+        priority: u8,
+        hl_ref: u16,
+        internal: bool,
+    ) TextBufferError!void {
         const line_count = self.getLineCount();
         if (char_start >= char_end or line_count == 0) {
             return;
@@ -881,6 +928,7 @@ pub const UnifiedTextBuffer = struct {
             style_id: u32,
             priority: u8,
             hl_ref: u16,
+            internal: bool,
             start_line_idx: ?usize = null,
 
             fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
@@ -904,26 +952,57 @@ pub const UnifiedTextBuffer = struct {
                 else
                     line_info.width_cols;
 
-                ctx.buffer.addHighlight(
+                ctx.buffer.addHighlightInternal(
                     line_info.line_idx,
                     col_start,
                     col_end,
                     ctx.style_id,
                     ctx.priority,
                     ctx.hl_ref,
+                    ctx.internal,
                 ) catch {};
             }
         };
 
-        var ctx = Context{
+        var ctx: Context = .{
             .buffer = self,
             .char_start = char_start,
             .char_end = char_end,
             .style_id = style_id,
             .priority = priority,
             .hl_ref = hl_ref,
+            .internal = internal,
         };
         iter_mod.walkLines(&self._rope, &ctx, Context.callback, false);
+    }
+
+    fn clearInternalHighlights(self: *Self) void {
+        if (self.internal_highlight_count == 0) return;
+
+        var remaining = self.internal_highlight_count;
+        for (self.line_highlights.items, 0..) |*hl_list, line_idx| {
+            var i: usize = 0;
+            var changed = false;
+            while (i < hl_list.items.len) {
+                if (hl_list.items[i].internal) {
+                    _ = hl_list.orderedRemove(i);
+                    remaining -= 1;
+                    changed = true;
+                    continue;
+                }
+                i += 1;
+            }
+            if (changed) {
+                if (self.highlight_batch_depth == 0) {
+                    self.rebuildLineSpans(line_idx) catch {};
+                } else {
+                    self.markLineSpansDirty(line_idx);
+                }
+            }
+            if (remaining == 0) break;
+        }
+
+        self.internal_highlight_count = 0;
     }
 
     /// Remove all highlights with a specific reference ID
@@ -933,6 +1012,9 @@ pub const UnifiedTextBuffer = struct {
             var changed = false;
             while (i < hl_list.items.len) {
                 if (hl_list.items[i].hl_ref == hl_ref) {
+                    if (hl_list.items[i].internal and self.internal_highlight_count > 0) {
+                        self.internal_highlight_count -= 1;
+                    }
                     _ = hl_list.orderedRemove(i);
                     changed = true;
                     continue;
@@ -952,6 +1034,11 @@ pub const UnifiedTextBuffer = struct {
     /// Clear all highlights from a specific line
     pub fn clearLineHighlights(self: *Self, line_idx: usize) void {
         if (line_idx < self.line_highlights.items.len) {
+            for (self.line_highlights.items[line_idx].items) |hl| {
+                if (hl.internal and self.internal_highlight_count > 0) {
+                    self.internal_highlight_count -= 1;
+                }
+            }
             self.line_highlights.items[line_idx].clearRetainingCapacity();
         }
         if (line_idx < self.line_spans.items.len) {
@@ -964,6 +1051,7 @@ pub const UnifiedTextBuffer = struct {
         for (self.line_highlights.items) |*hl_list| {
             hl_list.clearRetainingCapacity();
         }
+        self.internal_highlight_count = 0;
         for (self.line_spans.items) |*span_list| {
             span_list.clearRetainingCapacity();
         }
@@ -1060,8 +1148,8 @@ pub const UnifiedTextBuffer = struct {
                 const chunk_len = self.measureText(chunk_text);
 
                 if (chunk_len > 0) {
-                    const fg = if (chunk.fg_ptr) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
-                    const bg = if (chunk.bg_ptr) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+                    const fg = if (chunk.fg_ptr) |fgPtr| utils.ptrToRGBA(fgPtr) else null;
+                    const bg = if (chunk.bg_ptr) |bgPtr| utils.ptrToRGBA(bgPtr) else null;
 
                     var attributes = chunk.attributes;
                     if (chunk.link_ptr) |link_ptr| {
@@ -1082,9 +1170,13 @@ pub const UnifiedTextBuffer = struct {
 
                     var style_name_buf: [64]u8 = undefined;
                     const style_name = std.fmt.bufPrint(&style_name_buf, "chunk{d}", .{i}) catch continue;
-                    const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, attributes) catch continue;
+                    const style_id = (@constCast(style)).registerStyleDefinition(style_name, .{
+                        .fg = fg,
+                        .bg = bg,
+                        .attributes = attributes,
+                    }) catch continue;
 
-                    self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, 0) catch {};
+                    self.addHighlightByCharRangeInternal(char_pos, char_pos + chunk_len, style_id, 1, 0, true) catch {};
                 }
 
                 char_pos += chunk_len;

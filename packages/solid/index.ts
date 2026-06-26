@@ -1,6 +1,6 @@
 import { CliRenderer, createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
-import type { JSX } from "./jsx-runtime"
+import type { JSX } from "./jsx-runtime.js"
 import { RendererContext } from "./src/elements/index.js"
 import { _render as renderInternal, createComponent } from "./src/reconciler.js"
 
@@ -48,7 +48,7 @@ const mountSolidRoot = (renderer: CliRenderer, node: () => JSX.Element) => {
             return renderer
           },
           get children() {
-            return createComponent(node, {})
+            return (createComponent as any)(node, {})
           },
         }),
       renderer.root,
@@ -98,6 +98,7 @@ export const testRender = async (node: () => JSX.Element, renderConfig: TestRend
 
 export * from "./src/reconciler.js"
 export * from "./src/elements/index.js"
+export * from "./src/scrollback.js"
 export * from "./src/time-to-first-draw.js"
 export * from "./src/plugins/slot.js"
 export * from "./src/types/elements.js"

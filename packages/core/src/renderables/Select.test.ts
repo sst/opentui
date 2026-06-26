@@ -5,7 +5,7 @@ import { KeyEvent } from "../lib/KeyHandler.js"
 
 // Helper function to create a KeyEvent from a string or object
 function createKeyEvent(
-  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean },
+  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean; baseCode?: number },
 ): KeyEvent {
   if (typeof input === "string") {
     return new KeyEvent({
@@ -28,6 +28,7 @@ function createKeyEvent(
       meta: input.meta ?? false,
       shift: input.shift ?? false,
       super: input.super ?? false,
+      baseCode: input.baseCode,
       option: false,
       number: false,
       raw: input.name,
@@ -102,6 +103,26 @@ describe("SelectRenderable", () => {
 
       expect(select.getSelectedIndex()).toBe(2)
       expect(select.getSelectedOption()).toEqual(sampleOptions[2])
+    })
+
+    test("should scroll an initial off-screen selection into view", async () => {
+      const options: SelectOption[] = Array.from({ length: 20 }, (_, index) => ({
+        name: `Item ${index}`,
+        description: "",
+      }))
+
+      await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options,
+        selectedIndex: 12,
+        showDescription: false,
+        showScrollIndicator: true,
+      })
+
+      const frame = captureCharFrame().split("\n")
+      expect(frame.some((line) => line.includes("▶ Item 12"))).toBe(true)
+      expect(frame.findIndex((line) => line.includes("█"))).toBe(3)
     })
 
     test("should initialize with custom options", async () => {
@@ -239,7 +260,7 @@ describe("SelectRenderable", () => {
       expect(select.getSelectedOption()).toEqual(sampleOptions[3])
       expect(selectionChangedFired).toBe(true)
       expect(selectionIndex).toBe(3)
-      expect(selectionOption).toEqual(sampleOptions[3])
+      expect(selectionOption!).toEqual(sampleOptions[3])
     })
 
     test("should ignore invalid selected index", async () => {
@@ -355,7 +376,7 @@ describe("SelectRenderable", () => {
 
       expect(itemSelectedFired).toBe(true)
       expect(selectedIndex).toBe(2)
-      expect(selectedOption).toEqual(sampleOptions[2])
+      expect(selectedOption!).toEqual(sampleOptions[2])
     })
 
     test("should not select when no options available", async () => {
@@ -418,6 +439,23 @@ describe("SelectRenderable", () => {
       const kHandled = select.handleKeyPress(createKeyEvent("k"))
       expect(kHandled).toBe(true)
       expect(select.getSelectedIndex()).toBe(1)
+    })
+
+    test("should use baseCode for custom bindings from alternate layouts", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        selectedIndex: 1,
+        keyBindings: [{ name: "j", action: "move-down" }],
+      })
+
+      select.focus()
+
+      const handled = select.handleKeyPress(createKeyEvent({ name: "ㅓ", baseCode: 106 }))
+
+      expect(handled).toBe(true)
+      expect(select.getSelectedIndex()).toBe(2)
     })
 
     test("should handle enter key", async () => {
@@ -503,6 +541,38 @@ describe("SelectRenderable", () => {
       const handled = select.handleKeyPress(createKeyEvent("a"))
       expect(handled).toBe(false)
       expect(select.getSelectedIndex()).toBe(originalIndex)
+    })
+  })
+
+  describe("Scroll Indicator", () => {
+    const manyOptions: SelectOption[] = Array.from({ length: 20 }, (_, index) => ({
+      name: `Item ${index}`,
+      description: "",
+    }))
+
+    test.each([
+      { selectedIndex: 0, expectedRow: 1 },
+      { selectedIndex: 2, expectedRow: 1 },
+      { selectedIndex: 7, expectedRow: 2 },
+      { selectedIndex: 12, expectedRow: 3 },
+      { selectedIndex: 17, expectedRow: 4 },
+      { selectedIndex: 19, expectedRow: 4 },
+    ])("renders the viewport position for selected index $selectedIndex", async ({ selectedIndex, expectedRow }) => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: manyOptions,
+        showScrollIndicator: true,
+        showDescription: false,
+      })
+
+      select.setSelectedIndex(selectedIndex)
+      await renderOnce()
+
+      const indicatorRow = captureCharFrame()
+        .split("\n")
+        .findIndex((line) => line.includes("█"))
+      expect(indicatorRow).toBe(expectedRow)
     })
   })
 
@@ -643,12 +713,12 @@ describe("SelectRenderable", () => {
       select.moveDown()
       expect(eventCount).toBe(1)
       expect(lastIndex).toBe(2)
-      expect(lastOption).toEqual(sampleOptions[2])
+      expect(lastOption!).toEqual(sampleOptions[2])
 
       select.moveUp()
       expect(eventCount).toBe(2)
       expect(lastIndex).toBe(1)
-      expect(lastOption).toEqual(sampleOptions[1])
+      expect(lastOption!).toEqual(sampleOptions[1])
     })
 
     test("should emit ITEM_SELECTED when selecting", async () => {
@@ -672,7 +742,7 @@ describe("SelectRenderable", () => {
       select.selectCurrent()
       expect(eventCount).toBe(1)
       expect(lastIndex).toBe(2)
-      expect(lastOption).toEqual(sampleOptions[2])
+      expect(lastOption!).toEqual(sampleOptions[2])
     })
 
     test("should not reuse the same keypress after focusing another select", async () => {

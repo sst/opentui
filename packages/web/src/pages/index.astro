@@ -5,7 +5,7 @@ import TuiSurface from "../components/TuiSurface.astro"
 const installCommands = {
   create: { cmd: "bun create", pkg: "tui" },
   manual: { cmd: "bun add", pkg: "@opentui/core" },
-  skill: { cmd: "npx skills add", pkg: "msmps/opentui-skill" },
+  skill: { cmd: "npx skills add", pkg: "anomalyco/opentui --skill opentui --global" },
 }
 
 const features = [
@@ -278,7 +278,7 @@ renderer.root.<span class="function">add</span>(
   const installCommands: Record<string, { cmd: string; pkg: string }> = {
     create: { cmd: "bun create", pkg: "tui" },
     manual: { cmd: "bun add", pkg: "@opentui/core" },
-    skill: { cmd: "npx skills add", pkg: "msmps/opentui-skill" },
+    skill: { cmd: "npx skills add", pkg: "anomalyco/opentui --skill opentui --global" },
   }
 
   // Tab switching

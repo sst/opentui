@@ -1,5 +1,6 @@
 import type { EditBuffer } from "../edit-buffer.js"
 import type { EditorView } from "../editor-view.js"
+import { stringWidth } from "../platform/runtime.js"
 import { ExtmarksHistory, type ExtmarksSnapshot } from "./extmarks-history.js"
 
 export interface Extmark {
@@ -292,7 +293,11 @@ export class ExtmarksController {
       }
 
       this.originalDeleteCharBackward()
-      this.adjustExtmarksAfterDeletion(targetOffset, 1)
+      const deleteOffset = this.editorView.getVisualCursor().offset
+      const deleteLength = currentOffset - deleteOffset
+      if (deleteLength > 0) {
+        this.adjustExtmarksAfterDeletion(deleteOffset, deleteLength)
+      }
     }
 
     this.editBuffer.deleteChar = (): void => {
@@ -304,13 +309,7 @@ export class ExtmarksController {
       this.saveSnapshot()
 
       const currentOffset = this.editorView.getVisualCursor().offset
-      const textLength = this.editBuffer.getText().length
       const hadSelection = this.editorView.hasSelection()
-
-      if (currentOffset >= textLength) {
-        this.originalDeleteChar()
-        return
-      }
 
       if (hadSelection) {
         this.originalDeleteChar()
@@ -336,8 +335,14 @@ export class ExtmarksController {
         return
       }
 
+      const deleteEndOffset = this.getNextCursorOffset(currentOffset)
+      const deleteLength = deleteEndOffset - currentOffset
+
       this.originalDeleteChar()
-      this.adjustExtmarksAfterDeletion(targetOffset, 1)
+
+      if (deleteLength > 0) {
+        this.adjustExtmarksAfterDeletion(currentOffset, deleteLength)
+      }
     }
 
     this.editBuffer.deleteRange = (startLine: number, startCol: number, endLine: number, endCol: number): void => {
@@ -401,7 +406,10 @@ export class ExtmarksController {
 
       const currentOffset = this.editorView.getVisualCursor().offset
       this.originalInsertText(text)
-      this.adjustExtmarksAfterInsertion(currentOffset, text.length)
+      const insertLength = this.editorView.getVisualCursor().offset - currentOffset
+      if (insertLength > 0) {
+        this.adjustExtmarksAfterInsertion(currentOffset, insertLength)
+      }
     }
 
     this.editBuffer.insertChar = (char: string): void => {
@@ -414,7 +422,10 @@ export class ExtmarksController {
 
       const currentOffset = this.editorView.getVisualCursor().offset
       this.originalInsertChar(char)
-      this.adjustExtmarksAfterInsertion(currentOffset, 1)
+      const insertLength = this.editorView.getVisualCursor().offset - currentOffset
+      if (insertLength > 0) {
+        this.adjustExtmarksAfterInsertion(currentOffset, insertLength)
+      }
     }
 
     this.editBuffer.setText = (text: string): void => {
@@ -570,6 +581,13 @@ export class ExtmarksController {
     return this.editBuffer.positionToOffset(row, col)
   }
 
+  private getNextCursorOffset(currentOffset: number): number {
+    this.originalMoveCursorRight()
+    const nextOffset = this.editorView.getVisualCursor().offset
+    this.originalSetCursorByOffset(currentOffset)
+    return nextOffset
+  }
+
   private updateHighlights(): void {
     this.editBuffer.clearAllHighlights()
 
@@ -614,7 +632,7 @@ export class ExtmarksController {
           j++
         }
         const chunk = text.substring(i, j)
-        const chunkWidth = Bun.stringWidth(chunk)
+        const chunkWidth = stringWidth(chunk)
 
         if (displayWidthSoFar + chunkWidth < offset) {
           // Entire chunk fits before offset
@@ -624,7 +642,7 @@ export class ExtmarksController {
           // Offset is within this chunk - need to find exact position
           // Walk character by character
           for (let k = i; k < j && displayWidthSoFar < offset; k++) {
-            const charWidth = Bun.stringWidth(text[k])
+            const charWidth = stringWidth(text[k])
             displayWidthSoFar += charWidth
           }
           break

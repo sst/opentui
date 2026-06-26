@@ -46,6 +46,30 @@ describe("TextNodeRenderable", () => {
       expect(node.bg?.a).toBe(1)
     })
 
+    it("should preserve RGBA intent constructors in constructor and setters", () => {
+      const node = new TextNodeRenderable({
+        fg: RGBA.fromIndex(6),
+        bg: RGBA.defaultBackground(),
+      })
+
+      expect(node.fg).toBeDefined()
+      expect(node.bg).toBeDefined()
+      expect(node.fg).toBeInstanceOf(RGBA)
+      expect(node.bg).toBeInstanceOf(RGBA)
+      expect(node.fg!.intent).toBe("indexed")
+      expect(node.fg!.slot).toBe(6)
+      expect(node.bg!.intent).toBe("default")
+
+      node.fg = RGBA.defaultForeground()
+      node.bg = RGBA.fromIndex(4)
+
+      expect(node.fg).toBeInstanceOf(RGBA)
+      expect(node.bg).toBeInstanceOf(RGBA)
+      expect(node.fg!.intent).toBe("default")
+      expect(node.bg!.intent).toBe("indexed")
+      expect(node.bg!.slot).toBe(4)
+    })
+
     it("should handle undefined colors", () => {
       const node = new TextNodeRenderable({
         fg: undefined,
@@ -617,9 +641,10 @@ describe("TextNodeRenderable", () => {
 
       expect(chunks).toHaveLength(1)
       expect(chunks[0].text).toBe("Test")
-      expect(chunks[0].fg?.r).toBe(0)
-      expect(chunks[0].fg?.g).toBe(1)
-      expect(chunks[0].fg?.b).toBe(0)
+      expect(chunks[0].fg).toBeInstanceOf(RGBA)
+      expect((chunks[0].fg as RGBA).r).toBe(0)
+      expect((chunks[0].fg as RGBA).g).toBe(1)
+      expect((chunks[0].fg as RGBA).b).toBe(0)
     })
 
     it("should get children using getChildren", () => {

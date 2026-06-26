@@ -1,5 +1,6 @@
-import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach, spyOn } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer.js"
+import { ManualClock } from "../testing/manual-clock.js"
 import { RendererControlState } from "../renderer.js"
 import { Renderable } from "../Renderable.js"
 
@@ -21,6 +22,25 @@ beforeEach(async () => {
 afterEach(() => {
   renderer.destroy()
 })
+
+async function expectStartedResumeForcesNextRender(screenMode: "main-screen" | "alternate-screen"): Promise<void> {
+  renderer.destroy()
+  ;({ renderer, mockInput, mockMouse, renderOnce } = await createTestRenderer({ screenMode }))
+  ;(renderer as any)._terminalIsSetup = true
+
+  renderer.start()
+  renderer.suspend()
+
+  const renderSpy = spyOn((renderer as any).lib, "render")
+  renderer.resume()
+  renderer.pause()
+
+  const lastCall = renderSpy.mock.calls[renderSpy.mock.calls.length - 1]
+  expect(lastCall?.[1]).toBe(true)
+  expect((renderer as any).forceFullRepaintRequested).toBe(false)
+
+  renderSpy.mockRestore()
+}
 
 test("initial renderer state is IDLE", () => {
   expect(renderer.controlState).toBe(RendererControlState.IDLE)
@@ -116,6 +136,14 @@ test("resume() restores previous AUTO_STARTED state and restarts rendering", () 
   expect(renderer.isRunning).toBe(true)
 })
 
+test("resume() forces the next main-screen render to fully repaint", async () => {
+  await expectStartedResumeForcesNextRender("main-screen")
+})
+
+test("resume() forces the next alternate-screen render to fully repaint", async () => {
+  await expectStartedResumeForcesNextRender("alternate-screen")
+})
+
 test("stop() transitions to EXPLICIT_STOPPED and stops rendering", () => {
   renderer.start()
   expect(renderer.isRunning).toBe(true)
@@ -139,7 +167,7 @@ test("requestRender() does not trigger when renderer is suspended", async () => 
   }
 
   renderer.requestRender()
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await Promise.resolve()
 
   expect(renderCalled).toBe(false)
 
@@ -148,9 +176,13 @@ test("requestRender() does not trigger when renderer is suspended", async () => 
 })
 
 test("requestRender() does trigger when renderer is paused", async () => {
+  renderer.destroy()
+  const clock = new ManualClock()
+  ;({ renderer, mockInput, mockMouse, renderOnce } = await createTestRenderer({ clock }))
+
   renderer.start()
-  await Bun.sleep(20)
   renderer.pause()
+  await renderer.idle()
 
   let renderCalled = false
   // @ts-expect-error - renderNative is private
@@ -162,7 +194,8 @@ test("requestRender() does trigger when renderer is paused", async () => {
   }
 
   renderer.requestRender()
-  await Bun.sleep(20)
+  clock.advance(20)
+  await renderer.idle()
 
   expect(renderCalled).toBe(true)
 

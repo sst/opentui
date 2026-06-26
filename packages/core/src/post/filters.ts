@@ -1,5 +1,21 @@
 import type { OptimizedBuffer } from "../buffer.js"
 
+function toU8(value: number): number {
+  return Math.round(Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 255)
+}
+
+function channel(buffer: Uint16Array, index: number): number {
+  return (buffer[index] & 0xff) / 255
+}
+
+function setRgb(buffer: Uint16Array, base: number, r: number, g: number, b: number): void {
+  const a = buffer[base + 3] & 0xff
+  buffer[base] = toU8(r)
+  buffer[base + 1] = toU8(g)
+  buffer[base + 2] = toU8(b)
+  buffer[base + 3] = a
+}
+
 /**
  * Applies a scanline effect by darkening every nth row using native color matrix.
  * Only affects the background buffer to maintain text readability.
@@ -139,7 +155,7 @@ export function applyNoise(buffer: OptimizedBuffer, strength: number = 0.1): voi
 export function applyChromaticAberration(buffer: OptimizedBuffer, strength: number = 1): void {
   const width = buffer.width
   const height = buffer.height
-  const srcFg = Float32Array.from(buffer.buffers.fg) // Copy original fg data
+  const srcFg = Uint16Array.from(buffer.buffers.fg) // Copy original fg data
   const destFg = buffer.buffers.fg
   const centerX = width / 2
   const centerY = height / 2
@@ -158,10 +174,7 @@ export function applyChromaticAberration(buffer: OptimizedBuffer, strength: numb
       const bIndex = (y * width + bX) * 4
       const destIndex = (y * width + x) * 4
 
-      destFg[destIndex] = srcFg[rIndex] // Red from left offset
-      destFg[destIndex + 1] = srcFg[gIndex + 1] // Green from center
-      destFg[destIndex + 2] = srcFg[bIndex + 2] // Blue from right offset
-      // Keep original Alpha
+      setRgb(destFg, destIndex, channel(srcFg, rIndex), channel(srcFg, gIndex + 1), channel(srcFg, bIndex + 2))
     }
   }
 }
@@ -187,9 +200,9 @@ export function applyAsciiArt(
     for (let x = 0; x < width; x++) {
       const index = y * width + x
       const colorIndex = index * 4
-      const bgR = bg[colorIndex]
-      const bgG = bg[colorIndex + 1]
-      const bgB = bg[colorIndex + 2]
+      const bgR = channel(bg, colorIndex)
+      const bgG = channel(bg, colorIndex + 1)
+      const bgB = channel(bg, colorIndex + 2)
       const lum = 0.299 * bgR + 0.587 * bgG + 0.114 * bgB // Luminance
       const rampIndex = Math.min(rampLength - 1, Math.floor(lum * rampLength))
       chars[index] = ramp[rampIndex].charCodeAt(0)
@@ -424,8 +437,8 @@ export class BloomEffect {
     const width = buffer.width
     const height = buffer.height
     // Operate directly on the buffer's data for bloom, but need a source copy temporarily
-    const srcFg = Float32Array.from(buffer.buffers.fg)
-    const srcBg = Float32Array.from(buffer.buffers.bg)
+    const srcFg = Uint16Array.from(buffer.buffers.fg)
+    const srcBg = Uint16Array.from(buffer.buffers.bg)
     const destFg = buffer.buffers.fg
     const destBg = buffer.buffers.bg
 
@@ -436,8 +449,10 @@ export class BloomEffect {
       for (let x = 0; x < width; x++) {
         const index = (y * width + x) * 4
         // Consider max component brightness, or luminance? Using luminance.
-        const fgLum = 0.299 * srcFg[index] + 0.587 * srcFg[index + 1] + 0.114 * srcFg[index + 2]
-        const bgLum = 0.299 * srcBg[index] + 0.587 * srcBg[index + 1] + 0.114 * srcBg[index + 2]
+        const fgLum =
+          0.299 * channel(srcFg, index) + 0.587 * channel(srcFg, index + 1) + 0.114 * channel(srcFg, index + 2)
+        const bgLum =
+          0.299 * channel(srcBg, index) + 0.587 * channel(srcBg, index + 1) + 0.114 * channel(srcBg, index + 2)
         const lum = Math.max(fgLum, bgLum)
         if (lum > threshold) {
           const intensity = (lum - threshold) / (1 - threshold + 1e-6) // Add epsilon to avoid div by zero
@@ -473,13 +488,21 @@ export class BloomEffect {
               const destIndex = (sampleY * width + sampleX) * 4
 
               // Add bloom to both fg and bg, clamping at 1.0
-              destFg[destIndex] = Math.min(1.0, destFg[destIndex] + bloomAmount)
-              destFg[destIndex + 1] = Math.min(1.0, destFg[destIndex + 1] + bloomAmount)
-              destFg[destIndex + 2] = Math.min(1.0, destFg[destIndex + 2] + bloomAmount)
+              setRgb(
+                destFg,
+                destIndex,
+                Math.min(1.0, channel(destFg, destIndex) + bloomAmount),
+                Math.min(1.0, channel(destFg, destIndex + 1) + bloomAmount),
+                Math.min(1.0, channel(destFg, destIndex + 2) + bloomAmount),
+              )
 
-              destBg[destIndex] = Math.min(1.0, destBg[destIndex] + bloomAmount)
-              destBg[destIndex + 1] = Math.min(1.0, destBg[destIndex + 1] + bloomAmount)
-              destBg[destIndex + 2] = Math.min(1.0, destBg[destIndex + 2] + bloomAmount)
+              setRgb(
+                destBg,
+                destIndex,
+                Math.min(1.0, channel(destBg, destIndex) + bloomAmount),
+                Math.min(1.0, channel(destBg, destIndex + 1) + bloomAmount),
+                Math.min(1.0, channel(destBg, destIndex + 2) + bloomAmount),
+              )
             }
           }
         }

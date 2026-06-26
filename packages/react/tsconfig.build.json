@@ -24,7 +24,8 @@
     "jsx-runtime.d.ts",
     "jsx-dev-runtime.d.ts",
     "jsx-namespace.d.ts",
-    "scripts/runtime-plugin-support.ts"
+    "scripts/runtime-plugin-support.ts",
+    "scripts/runtime-plugin-support-configure.ts"
   ],
   "exclude": [
     "**/*.test.ts",

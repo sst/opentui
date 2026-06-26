@@ -1,5 +1,6 @@
 const std = @import("std");
 const syntax_style = @import("../syntax-style.zig");
+const ansi = @import("../ansi.zig");
 
 const SyntaxStyle = syntax_style.SyntaxStyle;
 const StyleDefinition = syntax_style.StyleDefinition;
@@ -19,7 +20,7 @@ test "SyntaxStyle - multiple independent instances" {
     const style2 = try SyntaxStyle.init(std.testing.allocator);
     defer style2.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     _ = try style1.registerStyle("test", fg, null, 0);
 
     try std.testing.expectEqual(@as(usize, 1), style1.getStyleCount());
@@ -30,7 +31,7 @@ test "SyntaxStyle - register simple style" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const id = try style.registerStyle("keyword", fg, null, 0);
 
     try std.testing.expect(id > 0);
@@ -41,8 +42,8 @@ test "SyntaxStyle - register style with fg and bg" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const id = try style.registerStyle("string", fg, bg, 0);
 
     try std.testing.expect(id > 0);
@@ -53,7 +54,7 @@ test "SyntaxStyle - register style with attributes" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const attributes: u32 = 0b0001; // Bold
     const id = try style.registerStyle("bold-keyword", fg, null, attributes);
 
@@ -67,7 +68,7 @@ test "SyntaxStyle - register style with all attributes" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const attributes: u32 = 0b1111; // Bold, italic, underline, dim
     const id = try style.registerStyle("all-attrs", fg, null, attributes);
 
@@ -94,9 +95,9 @@ test "SyntaxStyle - register multiple styles" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg1 = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const fg2 = RGBA{ 0.0, 1.0, 0.0, 1.0 };
-    const fg3 = RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    const fg1 = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const fg2 = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
+    const fg3 = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
 
     const id1 = try style.registerStyle("keyword", fg1, null, 0);
     const id2 = try style.registerStyle("string", fg2, null, 0);
@@ -112,8 +113,8 @@ test "SyntaxStyle - register same name returns same ID" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg1 = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const fg2 = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const fg1 = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const fg2 = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
 
     const id1 = try style.registerStyle("keyword", fg1, null, 0);
     const id2 = try style.registerStyle("keyword", fg2, null, 0);
@@ -130,7 +131,7 @@ test "SyntaxStyle - register style with special characters" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
     _ = try style.registerStyle("keyword.control", fg, null, 0);
     _ = try style.registerStyle("variable.parameter", fg, null, 0);
@@ -150,7 +151,7 @@ test "SyntaxStyle - register many styles" {
         var name_buffer: [32]u8 = undefined;
         const name = try std.fmt.bufPrint(&name_buffer, "style-{d}", .{i});
 
-        const fg = RGBA{ @as(f32, @floatFromInt(i)) / 100.0, 0.0, 0.0, 1.0 };
+        const fg = ansi.rgbaFromFloats(@as(f32, @floatFromInt(i)) / 100.0, 0.0, 0.0, 1.0);
         ids[i] = try style.registerStyle(name, fg, null, 0);
     }
 
@@ -167,8 +168,8 @@ test "SyntaxStyle - resolveById returns correct style" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     const attributes: u32 = 0b0011; // Bold + italic
 
     const id = try style.registerStyle("test", fg, bg, attributes);
@@ -199,7 +200,7 @@ test "SyntaxStyle - resolveByName returns correct ID" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const registered_id = try style.registerStyle("keyword", fg, null, 0);
 
     const resolved_id = style.resolveByName("keyword").?;
@@ -218,7 +219,7 @@ test "SyntaxStyle - resolveByName is case-sensitive" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     _ = try style.registerStyle("keyword", fg, null, 0);
 
     try std.testing.expect(style.resolveByName("keyword") != null);
@@ -230,8 +231,8 @@ test "SyntaxStyle - resolve multiple styles" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg1 = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const fg2 = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const fg1 = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const fg2 = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
 
     const id1 = try style.registerStyle("keyword", fg1, null, 0);
     const id2 = try style.registerStyle("string", fg2, null, 0);
@@ -244,7 +245,7 @@ test "SyntaxStyle - merge single style" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const attributes: u32 = 0b0001;
 
     const id = try style.registerStyle("keyword", fg, null, attributes);
@@ -260,9 +261,9 @@ test "SyntaxStyle - merge two styles" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg1 = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const fg2 = RGBA{ 0.0, 1.0, 0.0, 1.0 };
-    const bg2 = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg1 = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const fg2 = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
+    const bg2 = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
 
     const id1 = try style.registerStyle("base", fg1, null, 0b0001); // Bold
     const id2 = try style.registerStyle("modifier", fg2, bg2, 0b0010); // Italic
@@ -279,9 +280,9 @@ test "SyntaxStyle - merge three styles" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg1 = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const fg2 = RGBA{ 0.0, 1.0, 0.0, 1.0 };
-    const fg3 = RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    const fg1 = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const fg2 = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
+    const fg3 = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
 
     const id1 = try style.registerStyle("s1", fg1, null, 0b0001); // Bold
     const id2 = try style.registerStyle("s2", fg2, null, 0b0010); // Italic
@@ -310,7 +311,7 @@ test "SyntaxStyle - merge with invalid ID skips it" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const id1 = try style.registerStyle("valid", fg, null, 0b0001);
 
     const ids = [_]u32{ id1, 9999 }; // 9999 is invalid
@@ -324,8 +325,8 @@ test "SyntaxStyle - merge caches results" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg1 = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const fg2 = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const fg1 = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const fg2 = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
 
     const id1 = try style.registerStyle("s1", fg1, null, 0);
     const id2 = try style.registerStyle("s2", fg2, null, 0);
@@ -343,8 +344,8 @@ test "SyntaxStyle - merge different order produces different results" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg1 = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const fg2 = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const fg1 = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const fg2 = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
 
     const id1 = try style.registerStyle("s1", fg1, null, 0);
     const id2 = try style.registerStyle("s2", fg2, null, 0);
@@ -362,8 +363,8 @@ test "SyntaxStyle - clearCache empties cache" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg1 = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const fg2 = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const fg1 = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const fg2 = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
 
     const id1 = try style.registerStyle("s1", fg1, null, 0);
     const id2 = try style.registerStyle("s2", fg2, null, 0);
@@ -382,7 +383,7 @@ test "SyntaxStyle - clearCache preserves styles" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     _ = try style.registerStyle("keyword", fg, null, 0);
     _ = try style.registerStyle("string", fg, null, 0);
 
@@ -399,7 +400,7 @@ test "SyntaxStyle - getCacheSize returns correct count" {
 
     try std.testing.expectEqual(@as(usize, 0), style.getCacheSize());
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const id1 = try style.registerStyle("s1", fg, null, 0);
     const id2 = try style.registerStyle("s2", fg, null, 0);
 
@@ -424,7 +425,7 @@ test "SyntaxStyle - very long style name" {
     var long_name: [1000]u8 = undefined;
     @memset(&long_name, 'a');
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const id = try style.registerStyle(&long_name, fg, null, 0);
 
     try std.testing.expect(id > 0);
@@ -435,7 +436,7 @@ test "SyntaxStyle - empty string style name" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const id = try style.registerStyle("", fg, null, 0);
 
     try std.testing.expect(id > 0);
@@ -446,7 +447,7 @@ test "SyntaxStyle - unicode style names" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
     const id1 = try style.registerStyle("关键字", fg, null, 0);
     const id2 = try style.registerStyle("キーワード", fg, null, 0);
@@ -461,8 +462,8 @@ test "SyntaxStyle - all color channels" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 0.1, 0.2, 0.3, 0.4 };
-    const bg = RGBA{ 0.5, 0.6, 0.7, 0.8 };
+    const fg = ansi.rgbaFromFloats(0.1, 0.2, 0.3, 0.4);
+    const bg = ansi.rgbaFromFloats(0.5, 0.6, 0.7, 0.8);
 
     const id = try style.registerStyle("test", fg, bg, 0);
     const resolved = style.resolveById(id).?;
@@ -487,7 +488,7 @@ test "SyntaxStyle - stress test many registrations" {
         var name_buffer: [32]u8 = undefined;
         const name = try std.fmt.bufPrint(&name_buffer, "style-{d}", .{i});
 
-        const fg = RGBA{ @as(f32, @floatFromInt(i % 256)) / 255.0, 0.0, 0.0, 1.0 };
+        const fg = ansi.rgbaFromFloats(@as(f32, @floatFromInt(i % 256)) / 255.0, 0.0, 0.0, 1.0);
         _ = try style.registerStyle(name, fg, null, 0);
     }
 
@@ -498,7 +499,7 @@ test "SyntaxStyle - stress test many merges" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const id1 = try style.registerStyle("s1", fg, null, 0);
     const id2 = try style.registerStyle("s2", fg, null, 0);
     const id3 = try style.registerStyle("s3", fg, null, 0);
@@ -518,7 +519,7 @@ test "SyntaxStyle - merge many styles at once" {
     const count = 50;
     var ids: [count]u32 = undefined;
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     for (0..count) |i| {
         var name_buffer: [32]u8 = undefined;
         const name = try std.fmt.bufPrint(&name_buffer, "s{d}", .{i});
@@ -533,7 +534,7 @@ test "SyntaxStyle - merge many styles at once" {
 test "SyntaxStyle - multiple init/deinit cycles" {
     for (0..10) |_| {
         const style = try SyntaxStyle.init(std.testing.allocator);
-        const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+        const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
         _ = try style.registerStyle("test", fg, null, 0);
         style.deinit();
     }
@@ -543,7 +544,7 @@ test "SyntaxStyle - register and resolve after clear cache" {
     const style = try SyntaxStyle.init(std.testing.allocator);
     defer style.deinit();
 
-    const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     const id = try style.registerStyle("keyword", fg, null, 0);
 
     const ids = [_]u32{id};

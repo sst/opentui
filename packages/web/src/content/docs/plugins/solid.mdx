@@ -20,7 +20,7 @@ If your app loads plugins from disk at runtime (for example `await import(fileUr
 import "@opentui/solid/runtime-plugin-support"
 ```
 
-This is a Bun drop-in that installs runtime transform support so external TS/TSX plugin modules use the same runtime instances as the host app (`@opentui/solid`, `@opentui/core`, `@opentui/core/3d`, `@opentui/core/testing`, `solid-js`, and `solid-js/store`).
+This is a Bun drop-in that installs runtime transform support so external TS/TSX plugin modules use the same runtime instances as the host app (`@opentui/solid`, `@opentui/core`, `@opentui/core/testing`, `solid-js`, and `solid-js/store`). If a plugin imports another OpenTUI package, provide that package through `additional` runtime modules.
 
 Use this for plugin systems in both normal Bun runs and standalone compiled executables.
 
@@ -31,6 +31,42 @@ const mod = await import(pathToFileURL(pluginPath).href)
 registry.register(mod.loadExternalPlugin())
 ```
 
+If plugins need additional host-resolved modules, configure runtime support before the side-effect import is loaded:
+
+```ts
+import { ensureRuntimePluginSupport } from "@opentui/solid/runtime-plugin-support/configure"
+
+ensureRuntimePluginSupport({
+  additional: {
+    "my-runtime-module": { marker: "ok" },
+  },
+})
+```
+
+First-party packages expose side-effect-free runtime module maps. For keymap-aware Solid plugins:
+
+```ts
+import { runtimeModules as keymapRuntimeModules } from "@opentui/keymap/runtime-modules"
+import { ensureRuntimePluginSupport } from "@opentui/solid/runtime-plugin-support/configure"
+
+ensureRuntimePluginSupport({
+  additional: keymapRuntimeModules,
+})
+```
+
+For plugins that import `@opentui/three`, install `@opentui/three` in the host app and pass its runtime modules explicitly:
+
+```ts
+import { runtimeModules as threeRuntimeModules } from "@opentui/three/runtime-modules"
+import { ensureRuntimePluginSupport } from "@opentui/solid/runtime-plugin-support/configure"
+
+ensureRuntimePluginSupport({
+  additional: threeRuntimeModules,
+})
+```
+
+The side-effect import and configurable entrypoint install the same runtime plugin. Late additions throw with a clear error instead of being ignored.
+
 ## What Solid adds
 
 - `createSolidSlotRegistry(renderer, context, options?)` — create a registry typed for `JSX.Element`. Accepts the same [`SlotRegistryOptions`](/docs/plugins/slots#registry-options) as `createSlotRegistry`.
@@ -38,6 +74,7 @@ registry.register(mod.loadExternalPlugin())
 - `createSlot(registry, options?)` — optional convenience helper that returns a registry-bound `<Slot />` component
 - `SolidPlugin<TSlots, TContext>` — convenience type alias for a plugin that returns `JSX.Element`
 - `@opentui/solid/runtime-plugin-support` — one-line runtime support for external plugin/module loading
+- `@opentui/solid/runtime-plugin-support/configure` — configurable runtime support without import-time side effects
 
 Register plugins directly with `registry.register()` — no wrapper function is needed (unlike core's `registerCorePlugin`).
 

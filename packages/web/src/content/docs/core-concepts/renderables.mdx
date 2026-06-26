@@ -48,6 +48,8 @@ OpenTUI provides these built-in renderables:
 | `MarkdownRenderable`    | Markdown renderer                             |
 | `SliderRenderable`      | Numeric slider control                        |
 
+QR code support is available from the separate `@opentui/qrcode` package.
+
 ## The Renderable Tree
 
 Renderables form a tree structure. Use `add()` and `remove()` to manage children:
@@ -160,6 +162,27 @@ input.on(RenderableEvents.BLURRED, () => {
   console.log("Input blurred")
 })
 ```
+
+### Focused descendants
+
+A renderable can also react to focus living inside one of its descendants through the `hasFocusedDescendant` flag. When any child has focus, every ancestor's `hasFocusedDescendant` flips to `true` and OpenTUI marks them dirty so they repaint. `BoxRenderable` uses this to paint the `focusedBorderColor` whenever the box itself is focusable and any descendant currently owns focus:
+
+```typescript
+const panel = new BoxRenderable(renderer, {
+  id: "panel",
+  focusable: true,
+  borderColor: "#444",
+  focusedBorderColor: "#00AAFF",
+  flexDirection: "column",
+})
+
+const input = new InputRenderable(renderer, { id: "panel-input" })
+panel.add(input)
+
+input.focus() // panel.hasFocusedDescendant === true → border recolors
+```
+
+Custom renderables can read `this._hasFocusedDescendant` (protected) or `renderable.hasFocusedDescendant` (public) to add similar effects.
 
 ## Event Handling
 
@@ -295,6 +318,8 @@ const complex = new BoxRenderable(renderer, {
   },
 })
 ```
+
+`renderBefore` and `renderAfter` are draw-only hooks for custom rendering and decorations. They run after layout and viewport culling, so do not mutate layout props, children, visibility, or reactive state from them.
 
 ## Lifecycle Methods
 

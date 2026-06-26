@@ -7,13 +7,15 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+
+env:
+  NODE_VERSION: 26.3.0
 
 jobs:
   # Extract version and check if it's a dry run
   prepare:
     name: Prepare Release
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       version: ${{ steps.extract.outputs.version }}
       fullTag: ${{ steps.extract.outputs.fullTag }}
@@ -55,11 +57,16 @@ jobs:
   validate-version:
     name: Validate Version
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Check version matches package.json files
         run: |
@@ -101,21 +108,19 @@ jobs:
     uses: ./.github/workflows/build-native.yml
     with:
       version: ${{ needs.prepare.outputs.fullTag }}
-      isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
 
   # Build example executables
   build-examples:
     name: Build Examples
-    needs: [prepare, validate-version, build-native]
+    needs: [prepare, sign-windows-artifacts]
     uses: ./.github/workflows/build-examples.yml
     with:
       version: ${{ needs.prepare.outputs.fullTag }}
-      isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
 
   # Publish to npm
   npm-publish:
     name: NPM Publish
-    needs: [prepare, validate-version, build-native]
+    needs: [prepare, sign-windows-artifacts]
     uses: ./.github/workflows/npm-latest-release.yml
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -123,18 +128,177 @@ jobs:
       version: ${{ needs.prepare.outputs.fullTag }}
       isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
 
+  sign-windows-artifacts:
+    name: Sign Windows DLL Artifacts
+    needs: [prepare, build-native]
+    runs-on: blacksmith-8vcpu-windows-2025
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+      AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE }}
+      AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+
+    steps:
+      - name: Skip code signing for dry runs
+        if: needs.prepare.outputs.isDryRun == 'true'
+        run: |
+          echo "Dry run release, skipping Windows code signing"
+
+      - name: Download native binaries artifact
+        if: needs.prepare.outputs.isDryRun != 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: native-binaries-${{ needs.prepare.outputs.fullTag }}
+          path: artifacts/native
+
+      - name: Download npm packages artifact
+        if: needs.prepare.outputs.isDryRun != 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-packages-${{ needs.prepare.outputs.fullTag }}
+          path: artifacts/npm
+
+      - name: Extract Windows DLL artifacts
+        if: needs.prepare.outputs.isDryRun != 'true'
+        shell: pwsh
+        run: |
+          $artifactRoot = Join-Path $env:GITHUB_WORKSPACE "artifacts"
+          $signedNativeRoot = Join-Path $env:GITHUB_WORKSPACE "signed-native"
+          $signedNpmRoot = Join-Path $env:GITHUB_WORKSPACE "signed-npm-packages"
+          New-Item -ItemType Directory -Force -Path $signedNativeRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path $signedNpmRoot | Out-Null
+
+          Expand-Archive -Path (Join-Path $artifactRoot "native\native-windows-x64.zip") -DestinationPath $signedNativeRoot -Force
+          Expand-Archive -Path (Join-Path $artifactRoot "native\native-windows-arm64.zip") -DestinationPath $signedNativeRoot -Force
+          Expand-Archive -Path (Join-Path $artifactRoot "npm\npm-packages.zip") -DestinationPath $signedNpmRoot -Force
+
+      - name: Azure login
+        if: needs.prepare.outputs.isDryRun != 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign Windows DLLs
+        if: needs.prepare.outputs.isDryRun != 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ env.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ env.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ env.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE }}
+          files: |
+            ${{ github.workspace }}\signed-native\native-windows-x64\opentui.dll
+            ${{ github.workspace }}\signed-native\native-windows-arm64\opentui.dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+
+      - name: Verify Windows DLL signatures
+        if: needs.prepare.outputs.isDryRun != 'true'
+        shell: pwsh
+        run: |
+          $files = @(
+            "${{ github.workspace }}\signed-native\native-windows-x64\opentui.dll",
+            "${{ github.workspace }}\signed-native\native-windows-arm64\opentui.dll"
+          )
+
+          foreach ($file in $files) {
+            $sig = Get-AuthenticodeSignature $file
+            if ($sig.Status -ne "Valid") {
+              throw "Invalid signature for ${file}: $($sig.Status)"
+            }
+          }
+
+      - name: Copy signed DLLs into npm packages
+        if: needs.prepare.outputs.isDryRun != 'true'
+        shell: pwsh
+        run: |
+          $pairs = @(
+            @{
+              Source = "${{ github.workspace }}\signed-native\native-windows-x64\opentui.dll"
+              Destination = "${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-x64\opentui.dll"
+            },
+            @{
+              Source = "${{ github.workspace }}\signed-native\native-windows-arm64\opentui.dll"
+              Destination = "${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-arm64\opentui.dll"
+            }
+          )
+
+          foreach ($pair in $pairs) {
+            Copy-Item -Path $pair.Source -Destination $pair.Destination -Force
+
+            $sourceHash = (Get-FileHash $pair.Source -Algorithm SHA256).Hash
+            $destinationHash = (Get-FileHash $pair.Destination -Algorithm SHA256).Hash
+
+            if ($sourceHash -ne $destinationHash) {
+              throw "Signed DLL copy mismatch: $($pair.Source) -> $($pair.Destination)"
+            }
+          }
+
+      - name: Repack signed windows outputs
+        if: needs.prepare.outputs.isDryRun != 'true'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "${{ github.workspace }}\signed-native\native-windows-x64" -DestinationPath "${{ github.workspace }}\artifacts\native\native-windows-x64.zip" -Force
+          Compress-Archive -Path "${{ github.workspace }}\signed-native\native-windows-arm64" -DestinationPath "${{ github.workspace }}\artifacts\native\native-windows-arm64.zip" -Force
+          Compress-Archive -Path "${{ github.workspace }}\signed-npm-packages\npm-packages" -DestinationPath "${{ github.workspace }}\artifacts\npm\npm-packages.zip" -Force
+
+      - name: Upload signed native binaries artifact
+        if: needs.prepare.outputs.isDryRun != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-binaries-${{ needs.prepare.outputs.fullTag }}
+          path: |
+            artifacts/native/native-darwin-x64.zip
+            artifacts/native/native-darwin-arm64.zip
+            artifacts/native/native-linux-x64.zip
+            artifacts/native/native-linux-arm64.zip
+            artifacts/native/native-linux-x64-musl.zip
+            artifacts/native/native-linux-arm64-musl.zip
+            artifacts/native/native-windows-x64.zip
+            artifacts/native/native-windows-arm64.zip
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+      - name: Upload signed npm packages artifact
+        if: needs.prepare.outputs.isDryRun != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-packages-${{ needs.prepare.outputs.fullTag }}
+          path: artifacts/npm/npm-packages.zip
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
   # Create GitHub release with assets
   github-release:
     name: Create GitHub Release
-    needs: [prepare, build-native, build-examples, npm-publish]
-    runs-on: ubuntu-latest
+    needs: [prepare, build-examples, npm-publish]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -211,7 +375,7 @@ jobs:
           # Verify all expected release assets exist
           echo ""
           echo "Verifying all release assets..."
-          EXPECTED_ASSETS=10  # 6 native (darwin-x64, darwin-arm64, linux-x64, linux-arm64, windows-x64, windows-arm64) + 4 examples (no linux-arm64, no windows-arm64)
+          EXPECTED_ASSETS=12  # 8 native targets + 4 examples (no linux-arm64, no windows-arm64)
           ACTUAL_ASSETS=$(ls -1 release-assets/*.zip 2>/dev/null | wc -l | tr -d ' ')
 
           if [ "$ACTUAL_ASSETS" -ne "$EXPECTED_ASSETS" ]; then
@@ -221,12 +385,12 @@ jobs:
           fi
 
           echo "✅ All $ACTUAL_ASSETS release assets prepared:"
-          echo "   - 6 native binaries (all platforms)"
+          echo "   - 8 native binaries (all targets)"
           echo "   - 4 example executables (darwin-x64, darwin-arm64, linux-x64, windows-x64)"
           ls -lah release-assets/
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: ${{ needs.prepare.outputs.releaseTitle }}
           files: release-assets/*.zip

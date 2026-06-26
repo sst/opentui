@@ -2,6 +2,9 @@
 title: Solid.js
 description: Build terminal UIs with Solid.js and OpenTUI
 order: 1
+skill:
+  entry: true
+  intents: [solid, jsx, signals, hooks, keyboard, animation, testing]
 ---
 
 # Solid.js bindings
@@ -13,6 +16,20 @@ Build terminal user interfaces with Solid.js's fine-grained reactivity and OpenT
 ```bash
 bun install solid-js @opentui/solid
 ```
+
+## Runtime support
+
+`@opentui/solid` publishes one npm package with runtime-specific entrypoints behind the package `exports` map. The root package and JSX runtime subpaths work in both Bun and Node. Bun-specific helpers stay Bun-only and throw a clear runtime error if imported from Node.
+
+| Entrypoint                                        | Bun | Node | Notes                                           |
+| ------------------------------------------------- | --- | ---- | ----------------------------------------------- |
+| `@opentui/solid`                                  | yes | yes  | Main renderer and test helpers                  |
+| `@opentui/solid/jsx-runtime`                      | yes | yes  | Real runtime module for compiled JSX            |
+| `@opentui/solid/jsx-dev-runtime`                  | yes | yes  | Real dev runtime module for compiled JSX        |
+| `@opentui/solid/preload`                          | yes | no   | Bun preload hook                                |
+| `@opentui/solid/bun-plugin`                       | yes | no   | Bun bundler/plugin entry                        |
+| `@opentui/solid/runtime-plugin-support`           | yes | no   | Bun runtime-loader support                      |
+| `@opentui/solid/runtime-plugin-support/configure` | yes | no   | Bun runtime-loader support without side effects |
 
 ## Setup
 
@@ -37,7 +54,35 @@ Add preload script to `bunfig.toml`:
 preload = ["@opentui/solid/preload"]
 ```
 
-### 3. Enable runtime-loaded plugin support (if needed)
+### 3. Configure Node compilation
+
+Node support currently targets compiled Solid TSX. Use Solid's universal transform semantics and point the generated runtime imports at the published `solid-js` JS files:
+
+```js
+import ts from "@babel/preset-typescript"
+import moduleResolver from "babel-plugin-module-resolver"
+import solid from "babel-preset-solid"
+
+export default {
+  plugins: [
+    [
+      moduleResolver,
+      {
+        resolvePath(specifier) {
+          if (specifier === "solid-js") return "solid-js/dist/solid.js"
+          if (specifier === "solid-js/store") return "solid-js/store/dist/store.js"
+          return specifier
+        },
+      },
+    ],
+  ],
+  presets: [[solid, { moduleName: "@opentui/solid", generate: "universal" }], [ts]],
+}
+```
+
+The current Node runtime path is still lower-level than Bun. OpenTUI's native renderer currently relies on Node's experimental FFI support, so select Node 26.3.0 before running it and pass `--experimental-ffi`, `--permission`, and the filesystem or FFI permissions your app needs. OpenTUI does not install Node automatically.
+
+### 4. Enable runtime-loaded plugin support (if needed)
 
 If your app loads external TS/TSX modules at runtime (for example a file-based plugin system), import this once in your entry file before dynamic imports:
 
@@ -45,7 +90,9 @@ If your app loads external TS/TSX modules at runtime (for example a file-based p
 import "@opentui/solid/runtime-plugin-support"
 ```
 
-### 4. Create your app
+This entrypoint is Bun-only.
+
+### 5. Create your app
 
 ```tsx
 import { render } from "@opentui/solid"
@@ -70,6 +117,8 @@ OpenTUI Solid provides JSX intrinsic elements that map to core renderables.
 - `<scrollbox>` - Scrollable container
 - `<ascii_font>` - ASCII art text
 - `<markdown>` - Render Markdown content
+
+QR code support is available from `@opentui/qrcode/solid` and must be registered explicitly with `registerQRCode()`.
 
 ### Input
 
@@ -145,6 +194,44 @@ Returns the current component catalogue that powers JSX tag lookup.
 
 For plugin slots, see [Plugin Slots overview](/docs/plugins/slots) and [Solid slots](/docs/plugins/solid).
 
+## Scrollback writers
+
+In [`split-footer`](/docs/core-concepts/renderer#split-footer) mode with `externalOutputMode: "capture-stdout"`, the Solid binding provides helpers that append JSX-rendered output above the footer. They wrap [`renderer.writeToScrollback`](/docs/core-concepts/renderer#writing-to-scrollback) so you can write scrollback content with signals and components.
+
+### `writeSolidToScrollback(renderer, node, options?)`
+
+Render a JSX node once and append it as a scrollback commit.
+
+```tsx
+import { writeSolidToScrollback } from "@opentui/solid"
+
+writeSolidToScrollback(renderer, () => <text fg="#8BD5CA">api responded in 12ms</text>)
+```
+
+### `createScrollbackWriter(node, options?)`
+
+If you need to pass the same JSX rendering to multiple `writeToScrollback` calls (or hold onto the writer inside your own code), use the lower-level factory:
+
+```tsx
+import { createScrollbackWriter } from "@opentui/solid"
+
+const writer = createScrollbackWriter(() => <text>logged at {new Date().toISOString()}</text>, { startOnNewLine: true })
+
+renderer.writeToScrollback(writer)
+```
+
+### Options
+
+| Option            | Type      | Default        | Description                                                              |
+| ----------------- | --------- | -------------- | ------------------------------------------------------------------------ |
+| `width`           | `number`  | renderer width | Override the snapshot width in columns                                   |
+| `height`          | `number`  | measured auto  | Override the snapshot height in rows (otherwise measured from layout)    |
+| `rowColumns`      | `number`  | snapshot width | Explicit last-row column count for tail tracking                         |
+| `startOnNewLine`  | `boolean` | `true`         | Insert a newline before this commit if the previous commit ended mid-row |
+| `trailingNewline` | `boolean` | -              | Append a newline after the final row                                     |
+
+The writer returns a `ScrollbackSnapshot` whose teardown disposes the inner Solid subtree after the snapshot renders. Use the core [`ScrollbackSurface`](/docs/core-concepts/renderer#writing-to-scrollback) APIs directly if you need streaming commits that re-render the same tree over time.
+
 ## Hooks
 
 ### `useRenderer()`
@@ -172,16 +259,18 @@ const App = () => {
 Subscribe to keyboard events.
 
 ```tsx
-import { useKeyboard } from "@opentui/solid"
+import { useKeyboard, useRenderer } from "@opentui/solid"
 
 const App = () => {
+  const renderer = useRenderer()
+
   useKeyboard((key) => {
     if (key.name === "escape") {
-      process.exit(0)
+      renderer.destroy()
     }
   })
 
-  return <text>Press ESC to exit</text>
+  return <text>Press ESC to close</text>
 }
 ```
 
@@ -419,22 +508,23 @@ If that executable loads external plugins/modules at runtime, keep `import "@ope
 ## Example: counter
 
 ```tsx
-import { render, useKeyboard } from "@opentui/solid"
+import { render, useKeyboard, useRenderer } from "@opentui/solid"
 import { createSignal } from "solid-js"
 
 const App = () => {
   const [count, setCount] = createSignal(0)
+  const renderer = useRenderer()
 
   useKeyboard((key) => {
     if (key.name === "up") setCount((c) => c + 1)
     if (key.name === "down") setCount((c) => c - 1)
-    if (key.name === "escape") process.exit(0)
+    if (key.name === "escape") renderer.destroy()
   })
 
   return (
     <box border padding={2}>
       <text>Count: {count()}</text>
-      <text fg="#888">Up/Down to change, ESC to exit</text>
+      <text fg="#888">Up/Down to change, ESC to close</text>
     </box>
   )
 }

@@ -4,6 +4,7 @@ const ansi = @import("ansi.zig");
 
 const RGBA = ansi.RGBA;
 const Vec4 = @Vector(4, f32);
+const MatrixColor = struct { r: f32, g: f32, b: f32, a: f32 };
 
 /// Target buffer(s) for color matrix operations
 /// Uses bitwise flags: FG=1, BG=2, Both=1|2=3
@@ -15,7 +16,7 @@ pub const ColorTarget = enum(u8) {
 
 /// Apply 4x4 RGBA matrix to 4 pixels using SIMD
 /// matrix: 16 floats in row-major order (4x4 matrix)
-/// pixels: array of 4 RGBA values (each is [4]f32)
+/// pixels: array of 4 RGBA values
 /// strength: blend factor
 /// result: output array of 4 RGBA values
 fn applyMatrix4x4SIMD(matrix: *const [16]f32, r_vec: Vec4, g_vec: Vec4, b_vec: Vec4, a_vec: Vec4, strength_vec: Vec4) struct { r: Vec4, g: Vec4, b: Vec4, a: Vec4 } {
@@ -38,7 +39,7 @@ fn applyMatrix4x4SIMD(matrix: *const [16]f32, r_vec: Vec4, g_vec: Vec4, b_vec: V
 
 /// Apply 4x4 RGBA matrix to single pixel (scalar fallback)
 /// matrix is in row-major order (4x4 matrix), where each row defines coefficients for one output channel
-fn applyMatrix4x4Scalar(matrix: *const [16]f32, r: f32, g: f32, b: f32, a: f32, strength: f32) struct { r: f32, g: f32, b: f32, a: f32 } {
+fn applyMatrix4x4Scalar(matrix: *const [16]f32, r: f32, g: f32, b: f32, a: f32, strength: f32) MatrixColor {
     // Row 0 -> Red output, Row 1 -> Green output, Row 2 -> Blue output, Row 3 -> Alpha output
     const new_r = matrix[0] * r + matrix[1] * g + matrix[2] * b + matrix[3] * a;
     const new_g = matrix[4] * r + matrix[5] * g + matrix[6] * b + matrix[7] * a;
@@ -51,6 +52,23 @@ fn applyMatrix4x4Scalar(matrix: *const [16]f32, r: f32, g: f32, b: f32, a: f32, 
         .b = b + (new_b - b) * strength,
         .a = a + (new_a - a) * strength,
     };
+}
+
+fn floatToU8(v: f32) u8 {
+    return ansi.rgbaComponentToU8(v);
+}
+
+fn matrixInput(color: RGBA) MatrixColor {
+    return .{
+        .r = ansi.redF(color),
+        .g = ansi.greenF(color),
+        .b = ansi.blueF(color),
+        .a = ansi.alphaF(color),
+    };
+}
+
+fn matrixOutput(result: MatrixColor) RGBA {
+    return ansi.rgbColor(floatToU8(result.r), floatToU8(result.g), floatToU8(result.b), floatToU8(result.a));
 }
 
 /// Apply 4x4 RGBA color matrix transformation to RGBA values at specified cell coordinates.
@@ -101,20 +119,16 @@ pub fn colorMatrix(self: anytype, matrix: []const f32, cellMask: []const f32, st
 
         // Apply color matrix to foreground if target includes FG
         if (@intFromEnum(target) & 1 != 0) {
-            const fg_result = applyMatrix4x4Scalar(&mat4, fg[index][0], fg[index][1], fg[index][2], fg[index][3], cellStrength);
-            fg[index][0] = fg_result.r;
-            fg[index][1] = fg_result.g;
-            fg[index][2] = fg_result.b;
-            fg[index][3] = fg_result.a;
+            const input = matrixInput(fg[index]);
+            const fg_result = applyMatrix4x4Scalar(&mat4, input.r, input.g, input.b, input.a, cellStrength);
+            fg[index] = matrixOutput(fg_result);
         }
 
         // Apply color matrix to background if target includes BG
         if (@intFromEnum(target) & 2 != 0) {
-            const bg_result = applyMatrix4x4Scalar(&mat4, bg[index][0], bg[index][1], bg[index][2], bg[index][3], cellStrength);
-            bg[index][0] = bg_result.r;
-            bg[index][1] = bg_result.g;
-            bg[index][2] = bg_result.b;
-            bg[index][3] = bg_result.a;
+            const input = matrixInput(bg[index]);
+            const bg_result = applyMatrix4x4Scalar(&mat4, input.r, input.g, input.b, input.a, cellStrength);
+            bg[index] = matrixOutput(bg_result);
         }
     }
 }
@@ -155,37 +169,31 @@ pub fn colorMatrixUniform(self: anytype, matrix: []const f32, strength: f32, tar
         // Process foreground if target includes FG
         if (processFG) {
             // Load 4 pixels' RGBA values into separate channel vectors
-            const fg_r = Vec4{ fg[i][0], fg[i + 1][0], fg[i + 2][0], fg[i + 3][0] };
-            const fg_g = Vec4{ fg[i][1], fg[i + 1][1], fg[i + 2][1], fg[i + 3][1] };
-            const fg_b = Vec4{ fg[i][2], fg[i + 1][2], fg[i + 2][2], fg[i + 3][2] };
-            const fg_a = Vec4{ fg[i][3], fg[i + 1][3], fg[i + 2][3], fg[i + 3][3] };
+            const fg_r = Vec4{ ansi.redF(fg[i]), ansi.redF(fg[i + 1]), ansi.redF(fg[i + 2]), ansi.redF(fg[i + 3]) };
+            const fg_g = Vec4{ ansi.greenF(fg[i]), ansi.greenF(fg[i + 1]), ansi.greenF(fg[i + 2]), ansi.greenF(fg[i + 3]) };
+            const fg_b = Vec4{ ansi.blueF(fg[i]), ansi.blueF(fg[i + 1]), ansi.blueF(fg[i + 2]), ansi.blueF(fg[i + 3]) };
+            const fg_a = Vec4{ ansi.alphaF(fg[i]), ansi.alphaF(fg[i + 1]), ansi.alphaF(fg[i + 2]), ansi.alphaF(fg[i + 3]) };
 
             // Apply matrix transformation
             const fg_result = applyMatrix4x4SIMD(&mat4, fg_r, fg_g, fg_b, fg_a, strength_vec);
 
             // Store results back
             inline for (0..4) |j| {
-                fg[i + j][0] = fg_result.r[j];
-                fg[i + j][1] = fg_result.g[j];
-                fg[i + j][2] = fg_result.b[j];
-                fg[i + j][3] = fg_result.a[j];
+                fg[i + j] = ansi.rgbColor(floatToU8(fg_result.r[j]), floatToU8(fg_result.g[j]), floatToU8(fg_result.b[j]), floatToU8(fg_result.a[j]));
             }
         }
 
         // Process background if target includes BG
         if (processBG) {
-            const bg_r = Vec4{ bg[i][0], bg[i + 1][0], bg[i + 2][0], bg[i + 3][0] };
-            const bg_g = Vec4{ bg[i][1], bg[i + 1][1], bg[i + 2][1], bg[i + 3][1] };
-            const bg_b = Vec4{ bg[i][2], bg[i + 1][2], bg[i + 2][2], bg[i + 3][2] };
-            const bg_a = Vec4{ bg[i][3], bg[i + 1][3], bg[i + 2][3], bg[i + 3][3] };
+            const bg_r = Vec4{ ansi.redF(bg[i]), ansi.redF(bg[i + 1]), ansi.redF(bg[i + 2]), ansi.redF(bg[i + 3]) };
+            const bg_g = Vec4{ ansi.greenF(bg[i]), ansi.greenF(bg[i + 1]), ansi.greenF(bg[i + 2]), ansi.greenF(bg[i + 3]) };
+            const bg_b = Vec4{ ansi.blueF(bg[i]), ansi.blueF(bg[i + 1]), ansi.blueF(bg[i + 2]), ansi.blueF(bg[i + 3]) };
+            const bg_a = Vec4{ ansi.alphaF(bg[i]), ansi.alphaF(bg[i + 1]), ansi.alphaF(bg[i + 2]), ansi.alphaF(bg[i + 3]) };
 
             const bg_result = applyMatrix4x4SIMD(&mat4, bg_r, bg_g, bg_b, bg_a, strength_vec);
 
             inline for (0..4) |j| {
-                bg[i + j][0] = bg_result.r[j];
-                bg[i + j][1] = bg_result.g[j];
-                bg[i + j][2] = bg_result.b[j];
-                bg[i + j][3] = bg_result.a[j];
+                bg[i + j] = ansi.rgbColor(floatToU8(bg_result.r[j]), floatToU8(bg_result.g[j]), floatToU8(bg_result.b[j]), floatToU8(bg_result.a[j]));
             }
         }
     }
@@ -193,19 +201,15 @@ pub fn colorMatrixUniform(self: anytype, matrix: []const f32, strength: f32, tar
     // Handle remaining pixels (0-3) with scalar fallback
     while (i < size) : (i += 1) {
         if (processFG) {
-            const fg_result = applyMatrix4x4Scalar(&mat4, fg[i][0], fg[i][1], fg[i][2], fg[i][3], strength);
-            fg[i][0] = fg_result.r;
-            fg[i][1] = fg_result.g;
-            fg[i][2] = fg_result.b;
-            fg[i][3] = fg_result.a;
+            const input = matrixInput(fg[i]);
+            const fg_result = applyMatrix4x4Scalar(&mat4, input.r, input.g, input.b, input.a, strength);
+            fg[i] = matrixOutput(fg_result);
         }
 
         if (processBG) {
-            const bg_result = applyMatrix4x4Scalar(&mat4, bg[i][0], bg[i][1], bg[i][2], bg[i][3], strength);
-            bg[i][0] = bg_result.r;
-            bg[i][1] = bg_result.g;
-            bg[i][2] = bg_result.b;
-            bg[i][3] = bg_result.a;
+            const input = matrixInput(bg[i]);
+            const bg_result = applyMatrix4x4Scalar(&mat4, input.r, input.g, input.b, input.a, strength);
+            bg[i] = matrixOutput(bg_result);
         }
     }
 }

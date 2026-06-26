@@ -7,12 +7,13 @@ import type { RenderContext } from "../types.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
-  getKeyBindingKey,
   buildKeyBindingsMap,
-  type KeyAliasMap,
+  getKeyBindingAction,
   defaultKeyAliases,
   mergeKeyAliases,
-} from "../lib/keymapping.js"
+} from "../lib/keybinding.internal.js"
+
+type KeyAliasMap = Record<string, string>
 
 export interface SelectOption {
   name: string
@@ -151,6 +152,7 @@ export class SelectRenderable extends Renderable {
     const mergedBindings = mergeKeyBindings(defaultSelectKeybindings, this._keyBindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
 
+    this.updateScrollOffset()
     this.requestRender() // Initial render needed
   }
 
@@ -231,7 +233,8 @@ export class SelectRenderable extends Renderable {
   ): void {
     if (!this.frameBuffer) return
 
-    const scrollPercent = this._selectedIndex / Math.max(1, this._options.length - 1)
+    const maxScrollOffset = this._options.length - this.maxVisibleItems
+    const scrollPercent = this.scrollOffset / maxScrollOffset
     const indicatorHeight = Math.max(1, contentHeight - 2)
     const indicatorY = contentY + 1 + Math.floor(scrollPercent * indicatorHeight)
     const indicatorX = contentX + contentWidth - 1
@@ -328,16 +331,7 @@ export class SelectRenderable extends Renderable {
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
-    const bindingKey = getKeyBindingKey({
-      name: key.name,
-      ctrl: key.ctrl,
-      shift: key.shift,
-      meta: key.meta,
-      super: key.super,
-      action: "move-up" as SelectAction,
-    })
-
-    const action = this._keyBindingsMap.get(bindingKey)
+    const action = getKeyBindingAction(this._keyBindingsMap, key)
 
     if (action) {
       switch (action) {

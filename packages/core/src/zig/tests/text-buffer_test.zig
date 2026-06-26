@@ -583,7 +583,7 @@ test "TextBuffer line iteration - walkLines callback" {
         }
     };
 
-    var ctx = Context{ .lines = .{}, .allocator = std.testing.allocator };
+    var ctx: Context = .{ .lines = .{}, .allocator = std.testing.allocator };
     defer ctx.lines.deinit(std.testing.allocator);
 
     iter_mod.walkLines(tb.rope(), &ctx, Context.callback, true);
@@ -1598,7 +1598,7 @@ test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
     defer link.deinitGlobalLinkPool();
 
     const edit_buffer = @import("../edit-buffer.zig");
-    var eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    var eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth, null);
     defer eb.deinit();
 
     try eb.setText("Line 1\nLine 2\nLine 3");

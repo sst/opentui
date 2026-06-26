@@ -28,7 +28,8 @@ This creates platform-specific libraries that are automatically loaded by the Ty
 
 ```bash
 bun install
-bun run src/examples/index.ts
+cd ../examples
+bun run dev
 ```
 
 ## Benchmarks

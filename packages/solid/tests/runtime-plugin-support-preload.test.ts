@@ -12,15 +12,6 @@ describe("solid runtime plugin support with preload", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[runtime-plugin-support-preload.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[runtime-plugin-support-preload.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("solid=true")

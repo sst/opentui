@@ -1,7 +1,7 @@
 ---
 title: Code
 description: Syntax-highlighted code display component with Tree-sitter support
-order: 6
+order: 10
 ---
 
 # Code
@@ -186,7 +186,12 @@ const code = new CodeRenderable(renderer, {
 Use `LineNumberRenderable` to add line numbers:
 
 ```typescript
-import { CodeRenderable, LineNumberRenderable, ScrollBoxRenderable } from "@opentui/core"
+import { CodeRenderable, LineNumberRenderable, RGBA, ScrollBoxRenderable, SyntaxStyle } from "@opentui/core"
+
+const sourceCode = "const answer = 42\nconsole.log(answer)\n"
+const syntaxStyle = SyntaxStyle.fromStyles({
+  default: { fg: RGBA.fromHex("#E6EDF3") },
+})
 
 const code = new CodeRenderable(renderer, {
   id: "code",
@@ -213,6 +218,7 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
   height: 20,
 })
 scrollbox.add(lineNumbers)
+renderer.root.add(scrollbox)
 ```
 
 ## Properties

@@ -35,7 +35,7 @@ const Chunk = struct {
 };
 
 // Static empty chunk rope node for Line.empty()
-const empty_chunk_leaf_node = rope_mod.Rope(Chunk).Node{
+const empty_chunk_leaf_node: rope_mod.Rope(Chunk).Node = .{
     .leaf = .{
         .data = Chunk.empty(),
     },
@@ -95,7 +95,7 @@ test "Nested Rope - create line with chunks" {
 
     const chunk_rope = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks);
 
-    const line = Line{
+    const line: Line = .{
         .chunks = chunk_rope,
         .line_id = 1,
     };
@@ -117,7 +117,7 @@ test "Nested Rope - rope of lines with chunks" {
         .{ .data = "Line ", .width = 5 },
         .{ .data = "One", .width = 3 },
     };
-    const line1 = Line{
+    const line1: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks1),
         .line_id = 1,
     };
@@ -126,7 +126,7 @@ test "Nested Rope - rope of lines with chunks" {
         .{ .data = "Line ", .width = 5 },
         .{ .data = "Two", .width = 3 },
     };
-    const line2 = Line{
+    const line2: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks2),
         .line_id = 2,
     };
@@ -222,7 +222,7 @@ test "Nested Rope - walk through lines and chunks" {
         }
     };
 
-    var ctx = LineContext{};
+    var ctx: LineContext = .{};
     try line_rope.walk(&ctx, LineContext.walker);
 
     try std.testing.expectEqual(@as(u32, 3), ctx.total_lines);
@@ -238,7 +238,7 @@ test "Nested Rope - complex line and chunk operations" {
         .{ .data = "First ", .width = 6 },
         .{ .data = "line", .width = 4 },
     };
-    const line1 = Line{
+    const line1: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks1),
         .line_id = 1,
     };
@@ -246,7 +246,7 @@ test "Nested Rope - complex line and chunk operations" {
     var line_rope = try rope_mod.Rope(Line).from_item(allocator, line1);
 
     const chunks2 = [_]Chunk{.{ .data = "Second line", .width = 11 }};
-    const line2 = Line{
+    const line2: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks2),
         .line_id = 2,
     };
@@ -364,7 +364,7 @@ test "Nested Rope - insert line into document" {
     var line_rope = try rope_mod.Rope(Line).from_slice(allocator, &initial_lines);
 
     const chunks2 = [_]Chunk{.{ .data = "Line 2", .width = 6 }};
-    const line2 = Line{
+    const line2: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks2),
         .line_id = 2,
     };
@@ -411,7 +411,7 @@ test "Nested Rope - modify chunks within a specific line" {
 
     try chunk_rope.insert(1, .{ .data = " World", .width = 6 });
 
-    const line = Line{
+    const line: Line = .{
         .chunks = chunk_rope,
         .line_id = 1,
     };
@@ -491,7 +491,7 @@ test "Nested Rope - simulate full text buffer workflow" {
         .{ .data = "Hello ", .width = 6 },
         .{ .data = "World", .width = 5 },
     };
-    const line1 = Line{
+    const line1: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks1),
         .line_id = 1,
     };
@@ -499,7 +499,7 @@ test "Nested Rope - simulate full text buffer workflow" {
     var document = try rope_mod.Rope(Line).from_item(allocator, line1);
 
     const chunks2 = [_]Chunk{.{ .data = "Goodbye", .width = 7 }};
-    const line2 = Line{
+    const line2: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks2),
         .line_id = 2,
     };
@@ -516,7 +516,7 @@ test "Nested Rope - simulate full text buffer workflow" {
     var modified_chunks = retrieved_line1.chunks;
     try modified_chunks.insert(1, .{ .data = "Beautiful ", .width = 10 });
 
-    const modified_line = Line{
+    const modified_line: Line = .{
         .chunks = modified_chunks,
         .line_id = 1,
     };
@@ -533,13 +533,13 @@ test "Nested Rope - empty lines with no chunks" {
     const allocator = arena.allocator();
 
     const empty_chunks: []const Chunk = &[_]Chunk{};
-    const empty_line = Line{
+    const empty_line: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, empty_chunks),
         .line_id = 1,
     };
 
     const chunks = [_]Chunk{.{ .data = "Content", .width = 7 }};
-    const content_line = Line{
+    const content_line: Line = .{
         .chunks = try rope_mod.Rope(Chunk).from_slice(allocator, &chunks),
         .line_id = 2,
     };
@@ -622,7 +622,7 @@ test "Nested Rope - walk_from specific line" {
         }
     };
 
-    var ctx = Context{};
+    var ctx: Context = .{};
     try document.walk_from(3, &ctx, Context.walker);
 
     // Should walk lines 3 and 4 (indices 3 and 4)

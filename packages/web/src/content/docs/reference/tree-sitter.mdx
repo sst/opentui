@@ -126,7 +126,7 @@ Use the `updateAssets` utility to download parsers and generate imports.
 ```json
 {
   "scripts": {
-    "prebuild": "bun node_modules/@opentui/core/lib/tree-sitter/assets/update.ts --config ./parsers-config.json --assets ./src/parsers --output ./src/parsers.ts"
+    "prebuild": "bun node_modules/@opentui/core/lib/tree-sitter/update-assets.js --config ./parsers-config.json --assets ./src/parsers --output ./src/parsers.ts"
   }
 }
 ```
@@ -134,7 +134,7 @@ Use the `updateAssets` utility to download parsers and generate imports.
 ### Programmatic usage
 
 ```typescript
-import { updateAssets } from "@opentui/core"
+import { updateAssets } from "@opentui/core/tree-sitter/update-assets"
 
 await updateAssets({
   configPath: "./parsers-config.json",
@@ -146,10 +146,14 @@ await updateAssets({
 ## Using with CodeRenderable
 
 ```typescript
-import { CodeRenderable, getTreeSitterClient } from "@opentui/core"
+import { CodeRenderable, RGBA, SyntaxStyle, getTreeSitterClient } from "@opentui/core"
 
 const client = getTreeSitterClient()
 await client.initialize()
+
+const syntaxStyle = SyntaxStyle.fromStyles({
+  default: { fg: RGBA.fromHex("#E6EDF3") },
+})
 
 const code = new CodeRenderable(renderer, {
   id: "code",

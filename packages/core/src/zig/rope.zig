@@ -395,10 +395,10 @@ pub fn Rope(comptime T: type) type {
 
             pub const LeafSplitFn = struct {
                 ctx: ?*anyopaque = null,
-                splitFn: *const fn (ctx: ?*anyopaque, allocator: Allocator, leaf: *const T, weight_in_leaf: u32) error{ OutOfBounds, OutOfMemory }!LeafSplitResult,
+                splitFn: *const fn (allocator: Allocator, ctx: ?*anyopaque, leaf: *const T, weight_in_leaf: u32) error{ OutOfBounds, OutOfMemory }!LeafSplitResult,
 
                 pub fn call(self: *const @This(), allocator: Allocator, leaf: *const T, weight: u32) error{ OutOfBounds, OutOfMemory }!LeafSplitResult {
-                    return self.splitFn(self.ctx, allocator, leaf, weight);
+                    return self.splitFn(allocator, self.ctx, leaf, weight);
                 }
             };
 

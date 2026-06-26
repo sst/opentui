@@ -15,6 +15,7 @@ pub const Capabilities = struct {
     kitty_keyboard: bool = false,
     kitty_graphics: bool = false,
     rgb: bool = false,
+    ansi256: bool = false,
     unicode: WidthMethod = .unicode,
     sgr_pixels: bool = false,
     color_scheme_updates: bool = false,
@@ -26,8 +27,51 @@ pub const Capabilities = struct {
     bracketed_paste: bool = false,
     hyperlinks: bool = false,
     osc52: bool = false,
+    notifications: bool = false,
     explicit_cursor_positioning: bool = false,
+    remote: bool = false,
 };
+
+pub const NotificationProtocol = enum {
+    none,
+    osc9,
+    osc777,
+    osc99,
+};
+
+const NotificationProtocolSource = enum {
+    none,
+    heuristic,
+    xtversion,
+    query,
+    override,
+};
+
+pub const RemoteMode = enum(u8) {
+    auto,
+    local,
+    remote,
+};
+
+pub const Multiplexer = enum(u8) {
+    none,
+    tmux,
+    zellij,
+    screen,
+    unknown,
+};
+
+pub const Osc52Support = enum(u8) {
+    unknown,
+    supported,
+    unsupported,
+};
+
+const NOTIFICATION_QUERY_ID = "opentui-notifications";
+pub const SCREEN_PASSTHROUGH_CHUNK_SIZE = 252;
+pub const CLIPBOARD_PAYLOAD_SIZE_MAX = std.math.maxInt(u32);
+const OSC52_FRAMING_SIZE = "\x1b]52;c;".len + "\x1b\\".len;
+const PASSTHROUGH_ESCAPED_OSC52_SIZE = OSC52_FRAMING_SIZE + 2;
 
 pub const MouseLevel = enum {
     none,
@@ -57,18 +101,18 @@ pub const MousePointerStyle = enum(u8) {
     }
 };
 
-pub const ClipboardTarget = enum {
-    clipboard, // "c"
-    primary, // "p"
-    secondary, // "s"
-    query, // "q"
+pub const ClipboardTarget = enum(u8) {
+    clipboard = 0, // "c"
+    primary = 1, // "p"
+    select = 2, // "s"
+    secondary = 3, // "q"
 
     pub fn toChar(self: ClipboardTarget) u8 {
         return switch (self) {
             .clipboard => 'c',
             .primary => 'p',
-            .secondary => 's',
-            .query => 'q',
+            .select => 's',
+            .secondary => 'q',
         };
     }
 };
@@ -84,7 +128,7 @@ pub const Options = struct {
     // Default 0b00101 (5) = disambiguate + alternate keys
     // Use 0b00111 (7) to also enable event types for key release detection
     kitty_keyboard_flags: u8 = 0b00101,
-    remote: bool = false,
+    remote_mode: RemoteMode = .local,
     // Optional override for environment lookups. Caller owns the map.
     env_map: ?*const std.process.EnvMap = null,
 };
@@ -100,12 +144,16 @@ pub const TerminalInfo = struct {
 caps: Capabilities = .{},
 opts: Options = .{},
 host_env_map: ?std.process.EnvMap = null,
-
-in_tmux: bool = false,
+remote: bool = false,
+multiplexer: Multiplexer = .none,
+osc52_support: Osc52Support = .unknown,
+is_foot: bool = false,
 skip_graphics_query: bool = false,
 skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
 capability_queries_pending: bool = false,
+startup_cursor_query_pending: bool = false,
+startup_cursor_query_captured: bool = false,
 
 state: struct {
     alt_screen: bool = false,
@@ -114,8 +162,10 @@ state: struct {
     bracketed_paste: bool = false,
     mouse: bool = false,
     mouse_movement: bool = true,
+    mouse_was_enabled: bool = false,
     pixel_mouse: bool = false,
     color_scheme_updates: bool = false,
+    theme_queries_sent: bool = false,
     focus_tracking: bool = false,
     modify_other_keys: bool = false,
     mouse_pointer: MousePointerStyle = .default,
@@ -127,11 +177,15 @@ state: struct {
         visible: bool = true,
         style: CursorStyle = .default,
         blinking: bool = false,
-        color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 }, // RGBA
+        color: ansi.RGBA = ansi.rgbColor(255, 255, 255, 255),
     } = .{},
 } = .{},
 
 term_info: TerminalInfo = .{},
+notification_protocol: NotificationProtocol = .none,
+notification_protocol_authoritative: bool = false,
+notification_protocol_source: NotificationProtocolSource = .none,
+notification_id_counter: u64 = 0,
 
 pub fn init(opts: Options) Terminal {
     var term: Terminal = .{
@@ -148,6 +202,7 @@ pub fn deinit(self: *Terminal) void {
         self.host_env_map = null;
     }
     self.opts.env_map = null;
+    self.* = undefined;
 }
 
 pub fn setHostEnvVar(self: *Terminal, allocator: std.mem.Allocator, key: []const u8, value: []const u8) !void {
@@ -175,8 +230,8 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
         try self.setModifyOtherKeys(tty, false);
     }
 
-    if (self.state.mouse) {
-        try self.setMouseMode(tty, false, self.state.mouse_movement);
+    if (self.state.mouse_was_enabled) {
+        try self.forceDisableMouseMode(tty);
     }
 
     if (self.state.bracketed_paste) {
@@ -208,6 +263,12 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
     }
 
     self.setTerminalTitle(tty, "");
+
+    // OSC 111 is intentionally disabled for now. In Ghostty, sending the
+    // reset alone is enough to poison later OSC 11 background reporting for
+    // system light/dark theme changes, which breaks theme detection on the
+    // next app startup even though the immediate reset appears to work.
+    // try tty.writeAll(ansi.ANSI.resetTerminalBgColor);
 }
 
 pub fn enterAltScreen(self: *Terminal, tty: anytype) !void {
@@ -224,16 +285,37 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
     self.graphics_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
+    self.startup_cursor_query_pending = true;
+    self.startup_cursor_query_captured = false;
+
+    // We intentionally do not send CSI ?996n here. Terminals disagree on the
+    // meaning and reliability of the ?997 reply, so startup theme detection is
+    // derived from fresh OSC 10/11 fg/bg colors instead.
+    try self.setColorSchemeUpdates(tty, true);
+
+    try self.queryThemeColors(tty);
+    self.state.theme_queries_sent = true;
 
     // Send xtversion first (doesn't need DCS wrapping - used for tmux detection)
     try tty.writeAll(ansi.ANSI.xtversion ++
         ansi.ANSI.hideCursor ++
         ansi.ANSI.saveCursorState);
 
-    if (self.in_tmux) {
-        try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
+    // Capture the current cursor position before temporary home-position queries.
+    try tty.writeAll(ansi.ANSI.cursorPositionRequest);
+
+    if (self.isInTmux()) {
+        if (self.is_foot) {
+            try tty.writeAll(ansi.ANSI.capabilityQueriesFootIsBrokenTmux);
+        } else {
+            try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
+        }
     } else {
-        try tty.writeAll(ansi.ANSI.capabilityQueries);
+        if (self.is_foot) {
+            try tty.writeAll(ansi.ANSI.capabilityQueriesFootIsBroken);
+        } else {
+            try tty.writeAll(ansi.ANSI.capabilityQueries);
+        }
         self.capability_queries_pending = true;
     }
 
@@ -251,7 +333,7 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
 
 pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
     var sent = false;
-    const is_tmux = self.in_tmux or self.isXtversionTmux();
+    const is_tmux = self.isInTmux();
 
     // Re-send capability queries DCS wrapped if tmux detected via xtversion
     // Only needed if we got xtversion response indicating tmux
@@ -281,6 +363,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
     if (builtin.os.tag == .windows) {
         // Windows-specific defaults for ConPTY
         self.caps.rgb = true;
+        self.caps.ansi256 = true;
         self.caps.bracketed_paste = true;
     }
 
@@ -309,14 +392,241 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
         try self.setFocusTracking(tty, true);
     }
 
+    // queryTerminalSend already enabled mode 2031 during normal startup.
     if (!self.state.color_scheme_updates) {
         try self.setColorSchemeUpdates(tty, true);
-        try tty.writeAll(ansi.ANSI.colorSchemeRequest);
+    }
+
+    if (!self.state.theme_queries_sent) {
+        try self.queryThemeColors(tty);
+        self.state.theme_queries_sent = true;
+    }
+}
+
+pub fn queryThemeColors(_: *Terminal, tty: anytype) !void {
+    // We only use the ?997 notification as a refresh trigger. The actual theme
+    // mode is derived from the returned OSC 10/11 fg/bg colors, so callers
+    // should query those colors directly instead of sending CSI ?996n.
+    // tmux handles OSC 10/11 as plain OSC; DCS passthrough replies are not
+    // routed back to the pane that asked.
+    try tty.writeAll(ansi.ANSI.oscThemeQueries);
+}
+
+fn clearNotificationProtocol(self: *Terminal) void {
+    self.notification_protocol = .none;
+    self.notification_protocol_authoritative = false;
+    self.notification_protocol_source = .none;
+    self.caps.notifications = false;
+}
+
+fn notificationProtocolSourcePriority(source: NotificationProtocolSource) u8 {
+    return switch (source) {
+        .none => 0,
+        .heuristic => 1,
+        .xtversion => 2,
+        .query => 3,
+        .override => 4,
+    };
+}
+
+fn setNotificationProtocol(self: *Terminal, protocol: NotificationProtocol, source: NotificationProtocolSource) void {
+    if (protocol == .none) return;
+
+    // Zellij only forwards OSC 99 desktop notifications. Ignore inherited
+    // host-terminal heuristics such as TERM_PROGRAM=ghostty inside Zellij;
+    // enable notifications there only from the OSC 99 protocol query or an
+    // explicit user override.
+    if (self.isInZellij() and source != .override) {
+        if (source != .query or protocol != .osc99) return;
+    }
+
+    const current_source_priority = notificationProtocolSourcePriority(self.notification_protocol_source);
+    const next_source_priority = notificationProtocolSourcePriority(source);
+    if (next_source_priority < current_source_priority) return;
+    if (next_source_priority == current_source_priority and notificationProtocolPriority(protocol) < notificationProtocolPriority(self.notification_protocol)) return;
+
+    self.notification_protocol = protocol;
+    self.notification_protocol_authoritative = source != .heuristic;
+    self.notification_protocol_source = source;
+    self.caps.notifications = true;
+}
+
+fn enforceNotificationProtocolForMultiplexer(self: *Terminal) void {
+    if (!self.isInZellij() or self.notification_protocol_source == .override) return;
+    if (self.notification_protocol_source == .query and self.notification_protocol == .osc99) return;
+
+    self.clearNotificationProtocol();
+}
+
+fn notificationProtocolPriority(protocol: NotificationProtocol) u8 {
+    return switch (protocol) {
+        .none => 0,
+        .osc9 => 1,
+        .osc777 => 2,
+        .osc99 => 3,
+    };
+}
+
+fn applyNotificationHeuristic(self: *Terminal, value: []const u8) void {
+    if (self.isInZellij()) return;
+    if (detectNotificationProtocol(value)) |protocol| {
+        self.setNotificationProtocol(protocol, .heuristic);
+    }
+}
+
+fn applyNotificationProtocolOverride(self: *Terminal, value: []const u8) void {
+    if (std.mem.eql(u8, value, "0") or
+        std.ascii.eqlIgnoreCase(value, "false") or
+        std.ascii.eqlIgnoreCase(value, "off") or
+        std.ascii.eqlIgnoreCase(value, "none"))
+    {
+        self.clearNotificationProtocol();
+        self.notification_protocol_authoritative = true;
+        self.notification_protocol_source = .override;
+        return;
+    }
+
+    if (std.mem.eql(u8, value, "1") or std.ascii.eqlIgnoreCase(value, "true") or std.ascii.eqlIgnoreCase(value, "on")) {
+        return;
+    }
+
+    if (std.ascii.eqlIgnoreCase(value, "osc99")) {
+        self.setNotificationProtocol(.osc99, .override);
+    } else if (std.ascii.eqlIgnoreCase(value, "osc777")) {
+        self.setNotificationProtocol(.osc777, .override);
+    } else if (std.ascii.eqlIgnoreCase(value, "osc9")) {
+        self.setNotificationProtocol(.osc9, .override);
+    }
+}
+
+fn detectNotificationProtocol(value: []const u8) ?NotificationProtocol {
+    // OSC 99 is explicitly documented by kitty and supported by foot. Prefer it
+    // where the terminal family is known because it has the only real queryable
+    // notification protocol and robust text encoding.
+    if (std.ascii.indexOfIgnoreCase(value, "kitty") != null or
+        std.ascii.indexOfIgnoreCase(value, "foot") != null)
+    {
+        return .osc99;
+    }
+
+    // OSC 777 is documented by WezTerm, Warp, hterm/Blink, and is the
+    // rxvt/VTE-style title+body notification sequence. Use it where sources
+    // document support, or where the terminal is clearly VTE/rxvt-derived.
+    if (std.ascii.indexOfIgnoreCase(value, "ghostty") != null or
+        std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "warp") != null or
+        std.ascii.indexOfIgnoreCase(value, "hterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "blink") != null or
+        std.ascii.indexOfIgnoreCase(value, "contour") != null or
+        std.ascii.indexOfIgnoreCase(value, "vte") != null or
+        std.ascii.indexOfIgnoreCase(value, "gnome") != null or
+        std.ascii.indexOfIgnoreCase(value, "tilix") != null or
+        std.ascii.indexOfIgnoreCase(value, "terminator") != null or
+        std.ascii.indexOfIgnoreCase(value, "xfce") != null or
+        std.ascii.indexOfIgnoreCase(value, "urxvt") != null or
+        std.ascii.indexOfIgnoreCase(value, "rxvt") != null or
+        std.ascii.indexOfIgnoreCase(value, "windows terminal") != null or
+        std.ascii.indexOfIgnoreCase(value, "windows_terminal") != null)
+    {
+        return .osc777;
+    }
+
+    // OSC 9 is the iTerm2 notification sequence. ConEmu also uses OSC 9 for
+    // multiple extensions, so use it only for terminal families with documented
+    // notification support rather than as a generic fallback.
+    if (std.ascii.indexOfIgnoreCase(value, "iterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "Apple_Terminal") != null or
+        std.ascii.indexOfIgnoreCase(value, "Terminal.app") != null or
+        std.ascii.indexOfIgnoreCase(value, "conemu") != null)
+    {
+        return .osc9;
+    }
+
+    return null;
+}
+
+fn termFeaturesHasCode(features: []const u8, code: []const u8) bool {
+    var i: usize = 0;
+    while (i < features.len) {
+        const c = features[i];
+        if (!std.ascii.isAlphanumeric(c)) break;
+        if (!std.ascii.isUpper(c)) {
+            i += 1;
+            continue;
+        }
+
+        const start = i;
+        i += 1;
+        while (i < features.len and std.ascii.isLower(features[i])) : (i += 1) {}
+        if (std.mem.eql(u8, features[start..i], code)) return true;
+        while (i < features.len and std.ascii.isDigit(features[i])) : (i += 1) {}
+    }
+
+    return false;
+}
+
+fn findOscTerminator(payload: []const u8) usize {
+    const bel_end = std.mem.indexOfScalar(u8, payload, '\x07');
+    const st_end = std.mem.indexOf(u8, payload, "\x1b\\");
+
+    if (bel_end) |bel| {
+        if (st_end) |st| return @min(bel, st);
+        return bel;
+    }
+
+    if (st_end) |st| return st;
+    return payload.len;
+}
+
+fn parseItermCapabilities(self: *Terminal, response: []const u8) void {
+    var search_start: usize = 0;
+    const prefix = "\x1b]1337;Capabilities=";
+    while (std.mem.indexOf(u8, response[search_start..], prefix)) |rel_pos| {
+        const start = search_start + rel_pos + prefix.len;
+        const end = start + findOscTerminator(response[start..]);
+
+        if (termFeaturesHasCode(response[start..end], "No")) {
+            self.setNotificationProtocol(.osc9, .query);
+            return;
+        }
+
+        search_start = end;
+    }
+}
+
+fn parseOsc99NotificationQuery(self: *Terminal, response: []const u8) void {
+    var search_start: usize = 0;
+    const prefix = "\x1b]99;";
+    while (std.mem.indexOf(u8, response[search_start..], prefix)) |rel_pos| {
+        const start = search_start + rel_pos;
+        const payload_start = start + prefix.len;
+        const end = payload_start + findOscTerminator(response[payload_start..]);
+        const payload = response[payload_start..end];
+
+        if (std.mem.indexOf(u8, payload, "i=" ++ NOTIFICATION_QUERY_ID) != null and
+            std.mem.indexOf(u8, payload, "p=?") != null and
+            std.mem.indexOf(u8, payload, "p=") != null and
+            std.mem.indexOf(u8, payload, "title") != null)
+        {
+            self.setNotificationProtocol(.osc99, .query);
+            return;
+        }
+
+        search_start = end;
     }
 }
 
 fn checkEnvironmentOverrides(self: *Terminal) void {
-    self.in_tmux = false;
+    if (self.isXtversionTmux()) {
+        self.multiplexer = .tmux;
+    } else if (self.isXtversionZellij()) {
+        self.multiplexer = .zellij;
+    } else if (self.term_info.from_xtversion) {
+        self.multiplexer = .none;
+    } else {
+        self.multiplexer = .none;
+    }
+    self.is_foot = self.term_info.from_xtversion and std.ascii.indexOfIgnoreCase(self.getTerminalName(), "foot") != null;
     self.skip_graphics_query = false;
     self.skip_explicit_width_query = false;
 
@@ -324,15 +634,21 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     self.caps.bracketed_paste = true;
 
     if (self.caps.rgb) {
+        self.caps.ansi256 = true;
         self.caps.hyperlinks = true;
     }
 
-    if (self.opts.remote) {
-        return;
+    if (self.opts.remote_mode == .remote) {
+        self.remote = true;
+        self.caps.remote = true;
+    } else if (self.opts.remote_mode == .local) {
+        self.remote = false;
+        self.caps.remote = false;
     }
 
     var env_map_storage: ?std.process.EnvMap = null;
-    const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
+    const maybe_env_map: ?*const std.process.EnvMap = self.opts.env_map orelse blk: {
+        if (self.opts.remote_mode == .remote) break :blk null;
         env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
             logger.err("Failed to get environment map: {}", .{err});
             return;
@@ -341,17 +657,45 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     };
     defer if (env_map_storage) |*map| map.deinit();
 
+    if (maybe_env_map == null) {
+        return;
+    }
+
+    const env_map = maybe_env_map.?;
+
+    if (self.opts.remote_mode == .auto) {
+        self.remote = self.remote or isRemoteSessionEnv(env_map);
+        self.caps.remote = self.remote;
+    }
+
+    if (self.remote and self.opts.env_map == null) {
+        return;
+    }
+
     if (!self.term_info.from_xtversion) {
         if (env_map.get("TMUX")) |_| {
-            self.in_tmux = true;
+            self.multiplexer = .tmux;
+            self.caps.unicode = .wcwidth;
+            self.caps.explicit_cursor_positioning = true;
+        } else if (env_map.get("ZELLIJ") != null or env_map.get("ZELLIJ_SESSION_NAME") != null or env_map.get("ZELLIJ_PANE_ID") != null) {
+            self.multiplexer = .zellij;
+            if (self.term_info.name_len == 0) {
+                const name = "Zellij";
+                @memcpy(self.term_info.name[0..name.len], name);
+                self.term_info.name_len = name.len;
+            }
+        } else if (env_map.get("STY") != null) {
+            self.multiplexer = .screen;
+            self.skip_graphics_query = true;
             self.caps.unicode = .wcwidth;
             self.caps.explicit_cursor_positioning = true;
         } else if (env_map.get("TERM")) |term| {
             if (std.mem.startsWith(u8, term, "tmux")) {
-                self.in_tmux = true;
+                self.multiplexer = .tmux;
                 self.caps.unicode = .wcwidth;
                 self.caps.explicit_cursor_positioning = true;
             } else if (std.mem.startsWith(u8, term, "screen")) {
+                self.multiplexer = .screen;
                 self.skip_graphics_query = true;
                 self.caps.unicode = .wcwidth;
                 self.caps.explicit_cursor_positioning = true;
@@ -359,6 +703,20 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             if (std.mem.indexOf(u8, term, "alacritty") != null) {
                 self.caps.explicit_cursor_positioning = true;
             }
+        }
+    }
+
+    if (env_map.get("TERM")) |term| {
+        if (std.ascii.indexOfIgnoreCase(term, "256color") != null) {
+            self.caps.ansi256 = true;
+        }
+        self.applyNotificationHeuristic(term);
+        self.is_foot = self.is_foot or std.ascii.indexOfIgnoreCase(term, "foot") != null;
+    }
+
+    if (env_map.get("TERM_FEATURES")) |features| {
+        if (termFeaturesHasCode(features, "No")) {
+            self.setNotificationProtocol(.osc9, .heuristic);
         }
     }
 
@@ -372,14 +730,26 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
     if (!self.term_info.from_xtversion) {
         if (env_map.get("TERM_PROGRAM")) |prog| {
-            const copy_len = @min(prog.len, self.term_info.name.len);
-            @memcpy(self.term_info.name[0..copy_len], prog[0..copy_len]);
-            self.term_info.name_len = copy_len;
+            if (!self.isInZellij()) {
+                const copy_len = @min(prog.len, self.term_info.name.len);
+                @memcpy(self.term_info.name[0..copy_len], prog[0..copy_len]);
+                self.term_info.name_len = copy_len;
+            }
 
-            if (env_map.get("TERM_PROGRAM_VERSION")) |ver| {
-                const ver_len = @min(ver.len, self.term_info.version.len);
-                @memcpy(self.term_info.version[0..ver_len], ver[0..ver_len]);
-                self.term_info.version_len = ver_len;
+            if (!self.isInZellij() and std.mem.eql(u8, prog, "tmux")) {
+                self.multiplexer = .tmux;
+                self.caps.unicode = .wcwidth;
+                self.caps.explicit_cursor_positioning = true;
+            }
+
+            self.applyNotificationHeuristic(prog);
+
+            if (!self.isInZellij()) {
+                if (env_map.get("TERM_PROGRAM_VERSION")) |ver| {
+                    const ver_len = @min(ver.len, self.term_info.version.len);
+                    @memcpy(self.term_info.version[0..ver_len], ver[0..ver_len]);
+                    self.term_info.version_len = ver_len;
+                }
             }
         }
 
@@ -410,8 +780,26 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             std.mem.eql(u8, colorterm, "24bit"))
         {
             self.caps.rgb = true;
+            self.caps.ansi256 = true;
         }
     }
+
+    if (env_map.get("WT_SESSION") != null) {
+        self.caps.rgb = true;
+        self.caps.ansi256 = true;
+        self.setNotificationProtocol(.osc777, .heuristic);
+    }
+
+    if (env_map.get("OPENTUI_NOTIFICATION_PROTOCOL")) |protocol| {
+        self.applyNotificationProtocolOverride(protocol);
+    }
+    if (env_map.get("OPENTUI_NOTIFICATIONS")) |value| {
+        if (std.mem.eql(u8, value, "0") or std.ascii.eqlIgnoreCase(value, "false") or std.ascii.eqlIgnoreCase(value, "off")) {
+            self.applyNotificationProtocolOverride("none");
+        }
+    }
+
+    self.enforceNotificationProtocolForMultiplexer();
 
     if (!self.term_info.from_xtversion) {
         if (env_map.get("TERMUX_VERSION")) |_| {
@@ -475,7 +863,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             self.caps.osc52 = true;
         }
 
-        if (!self.caps.osc52 and (self.in_tmux or env_map.get("STY") != null)) {
+        if (!self.caps.osc52 and (self.isInTmux() or self.isInScreen() or env_map.get("STY") != null)) {
             self.caps.osc52 = true;
         }
 
@@ -497,6 +885,20 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
 }
 
+fn isRemoteSessionEnv(env_map: *const std.process.EnvMap) bool {
+    return env_map.get("SSH_CONNECTION") != null or
+        env_map.get("SSH_CLIENT") != null or
+        env_map.get("SSH_TTY") != null or
+        env_map.get("MOSH_CONNECTION") != null;
+}
+
+fn writeMouseDisableSequences(tty: anytype) !void {
+    try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
+    try tty.writeAll(ansi.ANSI.disableButtonEventTracking);
+    try tty.writeAll(ansi.ANSI.disableMouseTracking);
+    try tty.writeAll(ansi.ANSI.disableSGRMouseMode);
+}
+
 // TODO: Allow pixel mouse mode to be enabled,
 // currently does not make sense and is not supported by higher levels
 pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement: bool) !void {
@@ -509,6 +911,9 @@ pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement
     if (enable) {
         self.state.mouse = true;
         self.state.mouse_movement = enable_movement;
+        // Arms the shutdown cleanup path so resetState() will still emit mouse
+        // disable sequences even if a later best-effort disable silently fails.
+        self.state.mouse_was_enabled = true;
         if (!enable_movement) {
             // Some terminals treat ?1000/?1002/?1003 as one family and let the
             // last sequence win. Reset any-event tracking first, then enable
@@ -524,11 +929,16 @@ pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement
     } else {
         self.state.mouse = false;
         self.state.pixel_mouse = false;
-        try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
-        try tty.writeAll(ansi.ANSI.disableButtonEventTracking);
-        try tty.writeAll(ansi.ANSI.disableMouseTracking);
-        try tty.writeAll(ansi.ANSI.disableSGRMouseMode);
+        try writeMouseDisableSequences(tty);
     }
+}
+
+// Best-effort shutdown path: emit the reset sequences even if tracked state
+// already drifted to false because earlier writes failed.
+pub fn forceDisableMouseMode(self: *Terminal, tty: anytype) !void {
+    self.state.mouse = false;
+    self.state.pixel_mouse = false;
+    try writeMouseDisableSequences(tty);
 }
 
 pub fn setBracketedPaste(self: *Terminal, tty: anytype, enable: bool) !void {
@@ -640,6 +1050,10 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
 ///
 /// Parsing these is not complete yet
 pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
+    self.parseOsc99NotificationQuery(response);
+    self.parseItermCapabilities(response);
+    self.parseXtgettcapMs(response);
+
     // DECRPM responses
     if (std.mem.indexOf(u8, response, "1016;2$y")) |_| {
         self.caps.sgr_pixels = true;
@@ -660,24 +1074,55 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.bracketed_paste = true;
     }
 
-    // Explicit width detection - cursor position report [1;NR where N >= 2 means explicit width supported
-    // We look for ESC[1; followed by a digit >= 2
-    // This handles cases where the cursor isn't at exact home position when queries are sent
-    if (std.mem.indexOf(u8, response, "\x1b[1;")) |pos| {
-        const after = response[pos + 4 ..];
-        if (after.len > 0) {
-            var end: usize = 0;
-            while (end < after.len and after[end] >= '0' and after[end] <= '9') : (end += 1) {}
-            if (end > 0 and end < after.len and after[end] == 'R') {
-                const col = std.fmt.parseInt(u16, after[0..end], 10) catch 0;
-                if (col >= 2) {
-                    self.caps.explicit_width = true;
-                }
-                if (col >= 3) {
-                    self.caps.scaled_text = true;
-                }
+    // Parse cursor position reports: ESC[row;colR
+    // The first report after queryTerminalSend is the pre-home cursor position.
+    var scan_pos: usize = 0;
+    while (scan_pos < response.len) {
+        const esc_rel = std.mem.indexOf(u8, response[scan_pos..], "\x1b[") orelse break;
+        const esc = scan_pos + esc_rel;
+        var pos = esc + 2;
+
+        const row_start = pos;
+        while (pos < response.len and response[pos] >= '0' and response[pos] <= '9') : (pos += 1) {}
+        if (pos == row_start or pos >= response.len or response[pos] != ';') {
+            scan_pos = esc + 2;
+            continue;
+        }
+
+        const row = std.fmt.parseInt(u16, response[row_start..pos], 10) catch {
+            scan_pos = pos + 1;
+            continue;
+        };
+
+        pos += 1;
+        const col_start = pos;
+        while (pos < response.len and response[pos] >= '0' and response[pos] <= '9') : (pos += 1) {}
+        if (pos == col_start or pos >= response.len or response[pos] != 'R') {
+            scan_pos = col_start;
+            continue;
+        }
+
+        const col = std.fmt.parseInt(u16, response[col_start..pos], 10) catch {
+            scan_pos = pos + 1;
+            continue;
+        };
+
+        if (self.startup_cursor_query_pending and !self.startup_cursor_query_captured and row >= 1 and col >= 1) {
+            self.setCursorPosition(col, row, self.state.cursor.visible);
+            self.startup_cursor_query_captured = true;
+            self.startup_cursor_query_pending = false;
+        }
+
+        if (row == 1) {
+            if (col >= 2) {
+                self.caps.explicit_width = true;
+            }
+            if (col >= 3) {
+                self.caps.scaled_text = true;
             }
         }
+
+        scan_pos = pos + 1;
     }
 
     // Parse xtversion response: ESC P > | name version ESC \
@@ -696,6 +1141,7 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.kitty_graphics = true;
         self.caps.unicode = .unicode;
         self.caps.rgb = true;
+        self.caps.ansi256 = true;
         self.caps.sixel = true;
         self.caps.bracketed_paste = true;
         self.caps.hyperlinks = true;
@@ -767,6 +1213,33 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     }
 }
 
+fn parseXtgettcapMs(self: *Terminal, response: []const u8) void {
+    const prefix = "\x1bP";
+    var scan_pos: usize = 0;
+    while (std.mem.indexOfPos(u8, response, scan_pos, prefix)) |start| {
+        const body_start = start + prefix.len;
+        const end = std.mem.indexOfPos(u8, response, body_start, "\x1b\\") orelse return;
+        const body = response[body_start..end];
+        scan_pos = end + 2;
+
+        if (body.len < 6 or body[0] != '1') continue;
+        if (!std.mem.eql(u8, body[1..3], "+r")) continue;
+
+        const result = body[3..];
+        const separator = std.mem.indexOfScalar(u8, result, '=') orelse continue;
+        if (!std.ascii.eqlIgnoreCase(result[0..separator], "4d73")) continue;
+
+        const value = result[separator + 1 ..];
+        if (value.len == 0 or value.len % 2 != 0) continue;
+        for (value) |byte| {
+            if (!std.ascii.isHex(byte)) break;
+        } else {
+            self.osc52_support = .supported;
+            self.caps.osc52 = true;
+        }
+    }
+}
+
 fn isOsc52Term(value: []const u8) bool {
     return std.ascii.indexOfIgnoreCase(value, "iterm") != null or
         std.ascii.indexOfIgnoreCase(value, "kitty") != null or
@@ -815,7 +1288,7 @@ pub fn setCursorStyle(self: *Terminal, style: CursorStyle, blinking: bool) void 
     self.state.cursor.blinking = blinking;
 }
 
-pub fn setCursorColor(self: *Terminal, color: [4]f32) void {
+pub fn setCursorColor(self: *Terminal, color: ansi.RGBA) void {
     self.state.cursor.color = color;
 }
 
@@ -834,7 +1307,7 @@ pub fn getCursorStyle(self: *Terminal) struct { style: CursorStyle, blinking: bo
     };
 }
 
-pub fn getCursorColor(self: *Terminal) [4]f32 {
+pub fn getCursorColor(self: *Terminal) ansi.RGBA {
     return self.state.cursor.color;
 }
 
@@ -848,88 +1321,248 @@ pub fn setTerminalTitle(_: *Terminal, tty: anytype, title: []const u8) void {
     ansi.ANSI.setTerminalTitleOutput(tty, title) catch {};
 }
 
-/// Write OSC 52 clipboard sequence to the terminal
-/// Supports tmux/screen passthrough, including nested tmux sessions
-pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, payload: []const u8) !void {
-    if (!self.canWriteClipboard()) {
-        return error.NotSupported;
+fn writePassthroughSequence(self: *Terminal, tty: anytype, sequence: []const u8) !void {
+    const is_tmux = self.isInTmux();
+    if (is_tmux) {
+        try tty.writeAll(ansi.ANSI.tmuxDcsStart);
+        for (sequence) |c| {
+            if (c == '\x1b') try tty.writeByte('\x1b');
+            try tty.writeByte(c);
+        }
+        try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
+        return;
     }
 
-    var buf: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    const writer = stream.writer();
-
-    // Build OSC 52 sequence: ESC]52;<target>;<payload>ESC\
-    try writer.writeAll("\x1b]52;");
-    try writer.writeByte(target.toChar());
-    try writer.writeByte(';');
-    try writer.writeAll(payload);
-    try writer.writeAll("\x1b\\");
-
-    const osc52 = stream.getWritten();
-
-    // Use self.in_tmux which is set by checkEnvironmentOverrides() considering
-    // env vars, xtversion response, and remote option
-    const is_tmux = self.in_tmux or self.isXtversionTmux();
-
-    if (is_tmux) {
-        // For nested tmux, we use a fixed level of 1 as we don't have access
-        // to env vars here (by design - detection already happened in checkEnvironmentOverrides)
-        // In practice, single-level wrapping works for most cases
-        var wrapped_buf: [4096]u8 = undefined;
-        var wrapped_stream = std.io.fixedBufferStream(&wrapped_buf);
-        const wrap_writer = wrapped_stream.writer();
-        for (osc52) |c| {
-            if (c == '\x1b') {
-                try wrap_writer.writeByte('\x1b');
-            }
-            try wrap_writer.writeByte(c);
-        }
-        const doubled = wrapped_stream.getWritten();
-
-        try tty.writeAll(ansi.ANSI.tmuxDcsStart);
-        try tty.writeAll(doubled);
-        try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
-    } else if (self.opts.remote) {
-        try tty.writeAll(osc52);
-    } else {
+    if (!self.remote) {
         var env_map_storage: ?std.process.EnvMap = null;
-        const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
-            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
-                logger.err("Failed to get environment map: {}", .{err});
-                return;
-            };
-            break :blk &env_map_storage.?;
+        const env_map: ?*const std.process.EnvMap = self.opts.env_map orelse blk: {
+            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch null;
+            break :blk if (env_map_storage) |*map| map else null;
         };
         defer if (env_map_storage) |*map| map.deinit();
 
-        if (env_map.get("STY")) |_| {
-            var wrapped_buf: [2048]u8 = undefined;
-            var wrapped_stream = std.io.fixedBufferStream(&wrapped_buf);
-            const wrapped_writer = wrapped_stream.writer();
-
-            for (osc52) |c| {
-                if (c == '\x1b') {
-                    try wrapped_writer.writeByte('\x1b');
+        if (env_map) |map| {
+            if (map.get("STY") != null) {
+                try tty.writeAll(ansi.ANSI.screenDcsStart);
+                for (sequence) |c| {
+                    if (c == '\x1b') try tty.writeByte('\x1b');
+                    try tty.writeByte(c);
                 }
-                try wrapped_writer.writeByte(c);
+                try tty.writeAll(ansi.ANSI.screenDcsEnd);
+                return;
             }
-            const doubled = wrapped_stream.getWritten();
-
-            try tty.writeAll(ansi.ANSI.screenDcsStart);
-            try tty.writeAll(doubled);
-            try tty.writeAll(ansi.ANSI.screenDcsEnd);
-        } else {
-            try tty.writeAll(osc52);
         }
+    }
+
+    try tty.writeAll(sequence);
+}
+
+fn writeSanitizedNotificationText(writer: anytype, text: []const u8, replace_semicolon: bool) !void {
+    for (text) |c| {
+        if (c < 0x20 or c == 0x7f or c == '\x1b' or (replace_semicolon and c == ';')) {
+            try writer.writeByte(' ');
+        } else {
+            try writer.writeByte(c);
+        }
+    }
+}
+
+fn writeOsc99Payload(allocator: std.mem.Allocator, writer: anytype, id: []const u8, payload_type: []const u8, payload: []const u8, done: bool) !void {
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    const encoded_buf = try allocator.alloc(u8, encoded_len);
+    defer allocator.free(encoded_buf);
+    const encoded = std.base64.standard.Encoder.encode(encoded_buf, payload);
+
+    try writer.print("\x1b]99;i={s}:p={s}:e=1:d={d};", .{ id, payload_type, @intFromBool(done) });
+    try writer.writeAll(encoded);
+    try writer.writeAll("\x1b\\");
+}
+
+pub fn writeNotification(self: *Terminal, allocator: std.mem.Allocator, tty: anytype, message: []const u8, title: ?[]const u8) !bool {
+    if (!self.caps.notifications or self.notification_protocol == .none) {
+        return false;
+    }
+
+    self.notification_id_counter +%= 1;
+
+    var buffer: std.ArrayListUnmanaged(u8) = .{};
+    defer buffer.deinit(allocator);
+    const writer = buffer.writer(allocator);
+
+    switch (self.notification_protocol) {
+        .none => return false,
+        .osc99 => {
+            const id = try std.fmt.allocPrint(allocator, "opentui-{d}", .{self.notification_id_counter});
+            defer allocator.free(id);
+
+            if (title) |notification_title| {
+                if (notification_title.len > 0) {
+                    try writeOsc99Payload(allocator, writer, id, "title", notification_title, false);
+                    try writeOsc99Payload(allocator, writer, id, "body", message, true);
+                } else {
+                    try writeOsc99Payload(allocator, writer, id, "body", message, true);
+                }
+            } else {
+                try writeOsc99Payload(allocator, writer, id, "body", message, true);
+            }
+        },
+        .osc777 => {
+            try writer.writeAll("\x1b]777;notify;");
+            if (title) |notification_title| {
+                try writeSanitizedNotificationText(writer, notification_title, true);
+                try writer.writeByte(';');
+                try writeSanitizedNotificationText(writer, message, true);
+            } else {
+                try writeSanitizedNotificationText(writer, message, true);
+                try writer.writeByte(';');
+            }
+            try writer.writeAll("\x1b\\");
+        },
+        .osc9 => {
+            try writer.writeAll("\x1b]9;");
+            if (title) |notification_title| {
+                if (notification_title.len > 0) {
+                    try writeSanitizedNotificationText(writer, notification_title, false);
+                    try writer.writeAll(": ");
+                }
+            }
+            try writeSanitizedNotificationText(writer, message, false);
+            try writer.writeAll("\x1b\\");
+        },
+    }
+
+    try self.writePassthroughSequence(tty, buffer.items);
+    return true;
+}
+
+/// Return the exact number of bytes emitted by writeClipboard.
+pub fn clipboardSequenceSize(self: *Terminal, payload_len: usize) !usize {
+    if (payload_len > CLIPBOARD_PAYLOAD_SIZE_MAX) return error.ClipboardPayloadTooLarge;
+    const padded_len = try std.math.add(usize, payload_len, 2);
+    const encoded_len = try std.math.mul(usize, @divFloor(padded_len, 3), 4);
+    const sequence_len = try std.math.add(usize, encoded_len, OSC52_FRAMING_SIZE);
+
+    if (self.isInTmux()) {
+        const wrapped_len = try std.math.add(usize, sequence_len, 2);
+        return std.math.add(usize, wrapped_len, ansi.ANSI.tmuxDcsStart.len + ansi.ANSI.tmuxDcsEnd.len);
+    }
+
+    if (self.isInScreen()) {
+        const escaped_len = try std.math.add(usize, encoded_len, PASSTHROUGH_ESCAPED_OSC52_SIZE);
+        const chunk_count = @divFloor(escaped_len - 1, SCREEN_PASSTHROUGH_CHUNK_SIZE) + 1;
+        const envelopes_len = try std.math.mul(usize, chunk_count, ansi.ANSI.screenDcsStart.len + ansi.ANSI.screenDcsEnd.len);
+        return std.math.add(usize, escaped_len, envelopes_len);
+    }
+
+    return sequence_len;
+}
+
+/// Write OSC 52 clipboard sequence to the terminal from raw clipboard bytes.
+/// Supports tmux/screen passthrough, including nested tmux sessions
+pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, text_utf8: []const u8) !void {
+    if (!self.canWriteClipboard()) {
+        return error.NotSupported;
+    }
+    _ = try self.clipboardSequenceSize(text_utf8.len);
+
+    if (self.isInTmux()) {
+        try tty.writeAll(ansi.ANSI.tmuxDcsStart);
+        try writeClipboardSequence(tty, target, text_utf8, true);
+        try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
+        return;
+    }
+
+    if (self.isInScreen()) {
+        var screen_writer = ScreenPassthroughWriter(@TypeOf(tty)).init(tty);
+        try writeClipboardSequence(&screen_writer, target, text_utf8, false);
+        try screen_writer.finish();
+        return;
+    }
+
+    try writeClipboardSequence(tty, target, text_utf8, false);
+}
+
+fn ScreenPassthroughWriter(comptime Writer: type) type {
+    return struct {
+        writer: Writer,
+        buffer: [SCREEN_PASSTHROUGH_CHUNK_SIZE]u8 = undefined,
+        length: usize = 0,
+
+        const Self = @This();
+
+        fn init(writer: Writer) Self {
+            return .{ .writer = writer };
+        }
+
+        pub fn writeAll(self: *Self, bytes: []const u8) !void {
+            for (bytes) |byte| try self.writeByte(byte);
+        }
+
+        pub fn writeByte(self: *Self, byte: u8) !void {
+            const encoded_length: usize = if (byte == '\x1b') 2 else 1;
+            if (self.length + encoded_length > self.buffer.len) try self.flush();
+
+            if (byte == '\x1b') {
+                self.buffer[self.length] = '\x1b';
+                self.length += 1;
+            }
+            self.buffer[self.length] = byte;
+            self.length += 1;
+        }
+
+        fn finish(self: *Self) !void {
+            try self.flush();
+        }
+
+        fn flush(self: *Self) !void {
+            if (self.length == 0) return;
+            try self.writer.writeAll(ansi.ANSI.screenDcsStart);
+            try self.writer.writeAll(self.buffer[0..self.length]);
+            try self.writer.writeAll(ansi.ANSI.screenDcsEnd);
+            self.length = 0;
+        }
+    };
+}
+
+fn writeClipboardSequence(writer: anytype, target: ClipboardTarget, text_utf8: []const u8, escape: bool) !void {
+    try writeClipboardBytes(writer, "\x1b]52;", escape);
+    try writer.writeByte(target.toChar());
+    try writer.writeByte(';');
+    try writeClipboardBase64(writer, text_utf8);
+    try writeClipboardBytes(writer, "\x1b\\", escape);
+}
+
+fn writeClipboardBase64(writer: anytype, source: []const u8) !void {
+    const source_chunk_size = 3 * 1024;
+    var encoded_buffer: [4 * 1024]u8 = undefined;
+    var offset: usize = 0;
+
+    while (offset < source.len) {
+        const chunk_len = @min(source.len - offset, source_chunk_size);
+        const chunk = source[offset .. offset + chunk_len];
+        const encoded = std.base64.standard.Encoder.encode(&encoded_buffer, chunk);
+        try writer.writeAll(encoded);
+        offset += chunk_len;
+    }
+}
+
+fn writeClipboardBytes(writer: anytype, bytes: []const u8, escape: bool) !void {
+    if (!escape) {
+        try writer.writeAll(bytes);
+        return;
+    }
+
+    for (bytes) |byte| {
+        if (byte == '\x1b') try writer.writeByte('\x1b');
+        try writer.writeByte(byte);
     }
 }
 
 /// Check if we can write to the clipboard (TTY and OSC 52 supported)
 fn canWriteClipboard(self: *Terminal) bool {
     // In a real TTY environment, we'd check isTTY here
-    // For now, we just check if OSC 52 is supported
-    return self.caps.osc52;
+    // Missing or inconclusive capability responses must not block optimistic emission.
+    return self.osc52_support != .unsupported;
 }
 
 /// Parse xtversion response string and extract terminal name and version
@@ -968,10 +1601,42 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     }
 
     self.term_info.from_xtversion = true;
+    self.is_foot = std.ascii.indexOfIgnoreCase(self.getTerminalName(), "foot") != null;
+    if (std.mem.eql(u8, self.getTerminalName(), "tmux")) {
+        self.multiplexer = .tmux;
+    } else if (std.ascii.eqlIgnoreCase(self.getTerminalName(), "Zellij")) {
+        self.multiplexer = .zellij;
+    } else {
+        self.multiplexer = .none;
+    }
+
+    if (!self.isInZellij()) {
+        if (detectNotificationProtocol(self.getTerminalName())) |protocol| {
+            self.setNotificationProtocol(protocol, .xtversion);
+        }
+    }
+
+    self.enforceNotificationProtocolForMultiplexer();
 }
 
 pub fn isXtversionTmux(self: *Terminal) bool {
     return self.term_info.from_xtversion and std.mem.eql(u8, self.getTerminalName(), "tmux");
+}
+
+pub fn isXtversionZellij(self: *Terminal) bool {
+    return self.term_info.from_xtversion and std.ascii.eqlIgnoreCase(self.getTerminalName(), "Zellij");
+}
+
+pub fn isInTmux(self: *Terminal) bool {
+    return self.multiplexer == .tmux;
+}
+
+pub fn isInZellij(self: *Terminal) bool {
+    return self.multiplexer == .zellij;
+}
+
+pub fn isInScreen(self: *Terminal) bool {
+    return self.multiplexer == .screen;
 }
 
 pub fn getTerminalInfo(self: *Terminal) TerminalInfo {

@@ -369,10 +369,10 @@ describe("DiffRenderable with SolidJS", () => {
     })
 
     // Use the actual diff content from the demo
-    const diffContent = `Index: packages/core/src/examples/index.ts
+    const diffContent = `Index: packages/examples/src/index.ts
 ===================================================================
---- packages/core/src/examples/index.ts	before
-+++ packages/core/src/examples/index.ts	after
+--- packages/examples/src/index.ts	before
++++ packages/examples/src/index.ts	after
 @@ -56,6 +56,7 @@
  import * as terminalDemo from "./terminal"
  import * as diffDemo from "./diff-demo"

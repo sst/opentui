@@ -1,7 +1,7 @@
-import { toArrayBuffer, type Pointer } from "bun:ffi"
+import { toArrayBuffer, type Pointer } from "./platform/ffi.js"
 import { resolveRenderLib } from "./zig.js"
 import { SpanInfoStruct } from "./zig-structs.js"
-import type { GrowthPolicy, NativeSpanFeedOptions, NativeSpanFeedStats } from "./zig-structs.js"
+import type { NativeSpanFeedOptions } from "./zig-structs.js"
 
 export type { GrowthPolicy, NativeSpanFeedOptions, NativeSpanFeedStats } from "./zig-structs.js"
 
@@ -13,16 +13,6 @@ const enum EventId {
   StateBuffer = 8,
 }
 
-function toPointer(value: number | bigint): Pointer {
-  if (typeof value === "bigint") {
-    if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new Error("Pointer exceeds safe integer range")
-    }
-    return Number(value) as Pointer
-  }
-  return value as Pointer
-}
-
 function toNumber(value: number | bigint): number {
   return typeof value === "bigint" ? Number(value) : value
 }
@@ -31,8 +21,15 @@ type StreamEventHandler = (eventId: number, arg0: Pointer, arg1: number | bigint
 
 export type DataHandler = (data: Uint8Array) => void | Promise<void>
 
+const canThrowAcrossNativeCallback =
+  typeof process !== "undefined" &&
+  typeof process.versions === "object" &&
+  process.versions !== null &&
+  typeof process.versions.bun === "string"
+
 /**
  * Zero-copy wrapper over Zig memory; not a full stream interface.
+ * Chunk and state typed-array views are borrowed and invalid after destroy.
  */
 export class NativeSpanFeed {
   static create(options?: NativeSpanFeedOptions): NativeSpanFeed {
@@ -52,16 +49,15 @@ export class NativeSpanFeed {
     return stream
   }
 
-  static attach(streamPtr: bigint | number, _options?: NativeSpanFeedOptions): NativeSpanFeed {
+  static attach(streamPtr: Pointer, _options?: NativeSpanFeedOptions): NativeSpanFeed {
     const lib = resolveRenderLib()
-    const ptr = toPointer(streamPtr)
-    const stream = new NativeSpanFeed(ptr)
+    const stream = new NativeSpanFeed(streamPtr)
 
-    lib.registerNativeSpanFeedStream(ptr, stream.eventHandler)
+    lib.registerNativeSpanFeedStream(streamPtr, stream.eventHandler)
 
-    const status = lib.attachNativeSpanFeed(ptr)
+    const status = lib.attachNativeSpanFeed(streamPtr)
     if (status !== 0) {
-      lib.unregisterNativeSpanFeedStream(ptr)
+      lib.unregisterNativeSpanFeedStream(streamPtr)
       throw new Error(`Failed to attach stream: ${status}`)
     }
 
@@ -86,6 +82,9 @@ export class NativeSpanFeed {
   private pendingAsyncHandlers = 0
   private inCallback = false
   private closeQueued = false
+  private idleResolvers: Array<() => void> = []
+  private pendingHandlerError: unknown = null
+  private pendingHandlerErrorQueued = false
 
   private constructor(streamPtr: Pointer) {
     this.streamPtr = streamPtr
@@ -115,6 +114,18 @@ export class NativeSpanFeed {
     return () => this.errorHandlers.delete(handler)
   }
 
+  private hasPinnedChunks(): boolean {
+    if (!this.stateBuffer) return false
+    for (const refcount of this.stateBuffer) {
+      if (refcount > 0) return true
+    }
+    return false
+  }
+
+  isBackpressured(): boolean {
+    return this.pendingAsyncHandlers > 0 || this.pendingDataAvailable || this.hasPinnedChunks()
+  }
+
   close(): void {
     if (this.destroyed) return
     if (this.inCallback || this.draining || this.pendingAsyncHandlers > 0) {
@@ -136,6 +147,7 @@ export class NativeSpanFeed {
     if (this.inCallback || this.draining || this.pendingAsyncHandlers > 0) return
     this.pendingClose = false
     this.performClose()
+    this.resolveIdleIfNeeded()
   }
 
   private performClose(): void {
@@ -164,6 +176,32 @@ export class NativeSpanFeed {
     this.dataHandlers.clear()
     this.errorHandlers.clear()
     this.pendingDataAvailable = false
+    this.resolveIdleIfNeeded()
+  }
+
+  private isIdle(): boolean {
+    return (
+      !this.inCallback &&
+      !this.draining &&
+      this.pendingAsyncHandlers === 0 &&
+      !this.pendingDataAvailable &&
+      !this.hasPinnedChunks()
+    )
+  }
+
+  private resolveIdleIfNeeded(): void {
+    if (!this.isIdle()) return
+    const resolvers = this.idleResolvers.splice(0)
+    for (const resolve of resolvers) {
+      resolve()
+    }
+  }
+
+  idle(): Promise<void> {
+    if (this.isIdle()) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      this.idleResolvers.push(resolve)
+    })
   }
 
   private handleEvent(eventId: number, arg0: Pointer, arg1: number | bigint): void {
@@ -200,7 +238,7 @@ export class NativeSpanFeed {
           break
         }
         case EventId.Error: {
-          const code = arg0
+          const code = toNumber(arg0)
           for (const handler of this.errorHandlers) handler(code)
           break
         }
@@ -213,6 +251,7 @@ export class NativeSpanFeed {
       }
     } finally {
       this.inCallback = false
+      this.resolveIdleIfNeeded()
     }
   }
 
@@ -221,6 +260,29 @@ export class NativeSpanFeed {
       const prev = this.stateBuffer[chunkIndex]
       this.stateBuffer[chunkIndex] = prev > 0 ? prev - 1 : 0
     }
+  }
+
+  private queuePendingHandlerError(error: unknown): void {
+    this.pendingHandlerError ??= error
+    if (this.pendingHandlerErrorQueued) return
+
+    this.pendingHandlerErrorQueued = true
+    queueMicrotask(() => {
+      this.pendingHandlerErrorQueued = false
+      if (this.pendingHandlerError === null) return
+
+      const pendingError = this.pendingHandlerError
+      this.pendingHandlerError = null
+      throw pendingError
+    })
+  }
+
+  private throwPendingHandlerError(): void {
+    if (this.pendingHandlerError === null) return
+
+    const pendingError = this.pendingHandlerError
+    this.pendingHandlerError = null
+    throw pendingError
   }
 
   private drainOnce(): number {
@@ -275,6 +337,7 @@ export class NativeSpanFeed {
             this.decrementRefcount(chunkIndex)
             this.pendingAsyncHandlers -= 1
             this.processPendingClose()
+            this.resolveIdleIfNeeded()
           })
         } else {
           this.decrementRefcount(span.chunkIndex)
@@ -284,9 +347,18 @@ export class NativeSpanFeed {
       }
     } finally {
       this.draining = false
+      this.resolveIdleIfNeeded()
     }
 
-    if (firstError) throw firstError
+    if (firstError) {
+      if (!this.inCallback || canThrowAcrossNativeCallback) {
+        throw firstError
+      }
+
+      // Node FFI terminates when JS exceptions cross a native callback boundary.
+      // Surface the error after the callback returns instead of swallowing it.
+      this.queuePendingHandlerError(firstError)
+    }
 
     return count
   }
@@ -295,6 +367,9 @@ export class NativeSpanFeed {
     let count = this.drainOnce()
     while (count > 0) {
       count = this.drainOnce()
+    }
+    if (!this.inCallback) {
+      this.throwPendingHandlerError()
     }
   }
 }

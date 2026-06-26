@@ -1,3 +1,5 @@
+import { stripANSI } from "../platform/runtime.js"
+
 export type PasteKind = "text" | "binary" | "unknown"
 
 export interface PasteMetadata {
@@ -12,5 +14,5 @@ export function decodePasteBytes(bytes: Uint8Array): string {
 }
 
 export function stripAnsiSequences(text: string): string {
-  return Bun.stripANSI(text)
+  return stripANSI(text)
 }

@@ -2,6 +2,9 @@
 title: Renderer
 description: CliRenderer manages terminal output and the render loop
 order: 1
+skill:
+  entry: true
+  intents: [core, renderer, terminal, scrollback, lifecycle]
 ---
 
 # Renderer
@@ -24,24 +27,244 @@ const renderer = await createCliRenderer({
 The factory function does three things:
 
 1. Loads the native Zig rendering library
-2. Configures terminal settings (mouse, keyboard protocol, and alternate screen)
+2. Configures terminal settings (mouse, keyboard protocol, and the selected screen mode)
 3. Returns an initialized `CliRenderer` instance
 
 ## Configuration options
 
-| Option                | Type               | Default   | Description                                                                        |
-| --------------------- | ------------------ | --------- | ---------------------------------------------------------------------------------- |
-| `exitOnCtrlC`         | `boolean`          | `true`    | Call `renderer.destroy()` when Ctrl+C is pressed                                   |
-| `exitSignals`         | `NodeJS.Signals[]` | see below | Signals that trigger cleanup ([details](/core-concepts/lifecycle#signal-handling)) |
-| `targetFps`           | `number`           | `30`      | Target frames per second for the render loop                                       |
-| `maxFps`              | `number`           | `60`      | Maximum FPS for immediate re-renders                                               |
-| `useMouse`            | `boolean`          | `true`    | Enable mouse input and tracking                                                    |
-| `autoFocus`           | `boolean`          | `true`    | Focus nearest focusable on left click                                              |
-| `enableMouseMovement` | `boolean`          | `true`    | Track mouse movement (not just clicks)                                             |
-| `useAlternateScreen`  | `boolean`          | `true`    | Use terminal alternate screen buffer                                               |
-| `consoleOptions`      | `ConsoleOptions`   | -         | Options for the built-in console overlay                                           |
-| `openConsoleOnError`  | `boolean`          | `true`    | Auto-open console when errors occur (dev only)                                     |
-| `onDestroy`           | `() => void`       | -         | Callback executed when renderer is destroyed                                       |
+This page covers the options that most apps set directly. `CliRendererConfig` also includes lower-level hooks for testing and tuning, such as `clock`, `postProcessFns`, `prependInputHandlers`, `bufferedOutput`, `useThread`, and stats options.
+
+| Option                | Type                           | Default                          | Description                                                                             |
+| --------------------- | ------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------- |
+| `screenMode`          | `ScreenMode`                   | `"alternate-screen"`             | How the renderer uses terminal space ([details](#screen-modes))                         |
+| `footerHeight`        | `number`                       | `12`                             | Requested footer rows for `"split-footer"` mode                                         |
+| `stdin`               | `NodeJS.ReadStream`            | `process.stdin`                  | Input stream; raw mode is used when available                                           |
+| `stdout`              | `NodeJS.WriteStream`           | `process.stdout`                 | Output stream for native frames and stdout interception ([details](#custom-streams))    |
+| `width`               | `number`                       | `stdout.columns \|\| 80`         | Fallback columns for non-TTY/custom `stdout`                                            |
+| `height`              | `number`                       | `stdout.rows \|\| 24`            | Fallback rows for non-TTY/custom `stdout`                                               |
+| `remote`              | `boolean`                      | custom: `true`; process: `false` | Treat output as a remote terminal and skip default env forwarding                       |
+| `externalOutputMode`  | `ExternalOutputMode`           | varies                           | How writes to `stdout.write` are handled ([details](#external-output-mode))             |
+| `consoleMode`         | `ConsoleMode`                  | `"console-overlay"`              | How the built-in console overlay behaves ([details](#console-mode))                     |
+| `exitOnCtrlC`         | `boolean`                      | `true`                           | Call `renderer.destroy()` when Ctrl+C is pressed                                        |
+| `exitSignals`         | `NodeJS.Signals[]`             | see below                        | Signals that trigger cleanup ([details](/docs/core-concepts/lifecycle#signal-handling)) |
+| `clearOnShutdown`     | `boolean`                      | `true`                           | Clear the renderer-owned region on `suspend()` and `destroy()`                          |
+| `targetFps`           | `number`                       | `30`                             | Target frames per second for the render loop                                            |
+| `maxFps`              | `number`                       | `60`                             | Maximum FPS cap for immediate re-renders                                                |
+| `useMouse`            | `boolean`                      | `true`                           | Enable mouse input                                                                      |
+| `autoFocus`           | `boolean`                      | `true`                           | Focus the nearest focusable renderable on left click                                    |
+| `enableMouseMovement` | `boolean`                      | `true`                           | Track mouse movement, not just clicks and scrolls                                       |
+| `useKittyKeyboard`    | `KittyKeyboardOptions \| null` | `{}`                             | Kitty keyboard protocol settings, or `null` to disable                                  |
+| `backgroundColor`     | `ColorInput`                   | transparent                      | Background color for the render buffer                                                  |
+| `consoleOptions`      | `ConsoleOptions`               | -                                | Options forwarded to the built-in console overlay                                       |
+| `openConsoleOnError`  | `boolean`                      | `true` (dev)                     | Open the console overlay on uncaught errors                                             |
+| `onDestroy`           | `() => void`                   | -                                | Run after the renderer finishes cleanup                                                 |
+
+You can also change `screenMode`, `footerHeight`, `externalOutputMode`, and `consoleMode` at runtime through their
+matching `renderer` properties.
+
+## Screen modes
+
+The `screenMode` option controls whether OpenTUI owns the alternate screen or a reserved region of the main screen. You
+can also change modes at runtime by setting `renderer.screenMode`.
+
+### `"alternate-screen"` (default)
+
+Switches to the terminal's alternate screen buffer. The original scrollback content is preserved and restored when the
+renderer exits. This is the standard mode for full-screen TUI applications.
+
+```typescript
+const renderer = await createCliRenderer({
+  screenMode: "alternate-screen",
+})
+```
+
+### `"main-screen"`
+
+Renders on the terminal's main screen without switching buffers. OpenTUI still reserves a render region by scrolling terminal content, so this is not a true scrollback-native inline or direct renderer. Use it when you want the UI to stay on the main screen for testing, benchmarks, or short-lived tools.
+
+```typescript
+const renderer = await createCliRenderer({
+  screenMode: "main-screen",
+})
+```
+
+### `"split-footer"`
+
+Pins the renderer to a reserved footer region at the bottom of the terminal. The area above the footer stays available for normal program output. This is the closest thing OpenTUI currently has to a direct-render mode, but it still uses the same buffered main-screen renderer rather than a separate inline backend.
+
+The `footerHeight` option controls how many rows the footer requests (default: 12). When using split-footer mode, `externalOutputMode` defaults to `"capture-stdout"` so that writes to `stdout.write` can be replayed above the footer instead of overlapping it.
+
+```typescript
+const renderer = await createCliRenderer({
+  screenMode: "split-footer",
+  footerHeight: 20,
+})
+
+// Change footer height at runtime
+renderer.footerHeight = 15
+```
+
+Split-footer bookkeeping lives in the native renderer. A shared `SplitScrollback` model tracks the rows it has already published and the current tail column, so the footer pins to the bottom of the terminal as scrollback grows. Captured stdout and [scrollback writers](#writing-to-scrollback) both produce styled `OptimizedBuffer` snapshots. The native side emits these as ANSI alongside the footer repaint in one atomic frame. The renderer flushes pending output before `resize`, `suspend`, mode transitions, and `destroy`.
+
+Applications that can reconstruct their scrollback may opt into a destructive resize replay. `renderer.resetSplitFooterForReplay({ clearSavedLines: true })` clears the visible viewport and terminal saved lines, resets split-footer scrollback bookkeeping, and leaves the footer ready for newly appended snapshots. This method is only valid in split-footer capture mode.
+
+## External output mode
+
+The `externalOutputMode` option controls what happens to writes that go through the renderer's configured `stdout.write` while the renderer is active. It does not change `stderr`, the built-in console overlay, or renderer-owned frame bytes.
+
+Renderer-owned native frames go through the renderer output backend: `process.stdout` by default, or a custom `stdout` through `NativeSpanFeed`. `externalOutputMode` only changes application writes through the configured `stdout.write` path.
+
+- **`"capture-stdout"`**: Intercepts `stdout.write`, queues the text, and flushes it above the footer during split-footer renders. Only valid when `screenMode` is `"split-footer"`.
+- **`"passthrough"`**: Leaves `stdout.write` untouched. Output goes directly to the configured `stdout`.
+
+The default depends on the screen mode: `"capture-stdout"` for split-footer, `"passthrough"` for everything else.
+
+```typescript
+// Captured stdout appears above the footer
+const renderer = await createCliRenderer({
+  screenMode: "split-footer",
+  externalOutputMode: "capture-stdout",
+})
+
+// Switch at runtime
+renderer.externalOutputMode = "passthrough"
+```
+
+## Custom streams
+
+Pass `stdin` and `stdout` to run OpenTUI over another transport, such as SSH, a pty, or a WebSocket-backed xterm.js session:
+
+```typescript
+const renderer = await createCliRenderer({
+  stdin,
+  stdout,
+  width: cols,
+  height: rows,
+  exitOnCtrlC: false,
+  exitSignals: [],
+})
+```
+
+Initial size comes from `stdout.columns` / `stdout.rows`, then `width` / `height`, then `80x24`. For custom `stdout`, `remote` defaults to `true`; set `remote: false` only when the stream behaves like the local terminal and should receive default terminal env forwarding.
+
+Call `renderer.resize(cols, rows)` when the external terminal changes size. `SIGWINCH` is only registered for `process.stdout`.
+
+Each `stdin` or `stdout` object can be owned by one renderer at a time. `destroy()` releases ownership and restores `stdout.write`.
+
+## Console mode
+
+The `consoleMode` option controls the built-in console overlay (`TerminalConsole`).
+
+- **`"console-overlay"`** (default): Captures console output (console.log, console.error, etc.) and renders it in a toggleable panel within the TUI.
+- **`"disabled"`**: Hides and deactivates the overlay surface.
+
+Current caveat: `consoleMode` only changes the overlay surface.
+If you need plain `console.*` behavior, set `OTUI_USE_CONSOLE=false`.
+
+```typescript
+const renderer = await createCliRenderer({
+  screenMode: "split-footer",
+  externalOutputMode: "capture-stdout",
+  consoleMode: "disabled",
+})
+```
+
+## Writing to scrollback
+
+In split-footer mode with `externalOutputMode: "capture-stdout"`, the renderer also owns a programmatic append path above the footer. Use it when you want rich, styled output in scrollback instead of raw `console.log` text — colors, wrapping, syntax-highlighted code, and markdown. Every append goes through the same FIFO queue as captured stdout, so ordering stays deterministic even when both sources interleave.
+
+Both APIs require `screenMode: "split-footer"` and `externalOutputMode: "capture-stdout"`. They throw otherwise.
+
+### `renderer.writeToScrollback(writer)`
+
+Render a renderable tree into an off-screen buffer and commit it as one scrollback snapshot.
+
+```typescript
+import { TextRenderable } from "@opentui/core"
+
+renderer.writeToScrollback((ctx) => {
+  const root = new TextRenderable(ctx.renderContext, {
+    id: "api-response",
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: ctx.width,
+    height: 1,
+    content: "api responded in 12ms",
+    fg: "#8BD5CA",
+  })
+
+  return {
+    root,
+    width: ctx.width,
+    height: 1,
+    startOnNewLine: true,
+    trailingNewline: true,
+  }
+})
+```
+
+The writer receives a `ScrollbackRenderContext`:
+
+| Field           | Type            | Description                                             |
+| --------------- | --------------- | ------------------------------------------------------- |
+| `width`         | `number`        | Current renderer width                                  |
+| `widthMethod`   | `WidthMethod`   | Grapheme width method the renderer is using             |
+| `tailColumn`    | `number`        | Column where the previous scrollback commit ended       |
+| `renderContext` | `RenderContext` | Context you pass to new renderables inside the snapshot |
+
+And returns a `ScrollbackSnapshot`:
+
+| Field             | Type         | Description                                                                                  |
+| ----------------- | ------------ | -------------------------------------------------------------------------------------------- |
+| `root`            | `Renderable` | Top renderable that will be drawn into the snapshot buffer                                   |
+| `width`           | `number`     | Optional; defaults to the root's width, capped to renderer width                             |
+| `height`          | `number`     | Optional; defaults to the root's measured height                                             |
+| `rowColumns`      | `number`     | Optional explicit width for tail-column tracking (used for partial-row commits)              |
+| `startOnNewLine`  | `boolean`    | Insert a newline before this commit when the previous commit ended mid-row (default: `true`) |
+| `trailingNewline` | `boolean`    | Append a newline after the final row of this commit (default: `true`)                        |
+| `teardown`        | `() => void` | Optional cleanup hook invoked after the snapshot is rendered (e.g., dispose a Solid subtree) |
+
+Use `startOnNewLine: false` plus `trailingNewline: false` for inline output — for example, an icon prefix followed by streaming text.
+
+### `renderer.createScrollbackSurface(options?)`
+
+For streaming output that you want to render many times before committing (token-by-token code highlighting, markdown blocks settling as they parse), use a `ScrollbackSurface`. The surface renders into a backing buffer. You can re-render the tree in place and then commit specific row ranges to scrollback.
+
+```typescript
+const surface = renderer.createScrollbackSurface({ startOnNewLine: true })
+
+const code = new CodeRenderable(surface.renderContext, {
+  id: "streamed-code",
+  content: "",
+  filetype: "typescript",
+  syntaxStyle,
+  width: "100%",
+  streaming: true,
+  treeSitterClient,
+})
+surface.root.add(code)
+
+code.content = "const x = 1"
+await surface.settle() // waits for pending Tree-sitter highlighting
+
+// Commit the rows we've finished highlighting; the rest can keep re-rendering
+surface.commitRows(0, surface.height)
+
+// Later, when the stream is done:
+surface.destroy()
+```
+
+| Method                                      | Description                                                                      |
+| ------------------------------------------- | -------------------------------------------------------------------------------- |
+| `render()`                                  | Measure, lay out, and render the current tree into the backing buffer            |
+| `settle(timeoutMs?)`                        | Render, then wait for any in-flight Tree-sitter highlights before returning      |
+| `commitRows(start, endExclusive, options?)` | Copy a row range out of the backing buffer and enqueue it as a scrollback commit |
+| `destroy()`                                 | Tear down the surface and its backing buffer                                     |
+
+`commitRows` throws if you call it before `render()`, or if the renderer's width or `widthMethod` changed since the last `render()`. Re-render before committing fresh rows in either case.
+
+For React and Solid, use the binding-level helpers that wrap `writeToScrollback` with JSX support. See [`createScrollbackWriter` / `writeSolidToScrollback`](/docs/bindings/solid#scrollback-writers) in the Solid docs.
 
 ## The root renderable
 
@@ -78,6 +301,13 @@ renderer.start() // Start continuous rendering
 renderer.stop() // Stop the render loop
 ```
 
+You can change the render loop cadence at runtime. `targetFps` sets the steady-state continuous render rate. `maxFps` caps how often `requestRender()` can produce an immediate extra frame:
+
+```typescript
+renderer.targetFps = 60
+renderer.maxFps = 120
+```
+
 ### Live rendering
 
 For animations, call `requestLive()` to enable continuous rendering:
@@ -92,6 +322,15 @@ renderer.dropLive()
 
 Multiple components can request animations at the same time. The renderer stays live until all requests drop.
 
+### Waiting for idle
+
+`idle()` resolves when no render pass or scheduled render is pending. Use `getSchedulerState()` for diagnostics, especially in tests and custom-output sessions:
+
+```typescript
+await renderer.idle()
+const state = renderer.getSchedulerState()
+```
+
 ### Pause and suspend
 
 ```typescript
@@ -101,34 +340,57 @@ renderer.suspend() // Fully suspend (disables mouse, input, and raw mode)
 renderer.resume() // Resume from suspended state
 ```
 
+By default, suspending or destroying clears the region OpenTUI owns on the main screen. If you want to keep that
+content visible after shutdown, set `clearOnShutdown: false`:
+
+```typescript
+const renderer = await createCliRenderer({
+  screenMode: "split-footer",
+  clearOnShutdown: false,
+})
+```
+
 ## Key properties
 
-| Property                   | Type                 | Description                             |
-| -------------------------- | -------------------- | --------------------------------------- |
-| `root`                     | `RootRenderable`     | Root of the component tree              |
-| `width`                    | `number`             | Current render width in columns         |
-| `height`                   | `number`             | Current render height in rows           |
-| `console`                  | `TerminalConsole`    | Built-in console overlay                |
-| `keyInput`                 | `KeyHandler`         | Keyboard input handler                  |
-| `isRunning`                | `boolean`            | Whether the render loop is active       |
-| `isDestroyed`              | `boolean`            | Whether the renderer has been destroyed |
-| `currentFocusedRenderable` | `Renderable \| null` | Currently focused component             |
+| Property                   | Type                           | Description                                                             |
+| -------------------------- | ------------------------------ | ----------------------------------------------------------------------- |
+| `root`                     | `RootRenderable`               | Root of the component tree                                              |
+| `width`                    | `number`                       | Current render width in columns                                         |
+| `height`                   | `number`                       | Current render height in rows                                           |
+| `console`                  | `TerminalConsole`              | Built-in console overlay                                                |
+| `keyInput`                 | `KeyHandler`                   | Keyboard input handler                                                  |
+| `isRunning`                | `boolean`                      | Whether the render loop is active                                       |
+| `isDestroyed`              | `boolean`                      | Whether the renderer has been destroyed                                 |
+| `currentFocusedRenderable` | `Renderable \| null`           | Currently focused component                                             |
+| `screenMode`               | `ScreenMode`                   | Active screen mode; assignable to swap between modes at runtime         |
+| `footerHeight`             | `number`                       | Split-footer height; assignable to resize the footer                    |
+| `externalOutputMode`       | `ExternalOutputMode`           | Active stdout routing; assignable to switch between capture/passthrough |
+| `consoleMode`              | `ConsoleMode`                  | Active console overlay mode                                             |
+| `themeMode`                | `ThemeMode \| null`            | Detected terminal theme (`"dark"` / `"light"`)                          |
+| `capabilities`             | `TerminalCapabilities \| null` | Detected terminal capabilities                                          |
+| `targetFps`                | `number`                       | Target render loop FPS; assignable at runtime                           |
+| `maxFps`                   | `number`                       | Upper cap for immediate re-renders; assignable at runtime               |
 
 ## Events
 
 Use `renderer.on(event, callback)` to subscribe:
 
-| Event                 | Payload                           | Description                                                           |
-| --------------------- | --------------------------------- | --------------------------------------------------------------------- |
-| `resize`              | `(width: number, height: number)` | Terminal window resized                                               |
-| `focus`               | `()`                              | Terminal window gained focus                                          |
-| `blur`                | `()`                              | Terminal window lost focus                                            |
-| `theme_mode`          | `(mode: "dark" \| "light")`       | Terminal color scheme changed. See [Theme mode](#theme-mode) section. |
-| `capabilities`        | `(caps: Capabilities)`            | Terminal capabilities detected                                        |
-| `selection`           | `(selection: Selection)`          | Text selection completed                                              |
-| `destroy`             | `()`                              | Renderer destroyed                                                    |
-| `memory:snapshot`     | `(snapshot: MemorySnapshot)`      | Memory usage snapshot available                                       |
-| `debugOverlay:toggle` | `(enabled: boolean)`              | Debug overlay visibility changed                                      |
+| Event                 | Payload                                   | Description                                                           |
+| --------------------- | ----------------------------------------- | --------------------------------------------------------------------- |
+| `resize`              | `(width: number, height: number)`         | Terminal window resized                                               |
+| `frame`               | `(event: { frameId: number })`            | A native frame rendered successfully                                  |
+| `external_output`     | `(event: CliRendererExternalOutputEvent)` | Split-footer captured output was queued; copy the snapshot if needed  |
+| `focus`               | `()`                                      | Terminal window gained focus                                          |
+| `blur`                | `()`                                      | Terminal window lost focus                                            |
+| `focused_renderable`  | `(current, previous)`                     | Focused renderable changed                                            |
+| `focused_editor`      | `(current, previous)`                     | Focused editor renderable changed                                     |
+| `theme_mode`          | `(mode: "dark" \| "light")`               | Terminal color scheme changed. See [Theme mode](#theme-mode) section. |
+| `palette`             | `(colors: TerminalColors)`                | Terminal palette was refreshed and changed                            |
+| `capabilities`        | `(caps: TerminalCapabilities)`            | Terminal capabilities detected                                        |
+| `selection`           | `(selection: Selection)`                  | Text selection completed                                              |
+| `destroy`             | `()`                                      | Renderer destroyed                                                    |
+| `memory:snapshot`     | `(snapshot: MemorySnapshot)`              | Memory usage snapshot available                                       |
+| `debugOverlay:toggle` | `(enabled: boolean)`                      | Debug overlay visibility changed                                      |
 
 ```typescript
 // Terminal resized
@@ -158,7 +420,12 @@ renderer.on("selection", (selection) => {
 
 ## Theme mode
 
-OpenTUI can detect the terminal's preferred color scheme (dark or light) when the terminal supports DEC mode 2031 color scheme updates. Read the current mode via `renderer.themeMode` and subscribe to `theme_mode` to react to changes. Possible values are `"dark"`, `"light"`, or `null` when unsupported, and no events fire in the unsupported case.
+OpenTUI detects the terminal's preferred color scheme (dark or light) through two mechanisms:
+
+1. **DEC mode 2031** (`CSI ? 997 ; ... n`): terminals that support it report changes live.
+2. **OSC 10/11 fallback**: if the terminal does not support DEC 2031, OpenTUI inspects the terminal's foreground and background colors, then derives the mode from the background brightness.
+
+Read the current mode via `renderer.themeMode` (`"dark"`, `"light"`, or `null` before detection completes) and subscribe to the `theme_mode` event for later changes.
 
 ```typescript
 import { type ThemeMode } from "@opentui/core"
@@ -168,6 +435,87 @@ const mode = renderer.themeMode
 renderer.on("theme_mode", (nextMode: ThemeMode) => {
   console.log("Theme mode changed:", nextMode)
 })
+```
+
+DEC 2031 always wins over the OSC fallback, so a terminal that starts without DEC support but gains it later still reports the correct mode.
+
+### `waitForThemeMode(timeoutMs?)`
+
+Use `waitForThemeMode` if you need to block briefly for theme detection at startup — for example, to pick a light or dark color palette before the first paint. It resolves with the detected mode, or `null` if the timeout elapses before either source reports.
+
+```typescript
+const mode = await renderer.waitForThemeMode(1000) // defaults to 1000 ms
+```
+
+Pass `0` to read the current mode synchronously without waiting.
+
+## Terminal integration
+
+These methods drive the terminal emulator directly, outside of the render buffer:
+
+They write through the renderer output backend, so custom `stdout` sessions receive the same terminal-control sequences as local TTY sessions.
+
+### Terminal title and background
+
+```typescript
+renderer.setTerminalTitle("OpenTUI – editing notes.md")
+
+// Set the render buffer background. OpenTUI also emits OSC 11
+// so the terminal's own background matches.
+renderer.setBackgroundColor("#0D1117")
+
+// Reset terminal background to its theme default via OSC 111
+renderer.resetTerminalBgColor()
+```
+
+`destroy()` and `suspend()` call `resetTerminalBgColor()` for you. Call it yourself only for cases the renderer does not own — for example, before pausing with SIGTSTP.
+
+### OSC 52 clipboard
+
+OpenTUI can set and clear the terminal's clipboard via OSC 52. This works across SSH sessions and remote editors. Terminals that opt out silently ignore these calls.
+
+```typescript
+import { ClipboardTarget } from "@opentui/core"
+
+if (renderer.isOsc52Supported()) {
+  renderer.copyToClipboardOSC52("https://opentui.dev")
+  renderer.clearClipboardOSC52()
+}
+
+// Target specific OSC 52 selections
+renderer.copyToClipboardOSC52("primary", ClipboardTarget.Primary)
+renderer.copyToClipboardOSC52("secondary", ClipboardTarget.Secondary)
+```
+
+`ClipboardTarget` provides `Clipboard`, `Primary`, `Select`, and `Secondary`,
+which map to the OSC 52 `c`, `p`, `s`, and `q` selection bytes respectively.
+Both methods return `false` when capability policy blocks the operation or
+OpenTUI cannot construct the sequence, for example after renderer destruction.
+A `true` result means the renderer output path was invoked; it does not prove
+that every output backend accepted the bytes. OSC 52 also does not acknowledge
+terminal acceptance or a clipboard change.
+
+### Notifications
+
+Trigger a terminal-mediated desktop notification:
+
+```typescript
+renderer.triggerNotification("Build finished", "OpenTUI")
+```
+
+The method returns `false` when no OSC notification protocol was detected. See [Notifications](/docs/core-concepts/notifications) for details.
+
+### Raw OSC sequences
+
+Subscribe to raw OSC sequences the terminal emits — palette queries, cursor position reports, custom escape codes. Use this when you integrate OpenTUI with a terminal feature that does not have a dedicated API yet.
+
+```typescript
+const unsubscribe = renderer.subscribeOsc((sequence) => {
+  // sequence is the full ESC ] ... BEL / ST payload
+})
+
+// later
+unsubscribe()
 ```
 
 ## Cursor control
@@ -248,17 +596,25 @@ renderer.destroy()
 
 Destroying the renderer restores the terminal to its original state, disables mouse tracking, and cleans up resources.
 
+For custom stream transports, destroy the renderer before closing the socket or channel. If the transport closes immediately, allow one microtask so feed-backed shutdown bytes can flush:
+
+```typescript
+renderer.destroy()
+await new Promise<void>((resolve) => queueMicrotask(resolve))
+channel.close()
+```
+
 **Important:** OpenTUI does not automatically clean up on `process.exit` or unhandled errors. This design gives you control. See [Lifecycle](/docs/core-concepts/lifecycle/) for signal handling options and best practices.
 
 ## Environment variables
 
-| Variable                    | Description                                  |
-| --------------------------- | -------------------------------------------- |
-| `OTUI_USE_ALTERNATE_SCREEN` | Override alternate screen setting            |
-| `OTUI_SHOW_STATS`           | Show debug overlay at startup                |
-| `OTUI_DEBUG`                | Enable debug input capture                   |
-| `OTUI_NO_NATIVE_RENDER`     | Disable native rendering (for debugging)     |
-| `OTUI_DUMP_CAPTURES`        | Dump captured output when the renderer exits |
-| `OTUI_OVERRIDE_STDOUT`      | Override stdout stream (for debugging)       |
-| `OTUI_USE_CONSOLE`          | Enable/disable built-in console              |
-| `SHOW_CONSOLE`              | Show console at startup                      |
+See the [environment variable reference](/docs/reference/env-vars) for the full list.
+
+The renderer-specific ones you will most likely care about are:
+
+- `OTUI_USE_CONSOLE` controls global `console.*` capture.
+- `SHOW_CONSOLE` opens the built-in console overlay at startup.
+- `OTUI_USE_ALTERNATE_SCREEN` forces `screenMode` to `"alternate-screen"` or `"main-screen"` when set.
+- `OTUI_OVERRIDE_STDOUT` forces stdout routing: `true` captures only in `"split-footer"`, `false` uses passthrough.
+- `OTUI_NO_NATIVE_RENDER` skips the Zig/native frame renderer. In `"split-footer"` mode, the current output flush path can still write ANSI.
+- `OTUI_DUMP_CAPTURES` dumps captured stdout and console caches from the renderer exit handler.

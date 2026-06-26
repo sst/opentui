@@ -34,22 +34,32 @@ If your app loads plugin modules from disk at runtime, import this once in your 
 import "@opentui/core/runtime-plugin-support"
 ```
 
-This installs Bun runtime support for `@opentui/core` plus default core runtime entrypoints (`@opentui/core/3d`, `@opentui/core/testing`).
+This installs Bun runtime support for `@opentui/core` plus default core runtime entrypoints (`@opentui/core/testing`). Add first-party package runtime modules explicitly when a plugin imports them.
 
-If you need additional host-resolved modules, register your own plugin:
+If you need additional host-resolved modules, configure runtime support before the side-effect import is loaded:
 
 ```ts
-import { plugin } from "bun"
-import { createRuntimePlugin } from "@opentui/core/runtime-plugin"
+const { ensureRuntimePluginSupport } = await import("@opentui/core/runtime-plugin-support/configure")
 
-plugin(
-  createRuntimePlugin({
-    additional: {
-      "my-runtime-module": async () => (await import("./runtime-module")) as Record<string, unknown>,
-    },
-  }),
-)
+ensureRuntimePluginSupport({
+  additional: {
+    "my-runtime-module": { marker: "ok" },
+  },
+})
 ```
+
+For plugins that import `@opentui/three`, install `@opentui/three` in the host app and pass its runtime module map:
+
+```ts
+import { runtimeModules as threeRuntimeModules } from "@opentui/three/runtime-modules"
+import { ensureRuntimePluginSupport } from "@opentui/core/runtime-plugin-support/configure"
+
+ensureRuntimePluginSupport({
+  additional: threeRuntimeModules,
+})
+```
+
+The side-effect import and configurable entrypoint install the same runtime plugin. Late additions throw with a clear error instead of being ignored.
 
 ## `CorePlugin` interface
 
@@ -153,7 +163,13 @@ Because `SlotRenderable` extends `Renderable`, it accepts all standard layout op
 Resolve slot entries without mounting them. Useful when you need to inspect or render plugin output manually.
 
 ```typescript
-import { resolveCoreSlot } from "@opentui/core"
+import { createCliRenderer, createCoreSlotRegistry, resolveCoreSlot } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+const registry = createCoreSlotRegistry<"statusbar">(renderer, {
+  appName: "core-app",
+  version: "1.0.0",
+})
 
 const entries = resolveCoreSlot(registry, "statusbar")
 // Array<{ id: string, renderer: (ctx, data) => BaseRenderable }>
@@ -226,4 +242,4 @@ registry.onPluginError((event) => {
 })
 ```
 
-Example: `packages/core/src/examples/core-plugin-slots-demo.ts`
+Example: `packages/examples/src/core-plugin-slots-demo.ts`
