@@ -9,6 +9,22 @@ import {
 } from "./clipboard.js"
 import type { RendererHandle, RenderLib } from "../zig.js"
 
+const createDisposeFixture = () => {
+  let cleanupCount = 0
+  let disposePromise: Promise<void> | undefined
+  return {
+    dispose() {
+      disposePromise ??= Promise.resolve().then(() => {
+        cleanupCount++
+      })
+      return disposePromise
+    },
+    get cleanupCount() {
+      return cleanupCount
+    },
+  }
+}
+
 describe("clipboard", () => {
   let renderer: TestRenderer | null = null
 
@@ -41,24 +57,29 @@ describe("clipboard", () => {
 
   it("supports a host backend without platform-specific interfaces", async () => {
     const textBytes = new TextEncoder().encode("from Wayland")
+    const disposal = createDisposeFixture()
     const backend: HostClipboardBackend = {
       async read(options) {
         expect(options.preferredTypes).toEqual(["image/png", "text/plain"])
         expect(options.selection).toBe("primary")
         expect(options.maxBytes).toBe(8 * 1024 * 1024)
+        expect(options.timeoutMs).toBe(1_000)
         expect(options.signal).toBeInstanceOf(AbortSignal)
         return { status: "read", representation: { mimeType: "text/plain", bytes: textBytes } }
       },
       async writeText(text, options) {
         expect(text).toBe("copy me")
         expect(options.selection).toBe("primary")
+        expect(options.timeoutMs).toBe(1_000)
         expect(options.signal).toBeInstanceOf(AbortSignal)
         return { status: "written" }
       },
       async clear(options) {
         expect(options.selection).toBe("primary")
+        expect(options.timeoutMs).toBe(1_000)
         return { status: "cleared" }
       },
+      dispose: disposal.dispose,
     }
 
     const controller = new AbortController()
@@ -66,10 +87,15 @@ describe("clipboard", () => {
       preferredTypes: ["image/png", "text/plain"],
       selection: "primary",
       maxBytes: 8 * 1024 * 1024,
+      timeoutMs: 1_000,
       signal: controller.signal,
     })
-    const write = await backend.writeText("copy me", { selection: "primary", signal: controller.signal })
-    const clear = await backend.clear({ selection: "primary", signal: controller.signal })
+    const write = await backend.writeText("copy me", {
+      selection: "primary",
+      timeoutMs: 1_000,
+      signal: controller.signal,
+    })
+    const clear = await backend.clear({ selection: "primary", timeoutMs: 1_000, signal: controller.signal })
 
     expect(read.status).toBe("read")
     if (read.status === "read") {
@@ -77,9 +103,12 @@ describe("clipboard", () => {
     }
     expect(write.status).toBe("written")
     expect(clear.status).toBe("cleared")
+    await Promise.all([backend.dispose(), backend.dispose()])
+    expect(disposal.cleanupCount).toBe(1)
   })
 
   it("supports the final application-facing read and write flow", async () => {
+    const disposal = createDisposeFixture()
     const offered = [
       { mimeType: "image/png", bytes: new Uint8Array() },
       { mimeType: "text/plain", bytes: new TextEncoder().encode("fallback text") },
@@ -114,6 +143,7 @@ describe("clipboard", () => {
           terminal: { status: "attempted", capability: "supported" },
         }
       },
+      dispose: disposal.dispose,
     }
 
     const read = await clipboard.read({ preferredTypes: ["image/png", "text/plain"] })
@@ -137,9 +167,12 @@ describe("clipboard", () => {
     const cleared = await clipboard.clear({ destination: "all-available" })
     expect(cleared.host.status).toBe("cleared")
     expect(cleared.terminal.status).toBe("attempted")
+    await Promise.all([clipboard.dispose(), clipboard.dispose()])
+    expect(disposal.cleanupCount).toBe(1)
   })
 
   it("requires permission for remote host writes", async () => {
+    const disposal = createDisposeFixture()
     const remoteClipboard: ClipboardService = {
       async read() {
         return { status: "empty" }
@@ -157,6 +190,7 @@ describe("clipboard", () => {
           terminal: { status: "not-attempted", capability: "unknown" },
         }
       },
+      dispose: disposal.dispose,
     }
 
     const denied = await remoteClipboard.writeText("remote text", { destination: "host-only" })
@@ -167,10 +201,13 @@ describe("clipboard", () => {
 
     expect(denied.host.status).toBe("not-attempted")
     expect(allowed.host.status).toBe("written")
+    await Promise.all([remoteClipboard.dispose(), remoteClipboard.dispose()])
+    expect(disposal.cleanupCount).toBe(1)
   })
 
   it("sketches the default standard clipboard and explicit primary policy", async () => {
     const selections: string[] = []
+    const disposal = createDisposeFixture()
     const clipboard: ClipboardService = {
       async read(options) {
         selections.push(options.selection ?? "clipboard")
@@ -189,6 +226,7 @@ describe("clipboard", () => {
           terminal: { status: "not-attempted", capability: "unknown" },
         }
       },
+      dispose: disposal.dispose,
     }
 
     await clipboard.read({ preferredTypes: ["text/plain"] })
@@ -197,9 +235,12 @@ describe("clipboard", () => {
     await clipboard.writeText("primary", { destination: "host-only", selection: "primary" })
 
     expect(selections).toEqual(["clipboard", "primary", "clipboard", "primary"])
+    await Promise.all([clipboard.dispose(), clipboard.dispose()])
+    expect(disposal.cleanupCount).toBe(1)
   })
 
   it("does not redirect an unsupported primary selection to the standard clipboard", async () => {
+    const disposal = createDisposeFixture()
     const macosBackend: HostClipboardBackend = {
       async read(options) {
         expect(options.selection).toBe("primary")
@@ -213,6 +254,7 @@ describe("clipboard", () => {
         expect(options.selection).toBe("primary")
         return { status: "unsupported" }
       },
+      dispose: disposal.dispose,
     }
     const controller = new AbortController()
 
@@ -220,17 +262,25 @@ describe("clipboard", () => {
       preferredTypes: ["text/plain"],
       selection: "primary",
       maxBytes: 1024,
+      timeoutMs: 1_000,
       signal: controller.signal,
     })
-    const write = await macosBackend.writeText("text", { selection: "primary", signal: controller.signal })
-    const clear = await macosBackend.clear({ selection: "primary", signal: controller.signal })
+    const write = await macosBackend.writeText("text", {
+      selection: "primary",
+      timeoutMs: 1_000,
+      signal: controller.signal,
+    })
+    const clear = await macosBackend.clear({ selection: "primary", timeoutMs: 1_000, signal: controller.signal })
 
     expect(read.status).toBe("unsupported")
     expect(write.status).toBe("unsupported")
     expect(clear.status).toBe("unsupported")
+    await Promise.all([macosBackend.dispose(), macosBackend.dispose()])
+    expect(disposal.cleanupCount).toBe(1)
   })
 
   it("falls back from a local host failure for best-available writes", async () => {
+    const disposal = createDisposeFixture()
     const localClipboard: ClipboardService = {
       async read() {
         return { status: "empty" }
@@ -247,15 +297,19 @@ describe("clipboard", () => {
           terminal: { status: "attempted", capability: "unknown" },
         }
       },
+      dispose: disposal.dispose,
     }
 
     const result = await localClipboard.writeText("local text", { destination: "best-available" })
 
     expect(result.host.status).toBe("failed")
     expect(result.terminal.status).toBe("attempted")
+    await Promise.all([localClipboard.dispose(), localClipboard.dispose()])
+    expect(disposal.cleanupCount).toBe(1)
   })
 
   it("keeps empty text distinct from clearing", async () => {
+    const disposal = createDisposeFixture()
     const clipboard: ClipboardService = {
       async read() {
         return { status: "empty" }
@@ -274,11 +328,14 @@ describe("clipboard", () => {
           terminal: { status: "not-attempted", capability: "unknown" },
         }
       },
+      dispose: disposal.dispose,
     }
 
     await expect(clipboard.writeText("", { destination: "host-only" })).rejects.toThrow("non-empty text")
     await expect(clipboard.writeText("before\0after", { destination: "host-only" })).rejects.toThrow("NUL characters")
     expect((await clipboard.clear({ destination: "host-only" })).host.status).toBe("cleared")
+    await Promise.all([clipboard.dispose(), clipboard.dispose()])
+    expect(disposal.cleanupCount).toBe(1)
   })
 
   it("passes raw UTF-8 bytes to the native encoder", () => {
