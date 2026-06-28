@@ -47,6 +47,7 @@ interface AmbientStop {
 }
 
 type ColorMode = "video" | "ambient" | "fixed"
+type ViewportMode = "original" | "widescreen" | "cover"
 
 interface ColorCycleSpeed {
   name: string
@@ -75,6 +76,29 @@ interface ReceiverPalette {
   spectrum: readonly RGBA[]
 }
 
+interface VideoSampleResult {
+  intensity: number
+  edge: number
+  detail: number
+  difference: number
+}
+
+interface SourceCrop {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+interface CoverSamplingContext {
+  analysis: VideoFrameAnalysis
+  crop: SourceCrop
+  lowLuminance: number
+  highLuminance: number
+  viewportWidth: number
+  viewportHeight: number
+}
+
 const LOGO_SOURCE = ["▄▄▄ ▄▄▄ ▄▄▄ ▄▄  █▄▄ ▄ ▄ ▄", "█ █ █ █ █ ▀ █ █ █ ▄ █ █ █", "▀▀▀ █▀▀ ▀▀▀ ▀ ▀ ▀▀▀ ▀▀▀ ▀"]
 
 function doubleBlockLogo(lines: readonly string[]): string {
@@ -96,6 +120,7 @@ function doubleBlockLogo(lines: readonly string[]): string {
 }
 
 const ORIGINAL_LOGO = doubleBlockLogo(LOGO_SOURCE)
+const ORIGINAL_LOGO_HEIGHT = ORIGINAL_LOGO.split("\n").length
 const LOGO_PLATE_HEIGHT = 10
 const COLOR_STOPS: readonly ColorStop[] = [
   { background: "#031B1C", foreground: "#24F4EE", shadow: "#149E99", accent: "#FF4FD8" },
@@ -133,10 +158,23 @@ const COLOR_CYCLE_SPEEDS: readonly ColorCycleSpeed[] = [
   { name: "normal", responseMs: 420, holdMs: 700, transitionMs: 1600 },
   { name: "fast", responseMs: 220, holdMs: 350, transitionMs: 850 },
 ]
+const VIEWPORT_MODES: readonly ViewportMode[] = ["original", "widescreen", "cover"]
+const TERMINAL_CELL_ASPECT = 2
+const WIDESCREEN_ASPECT_RATIO = 16 / 9
+const RECEIVER_WIDESCREEN_WIDTH = Math.round(RECEIVER_HEIGHT * TERMINAL_CELL_ASPECT * WIDESCREEN_ASPECT_RATIO)
+const HIGH_FIDELITY_DECODE_SCALE = 2
+const MAX_VIDEO_FRAME_WIDTH = VIDEO_FRAME_WIDTH * 3
 const RECEIVER_HALF_SIZE = 5
 const PRESENTATION_FPS = 24
 const PRESENTATION_INTERVAL_SECONDS = 1 / PRESENTATION_FPS
 const PALETTE_UPDATE_INTERVAL_MS = 125
+const ASPECT_BLOOM_DELAY_MS = 900
+const ASPECT_BLOOM_DURATION_MS = 7200
+const ASPECT_BLOOM_RESPONSE_MS = 360
+const BORDER_DISSOLVE_START = 0.14
+const BORDER_DISSOLVE_END = 0.74
+const LOGO_COLLAPSE_START = 0.08
+const LOGO_COLLAPSE_END = 0.52
 const AUDIO_CHANNELS = 2
 const AUDIO_TAP_CAPACITY_FRAMES = AUDIO_ANALYSIS_FRAMES * 16
 const AUDIO_DECAY_GRACE_MS = 75
@@ -147,6 +185,7 @@ const SHADOW_MEMORY_LIFETIME_MS = 850
 const SCENE_CUT_REVEAL_MS = 220
 const SHADOW_GLYPHS = ["⋅", "∙", "•", "⦁", "●"] as const
 const AUDIO_FIELD_GLYPHS = ["·", "∙", "◦", "○", "●"] as const
+const COVER_VIDEO_GLYPHS = [" ", "·", "∙", "•", "⦁", "●", "◉"] as const
 
 const rhythmAnalyzer = new AudioRhythmAnalyzer()
 const audioAnalysisBuffer = new AudioAnalysisBuffer(AUDIO_ANALYSIS_FRAMES, AUDIO_CHANNELS)
@@ -186,7 +225,8 @@ let colorMode: ColorMode = "video"
 let colorIndex = 0
 let colorCycleSpeedIndex = 2
 let shadowGlyphIndex = -1
-let equalizerProjectionVisible = true
+let equalizerProjectionVisible = false
+let viewportMode: ViewportMode = "widescreen"
 let helpVisible = false
 let videoName = ""
 let previousRendererTargetFps: number | null = null
@@ -195,6 +235,9 @@ let renderedPalette: ColorStop = COLOR_STOPS[0]!
 let receiverPalette = createReceiverPalette(renderedPalette)
 let smoothedSceneColor: VideoFrameColor | null = null
 let smoothedAccentColor: VideoFrameColor | null = null
+let aspectBloomProgress = 0
+let receiverViewportWidth = RECEIVER_WIDTH
+let receiverViewportHeight = RECEIVER_HEIGHT
 
 const TRANSPARENT = RGBA.fromValues(0, 0, 0, 0)
 
@@ -205,6 +248,102 @@ function clamp(value: number, min: number, max: number): number {
 function smoothstep(edgeStart: number, edgeEnd: number, value: number): number {
   const progress = clamp((value - edgeStart) / (edgeEnd - edgeStart), 0, 1)
   return progress * progress * (3 - 2 * progress)
+}
+
+function viewportCellToSourceCell(index: number, viewportLength: number, sourceLength: number): number {
+  return clamp(Math.floor(((index + 0.5) * sourceLength) / Math.max(1, viewportLength)), 0, sourceLength - 1)
+}
+
+function receiverAspectForSize(width: number, height: number): number {
+  return width / Math.max(1, height) / TERMINAL_CELL_ASPECT
+}
+
+function currentReceiverAspect(): number {
+  return receiverAspectForSize(receiverViewportWidth, receiverViewportHeight)
+}
+
+function coverReceiverWidth(): number {
+  return Math.max(1, rendererInstance?.width ?? RECEIVER_WIDESCREEN_WIDTH)
+}
+
+function coverReceiverHeight(): number {
+  return Math.max(1, rendererInstance?.height ?? RECEIVER_HEIGHT)
+}
+
+function decodeFrameWidthForRenderer(renderer: CliRenderer): number {
+  const targetWidth = Math.max(RECEIVER_WIDESCREEN_WIDTH, renderer.width) * HIGH_FIDELITY_DECODE_SCALE
+  return Math.max(VIDEO_FRAME_WIDTH, Math.min(MAX_VIDEO_FRAME_WIDTH, Math.round(targetWidth)))
+}
+
+function expandedReceiverWidth(): number {
+  return Math.max(RECEIVER_WIDTH, Math.min(RECEIVER_WIDESCREEN_WIDTH, coverReceiverWidth()))
+}
+
+function receiverWidthForProgress(progress: number): number {
+  return Math.round(RECEIVER_WIDTH + (expandedReceiverWidth() - RECEIVER_WIDTH) * clamp(progress, 0, 1))
+}
+
+function aspectBloomTarget(currentSeconds: number): number {
+  if (viewportMode === "original") return 0
+  if (viewportMode === "cover") return 1
+  const currentMs = Math.max(0, currentSeconds * 1000)
+  return smoothstep(0, 1, (currentMs - ASPECT_BLOOM_DELAY_MS) / ASPECT_BLOOM_DURATION_MS)
+}
+
+function receiverViewportWidthForProgress(progress: number): number {
+  return viewportMode === "cover" ? coverReceiverWidth() : receiverWidthForProgress(progress)
+}
+
+function receiverViewportHeightForProgress(): number {
+  return viewportMode === "cover" ? coverReceiverHeight() : RECEIVER_HEIGHT
+}
+
+function logoPlateHeightForBloom(): number {
+  if (viewportMode === "cover") return 0
+  const collapse = smoothstep(LOGO_COLLAPSE_START, LOGO_COLLAPSE_END, aspectBloomProgress)
+  return Math.round(LOGO_PLATE_HEIGHT * (1 - collapse))
+}
+
+function currentArtworkHeight(): number {
+  return receiverViewportHeight + logoPlateHeightForBloom()
+}
+
+function syncAspectBloomLayout(): void {
+  const logoRows = logoPlateHeightForBloom()
+  if (artwork) {
+    artwork.width = receiverViewportWidth
+    artwork.height = receiverViewportHeight + logoRows
+  }
+  if (receiverRenderable) {
+    receiverRenderable.width = receiverViewportWidth
+    receiverRenderable.height = receiverViewportHeight
+  }
+  if (logoPlate) {
+    logoPlate.width = receiverViewportWidth
+    logoPlate.height = logoRows
+    logoPlate.visible = logoRows > 0
+  }
+  if (logoText) logoText.visible = logoRows >= ORIGINAL_LOGO_HEIGHT
+  if (rendererInstance) updateArtworkAlignment(rendererInstance)
+}
+
+function updateAspectBloom(deltaTime: number, currentSeconds: number, immediate = false): void {
+  const target = aspectBloomTarget(currentSeconds)
+  if (immediate) aspectBloomProgress = target
+  else {
+    const safeDeltaMs = Number.isFinite(deltaTime) ? Math.max(0, Math.min(250, deltaTime)) : 0
+    const progress = 1 - Math.exp(-safeDeltaMs / ASPECT_BLOOM_RESPONSE_MS)
+    aspectBloomProgress += (target - aspectBloomProgress) * progress
+    if (Math.abs(target - aspectBloomProgress) < 0.001) aspectBloomProgress = target
+  }
+  receiverViewportWidth = receiverViewportWidthForProgress(aspectBloomProgress)
+  receiverViewportHeight = receiverViewportHeightForProgress()
+  syncAspectBloomLayout()
+}
+
+function cycleViewportMode(): void {
+  const index = VIEWPORT_MODES.indexOf(viewportMode)
+  viewportMode = VIEWPORT_MODES[(index + 1) % VIEWPORT_MODES.length]!
 }
 
 function linearToSrgb(channel: number): number {
@@ -427,10 +566,193 @@ function captureShadowMemory(): void {
   lastShadowMemoryAtMs = elapsedMs
 }
 
-function videoSample(
+function sourceCropForAspect(analysis: VideoFrameAnalysis, receiverAspect: number): SourceCrop {
+  const sourceAspect = analysis.sourceWidth / analysis.sourceHeight
+  const targetAspect = clamp(receiverAspect, 0.1, 4)
+  const cropWidth =
+    sourceAspect > targetAspect
+      ? Math.max(1, Math.min(analysis.sourceWidth, Math.round(analysis.sourceHeight * targetAspect)))
+      : analysis.sourceWidth
+  const cropHeight =
+    sourceAspect > targetAspect
+      ? analysis.sourceHeight
+      : Math.max(1, Math.min(analysis.sourceHeight, Math.round(analysis.sourceWidth / targetAspect)))
+  const movableWidth = analysis.sourceWidth - cropWidth
+  const movableHeight = analysis.sourceHeight - cropHeight
+  return {
+    left: Math.max(
+      0,
+      Math.min(movableWidth, Math.round((movableWidth * (clamp(analysis.cropCenter.x, -1, 1) + 1)) / 2)),
+    ),
+    top: Math.max(
+      0,
+      Math.min(movableHeight, Math.round((movableHeight * (clamp(analysis.cropCenter.y, -1, 1) + 1)) / 2)),
+    ),
+    width: cropWidth,
+    height: cropHeight,
+  }
+}
+
+function createCoverSamplingContext(viewportWidth: number, viewportHeight: number): CoverSamplingContext | null {
+  const analysis = frameAnalysis
+  if (!analysis || viewportMode !== "cover") return null
+  const crop = sourceCropForAspect(analysis, currentReceiverAspect())
+  const bins = new Uint32Array(64)
+  for (let row = crop.top; row < crop.top + crop.height; row += 1) {
+    const start = row * analysis.sourceWidth + crop.left
+    for (let index = start; index < start + crop.width; index += 1) {
+      bins[Math.min(bins.length - 1, Math.floor((analysis.sourceLuminance[index] ?? 0) * bins.length))]! += 1
+    }
+  }
+  const sampleCount = crop.width * crop.height
+  const lowTarget = Math.floor(sampleCount * 0.05)
+  const highTarget = Math.floor(sampleCount * 0.95)
+  let count = 0
+  let lowBin = 0
+  let highBin = bins.length - 1
+  for (let index = 0; index < bins.length; index += 1) {
+    count += bins[index]!
+    if (count >= lowTarget) {
+      lowBin = index
+      break
+    }
+  }
+  count = 0
+  for (let index = 0; index < bins.length; index += 1) {
+    count += bins[index]!
+    if (count >= highTarget) {
+      highBin = index
+      break
+    }
+  }
+  return {
+    analysis,
+    crop,
+    lowLuminance: lowBin / bins.length,
+    highLuminance: (highBin + 1) / bins.length,
+    viewportWidth,
+    viewportHeight,
+  }
+}
+
+function averageSourceLuminance(
+  luminance: Float32Array,
+  sourceWidth: number,
+  context: CoverSamplingContext,
   column: number,
   row: number,
-): { intensity: number; edge: number; detail: number; difference: number } {
+): number {
+  const viewportColumn = Math.max(0, Math.min(context.viewportWidth - 1, column))
+  const viewportRow = Math.max(0, Math.min(context.viewportHeight - 1, row))
+  const sourceLeft = context.crop.left + Math.floor((viewportColumn * context.crop.width) / context.viewportWidth)
+  const sourceTop = context.crop.top + Math.floor((viewportRow * context.crop.height) / context.viewportHeight)
+  const sourceRight = Math.min(
+    context.crop.left + context.crop.width,
+    context.crop.left +
+      Math.max(
+        sourceLeft - context.crop.left + 1,
+        Math.floor(((viewportColumn + 1) * context.crop.width) / context.viewportWidth),
+      ),
+  )
+  const sourceBottom = Math.min(
+    context.crop.top + context.crop.height,
+    context.crop.top +
+      Math.max(
+        sourceTop - context.crop.top + 1,
+        Math.floor(((viewportRow + 1) * context.crop.height) / context.viewportHeight),
+      ),
+  )
+  let total = 0
+  let samples = 0
+  for (let sourceY = sourceTop; sourceY < sourceBottom; sourceY += 1) {
+    const start = sourceY * sourceWidth + sourceLeft
+    for (let index = start; index < start + (sourceRight - sourceLeft); index += 1) {
+      total += luminance[index] ?? 0
+      samples += 1
+    }
+  }
+  return samples > 0 ? total / samples : 0
+}
+
+function normalizeCoverLuminance(value: number, context: CoverSamplingContext): number {
+  const range = context.highLuminance - context.lowLuminance
+  const normalized = range > 0.08 ? (value - context.lowLuminance) / range : value
+  return clamp(normalized, 0, 1) ** 0.82
+}
+
+function coverVideoSample(context: CoverSamplingContext, column: number, row: number): VideoSampleResult {
+  const raw = averageSourceLuminance(
+    context.analysis.sourceLuminance,
+    context.analysis.sourceWidth,
+    context,
+    column,
+    row,
+  )
+  const intensity = normalizeCoverLuminance(raw, context)
+  const left = normalizeCoverLuminance(
+    averageSourceLuminance(context.analysis.sourceLuminance, context.analysis.sourceWidth, context, column - 1, row),
+    context,
+  )
+  const right = normalizeCoverLuminance(
+    averageSourceLuminance(context.analysis.sourceLuminance, context.analysis.sourceWidth, context, column + 1, row),
+    context,
+  )
+  const up = normalizeCoverLuminance(
+    averageSourceLuminance(context.analysis.sourceLuminance, context.analysis.sourceWidth, context, column, row - 1),
+    context,
+  )
+  const down = normalizeCoverLuminance(
+    averageSourceLuminance(context.analysis.sourceLuminance, context.analysis.sourceWidth, context, column, row + 1),
+    context,
+  )
+  const previous = context.analysis.previousSourceLuminance
+  const previousRaw = previous
+    ? averageSourceLuminance(previous, context.analysis.sourceWidth, context, column, row)
+    : raw
+  const difference = previous
+    ? clamp(Math.abs(raw - previousRaw) / Math.max(0.08, context.highLuminance - context.lowLuminance), 0, 1)
+    : 0
+  const edge = clamp(Math.hypot(right - left, down - up) * 0.82, 0, 1)
+  const localMean = (left + right + up + down + intensity) / 5
+  return {
+    intensity,
+    edge,
+    detail: clamp(edge * 0.72 + Math.abs(intensity - localMean) * 1.8 + difference * 0.25, 0, 1),
+    difference,
+  }
+}
+
+function coverVideoStrength(sample: VideoSampleResult): number {
+  return clamp(sample.intensity * 0.78 + sample.detail * 0.36 + sample.difference * 0.18, 0, 1)
+}
+
+function coverVideoGlyph(strength: number): (typeof COVER_VIDEO_GLYPHS)[number] {
+  return COVER_VIDEO_GLYPHS[Math.min(COVER_VIDEO_GLYPHS.length - 1, Math.floor(strength * COVER_VIDEO_GLYPHS.length))]!
+}
+
+function coverVideoColor(sample: VideoSampleResult, strength: number, palette: ReceiverPalette): RGBA {
+  if (sample.difference > 0.18 || sample.edge > 0.22) return palette.accent
+  return strength > 0.46 ? palette.foreground : palette.shadow
+}
+
+function coverDisplacedCell(column: number, row: number, viewportWidth: number, viewportHeight: number): Vec2 {
+  if (!frameAnalysis) return { x: column, y: row }
+  const scale = Math.max(1, Math.min(viewportWidth / RECEIVER_WIDTH, viewportHeight / RECEIVER_HEIGHT))
+  const displacement = Math.min(5, Math.round(frameAnalysis.motionMagnitude * 18 * scale))
+  const bassDisplacement = choreography.bassImpact * (2 + rhythmAnalyzer.stereoWidth * 2) * scale
+  const midDisplacement = Math.round(choreography.midImpact * (1 + rhythmAnalyzer.stereoWidth * 2) * scale)
+  const impactPolarity = (row + Math.floor(column / Math.max(1, Math.round(viewportWidth / 14)))) % 2 === 0 ? -1 : 1
+  const centerX = Math.max(1, (viewportWidth - 1) * 0.5)
+  const centerY = Math.max(1, (viewportHeight - 1) * 0.5)
+  const radialX = ((column - centerX) / centerX) * bassDisplacement
+  const radialY = ((row - centerY) / centerY) * bassDisplacement * 0.5
+  return {
+    x: column - Math.sign(frameAnalysis.motionDirection.x) * displacement - radialX + impactPolarity * midDisplacement,
+    y: row - Math.sign(frameAnalysis.motionDirection.y) * displacement - radialY,
+  }
+}
+
+function videoSample(column: number, row: number): VideoSampleResult {
   if (!frameAnalysis) return { intensity: 0, edge: 0, detail: 0, difference: 0 }
   const displacement = Math.min(2, Math.round(frameAnalysis.motionMagnitude * 18))
   const bassDisplacement = choreography.bassImpact * (2 + rhythmAnalyzer.stereoWidth * 2)
@@ -474,24 +796,32 @@ function shadowGlyph(strength: number): (typeof SHADOW_GLYPHS)[number] {
 function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: number): void {
   const palette = receiverPalette
   const haloCenter = videoCenter()
-  for (let row = 0; row < RECEIVER_HEIGHT; row += 1) {
-    for (let column = 0; column < RECEIVER_WIDTH; column += 1) {
-      const border = row === 0 || row === RECEIVER_HEIGHT - 1 || column === 0 || column === RECEIVER_WIDTH - 1
-      if (border) {
+  const viewportWidth = Math.max(1, receiverViewportWidth)
+  const viewportHeight = Math.max(1, receiverViewportHeight)
+  const coverContext = createCoverSamplingContext(viewportWidth, viewportHeight)
+  const borderDissolve = coverContext ? 1 : smoothstep(BORDER_DISSOLVE_START, BORDER_DISSOLVE_END, aspectBloomProgress)
+  for (let row = 0; row < viewportHeight; row += 1) {
+    for (let column = 0; column < viewportWidth; column += 1) {
+      const sourceColumn = viewportCellToSourceCell(column, viewportWidth, RECEIVER_WIDTH)
+      const sourceRow = viewportCellToSourceCell(row, viewportHeight, RECEIVER_HEIGHT)
+      const border = row === 0 || row === viewportHeight - 1 || column === 0 || column === viewportWidth - 1
+      if (border && hashNoise(column * 0.37 + Math.floor(elapsedMs / 140), row * 2.17) >= borderDissolve) {
         const position =
-          row === 0 || row === RECEIVER_HEIGHT - 1 ? column / (RECEIVER_WIDTH - 1) : row / (RECEIVER_HEIGHT - 1)
+          row === 0 || row === viewportHeight - 1
+            ? column / Math.max(1, viewportWidth - 1)
+            : row / Math.max(1, viewportHeight - 1)
         const band = audioSpectrumBand(position)
         const spectrum = rhythmAnalyzer.spectrum[band] ?? 0
         const glyph =
           row === 0 && column === 0
             ? "┌"
-            : row === 0 && column === RECEIVER_WIDTH - 1
+            : row === 0 && column === viewportWidth - 1
               ? "┐"
-              : row === RECEIVER_HEIGHT - 1 && column === 0
+              : row === viewportHeight - 1 && column === 0
                 ? "└"
-                : row === RECEIVER_HEIGHT - 1 && column === RECEIVER_WIDTH - 1
+                : row === viewportHeight - 1 && column === viewportWidth - 1
                   ? "┘"
-                  : row === 0 || row === RECEIVER_HEIGHT - 1
+                  : row === 0 || row === viewportHeight - 1
                     ? spectrum > 0.5
                       ? "═"
                       : "─"
@@ -509,11 +839,89 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
       }
 
       const point = {
-        x: ((column + 0.5) / RECEIVER_WIDTH) * RECEIVER_HALF_SIZE * 2 - RECEIVER_HALF_SIZE,
-        y: ((row + 0.5) / RECEIVER_HEIGHT) * RECEIVER_HALF_SIZE * 2 - RECEIVER_HALF_SIZE,
+        x: ((column + 0.5) / viewportWidth) * RECEIVER_HALF_SIZE * 2 - RECEIVER_HALF_SIZE,
+        y: ((row + 0.5) / viewportHeight) * RECEIVER_HALF_SIZE * 2 - RECEIVER_HALF_SIZE,
       }
-      const sample = videoSample(column, row)
+      const coverCell = coverContext ? coverDisplacedCell(column, row, viewportWidth, viewportHeight) : null
+      const sample = coverContext
+        ? coverVideoSample(coverContext, coverCell!.x, coverCell!.y)
+        : videoSample(sourceColumn, sourceRow)
       const field = equalizerProjectionVisible ? audioField(point, haloCenter) : null
+
+      if (coverContext) {
+        const trebleSparkle = choreography.trebleImpact
+        if (
+          trebleSparkle > 0.12 &&
+          hashNoise(column + Math.floor(elapsedMs / 45), row * 2.1) > 0.993 - trebleSparkle * 0.01
+        ) {
+          buffer.setCell(
+            originX + column,
+            originY + row,
+            trebleSparkle > 0.62 ? "•" : "⋅",
+            palette.accent,
+            palette.background,
+          )
+          continue
+        }
+
+        if (field && field.strength > 0.11) {
+          const glyph = AUDIO_FIELD_GLYPHS[Math.min(AUDIO_FIELD_GLYPHS.length - 1, Math.floor(field.strength * 5))]!
+          buffer.setCell(originX + column, originY + row, glyph, palette.spectrum[field.band]!, palette.background)
+          continue
+        }
+
+        const cutAge = elapsedMs - lastSceneCutAtMs
+        const cutReveal = cutAge >= 0 && cutAge < SCENE_CUT_REVEAL_MS ? cutAge / SCENE_CUT_REVEAL_MS : 1
+        const revealed = hashNoise(column * 0.73, row * 1.37) <= cutReveal
+        if (!revealed) {
+          buffer.setCell(originX + column, originY + row, " ", TRANSPARENT, palette.background)
+          continue
+        }
+
+        const memoryColumn = viewportCellToSourceCell(Math.round(coverCell!.x), viewportWidth, RECEIVER_WIDTH)
+        const memoryRow = viewportCellToSourceCell(Math.round(coverCell!.y), viewportHeight, RECEIVER_HEIGHT)
+        let memoryStrength = 0
+        for (const memory of shadowMemories) {
+          const age = (elapsedMs - memory.capturedAt) / SHADOW_MEMORY_LIFETIME_MS
+          if (age < 0 || age > 1) continue
+          const detail = sampleFlowingContour(
+            memory.detail,
+            RECEIVER_WIDTH,
+            RECEIVER_HEIGHT,
+            memoryColumn,
+            memoryRow,
+            memory.velocityCells,
+            (elapsedMs - memory.capturedAt) / 1000,
+          )
+          if (hashNoise(column + Math.floor(memory.capturedAt / 120), row) > 0.5 + age * 0.34) {
+            memoryStrength = Math.max(memoryStrength, detail * (1 - age) * Math.min(1, memory.strength * 12))
+          }
+        }
+        if (memoryStrength > 0.1) {
+          buffer.setCell(
+            originX + column,
+            originY + row,
+            memoryStrength > 0.24 ? "∙" : "⋅",
+            palette.shadow,
+            palette.background,
+          )
+          continue
+        }
+
+        const strength = coverVideoStrength(sample)
+        if (strength > 0.035) {
+          buffer.setCell(
+            originX + column,
+            originY + row,
+            coverVideoGlyph(strength),
+            coverVideoColor(sample, strength, palette),
+            palette.background,
+          )
+        } else {
+          buffer.setCell(originX + column, originY + row, " ", TRANSPARENT, palette.background)
+        }
+        continue
+      }
 
       const contourStrength = Math.min(1, sample.detail + sample.difference * 0.9)
       const cutAge = elapsedMs - lastSceneCutAtMs
@@ -558,8 +966,8 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
           memory.detail,
           RECEIVER_WIDTH,
           RECEIVER_HEIGHT,
-          column,
-          row,
+          sourceColumn,
+          sourceRow,
           memory.velocityCells,
           (elapsedMs - memory.capturedAt) / 1000,
         )
@@ -610,7 +1018,7 @@ function updateControls(): void {
     `Shift+C     color speed: ${COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.name}`,
     "1 2 3 4     select fixed palette",
     `G           glyph: ${glyph}`,
-    `E           equalizer overlay: ${equalizerProjectionVisible ? "on" : "off"}`,
+    `E / W       equalizer: ${equalizerProjectionVisible ? "on" : "off"}  viewport: ${viewportMode}`,
     "? / Esc     close help",
     "Q           quit",
   ]
@@ -620,7 +1028,7 @@ function updateControls(): void {
           `Space ${playback}  M ${muted ? "muted" : "audio"}  R restart`,
           "←/→ seek .25s  Shift+←/→ seek 5s",
           `C colors ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}  Shift+C speed  1-4 fixed`,
-          `G glyph ${glyph}  E equalizer ${equalizerProjectionVisible ? "on" : "off"}`,
+          `G glyph ${glyph}  E equalizer ${equalizerProjectionVisible ? "on" : "off"}  W viewport ${viewportMode}`,
           "? / Esc close  Q quit",
         ].join("\n")
       : controls.join("\n")
@@ -643,7 +1051,10 @@ function resetAnalyzers(audioTapFrame: bigint): void {
 }
 
 function analyzePresentedFrame(rgba: Uint8Array, width: number, height: number): void {
-  const analysis = analyzeVideoFrame(rgba, width, height, frameAnalysis, { cropCenter: cropTracker.center })
+  const analysis = analyzeVideoFrame(rgba, width, height, frameAnalysis, {
+    cropCenter: cropTracker.center,
+    receiverAspect: currentReceiverAspect(),
+  })
   cropTracker.update(analysis.framingTarget, PRESENTATION_INTERVAL_SECONDS * 1000, analysis.isSceneCut)
   if (analysis.isSceneCut) {
     shadowMemories.length = 0
@@ -735,6 +1146,7 @@ function consumeAudioFrames(deltaTime: number): void {
 
 function createScene(renderer: CliRenderer): void {
   const palette = renderedPalette
+  const logoRows = logoPlateHeightForBloom()
   view = new BoxRenderable(renderer, {
     id: "shadow-cinema-spike",
     width: "100%",
@@ -746,21 +1158,21 @@ function createScene(renderer: CliRenderer): void {
   })
   artwork = new BoxRenderable(renderer, {
     id: "shadow-cinema-artwork",
-    width: RECEIVER_WIDTH,
-    height: RECEIVER_HEIGHT + LOGO_PLATE_HEIGHT,
+    width: receiverViewportWidth,
+    height: receiverViewportHeight + logoRows,
     flexDirection: "column",
     flexShrink: 0,
   })
   receiverRenderable = new VRenderable(renderer, {
     id: "shadow-cinema-receiver",
-    width: RECEIVER_WIDTH,
-    height: RECEIVER_HEIGHT,
+    width: receiverViewportWidth,
+    height: receiverViewportHeight,
     render: (buffer, _deltaTime, renderable) => renderReceiver(buffer, renderable.x, renderable.y),
   })
   logoPlate = new BoxRenderable(renderer, {
     id: "shadow-cinema-logo-plate",
-    width: RECEIVER_WIDTH,
-    height: LOGO_PLATE_HEIGHT,
+    width: receiverViewportWidth,
+    height: logoRows,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: palette.foreground,
@@ -776,13 +1188,19 @@ function createScene(renderer: CliRenderer): void {
   artwork.add(logoPlate)
   view.add(artwork)
   renderer.root.add(view)
+  syncAspectBloomLayout()
   updateArtworkAlignment(renderer)
 }
 
 function updateArtworkAlignment(renderer: CliRenderer): void {
   if (!view) return
-  view.alignItems = renderer.width < RECEIVER_WIDTH ? "flex-start" : "center"
-  view.justifyContent = renderer.height < RECEIVER_HEIGHT + LOGO_PLATE_HEIGHT ? "flex-start" : "center"
+  if (viewportMode === "cover") {
+    view.alignItems = "flex-start"
+    view.justifyContent = "flex-start"
+    return
+  }
+  view.alignItems = renderer.width < receiverViewportWidth ? "flex-start" : "center"
+  view.justifyContent = renderer.height < currentArtworkHeight() ? "flex-start" : "center"
 }
 
 function setHelpVisible(visible: boolean): void {
@@ -884,6 +1302,7 @@ function seekPlayback(targetSeconds: number): void {
   playbackPositionSeconds = target
   playbackStartedAtMs = performance.now()
   elapsedMs = target * 1000
+  updateAspectBloom(0, target, true)
   resetAnalyzers(video.readAudioTapFrames(1, AUDIO_CHANNELS).endFrame)
   const state = video.update(target)
   const targetFrame = video.takeFrame()
@@ -919,19 +1338,25 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
   colorIndex = 0
   colorCycleSpeedIndex = 2
   shadowGlyphIndex = -1
-  equalizerProjectionVisible = true
+  equalizerProjectionVisible = false
+  viewportMode = "widescreen"
   helpVisible = false
   lastHelpSecond = -1
+  aspectBloomProgress = 0
+  receiverViewportWidth = RECEIVER_WIDTH
+  receiverViewportHeight = RECEIVER_HEIGHT
   renderedPalette = activePalette()
   receiverPalette = createReceiverPalette(renderedPalette)
+  updateAspectBloom(0, 0, true)
 
   const nextVideo = NativeVideo.open(resolve(videoPath))
   try {
     if (!nextVideo.info.hasAudio || nextVideo.info.audioSampleRate <= 0) {
       throw new Error("shadow cinema requires an MP4 with an AAC audio track")
     }
-    const decodeHeight = Math.max(1, Math.round(VIDEO_FRAME_WIDTH / (16 / 9)))
-    nextVideo.configureOutput(VIDEO_FRAME_WIDTH, decodeHeight, true)
+    const decodeWidth = decodeFrameWidthForRenderer(renderer)
+    const decodeHeight = Math.max(1, Math.round(decodeWidth / WIDESCREEN_ASPECT_RATIO))
+    nextVideo.configureOutput(decodeWidth, decodeHeight, true)
     nextVideo.enableAudioTap(AUDIO_TAP_CAPACITY_FRAMES)
     nextVideo.setMuted(false)
     previousRendererTargetFps = renderer.targetFps
@@ -985,6 +1410,7 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
       }
     }
     const targetSeconds = playbackPositionSeconds + (performance.now() - playbackStartedAtMs) / 1000
+    updateAspectBloom(deltaTime, targetSeconds)
     consumeVideoFrame(targetSeconds)
     refreshScene(true)
     if (helpVisible && Math.floor(video.state.currentTime) !== lastHelpSecond) updateControls()
@@ -1054,9 +1480,16 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
       refreshScene()
       updateControls()
       key.preventDefault()
+    } else if (key.name === "w" && !key.ctrl && !key.meta && !key.shift) {
+      cycleViewportMode()
+      updateAspectBloom(0, video?.state.currentTime ?? playbackPositionSeconds, true)
+      refreshScene()
+      updateControls()
+      key.preventDefault()
     }
   }
   resizeHandler = () => {
+    updateAspectBloom(0, video?.state.currentTime ?? playbackPositionSeconds, true)
     updateArtworkAlignment(renderer)
     createHelpModal(renderer)
   }
@@ -1106,6 +1539,9 @@ export function destroy(renderer: CliRenderer): void {
   keyHandler = null
   resizeHandler = null
   frameAnalysis = null
+  aspectBloomProgress = 0
+  receiverViewportWidth = RECEIVER_WIDTH
+  receiverViewportHeight = RECEIVER_HEIGHT
   shadowMemories.length = 0
 }
 

@@ -63,12 +63,14 @@ export interface VideoFrameAnalysis {
   sourceStructure: Float32Array
   sceneReferenceStructure: Float32Array | null
   sourceLuminance: Float32Array
+  previousSourceLuminance: Float32Array | null
   sourceWidth: number
   sourceHeight: number
 }
 
 export interface VideoFrameAnalysisOptions {
   cropCenter?: MotionVector
+  receiverAspect?: number
 }
 
 const EMPTY_VECTOR: MotionVector = { x: 0, y: 0 }
@@ -337,7 +339,12 @@ export function analyzeVideoFrame(
   const histogram = sourceHistogram(sourceLuminance)
   const structure = sourceStructure(sourceLuminance, sourceWidth, sourceHeight)
   const sourceFramingTarget = calculateFramingTarget(sourceLuminance, sourceWidth, sourceHeight)
-  const receiverAspect = RECEIVER_WIDTH / RECEIVER_HEIGHT / TERMINAL_CELL_ASPECT
+  const defaultReceiverAspect = RECEIVER_WIDTH / RECEIVER_HEIGHT / TERMINAL_CELL_ASPECT
+  const configuredReceiverAspect = options.receiverAspect
+  const receiverAspect =
+    typeof configuredReceiverAspect === "number" && Number.isFinite(configuredReceiverAspect)
+      ? Math.max(0.1, Math.min(4, configuredReceiverAspect))
+      : defaultReceiverAspect
   const cropWidth = sourceAspect > receiverAspect ? Math.max(1, Math.round(sourceHeight * receiverAspect)) : sourceWidth
   const cropHeight =
     sourceAspect > receiverAspect ? sourceHeight : Math.max(1, Math.round(sourceWidth / receiverAspect))
@@ -527,6 +534,7 @@ export function analyzeVideoFrame(
     sourceStructure: structure,
     sceneReferenceStructure: structureValid ? structure : previousReference,
     sourceLuminance,
+    previousSourceLuminance: previousSource,
     sourceWidth,
     sourceHeight,
   }
