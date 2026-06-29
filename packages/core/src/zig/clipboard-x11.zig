@@ -452,11 +452,14 @@ pub const Connection = struct {
         const reply: *const linux.XcbGetPropertyReply = @ptrCast(@alignCast(opaque_reply));
         const bytes = propertyBytes(reply) orelse return failRead(state);
         if (reply.atom_type == self.atoms().?.incr) {
-            if (reply.format != 32 or bytes.len < 4) return failRead(state);
-            const announced = std.mem.readInt(u32, bytes[0..4], builtin.cpu.arch.endian());
-            if (announced > max_bytes) {
-                state.phase = .limit_exceeded;
-                return .limit_exceeded;
+            if (reply.format != 32 or (bytes.len != 0 and bytes.len < 4)) return failRead(state);
+            // xclip sends an empty INCR property instead of the ICCCM size hint.
+            if (bytes.len >= 4) {
+                const announced = std.mem.readInt(u32, bytes[0..4], builtin.cpu.arch.endian());
+                if (announced > max_bytes) {
+                    state.phase = .limit_exceeded;
+                    return .limit_exceeded;
+                }
             }
             state.incremental = true;
             state.phase = .incremental;
@@ -468,7 +471,10 @@ pub const Connection = struct {
         const text_type_supported = reply.atom_type == atoms_value.utf8_string or
             reply.atom_type == atoms_value.text_plain_utf8 or reply.atom_type == atoms_value.text_plain or
             reply.atom_type == ATOM_STRING;
-        const accepted_type = if (state.target == atoms_value.text)
+        const target_is_text = state.target == atoms_value.text or state.target == atoms_value.utf8_string or
+            state.target == atoms_value.text_plain_utf8 or state.target == atoms_value.text_plain or
+            state.target == ATOM_STRING;
+        const accepted_type = if (target_is_text)
             ((state.actual_type == 0 and text_type_supported) or reply.atom_type == state.actual_type)
         else
             reply.atom_type == state.expected_type;
