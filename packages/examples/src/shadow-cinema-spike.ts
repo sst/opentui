@@ -90,6 +90,13 @@ interface SourceCrop {
   height: number
 }
 
+interface ViewportRect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 interface CoverSamplingContext {
   analysis: VideoFrameAnalysis
   crop: SourceCrop
@@ -171,6 +178,8 @@ const PALETTE_UPDATE_INTERVAL_MS = 125
 const ASPECT_BLOOM_DELAY_MS = 900
 const ASPECT_BLOOM_DURATION_MS = 7200
 const ASPECT_BLOOM_RESPONSE_MS = 360
+const COVER_TRANSITION_RESPONSE_MS = 520
+const COVER_RENDER_START = 0.001
 const BORDER_DISSOLVE_START = 0.14
 const BORDER_DISSOLVE_END = 0.74
 const LOGO_COLLAPSE_START = 0.08
@@ -236,6 +245,7 @@ let receiverPalette = createReceiverPalette(renderedPalette)
 let smoothedSceneColor: VideoFrameColor | null = null
 let smoothedAccentColor: VideoFrameColor | null = null
 let aspectBloomProgress = 0
+let coverTransitionProgress = 0
 let receiverViewportWidth = RECEIVER_WIDTH
 let receiverViewportHeight = RECEIVER_HEIGHT
 
@@ -290,17 +300,28 @@ function aspectBloomTarget(currentSeconds: number): number {
   return smoothstep(0, 1, (currentMs - ASPECT_BLOOM_DELAY_MS) / ASPECT_BLOOM_DURATION_MS)
 }
 
+function coverTransitionTarget(): number {
+  return viewportMode === "cover" ? 1 : 0
+}
+
+function coverTransitionSurfaceActive(): boolean {
+  return coverTransitionProgress > COVER_RENDER_START
+}
+
 function receiverViewportWidthForProgress(progress: number): number {
-  return viewportMode === "cover" ? coverReceiverWidth() : receiverWidthForProgress(progress)
+  const baseWidth = receiverWidthForProgress(progress)
+  return coverTransitionSurfaceActive() ? coverReceiverWidth() : baseWidth
 }
 
 function receiverViewportHeightForProgress(): number {
-  return viewportMode === "cover" ? coverReceiverHeight() : RECEIVER_HEIGHT
+  return coverTransitionSurfaceActive() ? coverReceiverHeight() : RECEIVER_HEIGHT
 }
 
 function logoPlateHeightForBloom(): number {
-  if (viewportMode === "cover") return 0
-  const collapse = smoothstep(LOGO_COLLAPSE_START, LOGO_COLLAPSE_END, aspectBloomProgress)
+  const collapse = Math.max(
+    coverTransitionProgress,
+    smoothstep(LOGO_COLLAPSE_START, LOGO_COLLAPSE_END, aspectBloomProgress),
+  )
   return Math.round(LOGO_PLATE_HEIGHT * (1 - collapse))
 }
 
@@ -329,12 +350,18 @@ function syncAspectBloomLayout(): void {
 
 function updateAspectBloom(deltaTime: number, currentSeconds: number, immediate = false): void {
   const target = aspectBloomTarget(currentSeconds)
-  if (immediate) aspectBloomProgress = target
-  else {
+  const coverTarget = coverTransitionTarget()
+  if (immediate) {
+    aspectBloomProgress = target
+    coverTransitionProgress = coverTarget
+  } else {
     const safeDeltaMs = Number.isFinite(deltaTime) ? Math.max(0, Math.min(250, deltaTime)) : 0
-    const progress = 1 - Math.exp(-safeDeltaMs / ASPECT_BLOOM_RESPONSE_MS)
-    aspectBloomProgress += (target - aspectBloomProgress) * progress
+    const aspectProgress = 1 - Math.exp(-safeDeltaMs / ASPECT_BLOOM_RESPONSE_MS)
+    const coverProgress = 1 - Math.exp(-safeDeltaMs / COVER_TRANSITION_RESPONSE_MS)
+    aspectBloomProgress += (target - aspectBloomProgress) * aspectProgress
+    coverTransitionProgress += (coverTarget - coverTransitionProgress) * coverProgress
     if (Math.abs(target - aspectBloomProgress) < 0.001) aspectBloomProgress = target
+    if (Math.abs(coverTarget - coverTransitionProgress) < 0.001) coverTransitionProgress = coverTarget
   }
   receiverViewportWidth = receiverViewportWidthForProgress(aspectBloomProgress)
   receiverViewportHeight = receiverViewportHeightForProgress()
@@ -344,6 +371,39 @@ function updateAspectBloom(deltaTime: number, currentSeconds: number, immediate 
 function cycleViewportMode(): void {
   const index = VIEWPORT_MODES.indexOf(viewportMode)
   viewportMode = VIEWPORT_MODES[(index + 1) % VIEWPORT_MODES.length]!
+}
+
+function coverPresentationActive(): boolean {
+  return coverTransitionSurfaceActive()
+}
+
+function baseViewportRect(viewportWidth: number, viewportHeight: number, baseWidth: number): ViewportRect {
+  if (!coverTransitionSurfaceActive()) return { left: 0, top: 0, width: baseWidth, height: RECEIVER_HEIGHT }
+  return {
+    left: Math.max(0, Math.floor((viewportWidth - baseWidth) * 0.5)),
+    top: Math.max(0, Math.floor((viewportHeight - RECEIVER_HEIGHT) * 0.5)),
+    width: baseWidth,
+    height: RECEIVER_HEIGHT,
+  }
+}
+
+function insideViewportRect(column: number, row: number, rect: ViewportRect): boolean {
+  return column >= rect.left && column < rect.left + rect.width && row >= rect.top && row < rect.top + rect.height
+}
+
+function coverTransitionCellVisible(column: number, row: number, baseRect: ViewportRect): boolean {
+  if (coverTransitionProgress <= 0) return true
+  if (coverTransitionProgress >= 0.999) return true
+  if (insideViewportRect(column, row, baseRect)) return true
+  const reveal = smoothstep(0, 1, coverTransitionProgress)
+  const centerX = baseRect.left + baseRect.width * 0.5
+  const centerY = baseRect.top + baseRect.height * 0.5
+  const distance = Math.hypot(
+    (column - centerX) / Math.max(1, baseRect.width),
+    (row - centerY) / Math.max(1, baseRect.height),
+  )
+  const noise = hashNoise(column * 0.43 + Math.floor(elapsedMs / 90), row * 1.91)
+  return noise + distance * 0.18 <= reveal
 }
 
 function linearToSrgb(channel: number): number {
@@ -595,7 +655,7 @@ function sourceCropForAspect(analysis: VideoFrameAnalysis, receiverAspect: numbe
 
 function createCoverSamplingContext(viewportWidth: number, viewportHeight: number): CoverSamplingContext | null {
   const analysis = frameAnalysis
-  if (!analysis || viewportMode !== "cover") return null
+  if (!analysis || !coverPresentationActive()) return null
   const crop = sourceCropForAspect(analysis, currentReceiverAspect())
   const bins = new Uint32Array(64)
   for (let row = crop.top; row < crop.top + crop.height; row += 1) {
@@ -798,30 +858,43 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
   const haloCenter = videoCenter()
   const viewportWidth = Math.max(1, receiverViewportWidth)
   const viewportHeight = Math.max(1, receiverViewportHeight)
+  const baseViewportWidth = receiverWidthForProgress(aspectBloomProgress)
+  const baseRect = baseViewportRect(viewportWidth, viewportHeight, baseViewportWidth)
   const coverContext = createCoverSamplingContext(viewportWidth, viewportHeight)
-  const borderDissolve = coverContext ? 1 : smoothstep(BORDER_DISSOLVE_START, BORDER_DISSOLVE_END, aspectBloomProgress)
+  const borderDissolve = Math.max(
+    coverTransitionProgress,
+    smoothstep(BORDER_DISSOLVE_START, BORDER_DISSOLVE_END, aspectBloomProgress),
+  )
   for (let row = 0; row < viewportHeight; row += 1) {
     for (let column = 0; column < viewportWidth; column += 1) {
-      const sourceColumn = viewportCellToSourceCell(column, viewportWidth, RECEIVER_WIDTH)
-      const sourceRow = viewportCellToSourceCell(row, viewportHeight, RECEIVER_HEIGHT)
-      const border = row === 0 || row === viewportHeight - 1 || column === 0 || column === viewportWidth - 1
+      if (!coverTransitionCellVisible(column, row, baseRect)) {
+        buffer.setCell(originX + column, originY + row, " ", TRANSPARENT, palette.background)
+        continue
+      }
+      const localColumn = column - baseRect.left
+      const localRow = row - baseRect.top
+      const sourceColumn = viewportCellToSourceCell(localColumn, baseRect.width, RECEIVER_WIDTH)
+      const sourceRow = viewportCellToSourceCell(localRow, baseRect.height, RECEIVER_HEIGHT)
+      const border =
+        !coverContext &&
+        (localRow === 0 || localRow === baseRect.height - 1 || localColumn === 0 || localColumn === baseRect.width - 1)
       if (border && hashNoise(column * 0.37 + Math.floor(elapsedMs / 140), row * 2.17) >= borderDissolve) {
         const position =
-          row === 0 || row === viewportHeight - 1
-            ? column / Math.max(1, viewportWidth - 1)
-            : row / Math.max(1, viewportHeight - 1)
+          localRow === 0 || localRow === baseRect.height - 1
+            ? localColumn / Math.max(1, baseRect.width - 1)
+            : localRow / Math.max(1, baseRect.height - 1)
         const band = audioSpectrumBand(position)
         const spectrum = rhythmAnalyzer.spectrum[band] ?? 0
         const glyph =
-          row === 0 && column === 0
+          localRow === 0 && localColumn === 0
             ? "┌"
-            : row === 0 && column === viewportWidth - 1
+            : localRow === 0 && localColumn === baseRect.width - 1
               ? "┐"
-              : row === viewportHeight - 1 && column === 0
+              : localRow === baseRect.height - 1 && localColumn === 0
                 ? "└"
-                : row === viewportHeight - 1 && column === viewportWidth - 1
+                : localRow === baseRect.height - 1 && localColumn === baseRect.width - 1
                   ? "┘"
-                  : row === 0 || row === viewportHeight - 1
+                  : localRow === 0 || localRow === baseRect.height - 1
                     ? spectrum > 0.5
                       ? "═"
                       : "─"
@@ -1194,11 +1267,6 @@ function createScene(renderer: CliRenderer): void {
 
 function updateArtworkAlignment(renderer: CliRenderer): void {
   if (!view) return
-  if (viewportMode === "cover") {
-    view.alignItems = "flex-start"
-    view.justifyContent = "flex-start"
-    return
-  }
   view.alignItems = renderer.width < receiverViewportWidth ? "flex-start" : "center"
   view.justifyContent = renderer.height < currentArtworkHeight() ? "flex-start" : "center"
 }
@@ -1343,6 +1411,7 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
   helpVisible = false
   lastHelpSecond = -1
   aspectBloomProgress = 0
+  coverTransitionProgress = 0
   receiverViewportWidth = RECEIVER_WIDTH
   receiverViewportHeight = RECEIVER_HEIGHT
   renderedPalette = activePalette()
@@ -1392,7 +1461,15 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
   }
 
   frameHandler = async (deltaTime: number) => {
-    if (paused || !video) return
+    if (!video) return
+    const targetSeconds = paused
+      ? playbackPositionSeconds
+      : playbackPositionSeconds + (performance.now() - playbackStartedAtMs) / 1000
+    updateAspectBloom(deltaTime, targetSeconds)
+    if (paused) {
+      refreshScene()
+      return
+    }
     elapsedMs += deltaTime
     consumeAudioFrames(deltaTime)
     const decayDeltaMs = audioDecayDeltaMs(elapsedMs, lastAudioAnalysisAtMs, deltaTime, AUDIO_DECAY_GRACE_MS)
@@ -1409,8 +1486,6 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
         applyPalette()
       }
     }
-    const targetSeconds = playbackPositionSeconds + (performance.now() - playbackStartedAtMs) / 1000
-    updateAspectBloom(deltaTime, targetSeconds)
     consumeVideoFrame(targetSeconds)
     refreshScene(true)
     if (helpVisible && Math.floor(video.state.currentTime) !== lastHelpSecond) updateControls()
@@ -1482,7 +1557,6 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
       key.preventDefault()
     } else if (key.name === "w" && !key.ctrl && !key.meta && !key.shift) {
       cycleViewportMode()
-      updateAspectBloom(0, video?.state.currentTime ?? playbackPositionSeconds, true)
       refreshScene()
       updateControls()
       key.preventDefault()
@@ -1540,6 +1614,7 @@ export function destroy(renderer: CliRenderer): void {
   resizeHandler = null
   frameAnalysis = null
   aspectBloomProgress = 0
+  coverTransitionProgress = 0
   receiverViewportWidth = RECEIVER_WIDTH
   receiverViewportHeight = RECEIVER_HEIGHT
   shadowMemories.length = 0
