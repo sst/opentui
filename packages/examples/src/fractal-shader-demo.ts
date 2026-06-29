@@ -242,7 +242,8 @@ export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
 
   if (parentContainer) {
-    renderer.root.remove("fractal-container")
+    const fractalContainer = renderer.root.getRenderable("fractal-container")
+    if (fractalContainer) renderer.root.remove(fractalContainer)
     parentContainer = null
   }
 

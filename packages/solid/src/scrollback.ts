@@ -115,7 +115,7 @@ function measureSnapshotHeight(renderContext: ScrollbackRenderContext["renderCon
     return Math.max(1, Math.trunc(root.getLayoutNode().getComputedLayout().height))
   } finally {
     if (root.parent === measureRoot) {
-      measureRoot.removeChild(root)
+      measureRoot.remove(root)
     }
     measureRoot.destroyRecursively()
   }

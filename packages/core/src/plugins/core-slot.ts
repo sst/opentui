@@ -461,7 +461,7 @@ export class SlotRenderable<
 
   private _detachNodeFromMount(node: BaseRenderable): void {
     if (node.parent === this) {
-      this.removeChild(node)
+      this.remove(node)
     }
   }
 
@@ -555,7 +555,7 @@ export class SlotRenderable<
     for (const node of this._mountedNodes) {
       if (!desiredNodeSet.has(node)) {
         if (node.parent === this) {
-          this.removeChild(node)
+          this.remove(node)
         }
       }
     }

@@ -64,7 +64,7 @@ export class TextNodeRenderable extends BaseRenderable {
     for (const child of children) {
       if (isTextNodeRenderable(child)) {
         if (child.parent && child.parent !== this) {
-          child.parent.removeChild(child)
+          child.parent.remove(child)
         }
         child.parent = this
       }
@@ -124,7 +124,7 @@ export class TextNodeRenderable extends BaseRenderable {
     let insertIndex = index ?? this._children.length
 
     if (child.parent && child.parent !== this) {
-      child.parent.removeChild(child)
+      child.parent.remove(child)
     } else if (child.parent === this) {
       const currentIndex = this._children.indexOf(child)
       if (currentIndex !== -1) {
@@ -144,7 +144,7 @@ export class TextNodeRenderable extends BaseRenderable {
 
     if (isTextNodeRenderable(obj)) {
       if (obj.parent && obj.parent !== this) {
-        obj.parent.removeChild(obj)
+        obj.parent.remove(obj)
       } else if (obj.parent === this) {
         const currentIndex = this._children.indexOf(obj)
         if (currentIndex !== -1 && currentIndex !== index) {
@@ -195,17 +195,7 @@ export class TextNodeRenderable extends BaseRenderable {
     return this
   }
 
-  public remove(id: string): this {
-    const child = this.getRenderable(id)
-    if (!child) {
-      throw new Error("Child not found in children")
-    }
-
-    this.removeChild(child)
-    return this
-  }
-
-  public removeChild(child: BaseRenderable): void {
+  public remove(child: BaseRenderable): void {
     if (!isTextNodeRenderable(child)) return
 
     const childIndex = this._children.indexOf(child)

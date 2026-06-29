@@ -126,7 +126,7 @@ function _removeNode(parent: DomNode, node: DomNode): void {
     node = slotChild
   }
 
-  parent.removeChild(node)
+  parent.remove(node)
 
   slotParent?.didRemoveSlotChild(parent, node)
 

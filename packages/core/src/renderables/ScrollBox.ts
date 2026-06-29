@@ -519,16 +519,16 @@ export class ScrollBoxRenderable extends BoxRenderable {
     return this.content.insertBefore(obj, anchor)
   }
 
-  public remove(id: string): void {
-    this.content.remove(id)
-  }
-
-  public removeChild(child: BaseRenderable): void {
-    this.content.removeChild(child)
+  public remove(child: BaseRenderable): void {
+    this.content.remove(child)
   }
 
   public getChildren(): Renderable[] {
     return this.content.getChildren()
+  }
+
+  public getRenderable(id: string): Renderable | undefined {
+    return this.content.getRenderable(id)
   }
 
   protected onMouseEvent(event: MouseEvent): void {

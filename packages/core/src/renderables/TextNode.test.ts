@@ -264,7 +264,7 @@ describe("TextNodeRenderable", () => {
       node.add(child)
       node.add("Last")
 
-      node.remove(child.id)
+      node.remove(child)
 
       expect(node.children).toEqual(["First", "Last"])
       expect(child.parent).toBeNull()
@@ -280,7 +280,7 @@ describe("TextNodeRenderable", () => {
 
       expect(node.getRenderable("duplicate")).toBe(first)
 
-      node.removeChild(second)
+      node.remove(second)
 
       expect(node.children).toHaveLength(1)
       expect(node.children[0]).toBe(first)
@@ -288,18 +288,19 @@ describe("TextNodeRenderable", () => {
       expect(second.parent).toBeNull()
       expect(node.getRenderable("duplicate")).toBe(first)
 
-      node.remove("duplicate")
+      const found = node.getRenderable("duplicate")
+      expect(found).toBe(first)
+      if (found) node.remove(found)
 
       expect(node.children).toHaveLength(0)
       expect(first.parent).toBeNull()
     })
 
-    it("should throw error when child not found in remove", () => {
+    it("should ignore a child not contained by the node", () => {
       const node = new TextNodeRenderable({})
+      const child = new TextNodeRenderable({})
 
-      expect(() => {
-        node.remove("nonexistent-id")
-      }).toThrow("Child not found in children")
+      expect(() => node.remove(child)).not.toThrow()
     })
   })
 

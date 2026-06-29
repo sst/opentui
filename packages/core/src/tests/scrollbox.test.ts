@@ -70,7 +70,7 @@ describe("ScrollBoxRenderable - child delegation", () => {
     scrollbox.add(child)
     expect(scrollbox.getChildren().length).toBe(1)
 
-    scrollbox.remove(child.id)
+    scrollbox.remove(child)
     expect(scrollbox.getChildren().length).toBe(0)
   })
 
@@ -1363,7 +1363,8 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     // Force a size recalculation that programmatically clamps scrollTop to 0.
     // This must not be treated as a user returning to sticky position.
     for (let i = 0; i < 28; i++) {
-      scrollBox.remove(`line-${i}`)
+      const line = scrollBox.getRenderable(`line-${i}`)
+      if (line) scrollBox.remove(line)
     }
     await renderOnce()
 

@@ -150,8 +150,7 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 
   public abstract add(obj: BaseRenderable | unknown, index?: number): number
-  public abstract remove(id: string): void
-  public abstract removeChild(child: BaseRenderable): void
+  public abstract remove(child: BaseRenderable): void
   public abstract insertBefore(obj: BaseRenderable | unknown, anchor: BaseRenderable | unknown): void
   public abstract getChildren(): BaseRenderable[]
   public abstract getChildrenCount(): number
@@ -1191,7 +1190,7 @@ export abstract class Renderable extends BaseRenderable {
 
   private replaceParent(obj: Renderable) {
     if (obj.parent) {
-      obj.parent.removeChild(obj)
+      obj.parent.remove(obj)
     }
     obj.parent = this
   }
@@ -1334,16 +1333,7 @@ export abstract class Renderable extends BaseRenderable {
     return this._childrenInLayoutOrder.find((child) => child.id === id)
   }
 
-  public remove(id: string): void {
-    if (!id) {
-      return
-    }
-
-    const child = this.getRenderable(id)
-    if (child) this.removeChild(child)
-  }
-
-  public removeChild(child: BaseRenderable): void {
+  public remove(child: BaseRenderable): void {
     const childWithLayout = child as BaseRenderable & {
       getLayoutNode?: () => YogaNode
       onRemove?: () => void
@@ -1566,7 +1556,7 @@ export abstract class Renderable extends BaseRenderable {
     this.emit(RenderableEvents.DESTROYED)
 
     if (this.parent) {
-      this.parent.removeChild(this)
+      this.parent.remove(this)
     }
 
     if (this.frameBuffer) {
@@ -1575,7 +1565,7 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     for (const child of [...this._childrenInLayoutOrder]) {
-      this.removeChild(child)
+      this.remove(child)
     }
 
     this._childrenInLayoutOrder = []

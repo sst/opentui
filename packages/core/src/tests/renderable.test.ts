@@ -22,10 +22,7 @@ export class TestBaseRenderable extends BaseRenderable {
   add(obj: BaseRenderable | unknown, index?: number): number {
     throw new Error("Method not implemented.")
   }
-  remove(id: string): void {
-    throw new Error("Method not implemented.")
-  }
-  removeChild(child: BaseRenderable): void {
+  remove(child: BaseRenderable): void {
     throw new Error("Method not implemented.")
   }
   insertBefore(obj: BaseRenderable | unknown, anchor: BaseRenderable | unknown): void {
@@ -279,13 +276,13 @@ describe("Renderable - Child Management", () => {
     expect(index2).toBe(1)
     expect(parent.getChildrenCount()).toBe(2)
 
-    parent.remove("child1")
+    parent.remove(child1)
     expect(parent.getChildrenCount()).toBe(1)
     expect(parent.getRenderable("child1")).toBeUndefined()
     expect(parent.getRenderable("child2")).toBe(child2)
   })
 
-  test("public id lookup and removal use first matching duplicate child", () => {
+  test("public id lookup returns first matching duplicate child", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const first = new TestRenderable(testRenderer, { id: "duplicate" })
     const second = new TestRenderable(testRenderer, { id: "duplicate" })
@@ -298,7 +295,9 @@ describe("Renderable - Child Management", () => {
     expect(parent.getRenderable("duplicate")).toBe(first)
     expect(parent.findDescendantById("duplicate")).toBe(first)
 
-    parent.remove("duplicate")
+    const found = parent.getRenderable("duplicate")
+    expect(found).toBe(first)
+    if (found) parent.remove(found)
 
     const children = parent.getChildren()
     expect(children).toHaveLength(2)
@@ -309,7 +308,7 @@ describe("Renderable - Child Management", () => {
     expect(parent.getRenderable("duplicate")).toBe(second)
   })
 
-  test("object removal detaches the exact duplicate-id child", () => {
+  test("remove detaches the exact duplicate-id child", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const first = new TestRenderable(testRenderer, { id: "duplicate" })
     const second = new TestRenderable(testRenderer, { id: "duplicate" })
@@ -319,7 +318,7 @@ describe("Renderable - Child Management", () => {
     parent.add(second)
     parent.add(tail)
 
-    parent.removeChild(second)
+    parent.remove(second)
 
     const children = parent.getChildren()
     expect(children).toHaveLength(2)
@@ -1656,7 +1655,7 @@ describe("Renderable - Complex Layout Update Scenarios", () => {
     expect(child1InitialY).toBe(0)
     expect(child2InitialY).toBe(30)
 
-    parent.remove(child1.id)
+    parent.remove(child1)
     await renderOnce()
 
     expect(child2.y).toBe(0)

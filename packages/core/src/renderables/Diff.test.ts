@@ -2956,7 +2956,7 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
 
   // Clean up
   parentContainer1.destroyRecursively()
-  renderer.root.remove("parent-container-1")
+  renderer.root.remove(parentContainer1)
   await renderOnce()
 
   // PART 2: BUGGY PATH

@@ -100,12 +100,8 @@ export class TextRenderable extends TextBufferRenderable {
     return this.rootTextNode.add(obj, index)
   }
 
-  public remove(id: string): void {
-    this.rootTextNode.remove(id)
-  }
-
-  public removeChild(child: BaseRenderable): void {
-    this.rootTextNode.removeChild(child)
+  public remove(child: BaseRenderable): void {
+    this.rootTextNode.remove(child)
   }
 
   public insertBefore(obj: BaseRenderable | any, anchor?: TextNodeRenderable): number {
