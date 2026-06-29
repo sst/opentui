@@ -1187,6 +1187,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.addExitListeners()
 
     const stdinParserMaxBufferBytes = config.stdinParserMaxBufferBytes ?? DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
+    const isJedi = process.env.TERMINAL_EMULATOR === "JetBrains-JediTerm"
     this.stdinParser = new StdinParser({
       timeoutMs: 20,
       maxPendingBytes: stdinParserMaxBufferBytes,
@@ -1195,6 +1196,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.drainStdinParser()
       },
       useKittyKeyboard: useKittyForParsing,
+      jediTermScrollWorkaround: isJedi,
       protocolContext: {
         kittyKeyboardEnabled: useKittyForParsing,
         privateCapabilityRepliesActive: false,
