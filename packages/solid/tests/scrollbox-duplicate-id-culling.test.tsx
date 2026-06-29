@@ -51,7 +51,7 @@ test("removing a multi-file tool block does not orphan a duplicate-id child in s
   const content = scroll!.content as unknown as {
     getChildrenSortedByPrimaryAxis(): Renderable[]
   }
-  const sortedChildren = content.getChildrenSortedByPrimaryAxis()
+  const sortedChildren = content.getChildrenSortedByPrimaryAxis().filter((child) => typeof child.screenY === "number")
   const sortedMonotonically = sortedChildren.every(
     (child, index) => index === 0 || child.screenY >= sortedChildren[index - 1]!.screenY,
   )

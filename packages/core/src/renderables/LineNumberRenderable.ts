@@ -432,11 +432,11 @@ export class LineNumberRenderable extends Renderable {
     if (this.target) {
       // Remove event listener from old target
       this.target.off("line-info-change", this.handleLineInfoChange)
-      super.remove(this.target.id)
+      super.removeChild(this.target)
     }
 
     if (this.gutter) {
-      super.remove(this.gutter.id)
+      super.removeChild(this.gutter)
       this.gutter = null
     }
 
@@ -488,10 +488,11 @@ export class LineNumberRenderable extends Renderable {
       return
     }
 
-    if (this.gutter && id === this.gutter.id) {
+    const child = this.getRenderable(id)
+    if (this.gutter && child === this.gutter) {
       throw new Error("LineNumberRenderable: Cannot remove gutter directly.")
     }
-    if (this.target && id === this.target.id) {
+    if (this.target && child === this.target) {
       throw new Error("LineNumberRenderable: Cannot remove target directly. Use clearTarget() instead.")
     }
     super.remove(id)
@@ -514,11 +515,11 @@ export class LineNumberRenderable extends Renderable {
   public clearTarget(): void {
     if (this.target) {
       this.target.off("line-info-change", this.handleLineInfoChange)
-      super.remove(this.target.id)
+      super.removeChild(this.target)
       this.target = null
     }
     if (this.gutter) {
-      super.remove(this.gutter.id)
+      super.removeChild(this.gutter)
       this.gutter = null
     }
   }

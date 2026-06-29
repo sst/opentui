@@ -1,7 +1,7 @@
 import { type KeyEvent } from "../lib/index.js"
 import { getObjectsInViewport } from "../lib/objects-in-viewport.js"
 import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration.js"
-import type { Renderable, RenderableOptions } from "../Renderable.js"
+import type { BaseRenderable, Renderable, RenderableOptions } from "../Renderable.js"
 import type { MouseEvent } from "../renderer.js"
 import type { RenderContext } from "../types.js"
 import { BoxRenderable, type BoxOptions } from "./Box.js"
@@ -521,6 +521,10 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   public remove(id: string): void {
     this.content.remove(id)
+  }
+
+  public removeChild(child: BaseRenderable): void {
+    this.content.removeChild(child)
   }
 
   public getChildren(): Renderable[] {

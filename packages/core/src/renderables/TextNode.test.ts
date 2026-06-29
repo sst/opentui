@@ -270,6 +270,30 @@ describe("TextNodeRenderable", () => {
       expect(child.parent).toBeNull()
     })
 
+    it("should remove duplicate-id children by first public match or exact object", () => {
+      const node = new TextNodeRenderable({})
+      const first = new TextNodeRenderable({ id: "duplicate" })
+      const second = new TextNodeRenderable({ id: "duplicate" })
+
+      node.add(first)
+      node.add(second)
+
+      expect(node.getRenderable("duplicate")).toBe(first)
+
+      node.removeChild(second)
+
+      expect(node.children).toHaveLength(1)
+      expect(node.children[0]).toBe(first)
+      expect(first.parent).toBe(node)
+      expect(second.parent).toBeNull()
+      expect(node.getRenderable("duplicate")).toBe(first)
+
+      node.remove("duplicate")
+
+      expect(node.children).toHaveLength(0)
+      expect(first.parent).toBeNull()
+    })
+
     it("should throw error when child not found in remove", () => {
       const node = new TextNodeRenderable({})
 

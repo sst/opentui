@@ -25,6 +25,9 @@ export class TestBaseRenderable extends BaseRenderable {
   remove(id: string): void {
     throw new Error("Method not implemented.")
   }
+  removeChild(child: BaseRenderable): void {
+    throw new Error("Method not implemented.")
+  }
   insertBefore(obj: BaseRenderable | unknown, anchor: BaseRenderable | unknown): void {
     throw new Error("Method not implemented.")
   }
@@ -280,6 +283,111 @@ describe("Renderable - Child Management", () => {
     expect(parent.getChildrenCount()).toBe(1)
     expect(parent.getRenderable("child1")).toBeUndefined()
     expect(parent.getRenderable("child2")).toBe(child2)
+  })
+
+  test("public id lookup and removal use first matching duplicate child", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const first = new TestRenderable(testRenderer, { id: "duplicate" })
+    const second = new TestRenderable(testRenderer, { id: "duplicate" })
+    const tail = new TestRenderable(testRenderer, { id: "tail" })
+
+    parent.add(first)
+    parent.add(second)
+    parent.add(tail)
+
+    expect(parent.getRenderable("duplicate")).toBe(first)
+    expect(parent.findDescendantById("duplicate")).toBe(first)
+
+    parent.remove("duplicate")
+
+    const children = parent.getChildren()
+    expect(children).toHaveLength(2)
+    expect(children[0]).toBe(second)
+    expect(children[1]).toBe(tail)
+    expect(first.parent).toBeNull()
+    expect(second.parent).toBe(parent)
+    expect(parent.getRenderable("duplicate")).toBe(second)
+  })
+
+  test("object removal detaches the exact duplicate-id child", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const first = new TestRenderable(testRenderer, { id: "duplicate" })
+    const second = new TestRenderable(testRenderer, { id: "duplicate" })
+    const tail = new TestRenderable(testRenderer, { id: "tail" })
+
+    parent.add(first)
+    parent.add(second)
+    parent.add(tail)
+
+    parent.removeChild(second)
+
+    const children = parent.getChildren()
+    expect(children).toHaveLength(2)
+    expect(children[0]).toBe(first)
+    expect(children[1]).toBe(tail)
+    expect(first.parent).toBe(parent)
+    expect(second.parent).toBeNull()
+    expect(parent.getRenderable("duplicate")).toBe(first)
+  })
+
+  test("insertBefore accepts an anchor with the same public id", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const first = new TestRenderable(testRenderer, { id: "duplicate" })
+    const second = new TestRenderable(testRenderer, { id: "duplicate" })
+    const tail = new TestRenderable(testRenderer, { id: "tail" })
+
+    parent.add(first)
+    parent.add(tail)
+    parent.insertBefore(second, first)
+
+    const children = parent.getChildren()
+    expect(children).toHaveLength(3)
+    expect(children[0]).toBe(second)
+    expect(children[1]).toBe(first)
+    expect(children[2]).toBe(tail)
+    expect(first.parent).toBe(parent)
+    expect(second.parent).toBe(parent)
+  })
+
+  test("reparenting moves the exact duplicate-id child", () => {
+    const oldParent = new TestRenderable(testRenderer, { id: "old-parent" })
+    const newParent = new TestRenderable(testRenderer, { id: "new-parent" })
+    const first = new TestRenderable(testRenderer, { id: "duplicate" })
+    const second = new TestRenderable(testRenderer, { id: "duplicate" })
+
+    oldParent.add(first)
+    oldParent.add(second)
+    newParent.add(second)
+
+    const oldChildren = oldParent.getChildren()
+    const newChildren = newParent.getChildren()
+    expect(oldChildren).toHaveLength(1)
+    expect(newChildren).toHaveLength(1)
+    expect(oldChildren[0]).toBe(first)
+    expect(newChildren[0]).toBe(second)
+    expect(first.parent).toBe(oldParent)
+    expect(second.parent).toBe(newParent)
+  })
+
+  test("destroying a duplicate-id child removes that exact child", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const first = new TestRenderable(testRenderer, { id: "duplicate" })
+    const second = new TestRenderable(testRenderer, { id: "duplicate" })
+    const tail = new TestRenderable(testRenderer, { id: "tail" })
+
+    parent.add(first)
+    parent.add(second)
+    parent.add(tail)
+
+    second.destroy()
+
+    const children = parent.getChildren()
+    expect(children).toHaveLength(2)
+    expect(children[0]).toBe(first)
+    expect(children[1]).toBe(tail)
+    expect(first.parent).toBe(parent)
+    expect(second.parent).toBeNull()
+    expect(second.isDestroyed).toBe(true)
   })
 
   test("renderBefore position changes update hit-grid coordinates in the same frame", async () => {

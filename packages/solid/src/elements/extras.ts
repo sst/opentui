@@ -36,7 +36,7 @@ export function Portal(props: { mount?: DomNode; ref?: (el: {}) => void; childre
       insert(renderRoot, content)
       el.add(container)
       props.ref && (props as any).ref(container)
-      onCleanup(() => el.remove(container.id))
+      onCleanup(() => el.removeChild(container))
     },
     undefined,
     { render: true },

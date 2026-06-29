@@ -32,6 +32,8 @@ class SlotBaseRenderable extends BaseRenderable {
 
   public remove(id: string): void {}
 
+  public removeChild(child: BaseRenderable): void {}
+
   public insertBefore(obj: BaseRenderable | unknown, anchor: BaseRenderable | unknown): void {
     throw new Error("Can't add children on an Slot renderable")
   }

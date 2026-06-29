@@ -151,6 +151,7 @@ export abstract class BaseRenderable extends EventEmitter {
 
   public abstract add(obj: BaseRenderable | unknown, index?: number): number
   public abstract remove(id: string): void
+  public abstract removeChild(child: BaseRenderable): void
   public abstract insertBefore(obj: BaseRenderable | unknown, anchor: BaseRenderable | unknown): void
   public abstract getChildren(): BaseRenderable[]
   public abstract getChildrenCount(): number
@@ -266,7 +267,6 @@ export abstract class Renderable extends BaseRenderable {
   protected _opacity: number = 1.0
   private _flexShrink: number = 1
 
-  private renderableMapById: Map<string, Renderable> = new Map()
   protected _childrenInLayoutOrder: Renderable[] = []
   protected _childrenInZIndexOrder: Renderable[] = []
   private needsZIndexSort: boolean = false
@@ -328,10 +328,6 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public override set id(value: string) {
-    if (this.parent) {
-      this.parent.renderableMapById.delete(this.id)
-      this.parent.renderableMapById.set(value, this)
-    }
     super.id = value
   }
 
@@ -1195,7 +1191,7 @@ export abstract class Renderable extends BaseRenderable {
 
   private replaceParent(obj: Renderable) {
     if (obj.parent) {
-      obj.parent.remove(obj.id)
+      obj.parent.removeChild(obj)
     }
     obj.parent = this
   }
@@ -1229,7 +1225,6 @@ export abstract class Renderable extends BaseRenderable {
     } else {
       this.replaceParent(renderable)
       this.needsZIndexSort = true
-      this.renderableMapById.set(renderable.id, renderable)
       this._childrenInZIndexOrder.push(renderable)
 
       if (typeof renderable.onLifecyclePass === "function") {
@@ -1287,14 +1282,14 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    if (!this.renderableMapById.has(anchor.id)) {
+    if (this._childrenInLayoutOrder.indexOf(anchor) === -1) {
       if (process.env.NODE_ENV !== "production") {
         console.warn(`Anchor with id ${anchor.id} does not exist within the parent ${this.id}, skipping insertBefore`)
       }
       return -1
     }
 
-    if (renderable === anchor || renderable.id === anchor.id) {
+    if (renderable === anchor) {
       if (process.env.NODE_ENV !== "production") {
         console.warn(`Anchor is the same as the node ${renderable.id} being inserted, skipping insertBefore`)
       }
@@ -1307,7 +1302,6 @@ export abstract class Renderable extends BaseRenderable {
     } else {
       this.replaceParent(renderable)
       this.needsZIndexSort = true
-      this.renderableMapById.set(renderable.id, renderable)
       this._childrenInZIndexOrder.push(renderable)
 
       if (typeof renderable.onLifecyclePass === "function") {
@@ -1337,7 +1331,7 @@ export abstract class Renderable extends BaseRenderable {
 
   // TODO: that naming is meh
   public getRenderable(id: string): Renderable | undefined {
-    return this.renderableMapById.get(id)
+    return this._childrenInLayoutOrder.find((child) => child.id === id)
   }
 
   public remove(id: string): void {
@@ -1345,36 +1339,47 @@ export abstract class Renderable extends BaseRenderable {
       return
     }
 
-    if (this.renderableMapById.has(id)) {
-      const obj = this.renderableMapById.get(id)
-      if (obj) {
-        if (obj._liveCount > 0) {
-          this.propagateLiveCount(-obj._liveCount)
-        }
+    const child = this.getRenderable(id)
+    if (child) this.removeChild(child)
+  }
 
-        const childLayoutNode = obj.getLayoutNode()
-        this.yogaNode.removeChild(childLayoutNode)
-        this.requestRender()
-
-        obj.onRemove()
-        obj.parent = null
-        this._ctx.unregisterLifecyclePass(obj)
-        this.renderableMapById.delete(id)
-
-        const index = this._childrenInLayoutOrder.findIndex((obj) => obj.id === id)
-        if (index !== -1) {
-          this._childrenInLayoutOrder.splice(index, 1)
-        }
-
-        const zIndexIndex = this._childrenInZIndexOrder.findIndex((obj) => obj.id === id)
-        if (zIndexIndex !== -1) {
-          this._childrenInZIndexOrder.splice(zIndexIndex, 1)
-        }
-
-        this.childrenPrimarySortDirty = true
-        bumpRenderListRevision(this._ctx)
-      }
+  public removeChild(child: BaseRenderable): void {
+    const childWithLayout = child as BaseRenderable & {
+      getLayoutNode?: () => YogaNode
+      onRemove?: () => void
     }
+    if (typeof childWithLayout.getLayoutNode !== "function") {
+      return
+    }
+
+    const index = this._childrenInLayoutOrder.indexOf(child as Renderable)
+    if (index === -1) {
+      return
+    }
+
+    if (child instanceof Renderable && child._liveCount > 0) {
+      this.propagateLiveCount(-child._liveCount)
+    }
+
+    this.yogaNode.removeChild(childWithLayout.getLayoutNode())
+    this._childrenInLayoutOrder.splice(index, 1)
+
+    const zIndexIndex = this._childrenInZIndexOrder.indexOf(child as Renderable)
+    if (zIndexIndex !== -1) {
+      this._childrenInZIndexOrder.splice(zIndexIndex, 1)
+    }
+
+    this._shouldUpdateBefore.delete(child as Renderable)
+    this.requestRender()
+
+    childWithLayout.onRemove?.()
+    child.parent = null
+    if (child instanceof Renderable) {
+      this._ctx.unregisterLifecyclePass(child)
+    }
+
+    this.childrenPrimarySortDirty = true
+    bumpRenderListRevision(this._ctx)
   }
 
   protected onRemove(): void {
@@ -1561,7 +1566,7 @@ export abstract class Renderable extends BaseRenderable {
     this.emit(RenderableEvents.DESTROYED)
 
     if (this.parent) {
-      this.parent.remove(this.id)
+      this.parent.removeChild(this)
     }
 
     if (this.frameBuffer) {
@@ -1569,12 +1574,13 @@ export abstract class Renderable extends BaseRenderable {
       this.frameBuffer = null
     }
 
-    for (const child of this._childrenInLayoutOrder) {
-      this.remove(child.id)
+    for (const child of [...this._childrenInLayoutOrder]) {
+      this.removeChild(child)
     }
 
     this._childrenInLayoutOrder = []
-    this.renderableMapById.clear()
+    this._childrenInZIndexOrder = []
+    this._shouldUpdateBefore.clear()
     Renderable.renderablesByNumber.delete(this.num)
 
     this.blur()

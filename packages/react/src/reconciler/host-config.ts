@@ -70,7 +70,7 @@ export const hostConfig: HostConfig<
 
   // Remove a child from a parent
   removeChild(parent: Instance, child: Instance) {
-    parent.remove(child.id)
+    parent.removeChild(child)
   },
 
   // Insert a child before another child
@@ -85,7 +85,7 @@ export const hostConfig: HostConfig<
 
   // Remove a child from container
   removeChildFromContainer(parent: Container, child: Instance) {
-    parent.remove(child.id)
+    parent.removeChild(child)
   },
 
   // Prepare for commit
@@ -194,7 +194,7 @@ export const hostConfig: HostConfig<
   clearContainer(container: Container) {
     // Remove all children
     const children = container.getChildren()
-    children.forEach((child) => container.remove(child.id))
+    children.forEach((child) => container.removeChild(child))
   },
 
   // Misc
