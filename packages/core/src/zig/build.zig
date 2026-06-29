@@ -128,6 +128,8 @@ fn isMacOSSDKAvailable(b: *std.Build, sdk_path: []const u8) bool {
     return isMacOSSDKPath(sdk_path) and
         pathExists(b, b.pathJoin(&.{ sdk_path, "usr", "lib" })) and
         macOSSDKHasFramework(b, sdk_path, "CoreFoundation") and
+        macOSSDKHasFramework(b, sdk_path, "AppKit") and
+        macOSSDKHasFramework(b, sdk_path, "Foundation") and
         macOSSDKHasFramework(b, sdk_path, "CoreAudio") and
         macOSSDKHasFramework(b, sdk_path, "AudioToolbox");
 }
@@ -333,6 +335,12 @@ fn addMacOSSDKSearchPaths(b: *std.Build, module: *std.Build.Module, sdk_path: []
 }
 
 fn addMacOSSystemLibraries(b: *std.Build, module: *std.Build.Module, sdk_path: []const u8) void {
+    module.addCSourceFile(.{
+        .file = b.path("clipboard_macos_shim.m"),
+        .flags = &.{ "-fobjc-arc", "-isysroot", sdk_path },
+    });
+    module.linkFramework("AppKit", .{});
+    module.linkFramework("Foundation", .{});
     module.linkFramework("CoreFoundation", .{});
     module.linkFramework("CoreAudio", .{});
     module.linkFramework("AudioToolbox", .{});
