@@ -4,6 +4,8 @@ const handles = @import("handles.zig");
 const clipboard_linux = @import("clipboard-linux.zig");
 const clipboard_wayland = @import("clipboard-wayland.zig");
 const clipboard_x11 = @import("clipboard-x11.zig");
+const clipboard_windows = @import("clipboard-windows.zig");
+const clipboard_macos = @import("clipboard-macos.zig");
 
 const Allocator = std.mem.Allocator;
 pub const Handle = handles.Handle;
@@ -62,6 +64,7 @@ const TEST_MIME = "application/octet-stream";
 const ResultKind = enum { mime, data, diagnostic };
 const Selection = enum(u8) { clipboard = 0, primary = 1 };
 const OperationKind = enum { test_read, read, write, clear };
+const PlatformJobState = enum { none, queued, running, complete };
 
 const ErrorCode = enum(i32) {
     internal = 1,
@@ -141,6 +144,9 @@ const Operation = struct {
     x11_targets: [5]u32 = undefined,
     x11_target_count: u8 = 0,
     x11_target_index: u8 = 0,
+    platform_job_state: PlatformJobState = .none,
+    platform_cancel: std.atomic.Value(bool) = .init(false),
+    platform_terminal_request: ?OperationStatus = null,
     mutation_sequence: u64 = 0,
     timeout_ms: u32 = 0,
     started_ns: i128 = 0,
@@ -169,8 +175,19 @@ const Operation = struct {
 
     fn requestCancel(operation: *Operation) CancelStatus {
         operation.mutex.lock();
+        if (operation.status != .pending) {
+            operation.mutex.unlock();
+            return .already_terminal;
+        }
+        if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
+            operation.cancel_requested = true;
+            operation.platform_cancel.store(true, .release);
+            if (operation.platform_terminal_request == null) operation.platform_terminal_request = .cancelled;
+            operation.mutex.unlock();
+            operation.service.wakePlatformWorker();
+            return .requested;
+        }
         defer operation.mutex.unlock();
-        if (operation.status != .pending) return .already_terminal;
         if (operation.x11_write.committed) {
             operation.status = if (operation.kind == .write) .written else .cleared;
             return .already_terminal;
@@ -201,6 +218,20 @@ const Operation = struct {
             const status = operation.status;
             operation.mutex.unlock();
             return status;
+        }
+        if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
+            const elapsed_ns = std.time.nanoTimestamp() - operation.started_ns;
+            if (elapsed_ns >= @as(i128, operation.timeout_ms) * std.time.ns_per_ms and
+                operation.platform_terminal_request == null)
+            {
+                operation.platform_terminal_request = .timed_out;
+                operation.platform_cancel.store(true, .release);
+                operation.mutex.unlock();
+                operation.service.wakePlatformWorker();
+                return .pending;
+            }
+            operation.mutex.unlock();
+            return .pending;
         }
         if (operation.cancel_requested) {
             operation.status = .cancelled;
@@ -279,6 +310,14 @@ const Service = struct {
     shutting_down: bool = false,
     next_mutation_sequence: u64 = 1,
     operations: std.ArrayListUnmanaged(*Operation) = .{},
+    platform_mutex: std.Thread.Mutex = .{},
+    platform_condition: std.Thread.Condition = .{},
+    platform_queue: std.ArrayListUnmanaged(*Operation) = .{},
+    platform_thread: ?std.Thread = null,
+    platform_stop: bool = false,
+    platform_exited: bool = false,
+    platform_failed: bool = false,
+    platform_joined: bool = false,
 
     fn takeMutationSequence(service: *Service) u64 {
         const sequence = service.next_mutation_sequence;
@@ -297,6 +336,191 @@ const Service = struct {
         unreachable;
     }
 
+    fn enqueuePlatformOperation(service: *Service, operation: *Operation) void {
+        if (comptime builtin.os.tag != .windows and builtin.os.tag != .macos) return;
+        service.platform_mutex.lock();
+        if (service.platform_failed) {
+            service.platform_mutex.unlock();
+            operation.rememberFailure(.internal, "Native clipboard worker initialization failed");
+            operation.platform_job_state = .complete;
+            operation.status = .failed;
+            return;
+        }
+        std.debug.assert(service.platform_queue.items.len < service.platform_queue.capacity);
+        service.platform_queue.appendAssumeCapacity(operation);
+        operation.platform_job_state = .queued;
+        service.platform_condition.signal();
+        service.platform_mutex.unlock();
+    }
+
+    fn wakePlatformWorker(service: *Service) void {
+        if (comptime builtin.os.tag != .windows and builtin.os.tag != .macos) return;
+        service.platform_mutex.lock();
+        service.platform_condition.signal();
+        service.platform_mutex.unlock();
+    }
+
+    fn platformWorker(service: *Service) void {
+        if (comptime builtin.os.tag == .windows) {
+            var worker = clipboard_windows.Worker.init() catch {
+                service.failPlatformWorker();
+                return;
+            };
+            defer worker.deinit();
+            service.platformWorkerLoop(&worker);
+        } else if (comptime builtin.os.tag == .macos) {
+            service.platformWorkerLoop({});
+        } else unreachable;
+
+        service.platform_mutex.lock();
+        service.platform_exited = true;
+        service.platform_mutex.unlock();
+    }
+
+    fn failPlatformWorker(service: *Service) void {
+        service.platform_mutex.lock();
+        service.platform_failed = true;
+        while (service.platform_queue.items.len > 0) {
+            const operation = service.platform_queue.orderedRemove(0);
+            operation.mutex.lock();
+            operation.rememberFailure(.internal, "Native clipboard worker initialization failed");
+            operation.platform_job_state = .complete;
+            operation.status = .failed;
+            operation.mutex.unlock();
+        }
+        service.platform_exited = true;
+        service.platform_mutex.unlock();
+    }
+
+    fn platformWorkerLoop(service: *Service, worker: anytype) void {
+        while (true) {
+            service.platform_mutex.lock();
+            while (service.platform_queue.items.len == 0 and !service.platform_stop) {
+                if (comptime builtin.os.tag == .windows) {
+                    service.platform_condition.timedWait(&service.platform_mutex, 10 * std.time.ns_per_ms) catch {};
+                    if (service.platform_queue.items.len == 0 and !service.platform_stop) {
+                        service.platform_mutex.unlock();
+                        worker.pumpMessages();
+                        service.platform_mutex.lock();
+                    }
+                } else {
+                    service.platform_condition.wait(&service.platform_mutex);
+                }
+            }
+            if (service.platform_queue.items.len == 0 and service.platform_stop) {
+                service.platform_mutex.unlock();
+                return;
+            }
+            const operation = service.platform_queue.orderedRemove(0);
+            operation.platform_job_state = .running;
+            service.platform_mutex.unlock();
+            if (comptime builtin.os.tag == .windows) worker.pumpMessages();
+            service.executePlatformOperation(worker, operation);
+            if (comptime builtin.os.tag == .windows) worker.pumpMessages();
+        }
+    }
+
+    fn executePlatformOperation(service: *Service, worker: anytype, operation: *Operation) void {
+        operation.mutex.lock();
+        const requested = operation.platform_terminal_request;
+        operation.mutex.unlock();
+        if (requested) |status| {
+            service.publishPlatformResult(operation, status, &.{}, &.{}, 0);
+            return;
+        }
+        if (comptime builtin.os.tag == .windows) {
+            if (operation.selection == .primary) {
+                service.publishPlatformResult(operation, .unsupported, &.{}, &.{}, 0);
+                return;
+            }
+        }
+
+        if (comptime builtin.os.tag == .windows) {
+            const job: clipboard_windows.Job = switch (operation.kind) {
+                .read => .{ .read = .{ .request = operation.request, .max_bytes = operation.max_bytes } },
+                .write => .{ .write = .{ .mime = "text/plain", .data = operation.request } },
+                .clear => .clear,
+                .test_read => unreachable,
+            };
+            var result = worker.execute(service.allocator, job, .{
+                .cancel_requested = &operation.platform_cancel,
+                .deadline_ns = operation.started_ns + @as(i128, operation.timeout_ms) * std.time.ns_per_ms,
+            });
+            defer result.deinit(service.allocator);
+            const status: OperationStatus = switch (result.status) {
+                .read => .read,
+                .empty => .empty,
+                .written => .written,
+                .cleared => .cleared,
+                .unsupported => .unsupported,
+                .cancelled => .cancelled,
+                .timed_out => .timed_out,
+                .limit_exceeded => .limit_exceeded,
+                .invalid_request, .failed => .failed,
+            };
+            service.publishPlatformResult(operation, status, result.mime, result.data, @intCast(result.error_code));
+        } else if (comptime builtin.os.tag == .macos) {
+            const selection: clipboard_macos.Selection = if (operation.selection == .clipboard) .clipboard else .primary;
+            const job: clipboard_macos.Job = switch (operation.kind) {
+                .read => .{ .read = .{ .selection = selection, .request = operation.request, .max_bytes = operation.max_bytes } },
+                .write => .{ .write_text = .{ .selection = selection, .text = operation.request } },
+                .clear => .{ .clear = .{ .selection = selection } },
+                .test_read => unreachable,
+            };
+            var result = clipboard_macos.runJob(service.allocator, job) catch |err| {
+                const status: OperationStatus = if (err == error.LimitExceeded) .limit_exceeded else .failed;
+                service.publishPlatformResult(operation, status, &.{}, &.{}, 0);
+                return;
+            };
+            defer result.deinit(service.allocator);
+            switch (result) {
+                .read => |read| service.publishPlatformResult(operation, .read, read.mime.name(), read.data, 0),
+                .empty => service.publishPlatformResult(operation, .empty, &.{}, &.{}, 0),
+                .written => service.publishPlatformResult(operation, .written, &.{}, &.{}, 0),
+                .cleared => service.publishPlatformResult(operation, .cleared, &.{}, &.{}, 0),
+                .unsupported => service.publishPlatformResult(operation, .unsupported, &.{}, &.{}, 0),
+            }
+        } else unreachable;
+    }
+
+    fn publishPlatformResult(
+        service: *Service,
+        operation: *Operation,
+        platform_status: OperationStatus,
+        mime: []const u8,
+        data: []const u8,
+        error_code: i32,
+    ) void {
+        operation.mutex.lock();
+        defer operation.mutex.unlock();
+        var status = if (platform_status == .written or platform_status == .cleared)
+            platform_status
+        else
+            operation.platform_terminal_request orelse platform_status;
+        if (status == .read) {
+            operation.result_mime = service.allocator.dupe(u8, mime) catch {
+                status = .failed;
+                operation.rememberFailure(.out_of_memory, "Failed to allocate native clipboard MIME result");
+                operation.platform_job_state = .complete;
+                operation.status = status;
+                return;
+            };
+            operation.result = service.allocator.dupe(u8, data) catch blk: {
+                service.allocator.free(operation.result_mime);
+                operation.result_mime = &.{};
+                status = .failed;
+                operation.rememberFailure(.out_of_memory, "Failed to allocate native clipboard result");
+                break :blk &.{};
+            };
+        }
+        if (status == .failed) {
+            operation.error_code = if (error_code != 0) error_code else @intFromEnum(ErrorCode.internal);
+            if (operation.diagnostic.len == 0) operation.diagnostic = "Native platform clipboard operation failed";
+        }
+        operation.platform_job_state = .complete;
+        operation.status = status;
+    }
+
     fn beginShutdown(service: *Service) void {
         if (service.shutting_down) return;
         service.shutting_down = true;
@@ -307,12 +531,30 @@ const Service = struct {
             if (service.wayland) |wayland| wayland.releaseProviders();
             if (service.x11) |x11| x11.releaseProviders();
         }
+        if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
+            service.platform_mutex.lock();
+            service.platform_stop = true;
+            service.platform_condition.signal();
+            service.platform_mutex.unlock();
+        }
     }
 
     fn pollShutdown(service: *Service) ShutdownStatus {
         if (!service.shutting_down) return .pending;
         for (service.operations.items) |operation| {
             if (!operation.isReadyToDestroy()) return .pending;
+        }
+        if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
+            service.platform_mutex.lock();
+            const exited = service.platform_exited;
+            service.platform_mutex.unlock();
+            if (!exited) return .pending;
+            if (!service.platform_joined) {
+                const thread = service.platform_thread orelse return .pending;
+                if (!tryJoinThread(thread)) return .pending;
+                service.platform_thread = null;
+                service.platform_joined = true;
+            }
         }
         return .ready;
     }
@@ -324,6 +566,7 @@ const Service = struct {
             operation.deinit();
         }
         service.operations.deinit(service.allocator);
+        service.platform_queue.deinit(service.allocator);
         if (comptime builtin.os.tag == .linux) {
             if (service.wayland) |wayland| {
                 wayland.deinit();
@@ -340,6 +583,9 @@ const Service = struct {
     }
 
     fn driveOperation(service: *Service, operation: *Operation) OperationStatus {
+        if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
+            return operation.status;
+        }
         if (comptime builtin.os.tag != .linux) return service.finishOperation(operation, .unsupported);
         if (operation.kind == .read and !implementsNativeReadType(operation.request)) {
             return service.finishOperation(operation, .unsupported);
@@ -836,12 +1082,24 @@ pub fn createService(
         .requested_wayland_seat = requested_wayland_seat,
         .environment_wayland_seat = environment_wayland_seat,
     };
-    return handles.insert(.clipboard_service, erasePtr(service)) catch {
-        allocator.destroy(service);
-        if (requested_wayland_seat.len > 0) allocator.free(requested_wayland_seat);
-        if (environment_wayland_seat.len > 0) allocator.free(environment_wayland_seat);
+    if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
+        service.platform_queue.ensureTotalCapacity(allocator, max_operations) catch {
+            service.deinit();
+            return 0;
+        };
+    }
+    const service_handle = handles.insert(.clipboard_service, erasePtr(service)) catch {
+        service.deinit();
         return 0;
     };
+    if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
+        service.platform_thread = std.Thread.spawn(.{}, Service.platformWorker, .{service}) catch {
+            handles.invalidate(service_handle, .clipboard_service);
+            service.deinit();
+            return 0;
+        };
+    }
+    return service_handle;
 }
 
 pub fn startTestOperation(
@@ -885,7 +1143,6 @@ pub fn startTestOperation(
         service.allocator.destroy(operation);
         return .out_of_memory;
     };
-
     operation.worker_joined = false;
     operation.thread = std.Thread.spawn(.{}, Operation.worker, .{ operation, delay_ms }) catch {
         _ = service.operations.pop();
@@ -963,6 +1220,9 @@ fn startImmediateOperation(
         service.allocator.destroy(operation);
         return .out_of_memory;
     };
+    if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
+        if (operation.status == .pending) service.enqueuePlatformOperation(operation);
+    }
     out_handle.* = operation_handle;
     return .ok;
 }
