@@ -1,15 +1,9 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import {
-  RadioButtonRenderable,
-  type RadioButtonRenderableOptions,
-  RadioButtonRenderableEvents,
-} from "./RadioButton.js"
+import { RadioButtonRenderable, type RadioButtonRenderableOptions, RadioButtonRenderableEvents } from "./RadioButton.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing/test-renderer.js"
 import { KeyEvent } from "../lib/KeyHandler.js"
 
-function createKeyEvent(
-  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean },
-): KeyEvent {
+function createKeyEvent(input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean }): KeyEvent {
   if (typeof input === "string") {
     return new KeyEvent({
       name: input,
@@ -42,9 +36,7 @@ let currentRenderer: TestRenderer
 let currentMockInput: MockInput
 let renderOnce: () => Promise<void>
 
-function makeBtn(
-  options: Partial<RadioButtonRenderableOptions> & { group?: string } = {},
-): RadioButtonRenderable {
+function makeBtn(options: Partial<RadioButtonRenderableOptions> & { group?: string } = {}): RadioButtonRenderable {
   const btn = new RadioButtonRenderable(currentRenderer, {
     label: "Option",
     value: "opt",
@@ -145,7 +137,6 @@ describe("RadioButtonRenderable", () => {
     })
   })
 
-
   describe("checked setter", () => {
     test("setting true calls select()", () => {
       const btn = makeBtn()
@@ -167,7 +158,6 @@ describe("RadioButtonRenderable", () => {
       expect(b.checked).toBe(true)
     })
   })
-
 
   describe("Group mutual exclusion", () => {
     test("selecting one button deselects siblings", () => {
@@ -216,7 +206,6 @@ describe("RadioButtonRenderable", () => {
       expect(RadioButtonRenderable.getSelected("nonexistent")).toBeNull()
     })
   })
-
 
   describe("moveUp/moveDown", () => {
     test("moveDown transfers focus and checked state to next sibling", () => {
@@ -315,7 +304,6 @@ describe("RadioButtonRenderable", () => {
     })
   })
 
-
   describe("Property setters", () => {
     test("label setter updates label", () => {
       const btn = makeBtn()
@@ -353,7 +341,6 @@ describe("RadioButtonRenderable", () => {
     })
   })
 
-
   describe("destroy", () => {
     test("removes button from group on destroy", () => {
       const a = makeBtn({ group: "destroy-test", checked: true })
@@ -368,7 +355,6 @@ describe("RadioButtonRenderable", () => {
       expect(RadioButtonRenderable.getSelected("last-btn")).toBeNull()
     })
   })
-
 
   describe("Focus", () => {
     test("focus/blur state", () => {
