@@ -291,9 +291,9 @@ const YogaEdgeLayoutKind = {
 
 const UNDEFINED_VALUE: Value = { unit: Unit.Undefined, value: NaN }
 
-const nodeRegistry = new Map<string, Node>()
-const measureRegistry = new Map<string, MeasureFunction>()
-const dirtiedRegistry = new Map<string, { node: Node; callback: DirtiedFunction }>()
+const nodeRegistry = new Map<Pointer, Node>()
+const measureRegistry = new Map<Pointer, MeasureFunction>()
+const dirtiedRegistry = new Map<Pointer, { node: Node; callback: DirtiedFunction }>()
 let measureCallback: FFICallbackInstance | null = null
 let measureCallbackLib: RenderLib | null = null
 let dirtiedCallback: FFICallbackInstance | null = null
@@ -303,16 +303,12 @@ function lib(): RenderLib {
   return resolveRenderLib()
 }
 
-function pointerKey(pointer: Pointer): string {
-  return String(pointer)
-}
-
 function ensureMeasureCallback(): void {
   const renderLib = lib()
   if (measureCallback?.ptr && measureCallbackLib === renderLib) return
 
   const callback: NativeYogaMeasureCallback = (node, width, widthMode, height, heightMode) => {
-    const measureFunc = node ? measureRegistry.get(pointerKey(node)) : undefined
+    const measureFunc = node ? measureRegistry.get(node) : undefined
     const result = measureFunc?.(width, widthMode as MeasureMode, height, heightMode as MeasureMode)
     renderLib.yogaStoreMeasureResult(result?.width ?? NaN, result?.height ?? NaN)
   }
@@ -334,7 +330,7 @@ function ensureDirtiedCallback(): void {
 
   const callback: NativeYogaDirtiedCallback = (node) => {
     if (!node) return
-    const registration = dirtiedRegistry.get(pointerKey(node))
+    const registration = dirtiedRegistry.get(node)
     if (registration) registration.callback(registration.node)
   }
 
@@ -459,7 +455,7 @@ export class Node {
 
   private constructor(ptr: Pointer) {
     this.ptr = ptr
-    nodeRegistry.set(pointerKey(ptr), this)
+    nodeRegistry.set(ptr, this)
   }
 
   static create(config?: Config): Node {
@@ -483,8 +479,7 @@ export class Node {
   }
 
   private static fromPointer(ptr: Pointer): Node {
-    const key = pointerKey(ptr)
-    const existing = nodeRegistry.get(key)
+    const existing = nodeRegistry.get(ptr)
     if (existing) return existing
     return new Node(ptr)
   }
@@ -963,14 +958,14 @@ export class Node {
     if (!measureFunc) return
 
     ensureMeasureCallback()
-    measureRegistry.set(pointerKey(this.ptr), measureFunc)
+    measureRegistry.set(this.ptr, measureFunc)
     lib().yogaNodeSetMeasureFunc(this.ptr, true)
   }
 
   unsetMeasureFunc(): void {
     if (this.freed) return
     lib().yogaNodeUnsetMeasureFunc(this.ptr)
-    measureRegistry.delete(pointerKey(this.ptr))
+    measureRegistry.delete(this.ptr)
   }
 
   hasMeasureFunc(): boolean {
@@ -985,14 +980,14 @@ export class Node {
     if (!dirtiedFunc) return
 
     ensureDirtiedCallback()
-    dirtiedRegistry.set(pointerKey(this.ptr), { node: this, callback: dirtiedFunc })
+    dirtiedRegistry.set(this.ptr, { node: this, callback: dirtiedFunc })
     lib().yogaNodeSetDirtiedFunc(this.ptr, true)
   }
 
   unsetDirtiedFunc(): void {
     if (this.freed) return
     lib().yogaNodeUnsetDirtiedFunc(this.ptr)
-    dirtiedRegistry.delete(pointerKey(this.ptr))
+    dirtiedRegistry.delete(this.ptr)
   }
 
   private setEnum(kind: number, value: number): void {
@@ -1035,15 +1030,14 @@ export class Node {
   }
 
   private unregisterCallbacks(): void {
-    const key = pointerKey(this.ptr)
-    measureRegistry.delete(key)
-    dirtiedRegistry.delete(key)
+    measureRegistry.delete(this.ptr)
+    dirtiedRegistry.delete(this.ptr)
   }
 
   private markFreed(): void {
     this.unregisterCallbacks()
     this.freed = true
-    nodeRegistry.delete(pointerKey(this.ptr))
+    nodeRegistry.delete(this.ptr)
   }
 }
 
