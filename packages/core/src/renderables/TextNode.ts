@@ -196,7 +196,9 @@ export class TextNodeRenderable extends BaseRenderable {
   }
 
   public remove(child: BaseRenderable): void {
-    if (!isTextNodeRenderable(child)) return
+    if (!isTextNodeRenderable(child)) {
+      throw new Error("remove expects a TextNodeRenderable child object")
+    }
 
     const childIndex = this._children.indexOf(child)
     if (childIndex === -1) return

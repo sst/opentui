@@ -329,6 +329,15 @@ describe("Renderable - Child Management", () => {
     expect(parent.getRenderable("duplicate")).toBe(first)
   })
 
+  test("remove rejects string ids at runtime", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    parent.add(child)
+
+    expect(() => (parent as any).remove("child")).toThrow("remove expects a renderable child object")
+    expect(parent.getChildren()[0]).toBe(child)
+  })
+
   test("insertBefore accepts an anchor with the same public id", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const first = new TestRenderable(testRenderer, { id: "duplicate" })

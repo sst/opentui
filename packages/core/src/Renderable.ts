@@ -197,6 +197,10 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 }
 
+function hasLayoutNode(child: BaseRenderable): child is BaseRenderable & { getLayoutNode(): YogaNode } {
+  return "getLayoutNode" in child && typeof child.getLayoutNode === "function"
+}
+
 interface LayoutGenerationContext extends RenderContext {
   __otuiLayoutGeneration?: number
   __otuiRenderListRevision?: number
@@ -1334,15 +1338,15 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public remove(child: BaseRenderable): void {
-    const childWithLayout = child as BaseRenderable & {
-      getLayoutNode?: () => YogaNode
-      onRemove?: () => void
+    if (!(child instanceof BaseRenderable)) {
+      throw new Error("remove expects a renderable child object")
     }
-    if (typeof childWithLayout.getLayoutNode !== "function") {
+
+    if (!hasLayoutNode(child)) {
       return
     }
 
-    const index = this._childrenInLayoutOrder.indexOf(child as Renderable)
+    const index = this._childrenInLayoutOrder.findIndex((candidate) => candidate === child)
     if (index === -1) {
       return
     }
@@ -1351,18 +1355,25 @@ export abstract class Renderable extends BaseRenderable {
       this.propagateLiveCount(-child._liveCount)
     }
 
-    this.yogaNode.removeChild(childWithLayout.getLayoutNode())
+    this.yogaNode.removeChild(child.getLayoutNode())
     this._childrenInLayoutOrder.splice(index, 1)
 
-    const zIndexIndex = this._childrenInZIndexOrder.indexOf(child as Renderable)
+    const zIndexIndex = this._childrenInZIndexOrder.findIndex((candidate) => candidate === child)
     if (zIndexIndex !== -1) {
       this._childrenInZIndexOrder.splice(zIndexIndex, 1)
     }
 
-    this._shouldUpdateBefore.delete(child as Renderable)
+    for (const candidate of this._shouldUpdateBefore) {
+      if (candidate === child) {
+        this._shouldUpdateBefore.delete(candidate)
+        break
+      }
+    }
     this.requestRender()
 
-    childWithLayout.onRemove?.()
+    if (child instanceof Renderable) {
+      child.onRemove()
+    }
     child.parent = null
     if (child instanceof Renderable) {
       this._ctx.unregisterLifecyclePass(child)

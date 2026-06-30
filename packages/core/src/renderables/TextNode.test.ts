@@ -302,6 +302,15 @@ describe("TextNodeRenderable", () => {
 
       expect(() => node.remove(child)).not.toThrow()
     })
+
+    it("should reject string ids at runtime", () => {
+      const node = new TextNodeRenderable({})
+      const child = new TextNodeRenderable({ id: "child" })
+      node.add(child)
+
+      expect(() => (node as any).remove("child")).toThrow("remove expects a TextNodeRenderable child object")
+      expect(node.children[0]).toBe(child)
+    })
   })
 
   describe("clear Method", () => {
