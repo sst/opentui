@@ -1421,7 +1421,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     yogaNodeSetMeasureFunc: {
-      args: ["ptr", "ptr"],
+      args: ["ptr", "bool"],
       returns: "void",
     },
     yogaNodeUnsetMeasureFunc: {
@@ -1433,7 +1433,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "bool",
     },
     yogaNodeSetDirtiedFunc: {
-      args: ["ptr", "ptr"],
+      args: ["ptr", "bool"],
       returns: "void",
     },
     yogaNodeUnsetDirtiedFunc: {
@@ -1442,6 +1442,14 @@ function getOpenTUILib(libPath?: string) {
     },
     yogaStoreMeasureResult: {
       args: ["f32", "f32"],
+      returns: "void",
+    },
+    yogaSetMeasureCallback: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    yogaSetDirtiedCallback: {
+      args: ["ptr"],
       returns: "void",
     },
 
@@ -1865,7 +1873,7 @@ export type NativeYogaMeasureCallback = (
   heightMode: number,
 ) => void
 
-export type NativeYogaDirtiedCallback = () => void
+export type NativeYogaDirtiedCallback = (node: Pointer | null) => void
 
 export interface AudioEngineLib {
   createAudioEngine: (options?: AudioCreateOptions | null) => AudioEngineHandle | null
@@ -2183,12 +2191,14 @@ export interface RenderLib extends AudioEngineLib {
   yogaNodeStyleGetBorder: (node: Pointer, edge: number) => number
   yogaNodeStyleSetValue: (node: Pointer, kind: number, edgeOrGutter: number, unit: number, value: number) => void
   yogaNodeStyleGetValue: (node: Pointer, kind: number, edgeOrGutter: number) => number | bigint
-  yogaNodeSetMeasureFunc: (node: Pointer, callback: Pointer | null) => void
+  yogaNodeSetMeasureFunc: (node: Pointer, enabled: boolean) => void
   yogaNodeUnsetMeasureFunc: (node: Pointer) => void
   yogaNodeHasMeasureFunc: (node: Pointer) => boolean
-  yogaNodeSetDirtiedFunc: (node: Pointer, callback: Pointer | null) => void
+  yogaNodeSetDirtiedFunc: (node: Pointer, enabled: boolean) => void
   yogaNodeUnsetDirtiedFunc: (node: Pointer) => void
   yogaStoreMeasureResult: (width: number, height: number) => void
+  yogaSetMeasureCallback: (callback: Pointer | null) => void
+  yogaSetDirtiedCallback: (callback: Pointer | null) => void
   createYogaMeasureCallback: (callback: NativeYogaMeasureCallback) => FFICallbackInstance
   createYogaDirtiedCallback: (callback: NativeYogaDirtiedCallback) => FFICallbackInstance
 
@@ -2587,6 +2597,8 @@ class FFIRenderLib implements RenderLib {
         this.eventSinkPtr = null
       }
 
+      this.yogaSetMeasureCallback(null)
+      this.yogaSetDirtiedCallback(null)
       this.setLogCallback(null)
     } finally {
       try {
@@ -3625,8 +3637,8 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.yogaNodeStyleGetValue(node, kind, edgeOrGutter)
   }
 
-  public yogaNodeSetMeasureFunc(node: Pointer, callback: Pointer | null): void {
-    this.opentui.symbols.yogaNodeSetMeasureFunc(node, callback)
+  public yogaNodeSetMeasureFunc(node: Pointer, enabled: boolean): void {
+    this.opentui.symbols.yogaNodeSetMeasureFunc(node, enabled)
   }
 
   public yogaNodeUnsetMeasureFunc(node: Pointer): void {
@@ -3637,8 +3649,8 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.yogaNodeHasMeasureFunc(node)
   }
 
-  public yogaNodeSetDirtiedFunc(node: Pointer, callback: Pointer | null): void {
-    this.opentui.symbols.yogaNodeSetDirtiedFunc(node, callback)
+  public yogaNodeSetDirtiedFunc(node: Pointer, enabled: boolean): void {
+    this.opentui.symbols.yogaNodeSetDirtiedFunc(node, enabled)
   }
 
   public yogaNodeUnsetDirtiedFunc(node: Pointer): void {
@@ -3647,6 +3659,14 @@ class FFIRenderLib implements RenderLib {
 
   public yogaStoreMeasureResult(width: number, height: number): void {
     this.opentui.symbols.yogaStoreMeasureResult(width, height)
+  }
+
+  public yogaSetMeasureCallback(callback: Pointer | null): void {
+    this.opentui.symbols.yogaSetMeasureCallback(callback)
+  }
+
+  public yogaSetDirtiedCallback(callback: Pointer | null): void {
+    this.opentui.symbols.yogaSetDirtiedCallback(callback)
   }
 
   public createYogaMeasureCallback(callback: NativeYogaMeasureCallback): FFICallbackInstance {
@@ -3658,7 +3678,7 @@ class FFIRenderLib implements RenderLib {
 
   public createYogaDirtiedCallback(callback: NativeYogaDirtiedCallback): FFICallbackInstance {
     return this.opentui.createCallback(callback, {
-      args: [],
+      args: ["ptr"],
       returns: "void",
     })
   }

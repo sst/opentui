@@ -79,16 +79,12 @@ pub const ExternalYogaLayout = extern struct {
     height: f32,
 };
 
-const CallbackContext = struct {
-    measure_callback: ?*const anyopaque = null,
-    dirtied_callback: ?*const anyopaque = null,
-};
-
 const JsMeasureCallback = *const fn (?*anyopaque, f32, u32, f32, u32) callconv(.c) void;
-const JsDirtiedCallback = *const fn () callconv(.c) void;
-const callback_allocator = std.heap.c_allocator;
+const JsDirtiedCallback = *const fn (?*anyopaque) callconv(.c) void;
 var opentui_config: YGConfigRef = null;
 var opentui_config_mutex: std.Thread.Mutex = .{};
+var global_measure_callback: ?*const anyopaque = null;
+var global_dirtied_callback: ?*const anyopaque = null;
 
 threadlocal var tls_measure_width: f32 = 0;
 threadlocal var tls_measure_height: f32 = 0;
@@ -177,55 +173,6 @@ fn packValue(value: c.YGValue) u64 {
     return (@as(u64, value_bits) << 32) | @as(u64, unit_bits);
 }
 
-fn getContext(node: YGNodeConstRef) ?*CallbackContext {
-    const existing = c.YGNodeGetContext(node);
-    if (existing) |ptr| {
-        return @ptrCast(@alignCast(ptr));
-    }
-    return null;
-}
-
-fn getOrCreateContext(node: YGNodeRef) *CallbackContext {
-    if (getContext(node)) |ctx| {
-        return ctx;
-    }
-
-    const ctx = callback_allocator.create(CallbackContext) catch @panic("failed to allocate Yoga callback context");
-    ctx.* = .{};
-    c.YGNodeSetContext(node, ctx);
-    return ctx;
-}
-
-fn freeContext(node: YGNodeRef) void {
-    const existing = c.YGNodeGetContext(node);
-    if (existing) |ptr| {
-        const ctx: *CallbackContext = @ptrCast(@alignCast(ptr));
-        callback_allocator.destroy(ctx);
-        c.YGNodeSetContext(node, null);
-    }
-}
-
-fn freeContextIfUnused(node: YGNodeRef) void {
-    const existing = c.YGNodeGetContext(node);
-    if (existing) |ptr| {
-        const ctx: *CallbackContext = @ptrCast(@alignCast(ptr));
-        if (ctx.measure_callback == null and ctx.dirtied_callback == null) {
-            callback_allocator.destroy(ctx);
-            c.YGNodeSetContext(node, null);
-        }
-    }
-}
-
-fn freeContextRecursive(node: YGNodeRef) void {
-    const child_count = c.YGNodeGetChildCount(node);
-    var index: usize = 0;
-    while (index < child_count) : (index += 1) {
-        const child = c.YGNodeGetChild(node, index);
-        freeContextRecursive(child);
-    }
-    freeContext(node);
-}
-
 fn internalMeasureFunc(
     node: YGNodeConstRef,
     width: f32,
@@ -236,22 +183,18 @@ fn internalMeasureFunc(
     tls_measure_width = std.math.nan(f32);
     tls_measure_height = std.math.nan(f32);
 
-    if (getContext(node)) |ctx| {
-        if (ctx.measure_callback) |callback| {
-            const trampoline: JsMeasureCallback = @ptrCast(@alignCast(callback));
-            trampoline(null, width, enumValue(width_mode), height, enumValue(height_mode));
-        }
+    if (global_measure_callback) |callback| {
+        const trampoline: JsMeasureCallback = @ptrCast(@alignCast(callback));
+        trampoline(@ptrCast(@constCast(node)), width, enumValue(width_mode), height, enumValue(height_mode));
     }
 
     return .{ .width = tls_measure_width, .height = tls_measure_height };
 }
 
 fn internalDirtiedFunc(node: YGNodeConstRef) callconv(.c) void {
-    if (getContext(node)) |ctx| {
-        if (ctx.dirtied_callback) |callback| {
-            const trampoline: JsDirtiedCallback = @ptrCast(@alignCast(callback));
-            trampoline();
-        }
+    if (global_dirtied_callback) |callback| {
+        const trampoline: JsDirtiedCallback = @ptrCast(@alignCast(callback));
+        trampoline(@ptrCast(@constCast(node)));
     }
 }
 
@@ -308,17 +251,14 @@ pub export fn yogaNodeCreateWithConfig(config: YGConfigConstRef) YGNodeRef {
 }
 
 pub export fn yogaNodeFree(node: YGNodeRef) void {
-    freeContext(node);
     c.YGNodeFree(node);
 }
 
 export fn yogaNodeFreeRecursive(node: YGNodeRef) void {
-    freeContextRecursive(node);
     c.YGNodeFreeRecursive(node);
 }
 
 export fn yogaNodeReset(node: YGNodeRef) void {
-    freeContext(node);
     c.YGNodeReset(node);
 }
 
@@ -559,10 +499,16 @@ pub export fn yogaNodeStyleGetValue(node: YGNodeConstRef, kind: u32, edge_or_gut
     return packValue(value);
 }
 
-pub export fn yogaNodeSetMeasureFunc(node: YGNodeRef, callback: ?*const anyopaque) void {
-    if (callback) |callback_ptr| {
-        const ctx = getOrCreateContext(node);
-        ctx.measure_callback = callback_ptr;
+pub export fn yogaSetMeasureCallback(callback: ?*const anyopaque) void {
+    global_measure_callback = callback;
+}
+
+pub export fn yogaSetDirtiedCallback(callback: ?*const anyopaque) void {
+    global_dirtied_callback = callback;
+}
+
+pub export fn yogaNodeSetMeasureFunc(node: YGNodeRef, enabled: bool) void {
+    if (enabled) {
         c.YGNodeSetMeasureFunc(node, &internalMeasureFunc);
         return;
     }
@@ -571,21 +517,15 @@ pub export fn yogaNodeSetMeasureFunc(node: YGNodeRef, callback: ?*const anyopaqu
 }
 
 export fn yogaNodeUnsetMeasureFunc(node: YGNodeRef) void {
-    if (getContext(node)) |ctx| {
-        ctx.measure_callback = null;
-    }
     c.YGNodeSetMeasureFunc(node, null);
-    freeContextIfUnused(node);
 }
 
 export fn yogaNodeHasMeasureFunc(node: YGNodeConstRef) bool {
     return c.YGNodeHasMeasureFunc(node);
 }
 
-pub export fn yogaNodeSetDirtiedFunc(node: YGNodeRef, callback: ?*const anyopaque) void {
-    if (callback) |callback_ptr| {
-        const ctx = getOrCreateContext(node);
-        ctx.dirtied_callback = callback_ptr;
+pub export fn yogaNodeSetDirtiedFunc(node: YGNodeRef, enabled: bool) void {
+    if (enabled) {
         c.YGNodeSetDirtiedFunc(node, &internalDirtiedFunc);
         return;
     }
@@ -594,11 +534,7 @@ pub export fn yogaNodeSetDirtiedFunc(node: YGNodeRef, callback: ?*const anyopaqu
 }
 
 export fn yogaNodeUnsetDirtiedFunc(node: YGNodeRef) void {
-    if (getContext(node)) |ctx| {
-        ctx.dirtied_callback = null;
-    }
     c.YGNodeSetDirtiedFunc(node, null);
-    freeContextIfUnused(node);
 }
 
 export fn yogaStoreMeasureResult(width: f32, height: f32) void {
