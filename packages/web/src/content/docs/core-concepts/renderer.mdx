@@ -503,6 +503,24 @@ A `true` result means the renderer output path was invoked; it does not prove
 that every output backend accepted the bytes. OSC 52 also does not acknowledge
 terminal acceptance or a clipboard change.
 
+When running inside tmux, OpenTUI uses one OSC 52 transport per clipboard call:
+
+| Mode          | Behavior                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| `passthrough` | Wrap OSC 52 in tmux DCS passthrough. This is the default and requires `set -g allow-passthrough on` in tmux.  |
+| `raw`         | Emit raw OSC 52 and let tmux handle it. Use this with `set -g set-clipboard on` when passthrough is disabled. |
+| `off`         | Disable OSC 52 clipboard output while inside tmux.                                                            |
+
+Configure the mode on the renderer:
+
+```typescript
+const renderer = await createCliRenderer({
+  tmuxClipboardMode: "raw",
+})
+```
+
+Or set `OPENTUI_TMUX_CLIPBOARD_MODE=raw` before starting the process. OpenTUI does not query tmux options automatically because `set-clipboard`, passthrough, terminal OSC 52 support, and nested sessions are separate pieces of policy.
+
 ### Notifications
 
 Trigger a terminal-mediated desktop notification:

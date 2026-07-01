@@ -105,6 +105,15 @@ registerEnvVar({
   default: false,
 })
 
+registerEnvVar({
+  name: "OPENTUI_TMUX_CLIPBOARD_MODE",
+  description: "tmux OSC 52 transport: passthrough, raw, or off.",
+  type: "string",
+  default: "passthrough",
+})
+
+export type TmuxClipboardMode = "passthrough" | "raw" | "off"
+
 export interface CliRendererConfig {
   // Read input from this stream. Defaults to process.stdin. Any `Readable`
   // works; capabilities like `setRawMode` are duck-typed and used when present.
@@ -144,6 +153,10 @@ export interface CliRendererConfig {
 
   // Forward these env var names to native terminal detection.
   forwardEnvKeys?: string[]
+
+  // Choose the OSC 52 transport when rendering inside tmux. Defaults to
+  // "passthrough", which preserves historical OpenTUI behavior.
+  tmuxClipboardMode?: TmuxClipboardMode
 
   // Wait this long before handling resize events. Defaults to 100 ms.
   debounceDelay?: number
@@ -548,6 +561,7 @@ const DEFAULT_FORWARDED_ENV_KEYS = [
   "OPENTUI_FORCE_EXPLICIT_WIDTH",
   "OPENTUI_NOTIFICATION_PROTOCOL",
   "OPENTUI_NOTIFICATIONS",
+  "OPENTUI_TMUX_CLIPBOARD_MODE",
   "WT_SESSION",
   "STY",
   "WSL_DISTRO_NAME",
@@ -626,6 +640,11 @@ export function buildKittyKeyboardFlags(config: KittyKeyboardOptions | null | un
   }
 
   return flags
+}
+
+function normalizeTmuxClipboardMode(mode: TmuxClipboardMode): TmuxClipboardMode {
+  if (mode === "passthrough" || mode === "raw" || mode === "off") return mode
+  throw new Error(`tmuxClipboardMode must be "passthrough", "raw", or "off", got ${JSON.stringify(mode)}`)
 }
 
 export class MouseEvent {
@@ -1034,6 +1053,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   ) {
     super()
 
+    const tmuxClipboardMode =
+      config.tmuxClipboardMode === undefined ? undefined : normalizeTmuxClipboardMode(config.tmuxClipboardMode)
+
     this.stdin = stdin
     this.stdout = stdout
     this._usesProcessStdout = stdout === process.stdout
@@ -1143,6 +1165,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const value = process.env[key]
       if (value === undefined) continue
       this.lib.setTerminalEnvVar(this.rendererPtr, key, value)
+    }
+    if (tmuxClipboardMode !== undefined) {
+      this.lib.setTerminalEnvVar(this.rendererPtr, "OPENTUI_TMUX_CLIPBOARD_MODE", tmuxClipboardMode)
     }
 
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC

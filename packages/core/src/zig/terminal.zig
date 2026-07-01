@@ -74,6 +74,12 @@ pub const Osc52Support = enum(u8) {
     unsupported,
 };
 
+const TmuxClipboardMode = enum {
+    passthrough,
+    raw,
+    off,
+};
+
 const NOTIFICATION_QUERY_ID = "opentui-notifications";
 pub const SCREEN_PASSTHROUGH_CHUNK_SIZE = 252;
 pub const CLIPBOARD_PAYLOAD_SIZE_MAX = std.math.maxInt(u32);
@@ -1579,6 +1585,11 @@ pub fn clipboardSequenceSize(self: *Terminal, payload_len: usize) !usize {
     const sequence_len = try std.math.add(usize, encoded_len, OSC52_FRAMING_SIZE);
 
     if (self.isInTmux()) {
+        switch (self.tmuxClipboardMode()) {
+            .raw => return sequence_len,
+            .off => return error.NotSupported,
+            .passthrough => {},
+        }
         const wrapped_len = try std.math.add(usize, sequence_len, 2);
         return std.math.add(usize, wrapped_len, ansi.ANSI.tmuxDcsStart.len + ansi.ANSI.tmuxDcsEnd.len);
     }
@@ -1602,10 +1613,16 @@ pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, te
     _ = try self.clipboardSequenceSize(text_utf8.len);
 
     if (self.isInTmux()) {
-        try tty.writeAll(ansi.ANSI.tmuxDcsStart);
-        try writeClipboardSequence(tty, target, text_utf8, true);
-        try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
-        return;
+        switch (self.tmuxClipboardMode()) {
+            .raw => {},
+            .off => return error.NotSupported,
+            .passthrough => {
+                try tty.writeAll(ansi.ANSI.tmuxDcsStart);
+                try writeClipboardSequence(tty, target, text_utf8, true);
+                try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
+                return;
+            },
+        }
     }
 
     if (self.isInScreen()) {
@@ -1694,11 +1711,28 @@ fn writeClipboardBytes(writer: anytype, bytes: []const u8, escape: bool) !void {
     }
 }
 
+fn tmuxClipboardMode(self: *Terminal) TmuxClipboardMode {
+    var env_map_storage: ?std.process.EnvMap = null;
+    const env_map: ?*const std.process.EnvMap = self.opts.env_map orelse blk: {
+        env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch null;
+        break :blk if (env_map_storage) |*map| map else null;
+    };
+    defer if (env_map_storage) |*map| map.deinit();
+
+    if (env_map) |map| {
+        if (map.get("OPENTUI_TMUX_CLIPBOARD_MODE")) |value| {
+            if (std.mem.eql(u8, value, "raw")) return .raw;
+            if (std.mem.eql(u8, value, "off")) return .off;
+        }
+    }
+    return .passthrough;
+}
+
 /// Check if we can write to the clipboard (TTY and OSC 52 supported)
 fn canWriteClipboard(self: *Terminal) bool {
     // In a real TTY environment, we'd check isTTY here
     // Missing or inconclusive capability responses must not block optimistic emission.
-    return self.osc52_support != .unsupported;
+    return self.osc52_support != .unsupported and !(self.isInTmux() and self.tmuxClipboardMode() == .off);
 }
 
 /// Parse xtversion response string and extract terminal name and version

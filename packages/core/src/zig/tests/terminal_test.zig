@@ -1464,6 +1464,45 @@ test "writeClipboard - wraps in DCS passthrough for tmux" {
     try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b") != null);
 }
 
+test "writeClipboard - writes raw OSC52 in tmux raw clipboard mode" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    try env.put("OPENTUI_TMUX_CLIPBOARD_MODE", "raw");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .clipboard, "test");
+
+    try testing.expectEqualStrings("\x1b]52;c;dGVzdA==\x1b\\", writer.getWritten());
+    try testing.expectEqual(try term.clipboardSequenceSize("test".len), writer.getWritten().len);
+}
+
+test "writeClipboard - disables OSC52 in tmux off clipboard mode" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    try env.put("OPENTUI_TMUX_CLIPBOARD_MODE", "off");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try testing.expectError(error.NotSupported, term.writeClipboard(&writer, .clipboard, "test"));
+    try testing.expectError(error.NotSupported, term.clipboardSequenceSize("test".len));
+    try testing.expectEqual(@as(usize, 0), writer.getWritten().len);
+}
+
 test "writeClipboard - wraps in DCS passthrough for GNU Screen" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
