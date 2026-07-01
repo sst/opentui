@@ -101,6 +101,35 @@ describe("React Renderer | Layout Tests", () => {
     })
   })
 
+  describe("Select Rendering", () => {
+    it("should restore the selection indicator when the prop resets", async () => {
+      let resetIndicator: () => void
+
+      function TestComponent() {
+        const [showSelectionIndicator, setShowSelectionIndicator] = useState<boolean | undefined>(false)
+        resetIndicator = () => setShowSelectionIndicator(undefined)
+
+        return (
+          <select
+            width={20}
+            height={2}
+            showDescription={false}
+            showSelectionIndicator={showSelectionIndicator}
+            options={[{ name: "Option", description: "" }]}
+          />
+        )
+      }
+
+      testSetup = await testRender(<TestComponent />, { width: 20, height: 2 })
+      await testSetup.renderOnce()
+      expect(testSetup.captureCharFrame().split("\n")[0]).toStartWith(" Option")
+
+      act(() => resetIndicator())
+      await testSetup.renderOnce()
+      expect(testSetup.captureCharFrame().split("\n")[0]).toStartWith(" ▶ Option")
+    })
+  })
+
   describe("Box Layout Rendering", () => {
     it("should render basic box layout correctly", async () => {
       testSetup = await testRender(

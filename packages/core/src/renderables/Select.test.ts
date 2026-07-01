@@ -167,6 +167,37 @@ describe("SelectRenderable", () => {
     })
   })
 
+  describe("Selection Indicator", () => {
+    test("should hide the indicator and reclaim its gutter", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        showDescription: false,
+        showSelectionIndicator: false,
+      })
+
+      expect(select.showSelectionIndicator).toBe(false)
+      expect(captureCharFrame().split("\n")[0].startsWith(" Option 1")).toBe(true)
+    })
+
+    test("should restore the default when reset", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        showDescription: false,
+        showSelectionIndicator: false,
+      })
+
+      select.showSelectionIndicator = undefined
+      await renderOnce()
+
+      expect(select.showSelectionIndicator).toBe(true)
+      expect(captureCharFrame().split("\n")[0].startsWith(" ▶ Option 1")).toBe(true)
+    })
+  })
+
   describe("Options Management", () => {
     test("should update options dynamically", async () => {
       const { select } = await createSelectRenderable(currentRenderer, {

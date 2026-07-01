@@ -50,6 +50,7 @@ export interface SelectRenderableOptions extends RenderableOptions<SelectRendera
   showScrollIndicator?: boolean
   wrapSelection?: boolean
   showDescription?: boolean
+  showSelectionIndicator?: boolean
   font?: keyof typeof fonts
   itemSpacing?: number
   fastScrollStep?: number
@@ -81,6 +82,7 @@ export class SelectRenderable extends Renderable {
   private _showScrollIndicator: boolean
   private _wrapSelection: boolean
   private _showDescription: boolean
+  private _showSelectionIndicator: boolean
   private _font?: keyof typeof fonts
   private _itemSpacing: number
   private linesPerItem: number
@@ -103,6 +105,7 @@ export class SelectRenderable extends Renderable {
     showScrollIndicator: false,
     wrapSelection: false,
     showDescription: true,
+    showSelectionIndicator: true,
     itemSpacing: 0,
     fastScrollStep: 5,
   } satisfies Partial<SelectRenderableOptions>
@@ -122,6 +125,7 @@ export class SelectRenderable extends Renderable {
     this._showScrollIndicator = options.showScrollIndicator ?? this._defaultOptions.showScrollIndicator
     this._wrapSelection = options.wrapSelection ?? this._defaultOptions.wrapSelection
     this._showDescription = options.showDescription ?? this._defaultOptions.showDescription
+    this._showSelectionIndicator = options.showSelectionIndicator ?? this._defaultOptions.showSelectionIndicator
     this._font = options.font
     this._itemSpacing = options.itemSpacing || this._defaultOptions.itemSpacing
 
@@ -191,32 +195,33 @@ export class SelectRenderable extends Renderable {
         this.frameBuffer.fillRect(contentX, itemY, contentWidth, contentHeight, this._selectedBackgroundColor)
       }
 
-      const nameContent = `${isSelected ? "▶ " : "  "}${option.name}`
+      const indicator = this._showSelectionIndicator ? (isSelected ? "▶ " : "  ") : ""
+      const indicatorWidth = this._showSelectionIndicator ? 2 : 0
+      const nameContent = `${indicator}${option.name}`
       const baseTextColor = this._focused ? this._focusedTextColor : this._textColor
       const nameColor = isSelected ? this._selectedTextColor : baseTextColor
-      let descX = contentX + 3
+      const textX = contentX + 1 + indicatorWidth
 
       if (this._font) {
-        const indicator = isSelected ? "▶ " : "  "
-        this.frameBuffer.drawText(indicator, contentX + 1, itemY, nameColor)
+        if (indicator) {
+          this.frameBuffer.drawText(indicator, contentX + 1, itemY, nameColor)
+        }
 
-        const indicatorWidth = 2
         renderFontToFrameBuffer(this.frameBuffer, {
           text: option.name,
-          x: contentX + 1 + indicatorWidth,
+          x: textX,
           y: itemY,
           color: nameColor,
           backgroundColor: isSelected ? this._selectedBackgroundColor : bgColor,
           font: this._font,
         })
-        descX = contentX + 1 + indicatorWidth
       } else {
         this.frameBuffer.drawText(nameContent, contentX + 1, itemY, nameColor)
       }
 
       if (this._showDescription && itemY + this.fontHeight < contentY + contentHeight) {
         const descColor = isSelected ? this._selectedDescriptionColor : this._descriptionColor
-        this.frameBuffer.drawText(option.description, descX, itemY + this.fontHeight, descColor)
+        this.frameBuffer.drawText(option.description, textX, itemY + this.fontHeight, descColor)
       }
     }
 
@@ -383,6 +388,18 @@ export class SelectRenderable extends Renderable {
 
       this.maxVisibleItems = Math.max(1, Math.floor(this.height / this.linesPerItem))
       this.updateScrollOffset()
+      this.requestRender()
+    }
+  }
+
+  public get showSelectionIndicator(): boolean {
+    return this._showSelectionIndicator
+  }
+
+  public set showSelectionIndicator(show: boolean | null | undefined) {
+    const next = show ?? this._defaultOptions.showSelectionIndicator
+    if (this._showSelectionIndicator !== next) {
+      this._showSelectionIndicator = next
       this.requestRender()
     }
   }
