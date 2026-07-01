@@ -380,7 +380,13 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       lib.destroyNativeRenderable(nativeRenderable)
       throw new Error("Failed to attach native renderable Yoga node")
     }
-    if (!lib.nativeRenderableSetMeasureTarget(nativeRenderable, NativeMeasureTargetKind.TextBufferView, this.textBufferView.ptr)) {
+    if (
+      !lib.nativeRenderableSetMeasureTarget(
+        nativeRenderable,
+        NativeMeasureTargetKind.TextBufferView,
+        this.textBufferView.ptr,
+      )
+    ) {
       lib.destroyNativeRenderable(nativeRenderable)
       throw new Error("Failed to attach text buffer native measure target")
     }

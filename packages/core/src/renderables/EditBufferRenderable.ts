@@ -940,7 +940,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       lib.destroyNativeRenderable(nativeRenderable)
       throw new Error("Failed to attach native renderable Yoga node")
     }
-    if (!lib.nativeRenderableSetMeasureTarget(nativeRenderable, NativeMeasureTargetKind.EditorView, this.editorView.ptr)) {
+    if (
+      !lib.nativeRenderableSetMeasureTarget(nativeRenderable, NativeMeasureTargetKind.EditorView, this.editorView.ptr)
+    ) {
       lib.destroyNativeRenderable(nativeRenderable)
       throw new Error("Failed to attach editor native measure target")
     }

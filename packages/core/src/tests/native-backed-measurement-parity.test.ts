@@ -26,7 +26,10 @@ function expectCloseToLayout(actual: number, expected: number): void {
   expect(actual).toBeCloseTo(expected, 5)
 }
 
-function expectLayout(renderable: TextRenderable | TextareaRenderable, expected: { width: number; height: number }): void {
+function expectLayout(
+  renderable: TextRenderable | TextareaRenderable,
+  expected: { width: number; height: number },
+): void {
   expectCloseToLayout(renderable.width, expected.width)
   expectCloseToLayout(renderable.height, expected.height)
 
@@ -53,8 +56,17 @@ function expectedFromMeasureResult(
 }
 
 function expectedTextLayout(text: TextRenderable, options: ExpectedMeasureOptions): { width: number; height: number } {
-  const view = (text as unknown as { textBufferView: { measureForDimensions(width: number, height: number): { lineCount: number; widthColsMax: number } | null } }).textBufferView
-  const measureResult = view.measureForDimensions(Math.floor(options.availableWidth), Math.floor(options.availableHeight))
+  const view = (
+    text as unknown as {
+      textBufferView: {
+        measureForDimensions(width: number, height: number): { lineCount: number; widthColsMax: number } | null
+      }
+    }
+  ).textBufferView
+  const measureResult = view.measureForDimensions(
+    Math.floor(options.availableWidth),
+    Math.floor(options.availableHeight),
+  )
   return expectedFromMeasureResult(measureResult, options)
 }
 
@@ -301,7 +313,11 @@ describe("native-backed measurement parity preconditions", () => {
         top: 0,
       })
 
-      const expected = expectedTextareaLayout(textarea, { availableWidth: 80, availableHeight: 30, position: "absolute" })
+      const expected = expectedTextareaLayout(textarea, {
+        availableWidth: 80,
+        availableHeight: 30,
+        position: "absolute",
+      })
       await renderInConstrainedColumn(textarea)
 
       expect(expected).toEqual({ width: 20, height: 1 })
