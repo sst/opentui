@@ -130,6 +130,7 @@ export type EditorViewHandle = NativeHandle<"editor_view">
 export type SyntaxStyleHandle = NativeHandle<"syntax_style">
 export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
+export type NativeRenderableHandle = NativeHandle<"native_renderable">
 let targetLibPath = nativePackage.default
 
 if (isBunfsPath(targetLibPath)) {
@@ -241,6 +242,26 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     destroyEventSink: {
+      args: ["u32"],
+      returns: "void",
+    },
+    createNativeRenderable: {
+      args: [],
+      returns: "u32",
+    },
+    destroyNativeRenderable: {
+      args: ["u32"],
+      returns: "void",
+    },
+    nativeRenderableAttachYogaNode: {
+      args: ["u32", "ptr"],
+      returns: "bool",
+    },
+    nativeRenderableSetMeasureTarget: {
+      args: ["u32", "u32", "u32"],
+      returns: "bool",
+    },
+    nativeRenderableClearMeasureTarget: {
       args: ["u32"],
       returns: "void",
     },
@@ -1875,6 +1896,12 @@ export type NativeYogaMeasureCallback = (
 
 export type NativeYogaDirtiedCallback = (node: Pointer | null) => void
 
+export const NativeMeasureTargetKind = {
+  None: 0,
+  TextBufferView: 1,
+  EditorView: 2,
+} as const
+
 export interface AudioEngineLib {
   createAudioEngine: (options?: AudioCreateOptions | null) => AudioEngineHandle | null
   destroyAudioEngine: (engine: AudioEngineHandle) => void
@@ -2506,6 +2533,11 @@ export interface RenderLib extends AudioEngineLib {
   streamGetStats: (stream: Pointer) => NativeSpanFeedStats | null
   streamReserve: (stream: Pointer, minLen: number) => { status: number; info: ReserveInfo | null }
   streamCommitReserved: (stream: Pointer, length: number) => number
+  createNativeRenderable: () => NativeRenderableHandle
+  destroyNativeRenderable: (handle: NativeRenderableHandle) => void
+  nativeRenderableAttachYogaNode: (handle: NativeRenderableHandle, node: Pointer) => boolean
+  nativeRenderableSetMeasureTarget: (handle: NativeRenderableHandle, kind: number, target: Pointer) => boolean
+  nativeRenderableClearMeasureTarget: (handle: NativeRenderableHandle) => void
   onNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   onceNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   offNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
@@ -2523,6 +2555,28 @@ class FFIRenderLib implements RenderLib {
   private _anyEventHandlers: Array<(name: string, data: ArrayBuffer) => void> = []
   private nativeSpanFeedCallbackWrapper: FFICallbackInstance | null = null
   private nativeSpanFeedHandlers = new Map<Pointer, NativeSpanFeedEventHandler>()
+
+  public createNativeRenderable(): NativeRenderableHandle {
+    const handle = this.opentui.symbols.createNativeRenderable() as NativeRenderableHandle
+    if (!handle) throw new Error("Failed to create native renderable")
+    return handle
+  }
+
+  public destroyNativeRenderable(handle: NativeRenderableHandle): void {
+    this.opentui.symbols.destroyNativeRenderable(handle)
+  }
+
+  public nativeRenderableAttachYogaNode(handle: NativeRenderableHandle, node: Pointer): boolean {
+    return this.opentui.symbols.nativeRenderableAttachYogaNode(handle, node)
+  }
+
+  public nativeRenderableSetMeasureTarget(handle: NativeRenderableHandle, kind: number, target: Pointer): boolean {
+    return this.opentui.symbols.nativeRenderableSetMeasureTarget(handle, kind, target)
+  }
+
+  public nativeRenderableClearMeasureTarget(handle: NativeRenderableHandle): void {
+    this.opentui.symbols.nativeRenderableClearMeasureTarget(handle)
+  }
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)

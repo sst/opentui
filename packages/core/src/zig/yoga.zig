@@ -63,6 +63,18 @@ pub const YogaDirection = enum(u32) {
     rtl = 2,
 };
 
+pub const YogaMeasureMode = enum(u32) {
+    undefined = 0,
+    exactly = 1,
+    at_most = 2,
+};
+
+pub const YogaPositionType = enum(u32) {
+    static = 0,
+    relative = 1,
+    absolute = 2,
+};
+
 pub const YogaFlexDirection = enum(u32) {
     column = 0,
     column_reverse = 1,
@@ -79,12 +91,23 @@ pub const ExternalYogaLayout = extern struct {
     height: f32,
 };
 
+pub const ExternalYogaSize = extern struct {
+    width: f32,
+    height: f32,
+};
+
 const JsMeasureCallback = *const fn (?*anyopaque, f32, u32, f32, u32) callconv(.c) void;
 const JsDirtiedCallback = *const fn (?*anyopaque) callconv(.c) void;
+pub const NativeMeasureCallback = *const fn (?*anyopaque, f32, u32, f32, u32) callconv(.c) ExternalYogaSize;
 var opentui_config: YGConfigRef = null;
 var opentui_config_mutex: std.Thread.Mutex = .{};
 var global_measure_callback: ?*const anyopaque = null;
 var global_dirtied_callback: ?*const anyopaque = null;
+
+const CallbackContext = struct {
+    native_measure_target: ?*anyopaque = null,
+    native_measure_callback: ?NativeMeasureCallback = null,
+};
 
 threadlocal var tls_measure_width: f32 = 0;
 threadlocal var tls_measure_height: f32 = 0;
@@ -173,6 +196,44 @@ fn packValue(value: c.YGValue) u64 {
     return (@as(u64, value_bits) << 32) | @as(u64, unit_bits);
 }
 
+fn getContext(node: YGNodeConstRef) ?*CallbackContext {
+    const existing = c.YGNodeGetContext(node);
+    if (existing) |ptr| {
+        return @ptrCast(@alignCast(ptr));
+    }
+    return null;
+}
+
+fn getOrCreateContext(node: YGNodeRef) *CallbackContext {
+    if (getContext(node)) |ctx| {
+        return ctx;
+    }
+
+    const ctx = std.heap.c_allocator.create(CallbackContext) catch @panic("failed to allocate Yoga callback context");
+    ctx.* = .{};
+    c.YGNodeSetContext(node, ctx);
+    return ctx;
+}
+
+fn freeContext(node: YGNodeRef) void {
+    const existing = c.YGNodeGetContext(node);
+    if (existing) |ptr| {
+        const ctx: *CallbackContext = @ptrCast(@alignCast(ptr));
+        std.heap.c_allocator.destroy(ctx);
+        c.YGNodeSetContext(node, null);
+    }
+}
+
+fn freeContextRecursive(node: YGNodeRef) void {
+    const child_count = c.YGNodeGetChildCount(node);
+    var index: usize = 0;
+    while (index < child_count) : (index += 1) {
+        const child = c.YGNodeGetChild(node, index);
+        freeContextRecursive(child);
+    }
+    freeContext(node);
+}
+
 fn internalMeasureFunc(
     node: YGNodeConstRef,
     width: f32,
@@ -189,6 +250,29 @@ fn internalMeasureFunc(
     }
 
     return .{ .width = tls_measure_width, .height = tls_measure_height };
+}
+
+fn internalNativeMeasureFunc(
+    node: YGNodeConstRef,
+    width: f32,
+    width_mode: c.YGMeasureMode,
+    height: f32,
+    height_mode: c.YGMeasureMode,
+) callconv(.c) c.YGSize {
+    if (getContext(node)) |ctx| {
+        if (ctx.native_measure_callback) |callback| {
+            const size = callback(
+                ctx.native_measure_target,
+                width,
+                enumValue(width_mode),
+                height,
+                enumValue(height_mode),
+            );
+            return .{ .width = size.width, .height = size.height };
+        }
+    }
+
+    return .{ .width = std.math.nan(f32), .height = std.math.nan(f32) };
 }
 
 fn internalDirtiedFunc(node: YGNodeConstRef) callconv(.c) void {
@@ -251,14 +335,17 @@ pub export fn yogaNodeCreateWithConfig(config: YGConfigConstRef) YGNodeRef {
 }
 
 pub export fn yogaNodeFree(node: YGNodeRef) void {
+    freeContext(node);
     c.YGNodeFree(node);
 }
 
 export fn yogaNodeFreeRecursive(node: YGNodeRef) void {
+    freeContextRecursive(node);
     c.YGNodeFreeRecursive(node);
 }
 
 export fn yogaNodeReset(node: YGNodeRef) void {
+    freeContext(node);
     c.YGNodeReset(node);
 }
 
@@ -362,7 +449,7 @@ pub export fn yogaNodeStyleSetEnum(node: YGNodeRef, kind: u32, value: u32) void 
     }
 }
 
-export fn yogaNodeStyleGetEnum(node: YGNodeConstRef, kind: u32) u32 {
+pub export fn yogaNodeStyleGetEnum(node: YGNodeConstRef, kind: u32) u32 {
     return switch (@as(YogaEnumKind, @enumFromInt(kind))) {
         .direction => enumValue(c.YGNodeStyleGetDirection(node)),
         .flex_direction => enumValue(c.YGNodeStyleGetFlexDirection(node)),
@@ -514,6 +601,22 @@ pub export fn yogaNodeSetMeasureFunc(node: YGNodeRef, enabled: bool) void {
     }
 
     yogaNodeUnsetMeasureFunc(node);
+}
+
+pub fn yogaNodeSetNativeMeasureFunc(node: YGNodeRef, target: ?*anyopaque, callback: ?NativeMeasureCallback) void {
+    if (target != null and callback != null) {
+        const ctx = getOrCreateContext(node);
+        ctx.native_measure_target = target;
+        ctx.native_measure_callback = callback;
+        c.YGNodeSetMeasureFunc(node, &internalNativeMeasureFunc);
+        return;
+    }
+
+    if (getContext(node)) |ctx| {
+        ctx.native_measure_target = null;
+        ctx.native_measure_callback = null;
+    }
+    c.YGNodeSetMeasureFunc(node, null);
 }
 
 export fn yogaNodeUnsetMeasureFunc(node: YGNodeRef) void {
