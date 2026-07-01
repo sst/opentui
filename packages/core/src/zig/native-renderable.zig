@@ -57,8 +57,8 @@ pub const NativeRenderable = struct {
     fn measure(target: ?*anyopaque, width: f32, width_mode: u32, height: f32, height_mode: u32) callconv(.c) native_yoga.ExternalYogaSize {
         _ = height_mode;
         const self: *NativeRenderable = @ptrCast(@alignCast(target orelse return .{ .width = std.math.nan(f32), .height = std.math.nan(f32) }));
-        const effective_width = normalizeYogaMeasureInput(width, 0);
-        const effective_height = normalizeYogaMeasureInput(height, 1);
+        const effective_width = normalizeYogaMeasureWidthInput(width, width_mode);
+        const effective_height = normalizeYogaMeasureHeightInput(height);
         const measure_width = floorToU32(effective_width);
         const measure_height = floorToU32(effective_height);
         const result = self.measureTarget(measure_width, measure_height) orelse return .{ .width = 1, .height = 1 };
@@ -83,8 +83,13 @@ pub const NativeRenderable = struct {
     }
 };
 
-fn normalizeYogaMeasureInput(value: f32, nan_fallback: f32) f32 {
-    if (std.math.isNan(value)) return nan_fallback;
+pub fn normalizeYogaMeasureWidthInput(value: f32, width_mode: u32) f32 {
+    if (width_mode == @intFromEnum(native_yoga.YogaMeasureMode.undefined) or std.math.isNan(value)) return 0;
+    return value;
+}
+
+pub fn normalizeYogaMeasureHeightInput(value: f32) f32 {
+    if (std.math.isNan(value)) return 1;
     return value;
 }
 
