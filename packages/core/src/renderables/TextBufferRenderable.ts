@@ -81,7 +81,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
     this.textBufferView.setWrapMode(this._wrapMode)
     this.textBufferView.setFirstLineOffset(this._firstLineOffset)
-    this.setupMeasureFunc()
+    this.setupNativeRenderable()
 
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
@@ -373,7 +373,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this.emit("line-info-change")
   }
 
-  private setupMeasureFunc(): void {
+  private setupNativeRenderable(): void {
     const lib = resolveRenderLib()
     const nativeRenderable = lib.createNativeRenderable()
     if (!lib.nativeRenderableAttachYogaNode(nativeRenderable, this.yogaNode.ptr)) {

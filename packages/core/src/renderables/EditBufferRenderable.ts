@@ -159,7 +159,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       this.editorView.setTabIndicatorColor(this._tabIndicatorColor)
     }
 
-    this.setupMeasureFunc()
+    this.setupNativeRenderable()
     this.setupEventListeners(options)
   }
 
@@ -933,7 +933,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return true
   }
 
-  private setupMeasureFunc(): void {
+  private setupNativeRenderable(): void {
     const lib = resolveRenderLib()
     const nativeRenderable = lib.createNativeRenderable()
     if (!lib.nativeRenderableAttachYogaNode(nativeRenderable, this.yogaNode.ptr)) {

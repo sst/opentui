@@ -19,6 +19,7 @@ const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const native_span_feed = @import("native-span-feed.zig");
 const native_audio = @import("audio.zig");
+const native_renderable = @import("native-renderable.zig");
 const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
@@ -85,104 +86,8 @@ fn acquireAudioEngine(handle: NativeHandle) ?*native_audio.Engine {
     return handles.acquire(handle, .audio_engine, native_audio.Engine);
 }
 
-const NativeMeasureTargetKind = enum(u32) {
-    none = 0,
-    text_buffer_view = 1,
-    editor_view = 2,
-};
-
-const NativeMeasureTarget = union(NativeMeasureTargetKind) {
-    none,
-    text_buffer_view: *text_buffer_view.UnifiedTextBufferView,
-    editor_view: *editor_view.EditorView,
-};
-
-const NativeRenderable = struct {
-    yoga_node: native_yoga.YGNodeRef = null,
-    measure_target: NativeMeasureTarget = .none,
-
-    fn deinit(self: *NativeRenderable) void {
-        self.clearMeasureTarget();
-        self.yoga_node = null;
-        self.* = undefined;
-    }
-
-    fn attachYogaNode(self: *NativeRenderable, node: native_yoga.YGNodeRef) void {
-        if (self.yoga_node != null and self.yoga_node != node) {
-            native_yoga.yogaNodeSetNativeMeasureFunc(self.yoga_node, null, null);
-        }
-        self.yoga_node = node;
-        self.applyMeasureTarget();
-    }
-
-    fn setMeasureTarget(self: *NativeRenderable, target: NativeMeasureTarget) void {
-        self.measure_target = target;
-        self.applyMeasureTarget();
-    }
-
-    fn clearMeasureTarget(self: *NativeRenderable) void {
-        if (self.yoga_node != null) {
-            native_yoga.yogaNodeSetNativeMeasureFunc(self.yoga_node, null, null);
-        }
-        self.measure_target = .none;
-    }
-
-    fn applyMeasureTarget(self: *NativeRenderable) void {
-        if (self.yoga_node == null) return;
-        switch (self.measure_target) {
-            .none => native_yoga.yogaNodeSetNativeMeasureFunc(self.yoga_node, null, null),
-            else => native_yoga.yogaNodeSetNativeMeasureFunc(self.yoga_node, self, &NativeRenderable.measure),
-        }
-    }
-
-    fn measure(target: ?*anyopaque, width: f32, width_mode: u32, height: f32, height_mode: u32) callconv(.c) native_yoga.ExternalYogaSize {
-        _ = height_mode;
-        const self: *NativeRenderable = @ptrCast(@alignCast(target orelse return .{ .width = std.math.nan(f32), .height = std.math.nan(f32) }));
-        const effective_width = normalizeYogaMeasureInput(width, 0);
-        const effective_height = normalizeYogaMeasureInput(height, 1);
-        const measure_width = floorToU32(effective_width);
-        const measure_height = floorToU32(effective_height);
-        const result = self.measureTarget(measure_width, measure_height) orelse return .{ .width = 1, .height = 1 };
-
-        var measured_width: f32 = @floatFromInt(@max(@as(u32, 1), result.width_cols_max));
-        var measured_height: f32 = @floatFromInt(@max(@as(u32, 1), result.line_count));
-
-        if (width_mode == @intFromEnum(native_yoga.YogaMeasureMode.at_most) and self.yoga_node != null and !isYogaNodeAbsolute(self.yoga_node)) {
-            measured_width = @min(effective_width, measured_width);
-            measured_height = @min(effective_height, measured_height);
-        }
-
-        return .{ .width = measured_width, .height = measured_height };
-    }
-
-    fn measureTarget(self: *NativeRenderable, width: u32, height: u32) ?text_buffer_view.MeasureResult {
-        return switch (self.measure_target) {
-            .none => null,
-            .text_buffer_view => |view| view.measureForDimensions(width, height) catch null,
-            .editor_view => |view| view.getTextBufferView().measureForDimensions(width, height) catch null,
-        };
-    }
-};
-
-fn normalizeYogaMeasureInput(value: f32, nan_fallback: f32) f32 {
-    if (std.math.isNan(value)) return nan_fallback;
-    return value;
-}
-
-fn floorToU32(value: f32) u32 {
-    if (!std.math.isFinite(value) or value <= 0) return 0;
-    const floored = @floor(value);
-    if (floored >= @as(f32, @floatFromInt(std.math.maxInt(u32)))) return std.math.maxInt(u32);
-    return @intFromFloat(floored);
-}
-
-fn isYogaNodeAbsolute(node: native_yoga.YGNodeRef) bool {
-    return native_yoga.yogaNodeStyleGetEnum(node, @intFromEnum(native_yoga.YogaEnumKind.position_type)) ==
-        @intFromEnum(native_yoga.YogaPositionType.absolute);
-}
-
-fn acquireNativeRenderable(handle: NativeHandle) ?*NativeRenderable {
-    return handles.acquire(handle, .native_renderable, NativeRenderable);
+fn acquireNativeRenderable(handle: NativeHandle) ?*native_renderable.NativeRenderable {
+    return handles.acquire(handle, .native_renderable, native_renderable.NativeRenderable);
 }
 
 fn emptyLineInfo(outPtr: *ExternalLineInfo) void {
@@ -217,6 +122,7 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
 comptime {
     _ = native_span_feed;
     _ = native_audio;
+    _ = native_renderable;
     _ = native_yoga;
 }
 
@@ -244,31 +150,31 @@ fn clearEditBufferEventSinkRefs(sink: *event_bus.EventSink) void {
 }
 
 export fn createNativeRenderable() NativeHandle {
-    const native_renderable = globalAllocator.create(NativeRenderable) catch return INVALID_HANDLE;
-    native_renderable.* = .{};
-    return handles.insert(.native_renderable, erasePtr(native_renderable)) catch {
-        globalAllocator.destroy(native_renderable);
+    const renderable = globalAllocator.create(native_renderable.NativeRenderable) catch return INVALID_HANDLE;
+    renderable.* = .{};
+    return handles.insert(.native_renderable, erasePtr(renderable)) catch {
+        globalAllocator.destroy(renderable);
         return INVALID_HANDLE;
     };
 }
 
 export fn destroyNativeRenderable(native_renderable_handle: NativeHandle) void {
-    const token = handles.beginDestroy(native_renderable_handle, .native_renderable, NativeRenderable) orelse return;
+    const token = handles.beginDestroy(native_renderable_handle, .native_renderable, native_renderable.NativeRenderable) orelse return;
     token.ptr.deinit();
     globalAllocator.destroy(token.ptr);
     handles.finishDestroy(token.handle);
 }
 
 export fn nativeRenderableAttachYogaNode(native_renderable_handle: NativeHandle, node: native_yoga.YGNodeRef) bool {
-    const native_renderable = acquireNativeRenderable(native_renderable_handle) orelse return false;
+    const renderable = acquireNativeRenderable(native_renderable_handle) orelse return false;
     if (node == null) return false;
-    native_renderable.attachYogaNode(node);
+    renderable.attachYogaNode(node);
     return true;
 }
 
 export fn nativeRenderableClearMeasureTarget(native_renderable_handle: NativeHandle) void {
-    const native_renderable = acquireNativeRenderable(native_renderable_handle) orelse return;
-    native_renderable.clearMeasureTarget();
+    const renderable = acquireNativeRenderable(native_renderable_handle) orelse return;
+    renderable.clearMeasureTarget();
 }
 
 export fn nativeRenderableSetMeasureTarget(
@@ -276,20 +182,20 @@ export fn nativeRenderableSetMeasureTarget(
     kind: u32,
     target_handle: NativeHandle,
 ) bool {
-    const native_renderable = acquireNativeRenderable(native_renderable_handle) orelse return false;
-    const measure_kind: NativeMeasureTargetKind = switch (kind) {
-        @intFromEnum(NativeMeasureTargetKind.text_buffer_view) => .text_buffer_view,
-        @intFromEnum(NativeMeasureTargetKind.editor_view) => .editor_view,
+    const renderable = acquireNativeRenderable(native_renderable_handle) orelse return false;
+    const measure_kind: native_renderable.MeasureTargetKind = switch (kind) {
+        @intFromEnum(native_renderable.MeasureTargetKind.text_buffer_view) => .text_buffer_view,
+        @intFromEnum(native_renderable.MeasureTargetKind.editor_view) => .editor_view,
         else => .none,
     };
 
-    const target: NativeMeasureTarget = switch (measure_kind) {
+    const target: native_renderable.MeasureTarget = switch (measure_kind) {
         .none => .none,
         .text_buffer_view => .{ .text_buffer_view = acquireTextBufferView(target_handle) orelse return false },
         .editor_view => .{ .editor_view = acquireEditorView(target_handle) orelse return false },
     };
 
-    native_renderable.setMeasureTarget(target);
+    renderable.setMeasureTarget(target);
     return true;
 }
 
