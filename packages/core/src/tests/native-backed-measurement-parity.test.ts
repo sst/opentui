@@ -3,17 +3,14 @@ import { BoxRenderable } from "../renderables/Box.js"
 import { TextareaRenderable } from "../renderables/Textarea.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
-import { MeasureMode } from "../yoga.js"
 
-// These tests lock the old TypeScript measure-function behavior at the
-// renderable/Yoga boundary while TextRenderable and TextareaRenderable move to
-// native-backed measurement.
+// These tests lock the measurement behavior of the old TypeScript Yoga measure
+// functions at the renderable/Yoga boundary, now that TextRenderable and
+// TextareaRenderable use native-backed measurement. All expectations are
+// hardcoded so the tests stay valid across implementation refactors.
 
-interface ExpectedMeasureOptions {
-  availableWidth: number
-  availableHeight: number
-  position?: "relative" | "absolute"
-}
+const WORD_WRAP_CONTENT = "Hello wonderful world from OpenTUI"
+const PLACEHOLDER_CONTENT = "Placeholder text that is longer than content"
 
 let renderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -42,49 +39,6 @@ function expectLayout(
   expectCloseToLayout(layout.height, expected.height)
 }
 
-function expectedFromMeasureResult(
-  measureResult: { lineCount: number; widthColsMax: number } | null,
-  options: ExpectedMeasureOptions,
-): { width: number; height: number } {
-  const measuredWidth = measureResult ? Math.max(1, measureResult.widthColsMax) : 1
-  const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
-
-  if (options.position !== "absolute") {
-    return {
-      width: Math.min(options.availableWidth, measuredWidth),
-      height: Math.min(options.availableHeight, measuredHeight),
-    }
-  }
-
-  return { width: measuredWidth, height: measuredHeight }
-}
-
-function expectedTextLayout(text: TextRenderable, options: ExpectedMeasureOptions): { width: number; height: number } {
-  const view = (
-    text as unknown as {
-      textBufferView: {
-        measureForDimensions(width: number, height: number): { lineCount: number; widthColsMax: number } | null
-      }
-    }
-  ).textBufferView
-  const measureResult = view.measureForDimensions(
-    Math.floor(options.availableWidth),
-    Math.floor(options.availableHeight),
-  )
-  return expectedFromMeasureResult(measureResult, options)
-}
-
-function expectedTextareaLayout(
-  textarea: TextareaRenderable,
-  options: ExpectedMeasureOptions,
-): { width: number; height: number } {
-  const measureResult = textarea.editorView.measureForDimensions(
-    Math.floor(options.availableWidth),
-    Math.floor(options.availableHeight),
-  )
-  return expectedFromMeasureResult(measureResult, options)
-}
-
 async function renderInConstrainedColumn(renderable: TextRenderable | TextareaRenderable): Promise<void> {
   renderer.root.add(renderable)
   await renderOnce()
@@ -104,7 +58,7 @@ async function renderInParent(
   await renderOnce()
 }
 
-describe("native-backed measurement parity preconditions", () => {
+describe("native-backed measurement parity", () => {
   describe("TextRenderable", () => {
     test("matches native char-wrap measurement with relative AtMost clamping", async () => {
       const text = new TextRenderable(renderer, {
@@ -113,26 +67,21 @@ describe("native-backed measurement parity preconditions", () => {
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextLayout(text, { availableWidth: 80, availableHeight: 30 })
       await renderInConstrainedColumn(text)
 
-      expect(expected).toEqual({ width: 20, height: 1 })
-      expectLayout(text, expected)
+      expectLayout(text, { width: 20, height: 1 })
     })
 
     test("matches native word-wrap measurement with relative AtMost clamping", async () => {
       const text = new TextRenderable(renderer, {
-        content: "Hello wonderful world from OpenTUI",
+        content: WORD_WRAP_CONTENT,
         wrapMode: "word",
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextLayout(text, { availableWidth: 80, availableHeight: 30 })
       await renderInConstrainedColumn(text)
 
-      expect(expected.width).toBeGreaterThan(1)
-      expect(expected.height).toBe(1)
-      expectLayout(text, expected)
+      expectLayout(text, { width: WORD_WRAP_CONTENT.length, height: 1 })
     })
 
     test("matches native no-wrap measurement", async () => {
@@ -142,11 +91,9 @@ describe("native-backed measurement parity preconditions", () => {
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextLayout(text, { availableWidth: 80, availableHeight: 30 })
       await renderInConstrainedColumn(text)
 
-      expect(expected).toEqual({ width: "AVeryLongLineHere".length, height: 3 })
-      expectLayout(text, expected)
+      expectLayout(text, { width: "AVeryLongLineHere".length, height: 3 })
     })
 
     test("clamps relative AtMost measurement to a narrower parent", async () => {
@@ -156,11 +103,9 @@ describe("native-backed measurement parity preconditions", () => {
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextLayout(text, { availableWidth: 10, availableHeight: 30 })
       await renderInParent(text, { width: 10 })
 
-      expect(expected).toEqual({ width: 10, height: 1 })
-      expectLayout(text, expected)
+      expectLayout(text, { width: 10, height: 1 })
     })
 
     test("stretches relative text to the root width by default", async () => {
@@ -181,11 +126,9 @@ describe("native-backed measurement parity preconditions", () => {
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextLayout(text, { availableWidth: 80, availableHeight: 30 })
       await renderInConstrainedColumn(text)
 
-      expect(expected).toEqual({ width: 1, height: 1 })
-      expectLayout(text, expected)
+      expectLayout(text, { width: 1, height: 1 })
     })
 
     test("does not apply relative AtMost clamping for absolute-positioned text", async () => {
@@ -197,11 +140,9 @@ describe("native-backed measurement parity preconditions", () => {
         top: 0,
       })
 
-      const expected = expectedTextLayout(text, { availableWidth: 80, availableHeight: 30, position: "absolute" })
       await renderInConstrainedColumn(text)
 
-      expect(expected).toEqual({ width: 20, height: 1 })
-      expectLayout(text, expected)
+      expectLayout(text, { width: 20, height: 1 })
     })
 
     test("recomputes measurement after content changes", async () => {
@@ -212,16 +153,33 @@ describe("native-backed measurement parity preconditions", () => {
       })
 
       await renderInConstrainedColumn(text)
-      const before = expectedTextLayout(text, { availableWidth: 80, availableHeight: 30 })
-      expectLayout(text, before)
+      expectLayout(text, { width: 5, height: 1 })
 
       text.content = "ABCDEFGHIJKLMNOPQRST"
-      const after = expectedTextLayout(text, { availableWidth: 80, availableHeight: 30 })
       await renderOnce()
 
-      expect(before).toEqual({ width: 5, height: 1 })
-      expect(after).toEqual({ width: 20, height: 1 })
-      expectLayout(text, after)
+      expectLayout(text, { width: 20, height: 1 })
+    })
+
+    test("applies and removes AtMost clamping when position changes at runtime", async () => {
+      const text = new TextRenderable(renderer, {
+        content: "ABCDEFGHIJKLMNOPQRST",
+        wrapMode: "none",
+        alignSelf: "flex-start",
+        left: 0,
+        top: 0,
+      })
+
+      await renderInParent(text, { width: 10 })
+      expectLayout(text, { width: 10, height: 1 })
+
+      text.position = "absolute"
+      await renderOnce()
+      expectLayout(text, { width: 20, height: 1 })
+
+      text.position = "relative"
+      await renderOnce()
+      expectLayout(text, { width: 10, height: 1 })
     })
   })
 
@@ -233,26 +191,21 @@ describe("native-backed measurement parity preconditions", () => {
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextareaLayout(textarea, { availableWidth: 80, availableHeight: 30 })
       await renderInConstrainedColumn(textarea)
 
-      expect(expected).toEqual({ width: 20, height: 1 })
-      expectLayout(textarea, expected)
+      expectLayout(textarea, { width: 20, height: 1 })
     })
 
     test("matches native word-wrap editor measurement with relative AtMost clamping", async () => {
       const textarea = new TextareaRenderable(renderer, {
-        initialValue: "Hello wonderful world from OpenTUI",
+        initialValue: WORD_WRAP_CONTENT,
         wrapMode: "word",
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextareaLayout(textarea, { availableWidth: 80, availableHeight: 30 })
       await renderInConstrainedColumn(textarea)
 
-      expect(expected.width).toBeGreaterThan(1)
-      expect(expected.height).toBe(1)
-      expectLayout(textarea, expected)
+      expectLayout(textarea, { width: WORD_WRAP_CONTENT.length, height: 1 })
     })
 
     test("matches native no-wrap editor measurement", async () => {
@@ -262,11 +215,9 @@ describe("native-backed measurement parity preconditions", () => {
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextareaLayout(textarea, { availableWidth: 80, availableHeight: 30 })
       await renderInConstrainedColumn(textarea)
 
-      expect(expected).toEqual({ width: "AVeryLongLineHere".length, height: 3 })
-      expectLayout(textarea, expected)
+      expectLayout(textarea, { width: "AVeryLongLineHere".length, height: 3 })
     })
 
     test("clamps relative editor AtMost measurement to a narrower parent", async () => {
@@ -276,11 +227,9 @@ describe("native-backed measurement parity preconditions", () => {
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextareaLayout(textarea, { availableWidth: 10, availableHeight: 30 })
       await renderInParent(textarea, { width: 10 })
 
-      expect(expected).toEqual({ width: 10, height: 1 })
-      expectLayout(textarea, expected)
+      expectLayout(textarea, { width: 10, height: 1 })
     })
 
     test("stretches relative editors to the root width by default", async () => {
@@ -301,11 +250,9 @@ describe("native-backed measurement parity preconditions", () => {
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextareaLayout(textarea, { availableWidth: 80, availableHeight: 30 })
       await renderInConstrainedColumn(textarea)
 
-      expect(expected).toEqual({ width: 1, height: 1 })
-      expectLayout(textarea, expected)
+      expectLayout(textarea, { width: 1, height: 1 })
     })
 
     test("does not apply relative AtMost clamping for absolute-positioned editors", async () => {
@@ -317,15 +264,9 @@ describe("native-backed measurement parity preconditions", () => {
         top: 0,
       })
 
-      const expected = expectedTextareaLayout(textarea, {
-        availableWidth: 80,
-        availableHeight: 30,
-        position: "absolute",
-      })
       await renderInConstrainedColumn(textarea)
 
-      expect(expected).toEqual({ width: 20, height: 1 })
-      expectLayout(textarea, expected)
+      expectLayout(textarea, { width: 20, height: 1 })
     })
 
     test("recomputes editor measurement after text changes", async () => {
@@ -336,31 +277,46 @@ describe("native-backed measurement parity preconditions", () => {
       })
 
       await renderInConstrainedColumn(textarea)
-      const before = expectedTextareaLayout(textarea, { availableWidth: 80, availableHeight: 30 })
-      expectLayout(textarea, before)
+      expectLayout(textarea, { width: 5, height: 1 })
 
       textarea.setText("ABCDEFGHIJKLMNOPQRST")
-      const after = expectedTextareaLayout(textarea, { availableWidth: 80, availableHeight: 30 })
       await renderOnce()
 
-      expect(before).toEqual({ width: 5, height: 1 })
-      expect(after).toEqual({ width: 20, height: 1 })
-      expectLayout(textarea, after)
+      expectLayout(textarea, { width: 20, height: 1 })
     })
 
     test("captures current placeholder measurement behavior", async () => {
       const textarea = new TextareaRenderable(renderer, {
         initialValue: "",
-        placeholder: "Placeholder text that is longer than content",
+        placeholder: PLACEHOLDER_CONTENT,
         wrapMode: "char",
         alignSelf: "flex-start",
       })
 
-      const expected = expectedTextareaLayout(textarea, { availableWidth: 80, availableHeight: 30 })
       await renderInConstrainedColumn(textarea)
 
-      expect(expected).toEqual({ width: "Placeholder text that is longer than content".length, height: 1 })
-      expectLayout(textarea, expected)
+      expectLayout(textarea, { width: PLACEHOLDER_CONTENT.length, height: 1 })
+    })
+
+    test("applies and removes AtMost clamping when position changes at runtime", async () => {
+      const textarea = new TextareaRenderable(renderer, {
+        initialValue: "ABCDEFGHIJKLMNOPQRST",
+        wrapMode: "none",
+        alignSelf: "flex-start",
+        left: 0,
+        top: 0,
+      })
+
+      await renderInParent(textarea, { width: 10 })
+      expectLayout(textarea, { width: 10, height: 1 })
+
+      textarea.position = "absolute"
+      await renderOnce()
+      expectLayout(textarea, { width: 20, height: 1 })
+
+      textarea.position = "relative"
+      await renderOnce()
+      expectLayout(textarea, { width: 10, height: 1 })
     })
   })
 })

@@ -261,10 +261,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "u32", "u32"],
       returns: "bool",
     },
-    nativeRenderableClearMeasureTarget: {
-      args: ["u32"],
-      returns: "void",
-    },
     // Renderer management
     createRenderer: {
       args: ["u32", "u32", "u8", "u8", "ptr"],
@@ -1902,6 +1898,10 @@ export const NativeMeasureTargetKind = {
   EditorView: 2,
 } as const
 
+export type NativeMeasureTargetKind = (typeof NativeMeasureTargetKind)[keyof typeof NativeMeasureTargetKind]
+
+export type NativeMeasureTargetHandle = TextBufferViewHandle | EditorViewHandle
+
 export interface AudioEngineLib {
   createAudioEngine: (options?: AudioCreateOptions | null) => AudioEngineHandle | null
   destroyAudioEngine: (engine: AudioEngineHandle) => void
@@ -2536,8 +2536,11 @@ export interface RenderLib extends AudioEngineLib {
   createNativeRenderable: () => NativeRenderableHandle
   destroyNativeRenderable: (handle: NativeRenderableHandle) => void
   nativeRenderableAttachYogaNode: (handle: NativeRenderableHandle, node: Pointer) => boolean
-  nativeRenderableSetMeasureTarget: (handle: NativeRenderableHandle, kind: number, target: Pointer) => boolean
-  nativeRenderableClearMeasureTarget: (handle: NativeRenderableHandle) => void
+  nativeRenderableSetMeasureTarget: (
+    handle: NativeRenderableHandle,
+    kind: NativeMeasureTargetKind,
+    target: NativeMeasureTargetHandle | 0,
+  ) => boolean
   onNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   onceNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   offNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
@@ -2570,12 +2573,12 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.nativeRenderableAttachYogaNode(handle, node)
   }
 
-  public nativeRenderableSetMeasureTarget(handle: NativeRenderableHandle, kind: number, target: Pointer): boolean {
+  public nativeRenderableSetMeasureTarget(
+    handle: NativeRenderableHandle,
+    kind: NativeMeasureTargetKind,
+    target: NativeMeasureTargetHandle | 0,
+  ): boolean {
     return this.opentui.symbols.nativeRenderableSetMeasureTarget(handle, kind, target)
-  }
-
-  public nativeRenderableClearMeasureTarget(handle: NativeRenderableHandle): void {
-    this.opentui.symbols.nativeRenderableClearMeasureTarget(handle)
   }
 
   constructor(libPath?: string) {

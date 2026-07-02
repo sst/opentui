@@ -955,6 +955,9 @@ export class Node {
     return lib().yogaNodeGetAlwaysFormsContainingBlock(this.ptr)
   }
 
+  // A Yoga node has a single measure slot, shared with native-backed measurement
+  // (NativeRenderable). Setting a JS measure func on a node that has a native
+  // measure target replaces the native one, and vice versa.
   setMeasureFunc(measureFunc: MeasureFunction | null): void {
     if (this.freed) return
     this.unsetMeasureFunc()

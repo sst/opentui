@@ -175,11 +175,6 @@ export fn nativeRenderableAttachYogaNode(native_renderable_handle: NativeHandle,
     return true;
 }
 
-export fn nativeRenderableClearMeasureTarget(native_renderable_handle: NativeHandle) void {
-    const renderable = acquireNativeRenderable(native_renderable_handle) orelse return;
-    renderable.clearMeasureTarget();
-}
-
 export fn nativeRenderableSetMeasureTarget(
     native_renderable_handle: NativeHandle,
     kind: u32,
@@ -189,10 +184,12 @@ export fn nativeRenderableSetMeasureTarget(
 
     // Resolve handles once at setup time. The Yoga measure callback then uses raw
     // native pointers and does not pay handle-registry lookup cost on the hot path.
+    // Kind `none` clears the measure target; unknown kinds are rejected.
     const measure_kind: native_renderable.MeasureTargetKind = switch (kind) {
+        @intFromEnum(native_renderable.MeasureTargetKind.none) => .none,
         @intFromEnum(native_renderable.MeasureTargetKind.text_buffer_view) => .text_buffer_view,
         @intFromEnum(native_renderable.MeasureTargetKind.editor_view) => .editor_view,
-        else => .none,
+        else => return false,
     };
 
     const target: native_renderable.MeasureTarget = switch (measure_kind) {
