@@ -2570,7 +2570,8 @@ class FFIRenderLib implements RenderLib {
   }
 
   public nativeRenderableAttachYogaNode(handle: NativeRenderableHandle, node: Pointer): boolean {
-    return this.opentui.symbols.nativeRenderableAttachYogaNode(handle, node)
+    // Node's FFI returns bools as 0/1 numbers; normalize so the interface stays truthful.
+    return Boolean(this.opentui.symbols.nativeRenderableAttachYogaNode(handle, node))
   }
 
   public nativeRenderableSetMeasureTarget(
@@ -2578,7 +2579,7 @@ class FFIRenderLib implements RenderLib {
     kind: NativeMeasureTargetKind,
     target: NativeMeasureTargetHandle | 0,
   ): boolean {
-    return this.opentui.symbols.nativeRenderableSetMeasureTarget(handle, kind, target)
+    return Boolean(this.opentui.symbols.nativeRenderableSetMeasureTarget(handle, kind, target))
   }
 
   constructor(libPath?: string) {
@@ -3703,7 +3704,8 @@ class FFIRenderLib implements RenderLib {
   }
 
   public yogaNodeHasMeasureFunc(node: Pointer): boolean {
-    return this.opentui.symbols.yogaNodeHasMeasureFunc(node)
+    // Node's FFI returns bools as 0/1 numbers; normalize so the interface stays truthful.
+    return Boolean(this.opentui.symbols.yogaNodeHasMeasureFunc(node))
   }
 
   public yogaNodeSetDirtiedFunc(node: Pointer, enabled: boolean): void {

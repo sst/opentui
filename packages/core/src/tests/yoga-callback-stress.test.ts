@@ -74,4 +74,49 @@ describe("native Yoga callback routing stress", () => {
       root.freeRecursive()
     }
   })
+
+  test("routes dirtied notifications per node through the shared callback", () => {
+    const nodeCount = 16
+    const root = Yoga.Node.createForOpenTUI()
+    const nodes: YogaNode[] = []
+    const dirtiedCounts = new Uint32Array(nodeCount)
+    let identityMismatch = false
+
+    root.setWidth(60)
+    root.setFlexDirection(FlexDirection.Column)
+    root.setAlignItems(Align.FlexStart)
+
+    for (let index = 0; index < nodeCount; index++) {
+      const node = Yoga.Node.createForOpenTUI()
+      node.setMeasureFunc(() => ({ width: 1 + (index % 3), height: 1 }))
+      node.setDirtiedFunc((dirtiedNode) => {
+        dirtiedCounts[index]++
+        if (dirtiedNode !== node) identityMismatch = true
+      })
+      root.insertChild(node, index)
+      nodes.push(node)
+    }
+
+    try {
+      // Dirtied fires on the clean -> dirty transition, so layout first.
+      root.calculateLayout(60, undefined, Direction.LTR)
+      for (const node of nodes) node.markDirty()
+
+      for (let index = 0; index < nodeCount; index++) {
+        expect(dirtiedCounts[index]!).toBe(1)
+      }
+
+      root.calculateLayout(60, undefined, Direction.LTR)
+      nodes[0]!.unsetDirtiedFunc()
+      for (const node of nodes) node.markDirty()
+
+      expect(dirtiedCounts[0]!).toBe(1)
+      for (let index = 1; index < nodeCount; index++) {
+        expect(dirtiedCounts[index]!).toBe(2)
+      }
+      expect(identityMismatch).toBe(false)
+    } finally {
+      root.freeRecursive()
+    }
+  })
 })
