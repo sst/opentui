@@ -292,6 +292,10 @@ const YogaEdgeLayoutKind = {
 const UNDEFINED_VALUE: Value = { unit: Unit.Undefined, value: NaN }
 
 const nodeRegistry = new Map<Pointer, Node>()
+// JS-measured Yoga nodes share one native callback per loaded library. Yoga passes
+// the node pointer back to JS, and these registries route to the per-node handler.
+// This keeps Node.setMeasureFunc()/setDirtiedFunc() while avoiding one JSCallback
+// allocation per measured node.
 const measureRegistry = new Map<Pointer, MeasureFunction>()
 const dirtiedRegistry = new Map<Pointer, { node: Node; callback: DirtiedFunction }>()
 let measureCallback: FFICallbackInstance | null = null

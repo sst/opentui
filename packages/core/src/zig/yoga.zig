@@ -241,6 +241,8 @@ fn internalMeasureFunc(
     height: f32,
     height_mode: c.YGMeasureMode,
 ) callconv(.c) c.YGSize {
+    // JS-measured nodes use the shared JS callback router. Native-backed
+    // renderables use internalNativeMeasureFunc to avoid a JS round trip.
     tls_measure_width = std.math.nan(f32);
     tls_measure_height = std.math.nan(f32);
 
@@ -259,6 +261,8 @@ fn internalNativeMeasureFunc(
     height: f32,
     height_mode: c.YGMeasureMode,
 ) callconv(.c) c.YGSize {
+    // Hot native renderables measure entirely in Zig: Yoga -> native renderable
+    // -> native text/editor view. This is separate from the JS callback path.
     if (getContext(node)) |ctx| {
         if (ctx.native_measure_callback) |callback| {
             const size = callback(

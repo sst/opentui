@@ -186,6 +186,9 @@ export fn nativeRenderableSetMeasureTarget(
     target_handle: NativeHandle,
 ) bool {
     const renderable = acquireNativeRenderable(native_renderable_handle) orelse return false;
+
+    // Resolve handles once at setup time. The Yoga measure callback then uses raw
+    // native pointers and does not pay handle-registry lookup cost on the hot path.
     const measure_kind: native_renderable.MeasureTargetKind = switch (kind) {
         @intFromEnum(native_renderable.MeasureTargetKind.text_buffer_view) => .text_buffer_view,
         @intFromEnum(native_renderable.MeasureTargetKind.editor_view) => .editor_view,

@@ -5,6 +5,10 @@ import { TextRenderable } from "../renderables/Text.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { MeasureMode } from "../yoga.js"
 
+// These tests lock the old TypeScript measure-function behavior at the
+// renderable/Yoga boundary while TextRenderable and TextareaRenderable move to
+// native-backed measurement.
+
 interface ExpectedMeasureOptions {
   availableWidth: number
   availableHeight: number

@@ -10,6 +10,8 @@ pub const MeasureTargetKind = enum(u32) {
     editor_view = 2,
 };
 
+// Generic measure targets keep Yoga independent of concrete renderable types.
+// Add target kinds here instead of adding type-specific Yoga APIs.
 pub const MeasureTarget = union(MeasureTargetKind) {
     none,
     text_buffer_view: *text_buffer_view.UnifiedTextBufferView,
