@@ -3695,7 +3695,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public yogaNodeSetMeasureFunc(node: Pointer, enabled: boolean): void {
-    this.opentui.symbols.yogaNodeSetMeasureFunc(node, enabled)
+    this.opentui.symbols.yogaNodeSetMeasureFunc(node, ffiBool(enabled))
   }
 
   public yogaNodeUnsetMeasureFunc(node: Pointer): void {
@@ -3707,7 +3707,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public yogaNodeSetDirtiedFunc(node: Pointer, enabled: boolean): void {
-    this.opentui.symbols.yogaNodeSetDirtiedFunc(node, enabled)
+    this.opentui.symbols.yogaNodeSetDirtiedFunc(node, ffiBool(enabled))
   }
 
   public yogaNodeUnsetDirtiedFunc(node: Pointer): void {
