@@ -166,6 +166,9 @@ export fn destroyNativeRenderable(native_renderable_handle: NativeHandle) void {
 }
 
 export fn nativeRenderableAttachYogaNode(native_renderable_handle: NativeHandle, node: native_yoga.YGNodeRef) bool {
+    // Temporary bridge: JS-created Renderables still own Yoga nodes, so native
+    // renderables borrow and attach them after construction. This should go away
+    // when the renderable tree and Yoga ownership move native-side.
     const renderable = acquireNativeRenderable(native_renderable_handle) orelse return false;
     if (node == null) return false;
     renderable.attachYogaNode(node);

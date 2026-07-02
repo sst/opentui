@@ -17,6 +17,10 @@ pub const MeasureTarget = union(MeasureTargetKind) {
 };
 
 pub const NativeRenderable = struct {
+    // Borrowed during the migration to native-backed renderables. Today JS owns
+    // the Renderable tree and Yoga nodes; this native object only routes hot
+    // measurement without crossing back into JS. Long term, NativeRenderable
+    // should back every Renderable and own the Yoga node directly.
     yoga_node: native_yoga.YGNodeRef = null,
     measure_target: MeasureTarget = .none,
 

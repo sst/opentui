@@ -935,6 +935,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   private setupNativeRenderable(): void {
     const lib = resolveRenderLib()
+    // Transitional native backing: JS still owns the render tree and Yoga nodes,
+    // while native owns only hot measurement state. Attach the existing JS-created
+    // Yoga node for now. The intended direction is for every Renderable to become
+    // native-backed and for Yoga node ownership to move native-side with it.
     const nativeRenderable = lib.createNativeRenderable()
     if (!lib.nativeRenderableAttachYogaNode(nativeRenderable, this.yogaNode.ptr)) {
       lib.destroyNativeRenderable(nativeRenderable)
