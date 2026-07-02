@@ -1003,7 +1003,7 @@ pub fn setColorSchemeUpdates(self: *Terminal, tty: anytype, enable: bool) !void 
 ///   ?1004h  - Focus event tracking (sends \x1b[I / \x1b[O)
 ///   ?2004h  - Bracketed paste mode (wraps pasted text in markers)
 ///   Kitty keyboard protocol (CSI > flags u) - progressive enhancement
-///   modifyOtherKeys (CSI > 4 ; 1 m) - xterm key modification
+///   modifyOtherKeys (CSI > 4 ; 2 m) - xterm key modification
 pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
     // Re-enable mouse tracking modes if active
     if (self.state.mouse) {
