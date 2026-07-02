@@ -145,11 +145,18 @@ describe("native renderable measure target contract", () => {
       ).toBe(false)
       expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(true)
 
+      // Clear the target before destroying the view: a native renderable must
+      // never keep measuring a destroyed view (renderables enforce this by
+      // destroying the native renderable before their views).
+      expect(lib.nativeRenderableSetMeasureTarget(renderable, NativeMeasureTargetKind.None, 0)).toBe(true)
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(false)
+
       const staleViewHandle = textView.ptr
       textView.destroy()
       expect(
         lib.nativeRenderableSetMeasureTarget(renderable, NativeMeasureTargetKind.TextBufferView, staleViewHandle),
       ).toBe(false)
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(false)
     } finally {
       lib.destroyNativeRenderable(renderable)
       node.free()
