@@ -397,3 +397,137 @@ test "resize performs alpha-aware sRGB reduction" {
     try std.testing.expect(output.pixels[0] <= 2);
     try std.testing.expect(@abs(@as(i16, output.pixels[3]) - 128) <= 1);
 }
+
+fn injectJpegExifOrientation(
+    allocator: std.mem.Allocator,
+    jpeg: []const u8,
+    orientation: u16,
+    endian: std.builtin.Endian,
+) ![]u8 {
+    const tiff_le = [_]u8{
+        'I', 'I', 42,                     0,                           8, 0, 0, 0,
+        1,   0,   0x12,                   0x01,                        3, 0, 1, 0,
+        0,   0,   @truncate(orientation), @truncate(orientation >> 8), 0, 0, 0, 0,
+        0,   0,
+    };
+    const tiff_be = [_]u8{
+        'M', 'M', 0,                           42,                     0, 0, 0, 8,
+        0,   1,   0x01,                        0x12,                   0, 3, 0, 0,
+        0,   1,   @truncate(orientation >> 8), @truncate(orientation), 0, 0, 0, 0,
+        0,   0,
+    };
+    const tiff = if (endian == .little) &tiff_le else &tiff_be;
+    const identifier = "Exif\x00\x00";
+    const segment_length: u16 = @intCast(2 + identifier.len + tiff.len);
+    var output = try allocator.alloc(u8, jpeg.len + 4 + identifier.len + tiff.len);
+    errdefer allocator.free(output);
+    @memcpy(output[0..2], jpeg[0..2]);
+    output[2] = 0xFF;
+    output[3] = 0xE1;
+    output[4] = @truncate(segment_length >> 8);
+    output[5] = @truncate(segment_length);
+    @memcpy(output[6 .. 6 + identifier.len], identifier);
+    @memcpy(output[6 + identifier.len .. 6 + identifier.len + tiff.len], tiff);
+    @memcpy(output[6 + identifier.len + tiff.len ..], jpeg[2..]);
+    return output;
+}
+
+test "JPEG EXIF orientation swaps probe and decode dimensions" {
+    const jpeg = std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/halves.jpg", 1 << 20) catch
+        return error.SkipZigTest;
+    defer std.testing.allocator.free(jpeg);
+
+    var plain_info: image.Info = .{};
+    try std.testing.expectEqual(image.Status.ok, image.probe(jpeg, .{}, &plain_info));
+    try std.testing.expectEqual(@as(u32, 16), plain_info.width);
+    try std.testing.expectEqual(@as(u32, 8), plain_info.height);
+    try std.testing.expectEqual(@as(u32, 1), plain_info.orientation);
+
+    for ([_]std.builtin.Endian{ .little, .big }) |endian| {
+        const rotated = try injectJpegExifOrientation(std.testing.allocator, jpeg, 6, endian);
+        defer std.testing.allocator.free(rotated);
+
+        var info: image.Info = .{};
+        try std.testing.expectEqual(image.Status.ok, image.probe(rotated, .{}, &info));
+        try std.testing.expectEqual(@as(u32, 6), info.orientation);
+        try std.testing.expectEqual(@as(u32, 8), info.width);
+        try std.testing.expectEqual(@as(u32, 16), info.height);
+        try std.testing.expectEqual(@as(u32, 16), info.source_width);
+        try std.testing.expectEqual(@as(u32, 8), info.source_height);
+
+        const decoded = try image.decode(std.testing.allocator, rotated, .{});
+        defer decoded.deinit();
+        try std.testing.expectEqual(@as(u32, 8), decoded.width());
+        try std.testing.expectEqual(@as(u32, 16), decoded.height());
+        try std.testing.expectEqual(@as(u32, 1), decoded.metadata.orientation);
+        // Orientation 6: output (dx, dy) = source (dy, srcH - 1 - dx). The
+        // source is left-red, right-green, so the output's top rows come from
+        // the source's left (red) half and the bottom rows from the right
+        // (green) half.
+        const top = decoded.pixels[0..4];
+        const bottom_offset = (@as(usize, 15) * 8) * 4;
+        const bottom = decoded.pixels[bottom_offset .. bottom_offset + 4];
+        try std.testing.expect(top[0] > 200 and top[1] < 60);
+        try std.testing.expect(bottom[1] > 200 and bottom[0] < 60);
+    }
+}
+
+test "JPEG EXIF orientation 180 keeps dimensions" {
+    const jpeg = std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/halves.jpg", 1 << 20) catch
+        return error.SkipZigTest;
+    defer std.testing.allocator.free(jpeg);
+    const flipped = try injectJpegExifOrientation(std.testing.allocator, jpeg, 3, .little);
+    defer std.testing.allocator.free(flipped);
+
+    var info: image.Info = .{};
+    try std.testing.expectEqual(image.Status.ok, image.probe(flipped, .{}, &info));
+    try std.testing.expectEqual(@as(u32, 3), info.orientation);
+    try std.testing.expectEqual(@as(u32, 16), info.width);
+    try std.testing.expectEqual(@as(u32, 8), info.height);
+
+    const decoded = try image.decode(std.testing.allocator, flipped, .{});
+    defer decoded.deinit();
+    try std.testing.expectEqual(@as(u32, 16), decoded.width());
+    // 180 degrees: the left half becomes green, the right half red.
+    try std.testing.expect(decoded.pixels[1] > 200);
+    const right_offset = (@as(usize, 15)) * 4;
+    try std.testing.expect(decoded.pixels[right_offset] > 200);
+}
+
+test "JPEG EXIF orientation rejects invalid values" {
+    const jpeg = std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/halves.jpg", 1 << 20) catch
+        return error.SkipZigTest;
+    defer std.testing.allocator.free(jpeg);
+    for ([_]u16{ 0, 9, 200 }) |invalid| {
+        const bytes = try injectJpegExifOrientation(std.testing.allocator, jpeg, invalid, .little);
+        defer std.testing.allocator.free(bytes);
+        var info: image.Info = .{};
+        try std.testing.expectEqual(image.Status.ok, image.probe(bytes, .{}, &info));
+        try std.testing.expectEqual(@as(u32, 1), info.orientation);
+        try std.testing.expectEqual(@as(u32, 16), info.width);
+    }
+}
+
+test "PNG eXIf orientation applies during decode" {
+    // 2x1 PNG (left red, right green) carrying an eXIf chunk with orientation 6.
+    const png = try decodeBase64(
+        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAGmVYSWZJSSoACAAAAAEAEgEDAAEAAAAGAAAAAAAAALdIESkAAAAOSURBVHicY/jPwPAfBAEQ+AP9TpXBbwAAAABJRU5ErkJggg==",
+    );
+    defer std.testing.allocator.free(png);
+
+    var info: image.Info = .{};
+    try std.testing.expectEqual(image.Status.ok, image.probe(png, .{}, &info));
+    try std.testing.expectEqual(@as(u32, 6), info.orientation);
+    try std.testing.expectEqual(@as(u32, 1), info.width);
+    try std.testing.expectEqual(@as(u32, 2), info.height);
+    try std.testing.expectEqual(@as(u32, 2), info.source_width);
+    try std.testing.expectEqual(@as(u32, 1), info.source_height);
+
+    const decoded = try image.decode(std.testing.allocator, png, .{});
+    defer decoded.deinit();
+    try std.testing.expectEqual(@as(u32, 1), decoded.width());
+    try std.testing.expectEqual(@as(u32, 2), decoded.height());
+    try std.testing.expectEqual(@as(u32, 1), decoded.metadata.orientation);
+    // Orientation 6 rotates the row into a column: red on top, green below.
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255, 0, 255, 0, 255 }, decoded.pixels);
+}

@@ -254,6 +254,33 @@ fn parseExifOrientation(data: []const u8) u8 {
     return found;
 }
 
+fn scanJpegOrientation(data: []const u8) u8 {
+    if (data.len < 4 or data[0] != 0xFF or data[1] != 0xD8) return 1;
+    var position: usize = 2;
+    while (position + 2 <= data.len) {
+        if (data[position] != 0xFF) return 1;
+        var marker_position = position + 1;
+        while (marker_position < data.len and data[marker_position] == 0xFF) marker_position += 1;
+        if (marker_position >= data.len) return 1;
+        const marker = data[marker_position];
+        position = marker_position + 1;
+        if (marker == 0x01 or (marker >= 0xD0 and marker <= 0xD8)) continue;
+        // EXIF metadata must precede entropy-coded data; stop at SOS or EOI.
+        if (marker == 0xDA or marker == 0xD9) return 1;
+        if (position + 2 > data.len) return 1;
+        const segment_length = (@as(usize, data[position]) << 8) | data[position + 1];
+        if (segment_length < 2 or segment_length > data.len - position) return 1;
+        if (marker == 0xE1) {
+            const payload = data[position + 2 .. position + segment_length];
+            if (payload.len >= 6 and std.mem.eql(u8, payload[0..6], "Exif\x00\x00")) {
+                return parseExifOrientation(payload);
+            }
+        }
+        position += segment_length;
+    }
+    return 1;
+}
+
 fn scanPng(data: []const u8) !PngMetadata {
     if (data.len < 8 or !std.mem.eql(u8, data[0..8], &png_signature)) return error.UnsupportedFormat;
     if (data.len < 33) return error.MalformedInput;
@@ -366,14 +393,16 @@ fn probeInternal(data: []const u8, limits: Limits, out: *Info, validate_jpeg: bo
             if (validation_result == 2) return .out_of_memory;
             if (validation_result != 0 or validated_width != width or validated_height != height) return .malformed_input;
         }
+        const orientation = scanJpegOrientation(data);
+        const swaps_jpeg_dimensions = orientation >= 5 and orientation <= 8;
         out.* = .{
-            .width = width,
-            .height = height,
+            .width = if (swaps_jpeg_dimensions) height else width,
+            .height = if (swaps_jpeg_dimensions) width else height,
             .source_width = width,
             .source_height = height,
             .format = @intFromEnum(Format.jpeg),
             .color_status = @intFromEnum(ColorStatus.assumed_srgb),
-            .orientation = 1,
+            .orientation = orientation,
             .has_alpha = 0,
         };
         return .ok;
