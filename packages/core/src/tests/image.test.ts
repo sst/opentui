@@ -13,6 +13,54 @@ const PNG_1X1 = Uint8Array.from(
 )
 
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
+
+function injectJpegExifOrientation(jpeg: Uint8Array, orientation: number): Uint8Array {
+  // Little-endian TIFF with a single IFD0 entry: tag 0x0112 (Orientation),
+  // type SHORT, count 1.
+  const tiff = Uint8Array.from([
+    0x49,
+    0x49,
+    0x2a,
+    0x00,
+    0x08,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x12,
+    0x01,
+    0x03,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    orientation & 0xff,
+    (orientation >> 8) & 0xff,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+  ])
+  const identifier = Uint8Array.from([0x45, 0x78, 0x69, 0x66, 0x00, 0x00])
+  const segmentLength = 2 + identifier.length + tiff.length
+  const segment = new Uint8Array(2 + segmentLength)
+  segment[0] = 0xff
+  segment[1] = 0xe1
+  segment[2] = (segmentLength >> 8) & 0xff
+  segment[3] = segmentLength & 0xff
+  segment.set(identifier, 4)
+  segment.set(tiff, 4 + identifier.length)
+
+  const result = new Uint8Array(jpeg.length + segment.length)
+  result.set(jpeg.slice(0, 2), 0)
+  result.set(segment, 2)
+  result.set(jpeg.slice(2), 2 + segment.length)
+  return result
+}
 const FORMATS = [
   ["rgba.png", "png", false],
   ["baseline.jpg", "jpeg", false],
@@ -398,6 +446,84 @@ describe("NativeImage", () => {
       }
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    }
+  })
+
+  test("reports and applies JPEG EXIF orientation", async () => {
+    const plainBytes = new Uint8Array(await readFile(new URL("halves.jpg", FIXTURES)))
+    const plain = NativeImage.decode(plainBytes)
+    const reference = plain.raw()
+    const sourceWidth = plain.width
+    const sourceHeight = plain.height
+    plain.dispose()
+    expect(sourceWidth).not.toBe(sourceHeight)
+
+    const mappings: Record<number, (dx: number, dy: number) => [number, number]> = {
+      // Orientation n: decoded output pixel (dx, dy) comes from source (sx, sy).
+      2: (dx, dy) => [sourceWidth - 1 - dx, dy],
+      3: (dx, dy) => [sourceWidth - 1 - dx, sourceHeight - 1 - dy],
+      4: (dx, dy) => [dx, sourceHeight - 1 - dy],
+      5: (dx, dy) => [dy, dx],
+      6: (dx, dy) => [dy, sourceHeight - 1 - dx],
+      7: (dx, dy) => [sourceWidth - 1 - dy, sourceHeight - 1 - dx],
+      8: (dx, dy) => [sourceWidth - 1 - dy, dx],
+    }
+
+    for (const [orientationText, mapSource] of Object.entries(mappings)) {
+      const orientation = Number(orientationText)
+      const swapsDimensions = orientation >= 5
+      const bytes = injectJpegExifOrientation(plainBytes, orientation)
+
+      const info = imageInfo(bytes)
+      expect(info.orientation).toBe(orientation)
+      expect(info.sourceWidth).toBe(sourceWidth)
+      expect(info.sourceHeight).toBe(sourceHeight)
+      expect(info.width).toBe(swapsDimensions ? sourceHeight : sourceWidth)
+      expect(info.height).toBe(swapsDimensions ? sourceWidth : sourceHeight)
+
+      const oriented = NativeImage.decode(bytes)
+      try {
+        expect(oriented.width).toBe(info.width)
+        expect(oriented.height).toBe(info.height)
+        expect(oriented.info().orientation).toBe(1)
+        const raw = oriented.raw()
+        for (let dy = 0; dy < oriented.height; dy++) {
+          for (let dx = 0; dx < oriented.width; dx++) {
+            const [sx, sy] = mapSource(dx, dy)
+            const output = (dy * oriented.width + dx) * 4
+            const source = (sy * sourceWidth + sx) * 4
+            for (let channel = 0; channel < 4; channel++) {
+              if (raw.data[output + channel] !== reference.data[source + channel]) {
+                throw new Error(`orientation ${orientation}: pixel (${dx},${dy}) differs from source (${sx},${sy})`)
+              }
+            }
+          }
+        }
+      } finally {
+        oriented.dispose()
+      }
+    }
+  })
+
+  test("finds JPEG EXIF orientation after other application segments", async () => {
+    const plainBytes = new Uint8Array(await readFile(new URL("halves.jpg", FIXTURES)))
+    // Insert a benign APP0 comment-style segment before the EXIF APP1 payload.
+    const app0 = Uint8Array.from([0xff, 0xe0, 0x00, 0x09, 0x4f, 0x50, 0x54, 0x55, 0x49, 0x00, 0x00])
+    const withExif = injectJpegExifOrientation(plainBytes, 6)
+    const shifted = new Uint8Array(withExif.length + app0.length)
+    shifted.set(withExif.slice(0, 2), 0)
+    shifted.set(app0, 2)
+    shifted.set(withExif.slice(2), 2 + app0.length)
+    expect(imageInfo(shifted).orientation).toBe(6)
+  })
+
+  test("ignores invalid JPEG EXIF orientation values", async () => {
+    const plainBytes = new Uint8Array(await readFile(new URL("halves.jpg", FIXTURES)))
+    for (const invalid of [0, 9]) {
+      const info = imageInfo(injectJpegExifOrientation(plainBytes, invalid))
+      expect(info.orientation).toBe(1)
+      expect(info.width).toBe(16)
+      expect(info.height).toBe(8)
     }
   })
 
