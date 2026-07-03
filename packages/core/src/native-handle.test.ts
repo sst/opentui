@@ -6,7 +6,10 @@ import { TextBufferView } from "./text-buffer-view.js"
 import { EditBuffer } from "./edit-buffer.js"
 import { EditorView } from "./editor-view.js"
 import { SyntaxStyle } from "./syntax-style.js"
+import type { Pointer } from "./platform/ffi.js"
+import Yoga from "./yoga.js"
 import {
+  NativeMeasureTargetKind,
   resolveRenderLib,
   setRenderLibPath,
   type OptimizedBufferHandle,
@@ -115,5 +118,104 @@ describe("native handles", () => {
 
     editBuffer.destroy()
     expect(lib.textBufferGetLength(borrowedTextHandle)).toBe(0)
+  })
+})
+
+describe("native renderable measure target contract", () => {
+  test("rejects null nodes, unknown kinds, and stale target handles", () => {
+    const lib = resolveRenderLib()
+    const textBuffer = TextBuffer.create("unicode")
+    const textView = TextBufferView.create(textBuffer)
+    const node = Yoga.Node.createForOpenTUI()
+    const renderable = lib.createNativeRenderable()
+
+    try {
+      expect(lib.nativeRenderableAttachYogaNode(renderable, 0 as unknown as Pointer)).toBe(false)
+      expect(lib.nativeRenderableAttachYogaNode(renderable, node.ptr)).toBe(true)
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(false)
+
+      expect(
+        lib.nativeRenderableSetMeasureTarget(renderable, NativeMeasureTargetKind.TextBufferView, textView.ptr),
+      ).toBe(true)
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(true)
+
+      // Unknown kinds are rejected and leave the current target in place.
+      expect(
+        lib.nativeRenderableSetMeasureTarget(renderable, 999 as unknown as NativeMeasureTargetKind, textView.ptr),
+      ).toBe(false)
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(true)
+
+      // Clear the target before destroying the view: a native renderable must
+      // never keep measuring a destroyed view (renderables enforce this by
+      // destroying the native renderable before their views).
+      expect(lib.nativeRenderableSetMeasureTarget(renderable, NativeMeasureTargetKind.None, 0)).toBe(true)
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(false)
+
+      const staleViewHandle = textView.ptr
+      textView.destroy()
+      expect(
+        lib.nativeRenderableSetMeasureTarget(renderable, NativeMeasureTargetKind.TextBufferView, staleViewHandle),
+      ).toBe(false)
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(false)
+    } finally {
+      lib.destroyNativeRenderable(renderable)
+      node.free()
+      textView.destroy()
+      textBuffer.destroy()
+    }
+  })
+
+  test("kind None clears the measure target", () => {
+    const lib = resolveRenderLib()
+    const editBuffer = EditBuffer.create("unicode")
+    const editorView = EditorView.create(editBuffer, 10, 4)
+    const node = Yoga.Node.createForOpenTUI()
+    const renderable = lib.createNativeRenderable()
+
+    try {
+      expect(lib.nativeRenderableAttachYogaNode(renderable, node.ptr)).toBe(true)
+      expect(lib.nativeRenderableSetMeasureTarget(renderable, NativeMeasureTargetKind.EditorView, editorView.ptr)).toBe(
+        true,
+      )
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(true)
+
+      expect(lib.nativeRenderableSetMeasureTarget(renderable, NativeMeasureTargetKind.None, 0)).toBe(true)
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(false)
+    } finally {
+      lib.destroyNativeRenderable(renderable)
+      node.free()
+      editorView.destroy()
+      editBuffer.destroy()
+    }
+  })
+
+  test("destroying a native renderable clears the node measure func and invalidates the handle", () => {
+    const lib = resolveRenderLib()
+    const textBuffer = TextBuffer.create("unicode")
+    const textView = TextBufferView.create(textBuffer)
+    const node = Yoga.Node.createForOpenTUI()
+    const renderable = lib.createNativeRenderable()
+
+    try {
+      expect(lib.nativeRenderableAttachYogaNode(renderable, node.ptr)).toBe(true)
+      expect(
+        lib.nativeRenderableSetMeasureTarget(renderable, NativeMeasureTargetKind.TextBufferView, textView.ptr),
+      ).toBe(true)
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(true)
+
+      lib.destroyNativeRenderable(renderable)
+      expect(lib.yogaNodeHasMeasureFunc(node.ptr)).toBe(false)
+
+      // Stale native renderable handles are rejected safely, including double destroy.
+      lib.destroyNativeRenderable(renderable)
+      expect(lib.nativeRenderableAttachYogaNode(renderable, node.ptr)).toBe(false)
+      expect(
+        lib.nativeRenderableSetMeasureTarget(renderable, NativeMeasureTargetKind.TextBufferView, textView.ptr),
+      ).toBe(false)
+    } finally {
+      node.free()
+      textView.destroy()
+      textBuffer.destroy()
+    }
   })
 })

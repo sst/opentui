@@ -291,14 +291,62 @@ const YogaEdgeLayoutKind = {
 
 const UNDEFINED_VALUE: Value = { unit: Unit.Undefined, value: NaN }
 
-const nodeRegistry = new Map<string, Node>()
+const nodeRegistry = new Map<Pointer, Node>()
+// JS-measured Yoga nodes share one native callback per loaded library. Yoga passes
+// the node pointer back to JS, and these registries route to the per-node handler.
+// This keeps Node.setMeasureFunc()/setDirtiedFunc() while avoiding one JSCallback
+// allocation per measured node.
+const measureRegistry = new Map<Pointer, MeasureFunction>()
+const dirtiedRegistry = new Map<Pointer, { node: Node; callback: DirtiedFunction }>()
+let measureCallback: FFICallbackInstance | null = null
+let measureCallbackLib: RenderLib | null = null
+let dirtiedCallback: FFICallbackInstance | null = null
+let dirtiedCallbackLib: RenderLib | null = null
 
 function lib(): RenderLib {
   return resolveRenderLib()
 }
 
-function pointerKey(pointer: Pointer): string {
-  return String(pointer)
+function ensureMeasureCallback(): void {
+  const renderLib = lib()
+  if (measureCallback?.ptr && measureCallbackLib === renderLib) return
+
+  const callback: NativeYogaMeasureCallback = (node, width, widthMode, height, heightMode) => {
+    const measureFunc = node ? measureRegistry.get(node) : undefined
+    const result = measureFunc?.(width, widthMode as MeasureMode, height, heightMode as MeasureMode)
+    renderLib.yogaStoreMeasureResult(result?.width ?? NaN, result?.height ?? NaN)
+  }
+
+  measureCallback = renderLib.createYogaMeasureCallback(callback)
+  if (!measureCallback.ptr) {
+    measureCallback.close()
+    measureCallback = null
+    throw new Error("Failed to create Yoga measure callback")
+  }
+
+  renderLib.yogaSetMeasureCallback(measureCallback.ptr)
+  measureCallbackLib = renderLib
+}
+
+function ensureDirtiedCallback(): void {
+  const renderLib = lib()
+  if (dirtiedCallback?.ptr && dirtiedCallbackLib === renderLib) return
+
+  const callback: NativeYogaDirtiedCallback = (node) => {
+    if (!node) return
+    const registration = dirtiedRegistry.get(node)
+    if (registration) registration.callback(registration.node)
+  }
+
+  dirtiedCallback = renderLib.createYogaDirtiedCallback(callback)
+  if (!dirtiedCallback.ptr) {
+    dirtiedCallback.close()
+    dirtiedCallback = null
+    throw new Error("Failed to create Yoga dirtied callback")
+  }
+
+  renderLib.yogaSetDirtiedCallback(dirtiedCallback.ptr)
+  dirtiedCallbackLib = renderLib
 }
 
 function isValueObject(value: unknown): value is Value {
@@ -408,12 +456,10 @@ export class Config {
 export class Node {
   readonly ptr: Pointer
   private freed = false
-  private measureCallback: FFICallbackInstance | null = null
-  private dirtiedCallback: FFICallbackInstance | null = null
 
   private constructor(ptr: Pointer) {
     this.ptr = ptr
-    nodeRegistry.set(pointerKey(ptr), this)
+    nodeRegistry.set(ptr, this)
   }
 
   static create(config?: Config): Node {
@@ -437,8 +483,7 @@ export class Node {
   }
 
   private static fromPointer(ptr: Pointer): Node {
-    const key = pointerKey(ptr)
-    const existing = nodeRegistry.get(key)
+    const existing = nodeRegistry.get(ptr)
     if (existing) return existing
     return new Node(ptr)
   }
@@ -459,8 +504,7 @@ export class Node {
     if (this.freed) return
     const nodes = this.collectSubtree([])
     for (const node of nodes) {
-      node.closeMeasureCallback()
-      node.closeDirtiedCallback()
+      node.unregisterCallbacks()
     }
     lib().yogaNodeFreeRecursive(this.ptr)
     for (const node of nodes) {
@@ -911,31 +955,24 @@ export class Node {
     return lib().yogaNodeGetAlwaysFormsContainingBlock(this.ptr)
   }
 
+  // A Yoga node has a single measure slot, shared with native-backed measurement
+  // (NativeRenderable). Setting a JS measure func on a node that has a native
+  // measure target replaces the native one, and vice versa.
   setMeasureFunc(measureFunc: MeasureFunction | null): void {
     if (this.freed) return
     this.unsetMeasureFunc()
 
     if (!measureFunc) return
 
-    const callback: NativeYogaMeasureCallback = (_node, width, widthMode, height, heightMode) => {
-      const result = measureFunc(width, widthMode as MeasureMode, height, heightMode as MeasureMode)
-      lib().yogaStoreMeasureResult(result.width ?? NaN, result.height ?? NaN)
-    }
-
-    this.measureCallback = lib().createYogaMeasureCallback(callback)
-    if (!this.measureCallback.ptr) {
-      this.measureCallback.close()
-      this.measureCallback = null
-      throw new Error("Failed to create Yoga measure callback")
-    }
-
-    lib().yogaNodeSetMeasureFunc(this.ptr, this.measureCallback.ptr)
+    ensureMeasureCallback()
+    measureRegistry.set(this.ptr, measureFunc)
+    lib().yogaNodeSetMeasureFunc(this.ptr, true)
   }
 
   unsetMeasureFunc(): void {
     if (this.freed) return
     lib().yogaNodeUnsetMeasureFunc(this.ptr)
-    this.closeMeasureCallback()
+    measureRegistry.delete(this.ptr)
   }
 
   hasMeasureFunc(): boolean {
@@ -949,24 +986,15 @@ export class Node {
 
     if (!dirtiedFunc) return
 
-    const callback: NativeYogaDirtiedCallback = () => {
-      dirtiedFunc(this)
-    }
-
-    this.dirtiedCallback = lib().createYogaDirtiedCallback(callback)
-    if (!this.dirtiedCallback.ptr) {
-      this.dirtiedCallback.close()
-      this.dirtiedCallback = null
-      throw new Error("Failed to create Yoga dirtied callback")
-    }
-
-    lib().yogaNodeSetDirtiedFunc(this.ptr, this.dirtiedCallback.ptr)
+    ensureDirtiedCallback()
+    dirtiedRegistry.set(this.ptr, { node: this, callback: dirtiedFunc })
+    lib().yogaNodeSetDirtiedFunc(this.ptr, true)
   }
 
   unsetDirtiedFunc(): void {
     if (this.freed) return
     lib().yogaNodeUnsetDirtiedFunc(this.ptr)
-    this.closeDirtiedCallback()
+    dirtiedRegistry.delete(this.ptr)
   }
 
   private setEnum(kind: number, value: number): void {
@@ -1008,21 +1036,15 @@ export class Node {
     return nodes
   }
 
-  private closeMeasureCallback(): void {
-    if (!this.measureCallback) return
-    this.measureCallback.close()
-    this.measureCallback = null
-  }
-
-  private closeDirtiedCallback(): void {
-    if (!this.dirtiedCallback) return
-    this.dirtiedCallback.close()
-    this.dirtiedCallback = null
+  private unregisterCallbacks(): void {
+    measureRegistry.delete(this.ptr)
+    dirtiedRegistry.delete(this.ptr)
   }
 
   private markFreed(): void {
+    this.unregisterCallbacks()
     this.freed = true
-    nodeRegistry.delete(pointerKey(this.ptr))
+    nodeRegistry.delete(this.ptr)
   }
 }
 
