@@ -139,6 +139,7 @@ const SixelCacheKey = struct {
     pixel_width: u32,
     pixel_height: u32,
     opacity: u8,
+    background_hash: u64,
 };
 
 const SixelCacheEntry = struct {
@@ -150,7 +151,9 @@ const SIXEL_CACHE_MAX_BYTES = 32 * 1024 * 1024;
 const SIXEL_CACHE_MAX_ENTRIES = 256;
 
 // Cache the transformed, encoded payload: crop, size, opacity, and source identity determine its bytes;
-// terminal position and DCS/tmux framing do not. Byte and entry limits bound payload and metadata retention.
+// terminal position and DCS/tmux framing do not. Translucent placements also blend toward the covered
+// cell backgrounds, so those payloads carry a background fingerprint. Byte and entry limits bound
+// payload and metadata retention. An empty payload is cached for fully transparent placements.
 
 pub const CliRenderer = struct {
     width: u32,
@@ -1617,11 +1620,13 @@ pub const CliRenderer = struct {
                 .pixel_width = placement.pixel_width,
                 .pixel_height = placement.pixel_height,
                 .opacity = placement.opacity,
+                .background_hash = if (placement.opacity < 255) self.placementBackgroundHash(placement) else 0,
             };
             self.advanceSixelCacheClock();
             if (self.sixelCache.getPtr(cache_key)) |cached| {
                 cached.last_used = self.sixelCacheClock;
                 self.sixelCacheHits += 1;
+                if (cached.payload.len == 0) continue;
                 try ansi.ANSI.moveToOutput(writer, @intCast(placement.x + 1), @intCast(placement.y + 1 + @as(i32, @intCast(self.renderOffset))));
                 try terminal_image.writeSixelFramedPayload(writer, cached.payload, self.terminal.isInTmux());
                 continue;
@@ -1639,18 +1644,73 @@ pub const CliRenderer = struct {
             defer cropped.deinit();
             const resized = try native_image.resize(self.allocator, cropped, placement.pixel_width, placement.pixel_height, .area);
             defer resized.deinit();
-            if (placement.opacity < 255) {
-                for (3..resized.pixels.len) |index| {
-                    if (index % 4 == 3) resized.pixels[index] = @intCast((@as(u16, resized.pixels[index]) * placement.opacity + 127) / 255);
-                }
-            }
+            if (placement.opacity < 255) self.dimSixelPixels(placement, resized);
+            var quantized = try terminal_image.quantizeSixel(self.allocator, resized, 255);
+            defer quantized.deinit();
             var payload: std.ArrayList(u8) = .empty;
             defer payload.deinit(self.allocator);
-            try terminal_image.writeSixelPayload(self.allocator, payload.writer(self.allocator), resized);
-            try ansi.ANSI.moveToOutput(writer, @intCast(placement.x + 1), @intCast(placement.y + 1 + @as(i32, @intCast(self.renderOffset))));
-            try terminal_image.writeSixelFramedPayload(writer, payload.items, self.terminal.isInTmux());
+            if (quantized.palette_len > 0) {
+                try terminal_image.writeSixelIndexedPayload(
+                    self.allocator,
+                    payload.writer(self.allocator),
+                    quantized.indices,
+                    quantized.palette[0..quantized.palette_len],
+                    resized.width(),
+                    resized.height(),
+                );
+                try ansi.ANSI.moveToOutput(writer, @intCast(placement.x + 1), @intCast(placement.y + 1 + @as(i32, @intCast(self.renderOffset))));
+                try terminal_image.writeSixelFramedPayload(writer, payload.items, self.terminal.isInTmux());
+            }
             self.cacheSixelPayload(cache_key, &payload);
         }
+    }
+
+    // Sixel cannot composite in the terminal, so placement opacity blends pixel
+    // colors toward the covered cell backgrounds (composited over black for
+    // non-opaque backgrounds). Image alpha is left untouched: holes stay holes
+    // and the encoder's visibility threshold keeps applying to the image alpha.
+    fn dimSixelPixels(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement, resized: *native_image.Image) void {
+        const opacity: u32 = placement.opacity;
+        const inverse: u32 = 255 - opacity;
+        var py: u32 = 0;
+        while (py < resized.height()) : (py += 1) {
+            const cell_y = placement.y + @as(i32, @intCast((@as(u64, py) * placement.height) / placement.pixel_height));
+            var px: u32 = 0;
+            while (px < resized.width()) : (px += 1) {
+                const cell_x = placement.x + @as(i32, @intCast((@as(u64, px) * placement.width) / placement.pixel_width));
+                const cell = if (cell_x >= 0 and cell_y >= 0 and
+                    cell_x < @as(i32, @intCast(self.width)) and cell_y < @as(i32, @intCast(self.height)))
+                    self.nextRenderBuffer.get(@intCast(cell_x), @intCast(cell_y))
+                else
+                    null;
+                const bg = if (cell) |value| value.bg else ansi.rgbColor(0, 0, 0, 0);
+                const bg_alpha: u32 = ansi.alpha(bg);
+                const bg_channels = [3]u32{ ansi.red(bg), ansi.green(bg), ansi.blue(bg) };
+                const offset = (@as(usize, py) * resized.width() + px) * 4;
+                inline for (0..3) |channel| {
+                    const bg_effective = (bg_channels[channel] * bg_alpha + 127) / 255;
+                    const value: u32 = resized.pixels[offset + channel];
+                    resized.pixels[offset + channel] = @intCast((value * opacity + bg_effective * inverse + 127) / 255);
+                }
+            }
+        }
+    }
+
+    fn placementBackgroundHash(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement) u64 {
+        var hasher = std.hash.Wyhash.init(0x6f70656e_74756921);
+        var cy: u32 = 0;
+        while (cy < placement.height) : (cy += 1) {
+            const y = placement.y + @as(i32, @intCast(cy));
+            if (y < 0 or y >= self.height) continue;
+            var cx: u32 = 0;
+            while (cx < placement.width) : (cx += 1) {
+                const x = placement.x + @as(i32, @intCast(cx));
+                if (x < 0 or x >= self.width) continue;
+                const cell = self.nextRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
+                hasher.update(std.mem.asBytes(&cell.bg));
+            }
+        }
+        return hasher.final();
     }
 
     fn cacheSixelPayload(self: *CliRenderer, key: SixelCacheKey, payload: *std.ArrayList(u8)) void {
