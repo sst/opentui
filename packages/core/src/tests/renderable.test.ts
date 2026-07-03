@@ -261,6 +261,74 @@ describe("Renderable", () => {
   })
 })
 
+describe("Renderable - layout read caching invariants", () => {
+  // Behavioral contracts for any layout-read caching or batching scheme
+  // (the render-list reuse keyed on the context layout generation today, a
+  // native render tree with shared layout buffers tomorrow): every mutation
+  // that can change computed layout must be visible on the next frame, even
+  // when it bypasses the Renderable setters, and ancestor movement must
+  // cascade to descendant screen positions without a relayout.
+
+  test("direct yoga-node style mutation bypassing all setters is picked up next frame", async () => {
+    const box = new TestRenderable(testRenderer, { id: "yoga-bypass", width: 10, height: 2 })
+    testRenderer.root.add(box)
+    await renderOnce()
+    expect(box.width).toBe(10)
+
+    box.getLayoutNode().setWidth(30)
+    await renderOnce()
+
+    expect(box.width).toBe(30)
+  })
+
+  test("out-of-band subtree calculateLayout does not freeze later layout reads", async () => {
+    const parent = new TestRenderable(testRenderer, { id: "oob-parent", width: 40, height: 6 })
+    const child = new TestRenderable(testRenderer, { id: "oob-child", width: 10, height: 2 })
+    parent.add(child)
+    testRenderer.root.add(parent)
+    await renderOnce()
+    expect(child.width).toBe(10)
+
+    // Mutate and lay out the subtree directly through yoga, bypassing the
+    // renderer's root calculateLayout entirely.
+    child.getLayoutNode().setWidth(25)
+    parent.getLayoutNode().calculateLayout(undefined, undefined)
+    await renderOnce()
+
+    expect(child.width).toBe(25)
+  })
+
+  test("grandchild screen position follows a translate-only ancestor move", async () => {
+    const parent = new TestRenderable(testRenderer, {
+      id: "cascade-parent",
+      position: "absolute",
+      left: 2,
+      top: 2,
+      width: 30,
+      height: 10,
+    })
+    const child = new TestRenderable(testRenderer, { id: "cascade-child", width: 20, height: 6 })
+    const grandchild = new TestRenderable(testRenderer, { id: "cascade-grandchild", width: 10, height: 2 })
+
+    child.add(grandchild)
+    parent.add(child)
+    testRenderer.root.add(parent)
+    await renderOnce()
+
+    const beforeX = grandchild.screenX
+    const beforeY = grandchild.screenY
+
+    // Translate does not touch yoga: no relayout happens, only ancestor
+    // screen positions move. Every descendant must follow on the next frame.
+    parent.translateX = 7
+    parent.translateY = 5
+    await renderOnce()
+
+    expect(grandchild.screenX).toBe(beforeX + 7)
+    expect(grandchild.screenY).toBe(beforeY + 5)
+  })
+})
+
 describe("Renderable - Child Management", () => {
   test("can add and remove children", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })

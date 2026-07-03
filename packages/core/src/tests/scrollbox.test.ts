@@ -130,6 +130,49 @@ describe("ScrollBoxRenderable - child delegation", () => {
   })
 })
 
+describe("ScrollBoxRenderable - culled content layout freshness", () => {
+  test("rows revealed after off-screen relayouts render at fresh positions", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "reveal-scrollbox",
+      width: 30,
+      height: 6,
+      viewportCulling: true,
+    })
+    testRenderer.root.add(scrollbox)
+
+    const rows: BoxRenderable[] = []
+    for (let i = 0; i < 40; i++) {
+      const row = new BoxRenderable(testRenderer, { id: `reveal-row-${i}`, height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${i}` }))
+      scrollbox.add(row)
+      rows.push(row)
+    }
+    await renderOnce()
+
+    scrollbox.scrollTo(scrollbox.scrollHeight)
+    await renderOnce()
+
+    // While the top rows are culled (their subtrees skipped by traversal),
+    // relayout several times so any staleness in skipped subtrees would have
+    // multiple chances to accumulate before the rows are revealed again.
+    for (const rowHeight of [2, 3, 2]) {
+      rows[0].height = rowHeight
+      await renderOnce()
+    }
+
+    scrollbox.scrollTo(0)
+    await renderOnce()
+
+    // row-0 is now 2 tall, so the following rows must have shifted down and
+    // their text subtrees must render at fresh absolute positions.
+    const lines = captureCharFrame().split("\n")
+    expect(lines[0]).toContain("row-0")
+    expect(lines[2]).toContain("row-1")
+    expect(lines[3]).toContain("row-2")
+    expect(lines[4]).toContain("row-3")
+  })
+})
+
 describe("ScrollBoxRenderable - clipping", () => {
   test("clips nested scrollbox content to inner viewport (see issue #388)", async () => {
     const root = new BoxRenderable(testRenderer, {
