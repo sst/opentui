@@ -531,3 +531,21 @@ test "PNG eXIf orientation applies during decode" {
     // Orientation 6 rotates the row into a column: red on top, green below.
     try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255, 0, 255, 0, 255 }, decoded.pixels);
 }
+
+test "area resize upscales tiny sources exactly" {
+    // Regression: stb's sRGB table-bias idiom aborted Debug builds under UBSan
+    // for these paths before the resize shim was isolated (image-resize-shim.c).
+    const source = try makeImage(&[_]u8{ 200, 40, 10, 255 }, 1, 1);
+    defer source.deinit();
+    const output = try image.resize(std.testing.allocator, source, 12, 2, .area);
+    defer output.deinit();
+    try std.testing.expectEqual(@as(u32, 12), output.width());
+    for (0..12 * 2) |pixel| {
+        try std.testing.expectEqualSlices(u8, &[_]u8{ 200, 40, 10, 255 }, output.pixels[pixel * 4 ..][0..4]);
+    }
+
+    const mixed = try image.resize(std.testing.allocator, source, 1, 7, .area);
+    defer mixed.deinit();
+    try std.testing.expectEqual(@as(u32, 7), mixed.height());
+    try std.testing.expectEqual(@as(u8, 200), mixed.pixels[0]);
+}

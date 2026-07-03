@@ -171,6 +171,18 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
         .flags = flags,
     });
 
+    // stb_image_resize2 intentionally biases static table pointers out of
+    // bounds; see image-resize-shim.c. Keep bounds sanitizers off for that
+    // translation unit only so Debug test builds can exercise resizing.
+    const resize_flags: []const []const u8 = switch (target.result.os.tag) {
+        .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds,pointer-overflow", "-isysroot", macos_sdk_path.? },
+        else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds,pointer-overflow" },
+    };
+    artifact.addCSourceFile(.{
+        .file = b.path("image-resize-shim.c"),
+        .flags = resize_flags,
+    });
+
     const webp_flags: []const []const u8 = switch (target.result.os.tag) {
         .macos => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern", "-isysroot", macos_sdk_path.? },
         else => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern" },
