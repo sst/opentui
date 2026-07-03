@@ -3016,3 +3016,89 @@ test "renderer - CJK graphemes shifting left must preserve continuation cells (#
     const id8 = gp.graphemeIdFromChar(cell8.char);
     try std.testing.expectEqual(id7, id8);
 }
+
+test "OptimizedBuffer merges frame buffer placements with clipping scissor and opacity" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const source_buffer = try OptimizedBuffer.init(std.testing.allocator, 6, 4, .{ .pool = &pool, .link_pool = &link_pool });
+    defer source_buffer.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 4, 4, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+
+    const wide = try image.createFromRgba(std.testing.allocator, &([_]u8{ 10, 20, 30, 255 } ** 32), 8, 4, 32);
+    defer wide.deinit();
+    const dot = try image.createFromRgba(std.testing.allocator, &[_]u8{ 1, 2, 3, 255 }, 1, 1, 4);
+    defer dot.deinit();
+
+    // Placement A covers cells (1,1)-(4,2) of the frame buffer; placement B
+    // sits at (5,3) and will fall entirely outside the destination clip.
+    try std.testing.expect(try source_buffer.drawImage(wide, 41, 1, 1, 4, 2, 8, 4, 0, 0, 8, 4, .auto));
+    try std.testing.expect(try source_buffer.drawImage(dot, 42, 5, 3, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+
+    // The target already owns a direct placement, so merged ids must shift.
+    try std.testing.expect(try target.drawImage(dot, 43, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+
+    try target.pushScissorRect(0, 0, 4, 2);
+    try target.pushOpacity(0.5);
+    target.drawFrameBuffer(2, 0, source_buffer, null, null, null, null);
+    target.popOpacity();
+    target.popScissorRect();
+
+    try std.testing.expectEqual(@as(usize, 2), target.image_placements.items.len);
+    const direct = target.image_placements.items[0];
+    try std.testing.expectEqual(@as(u32, 1), direct.placement_id);
+    try std.testing.expectEqual(@as(u32, 43), direct.image_handle);
+
+    const merged = target.image_placements.items[1];
+    try std.testing.expectEqual(@as(u32, 2), merged.placement_id);
+    try std.testing.expectEqual(@as(u32, 41), merged.image_handle);
+    try std.testing.expectEqual(@as(i32, 3), merged.x);
+    try std.testing.expectEqual(@as(i32, 1), merged.y);
+    try std.testing.expectEqual(@as(u32, 1), merged.width);
+    try std.testing.expectEqual(@as(u32, 1), merged.height);
+    try std.testing.expectEqual(@as(u32, 2), merged.pixel_width);
+    try std.testing.expectEqual(@as(u32, 2), merged.pixel_height);
+    try std.testing.expectEqual(@as(u32, 0), merged.source_x);
+    try std.testing.expectEqual(@as(u32, 0), merged.source_y);
+    try std.testing.expectEqual(@as(u32, 2), merged.source_width);
+    try std.testing.expectEqual(@as(u32, 2), merged.source_height);
+    try std.testing.expectEqual(@as(u8, 128), merged.opacity);
+
+    // Cells: the direct placement keeps id 1, the merged visible cell maps to
+    // id 2, and cells outside the scissor were not copied.
+    try std.testing.expectEqual(@as(u32, 1), gp.imageIdFromChar(target.get(0, 0).?.char));
+    try std.testing.expectEqual(@as(u32, 2), gp.imageIdFromChar(target.get(3, 1).?.char));
+    try std.testing.expect(!gp.isImageChar(target.get(3, 2).?.char));
+
+    // Placement B was clipped away entirely.
+    for (target.image_placements.items) |placement| {
+        try std.testing.expect(placement.image_handle != 42);
+    }
+}
+
+test "OptimizedBuffer frame buffer merge multiplies nested placement opacity" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const source_buffer = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer source_buffer.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+    const dot = try image.createFromRgba(std.testing.allocator, &[_]u8{ 1, 2, 3, 255 }, 1, 1, 4);
+    defer dot.deinit();
+
+    try source_buffer.pushOpacity(0.5);
+    try std.testing.expect(try source_buffer.drawImage(dot, 44, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+    source_buffer.popOpacity();
+    try std.testing.expectEqual(@as(u8, 128), source_buffer.image_placements.items[0].opacity);
+
+    try target.pushOpacity(0.5);
+    target.drawFrameBuffer(0, 0, source_buffer, null, null, null, null);
+    target.popOpacity();
+    try std.testing.expectEqual(@as(usize, 1), target.image_placements.items.len);
+    // 0.5 * 0.5 = 0.25 -> 64 of 255.
+    try std.testing.expect(@abs(@as(i16, target.image_placements.items[0].opacity) - 64) <= 1);
+}
