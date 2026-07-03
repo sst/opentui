@@ -3196,3 +3196,100 @@ test "renderer treats fully transparent sixel placements as empty without failin
     try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0") == null);
     try std.testing.expect(!test_renderer.renderer.imageRenderFailed);
 }
+
+test "renderer retransmits sixel placements on a forced full repaint" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+
+    // A full repaint (failed-frame recovery, palette change) rewrites every
+    // cell, so the unchanged placement's pixels must be transmitted again.
+    test_renderer.renderer.force_full_repaint = true;
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+}
+
+test "renderer leaves clean text alone when graphics content changes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 4, pool);
+    defer test_renderer.deinit();
+    const first = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const second = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 255, 0, 255 }, 1, 1, 4);
+    const first_handle = try handles.insert(.image, @ptrCast(first));
+    const second_handle = try handles.insert(.image, @ptrCast(second));
+    defer for ([_]u32{ second_handle, first_handle }) |handle| {
+        const token = handles.beginDestroy(handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    };
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try next.drawText("HELLO", 0, 3, .{ 255, 255, 255, 255 }, null, 0);
+    try std.testing.expect(try next.drawImage(first, first_handle, 0, 0, 2, 2, 0, 0, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "HELLO") != null);
+
+    // A video-style frame: same text, same placement geometry, new image data.
+    // Kitty swaps the image server side; unchanged text must not be re-emitted
+    // and the reserved cells must not be cleared again.
+    next = test_renderer.renderer.getNextBuffer();
+    try next.drawText("HELLO", 0, 3, .{ 255, 255, 255, 255 }, null, 0);
+    try std.testing.expect(try next.drawImage(second, second_handle, 0, 0, 2, 2, 0, 0, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_Ga=t") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "HELLO") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, " ") == null);
+}
+
+test "renderer clears dirty sixel cells as one batched space run" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 2, pool);
+    defer test_renderer.deinit();
+    const first = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const second = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 255, 0, 255 }, 1, 1, 4);
+    const first_handle = try handles.insert(.image, @ptrCast(first));
+    const second_handle = try handles.insert(.image, @ptrCast(second));
+    defer for ([_]u32{ second_handle, first_handle }) |handle| {
+        const token = handles.beginDestroy(handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    };
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(first, first_handle, 0, 0, 6, 1, 12, 2, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(second, second_handle, 0, 0, 6, 1, 12, 2, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+    const output = test_renderer.memory.lastWrite();
+    const sixel = std.mem.indexOf(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
+    // The six reserved cells clear with a single cursor move and six spaces;
+    // the only other CUP before the payload positions the Sixel itself.
+    try std.testing.expect(std.mem.indexOf(u8, output[0..sixel], "\x1b[1;1H      ") != null);
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, output[0..sixel], "\x1b[1;1H"));
+}
