@@ -3189,7 +3189,7 @@ class FFIRenderLib implements RenderLib {
     const cursor = options.cursor != null ? MOUSE_STYLE_TO_ID[options.cursor] : 255
 
     const buffer = CursorStyleOptionsStruct.pack({ style, blinking, color: options.color, cursor })
-    this.opentui.symbols.setCursorStyleOptions(renderer, ptr(buffer))
+    this.opentui.symbols.setCursorStyleOptions(renderer, buffer)
   }
 
   public render(renderer: Pointer, force: boolean): number {
@@ -3780,7 +3780,7 @@ class FFIRenderLib implements RenderLib {
     }
 
     const chunksBuffer = StyledChunkStruct.packList(chunks)
-    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), chunks.length)
+    this.opentui.symbols.textBufferSetStyledText(buffer, chunksBuffer, chunks.length)
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {
@@ -5093,7 +5093,7 @@ class FFIRenderLib implements RenderLib {
     }
 
     const chunksBuffer = StyledChunkStruct.packList(nonEmptyChunks)
-    this.opentui.symbols.editorViewSetPlaceholderStyledText(view, ptr(chunksBuffer), nonEmptyChunks.length)
+    this.opentui.symbols.editorViewSetPlaceholderStyledText(view, chunksBuffer, nonEmptyChunks.length)
   }
 
   public editorViewSetTabIndicator(view: EditorViewHandle, indicator: number): void {

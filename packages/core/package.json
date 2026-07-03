@@ -39,7 +39,7 @@
     "web-tree-sitter": "0.25.10"
   },
   "dependencies": {
-    "bun-ffi-structs": "0.2.3",
+    "bun-ffi-structs": "0.2.4",
     "diff": "9.0.0",
     "marked": "17.0.1",
     "string-width": "7.2.0",

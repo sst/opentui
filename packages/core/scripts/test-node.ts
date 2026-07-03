@@ -123,6 +123,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/audio.test.js",
   ".node-test/src/tests/destroy-on-exit.test.js",
   ".node-test/src/tests/destroy-during-render.test.js",
+  ".node-test/src/tests/ffi-borrowed-pointer-callsites.test.js",
   ".node-test/src/tests/hover-cursor.test.js",
   ".node-test/src/tests/native-span-feed-async.test.js",
   ".node-test/src/tests/native-span-feed-close.test.js",

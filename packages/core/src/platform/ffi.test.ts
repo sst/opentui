@@ -386,26 +386,27 @@ describe("platform/ffi", () => {
     ])
   })
 
-  test("normalizes Node ptr-like arguments from pointers, views, and null", () => {
+  test("preserves Node borrowed pointer arguments and normalizes raw pointers and null", () => {
     const { backend, functionCalls } = createMockNodeBackend()
     const buffer = new ArrayBuffer(16)
     const view = new Uint8Array(buffer, 4, 8)
     const emptyView = new Uint8Array(buffer, 0, 0)
     const library = backend.dlopen("mock", {
       pointers: {
-        args: [FFIType.ptr, FFIType.pointer, FFIType.callback, FFIType.function],
+        args: [FFIType.ptr, FFIType.pointer, FFIType.callback, FFIType.function, FFIType.ptr],
         returns: FFIType.void,
       },
     })
 
-    library.symbols.pointers(view, null, 77 as Pointer, emptyView)
+    library.symbols.pointers(buffer, view, null, 77 as Pointer, emptyView)
 
-    expect(functionCalls).toEqual([
-      {
-        name: "pointers",
-        args: [1004n, 0n, 77n, 0n],
-      },
-    ])
+    expect(functionCalls).toHaveLength(1)
+    expect(functionCalls[0]?.name).toBe("pointers")
+    expect(functionCalls[0]?.args[0]).toBe(buffer)
+    expect(functionCalls[0]?.args[1]).toBe(view)
+    expect(functionCalls[0]?.args[2]).toBe(0n)
+    expect(functionCalls[0]?.args[3]).toBe(77n)
+    expect(functionCalls[0]?.args[4]).toBe(0n)
   })
 
   test("rejects invalid Node ptr-like arguments deterministically", () => {
