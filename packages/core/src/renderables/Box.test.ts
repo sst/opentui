@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach, afterEach, spyOn } from "bun:test"
 import { BoxRenderable, type BoxOptions } from "./Box.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
-import type { BorderStyle } from "../lib/border.js"
+import type { BorderCharacters, BorderStyle } from "../lib/border.js"
 import { RGBA } from "../lib/RGBA.js"
 
 let testRenderer: TestRenderer
@@ -174,6 +174,28 @@ describe("BoxRenderable - borderStyle validation", () => {
   })
 })
 
+describe("BoxRenderable - clearing border", () => {
+  test.each([null, undefined])("setting border to %p normalizes to false", async (value) => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "clear-border-prop-box",
+      border: true,
+      width: 10,
+      height: 5,
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    expect(getCellChar(0, 0)).toBe("┌")
+
+    box.border = value
+    await renderOnce()
+
+    expect(box.border).toBe(false)
+    expect(getCellChar(0, 0)).not.toBe("┌")
+  })
+})
+
 describe("BoxRenderable - clearing borderStyle", () => {
   test.each([null, undefined])("setting borderStyle to %p removes an implicitly enabled border", async (value) => {
     const box = new BoxRenderable(testRenderer, {
@@ -282,6 +304,46 @@ describe("BoxRenderable - clearing borderStyle", () => {
 
     expect(box.border).toBe(false)
     expect(getCellChar(0, 0)).not.toBe("┌")
+  })
+
+  test("clearing borderStyle preserves explicit custom border chars before re-enabling border", async () => {
+    const customBorderChars: BorderCharacters = {
+      topLeft: "A",
+      topRight: "B",
+      bottomLeft: "C",
+      bottomRight: "D",
+      horizontal: "-",
+      vertical: "|",
+      topT: "T",
+      bottomT: "U",
+      leftT: "L",
+      rightT: "R",
+      cross: "X",
+    }
+    const box = new BoxRenderable(testRenderer, {
+      id: "custom-border-clear-box",
+      customBorderChars,
+      width: 10,
+      height: 5,
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    expect(getCellChar(0, 0)).toBe("A")
+
+    box.borderStyle = undefined
+    await renderOnce()
+
+    expect(box.border).toBe(false)
+
+    box.border = true
+    await renderOnce()
+
+    expect(box.border).toBe(true)
+    expect(box.borderStyle).toBe("single")
+    expect(box.customBorderChars).toBe(customBorderChars)
+    expect(getCellChar(0, 0)).toBe("A")
   })
 })
 

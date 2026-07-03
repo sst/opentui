@@ -17,7 +17,7 @@ import type { RenderContext } from "../types.js"
 export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> extends RenderableOptions<TRenderable> {
   backgroundColor?: string | RGBA
   borderStyle?: BorderStyle
-  border?: boolean | BorderSides[]
+  border?: boolean | BorderSides[] | null
   borderColor?: string | RGBA
   customBorderChars?: BorderCharacters
   shouldFill?: boolean
@@ -148,11 +148,12 @@ export class BoxRenderable extends Renderable {
     return this._border
   }
 
-  public set border(value: boolean | BorderSides[]) {
+  public set border(value: boolean | BorderSides[] | null | undefined) {
+    const next = value ?? false
     this._implicitBorder = false
-    if (this._border !== value) {
-      this._border = value
-      this.borderSides = getBorderSides(value)
+    if (this._border !== next) {
+      this._border = next
+      this.borderSides = getBorderSides(next)
       this.applyYogaBorders()
       this.requestRender()
     }
@@ -177,6 +178,8 @@ export class BoxRenderable extends Renderable {
       const fallback = parseBorderStyle(value, this._defaultOptions.borderStyle)
       if (this._borderStyle !== fallback) {
         this._borderStyle = fallback
+      }
+      if (this._customBorderCharsObj === undefined) {
         this._customBorderChars = undefined
       }
       this.requestRender()
