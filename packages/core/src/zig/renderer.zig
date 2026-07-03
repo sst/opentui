@@ -1598,15 +1598,54 @@ pub const CliRenderer = struct {
         return self.imageIdSalt + placement_id;
     }
 
+    fn applyAlphaOpacity(target: *native_image.Image, opacity: u8) void {
+        var index: usize = 3;
+        while (index < target.pixels.len) : (index += 4) {
+            target.pixels[index] = @intCast((@as(u16, target.pixels[index]) * opacity + 127) / 255);
+        }
+        target.metadata.has_alpha = 1;
+    }
+
     fn imageWithOpacity(source: *const native_image.Image, opacity: u8) !?*native_image.Image {
         if (opacity == 255) return null;
         const copy = try source.clone();
-        var index: usize = 3;
-        while (index < copy.pixels.len) : (index += 4) {
-            copy.pixels[index] = @intCast((@as(u16, copy.pixels[index]) * opacity + 127) / 255);
-        }
-        copy.metadata.has_alpha = 1;
+        applyAlphaOpacity(copy, opacity);
         return copy;
+    }
+
+    // Large stills carry far more pixels than the placement can show. With a
+    // known pixel size and at least 4x the area, transmit a downscaled copy;
+    // the terminal scales the remainder. PNG passthrough is skipped for these
+    // because the raw downscaled payload is smaller than the original file.
+    fn kittyDownscaleApplies(placement: OptimizedBuffer.ImagePlacement) bool {
+        const pixel_area = @as(u64, placement.pixel_width) * placement.pixel_height;
+        const source_area = @as(u64, placement.source_width) * placement.source_height;
+        return pixel_area > 0 and source_area >= pixel_area * 4;
+    }
+
+    const KittyTransmit = struct {
+        image: *native_image.Image,
+        owned: bool,
+    };
+
+    fn kittyPlacementTransmit(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement) !KittyTransmit {
+        const source = placement.image;
+        if (kittyDownscaleApplies(placement)) {
+            const cropped = try native_image.extract(
+                self.allocator,
+                source,
+                placement.source_x,
+                placement.source_y,
+                placement.source_width,
+                placement.source_height,
+            );
+            defer cropped.deinit();
+            const resized = try native_image.resize(self.allocator, cropped, placement.pixel_width, placement.pixel_height, .area);
+            if (placement.opacity < 255) applyAlphaOpacity(resized, placement.opacity);
+            return .{ .image = resized, .owned = true };
+        }
+        const opacity_image = try imageWithOpacity(source, placement.opacity);
+        return .{ .image = opacity_image orelse source, .owned = opacity_image != null };
     }
 
     fn writeKittyImages(self: *CliRenderer, writer: anytype, force_place: bool) !void {
@@ -1635,39 +1674,39 @@ pub const CliRenderer = struct {
                     break;
                 }
             }
-            if (previous == null) {
-                const source = placement.image;
-                const opacity_image = try imageWithOpacity(source, placement.opacity);
-                defer if (opacity_image) |value| value.deinit();
-                try terminal_image.writeKittyTransmit(writer, opacity_image orelse source, self.kittyImageId(placement.image_handle, placement.placement_id), tmux);
+            const image_id = self.kittyImageId(placement.image_handle, placement.placement_id);
+            // Downscaled transmissions are tied to the pixel size and crop, so
+            // changing either invalidates the transmitted pixels.
+            const retransmit = previous != null and (previous.?.opacity != placement.opacity or
+                (kittyDownscaleApplies(placement) and (previous.?.pixel_width != placement.pixel_width or
+                    previous.?.pixel_height != placement.pixel_height or previous.?.source_x != placement.source_x or
+                    previous.?.source_y != placement.source_y or previous.?.source_width != placement.source_width or
+                    previous.?.source_height != placement.source_height)));
+            if (previous == null or retransmit) {
+                if (retransmit) try terminal_image.writeKittyDelete(writer, image_id, null, true, tmux);
+                const transmit = try self.kittyPlacementTransmit(placement);
+                defer if (transmit.owned) transmit.image.deinit();
+                try terminal_image.writeKittyTransmit(writer, transmit.image, image_id, tmux);
             } else if (force_place or previous.?.x != placement.x or previous.?.y != placement.y or previous.?.width != placement.width or previous.?.height != placement.height or
                 previous.?.source_x != placement.source_x or previous.?.source_y != placement.source_y or previous.?.source_width != placement.source_width or
-                previous.?.source_height != placement.source_height or previous.?.opacity != placement.opacity)
+                previous.?.source_height != placement.source_height)
             {
-                const image_id = self.kittyImageId(placement.image_handle, placement.placement_id);
-                if (previous.?.opacity != placement.opacity) {
-                    try terminal_image.writeKittyDelete(writer, image_id, null, true, tmux);
-                    const source = placement.image;
-                    const opacity_image = try imageWithOpacity(source, placement.opacity);
-                    defer if (opacity_image) |value| value.deinit();
-                    try terminal_image.writeKittyTransmit(writer, opacity_image orelse source, image_id, tmux);
-                } else {
-                    try terminal_image.writeKittyDelete(writer, image_id, placement.placement_id, false, tmux);
-                }
+                try terminal_image.writeKittyDelete(writer, image_id, placement.placement_id, false, tmux);
             } else continue;
             if (placement.x < 0 or placement.y < 0) continue;
+            const downscaled = kittyDownscaleApplies(placement);
             try terminal_image.writeKittyPlacement(
                 writer,
-                self.kittyImageId(placement.image_handle, placement.placement_id),
+                image_id,
                 placement.placement_id,
                 @intCast(placement.x),
                 @intCast(placement.y + @as(i32, @intCast(self.renderOffset))),
                 placement.width,
                 placement.height,
-                placement.source_x,
-                placement.source_y,
-                placement.source_width,
-                placement.source_height,
+                if (downscaled) 0 else placement.source_x,
+                if (downscaled) 0 else placement.source_y,
+                if (downscaled) placement.pixel_width else placement.source_width,
+                if (downscaled) placement.pixel_height else placement.source_height,
                 -1_500_000_000 + @as(i32, @intCast(placement.placement_id)),
                 tmux,
             );
