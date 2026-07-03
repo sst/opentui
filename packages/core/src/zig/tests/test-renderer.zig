@@ -39,45 +39,83 @@ pub const TestMemoryOutput = struct {
     }
 };
 
+pub const TestEnvVar = struct {
+    key: []const u8,
+    value: []const u8,
+};
+
 pub const TestRenderer = struct {
     allocator: std.mem.Allocator,
     memory: *TestMemoryOutput,
+    // Owned environment injected into the renderer's Terminal. Defaults to an
+    // empty map so tests never observe the host environment (TMUX, STY, TERM,
+    // ...). Heap-allocated because Terminal borrows a stable pointer while
+    // TestRenderer is returned by value.
+    env_map: *std.process.EnvMap,
     renderer: *renderer.CliRenderer,
 
+    const CreateConfig = struct {
+        thread_safe: bool = false,
+        env_vars: []const TestEnvVar = &.{},
+    };
+
     pub fn create(allocator: std.mem.Allocator, width: u32, height: u32, pool: *gp.GraphemePool) !TestRenderer {
-        return createWithThreadSafety(allocator, width, height, pool, false);
+        return createWithConfig(allocator, width, height, pool, .{});
     }
 
     pub fn createThreadSafe(allocator: std.mem.Allocator, width: u32, height: u32, pool: *gp.GraphemePool) !TestRenderer {
-        return createWithThreadSafety(allocator, width, height, pool, true);
+        return createWithConfig(allocator, width, height, pool, .{ .thread_safe = true });
     }
 
-    fn createWithThreadSafety(
+    pub fn createWithEnv(
         allocator: std.mem.Allocator,
         width: u32,
         height: u32,
         pool: *gp.GraphemePool,
-        thread_safe: bool,
+        env_vars: []const TestEnvVar,
+    ) !TestRenderer {
+        return createWithConfig(allocator, width, height, pool, .{ .env_vars = env_vars });
+    }
+
+    fn createWithConfig(
+        allocator: std.mem.Allocator,
+        width: u32,
+        height: u32,
+        pool: *gp.GraphemePool,
+        config: CreateConfig,
     ) !TestRenderer {
         const memory = try allocator.create(TestMemoryOutput);
         errdefer allocator.destroy(memory);
         memory.* = TestMemoryOutput.init(allocator);
-        memory.thread_safe = thread_safe;
+        memory.thread_safe = config.thread_safe;
         errdefer memory.deinit();
+
+        const env_map = try allocator.create(std.process.EnvMap);
+        errdefer allocator.destroy(env_map);
+        env_map.* = std.process.EnvMap.init(allocator);
+        errdefer env_map.deinit();
+        for (config.env_vars) |env_var| {
+            try env_map.put(env_var.key, env_var.value);
+        }
 
         const cli_renderer = try renderer.CliRenderer.createWithOptions(allocator, width, height, pool, .{
             .output = .{ .buffered = memory.bufferedOutput() },
+            .env_map = env_map,
         });
 
         return .{
             .allocator = allocator,
             .memory = memory,
+            .env_map = env_map,
             .renderer = cli_renderer,
         };
     }
 
     pub fn deinit(self: *TestRenderer) void {
+        // The renderer's Terminal borrows env_map; destroy the renderer first.
         self.renderer.destroy();
+        self.env_map.deinit();
+        self.allocator.destroy(self.env_map);
         self.memory.deinit();
         self.allocator.destroy(self.memory);
     }

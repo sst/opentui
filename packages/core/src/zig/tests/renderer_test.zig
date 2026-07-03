@@ -107,6 +107,58 @@ test "renderer - clipboard allocates one exact encoded sequence" {
     try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x1b\\"));
 }
 
+test "renderer - clipboard wraps OSC 52 in tmux DCS passthrough" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var test_renderer = try TestRenderer.createWithEnv(std.testing.allocator, 80, 24, pool, &.{
+        .{ .key = "TMUX", .value = "/tmp/tmux-1000/default,12345,0" },
+    });
+    defer test_renderer.deinit();
+
+    const payload = [_]u8{'A'} ** 2048;
+    try std.testing.expect(test_renderer.renderer.copyToClipboardOSC52(.clipboard, &payload));
+
+    // Envelope: "\x1bPtmux;" (7) + bare sequence (base64 + 9) with both inner
+    // ESC bytes doubled (+2) + "\x1b\\" (2) = base64 + 20.
+    const output = test_renderer.lastOutput();
+    try std.testing.expectEqual(std.base64.standard.Encoder.calcSize(payload.len) + 20, output.len);
+    try std.testing.expect(std.mem.startsWith(u8, output, "\x1bPtmux;\x1b\x1b]52;c;QUFB"));
+    try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x1b\x1b\\\x1b\\"));
+}
+
+test "renderer - clipboard chunks OSC 52 in screen DCS passthrough" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var test_renderer = try TestRenderer.createWithEnv(std.testing.allocator, 80, 24, pool, &.{
+        .{ .key = "STY", .value = "12345.pts-0.host" },
+    });
+    defer test_renderer.deinit();
+
+    const payload = [_]u8{'A'} ** 2048;
+    try std.testing.expect(test_renderer.renderer.copyToClipboardOSC52(.clipboard, &payload));
+
+    // Escaped sequence: base64 (2732) + OSC 52 framing (9) + doubled ESC bytes
+    // (+2) = 2743 bytes, split into 11 chunks of at most 252 bytes, each wrapped
+    // in "\x1bP" .. "\x1b\\" (+4 per chunk) = 2787 total.
+    const output = test_renderer.lastOutput();
+    try std.testing.expectEqual(@as(usize, 2787), output.len);
+    try std.testing.expect(std.mem.startsWith(u8, output, "\x1bP\x1b\x1b]52;c;QUFB"));
+    try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x1b\x1b\\\x1b\\"));
+
+    // ESC only precedes 'P' at envelope starts, so this counts the chunks.
+    try std.testing.expectEqual(@as(usize, 11), std.mem.count(u8, output, "\x1bP"));
+
+    // First envelope closes after exactly 252 payload bytes: "\x1bP" (2) +
+    // payload (252) puts the terminator and the next start at offset 254.
+    try std.testing.expectEqualSlices(u8, "\x1b\\\x1bP", output[254..258]);
+}
+
 test "renderer - simple text rendering to currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
