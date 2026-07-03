@@ -95,7 +95,7 @@ fn decodeSixelIndices(payload: []const u8) !DecodedSixel {
     return .{ .indices = indices, .width = width, .height = height };
 }
 
-fn decodeKittyChunks(payload: []const u8) ![]u8 {
+pub fn decodeKittyChunks(payload: []const u8) ![]u8 {
     var decoded: std.ArrayList(u8) = .empty;
     errdefer decoded.deinit(std.testing.allocator);
     var offset: usize = 0;
@@ -491,4 +491,79 @@ test "adaptive Sixel palette quality by color limit" {
         try std.testing.expect(rmse <= maximum_rmse);
         try std.testing.expect(filtered_rmse <= maximum_filtered_rmse);
     }
+}
+
+test "kitty transmits decoded JPEG images as raw RGB pixels" {
+    const jpeg = std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/halves.jpg", 1 << 20) catch
+        return error.SkipZigTest;
+    defer std.testing.allocator.free(jpeg);
+    const decoded = try image.decode(std.testing.allocator, jpeg, .{});
+    defer decoded.deinit();
+    try std.testing.expect(decoded.encoded_png == null);
+    try std.testing.expectEqual(@as(u32, 0), decoded.metadata.has_alpha);
+
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), decoded, 21, false);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=24,s=16,v=8,i=21") != null);
+
+    const transmitted = try decodeKittyChunks(output.items);
+    defer std.testing.allocator.free(transmitted);
+    try std.testing.expectEqual(@as(usize, 16 * 8 * 3), transmitted.len);
+    for (0..16 * 8) |pixel| {
+        try std.testing.expectEqual(decoded.pixels[pixel * 4], transmitted[pixel * 3]);
+        try std.testing.expectEqual(decoded.pixels[pixel * 4 + 1], transmitted[pixel * 3 + 1]);
+        try std.testing.expectEqual(decoded.pixels[pixel * 4 + 2], transmitted[pixel * 3 + 2]);
+    }
+}
+
+test "kitty transmits decoded WebP alpha images as raw RGBA pixels" {
+    const webp = std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/alpha.webp", 1 << 20) catch
+        return error.SkipZigTest;
+    defer std.testing.allocator.free(webp);
+    const decoded = try image.decode(std.testing.allocator, webp, .{});
+    defer decoded.deinit();
+    try std.testing.expect(decoded.encoded_png == null);
+    try std.testing.expectEqual(@as(u32, 1), decoded.metadata.has_alpha);
+
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), decoded, 22, false);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "f=32") != null);
+
+    const transmitted = try decodeKittyChunks(output.items);
+    defer std.testing.allocator.free(transmitted);
+    try std.testing.expectEqualSlices(u8, decoded.pixels, transmitted);
+}
+
+test "kitty tmux passthrough wraps placement and delete frames" {
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeKittyPlacement(output.writer(std.testing.allocator), 5, 6, 1, 2, 3, 4, 0, 0, 3, 4, -7, true);
+    // The cursor move stays outside the passthrough; the graphics frame is wrapped.
+    try std.testing.expect(std.mem.startsWith(u8, output.items, "\x1b[3;2H\x1bPtmux;\x1b\x1b_G"));
+    try std.testing.expect(std.mem.endsWith(u8, output.items, "\x1b\x1b\\\x1b\\"));
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=p,i=5,p=6") != null);
+
+    output.clearRetainingCapacity();
+    try terminal_image.writeKittyDelete(output.writer(std.testing.allocator), 5, 6, true, true);
+    try std.testing.expect(std.mem.startsWith(u8, output.items, "\x1bPtmux;\x1b\x1b_G"));
+    try std.testing.expect(std.mem.endsWith(u8, output.items, "\x1b\x1b\\\x1b\\"));
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=d,d=I,i=5,p=6") != null);
+
+    output.clearRetainingCapacity();
+    try terminal_image.writeKittyDelete(output.writer(std.testing.allocator), 9, null, false, true);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=d,d=i,i=9") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "p=") == null);
+}
+
+test "sixel tmux passthrough wraps the framed payload" {
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+    try terminal_image.writeSixelFramedPayload(output.writer(std.testing.allocator), "0;1;0qPAYLOAD", true);
+    try std.testing.expectEqualStrings("\x1bPtmux;\x1b\x1bP0;1;0qPAYLOAD\x1b\x1b\\\x1b\\", output.items);
+
+    output.clearRetainingCapacity();
+    try terminal_image.writeSixelFramedPayload(output.writer(std.testing.allocator), "0;1;0qPAYLOAD", false);
+    try std.testing.expectEqualStrings("\x1bP0;1;0qPAYLOAD\x1b\\", output.items);
 }
