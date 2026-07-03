@@ -34,8 +34,8 @@ export class ImageRenderable extends Renderable {
   private _loadError: unknown = null
   private _loadGeneration = 0
   private _loadController: AbortController | null = null
-  private readonly _onLoad?: (image: NativeImage) => void
-  private readonly _onError?: (error: unknown) => void
+  public onLoad?: (image: NativeImage) => void
+  public onError?: (error: unknown) => void
   private _fit: ImageFit
   private _protocol: ImageRenderProtocol
   public loadPromise: Promise<void> | null = null
@@ -44,8 +44,8 @@ export class ImageRenderable extends Renderable {
     super(ctx, options)
     this._fit = options.fit ?? "fit"
     this._protocol = options.protocol ?? "auto"
-    this._onLoad = options.onLoad
-    this._onError = options.onError
+    this.onLoad = options.onLoad
+    this.onError = options.onError
     if (options.source !== undefined) this.source = options.source
   }
 
@@ -197,7 +197,7 @@ export class ImageRenderable extends Renderable {
       this._loading = false
       this._loadController = null
       this._loadError = error
-      this._onError?.(error)
+      this.onError?.(error)
       return
     }
 
@@ -212,7 +212,7 @@ export class ImageRenderable extends Renderable {
     this._loadController = null
     previous?.dispose()
     this.requestRender()
-    this._onLoad?.(image)
+    this.onLoad?.(image)
   }
 
   protected destroySelf(): void {
