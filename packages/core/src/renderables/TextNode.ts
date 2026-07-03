@@ -55,6 +55,21 @@ export class TextNodeRenderable extends BaseRenderable {
   }
 
   public set children(children: (string | TextNodeRenderable)[]) {
+    for (const child of this._children) {
+      if (isTextNodeRenderable(child) && child.parent === this) {
+        child.parent = null
+      }
+    }
+
+    for (const child of children) {
+      if (isTextNodeRenderable(child)) {
+        if (child.parent && child.parent !== this) {
+          child.parent.remove(child)
+        }
+        child.parent = this
+      }
+    }
+
     this._children = children
     this.requestRender()
   }
@@ -79,15 +94,8 @@ export class TextNodeRenderable extends BaseRenderable {
     }
 
     if (isTextNodeRenderable(obj)) {
-      if (index !== undefined) {
-        this._children.splice(index, 0, obj)
-        obj.parent = this
-        this.requestRender()
-        return index
-      }
-
-      const insertIndex = this._children.length
-      this._children.push(obj)
+      const insertIndex = this.prepareChildInsert(obj, index)
+      this._children.splice(insertIndex, 0, obj)
       obj.parent = this
       this.requestRender()
       return insertIndex
@@ -112,11 +120,42 @@ export class TextNodeRenderable extends BaseRenderable {
     throw new Error("TextNodeRenderable only accepts strings, TextNodeRenderable instances, or StyledText instances")
   }
 
+  private prepareChildInsert(child: TextNodeRenderable, index?: number): number {
+    let insertIndex = index ?? this._children.length
+
+    if (child.parent && child.parent !== this) {
+      child.parent.remove(child)
+    } else if (child.parent === this) {
+      const currentIndex = this._children.indexOf(child)
+      if (currentIndex !== -1) {
+        this._children.splice(currentIndex, 1)
+        if (currentIndex < insertIndex) insertIndex -= 1
+      }
+    }
+
+    return Math.max(0, Math.min(insertIndex, this._children.length))
+  }
+
   public replace(obj: TextNodeRenderable | string, index: number) {
-    this._children[index] = obj
-    if (typeof obj !== "string") {
+    const existing = this._children[index]
+    if (isTextNodeRenderable(existing) && existing.parent === this) {
+      existing.parent = null
+    }
+
+    if (isTextNodeRenderable(obj)) {
+      if (obj.parent && obj.parent !== this) {
+        obj.parent.remove(obj)
+      } else if (obj.parent === this) {
+        const currentIndex = this._children.indexOf(obj)
+        if (currentIndex !== -1 && currentIndex !== index) {
+          this._children.splice(currentIndex, 1)
+          if (currentIndex < index) index -= 1
+        }
+      }
       obj.parent = this
     }
+
+    this._children[index] = obj
     this.requestRender()
   }
 
@@ -133,12 +172,18 @@ export class TextNodeRenderable extends BaseRenderable {
       throw new Error("Anchor node not found in children")
     }
 
+    if (child === anchorNode) {
+      return this
+    }
+
+    if (isTextNodeRenderable(child)) {
+      this.add(child, anchorIndex)
+      return this
+    }
+
     if (typeof child === "string") {
       this._children.splice(anchorIndex, 0, child)
-    } else if (isTextNodeRenderable(child)) {
-      this._children.splice(anchorIndex, 0, child)
-      child.parent = this
-    } else if (child instanceof StyledText) {
+    } else if (isStyledText(child)) {
       const textNodes = styledTextToTextNodes(child)
       this._children.splice(anchorIndex, 0, ...textNodes)
       textNodes.forEach((node) => (node.parent = this))
@@ -150,21 +195,30 @@ export class TextNodeRenderable extends BaseRenderable {
     return this
   }
 
-  public remove(id: string): this {
-    const childIndex = this.getRenderableIndex(id)
-    if (childIndex === -1) {
-      throw new Error("Child not found in children")
+  public remove(child: BaseRenderable): void {
+    if (!isTextNodeRenderable(child)) {
+      throw new Error("remove expects a TextNodeRenderable child object")
     }
 
-    const child = this._children[childIndex] as TextNodeRenderable
+    const childIndex = this._children.indexOf(child)
+    if (childIndex === -1) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`TextNodeRenderable with id ${child.id} is not a child of ${this.id}, skipping remove`)
+      }
+      return
+    }
 
     this._children.splice(childIndex, 1)
     child.parent = null
     this.requestRender()
-    return this
   }
 
   public clear(): void {
+    for (const child of this._children) {
+      if (isTextNodeRenderable(child) && child.parent === this) {
+        child.parent = null
+      }
+    }
     this._children = []
     this.requestRender()
   }

@@ -311,11 +311,11 @@ export class DiffRenderable extends Renderable {
     this.flexDirection = "column"
 
     if (this.leftSide && this.leftSideAdded) {
-      super.remove(this.leftSide.id)
+      super.remove(this.leftSide)
       this.leftSideAdded = false
     }
     if (this.rightSide && this.rightSideAdded) {
-      super.remove(this.rightSide.id)
+      super.remove(this.rightSide)
       this.rightSideAdded = false
     }
 
@@ -488,13 +488,13 @@ export class DiffRenderable extends Renderable {
     if (this.errorTextRenderable) {
       const errorTextIndex = this.getChildren().indexOf(this.errorTextRenderable)
       if (errorTextIndex !== -1) {
-        super.remove(this.errorTextRenderable.id)
+        super.remove(this.errorTextRenderable)
       }
     }
     if (this.errorCodeRenderable) {
       const errorCodeIndex = this.getChildren().indexOf(this.errorCodeRenderable)
       if (errorCodeIndex !== -1) {
-        super.remove(this.errorCodeRenderable.id)
+        super.remove(this.errorCodeRenderable)
       }
     }
 
@@ -579,7 +579,7 @@ export class DiffRenderable extends Renderable {
     this.createOrUpdateSide("left", codeRenderable, lineColors, lineSigns, lineNumbers, new Set<number>(), "100%")
 
     if (this.rightSide && this.rightSideAdded) {
-      super.remove(this.rightSide.id)
+      super.remove(this.rightSide)
       this.rightSideAdded = false
     }
   }
@@ -592,13 +592,13 @@ export class DiffRenderable extends Renderable {
     if (this.errorTextRenderable) {
       const errorTextIndex = this.getChildren().indexOf(this.errorTextRenderable)
       if (errorTextIndex !== -1) {
-        super.remove(this.errorTextRenderable.id)
+        super.remove(this.errorTextRenderable)
       }
     }
     if (this.errorCodeRenderable) {
       const errorCodeIndex = this.getChildren().indexOf(this.errorCodeRenderable)
       if (errorCodeIndex !== -1) {
-        super.remove(this.errorCodeRenderable.id)
+        super.remove(this.errorCodeRenderable)
       }
     }
 

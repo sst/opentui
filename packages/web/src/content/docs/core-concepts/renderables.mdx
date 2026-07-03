@@ -69,8 +69,8 @@ container.add(body)
 
 renderer.root.add(container)
 
-// Later, remove a child
-container.remove("body")
+// Later, remove a child by reference
+container.remove(body)
 ```
 
 ## Finding Renderables
@@ -80,6 +80,10 @@ Navigate the tree to find specific renderables:
 ```typescript
 // Get a direct child by ID
 const title = container.getRenderable("title")
+
+// Remove by ID lookup when needed
+const body = container.getRenderable("body")
+if (body) container.remove(body)
 
 // Recursively search all descendants
 const deepChild = container.findDescendantById("nested-input")

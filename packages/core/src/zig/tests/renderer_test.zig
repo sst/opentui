@@ -17,6 +17,20 @@ const RGBA = text_buffer.RGBA;
 const TestMemoryOutput = test_renderer_mod.TestMemoryOutput;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
+const CountingOutput = struct {
+    writes: u32 = 0,
+
+    fn bufferedOutput(self: *CountingOutput) @import("../renderer-output.zig").BufferedOutput {
+        return .{ .ctx = self, .write_fn = write, .thread_safe = true };
+    }
+
+    fn write(ctx: *anyopaque, data: []const u8) void {
+        const self: *CountingOutput = @ptrCast(@alignCast(ctx));
+        _ = data;
+        self.writes += 1;
+    }
+};
+
 const SlowThreadSafeOutput = struct {
     delay_ns: u64,
     writes: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
@@ -791,6 +805,54 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
 
     const second_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, second_output, "👋") == null);
+}
+
+test "renderer - grows frame output instead of committing cells whose ANSI was dropped" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const width: u32 = 1000;
+    const height: u32 = 160;
+    for ([_]bool{ false, true }) |threaded| {
+        var test_cli_renderer = if (threaded)
+            try TestRenderer.createThreadSafe(std.testing.allocator, width, height, pool)
+        else
+            try TestRenderer.create(std.testing.allocator, width, height, pool);
+        defer test_cli_renderer.deinit();
+        const cli_renderer = test_cli_renderer.renderer;
+        if (threaded) cli_renderer.setUseThread(true);
+        const next = cli_renderer.getNextBuffer();
+        const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+
+        for (0..height) |y| {
+            for (0..width) |x| {
+                const value: u8 = @intCast((x + y * width) % 255);
+                const fg = ansi.rgbColor(value, 255 - value, value / 2, 255);
+                next.set(@intCast(x), @intCast(y), .{ .char = 'X', .fg = fg, .bg = bg, .attributes = 0 });
+            }
+        }
+        try next.drawText("EARLY_SCROLL_CHANGED", 0, 0, ansi.rgbaFromFloats(1, 1, 1, 1), bg, 0);
+        try next.drawText(
+            "FULL_TOOL_RESULT_MARKER",
+            width - 24,
+            height - 1,
+            ansi.rgbaFromFloats(1, 1, 1, 1),
+            bg,
+            0,
+        );
+
+        _ = cli_renderer.render(false);
+        if (threaded) cli_renderer.setUseThread(false);
+        const output = test_cli_renderer.lastOutput();
+        const current = cli_renderer.getCurrentBuffer();
+
+        // Guard that this test actually exercises the growth path: the frame
+        // must not fit in the default output buffer.
+        try std.testing.expect(output.len > renderer.OUTPUT_BUFFER_SIZE);
+        try std.testing.expect(current.get(width - 24, height - 1).?.char == 'F');
+        try std.testing.expect(std.mem.indexOf(u8, output, "EARLY_SCROLL_CHANGED") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "FULL_TOOL_RESULT_MARKER") != null);
+    }
 }
 
 test "renderer - hyperlinks enabled with OSC 8 output" {
@@ -2427,7 +2489,7 @@ test "threaded buffered destroy: no stale write after shutdown ANSI" {
 test "threaded buffered backend skips instead of blocking behind output" {
     var output = SlowThreadSafeOutput{ .delay_ns = 200 * std.time.ns_per_ms };
     var backend = try renderer.BufferedBackend.create(std.testing.allocator, output.bufferedOutput());
-    defer backend.deinit(std.testing.allocator);
+    defer backend.deinit();
     backend.setUseThread(true);
 
     backend.beginFrame();
@@ -2451,4 +2513,92 @@ test "threaded buffered backend skips instead of blocking behind output" {
     backend.setUseThread(false);
     try std.testing.expectEqual(@as(u32, 2), output.writes.load(.monotonic));
     try std.testing.expectEqualStrings("next graphics frame", output.payloads[1][0..output.lengths[1]]);
+}
+
+test "buffered backend reports a failed frame when growth allocation fails" {
+    const rout = @import("../renderer-output.zig");
+    // Initial create performs exactly two allocations (buffer A and B). The
+    // growth realloc is the next allocation/resize, which must fail.
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{
+        .fail_index = 2,
+        .resize_fail_index = 0,
+    });
+    var out = CountingOutput{};
+    var backend = try renderer.BufferedBackend.create(failing.allocator(), out.bufferedOutput());
+    defer backend.deinit();
+
+    backend.beginFrame();
+    var w = backend.writer();
+    const chunk = [_]u8{'x'} ** 4096;
+    var write_failed = false;
+    var written: usize = 0;
+    while (written <= renderer.OUTPUT_BUFFER_SIZE) : (written += chunk.len) {
+        w.writeAll(&chunk) catch {
+            write_failed = true;
+            break;
+        };
+    }
+    try std.testing.expect(write_failed);
+
+    // A frame whose bytes were dropped must be reported as failed so the
+    // renderer can force a full repaint, and the truncated ANSI stream must
+    // not reach the terminal.
+    try std.testing.expectEqual(rout.WriteStatus.failed, backend.endFrame());
+    try std.testing.expectEqual(@as(u32, 0), out.writes);
+
+    // The failure is per-frame: a following frame that fits reports ok.
+    backend.beginFrame();
+    try backend.writer().writeAll("recovered");
+    try std.testing.expectEqual(rout.WriteStatus.ok, backend.endFrame());
+    try std.testing.expect(out.writes >= 1);
+}
+
+test "buffered backend releases oversized frame buffers after the spike passes" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    var out = CountingOutput{};
+
+    var backend = try renderer.BufferedBackend.create(gpa.allocator(), out.bufferedOutput());
+    defer backend.deinit();
+
+    // One pathological frame that grows the active buffer to ~4x the default.
+    backend.beginFrame();
+    var w = backend.writer();
+    const chunk = [_]u8{'x'} ** 4096;
+    var written: usize = 0;
+    while (written < 4 * renderer.OUTPUT_BUFFER_SIZE) : (written += chunk.len) {
+        try w.writeAll(&chunk);
+    }
+    _ = backend.endFrame();
+    try std.testing.expect(gpa.total_requested_bytes > 3 * renderer.OUTPUT_BUFFER_SIZE);
+
+    // A long run of ordinary frames afterwards must release the spike memory
+    // instead of pinning it for the lifetime of the renderer.
+    var i: usize = 0;
+    while (i < 200) : (i += 1) {
+        backend.beginFrame();
+        try backend.writer().writeAll("small frame");
+        _ = backend.endFrame();
+    }
+
+    try std.testing.expect(gpa.total_requested_bytes <= 3 * renderer.OUTPUT_BUFFER_SIZE);
+}
+
+test "buffered backend frees grown buffers cleanly on deinit" {
+    // Regression guard for the alloc/free pairing: buffers grown by frame
+    // writes must be freed by the same allocator that grew them. deinit no
+    // longer takes an allocator parameter, so a mismatch is unrepresentable;
+    // std.testing.allocator verifies there is no leak and no invalid free.
+    var out = CountingOutput{};
+    var backend = try renderer.BufferedBackend.create(std.testing.allocator, out.bufferedOutput());
+    defer backend.deinit();
+
+    backend.beginFrame();
+    var w = backend.writer();
+    const chunk = [_]u8{'x'} ** 4096;
+    var written: usize = 0;
+    while (written < 2 * renderer.OUTPUT_BUFFER_SIZE) : (written += chunk.len) {
+        try w.writeAll(&chunk);
+    }
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
 }

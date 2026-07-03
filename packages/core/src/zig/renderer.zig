@@ -289,7 +289,7 @@ pub const CliRenderer = struct {
             .buffered => |buffered_output| .{ .buffered = try BufferedBackend.create(allocator, buffered_output) },
             .feed => |feed_ptr| .{ .feed = FeedBackend.create(feed_ptr) },
         };
-        errdefer backend.deinit(allocator);
+        errdefer backend.deinit();
 
         self.* = .{
             .width = width,
@@ -359,7 +359,7 @@ pub const CliRenderer = struct {
         // without replaying the stale last-frame buffer on top of the
         // freshly-restored terminal.
         self.performShutdownSequence();
-        self.backend.deinit(self.allocator);
+        self.backend.deinit();
         self.terminal.deinit();
 
         self.currentRenderBuffer.deinit();
