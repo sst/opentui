@@ -126,6 +126,17 @@ const CommittedImage = struct {
     source_height: u32,
     opacity: u8,
     protocol: ImageProtocol,
+    background_hash: u64 = 0,
+};
+
+// Per-frame invalidation state for one placement. Sixel pixels live inside the
+// covered cells, so a changed Sixel placement must clear and repaint its own
+// rectangle; everything outside placements diffs normally. The resolved
+// protocol is cached here so the per-cell render loop stays a table lookup.
+const ImageDirty = struct {
+    clear: bool,
+    protocol: ImageProtocol,
+    background_hash: u64,
 };
 
 const ImageProtocol = enum { fallback, sixel, kitty };
@@ -162,6 +173,7 @@ pub const CliRenderer = struct {
     nextRenderBuffer: *OptimizedBuffer,
     currentImages: std.ArrayListUnmanaged(CommittedImage) = .{},
     pendingImages: std.ArrayListUnmanaged(CommittedImage) = .{},
+    imageDirty: std.ArrayListUnmanaged(ImageDirty) = .{},
     imageIdSalt: u32,
     imageRenderFailed: bool = false,
     pool: *gp.GraphemePool,
@@ -422,6 +434,7 @@ pub const CliRenderer = struct {
         self.nextRenderBuffer.deinit();
         self.currentImages.deinit(self.allocator);
         self.pendingImages.deinit(self.allocator);
+        self.imageDirty.deinit(self.allocator);
 
         // Free stat sample arrays
         self.statSamples.lastFrameTime.deinit(self.allocator);
@@ -1451,35 +1464,88 @@ pub const CliRenderer = struct {
         return protocol;
     }
 
-    fn protocolForImageChar(self: *CliRenderer, char: u32) ImageProtocol {
-        if (!gp.isImageChar(char)) return .fallback;
-        const id = gp.imageIdFromChar(char);
-        if (id == 0 or id > self.nextRenderBuffer.image_placements.items.len) return .fallback;
-        return self.nextPlacementProtocol(self.nextRenderBuffer.image_placements.items[id - 1]);
-    }
-
-    fn sixelCellsChanged(self: *CliRenderer) bool {
-        for (self.nextRenderBuffer.image_placements.items) |placement| {
-            if (self.nextPlacementProtocol(placement) != .sixel) continue;
-            var py: u32 = 0;
-            while (py < placement.height) : (py += 1) {
-                const y = placement.y + @as(i32, @intCast(py));
-                if (y < 0 or y >= self.height) continue;
-                var px: u32 = 0;
-                while (px < placement.width) : (px += 1) {
-                    const x = placement.x + @as(i32, @intCast(px));
-                    if (x < 0 or x >= self.width) continue;
-                    const current = self.currentRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
-                    const next = self.nextRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
-                    if (current.char != next.char or current.attributes != next.attributes or !buf.rgbaEqual(current.fg, next.fg) or !buf.rgbaEqual(current.bg, next.bg)) {
-                        // Existing overlay cells are repainted by normal cell diffing. The Sixel
-                        // image only needs retransmission when an overlay disappears and exposes it.
-                        if (!gp.isImageChar(current.char) and gp.isImageChar(next.char) and self.protocolForImageChar(next.char) == .sixel) return true;
-                    }
-                }
+    // Existing overlay cells are repainted by normal cell diffing. The Sixel
+    // image only needs retransmission when an overlay disappears and exposes it.
+    fn placementExposed(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement) bool {
+        var py: u32 = 0;
+        while (py < placement.height) : (py += 1) {
+            const y = placement.y + @as(i32, @intCast(py));
+            if (y < 0 or y >= self.height) continue;
+            var px: u32 = 0;
+            while (px < placement.width) : (px += 1) {
+                const x = placement.x + @as(i32, @intCast(px));
+                if (x < 0 or x >= self.width) continue;
+                const current = self.currentRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
+                const next = self.nextRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
+                if (!gp.isImageChar(current.char) and gp.isImageChar(next.char) and
+                    gp.imageIdFromChar(next.char) == placement.placement_id) return true;
             }
         }
         return false;
+    }
+
+    fn placementNeedsClear(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement, protocol: ImageProtocol, background_hash: u64, forced: bool) bool {
+        // Fallback placements materialize into ordinary cells; diffing covers them.
+        if (protocol == .fallback) return false;
+        if (forced) return true;
+        var matched = false;
+        for (self.currentImages.items) |committed| {
+            if (committed.protocol != protocol or committed.x != placement.x or committed.y != placement.y or
+                committed.width != placement.width or committed.height != placement.height or
+                committed.pixel_width != placement.pixel_width or committed.pixel_height != placement.pixel_height or
+                committed.source_x != placement.source_x or committed.source_y != placement.source_y or
+                committed.source_width != placement.source_width or committed.source_height != placement.source_height or
+                committed.opacity != placement.opacity) continue;
+            // Kitty replaces image data server side, so content changes do not
+            // require clearing cells. Sixel pixels are the cells, so content and
+            // blended-background changes repaint the rectangle.
+            if (protocol == .sixel and (committed.image_handle != placement.image_handle or
+                committed.background_hash != background_hash)) continue;
+            matched = true;
+            break;
+        }
+        if (!matched) return true;
+        return protocol == .sixel and self.placementExposed(placement);
+    }
+
+    fn computeImageDirtyFlags(self: *CliRenderer, forced: bool) void {
+        self.imageDirty.clearRetainingCapacity();
+        const placements = self.nextRenderBuffer.image_placements.items;
+        self.imageDirty.ensureTotalCapacity(self.allocator, placements.len) catch {
+            self.imageRenderFailed = true;
+            self.force_full_repaint = true;
+            return;
+        };
+        for (placements) |placement| {
+            const protocol = self.nextPlacementProtocol(placement);
+            const background_hash = if (placement.opacity < 255 and protocol == .sixel)
+                self.placementBackgroundHash(placement)
+            else
+                0;
+            self.imageDirty.appendAssumeCapacity(.{
+                .clear = self.placementNeedsClear(placement, protocol, background_hash, forced),
+                .protocol = protocol,
+                .background_hash = background_hash,
+            });
+        }
+    }
+
+    fn placementDirty(self: *const CliRenderer, placement_id: u32) bool {
+        if (placement_id == 0 or placement_id > self.imageDirty.items.len) return true;
+        return self.imageDirty.items[placement_id - 1].clear;
+    }
+
+    fn placementFrameState(self: *const CliRenderer, char: u32) ?ImageDirty {
+        const id = gp.imageIdFromChar(char);
+        if (id == 0 or id > self.imageDirty.items.len) return null;
+        return self.imageDirty.items[id - 1];
+    }
+
+    inline fn dirtyImageChar(items: []const ImageDirty, char: u32) bool {
+        const id = gp.imageIdFromChar(char);
+        if (id == 0 or id > items.len) return false;
+        const state = &items[id - 1];
+        return state.clear and state.protocol != .fallback;
     }
 
     fn materializeFallbackImages(self: *CliRenderer) void {
@@ -1497,7 +1563,7 @@ pub const CliRenderer = struct {
             self.force_full_repaint = true;
             return;
         };
-        for (self.nextRenderBuffer.image_placements.items) |placement| {
+        for (self.nextRenderBuffer.image_placements.items, 0..) |placement, index| {
             self.pendingImages.appendAssumeCapacity(.{
                 .image_handle = placement.image_handle,
                 .placement_id = placement.placement_id,
@@ -1513,6 +1579,7 @@ pub const CliRenderer = struct {
                 .source_height = placement.source_height,
                 .opacity = placement.opacity,
                 .protocol = self.nextPlacementProtocol(placement),
+                .background_hash = if (index < self.imageDirty.items.len) self.imageDirty.items[index].background_hash else 0,
             });
         }
     }
@@ -1609,7 +1676,7 @@ pub const CliRenderer = struct {
 
     fn writeSixelImages(self: *CliRenderer, writer: anytype) !void {
         for (self.nextRenderBuffer.image_placements.items) |placement| {
-            if (self.nextPlacementProtocol(placement) != .sixel) continue;
+            if (self.nextPlacementProtocol(placement) != .sixel or !self.placementDirty(placement.placement_id)) continue;
             if (placement.pixel_width == 0 or placement.pixel_height == 0 or placement.x < 0 or placement.y < 0) continue;
             const cache_key = SixelCacheKey{
                 .image_handle = placement.image_handle,
@@ -1620,7 +1687,10 @@ pub const CliRenderer = struct {
                 .pixel_width = placement.pixel_width,
                 .pixel_height = placement.pixel_height,
                 .opacity = placement.opacity,
-                .background_hash = if (placement.opacity < 255) self.placementBackgroundHash(placement) else 0,
+                .background_hash = if (placement.placement_id <= self.imageDirty.items.len)
+                    self.imageDirty.items[placement.placement_id - 1].background_hash
+                else
+                    0,
             };
             self.advanceSixelCacheClock();
             if (self.sixelCache.getPtr(cache_key)) |cached| {
@@ -1756,25 +1826,24 @@ pub const CliRenderer = struct {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
         const palette_force = self.last_rendered_palette_epoch == null or self.last_rendered_palette_epoch.? != self.palette_epoch;
+        const should_force = force or self.force_full_repaint or palette_force;
+        self.imageRenderFailed = false;
         self.materializeFallbackImages();
+        self.computeImageDirtyFlags(should_force);
         const images_changed = self.imageStateChanged();
-        const sixel_changed = self.sixelCellsChanged();
-        const graphics_changed = images_changed or sixel_changed or (force and self.nextRenderBuffer.image_placements.items.len > 0);
-        const should_force = force or self.force_full_repaint or palette_force or graphics_changed;
 
         // Lazy frame start is the core no-op suppression mechanism. If diffing,
         // cursor state, and pointer state are unchanged, frame_started stays false
         // and we emit nothing at all for this tick.
         var frame_started = sync_started;
-        self.imageRenderFailed = false;
         self.applyPendingSplitFooterTransition(writer, &frame_started);
 
-        if (graphics_changed and (self.hasCommittedProtocol(.kitty) or self.hasNextProtocol(.kitty))) {
+        if ((images_changed or should_force) and (self.hasCommittedProtocol(.kitty) or self.hasNextProtocol(.kitty))) {
             if (!frame_started) {
                 beginRenderFrame(writer);
                 frame_started = true;
             }
-            self.writeKittyImages(writer, force) catch {
+            self.writeKittyImages(writer, should_force) catch {
                 self.force_full_repaint = true;
                 self.imageRenderFailed = true;
             };
@@ -1785,6 +1854,18 @@ pub const CliRenderer = struct {
         var currentAttributes: ?u32 = null;
         var currentLinkId: u32 = 0;
         var utf8Buf: [4]u8 = undefined;
+        var clearRunY: i64 = -1;
+        var clearRunEnd: i64 = -1;
+        const image_dirty_items = self.imageDirty.items;
+        // Whether any identical-looking reserved cell may still need a clear
+        // this frame; keeps the per-cell diff free of graphics work otherwise.
+        var clears_pending = should_force;
+        for (image_dirty_items) |entry| {
+            if (entry.clear and entry.protocol != .fallback) {
+                clears_pending = true;
+                break;
+            }
+        }
 
         const hyperlinksEnabled = self.terminal.getCapabilities().hyperlinks;
 
@@ -1801,14 +1882,14 @@ pub const CliRenderer = struct {
 
                 if (currentCell == null or nextCell == null) continue;
 
-                if (!should_force) {
-                    const charEqual = currentCell.?.char == nextCell.?.char;
-                    const attrEqual = currentCell.?.attributes == nextCell.?.attributes;
+                const cell = nextCell.?;
 
-                    if (charEqual and attrEqual and
-                        buf.rgbaEqual(currentCell.?.fg, nextCell.?.fg) and
-                        buf.rgbaEqual(currentCell.?.bg, nextCell.?.bg))
-                    {
+                if (!should_force) {
+                    const cellsEqual = currentCell.?.char == cell.char and currentCell.?.attributes == cell.attributes and
+                        buf.rgbaEqual(currentCell.?.fg, cell.fg) and buf.rgbaEqual(currentCell.?.bg, cell.bg);
+                    // Identical reserved cells still repaint when their
+                    // placement's pixels are dirty (e.g. Sixel content change).
+                    if (cellsEqual and !(clears_pending and gp.isImageChar(cell.char) and dirtyImageChar(image_dirty_items, cell.char))) {
                         if (runLength > 0) {
                             writer.writeAll(ansi.ANSI.reset) catch {};
                             runStart = -1;
@@ -1818,22 +1899,31 @@ pub const CliRenderer = struct {
                     }
                 }
 
-                const cell = nextCell.?;
-
-                if (!should_force and gp.isImageChar(cell.char) and self.protocolForImageChar(cell.char) != .fallback and gp.isImageChar(currentCell.?.char)) {
-                    self.currentRenderBuffer.syncCell(x, y, cell);
-                    continue;
-                }
-
-                if (!frame_started) {
-                    beginRenderFrame(writer);
-                    frame_started = true;
-                }
-
-                if (gp.isImageChar(cell.char) and self.protocolForImageChar(cell.char) != .fallback) {
-                    writer.writeAll(ansi.ANSI.reset) catch {};
-                    ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
+                // Reserved graphics cells display as cleared space; their diff
+                // is placement-level. Only placements whose pixels must be
+                // (re)painted clear their cells, as one batched space run.
+                // Fallback placements materialize as ordinary cells and fall
+                // through to normal diffing.
+                if (gp.isImageChar(cell.char)) blk: {
+                    const id = gp.imageIdFromChar(cell.char);
+                    if (id == 0 or id > image_dirty_items.len) break :blk;
+                    const state = &image_dirty_items[id - 1];
+                    if (state.protocol == .fallback) break :blk;
+                    if (!should_force and !state.clear and gp.isImageChar(currentCell.?.char)) {
+                        if (currentCell.?.char != cell.char) self.currentRenderBuffer.syncCell(x, y, cell);
+                        continue;
+                    }
+                    if (!frame_started) {
+                        beginRenderFrame(writer);
+                        frame_started = true;
+                    }
+                    if (clearRunY != y or clearRunEnd != x) {
+                        writer.writeAll(ansi.ANSI.reset) catch {};
+                        ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
+                    }
                     writer.writeByte(' ') catch {};
+                    clearRunY = y;
+                    clearRunEnd = x + 1;
                     currentFg = null;
                     currentBg = null;
                     currentAttributes = null;
@@ -1842,6 +1932,11 @@ pub const CliRenderer = struct {
                     self.currentRenderBuffer.syncCell(x, y, cell);
                     cellsUpdated += 1;
                     continue;
+                }
+
+                if (!frame_started) {
+                    beginRenderFrame(writer);
+                    frame_started = true;
                 }
 
                 const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg);
@@ -1934,7 +2029,14 @@ pub const CliRenderer = struct {
             }
         }
 
-        if (graphics_changed and self.hasNextProtocol(.sixel)) {
+        var sixel_dirty = false;
+        for (self.nextRenderBuffer.image_placements.items) |placement| {
+            if (self.nextPlacementProtocol(placement) == .sixel and self.placementDirty(placement.placement_id)) {
+                sixel_dirty = true;
+                break;
+            }
+        }
+        if (sixel_dirty) {
             if (!frame_started) {
                 beginRenderFrame(writer);
                 frame_started = true;
@@ -1945,6 +2047,7 @@ pub const CliRenderer = struct {
             };
             // Cells that replaced reservation markers were painted after the image.
             for (self.nextRenderBuffer.image_placements.items) |placement| {
+                if (self.nextPlacementProtocol(placement) != .sixel or !self.placementDirty(placement.placement_id)) continue;
                 var py: u32 = 0;
                 while (py < placement.height) : (py += 1) {
                     const y_i = placement.y + @as(i32, @intCast(py));
@@ -1954,7 +2057,11 @@ pub const CliRenderer = struct {
                         const x_i = placement.x + @as(i32, @intCast(px));
                         if (x_i < 0 or x_i >= self.width) continue;
                         const cell = self.nextRenderBuffer.get(@intCast(x_i), @intCast(y_i)) orelse continue;
-                        if (gp.isImageChar(cell.char) and self.protocolForImageChar(cell.char) != .fallback) continue;
+                        if (gp.isImageChar(cell.char)) {
+                            if (self.placementFrameState(cell.char)) |state| {
+                                if (state.protocol != .fallback) continue;
+                            }
+                        }
                         ansi.ANSI.moveToOutput(writer, @intCast(x_i + 1), @intCast(y_i + 1 + @as(i32, @intCast(self.renderOffset)))) catch {};
                         self.emitColor(writer, cell.fg, false);
                         self.emitColor(writer, cell.bg, true);
