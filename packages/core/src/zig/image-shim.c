@@ -22,10 +22,6 @@
 #define STBI_STRICT_JPEG
 #include "vendor/stb/stb_image.h"
 
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#define STB_IMAGE_RESIZE_STATIC
-#include "vendor/stb/stb_image_resize2.h"
-
 #include "src/webp/decode.h"
 
 enum {
@@ -400,21 +396,4 @@ int ot_image_webp_decode(const uint8_t *data, uint32_t data_len, uint8_t *output
     if (status == VP8_STATUS_OUT_OF_MEMORY) return OT_IMAGE_SHIM_OUT_OF_MEMORY;
     if (status == VP8_STATUS_UNSUPPORTED_FEATURE) return OT_IMAGE_SHIM_UNSUPPORTED;
     return OT_IMAGE_SHIM_INVALID;
-}
-
-int ot_image_resize_rgba(const uint8_t *input, uint32_t input_width, uint32_t input_height,
-                         uint32_t input_stride, uint8_t *output, uint32_t output_width,
-                         uint32_t output_height, uint32_t output_stride, uint32_t filter) {
-    if (!input || !output || input_width == 0 || input_height == 0 ||
-        output_width == 0 || output_height == 0 || input_width > INT32_MAX ||
-        input_height > INT32_MAX || output_width > INT32_MAX || output_height > INT32_MAX ||
-        input_stride > INT32_MAX || output_stride > INT32_MAX || filter > STBIR_FILTER_POINT_SAMPLE) {
-        return OT_IMAGE_SHIM_INVALID;
-    }
-
-    void *result = stbir_resize(
-        input, (int)input_width, (int)input_height, (int)input_stride,
-        output, (int)output_width, (int)output_height, (int)output_stride,
-        STBIR_RGBA, STBIR_TYPE_UINT8_SRGB, STBIR_EDGE_CLAMP, (stbir_filter)filter);
-    return result ? OT_IMAGE_SHIM_OK : OT_IMAGE_SHIM_OUT_OF_MEMORY;
 }
