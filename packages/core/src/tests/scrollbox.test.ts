@@ -1,4 +1,4 @@
-import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, MockTreeSitterClient } from "../testing.js"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
 import { BoxRenderable } from "../renderables/Box.js"
@@ -89,6 +89,44 @@ describe("ScrollBoxRenderable - child delegation", () => {
     expect(children[0].id).toBe("child1")
     expect(children[1].id).toBe("child3")
     expect(children[2].id).toBe("child2")
+  })
+
+  test("destroyRecursively fully detaches internal parts without warnings", () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, { id: "scrollbox" })
+    const child = new BoxRenderable(testRenderer, { id: "child" })
+    scrollbox.add(child)
+
+    const wrapper = scrollbox.wrapper
+    const verticalScrollBar = scrollbox.verticalScrollBar
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      scrollbox.destroyRecursively()
+      expect(warnSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
+
+    expect(wrapper.isDestroyed).toBe(true)
+    expect(wrapper.parent).toBeNull()
+    expect(verticalScrollBar.isDestroyed).toBe(true)
+    expect(verticalScrollBar.parent).toBeNull()
+    expect(child.isDestroyed).toBe(true)
+    expect(child.parent).toBeNull()
+  })
+
+  test("removing an internal part by reference detaches it from its real parent", () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, { id: "scrollbox" })
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      scrollbox.remove(scrollbox.verticalScrollBar)
+      expect(warnSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
+
+    expect(scrollbox.verticalScrollBar.parent).toBeNull()
   })
 })
 

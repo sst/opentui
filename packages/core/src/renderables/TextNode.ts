@@ -201,7 +201,12 @@ export class TextNodeRenderable extends BaseRenderable {
     }
 
     const childIndex = this._children.indexOf(child)
-    if (childIndex === -1) return
+    if (childIndex === -1) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`TextNodeRenderable with id ${child.id} is not a child of ${this.id}, skipping remove`)
+      }
+      return
+    }
 
     this._children.splice(childIndex, 1)
     child.parent = null

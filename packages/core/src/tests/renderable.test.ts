@@ -338,6 +338,82 @@ describe("Renderable - Child Management", () => {
     expect(parent.getChildren()[0]).toBe(child)
   })
 
+  test("remove warns in dev when the object was never a child", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    const stranger = new TestRenderable(testRenderer, { id: "stranger" })
+    parent.add(child)
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      expect(() => parent.remove(stranger)).not.toThrow()
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      expect(parent.getChildren()).toEqual([child])
+      expect(stranger.parent).toBeNull()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  test("remove warns in dev and does not detach a child that belongs to another parent", () => {
+    const parentA = new TestRenderable(testRenderer, { id: "parent-a" })
+    const parentB = new TestRenderable(testRenderer, { id: "parent-b" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    parentA.add(child)
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      parentB.remove(child)
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      expect(child.parent).toBe(parentA)
+      expect(parentA.getChildren()).toEqual([child])
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  test("remove warns in dev when passed a text node instead of a layout child", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const textNode = new TextNodeRenderable({ id: "text-node" })
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      expect(() => parent.remove(textNode)).not.toThrow()
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  test("remove stays silent for actual children", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    parent.add(child)
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      parent.remove(child)
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(child.parent).toBeNull()
+      expect(parent.getChildrenCount()).toBe(0)
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  test("changing a child's id keeps parent lookups working", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "old-id" })
+    parent.add(child)
+
+    child.id = "new-id"
+
+    expect(child.id).toBe("new-id")
+    expect(parent.getRenderable("new-id")).toBe(child)
+    expect(parent.getRenderable("old-id")).toBeUndefined()
+    expect(parent.findDescendantById("new-id")).toBe(child)
+  })
+
   test("insertBefore accepts an anchor with the same public id", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const first = new TestRenderable(testRenderer, { id: "duplicate" })

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test"
+import { describe, expect, it, spyOn } from "bun:test"
 import { TextNodeRenderable, isTextNodeRenderable } from "./TextNode.js"
 import { RGBA } from "../lib/RGBA.js"
 import { StyledText, red, bold, t } from "../lib/styled-text.js"
@@ -296,11 +296,31 @@ describe("TextNodeRenderable", () => {
       expect(first.parent).toBeNull()
     })
 
-    it("should ignore a child not contained by the node", () => {
+    it("should warn in dev instead of throwing for a child not contained by the node", () => {
       const node = new TextNodeRenderable({})
       const child = new TextNodeRenderable({})
 
-      expect(() => node.remove(child)).not.toThrow()
+      const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+      try {
+        expect(() => node.remove(child)).not.toThrow()
+        expect(warnSpy).toHaveBeenCalledTimes(1)
+      } finally {
+        warnSpy.mockRestore()
+      }
+    })
+
+    it("should not warn when removing an actual child", () => {
+      const node = new TextNodeRenderable({})
+      const child = new TextNodeRenderable({})
+      node.add(child)
+
+      const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+      try {
+        node.remove(child)
+        expect(warnSpy).not.toHaveBeenCalled()
+      } finally {
+        warnSpy.mockRestore()
+      }
     })
 
     it("should reject string ids at runtime", () => {

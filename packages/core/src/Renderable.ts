@@ -197,10 +197,6 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 }
 
-function hasLayoutNode(child: BaseRenderable): child is BaseRenderable & { getLayoutNode(): YogaNode } {
-  return "getLayoutNode" in child && typeof child.getLayoutNode === "function"
-}
-
 interface LayoutGenerationContext extends RenderContext {
   __otuiLayoutGeneration?: number
   __otuiRenderListRevision?: number
@@ -324,14 +320,6 @@ export abstract class Renderable extends BaseRenderable {
     if (this.buffered) {
       this.createFrameBuffer()
     }
-  }
-
-  public override get id() {
-    return this._id
-  }
-
-  public override set id(value: string) {
-    super.id = value
   }
 
   public get focusable(): boolean {
@@ -1342,42 +1330,37 @@ export abstract class Renderable extends BaseRenderable {
       throw new Error("remove expects a renderable child object")
     }
 
-    if (!hasLayoutNode(child)) {
-      return
-    }
-
-    const index = this._childrenInLayoutOrder.findIndex((candidate) => candidate === child)
+    // Membership in _childrenInLayoutOrder proves child is a Renderable with a
+    // layout node; anything else (text nodes, children of other parents,
+    // already-detached renderables) is a caller bug worth surfacing in dev.
+    const index = this._childrenInLayoutOrder.indexOf(child as Renderable)
     if (index === -1) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Renderable with id ${child.id} is not a child of ${this.id}, skipping remove`)
+      }
       return
     }
 
-    if (child instanceof Renderable && child._liveCount > 0) {
-      this.propagateLiveCount(-child._liveCount)
+    const renderable = this._childrenInLayoutOrder[index]
+
+    if (renderable._liveCount > 0) {
+      this.propagateLiveCount(-renderable._liveCount)
     }
 
-    this.yogaNode.removeChild(child.getLayoutNode())
+    this.yogaNode.removeChild(renderable.getLayoutNode())
     this._childrenInLayoutOrder.splice(index, 1)
 
-    const zIndexIndex = this._childrenInZIndexOrder.findIndex((candidate) => candidate === child)
+    const zIndexIndex = this._childrenInZIndexOrder.indexOf(renderable)
     if (zIndexIndex !== -1) {
       this._childrenInZIndexOrder.splice(zIndexIndex, 1)
     }
 
-    for (const candidate of this._shouldUpdateBefore) {
-      if (candidate === child) {
-        this._shouldUpdateBefore.delete(candidate)
-        break
-      }
-    }
+    this._shouldUpdateBefore.delete(renderable)
     this.requestRender()
 
-    if (child instanceof Renderable) {
-      child.onRemove()
-    }
-    child.parent = null
-    if (child instanceof Renderable) {
-      this._ctx.unregisterLifecyclePass(child)
-    }
+    renderable.onRemove()
+    renderable.parent = null
+    this._ctx.unregisterLifecyclePass(renderable)
 
     this.childrenPrimarySortDirty = true
     bumpRenderListRevision(this._ctx)

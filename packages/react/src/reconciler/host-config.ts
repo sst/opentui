@@ -68,8 +68,12 @@ export const hostConfig: HostConfig<
     parent.add(child)
   },
 
-  // Remove a child from a parent
+  // Remove a child from a parent. During coordinated teardown (for example
+  // renderer.destroy() triggering root.unmount() via onDestroy) the renderable
+  // tree may already be destroyed when React commits its deletion effects, so
+  // an already-detached child is expected and must not be re-removed.
   removeChild(parent: Instance, child: Instance) {
+    if (!child.parent) return
     parent.remove(child)
   },
 
@@ -83,8 +87,10 @@ export const hostConfig: HostConfig<
     parent.insertBefore(child, beforeChild)
   },
 
-  // Remove a child from container
+  // Remove a child from container. Skips children that were already detached
+  // by renderer teardown; see removeChild.
   removeChildFromContainer(parent: Container, child: Instance) {
+    if (!child.parent) return
     parent.remove(child)
   },
 

@@ -520,6 +520,14 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   public remove(child: BaseRenderable): void {
+    // Internal parts (wrapper, scrollbars) are direct children of the root,
+    // not of content. Route by actual parentage so destroy() and explicit
+    // removals of internals detach them instead of silently no-oping through
+    // the content delegation.
+    if (child.parent === this) {
+      super.remove(child)
+      return
+    }
     this.content.remove(child)
   }
 
