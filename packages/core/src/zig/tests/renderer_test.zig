@@ -10,6 +10,7 @@ const ansi = @import("../ansi.zig");
 const image = @import("../image.zig");
 const handles = @import("../handles.zig");
 const test_renderer_mod = @import("test-renderer.zig");
+const terminal_image_test = @import("terminal-image_test.zig");
 
 const CliRenderer = renderer.CliRenderer;
 const TextBuffer = text_buffer.TextBuffer;
@@ -3071,3 +3072,127 @@ test "buffered backend frees grown buffers cleanly on deinit" {
     try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
 }
 
+test "renderer scales kitty transmission alpha by placement opacity" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 200, 100, 50, 255 }, 1, 1, 4);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try next.pushOpacity(0.5);
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
+    next.popOpacity();
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+
+    // Translucent placements transmit RGBA with the alpha channel scaled so the
+    // terminal composites the fade; colors are left for kitty to blend.
+    try std.testing.expect(std.mem.indexOf(u8, output, "f=32") != null);
+    const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
+    const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b\\").? + 2;
+    const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
+    defer std.testing.allocator.free(transmitted);
+    try std.testing.expectEqual(@as(usize, 4), transmitted.len);
+    try std.testing.expectEqual(@as(u8, 200), transmitted[0]);
+    try std.testing.expectEqual(@as(u8, 100), transmitted[1]);
+    try std.testing.expectEqual(@as(u8, 50), transmitted[2]);
+    try std.testing.expect(@abs(@as(i16, transmitted[3]) - 128) <= 1);
+
+    // Opacity changes retransmit under the same kitty id: delete then new data.
+    next = test_renderer.renderer.getNextBuffer();
+    try next.pushOpacity(0.25);
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
+    next.popOpacity();
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+    const second = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, second, "a=d,d=I") != null);
+    const second_start = std.mem.indexOf(u8, second, "\x1b_Ga=t").?;
+    const second_end = std.mem.indexOfPos(u8, second, second_start, "\x1b\\").? + 2;
+    const retransmitted = try terminal_image_test.decodeKittyChunks(second[second_start..second_end]);
+    defer std.testing.allocator.free(retransmitted);
+    try std.testing.expect(@abs(@as(i16, retransmitted[3]) - 64) <= 1);
+}
+
+test "renderer bounds the sixel cache and evicts least recently used payloads" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    const image_count = 260;
+    var images: [image_count]*image.Image = undefined;
+    var image_handles: [image_count]u32 = undefined;
+    for (0..image_count) |index| {
+        const shade: u8 = @intCast(index % 256);
+        images[index] = try image.createFromRgba(std.testing.allocator, &[_]u8{ shade, 255 - shade, @intCast((index / 4) % 256), 255 }, 1, 1, 4);
+        image_handles[index] = try handles.insert(.image, @ptrCast(images[index]));
+    }
+    defer for (image_handles) |handle| {
+        const token = handles.beginDestroy(handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    };
+
+    var next = test_renderer.renderer.getNextBuffer();
+    for (0..image_count) |index| {
+        try std.testing.expect(try next.drawImage(images[index], image_handles[index], 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
+    }
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expectEqual(@as(u64, image_count), test_renderer.renderer.sixelCacheMisses);
+    try std.testing.expect(test_renderer.renderer.sixelCache.count() <= 256);
+    try std.testing.expect(test_renderer.renderer.sixelCacheBytes > 0);
+
+    // The first payloads were the least recently used and must have been evicted.
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(images[0], image_handles[0], 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expectEqual(@as(u64, image_count + 1), test_renderer.renderer.sixelCacheMisses);
+
+    // A recently used payload is still cached.
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(images[image_count - 1], image_handles[image_count - 1], 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expectEqual(@as(u64, 1), test_renderer.renderer.sixelCacheHits);
+}
+
+test "renderer treats fully transparent sixel placements as empty without failing" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 0 }, 1, 1, 4);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0") == null);
+    try std.testing.expect(!test_renderer.renderer.imageRenderFailed);
+    try std.testing.expect(!test_renderer.renderer.force_full_repaint);
+
+    // The empty payload is cached; the placement stays a cheap no-op.
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expectEqual(@as(u64, 1), test_renderer.renderer.sixelCacheHits);
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0") == null);
+    try std.testing.expect(!test_renderer.renderer.imageRenderFailed);
+}
