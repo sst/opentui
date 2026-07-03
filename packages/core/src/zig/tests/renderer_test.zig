@@ -306,6 +306,174 @@ test "renderer clears old Sixel pixels when replacing an image" {
     try std.testing.expect(std.mem.indexOfScalar(u8, output[0..sixel], ' ') != null);
 }
 
+const PaintedSixelColor = struct { r: u8, g: u8, b: u8 };
+
+// Parses the last Sixel DCS in an output stream and returns the palette colors
+// that actually paint at least one pixel (RGB in the 0-100 Sixel scale).
+fn paintedSixelColors(output: []const u8, colors: *[8]PaintedSixelColor) !usize {
+    const start = std.mem.lastIndexOf(u8, output, "\x1bP0;1;0q") orelse return error.NoSixelPayload;
+    const end = std.mem.indexOfPos(u8, output, start, "\x1b\\") orelse return error.NoSixelPayload;
+    const payload = output[start + 8 .. end];
+
+    var palette = [_][3]u8{.{ 0, 0, 0 }} ** 256;
+    var painted = [_]bool{false} ** 256;
+    var selected: usize = 0;
+    var position: usize = 0;
+    if (position < payload.len and payload[position] == '"') {
+        position += 1;
+        var separators: usize = 0;
+        while (position < payload.len and separators < 3) : (position += 1) {
+            if (payload[position] == ';') separators += 1;
+        }
+        while (position < payload.len and std.ascii.isDigit(payload[position])) position += 1;
+    }
+    while (position < payload.len) {
+        const byte = payload[position];
+        position += 1;
+        switch (byte) {
+            '#' => {
+                var value: usize = 0;
+                while (position < payload.len and std.ascii.isDigit(payload[position])) : (position += 1) {
+                    value = value * 10 + (payload[position] - '0');
+                }
+                selected = value;
+                if (position < payload.len and payload[position] == ';') {
+                    var channels: [4]u8 = .{ 0, 0, 0, 0 };
+                    for (0..4) |channel| {
+                        if (position >= payload.len or payload[position] != ';') return error.InvalidSixel;
+                        position += 1;
+                        var channel_value: usize = 0;
+                        while (position < payload.len and std.ascii.isDigit(payload[position])) : (position += 1) {
+                            channel_value = channel_value * 10 + (payload[position] - '0');
+                        }
+                        channels[channel] = @intCast(@min(channel_value, 255));
+                    }
+                    palette[selected] = .{ channels[1], channels[2], channels[3] };
+                }
+            },
+            '!' => {
+                while (position < payload.len and std.ascii.isDigit(payload[position])) position += 1;
+                if (position < payload.len) {
+                    if (payload[position] > '?' and payload[position] <= '~') painted[selected] = true;
+                    position += 1;
+                }
+            },
+            '$', '-' => {},
+            '?' => {},
+            '@'...'~' => painted[selected] = true,
+            else => {},
+        }
+    }
+    var count: usize = 0;
+    for (painted, 0..) |used, index| {
+        if (!used or count >= colors.len) continue;
+        colors[count] = .{ .r = palette[index][0], .g = palette[index][1], .b = palette[index][2] };
+        count += 1;
+    }
+    return count;
+}
+
+fn expectSinglePaintedSixelColor(output: []const u8, r: [2]u8, g: [2]u8, b: [2]u8) !void {
+    var colors: [8]PaintedSixelColor = undefined;
+    const count = try paintedSixelColors(output, &colors);
+    try std.testing.expectEqual(@as(usize, 1), count);
+    try std.testing.expect(colors[0].r >= r[0] and colors[0].r <= r[1]);
+    try std.testing.expect(colors[0].g >= g[0] and colors[0].g <= g[1]);
+    try std.testing.expect(colors[0].b >= b[0] and colors[0].b <= b[1]);
+}
+
+test "renderer dims sixel placements by opacity instead of hiding them" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    const red = try image.createFromRgba(std.testing.allocator, &[_]u8{
+        255, 0, 0, 255, 255, 0, 0, 255,
+        255, 0, 0, 255, 255, 0, 0, 255,
+    }, 2, 2, 8);
+    const red_handle = try handles.insert(.image, @ptrCast(red));
+    defer {
+        const token = handles.beginDestroy(red_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    // Opacity 0.4 over the default (transparent) background must stay visible,
+    // dimmed toward black: red 255 * 0.4 = 102 -> 40 on the Sixel 0-100 scale.
+    var next = test_renderer.renderer.getNextBuffer();
+    try next.pushOpacity(0.4);
+    try std.testing.expect(try next.drawImage(red, red_handle, 0, 0, 1, 1, 2, 2, 0, 0, 2, 2, .sixel));
+    next.popOpacity();
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try expectSinglePaintedSixelColor(test_renderer.memory.lastWrite(), .{ 35, 45 }, .{ 0, 2 }, .{ 0, 2 });
+
+    // The same placement over an opaque blue background must dim toward blue:
+    // 0.4 * red + 0.6 * blue = (102, 0, 153) -> (40, 0, 60).
+    test_renderer.renderer.setBackgroundColor(ansi.rgbColor(0, 0, 255, 255));
+    _ = test_renderer.renderer.render(true);
+    next = test_renderer.renderer.getNextBuffer();
+    try next.pushOpacity(0.4);
+    try std.testing.expect(try next.drawImage(red, red_handle, 0, 0, 1, 1, 2, 2, 0, 0, 2, 2, .sixel));
+    next.popOpacity();
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try expectSinglePaintedSixelColor(test_renderer.memory.lastWrite(), .{ 35, 45 }, .{ 0, 2 }, .{ 55, 65 });
+
+    // Opacity 0.75 over the same blue background: (191, 0, 64) -> (75, 0, 25).
+    // Today this renders at full brightness because opacity only rescales alpha.
+    next = test_renderer.renderer.getNextBuffer();
+    try next.pushOpacity(0.75);
+    try std.testing.expect(try next.drawImage(red, red_handle, 0, 0, 1, 1, 2, 2, 0, 0, 2, 2, .sixel));
+    next.popOpacity();
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try expectSinglePaintedSixelColor(test_renderer.memory.lastWrite(), .{ 70, 80 }, .{ 0, 2 }, .{ 20, 30 });
+
+    // Full opacity is unaffected by the background: pure red (100, 0, 0).
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(red, red_handle, 0, 0, 1, 1, 2, 2, 0, 0, 2, 2, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try expectSinglePaintedSixelColor(test_renderer.memory.lastWrite(), .{ 95, 100 }, .{ 0, 2 }, .{ 0, 2 });
+}
+
+test "renderer keeps image alpha holes transparent while dimming by opacity" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    // Left pixel opaque red, right pixel fully transparent.
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{
+        255, 0, 0, 255, 0, 0, 0, 0,
+    }, 2, 1, 8);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try next.pushOpacity(0.6);
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 1, 2, 1, 0, 0, 2, 1, .sixel));
+    next.popOpacity();
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+
+    const output = test_renderer.memory.lastWrite();
+    var colors: [8]PaintedSixelColor = undefined;
+    const count = try paintedSixelColors(output, &colors);
+    // Only the dimmed red pixel paints; the transparent pixel stays a hole.
+    try std.testing.expectEqual(@as(usize, 1), count);
+    try std.testing.expect(colors[0].r >= 55 and colors[0].r <= 65);
+
+    const start = std.mem.lastIndexOf(u8, output, "\x1bP0;1;0q").?;
+    const end = std.mem.indexOfPos(u8, output, start, "\x1b\\").?;
+    const payload = output[start + 8 .. end];
+    // Exactly one column paints in the single 2x1 band: one '@' data char.
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, payload, "@"));
+}
+
 test "buffered backend grows and commits a complete large frame" {
     var memory = TestMemoryOutput.init(std.testing.allocator);
     defer memory.deinit();
@@ -2902,3 +3070,4 @@ test "buffered backend frees grown buffers cleanly on deinit" {
     }
     try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
 }
+
