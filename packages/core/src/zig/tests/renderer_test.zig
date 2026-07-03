@@ -3293,3 +3293,78 @@ test "renderer clears dirty sixel cells as one batched space run" {
     try std.testing.expect(std.mem.indexOf(u8, output[0..sixel], "\x1b[1;1H      ") != null);
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, output[0..sixel], "\x1b[1;1H"));
 }
+
+test "renderer downscales large kitty stills to their placement pixel size" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 4, pool);
+    defer test_renderer.deinit();
+    // 64x64 source shown at 16x16 pixels: 16x the pixel area.
+    const pixels = try std.testing.allocator.alloc(u8, 64 * 64 * 4);
+    defer std.testing.allocator.free(pixels);
+    for (0..64 * 64) |index| {
+        pixels[index * 4] = 200;
+        pixels[index * 4 + 1] = @truncate(index);
+        pixels[index * 4 + 2] = 30;
+        pixels[index * 4 + 3] = 255;
+    }
+    const value = try image.createFromRgba(std.testing.allocator, pixels, 64, 64, 64 * 4);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 0, 0, 64, 64, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+
+    // The transmission carries the downscaled pixels and the placement crops
+    // the full downscaled image.
+    try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=24,s=16,v=16") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "x=0,y=0,w=16,h=16,C=1") != null);
+    const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
+    const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b[").?;
+    const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
+    defer std.testing.allocator.free(transmitted);
+    try std.testing.expectEqual(@as(usize, 16 * 16 * 3), transmitted.len);
+    try std.testing.expectEqual(@as(u8, 200), transmitted[0]);
+    try std.testing.expectEqual(@as(u8, 30), transmitted[2]);
+
+    // Changing the placement pixel size invalidates the downscaled pixels.
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 2, 20, 20, 0, 0, 64, 64, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+    const second = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, second, "a=d,d=I") != null);
+    try std.testing.expect(std.mem.indexOf(u8, second, "a=t,f=24,s=20,v=20") != null);
+}
+
+test "renderer transmits small kitty images at native size" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 8, 4, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &([_]u8{ 9, 8, 7, 255 } ** 64), 8, 8, 32);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+
+    // Displayed at 16x16 pixels (upscale): the source pixels are transmitted
+    // untouched and kitty performs the scaling.
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 0, 0, 8, 8, .auto));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, output, "a=t,f=24,s=8,v=8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "x=0,y=0,w=8,h=8,C=1") != null);
+}
