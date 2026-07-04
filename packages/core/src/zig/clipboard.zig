@@ -184,7 +184,9 @@ const Operation = struct {
             operation.platform_cancel.store(true, .release);
             if (operation.platform_terminal_request == null) operation.platform_terminal_request = .cancelled;
             operation.mutex.unlock();
-            operation.service.wakePlatformWorker();
+            if (!operation.service.completeQueuedPlatformOperation(operation, .cancelled)) {
+                operation.service.wakePlatformWorker();
+            }
             return .requested;
         }
         defer operation.mutex.unlock();
@@ -220,13 +222,14 @@ const Operation = struct {
             return status;
         }
         if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
-            const elapsed_ns = std.time.nanoTimestamp() - operation.started_ns;
-            if (elapsed_ns >= @as(i128, operation.timeout_ms) * std.time.ns_per_ms and
-                operation.platform_terminal_request == null)
-            {
+            const now_ns = std.time.nanoTimestamp();
+            if (platformDeadlineExpired(operation, now_ns) and operation.platform_terminal_request == null) {
                 operation.platform_terminal_request = .timed_out;
                 operation.platform_cancel.store(true, .release);
+            }
+            if (operation.platform_terminal_request) |requested| {
                 operation.mutex.unlock();
+                if (operation.service.completeQueuedPlatformOperation(operation, requested)) return requested;
                 operation.service.wakePlatformWorker();
                 return .pending;
             }
@@ -360,6 +363,37 @@ const Service = struct {
         service.platform_mutex.unlock();
     }
 
+    fn completeQueuedPlatformOperation(
+        service: *Service,
+        operation: *Operation,
+        status: OperationStatus,
+    ) bool {
+        if (comptime builtin.os.tag != .windows and builtin.os.tag != .macos and !builtin.is_test) return false;
+        service.platform_mutex.lock();
+        var found = false;
+        for (service.platform_queue.items, 0..) |candidate, index| {
+            if (candidate != operation) continue;
+            _ = service.platform_queue.orderedRemove(index);
+            found = true;
+            break;
+        }
+        if (!found) {
+            service.platform_mutex.unlock();
+            return false;
+        }
+
+        operation.mutex.lock();
+        if (operation.status == .pending) {
+            operation.platform_terminal_request = status;
+            operation.platform_cancel.store(true, .release);
+            operation.platform_job_state = .complete;
+            operation.status = status;
+        }
+        operation.mutex.unlock();
+        service.platform_mutex.unlock();
+        return true;
+    }
+
     fn platformWorker(service: *Service) void {
         if (comptime builtin.os.tag == .windows) {
             var worker = clipboard_windows.Worker.init() catch {
@@ -422,7 +456,9 @@ const Service = struct {
 
     fn executePlatformOperation(service: *Service, worker: anytype, operation: *Operation) void {
         operation.mutex.lock();
-        const requested = operation.platform_terminal_request;
+        const now_ns = std.time.nanoTimestamp();
+        const requested = operation.platform_terminal_request orelse
+            if (platformDeadlineExpired(operation, now_ns)) OperationStatus.timed_out else null;
         operation.mutex.unlock();
         if (requested) |status| {
             service.publishPlatformResult(operation, status, &.{}, &.{}, 0);
@@ -491,12 +527,21 @@ const Service = struct {
         data: []const u8,
         error_code: i32,
     ) void {
+        service.publishPlatformResultAt(operation, platform_status, mime, data, error_code, std.time.nanoTimestamp());
+    }
+
+    fn publishPlatformResultAt(
+        service: *Service,
+        operation: *Operation,
+        platform_status: OperationStatus,
+        mime: []const u8,
+        data: []const u8,
+        error_code: i32,
+        now_ns: i128,
+    ) void {
         operation.mutex.lock();
         defer operation.mutex.unlock();
-        var status = if (platform_status == .written or platform_status == .cleared)
-            platform_status
-        else
-            operation.platform_terminal_request orelse platform_status;
+        var status = resolvePlatformStatus(operation, platform_status, now_ns);
         if (status == .read) {
             operation.result_mime = service.allocator.dupe(u8, mime) catch {
                 status = .failed;
@@ -1022,6 +1067,21 @@ fn selectionRequestCommitted(result: clipboard_wayland.SelectionResult) bool {
     return result == .ok or result == .committed;
 }
 
+fn platformDeadlineExpired(operation: *const Operation, now_ns: i128) bool {
+    return now_ns - operation.started_ns >= @as(i128, operation.timeout_ms) * std.time.ns_per_ms;
+}
+
+fn resolvePlatformStatus(
+    operation: *const Operation,
+    platform_status: OperationStatus,
+    now_ns: i128,
+) OperationStatus {
+    if (platform_status == .written or platform_status == .cleared) return platform_status;
+    if (operation.platform_terminal_request) |requested| return requested;
+    if (platformDeadlineExpired(operation, now_ns)) return .timed_out;
+    return platform_status;
+}
+
 fn waylandReadExhaustionStatus(implemented: bool, failed: bool) OperationStatus {
     if (failed) return .failed;
     return if (implemented) .empty else .unsupported;
@@ -1542,6 +1602,73 @@ test "clipboard failed operations always publish a portable diagnostic" {
     try std.testing.expectEqual(OperationStatus.failed, service.finishOperation(&operation, .failed));
     try std.testing.expect(operation.error_code != 0);
     try std.testing.expect(operation.diagnostic.len > 0);
+}
+
+test "clipboard queued platform terminal requests complete before worker execution" {
+    var service: Service = .{
+        .allocator = std.testing.allocator,
+        .max_operations = 2,
+        .max_provider_transfers = 1,
+        .route = .unsupported,
+        .requested_wayland_seat = &.{},
+        .environment_wayland_seat = &.{},
+    };
+    var first: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = &service,
+        .kind = .read,
+        .worker_joined = true,
+        .platform_job_state = .queued,
+    };
+    var second: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = &service,
+        .kind = .read,
+        .worker_joined = true,
+        .platform_job_state = .queued,
+    };
+    var queue_storage: [2]*Operation = undefined;
+    service.platform_queue = .{ .items = queue_storage[0..0], .capacity = queue_storage.len };
+    service.platform_queue.appendAssumeCapacity(&first);
+    service.platform_queue.appendAssumeCapacity(&second);
+
+    try std.testing.expect(service.completeQueuedPlatformOperation(&second, .cancelled));
+    try std.testing.expectEqual(OperationStatus.cancelled, second.status);
+    try std.testing.expectEqual(PlatformJobState.complete, second.platform_job_state);
+    try std.testing.expectEqual(@as(usize, 1), service.platform_queue.items.len);
+    try std.testing.expect(service.platform_queue.items[0] == &first);
+}
+
+test "clipboard platform result resolution enforces deadline before late read success" {
+    var service: Service = .{
+        .allocator = std.testing.allocator,
+        .max_operations = 1,
+        .max_provider_transfers = 1,
+        .route = .unsupported,
+        .requested_wayland_seat = &.{},
+        .environment_wayland_seat = &.{},
+    };
+    var operation: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = &service,
+        .kind = .read,
+        .worker_joined = true,
+        .timeout_ms = 5,
+        .started_ns = 100,
+    };
+
+    service.publishPlatformResultAt(
+        &operation,
+        .read,
+        "text/plain",
+        "late result",
+        0,
+        100 + 5 * std.time.ns_per_ms,
+    );
+
+    try std.testing.expectEqual(OperationStatus.timed_out, operation.status);
+    try std.testing.expectEqual(@as(usize, 0), operation.result.len);
+    try std.testing.expectEqual(@as(usize, 0), operation.result_mime.len);
 }
 
 test "clipboard mutation ordering is stable when operation storage is reordered" {
