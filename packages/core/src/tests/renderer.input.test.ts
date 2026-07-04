@@ -2054,6 +2054,136 @@ test("late OSC 11 reply arriving after the query timeout still applies the theme
   renderer.destroy()
 })
 
+test("tmux #975 simulation: query-provoked ?997 must not sustain a query loop", async () => {
+  const { renderer, queryThemeColorsCalls, clock } = await createThemeQueryRenderer()
+
+  // #975 shape: the OSC 10/11 round-trip itself provokes the next ?997.
+  // The terminal never answers (slow path); each query provokes a
+  // notification 50ms later.
+  // @ts-expect-error - mocking for test
+  renderer.lib.queryThemeColors = () => {
+    queryThemeColorsCalls.count += 1
+    clock.setTimeout(() => renderer.stdin.emit("data", Buffer.from("\x1b[?997;1n")), 50)
+  }
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+
+  for (let t = 0; t < 10_000; t += 10) {
+    clock.advance(10)
+    await flushMicrotasks()
+  }
+
+  expect(queryThemeColorsCalls.count).toBeLessThanOrEqual(2)
+
+  renderer.destroy()
+})
+
+test("query-provoked ?997 after a fast reply must not sustain a query loop", async () => {
+  const { renderer, queryThemeColorsCalls, clock } = await createThemeQueryRenderer()
+
+  // Fast-reply variant of #975: the terminal answers OSC 10/11 within 10ms
+  // (query completes early), and the round-trip still provokes a ?997 50ms
+  // after each query — arriving while no query is in flight.
+  // @ts-expect-error - mocking for test
+  renderer.lib.queryThemeColors = () => {
+    queryThemeColorsCalls.count += 1
+    clock.setTimeout(() => {
+      renderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+      renderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+    }, 10)
+    clock.setTimeout(() => renderer.stdin.emit("data", Buffer.from("\x1b[?997;1n")), 50)
+  }
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+
+  for (let t = 0; t < 10_000; t += 10) {
+    clock.advance(10)
+    await flushMicrotasks()
+  }
+
+  expect(queryThemeColorsCalls.count).toBeLessThanOrEqual(2)
+
+  renderer.destroy()
+})
+
+test("?997 during an in-flight query with a fast pre-settle reply still triggers the follow-up", async () => {
+  const { renderer, queryThemeColorsCalls, clock } = await createThemeQueryRenderer()
+
+  // Settle-lag race: a second ?997 arrives while the first query is in
+  // flight, then the terminal answers the first query quickly with
+  // pre-settle (stale) colors. The follow-up must run via early
+  // consumption — not only from the 250ms timeout, which the fast reply
+  // cancels.
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+  advanceClock(clock, 100)
+  expect(queryThemeColorsCalls.count).toBe(1)
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceClock(clock, 10)
+
+  // Stale full reply completes query #1 before its timeout.
+  renderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  renderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+  await flushMicrotasks()
+  expect(renderer.themeMode).toBe("dark")
+  expect(queryThemeColorsCalls.count).toBe(2)
+
+  // The settled colors answer the follow-up query.
+  advanceClock(clock, 50)
+  renderer.stdin.emit("data", Buffer.from("\x1b]10;#000000\x07"))
+  renderer.stdin.emit("data", Buffer.from("\x1b]11;#ffffff\x07"))
+  await flushMicrotasks()
+  expect(renderer.themeMode).toBe("light")
+
+  renderer.destroy()
+})
+
+test("?997 during an in-flight query triggers exactly one follow-up after the timeout", async () => {
+  const { renderer, queryThemeColorsCalls, clock } = await createThemeQueryRenderer()
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+  advanceClock(clock, 100)
+  expect(queryThemeColorsCalls.count).toBe(1)
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceClock(clock, 149)
+  expect(queryThemeColorsCalls.count).toBe(1)
+
+  advanceClock(clock, 1)
+  await flushMicrotasks()
+  expect(queryThemeColorsCalls.count).toBe(2)
+
+  // With no further notifications, the follow-up window times out without
+  // spawning another query.
+  advanceClock(clock, 250)
+  advanceClock(clock, 250)
+  await flushMicrotasks()
+  expect(queryThemeColorsCalls.count).toBe(2)
+
+  renderer.destroy()
+})
+
+test("a genuine theme change after the follow-up cooldown starts a fresh query", async () => {
+  const { renderer, queryThemeColorsCalls, clock } = await createThemeQueryRenderer()
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+  advanceClock(clock, 100)
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceClock(clock, 150)
+  await flushMicrotasks()
+  expect(queryThemeColorsCalls.count).toBe(2)
+  advanceClock(clock, 250)
+  await flushMicrotasks()
+
+  // A real theme change long after all query activity must never be gated.
+  advanceClock(clock, 10_000)
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceClock(clock, 10)
+  expect(queryThemeColorsCalls.count).toBe(3)
+
+  renderer.destroy()
+})
+
 test("pixel resolution response should not trigger keypress", async () => {
   const keypresses: KeyEvent[] = []
   currentRenderer.keyInput.on("keypress", (event) => {
