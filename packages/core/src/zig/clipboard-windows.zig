@@ -6,7 +6,6 @@ const Allocator = std.mem.Allocator;
 const CF_UNICODETEXT: u32 = 13;
 const COINIT_APARTMENTTHREADED: u32 = 0x2;
 const GMEM_MOVEABLE: u32 = 0x2;
-const OPEN_ATTEMPTS_MAX_DEFAULT: u8 = 20;
 const OPEN_RETRY_SLEEP_NS_DEFAULT: u64 = 5 * std.time.ns_per_ms;
 const ERROR_OUTOFMEMORY: u32 = 14;
 const ERROR_INVALID_DATA: u32 = 13;
@@ -111,7 +110,6 @@ pub const Job = union(enum) {
 pub const ExecuteOptions = struct {
     cancel_requested: ?*const std.atomic.Value(bool) = null,
     deadline_ns: i128,
-    open_attempts_max: u8 = OPEN_ATTEMPTS_MAX_DEFAULT,
     open_retry_sleep_ns: u64 = OPEN_RETRY_SLEEP_NS_DEFAULT,
 };
 
@@ -173,7 +171,7 @@ pub const Worker = struct {
         std.debug.assert(worker.initialized);
         std.debug.assert(worker.thread_id == win32.GetCurrentThreadId());
 
-        if (options.open_attempts_max == 0 or options.open_retry_sleep_ns == 0) {
+        if (options.open_retry_sleep_ns == 0) {
             return .{ .status = .invalid_request, .error_code = ERROR_INVALID_PARAMETER };
         }
         if (job == .read and !validateReadRequest(job.read.request)) {
@@ -300,8 +298,65 @@ fn validateReadRequest(request: []const u8) bool {
 }
 
 fn utf8ToClipboardText(allocator: Allocator, utf8: []const u8) ConversionError![:0]u16 {
-    if (std.mem.indexOfScalar(u8, utf8, 0) != null) return error.EmbeddedNul;
-    return std.unicode.utf8ToUtf16LeAllocZ(allocator, utf8) catch |err| switch (err) {
+    var extra_bytes: usize = 0;
+    var index: usize = 0;
+    while (index < utf8.len) {
+        const byte = utf8[index];
+        if (byte == 0) return error.EmbeddedNul;
+        if (byte == '\r') {
+            if (index + 1 < utf8.len and utf8[index + 1] == '\n') {
+                index += 2;
+            } else {
+                index += 1;
+                extra_bytes = std.math.add(usize, extra_bytes, 1) catch return error.LimitExceeded;
+            }
+        } else if (byte == '\n') {
+            index += 1;
+            extra_bytes = std.math.add(usize, extra_bytes, 1) catch return error.LimitExceeded;
+        } else {
+            index += 1;
+        }
+    }
+
+    var normalized: ?[]u8 = null;
+    defer if (normalized) |bytes| allocator.free(bytes);
+
+    if (extra_bytes > 0) {
+        const normalized_len = std.math.add(usize, utf8.len, extra_bytes) catch return error.LimitExceeded;
+        const normalized_bytes = allocator.alloc(u8, normalized_len) catch return error.OutOfMemory;
+        normalized = normalized_bytes;
+
+        index = 0;
+        var output_index: usize = 0;
+        while (index < utf8.len) {
+            const byte = utf8[index];
+            if (byte == '\r') {
+                normalized_bytes[output_index] = '\r';
+                output_index += 1;
+                if (index + 1 < utf8.len and utf8[index + 1] == '\n') {
+                    normalized_bytes[output_index] = '\n';
+                    output_index += 1;
+                    index += 2;
+                } else {
+                    normalized_bytes[output_index] = '\n';
+                    output_index += 1;
+                    index += 1;
+                }
+            } else if (byte == '\n') {
+                normalized_bytes[output_index] = '\r';
+                normalized_bytes[output_index + 1] = '\n';
+                output_index += 2;
+                index += 1;
+            } else {
+                normalized_bytes[output_index] = byte;
+                output_index += 1;
+                index += 1;
+            }
+        }
+        std.debug.assert(output_index == normalized_bytes.len);
+    }
+
+    return std.unicode.utf8ToUtf16LeAllocZ(allocator, normalized orelse utf8) catch |err| switch (err) {
         error.InvalidUtf8 => error.InvalidUtf8,
         error.OutOfMemory => error.OutOfMemory,
     };
@@ -362,18 +417,15 @@ fn preparationFailure(err: ConversionError) Result {
 }
 
 fn openClipboard(owner_window: *anyopaque, options: ExecuteOptions) ?Result {
-    var attempt: u8 = 0;
-    while (attempt < options.open_attempts_max) : (attempt += 1) {
+    while (true) {
         if (checkStop(options)) |status| return .{ .status = status };
         if (win32.OpenClipboard(owner_window) != 0) return null;
-        if (attempt + 1 == options.open_attempts_max) break;
 
         const now_ns = std.time.nanoTimestamp();
         if (now_ns >= options.deadline_ns) return .{ .status = .timed_out };
         const remaining_ns: u64 = @intCast(@min(options.deadline_ns - now_ns, std.math.maxInt(u64)));
         std.Thread.sleep(@min(options.open_retry_sleep_ns, remaining_ns));
     }
-    return lastErrorResult();
 }
 
 fn checkStop(options: ExecuteOptions) ?Status {
@@ -483,6 +535,14 @@ test "Windows clipboard text conversion round trips Unicode and terminates UTF-1
     const utf8 = try clipboardTextToUtf8(std.testing.allocator, utf16.ptr[0 .. utf16.len + 1], 64);
     defer std.testing.allocator.free(utf8);
     try std.testing.expectEqualStrings("plain \u{1f642}", utf8);
+}
+
+test "Windows clipboard text conversion normalizes CF_UNICODETEXT line endings" {
+    const utf16 = try utf8ToClipboardText(std.testing.allocator, "a\nb\r\nc\rd");
+    defer std.testing.allocator.free(utf16);
+    const utf8 = try clipboardTextToUtf8(std.testing.allocator, utf16.ptr[0 .. utf16.len + 1], 64);
+    defer std.testing.allocator.free(utf8);
+    try std.testing.expectEqualStrings("a\r\nb\r\nc\r\nd", utf8);
 }
 
 test "Windows clipboard text conversion validates NUL UTF-16 and size" {

@@ -490,7 +490,7 @@ pub const Connection = struct {
             state.phase = .limit_exceeded;
             return .limit_exceeded;
         }
-        if (state.target == ATOM_STRING or state.actual_type == ATOM_STRING) {
+        if (textPropertyUsesLatin1(state.actual_type)) {
             const appended = appendLatin1(self.allocator, data, bytes, max_bytes) catch return failRead(state);
             if (!appended) {
                 state.phase = .limit_exceeded;
@@ -1244,6 +1244,10 @@ fn timestampBefore(left: u32, right: u32) bool {
     return difference < 0;
 }
 
+fn textPropertyUsesLatin1(actual_type: u32) bool {
+    return actual_type == ATOM_STRING;
+}
+
 fn encodeLatin1(allocator: std.mem.Allocator, utf8: []const u8) ![]u8 {
     var count: usize = 0;
     var offset: usize = 0;
@@ -1368,6 +1372,11 @@ test "X11 STRING conversion is Latin-1 aware and bounded after UTF-8 expansion" 
     try std.testing.expect(try appendLatin1(std.testing.allocator, &output, latin1, 3));
     try std.testing.expectEqualStrings("A\u{e9}", output.items);
     try std.testing.expect(!(try appendLatin1(std.testing.allocator, &output, &.{0xff}, 4)));
+}
+
+test "X11 text compatibility decodes by returned property type" {
+    try std.testing.expect(textPropertyUsesLatin1(ATOM_STRING));
+    try std.testing.expect(!textPropertyUsesLatin1(102));
 }
 
 test "X11 timestamp ordering handles server timestamp wraparound" {

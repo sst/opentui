@@ -5,6 +5,7 @@ import { createHostClipboard, type ClipboardSelection, type HostClipboardService
 
 const LIVE = process.platform === "linux" && process.env.OTUI_LIVE_X11_CLIPBOARD === "1"
 const PROCESS_TIMEOUT_MS = 10_000
+const OWNER_TIMEOUT_MS = 30_000
 const MAX_ORACLE_OUTPUT_BYTES = 8 * 1024 * 1024
 const encoder = new TextEncoder()
 
@@ -22,7 +23,12 @@ interface XclipOwner {
   readonly ready: Promise<void>
 }
 
-const startOracle = (command: "xclip" | "xsel", args: readonly string[], input?: string): XclipOwner => {
+const startOracle = (
+  command: "xclip" | "xsel",
+  args: readonly string[],
+  input?: string,
+  timeoutMs = PROCESS_TIMEOUT_MS,
+): XclipOwner => {
   const child = spawn(command, [...args], { stdio: "pipe" })
   const stdout: Buffer[] = []
   const stderr: Buffer[] = []
@@ -30,9 +36,9 @@ const startOracle = (command: "xclip" | "xsel", args: readonly string[], input?:
   let stderrBytes = 0
   let processError: Error | undefined
   const timer = setTimeout(() => {
-    processError = new Error(`xclip exceeded its ${PROCESS_TIMEOUT_MS}ms timeout`)
+    processError = new Error(`${command} exceeded its ${timeoutMs}ms timeout`)
     child.kill("SIGKILL")
-  }, PROCESS_TIMEOUT_MS)
+  }, timeoutMs)
 
   child.stdout.on("data", (chunk: Buffer) => {
     stdoutBytes += chunk.byteLength
@@ -85,7 +91,7 @@ const xclipRead = async (selection: ClipboardSelection): Promise<XclipResult> =>
 }
 
 const startXclipOwner = async (selection: ClipboardSelection, text: string): Promise<XclipOwner> => {
-  const owner = startOracle("xclip", ["-selection", selection, "-in", "-quiet"], text)
+  const owner = startOracle("xclip", ["-selection", selection, "-in", "-quiet"], text, OWNER_TIMEOUT_MS)
   await owner.ready
   if (owner.process.exitCode !== null || owner.process.signalCode !== null) {
     const result = await owner.done
@@ -96,7 +102,7 @@ const startXclipOwner = async (selection: ClipboardSelection, text: string): Pro
 
 const startXselOwner = async (selection: ClipboardSelection, text: string): Promise<XclipOwner> => {
   const selectionFlag = selection === "clipboard" ? "--clipboard" : "--primary"
-  const owner = startOracle("xsel", [selectionFlag, "--input", "--nodetach"], text)
+  const owner = startOracle("xsel", [selectionFlag, "--input", "--nodetach"], text, OWNER_TIMEOUT_MS)
   await owner.ready
   if (owner.process.exitCode !== null || owner.process.signalCode !== null) {
     const result = await owner.done
@@ -146,6 +152,23 @@ const assertHostRead = async (host: HostClipboardService, selection: ClipboardSe
   expect(result.representation.bytes).toEqual(encoder.encode(expected))
 }
 
+const waitForHostRead = async (host: HostClipboardService, selection: ClipboardSelection, expected: string) => {
+  const expectedBytes = Buffer.from(expected)
+  let lastDetail = "no read attempted"
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const result = await host.read({ preferredTypes: ["text/plain"], selection })
+    if (result.status === "read") {
+      const actual = Buffer.from(result.representation.bytes)
+      if (actual.equals(expectedBytes)) return
+      lastDetail = `read ${actual.byteLength} unexpected bytes`
+    } else {
+      lastDetail = result.status === "failed" ? `failed: ${result.error.message}` : result.status
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error(`host ${selection} read did not observe expected owner data: ${lastDetail}`)
+}
+
 test.skipIf(!LIVE)(
   "uses a live X11 server and external clipboard tools as bidirectional oracles",
   async () => {
@@ -166,6 +189,7 @@ test.skipIf(!LIVE)(
 
     const exactText = "OpenTUI X11 clipboard: café, 世界, مرحبا, 🙂\nsecond line\tend"
     const largeText = "INCR payload 世界 🙂 0123456789\n".repeat(30_000)
+    const xclipLargeText = "xclip-owned INCR payload 世界 🙂 9876543210\n".repeat(18_000)
     let host: HostClipboardService | undefined
     let owner: XclipOwner | undefined
 
@@ -185,6 +209,11 @@ test.skipIf(!LIVE)(
 
       expect(await host.writeText(largeText, { selection: "clipboard" })).toEqual({ status: "written" })
       await assertXclipRead("clipboard", largeText)
+
+      owner = await startXclipOwner("clipboard", xclipLargeText)
+      await waitForHostRead(host, "clipboard", xclipLargeText)
+      await stopOwner(owner)
+      owner = undefined
 
       await host.dispose()
       host = createHostClipboard({ timeoutMs: PROCESS_TIMEOUT_MS, maxReadBytes: 6 * 1024 * 1024 })
