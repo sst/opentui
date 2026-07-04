@@ -32,9 +32,7 @@ interface PendingOperation {
 const selectionValue = (selection: ClipboardSelection): number => (selection === "clipboard" ? 0 : 1)
 
 const schedule = (callback: () => void): ReturnType<typeof setTimeout> => {
-  const timer = setTimeout(callback, 1)
-  if (typeof timer === "object" && "unref" in timer) timer.unref()
-  return timer
+  return setTimeout(callback, 1)
 }
 
 const encodeReadRequest = (preferredTypes: readonly [string, ...string[]]): Uint8Array => {
