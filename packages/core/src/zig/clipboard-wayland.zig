@@ -274,7 +274,6 @@ pub const Connection = struct {
         self.failure = .none;
         if (primary and !self.primary_supported) return .unsupported;
         const device = self.device orelse return self.selectionFailure(.protocol);
-        if (!self.canRetireCurrentProvider(primary)) return self.selectionFailure(.provider);
         var arguments = [_]WlArgument{.{ .o = null }};
         _ = self.marshal(device, if (primary) 2 else 0, null, self.symbols.wl_proxy_get_version(device), 0, &arguments);
         const flush_result = self.queueFlush();
@@ -442,11 +441,6 @@ pub const Connection = struct {
             if (provider.primary == primary) count += 1;
         }
         return count < 2;
-    }
-
-    fn canRetireCurrentProvider(self: *const Connection, primary: bool) bool {
-        const current = if (primary) self.primary_provider else self.clipboard_provider;
-        return current == null or self.canPublishProvider(primary);
     }
 
     fn retireProvider(self: *Connection, provider: *Provider) void {
@@ -984,6 +978,39 @@ test "Wayland reserves provider capacity independently for each selection" {
     try std.testing.expect(!connection.canPublishProvider(false));
     connection.providers[1] = null;
     try std.testing.expect(connection.canPublishProvider(false));
+}
+
+test "Wayland clear retires the current provider at the generation bound" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_destroy = testDestroyProxy;
+    symbols.wl_proxy_get_version = testProxyVersion;
+    var connection = testReadyConnection(&symbols, .{ .result = 0, .errno = .SUCCESS });
+    var old_transfers: [1]Transfer = undefined;
+    var current_transfers: [1]Transfer = undefined;
+    var old: Provider = .{
+        .connection = &connection,
+        .source = @ptrFromInt(4),
+        .primary = false,
+        .data = &.{},
+        .transfers = &old_transfers,
+        .transfer_count = 1,
+        .retired = true,
+    };
+    var current: Provider = .{
+        .connection = &connection,
+        .source = @ptrFromInt(5),
+        .primary = false,
+        .data = &.{},
+        .transfers = &current_transfers,
+        .transfer_count = 1,
+    };
+    connection.providers = .{ &old, &current, null, null };
+    connection.clipboard_provider = &current;
+
+    try std.testing.expectEqual(SelectionResult.ok, connection.clearSelection(false));
+    try std.testing.expect(connection.clipboard_provider == null);
+    try std.testing.expect(current.retired);
 }
 
 test "Wayland provider transfers expire after a bounded idle interval" {
