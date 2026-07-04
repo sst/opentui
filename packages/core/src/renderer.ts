@@ -804,7 +804,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private resizeTimeoutId: TimerHandle | null = null
   private capabilityTimeoutId: TimerHandle | null = null
-  private terminalKeepAliveTimer: TimerHandle | null = null
+  private terminalKeepAliveTimer: ReturnType<typeof setInterval> | null = null
   private xtVersionWaiters = new Set<() => void>()
   private splitStartupSeedTimeoutId: TimerHandle | null = null
   private pendingSplitStartupCursorSeed: boolean = false
@@ -1266,13 +1266,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private startTerminalKeepAlive(): void {
-    if (this.terminalKeepAliveTimer !== null) return
-    this.terminalKeepAliveTimer = this.clock.setInterval(() => {}, 60_000)
+    if (this.stdin !== process.stdin || this.terminalKeepAliveTimer !== null) return
+    this.terminalKeepAliveTimer = setInterval(() => {}, 60_000)
   }
 
   private stopTerminalKeepAlive(): void {
     if (this.terminalKeepAliveTimer === null) return
-    this.clock.clearInterval(this.terminalKeepAliveTimer)
+    clearInterval(this.terminalKeepAliveTimer)
     this.terminalKeepAliveTimer = null
   }
 
