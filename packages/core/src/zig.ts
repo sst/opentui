@@ -3582,7 +3582,7 @@ class FFIRenderLib implements RenderLib {
     const handle = this.opentui.symbols.clipboardServiceCreate(
       toSafeFFIU32Length(maxOperations, "maxOperations"),
       toSafeFFIU32Length(maxProviderTransfers, "maxProviderTransfers"),
-      seat === null ? null : ptrOrNull(seat),
+      seat,
       seat?.byteLength ?? 0,
     )
     if (handle === 0) return null
@@ -3633,12 +3633,12 @@ class FFIRenderLib implements RenderLib {
     const output = new Uint32Array(1)
     const status = this.opentui.symbols.clipboardReadOperationStart(
       service,
-      ptrOrNull(request),
+      request,
       toSafeFFIU32Length(request.byteLength, "clipboard read request"),
       selection,
       toSafeFFIU32Length(maxBytes, "clipboard read byte limit"),
       toSafeFFIU32Length(timeoutMs, "clipboard read timeout"),
-      ptr(output),
+      output,
     )
     return this.clipboardStartResult(status, output)
   }
@@ -3652,11 +3652,11 @@ class FFIRenderLib implements RenderLib {
     const output = new Uint32Array(1)
     const status = this.opentui.symbols.clipboardWriteOperationStart(
       service,
-      ptrOrNull(textUtf8),
+      textUtf8,
       toSafeFFIU32Length(textUtf8.byteLength, "clipboard write text"),
       selection,
       toSafeFFIU32Length(timeoutMs, "clipboard write timeout"),
-      ptr(output),
+      output,
     )
     return this.clipboardStartResult(status, output)
   }
@@ -3671,7 +3671,7 @@ class FFIRenderLib implements RenderLib {
       service,
       selection,
       toSafeFFIU32Length(timeoutMs, "clipboard clear timeout"),
-      ptr(output),
+      output,
     )
     return this.clipboardStartResult(status, output)
   }
@@ -3685,11 +3685,11 @@ class FFIRenderLib implements RenderLib {
   }
 
   private clipboardResultLength(
-    symbol: (operation: ClipboardOperationHandle, output: Pointer) => number,
+    symbol: (operation: ClipboardOperationHandle, output: Uint32Array) => number,
     operation: ClipboardOperationHandle,
   ): { status: NativeClipboardCopyStatus; length: number } {
     const output = new Uint32Array(1)
-    const status = symbol(operation, ptr(output))
+    const status = symbol(operation, output)
     return { status, length: output[0] }
   }
 
@@ -3706,7 +3706,7 @@ class FFIRenderLib implements RenderLib {
   ): NativeClipboardCopyStatus {
     return this.opentui.symbols.clipboardOperationResultMimeCopy(
       operation,
-      ptrOrNull(output),
+      output.byteLength === 0 ? null : output,
       toSafeFFIU32Length(output.byteLength, "clipboard MIME output"),
     )
   }
@@ -3724,7 +3724,7 @@ class FFIRenderLib implements RenderLib {
   ): NativeClipboardCopyStatus {
     return this.opentui.symbols.clipboardOperationResultDataCopy(
       operation,
-      ptrOrNull(output),
+      output.byteLength === 0 ? null : output,
       toSafeFFIU32Length(output.byteLength, "clipboard data output"),
     )
   }
@@ -3734,7 +3734,7 @@ class FFIRenderLib implements RenderLib {
     errorCode: number
   } {
     const output = new Int32Array(1)
-    const status = this.opentui.symbols.clipboardOperationResultErrorCode(operation, ptr(output))
+    const status = this.opentui.symbols.clipboardOperationResultErrorCode(operation, output)
     return { status, errorCode: output[0] }
   }
 
@@ -3751,7 +3751,7 @@ class FFIRenderLib implements RenderLib {
   ): NativeClipboardCopyStatus {
     return this.opentui.symbols.clipboardOperationResultDiagnosticCopy(
       operation,
-      ptrOrNull(output),
+      output.byteLength === 0 ? null : output,
       toSafeFFIU32Length(output.byteLength, "clipboard diagnostic output"),
     )
   }
