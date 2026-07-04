@@ -1645,6 +1645,36 @@ test("parseKeypress - modifyOtherKeys digits", () => {
   expect(shiftOne.source).toBe("raw")
 })
 
+test("parseKeypress - modifyOtherKeys uppercase letters normalize to lowercase name + shift", () => {
+  // Under modifyOtherKeys level 2 (which tmux/xterm request), shifted letters
+  // arrive as the uppercase codepoint (65 = 'A'). The name must be normalized to
+  // lowercase with shift reported separately, otherwise `ctrl+shift+a` bindings
+  // (issue #1184) never match. See parse.keypress.ts.
+
+  // Ctrl+Shift+A: CSI 27;6;65~ (modifier 6 = shift bit 1 + ctrl bit 4)
+  const ctrlShiftA = parseKeypress("\x1b[27;6;65~")!
+  expect(ctrlShiftA.name).toBe("a")
+  expect(ctrlShiftA.shift).toBe(true)
+  expect(ctrlShiftA.ctrl).toBe(true)
+  expect(ctrlShiftA.meta).toBe(false)
+  expect(ctrlShiftA.option).toBe(false)
+  expect(ctrlShiftA.sequence).toBe("a")
+  expect(ctrlShiftA.raw).toBe("\x1b[27;6;65~")
+
+  // Shift+Z: CSI 27;2;90~ (modifier 2 = shift bit 1)
+  const shiftZ = parseKeypress("\x1b[27;2;90~")!
+  expect(shiftZ.name).toBe("z")
+  expect(shiftZ.shift).toBe(true)
+  expect(shiftZ.ctrl).toBe(false)
+
+  // A terminal that instead sends the base (lowercase) codepoint 97 = 'a' must
+  // continue to yield the same name, so the binding matches either encoding.
+  const ctrlShiftALower = parseKeypress("\x1b[27;6;97~")!
+  expect(ctrlShiftALower.name).toBe("a")
+  expect(ctrlShiftALower.ctrl).toBe(true)
+  expect(ctrlShiftALower.shift).toBe(true)
+})
+
 test("parseKeypress - modifyOtherKeys modified enter keys", () => {
   // Terminals with modifyOtherKeys mode enabled send special escape sequences for modified keys
   // Format: CSI 27 ; modifier ; code ~ where code 13 is enter/return

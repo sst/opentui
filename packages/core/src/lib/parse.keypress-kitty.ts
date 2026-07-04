@@ -373,7 +373,12 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
   } else {
     // It's a Unicode character
     if (codepoint > 0 && codepoint <= 0x10ffff) {
-      const char = String.fromCodePoint(codepoint)
+      // Normalize uppercase letters to lowercase so `name` reflects the
+      // physical key (the shift flag is derived from the modifier mask below).
+      // Terminals differ on whether they encode the shifted (65='A') or base
+      // (97='a') codepoint here, so this keeps `ctrl+shift+a` matching either way.
+      const normalizedCodepoint = codepoint >= 65 && codepoint <= 90 ? codepoint + 32 : codepoint
+      const char = String.fromCodePoint(normalizedCodepoint)
       key.name = char === " " ? "space" : char
 
       // Keep the raw Unicode codepoint from Kitty so higher-level matching can

@@ -38,6 +38,27 @@ test("parseKeypress - Kitty keyboard ctrl+a", () => {
   expect(result.meta).toBe(false)
 })
 
+test("parseKeypress - Kitty keyboard uppercase primary codepoint normalizes to lowercase name", () => {
+  // tmux (and plain xterm) can put the *shifted* codepoint (65 = 'A') as the
+  // primary field rather than the base one. The name must still normalize to
+  // lowercase so `ctrl+shift+a` bindings match (issue #1184). Shift comes from
+  // the modifier mask. See parse.keypress-kitty.ts.
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+
+  // Ctrl+Shift+A as tmux csi-u: \x1b[65;6u (mod 6 => shift+ctrl, primary 65='A')
+  const ctrlShiftA = parseKeypress("\x1b[65;6u", options)!
+  expect(ctrlShiftA.name).toBe("a")
+  expect(ctrlShiftA.shift).toBe(true)
+  expect(ctrlShiftA.ctrl).toBe(true)
+  expect(ctrlShiftA.meta).toBe(false)
+
+  // Shift+Z with uppercase primary: \x1b[90;2u
+  const shiftZ = parseKeypress("\x1b[90;2u", options)!
+  expect(shiftZ.name).toBe("z")
+  expect(shiftZ.shift).toBe(true)
+  expect(shiftZ.ctrl).toBe(false)
+})
+
 test("parseKeypress - Kitty keyboard alt+a", () => {
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
   const result = parseKeypress("\x1b[97;3u", options)!
