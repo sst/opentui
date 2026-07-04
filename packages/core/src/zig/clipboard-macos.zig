@@ -69,6 +69,11 @@ pub const JobError = error{
     OutOfMemory,
 };
 
+pub const ExecuteOptions = struct {
+    cancel_requested: ?*const std.atomic.Value(bool) = null,
+    deadline_ns: i128,
+};
+
 const ShimStatus = enum(i32) {
     ok = 0,
     empty = 1,
@@ -96,20 +101,22 @@ comptime {
 }
 
 // Jobs are synchronous and must be serialized by the owning service worker.
-pub fn runJob(allocator: Allocator, job: Job) JobError!Result {
+pub fn runJob(allocator: Allocator, job: Job, options: ExecuteOptions) JobError!Result {
     if (!selectionSupported(jobSelection(job))) return .unsupported;
 
     return switch (job) {
-        .read => |read_job| read(allocator, read_job),
+        .read => |read_job| read(allocator, read_job, options),
         .write_text => |write_job| writeText(write_job),
         .clear => clear(),
     };
 }
 
-fn read(allocator: Allocator, job: ReadJob) JobError!Result {
+fn read(allocator: Allocator, job: ReadJob, options: ExecuteOptions) JobError!Result {
     var iterator = PreferenceIterator.init(job.request) catch return error.InvalidArgument;
     var supported = false;
+    var candidate_failed = false;
     while (iterator.next() catch return error.InvalidArgument) |name| {
+        if (stopRequested(options)) return error.NativeFailure;
         const mime: MimeType = if (std.ascii.eqlIgnoreCase(name, "text/plain"))
             .text_plain
         else if (std.ascii.eqlIgnoreCase(name, "image/png"))
@@ -117,10 +124,24 @@ fn read(allocator: Allocator, job: ReadJob) JobError!Result {
         else
             continue;
         supported = true;
-        const result = try readMime(allocator, mime, job.max_bytes);
+        const result = readMime(allocator, mime, job.max_bytes) catch |err| switch (err) {
+            error.NativeFailure, error.InvalidText => {
+                candidate_failed = true;
+                continue;
+            },
+            else => return err,
+        };
         if (result != .empty) return result;
     }
+    if (candidate_failed) return error.NativeFailure;
     return if (supported) .empty else .unsupported;
+}
+
+fn stopRequested(options: ExecuteOptions) bool {
+    if (options.cancel_requested) |cancelled| {
+        if (cancelled.load(.acquire)) return true;
+    }
+    return std.time.nanoTimestamp() >= options.deadline_ns;
 }
 
 fn readMime(allocator: Allocator, mime: MimeType, max_bytes: u32) JobError!Result {
