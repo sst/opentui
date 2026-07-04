@@ -804,6 +804,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private resizeTimeoutId: TimerHandle | null = null
   private capabilityTimeoutId: TimerHandle | null = null
+  private terminalKeepAliveTimer: TimerHandle | null = null
   private xtVersionWaiters = new Set<() => void>()
   private splitStartupSeedTimeoutId: TimerHandle | null = null
   private pendingSplitStartupCursorSeed: boolean = false
@@ -1112,7 +1113,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       "SIGABRT", // Abort signal
       "SIGHUP", // Hangup (terminal closed)
       "SIGBREAK", // Ctrl+Break on Windows
-      "SIGPIPE", // Broken pipe
       "SIGBUS", // Bus error
     ]
 
@@ -1169,8 +1169,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     process.on("uncaughtException", this.handleError)
     process.on("unhandledRejection", this.handleError)
-    process.on("beforeExit", this.exitHandler)
-
     const useKittyForParsing = kittyConfig !== null
     this._keyHandler = new InternalKeyHandler()
     this._keyHandler.on("keypress", (event) => {
@@ -1265,6 +1263,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
 
     this._exitListenersAdded = true
+  }
+
+  private startTerminalKeepAlive(): void {
+    if (this.terminalKeepAliveTimer !== null) return
+    this.terminalKeepAliveTimer = this.clock.setInterval(() => {}, 60_000)
+  }
+
+  private stopTerminalKeepAlive(): void {
+    if (this.terminalKeepAliveTimer === null) return
+    this.clock.clearInterval(this.terminalKeepAliveTimer)
+    this.terminalKeepAliveTimer = null
   }
 
   private removeExitListeners(): void {
@@ -3085,6 +3094,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public async setupTerminal(): Promise<void> {
     if (this._terminalIsSetup) return
     this._terminalIsSetup = true
+    this.startTerminalKeepAlive()
 
     const startupCursorCprActive = this._screenMode === "split-footer" && this._externalOutputMode === "capture-stdout"
     this.updateStdinParserProtocolContext({
@@ -3380,6 +3390,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.stdin.on("data", this.stdinListener)
     this.stdin.resume()
+    this.startTerminalKeepAlive()
   }
 
   private dispatchMouseEvent(
@@ -4010,6 +4021,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
     this.stdinParser?.reset()
     this.stdin.removeListener("data", this.stdinListener)
+    this.stopTerminalKeepAlive()
 
     this.themeModeState.cancelRefresh()
 
@@ -4034,6 +4046,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     while (this.stdin.read() !== null) {}
     this.stdin.on("data", this.stdinListener)
     this.stdin.resume()
+    this.startTerminalKeepAlive()
     this.addExitListeners()
 
     const resumePreservedNonAltSurface =
@@ -4143,7 +4156,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
     process.removeListener("warning", this.warningHandler)
-    process.removeListener("beforeExit", this.exitHandler)
     this.removeExitListeners()
 
     if (this.resizeTimeoutId !== null) {
@@ -4185,6 +4197,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.setCapturedRenderable(undefined)
 
     this.stdin.removeListener("data", this.stdinListener)
+    this.stopTerminalKeepAlive()
     if (this.stdin.setRawMode) {
       try {
         this.stdin.setRawMode(false)

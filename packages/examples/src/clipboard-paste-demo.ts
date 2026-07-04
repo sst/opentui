@@ -6,14 +6,20 @@ import {
   BoxRenderable,
   CliRenderEvents,
   type CliRenderer,
+  type ClipboardClearResult,
   type ClipboardSelection,
+  type ClipboardService,
+  type ClipboardWriteDestination,
+  type ClipboardWriteResult,
   createCliRenderer,
+  createClipboard,
   createHostClipboard,
+  createRendererClipboardAdapter,
   decodePasteBytes,
   fg,
-  type HostClipboardService,
   type KeyEvent,
   type PasteEvent,
+  type Renderable,
   ScrollBoxRenderable,
   type Selection,
   stripAnsiSequences,
@@ -21,43 +27,50 @@ import {
   TextareaRenderable,
   TextRenderable,
 } from "@opentui/core"
+import type { Binding, HostPlatform, KeyLike, Keymap } from "@opentui/keymap"
+import * as keymapAddons from "@opentui/keymap/addons/opentui"
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const P = {
-  bg: "#08111f",
-  panel: "#0f1b2d",
-  border: "#34507c",
-  borderHot: "#22d3ee",
-  text: "#d7e3f7",
-  muted: "#7d8da8",
-  cyan: "#22d3ee",
-  lime: "#bef264",
+  bg: "#070b12",
+  panel: "#0d1422",
+  panelRaised: "#121d31",
+  border: "#2f405f",
+  borderHot: "#68e1fd",
+  text: "#e6edf7",
+  muted: "#8391a7",
+  dim: "#53627a",
+  cyan: "#68e1fd",
+  green: "#a7f3d0",
+  amber: "#facc15",
   rose: "#fb7185",
-  amber: "#fbbf24",
-  violet: "#a78bfa",
+  violet: "#c4b5fd",
+  blue: "#93c5fd",
 } as const
 
 type Tone = "muted" | "info" | "ok" | "warn" | "bad"
 
 const TONE_COLOR: Record<Tone, string> = {
   muted: P.muted,
-  info: P.cyan,
-  ok: P.lime,
+  info: P.blue,
+  ok: P.green,
   warn: P.amber,
   bad: P.rose,
 }
 
 const TONE_ICON: Record<Tone, string> = {
-  muted: "·",
-  info: "→",
-  ok: "✓",
-  warn: "…",
-  bad: "✗",
+  muted: "-",
+  info: ">",
+  ok: "ok",
+  warn: "~",
+  bad: "x",
 }
 
 const MAX_LOG_ROWS = 80
 const SELECTION_BG = "#264f78"
 const SELECTION_FG = "#ffffff"
+const READ_MAX_BYTES = 2 * 1024 * 1024
 
 interface Status {
   tone: Tone
@@ -71,63 +84,176 @@ interface Fixture {
   payload: string
 }
 
+interface Shortcut {
+  key: KeyLike
+  label: string
+}
+
+interface PlatformProfile {
+  platform: HostPlatform
+  title: string
+  copy: readonly Shortcut[]
+  cut: readonly Shortcut[]
+  pasteClipboard: readonly Shortcut[]
+  pastePrimary: readonly Shortcut[]
+  selectAll: readonly Shortcut[]
+  selectionTarget: ClipboardSelection
+  exit: string
+  notes: readonly string[]
+}
+
 const FIXTURES: readonly Fixture[] = [
   {
-    name: "Unicode + LF",
-    short: "Unicode + LF",
-    purpose: "UTF-8 decoding and multiline insertion",
-    payload: "OpenTUI clipboard round-trip\nUnicode: 世界 café 🚀\nLine endings: LF\nEnd",
+    name: "Plain Unicode",
+    short: "Unicode",
+    purpose: "Normal text, multiline UTF-8, and emoji.",
+    payload: "OpenTUI clipboard round-trip\nUnicode: 世界 cafe 🚀\nLine endings: LF\nEnd",
   },
   {
-    name: "CRLF + lone CR",
-    short: "CRLF + CR",
-    purpose: "Raw transport preserves CR; the editor normalizes to LF",
+    name: "Line Endings",
+    short: "CR/LF",
+    purpose: "Clipboard bytes can contain CRLF or lone CR; editors usually normalize.",
     payload: "OpenTUI newline fixture\r\nCRLF line\rLone CR line\nLF line",
   },
   {
-    name: "ANSI text",
+    name: "ANSI Guard",
     short: "ANSI",
-    purpose: "Raw event preserves ANSI; the textarea strips it on insertion",
+    purpose: "Paste events preserve bytes; editor insertion strips terminal escapes.",
     payload: "OpenTUI ANSI fixture: \x1b[31mred\x1b[0m plain",
   },
   {
-    name: "Large (16 KiB)",
-    short: "Large 16 KiB",
-    purpose: "Exercises OSC 52 beyond the former fixed-buffer limit",
-    payload: `OpenTUI large OSC 52 payload\n${"0123456789abcdef".repeat(1024)}`,
+    name: "Large Text",
+    short: "16 KiB",
+    purpose: "Large text exercises terminal OSC 52 and native provider paths.",
+    payload: `OpenTUI large clipboard payload\n${"0123456789abcdef".repeat(1024)}`,
   },
 ]
 
-const encoder = new TextEncoder()
+const MAC_PROFILE: PlatformProfile = {
+  platform: "macos",
+  title: "macOS",
+  copy: [{ key: "super+c", label: "Cmd+C" }],
+  cut: [{ key: "super+x", label: "Cmd+X" }],
+  pasteClipboard: [{ key: "super+v", label: "Cmd+V" }],
+  pastePrimary: [],
+  selectAll: [{ key: "super+a", label: "Cmd+A" }],
+  selectionTarget: "clipboard",
+  exit: "Ctrl+C exits; Cmd+C is copy when the terminal forwards Super keys.",
+  notes: [
+    "Most macOS terminals handle Cmd+C/Cmd+V before the app; when they do, paste arrives as a PasteEvent.",
+    "Kitty keyboard capable terminals can forward Super, letting the app bind Cmd shortcuts directly.",
+  ],
+}
 
-let container: BoxRenderable | null = null
-let tabsText: TextRenderable | null = null
-let fixtureText: TextRenderable | null = null
+const WINDOWS_PROFILE: PlatformProfile = {
+  platform: "windows",
+  title: "Windows",
+  copy: [
+    { key: "ctrl+c", label: "Ctrl+C" },
+    { key: "ctrl+insert", label: "Ctrl+Insert" },
+  ],
+  cut: [
+    { key: "ctrl+x", label: "Ctrl+X" },
+    { key: "shift+delete", label: "Shift+Delete" },
+  ],
+  pasteClipboard: [
+    { key: "ctrl+v", label: "Ctrl+V" },
+    { key: "shift+insert", label: "Shift+Insert" },
+  ],
+  pastePrimary: [],
+  selectAll: [{ key: "ctrl+a", label: "Ctrl+A" }],
+  selectionTarget: "clipboard",
+  exit: "Ctrl+Q exits so Ctrl+C can remain copy.",
+  notes: [
+    "Ctrl+C/Ctrl+V/Ctrl+X/Ctrl+A are the expected text-field shortcuts.",
+    "Ctrl+Insert, Shift+Insert, and Shift+Delete cover the legacy console/editing convention.",
+  ],
+}
+
+const LINUX_PROFILE: PlatformProfile = {
+  platform: "linux",
+  title: "Linux / X11 / Wayland",
+  copy: [
+    { key: "ctrl+shift+c", label: "Ctrl+Shift+C" },
+    { key: "ctrl+insert", label: "Ctrl+Insert" },
+  ],
+  cut: [{ key: "ctrl+shift+x", label: "Ctrl+Shift+X" }],
+  pasteClipboard: [{ key: "ctrl+shift+v", label: "Ctrl+Shift+V" }],
+  pastePrimary: [{ key: "shift+insert", label: "Shift+Insert" }],
+  selectAll: [{ key: "ctrl+a", label: "Ctrl+A" }],
+  selectionTarget: "primary",
+  exit: "Ctrl+C exits; clipboard copy uses Ctrl+Shift+C.",
+  notes: [
+    "Clipboard and PRIMARY are separate. Mouse selection owns PRIMARY; explicit copy writes CLIPBOARD.",
+    "Middle click is normally terminal-handled PRIMARY paste. Shift+Insert is mapped here to PRIMARY when it reaches the app.",
+  ],
+}
+
+const UNKNOWN_PROFILE: PlatformProfile = {
+  platform: "unknown",
+  title: "Unknown host",
+  copy: [
+    { key: "ctrl+shift+c", label: "Ctrl+Shift+C" },
+    { key: "ctrl+insert", label: "Ctrl+Insert" },
+  ],
+  cut: [{ key: "ctrl+shift+x", label: "Ctrl+Shift+X" }],
+  pasteClipboard: [
+    { key: "ctrl+shift+v", label: "Ctrl+Shift+V" },
+    { key: "shift+insert", label: "Shift+Insert" },
+  ],
+  pastePrimary: [],
+  selectAll: [{ key: "ctrl+a", label: "Ctrl+A" }],
+  selectionTarget: "clipboard",
+  exit: "Ctrl+C exits; Ctrl+Q is also available.",
+  notes: ["Uses conservative terminal bindings until the host reports a known platform."],
+}
+
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+
+let root: BoxRenderable | null = null
+let platformText: TextRenderable | null = null
+let sampleText: TextRenderable | null = null
 let editor: TextareaRenderable | null = null
-let checksText: TextRenderable | null = null
+let stateText: TextRenderable | null = null
 let logList: ScrollBoxRenderable | null = null
 let logRows: TextRenderable[] = []
 let logRowId = 0
-let keypressHandler: ((event: KeyEvent) => void) | null = null
+let keymap: Keymap<Renderable, KeyEvent> | null = null
+let disposers: Array<() => void> = []
 let pasteHandler: ((event: PasteEvent) => void) | null = null
 let capabilityHandler: (() => void) | null = null
 let selectionHandler: ((selection: Selection) => void) | null = null
-let hostClipboard: HostClipboardService | null = null
+let clipboardService: ClipboardService | null = null
 let selectedFixture = 0
-let hostSelection: ClipboardSelection = "clipboard"
-let fixturePayloadEmitted = false
 let lastLoggedCapability = ""
-let copyStatus: Status = { tone: "muted", text: "not attempted" }
-let pasteStatus: Status = { tone: "muted", text: "waiting for a PasteEvent" }
-let editorStatus: Status = { tone: "muted", text: "waiting for default insertion" }
-let roundTripStatus: Status = { tone: "muted", text: "not evaluated" }
-let hostReadStatus: Status = { tone: "muted", text: "not attempted" }
-let hostWriteStatus: Status = { tone: "muted", text: "not attempted" }
-let hostClearStatus: Status = { tone: "muted", text: "not attempted" }
-let hostDisposeStatus: Status = { tone: "muted", text: "service active" }
+let copyStatus: Status = { tone: "muted", text: "select text, then copy" }
+let pasteStatus: Status = { tone: "muted", text: "waiting for PasteEvent or platform paste" }
+let cutStatus: Status = { tone: "muted", text: "not attempted" }
+let selectionStatus: Status = { tone: "muted", text: "mouse selection has not published" }
+let readStatus: Status = { tone: "muted", text: "not attempted" }
+let clearStatus: Status = { tone: "muted", text: "not attempted" }
+let serviceStatus: Status = { tone: "muted", text: "initializing" }
 
 function fixture(): Fixture {
   return FIXTURES[selectedFixture]!
+}
+
+function platformProfile(): PlatformProfile {
+  switch (process.platform) {
+    case "darwin":
+      return MAC_PROFILE
+    case "win32":
+      return WINDOWS_PROFILE
+    case "linux":
+      return LINUX_PROFILE
+    default:
+      return UNKNOWN_PROFILE
+  }
+}
+
+function shortcutLabels(shortcuts: readonly Shortcut[]): string {
+  return shortcuts.length === 0 ? "-" : shortcuts.map((shortcut) => shortcut.label).join(" / ")
 }
 
 function normalizeNewlines(value: string): string {
@@ -146,7 +272,7 @@ function byteLength(value: string): number {
 function hexPrefix(bytes: Uint8Array, count = 12): string {
   const slice = bytes.slice(0, count)
   const hex = Array.from(slice, (byte) => byte.toString(16).padStart(2, "0")).join("")
-  return bytes.length > count ? `${hex}…` : hex
+  return bytes.length > count ? `${hex}...` : hex
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {
@@ -173,11 +299,11 @@ function capabilityStatus(renderer: CliRenderer): Status {
   const hint = capabilities.osc52 ? "yes" : "no"
   switch (capabilities.osc52_support) {
     case "supported":
-      return { tone: "ok", text: `supported — emits (legacy hint: ${hint})` }
+      return { tone: "ok", text: `OSC 52 supported (legacy hint: ${hint})` }
     case "unsupported":
-      return { tone: "bad", text: `unsupported — emission blocked (legacy hint: ${hint})` }
+      return { tone: "bad", text: `OSC 52 unsupported (legacy hint: ${hint})` }
     default:
-      return { tone: "warn", text: `unknown — emits optimistically (legacy hint: ${hint})` }
+      return { tone: "warn", text: `OSC 52 unknown; emits optimistically (legacy hint: ${hint})` }
   }
 }
 
@@ -186,20 +312,20 @@ function metadataLabel(event: PasteEvent): string {
   return `meta kind=${event.metadata.kind ?? "unset"} mime=${event.metadata.mimeType ?? "unset"}`
 }
 
-function statusChunk(status: Status) {
+function statusChunk(status: Status): string {
   return fg(TONE_COLOR[status.tone])(`${TONE_ICON[status.tone]} ${status.text}`)
 }
 
-function label(text: string) {
-  return fg(P.muted)(text.padEnd(12))
+function label(text: string): string {
+  return fg(P.dim)(text.padEnd(13))
 }
 
 function addLog(renderer: CliRenderer, tone: Tone, message: string, detail?: string): void {
   if (!logList) return
 
   const row = new TextRenderable(renderer, {
-    id: `clipboard-paste-log-${logRowId++}`,
-    content: t`${fg(P.muted)(timestamp())} ${fg(TONE_COLOR[tone])(`${TONE_ICON[tone]} ${message}`)}`,
+    id: `clipboard-log-${logRowId++}`,
+    content: t`${fg(P.dim)(timestamp())} ${fg(TONE_COLOR[tone])(`${TONE_ICON[tone]} ${message}`)}`,
     flexGrow: 0,
     flexShrink: 0,
     selectionBg: SELECTION_BG,
@@ -210,8 +336,8 @@ function addLog(renderer: CliRenderer, tone: Tone, message: string, detail?: str
 
   if (detail) {
     const detailRow = new TextRenderable(renderer, {
-      id: `clipboard-paste-log-${logRowId++}`,
-      content: t`${fg(P.muted)(`             ${detail}`)}`,
+      id: `clipboard-log-${logRowId++}`,
+      content: t`${fg(P.dim)(`             ${detail}`)}`,
       flexGrow: 0,
       flexShrink: 0,
       selectionBg: SELECTION_BG,
@@ -227,235 +353,90 @@ function addLog(renderer: CliRenderer, tone: Tone, message: string, detail?: str
   }
 }
 
-function updateTabs(): void {
-  if (!tabsText) return
-  const chunks = FIXTURES.map((entry, index) => {
-    const text = ` ${index + 1} ${entry.short} `
-    return index === selectedFixture ? bg(P.cyan)(fg(P.bg)(bold(text))) : fg(P.muted)(text)
-  })
-  tabsText.content = t`${chunks[0]!} ${chunks[1]!} ${chunks[2]!} ${chunks[3]!}`
+function writeSucceeded(result: ClipboardWriteResult): boolean {
+  return result.host.status === "written" || result.terminal.status === "attempted"
 }
 
-function updateFixturePanel(): void {
-  if (!fixtureText) return
-  const current = fixture()
-  fixtureText.content = t`${bold(fg(P.text)(current.name))} ${fg(P.muted)(`— ${byteLength(current.payload)} UTF-8 bytes`)}
-${label("Purpose")} ${fg(P.text)(current.purpose)}
-${label("Expected")} ${fg(P.violet)(escapedPreview(current.payload))}`
+function clearSucceeded(result: ClipboardClearResult): boolean {
+  return result.host.status === "cleared" || result.terminal.status === "attempted"
 }
 
-function updateChecks(renderer: CliRenderer): void {
-  if (!checksText) return
+function writeResultLabel(result: ClipboardWriteResult): string {
+  return `host ${result.host.status} / terminal ${result.terminal.status} (${result.terminal.capability})`
+}
+
+function clearResultLabel(result: ClipboardClearResult): string {
+  return `host ${result.host.status} / terminal ${result.terminal.status} (${result.terminal.capability})`
+}
+
+function updatePlatformPanel(renderer: CliRenderer): void {
+  if (!platformText) return
+
+  const profile = platformProfile()
+  const primaryText =
+    profile.pastePrimary.length > 0
+      ? shortcutLabels(profile.pastePrimary)
+      : "mouse/middle-click is terminal-owned on this platform"
+  const primaryColor = profile.pastePrimary.length > 0 ? P.violet : P.muted
   const capability = capabilityStatus(renderer)
-  checksText.content = t`${label("Capability")} ${statusChunk(capability)}
-${label("Copy OSC 52")} ${statusChunk(copyStatus)}
-${label("Paste event")} ${statusChunk(pasteStatus)}
-${label("Editor text")} ${statusChunk(editorStatus)}
-${label("Round trip")} ${statusChunk(roundTripStatus)}
-${label("Host target")} ${fg(P.violet)(hostSelection)}
-${label("Host read")} ${statusChunk(hostReadStatus)}
-${label("Host write")} ${statusChunk(hostWriteStatus)}
-${label("Host clear")} ${statusChunk(hostClearStatus)}
-${label("Host dispose")} ${statusChunk(hostDisposeStatus)}`
+
+  platformText.content = t`${bold(fg(P.cyan)(profile.title))} ${fg(P.muted)("platform contract")}
+${label("Copy")} ${fg(P.violet)(shortcutLabels(profile.copy))}
+${label("Cut")} ${fg(P.violet)(shortcutLabels(profile.cut))}
+${label("Paste")} ${fg(P.violet)(shortcutLabels(profile.pasteClipboard))}
+${label("Primary paste")} ${fg(primaryColor)(primaryText)}
+${label("Select all")} ${fg(P.violet)(shortcutLabels(profile.selectAll))}
+${label("Quit")} ${fg(P.muted)(profile.exit)}
+${label("Terminal")} ${statusChunk(capability)}
+${fg(P.dim)("Map")} ${fg(P.muted)("macOS Cmd+C/V/X/A | Windows Ctrl+C/V/X/A | Linux Ctrl+Shift+C/V + PRIMARY")}`
 }
 
-function createHostService(renderer: CliRenderer): void {
-  try {
-    hostClipboard = createHostClipboard()
-    hostDisposeStatus = { tone: "ok", text: "service active" }
-  } catch (error) {
-    hostClipboard = null
-    hostDisposeStatus = { tone: "bad", text: `creation failed: ${errorMessage(error)}` }
-    addLog(renderer, "bad", "native host service creation failed", errorMessage(error))
-  }
-  updateChecks(renderer)
-}
-
-async function readHostClipboard(renderer: CliRenderer): Promise<void> {
-  const service = hostClipboard
-  if (!service) {
-    hostReadStatus = { tone: "bad", text: "service unavailable" }
-    updateChecks(renderer)
-    return
-  }
-
-  hostReadStatus = { tone: "info", text: `reading ${hostSelection} (PNG, then text)` }
-  updateChecks(renderer)
-  try {
-    const result = await service.read({ preferredTypes: ["image/png", "text/plain"], selection: hostSelection })
-    if (service !== hostClipboard) return
-    if (result.status !== "read") {
-      hostReadStatus = { tone: result.status === "failed" ? "bad" : "warn", text: result.status }
-      addLog(
-        renderer,
-        hostReadStatus.tone,
-        `host read ← ${hostSelection} · ${result.status}`,
-        result.status === "failed" ? errorMessage(result.error) : undefined,
-      )
-      updateChecks(renderer)
-      return
-    }
-
-    const { mimeType, bytes } = result.representation
-    const digest = await sha256(bytes)
-    if (service !== hostClipboard) return
-    const exactFixture = mimeType === "text/plain" && new TextDecoder().decode(bytes) === fixture().payload
-    hostReadStatus = {
-      tone: exactFixture ? "ok" : "info",
-      text: `${mimeType} · ${bytes.length} B${exactFixture ? " · exact fixture" : ""}`,
-    }
-    addLog(
-      renderer,
-      hostReadStatus.tone,
-      `host read ← ${hostSelection} · ${mimeType} · ${bytes.length} B${exactFixture ? " · exact fixture" : ""}`,
-      `sha256 ${digest} · hex ${hexPrefix(bytes, 8)}`,
-    )
-  } catch (error) {
-    if (service !== hostClipboard) return
-    hostReadStatus = { tone: "bad", text: `rejected: ${errorMessage(error)}` }
-    addLog(renderer, "bad", `host read rejected · ${hostSelection}`, errorMessage(error))
-  }
-  updateChecks(renderer)
-}
-
-async function writeHostClipboard(renderer: CliRenderer): Promise<void> {
-  const service = hostClipboard
-  if (!service) {
-    hostWriteStatus = { tone: "bad", text: "service unavailable" }
-    updateChecks(renderer)
-    return
-  }
+function updateSamplePanel(): void {
+  if (!sampleText) return
 
   const current = fixture()
-  const selection = hostSelection
-  hostWriteStatus = { tone: "info", text: `writing ${byteLength(current.payload)} B to ${selection}` }
-  updateChecks(renderer)
-  try {
-    const result = await service.writeText(current.payload, { selection })
-    if (service !== hostClipboard) return
-    if (result.status !== "written") {
-      hostWriteStatus = { tone: result.status === "failed" ? "bad" : "warn", text: result.status }
-      addLog(
-        renderer,
-        hostWriteStatus.tone,
-        `host write → ${selection} · ${result.status}`,
-        result.status === "failed" ? errorMessage(result.error) : undefined,
-      )
-      updateChecks(renderer)
-      return
-    }
+  const tabs = FIXTURES.map((entry, index) => {
+    const chunk = ` F${index + 1} ${entry.short} `
+    return index === selectedFixture ? bg(P.cyan)(fg(P.bg)(bold(chunk))) : fg(P.muted)(chunk)
+  })
 
-    const persisted = await service.read({ preferredTypes: ["text/plain"], selection })
-    if (service !== hostClipboard) return
-    const exact =
-      persisted.status === "read" &&
-      persisted.representation.mimeType === "text/plain" &&
-      new TextDecoder().decode(persisted.representation.bytes) === current.payload
-    hostWriteStatus = exact
-      ? { tone: "ok", text: `written ${byteLength(current.payload)} B · persistent self-read exact` }
-      : {
-          tone: "warn",
-          text: `written; self-read ${persisted.status}${persisted.status === "failed" ? " failed" : ""}`,
-        }
-    addLog(
-      renderer,
-      exact ? "ok" : "warn",
-      `host write → ${selection} · written ${byteLength(current.payload)} B`,
-      exact ? "provider remained readable after write settled" : `post-write self-read: ${persisted.status}`,
-    )
-  } catch (error) {
-    if (service !== hostClipboard) return
-    hostWriteStatus = { tone: "bad", text: `rejected: ${errorMessage(error)}` }
-    addLog(renderer, "bad", `host write rejected · ${selection}`, errorMessage(error))
-  }
-  updateChecks(renderer)
+  sampleText.content = t`${tabs[0]!} ${tabs[1]!} ${tabs[2]!} ${tabs[3]!}
+${bold(fg(P.text)(current.name))} ${fg(P.muted)(`- ${byteLength(current.payload)} UTF-8 bytes`)}
+${label("Purpose")} ${fg(P.text)(current.purpose)}
+${label("Preview")} ${fg(P.violet)(escapedPreview(current.payload, 96))}
+${fg(P.dim)("Mouse-select any visible text to publish platform selection; F5 loads this sample into the editor.")}`
 }
 
-async function clearHostClipboard(renderer: CliRenderer): Promise<void> {
-  const service = hostClipboard
-  if (!service) {
-    hostClearStatus = { tone: "bad", text: "service unavailable" }
-    updateChecks(renderer)
-    return
-  }
+function updateStatePanel(renderer: CliRenderer): void {
+  if (!stateText) return
 
-  const selection = hostSelection
-  hostClearStatus = { tone: "info", text: `clearing ${selection}` }
-  updateChecks(renderer)
-  try {
-    const result = await service.clear({ selection })
-    if (service !== hostClipboard) return
-    hostClearStatus = {
-      tone: result.status === "cleared" ? "ok" : result.status === "failed" ? "bad" : "warn",
-      text: result.status,
-    }
-    addLog(
-      renderer,
-      hostClearStatus.tone,
-      `host clear → ${selection} · ${result.status}`,
-      result.status === "failed" ? errorMessage(result.error) : "native clear; not an empty-text write",
-    )
-  } catch (error) {
-    if (service !== hostClipboard) return
-    hostClearStatus = { tone: "bad", text: `rejected: ${errorMessage(error)}` }
-    addLog(renderer, "bad", `host clear rejected · ${selection}`, errorMessage(error))
-  }
-  updateChecks(renderer)
+  const profile = platformProfile()
+  const selectionLine =
+    profile.selectionTarget === "primary" ? "mouse selection publishes PRIMARY" : "mouse selection publishes CLIPBOARD"
+  stateText.content = t`${label("Service")} ${statusChunk(serviceStatus)}
+${label("Selection")} ${fg(P.violet)(selectionLine)}
+${label("Copy")} ${statusChunk(copyStatus)}
+${label("Cut/Paste")} ${statusChunk(cutStatus)} ${fg(P.dim)("|")} ${statusChunk(pasteStatus)}
+${label("Mouse select")} ${statusChunk(selectionStatus)}
+${label("Read/Clear")} ${statusChunk(readStatus)} ${fg(P.dim)("|")} ${statusChunk(clearStatus)}
+${label("Editor")} ${fg(P.muted)(`${byteLength(editor?.plainText ?? "")} B, ${editor?.hasSelection() ? "selection active" : "no selection"}`)}`
+  updatePlatformPanel(renderer)
 }
 
-async function recycleHostClipboard(renderer: CliRenderer): Promise<void> {
-  const service = hostClipboard
-  if (!service) {
-    createHostService(renderer)
-    return
-  }
-
-  hostDisposeStatus = { tone: "info", text: "disposing twice" }
-  updateChecks(renderer)
-  const first = service.dispose()
-  const second = service.dispose()
-  const samePromise = first === second
+function createClipboardService(renderer: CliRenderer): void {
   try {
-    await Promise.all([first, second])
-    let rejectedAfterDispose = false
-    try {
-      await service.read({ preferredTypes: ["text/plain"], selection: hostSelection })
-    } catch {
-      rejectedAfterDispose = true
-    }
-    if (service !== hostClipboard) return
-    hostClipboard = null
-    const disposalStatus: Status = {
-      tone: samePromise && rejectedAfterDispose ? "ok" : "warn",
-      text: `disposed x2 · same promise ${samePromise ? "yes" : "no"} · post-op ${rejectedAfterDispose ? "rejected" : "resolved"}`,
-    }
-    hostDisposeStatus = disposalStatus
-    addLog(renderer, disposalStatus.tone, "host dispose x2 completed", disposalStatus.text)
-    createHostService(renderer)
-    hostDisposeStatus = {
-      tone: disposalStatus.tone,
-      text: `${disposalStatus.text} · recreated`,
-    }
+    const host = createHostClipboard()
+    clipboardService = createClipboard({
+      host,
+      terminal: createRendererClipboardAdapter(renderer),
+    })
+    serviceStatus = { tone: "ok", text: "native host + terminal OSC 52 ready" }
   } catch (error) {
-    if (service !== hostClipboard) return
-    hostDisposeStatus = { tone: "bad", text: `failed: ${errorMessage(error)}` }
-    addLog(renderer, "bad", "host dispose failed", errorMessage(error))
+    clipboardService = null
+    serviceStatus = { tone: "bad", text: `unavailable: ${errorMessage(error)}` }
+    addLog(renderer, "bad", "clipboard service creation failed", errorMessage(error))
   }
-  updateChecks(renderer)
-}
-
-function resetTest(renderer: CliRenderer, reason: string): void {
-  editor?.setText("")
-  fixturePayloadEmitted = false
-  copyStatus = { tone: "muted", text: "not attempted" }
-  pasteStatus = { tone: "muted", text: "waiting for a PasteEvent" }
-  editorStatus = { tone: "muted", text: "waiting for default insertion" }
-  roundTripStatus = { tone: "muted", text: "not evaluated" }
-  updateTabs()
-  updateFixturePanel()
-  updateChecks(renderer)
-  editor?.focus()
-  addLog(renderer, "muted", `${reason} — editor cleared, checks idle`)
+  updateStatePanel(renderer)
 }
 
 function panel(renderer: CliRenderer, id: string, title: string, height?: number): BoxRenderable {
@@ -473,12 +454,471 @@ function panel(renderer: CliRenderer, id: string, title: string, height?: number
   })
 }
 
+function selectedEditorText(): string | null {
+  if (!editor || editor.isDestroyed || !editor.hasSelection()) return null
+  const text = editor.getSelectedText()
+  return text.length > 0 ? text : null
+}
+
+function selectAllEditorText(): boolean {
+  if (!editor || editor.isDestroyed) return false
+  const text = editor.plainText
+  if (text.length === 0) return false
+  editor.setSelection(0, byteLength(text))
+  return true
+}
+
+async function writeClipboardText(
+  renderer: CliRenderer,
+  text: string,
+  selection: ClipboardSelection,
+  destination: ClipboardWriteDestination,
+  source: string,
+): Promise<ClipboardWriteResult | null> {
+  const service = clipboardService
+  if (!service) {
+    copyStatus = { tone: "bad", text: "service unavailable" }
+    updateStatePanel(renderer)
+    return null
+  }
+
+  try {
+    const result = await service.writeText(text, { destination, selection })
+    if (service !== clipboardService) return null
+    const ok = writeSucceeded(result)
+    addLog(renderer, ok ? "ok" : "warn", `${source} -> ${selection} · ${byteLength(text)} B`, writeResultLabel(result))
+    return result
+  } catch (error) {
+    if (service !== clipboardService) return null
+    addLog(renderer, "bad", `${source} write failed`, errorMessage(error))
+    return null
+  }
+}
+
+async function copyCommand(renderer: CliRenderer): Promise<boolean> {
+  const text = selectedEditorText()
+  if (!text) {
+    copyStatus = { tone: "warn", text: "no editor selection to copy" }
+    updateStatePanel(renderer)
+    addLog(renderer, "warn", "copy ignored", "Select editor text first, or mouse-select sample text.")
+    return false
+  }
+
+  copyStatus = { tone: "info", text: `copying ${byteLength(text)} B to clipboard` }
+  updateStatePanel(renderer)
+  const result = await writeClipboardText(renderer, text, "clipboard", "best-available", "copy")
+  if (!result) {
+    copyStatus = { tone: "bad", text: "copy failed" }
+  } else {
+    copyStatus = {
+      tone: writeSucceeded(result) ? "ok" : "warn",
+      text: `${byteLength(text)} B · ${writeResultLabel(result)}`,
+    }
+  }
+  updateStatePanel(renderer)
+  return result ? writeSucceeded(result) : false
+}
+
+async function cutCommand(renderer: CliRenderer): Promise<boolean> {
+  const text = selectedEditorText()
+  if (!text || !editor || editor.isDestroyed) {
+    cutStatus = { tone: "warn", text: "no editor selection to cut" }
+    updateStatePanel(renderer)
+    addLog(renderer, "warn", "cut ignored", "Select editor text first.")
+    return false
+  }
+
+  cutStatus = { tone: "info", text: `copying ${byteLength(text)} B before delete` }
+  updateStatePanel(renderer)
+  const result = await writeClipboardText(renderer, text, "clipboard", "best-available", "cut")
+  if (result && writeSucceeded(result) && editor && !editor.isDestroyed) {
+    editor.deleteSelection()
+    cutStatus = { tone: "ok", text: `${byteLength(text)} B copied, then deleted` }
+    updateStatePanel(renderer)
+    return true
+  }
+
+  cutStatus = { tone: "bad", text: result ? writeResultLabel(result) : "copy failed; selection preserved" }
+  updateStatePanel(renderer)
+  return false
+}
+
+async function pasteCommand(renderer: CliRenderer, selection: ClipboardSelection): Promise<boolean> {
+  const service = clipboardService
+  if (!service || !editor || editor.isDestroyed) {
+    pasteStatus = { tone: "bad", text: "service or editor unavailable" }
+    updateStatePanel(renderer)
+    return false
+  }
+
+  pasteStatus = { tone: "info", text: `reading ${selection}` }
+  updateStatePanel(renderer)
+  try {
+    const result = await service.read({ preferredTypes: ["text/plain"], selection, maxBytes: READ_MAX_BYTES })
+    if (service !== clipboardService || !editor || editor.isDestroyed) return false
+    if (result.status !== "read") {
+      pasteStatus = { tone: result.status === "failed" ? "bad" : "warn", text: `${selection} read: ${result.status}` }
+      addLog(
+        renderer,
+        pasteStatus.tone,
+        `paste read <- ${selection} · ${result.status}`,
+        result.status === "failed" ? errorMessage(result.error) : undefined,
+      )
+      updateStatePanel(renderer)
+      return false
+    }
+
+    const text = stripAnsiSequences(decoder.decode(result.representation.bytes))
+    editor.insertText(normalizeNewlines(text))
+    pasteStatus = { tone: "ok", text: `${selection} inserted ${byteLength(text)} B via native read` }
+    addLog(renderer, "ok", `paste <- ${selection} · inserted ${byteLength(text)} B`, escapedPreview(text, 56))
+    updateStatePanel(renderer)
+    return true
+  } catch (error) {
+    if (service !== clipboardService) return false
+    pasteStatus = { tone: "bad", text: `read rejected: ${errorMessage(error)}` }
+    addLog(renderer, "bad", `paste read rejected · ${selection}`, errorMessage(error))
+    updateStatePanel(renderer)
+    return false
+  }
+}
+
+function selectAllCommand(renderer: CliRenderer): boolean {
+  if (!selectAllEditorText()) return false
+  updateStatePanel(renderer)
+  addLog(renderer, "info", "editor select all")
+  return true
+}
+
+function loadSampleCommand(renderer: CliRenderer): boolean {
+  if (!editor || editor.isDestroyed) return false
+  const current = fixture()
+  editor.focus()
+  editor.setText(current.payload)
+  selectAllEditorText()
+  pasteStatus = { tone: "muted", text: "sample loaded; copy/cut/paste are ready" }
+  readStatus = { tone: "muted", text: "not attempted" }
+  updateStatePanel(renderer)
+  addLog(renderer, "info", `loaded sample -> editor · ${current.name}`, `${byteLength(current.payload)} B selected`)
+  return true
+}
+
+function resetEditorCommand(renderer: CliRenderer): boolean {
+  editor?.setText("")
+  pasteStatus = { tone: "muted", text: "editor cleared" }
+  readStatus = { tone: "muted", text: "not attempted" }
+  updateStatePanel(renderer)
+  addLog(renderer, "muted", "editor cleared")
+  editor?.focus()
+  return true
+}
+
+function selectFixtureCommand(renderer: CliRenderer, index: number): boolean {
+  selectedFixture = Math.max(0, Math.min(index, FIXTURES.length - 1))
+  updateSamplePanel()
+  updateStatePanel(renderer)
+  addLog(renderer, "info", `sample selected · ${fixture().name}`)
+  return true
+}
+
+async function readClipboardCommand(renderer: CliRenderer, selection: ClipboardSelection): Promise<boolean> {
+  const service = clipboardService
+  if (!service) {
+    readStatus = { tone: "bad", text: "service unavailable" }
+    updateStatePanel(renderer)
+    return false
+  }
+
+  readStatus = { tone: "info", text: `reading ${selection}` }
+  updateStatePanel(renderer)
+  try {
+    const result = await service.read({
+      preferredTypes: ["image/png", "text/plain"],
+      selection,
+      maxBytes: READ_MAX_BYTES,
+    })
+    if (service !== clipboardService) return false
+    if (result.status !== "read") {
+      readStatus = { tone: result.status === "failed" ? "bad" : "warn", text: `${selection}: ${result.status}` }
+      addLog(
+        renderer,
+        readStatus.tone,
+        `read check <- ${selection} · ${result.status}`,
+        result.status === "failed" ? errorMessage(result.error) : undefined,
+      )
+      updateStatePanel(renderer)
+      return false
+    }
+
+    const { mimeType, bytes } = result.representation
+    const digest = await sha256(bytes)
+    if (service !== clipboardService) return false
+    const exactFixture = mimeType === "text/plain" && decoder.decode(bytes) === fixture().payload
+    readStatus = {
+      tone: exactFixture ? "ok" : "info",
+      text: `${selection}: ${mimeType} · ${bytes.length} B${exactFixture ? " · exact sample" : ""}`,
+    }
+    addLog(
+      renderer,
+      readStatus.tone,
+      `read check <- ${selection} · ${mimeType} · ${bytes.length} B`,
+      `sha256 ${digest} · hex ${hexPrefix(bytes, 8)}`,
+    )
+    updateStatePanel(renderer)
+    return true
+  } catch (error) {
+    if (service !== clipboardService) return false
+    readStatus = { tone: "bad", text: `rejected: ${errorMessage(error)}` }
+    addLog(renderer, "bad", `read check rejected · ${selection}`, errorMessage(error))
+    updateStatePanel(renderer)
+    return false
+  }
+}
+
+async function clearClipboardCommand(renderer: CliRenderer, selection: ClipboardSelection): Promise<boolean> {
+  const service = clipboardService
+  if (!service) {
+    clearStatus = { tone: "bad", text: "service unavailable" }
+    updateStatePanel(renderer)
+    return false
+  }
+
+  clearStatus = { tone: "info", text: `clearing ${selection}` }
+  updateStatePanel(renderer)
+  try {
+    const result = await service.clear({ destination: "all-available", selection })
+    if (service !== clipboardService) return false
+    clearStatus = {
+      tone: clearSucceeded(result) ? "ok" : "warn",
+      text: `${selection}: ${clearResultLabel(result)}`,
+    }
+    addLog(renderer, clearStatus.tone, `clear -> ${selection}`, clearResultLabel(result))
+    updateStatePanel(renderer)
+    return clearSucceeded(result)
+  } catch (error) {
+    if (service !== clipboardService) return false
+    clearStatus = { tone: "bad", text: `rejected: ${errorMessage(error)}` }
+    addLog(renderer, "bad", `clear rejected · ${selection}`, errorMessage(error))
+    updateStatePanel(renderer)
+    return false
+  }
+}
+
+async function publishMouseSelection(renderer: CliRenderer, text: string): Promise<void> {
+  const profile = platformProfile()
+  const selection = profile.selectionTarget
+  selectionStatus = { tone: "info", text: `publishing ${byteLength(text)} B to ${selection}` }
+  updateStatePanel(renderer)
+  const result = await writeClipboardText(renderer, text, selection, "all-available", "mouse selection")
+  if (!result) {
+    selectionStatus = { tone: "bad", text: "selection publish failed" }
+  } else {
+    selectionStatus = {
+      tone: writeSucceeded(result) ? "ok" : "warn",
+      text: `${selection} · ${byteLength(text)} B · ${writeResultLabel(result)}`,
+    }
+  }
+  updateStatePanel(renderer)
+}
+
+function addShortcutBindings(
+  shortcuts: readonly Shortcut[],
+  cmd: string,
+  desc: string,
+): Binding<Renderable, KeyEvent>[] {
+  return shortcuts.map((shortcut) => ({
+    key: shortcut.key,
+    cmd,
+    desc,
+  }))
+}
+
+function registerKeymap(renderer: CliRenderer): void {
+  const profile = platformProfile()
+  const keymapInstance = createDefaultOpenTuiKeymap(renderer)
+  keymap = keymapInstance
+
+  disposers.push(keymapAddons.registerEscapeClearsPendingSequence(keymapInstance))
+
+  disposers.push(
+    keymapInstance.registerLayer({
+      commands: [
+        {
+          name: "clipboard.copy",
+          title: "Copy",
+          desc: "Copy selected editor text to the platform clipboard",
+          category: "Clipboard",
+          run() {
+            return copyCommand(renderer)
+          },
+        },
+        {
+          name: "clipboard.cut",
+          title: "Cut",
+          desc: "Copy selected editor text, then delete it",
+          category: "Clipboard",
+          run() {
+            return cutCommand(renderer)
+          },
+        },
+        {
+          name: "clipboard.paste",
+          title: "Paste clipboard",
+          desc: "Read CLIPBOARD and insert text into the editor",
+          category: "Clipboard",
+          run() {
+            return pasteCommand(renderer, "clipboard")
+          },
+        },
+        {
+          name: "clipboard.paste.primary",
+          title: "Paste primary",
+          desc: "Read PRIMARY and insert text into the editor",
+          category: "Clipboard",
+          run() {
+            return pasteCommand(renderer, "primary")
+          },
+        },
+        {
+          name: "clipboard.selectAll",
+          title: "Select all",
+          desc: "Select all editor text",
+          category: "Clipboard",
+          run() {
+            return selectAllCommand(renderer)
+          },
+        },
+        {
+          name: "sample.load",
+          title: "Load sample",
+          desc: "Load the current sample into the editor and select it",
+          category: "Demo",
+          run() {
+            return loadSampleCommand(renderer)
+          },
+        },
+        {
+          name: "editor.clear",
+          title: "Clear editor",
+          desc: "Clear the editor",
+          category: "Demo",
+          run() {
+            return resetEditorCommand(renderer)
+          },
+        },
+        {
+          name: "clipboard.read",
+          title: "Read clipboard",
+          desc: "Inspect CLIPBOARD without inserting it",
+          category: "Diagnostics",
+          run() {
+            return readClipboardCommand(renderer, "clipboard")
+          },
+        },
+        {
+          name: "clipboard.read.primary",
+          title: "Read primary",
+          desc: "Inspect PRIMARY without inserting it",
+          category: "Diagnostics",
+          run() {
+            return readClipboardCommand(renderer, "primary")
+          },
+        },
+        {
+          name: "clipboard.clear",
+          title: "Clear clipboard",
+          desc: "Clear CLIPBOARD",
+          category: "Diagnostics",
+          run() {
+            return clearClipboardCommand(renderer, "clipboard")
+          },
+        },
+        {
+          name: "app.quit",
+          title: "Quit",
+          desc: "Destroy the renderer",
+          category: "Application",
+          run() {
+            renderer.destroy()
+          },
+        },
+        ...FIXTURES.map((entry, index) => ({
+          name: `sample.${index + 1}`,
+          title: `Sample ${index + 1}`,
+          desc: entry.name,
+          category: "Demo",
+          run() {
+            return selectFixtureCommand(renderer, index)
+          },
+        })),
+      ],
+    }),
+  )
+
+  disposers.push(
+    keymapAddons.registerManagedTextareaLayer(keymapInstance, renderer, {
+      enabled: () => renderer.currentFocusedEditor !== null,
+      bindings: [],
+    }),
+  )
+
+  if (editor) {
+    disposers.push(
+      keymapInstance.registerLayer({
+        target: editor,
+        priority: 10_000,
+        bindings: [
+          ...addShortcutBindings(profile.copy, "clipboard.copy", "Copy selected text"),
+          ...addShortcutBindings(profile.cut, "clipboard.cut", "Cut selected text"),
+          ...addShortcutBindings(profile.pasteClipboard, "clipboard.paste", "Paste clipboard"),
+          ...addShortcutBindings(profile.pastePrimary, "clipboard.paste.primary", "Paste primary"),
+          ...addShortcutBindings(profile.selectAll, "clipboard.selectAll", "Select all"),
+        ],
+      }),
+    )
+  }
+
+  disposers.push(
+    keymapInstance.registerLayer({
+      priority: 100,
+      bindings: [
+        { key: "ctrl+q", cmd: "app.quit", desc: "Quit" },
+        { key: { name: "f1" }, cmd: "sample.1", desc: "Select Unicode sample" },
+        { key: { name: "f2" }, cmd: "sample.2", desc: "Select CR/LF sample" },
+        { key: { name: "f3" }, cmd: "sample.3", desc: "Select ANSI sample" },
+        { key: { name: "f4" }, cmd: "sample.4", desc: "Select large sample" },
+        { key: { name: "f5" }, cmd: "sample.load", desc: "Load sample into editor" },
+        { key: { name: "f6" }, cmd: "editor.clear", desc: "Clear editor" },
+        { key: { name: "f7" }, cmd: "clipboard.read", desc: "Read clipboard" },
+        { key: { name: "f7", shift: true }, cmd: "clipboard.read.primary", desc: "Read primary" },
+        { key: { name: "f8" }, cmd: "clipboard.clear", desc: "Clear clipboard" },
+      ],
+    }),
+  )
+}
+
 export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor(P.bg)
-  createHostService(renderer)
+  selectedFixture = 0
+  lastLoggedCapability = ""
+  copyStatus = { tone: "muted", text: "select text, then copy" }
+  pasteStatus = { tone: "muted", text: "waiting for PasteEvent or platform paste" }
+  cutStatus = { tone: "muted", text: "not attempted" }
+  selectionStatus = { tone: "muted", text: "mouse selection has not published" }
+  readStatus = { tone: "muted", text: "not attempted" }
+  clearStatus = { tone: "muted", text: "not attempted" }
+  serviceStatus = { tone: "muted", text: "initializing" }
 
-  container = new BoxRenderable(renderer, {
-    id: "clipboard-paste-container",
+  const destroyOnRendererDestroy = () => {
+    destroy(renderer)
+  }
+  renderer.once(CliRenderEvents.DESTROY, destroyOnRendererDestroy)
+  disposers.push(() => {
+    renderer.off(CliRenderEvents.DESTROY, destroyOnRendererDestroy)
+  })
+
+  root = new BoxRenderable(renderer, {
+    id: "clipboard-demo-root",
     width: "100%",
     height: "100%",
     padding: 1,
@@ -487,69 +927,74 @@ export function run(renderer: CliRenderer): void {
   })
 
   const header = new TextRenderable(renderer, {
-    id: "clipboard-paste-header",
-    height: 3,
+    id: "clipboard-demo-header",
+    height: 2,
     marginBottom: 1,
-    content: t`${bold(fg(P.cyan)("CLIPBOARD + PASTE TEST BED"))} ${fg(P.muted)("— OSC 52 + native host clipboard + PasteEvent")}
-${bold(fg(P.amber)("1-4"))} ${fg(P.muted)("fixture")}  ${bold(fg(P.amber)("Ctrl+Y/K"))} ${fg(P.muted)("OSC copy/clear")}  ${bold(fg(P.amber)("Ctrl+W/G/D"))} ${fg(P.muted)("host write/read/clear")}
-${bold(fg(P.amber)("Ctrl+P"))} ${fg(P.muted)("clipboard/primary")}  ${bold(fg(P.amber)("Ctrl+U"))} ${fg(P.muted)("dispose x2 + recreate")}  ${bold(fg(P.amber)("Ctrl+R"))} ${fg(P.muted)("reset editor")}`,
+    content: t`${bold(fg(P.cyan)("CLIPBOARD BEHAVIOR"))} ${fg(P.muted)("platform shortcuts, terminal paste events, native host clipboard")}
+${fg(P.muted)("Use platform copy/paste keys. F1-F4 sample, F5 load, F6 clear editor, F7 read, Shift+F7 read PRIMARY, F8 clear, Ctrl+Q quit.")}`,
   })
 
-  tabsText = new TextRenderable(renderer, {
-    id: "clipboard-paste-tabs",
-    height: 1,
-    content: "",
-  })
-
-  const fixturePanel = panel(renderer, "clipboard-paste-fixture-panel", "Fixture", 5)
-  fixturePanel.marginBottom = 1
-  fixtureText = new TextRenderable(renderer, {
-    id: "clipboard-paste-fixture",
+  const platformPanel = panel(renderer, "clipboard-demo-platform", "Platform", 10)
+  platformPanel.marginBottom = 1
+  platformText = new TextRenderable(renderer, {
+    id: "clipboard-demo-platform-text",
     content: "",
     selectionBg: SELECTION_BG,
     selectionFg: SELECTION_FG,
   })
-  fixturePanel.add(fixtureText)
+  platformPanel.add(platformText)
+
+  const samplePanel = panel(renderer, "clipboard-demo-sample", "Sample Text", 6)
+  samplePanel.marginBottom = 1
+  sampleText = new TextRenderable(renderer, {
+    id: "clipboard-demo-sample-text",
+    content: "",
+    selectionBg: SELECTION_BG,
+    selectionFg: SELECTION_FG,
+  })
+  samplePanel.add(sampleText)
 
   const editorPanel = new BoxRenderable(renderer, {
-    id: "clipboard-paste-editor-box",
-    title: " Paste target ",
+    id: "clipboard-demo-editor-panel",
+    title: " Editor ",
     titleAlignment: "left",
     border: true,
     borderStyle: "rounded",
     borderColor: P.borderHot,
-    backgroundColor: P.panel,
+    backgroundColor: P.panelRaised,
     paddingLeft: 1,
     paddingRight: 1,
-    height: 6,
+    height: 7,
     marginBottom: 1,
   })
-
   editor = new TextareaRenderable(renderer, {
-    id: "clipboard-paste-editor",
+    id: "clipboard-demo-editor",
     width: "100%",
     height: "100%",
-    placeholder: "Paste here... (Ctrl+R resets before an exact editor check)",
+    placeholder: "Paste here, or press F5 to load a sample and select it...",
     textColor: P.text,
-    backgroundColor: P.panel,
-    focusedBackgroundColor: P.panel,
+    backgroundColor: P.panelRaised,
+    focusedBackgroundColor: P.panelRaised,
     cursorColor: P.amber,
+    selectionBg: SELECTION_BG,
+    selectionFg: SELECTION_FG,
     wrapMode: "word",
+    onContentChange: () => updateStatePanel(renderer),
   })
   editorPanel.add(editor)
 
-  const checksPanel = panel(renderer, "clipboard-paste-checks-panel", "Checks", 12)
-  checksPanel.marginBottom = 1
-  checksText = new TextRenderable(renderer, {
-    id: "clipboard-paste-checks",
+  const statePanel = panel(renderer, "clipboard-demo-state", "State", 9)
+  statePanel.marginBottom = 1
+  stateText = new TextRenderable(renderer, {
+    id: "clipboard-demo-state-text",
     content: "",
     selectionBg: SELECTION_BG,
     selectionFg: SELECTION_FG,
   })
-  checksPanel.add(checksText)
+  statePanel.add(stateText)
 
   const logPanel = new BoxRenderable(renderer, {
-    id: "clipboard-paste-log-panel",
+    id: "clipboard-demo-log-panel",
     title: " Events ",
     titleAlignment: "left",
     border: true,
@@ -565,7 +1010,7 @@ ${bold(fg(P.amber)("Ctrl+P"))} ${fg(P.muted)("clipboard/primary")}  ${bold(fg(P.
   })
 
   logList = new ScrollBoxRenderable(renderer, {
-    id: "clipboard-paste-log-list",
+    id: "clipboard-demo-log-list",
     stickyScroll: true,
     stickyStart: "bottom",
     rootOptions: { backgroundColor: P.panel, border: false },
@@ -585,13 +1030,13 @@ ${bold(fg(P.amber)("Ctrl+P"))} ${fg(P.muted)("clipboard/primary")}  ${bold(fg(P.
   })
   logPanel.add(logList)
 
-  container.add(header)
-  container.add(tabsText)
-  container.add(fixturePanel)
-  container.add(editorPanel)
-  container.add(checksPanel)
-  container.add(logPanel)
-  renderer.root.add(container)
+  root.add(header)
+  root.add(platformPanel)
+  root.add(samplePanel)
+  root.add(editorPanel)
+  root.add(statePanel)
+  root.add(logPanel)
+  renderer.root.add(root)
 
   pasteHandler = (event) => {
     const current = fixture()
@@ -599,128 +1044,26 @@ ${bold(fg(P.amber)("Ctrl+P"))} ${fg(P.muted)("clipboard/primary")}  ${bold(fg(P.
     const exact = pasted === current.payload
     const normalized = normalizeNewlines(pasted) === normalizeNewlines(current.payload)
     pasteStatus = exact
-      ? { tone: "ok", text: `raw and normalized match — ${event.bytes.length} bytes` }
+      ? { tone: "ok", text: `PasteEvent exact sample · ${event.bytes.length} B` }
       : normalized
-        ? { tone: "warn", text: `normalized match only — raw differs (${event.bytes.length} bytes)` }
-        : { tone: "bad", text: `no fixture match — ${event.bytes.length} bytes` }
-    roundTripStatus =
-      fixturePayloadEmitted && exact
-        ? { tone: "ok", text: "observed after emission (terminal acceptance unacknowledged)" }
-        : { tone: "warn", text: "not established — needs emission plus an exact raw match" }
-    editorStatus = { tone: "warn", text: "pending default focused-renderable handling" }
-    updateChecks(renderer)
+        ? { tone: "warn", text: `PasteEvent normalized sample only · ${event.bytes.length} B` }
+        : { tone: "info", text: `PasteEvent inserted ${event.bytes.length} B` }
+    updateStatePanel(renderer)
     addLog(
       renderer,
       pasteStatus.tone,
-      `paste ← ${event.bytes.length} B · ${metadataLabel(event)} · raw ${exact ? "✓" : "✗"} norm ${normalized ? "✓" : "✗"}`,
+      `PasteEvent <- ${event.bytes.length} B · ${metadataLabel(event)} · raw ${exact ? "yes" : "no"} norm ${normalized ? "yes" : "no"}`,
       `${escapedPreview(pasted, 44)} · hex ${hexPrefix(event.bytes, 8)}`,
     )
 
     queueMicrotask(() => {
       if (!editor || editor.isDestroyed) return
-      const expected = normalizeNewlines(stripAnsiSequences(current.payload))
-      const pass = editor.plainText === expected
-      editorStatus = pass
-        ? { tone: "ok", text: `matches expected editor text — ${byteLength(editor.plainText)} bytes retained` }
-        : {
-            tone: "bad",
-            text: `expected ${byteLength(expected)} bytes, retained ${byteLength(editor.plainText)} — ${escapedPreview(editor.plainText, 36)}`,
-          }
-      updateChecks(renderer)
-      addLog(
-        renderer,
-        pass ? "ok" : "bad",
-        pass
-          ? `editor retained ${byteLength(editor.plainText)} B (ANSI stripped, newlines normalized)`
-          : `editor mismatch — expected ${byteLength(expected)} B, retained ${byteLength(editor.plainText)} B`,
-      )
+      updateStatePanel(renderer)
     })
   }
 
-  keypressHandler = (event) => {
-    if (!event.ctrl && /^[1-4]$/.test(event.name)) {
-      event.preventDefault()
-      selectedFixture = Number(event.name) - 1
-      const current = fixture()
-      resetTest(renderer, `fixture → ${selectedFixture + 1} ${current.name} (${byteLength(current.payload)} B)`)
-      return
-    }
-
-    if (event.ctrl && event.name === "y") {
-      event.preventDefault()
-      const current = fixture()
-      const emitted = renderer.copyToClipboardOSC52(current.payload)
-      fixturePayloadEmitted = emitted
-      copyStatus = emitted
-        ? { tone: "info", text: `emitted ${byteLength(current.payload)} UTF-8 bytes` }
-        : { tone: "bad", text: "local emission failed" }
-      roundTripStatus = emitted
-        ? { tone: "warn", text: "waiting for an exact paste after emission" }
-        : { tone: "muted", text: "not evaluated" }
-      updateChecks(renderer)
-      addLog(
-        renderer,
-        emitted ? "info" : "bad",
-        emitted
-          ? `osc52 copy → emitted ${byteLength(current.payload)} B (default clipboard target)`
-          : "osc52 copy → local emission failed",
-      )
-      return
-    }
-
-    if (event.ctrl && event.name === "k") {
-      event.preventDefault()
-      fixturePayloadEmitted = false
-      const emitted = renderer.clearClipboardOSC52()
-      copyStatus = emitted
-        ? { tone: "info", text: "emitted clear request" }
-        : { tone: "bad", text: "clear emission failed" }
-      roundTripStatus = { tone: "muted", text: "not applicable to clear requests" }
-      updateChecks(renderer)
-      addLog(renderer, emitted ? "info" : "bad", emitted ? "osc52 clear → emitted" : "osc52 clear → emission failed")
-      return
-    }
-
-    if (event.ctrl && event.name === "w") {
-      event.preventDefault()
-      void writeHostClipboard(renderer)
-      return
-    }
-
-    if (event.ctrl && event.name === "g") {
-      event.preventDefault()
-      void readHostClipboard(renderer)
-      return
-    }
-
-    if (event.ctrl && event.name === "d") {
-      event.preventDefault()
-      void clearHostClipboard(renderer)
-      return
-    }
-
-    if (event.ctrl && event.name === "p") {
-      event.preventDefault()
-      hostSelection = hostSelection === "clipboard" ? "primary" : "clipboard"
-      updateChecks(renderer)
-      addLog(renderer, "info", `host selection → ${hostSelection}`)
-      return
-    }
-
-    if (event.ctrl && event.name === "u") {
-      event.preventDefault()
-      void recycleHostClipboard(renderer)
-      return
-    }
-
-    if (event.ctrl && event.name === "r") {
-      event.preventDefault()
-      resetTest(renderer, "reset")
-    }
-  }
-
   capabilityHandler = () => {
-    updateChecks(renderer)
+    updateStatePanel(renderer)
     const capabilities = renderer.capabilities
     if (!capabilities) return
     const snapshot = `${capabilities.osc52_support}/${capabilities.osc52 ? "hint-yes" : "hint-no"}`
@@ -729,7 +1072,7 @@ ${bold(fg(P.amber)("Ctrl+P"))} ${fg(P.muted)("clipboard/primary")}  ${bold(fg(P.
       addLog(
         renderer,
         "info",
-        `capabilities → osc52_support=${capabilities.osc52_support} legacy-hint=${capabilities.osc52 ? "yes" : "no"}`,
+        `capabilities · osc52=${capabilities.osc52_support} legacy-hint=${capabilities.osc52 ? "yes" : "no"}`,
       )
     }
   }
@@ -740,64 +1083,67 @@ ${bold(fg(P.amber)("Ctrl+P"))} ${fg(P.muted)("clipboard/primary")}  ${bold(fg(P.
     if (!text || text.trim().length === 0) return
 
     renderer.clearSelection()
-    const emitted = renderer.copyToClipboardOSC52(text)
-    if (emitted) {
-      fixturePayloadEmitted = false
-      copyStatus = { tone: "info", text: `emitted selection (${byteLength(text)} UTF-8 bytes)` }
-      if (roundTripStatus.text.startsWith("waiting")) {
-        roundTripStatus = { tone: "muted", text: "superseded by selection copy" }
-      }
-    } else {
-      copyStatus = { tone: "bad", text: "selection copy emission failed" }
-    }
-    updateChecks(renderer)
-    addLog(
-      renderer,
-      emitted ? "info" : "bad",
-      emitted ? `selection copy → emitted ${byteLength(text)} B` : "selection copy → local emission failed",
-      escapedPreview(text, 56),
-    )
+    void publishMouseSelection(renderer, text)
   }
 
   renderer.on(CliRenderEvents.CAPABILITIES, capabilityHandler)
   renderer.on(CliRenderEvents.SELECTION, selectionHandler)
   renderer.keyInput.on("paste", pasteHandler)
-  renderer.keyInput.on("keypress", keypressHandler)
-  resetTest(renderer, "ready")
+
+  createClipboardService(renderer)
+  registerKeymap(renderer)
+  updateSamplePanel()
+  updateStatePanel(renderer)
+  loadSampleCommand(renderer)
 }
 
 export function destroy(renderer: CliRenderer): void {
+  while (disposers.length > 0) {
+    const dispose = disposers.pop()
+    try {
+      dispose?.()
+    } catch (error) {
+      console.error("Error disposing clipboard demo resource:", error)
+    }
+  }
+
   if (pasteHandler) renderer.keyInput.off("paste", pasteHandler)
-  if (keypressHandler) renderer.keyInput.off("keypress", keypressHandler)
   if (capabilityHandler) renderer.off(CliRenderEvents.CAPABILITIES, capabilityHandler)
   if (selectionHandler) renderer.off(CliRenderEvents.SELECTION, selectionHandler)
   renderer.clearSelection()
-  const service = hostClipboard
-  hostClipboard = null
-  void service?.dispose()
-  container?.destroyRecursively()
-  container = null
-  tabsText = null
-  fixtureText = null
+
+  const service = clipboardService
+  clipboardService = null
+  void service?.dispose().catch((error) => {
+    console.error("Error disposing clipboard service:", error)
+  })
+
+  root?.destroyRecursively()
+  root = null
+  platformText = null
+  sampleText = null
   editor = null
-  checksText = null
+  stateText = null
   logList = null
   logRows = []
   logRowId = 0
-  lastLoggedCapability = ""
+  keymap = null
   pasteHandler = null
-  keypressHandler = null
   capabilityHandler = null
   selectionHandler = null
-  hostReadStatus = { tone: "muted", text: "not attempted" }
-  hostWriteStatus = { tone: "muted", text: "not attempted" }
-  hostClearStatus = { tone: "muted", text: "not attempted" }
-  hostDisposeStatus = { tone: "muted", text: "service inactive" }
+  lastLoggedCapability = ""
+  copyStatus = { tone: "muted", text: "select text, then copy" }
+  pasteStatus = { tone: "muted", text: "waiting for PasteEvent or platform paste" }
+  cutStatus = { tone: "muted", text: "not attempted" }
+  selectionStatus = { tone: "muted", text: "mouse selection has not published" }
+  readStatus = { tone: "muted", text: "not attempted" }
+  clearStatus = { tone: "muted", text: "not attempted" }
+  serviceStatus = { tone: "muted", text: "inactive" }
 }
 
 if (import.meta.main) {
   const renderer = await createCliRenderer({
-    exitOnCtrlC: true,
+    exitOnCtrlC: process.platform !== "win32",
     targetFps: 30,
   })
   run(renderer)
