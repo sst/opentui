@@ -717,6 +717,7 @@ pub const Connection = struct {
     }
 
     fn sourceSend(data: ?*anyopaque, _: ?*WlProxy, mime_pointer: [*:0]const u8, fd: i32) callconv(.c) void {
+        if (comptime builtin.os.tag != .linux) return;
         const provider: *Provider = @ptrCast(@alignCast(data.?));
         const mime = std.mem.span(mime_pointer);
         if ((!std.ascii.eqlIgnoreCase(mime, "text/plain") and
