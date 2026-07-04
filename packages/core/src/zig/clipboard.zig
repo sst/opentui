@@ -146,6 +146,7 @@ const Operation = struct {
     x11_target_index: u8 = 0,
     platform_job_state: PlatformJobState = .none,
     platform_cancel: std.atomic.Value(bool) = .init(false),
+    platform_mutation_started: std.atomic.Value(bool) = .init(false),
     platform_terminal_request: ?OperationStatus = null,
     mutation_sequence: u64 = 0,
     timeout_ms: u32 = 0,
@@ -180,6 +181,10 @@ const Operation = struct {
             return .already_terminal;
         }
         if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
+            if (operation.platform_mutation_started.load(.acquire)) {
+                operation.mutex.unlock();
+                return .already_terminal;
+            }
             operation.cancel_requested = true;
             operation.platform_cancel.store(true, .release);
             if (operation.platform_terminal_request == null) operation.platform_terminal_request = .cancelled;
@@ -190,8 +195,10 @@ const Operation = struct {
             return .requested;
         }
         defer operation.mutex.unlock();
-        if (operation.x11_write.committed) {
-            operation.status = if (operation.kind == .write) .written else .cleared;
+        if (operation.x11_write.mutation_dispatched) {
+            if (operation.x11_write.committed) {
+                operation.status = if (operation.kind == .write) .written else .cleared;
+            }
             return .already_terminal;
         }
         operation.cancel_requested = true;
@@ -223,7 +230,9 @@ const Operation = struct {
         }
         if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
             const now_ns = std.time.nanoTimestamp();
-            if (platformDeadlineExpired(operation, now_ns) and operation.platform_terminal_request == null) {
+            if (platformDeadlineExpired(operation, now_ns) and operation.platform_terminal_request == null and
+                !operation.platform_mutation_started.load(.acquire))
+            {
                 operation.platform_terminal_request = .timed_out;
                 operation.platform_cancel.store(true, .release);
             }
@@ -242,7 +251,9 @@ const Operation = struct {
             return .cancelled;
         }
         const elapsed_ns = std.time.nanoTimestamp() - operation.started_ns;
-        if (elapsed_ns >= @as(i128, operation.timeout_ms) * std.time.ns_per_ms) {
+        if (!operation.x11_write.mutation_dispatched and
+            elapsed_ns >= @as(i128, operation.timeout_ms) * std.time.ns_per_ms)
+        {
             operation.cleanupTransfer();
             operation.cleanupX11();
             operation.status = .timed_out;
@@ -275,6 +286,19 @@ const Operation = struct {
         operation.cleanupTransfer();
         operation.cleanupX11();
         operation.allocator.destroy(operation);
+    }
+
+    fn beginPlatformMutation(operation: *Operation) ?OperationStatus {
+        operation.mutex.lock();
+        defer operation.mutex.unlock();
+        if (operation.platform_terminal_request) |requested| return requested;
+        if (platformDeadlineExpired(operation, std.time.nanoTimestamp())) {
+            operation.platform_terminal_request = .timed_out;
+            operation.platform_cancel.store(true, .release);
+            return .timed_out;
+        }
+        operation.platform_mutation_started.store(true, .release);
+        return null;
     }
 
     fn cleanupTransfer(operation: *Operation) void {
@@ -480,6 +504,8 @@ const Service = struct {
             };
             var result = worker.execute(service.allocator, job, .{
                 .cancel_requested = &operation.platform_cancel,
+                .begin_mutation = beginWindowsPlatformMutation,
+                .mutation_context = operation,
                 .deadline_ns = operation.started_ns + @as(i128, operation.timeout_ms) * std.time.ns_per_ms,
             });
             defer result.deinit(service.allocator);
@@ -496,6 +522,10 @@ const Service = struct {
             };
             service.publishPlatformResult(operation, status, result.mime, result.data, @intCast(result.error_code));
         } else if (comptime builtin.os.tag == .macos) {
+            if (operation.selection == .primary) {
+                service.publishPlatformResult(operation, .unsupported, &.{}, &.{}, 0);
+                return;
+            }
             const selection: clipboard_macos.Selection = if (operation.selection == .clipboard) .clipboard else .primary;
             const job: clipboard_macos.Job = switch (operation.kind) {
                 .read => .{ .read = .{ .selection = selection, .request = operation.request, .max_bytes = operation.max_bytes } },
@@ -503,7 +533,14 @@ const Service = struct {
                 .clear => .{ .clear = .{ .selection = selection } },
                 .test_read => unreachable,
             };
-            var result = clipboard_macos.runJob(service.allocator, job) catch |err| {
+            if ((operation.kind == .write or operation.kind == .clear) and operation.beginPlatformMutation() != null) {
+                service.publishPlatformResult(operation, operation.platform_terminal_request.?, &.{}, &.{}, 0);
+                return;
+            }
+            var result = clipboard_macos.runJob(service.allocator, job, .{
+                .cancel_requested = &operation.platform_cancel,
+                .deadline_ns = operation.started_ns + @as(i128, operation.timeout_ms) * std.time.ns_per_ms,
+            }) catch |err| {
                 const status: OperationStatus = if (err == error.LimitExceeded) .limit_exceeded else .failed;
                 service.publishPlatformResult(operation, status, &.{}, &.{}, 0);
                 return;
@@ -573,6 +610,15 @@ const Service = struct {
             _ = operation.requestCancel();
         }
         if (comptime builtin.os.tag == .linux) {
+            if (service.x11) |x11| {
+                for (service.operations.items) |operation| {
+                    if (operation.status != .pending or !operation.x11_write.mutation_dispatched) continue;
+                    x11.finishMutationForShutdown(&operation.x11_write);
+                    operation.mutex.lock();
+                    operation.status = if (operation.kind == .write) .written else .cleared;
+                    operation.mutex.unlock();
+                }
+            }
             if (service.wayland) |wayland| wayland.releaseProviders();
             if (service.x11) |x11| x11.releaseProviders();
         }
@@ -600,6 +646,9 @@ const Service = struct {
                 service.platform_thread = null;
                 service.platform_joined = true;
             }
+        }
+        if (comptime builtin.os.tag == .linux) {
+            if (service.x11) |x11| if (!x11.shutdownReady()) return .pending;
         }
         return .ready;
     }
@@ -734,6 +783,7 @@ const Service = struct {
 
     fn driveWaylandWrite(service: *Service, operation: *Operation) OperationStatus {
         if (comptime builtin.os.tag != .linux) return service.finishOperation(operation, .unsupported);
+        if (service.hasEarlierSelectionMutation(operation)) return .pending;
         const result = service.wayland.?.publishText(operation.selection == .primary, operation.request);
         switch (result) {
             .ok, .committed => std.debug.assert(selectionRequestCommitted(result)),
@@ -747,6 +797,7 @@ const Service = struct {
 
     fn driveWaylandClear(service: *Service, operation: *Operation) OperationStatus {
         if (comptime builtin.os.tag != .linux) return service.finishOperation(operation, .unsupported);
+        if (service.hasEarlierSelectionMutation(operation)) return .pending;
         const result = service.wayland.?.clearSelection(operation.selection == .primary);
         switch (result) {
             .ok, .committed => std.debug.assert(selectionRequestCommitted(result)),
@@ -930,10 +981,23 @@ const Service = struct {
                 x11.cleanupRead(&operation.x11_read);
                 return service.finishOperation(operation, .limit_exceeded);
             },
-            .failed => {
+            .candidate_failed => {
                 x11.cleanupRead(&operation.x11_read);
                 operation.rememberFailure(.x11_transfer, "X11 clipboard property transfer failed");
+                operation.candidate_failed = true;
+                operation.transfer_data.clearRetainingCapacity();
+                operation.x11_target_index += 1;
+                return .pending;
+            },
+            .out_of_memory => {
+                x11.cleanupRead(&operation.x11_read);
+                operation.error_code = @intFromEnum(ErrorCode.out_of_memory);
+                operation.diagnostic = "Failed to allocate X11 clipboard result";
                 return service.finishOperation(operation, .failed);
+            },
+            .failed => {
+                x11.cleanupRead(&operation.x11_read);
+                return service.finishX11Failure(operation);
             },
         }
 
@@ -958,7 +1022,12 @@ const Service = struct {
             if (operation.preference_offset >= operation.request.len) {
                 return service.finishOperation(
                     operation,
-                    if (operation.implemented_candidate_attempted) .empty else .unsupported,
+                    if (operation.candidate_failed)
+                        .failed
+                    else if (operation.implemented_candidate_attempted)
+                        .empty
+                    else
+                        .unsupported,
                 );
             }
             const length = std.mem.readInt(u32, operation.request[operation.preference_offset..][0..4], .little);
@@ -1071,14 +1140,25 @@ fn platformDeadlineExpired(operation: *const Operation, now_ns: i128) bool {
     return now_ns - operation.started_ns >= @as(i128, operation.timeout_ms) * std.time.ns_per_ms;
 }
 
+fn beginWindowsPlatformMutation(context: ?*anyopaque) ?clipboard_windows.Status {
+    const operation: *Operation = @ptrCast(@alignCast(context orelse return .invalid_request));
+    const status = operation.beginPlatformMutation() orelse return null;
+    return switch (status) {
+        .cancelled => .cancelled,
+        .timed_out => .timed_out,
+        else => .failed,
+    };
+}
+
 fn resolvePlatformStatus(
     operation: *const Operation,
     platform_status: OperationStatus,
     now_ns: i128,
 ) OperationStatus {
-    if (platform_status == .written or platform_status == .cleared) return platform_status;
+    if ((platform_status == .written or platform_status == .cleared) and
+        operation.platform_mutation_started.load(.acquire)) return platform_status;
     if (operation.platform_terminal_request) |requested| return requested;
-    if (platformDeadlineExpired(operation, now_ns)) return .timed_out;
+    if (!operation.platform_mutation_started.load(.acquire) and platformDeadlineExpired(operation, now_ns)) return .timed_out;
     return platform_status;
 }
 
@@ -1671,12 +1751,76 @@ test "clipboard platform result resolution enforces deadline before late read su
     try std.testing.expectEqual(@as(usize, 0), operation.result_mime.len);
 }
 
+test "clipboard cancellation recorded before a platform mutation wins over late success" {
+    var operation: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = undefined,
+        .kind = .write,
+        .worker_joined = true,
+        .timeout_ms = 100,
+        .started_ns = 100,
+        .platform_terminal_request = .cancelled,
+    };
+
+    try std.testing.expectEqual(
+        OperationStatus.cancelled,
+        resolvePlatformStatus(&operation, .written, 100 + std.time.ns_per_ms),
+    );
+}
+
+test "clipboard platform mutation commit wins over later cancellation" {
+    var operation: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = undefined,
+        .kind = .write,
+        .worker_joined = true,
+        .timeout_ms = 100,
+        .started_ns = 100,
+        .platform_terminal_request = .cancelled,
+    };
+    operation.platform_mutation_started.store(true, .release);
+
+    try std.testing.expectEqual(
+        OperationStatus.written,
+        resolvePlatformStatus(&operation, .written, 100 + std.time.ns_per_ms),
+    );
+}
+
+test "clipboard Windows mutation callback marks the shared operation state" {
+    var operation: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = undefined,
+        .kind = .write,
+        .worker_joined = true,
+        .timeout_ms = 100,
+        .started_ns = std.time.nanoTimestamp(),
+    };
+
+    try std.testing.expect(beginWindowsPlatformMutation(&operation) == null);
+    try std.testing.expect(operation.platform_mutation_started.load(.acquire));
+}
+
+test "clipboard X11 cancellation cannot win after ownership mutation dispatch" {
+    var operation: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = undefined,
+        .kind = .write,
+        .worker_joined = true,
+        .x11_write = .{ .mutation_dispatched = true },
+    };
+
+    try std.testing.expectEqual(CancelStatus.already_terminal, operation.requestCancel());
+    try std.testing.expectEqual(OperationStatus.pending, operation.status);
+    try std.testing.expect(!operation.cancel_requested);
+}
+
 test "clipboard mutation ordering is stable when operation storage is reordered" {
     var service: Service = undefined;
     var earlier: Operation = .{
         .allocator = std.testing.allocator,
         .service = &service,
         .kind = .write,
+        .selection = .clipboard,
         .mutation_sequence = 2,
         .worker_joined = true,
     };
@@ -1684,6 +1828,7 @@ test "clipboard mutation ordering is stable when operation storage is reordered"
         .allocator = std.testing.allocator,
         .service = &service,
         .kind = .clear,
+        .selection = .primary,
         .mutation_sequence = 3,
         .worker_joined = true,
     };
@@ -1693,3 +1838,76 @@ test "clipboard mutation ordering is stable when operation storage is reordered"
     try std.testing.expect(service.hasEarlierSelectionMutation(&later));
     try std.testing.expect(!service.hasEarlierSelectionMutation(&earlier));
 }
+
+test "clipboard X11 candidate failure advances to the next compatible target" {
+    var symbols: clipboard_linux.XcbSymbols = undefined;
+    var fake_connection: u8 = 0;
+    var x11 = clipboard_x11.Connection.init(std.testing.allocator, &symbols, 1);
+    x11.connection = @ptrCast(&fake_connection);
+    var service: Service = .{
+        .allocator = std.testing.allocator,
+        .max_operations = 1,
+        .max_provider_transfers = 1,
+        .route = .unsupported,
+        .requested_wayland_seat = &.{},
+        .environment_wayland_seat = &.{},
+        .x11 = &x11,
+    };
+    var operation: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = &service,
+        .kind = .read,
+        .worker_joined = true,
+        .x11_read = .{ .phase = .failed },
+        .x11_target_count = 2,
+    };
+    try operation.transfer_data.appendSlice(std.testing.allocator, "partial");
+    defer operation.transfer_data.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(OperationStatus.pending, service.driveX11Read(&operation));
+    try std.testing.expectEqual(@as(u8, 1), operation.x11_target_index);
+    try std.testing.expect(operation.candidate_failed);
+    try std.testing.expectEqual(@as(usize, 0), operation.transfer_data.items.len);
+}
+
+test "clipboard shutdown settles dispatched X11 mutations before releasing providers" {
+    var symbols: clipboard_linux.XcbSymbols = undefined;
+    symbols.xcb_discard_reply = testX11DiscardReply;
+    var fake_connection: u8 = 0;
+    var x11 = clipboard_x11.Connection.init(std.testing.allocator, &symbols, 1);
+    x11.connection = @ptrCast(&fake_connection);
+    const provider = try std.testing.allocator.create(clipboard_x11.Provider);
+    provider.* = .{ .selection = 1, .data = &.{} };
+    x11.providers[0] = provider;
+    var service: Service = .{
+        .allocator = std.testing.allocator,
+        .max_operations = 1,
+        .max_provider_transfers = 1,
+        .route = .unsupported,
+        .requested_wayland_seat = &.{},
+        .environment_wayland_seat = &.{},
+        .x11 = &x11,
+    };
+    var operation: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = &service,
+        .kind = .write,
+        .worker_joined = true,
+        .x11_write = .{
+            .provider = provider,
+            .selection = 1,
+            .mutation_dispatched = true,
+            .owner_cookie = .{ .sequence = 1 },
+        },
+    };
+    var storage = [_]*Operation{&operation};
+    service.operations = .{ .items = &storage, .capacity = storage.len };
+
+    service.beginShutdown();
+
+    try std.testing.expectEqual(OperationStatus.written, operation.status);
+    try std.testing.expect(operation.x11_write.provider == null);
+    try std.testing.expect(x11.providers[0] == null);
+}
+
+fn testX11DiscardReply(_: *clipboard_linux.XcbConnection, _: u32) callconv(.c) void {}
