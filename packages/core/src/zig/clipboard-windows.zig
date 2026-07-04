@@ -109,6 +109,8 @@ pub const Job = union(enum) {
 
 pub const ExecuteOptions = struct {
     cancel_requested: ?*const std.atomic.Value(bool) = null,
+    begin_mutation: ?*const fn (?*anyopaque) ?Status = null,
+    mutation_context: ?*anyopaque = null,
     deadline_ns: i128,
     open_retry_sleep_ns: u64 = OPEN_RETRY_SLEEP_NS_DEFAULT,
 };
@@ -193,9 +195,9 @@ pub const Worker = struct {
         if (checkStop(options)) |status| return .{ .status = status };
 
         return switch (job) {
-            .read => |read| worker.executeRead(allocator, read),
-            .write => worker.executeWrite(&prepared.?),
-            .clear => executeClear(),
+            .read => |read| worker.executeRead(allocator, read, options),
+            .write => if (beginMutation(options)) |status| .{ .status = status } else worker.executeWrite(&prepared.?),
+            .clear => if (beginMutation(options)) |status| .{ .status = status } else executeClear(),
         };
     }
 
@@ -210,17 +212,29 @@ pub const Worker = struct {
         }
     }
 
-    fn executeRead(worker: *const Worker, allocator: Allocator, job: ReadJob) Result {
+    fn executeRead(worker: *const Worker, allocator: Allocator, job: ReadJob, options: ExecuteOptions) Result {
         var iterator = PreferenceIterator.init(job.request) catch unreachable;
         var supported = false;
+        var first_failure: ?Result = null;
         while (iterator.next() catch unreachable) |mime| {
+            if (checkStop(options)) |status| return .{ .status = status };
             const format = worker.formatForMime(mime) orelse continue;
             supported = true;
             if (win32.IsClipboardFormatAvailable(format) == 0) continue;
-            if (format == CF_UNICODETEXT) return readText(allocator, mime, job.max_bytes);
-            const result = readBytes(allocator, mime, format, job.max_bytes);
-            if (result.status != .empty) return result;
+            if (checkStop(options)) |status| return .{ .status = status };
+            const result = if (format == CF_UNICODETEXT)
+                readText(allocator, mime, job.max_bytes)
+            else
+                readBytes(allocator, mime, format, job.max_bytes);
+            switch (readCandidateAction(result)) {
+                .return_result => return result,
+                .continue_candidate => {},
+                .remember_failure => if (first_failure == null) {
+                    first_failure = result;
+                },
+            }
         }
+        if (first_failure) |failure| return failure;
         return .{ .status = if (supported) .empty else .unsupported };
     }
 
@@ -284,6 +298,8 @@ const ConversionError = error{
     LimitExceeded,
     OutOfMemory,
 };
+
+const ReadCandidateAction = enum { return_result, continue_candidate, remember_failure };
 
 fn validateReadRequest(request: []const u8) bool {
     if (request.len < 4) return false;
@@ -436,6 +452,12 @@ fn checkStop(options: ExecuteOptions) ?Status {
     return null;
 }
 
+fn beginMutation(options: ExecuteOptions) ?Status {
+    if (checkStop(options)) |status| return status;
+    const begin = options.begin_mutation orelse return .invalid_request;
+    return begin(options.mutation_context);
+}
+
 fn executeClear() Result {
     if (win32.EmptyClipboard() == 0) return lastErrorResult();
     return .{ .status = .cleared };
@@ -482,6 +504,14 @@ fn readResult(allocator: Allocator, mime: []const u8, data: []u8) Result {
     return .{ .status = .read, .mime = owned_mime, .data = data };
 }
 
+fn readCandidateAction(result: Result) ReadCandidateAction {
+    return switch (result.status) {
+        .empty => .continue_candidate,
+        .failed => if (result.error_code == ERROR_OUTOFMEMORY) .return_result else .remember_failure,
+        else => .return_result,
+    };
+}
+
 fn lastErrorResult() Result {
     return .{ .status = .failed, .error_code = win32.GetLastError() };
 }
@@ -525,6 +555,19 @@ test "Windows clipboard MIME request parsing rejects malformed framing" {
     try std.testing.expect(!validateReadRequest(&.{ 1, 0, 0, 0, 0, 0, 0, 0 }));
     try std.testing.expect(!validateReadRequest(&.{ 1, 0, 0, 0, 2, 0, 0, 0, 'x' }));
     try std.testing.expect(!validateReadRequest(&.{ 1, 0, 0, 0, 1, 0, 0, 0, 'x', 'y' }));
+}
+
+test "Windows clipboard reads retain candidate failures while trying later preferences" {
+    try std.testing.expectEqual(ReadCandidateAction.continue_candidate, readCandidateAction(.{ .status = .empty }));
+    try std.testing.expectEqual(
+        ReadCandidateAction.remember_failure,
+        readCandidateAction(.{ .status = .failed, .error_code = ERROR_INVALID_DATA }),
+    );
+    try std.testing.expectEqual(
+        ReadCandidateAction.return_result,
+        readCandidateAction(.{ .status = .failed, .error_code = ERROR_OUTOFMEMORY }),
+    );
+    try std.testing.expectEqual(ReadCandidateAction.return_result, readCandidateAction(.{ .status = .limit_exceeded }));
 }
 
 test "Windows clipboard text conversion round trips Unicode and terminates UTF-16" {

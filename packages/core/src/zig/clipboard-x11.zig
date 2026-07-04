@@ -33,7 +33,7 @@ const ATOM_NAMES = [_][]const u8{
 pub const Progress = enum { pending, ready, unsupported, failed };
 pub const Failure = enum { none, connection, flush, atom, protocol, provider };
 pub const SelectionResult = enum { ok, pending, committed, unsupported, failed };
-pub const ReadResult = enum { pending, ready, refused, limit_exceeded, failed };
+pub const ReadResult = enum { pending, ready, refused, candidate_failed, limit_exceeded, out_of_memory, failed };
 
 const Phase = enum { idle, atoms, flush, replies, window, window_flush, ready, unsupported, failed };
 const FlushReadiness = enum { pending, ready, failed };
@@ -58,11 +58,14 @@ pub const WriteState = struct {
     clear: bool = false,
     selection: u32 = 0,
     waiting_timestamp: bool = false,
+    mutation_dispatched: bool = false,
     committed: bool = false,
     timestamp: u32 = 0,
     owner_cookie: ?linux.XcbCookie = null,
     failed: bool = false,
     timestamp_window: u32 = 0,
+    timestamp_window_sequence: u32 = 0,
+    timestamp_property_sequence: u32 = 0,
 };
 
 const Transfer = struct {
@@ -141,6 +144,12 @@ pub const Connection = struct {
     response_count: u32 = 0,
     output_pending: bool = false,
     retired_timestamp_window: u32 = 0,
+    retired_timestamp_window_sequence: u32 = 0,
+    retired_timestamp_property_sequence: u32 = 0,
+    connect_thread: ?std.Thread = null,
+    connect_finished: std.atomic.Value(bool) = .init(false),
+    connect_result: ?*linux.XcbConnection = null,
+    connect_screen_index: c_int = 0,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -155,6 +164,7 @@ pub const Connection = struct {
     }
 
     pub fn deinit(self: *Connection) void {
+        std.debug.assert(self.connect_thread == null);
         if (self.connection) |connection| {
             var index = self.reply_index;
             while (index < self.request_index) : (index += 1) {
@@ -214,19 +224,46 @@ pub const Connection = struct {
     }
 
     fn connect(self: *Connection) Progress {
-        var screen: c_int = 0;
-        const connection = self.symbols.xcb_connect(null, &screen) orelse {
+        if (self.connect_thread == null and self.connection == null) {
+            self.connect_thread = std.Thread.spawn(.{}, connectWorker, .{self}) catch {
+                self.phase = .unsupported;
+                return .unsupported;
+            };
+            return .pending;
+        }
+        if (!self.joinConnectThread()) return .pending;
+        const connection = self.connection orelse {
             self.phase = .unsupported;
             return .unsupported;
         };
-        self.connection = connection;
-        self.screen_index = screen;
         if (self.symbols.xcb_connection_has_error(connection) != 0) {
             self.phase = .unsupported;
             return .unsupported;
         }
         self.phase = .atoms;
         return .pending;
+    }
+
+    fn connectWorker(self: *Connection) void {
+        var screen: c_int = 0;
+        self.connect_result = self.symbols.xcb_connect(null, &screen);
+        self.connect_screen_index = screen;
+        self.connect_finished.store(true, .release);
+    }
+
+    fn joinConnectThread(self: *Connection) bool {
+        const thread = self.connect_thread orelse return true;
+        if (!self.connect_finished.load(.acquire)) return false;
+        thread.join();
+        self.connect_thread = null;
+        self.connection = self.connect_result;
+        self.connect_result = null;
+        self.screen_index = self.connect_screen_index;
+        return true;
+    }
+
+    pub fn shutdownReady(self: *Connection) bool {
+        return self.joinConnectThread();
     }
 
     fn requestAtom(self: *Connection) Progress {
@@ -424,13 +461,18 @@ pub const Connection = struct {
         if (self.output_pending) switch (self.flushOutput()) {
             .complete => {},
             .pending => return .pending,
-            .failed => return failRead(state),
+            .failed => {
+                self.failure = .flush;
+                self.phase = .failed;
+                state.phase = .failed;
+                return .failed;
+            },
         };
         switch (state.phase) {
             .ready => return .ready,
             .refused => return .refused,
             .limit_exceeded => return .limit_exceeded,
-            .failed => return .failed,
+            .failed => return .candidate_failed,
             .idle, .selection, .incremental => return .pending,
             .property => {},
         }
@@ -447,12 +489,12 @@ pub const Connection = struct {
         state.property_cookie = null;
         defer if (reply_pointer) |pointer| std.c.free(pointer);
         defer if (error_pointer) |pointer| std.c.free(pointer);
-        if (error_pointer != null) return failRead(state);
-        const opaque_reply = reply_pointer orelse return failRead(state);
+        if (error_pointer != null) return failReadCandidate(state);
+        const opaque_reply = reply_pointer orelse return failReadCandidate(state);
         const reply: *const linux.XcbGetPropertyReply = @ptrCast(@alignCast(opaque_reply));
-        const bytes = propertyBytes(reply) orelse return failRead(state);
+        const bytes = propertyBytes(reply) orelse return failReadCandidate(state);
         if (reply.atom_type == self.atoms().?.incr) {
-            if (reply.format != 32 or (bytes.len != 0 and bytes.len < 4)) return failRead(state);
+            if (reply.format != 32 or (bytes.len != 0 and bytes.len < 4)) return failReadCandidate(state);
             // xclip sends an empty INCR property instead of the ICCCM size hint.
             if (bytes.len >= 4) {
                 const announced = std.mem.readInt(u32, bytes[0..4], builtin.cpu.arch.endian());
@@ -479,7 +521,7 @@ pub const Connection = struct {
         else
             reply.atom_type == state.expected_type;
         if (reply.format != 8 or !accepted_type) {
-            return failRead(state);
+            return failReadCandidate(state);
         }
         if (state.actual_type == 0) state.actual_type = reply.atom_type;
         if (bytes.len == 0 and state.incremental) {
@@ -491,13 +533,19 @@ pub const Connection = struct {
             return .limit_exceeded;
         }
         if (textPropertyUsesLatin1(state.actual_type)) {
-            const appended = appendLatin1(self.allocator, data, bytes, max_bytes) catch return failRead(state);
+            const appended = appendLatin1(self.allocator, data, bytes, max_bytes) catch {
+                state.phase = .failed;
+                return .out_of_memory;
+            };
             if (!appended) {
                 state.phase = .limit_exceeded;
                 return .limit_exceeded;
             }
         } else {
-            data.appendSlice(self.allocator, bytes) catch return failRead(state);
+            data.appendSlice(self.allocator, bytes) catch {
+                state.phase = .failed;
+                return .out_of_memory;
+            };
         }
         if (state.incremental) {
             state.phase = .incremental;
@@ -549,7 +597,7 @@ pub const Connection = struct {
             state.* = .{};
             return self.selectionFailure(.protocol);
         }
-        _ = self.symbols.xcb_change_property(
+        state.timestamp_property_sequence = self.symbols.xcb_change_property(
             connection,
             0,
             state.timestamp_window,
@@ -558,7 +606,7 @@ pub const Connection = struct {
             8,
             0,
             null,
-        );
+        ).sequence;
         if (self.queueFlush() != .failed) return .pending;
         self.removeProvider(provider, false);
         self.destroyTimestampWindow(state);
@@ -579,7 +627,7 @@ pub const Connection = struct {
             state.* = .{};
             return self.selectionFailure(.protocol);
         }
-        _ = self.symbols.xcb_change_property(
+        state.timestamp_property_sequence = self.symbols.xcb_change_property(
             connection,
             0,
             state.timestamp_window,
@@ -588,7 +636,7 @@ pub const Connection = struct {
             8,
             0,
             null,
-        );
+        ).sequence;
         if (self.queueFlush() != .failed) return .pending;
         self.destroyTimestampWindow(state);
         state.* = .{};
@@ -646,19 +694,53 @@ pub const Connection = struct {
         state.* = .{};
     }
 
+    pub fn finishMutationForShutdown(self: *Connection, state: *WriteState) void {
+        std.debug.assert(state.mutation_dispatched);
+        if (state.owner_cookie) |cookie| self.symbols.xcb_discard_reply(self.connection.?, cookie.sequence);
+        if (state.provider) |provider| self.removeProvider(provider, false);
+        state.* = .{};
+    }
+
     pub fn consumeRetiredTimestampEvent(self: *Connection, event: *const linux.XcbGenericEvent) bool {
-        if (self.retired_timestamp_window == 0 or (event.response_type & 0x7f) != EVENT_PROPERTY_NOTIFY) return false;
+        if (self.retired_timestamp_window == 0) return false;
+        if (event.response_type == 0) {
+            const x_error: *const linux.XcbGenericError = @ptrCast(@alignCast(event));
+            if (x_error.resource_id != self.retired_timestamp_window and
+                !requestSequenceMatches(self.retired_timestamp_window_sequence, x_error.full_sequence) and
+                !requestSequenceMatches(self.retired_timestamp_property_sequence, x_error.full_sequence))
+            {
+                return false;
+            }
+            self.destroyRetiredTimestampWindow();
+            return true;
+        }
+        if ((event.response_type & 0x7f) != EVENT_PROPERTY_NOTIFY) return false;
         const notify: *const linux.XcbPropertyNotifyEvent = @ptrCast(@alignCast(event));
         if (notify.window != self.retired_timestamp_window or notify.atom != self.atom_values[10] or notify.state != 0) {
             return false;
         }
-        _ = self.symbols.xcb_destroy_window(self.connection.?, self.retired_timestamp_window);
-        self.retired_timestamp_window = 0;
-        _ = self.queueFlush();
+        self.destroyRetiredTimestampWindow();
         return true;
     }
 
     pub fn routeWriteEvent(self: *Connection, state: *WriteState, event: *const linux.XcbGenericEvent) bool {
+        if (state.waiting_timestamp and event.response_type == 0) {
+            const x_error: *const linux.XcbGenericError = @ptrCast(@alignCast(event));
+            if (x_error.resource_id != state.timestamp_window and
+                !requestSequenceMatches(state.timestamp_window_sequence, x_error.full_sequence) and
+                !requestSequenceMatches(state.timestamp_property_sequence, x_error.full_sequence))
+            {
+                return false;
+            }
+            state.waiting_timestamp = false;
+            self.destroyTimestampWindow(state);
+            if (state.provider) |provider| {
+                self.removeProvider(provider, false);
+                state.provider = null;
+            }
+            state.failed = true;
+            return true;
+        }
         if (!state.waiting_timestamp or (event.response_type & 0x7f) != EVENT_PROPERTY_NOTIFY) return false;
         const notify: *const linux.XcbPropertyNotifyEvent = @ptrCast(@alignCast(event));
         if (notify.window != state.timestamp_window or notify.atom != self.atoms().?.timestamp or notify.state != 0) return false;
@@ -671,13 +753,16 @@ pub const Connection = struct {
             state.selection,
             notify.time,
         );
+        state.mutation_dispatched = true;
         state.owner_cookie = self.symbols.xcb_get_selection_owner(self.connection.?, state.selection);
         if (self.queueFlush() == .failed) _ = self.abortWrite(state);
         return true;
     }
 
     pub fn pollEvent(self: *Connection) ?*linux.XcbGenericEvent {
-        return self.symbols.xcb_poll_for_event(self.connection.?);
+        const connection = self.connection orelse return null;
+        if (self.phase != .ready) return null;
+        return self.symbols.xcb_poll_for_event(connection);
     }
 
     pub fn handleProviderEvent(self: *Connection, event: *const linux.XcbGenericEvent) void {
@@ -802,7 +887,7 @@ pub const Connection = struct {
         state.timestamp_window = self.symbols.xcb_generate_id(connection);
         if (state.timestamp_window == 0 or state.timestamp_window == std.math.maxInt(u32)) return false;
         const event_mask = [_]u32{EVENT_MASK_PROPERTY_CHANGE};
-        _ = self.symbols.xcb_create_window(
+        state.timestamp_window_sequence = self.symbols.xcb_create_window(
             connection,
             0,
             state.timestamp_window,
@@ -816,7 +901,7 @@ pub const Connection = struct {
             0,
             1 << 11,
             &event_mask,
-        );
+        ).sequence;
         return true;
     }
 
@@ -824,13 +909,27 @@ pub const Connection = struct {
         if (state.timestamp_window == 0) return;
         if (self.connection) |connection| _ = self.symbols.xcb_destroy_window(connection, state.timestamp_window);
         state.timestamp_window = 0;
+        state.timestamp_window_sequence = 0;
+        state.timestamp_property_sequence = 0;
     }
 
     fn retireTimestampWindow(self: *Connection, state: *WriteState) void {
         if (state.timestamp_window == 0) return;
         std.debug.assert(self.retired_timestamp_window == 0);
         self.retired_timestamp_window = state.timestamp_window;
+        self.retired_timestamp_window_sequence = state.timestamp_window_sequence;
+        self.retired_timestamp_property_sequence = state.timestamp_property_sequence;
         state.timestamp_window = 0;
+        state.timestamp_window_sequence = 0;
+        state.timestamp_property_sequence = 0;
+        _ = self.queueFlush();
+    }
+
+    fn destroyRetiredTimestampWindow(self: *Connection) void {
+        _ = self.symbols.xcb_destroy_window(self.connection.?, self.retired_timestamp_window);
+        self.retired_timestamp_window = 0;
+        self.retired_timestamp_window_sequence = 0;
+        self.retired_timestamp_property_sequence = 0;
         _ = self.queueFlush();
     }
 
@@ -1234,14 +1333,18 @@ fn propertyBytes(reply: *const linux.XcbGetPropertyReply) ?[]const u8 {
     return pointer[@sizeOf(linux.XcbGetPropertyReply)..][0..length];
 }
 
-fn failRead(state: *ReadState) ReadResult {
+fn failReadCandidate(state: *ReadState) ReadResult {
     state.phase = .failed;
-    return .failed;
+    return .candidate_failed;
 }
 
 fn timestampBefore(left: u32, right: u32) bool {
     const difference: i32 = @bitCast(left -% right);
     return difference < 0;
+}
+
+fn requestSequenceMatches(expected: u32, actual: u32) bool {
+    return expected != 0 and expected == actual;
 }
 
 fn textPropertyUsesLatin1(actual_type: u32) bool {
@@ -1448,6 +1551,7 @@ test "X11 read cleanup remains safe after the connection enters failed phase" {
     symbols.xcb_destroy_window = fakeDestroyWindow;
     var fake: FakeXcb = .{};
     var connection: Connection = undefined;
+    connection.allocator = std.testing.allocator;
     connection.symbols = &symbols;
     connection.connection = @ptrCast(&fake);
     connection.phase = .failed;
@@ -1511,6 +1615,69 @@ test "X11 cancelled timestamp windows remain tombstoned until their event is con
     try std.testing.expect(connection.consumeRetiredTimestampEvent(@ptrCast(&event)));
     try std.testing.expectEqual(@as(u32, 0), connection.retired_timestamp_window);
     try std.testing.expectEqual(@as(u32, 1), fake.flush_count);
+}
+
+test "X11 timestamp request errors retire active and tombstoned windows" {
+    var symbols: linux.XcbSymbols = undefined;
+    symbols.xcb_destroy_window = fakeDestroyWindow;
+    symbols.xcb_flush = fakeFlush;
+    var fake: FakeXcb = .{};
+    var connection: Connection = undefined;
+    connection.allocator = std.testing.allocator;
+    connection.symbols = &symbols;
+    connection.connection = @ptrCast(&fake);
+    connection.phase = .ready;
+    connection.output_ready_override = true;
+
+    const provider = try std.testing.allocator.create(Provider);
+    provider.* = .{ .selection = 1, .data = &.{} };
+    connection.providers = .{ provider, null, null, null };
+    var active: WriteState = .{ .provider = provider, .waiting_timestamp = true, .timestamp_window = 21 };
+    const active_error: linux.XcbGenericError = .{
+        .response_type = 0,
+        .error_code = 3,
+        .sequence = 0,
+        .resource_id = 21,
+        .minor_code = 0,
+        .major_code = 18,
+        .pad0 = 0,
+        .pad = .{0} ** 5,
+        .full_sequence = 0,
+    };
+    try std.testing.expect(connection.routeWriteEvent(&active, @ptrCast(&active_error)));
+    try std.testing.expect(active.failed);
+    try std.testing.expect(!active.waiting_timestamp);
+    try std.testing.expect(active.provider == null);
+    try std.testing.expect(connection.providers[0] == null);
+
+    connection.retired_timestamp_window = 22;
+    var retired_error = active_error;
+    retired_error.resource_id = 22;
+    try std.testing.expect(connection.consumeRetiredTimestampEvent(@ptrCast(&retired_error)));
+    try std.testing.expectEqual(@as(u32, 0), connection.retired_timestamp_window);
+}
+
+test "X11 event polling is inert until connection initialization completes" {
+    var connection: Connection = undefined;
+    connection.connection = null;
+    connection.phase = .idle;
+    try std.testing.expect(connection.pollEvent() == null);
+}
+
+test "X11 connection establishment does not block a drive unit" {
+    var symbols: linux.XcbSymbols = undefined;
+    symbols.xcb_connect = fakeSlowConnect;
+    symbols.xcb_connection_has_error = fakeConnectionHasError;
+    symbols.xcb_disconnect = fakeDisconnect;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+
+    const started_ns = std.time.nanoTimestamp();
+    try std.testing.expectEqual(Progress.pending, connection.drive());
+    try std.testing.expect(std.time.nanoTimestamp() - started_ns < 50 * std.time.ns_per_ms);
+
+    std.Thread.sleep(250 * std.time.ns_per_ms);
+    try std.testing.expectEqual(Progress.pending, connection.drive());
+    connection.deinit();
 }
 
 const FakeXcb = struct {
@@ -1595,6 +1762,14 @@ test "X11 atom initialization fails on a polled protocol error and discards rema
 fn fakeConnectionHasError(_: *linux.XcbConnection) callconv(.c) c_int {
     return 0;
 }
+
+fn fakeSlowConnect(_: ?[*:0]const u8, screen: ?*c_int) callconv(.c) ?*linux.XcbConnection {
+    std.Thread.sleep(200 * std.time.ns_per_ms);
+    screen.?.* = 0;
+    return @ptrCast(&fake_slow_connection);
+}
+
+var fake_slow_connection: FakeXcb = .{};
 
 fn fakeDisconnect(connection: *linux.XcbConnection) callconv(.c) void {
     const fake: *FakeXcb = @ptrCast(@alignCast(connection));
