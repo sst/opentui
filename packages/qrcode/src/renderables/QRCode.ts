@@ -1,4 +1,4 @@
-import { MeasureMode } from "yoga-layout"
+import { MeasureMode } from "@opentui/core/yoga"
 import {
   OptimizedBuffer,
   parseColor,

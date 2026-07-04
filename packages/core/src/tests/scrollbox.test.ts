@@ -1,4 +1,4 @@
-import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, MockTreeSitterClient } from "../testing.js"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
 import { BoxRenderable } from "../renderables/Box.js"
@@ -22,6 +22,7 @@ let mockMouse: MockMouse
 let renderOnce: () => Promise<void>
 let captureCharFrame: () => string
 let mockTreeSitterClient: MockTreeSitterClient
+let mockTreeSitterClients: MockTreeSitterClient[]
 
 beforeEach(async () => {
   ;({
@@ -30,13 +31,24 @@ beforeEach(async () => {
     renderOnce,
     captureCharFrame,
   } = await createTestRenderer({ width: 80, height: 24 }))
-  mockTreeSitterClient = new MockTreeSitterClient()
-  mockTreeSitterClient.setMockResult({ highlights: [] })
+  mockTreeSitterClients = []
+  mockTreeSitterClient = createMockTreeSitterClient()
 })
 
-afterEach(() => {
+afterEach(async () => {
   testRenderer.destroy()
+  for (const client of mockTreeSitterClients) {
+    client.resolveAllHighlightOnce()
+    await client.destroy()
+  }
 })
+
+function createMockTreeSitterClient(): MockTreeSitterClient {
+  const client = new MockTreeSitterClient()
+  client.setMockResult({ highlights: [] })
+  mockTreeSitterClients.push(client)
+  return client
+}
 
 describe("ScrollBoxRenderable - child delegation", () => {
   test("delegates add to content wrapper", () => {
@@ -58,7 +70,7 @@ describe("ScrollBoxRenderable - child delegation", () => {
     scrollbox.add(child)
     expect(scrollbox.getChildren().length).toBe(1)
 
-    scrollbox.remove(child.id)
+    scrollbox.remove(child)
     expect(scrollbox.getChildren().length).toBe(0)
   })
 
@@ -77,6 +89,87 @@ describe("ScrollBoxRenderable - child delegation", () => {
     expect(children[0].id).toBe("child1")
     expect(children[1].id).toBe("child3")
     expect(children[2].id).toBe("child2")
+  })
+
+  test("destroyRecursively fully detaches internal parts without warnings", () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, { id: "scrollbox" })
+    const child = new BoxRenderable(testRenderer, { id: "child" })
+    scrollbox.add(child)
+
+    const wrapper = scrollbox.wrapper
+    const verticalScrollBar = scrollbox.verticalScrollBar
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      scrollbox.destroyRecursively()
+      expect(warnSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
+
+    expect(wrapper.isDestroyed).toBe(true)
+    expect(wrapper.parent).toBeNull()
+    expect(verticalScrollBar.isDestroyed).toBe(true)
+    expect(verticalScrollBar.parent).toBeNull()
+    expect(child.isDestroyed).toBe(true)
+    expect(child.parent).toBeNull()
+  })
+
+  test("removing an internal part by reference detaches it from its real parent", () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, { id: "scrollbox" })
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      scrollbox.remove(scrollbox.verticalScrollBar)
+      expect(warnSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
+
+    expect(scrollbox.verticalScrollBar.parent).toBeNull()
+  })
+})
+
+describe("ScrollBoxRenderable - culled content layout freshness", () => {
+  test("rows revealed after off-screen relayouts render at fresh positions", async () => {
+    const scrollbox = new ScrollBoxRenderable(testRenderer, {
+      id: "reveal-scrollbox",
+      width: 30,
+      height: 6,
+      viewportCulling: true,
+    })
+    testRenderer.root.add(scrollbox)
+
+    const rows: BoxRenderable[] = []
+    for (let i = 0; i < 40; i++) {
+      const row = new BoxRenderable(testRenderer, { id: `reveal-row-${i}`, height: 1, flexShrink: 0 })
+      row.add(new TextRenderable(testRenderer, { content: `row-${i}` }))
+      scrollbox.add(row)
+      rows.push(row)
+    }
+    await renderOnce()
+
+    scrollbox.scrollTo(scrollbox.scrollHeight)
+    await renderOnce()
+
+    // While the top rows are culled (their subtrees skipped by traversal),
+    // relayout several times so any staleness in skipped subtrees would have
+    // multiple chances to accumulate before the rows are revealed again.
+    for (const rowHeight of [2, 3, 2]) {
+      rows[0].height = rowHeight
+      await renderOnce()
+    }
+
+    scrollbox.scrollTo(0)
+    await renderOnce()
+
+    // row-0 is now 2 tall, so the following rows must have shifted down and
+    // their text subtrees must render at fresh absolute positions.
+    const lines = captureCharFrame().split("\n")
+    expect(lines[0]).toContain("row-0")
+    expect(lines[2]).toContain("row-1")
+    expect(lines[3]).toContain("row-2")
+    expect(lines[4]).toContain("row-3")
   })
 })
 
@@ -856,8 +949,7 @@ world
   test("stays scrolled to bottom with growing code renderables in sticky scroll mode", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
     // Use manual-resolving mock client for deterministic behavior
-    const autoResolvingClient = new MockTreeSitterClient()
-    autoResolvingClient.setMockResult({ highlights: [] })
+    const autoResolvingClient = createMockTreeSitterClient()
 
     const parent = new BoxRenderable(testRenderer, {
       flexDirection: "column",
@@ -1352,7 +1444,8 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     // Force a size recalculation that programmatically clamps scrollTop to 0.
     // This must not be treated as a user returning to sticky position.
     for (let i = 0; i < 28; i++) {
-      scrollBox.remove(`line-${i}`)
+      const line = scrollBox.getRenderable(`line-${i}`)
+      if (line) scrollBox.remove(line)
     }
     await renderOnce()
 
@@ -1720,7 +1813,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
   test("resets _hasManualScroll for stickyStart=bottom when content fits in viewport (issue #530)", async () => {
     const scrollBox = new ScrollBoxRenderable(testRenderer, {
       width: 40,
-      height: 10,
+      height: 20,
       stickyScroll: true,
       stickyStart: "bottom",
     })
@@ -1732,9 +1825,9 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     scrollBox.add(new TextRenderable(testRenderer, { content: "Line 1" }))
     await renderOnce()
 
-    // maxScrollTop should be 0 since content fits
+    // maxScrollTop should be effectively zero since content fits; ScrollBox treats <= 1 as layout noise.
     const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
-    expect(maxScroll).toBe(0)
+    expect(maxScroll).toBeLessThanOrEqual(1)
 
     // Simulate accidental scroll attempts (common with trackpads)
     scrollBox.scrollTo(0)
@@ -1745,7 +1838,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     expect((scrollBox as any)._hasManualScroll).toBe(false)
 
     // Add more content that causes overflow - should stay at bottom
-    for (let i = 2; i < 20; i++) {
+    for (let i = 2; i < 40; i++) {
       scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
       await renderOnce()
 

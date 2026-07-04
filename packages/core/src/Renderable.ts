@@ -1,5 +1,5 @@
 import { EventEmitter } from "events"
-import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
+import Yoga, { Direction, Display, Edge, FlexDirection, type Node as YogaNode } from "./yoga.js"
 import { OptimizedBuffer } from "./buffer.js"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
 import type { MouseEventType } from "./lib/parse.mouse.js"
@@ -38,8 +38,6 @@ const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
-  ADDED = "added",
-  REMOVED = "removed",
   RESIZED = "resized",
 }
 
@@ -152,7 +150,7 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 
   public abstract add(obj: BaseRenderable | unknown, index?: number): number
-  public abstract remove(id: string): void
+  public abstract remove(child: BaseRenderable): void
   public abstract insertBefore(obj: BaseRenderable | unknown, anchor: BaseRenderable | unknown): void
   public abstract getChildren(): BaseRenderable[]
   public abstract getChildrenCount(): number
@@ -199,9 +197,30 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 }
 
-const yogaConfig: Config = Yoga.Config.create()
-yogaConfig.setUseWebDefaults(false)
-yogaConfig.setPointScaleFactor(1)
+interface LayoutGenerationContext extends RenderContext {
+  __otuiLayoutGeneration?: number
+  __otuiRenderListRevision?: number
+}
+
+function getLayoutGeneration(ctx: RenderContext): number {
+  return (ctx as LayoutGenerationContext).__otuiLayoutGeneration ?? 0
+}
+
+function bumpLayoutGeneration(ctx: RenderContext): number {
+  const next = getLayoutGeneration(ctx) + 1
+  const generationContext = ctx as LayoutGenerationContext
+  generationContext.__otuiLayoutGeneration = next
+  return next
+}
+
+function getRenderListRevision(ctx: RenderContext): number {
+  return (ctx as LayoutGenerationContext).__otuiRenderListRevision ?? 0
+}
+
+function bumpRenderListRevision(ctx: RenderContext): void {
+  const generationContext = ctx as LayoutGenerationContext
+  generationContext.__otuiRenderListRevision = getRenderListRevision(ctx) + 1
+}
 
 export abstract class Renderable extends BaseRenderable {
   static renderablesByNumber: Map<number, Renderable> = new Map()
@@ -247,7 +266,6 @@ export abstract class Renderable extends BaseRenderable {
   protected _opacity: number = 1.0
   private _flexShrink: number = 1
 
-  private renderableMapById: Map<string, Renderable> = new Map()
   protected _childrenInLayoutOrder: Renderable[] = []
   protected _childrenInZIndexOrder: Renderable[] = []
   private needsZIndexSort: boolean = false
@@ -293,8 +311,7 @@ export abstract class Renderable extends BaseRenderable {
     this._liveCount = this._live && this._visible ? 1 : 0
     this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
 
-    // TODO: use a global yoga config
-    this.yogaNode = Yoga.Node.create(yogaConfig)
+    this.yogaNode = Yoga.Node.createForOpenTUI()
     this.yogaNode.setDisplay(this._visible ? Display.Flex : Display.None)
     this.setupYogaProperties(options)
 
@@ -303,18 +320,6 @@ export abstract class Renderable extends BaseRenderable {
     if (this.buffered) {
       this.createFrameBuffer()
     }
-  }
-
-  public override get id() {
-    return this._id
-  }
-
-  public override set id(value: string) {
-    if (this.parent) {
-      this.parent.renderableMapById.delete(this.id)
-      this.parent.renderableMapById.set(value, this)
-    }
-    super.id = value
   }
 
   public get focusable(): boolean {
@@ -344,6 +349,7 @@ export abstract class Renderable extends BaseRenderable {
     const wasVisible = this._visible
     this._visible = value
     this.yogaNode.setDisplay(value ? Display.Flex : Display.None)
+    bumpRenderListRevision(this._ctx)
 
     if (this._live) {
       if (!wasVisible && value) {
@@ -367,6 +373,7 @@ export abstract class Renderable extends BaseRenderable {
     const clamped = Math.max(0, Math.min(1, value))
     if (this._opacity !== clamped) {
       this._opacity = clamped
+      bumpRenderListRevision(this._ctx)
       this.requestRender()
     }
   }
@@ -519,6 +526,7 @@ export abstract class Renderable extends BaseRenderable {
     const parentScreenX = this.parent ? this.parent._screenX : 0
     this._screenX = parentScreenX + this._x + this._translateX
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    bumpRenderListRevision(this._ctx)
     this.requestRender()
   }
 
@@ -532,6 +540,7 @@ export abstract class Renderable extends BaseRenderable {
     const parentScreenY = this.parent ? this.parent._screenY : 0
     this._screenY = parentScreenY + this._y + this._translateY
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    bumpRenderListRevision(this._ctx)
     this.requestRender()
   }
 
@@ -657,6 +666,7 @@ export abstract class Renderable extends BaseRenderable {
     if (this._zIndex !== value) {
       this._zIndex = value
       this.parent?.requestZIndexSort()
+      bumpRenderListRevision(this._ctx)
       this.requestRender()
     }
   }
@@ -847,6 +857,7 @@ export abstract class Renderable extends BaseRenderable {
 
     this._overflow = overflow
     this.yogaNode.setOverflow(parseOverflow(overflow))
+    bumpRenderListRevision(this._ctx)
     this.requestRender()
   }
 
@@ -1171,7 +1182,7 @@ export abstract class Renderable extends BaseRenderable {
 
   private replaceParent(obj: Renderable) {
     if (obj.parent) {
-      obj.parent.remove(obj.id)
+      obj.parent.remove(obj)
     }
     obj.parent = this
   }
@@ -1205,7 +1216,6 @@ export abstract class Renderable extends BaseRenderable {
     } else {
       this.replaceParent(renderable)
       this.needsZIndexSort = true
-      this.renderableMapById.set(renderable.id, renderable)
       this._childrenInZIndexOrder.push(renderable)
 
       if (typeof renderable.onLifecyclePass === "function") {
@@ -1224,6 +1234,7 @@ export abstract class Renderable extends BaseRenderable {
 
     this.childrenPrimarySortDirty = true
     this._shouldUpdateBefore.add(renderable)
+    bumpRenderListRevision(this._ctx)
 
     this.requestRender()
 
@@ -1262,14 +1273,14 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    if (!this.renderableMapById.has(anchor.id)) {
+    if (this._childrenInLayoutOrder.indexOf(anchor) === -1) {
       if (process.env.NODE_ENV !== "production") {
         console.warn(`Anchor with id ${anchor.id} does not exist within the parent ${this.id}, skipping insertBefore`)
       }
       return -1
     }
 
-    if (renderable === anchor || renderable.id === anchor.id) {
+    if (renderable === anchor) {
       if (process.env.NODE_ENV !== "production") {
         console.warn(`Anchor is the same as the node ${renderable.id} being inserted, skipping insertBefore`)
       }
@@ -1282,7 +1293,6 @@ export abstract class Renderable extends BaseRenderable {
     } else {
       this.replaceParent(renderable)
       this.needsZIndexSort = true
-      this.renderableMapById.set(renderable.id, renderable)
       this._childrenInZIndexOrder.push(renderable)
 
       if (typeof renderable.onLifecyclePass === "function") {
@@ -1303,6 +1313,7 @@ export abstract class Renderable extends BaseRenderable {
     this.yogaNode.insertChild(renderable.getLayoutNode(), insertedIndex)
 
     this._shouldUpdateBefore.add(renderable)
+    bumpRenderListRevision(this._ctx)
 
     this.requestRender()
 
@@ -1311,43 +1322,48 @@ export abstract class Renderable extends BaseRenderable {
 
   // TODO: that naming is meh
   public getRenderable(id: string): Renderable | undefined {
-    return this.renderableMapById.get(id)
+    return this._childrenInLayoutOrder.find((child) => child.id === id)
   }
 
-  public remove(id: string): void {
-    if (!id) {
+  public remove(child: BaseRenderable): void {
+    if (!(child instanceof BaseRenderable)) {
+      throw new Error("remove expects a renderable child object")
+    }
+
+    // Membership in _childrenInLayoutOrder proves child is a Renderable with a
+    // layout node; anything else (text nodes, children of other parents,
+    // already-detached renderables) is a caller bug worth surfacing in dev.
+    const index = this._childrenInLayoutOrder.indexOf(child as Renderable)
+    if (index === -1) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Renderable with id ${child.id} is not a child of ${this.id}, skipping remove`)
+      }
       return
     }
 
-    if (this.renderableMapById.has(id)) {
-      const obj = this.renderableMapById.get(id)
-      if (obj) {
-        if (obj._liveCount > 0) {
-          this.propagateLiveCount(-obj._liveCount)
-        }
+    const renderable = this._childrenInLayoutOrder[index]
 
-        const childLayoutNode = obj.getLayoutNode()
-        this.yogaNode.removeChild(childLayoutNode)
-        this.requestRender()
-
-        obj.onRemove()
-        obj.parent = null
-        this._ctx.unregisterLifecyclePass(obj)
-        this.renderableMapById.delete(id)
-
-        const index = this._childrenInLayoutOrder.findIndex((obj) => obj.id === id)
-        if (index !== -1) {
-          this._childrenInLayoutOrder.splice(index, 1)
-        }
-
-        const zIndexIndex = this._childrenInZIndexOrder.findIndex((obj) => obj.id === id)
-        if (zIndexIndex !== -1) {
-          this._childrenInZIndexOrder.splice(zIndexIndex, 1)
-        }
-
-        this.childrenPrimarySortDirty = true
-      }
+    if (renderable._liveCount > 0) {
+      this.propagateLiveCount(-renderable._liveCount)
     }
+
+    this.yogaNode.removeChild(renderable.getLayoutNode())
+    this._childrenInLayoutOrder.splice(index, 1)
+
+    const zIndexIndex = this._childrenInZIndexOrder.indexOf(renderable)
+    if (zIndexIndex !== -1) {
+      this._childrenInZIndexOrder.splice(zIndexIndex, 1)
+    }
+
+    this._shouldUpdateBefore.delete(renderable)
+    this.requestRender()
+
+    renderable.onRemove()
+    renderable.parent = null
+    this._ctx.unregisterLifecyclePass(renderable)
+
+    this.childrenPrimarySortDirty = true
+    bumpRenderListRevision(this._ctx)
   }
 
   protected onRemove(): void {
@@ -1489,6 +1505,14 @@ export abstract class Renderable extends BaseRenderable {
     return this._childrenInZIndexOrder.map((child) => child.num)
   }
 
+  public canReuseRenderCommandList(): boolean {
+    return (
+      this.onUpdate === Renderable.prototype.onUpdate &&
+      (this._overflow === "visible" || this.getScissorRect === Renderable.prototype.getScissorRect) &&
+      !this._hasVisibleChildFilter()
+    )
+  }
+
   protected onUpdate(deltaTime: number): void {
     // Default implementation: do nothing
     // Override this method to provide custom rendering
@@ -1526,7 +1550,7 @@ export abstract class Renderable extends BaseRenderable {
     this.emit(RenderableEvents.DESTROYED)
 
     if (this.parent) {
-      this.parent.remove(this.id)
+      this.parent.remove(this)
     }
 
     if (this.frameBuffer) {
@@ -1534,12 +1558,13 @@ export abstract class Renderable extends BaseRenderable {
       this.frameBuffer = null
     }
 
-    for (const child of this._childrenInLayoutOrder) {
-      this.remove(child.id)
+    for (const child of [...this._childrenInLayoutOrder]) {
+      this.remove(child)
     }
 
     this._childrenInLayoutOrder = []
-    this.renderableMapById.clear()
+    this._childrenInZIndexOrder = []
+    this._shouldUpdateBefore.clear()
     Renderable.renderablesByNumber.delete(this.num)
 
     this.blur()
@@ -1714,6 +1739,9 @@ export type RenderCommand =
 
 export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
+  private appliedLayoutGeneration: number = -1
+  private appliedRenderListRevision: number = -1
+  private renderListReusable: boolean = false
 
   constructor(ctx: RenderContext) {
     super(ctx, {
@@ -1729,7 +1757,7 @@ export class RootRenderable extends Renderable {
       this.yogaNode.free()
     }
 
-    this.yogaNode = Yoga.Node.create(yogaConfig)
+    this.yogaNode = Yoga.Node.createForOpenTUI()
     this.yogaNode.setWidth(ctx.width)
     this.yogaNode.setHeight(ctx.height)
     this.yogaNode.setFlexDirection(FlexDirection.Column)
@@ -1742,7 +1770,9 @@ export class RootRenderable extends Renderable {
 
     // 0. Run lifecycle pass
     for (const renderable of this._ctx.getLifecyclePasses()) {
-      renderable.onLifecyclePass?.call(renderable)
+      if (!renderable.isDestroyed) {
+        renderable.onLifecyclePass?.call(renderable)
+      }
     }
 
     // NOTE: Strictly speaking, this is a 3-pass rendering process:
@@ -1755,11 +1785,25 @@ export class RootRenderable extends Renderable {
     // 1. Calculate layout from root
     if (this.yogaNode.isDirty()) {
       this.calculateLayout()
+    } else {
+      this.syncExternalLayoutGeneration()
     }
 
     // 2. Update layout throughout the tree and collect render list
-    this.renderList.length = 0
-    this.updateLayout(deltaTime, this.renderList)
+    const layoutGeneration = getLayoutGeneration(this._ctx)
+    const renderListRevision = getRenderListRevision(this._ctx)
+    const canReuseRenderList =
+      this.renderListReusable &&
+      this.appliedLayoutGeneration === layoutGeneration &&
+      this.appliedRenderListRevision === renderListRevision
+
+    if (!canReuseRenderList) {
+      this.renderList.length = 0
+      super.updateLayout(deltaTime, this.renderList)
+      this.appliedLayoutGeneration = layoutGeneration
+      this.appliedRenderListRevision = getRenderListRevision(this._ctx)
+      this.renderListReusable = this.canReuseCurrentRenderList()
+    }
 
     // 3. Render all collected renderables
     this._ctx.clearHitGridScissorRects()
@@ -1803,7 +1847,26 @@ export class RootRenderable extends Renderable {
 
   public calculateLayout(): void {
     this.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
+    bumpLayoutGeneration(this._ctx)
+    this.yogaNode.markLayoutSeen()
     this.emit(LayoutEvents.LAYOUT_CHANGED)
+  }
+
+  private syncExternalLayoutGeneration(): void {
+    if (!this.yogaNode.hasNewLayout()) return
+    bumpLayoutGeneration(this._ctx)
+    this.yogaNode.markLayoutSeen()
+  }
+
+  private canReuseCurrentRenderList(): boolean {
+    if (this._liveCount > 0) return false
+
+    for (const command of this.renderList) {
+      if (command.action !== "render") continue
+      if (!command.renderable.canReuseRenderCommandList()) return false
+    }
+
+    return true
   }
 
   public resize(width: number, height: number): void {

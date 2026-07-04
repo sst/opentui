@@ -105,6 +105,26 @@ describe("SelectRenderable", () => {
       expect(select.getSelectedOption()).toEqual(sampleOptions[2])
     })
 
+    test("should scroll an initial off-screen selection into view", async () => {
+      const options: SelectOption[] = Array.from({ length: 20 }, (_, index) => ({
+        name: `Item ${index}`,
+        description: "",
+      }))
+
+      await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options,
+        selectedIndex: 12,
+        showDescription: false,
+        showScrollIndicator: true,
+      })
+
+      const frame = captureCharFrame().split("\n")
+      expect(frame.some((line) => line.includes("▶ Item 12"))).toBe(true)
+      expect(frame.findIndex((line) => line.includes("█"))).toBe(3)
+    })
+
     test("should initialize with custom options", async () => {
       const { select } = await createSelectRenderable(currentRenderer, {
         width: 20,
@@ -144,6 +164,37 @@ describe("SelectRenderable", () => {
 
       expect(select.getSelectedIndex()).toBe(sampleOptions.length - 1)
       expect(select.getSelectedOption()).toEqual(sampleOptions[sampleOptions.length - 1])
+    })
+  })
+
+  describe("Selection Indicator", () => {
+    test("should hide the indicator and reclaim its gutter", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        showDescription: false,
+        showSelectionIndicator: false,
+      })
+
+      expect(select.showSelectionIndicator).toBe(false)
+      expect(captureCharFrame().split("\n")[0].startsWith(" Option 1")).toBe(true)
+    })
+
+    test("should restore the default when reset", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        showDescription: false,
+        showSelectionIndicator: false,
+      })
+
+      select.showSelectionIndicator = undefined
+      await renderOnce()
+
+      expect(select.showSelectionIndicator).toBe(true)
+      expect(captureCharFrame().split("\n")[0].startsWith(" ▶ Option 1")).toBe(true)
     })
   })
 
@@ -240,7 +291,7 @@ describe("SelectRenderable", () => {
       expect(select.getSelectedOption()).toEqual(sampleOptions[3])
       expect(selectionChangedFired).toBe(true)
       expect(selectionIndex).toBe(3)
-      expect(selectionOption).toEqual(sampleOptions[3])
+      expect(selectionOption!).toEqual(sampleOptions[3])
     })
 
     test("should ignore invalid selected index", async () => {
@@ -356,7 +407,7 @@ describe("SelectRenderable", () => {
 
       expect(itemSelectedFired).toBe(true)
       expect(selectedIndex).toBe(2)
-      expect(selectedOption).toEqual(sampleOptions[2])
+      expect(selectedOption!).toEqual(sampleOptions[2])
     })
 
     test("should not select when no options available", async () => {
@@ -524,6 +575,38 @@ describe("SelectRenderable", () => {
     })
   })
 
+  describe("Scroll Indicator", () => {
+    const manyOptions: SelectOption[] = Array.from({ length: 20 }, (_, index) => ({
+      name: `Item ${index}`,
+      description: "",
+    }))
+
+    test.each([
+      { selectedIndex: 0, expectedRow: 1 },
+      { selectedIndex: 2, expectedRow: 1 },
+      { selectedIndex: 7, expectedRow: 2 },
+      { selectedIndex: 12, expectedRow: 3 },
+      { selectedIndex: 17, expectedRow: 4 },
+      { selectedIndex: 19, expectedRow: 4 },
+    ])("renders the viewport position for selected index $selectedIndex", async ({ selectedIndex, expectedRow }) => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: manyOptions,
+        showScrollIndicator: true,
+        showDescription: false,
+      })
+
+      select.setSelectedIndex(selectedIndex)
+      await renderOnce()
+
+      const indicatorRow = captureCharFrame()
+        .split("\n")
+        .findIndex((line) => line.includes("█"))
+      expect(indicatorRow).toBe(expectedRow)
+    })
+  })
+
   describe("Property Changes", () => {
     test("should update showScrollIndicator", async () => {
       const { select } = await createSelectRenderable(currentRenderer, {
@@ -661,12 +744,12 @@ describe("SelectRenderable", () => {
       select.moveDown()
       expect(eventCount).toBe(1)
       expect(lastIndex).toBe(2)
-      expect(lastOption).toEqual(sampleOptions[2])
+      expect(lastOption!).toEqual(sampleOptions[2])
 
       select.moveUp()
       expect(eventCount).toBe(2)
       expect(lastIndex).toBe(1)
-      expect(lastOption).toEqual(sampleOptions[1])
+      expect(lastOption!).toEqual(sampleOptions[1])
     })
 
     test("should emit ITEM_SELECTED when selecting", async () => {
@@ -690,7 +773,7 @@ describe("SelectRenderable", () => {
       select.selectCurrent()
       expect(eventCount).toBe(1)
       expect(lastIndex).toBe(2)
-      expect(lastOption).toEqual(sampleOptions[2])
+      expect(lastOption!).toEqual(sampleOptions[2])
     })
 
     test("should not reuse the same keypress after focusing another select", async () => {

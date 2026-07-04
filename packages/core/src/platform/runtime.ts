@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs"
 import { mkdir, writeFile as writeFileNode } from "node:fs/promises"
 import { dirname, isAbsolute, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -44,12 +45,23 @@ export async function resolveBundledFilePath(
   metaUrl: string,
 ): Promise<string> {
   if (!bun) {
-    const path = typeof fallbackPath === "function" ? fallbackPath() : fallbackPath
-    return fileURLToPath(path instanceof URL ? path : new URL(path, metaUrl))
+    const path = resolveFallbackFilePath(fallbackPath, metaUrl)
+    if (existsSync(path)) {
+      return path
+    }
+
+    return (await loadBundledFilePath(loadBundledFile, metaUrl)) ?? path
   }
 
-  const loadedPath = (await loadBundledFile()).default
+  return normalizeLoadedFilePath((await loadBundledFile()).default, metaUrl)
+}
 
+function resolveFallbackFilePath(fallbackPath: FilePathFallback, metaUrl: string): string {
+  const path = typeof fallbackPath === "function" ? fallbackPath() : fallbackPath
+  return fileURLToPath(path instanceof URL ? path : new URL(path, metaUrl))
+}
+
+function normalizeLoadedFilePath(loadedPath: string, baseUrl: string): string {
   if (loadedPath.startsWith("file:")) {
     return fileURLToPath(loadedPath)
   }
@@ -58,7 +70,30 @@ export async function resolveBundledFilePath(
     return loadedPath
   }
 
-  return resolve(dirname(fileURLToPath(metaUrl)), loadedPath)
+  return resolve(dirname(fileURLToPath(baseUrl)), loadedPath)
+}
+
+async function loadBundledFilePath(
+  loadBundledFile: () => Promise<FileImportModule>,
+  metaUrl: string,
+): Promise<string | undefined> {
+  const specifier = extractBundledImportSpecifier(loadBundledFile)
+  if (!specifier) {
+    return undefined
+  }
+
+  try {
+    const moduleUrl = new URL(specifier, metaUrl)
+    const loaded = (await import(moduleUrl.href)) as FileImportModule
+    return normalizeLoadedFilePath(loaded.default, moduleUrl.href)
+  } catch {
+    return undefined
+  }
+}
+
+function extractBundledImportSpecifier(loadBundledFile: () => Promise<FileImportModule>): string | undefined {
+  const match = String(loadBundledFile).match(/\bimport\(\s*(["'`])([^"'`]+)\1/)
+  return match?.[2]
 }
 
 function standardSleep(msOrDate: number | Date): Promise<void> {

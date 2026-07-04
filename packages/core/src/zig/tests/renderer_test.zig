@@ -17,6 +17,41 @@ const RGBA = text_buffer.RGBA;
 const TestMemoryOutput = test_renderer_mod.TestMemoryOutput;
 const TestRenderer = test_renderer_mod.TestRenderer;
 
+const CountingOutput = struct {
+    writes: u32 = 0,
+
+    fn bufferedOutput(self: *CountingOutput) @import("../renderer-output.zig").BufferedOutput {
+        return .{ .ctx = self, .write_fn = write, .thread_safe = true };
+    }
+
+    fn write(ctx: *anyopaque, data: []const u8) void {
+        const self: *CountingOutput = @ptrCast(@alignCast(ctx));
+        _ = data;
+        self.writes += 1;
+    }
+};
+
+const SlowThreadSafeOutput = struct {
+    delay_ns: u64,
+    writes: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+    payloads: [2][64]u8 = [_][64]u8{[_]u8{0} ** 64} ** 2,
+    lengths: [2]usize = [_]usize{0} ** 2,
+
+    fn bufferedOutput(self: *SlowThreadSafeOutput) @import("../renderer-output.zig").BufferedOutput {
+        return .{ .ctx = self, .write_fn = write, .thread_safe = true };
+    }
+
+    fn write(ctx: *anyopaque, data: []const u8) void {
+        const self: *SlowThreadSafeOutput = @ptrCast(@alignCast(ctx));
+        const index = self.writes.fetchAdd(1, .monotonic);
+        if (index < self.payloads.len) {
+            self.lengths[index] = @min(data.len, self.payloads[index].len);
+            @memcpy(self.payloads[index][0..self.lengths[index]], data[0..self.lengths[index]]);
+        }
+        std.Thread.sleep(self.delay_ns);
+    }
+};
+
 fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
@@ -66,6 +101,76 @@ test "renderer - create and destroy" {
 
     try std.testing.expectEqual(@as(u32, 80), cli_renderer.width);
     try std.testing.expectEqual(@as(u32, 24), cli_renderer.height);
+}
+
+test "renderer - clipboard allocates one exact encoded sequence" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 80, 24, pool);
+    defer test_renderer.deinit();
+
+    const payload = [_]u8{'A'} ** 2048;
+    try std.testing.expect(test_renderer.renderer.copyToClipboardOSC52(.clipboard, &payload));
+
+    const output = test_renderer.lastOutput();
+    try std.testing.expectEqual(std.base64.standard.Encoder.calcSize(payload.len) + 9, output.len);
+    try std.testing.expect(std.mem.startsWith(u8, output, "\x1b]52;c;QUFB"));
+    try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x1b\\"));
+}
+
+test "renderer - clipboard wraps OSC 52 in tmux DCS passthrough" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var test_renderer = try TestRenderer.createWithEnv(std.testing.allocator, 80, 24, pool, &.{
+        .{ .key = "TMUX", .value = "/tmp/tmux-1000/default,12345,0" },
+    });
+    defer test_renderer.deinit();
+
+    const payload = [_]u8{'A'} ** 2048;
+    try std.testing.expect(test_renderer.renderer.copyToClipboardOSC52(.clipboard, &payload));
+
+    // Envelope: "\x1bPtmux;" (7) + bare sequence (base64 + 9) with both inner
+    // ESC bytes doubled (+2) + "\x1b\\" (2) = base64 + 20.
+    const output = test_renderer.lastOutput();
+    try std.testing.expectEqual(std.base64.standard.Encoder.calcSize(payload.len) + 20, output.len);
+    try std.testing.expect(std.mem.startsWith(u8, output, "\x1bPtmux;\x1b\x1b]52;c;QUFB"));
+    try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x1b\x1b\\\x1b\\"));
+}
+
+test "renderer - clipboard chunks OSC 52 in screen DCS passthrough" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var test_renderer = try TestRenderer.createWithEnv(std.testing.allocator, 80, 24, pool, &.{
+        .{ .key = "STY", .value = "12345.pts-0.host" },
+    });
+    defer test_renderer.deinit();
+
+    const payload = [_]u8{'A'} ** 2048;
+    try std.testing.expect(test_renderer.renderer.copyToClipboardOSC52(.clipboard, &payload));
+
+    // Escaped sequence: base64 (2732) + OSC 52 framing (9) + doubled ESC bytes
+    // (+2) = 2743 bytes, split into 11 chunks of at most 252 bytes, each wrapped
+    // in "\x1bP" .. "\x1b\\" (+4 per chunk) = 2787 total.
+    const output = test_renderer.lastOutput();
+    try std.testing.expectEqual(@as(usize, 2787), output.len);
+    try std.testing.expect(std.mem.startsWith(u8, output, "\x1bP\x1b\x1b]52;c;QUFB"));
+    try std.testing.expect(std.mem.endsWith(u8, output, "QUE=\x1b\x1b\\\x1b\\"));
+
+    // ESC only precedes 'P' at envelope starts, so this counts the chunks.
+    try std.testing.expectEqual(@as(usize, 11), std.mem.count(u8, output, "\x1bP"));
+
+    // First envelope closes after exactly 252 payload bytes: "\x1bP" (2) +
+    // payload (252) puts the terminator and the next start at offset 254.
+    try std.testing.expectEqualSlices(u8, "\x1b\\\x1bP", output[254..258]);
 }
 
 test "renderer - simple text rendering to currentRenderBuffer" {
@@ -345,6 +450,32 @@ test "renderer - resize updates dimensions" {
 
     try std.testing.expectEqual(@as(u32, 120), cli_renderer.width);
     try std.testing.expectEqual(@as(u32, 40), cli_renderer.height);
+}
+
+test "renderer - resize clears stale hit grid coordinates" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var test_cli_renderer = try TestRenderer.create(
+        std.testing.allocator,
+        4,
+        2,
+        pool,
+    );
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
+
+    cli_renderer.addToCurrentHitGridClipped(2, 0, 1, 1, 99);
+    try std.testing.expectEqual(@as(u32, 99), cli_renderer.checkHit(2, 0));
+
+    try cli_renderer.resize(2, 2);
+
+    try std.testing.expectEqual(@as(u32, 0), cli_renderer.checkHit(0, 1));
+
+    _ = cli_renderer.render(false);
+    try std.testing.expect(cli_renderer.getHitGridDirty());
 }
 
 test "renderer - background color setting" {
@@ -674,6 +805,54 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
 
     const second_output = test_cli_renderer.lastOutput();
     try std.testing.expect(std.mem.indexOf(u8, second_output, "👋") == null);
+}
+
+test "renderer - grows frame output instead of committing cells whose ANSI was dropped" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const width: u32 = 1000;
+    const height: u32 = 160;
+    for ([_]bool{ false, true }) |threaded| {
+        var test_cli_renderer = if (threaded)
+            try TestRenderer.createThreadSafe(std.testing.allocator, width, height, pool)
+        else
+            try TestRenderer.create(std.testing.allocator, width, height, pool);
+        defer test_cli_renderer.deinit();
+        const cli_renderer = test_cli_renderer.renderer;
+        if (threaded) cli_renderer.setUseThread(true);
+        const next = cli_renderer.getNextBuffer();
+        const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+
+        for (0..height) |y| {
+            for (0..width) |x| {
+                const value: u8 = @intCast((x + y * width) % 255);
+                const fg = ansi.rgbColor(value, 255 - value, value / 2, 255);
+                next.set(@intCast(x), @intCast(y), .{ .char = 'X', .fg = fg, .bg = bg, .attributes = 0 });
+            }
+        }
+        try next.drawText("EARLY_SCROLL_CHANGED", 0, 0, ansi.rgbaFromFloats(1, 1, 1, 1), bg, 0);
+        try next.drawText(
+            "FULL_TOOL_RESULT_MARKER",
+            width - 24,
+            height - 1,
+            ansi.rgbaFromFloats(1, 1, 1, 1),
+            bg,
+            0,
+        );
+
+        _ = cli_renderer.render(false);
+        if (threaded) cli_renderer.setUseThread(false);
+        const output = test_cli_renderer.lastOutput();
+        const current = cli_renderer.getCurrentBuffer();
+
+        // Guard that this test actually exercises the growth path: the frame
+        // must not fit in the default output buffer.
+        try std.testing.expect(output.len > renderer.OUTPUT_BUFFER_SIZE);
+        try std.testing.expect(current.get(width - 24, height - 1).?.char == 'F');
+        try std.testing.expect(std.mem.indexOf(u8, output, "EARLY_SCROLL_CHANGED") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "FULL_TOOL_RESULT_MARKER") != null);
+    }
 }
 
 test "renderer - hyperlinks enabled with OSC 8 output" {
@@ -2305,4 +2484,121 @@ test "threaded buffered destroy: no stale write after shutdown ANSI" {
 
     // The protocol invariant we assert: setUseThread toggles do not panic
     // or deadlock, and internal state is clean for destroy() to run.
+}
+
+test "threaded buffered backend skips instead of blocking behind output" {
+    var output = SlowThreadSafeOutput{ .delay_ns = 200 * std.time.ns_per_ms };
+    var backend = try renderer.BufferedBackend.create(std.testing.allocator, output.bufferedOutput());
+    defer backend.deinit();
+    backend.setUseThread(true);
+
+    backend.beginFrame();
+    try backend.writer().writeAll("large graphics frame");
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
+
+    var timer = try std.time.Timer.start();
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.skipped, backend.prepareFrame());
+    try std.testing.expect(timer.read() < 100 * std.time.ns_per_ms);
+
+    backend.setUseThread(false);
+    try std.testing.expectEqualStrings("large graphics frame", output.payloads[0][0..output.lengths[0]]);
+
+    backend.setUseThread(true);
+    backend.beginFrame();
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
+
+    backend.beginFrame();
+    try backend.writer().writeAll("next graphics frame");
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
+    backend.setUseThread(false);
+    try std.testing.expectEqual(@as(u32, 2), output.writes.load(.monotonic));
+    try std.testing.expectEqualStrings("next graphics frame", output.payloads[1][0..output.lengths[1]]);
+}
+
+test "buffered backend reports a failed frame when growth allocation fails" {
+    const rout = @import("../renderer-output.zig");
+    // Initial create performs exactly two allocations (buffer A and B). The
+    // growth realloc is the next allocation/resize, which must fail.
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{
+        .fail_index = 2,
+        .resize_fail_index = 0,
+    });
+    var out = CountingOutput{};
+    var backend = try renderer.BufferedBackend.create(failing.allocator(), out.bufferedOutput());
+    defer backend.deinit();
+
+    backend.beginFrame();
+    var w = backend.writer();
+    const chunk = [_]u8{'x'} ** 4096;
+    var write_failed = false;
+    var written: usize = 0;
+    while (written <= renderer.OUTPUT_BUFFER_SIZE) : (written += chunk.len) {
+        w.writeAll(&chunk) catch {
+            write_failed = true;
+            break;
+        };
+    }
+    try std.testing.expect(write_failed);
+
+    // A frame whose bytes were dropped must be reported as failed so the
+    // renderer can force a full repaint, and the truncated ANSI stream must
+    // not reach the terminal.
+    try std.testing.expectEqual(rout.WriteStatus.failed, backend.endFrame());
+    try std.testing.expectEqual(@as(u32, 0), out.writes);
+
+    // The failure is per-frame: a following frame that fits reports ok.
+    backend.beginFrame();
+    try backend.writer().writeAll("recovered");
+    try std.testing.expectEqual(rout.WriteStatus.ok, backend.endFrame());
+    try std.testing.expect(out.writes >= 1);
+}
+
+test "buffered backend releases oversized frame buffers after the spike passes" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    var out = CountingOutput{};
+
+    var backend = try renderer.BufferedBackend.create(gpa.allocator(), out.bufferedOutput());
+    defer backend.deinit();
+
+    // One pathological frame that grows the active buffer to ~4x the default.
+    backend.beginFrame();
+    var w = backend.writer();
+    const chunk = [_]u8{'x'} ** 4096;
+    var written: usize = 0;
+    while (written < 4 * renderer.OUTPUT_BUFFER_SIZE) : (written += chunk.len) {
+        try w.writeAll(&chunk);
+    }
+    _ = backend.endFrame();
+    try std.testing.expect(gpa.total_requested_bytes > 3 * renderer.OUTPUT_BUFFER_SIZE);
+
+    // A long run of ordinary frames afterwards must release the spike memory
+    // instead of pinning it for the lifetime of the renderer.
+    var i: usize = 0;
+    while (i < 200) : (i += 1) {
+        backend.beginFrame();
+        try backend.writer().writeAll("small frame");
+        _ = backend.endFrame();
+    }
+
+    try std.testing.expect(gpa.total_requested_bytes <= 3 * renderer.OUTPUT_BUFFER_SIZE);
+}
+
+test "buffered backend frees grown buffers cleanly on deinit" {
+    // Regression guard for the alloc/free pairing: buffers grown by frame
+    // writes must be freed by the same allocator that grew them. deinit no
+    // longer takes an allocator parameter, so a mismatch is unrepresentable;
+    // std.testing.allocator verifies there is no leak and no invalid free.
+    var out = CountingOutput{};
+    var backend = try renderer.BufferedBackend.create(std.testing.allocator, out.bufferedOutput());
+    defer backend.deinit();
+
+    backend.beginFrame();
+    var w = backend.writer();
+    const chunk = [_]u8{'x'} ** 4096;
+    var written: usize = 0;
+    while (written < 2 * renderer.OUTPUT_BUFFER_SIZE) : (written += chunk.len) {
+        try w.writeAll(&chunk);
+    }
+    try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
 }

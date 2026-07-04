@@ -193,6 +193,7 @@ pub const CliRenderer = struct {
     hitGridHeight: u32,
     hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect),
     hitGridDirty: bool = false,
+    hitGridResizeInvalidated: bool = false,
 
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
@@ -224,6 +225,9 @@ pub const CliRenderer = struct {
         remote_mode: Terminal.RemoteMode = .local,
         output: OutputTarget = .stdout,
         clearOnShutdown: bool = true,
+        // Optional override for terminal environment lookups. Borrowed: the
+        // caller owns the map and must keep it alive for the renderer's lifetime.
+        env_map: ?*const std.process.EnvMap = null,
     };
 
     pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool) !*CliRenderer {
@@ -285,7 +289,7 @@ pub const CliRenderer = struct {
             .buffered => |buffered_output| .{ .buffered = try BufferedBackend.create(allocator, buffered_output) },
             .feed => |feed_ptr| .{ .feed = FeedBackend.create(feed_ptr) },
         };
-        errdefer backend.deinit(allocator);
+        errdefer backend.deinit();
 
         self.* = .{
             .width = width,
@@ -295,7 +299,7 @@ pub const CliRenderer = struct {
             .pool = pool,
             .backgroundColor = ansi.rgbColor(0, 0, 0, 0),
             .renderOffset = 0,
-            .terminal = Terminal.init(.{ .remote_mode = opts.remote_mode }),
+            .terminal = Terminal.init(.{ .remote_mode = opts.remote_mode, .env_map = opts.env_map }),
             .clearOnShutdown = opts.clearOnShutdown,
             .backend = backend,
             .lastCursorStyleTag = null,
@@ -355,7 +359,7 @@ pub const CliRenderer = struct {
         // without replaying the stale last-frame buffer on top of the
         // freshly-restored terminal.
         self.performShutdownSequence();
-        self.backend.deinit(self.allocator);
+        self.backend.deinit();
         self.terminal.deinit();
 
         self.currentRenderBuffer.deinit();
@@ -577,14 +581,16 @@ pub const CliRenderer = struct {
             const newCurrentHitGrid = try self.allocator.alloc(u32, newHitGridSize);
             errdefer self.allocator.free(newCurrentHitGrid);
             const newNextHitGrid = try self.allocator.alloc(u32, newHitGridSize);
-            @memset(newCurrentHitGrid, 0);
-            @memset(newNextHitGrid, 0);
 
             self.allocator.free(self.currentHitGrid);
             self.allocator.free(self.nextHitGrid);
             self.currentHitGrid = newCurrentHitGrid;
             self.nextHitGrid = newNextHitGrid;
         }
+
+        @memset(self.currentHitGrid, 0);
+        @memset(self.nextHitGrid, 0);
+        self.hitGridResizeInvalidated = true;
 
         // Always update dimensions. The backing buffer is at least as large as
         // width*height, so this is safe even when the terminal shrinks. Without
@@ -1051,7 +1057,7 @@ pub const CliRenderer = struct {
     ) void {
         var currentFg: ?RGBA = null;
         var currentBg: ?RGBA = null;
-        var currentAttributes: i32 = -1;
+        var currentAttributes: ?u32 = null;
         var currentLinkId: u32 = 0;
         var utf8Buf: [4]u8 = undefined;
 
@@ -1068,7 +1074,7 @@ pub const CliRenderer = struct {
 
                 const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg);
                 const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg);
-                const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
+                const sameAttributes = fgMatch and bgMatch and currentAttributes != null and cell.attributes == currentAttributes.?;
 
                 const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
                 if (hyperlinksEnabled and linkId != currentLinkId) {
@@ -1091,7 +1097,7 @@ pub const CliRenderer = struct {
 
                     currentFg = cell.fg;
                     currentBg = cell.bg;
-                    currentAttributes = @as(i32, @intCast(cell.attributes));
+                    currentAttributes = cell.attributes;
 
                     self.emitColor(writer, cell.fg, false);
                     self.emitColor(writer, cell.bg, true);
@@ -1138,7 +1144,7 @@ pub const CliRenderer = struct {
             writer.writeAll(ansi.ANSI.eraseToEndOfLine) catch {};
             currentFg = null;
             currentBg = null;
-            currentAttributes = -1;
+            currentAttributes = null;
 
             const is_last_row = @as(u32, @intCast(uy + 1)) >= snapshot.height;
             if (!is_last_row or trailing_newline) {
@@ -1326,7 +1332,7 @@ pub const CliRenderer = struct {
 
         var currentFg: ?RGBA = null;
         var currentBg: ?RGBA = null;
-        var currentAttributes: i32 = -1;
+        var currentAttributes: ?u32 = null;
         var currentLinkId: u32 = 0;
         var utf8Buf: [4]u8 = undefined;
 
@@ -1371,7 +1377,7 @@ pub const CliRenderer = struct {
 
                 const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg);
                 const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg);
-                const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
+                const sameAttributes = fgMatch and bgMatch and currentAttributes != null and cell.attributes == currentAttributes.?;
 
                 const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
 
@@ -1401,7 +1407,7 @@ pub const CliRenderer = struct {
 
                     currentFg = cell.fg;
                     currentBg = cell.bg;
-                    currentAttributes = @as(i32, @intCast(cell.attributes));
+                    currentAttributes = cell.attributes;
 
                     ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
 
@@ -1580,7 +1586,7 @@ pub const CliRenderer = struct {
 
         // Compare hit grids before swap to detect changes. This allows TypeScript to
         // know if hover state needs rechecking without manually tracking dirty state.
-        self.hitGridDirty = !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
+        self.hitGridDirty = self.hitGridResizeInvalidated or !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
 
         // Swap hit grids: nextHitGrid (built this frame) becomes the active grid for
         // hit testing. The old currentHitGrid becomes nextHitGrid and is cleared for
@@ -1655,7 +1661,9 @@ pub const CliRenderer = struct {
     /// This is set by comparing the previous and current hit grids after render.
     /// TypeScript can use this to decide if hover state needs rechecking.
     pub fn getHitGridDirty(self: *CliRenderer) bool {
-        return self.hitGridDirty;
+        const dirty = self.hitGridDirty;
+        self.hitGridResizeInvalidated = false;
+        return dirty;
     }
 
     /// Return the renderable ID at screen position (x, y), or 0 if none.
@@ -1948,17 +1956,24 @@ pub const CliRenderer = struct {
         self.writeOut(stream.getWritten());
     }
 
-    pub fn copyToClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget, payload: []const u8) bool {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.writeClipboard(stream.writer(), target, payload) catch return false;
-        self.writeOut(stream.getWritten());
+    pub fn copyToClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget, text_utf8: []const u8) bool {
+        const output_len = self.terminal.clipboardSequenceSize(text_utf8.len) catch return false;
+        const output_bytes = self.allocator.alloc(u8, output_len) catch return false;
+        defer self.allocator.free(output_bytes);
+
+        var stream = std.io.fixedBufferStream(output_bytes);
+        self.terminal.writeClipboard(stream.writer(), target, text_utf8) catch return false;
+        const written = stream.getWritten();
+        std.debug.assert(written.len == output_len);
+        self.writeOut(written);
         return true;
     }
 
     pub fn clearClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget) bool {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.writeClipboard(stream.writer(), target, "") catch return false;
-        self.writeOut(stream.getWritten());
+        var stream: std.ArrayListUnmanaged(u8) = .{};
+        defer stream.deinit(self.allocator);
+        self.terminal.writeClipboard(stream.writer(self.allocator), target, "") catch return false;
+        self.writeOut(stream.items);
         return true;
     }
 

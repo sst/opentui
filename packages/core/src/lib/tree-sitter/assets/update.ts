@@ -6,6 +6,10 @@ import { DownloadUtils } from "../download-utils.js"
 import { parseArgs } from "util"
 import type { FiletypeParserOptions } from "../types.js"
 import { readdir } from "fs/promises"
+import { fileURLToPath } from "node:url"
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 interface ParsersConfig {
   parsers: FiletypeParserOptions[]
@@ -300,7 +304,7 @@ async function main(options?: Partial<UpdateOptions>): Promise<void> {
 function parseCLIArgs(): Partial<UpdateOptions> | null {
   try {
     const { values } = parseArgs({
-      args: Bun.argv.slice(2),
+      args: process.argv.slice(2),
       options: {
         config: { type: "string" },
         assets: { type: "string" },

@@ -416,13 +416,15 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn setSyntaxStyle(self: *Self, syntax_style: ?*const SyntaxStyle) void {
+        if (self.syntax_style == syntax_style) return;
+
+        if (syntax_style) |style| {
+            (@constCast(style)).onDestroy(@ptrCast(self), onSyntaxStyleDestroyed) catch return;
+        }
         if (self.syntax_style) |prev| {
             (@constCast(prev)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
         self.syntax_style = syntax_style;
-        if (syntax_style) |style| {
-            _ = (@constCast(style)).onDestroy(@ptrCast(self), onSyntaxStyleDestroyed) catch {};
-        }
     }
 
     pub fn getSyntaxStyle(self: *const Self) ?*const SyntaxStyle {

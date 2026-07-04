@@ -475,17 +475,25 @@ renderer.resetTerminalBgColor()
 OpenTUI can set and clear the terminal's clipboard via OSC 52. This works across SSH sessions and remote editors. Terminals that opt out silently ignore these calls.
 
 ```typescript
+import { ClipboardTarget } from "@opentui/core"
+
 if (renderer.isOsc52Supported()) {
   renderer.copyToClipboardOSC52("https://opentui.dev")
   renderer.clearClipboardOSC52()
 }
 
-// Target specific clipboards
-renderer.copyToClipboardOSC52("primary", "primary")
-renderer.copyToClipboardOSC52("both", "clipboard-primary")
+// Target specific OSC 52 selections
+renderer.copyToClipboardOSC52("primary", ClipboardTarget.Primary)
+renderer.copyToClipboardOSC52("secondary", ClipboardTarget.Secondary)
 ```
 
-`ClipboardTarget` values are `"clipboard"`, `"primary"`, or `"clipboard-primary"`. Both methods return `false` if the renderer cannot write to stdout — for example, after you destroy it.
+`ClipboardTarget` provides `Clipboard`, `Primary`, `Select`, and `Secondary`,
+which map to the OSC 52 `c`, `p`, `s`, and `q` selection bytes respectively.
+Both methods return `false` when capability policy blocks the operation or
+OpenTUI cannot construct the sequence, for example after renderer destruction.
+A `true` result means the renderer output path was invoked; it does not prove
+that every output backend accepted the bytes. OSC 52 also does not acknowledge
+terminal acceptance or a clipboard change.
 
 ### Notifications
 

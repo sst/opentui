@@ -400,6 +400,10 @@ pub const GraphemePool = struct {
             return &self.slots.items[offset];
         }
 
+        fn slotHeaderPtr(p: *u8) *align(1) SlotHeader {
+            return @ptrCast(p);
+        }
+
         pub fn allocInternal(
             self: *ClassPool,
             bytes: []const u8,
@@ -422,7 +426,7 @@ pub const GraphemePool = struct {
             assert(slot_index < self.num_slots);
             assert(self.free_list.items.len + 1 == free_slots_before);
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             assert(header_ptr.refcount == 0);
             assert(header_ptr.is_allocated == 0);
 
@@ -469,7 +473,7 @@ pub const GraphemePool = struct {
         pub fn getGeneration(self: *ClassPool, slot_index: u32) u32 {
             assert(slot_index < self.num_slots);
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             assert(header_ptr.is_allocated == 1);
             assert(header_ptr.generation <= GENERATION_MASK);
             return header_ptr.generation;
@@ -483,7 +487,7 @@ pub const GraphemePool = struct {
             self.assertInvariants();
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             if (header_ptr.generation != expected_generation) {
                 // Generation mismatch - this is a stale reference
                 return GraphemePoolError.WrongGeneration;
@@ -502,7 +506,7 @@ pub const GraphemePool = struct {
             self.assertInvariants();
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
 
             if (header_ptr.generation != expected_generation) {
                 return GraphemePoolError.WrongGeneration;
@@ -532,7 +536,7 @@ pub const GraphemePool = struct {
         ) GraphemePoolError!void {
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
 
             if (header_ptr.generation != expected_generation) {
                 return GraphemePoolError.WrongGeneration;
@@ -556,7 +560,7 @@ pub const GraphemePool = struct {
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
 
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             // Validate generation to prevent accessing stale data
             if (header_ptr.generation != expected_generation) {
                 return GraphemePoolError.WrongGeneration;
@@ -589,7 +593,7 @@ pub const GraphemePool = struct {
         ) GraphemePoolError!u32 {
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             if (header_ptr.generation != expected_generation) {
                 return GraphemePoolError.WrongGeneration;
             }
@@ -605,7 +609,7 @@ pub const GraphemePool = struct {
         ) GraphemePoolError!bool {
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             if (header_ptr.generation != expected_generation) {
                 return GraphemePoolError.WrongGeneration;
             }

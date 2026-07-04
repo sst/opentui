@@ -7,13 +7,15 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+
+env:
+  NODE_VERSION: 26.3.0
 
 jobs:
   # Extract version and check if it's a dry run
   prepare:
     name: Prepare Release
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       version: ${{ steps.extract.outputs.version }}
       fullTag: ${{ steps.extract.outputs.fullTag }}
@@ -55,11 +57,16 @@ jobs:
   validate-version:
     name: Validate Version
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Check version matches package.json files
         run: |
@@ -101,7 +108,6 @@ jobs:
     uses: ./.github/workflows/build-native.yml
     with:
       version: ${{ needs.prepare.outputs.fullTag }}
-      isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
 
   # Build example executables
   build-examples:
@@ -110,7 +116,6 @@ jobs:
     uses: ./.github/workflows/build-examples.yml
     with:
       version: ${{ needs.prepare.outputs.fullTag }}
-      isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
 
   # Publish to npm
   npm-publish:
@@ -126,7 +131,7 @@ jobs:
   sign-windows-artifacts:
     name: Sign Windows DLL Artifacts
     needs: [prepare, build-native]
-    runs-on: windows-2025-vs2026
+    runs-on: blacksmith-8vcpu-windows-2025
     permissions:
       id-token: write
       contents: read
@@ -146,14 +151,14 @@ jobs:
 
       - name: Download native binaries artifact
         if: needs.prepare.outputs.isDryRun != 'true'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: native-binaries-${{ needs.prepare.outputs.fullTag }}
           path: artifacts/native
 
       - name: Download npm packages artifact
         if: needs.prepare.outputs.isDryRun != 'true'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: npm-packages-${{ needs.prepare.outputs.fullTag }}
           path: artifacts/npm
@@ -182,7 +187,7 @@ jobs:
 
       - name: Sign Windows DLLs
         if: needs.prepare.outputs.isDryRun != 'true'
-        uses: azure/artifact-signing-action@v1
+        uses: azure/artifact-signing-action@v2
         with:
           endpoint: ${{ env.AZURE_TRUSTED_SIGNING_ENDPOINT }}
           signing-account-name: ${{ env.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
@@ -286,14 +291,14 @@ jobs:
   github-release:
     name: Create GitHub Release
     needs: [prepare, build-examples, npm-publish]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 

@@ -1,8 +1,11 @@
 import { defineStruct, defineEnum } from "bun-ffi-structs"
-import { ptr, toArrayBuffer, type Pointer } from "./platform/ffi.js"
+import { toArrayBuffer, type Pointer } from "./platform/ffi.js"
 import { RGBA, normalizeColorValue } from "./lib/RGBA.js"
 
-const rgbaPackTransform = (rgba?: RGBA) => (rgba ? ptr(rgba.buffer) : null)
+// Returns the owning Uint16Array so bun-ffi-structs serializes the address and
+// retains the color buffer with the packed struct (requires bun-ffi-structs >= 0.2.4).
+// Returning a raw pointer here would leave the color memory ownerless.
+const rgbaPackTransform = (rgba?: RGBA) => rgba?.buffer ?? null
 const rgbaUnpackTransform = (ptr?: Pointer) =>
   ptr ? RGBA.fromArray(new Uint16Array(toArrayBuffer(ptr, 0, 8))) : undefined
 
@@ -87,6 +90,7 @@ export const VisualCursorStruct = defineStruct([
 
 const UnicodeMethodEnum = defineEnum({ wcwidth: 0, unicode: 1 }, "u8")
 const TerminalMultiplexerEnum = defineEnum({ none: 0, tmux: 1, zellij: 2, screen: 3, unknown: 4 }, "u8")
+const Osc52SupportEnum = defineEnum({ unknown: 0, supported: 1, unsupported: 2 }, "u8")
 
 export const TerminalCapabilitiesStruct = defineStruct([
   ["kitty_keyboard", "bool_u8"],
@@ -113,6 +117,7 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["term_version", "char*"],
   ["term_version_len", "u64", { lengthOf: "term_version" }],
   ["term_from_xtversion", "bool_u8"],
+  ["osc52_support", Osc52SupportEnum],
 ])
 
 export const EncodedCharStruct = defineStruct([

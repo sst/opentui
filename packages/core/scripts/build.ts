@@ -1,6 +1,7 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs"
 import { dirname, join, resolve } from "path"
+import { ModuleKind, ScriptTarget, transpileModule } from "typescript"
 import { fileURLToPath } from "url"
 import process from "process"
 import path from "path"
@@ -29,6 +30,13 @@ interface PackageJson {
   devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+}
+
+interface BunBuildOptions {
+  entryPoints: string[]
+  externalPatterns?: string[]
+  splitting?: boolean
+  target: "bun" | "node"
 }
 
 const __filename = fileURLToPath(import.meta.url)
@@ -92,6 +100,55 @@ if (missingRequired.length > 0) {
   process.exit(1)
 }
 
+const runCommand = (command: string, commandArgs: string[], cwd: string, errorMessage: string): void => {
+  const result: SpawnSyncReturns<Buffer> = spawnSync(command, commandArgs, {
+    cwd,
+    stdio: "inherit",
+  })
+
+  if (result.error) {
+    console.error(`${errorMessage}: ${result.error.message}`)
+    process.exit(1)
+  }
+
+  if (result.status !== 0) {
+    console.error(errorMessage)
+    process.exit(1)
+  }
+}
+
+const runBunBuild = ({ entryPoints, externalPatterns = [], splitting = false, target }: BunBuildOptions): void => {
+  const buildArgs = [
+    "build",
+    `--target=${target}`,
+    "--outdir=dist",
+    "--sourcemap",
+    ...(splitting ? ["--splitting"] : []),
+    ...externalPatterns.flatMap((pattern) => ["--external", pattern]),
+    ...entryPoints,
+  ]
+
+  runCommand("bun", buildArgs, rootDir, `Error: Bun ${target} build failed for ${entryPoints.join(", ")}`)
+}
+
+const transpileEntryPoint = (entryPoint: string, outputPath: string): void => {
+  const sourcePath = join(rootDir, entryPoint)
+  const sourceText = readFileSync(sourcePath, "utf8")
+  const result = transpileModule(sourceText, {
+    compilerOptions: {
+      module: ModuleKind.ESNext,
+      sourceMap: true,
+      target: ScriptTarget.ES2022,
+    },
+    fileName: sourcePath,
+  })
+
+  writeFileSync(outputPath, result.outputText)
+  if (result.sourceMapText) {
+    writeFileSync(`${outputPath}.map`, result.sourceMapText)
+  }
+}
+
 if (buildNative) {
   console.log(`Building native ${isDev ? "dev" : "prod"} binaries${buildAll ? " for all platforms" : ""}...`)
 
@@ -103,20 +160,7 @@ if (buildNative) {
     zigArgs.push("-Dgpa-safe-stats=true")
   }
 
-  const zigBuild: SpawnSyncReturns<Buffer> = spawnSync("zig", zigArgs, {
-    cwd: join(rootDir, "src", "zig"),
-    stdio: "inherit",
-  })
-
-  if (zigBuild.error) {
-    console.error("Error: Zig is not installed or not in PATH")
-    process.exit(1)
-  }
-
-  if (zigBuild.status !== 0) {
-    console.error("Error: Zig build failed")
-    process.exit(1)
-  }
+  runCommand("zig", zigArgs, join(rootDir, "src", "zig"), "Error: Zig build failed")
 
   const variantsToPackage = buildAll ? variants : [getHostVariant()]
 
@@ -228,12 +272,21 @@ if (buildLib) {
     process.exit(1)
   }
 
-  const entryPoints: string[] = [
-    packageJson.module,
-    "src/testing.ts",
-    "src/runtime-plugin.ts",
-    "src/runtime-plugin-support.ts",
-    "src/runtime-plugin-support-configure.ts",
+  const portableEntryPoints: string[] = [packageJson.module, "src/testing.ts", "src/yoga.ts"]
+
+  const bunOnlyEntryPoints = [
+    {
+      entryPoint: "src/runtime-plugin.ts",
+      outputFile: "runtime-plugin.js",
+    },
+    {
+      entryPoint: "src/runtime-plugin-support-configure.ts",
+      outputFile: "runtime-plugin-support-configure.js",
+    },
+    {
+      entryPoint: "src/runtime-plugin-support.ts",
+      outputFile: "runtime-plugin-support.js",
+    },
   ]
 
   // Build main entry points with code splitting
@@ -248,25 +301,19 @@ if (buildLib) {
     "./lib/tree-sitter/default-parsers.ts",
   ]
 
-  spawnSync(
-    "bun",
-    [
-      "build",
-      "--target=bun",
-      "--splitting",
-      "--outdir=dist",
-      "--sourcemap",
-      ...externalPatterns.flatMap((dep) => ["--external", dep]),
-      ...entryPoints,
-    ],
-    {
-      cwd: rootDir,
-      stdio: "inherit",
-    },
-  )
+  runBunBuild({
+    entryPoints: portableEntryPoints,
+    externalPatterns,
+    splitting: true,
+    target: "node",
+  })
+
+  for (const { entryPoint, outputFile } of bunOnlyEntryPoints) {
+    transpileEntryPoint(entryPoint, join(distDir, outputFile))
+  }
 
   // Build updater as a separate entry so generator code stays out of the core runtime bundle.
-  spawnSync(
+  runCommand(
     "bun",
     [
       "build",
@@ -276,31 +323,17 @@ if (buildLib) {
       ...externalDeps.flatMap((dep) => ["--external", dep]),
       "src/lib/tree-sitter/update-assets.ts",
     ],
-    {
-      cwd: rootDir,
-      stdio: "inherit",
-    },
+    rootDir,
+    "Error: Bun build failed for src/lib/tree-sitter/update-assets.ts",
   )
 
   // Build parser worker as standalone bundle (no splitting) so it can be loaded as a Worker
   // Make web-tree-sitter external so it loads from node_modules with its WASM file
-  spawnSync(
-    "bun",
-    [
-      "build",
-      "--target=bun",
-      "--outdir=dist",
-      "--sourcemap",
-      ...externalDeps.flatMap((dep) => ["--external", dep]),
-      "--external",
-      "web-tree-sitter",
-      "src/lib/tree-sitter/parser.worker.ts",
-    ],
-    {
-      cwd: rootDir,
-      stdio: "inherit",
-    },
-  )
+  runBunBuild({
+    entryPoints: ["src/lib/tree-sitter/parser.worker.ts"],
+    externalPatterns: [...externalDeps, "web-tree-sitter"],
+    target: "node",
+  })
 
   // Post-process to fix Bun's duplicate export issue
   // See: https://github.com/oven-sh/bun/issues/5344
@@ -312,8 +345,9 @@ if (buildLib) {
     "dist/runtime-plugin.js",
     "dist/runtime-plugin-support.js",
     "dist/runtime-plugin-support-configure.js",
+    "dist/yoga.js",
     "dist/lib/tree-sitter/update-assets.js",
-    "dist/lib/tree-sitter/parser.worker.js",
+    "dist/parser.worker.js",
   ]
   for (const filePath of bundledFiles) {
     const fullPath = join(rootDir, filePath)
@@ -346,17 +380,8 @@ if (buildLib) {
 
   const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
 
-  const tscResult: SpawnSyncReturns<Buffer> = spawnSync("bunx", ["tsc", "-p", tsconfigBuildPath], {
-    cwd: rootDir,
-    stdio: "inherit",
-  })
-
-  if (tscResult.status !== 0) {
-    console.error("Error: TypeScript declaration generation failed")
-    process.exit(1)
-  } else {
-    console.log("TypeScript declarations generated")
-  }
+  runCommand("bunx", ["tsc", "-p", tsconfigBuildPath], rootDir, "Error: TypeScript declaration generation failed")
+  console.log("TypeScript declarations generated")
 
   const treeSitterSrcDir = join(rootDir, "src", "lib", "tree-sitter")
 
@@ -377,41 +402,78 @@ if (buildLib) {
   copyAssets(join(treeSitterSrcDir, "assets"), join(distDir, "assets"))
   console.log("  Copied tree-sitter assets (*.wasm, *.scm) to dist/assets/")
 
+  const writeBunOnlyStub = (fileName: string, specifier: string, exportNames: string[]): void => {
+    const errorMessage = `${specifier} is Bun-only and is not available in Node.js. Use Bun to import this entrypoint.`
+    const namedExports = exportNames
+      .map((exportName) => `export function ${exportName}() {\n  throw new Error(${JSON.stringify(errorMessage)})\n}`)
+      .join("\n\n")
+
+    writeFileSync(
+      join(distDir, fileName),
+      `const errorMessage = ${JSON.stringify(errorMessage)}\n\n${namedExports}\n\nthrow new Error(errorMessage)\n`,
+    )
+  }
+
+  writeBunOnlyStub("runtime-plugin.node.js", `${packageJson.name}/runtime-plugin`, [
+    "createRuntimePlugin",
+    "isCoreRuntimeModuleSpecifier",
+    "runtimeModuleIdForSpecifier",
+  ])
+  writeBunOnlyStub("runtime-plugin-support.node.js", `${packageJson.name}/runtime-plugin-support`, [
+    "ensureRuntimePluginSupport",
+    "createRuntimePlugin",
+    "runtimeModuleIdForSpecifier",
+  ])
+  writeBunOnlyStub("runtime-plugin-support-configure.node.js", `${packageJson.name}/runtime-plugin-support/configure`, [
+    "ensureRuntimePluginSupport",
+    "createRuntimePlugin",
+    "runtimeModuleIdForSpecifier",
+  ])
+
   // Configure exports for multiple entry points
   const exports = {
     ".": {
       import: "./index.js",
-      require: "./index.js",
       types: "./index.d.ts",
     },
     "./testing": {
       import: "./testing.js",
-      require: "./testing.js",
       types: "./testing.d.ts",
     },
     "./runtime-plugin": {
-      import: "./runtime-plugin.js",
-      require: "./runtime-plugin.js",
       types: "./runtime-plugin.d.ts",
+      bun: "./runtime-plugin.js",
+      node: "./runtime-plugin.node.js",
+      default: "./runtime-plugin.node.js",
     },
     "./runtime-plugin-support": {
-      import: "./runtime-plugin-support.js",
-      require: "./runtime-plugin-support.js",
       types: "./runtime-plugin-support.d.ts",
+      bun: "./runtime-plugin-support.js",
+      node: "./runtime-plugin-support.node.js",
+      default: "./runtime-plugin-support.node.js",
     },
     "./runtime-plugin-support/configure": {
-      import: "./runtime-plugin-support-configure.js",
-      require: "./runtime-plugin-support-configure.js",
       types: "./runtime-plugin-support-configure.d.ts",
+      bun: "./runtime-plugin-support-configure.js",
+      node: "./runtime-plugin-support-configure.node.js",
+      default: "./runtime-plugin-support-configure.node.js",
     },
+    "./yoga": {
+      types: "./yoga.d.ts",
+      import: "./yoga.js",
+    },
+    // Conditional exports select the first matching key in declaration order. Bun
+    // matches `bun` for both import and require, while Node ESM falls through to
+    // `import`. There is deliberately no `require` or `default`: this module uses
+    // top-level await, so directing Node CommonJS to it would fail during evaluation.
     "./tree-sitter/update-assets": {
-      import: "./lib/tree-sitter/update-assets.js",
-      require: "./lib/tree-sitter/update-assets.js",
       types: "./lib/tree-sitter/update-assets.d.ts",
+      bun: "./lib/tree-sitter/update-assets.js",
+      import: "./lib/tree-sitter/update-assets.js",
     },
     "./parser.worker": {
-      import: "./lib/tree-sitter/parser.worker.js",
-      require: "./lib/tree-sitter/parser.worker.js",
+      import: "./parser.worker.js",
+      require: "./parser.worker.js",
       types: "./lib/tree-sitter/parser.worker.d.ts",
     },
   }
@@ -442,7 +504,6 @@ if (buildLib) {
         bugs: packageJson.bugs,
         exports,
         dependencies: packageJson.dependencies,
-        devDependencies: packageJson.devDependencies,
         peerDependencies: packageJson.peerDependencies,
         optionalDependencies: {
           ...packageJson.optionalDependencies,

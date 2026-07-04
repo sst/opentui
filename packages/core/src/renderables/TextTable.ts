@@ -1,4 +1,4 @@
-import { MeasureMode } from "yoga-layout"
+import { MeasureMode } from "../yoga.js"
 import { type RenderableOptions, Renderable } from "../Renderable.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { type BorderStyle, BorderCharArrays, parseBorderStyle } from "../lib/border.js"

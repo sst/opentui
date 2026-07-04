@@ -761,7 +761,7 @@ describe("TextRenderable Selection", () => {
       await renderOnce()
       expect(text.plainText).toBe("Hello Cruel World")
 
-      text.remove(node2.id)
+      text.remove(node2)
 
       await renderOnce()
 
@@ -782,7 +782,7 @@ describe("TextRenderable Selection", () => {
       await renderOnce()
       expect(text.plainText).toBe("Test")
 
-      text.remove(node.id)
+      text.remove(node)
 
       await renderOnce()
       expect(text.plainText).toBe("")
@@ -958,7 +958,7 @@ describe("TextRenderable Selection", () => {
       await renderOnce()
       expect(text.plainText).toBe("Initial A B C D")
 
-      text.remove(nodeB.id)
+      text.remove(nodeB)
 
       await renderOnce()
       expect(text.plainText).toBe("Initial A C D")
@@ -2399,7 +2399,7 @@ describe("TextRenderable Selection", () => {
       const charFrame = captureFrame()
 
       // Remove the char text and add word text
-      currentRenderer.root.remove(charText.id)
+      currentRenderer.root.remove(charText)
       await renderOnce()
 
       await createTextRenderable(currentRenderer, {

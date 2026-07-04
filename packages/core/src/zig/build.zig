@@ -34,6 +34,34 @@ const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
 
+const YOGA_CXX_FLAGS = [_][]const u8{
+    "-std=c++20",
+    "-fexceptions",
+    "-frtti",
+};
+
+const YOGA_CXX_SOURCES = [_][]const u8{
+    "yoga/YGConfig.cpp",
+    "yoga/YGEnums.cpp",
+    "yoga/YGNode.cpp",
+    "yoga/YGNodeLayout.cpp",
+    "yoga/YGNodeStyle.cpp",
+    "yoga/YGPixelGrid.cpp",
+    "yoga/YGValue.cpp",
+    "yoga/algorithm/AbsoluteLayout.cpp",
+    "yoga/algorithm/Baseline.cpp",
+    "yoga/algorithm/Cache.cpp",
+    "yoga/algorithm/CalculateLayout.cpp",
+    "yoga/algorithm/FlexLine.cpp",
+    "yoga/algorithm/PixelGrid.cpp",
+    "yoga/config/Config.cpp",
+    "yoga/debug/AssertFatal.cpp",
+    "yoga/debug/Log.cpp",
+    "yoga/event/event.cpp",
+    "yoga/node/LayoutResults.cpp",
+    "yoga/node/Node.cpp",
+};
+
 fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
     if (builtin.os.tag != .linux) {
         return b.resolveTargetQuery(.{});
@@ -169,6 +197,18 @@ fn addNativeAudioDependencies(
     }
 }
 
+fn addYogaDependencies(b: *std.Build, artifact: *std.Build.Step.Compile) void {
+    const yoga_dep = b.dependency("yoga", .{});
+
+    artifact.linkLibCpp();
+    artifact.addIncludePath(yoga_dep.path(""));
+    artifact.addCSourceFiles(.{
+        .root = yoga_dep.path(""),
+        .files = &YOGA_CXX_SOURCES,
+        .flags = &YOGA_CXX_FLAGS,
+    });
+}
+
 /// Apply dependencies to a module
 fn applyDependencies(
     b: *std.Build,
@@ -280,6 +320,7 @@ pub fn build(b: *std.Build) void {
         std.process.exit(1);
     }
     addNativeAudioDependencies(b, test_artifact, native_target, macos_sdk_path);
+    addYogaDependencies(b, test_artifact);
 
     const run_test = b.addRunArtifact(test_artifact);
     test_step.dependOn(&run_test.step);
@@ -319,6 +360,7 @@ pub fn build(b: *std.Build) void {
         std.process.exit(1);
     }
     addNativeAudioDependencies(b, bench_ffi_lib, native_target, macos_sdk_path);
+    addYogaDependencies(b, bench_ffi_lib);
     const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
     bench_ffi_step.dependOn(&install_bench_ffi.step);
     bench_step.dependOn(bench_ffi_step);
@@ -450,6 +492,7 @@ fn buildTarget(
     });
 
     addNativeAudioDependencies(b, lib, target, macos_sdk_path);
+    addYogaDependencies(b, lib);
 
     const install_dir = b.addInstallArtifact(lib, .{
         .dest_dir = .{

@@ -151,7 +151,7 @@ describe("slot placeholder moves", () => {
 
       expect(slot.parent).toBe(parentB)
 
-      parentB.remove(childB.id)
+      parentB.remove(childB)
       slot.didRemoveSlotChild(parentB, childB)
 
       expect(slot.parent).toBe(parentA)
