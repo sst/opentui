@@ -312,11 +312,11 @@ function metadataLabel(event: PasteEvent): string {
   return `meta kind=${event.metadata.kind ?? "unset"} mime=${event.metadata.mimeType ?? "unset"}`
 }
 
-function statusChunk(status: Status): string {
+function statusChunk(status: Status) {
   return fg(TONE_COLOR[status.tone])(`${TONE_ICON[status.tone]} ${status.text}`)
 }
 
-function label(text: string): string {
+function label(text: string) {
   return fg(P.dim)(text.padEnd(13))
 }
 
@@ -425,7 +425,7 @@ ${label("Editor")} ${fg(P.muted)(`${byteLength(editor?.plainText ?? "")} B, ${ed
 
 function createClipboardService(renderer: CliRenderer): void {
   try {
-    const host = createHostClipboard()
+    const host = createHostClipboard({ maxReadBytes: READ_MAX_BYTES })
     clipboardService = createClipboard({
       host,
       terminal: createRendererClipboardAdapter(renderer),
@@ -554,7 +554,7 @@ async function pasteCommand(renderer: CliRenderer, selection: ClipboardSelection
   pasteStatus = { tone: "info", text: `reading ${selection}` }
   updateStatePanel(renderer)
   try {
-    const result = await service.read({ preferredTypes: ["text/plain"], selection, maxBytes: READ_MAX_BYTES })
+    const result = await service.read({ preferredTypes: ["text/plain"], selection })
     if (service !== clipboardService || !editor || editor.isDestroyed) return false
     if (result.status !== "read") {
       pasteStatus = { tone: result.status === "failed" ? "bad" : "warn", text: `${selection} read: ${result.status}` }
@@ -635,7 +635,6 @@ async function readClipboardCommand(renderer: CliRenderer, selection: ClipboardS
     const result = await service.read({
       preferredTypes: ["image/png", "text/plain"],
       selection,
-      maxBytes: READ_MAX_BYTES,
     })
     if (service !== clipboardService) return false
     if (result.status !== "read") {
