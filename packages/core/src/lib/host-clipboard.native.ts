@@ -20,6 +20,8 @@ import type { HostClipboardBackendFactory } from "./host-clipboard.internal.js"
 
 type NativeResult = ClipboardReadResult | HostClipboardWriteResult | HostClipboardClearResult
 const MAX_U32 = 0xffff_ffff
+const OPERATION_POLL_INTERVAL_MS = 1
+const PROVIDER_POLL_INTERVAL_MS = 8
 
 interface PendingOperation {
   readonly handle: ClipboardOperationHandle
@@ -31,8 +33,14 @@ interface PendingOperation {
 
 const selectionValue = (selection: ClipboardSelection): number => (selection === "clipboard" ? 0 : 1)
 
-const schedule = (callback: () => void): ReturnType<typeof setTimeout> => {
-  return setTimeout(callback, 1)
+const schedule = (
+  callback: () => void,
+  delayMs = OPERATION_POLL_INTERVAL_MS,
+  keepAlive = true,
+): ReturnType<typeof setTimeout> => {
+  const timer = setTimeout(callback, delayMs)
+  if (!keepAlive && typeof timer === "object" && "unref" in timer) timer.unref()
+  return timer
 }
 
 const encodeReadRequest = (preferredTypes: readonly [string, ...string[]]): Uint8Array => {
@@ -152,11 +160,20 @@ class NativeClipboardBackend implements HostClipboardBackend {
   }
 
   private ensureScheduled(): void {
-    if (this.timer || (this.pending.size === 0 && !this.providerActive)) return
-    this.timer = schedule(() => {
-      this.timer = undefined
-      this.drain()
-    })
+    if (this.timer) {
+      if (this.pending.size > 0 && typeof this.timer === "object" && "ref" in this.timer) this.timer.ref()
+      return
+    }
+    if (this.pending.size === 0 && !this.providerActive) return
+    const hasPendingOperation = this.pending.size > 0
+    this.timer = schedule(
+      () => {
+        this.timer = undefined
+        this.drain()
+      },
+      hasPendingOperation ? OPERATION_POLL_INTERVAL_MS : PROVIDER_POLL_INTERVAL_MS,
+      hasPendingOperation,
+    )
   }
 
   private drain(): void {
@@ -194,6 +211,8 @@ class NativeClipboardBackend implements HostClipboardBackend {
     if (this.pending.size === 0 && !this.providerActive && this.timer) {
       clearTimeout(this.timer)
       this.timer = undefined
+    } else if (this.pending.size === 0 && this.timer && typeof this.timer === "object" && "unref" in this.timer) {
+      this.timer.unref()
     } else {
       this.ensureScheduled()
     }
