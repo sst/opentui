@@ -301,6 +301,7 @@ pub const Connection = struct {
         if (comptime builtin.is_test) {
             if (self.output_ready_override) |ready| return if (ready) .ready else .pending;
         }
+        if (comptime builtin.os.tag != .linux) return .failed;
         var descriptor = [_]std.posix.pollfd{.{
             .fd = self.symbols.xcb_get_file_descriptor(connection),
             .events = std.posix.POLL.OUT,

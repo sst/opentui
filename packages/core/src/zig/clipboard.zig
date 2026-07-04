@@ -1583,10 +1583,23 @@ test "clipboard worker copies input and rejects stale handles" {
     var output: [input.len]u8 = undefined;
     try std.testing.expectEqual(CopyStatus.ok, resultDataCopy(operation, &output, output.len));
     try std.testing.expectEqualSlices(u8, &input, &output);
-    try std.testing.expectEqual(DestroyStatus.destroyed, destroyOperation(operation));
+    var destroy_status = destroyOperation(operation);
+    var destroy_attempts: u32 = 0;
+    while (destroy_status == .not_ready and destroy_attempts < 2_000) : (destroy_attempts += 1) {
+        std.Thread.sleep(std.time.ns_per_ms);
+        destroy_status = destroyOperation(operation);
+    }
+    try std.testing.expectEqual(DestroyStatus.destroyed, destroy_status);
     try std.testing.expectEqual(DestroyStatus.invalid_handle, destroyOperation(operation));
     try std.testing.expectEqual(OperationStatus.invalid_handle, pollOperation(operation));
     _ = beginServiceShutdown(service);
+    var shutdown_status = pollServiceShutdown(service);
+    var shutdown_attempts: u32 = 0;
+    while (shutdown_status == .pending and shutdown_attempts < 2_000) : (shutdown_attempts += 1) {
+        std.Thread.sleep(std.time.ns_per_ms);
+        shutdown_status = pollServiceShutdown(service);
+    }
+    try std.testing.expectEqual(ShutdownStatus.ready, shutdown_status);
     try std.testing.expectEqual(DestroyStatus.destroyed, destroyService(service));
 }
 
@@ -1619,6 +1632,7 @@ test "clipboard cancellation and service shutdown are asynchronous and isolated"
 }
 
 test "clipboard production operations validate requests and remain unsupported until platform protocols exist" {
+    if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) return error.SkipZigTest;
     const service = createService(std.testing.allocator, 3, 16, null, 0);
     try std.testing.expect(service != 0);
     acquireService(service).?.route = .unsupported;
@@ -1801,6 +1815,7 @@ test "clipboard Windows mutation callback marks the shared operation state" {
 }
 
 test "clipboard X11 cancellation cannot win after ownership mutation dispatch" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     var operation: Operation = .{
         .allocator = std.testing.allocator,
         .service = undefined,
@@ -1871,6 +1886,7 @@ test "clipboard X11 candidate failure advances to the next compatible target" {
 }
 
 test "clipboard shutdown settles dispatched X11 mutations before releasing providers" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     var symbols: clipboard_linux.XcbSymbols = undefined;
     symbols.xcb_discard_reply = testX11DiscardReply;
     var fake_connection: u8 = 0;
