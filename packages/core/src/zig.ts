@@ -45,6 +45,8 @@ import {
   AudioCreateOptionsStruct,
   AudioStartOptionsStruct,
   AudioVoiceOptionsStruct,
+  AudioStreamCreateOptionsStruct,
+  AudioStreamStatsStruct,
   AudioStatsStruct,
   BuildOptionsStruct,
   AllocatorStatsStruct,
@@ -57,6 +59,8 @@ import type {
   AudioCreateOptions,
   AudioStartOptions,
   AudioVoiceOptions,
+  AudioStreamCreateOptions,
+  NativeAudioStreamStats,
   AudioStats,
   BuildOptions,
   AllocatorStats,
@@ -1515,6 +1519,38 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "i32",
     },
+    audioCreateStream: {
+      args: ["u32", "ptr", "ptr"],
+      returns: "i32",
+    },
+    audioWriteStream: {
+      args: ["u32", "u32", "ptr", "u32", "ptr"],
+      returns: "i32",
+    },
+    audioEndStream: {
+      args: ["u32", "u32"],
+      returns: "i32",
+    },
+    audioSetStreamVolume: {
+      args: ["u32", "u32", "f32"],
+      returns: "i32",
+    },
+    audioSetStreamPan: {
+      args: ["u32", "u32", "f32"],
+      returns: "i32",
+    },
+    audioSetStreamGroup: {
+      args: ["u32", "u32", "u32"],
+      returns: "i32",
+    },
+    audioGetStreamStats: {
+      args: ["u32", "u32", "ptr"],
+      returns: "i32",
+    },
+    audioDestroyStream: {
+      args: ["u32", "u32"],
+      returns: "i32",
+    },
     audioLoad: {
       args: ["u32", "ptr", "u32", "ptr"],
       returns: "i32",
@@ -1902,6 +1938,17 @@ export type NativeMeasureTargetKind = (typeof NativeMeasureTargetKind)[keyof typ
 
 export type NativeMeasureTargetHandle = TextBufferViewHandle | EditorViewHandle
 
+export const NativeAudioStreamState = {
+  Initializing: 0,
+  Buffering: 1,
+  Playing: 2,
+  Ended: 3,
+  Failed: 4,
+  Cancelled: 5,
+} as const
+
+export type NativeAudioStreamState = (typeof NativeAudioStreamState)[keyof typeof NativeAudioStreamState]
+
 export interface AudioEngineLib {
   createAudioEngine: (options?: AudioCreateOptions | null) => AudioEngineHandle | null
   destroyAudioEngine: (engine: AudioEngineHandle) => void
@@ -1914,6 +1961,21 @@ export interface AudioEngineLib {
   audioStart: (engine: AudioEngineHandle, options?: AudioStartOptions | null) => number
   audioStartMixer: (engine: AudioEngineHandle) => number
   audioStop: (engine: AudioEngineHandle) => number
+  audioCreateStream: (
+    engine: AudioEngineHandle,
+    options: AudioStreamCreateOptions,
+  ) => { status: number; streamId: number | null }
+  audioWriteStream: (
+    engine: AudioEngineHandle,
+    streamId: number,
+    data: Uint8Array,
+  ) => { status: number; bytesWritten: number }
+  audioEndStream: (engine: AudioEngineHandle, streamId: number) => number
+  audioSetStreamVolume: (engine: AudioEngineHandle, streamId: number, volume: number) => number
+  audioSetStreamPan: (engine: AudioEngineHandle, streamId: number, pan: number) => number
+  audioSetStreamGroup: (engine: AudioEngineHandle, streamId: number, groupId: number) => number
+  audioGetStreamStats: (engine: AudioEngineHandle, streamId: number) => NativeAudioStreamStats | null
+  audioDestroyStream: (engine: AudioEngineHandle, streamId: number) => number
   audioLoad: (engine: AudioEngineHandle, data: Uint8Array) => { status: number; soundId: number | null }
   audioUnload: (engine: AudioEngineHandle, soundId: number) => number
   audioPlay: (
@@ -4928,6 +4990,73 @@ class FFIRenderLib implements RenderLib {
 
   public audioStop(engine: Pointer): number {
     return this.opentui.symbols.audioStop(engine)
+  }
+
+  public audioCreateStream(
+    engine: AudioEngineHandle,
+    options: AudioStreamCreateOptions,
+  ): { status: number; streamId: number | null } {
+    const optionsBuffer = AudioStreamCreateOptionsStruct.pack(options)
+    const outBuffer = new ArrayBuffer(4)
+    const status = this.opentui.symbols.audioCreateStream(engine, optionsBuffer, outBuffer)
+    if (status !== 0) return { status, streamId: null }
+    return { status, streamId: new Uint32Array(outBuffer)[0] ?? null }
+  }
+
+  public audioWriteStream(
+    engine: AudioEngineHandle,
+    streamId: number,
+    data: Uint8Array,
+  ): { status: number; bytesWritten: number } {
+    const outBuffer = new ArrayBuffer(4)
+    const dataLength = toSafeFFIU32Length(data.byteLength, "Audio stream data length")
+    const status = this.opentui.symbols.audioWriteStream(
+      engine,
+      streamId,
+      dataLength === 0 ? null : data,
+      dataLength,
+      outBuffer,
+    )
+    return { status, bytesWritten: status === 0 ? (new Uint32Array(outBuffer)[0] ?? 0) : 0 }
+  }
+
+  public audioEndStream(engine: AudioEngineHandle, streamId: number): number {
+    return this.opentui.symbols.audioEndStream(engine, streamId)
+  }
+
+  public audioSetStreamVolume(engine: AudioEngineHandle, streamId: number, volume: number): number {
+    return this.opentui.symbols.audioSetStreamVolume(engine, streamId, volume)
+  }
+
+  public audioSetStreamPan(engine: AudioEngineHandle, streamId: number, pan: number): number {
+    return this.opentui.symbols.audioSetStreamPan(engine, streamId, pan)
+  }
+
+  public audioSetStreamGroup(engine: AudioEngineHandle, streamId: number, groupId: number): number {
+    return this.opentui.symbols.audioSetStreamGroup(engine, streamId, groupId)
+  }
+
+  public audioGetStreamStats(engine: AudioEngineHandle, streamId: number): NativeAudioStreamStats | null {
+    const outBuffer = new ArrayBuffer(AudioStreamStatsStruct.size)
+    const status = this.opentui.symbols.audioGetStreamStats(engine, streamId, outBuffer)
+    if (status !== 0) return null
+    const stats = AudioStreamStatsStruct.unpack(outBuffer)
+    return {
+      bytesReceived: typeof stats.bytesReceived === "bigint" ? stats.bytesReceived : BigInt(stats.bytesReceived),
+      framesDecoded: typeof stats.framesDecoded === "bigint" ? stats.framesDecoded : BigInt(stats.framesDecoded),
+      framesPlayed: typeof stats.framesPlayed === "bigint" ? stats.framesPlayed : BigInt(stats.framesPlayed),
+      state: stats.state,
+      sampleRate: stats.sampleRate,
+      channels: stats.channels,
+      bufferedFrames: stats.bufferedFrames,
+      capacityFrames: stats.capacityFrames,
+      underruns: stats.underruns,
+      errorCode: stats.errorCode,
+    }
+  }
+
+  public audioDestroyStream(engine: AudioEngineHandle, streamId: number): number {
+    return this.opentui.symbols.audioDestroyStream(engine, streamId)
   }
 
   public audioLoad(engine: Pointer, data: Uint8Array): { status: number; soundId: number | null } {

@@ -332,6 +332,29 @@ export type AudioVoiceOptions = {
   groupId?: number
 }
 
+export type AudioStreamCreateOptions = {
+  inputCapacityBytes: number
+  pcmCapacityFrames: number
+  startupFrames: number
+  resumeFrames: number
+  volume: number
+  pan: number
+  groupId: number
+}
+
+export type NativeAudioStreamStats = {
+  bytesReceived: bigint
+  framesDecoded: bigint
+  framesPlayed: bigint
+  state: number
+  sampleRate: number
+  channels: number
+  bufferedFrames: number
+  capacityFrames: number
+  underruns: number
+  errorCode: number
+}
+
 export type AudioStats = {
   soundsLoaded: number
   voicesActive: number
@@ -369,6 +392,29 @@ export const AudioVoiceOptionsStruct = defineStruct([
   ["pan", "f32", { default: 0 }],
   ["loop", "bool_u8", { default: false }],
   ["groupId", "u32", { default: 0 }],
+])
+
+export const AudioStreamCreateOptionsStruct = defineStruct([
+  ["inputCapacityBytes", "u32"],
+  ["pcmCapacityFrames", "u32"],
+  ["startupFrames", "u32"],
+  ["resumeFrames", "u32"],
+  ["volume", "f32"],
+  ["pan", "f32"],
+  ["groupId", "u32"],
+])
+
+export const AudioStreamStatsStruct = defineStruct([
+  ["bytesReceived", "u64"],
+  ["framesDecoded", "u64"],
+  ["framesPlayed", "u64"],
+  ["state", "u32"],
+  ["sampleRate", "u32"],
+  ["channels", "u32"],
+  ["bufferedFrames", "u32"],
+  ["capacityFrames", "u32"],
+  ["underruns", "u32"],
+  ["errorCode", "i32"],
 ])
 
 export const AudioStatsStruct = defineStruct([

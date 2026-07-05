@@ -1,10 +1,10 @@
 ---
 title: Native audio
-description: Load, play, mix, and inspect audio with the native miniaudio backend
+description: Load, stream, play, mix, and inspect audio with the native miniaudio backend
 order: 11
 skill:
   entry: true
-  intents: [audio, native-audio, sound, playback, pcm, fft]
+  intents: [audio, native-audio, sound, playback, streaming, radio, mp3, pcm, fft]
 ---
 
 # Native audio
@@ -58,6 +58,57 @@ Create a new `Audio` instance to change `sampleRate` or `playbackChannels`.
 | `setMasterVolume(volume)`       | Set master volume                                             |
 
 `play()` accepts `{ volume, pan, loop, groupId }`. Native playback clamps `volume` to `0..4` and `pan` to `-1..1`. The engine has 32 voice slots.
+
+## MP3 streams
+
+`playStream()` progressively decodes an MP3 URL, `ReadableStream<Uint8Array>`, or `AsyncIterable<Uint8Array>` without waiting for the source to end. Streaming is MP3-only; static `loadSound()` also supports WAV and FLAC.
+
+```typescript
+import { Audio } from "@opentui/core"
+
+const audio = Audio.create({ autoStart: false })
+if (!audio.start()) throw new Error("No playback device available")
+
+const stream = await audio.playStream("https://anomaly.fm/radio", {
+  volume: 0.8,
+  buffer: {
+    capacityMs: 2000,
+    startupMs: 1000,
+    resumeMs: 1000,
+  },
+  reconnect: {
+    retryOnEnd: true,
+    initialDelayMs: 1000,
+    maxDelayMs: 15000,
+    backoffFactor: 2,
+  },
+})
+
+stream.on("reconnecting", ({ attempt, delayMs }) => {
+  console.error(`Reconnecting attempt ${attempt} in ${delayMs}ms`)
+})
+
+stream.on("error", (error) => {
+  console.error(error.message)
+})
+
+stream.setVolume(0.6)
+stream.setPan(0)
+
+// Later:
+stream.dispose()
+await stream.closed
+```
+
+`playStream()` resolves after the native MP3 decoder is ready, normally while the stream is still buffering. Setup failures reject the promise. Later failures emit `error` on the returned `AudioStream`.
+
+URL reconnect is opt-in. It retries network failures, interrupted response bodies, HTTP 408/425/429, and HTTP 5xx responses. `retryOnEnd` reconnects after a clean response ends and its buffered PCM drains. When reconnect is enabled, omitted `maxAttempts` means unlimited retries; an `AbortSignal` or `dispose()` stops them.
+
+Byte-stream inputs are one-shot and do not accept reconnect options. Input chunks must be `Uint8Array` values. Backpressure is automatic and both encoded and decoded buffering remain bounded.
+
+`AudioStream.getStats()` returns stream state, buffered frames and duration, received bytes, decoded and played frames, underruns, and reconnect attempts. `setVolume()`, `setPan()`, and `setGroup()` remain effective after reconnecting. A naturally completed stream keeps final stats in the `ended` state until disposed.
+
+Streams use the same mixer and master tap as loaded sounds. Once `enableTap()` is active, `readTapFrames()` includes streamed audio automatically. The tap is the combined master mix, not an isolated copy of one stream.
 
 ## Starting audio
 

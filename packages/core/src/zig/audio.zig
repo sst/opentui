@@ -15,6 +15,13 @@ pub const Status = struct {
 pub const max_voices: usize = 32;
 pub const default_sample_rate: u32 = 48_000;
 pub const default_playback_channels: u32 = 2;
+const default_stream_input_capacity: u32 = 256 * 1024;
+const default_stream_pcm_capacity: u32 = 16_384;
+const default_stream_startup_frames: u32 = 4_096;
+const default_stream_resume_frames: u32 = 2_048;
+const max_stream_probe_bytes: usize = 1024 * 1024;
+const stream_decoder_chunk_frames: u32 = 2_048;
+const max_stream_generation: u32 = 0x00ffffff;
 
 pub const CreateOptions = extern struct {
     sample_rate: u32 = default_sample_rate,
@@ -46,6 +53,38 @@ pub const VoiceOptions = extern struct {
     group_id: u32,
 };
 
+pub const StreamOptions = extern struct {
+    input_capacity_bytes: u32,
+    pcm_capacity_frames: u32,
+    startup_frames: u32,
+    resume_frames: u32,
+    volume: f32,
+    pan: f32,
+    group_id: u32,
+};
+
+pub const StreamState = struct {
+    pub const initializing: u32 = 0;
+    pub const buffering: u32 = 1;
+    pub const playing: u32 = 2;
+    pub const ended: u32 = 3;
+    pub const failed: u32 = 4;
+    pub const cancelled: u32 = 5;
+};
+
+pub const StreamStats = extern struct {
+    bytes_received: u64,
+    frames_decoded: u64,
+    frames_played: u64,
+    state: u32,
+    sample_rate: u32,
+    channels: u32,
+    buffered_frames: u32,
+    capacity_frames: u32,
+    underruns: u32,
+    error_code: i32,
+};
+
 pub const Stats = extern struct {
     sounds_loaded: u32,
     voices_active: u32,
@@ -75,6 +114,53 @@ const Voice = struct {
     sound_ready: bool = false,
 };
 
+const StreamDataSource = extern struct {
+    base: c.ma_data_source_base = undefined,
+    stream: *Stream = undefined,
+};
+
+comptime {
+    std.debug.assert(@offsetOf(StreamDataSource, "base") == 0);
+}
+
+const Stream = struct {
+    allocator: std.mem.Allocator,
+    input_buffer: []u8,
+    input_read: usize = 0,
+    input_write: usize = 0,
+    input_count: usize = 0,
+    input_lock: std.Thread.Mutex = .{},
+    input_condition: std.Thread.Condition = .{},
+    input_ended: u32 = 0,
+    cancel_requested: u32 = 0,
+    decoder_abort: bool = false,
+    probe_active: bool = true,
+    probe_bytes: usize = 0,
+    decoder_finished: u32 = 0,
+    pcm_buffer: []f32,
+    pcm_ring: c.ma_pcm_rb = undefined,
+    pcm_ring_ready: bool = false,
+    source: StreamDataSource = .{},
+    source_ready: bool = false,
+    sound: c.ma_sound = undefined,
+    sound_ready: bool = false,
+    worker: ?std.Thread = null,
+    startup_frames: u32,
+    resume_frames: u32,
+    sample_rate: u32,
+    capacity_frames: u32,
+    volume: f32,
+    pan: f32,
+    group_id: u32,
+    state: u32 = StreamState.initializing,
+    bytes_received: u64 = 0,
+    frames_decoded: u64 = 0,
+    frames_played: u64 = 0,
+    underruns: u32 = 0,
+    error_code: i32 = 0,
+    has_started_playback: bool = false,
+};
+
 const SoundGroup = struct {
     name: []u8,
     volume: f32 = 1,
@@ -95,6 +181,8 @@ pub const Engine = struct {
     playback_devices: std.ArrayList(c.ma_device_info),
     selected_playback_index: ?u32 = null,
     voices: [max_voices]Voice,
+    streams: [max_voices]?*Stream,
+    stream_generations: [max_voices]u32,
     master_volume: f32,
     sample_rate: u32,
     stats: Stats,
@@ -123,6 +211,8 @@ pub const Engine = struct {
             .playback_devices = .empty,
             .selected_playback_index = null,
             .voices = [_]Voice{.{}} ** max_voices,
+            .streams = [_]?*Stream{null} ** max_voices,
+            .stream_generations = [_]u32{1} ** max_voices,
             .master_volume = 1,
             .sample_rate = normalized_sample_rate,
             .stats = .{
@@ -148,7 +238,6 @@ pub const Engine = struct {
 
     pub fn deinit(self: *Engine) void {
         self.lock.lock();
-        defer self.lock.unlock();
 
         if (self.has_device) {
             _ = c.ma_device_stop(&self.device);
@@ -158,6 +247,23 @@ pub const Engine = struct {
 
         for (&self.voices) |*voice| {
             clearVoice(voice);
+        }
+
+        for (self.streams) |stream_ptr| {
+            const stream = stream_ptr orelse continue;
+            if (stream.sound_ready) {
+                _ = c.ma_sound_stop(&stream.sound);
+                c.ma_sound_uninit(&stream.sound);
+                stream.sound_ready = false;
+            }
+            requestStreamCancellation(stream);
+        }
+        self.lock.unlock();
+
+        for (&self.streams) |*stream_ptr| {
+            const stream = stream_ptr.* orelse continue;
+            destroyStreamStorage(stream);
+            stream_ptr.* = null;
         }
 
         for (self.groups.items) |group| {
@@ -184,14 +290,14 @@ pub const Engine = struct {
             self.tap_buffer = null;
         }
 
-        if (self.context_initialized) {
-            _ = c.ma_context_uninit(&self.context);
-            self.context_initialized = false;
-        }
-
         if (self.core_initialized) {
             c.ma_engine_uninit(&self.core);
             self.core_initialized = false;
+        }
+
+        if (self.context_initialized) {
+            _ = c.ma_context_uninit(&self.context);
+            self.context_initialized = false;
         }
     }
 
@@ -200,7 +306,21 @@ pub const Engine = struct {
         for (self.voices) |voice| {
             if (voice.active) active += 1;
         }
+        for (self.streams) |stream| {
+            if (stream != null) active += 1;
+        }
         self.stats.voices_active = active;
+    }
+
+    fn activeVoiceAndStreamCount(self: *Engine) usize {
+        var active: usize = 0;
+        for (self.voices) |voice| {
+            if (voice.active) active += 1;
+        }
+        for (self.streams) |stream| {
+            if (stream != null) active += 1;
+        }
+        return active;
     }
 
     fn updateLoadedSoundCount(self: *Engine) void {
@@ -240,6 +360,334 @@ fn toShareMode(value: u8) c.ma_share_mode {
 
 fn decoderAsDataSource(decoder: *c.ma_decoder) *c.ma_data_source {
     return @ptrCast(decoder);
+}
+
+fn loadStreamState(stream: *const Stream) u32 {
+    return @atomicLoad(u32, &stream.state, .acquire);
+}
+
+fn setStreamState(stream: *Stream, state: u32) void {
+    @atomicStore(u32, &stream.state, state, .release);
+}
+
+fn transitionStreamState(stream: *Stream, from: u32, to: u32) bool {
+    return @cmpxchgStrong(u32, &stream.state, from, to, .acq_rel, .acquire) == null;
+}
+
+fn isTerminalStreamState(state: u32) bool {
+    return state == StreamState.ended or state == StreamState.failed or state == StreamState.cancelled;
+}
+
+fn failStream(stream: *Stream) void {
+    @atomicStore(i32, &stream.error_code, Status.err_decode, .release);
+
+    var state = loadStreamState(stream);
+    while (!isTerminalStreamState(state)) {
+        state = @cmpxchgWeak(u32, &stream.state, state, StreamState.failed, .acq_rel, .acquire) orelse return;
+    }
+}
+
+fn endStreamPlayback(stream: *Stream) void {
+    var state = loadStreamState(stream);
+    while (!isTerminalStreamState(state)) {
+        state = @cmpxchgWeak(u32, &stream.state, state, StreamState.ended, .acq_rel, .acquire) orelse return;
+    }
+}
+
+fn requestStreamCancellation(stream: *Stream) void {
+    stream.input_lock.lock();
+    @atomicStore(u32, &stream.cancel_requested, 1, .release);
+    setStreamState(stream, StreamState.cancelled);
+    stream.input_condition.broadcast();
+    stream.input_lock.unlock();
+}
+
+fn destroyStreamStorage(stream: *Stream) void {
+    if (stream.worker) |worker| {
+        worker.join();
+        stream.worker = null;
+    }
+    if (stream.source_ready) {
+        c.ma_data_source_uninit(@ptrCast(&stream.source));
+        stream.source_ready = false;
+    }
+    if (stream.pcm_ring_ready) {
+        c.ma_pcm_rb_uninit(&stream.pcm_ring);
+        stream.pcm_ring_ready = false;
+    }
+    stream.allocator.free(stream.pcm_buffer);
+    stream.allocator.free(stream.input_buffer);
+    stream.allocator.destroy(stream);
+}
+
+fn streamFromDataSource(data_source: ?*anyopaque) ?*Stream {
+    const source_ptr = data_source orelse return null;
+    const source: *StreamDataSource = @ptrCast(@alignCast(source_ptr));
+    return source.stream;
+}
+
+fn streamDataSourceRead(
+    data_source: ?*anyopaque,
+    frames_out: ?*anyopaque,
+    frame_count: c.ma_uint64,
+    frames_read_out: [*c]c.ma_uint64,
+) callconv(.c) c.ma_result {
+    if (frames_read_out != null) frames_read_out[0] = 0;
+    const stream = streamFromDataSource(data_source) orelse return c.MA_INVALID_ARGS;
+    if (frame_count == 0) return c.MA_SUCCESS;
+    if (frames_out == null or frame_count > std.math.maxInt(u32)) return c.MA_NOT_IMPLEMENTED;
+
+    const requested_frames: u32 = @intCast(frame_count);
+    const sample_count = @as(usize, requested_frames) * 2;
+    const aligned_output: *align(@alignOf(f32)) anyopaque = @alignCast(frames_out.?);
+    const out = @as([*]f32, @ptrCast(aligned_output))[0..sample_count];
+    @memset(out, 0);
+
+    var state = loadStreamState(stream);
+    if (state == StreamState.failed or state == StreamState.cancelled or state == StreamState.ended) {
+        return c.MA_AT_END;
+    }
+
+    if (state == StreamState.initializing) {
+        if (frames_read_out != null) frames_read_out[0] = frame_count;
+        return c.MA_SUCCESS;
+    }
+
+    var available = c.ma_pcm_rb_available_read(&stream.pcm_ring);
+    const decoder_finished = @atomicLoad(u32, &stream.decoder_finished, .acquire) != 0;
+
+    if (state == StreamState.buffering) {
+        const threshold = if (stream.has_started_playback) stream.resume_frames else stream.startup_frames;
+        if (available >= threshold or (decoder_finished and available > 0)) {
+            if (transitionStreamState(stream, StreamState.buffering, StreamState.playing)) {
+                stream.has_started_playback = true;
+                state = StreamState.playing;
+            } else {
+                state = loadStreamState(stream);
+            }
+        } else if (decoder_finished and available == 0) {
+            endStreamPlayback(stream);
+            return c.MA_AT_END;
+        } else {
+            if (frames_read_out != null) frames_read_out[0] = frame_count;
+            return c.MA_SUCCESS;
+        }
+    }
+
+    if (state != StreamState.playing) {
+        return c.MA_AT_END;
+    }
+
+    const frames_to_read = @min(requested_frames, available);
+    var total_read: u32 = 0;
+    while (total_read < frames_to_read) {
+        var contiguous_frames = frames_to_read - total_read;
+        var pcm_ptr: ?*anyopaque = null;
+        if (c.ma_pcm_rb_acquire_read(&stream.pcm_ring, &contiguous_frames, &pcm_ptr) != c.MA_SUCCESS or contiguous_frames == 0 or pcm_ptr == null) {
+            break;
+        }
+
+        const aligned_pcm: *align(@alignOf(f32)) anyopaque = @alignCast(pcm_ptr.?);
+        const pcm = @as([*]const f32, @ptrCast(aligned_pcm))[0 .. @as(usize, contiguous_frames) * 2];
+        const sample_offset = @as(usize, total_read) * 2;
+        @memcpy(out[sample_offset .. sample_offset + pcm.len], pcm);
+        if (c.ma_pcm_rb_commit_read(&stream.pcm_ring, contiguous_frames) != c.MA_SUCCESS) break;
+        total_read += contiguous_frames;
+    }
+
+    if (total_read > 0) {
+        _ = @atomicRmw(u64, &stream.frames_played, .Add, total_read, .monotonic);
+    }
+
+    available = c.ma_pcm_rb_available_read(&stream.pcm_ring);
+    if (decoder_finished and available == 0) {
+        endStreamPlayback(stream);
+        if (frames_read_out != null) frames_read_out[0] = total_read;
+        return if (total_read == 0) c.MA_AT_END else c.MA_SUCCESS;
+    }
+
+    if (total_read < requested_frames) {
+        if (transitionStreamState(stream, StreamState.playing, StreamState.buffering)) {
+            _ = @atomicRmw(u32, &stream.underruns, .Add, 1, .monotonic);
+        }
+        if (frames_read_out != null) frames_read_out[0] = frame_count;
+        return c.MA_SUCCESS;
+    }
+
+    if (frames_read_out != null) frames_read_out[0] = total_read;
+    return c.MA_SUCCESS;
+}
+
+fn streamDataSourceGetFormat(
+    data_source: ?*anyopaque,
+    format_out: [*c]c.ma_format,
+    channels_out: [*c]c.ma_uint32,
+    sample_rate_out: [*c]c.ma_uint32,
+    channel_map_out: [*c]c.ma_channel,
+    channel_map_capacity: usize,
+) callconv(.c) c.ma_result {
+    const stream = streamFromDataSource(data_source) orelse return c.MA_INVALID_ARGS;
+    if (format_out != null) format_out[0] = c.ma_format_f32;
+    if (channels_out != null) channels_out[0] = 2;
+    if (sample_rate_out != null) sample_rate_out[0] = stream.sample_rate;
+    if (channel_map_out != null) {
+        _ = c.ma_channel_map_init_standard(c.ma_standard_channel_map_default, channel_map_out, channel_map_capacity, 2);
+    }
+    return c.MA_SUCCESS;
+}
+
+const stream_data_source_vtable = c.ma_data_source_vtable{
+    .onRead = streamDataSourceRead,
+    .onSeek = null,
+    .onGetDataFormat = streamDataSourceGetFormat,
+    .onGetCursor = null,
+    .onGetLength = null,
+    .onSetLooping = null,
+    .flags = 0,
+};
+
+fn streamFromDecoder(decoder: ?*c.ma_decoder) ?*Stream {
+    const decoder_ptr = decoder orelse return null;
+    const user_data = decoder_ptr.pUserData orelse return null;
+    return @ptrCast(@alignCast(user_data));
+}
+
+fn streamDecoderRead(
+    decoder: ?*c.ma_decoder,
+    buffer_out: ?*anyopaque,
+    bytes_to_read: usize,
+    bytes_read_out: [*c]usize,
+) callconv(.c) c.ma_result {
+    if (bytes_read_out != null) bytes_read_out[0] = 0;
+    const stream = streamFromDecoder(decoder) orelse return c.MA_INVALID_ARGS;
+    if (bytes_to_read == 0) return c.MA_SUCCESS;
+    const output_ptr = buffer_out orelse return c.MA_INVALID_ARGS;
+
+    stream.input_lock.lock();
+    defer stream.input_lock.unlock();
+
+    while (stream.input_count == 0 and
+        @atomicLoad(u32, &stream.input_ended, .acquire) == 0 and
+        @atomicLoad(u32, &stream.cancel_requested, .acquire) == 0 and
+        !stream.decoder_abort)
+    {
+        if (stream.probe_active and stream.probe_bytes >= max_stream_probe_bytes) {
+            stream.decoder_abort = true;
+            break;
+        }
+        stream.input_condition.wait(&stream.input_lock);
+    }
+
+    if (@atomicLoad(u32, &stream.cancel_requested, .acquire) != 0 or stream.decoder_abort) {
+        return c.MA_CANCELLED;
+    }
+    if (stream.input_count == 0 and @atomicLoad(u32, &stream.input_ended, .acquire) != 0) {
+        return c.MA_AT_END;
+    }
+
+    var copy_count = @min(bytes_to_read, stream.input_count);
+    if (stream.probe_active) {
+        const probe_remaining = max_stream_probe_bytes - stream.probe_bytes;
+        copy_count = @min(copy_count, probe_remaining);
+        if (copy_count == 0) {
+            stream.decoder_abort = true;
+            return c.MA_CANCELLED;
+        }
+    }
+
+    const output = @as([*]u8, @ptrCast(output_ptr))[0..copy_count];
+    const first_count = @min(copy_count, stream.input_buffer.len - stream.input_read);
+    @memcpy(output[0..first_count], stream.input_buffer[stream.input_read .. stream.input_read + first_count]);
+    const second_count = copy_count - first_count;
+    if (second_count > 0) {
+        @memcpy(output[first_count..], stream.input_buffer[0..second_count]);
+    }
+
+    stream.input_read = (stream.input_read + copy_count) % stream.input_buffer.len;
+    stream.input_count -= copy_count;
+    if (stream.probe_active) stream.probe_bytes += copy_count;
+    if (bytes_read_out != null) bytes_read_out[0] = copy_count;
+    return c.MA_SUCCESS;
+}
+
+fn streamDecoderSeek(decoder: ?*c.ma_decoder, byte_offset: c.ma_int64, origin: c.ma_seek_origin) callconv(.c) c.ma_result {
+    _ = byte_offset;
+    _ = origin;
+    const stream = streamFromDecoder(decoder) orelse return c.MA_INVALID_ARGS;
+    stream.input_lock.lock();
+    stream.decoder_abort = true;
+    stream.input_condition.broadcast();
+    stream.input_lock.unlock();
+    return c.MA_NOT_IMPLEMENTED;
+}
+
+fn streamDecoderWorker(stream: *Stream) void {
+    var config = c.ma_decoder_config_init(c.ma_format_f32, 2, stream.sample_rate);
+    config.encodingFormat = c.ma_encoding_format_mp3;
+    config.seekPointCount = 0;
+
+    var decoder: c.ma_decoder = undefined;
+    const init_result = c.ma_decoder_init(streamDecoderRead, streamDecoderSeek, stream, &config, &decoder);
+    if (init_result != c.MA_SUCCESS) {
+        if (@atomicLoad(u32, &stream.cancel_requested, .acquire) != 0) {
+            setStreamState(stream, StreamState.cancelled);
+        } else {
+            failStream(stream);
+        }
+        return;
+    }
+    defer _ = c.ma_decoder_uninit(&decoder);
+
+    stream.input_lock.lock();
+    stream.probe_active = false;
+    stream.input_lock.unlock();
+    if (!transitionStreamState(stream, StreamState.initializing, StreamState.buffering)) {
+        if (@atomicLoad(u32, &stream.cancel_requested, .acquire) != 0) return;
+    }
+
+    while (@atomicLoad(u32, &stream.cancel_requested, .acquire) == 0) {
+        const writable = c.ma_pcm_rb_available_write(&stream.pcm_ring);
+        if (writable == 0) {
+            std.Thread.sleep(std.time.ns_per_ms);
+            continue;
+        }
+
+        var contiguous_frames: u32 = @min(writable, stream_decoder_chunk_frames);
+        var pcm_ptr: ?*anyopaque = null;
+        if (c.ma_pcm_rb_acquire_write(&stream.pcm_ring, &contiguous_frames, &pcm_ptr) != c.MA_SUCCESS or contiguous_frames == 0 or pcm_ptr == null) {
+            failStream(stream);
+            return;
+        }
+
+        var frames_read: c.ma_uint64 = 0;
+        const result = c.ma_decoder_read_pcm_frames(&decoder, pcm_ptr, contiguous_frames, &frames_read);
+        const decoded_frames = std.math.cast(u32, frames_read) orelse {
+            failStream(stream);
+            return;
+        };
+
+        if (decoded_frames > 0) {
+            if (c.ma_pcm_rb_commit_write(&stream.pcm_ring, decoded_frames) != c.MA_SUCCESS) {
+                failStream(stream);
+                return;
+            }
+            _ = @atomicRmw(u64, &stream.frames_decoded, .Add, decoded_frames, .monotonic);
+        }
+
+        if (@atomicLoad(u32, &stream.cancel_requested, .acquire) != 0) return;
+        if (result != c.MA_SUCCESS and result != c.MA_AT_END) {
+            failStream(stream);
+            return;
+        }
+        if (frames_read == 0) {
+            if (@atomicLoad(u32, &stream.input_ended, .acquire) == 0) {
+                failStream(stream);
+                return;
+            }
+            @atomicStore(u32, &stream.decoder_finished, 1, .release);
+            return;
+        }
+    }
 }
 
 const DecodedDataSourceFormat = struct {
@@ -462,6 +910,7 @@ fn initDefaultGroup(engine: *Engine) !void {
     const result = c.ma_sound_group_init(&engine.core, 0, null, &group.node);
     if (result != c.MA_SUCCESS) return error.DeviceInitFailed;
     group.initialized = true;
+    errdefer c.ma_sound_group_uninit(&group.node);
     c.ma_sound_group_set_volume(&group.node, 1);
 
     try engine.groups.append(engine.allocator, group);
@@ -533,7 +982,6 @@ pub fn create(allocator: std.mem.Allocator, options_ptr: ?*const CreateOptions) 
     const output_channels = std.math.cast(u8, playback_channels) orelse return null;
 
     const engine = allocator.create(Engine) catch return null;
-    errdefer allocator.destroy(engine);
     engine.* = Engine.init(allocator, sample_rate, output_channels);
 
     var config = c.ma_engine_config_init();
@@ -541,11 +989,19 @@ pub fn create(allocator: std.mem.Allocator, options_ptr: ?*const CreateOptions) 
     config.channels = 2;
     config.sampleRate = sample_rate;
 
-    if (c.ma_engine_init(&config, &engine.core) != c.MA_SUCCESS) return null;
+    if (c.ma_engine_init(&config, &engine.core) != c.MA_SUCCESS) {
+        engine.deinit();
+        allocator.destroy(engine);
+        return null;
+    }
     engine.core_initialized = true;
     engine.sample_rate = c.ma_engine_get_sample_rate(&engine.core);
 
-    initDefaultGroup(engine) catch return null;
+    initDefaultGroup(engine) catch {
+        engine.deinit();
+        allocator.destroy(engine);
+        return null;
+    };
     return engine;
 }
 
@@ -630,21 +1086,34 @@ pub fn clearPlaybackDeviceSelection(engine: *Engine) void {
 pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
     const e = engine;
     const options = if (options_ptr) |opts| opts.* else StartOptions{};
-    if (e.started and e.has_device) return Status.ok;
+    e.lock.lock();
+    if (e.started and e.has_device) {
+        e.lock.unlock();
+        return Status.ok;
+    }
 
     if (!e.has_device) {
         const context_status = ensureContextInitialized(e);
-        if (context_status != Status.ok) return context_status;
+        if (context_status != Status.ok) {
+            e.lock.unlock();
+            return context_status;
+        }
 
         var selected_device_id: ?*const c.ma_device_id = null;
         if (e.selected_playback_index) |selected_index| {
             if (e.playback_devices.items.len == 0) {
                 const refresh_status = refreshPlaybackDevicesLocked(e);
-                if (refresh_status != Status.ok) return refresh_status;
+                if (refresh_status != Status.ok) {
+                    e.lock.unlock();
+                    return refresh_status;
+                }
             }
 
             const idx: usize = @intCast(selected_index);
-            if (idx >= e.playback_devices.items.len) return Status.err_not_found;
+            if (idx >= e.playback_devices.items.len) {
+                e.lock.unlock();
+                return Status.err_not_found;
+            }
             selected_device_id = &e.playback_devices.items[idx].id;
         }
 
@@ -673,6 +1142,7 @@ pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
 
         const init_result = c.ma_device_init(&e.context, &config, &e.device);
         if (init_result != c.MA_SUCCESS) {
+            e.lock.unlock();
             return Status.err_device;
         }
 
@@ -684,30 +1154,360 @@ pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
         }
     }
 
+    e.started = true;
+    e.lock.unlock();
+
     const start_result = c.ma_device_start(&e.device);
     if (start_result != c.MA_SUCCESS) {
+        e.lock.lock();
+        e.started = false;
         c.ma_device_uninit(&e.device);
         e.has_device = false;
+        e.lock.unlock();
         return Status.err_device;
     }
 
-    e.started = true;
     return Status.ok;
 }
 
 pub fn startMixer(engine: *Engine) i32 {
+    engine.lock.lock();
     engine.started = true;
+    engine.lock.unlock();
     return Status.ok;
 }
 
 pub fn stop(engine: *Engine) i32 {
     const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+
+    e.started = false;
     if (e.has_device) {
         _ = c.ma_device_stop(&e.device);
         c.ma_device_uninit(&e.device);
         e.has_device = false;
     }
-    e.started = false;
+    return Status.ok;
+}
+
+fn defaultStreamOptions() StreamOptions {
+    return .{
+        .input_capacity_bytes = default_stream_input_capacity,
+        .pcm_capacity_frames = default_stream_pcm_capacity,
+        .startup_frames = default_stream_startup_frames,
+        .resume_frames = default_stream_resume_frames,
+        .volume = 1,
+        .pan = 0,
+        .group_id = 0,
+    };
+}
+
+fn validStreamOptions(options: StreamOptions) bool {
+    if (options.input_capacity_bytes == 0 or options.pcm_capacity_frames == 0) return false;
+    if (options.startup_frames == 0 or options.resume_frames == 0) return false;
+    if (options.startup_frames > options.pcm_capacity_frames or options.resume_frames > options.pcm_capacity_frames) return false;
+
+    const max_pcm_frames: u32 = 0x7fffffff / (2 * @sizeOf(f32));
+    return options.pcm_capacity_frames <= max_pcm_frames;
+}
+
+fn streamIdForSlot(engine: *const Engine, slot_index: usize) u32 {
+    const slot: u32 = @intCast(slot_index + 1);
+    return (engine.stream_generations[slot_index] << 8) | slot;
+}
+
+fn streamSlotIndexLocked(engine: *const Engine, stream_id: u32) ?usize {
+    const slot: u8 = @truncate(stream_id);
+    const generation = stream_id >> 8;
+    if (slot == 0 or generation == 0) return null;
+
+    const slot_index = @as(usize, slot) - 1;
+    if (slot_index >= engine.streams.len or engine.stream_generations[slot_index] != generation) return null;
+    return slot_index;
+}
+
+fn getStreamLocked(engine: *Engine, stream_id: u32) ?*Stream {
+    const slot_index = streamSlotIndexLocked(engine, stream_id) orelse return null;
+    return engine.streams[slot_index];
+}
+
+fn retireStreamSlotLocked(engine: *Engine, slot_index: usize) void {
+    engine.streams[slot_index] = null;
+    const generation = engine.stream_generations[slot_index];
+    engine.stream_generations[slot_index] = if (generation == max_stream_generation) 0 else generation + 1;
+}
+
+pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_stream_id: ?*u32) i32 {
+    if (out_stream_id == null) return Status.err_invalid;
+    const options = if (options_ptr) |provided| provided.* else defaultStreamOptions();
+    if (!validStreamOptions(options)) return Status.err_invalid;
+
+    const e = engine;
+    const stream = e.allocator.create(Stream) catch return Status.err_no_space;
+    const input_buffer = e.allocator.alloc(u8, options.input_capacity_bytes) catch {
+        e.allocator.destroy(stream);
+        return Status.err_no_space;
+    };
+    const pcm_sample_count = std.math.mul(usize, @as(usize, options.pcm_capacity_frames), 2) catch {
+        e.allocator.free(input_buffer);
+        e.allocator.destroy(stream);
+        return Status.err_no_space;
+    };
+    const pcm_buffer = e.allocator.alloc(f32, pcm_sample_count) catch {
+        e.allocator.free(input_buffer);
+        e.allocator.destroy(stream);
+        return Status.err_no_space;
+    };
+
+    stream.* = .{
+        .allocator = e.allocator,
+        .input_buffer = input_buffer,
+        .pcm_buffer = pcm_buffer,
+        .startup_frames = options.startup_frames,
+        .resume_frames = options.resume_frames,
+        .sample_rate = e.sample_rate,
+        .capacity_frames = options.pcm_capacity_frames,
+        .volume = clamp(options.volume, 0, 4),
+        .pan = clamp(options.pan, -1, 1),
+        .group_id = options.group_id,
+    };
+    stream.source.stream = stream;
+
+    if (c.ma_pcm_rb_init(c.ma_format_f32, 2, options.pcm_capacity_frames, pcm_buffer.ptr, null, &stream.pcm_ring) != c.MA_SUCCESS) {
+        destroyStreamStorage(stream);
+        return Status.err_device;
+    }
+    stream.pcm_ring_ready = true;
+    c.ma_pcm_rb_set_sample_rate(&stream.pcm_ring, e.sample_rate);
+
+    var source_config = c.ma_data_source_config_init();
+    source_config.vtable = &stream_data_source_vtable;
+    if (c.ma_data_source_init(&source_config, @ptrCast(&stream.source)) != c.MA_SUCCESS) {
+        destroyStreamStorage(stream);
+        return Status.err_device;
+    }
+    stream.source_ready = true;
+
+    e.lock.lock();
+    reapFinishedVoices(e);
+    const group_index: usize = @intCast(options.group_id);
+    if (group_index >= e.groups.items.len) {
+        e.lock.unlock();
+        destroyStreamStorage(stream);
+        return Status.err_invalid;
+    }
+    if (e.activeVoiceAndStreamCount() >= max_voices) {
+        e.lock.unlock();
+        destroyStreamStorage(stream);
+        return Status.err_no_space;
+    }
+
+    var stream_slot: ?usize = null;
+    for (e.streams, 0..) |existing_stream, slot_index| {
+        if (existing_stream == null and e.stream_generations[slot_index] != 0) {
+            stream_slot = slot_index;
+            break;
+        }
+    }
+    if (stream_slot == null) {
+        e.lock.unlock();
+        destroyStreamStorage(stream);
+        return Status.err_no_space;
+    }
+
+    const data_source: *c.ma_data_source = @ptrCast(&stream.source);
+    const sound_flags: c.ma_uint32 = c.MA_SOUND_FLAG_NO_SPATIALIZATION | c.MA_SOUND_FLAG_NO_PITCH;
+    if (c.ma_sound_init_from_data_source(&e.core, data_source, sound_flags, &e.groups.items[group_index].node, &stream.sound) != c.MA_SUCCESS) {
+        e.lock.unlock();
+        destroyStreamStorage(stream);
+        return Status.err_device;
+    }
+    stream.sound_ready = true;
+    c.ma_sound_set_pan(&stream.sound, stream.pan);
+    c.ma_sound_set_volume(&stream.sound, stream.volume);
+    if (c.ma_sound_start(&stream.sound) != c.MA_SUCCESS) {
+        c.ma_sound_uninit(&stream.sound);
+        stream.sound_ready = false;
+        e.lock.unlock();
+        destroyStreamStorage(stream);
+        return Status.err_device;
+    }
+
+    const slot_index = stream_slot.?;
+    e.streams[slot_index] = stream;
+    const stream_id = streamIdForSlot(e, slot_index);
+    e.updateActiveVoiceCount();
+    e.lock.unlock();
+
+    stream.worker = std.Thread.spawn(.{}, streamDecoderWorker, .{stream}) catch {
+        e.lock.lock();
+        if (stream.sound_ready) {
+            _ = c.ma_sound_stop(&stream.sound);
+            c.ma_sound_uninit(&stream.sound);
+            stream.sound_ready = false;
+        }
+        retireStreamSlotLocked(e, slot_index);
+        e.updateActiveVoiceCount();
+        e.lock.unlock();
+        requestStreamCancellation(stream);
+        destroyStreamStorage(stream);
+        return Status.err_no_space;
+    };
+
+    out_stream_id.?.* = stream_id;
+    return Status.ok;
+}
+
+pub fn writeStream(
+    engine: *Engine,
+    stream_id: u32,
+    data_ptr: ?[*]const u8,
+    data_len: u32,
+    out_written: ?*u32,
+) i32 {
+    if (stream_id == 0 or out_written == null or (data_len > 0 and data_ptr == null)) return Status.err_invalid;
+    out_written.?.* = 0;
+
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+
+    stream.input_lock.lock();
+    defer stream.input_lock.unlock();
+    if (@atomicLoad(u32, &stream.input_ended, .acquire) != 0 or
+        @atomicLoad(u32, &stream.cancel_requested, .acquire) != 0 or
+        stream.decoder_abort or isTerminalStreamState(loadStreamState(stream)))
+    {
+        return Status.err_invalid;
+    }
+    if (data_len == 0) return Status.ok;
+
+    const available = stream.input_buffer.len - stream.input_count;
+    const write_count = @min(@as(usize, data_len), available);
+    if (write_count == 0) return Status.ok;
+
+    const data = data_ptr.?[0..write_count];
+    const first_count = @min(write_count, stream.input_buffer.len - stream.input_write);
+    @memcpy(stream.input_buffer[stream.input_write .. stream.input_write + first_count], data[0..first_count]);
+    const second_count = write_count - first_count;
+    if (second_count > 0) {
+        @memcpy(stream.input_buffer[0..second_count], data[first_count..]);
+    }
+
+    stream.input_write = (stream.input_write + write_count) % stream.input_buffer.len;
+    stream.input_count += write_count;
+    _ = @atomicRmw(u64, &stream.bytes_received, .Add, write_count, .monotonic);
+    out_written.?.* = @intCast(write_count);
+    stream.input_condition.signal();
+    return Status.ok;
+}
+
+pub fn endStream(engine: *Engine, stream_id: u32) i32 {
+    if (stream_id == 0) return Status.err_invalid;
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+
+    stream.input_lock.lock();
+    defer stream.input_lock.unlock();
+    if (loadStreamState(stream) == StreamState.failed or @atomicLoad(u32, &stream.cancel_requested, .acquire) != 0) {
+        return Status.err_invalid;
+    }
+    @atomicStore(u32, &stream.input_ended, 1, .release);
+    stream.input_condition.broadcast();
+    return Status.ok;
+}
+
+pub fn setStreamVolume(engine: *Engine, stream_id: u32, volume: f32) i32 {
+    if (stream_id == 0) return Status.err_invalid;
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+
+    stream.volume = clamp(volume, 0, 4);
+    c.ma_sound_set_volume(&stream.sound, stream.volume);
+    return Status.ok;
+}
+
+pub fn setStreamPan(engine: *Engine, stream_id: u32, pan: f32) i32 {
+    if (stream_id == 0) return Status.err_invalid;
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+
+    stream.pan = clamp(pan, -1, 1);
+    c.ma_sound_set_pan(&stream.sound, stream.pan);
+    return Status.ok;
+}
+
+pub fn setStreamGroup(engine: *Engine, stream_id: u32, group_id: u32) i32 {
+    if (stream_id == 0) return Status.err_invalid;
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+
+    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+    const group_index: usize = @intCast(group_id);
+    if (group_index >= e.groups.items.len) return Status.err_invalid;
+
+    if (c.ma_node_attach_output_bus(@ptrCast(&stream.sound), 0, @ptrCast(&e.groups.items[group_index].node), 0) != c.MA_SUCCESS) {
+        return Status.err_device;
+    }
+    stream.group_id = group_id;
+    return Status.ok;
+}
+
+pub fn getStreamStats(engine: *Engine, stream_id: u32, out_stats: ?*StreamStats) i32 {
+    if (stream_id == 0 or out_stats == null) return Status.err_invalid;
+    const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
+    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+
+    out_stats.?.* = .{
+        .bytes_received = @atomicLoad(u64, &stream.bytes_received, .monotonic),
+        .frames_decoded = @atomicLoad(u64, &stream.frames_decoded, .monotonic),
+        .frames_played = @atomicLoad(u64, &stream.frames_played, .monotonic),
+        .state = loadStreamState(stream),
+        .sample_rate = stream.sample_rate,
+        .channels = 2,
+        .buffered_frames = c.ma_pcm_rb_available_read(&stream.pcm_ring),
+        .capacity_frames = stream.capacity_frames,
+        .underruns = @atomicLoad(u32, &stream.underruns, .monotonic),
+        .error_code = @atomicLoad(i32, &stream.error_code, .acquire),
+    };
+    return Status.ok;
+}
+
+pub fn destroyStream(engine: *Engine, stream_id: u32) i32 {
+    if (stream_id == 0) return Status.err_invalid;
+    const e = engine;
+    e.lock.lock();
+    const slot_index = streamSlotIndexLocked(e, stream_id) orelse {
+        e.lock.unlock();
+        return Status.err_not_found;
+    };
+    const stream = e.streams[slot_index] orelse {
+        e.lock.unlock();
+        return Status.err_not_found;
+    };
+
+    if (stream.sound_ready) {
+        _ = c.ma_sound_stop(&stream.sound);
+        c.ma_sound_uninit(&stream.sound);
+        stream.sound_ready = false;
+    }
+    retireStreamSlotLocked(e, slot_index);
+    e.updateActiveVoiceCount();
+    e.lock.unlock();
+
+    requestStreamCancellation(stream);
+    destroyStreamStorage(stream);
     return Status.ok;
 }
 
@@ -777,15 +1577,19 @@ pub fn createGroup(engine: *Engine, name_ptr: ?[*]const u8, name_len: usize, out
     }
 
     const group = e.allocator.create(SoundGroup) catch return Status.err_no_space;
-    errdefer e.allocator.destroy(group);
-
     group.* = .{
-        .name = e.allocator.dupe(u8, name) catch return Status.err_no_space,
+        .name = e.allocator.dupe(u8, name) catch {
+            e.allocator.destroy(group);
+            return Status.err_no_space;
+        },
     };
-    errdefer e.allocator.free(group.name);
 
     const init_result = c.ma_sound_group_init(&e.core, 0, null, &group.node);
-    if (init_result != c.MA_SUCCESS) return Status.err_device;
+    if (init_result != c.MA_SUCCESS) {
+        e.allocator.free(group.name);
+        e.allocator.destroy(group);
+        return Status.err_device;
+    }
     group.initialized = true;
     c.ma_sound_group_set_volume(&group.node, 1);
 
@@ -819,6 +1623,7 @@ pub fn play(engine: *Engine, sound_id: u32, options_ptr: ?*const VoiceOptions, o
 
     const group_index: usize = @intCast(options.group_id);
     if (group_index >= e.groups.items.len) return Status.err_invalid;
+    if (e.activeVoiceAndStreamCount() >= max_voices) return Status.err_no_space;
 
     var free_index: ?usize = null;
     for (e.voices, 0..) |voice, idx| {

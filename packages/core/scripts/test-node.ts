@@ -30,8 +30,8 @@ const treeSitterTestDataPaths = [
   textBufferTestDataPath,
   ...treeSitterClientTestDataPaths,
 ]
-const treeSitterCacheTestAddress = "127.0.0.1:55231"
 const treeSitterAssetsDir = "src/lib/tree-sitter/assets"
+const audioFixturesDir = "src/tests/fixtures/audio"
 const nodeTestTimeoutMs = 30_000
 const nodeProcessTimeoutMs = 10 * 60_000
 const nodePath = requireNode26()
@@ -121,6 +121,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/absolute-positioning.snapshot.test.js",
   ".node-test/src/tests/renderable.snapshot.test.js",
   ".node-test/src/tests/allocator-stats.test.js",
+  ".node-test/src/tests/audio-stream.test.js",
   ".node-test/src/tests/audio.test.js",
   ".node-test/src/tests/destroy-on-exit.test.js",
   ".node-test/src/tests/destroy-during-render.test.js",
@@ -180,6 +181,7 @@ try {
 
   if (exitCode === 0) {
     cpSync(resolve(packageRoot, treeSitterAssetsDir), resolve(outDir, treeSitterAssetsDir), { recursive: true })
+    cpSync(resolve(packageRoot, audioFixturesDir), resolve(outDir, audioFixturesDir), { recursive: true })
     for (const dataPath of treeSitterTestDataPaths) {
       mkdirSync(dataPath, { recursive: true })
     }
@@ -193,7 +195,7 @@ try {
         `--allow-fs-read=${workspaceRoot}`,
         ...treeSitterTestDataPaths.map((path) => `--allow-fs-read=${path}`),
         ...treeSitterTestDataPaths.map((path) => `--allow-fs-write=${path}`),
-        `--allow-net=${treeSitterCacheTestAddress}`,
+        "--allow-net=127.0.0.1",
         "--allow-child-process",
         "--allow-worker",
         "--allow-ffi",
