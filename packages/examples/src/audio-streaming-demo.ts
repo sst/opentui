@@ -83,6 +83,7 @@ class AudioStreamingDemo {
   private streamStats: AudioStreamStats | null = null
   private connectionGeneration = 0
   private destroyed = false
+  private liveRequested = false
   private outputMode = "starting"
   private statusMessage = "Initializing native audio"
   private volume = 0.8
@@ -288,6 +289,8 @@ class AudioStreamingDemo {
       this.updateFrame(deltaMs)
     }
     this.renderer.setFrameCallback(this.frameCallback)
+    this.renderer.requestLive()
+    this.liveRequested = true
 
     this.urlInput.focus()
     this.refreshText()
@@ -640,6 +643,10 @@ class AudioStreamingDemo {
     this.stream = null
 
     this.renderer.removeFrameCallback(this.frameCallback)
+    if (this.liveRequested) {
+      this.renderer.dropLive()
+      this.liveRequested = false
+    }
     this.renderer.keyInput.off("keypress", this.handleKeyPress)
     this.urlInput.blur()
     this.audio.dispose()
