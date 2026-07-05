@@ -616,7 +616,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u8",
     },
     clipboardReadOperationStart: {
-      args: ["u32", "ptr", "u32", "u8", "u32", "u32", "ptr"],
+      args: ["u32", "ptr", "u32", "u8", "u32", "u32", "u32", "u32", "ptr"],
       returns: "u8",
     },
     clipboardWriteOperationStart: {
@@ -2359,6 +2359,8 @@ export interface RenderLib extends AudioEngineLib {
     request: Uint8Array,
     selection: number,
     maxBytes: number,
+    maxImagePixels: number,
+    maxConversionBytes: number,
     timeoutMs: number,
   ) => { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null }
   clipboardWriteOperationStart: (
@@ -3707,6 +3709,8 @@ class FFIRenderLib implements RenderLib {
     request: Uint8Array,
     selection: number,
     maxBytes: number,
+    maxImagePixels: number,
+    maxConversionBytes: number,
     timeoutMs: number,
   ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
     const output = new Uint32Array(1)
@@ -3716,6 +3720,8 @@ class FFIRenderLib implements RenderLib {
       toSafeFFIU32Length(request.byteLength, "clipboard read request"),
       selection,
       toSafeFFIU32Length(maxBytes, "clipboard read byte limit"),
+      toSafeFFIU32Length(maxImagePixels, "clipboard image pixel limit"),
+      toSafeFFIU32Length(maxConversionBytes, "clipboard conversion byte limit"),
       toSafeFFIU32Length(timeoutMs, "clipboard read timeout"),
       output,
     )

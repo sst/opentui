@@ -1,9 +1,12 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const clipboard_windows_dib = @import("clipboard-windows-dib.zig");
 
 const Allocator = std.mem.Allocator;
 
+const CF_DIB: u32 = 8;
 const CF_UNICODETEXT: u32 = 13;
+const CF_DIBV5: u32 = 17;
 const COINIT_APARTMENTTHREADED: u32 = 0x2;
 const GMEM_MOVEABLE: u32 = 0x2;
 const OPEN_RETRY_SLEEP_NS_DEFAULT: u64 = 5 * std.time.ns_per_ms;
@@ -94,6 +97,8 @@ pub const ReadJob = struct {
     // Same framing as clipboard.zig: u32 count, then repeated u32 byte length and MIME bytes.
     request: []const u8,
     max_bytes: u32,
+    max_image_pixels: u32,
+    max_conversion_bytes: u32,
 };
 
 pub const WriteJob = struct {
@@ -218,14 +223,15 @@ pub const Worker = struct {
         var first_failure: ?Result = null;
         while (iterator.next() catch unreachable) |mime| {
             if (checkStop(options)) |status| return .{ .status = status };
-            const format = worker.formatForMime(mime) orelse continue;
-            supported = true;
-            if (win32.IsClipboardFormatAvailable(format) == 0) continue;
-            if (checkStop(options)) |status| return .{ .status = status };
-            const result = if (format == CF_UNICODETEXT)
-                readText(allocator, mime, job.max_bytes)
-            else
-                readBytes(allocator, mime, format, job.max_bytes);
+            const result = if (std.ascii.eqlIgnoreCase(mime, "text/plain")) blk: {
+                supported = true;
+                if (win32.IsClipboardFormatAvailable(CF_UNICODETEXT) == 0) continue;
+                if (checkStop(options)) |status| return .{ .status = status };
+                break :blk readText(allocator, mime, job.max_bytes);
+            } else if (std.ascii.eqlIgnoreCase(mime, "image/png")) blk: {
+                supported = true;
+                break :blk worker.readImage(allocator, mime, job, options);
+            } else continue;
             switch (readCandidateAction(result)) {
                 .return_result => return result,
                 .continue_candidate => {},
@@ -238,18 +244,39 @@ pub const Worker = struct {
         return .{ .status = if (supported) .empty else .unsupported };
     }
 
+    fn readImage(
+        worker: *const Worker,
+        allocator: Allocator,
+        mime: []const u8,
+        job: ReadJob,
+        options: ExecuteOptions,
+    ) Result {
+        const formats = [_]u32{ worker.png_format, CF_DIBV5, CF_DIB };
+        var first_failure: ?Result = null;
+        for (formats) |format| {
+            if (checkStop(options)) |status| return .{ .status = status };
+            if (win32.IsClipboardFormatAvailable(format) == 0) continue;
+            const result = if (format == worker.png_format)
+                readBytes(allocator, mime, format, job.max_bytes)
+            else
+                readDib(allocator, mime, format, job, options);
+            switch (readCandidateAction(result)) {
+                .return_result => return result,
+                .continue_candidate => {},
+                .remember_failure => if (first_failure == null) {
+                    first_failure = result;
+                },
+            }
+        }
+        return first_failure orelse .{ .status = .empty };
+    }
+
     fn executeWrite(_: *const Worker, prepared: *PreparedWrite) Result {
         if (win32.EmptyClipboard() == 0) return lastErrorResult();
         const memory = prepared.memory orelse unreachable;
         if (win32.SetClipboardData(prepared.format, memory) == null) return lastErrorResult();
         prepared.memory = null; // SetClipboardData owns the HGLOBAL after success.
         return .{ .status = .written };
-    }
-
-    fn formatForMime(worker: *const Worker, mime: []const u8) ?u32 {
-        if (std.ascii.eqlIgnoreCase(mime, "text/plain")) return CF_UNICODETEXT;
-        if (std.ascii.eqlIgnoreCase(mime, "image/png")) return worker.png_format;
-        return null;
     }
 };
 
@@ -492,6 +519,38 @@ fn readBytes(allocator: Allocator, mime: []const u8, format: u32, max_bytes: u32
     const source: [*]const u8 = @ptrCast(pointer);
     const data = allocator.dupe(u8, source[0..size_bytes]) catch {
         return .{ .status = .failed, .error_code = ERROR_OUTOFMEMORY };
+    };
+    return readResult(allocator, mime, data);
+}
+
+fn readDib(
+    allocator: Allocator,
+    mime: []const u8,
+    format: u32,
+    job: ReadJob,
+    options: ExecuteOptions,
+) Result {
+    const memory = win32.GetClipboardData(format) orelse return lastErrorResult();
+    const size_bytes = win32.GlobalSize(memory);
+    if (size_bytes == 0) return .{ .status = .empty };
+    const pointer = win32.GlobalLock(memory) orelse return lastErrorResult();
+    defer _ = win32.GlobalUnlock(memory);
+    const source: [*]const u8 = @ptrCast(pointer);
+    const data = clipboard_windows_dib.convertToPng(allocator, source[0..size_bytes], .{
+        .max_output_bytes = job.max_bytes,
+        .max_image_pixels = job.max_image_pixels,
+        .max_conversion_bytes = job.max_conversion_bytes,
+        .cancel_requested = options.cancel_requested,
+        .deadline_ns = options.deadline_ns,
+    }) catch |err| {
+        return switch (err) {
+            error.Unsupported => .{ .status = .empty },
+            error.LimitExceeded => .{ .status = .limit_exceeded },
+            error.Cancelled => .{ .status = .cancelled },
+            error.TimedOut => .{ .status = .timed_out },
+            error.OutOfMemory => .{ .status = .failed, .error_code = ERROR_OUTOFMEMORY },
+            error.InvalidData => .{ .status = .failed, .error_code = ERROR_INVALID_DATA },
+        };
     };
     return readResult(allocator, mime, data);
 }
