@@ -46,6 +46,7 @@ const clipboard_wayland_protocol_tests = @import("clipboard-wayland-protocol.zig
 const clipboard_wayland_tests = @import("clipboard-wayland.zig");
 const clipboard_x11_tests = @import("clipboard-x11.zig");
 const clipboard_windows_tests = @import("clipboard-windows.zig");
+const clipboard_windows_dib_tests = @import("clipboard-windows-dib.zig");
 const clipboard_macos_tests = @import("clipboard-macos.zig");
 // const example_tests = @import("example_test.zig");
 
@@ -99,6 +100,7 @@ comptime {
     _ = clipboard_wayland_tests;
     _ = clipboard_x11_tests;
     _ = clipboard_windows_tests;
+    _ = clipboard_windows_dib_tests;
     _ = clipboard_macos_tests;
     // _ = example_tests;
 }

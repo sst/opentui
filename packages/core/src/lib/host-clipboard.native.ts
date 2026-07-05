@@ -84,6 +84,8 @@ class NativeClipboardBackend implements HostClipboardBackend {
 
   constructor(
     private readonly maxWorkUnitsPerDrain: number,
+    private readonly maxImagePixels: number,
+    private readonly maxConversionBytes: number,
     maxConcurrentOperations: number,
     maxProviderTransfers: number,
     waylandSeat?: string,
@@ -101,6 +103,8 @@ class NativeClipboardBackend implements HostClipboardBackend {
       request,
       selectionValue(options.selection),
       options.maxBytes,
+      this.maxImagePixels,
+      this.maxConversionBytes,
       options.timeoutMs,
     )
     return this.track(started, options.signal, "read") as Promise<ClipboardReadResult>
@@ -311,6 +315,8 @@ class NativeClipboardBackend implements HostClipboardBackend {
 export const createNativeHostClipboardBackend: HostClipboardBackendFactory = (options) =>
   new NativeClipboardBackend(
     options.maxWorkUnitsPerDrain,
+    options.maxImagePixels,
+    options.maxConversionBytes,
     options.maxConcurrentOperations,
     options.maxProviderTransfers,
     options.waylandSeat,

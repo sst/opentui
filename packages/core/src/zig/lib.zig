@@ -427,6 +427,8 @@ export fn clipboardReadOperationStart(
     request_length: u32,
     selection: u8,
     max_bytes: u32,
+    max_image_pixels: u32,
+    max_conversion_bytes: u32,
     timeout_ms: u32,
     out_operation_handle: ?*NativeHandle,
 ) u8 {
@@ -436,6 +438,8 @@ export fn clipboardReadOperationStart(
         request_length,
         selection,
         max_bytes,
+        max_image_pixels,
+        max_conversion_bytes,
         timeout_ms,
         out_operation_handle,
     ));
