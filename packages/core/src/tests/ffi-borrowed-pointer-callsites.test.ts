@@ -690,7 +690,7 @@ describe("borrowed pointer call sites", () => {
       },
       (calls) => {
         const service = lib.clipboardServiceCreate(2, 2, "seat0")!
-        lib.clipboardReadOperationStart(service, Uint8Array.of(1, 2), 0, 16, 100)
+        lib.clipboardReadOperationStart(service, Uint8Array.of(1, 2), 0, 16, 32, 128, 100)
         lib.clipboardWriteOperationStart(service, Uint8Array.of(3, 4), 0, 100)
         lib.clipboardClearOperationStart(service, 0, 100)
         lib.clipboardOperationResultMimeLength(1 as any)
@@ -702,7 +702,8 @@ describe("borrowed pointer call sites", () => {
 
         expect(calls.clipboardServiceCreate![0]![2]).toBeInstanceOf(Uint8Array)
         expect(calls.clipboardReadOperationStart![0]![1]).toBeInstanceOf(Uint8Array)
-        expect(calls.clipboardReadOperationStart![0]![6]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardReadOperationStart![0]!.slice(4, 8)).toEqual([16, 32, 128, 100])
+        expect(calls.clipboardReadOperationStart![0]![8]).toBeInstanceOf(Uint32Array)
         expect(calls.clipboardWriteOperationStart![0]![1]).toBeInstanceOf(Uint8Array)
         expect(calls.clipboardWriteOperationStart![0]![5]).toBeInstanceOf(Uint32Array)
         expect(calls.clipboardClearOperationStart![0]![3]).toBeInstanceOf(Uint32Array)
