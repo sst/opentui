@@ -134,6 +134,8 @@ const Operation = struct {
     transfer_data: std.ArrayListUnmanaged(u8) = .{},
     transfer_fd: ?std.posix.fd_t = null,
     max_bytes: u32 = 0,
+    max_image_pixels: u32 = 0,
+    max_conversion_bytes: u32 = 0,
     selection: Selection = .clipboard,
     preference_offset: usize = 4,
     candidate_failed: bool = false,
@@ -497,7 +499,12 @@ const Service = struct {
 
         if (comptime builtin.os.tag == .windows) {
             const job: clipboard_windows.Job = switch (operation.kind) {
-                .read => .{ .read = .{ .request = operation.request, .max_bytes = operation.max_bytes } },
+                .read => .{ .read = .{
+                    .request = operation.request,
+                    .max_bytes = operation.max_bytes,
+                    .max_image_pixels = operation.max_image_pixels,
+                    .max_conversion_bytes = operation.max_conversion_bytes,
+                } },
                 .write => .{ .write = .{ .mime = "text/plain", .data = operation.request } },
                 .clear => .clear,
                 .test_read => unreachable,
@@ -1323,6 +1330,8 @@ fn startImmediateOperation(
     request: []const u8,
     timeout_ms: u32,
     max_bytes: u32,
+    max_image_pixels: u32,
+    max_conversion_bytes: u32,
     selection: Selection,
     out_handle: *Handle,
 ) StartStatus {
@@ -1341,6 +1350,8 @@ fn startImmediateOperation(
         .timeout_ms = timeout_ms,
         .started_ns = std.time.nanoTimestamp(),
         .max_bytes = max_bytes,
+        .max_image_pixels = max_image_pixels,
+        .max_conversion_bytes = max_conversion_bytes,
         .selection = selection,
         .mutation_sequence = if (kind == .write or kind == .clear) service.takeMutationSequence() else 0,
     };
@@ -1373,6 +1384,8 @@ pub fn startReadOperation(
     request_length: u32,
     selection_value: u8,
     max_bytes: u32,
+    max_image_pixels: u32,
+    max_conversion_bytes: u32,
     timeout_ms: u32,
     out_operation_handle: ?*Handle,
 ) StartStatus {
@@ -1384,7 +1397,18 @@ pub fn startReadOperation(
     const selection = parseSelection(selection_value) orelse return .invalid_argument;
     const request = sliceFromPointer(request_pointer, request_length) orelse return .invalid_argument;
     if (!validateReadRequest(request)) return .invalid_argument;
-    return startImmediateOperation(service, service_handle, .read, request, timeout_ms, max_bytes, selection, out_handle);
+    return startImmediateOperation(
+        service,
+        service_handle,
+        .read,
+        request,
+        timeout_ms,
+        max_bytes,
+        max_image_pixels,
+        max_conversion_bytes,
+        selection,
+        out_handle,
+    );
 }
 
 pub fn startWriteOperation(
@@ -1403,7 +1427,7 @@ pub fn startWriteOperation(
     const selection = parseSelection(selection_value) orelse return .invalid_argument;
     const text = sliceFromPointer(text_pointer, text_length) orelse return .invalid_argument;
     if (text.len == 0 or std.mem.indexOfScalar(u8, text, 0) != null) return .invalid_argument;
-    return startImmediateOperation(service, service_handle, .write, text, timeout_ms, 0, selection, out_handle);
+    return startImmediateOperation(service, service_handle, .write, text, timeout_ms, 0, 0, 0, selection, out_handle);
 }
 
 pub fn startClearOperation(
@@ -1418,7 +1442,7 @@ pub fn startClearOperation(
     if (service.shutting_down) return .shutting_down;
     if (service.operations.items.len >= service.max_operations) return .limit_exceeded;
     const selection = parseSelection(selection_value) orelse return .invalid_argument;
-    return startImmediateOperation(service, service_handle, .clear, "", timeout_ms, 0, selection, out_handle);
+    return startImmediateOperation(service, service_handle, .clear, "", timeout_ms, 0, 0, 0, selection, out_handle);
 }
 
 pub fn pollOperation(operation_handle: Handle) OperationStatus {
@@ -1646,14 +1670,14 @@ test "clipboard production operations validate requests and remain unsupported u
     const malformed_read = [_]u8{ 1, 0, 0, 0, 4, 0, 0, 0, 't' };
     try std.testing.expectEqual(
         StartStatus.invalid_argument,
-        startReadOperation(service, &malformed_read, malformed_read.len, 0, 1024, 100, &operation),
+        startReadOperation(service, &malformed_read, malformed_read.len, 0, 1024, 1024, 4096, 100, &operation),
     );
     try std.testing.expectEqual(@as(Handle, 0), operation);
 
     const read_request = [_]u8{ 1, 0, 0, 0, 10, 0, 0, 0 } ++ "text/plain".*;
     try std.testing.expectEqual(
         StartStatus.ok,
-        startReadOperation(service, &read_request, read_request.len, 0, 1024, 100, &operation),
+        startReadOperation(service, &read_request, read_request.len, 0, 1024, 1024, 4096, 100, &operation),
     );
     try std.testing.expectEqual(OperationStatus.unsupported, pollOperation(operation));
     try std.testing.expectEqual(DestroyStatus.destroyed, destroyOperation(operation));
