@@ -5,6 +5,7 @@ const clipboard_linux = @import("clipboard-linux.zig");
 const clipboard_wayland = @import("clipboard-wayland.zig");
 const clipboard_x11 = @import("clipboard-x11.zig");
 const clipboard_windows = @import("clipboard-windows.zig");
+const clipboard_windows_dib = @import("clipboard-windows-dib.zig");
 const clipboard_macos = @import("clipboard-macos.zig");
 
 const Allocator = std.mem.Allocator;
@@ -65,6 +66,7 @@ const ResultKind = enum { mime, data, diagnostic };
 const Selection = enum(u8) { clipboard = 0, primary = 1 };
 const OperationKind = enum { test_read, read, write, clear };
 const PlatformJobState = enum { none, queued, running, complete };
+const WaylandTransferFormat = enum { direct, bmp_to_png };
 
 const ErrorCode = enum(i32) {
     internal = 1,
@@ -133,6 +135,9 @@ const Operation = struct {
     result_mime: []u8 = &.{},
     transfer_data: std.ArrayListUnmanaged(u8) = .{},
     transfer_fd: ?std.posix.fd_t = null,
+    wayland_transfer_format: WaylandTransferFormat = .direct,
+    wayland_core_focus_acquired: bool = false,
+    wayland_conversion_started: bool = false,
     max_bytes: u32 = 0,
     max_image_pixels: u32 = 0,
     max_conversion_bytes: u32 = 0,
@@ -176,11 +181,59 @@ const Operation = struct {
         operation.mutex.unlock();
     }
 
+    fn waylandBmpWorker(operation: *Operation) void {
+        const converted = clipboard_windows_dib.convertBmpToPng(
+            operation.allocator,
+            operation.transfer_data.items,
+            .{
+                .max_output_bytes = operation.max_bytes,
+                .max_image_pixels = operation.max_image_pixels,
+                .max_conversion_bytes = operation.max_conversion_bytes,
+                .cancel_requested = &operation.platform_cancel,
+                .deadline_ns = operation.started_ns + @as(i128, operation.timeout_ms) * std.time.ns_per_ms,
+            },
+        );
+
+        operation.mutex.lock();
+        defer operation.mutex.unlock();
+        operation.transfer_data.deinit(operation.allocator);
+        operation.transfer_data = .{};
+        if (converted) |png| {
+            operation.result = png;
+            operation.status = .read;
+        } else |err| switch (err) {
+            error.Unsupported => {
+                if (operation.result_mime.len > 0) operation.allocator.free(operation.result_mime);
+                operation.result_mime = &.{};
+            },
+            error.InvalidData => {
+                operation.rememberFailure(.wayland_transfer, "Wayland BMP clipboard image is malformed");
+                operation.candidate_failed = true;
+                if (operation.result_mime.len > 0) operation.allocator.free(operation.result_mime);
+                operation.result_mime = &.{};
+            },
+            error.LimitExceeded => operation.status = .limit_exceeded,
+            error.Cancelled => operation.status = .cancelled,
+            error.TimedOut => operation.status = .timed_out,
+            error.OutOfMemory => {
+                operation.rememberFailure(.out_of_memory, "Failed to convert Wayland BMP clipboard image");
+                operation.status = .failed;
+            },
+        }
+        operation.wayland_conversion_started = false;
+    }
+
     fn requestCancel(operation: *Operation) CancelStatus {
         operation.mutex.lock();
         if (operation.status != .pending) {
             operation.mutex.unlock();
             return .already_terminal;
+        }
+        if (operation.wayland_conversion_started) {
+            operation.cancel_requested = true;
+            operation.platform_cancel.store(true, .release);
+            operation.mutex.unlock();
+            return .requested;
         }
         if (comptime builtin.os.tag == .windows or builtin.os.tag == .macos) {
             if (operation.platform_mutation_started.load(.acquire)) {
@@ -204,6 +257,7 @@ const Operation = struct {
             return .already_terminal;
         }
         operation.cancel_requested = true;
+        operation.platform_cancel.store(true, .release);
         if (operation.kind != .test_read) {
             operation.cleanupTransfer();
             operation.cleanupX11();
@@ -223,6 +277,19 @@ const Operation = struct {
             const status = operation.status;
             operation.mutex.unlock();
             return status;
+        }
+        if (operation.thread) |thread| {
+            const conversion_started = operation.wayland_conversion_started;
+            operation.mutex.unlock();
+            if (conversion_started or !tryJoinThread(thread)) return .pending;
+            operation.mutex.lock();
+            operation.thread = null;
+            operation.worker_joined = true;
+            if (operation.status != .pending) {
+                const status = operation.status;
+                operation.mutex.unlock();
+                return status;
+            }
         }
         if (operation.x11_write.committed) {
             operation.status = if (operation.kind == .write) .written else .cleared;
@@ -248,6 +315,11 @@ const Operation = struct {
             return .pending;
         }
         if (operation.cancel_requested) {
+            if (operation.wayland_conversion_started) {
+                operation.platform_cancel.store(true, .release);
+                operation.mutex.unlock();
+                return .pending;
+            }
             operation.status = .cancelled;
             operation.mutex.unlock();
             return .cancelled;
@@ -256,6 +328,11 @@ const Operation = struct {
         if (!operation.x11_write.mutation_dispatched and
             elapsed_ns >= @as(i128, operation.timeout_ms) * std.time.ns_per_ms)
         {
+            if (operation.wayland_conversion_started) {
+                operation.platform_cancel.store(true, .release);
+                operation.mutex.unlock();
+                return .pending;
+            }
             operation.cleanupTransfer();
             operation.cleanupX11();
             operation.status = .timed_out;
@@ -304,12 +381,20 @@ const Operation = struct {
     }
 
     fn cleanupTransfer(operation: *Operation) void {
+        operation.releaseCoreFocus();
+        operation.wayland_transfer_format = .direct;
         if (comptime builtin.os.tag != .linux) {
             operation.transfer_fd = null;
             return;
         }
         if (operation.transfer_fd) |fd| std.posix.close(fd);
         operation.transfer_fd = null;
+    }
+
+    fn releaseCoreFocus(operation: *Operation) void {
+        if (!operation.wayland_core_focus_acquired) return;
+        operation.wayland_core_focus_acquired = false;
+        if (operation.service.wayland) |wayland| wayland.releaseCoreSelection();
     }
 
     fn rememberFailure(operation: *Operation, code: ErrorCode, diagnostic: []const u8) void {
@@ -325,6 +410,10 @@ const Operation = struct {
         x11.cleanupWrite(&operation.x11_write);
     }
 };
+
+fn wslOperationUnsupported(libraries: clipboard_linux.Libraries, operation: *const Operation) bool {
+    return libraries.is_wsl and (operation.selection == .primary or operation.kind == .clear);
+}
 
 const Service = struct {
     allocator: Allocator,
@@ -695,6 +784,9 @@ const Service = struct {
             .unsupported => return service.finishOperation(operation, .unsupported),
             .linux => |libraries| libraries,
         };
+        if (wslOperationUnsupported(libraries, operation)) {
+            return service.finishOperation(operation, .unsupported);
+        }
         operation.mechanism = operation.mechanism orelse clipboard_linux.firstMechanism(libraries) orelse
             return service.finishOperation(operation, .unsupported);
         return switch (operation.mechanism.?) {
@@ -722,6 +814,8 @@ const Service = struct {
                 service.environment_wayland_seat,
                 service.max_provider_transfers,
             );
+            wayland.allow_bulk_dispatch = libraries.is_wsl;
+            wayland.allow_core_data_device = libraries.is_wsl;
             service.wayland = wayland;
         }
         return switch (service.wayland.?.drive()) {
@@ -832,6 +926,7 @@ const Service = struct {
                 },
             };
             if (count == 0) {
+                const transfer_format = operation.wayland_transfer_format;
                 operation.cleanupTransfer();
                 if (std.ascii.eqlIgnoreCase(operation.result_mime, "image/png") and
                     operation.transfer_data.items.len == 0)
@@ -842,13 +937,13 @@ const Service = struct {
                     operation.transfer_data.clearRetainingCapacity();
                     return .pending;
                 }
-                operation.result = operation.transfer_data.toOwnedSlice(operation.allocator) catch {
-                    operation.rememberFailure(.out_of_memory, "Failed to allocate Wayland clipboard result");
-                    return service.finishOperation(operation, .failed);
-                };
-                return service.finishOperation(operation, .read);
+                return service.completeWaylandRead(operation, transfer_format);
             }
-            if (operation.transfer_data.items.len + count > operation.max_bytes) {
+            const transfer_limit: usize = @intCast(switch (operation.wayland_transfer_format) {
+                .direct => operation.max_bytes,
+                .bmp_to_png => operation.max_conversion_bytes,
+            });
+            if (count > transfer_limit -| operation.transfer_data.items.len) {
                 operation.cleanupTransfer();
                 return service.finishOperation(operation, .limit_exceeded);
             }
@@ -866,8 +961,24 @@ const Service = struct {
         }
         const any_implemented = implementsNativeReadType(operation.request);
         if (!any_implemented) return service.fallbackCurrentWayland(operation);
-        const offer = service.wayland.?.currentOffer(primary) orelse
+        if (service.wayland.?.usesCoreDataDevice()) {
+            if (!operation.wayland_core_focus_acquired) {
+                const acquired = service.wayland.?.acquireCoreSelection();
+                if (acquired == .failed or acquired == .unsupported) {
+                    return service.fallbackCurrentWayland(operation);
+                }
+                operation.wayland_core_focus_acquired = true;
+            }
+            switch (service.wayland.?.coreSelectionProgress()) {
+                .pending => return .pending,
+                .ready => {},
+                .failed, .unsupported => return service.fallbackCurrentWayland(operation),
+            }
+        }
+        const offer = service.wayland.?.currentOffer(primary) orelse {
+            operation.releaseCoreFocus();
             return service.finishOperation(operation, .empty);
+        };
         var implemented = false;
         var offset = operation.preference_offset;
         while (offset < operation.request.len) {
@@ -883,10 +994,35 @@ const Service = struct {
             const offered = clipboard_wayland.Connection.offeredMime(offer, preferred) orelse continue;
             return service.beginWaylandRead(operation, offer, preferred, offered);
         }
+        operation.releaseCoreFocus();
         return service.finishOperation(operation, waylandReadExhaustionStatus(
             implemented or operation.implemented_candidate_attempted,
             operation.candidate_failed,
         ));
+    }
+
+    fn completeWaylandRead(
+        service: *Service,
+        operation: *Operation,
+        transfer_format: WaylandTransferFormat,
+    ) OperationStatus {
+        if (transfer_format == .direct) {
+            operation.result = operation.transfer_data.toOwnedSlice(operation.allocator) catch {
+                operation.rememberFailure(.out_of_memory, "Failed to allocate Wayland clipboard result");
+                return service.finishOperation(operation, .failed);
+            };
+            return service.finishOperation(operation, .read);
+        }
+
+        operation.wayland_conversion_started = true;
+        operation.worker_joined = false;
+        operation.thread = std.Thread.spawn(.{}, Operation.waylandBmpWorker, .{operation}) catch {
+            operation.wayland_conversion_started = false;
+            operation.worker_joined = true;
+            operation.rememberFailure(.internal, "Failed to start Wayland BMP conversion worker");
+            return service.finishOperation(operation, .failed);
+        };
+        return .pending;
     }
 
     fn implementsNativeReadType(request: []const u8) bool {
@@ -921,11 +1057,14 @@ const Service = struct {
             operation.rememberFailure(.wayland_flush, "Failed to request Wayland clipboard transfer");
             return service.rememberWaylandReadFailure(operation);
         }
+        operation.releaseCoreFocus();
         operation.result_mime = operation.allocator.dupe(u8, preferred) catch {
             std.posix.close(pipe[0]);
             operation.rememberFailure(.out_of_memory, "Failed to allocate Wayland clipboard MIME result");
             return service.rememberWaylandReadFailure(operation);
         };
+        operation.wayland_transfer_format = if (std.ascii.eqlIgnoreCase(preferred, "image/png") and
+            std.ascii.eqlIgnoreCase(offered, "image/bmp")) .bmp_to_png else .direct;
         operation.transfer_fd = pipe[0];
         return .pending;
     }
@@ -1698,6 +1837,91 @@ test "clipboard zero-byte final image candidate exhausts as empty" {
     try std.testing.expectEqual(OperationStatus.empty, waylandReadExhaustionStatus(true, false));
     try std.testing.expectEqual(OperationStatus.unsupported, waylandReadExhaustionStatus(false, false));
     try std.testing.expectEqual(OperationStatus.failed, waylandReadExhaustionStatus(true, true));
+}
+
+test "clipboard WSL policy rejects primary and clear without blocking standard read and write" {
+    const libraries: clipboard_linux.Libraries = .{ .wayland = true, .x11 = true, .is_wsl = true };
+    const TestCase = struct {
+        kind: OperationKind,
+        selection: Selection,
+        unsupported: bool,
+    };
+    const cases = [_]TestCase{
+        .{ .kind = .read, .selection = .primary, .unsupported = true },
+        .{ .kind = .write, .selection = .primary, .unsupported = true },
+        .{ .kind = .clear, .selection = .primary, .unsupported = true },
+        .{ .kind = .clear, .selection = .clipboard, .unsupported = true },
+        .{ .kind = .read, .selection = .clipboard, .unsupported = false },
+        .{ .kind = .write, .selection = .clipboard, .unsupported = false },
+    };
+    for (cases) |case| {
+        var operation: Operation = .{
+            .allocator = std.testing.allocator,
+            .service = undefined,
+            .kind = case.kind,
+            .selection = case.selection,
+            .worker_joined = true,
+        };
+        try std.testing.expectEqual(case.unsupported, wslOperationUnsupported(libraries, &operation));
+    }
+}
+
+test "clipboard Wayland BMP transfer converts to PNG and releases source bytes" {
+    var service: Service = .{
+        .allocator = std.testing.allocator,
+        .max_operations = 1,
+        .max_provider_transfers = 1,
+        .route = .unsupported,
+        .requested_wayland_seat = &.{},
+        .environment_wayland_seat = &.{},
+    };
+    var operation: Operation = .{
+        .allocator = std.testing.allocator,
+        .service = &service,
+        .kind = .read,
+        .worker_joined = true,
+        .max_bytes = 1024,
+        .max_image_pixels = 1,
+        .max_conversion_bytes = 1024,
+        .timeout_ms = 1000,
+        .started_ns = std.time.nanoTimestamp(),
+    };
+    defer {
+        if (operation.result.len > 0) std.testing.allocator.free(operation.result);
+        operation.transfer_data.deinit(std.testing.allocator);
+    }
+    var bmp: [58]u8 = @splat(0);
+    bmp[0..2].* = "BM".*;
+    std.mem.writeInt(u32, bmp[2..6], bmp.len, .little);
+    std.mem.writeInt(u32, bmp[10..14], 54, .little);
+    std.mem.writeInt(u32, bmp[14..18], 40, .little);
+    std.mem.writeInt(i32, bmp[18..22], 1, .little);
+    std.mem.writeInt(i32, bmp[22..26], 1, .little);
+    std.mem.writeInt(u16, bmp[26..28], 1, .little);
+    std.mem.writeInt(u16, bmp[28..30], 24, .little);
+    std.mem.writeInt(u32, bmp[34..38], 4, .little);
+    bmp[54..58].* = .{ 0, 0, 255, 0 };
+    try operation.transfer_data.appendSlice(std.testing.allocator, &bmp);
+
+    try std.testing.expectEqual(
+        OperationStatus.pending,
+        service.completeWaylandRead(&operation, .bmp_to_png),
+    );
+    var status = operation.poll();
+    var attempts: u32 = 0;
+    while (status == .pending and attempts < 2_000) : (attempts += 1) {
+        std.Thread.sleep(std.time.ns_per_ms);
+        status = operation.poll();
+    }
+    try std.testing.expectEqual(OperationStatus.read, status);
+    attempts = 0;
+    while (!operation.isReadyToDestroy() and attempts < 2_000) : (attempts += 1) {
+        std.Thread.sleep(std.time.ns_per_ms);
+    }
+    try std.testing.expect(operation.worker_joined);
+    try std.testing.expectEqualStrings("\x89PNG\r\n\x1a\n", operation.result[0..8]);
+    try std.testing.expectEqual(@as(usize, 0), operation.transfer_data.items.len);
+    try std.testing.expectEqual(@as(usize, 0), operation.transfer_data.capacity);
 }
 
 test "clipboard Wayland selection requests settle when committed before flush completion" {
