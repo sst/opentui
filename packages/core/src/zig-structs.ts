@@ -336,10 +336,10 @@ export type AudioStreamCreateOptions = {
   capacityMs: number
   startupMs: number
   resumeMs: number
-  maxProbeBytes: number
   volume: number
   pan: number
   groupId: number
+  maxProbeBytes: number
 }
 
 export type NativeAudioStreamStats = {
@@ -427,10 +427,11 @@ export const AudioStreamCreateOptionsStruct = defineStruct([
   ["capacityMs", "u32"],
   ["startupMs", "u32"],
   ["resumeMs", "u32"],
-  ["maxProbeBytes", "u32"],
   ["volume", "f32"],
   ["pan", "f32"],
   ["groupId", "u32"],
+  // Keep additions at the end so newer JS preserves the previous native prefix during local rebuilds.
+  ["maxProbeBytes", "u32"],
 ])
 
 export const AudioStreamStatsStruct = defineStruct([

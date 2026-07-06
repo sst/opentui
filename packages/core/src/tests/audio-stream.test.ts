@@ -753,7 +753,17 @@ test("Audio accepts valid MP3 data within a configured probe limit", async () =>
     })(),
     { maxProbeBytes: taggedMp3.byteLength },
   )
-  await drainStream(audio, stream)
+  let heardAudio = false
+  await waitFor(
+    () => stream.getStats().state === "ended",
+    "Tagged MP3 did not finish playback",
+    () => {
+      const mixed = audio.mixFrames(256, 2)
+      heardAudio = heardAudio || hasSignal(mixed ?? new Float32Array())
+    },
+  )
+  await stream.closed
+  expect(heardAudio).toBe(true)
   expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
 })
 

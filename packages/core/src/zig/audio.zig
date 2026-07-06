@@ -59,10 +59,11 @@ pub const StreamOptions = extern struct {
     capacity_ms: u32,
     startup_ms: u32,
     resume_ms: u32,
-    max_probe_bytes: u32 = default_stream_probe_bytes,
     volume: f32,
     pan: f32,
     group_id: u32,
+    // Append fields so newer bindings preserve the previous native prefix during local rebuilds.
+    max_probe_bytes: u32 = default_stream_probe_bytes,
 };
 
 pub const StreamState = struct {
