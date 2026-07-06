@@ -26,6 +26,7 @@ pub const Environment = struct {
 pub const Libraries = struct {
     wayland: bool = false,
     x11: bool = false,
+    is_wsl: bool = false,
 };
 
 pub const Route = union(enum) {
@@ -201,7 +202,7 @@ pub const WaylandSymbols = struct {
     wl_display_get_fd: *const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_dispatch_pending: *const fn (*WlDisplay) callconv(.c) c_int,
     // Required to preserve the one-callback-per-work-unit bound.
-    wl_display_dispatch_pending_single: *const fn (*WlDisplay) callconv(.c) c_int,
+    wl_display_dispatch_pending_single: ?*const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_flush: *const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_prepare_read: *const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_read_events: *const fn (*WlDisplay) callconv(.c) c_int,
@@ -214,6 +215,18 @@ pub const WaylandSymbols = struct {
     wl_registry_interface: *const WlInterface,
     wl_callback_interface: *const WlInterface,
     wl_seat_interface: *const WlInterface,
+    wl_compositor_interface: *const WlInterface,
+    wl_surface_interface: *const WlInterface,
+    wl_shm_interface: *const WlInterface,
+    wl_shm_pool_interface: *const WlInterface,
+    wl_buffer_interface: *const WlInterface,
+    wl_shell_interface: *const WlInterface,
+    wl_shell_surface_interface: *const WlInterface,
+    wl_keyboard_interface: *const WlInterface,
+    wl_data_device_manager_interface: *const WlInterface,
+    wl_data_device_interface: *const WlInterface,
+    wl_data_source_interface: *const WlInterface,
+    wl_data_offer_interface: *const WlInterface,
 };
 
 pub const XcbSymbols = struct {
@@ -261,7 +274,6 @@ var xcb_cache: CachedLibrary(XcbSymbols) = .{};
 var production_context: u8 = 0;
 
 pub fn initialize(env: Environment) Route {
-    if (env.is_wsl) return .unsupported;
     return selectLibraries(env, &production_context, loadProductionLibrary);
 }
 
@@ -280,9 +292,9 @@ pub fn xcbSymbols() ?*const XcbSymbols {
 }
 
 fn selectLibraries(env: Environment, context: *anyopaque, load_library: LoadLibraryFn) Route {
-    if (env.is_wsl) return .unsupported;
+    if (env.is_wsl and !env.has_wayland_display and !env.has_x11_display) return .unsupported;
 
-    var libraries: Libraries = .{};
+    var libraries: Libraries = .{ .is_wsl = env.is_wsl };
     if (env.has_wayland_display) libraries.wayland = load_library(context, .wayland);
     if (env.has_x11_display) libraries.x11 = load_library(context, .x11);
     return .{ .linux = libraries };
@@ -326,7 +338,11 @@ fn loadCachedLibrary(
 fn loadSymbols(comptime Symbols: type, library: *std.DynLib) ?Symbols {
     var symbols: Symbols = undefined;
     inline for (@typeInfo(Symbols).@"struct".fields) |field| {
-        @field(symbols, field.name) = library.lookup(field.type, field.name) orelse return null;
+        if (@typeInfo(field.type) == .optional) {
+            @field(symbols, field.name) = library.lookup(@typeInfo(field.type).optional.child, field.name);
+        } else {
+            @field(symbols, field.name) = library.lookup(field.type, field.name) orelse return null;
+        }
     }
     return symbols;
 }
@@ -386,15 +402,33 @@ fn expectLibraries(route: Route, wayland: bool, x11: bool) !void {
     }
 }
 
-test "clipboard linux routing rejects WSL before loading desktop libraries" {
+test "clipboard linux routing loads WSLg libraries and rejects headless WSL" {
     var loader: FakeLoader = .{ .wayland_available = true, .x11_available = true };
-    const route = selectLibraries(.{
+    const wslg_route = selectLibraries(.{
         .is_wsl = true,
         .has_wayland_display = true,
         .has_x11_display = true,
     }, &loader, FakeLoader.load);
 
-    try std.testing.expect(route == .unsupported);
+    switch (wslg_route) {
+        .unsupported => return error.UnexpectedUnsupportedRoute,
+        .linux => |libraries| {
+            try std.testing.expect(libraries.is_wsl);
+            try std.testing.expect(libraries.wayland);
+            try std.testing.expect(libraries.x11);
+        },
+    }
+    try std.testing.expectEqual(@as(u32, 1), loader.wayland_attempts);
+    try std.testing.expectEqual(@as(u32, 1), loader.x11_attempts);
+
+    loader.wayland_attempts = 0;
+    loader.x11_attempts = 0;
+    const headless_route = selectLibraries(.{
+        .is_wsl = true,
+        .has_wayland_display = false,
+        .has_x11_display = false,
+    }, &loader, FakeLoader.load);
+    try std.testing.expect(headless_route == .unsupported);
     try std.testing.expectEqual(@as(u32, 0), loader.wayland_attempts);
     try std.testing.expectEqual(@as(u32, 0), loader.x11_attempts);
 }
@@ -472,7 +506,8 @@ test "clipboard linux environment recognizes WSL kernel releases without environ
 
 test "clipboard Wayland backend declares the minimum bounded-dispatch library version" {
     try std.testing.expectEqualStrings("1.25.0", MIN_WAYLAND_CLIENT_VERSION);
-    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_dispatch_pending_single")) != .optional);
+    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_dispatch_pending_single")) == .optional);
+    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_dispatch_pending")) != .optional);
 }
 
 test "clipboard XCB ABI types match the core protocol layouts" {

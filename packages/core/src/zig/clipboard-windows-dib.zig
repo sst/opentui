@@ -204,7 +204,42 @@ pub fn convertToPng(
     options: ConvertOptions,
 ) ConvertError![]u8 {
     try checkStop(options);
-    const info = try parseDib(dib, options);
+    const info = try parseDib(dib, null, options);
+    return convertDibToPng(allocator, dib, info, options);
+}
+
+pub fn convertBmpToPng(
+    allocator: Allocator,
+    bmp: []const u8,
+    options: ConvertOptions,
+) ConvertError![]u8 {
+    try checkStop(options);
+    if (bmp.len < 14) return error.InvalidData;
+    if (!std.mem.eql(u8, bmp[0..2], "BM")) return error.InvalidData;
+    if ((readInt(u16, bmp, 6) catch return error.InvalidData) != 0 or
+        (readInt(u16, bmp, 8) catch return error.InvalidData) != 0)
+    {
+        return error.InvalidData;
+    }
+
+    const file_size = std.math.cast(usize, readInt(u32, bmp, 2) catch return error.InvalidData) orelse
+        return error.InvalidData;
+    if (file_size != bmp.len) return error.InvalidData;
+    const pixel_offset = std.math.cast(usize, readInt(u32, bmp, 10) catch return error.InvalidData) orelse
+        return error.InvalidData;
+    if (pixel_offset < 14 or pixel_offset > file_size) return error.InvalidData;
+
+    const dib = bmp[14..];
+    const info = try parseDib(dib, pixel_offset - 14, options);
+    return convertDibToPng(allocator, dib, info, options);
+}
+
+fn convertDibToPng(
+    allocator: Allocator,
+    dib: []const u8,
+    info: DibInfo,
+    options: ConvertOptions,
+) ConvertError![]u8 {
     const channel_count = info.channelCount();
     const row_size = std.math.mul(usize, info.width, channel_count) catch return error.LimitExceeded;
     const filtered_size = std.math.add(usize, row_size, 1) catch return error.LimitExceeded;
@@ -266,7 +301,7 @@ pub fn convertToPng(
     return output.toOwnedSlice();
 }
 
-fn parseDib(dib: []const u8, options: ConvertOptions) ConvertError!DibInfo {
+fn parseDib(dib: []const u8, explicit_pixel_offset: ?usize, options: ConvertOptions) ConvertError!DibInfo {
     if (dib.len < 4) return error.InvalidData;
     const header_size_u32 = readInt(u32, dib, 0) catch return error.InvalidData;
     if (header_size_u32 < 40) return error.Unsupported;
@@ -344,7 +379,9 @@ fn parseDib(dib: []const u8, options: ConvertOptions) ConvertError!DibInfo {
     const color_count = readInt(u32, dib, 32) catch return error.InvalidData;
     const color_table_bytes = std.math.mul(usize, color_count, 4) catch return error.InvalidData;
     const masks_end = std.math.add(usize, header_size, external_mask_bytes) catch return error.InvalidData;
-    const pixel_offset = std.math.add(usize, masks_end, color_table_bytes) catch return error.InvalidData;
+    const minimum_pixel_offset = std.math.add(usize, masks_end, color_table_bytes) catch return error.InvalidData;
+    const pixel_offset = explicit_pixel_offset orelse minimum_pixel_offset;
+    if (pixel_offset < minimum_pixel_offset) return error.InvalidData;
     const row_bits = std.math.mul(u64, width, bits_per_pixel) catch return error.InvalidData;
     const row_words = std.math.divCeil(u64, row_bits, 32) catch return error.InvalidData;
     const row_stride_u64 = std.math.mul(u64, row_words, 4) catch return error.InvalidData;
@@ -512,6 +549,17 @@ fn dibFixture() [56]u8 {
     return dib;
 }
 
+fn bmpFixture() [77]u8 {
+    const dib = dibFixture();
+    var bmp: [77]u8 = @splat(0);
+    bmp[0..2].* = "BM".*;
+    std.mem.writeInt(u32, bmp[2..6], bmp.len, .little);
+    std.mem.writeInt(u32, bmp[10..14], 61, .little);
+    @memcpy(bmp[14..54], dib[0..40]);
+    @memcpy(bmp[61..77], dib[40..56]);
+    return bmp;
+}
+
 fn dibV5Fixture() [132]u8 {
     var dib: [132]u8 = @splat(0);
     std.mem.writeInt(u32, dib[0..4], 124, .little);
@@ -544,6 +592,46 @@ test "Windows CF_DIBV5 converts top-down bitfields and alpha to PNG" {
     const png = try convertToPng(std.testing.allocator, &dib, testOptions());
     defer std.testing.allocator.free(png);
     try expectPngPixels(png, 2, 1, &.{ 30, 20, 10, 40, 70, 60, 50, 255 });
+}
+
+test "Windows DIB conversion honors a noncanonical BMP pixel gap" {
+    const bmp = bmpFixture();
+    const png = try convertBmpToPng(std.testing.allocator, &bmp, testOptions());
+    defer std.testing.allocator.free(png);
+    try expectPngPixels(png, 2, 2, &.{
+        255, 0, 0,   0,   255, 0,
+        0,   0, 255, 255, 255, 255,
+    });
+}
+
+test "Windows DIB conversion rejects invalid BMP file headers and offsets" {
+    var bmp = bmpFixture();
+    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, bmp[0..1], testOptions()));
+    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, bmp[0..13], testOptions()));
+
+    bmp[0] = 'Z';
+    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
+    bmp = bmpFixture();
+    std.mem.writeInt(u32, bmp[2..6], bmp.len - 1, .little);
+    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
+    bmp = bmpFixture();
+    std.mem.writeInt(u16, bmp[6..8], 1, .little);
+    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
+    bmp = bmpFixture();
+    std.mem.writeInt(u16, bmp[8..10], 1, .little);
+    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
+    bmp = bmpFixture();
+    std.mem.writeInt(u32, bmp[10..14], 13, .little);
+    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
+    bmp = bmpFixture();
+    std.mem.writeInt(u32, bmp[10..14], 53, .little);
+    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
+    bmp = bmpFixture();
+    std.mem.writeInt(u32, bmp[10..14], 62, .little);
+    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
+    bmp = bmpFixture();
+    std.mem.writeInt(u32, bmp[10..14], 78, .little);
+    try std.testing.expectError(error.InvalidData, convertBmpToPng(std.testing.allocator, &bmp, testOptions()));
 }
 
 test "Windows DIB conversion rejects malformed and unsupported headers" {
