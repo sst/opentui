@@ -16,6 +16,7 @@ const PROVIDER_TRANSFER_IDLE_TIMEOUT_NS = 30 * std.time.ns_per_s;
 
 pub const Progress = enum { pending, ready, unsupported, failed };
 pub const SelectionResult = enum { ok, pending, committed, unsupported, failed };
+pub const CoreSelectionProgress = enum { pending, ready, unsupported, failed };
 const FlushResult = enum { complete, pending, failed };
 const FlushOutcome = struct { result: c_int, errno: std.posix.E };
 
@@ -86,6 +87,10 @@ pub const Connection = struct {
     ext_global: ?u32 = null,
     wlr_global: ?u32 = null,
     wlr_version: u32 = 0,
+    core_manager_global: ?u32 = null,
+    compositor_global: ?u32 = null,
+    shm_global: ?u32 = null,
+    shell_global: ?u32 = null,
     seats: [MAX_SEATS]Seat = undefined,
     seat_count: u8 = 0,
     seats_overflowed: bool = false,
@@ -93,8 +98,22 @@ pub const Connection = struct {
     environment_seat: []const u8,
     metadata: protocol.Metadata = undefined,
     manager: ?*WlProxy = null,
+    core_data_device: bool = false,
     bound_manager_global: ?u32 = null,
     device: ?*WlProxy = null,
+    compositor: ?*WlProxy = null,
+    shm: ?*WlProxy = null,
+    shell: ?*WlProxy = null,
+    keyboard: ?*WlProxy = null,
+    helper_surface: ?*WlProxy = null,
+    helper_shell_surface: ?*WlProxy = null,
+    helper_pool: ?*WlProxy = null,
+    helper_buffer: ?*WlProxy = null,
+    helper_fd: ?std.posix.fd_t = null,
+    core_focus_entered: bool = false,
+    core_focus_lost: bool = false,
+    core_selection_seen: bool = false,
+    core_focus_users: u32 = 0,
     offers: [MAX_OFFERS]Offer = undefined,
     offer_count: u8 = 0,
     clipboard_offer: ?*WlProxy = null,
@@ -106,6 +125,8 @@ pub const Connection = struct {
     clipboard_provider: ?*Provider = null,
     primary_provider: ?*Provider = null,
     provider_cursor: u8 = 0,
+    allow_bulk_dispatch: bool = false,
+    allow_core_data_device: bool = false,
     flush_outcome_override: ?FlushOutcome = null,
     test_marshal_count: u8 = 0,
     test_flush_marshal_count: u8 = 0,
@@ -128,9 +149,18 @@ pub const Connection = struct {
 
     pub fn deinit(self: *Connection) void {
         self.releaseProviders();
-        for (self.offers[0..self.offer_count]) |offer| self.destroyProtocolProxy(offer.proxy, 1);
-        if (self.device) |device| self.destroyProtocolProxy(device, 1);
-        if (self.manager) |manager| self.destroyProtocolProxy(manager, 2);
+        self.destroyCoreHelper();
+        for (self.offers[0..self.offer_count]) |offer| self.destroyOffer(offer.proxy);
+        if (self.device) |device| {
+            if (self.core_data_device) self.symbols.wl_proxy_destroy(device) else self.destroyProtocolProxy(device, 1);
+        }
+        if (self.manager) |manager| {
+            if (self.core_data_device) self.symbols.wl_proxy_destroy(manager) else self.destroyProtocolProxy(manager, 2);
+        }
+        if (self.keyboard) |keyboard| self.symbols.wl_proxy_destroy(keyboard);
+        if (self.shell) |shell| self.symbols.wl_proxy_destroy(shell);
+        if (self.shm) |shm| self.symbols.wl_proxy_destroy(shm);
+        if (self.compositor) |compositor| self.symbols.wl_proxy_destroy(compositor);
         for (self.seats[0..self.seat_count]) |seat| self.symbols.wl_proxy_destroy(seat.proxy);
         if (self.sync_callback) |callback| self.symbols.wl_proxy_destroy(callback);
         if (self.registry) |registry| self.symbols.wl_proxy_destroy(registry);
@@ -140,6 +170,10 @@ pub const Connection = struct {
     }
 
     pub fn drive(self: *Connection) Progress {
+        if (!self.canDispatchPending()) {
+            self.phase = .unsupported;
+            return .unsupported;
+        }
         if (self.output_pending) {
             switch (self.flushOutput()) {
                 .complete => {},
@@ -172,7 +206,7 @@ pub const Connection = struct {
         self.sync_done = false;
         switch (self.phase) {
             .registry => {
-                if (self.ext_global == null and self.wlr_global == null) {
+                if (self.ext_global == null and self.wlr_global == null and !self.coreDataDeviceAvailable()) {
                     self.phase = .unsupported;
                     return .unsupported;
                 }
@@ -210,6 +244,39 @@ pub const Connection = struct {
         return null;
     }
 
+    pub fn usesCoreDataDevice(self: *const Connection) bool {
+        return self.core_data_device;
+    }
+
+    pub fn acquireCoreSelection(self: *Connection) CoreSelectionProgress {
+        if (!self.core_data_device) return .unsupported;
+        std.debug.assert(self.core_focus_users < std.math.maxInt(u32));
+        self.core_focus_users += 1;
+        if (self.core_focus_users > 1) return .pending;
+        self.core_selection_seen = false;
+        self.core_focus_lost = false;
+        if (self.clipboard_offer) |offer| self.removeOffer(offer);
+        self.clipboard_offer = null;
+        if (!self.createCoreHelper()) {
+            self.core_focus_users = 0;
+            return .failed;
+        }
+        return .pending;
+    }
+
+    pub fn coreSelectionProgress(self: *const Connection) CoreSelectionProgress {
+        if (!self.core_data_device) return .unsupported;
+        if (self.core_focus_users == 0 or self.helper_surface == null) return .failed;
+        if (self.core_focus_lost) return .failed;
+        return if (self.core_selection_seen) .ready else .pending;
+    }
+
+    pub fn releaseCoreSelection(self: *Connection) void {
+        if (!self.core_data_device or self.core_focus_users == 0) return;
+        self.core_focus_users -= 1;
+        if (self.core_focus_users == 0) self.destroyCoreHelper();
+    }
+
     pub fn takeFailure(self: *Connection) Failure {
         const failure = self.failure;
         if (self.phase == .ready) self.failure = .none;
@@ -222,12 +289,13 @@ pub const Connection = struct {
         @memcpy(mime_z[0..mime.len], mime);
         mime_z[mime.len] = 0;
         var arguments = [_]WlArgument{ .{ .s = mime_z[0..mime.len :0].ptr }, .{ .h = fd } };
-        _ = self.marshal(offer.proxy, 0, null, 1, 0, &arguments);
+        _ = self.marshal(offer.proxy, if (self.core_data_device) 1 else 0, null, 1, 0, &arguments);
         return self.queueFlush() != .failed;
     }
 
     pub fn publishText(self: *Connection, primary: bool, data: []u8) SelectionResult {
         self.failure = .none;
+        if (self.core_data_device) return .unsupported;
         if (primary and !self.primary_supported) return .unsupported;
         const manager = self.manager orelse return self.selectionFailure(.protocol);
         const device = self.device orelse return self.selectionFailure(.protocol);
@@ -272,6 +340,7 @@ pub const Connection = struct {
 
     pub fn clearSelection(self: *Connection, primary: bool) SelectionResult {
         self.failure = .none;
+        if (self.core_data_device) return .unsupported;
         if (primary and !self.primary_supported) return .unsupported;
         const device = self.device orelse return self.selectionFailure(.protocol);
         var arguments = [_]WlArgument{.{ .o = null }};
@@ -338,9 +407,16 @@ pub const Connection = struct {
     pub fn offeredMime(offer: *const Offer, preferred: []const u8) ?[]const u8 {
         for (offer.mimes[0..offer.mime_count]) |*mime| {
             if (std.ascii.eqlIgnoreCase(mime.slice(), preferred)) return mime.slice();
+        }
+        for (offer.mimes[0..offer.mime_count]) |*mime| {
             if (std.ascii.eqlIgnoreCase(preferred, "text/plain") and
                 (std.ascii.eqlIgnoreCase(mime.slice(), "text/plain;charset=utf-8") or
                     std.ascii.eqlIgnoreCase(mime.slice(), "text/plain;charset=UTF-8")))
+            {
+                return mime.slice();
+            }
+            if (std.ascii.eqlIgnoreCase(preferred, "image/png") and
+                std.ascii.eqlIgnoreCase(mime.slice(), "image/bmp"))
             {
                 return mime.slice();
             }
@@ -394,7 +470,14 @@ pub const Connection = struct {
     }
 
     fn dispatchPending(self: *Connection, display: *linux.WlDisplay) c_int {
-        return self.symbols.wl_display_dispatch_pending_single(display);
+        if (self.symbols.wl_display_dispatch_pending_single) |dispatch_single| return dispatch_single(display);
+        // WSLg commonly ships Wayland 1.24; only its trusted local compositor may use bulk dispatch.
+        std.debug.assert(self.allow_bulk_dispatch);
+        return self.symbols.wl_display_dispatch_pending(display);
+    }
+
+    fn canDispatchPending(self: *const Connection) bool {
+        return self.symbols.wl_display_dispatch_pending_single != null or self.allow_bulk_dispatch;
     }
 
     fn queueFlush(self: *Connection) FlushResult {
@@ -468,6 +551,111 @@ pub const Connection = struct {
         _ = self.marshal(proxy, opcode, null, self.symbols.wl_proxy_get_version(proxy), 1, &.{});
     }
 
+    fn destroyOffer(self: *Connection, proxy: *WlProxy) void {
+        self.destroyProtocolProxy(proxy, if (self.core_data_device) 2 else 1);
+    }
+
+    fn createCoreHelper(self: *Connection) bool {
+        std.debug.assert(self.core_data_device);
+        std.debug.assert(self.helper_surface == null);
+        // Core data-device selection is focus-scoped, so WSLg needs a transparent 1x1 focused surface.
+        const fd = std.posix.memfd_create("opentui-clipboard", std.os.linux.MFD.CLOEXEC) catch return false;
+        self.helper_fd = fd;
+        std.posix.ftruncate(fd, 4) catch {
+            self.destroyCoreHelper();
+            return false;
+        };
+
+        var new_id = [_]WlArgument{.{ .n = 0 }};
+        self.helper_surface = self.marshal(
+            self.compositor.?,
+            0,
+            self.symbols.wl_surface_interface,
+            2,
+            0,
+            &new_id,
+        ) orelse {
+            self.destroyCoreHelper();
+            return false;
+        };
+        var shell_arguments = [_]WlArgument{ .{ .n = 0 }, .{ .o = self.helper_surface.? } };
+        self.helper_shell_surface = self.marshal(
+            self.shell.?,
+            0,
+            self.symbols.wl_shell_surface_interface,
+            1,
+            0,
+            &shell_arguments,
+        ) orelse {
+            self.destroyCoreHelper();
+            return false;
+        };
+        if (self.addListener(self.helper_shell_surface.?, &shell_surface_listener) != 0) {
+            self.destroyCoreHelper();
+            return false;
+        }
+        _ = self.marshal(self.helper_shell_surface.?, 3, null, 1, 0, &.{});
+        var title = [_]WlArgument{.{ .s = "OpenTUI Clipboard" }};
+        _ = self.marshal(self.helper_shell_surface.?, 8, null, 1, 0, &title);
+
+        var pool_arguments = [_]WlArgument{ .{ .n = 0 }, .{ .h = fd }, .{ .i = 4 } };
+        self.helper_pool = self.marshal(
+            self.shm.?,
+            0,
+            self.symbols.wl_shm_pool_interface,
+            1,
+            0,
+            &pool_arguments,
+        ) orelse {
+            self.destroyCoreHelper();
+            return false;
+        };
+        var buffer_arguments = [_]WlArgument{
+            .{ .n = 0 },
+            .{ .i = 0 },
+            .{ .i = 1 },
+            .{ .i = 1 },
+            .{ .i = 4 },
+            .{ .u = 0 },
+        };
+        self.helper_buffer = self.marshal(
+            self.helper_pool.?,
+            0,
+            self.symbols.wl_buffer_interface,
+            1,
+            0,
+            &buffer_arguments,
+        ) orelse {
+            self.destroyCoreHelper();
+            return false;
+        };
+        var attach_arguments = [_]WlArgument{ .{ .o = self.helper_buffer.? }, .{ .i = 0 }, .{ .i = 0 } };
+        _ = self.marshal(self.helper_surface.?, 1, null, 2, 0, &attach_arguments);
+        var damage_arguments = [_]WlArgument{ .{ .i = 0 }, .{ .i = 0 }, .{ .i = 1 }, .{ .i = 1 } };
+        _ = self.marshal(self.helper_surface.?, 2, null, 2, 0, &damage_arguments);
+        _ = self.marshal(self.helper_surface.?, 6, null, 2, 0, &.{});
+        if (self.queueFlush() != .failed) return true;
+        self.destroyCoreHelper();
+        return false;
+    }
+
+    fn destroyCoreHelper(self: *Connection) void {
+        if (self.helper_buffer) |proxy| self.destroyProtocolProxy(proxy, 0);
+        if (self.helper_pool) |proxy| self.destroyProtocolProxy(proxy, 1);
+        if (self.helper_surface) |proxy| self.destroyProtocolProxy(proxy, 0);
+        if (self.helper_shell_surface) |proxy| self.symbols.wl_proxy_destroy(proxy);
+        if (self.helper_fd) |fd| std.posix.close(fd);
+        self.helper_shell_surface = null;
+        self.helper_surface = null;
+        self.helper_buffer = null;
+        self.helper_pool = null;
+        self.helper_fd = null;
+        self.core_focus_entered = false;
+        self.core_focus_lost = false;
+        self.core_selection_seen = false;
+        if (self.display != null) _ = self.queueFlush();
+    }
+
     fn driveProviderTransfer(_: *Connection, provider: *Provider, index: u32) void {
         const transfer = &provider.transfers[index];
         const now_ns = std.time.nanoTimestamp();
@@ -490,6 +678,7 @@ pub const Connection = struct {
 
     fn bindDevice(self: *Connection) SelectionResult {
         const seat = self.selectSeat() orelse return .unsupported;
+        if (self.ext_global == null and self.wlr_global == null) return self.bindCoreDevice(seat);
         const kind: protocol.Kind = if (self.ext_global != null) .ext else .wlr;
         self.metadata.init(kind, self.symbols.wl_seat_interface);
         const manager_version: u32 = if (kind == .ext) 1 else @min(self.wlr_version, 2);
@@ -502,6 +691,59 @@ pub const Connection = struct {
         self.device = device;
         self.bound_seat_global = seat.global_name;
         if (self.addListener(device, &device_listener) != 0) return .failed;
+        self.primary_supported = false;
+        return switch (self.queueFlush()) {
+            .complete => .ok,
+            .pending => .pending,
+            .failed => .failed,
+        };
+    }
+
+    fn coreDataDeviceAvailable(self: *const Connection) bool {
+        return self.allow_core_data_device and self.core_manager_global != null and
+            self.compositor_global != null and self.shm_global != null and self.shell_global != null;
+    }
+
+    fn bindCoreDevice(self: *Connection, seat: *const Seat) SelectionResult {
+        if (!self.coreDataDeviceAvailable()) return .unsupported;
+        const manager = self.bind(
+            self.core_manager_global.?,
+            self.symbols.wl_data_device_manager_interface,
+            1,
+        ) orelse return .failed;
+        self.manager = manager;
+        self.core_data_device = true;
+        self.bound_manager_global = self.core_manager_global.?;
+        self.compositor = self.bind(
+            self.compositor_global.?,
+            self.symbols.wl_compositor_interface,
+            2,
+        ) orelse return .failed;
+        self.shm = self.bind(self.shm_global.?, self.symbols.wl_shm_interface, 1) orelse return .failed;
+        self.shell = self.bind(self.shell_global.?, self.symbols.wl_shell_interface, 1) orelse return .failed;
+
+        var device_arguments = [_]WlArgument{ .{ .n = 0 }, .{ .o = seat.proxy } };
+        self.device = self.marshal(
+            manager,
+            1,
+            self.symbols.wl_data_device_interface,
+            1,
+            0,
+            &device_arguments,
+        ) orelse return .failed;
+        if (self.addListener(self.device.?, &core_device_listener) != 0) return .failed;
+
+        var keyboard_arguments = [_]WlArgument{.{ .n = 0 }};
+        self.keyboard = self.marshal(
+            seat.proxy,
+            1,
+            self.symbols.wl_keyboard_interface,
+            1,
+            0,
+            &keyboard_arguments,
+        ) orelse return .failed;
+        if (self.addListener(self.keyboard.?, &keyboard_listener) != 0) return .failed;
+        self.bound_seat_global = seat.global_name;
         self.primary_supported = false;
         return switch (self.queueFlush()) {
             .complete => .ok,
@@ -581,6 +823,14 @@ pub const Connection = struct {
         } else if (std.mem.eql(u8, interface, "zwlr_data_control_manager_v1")) {
             self.wlr_global = name;
             self.wlr_version = version;
+        } else if (std.mem.eql(u8, interface, "wl_data_device_manager")) {
+            self.core_manager_global = name;
+        } else if (std.mem.eql(u8, interface, "wl_compositor")) {
+            self.compositor_global = name;
+        } else if (std.mem.eql(u8, interface, "wl_shm")) {
+            self.shm_global = name;
+        } else if (std.mem.eql(u8, interface, "wl_shell")) {
+            self.shell_global = name;
         } else if (std.mem.eql(u8, interface, "wl_seat")) {
             self.addSeat(name, version);
         }
@@ -597,6 +847,10 @@ pub const Connection = struct {
             self.wlr_global = null;
             self.wlr_version = 0;
         }
+        if (self.core_manager_global == name) self.core_manager_global = null;
+        if (self.compositor_global == name) self.compositor_global = null;
+        if (self.shm_global == name) self.shm_global = null;
+        if (self.shell_global == name) self.shell_global = null;
         if (self.bound_manager_global == name) {
             const manager = self.manager;
             self.manager = null;
@@ -656,7 +910,7 @@ pub const Connection = struct {
         const self: *Connection = @ptrCast(@alignCast(data.?));
         const proxy = offer_proxy orelse return;
         if (self.offer_count == MAX_OFFERS) {
-            self.symbols.wl_proxy_destroy(proxy);
+            self.destroyOffer(proxy);
             return;
         }
         self.offers[self.offer_count] = .{ .proxy = proxy };
@@ -666,11 +920,83 @@ pub const Connection = struct {
 
     fn deviceSelection(data: ?*anyopaque, _: ?*WlProxy, offer: ?*WlProxy) callconv(.c) void {
         const self: *Connection = @ptrCast(@alignCast(data.?));
+        if (self.core_data_device and !self.core_focus_entered) {
+            if (offer) |proxy| self.removeOffer(proxy);
+            return;
+        }
         if (self.clipboard_offer) |previous| {
             if (previous != offer and previous != self.primary_offer) self.removeOffer(previous);
         }
         self.clipboard_offer = offer;
+        if (self.core_data_device) self.core_selection_seen = true;
     }
+
+    fn coreDeviceEnter(
+        data: ?*anyopaque,
+        _: ?*WlProxy,
+        _: u32,
+        _: ?*WlProxy,
+        _: i32,
+        _: i32,
+        offer: ?*WlProxy,
+    ) callconv(.c) void {
+        const self: *Connection = @ptrCast(@alignCast(data.?));
+        if (offer) |proxy| self.removeOffer(proxy);
+    }
+
+    fn coreDeviceLeave(_: ?*anyopaque, _: ?*WlProxy) callconv(.c) void {}
+
+    fn coreDeviceMotion(_: ?*anyopaque, _: ?*WlProxy, _: u32, _: i32, _: i32) callconv(.c) void {}
+
+    fn coreDeviceDrop(_: ?*anyopaque, _: ?*WlProxy) callconv(.c) void {}
+
+    fn keyboardKeymap(_: ?*anyopaque, _: ?*WlProxy, _: u32, fd: std.posix.fd_t, _: u32) callconv(.c) void {
+        std.posix.close(fd);
+    }
+
+    fn keyboardEnter(
+        data: ?*anyopaque,
+        _: ?*WlProxy,
+        _: u32,
+        surface: ?*WlProxy,
+        _: ?*anyopaque,
+    ) callconv(.c) void {
+        const self: *Connection = @ptrCast(@alignCast(data.?));
+        if (surface == self.helper_surface) self.core_focus_entered = true;
+    }
+
+    fn keyboardLeave(data: ?*anyopaque, _: ?*WlProxy, _: u32, surface: ?*WlProxy) callconv(.c) void {
+        const self: *Connection = @ptrCast(@alignCast(data.?));
+        if (surface != self.helper_surface) return;
+        self.core_focus_entered = false;
+        self.core_selection_seen = false;
+        self.core_focus_lost = true;
+        if (self.clipboard_offer) |offer| self.removeOffer(offer);
+        self.clipboard_offer = null;
+    }
+
+    fn keyboardKey(_: ?*anyopaque, _: ?*WlProxy, _: u32, _: u32, _: u32, _: u32) callconv(.c) void {}
+
+    fn keyboardModifiers(
+        _: ?*anyopaque,
+        _: ?*WlProxy,
+        _: u32,
+        _: u32,
+        _: u32,
+        _: u32,
+        _: u32,
+    ) callconv(.c) void {}
+
+    fn shellSurfacePing(data: ?*anyopaque, shell_surface: ?*WlProxy, serial: u32) callconv(.c) void {
+        const self: *Connection = @ptrCast(@alignCast(data.?));
+        var arguments = [_]WlArgument{.{ .u = serial }};
+        _ = self.marshal(shell_surface.?, 0, null, 1, 0, &arguments);
+        _ = self.queueFlush();
+    }
+
+    fn shellSurfaceConfigure(_: ?*anyopaque, _: ?*WlProxy, _: u32, _: i32, _: i32) callconv(.c) void {}
+
+    fn shellSurfacePopupDone(_: ?*anyopaque, _: ?*WlProxy) callconv(.c) void {}
 
     fn deviceFinished(data: ?*anyopaque, _: ?*WlProxy) callconv(.c) void {
         const self: *Connection = @ptrCast(@alignCast(data.?));
@@ -690,7 +1016,7 @@ pub const Connection = struct {
         var index: u8 = 0;
         while (index < self.offer_count) : (index += 1) {
             if (self.offers[index].proxy != proxy) continue;
-            self.destroyProtocolProxy(proxy, 1);
+            self.destroyOffer(proxy);
             self.offer_count -= 1;
             self.offers[index] = self.offers[self.offer_count];
             return;
@@ -764,6 +1090,7 @@ fn providerTransferExpired(last_progress_ns: i128, now_ns: i128) bool {
 
 fn isRelevantMime(mime: []const u8) bool {
     return std.ascii.eqlIgnoreCase(mime, "image/png") or
+        std.ascii.eqlIgnoreCase(mime, "image/bmp") or
         std.ascii.eqlIgnoreCase(mime, "text/plain") or
         std.ascii.eqlIgnoreCase(mime, "text/plain;charset=utf-8");
 }
@@ -787,6 +1114,26 @@ const device_listener = [_]*const anyopaque{
     @ptrCast(&Connection.deviceSelection),
     @ptrCast(&Connection.deviceFinished),
     @ptrCast(&Connection.devicePrimarySelection),
+};
+const core_device_listener = [_]*const anyopaque{
+    @ptrCast(&Connection.deviceDataOffer),
+    @ptrCast(&Connection.coreDeviceEnter),
+    @ptrCast(&Connection.coreDeviceLeave),
+    @ptrCast(&Connection.coreDeviceMotion),
+    @ptrCast(&Connection.coreDeviceDrop),
+    @ptrCast(&Connection.deviceSelection),
+};
+const keyboard_listener = [_]*const anyopaque{
+    @ptrCast(&Connection.keyboardKeymap),
+    @ptrCast(&Connection.keyboardEnter),
+    @ptrCast(&Connection.keyboardLeave),
+    @ptrCast(&Connection.keyboardKey),
+    @ptrCast(&Connection.keyboardModifiers),
+};
+const shell_surface_listener = [_]*const anyopaque{
+    @ptrCast(&Connection.shellSurfacePing),
+    @ptrCast(&Connection.shellSurfaceConfigure),
+    @ptrCast(&Connection.shellSurfacePopupDone),
 };
 const offer_listener = [_]*const anyopaque{@ptrCast(&Connection.offerMime)};
 const source_listener = [_]*const anyopaque{
@@ -845,6 +1192,17 @@ test "Wayland flush completion distinguishes EAGAIN from completion and hard fai
     try std.testing.expectEqual(FlushResult.complete, classifyFlush(0, .SUCCESS));
     try std.testing.expectEqual(FlushResult.pending, classifyFlush(-1, .AGAIN));
     try std.testing.expectEqual(FlushResult.failed, classifyFlush(-1, .PIPE));
+}
+
+test "Wayland bulk dispatch compatibility is opt-in" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_display_dispatch_pending_single = null;
+    var connection: Connection = undefined;
+    connection.symbols = &symbols;
+    connection.allow_bulk_dispatch = false;
+    try std.testing.expect(!connection.canDispatchPending());
+    connection.allow_bulk_dispatch = true;
+    try std.testing.expect(connection.canDispatchPending());
 }
 
 test "Wayland writes and clears settle deterministically after marshalling for every flush outcome" {
@@ -915,6 +1273,7 @@ fn testProxyVersion(_: *WlProxy) callconv(.c) u32 {
 
 test "Wayland MIME retention ignores irrelevant metadata without consuming the bounded set" {
     try std.testing.expect(isRelevantMime("image/png"));
+    try std.testing.expect(isRelevantMime("image/bmp"));
     try std.testing.expect(isRelevantMime("TEXT/PLAIN;CHARSET=UTF-8"));
     try std.testing.expect(!isRelevantMime("application/x-irrelevant"));
     try std.testing.expect(!isRelevantMime(&([_]u8{'x'} ** (MAX_MIME_BYTES + 1))));
@@ -930,6 +1289,72 @@ test "Wayland MIME retention ignores irrelevant metadata without consuming the b
     Connection.offerMime(&connection, proxy, "image/png");
     try std.testing.expectEqual(@as(u8, 1), connection.offers[0].mime_count);
     try std.testing.expectEqualStrings("image/png", connection.offers[0].mimes[0].slice());
+}
+
+test "Wayland MIME matching prefers PNG and falls back to BMP conversion" {
+    const proxy: *WlProxy = @ptrFromInt(1);
+    var connection: Connection = undefined;
+    connection.offer_count = 1;
+    connection.offers[0] = .{ .proxy = proxy };
+    Connection.offerMime(&connection, proxy, "image/bmp");
+
+    try std.testing.expectEqualStrings("image/bmp", Connection.offeredMime(&connection.offers[0], "image/png").?);
+
+    Connection.offerMime(&connection, proxy, "image/png");
+    try std.testing.expectEqualStrings("image/png", Connection.offeredMime(&connection.offers[0], "image/png").?);
+}
+
+test "Wayland core data-device fallback is WSL-gated and read-only" {
+    var connection: Connection = undefined;
+    connection.allow_core_data_device = false;
+    connection.core_manager_global = 1;
+    connection.compositor_global = 2;
+    connection.shm_global = 3;
+    connection.shell_global = 4;
+    try std.testing.expect(!connection.coreDataDeviceAvailable());
+    connection.allow_core_data_device = true;
+    try std.testing.expect(connection.coreDataDeviceAvailable());
+
+    connection.core_data_device = true;
+    connection.failure = .provider;
+    try std.testing.expectEqual(SelectionResult.unsupported, connection.publishText(false, &.{}));
+    try std.testing.expectEqual(SelectionResult.unsupported, connection.clearSelection(false));
+    try std.testing.expectEqual(Failure.none, connection.failure);
+}
+
+test "Wayland core focus lifecycle rejects stale and unfocused offers" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_get_version = testProxyVersion;
+    const offer: *WlProxy = @ptrFromInt(1);
+    const surface: *WlProxy = @ptrFromInt(2);
+    var connection: Connection = undefined;
+    connection.symbols = &symbols;
+    connection.core_data_device = true;
+    connection.core_focus_entered = false;
+    connection.offer_count = 1;
+    connection.offers[0] = .{ .proxy = offer };
+    connection.clipboard_offer = null;
+    connection.primary_offer = null;
+    connection.test_marshal_count = 0;
+
+    Connection.deviceSelection(&connection, null, offer);
+    try std.testing.expectEqual(@as(u8, 0), connection.offer_count);
+    try std.testing.expect(connection.clipboard_offer == null);
+
+    connection.core_focus_entered = true;
+    connection.core_focus_lost = false;
+    connection.core_selection_seen = true;
+    connection.helper_surface = surface;
+    connection.offer_count = 1;
+    connection.offers[0] = .{ .proxy = offer };
+    connection.clipboard_offer = offer;
+    Connection.keyboardLeave(&connection, null, 1, surface);
+    try std.testing.expect(!connection.core_focus_entered);
+    try std.testing.expect(connection.core_focus_lost);
+    try std.testing.expect(!connection.core_selection_seen);
+    try std.testing.expectEqual(@as(u8, 0), connection.offer_count);
+    try std.testing.expect(connection.clipboard_offer == null);
 }
 
 test "Wayland provider retirement preserves active transfers" {
