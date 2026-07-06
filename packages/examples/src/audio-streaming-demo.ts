@@ -327,6 +327,11 @@ class AudioStreamingDemo {
   private async connect(rawUrl: string): Promise<void> {
     const url = this.parseStreamUrl(rawUrl)
     if (!url || this.destroyed) {
+      if (!url && !this.stream && this.streamController) {
+        this.connectionGeneration += 1
+        this.streamController.abort()
+        this.streamController = null
+      }
       this.refreshText()
       return
     }
