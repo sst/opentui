@@ -116,8 +116,6 @@ export interface AudioStreamReconnectEvent {
 }
 
 export interface AudioStreamEvents {
-  buffering: [stats: AudioStreamStats]
-  playing: [stats: AudioStreamStats]
   reconnecting: [event: AudioStreamReconnectEvent]
   ended: []
   error: [error: Error, context: AudioStreamErrorContext]
@@ -333,24 +331,7 @@ function resolveAudioStreamOptions(
   }
 }
 
-function nativeStreamState(state: number): AudioStreamState | null {
-  switch (state) {
-    case NativeAudioStreamState.Initializing:
-      return "initializing"
-    case NativeAudioStreamState.Buffering:
-      return "buffering"
-    case NativeAudioStreamState.Playing:
-      return "playing"
-    case NativeAudioStreamState.Ended:
-      return "ended"
-    case NativeAudioStreamState.Failed:
-      return "errored"
-    case NativeAudioStreamState.Cancelled:
-      return "disposed"
-    default:
-      return null
-  }
-}
+const NATIVE_STREAM_STATES = ["initializing", "buffering", "playing", "ended", "errored", "disposed"] as const
 
 function runBoundedCleanup(cleanup: () => unknown, timeoutMs: number = 50): Promise<void> {
   let result: Promise<unknown>
@@ -439,7 +420,6 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
 
   private readonly lib: RenderLib
   private readonly engine: AudioEngineHandle
-  private readonly sampleRate: number
   private readonly source: AudioStreamSource
   private readonly urlSource: boolean
   private readonly options: ResolvedAudioStreamOptions
@@ -459,7 +439,6 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   private sessionStats: NativeAudioStreamStats | null = null
   private activeController: AbortController | null = null
   private activeSourceCleanup: (() => unknown) | null = null
-  private activeSourceCleanupGeneration = 0
   private reconnectAttempts = 0
   private consecutiveReconnectAttempts = 0
   private decoderReadyGeneration = 0
@@ -467,16 +446,12 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   private terminal = false
   private disposed = false
   private exposed = false
-  private eventsEnabled = false
-  private ownerRemoved = false
   private setupSettled = false
-  private setupSucceeded = false
   private terminalError: Error | null = null
-  private queuedEvents: Array<() => void> = []
+  private pendingEnded = false
   private setupResolve!: () => void
   private setupReject!: (error: Error) => void
   private closedResolve!: () => void
-  private closedResolved = false
   private readonly setupPromise: Promise<void>
   private lastSampleRate: number
   private lastChannels = 0
@@ -496,7 +471,6 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     super()
     this.lib = init.lib
     this.engine = init.engine
-    this.sampleRate = init.sampleRate
     this.source = init.source
     this.urlSource = init.urlSource
     this.options = resolveAudioStreamOptions(init.options, init.sampleRate, init.urlSource)
@@ -531,28 +505,41 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         void this.fail(error, error.context)
       })
     } else {
-      void this.connectBody().catch((cause) => {
-        const error = new AudioStreamOperationError("Audio stream setup failed", { action: "create" }, cause)
-        void this.fail(error, error.context)
-      })
+      this.connectBody()
     }
 
     await this.setupPromise
-    if (!this.setupSucceeded) throw this.terminalError ?? createAbortError()
     if (this.terminal && this.currentState !== "ended") throw this.terminalError ?? createAbortError()
 
     this.exposed = true
-    setTimeout(() => {
-      this.eventsEnabled = true
-      const events = this.queuedEvents
-      this.queuedEvents = []
-      for (const emit of events) emit()
-    }, 0)
+    if (this.pendingEnded) this.emitAsync(() => this.emit("ended"))
+    this.pendingEnded = false
   }
 
   getStats(): AudioStreamStats {
     const native = this.readCurrentStats()
-    return this.toPublicStats(native)
+    if (native == null) return this.toPublicStats(null)
+
+    const state = NATIVE_STREAM_STATES[native.state] ?? null
+    if (state != null && state !== "initializing" && !this.terminal) this.currentState = state
+    const stats = this.toPublicStats(native)
+    const current = this.nativeStream
+    if (!this.terminal && this.exposed && current != null) {
+      const generation = current.generation
+      if (state === "ended" || state === "errored" || state === "disposed" || state == null) {
+        queueMicrotask(() => {
+          if (!this.isCurrent(generation)) return
+          if (state === "ended") return void this.finishEnded(generation)
+          if (state === "errored" || state === "disposed") return void this.failDecoder(native)
+          const context: AudioStreamErrorContext = { action: "stats" }
+          void this.fail(
+            new AudioStreamOperationError(`Unknown native audio stream state: ${native.state}`, context),
+            context,
+          )
+        })
+      }
+    }
+    return stats
   }
 
   setVolume(volume: number): boolean {
@@ -566,17 +553,14 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       const status = this.lib.audioSetStreamVolume(this.engine, native.id, volume)
       if (status !== 0) {
         const context: AudioStreamErrorContext = { action: "setVolume", status }
-        this.reportControlError(
-          new AudioStreamOperationError(`Audio stream setVolume failed: ${status}`, context),
-          context,
-        )
+        this.notifyError(new AudioStreamOperationError(`Audio stream setVolume failed: ${status}`, context), context)
         return false
       }
       this.volume = volume
       return true
     } catch (cause) {
       const context: AudioStreamErrorContext = { action: "setVolume" }
-      this.reportControlError(new AudioStreamOperationError("Audio stream setVolume failed", context, cause), context)
+      this.notifyError(new AudioStreamOperationError("Audio stream setVolume failed", context, cause), context)
       return false
     }
   }
@@ -592,17 +576,14 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       const status = this.lib.audioSetStreamPan(this.engine, native.id, pan)
       if (status !== 0) {
         const context: AudioStreamErrorContext = { action: "setPan", status }
-        this.reportControlError(
-          new AudioStreamOperationError(`Audio stream setPan failed: ${status}`, context),
-          context,
-        )
+        this.notifyError(new AudioStreamOperationError(`Audio stream setPan failed: ${status}`, context), context)
         return false
       }
       this.pan = pan
       return true
     } catch (cause) {
       const context: AudioStreamErrorContext = { action: "setPan" }
-      this.reportControlError(new AudioStreamOperationError("Audio stream setPan failed", context, cause), context)
+      this.notifyError(new AudioStreamOperationError("Audio stream setPan failed", context, cause), context)
       return false
     }
   }
@@ -613,10 +594,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     if (native == null) {
       if (!this.isValidGroup(groupId)) {
         const context: AudioStreamErrorContext = { action: "setGroup" }
-        this.reportControlError(
-          new AudioStreamOperationError(`Invalid audio stream group: ${groupId}`, context),
-          context,
-        )
+        this.notifyError(new AudioStreamOperationError(`Invalid audio stream group: ${groupId}`, context), context)
         return false
       }
       this.groupId = groupId
@@ -626,17 +604,14 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       const status = this.lib.audioSetStreamGroup(this.engine, native.id, groupId)
       if (status !== 0) {
         const context: AudioStreamErrorContext = { action: "setGroup", status }
-        this.reportControlError(
-          new AudioStreamOperationError(`Audio stream setGroup failed: ${status}`, context),
-          context,
-        )
+        this.notifyError(new AudioStreamOperationError(`Audio stream setGroup failed: ${status}`, context), context)
         return false
       }
       this.groupId = groupId
       return true
     } catch (cause) {
       const context: AudioStreamErrorContext = { action: "setGroup" }
-      this.reportControlError(new AudioStreamOperationError("Audio stream setGroup failed", context, cause), context)
+      this.notifyError(new AudioStreamOperationError("Audio stream setGroup failed", context, cause), context)
       return false
     }
   }
@@ -652,32 +627,29 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       this.generation += 1
       this.pendingReconnectAfterEnd = null
       this.lifecycleController.abort()
-      cleanup = this.stopActiveConnection(true)
+      cleanup = this.stopActiveConnection()
       if (!this.setupSettled) this.rejectSetup(createAbortError())
       this.removeOwner()
     }
 
     this.currentState = "disposed"
-    if (!wasExposed) this.queuedEvents = []
-    void cleanup.finally(() => this.resolveClosed())
-    if (wasExposed) this.queueEvent(() => this.emit("disposed"))
+    if (!wasExposed) this.pendingEnded = false
+    void cleanup.finally(() => {
+      this.closedResolve()
+      if (wasExposed) this.emitAsync(() => this.emit("disposed"))
+    })
   }
 
   private canControl(): boolean {
     return !this.disposed && !this.terminal
   }
 
-  private async connectBody(): Promise<void> {
+  private connectBody(): void {
     if (this.terminal) return
-    if (!isReadableStreamSource(this.source) && !isAsyncIterableSource(this.source)) {
-      const context: AudioStreamErrorContext = { action: "source" }
-      await this.fail(new TypeError("Audio stream source must be a ReadableStream or AsyncIterable"), context)
-      return
-    }
     const generation = this.beginConnection()
     if (!this.createNativeStream(generation)) return
-    void this.monitorNativeStream(generation)
-    this.startSourcePump(this.source, generation, false)
+    void this.waitForDecoderReady(generation)
+    this.startSourcePump(this.source as ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>, generation, false)
   }
 
   private async connectUrl(): Promise<void> {
@@ -737,7 +709,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     }
 
     if (!this.createNativeStream(generation)) return
-    void this.monitorNativeStream(generation)
+    void this.waitForDecoderReady(generation)
     this.startSourcePump(response.body, generation, true)
   }
 
@@ -774,27 +746,23 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     }
   }
 
-  private async monitorNativeStream(generation: number): Promise<void> {
-    while (this.isCurrent(generation)) {
-      const native = this.nativeStream
-      if (native == null || native.generation !== generation) return
+  private waitForDecoderReady(generation: number): Promise<void> {
+    return this.pollNativeState(generation, false)
+  }
 
-      let stats: NativeAudioStreamStats | null
-      try {
-        stats = this.lib.audioGetStreamStats(this.engine, native.id)
-      } catch (cause) {
-        const context: AudioStreamErrorContext = { action: "stats" }
-        await this.fail(new AudioStreamOperationError("Audio stream stats failed", context, cause), context)
-        return
-      }
+  private waitForNativeEnd(generation: number): Promise<void> {
+    return this.pollNativeState(generation, true)
+  }
+
+  private async pollNativeState(generation: number, waitForEnd: boolean): Promise<void> {
+    while (this.isCurrent(generation)) {
+      const stats = this.readCurrentStats(false)
       if (stats == null) {
         const context: AudioStreamErrorContext = { action: "stats" }
         await this.fail(new AudioStreamOperationError("Audio stream stats failed", context), context)
         return
       }
-
-      this.updateNativeStats(stats)
-      const state = nativeStreamState(stats.state)
+      const state = NATIVE_STREAM_STATES[stats.state] ?? null
       if (state == null) {
         const context: AudioStreamErrorContext = { action: "stats" }
         await this.fail(
@@ -803,47 +771,25 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         )
         return
       }
-
-      if (state === "initializing") {
-        await waitForDelay(
-          STREAM_POLL_INTERVAL_MS,
-          this.activeController?.signal ?? this.lifecycleController.signal,
-        ).catch(() => {})
-        continue
-      }
-      if (state === "errored") {
-        const context: AudioStreamErrorContext = { action: "decoder", errorCode: stats.errorCode }
-        await this.fail(
-          new AudioStreamOperationError(`Audio stream decoder failed: ${stats.errorCode}`, context),
-          context,
-        )
-        return
-      }
-      if (state === "disposed") {
-        if (this.options.signal?.aborted || this.disposed || !this.isCurrent(generation)) return
-        const context: AudioStreamErrorContext = { action: "decoder", errorCode: stats.errorCode }
-        await this.fail(new AudioStreamOperationError("Audio stream was cancelled by the decoder", context), context)
-        return
-      }
-
-      if (state === "ended") {
+      if (state !== "initializing") {
+        if (state === "errored" || state === "disposed") {
+          await this.failDecoder(stats)
+          return
+        }
         this.markDecoderReady(generation)
+        this.currentState = state
         this.resolveSetup()
-        await this.finishEnded(generation)
+        if (state === "ended") {
+          if (waitForEnd) await this.finishEnded(generation)
+          return
+        }
+        if (!waitForEnd) return
+      }
+      try {
+        await waitForDelay(STREAM_POLL_INTERVAL_MS, this.activeController?.signal ?? this.lifecycleController.signal)
+      } catch {
         return
       }
-      if (state !== "buffering" && state !== "playing") {
-        const context: AudioStreamErrorContext = { action: "stats" }
-        await this.fail(new AudioStreamOperationError(`Invalid active audio stream state: ${state}`, context), context)
-        return
-      }
-      this.markDecoderReady(generation)
-      this.resolveSetup()
-      this.transitionTo(state)
-      await waitForDelay(
-        STREAM_POLL_INTERVAL_MS,
-        this.activeController?.signal ?? this.lifecycleController.signal,
-      ).catch(() => {})
     }
   }
 
@@ -907,7 +853,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         if (!this.isCurrent(generation)) return
         if (result.done) {
           release()
-          this.clearSourceCleanup(generation, cleanup)
+          this.clearSourceCleanup(cleanup)
           await this.handleSourceEnd(generation)
           return
         }
@@ -916,6 +862,10 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
           const context: AudioStreamErrorContext = { action: "source" }
           await this.fail(new TypeError("Audio stream chunks must be Uint8Array instances"), context)
           return
+        }
+        if (chunk.byteLength === 0) {
+          await waitForDelay(0, controller.signal)
+          continue
         }
 
         let offset = 0
@@ -965,7 +915,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       await this.handleConnectionFailure(generation, error, context, retryableBody)
     } finally {
       release()
-      this.clearSourceCleanup(generation, cleanup)
+      this.clearSourceCleanup(cleanup)
     }
   }
 
@@ -1000,12 +950,15 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         this.pendingReconnectAfterEnd = null
         const context: AudioStreamErrorContext = { action: "end", status }
         await this.fail(new AudioStreamOperationError(`Audio stream end failed: ${status}`, context), context)
+        return
       }
     } catch (cause) {
       this.pendingReconnectAfterEnd = null
       const context: AudioStreamErrorContext = { action: "end" }
       await this.fail(new AudioStreamOperationError("Audio stream end failed", context, cause), context)
+      return
     }
+    await this.waitForNativeEnd(generation)
   }
 
   private async handleConnectionFailure(
@@ -1037,7 +990,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     this.generation += 1
     this.activeController?.abort()
     this.activeController = null
-    const cleanup = this.takeSourceCleanup(generation)
+    const cleanup = this.takeSourceCleanup()
     const destroyResult = this.destroyCurrentNative()
     await cleanup
     if (destroyResult.status !== 0) {
@@ -1069,7 +1022,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       maxAttempts: reconnect.maxAttempts,
       error,
     }
-    this.queueEvent(() => this.emit("reconnecting", reconnectEvent))
+    if (this.exposed) this.emitAsync(() => this.emit("reconnecting", reconnectEvent))
 
     try {
       await waitForDelay(delayMs, this.lifecycleController.signal)
@@ -1094,7 +1047,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     this.lifecycleController.abort()
     this.activeController?.abort()
     this.activeController = null
-    const cleanup = this.takeSourceCleanup(generation)
+    const cleanup = this.takeSourceCleanup()
     const destroyResult = this.destroyCurrentNative()
 
     let failure: { error: Error; context: AudioStreamErrorContext } | null = null
@@ -1107,15 +1060,15 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       this.rejectSetup(error)
     } else {
       this.currentState = "ended"
-      this.queueEvent(() => this.emit("ended"))
       this.resolveSetup()
     }
     await cleanup
     this.removeOwner()
-    this.resolveClosed()
+    this.closedResolve()
     if (failure != null) {
-      if (!this.exposed) this.queuedEvents = []
-      if (this.exposed) this.queueEvent(() => this.emit("error", failure.error, failure.context))
+      this.notifyError(failure.error, failure.context)
+    } else {
+      this.notifyEnded()
     }
   }
 
@@ -1123,33 +1076,29 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     if (this.terminal) return
     this.terminal = true
     this.terminalError = error
-    const generation = this.generation
     this.generation += 1
     this.pendingReconnectAfterEnd = null
     this.lifecycleController.abort()
     this.activeController?.abort()
     this.activeController = null
-    const cleanup = this.takeSourceCleanup(generation)
+    const cleanup = this.takeSourceCleanup()
     this.destroyCurrentNative()
     this.currentState = "errored"
     await cleanup
 
     if (!this.setupSettled) this.rejectSetup(error)
-    if (!this.exposed) this.queuedEvents = []
     this.removeOwner()
-    this.resolveClosed()
-    if (this.exposed) this.queueEvent(() => this.emit("error", error, context))
+    this.closedResolve()
+    this.notifyError(error, context)
   }
 
-  private transitionTo(state: "buffering" | "playing"): void {
-    if (this.currentState === state) return
-    this.currentState = state
-    const stats = this.toPublicStats(this.sessionStats)
-    this.queueEvent(() => this.emit(state, stats))
-  }
-
-  private reportControlError(error: Error, context: AudioStreamErrorContext): void {
-    this.queueEvent(() => this.emit("error", error, context))
+  private async failDecoder(stats: NativeAudioStreamStats): Promise<void> {
+    const context: AudioStreamErrorContext = { action: "decoder", errorCode: stats.errorCode }
+    const message =
+      stats.state === NativeAudioStreamState.Failed
+        ? `Audio stream decoder failed: ${stats.errorCode}`
+        : "Audio stream was cancelled by the decoder"
+    await this.fail(new AudioStreamOperationError(message, context), context)
   }
 
   private markDecoderReady(generation: number): void {
@@ -1161,7 +1110,6 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   private resolveSetup(): void {
     if (this.setupSettled) return
     this.setupSettled = true
-    this.setupSucceeded = true
     this.setupResolve()
   }
 
@@ -1169,22 +1117,23 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     if (this.setupSettled) return
     this.setupSettled = true
     this.terminalError = error
-    this.queuedEvents = []
     this.setupReject(error)
   }
 
-  private resolveClosed(): void {
-    if (this.closedResolved) return
-    this.closedResolved = true
-    this.closedResolve()
+  private notifyEnded(): void {
+    if (this.exposed) {
+      this.emitAsync(() => this.emit("ended"))
+    } else {
+      this.pendingEnded = true
+    }
   }
 
-  private queueEvent(emit: () => void): void {
-    if (this.eventsEnabled) {
-      emit()
-    } else {
-      this.queuedEvents.push(emit)
-    }
+  private notifyError(error: Error, context: AudioStreamErrorContext): void {
+    if (this.exposed) this.emitAsync(() => this.emit("error", error, context))
+  }
+
+  private emitAsync(emit: () => void): void {
+    setTimeout(emit, 0)
   }
 
   private isCurrent(generation: number): boolean {
@@ -1194,37 +1143,26 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   private setSourceCleanup(generation: number, cleanup: () => unknown): boolean {
     if (!this.isCurrent(generation)) return false
     this.activeSourceCleanup = cleanup
-    this.activeSourceCleanupGeneration = generation
     return true
   }
 
-  private clearSourceCleanup(generation: number, cleanup: () => unknown): void {
-    if (this.activeSourceCleanupGeneration !== generation || this.activeSourceCleanup !== cleanup) return
+  private clearSourceCleanup(cleanup: () => unknown): void {
+    if (this.activeSourceCleanup !== cleanup) return
     this.activeSourceCleanup = null
-    this.activeSourceCleanupGeneration = 0
   }
 
-  private takeSourceCleanup(generation: number): Promise<void> {
-    if (this.activeSourceCleanupGeneration !== generation || this.activeSourceCleanup == null) return Promise.resolve()
+  private takeSourceCleanup(): Promise<void> {
+    if (this.activeSourceCleanup == null) return Promise.resolve()
     const cleanup = this.activeSourceCleanup
     this.activeSourceCleanup = null
-    this.activeSourceCleanupGeneration = 0
     return runBoundedCleanup(cleanup)
   }
 
-  private stopActiveConnection(ignoreDestroyError: boolean): Promise<void> {
-    const generation = this.generation - 1
+  private stopActiveConnection(): Promise<void> {
     this.activeController?.abort()
     this.activeController = null
-    const cleanup = this.takeSourceCleanup(generation)
-    const result = this.destroyCurrentNative()
-    if (!ignoreDestroyError && result.status !== 0) {
-      this.terminalError = new AudioStreamOperationError(
-        "Audio stream destroy failed",
-        { action: "destroy", status: result.status },
-        result.cause,
-      )
-    }
+    const cleanup = this.takeSourceCleanup()
+    this.destroyCurrentNative()
     return cleanup
   }
 
@@ -1248,7 +1186,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     }
   }
 
-  private readCurrentStats(): NativeAudioStreamStats | null {
+  private readCurrentStats(useCached = true): NativeAudioStreamStats | null {
     const native = this.nativeStream
     if (native == null) return null
     try {
@@ -1256,7 +1194,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       if (stats != null) this.updateNativeStats(stats)
       return stats
     } catch {
-      return this.sessionStats
+      return useCached ? this.sessionStats : null
     }
   }
 
@@ -1287,8 +1225,6 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   }
 
   private removeOwner(): void {
-    if (this.ownerRemoved) return
-    this.ownerRemoved = true
     this.options.signal?.removeEventListener("abort", this.overallAbortListener)
     this.removeFromOwner()
   }

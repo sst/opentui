@@ -1217,7 +1217,7 @@ fn streamIdForSlot(engine: *const Engine, slot_index: usize) u32 {
     return (engine.stream_generations[slot_index] << 8) | slot;
 }
 
-fn streamSlotIndexLocked(engine: *const Engine, stream_id: u32) ?usize {
+fn streamSlotIndex(engine: *const Engine, stream_id: u32) ?usize {
     const slot: u8 = @truncate(stream_id);
     const generation = stream_id >> 8;
     if (slot == 0 or generation == 0) return null;
@@ -1227,8 +1227,8 @@ fn streamSlotIndexLocked(engine: *const Engine, stream_id: u32) ?usize {
     return slot_index;
 }
 
-fn getStreamLocked(engine: *Engine, stream_id: u32) ?*Stream {
-    const slot_index = streamSlotIndexLocked(engine, stream_id) orelse return null;
+fn getStream(engine: *Engine, stream_id: u32) ?*Stream {
+    const slot_index = streamSlotIndex(engine, stream_id) orelse return null;
     return engine.streams[slot_index];
 }
 
@@ -1372,7 +1372,7 @@ pub fn writeStream(
     const e = engine;
     e.lock.lock();
     defer e.lock.unlock();
-    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+    const stream = getStream(e, stream_id) orelse return Status.err_not_found;
 
     stream.input_lock.lock();
     defer stream.input_lock.unlock();
@@ -1409,7 +1409,7 @@ pub fn endStream(engine: *Engine, stream_id: u32) i32 {
     const e = engine;
     e.lock.lock();
     defer e.lock.unlock();
-    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+    const stream = getStream(e, stream_id) orelse return Status.err_not_found;
 
     stream.input_lock.lock();
     defer stream.input_lock.unlock();
@@ -1426,7 +1426,7 @@ pub fn setStreamVolume(engine: *Engine, stream_id: u32, volume: f32) i32 {
     const e = engine;
     e.lock.lock();
     defer e.lock.unlock();
-    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+    const stream = getStream(e, stream_id) orelse return Status.err_not_found;
 
     stream.volume = clamp(volume, 0, 4);
     c.ma_sound_set_volume(&stream.sound, stream.volume);
@@ -1438,7 +1438,7 @@ pub fn setStreamPan(engine: *Engine, stream_id: u32, pan: f32) i32 {
     const e = engine;
     e.lock.lock();
     defer e.lock.unlock();
-    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+    const stream = getStream(e, stream_id) orelse return Status.err_not_found;
 
     stream.pan = clamp(pan, -1, 1);
     c.ma_sound_set_pan(&stream.sound, stream.pan);
@@ -1451,7 +1451,7 @@ pub fn setStreamGroup(engine: *Engine, stream_id: u32, group_id: u32) i32 {
     e.lock.lock();
     defer e.lock.unlock();
 
-    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+    const stream = getStream(e, stream_id) orelse return Status.err_not_found;
     const group_index: usize = @intCast(group_id);
     if (group_index >= e.groups.items.len) return Status.err_invalid;
 
@@ -1464,10 +1464,8 @@ pub fn setStreamGroup(engine: *Engine, stream_id: u32, group_id: u32) i32 {
 
 pub fn getStreamStats(engine: *Engine, stream_id: u32, out_stats: ?*StreamStats) i32 {
     if (stream_id == 0 or out_stats == null) return Status.err_invalid;
-    const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
-    const stream = getStreamLocked(e, stream_id) orelse return Status.err_not_found;
+    // Native entry is serialized, and private audio threads never mutate stream slots.
+    const stream = getStream(engine, stream_id) orelse return Status.err_not_found;
 
     out_stats.?.* = .{
         .bytes_received = @atomicLoad(u64, &stream.bytes_received, .monotonic),
@@ -1488,7 +1486,7 @@ pub fn destroyStream(engine: *Engine, stream_id: u32) i32 {
     if (stream_id == 0) return Status.err_invalid;
     const e = engine;
     e.lock.lock();
-    const slot_index = streamSlotIndexLocked(e, stream_id) orelse {
+    const slot_index = streamSlotIndex(e, stream_id) orelse {
         e.lock.unlock();
         return Status.err_not_found;
     };

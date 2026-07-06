@@ -379,18 +379,6 @@ class AudioStreamingDemo {
     this.statusMessage = `Connected to ${url.host}`
     this.statusText.fg = PALETTE.accent
 
-    nextStream.on("buffering", (stats) => {
-      if (!this.isCurrent(nextStream, generation)) return
-      this.streamStats = stats
-      this.statusMessage = "Buffering decoded PCM"
-      this.statusText.fg = PALETTE.warning
-    })
-    nextStream.on("playing", (stats) => {
-      if (!this.isCurrent(nextStream, generation)) return
-      this.streamStats = stats
-      this.statusMessage = "Streaming MP3 audio"
-      this.statusText.fg = PALETTE.signal
-    })
     nextStream.on("reconnecting", ({ attempt, delayMs, error }) => {
       if (!this.isCurrent(nextStream, generation)) return
       this.statusMessage = `Reconnect ${attempt} in ${delayMs}ms: ${error.message}`

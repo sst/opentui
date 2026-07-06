@@ -90,7 +90,6 @@ async function drainStream(audio: Audio, stream: AudioStream): Promise<void> {
     "Audio stream did not reach its ended state",
     () => {
       audio.mixFrames(256, 2)
-      stream.getStats()
     },
   )
   await stream.closed
@@ -130,18 +129,13 @@ test("Audio streams an MP3 before the HTTP response ends and exposes it through 
   const stream = await audio.playStream(`${baseUrl}/radio`, {
     buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
   })
-  let initialStateEvent = false
-  stream.on("buffering", () => {
-    initialStateEvent = true
-  })
-  stream.on("playing", () => {
-    initialStateEvent = true
-  })
+  expect(["buffering", "playing"]).toContain(stream.getStats().state)
   const pcm = await waitForTapSignal(audio, stream)
 
   expect(responseEnded).toBe(false)
-  expect(initialStateEvent).toBe(true)
-  expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
+  const playingStats = stream.getStats()
+  expect(playingStats.state).toBe("playing")
+  expect(playingStats.framesPlayed).toBeGreaterThan(0n)
   expect(tonePower(pcm, 2048, 750)).toBeGreaterThan(tonePower(pcm, 2048, 3000) * 10)
 
   releaseTail.resolve()
@@ -319,6 +313,64 @@ test("Audio rejects non-successful stream responses", async () => {
 
   await expect(audio.playStream(`${baseUrl}/missing`)).rejects.toThrow("HTTP 404")
   expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Audio rejects an invalid MP3 during decoder setup", async () => {
+  async function* invalidMp3(): AsyncGenerator<Uint8Array> {
+    yield new TextEncoder().encode("not an mp3 stream")
+  }
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  await expect(audio.playStream(invalidMp3())).rejects.toThrow()
+  expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Audio reports a byte-source failure after stream setup", async () => {
+  const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 6)
+  const failSource = deferred()
+  async function* source(): AsyncGenerator<Uint8Array> {
+    yield mp3
+    await failSource.promise
+    throw new Error("test source failure")
+  }
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(source(), {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  const streamErrors: Error[] = []
+  stream.on("error", (error) => {
+    streamErrors.push(error)
+  })
+  failSource.resolve()
+  await stream.closed
+  await waitFor(() => streamErrors.length === 1, "Audio stream did not emit its source failure")
+
+  expect(stream.state).toBe("errored")
+  expect(streamErrors[0]?.message).toContain("source failed")
+  expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Audio accepts empty chunks without starving stream setup", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  async function* source(): AsyncGenerator<Uint8Array> {
+    for (let index = 0; index < 10; index += 1) yield new Uint8Array(0)
+    yield mp3
+  }
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(source(), {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  await drainStream(audio, stream)
+
+  expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
 })
 
 test("Disposing an audio stream cancels its byte source and releases its voice", async () => {
