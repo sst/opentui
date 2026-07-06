@@ -139,6 +139,7 @@ describe("borrowed pointer call sites", () => {
           capacityMs: 100,
           startupMs: 10,
           resumeMs: 10,
+          maxProbeBytes: 1024 * 1024,
           volume: 1,
           pan: 0,
           groupId: 1.5,

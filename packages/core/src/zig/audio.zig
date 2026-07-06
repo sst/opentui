@@ -16,7 +16,8 @@ pub const max_voices: usize = 32;
 pub const default_sample_rate: u32 = 48_000;
 pub const default_playback_channels: u32 = 2;
 const stream_input_capacity: u32 = 256 * 1024;
-const max_stream_probe_bytes: usize = 1024 * 1024;
+// Bounds endless invalid input during decoder setup; StreamOptions can raise it for valid metadata.
+pub const default_stream_probe_bytes: u32 = 1024 * 1024;
 const stream_decoder_chunk_frames: u32 = 2_048;
 const max_stream_generation: u32 = 0x00ffffff;
 const stream_channels: u32 = 2;
@@ -58,6 +59,7 @@ pub const StreamOptions = extern struct {
     capacity_ms: u32,
     startup_ms: u32,
     resume_ms: u32,
+    max_probe_bytes: u32 = default_stream_probe_bytes,
     volume: f32,
     pan: f32,
     group_id: u32,
@@ -139,12 +141,14 @@ const Stream = struct {
     input_count: usize = 0,
     input_lock: std.Thread.Mutex = .{},
     input_condition: std.Thread.Condition = .{},
+    // Keep EOF publication atomic so future decoder reads need not preserve a lock-only invariant.
     input_ended: u32 = 0,
     cancel_requested: u32 = 0,
     decoder_stop_requested: u32 = 0,
     decoder_abort: bool = false,
     probe_active: bool = true,
     probe_bytes: usize = 0,
+    max_probe_bytes: usize,
     decoder_finished: u32 = 0,
     pcm_buffer: []f32,
     pcm_ring: c.ma_pcm_rb = undefined,
@@ -478,9 +482,14 @@ fn streamDataSourceRead(
     }
 
     var available = c.ma_pcm_rb_available_read(&stream.pcm_ring);
+    // Completion is one callback snapshot: a short read before EOF is published is an underrun.
     const decoder_finished = @atomicLoad(u32, &stream.decoder_finished, .acquire) != 0;
 
-    const consume_while_reconnecting = state == StreamState.reconnecting;
+    const consume_while_reconnecting = state == StreamState.reconnecting and stream.has_started_playback;
+    if (state == StreamState.reconnecting and !consume_while_reconnecting) {
+        if (frames_read_out != null) frames_read_out[0] = frame_count;
+        return c.MA_SUCCESS;
+    }
     if (state == StreamState.buffering) {
         const threshold = if (stream.has_started_playback) stream.resume_frames else stream.startup_frames;
         if (available >= threshold or (decoder_finished and available > 0)) {
@@ -597,7 +606,7 @@ fn streamDecoderRead(
         @atomicLoad(u32, &stream.decoder_stop_requested, .acquire) == 0 and
         !stream.decoder_abort)
     {
-        if (stream.probe_active and stream.probe_bytes >= max_stream_probe_bytes) {
+        if (stream.probe_active and stream.probe_bytes >= stream.max_probe_bytes) {
             stream.decoder_abort = true;
             break;
         }
@@ -613,7 +622,7 @@ fn streamDecoderRead(
 
     var copy_count = @min(bytes_to_read, stream.input_count);
     if (stream.probe_active) {
-        const probe_remaining = max_stream_probe_bytes - stream.probe_bytes;
+        const probe_remaining = stream.max_probe_bytes - stream.probe_bytes;
         copy_count = @min(copy_count, probe_remaining);
         if (copy_count == 0) {
             stream.decoder_abort = true;
@@ -679,6 +688,7 @@ fn streamDecoderWorker(stream: *Stream) void {
     while (!decoderExitRequested(stream)) {
         const writable = c.ma_pcm_rb_available_write(&stream.pcm_ring);
         if (writable == 0) {
+            // Only the full-ring producer polls; this avoids synchronizing the realtime consumer.
             std.Thread.sleep(std.time.ns_per_ms);
             continue;
         }
@@ -1282,6 +1292,7 @@ fn retireStreamSlotLocked(engine: *Engine, slot_index: usize) void {
 pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_stream_id: ?*u32) i32 {
     if (options_ptr == null or out_stream_id == null) return Status.err_invalid;
     const options = options_ptr.?.*;
+    if (options.max_probe_bytes == 0) return Status.err_invalid;
     const frame_options = resolveStreamFrameOptions(options, engine.sample_rate) orelse return Status.err_invalid;
 
     const e = engine;
@@ -1324,6 +1335,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
         .pcm_buffer = pcm_buffer,
         .startup_frames = frame_options.startup_frames,
         .resume_frames = frame_options.resume_frames,
+        .max_probe_bytes = options.max_probe_bytes,
         .sample_rate = e.sample_rate,
         .capacity_frames = frame_options.capacity_frames,
     };
@@ -1396,6 +1408,7 @@ pub fn writeStream(
     if (stream_id == 0 or (data_len > 0 and data_ptr == null)) return Status.err_invalid;
 
     const e = engine;
+    // This pins the stream slot through the bounded copy; full input returns zero instead of waiting.
     e.lock.lock();
     defer e.lock.unlock();
     const stream = getStream(e, stream_id) orelse return Status.err_not_found;

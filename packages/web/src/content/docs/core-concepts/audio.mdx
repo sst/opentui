@@ -102,6 +102,8 @@ URL reconnect is opt-in. It retries network failures, interrupted response bodie
 
 Byte-stream inputs are one-shot and do not accept reconnect options. Input chunks must be `Uint8Array` values. Backpressure is automatic and both encoded and decoded buffering remain bounded.
 
+Decoder setup examines at most 1 MiB by default before rejecting an unrecognized stream. Set `maxProbeBytes` when valid MP3 metadata requires a larger probe.
+
 `AudioStream.getStats()` reads stream state and counters on demand; normal playback does not run a background JavaScript polling loop. Call it from an application's existing render or status-update cadence. It returns buffered frames and duration, received bytes, decoded and played frames, underruns, and reconnect attempts. Native decoder failures after setup are surfaced when the source next writes or ends, or when `getStats()` observes the failed state. `setVolume()`, `setPan()`, and `setGroup()` remain effective after reconnecting. A naturally completed stream keeps final stats in the `ended` state until disposed.
 
 Streams use the same mixer and master tap as loaded sounds. Once `enableTap()` is active, `readTapFrames()` includes streamed audio automatically. The tap is the combined master mix, not an isolated copy of one stream.

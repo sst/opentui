@@ -336,6 +336,7 @@ export type AudioStreamCreateOptions = {
   capacityMs: number
   startupMs: number
   resumeMs: number
+  maxProbeBytes: number
   volume: number
   pan: number
   groupId: number
@@ -426,6 +427,7 @@ export const AudioStreamCreateOptionsStruct = defineStruct([
   ["capacityMs", "u32"],
   ["startupMs", "u32"],
   ["resumeMs", "u32"],
+  ["maxProbeBytes", "u32"],
   ["volume", "f32"],
   ["pan", "f32"],
   ["groupId", "u32"],

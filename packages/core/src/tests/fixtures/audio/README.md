@@ -8,6 +8,8 @@ startup thresholds.
 
 Generated with ffmpeg 8.0:
 
+Substitute the frequency, duration, bitrate, and output filename for each listed variant.
+
 ```sh
 ffmpeg -hide_banner -loglevel error \
   -f lavfi -i "sine=frequency=FREQUENCY:sample_rate=48000:duration=DURATION" \

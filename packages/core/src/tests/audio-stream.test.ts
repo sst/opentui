@@ -1,6 +1,7 @@
 import { once } from "node:events"
 import { readFile } from "node:fs/promises"
 import { createServer, type Server } from "node:http"
+import { runInNewContext } from "node:vm"
 import { afterEach, expect, test } from "bun:test"
 import { Audio, AudioStream, type AudioStreamErrorContext, type AudioStreamStats } from "../audio.js"
 
@@ -77,6 +78,17 @@ function repeatBytes(bytes: Uint8Array, count: number): Uint8Array {
   const repeated = new Uint8Array(bytes.length * count)
   for (let index = 0; index < count; index += 1) repeated.set(bytes, index * bytes.length)
   return repeated
+}
+
+function prependId3Padding(mp3: Uint8Array, paddingBytes: number): Uint8Array {
+  const tagged = new Uint8Array(10 + paddingBytes + mp3.byteLength)
+  tagged.set([0x49, 0x44, 0x33, 4, 0, 0], 0)
+  tagged[6] = (paddingBytes >> 21) & 0x7f
+  tagged[7] = (paddingBytes >> 14) & 0x7f
+  tagged[8] = (paddingBytes >> 7) & 0x7f
+  tagged[9] = paddingBytes & 0x7f
+  tagged.set(mp3, 10 + paddingBytes)
+  return tagged
 }
 
 async function waitForTapSignal(audio: Audio, stream: AudioStream): Promise<Float32Array> {
@@ -408,6 +420,48 @@ test("Audio keeps playing decoded buffered frames while reconnecting an interrup
   }
 })
 
+test("Audio preserves the initial startup threshold when reconnecting before playback", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_HIGH_BITRATE_URL))
+  const interruptResponse = deferred()
+  let requests = 0
+  const server = createServer((_, response) => {
+    requests += 1
+    response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
+    response.write(mp3)
+    void interruptResponse.promise.then(() => response.destroy())
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 2000, startupMs: 1200, resumeMs: 1200 },
+    reconnect: { maxAttempts: 1, initialDelayMs: 10_000, maxDelayMs: 10_000 },
+  })
+  stream.on("error", () => {})
+  const beforeReconnect = stream.getStats()
+  expect(beforeReconnect.state).toBe("buffering")
+  expect(beforeReconnect.framesPlayed).toBe(0n)
+
+  let reconnecting = false
+  stream.on("reconnecting", () => {
+    reconnecting = true
+  })
+  interruptResponse.resolve()
+  await waitFor(() => reconnecting, "Audio stream did not enter reconnecting state")
+
+  let heardAudio = false
+  for (let block = 0; block < 10; block += 1) {
+    heardAudio = heardAudio || hasSignal(audio.mixFrames(2048, 2) ?? new Float32Array())
+  }
+  expect(heardAudio).toBe(false)
+  expect(stream.getStats().framesPlayed).toBe(beforeReconnect.framesPlayed)
+  expect(requests).toBe(1)
+  stream.dispose()
+  await stream.closed
+})
+
 test("Audio disposes a buffered stream while reconnecting", async () => {
   const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 8)
   const interruptResponse = deferred()
@@ -684,6 +738,23 @@ test("Audio rejects an invalid MP3 during decoder setup", async () => {
 
   await expect(audio.playStream(invalidMp3())).rejects.toThrow()
   expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Audio accepts valid MP3 data within a configured probe limit", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const taggedMp3 = prependId3Padding(mp3, 1024 * 1024)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(
+    (async function* () {
+      yield taggedMp3
+    })(),
+    { maxProbeBytes: taggedMp3.byteLength },
+  )
+  await drainStream(audio, stream)
+  expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
 })
 
 test("Audio reports a byte-source failure after stream setup", async () => {
@@ -1331,6 +1402,45 @@ test("Audio reports Retry-After delay through reconnect events without waiting f
   expect(stream.state).toBe("disposed")
 })
 
+test("Audio does not collapse long reconnect delays to an immediate retry", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_5S_URL))
+  const interruptResponse = deferred()
+  let requests = 0
+  const server = createServer((_, response) => {
+    requests += 1
+    if (requests === 1) {
+      response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
+      response.write(mp3)
+      void interruptResponse.promise.then(() => response.destroy())
+      return
+    }
+    response.writeHead(503, { Connection: "close" })
+    response.end()
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const delayMs = 3_000_000_000
+  const stream = await audio.playStream(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
+    reconnect: { maxAttempts: 1, initialDelayMs: delayMs, maxDelayMs: delayMs },
+  })
+  stream.on("error", () => {})
+  let reconnecting = false
+  stream.on("reconnecting", () => {
+    reconnecting = true
+  })
+
+  interruptResponse.resolve()
+  await waitFor(() => reconnecting, "Audio stream did not enter reconnecting state")
+  await sleep(25)
+  expect(requests).toBe(1)
+  stream.dispose()
+  await stream.closed
+})
+
 test("Audio enforces the documented HTTP content-type policy", async () => {
   const fixture = new Uint8Array(await readFile(MP3_URL))
   const allowedContentTypes: Array<string | undefined> = [
@@ -1450,6 +1560,24 @@ test("Audio classifies invalid chunks and invalid reconnect media at the public 
   expect(reconnectErrorContext.value?.action).toBe("decoder")
   expect(requests).toBe(2)
   expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Audio accepts Uint8Array chunks created in another realm", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const foreignChunk = runInNewContext("Uint8Array.from(bytes)", { bytes: mp3 }) as Uint8Array
+  expect(foreignChunk).not.toBeInstanceOf(Uint8Array)
+
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  const stream = await audio.playStream(
+    (async function* () {
+      yield foreignChunk
+    })(),
+    { buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 } },
+  )
+  await drainStream(audio, stream)
+  expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
 })
 
 test("AbortSignal cancels stream setup and active playback without error events", async () => {
@@ -1587,6 +1715,7 @@ test("Audio validates public stream and reconnect options before consuming a sou
       options: { buffer: { capacityMs: 100, startupMs: 1, resumeMs: 101 } },
       message: "buffer.resumeMs",
     },
+    { name: "zero probe limit", options: { maxProbeBytes: 0 }, message: "maxProbeBytes" },
   ]
   for (const scenario of invalidBodyOptions) {
     let pulls = 0

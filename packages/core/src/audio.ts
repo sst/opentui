@@ -61,6 +61,7 @@ export interface AudioStreamBodyOptions {
   volume?: number
   pan?: number
   groupId?: number
+  maxProbeBytes?: number
   buffer?: AudioStreamBufferOptions
   signal?: AbortSignal
 }
@@ -198,7 +199,9 @@ function toBytes(data: Uint8Array | ArrayBuffer): Uint8Array {
 }
 
 const DEFAULT_AUDIO_SAMPLE_RATE = 48_000
+const DEFAULT_STREAM_PROBE_BYTES = 1024 * 1024
 const STREAM_POLL_INTERVAL_MS = 5
+const MAX_TIMER_DELAY_MS = 0x7fffffff
 const MAX_U32 = 0xffffffff
 const INVALID_STREAM_CHUNK_MESSAGE = "Audio stream chunks must be Uint8Array instances"
 
@@ -217,6 +220,7 @@ interface ResolvedAudioStreamOptions {
   volume: number
   pan: number
   groupId: number
+  maxProbeBytes: number
   signal?: AbortSignal
   request?: Omit<RequestInit, "body" | "signal">
   reconnect?: ResolvedAudioStreamReconnectOptions
@@ -253,13 +257,13 @@ function createAbortError(): Error {
 
 const isU32 = (value: number): boolean => Number.isInteger(value) && value >= 0 && value <= MAX_U32
 
-function resolveDuration(value: number | undefined, fallback: number, name: string): number {
-  const duration = value ?? fallback
-  if (!Number.isFinite(duration) || !Number.isInteger(duration) || duration <= 0) {
+function resolvePositiveU32(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback
+  if (!Number.isFinite(resolved) || !Number.isInteger(resolved) || resolved <= 0) {
     throw new TypeError(`${name} must be a finite positive integer`)
   }
-  if (duration > MAX_U32) throw new RangeError(`${name} exceeds the supported duration`)
-  return duration
+  if (resolved > MAX_U32) throw new RangeError(`${name} exceeds the supported limit`)
+  return resolved
 }
 
 function resolveReconnectOptions(options: AudioStreamReconnectOptions): ResolvedAudioStreamReconnectOptions {
@@ -288,9 +292,10 @@ function resolveAudioStreamOptions(
   options: AudioStreamUrlOptions | AudioStreamBodyOptions,
   urlSource: boolean,
 ): ResolvedAudioStreamOptions {
-  const capacityMs = resolveDuration(options.buffer?.capacityMs, 2000, "buffer.capacityMs")
-  const startupMs = resolveDuration(options.buffer?.startupMs, 1000, "buffer.startupMs")
-  const resumeMs = resolveDuration(options.buffer?.resumeMs, 1000, "buffer.resumeMs")
+  const capacityMs = resolvePositiveU32(options.buffer?.capacityMs, 2000, "buffer.capacityMs")
+  const startupMs = resolvePositiveU32(options.buffer?.startupMs, 1000, "buffer.startupMs")
+  const resumeMs = resolvePositiveU32(options.buffer?.resumeMs, 1000, "buffer.resumeMs")
+  const maxProbeBytes = resolvePositiveU32(options.maxProbeBytes, DEFAULT_STREAM_PROBE_BYTES, "maxProbeBytes")
   if (startupMs > capacityMs) throw new RangeError("buffer.startupMs must not exceed buffer.capacityMs")
   if (resumeMs > capacityMs) throw new RangeError("buffer.resumeMs must not exceed buffer.capacityMs")
 
@@ -312,6 +317,7 @@ function resolveAudioStreamOptions(
     volume: options.volume ?? 1,
     pan: options.pan ?? 0,
     groupId: options.groupId ?? 0,
+    maxProbeBytes,
     signal: options.signal,
     request,
     reconnect:
@@ -338,15 +344,25 @@ function runBoundedCleanup(cleanup: () => unknown, timeoutMs: number = 50): Prom
 function waitForDelay(delayMs: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.reject(createAbortError())
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort)
-      resolve()
-    }, delayMs)
+    let remainingMs = delayMs
+    let timer: ReturnType<typeof setTimeout>
+    const schedule = (): void => {
+      const currentDelayMs = Math.min(remainingMs, MAX_TIMER_DELAY_MS)
+      timer = setTimeout(() => {
+        remainingMs -= currentDelayMs
+        if (remainingMs > 0) schedule()
+        else {
+          signal.removeEventListener("abort", onAbort)
+          resolve()
+        }
+      }, currentDelayMs)
+    }
     const onAbort = (): void => {
       clearTimeout(timer)
       reject(createAbortError())
     }
     signal.addEventListener("abort", onAbort, { once: true })
+    schedule()
   })
 }
 
@@ -376,6 +392,10 @@ function isReadableStreamSource(source: unknown): source is ReadableStream<Uint8
 
 function isAsyncIterableSource(source: unknown): source is AsyncIterable<Uint8Array> {
   return typeof (source as AsyncIterable<Uint8Array> | null)?.[Symbol.asyncIterator] === "function"
+}
+
+function isUint8Array(value: unknown): value is Uint8Array {
+  return ArrayBuffer.isView(value) && Object.prototype.toString.call(value) === "[object Uint8Array]"
 }
 
 let createAudioStream: (init: AudioStreamInit) => AudioStream
@@ -423,6 +443,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   }
 
   get state(): AudioStreamState {
+    // State is the latest snapshot; getStats() is the explicit FFI refresh.
     if (this.disposed) return "disposed"
     if (this.terminalError != null) return "errored"
     return this.nativeStats == null ? "initializing" : (StateNames[this.nativeStats.state] ?? "errored")
@@ -548,6 +569,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       capacityMs: this.options.capacityMs,
       startupMs: this.options.startupMs,
       resumeMs: this.options.resumeMs,
+      maxProbeBytes: this.options.maxProbeBytes,
       volume: this.options.volume,
       pan: this.options.pan,
       groupId: this.options.groupId,
@@ -721,7 +743,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
           return
         }
         const chunk = result.value
-        if (!(chunk instanceof Uint8Array)) {
+        if (!isUint8Array(chunk)) {
           throw new TypeError(INVALID_STREAM_CHUNK_MESSAGE)
         }
         if (chunk.byteLength === 0) {
@@ -745,6 +767,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
             throw new AudioStreamOperationError(`Audio stream write failed: ${accepted}`, context)
           }
           if (accepted === 0) {
+            // Polling exists only for the current backpressured write; no idle timer remains afterward.
             if ((await this.pollNativeSnapshot(attempt)) == null) return
             await waitForDelay(STREAM_POLL_INTERVAL_MS, attempt.controller.signal)
             continue
