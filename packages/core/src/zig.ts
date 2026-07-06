@@ -79,10 +79,10 @@ function validateLinuxLibcOverride(): void {
 
 async function resolveNativePackage() {
   if (process.platform === "darwin") {
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "x64") return await import("@lexwdex-org/core-darwin-x64")
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "arm64") return await import("@lexwdex-org/core-darwin-arm64")
+    if (process.arch === "arm64") {
+      // @ts-ignore Optional native package may be absent when building on another platform.
+      return await import("@lexwdex-org/core-darwin-arm64")
+    }
   }
 
   if (process.platform === "linux") {
@@ -97,23 +97,11 @@ async function resolveNativePackage() {
         return await import("@lexwdex-org/core-linux-x64")
       }
     }
-
-    if (process.arch === "arm64") {
-      if (process.env.OPENTUI_LIBC === "musl") {
-        // @ts-ignore Optional native package may be absent unless building a musl target.
-        return await import("@lexwdex-org/core-linux-arm64-musl")
-      } else {
-        // @ts-ignore Optional native package may be absent when building on another platform.
-        return await import("@lexwdex-org/core-linux-arm64")
-      }
-    }
   }
 
   if (process.platform === "win32") {
     // @ts-ignore Optional native package may be absent when building on another platform.
     if (process.arch === "x64") return await import("@lexwdex-org/core-win32-x64")
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "arm64") return await import("@lexwdex-org/core-win32-arm64")
   }
 
   throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
