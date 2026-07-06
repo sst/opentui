@@ -1,5 +1,6 @@
-import { test, expect } from "bun:test"
+import { test, expect, describe } from "bun:test"
 import { buildKittyKeyboardFlags } from "../renderer.js"
+import { createTestRenderer } from "../testing/test-renderer.js"
 
 // Kitty Keyboard Protocol progressive enhancement flags
 // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
@@ -192,4 +193,38 @@ test("optional flags default to false", () => {
   expect(flags & KITTY_FLAG_EVENT_TYPES).toBeFalsy()
   expect(flags & KITTY_FLAG_ALL_KEYS_AS_ESCAPES).toBeFalsy()
   expect(flags & KITTY_FLAG_REPORT_TEXT).toBeFalsy()
+})
+
+// NOTE: These tests are not running the kitty activation sequences,
+// only verifying that the configuration is applied correctly
+// (renderer.useKittyKeyboard reads the flags back from the native renderer).
+describe("useKittyKeyboard configuration", () => {
+  test("useKittyKeyboard: null disables the kitty keyboard protocol", async () => {
+    const { renderer } = await createTestRenderer({
+      useKittyKeyboard: null,
+      exitOnCtrlC: false,
+    })
+
+    expect(renderer.useKittyKeyboard).toBe(false)
+    renderer.destroy()
+  })
+
+  test("useKittyKeyboard omitted enables the protocol with defaults", async () => {
+    const { renderer } = await createTestRenderer({
+      exitOnCtrlC: false,
+    })
+
+    expect(renderer.useKittyKeyboard).toBe(true)
+    renderer.destroy()
+  })
+
+  test("useKittyKeyboard options object enables the protocol", async () => {
+    const { renderer } = await createTestRenderer({
+      useKittyKeyboard: { events: true },
+      exitOnCtrlC: false,
+    })
+
+    expect(renderer.useKittyKeyboard).toBe(true)
+    renderer.destroy()
+  })
 })
