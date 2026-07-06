@@ -1162,6 +1162,8 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     this.activeController?.abort()
     this.activeController = null
     const cleanup = this.takeSourceCleanup()
+    // Source cancellation may synchronously dispose the owning Audio. A later
+    // invalid-handle result is benign because engine teardown freed the stream.
     this.destroyCurrentNative()
     return cleanup
   }

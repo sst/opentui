@@ -450,6 +450,7 @@ export fn audioGetStreamStats(engine_handle: NativeHandle, stream_id: u32, out_s
 }
 
 export fn audioDestroyStream(engine_handle: NativeHandle, stream_id: u32) i32 {
+    // Once both handles resolve, stream teardown has no fallible path.
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
     return native_audio.destroyStream(object_ptr, stream_id);
 }
