@@ -2,7 +2,7 @@ import { once } from "node:events"
 import { readFile } from "node:fs/promises"
 import { createServer, type Server } from "node:http"
 import { afterEach, expect, test } from "bun:test"
-import { Audio, type AudioStream, type AudioStreamErrorContext } from "../audio.js"
+import { Audio, type AudioStream, type AudioStreamErrorContext, type AudioStreamStats } from "../audio.js"
 
 const SAMPLE_RATE = 48_000
 const MP3_URL = new URL("./fixtures/audio/tone-750hz-48k-mono-1s.mp3", import.meta.url)
@@ -427,17 +427,20 @@ test("Throwing reconnecting listeners do not interrupt reconnection or other lis
 })
 
 test("Audio drains clean EOF before reconnecting", async () => {
-  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const fixture = new Uint8Array(await readFile(MP3_URL))
+  const mp3 = repeatBytes(fixture, 6)
+  const finishFirstResponse = deferred()
   const keepSecondResponseOpen = deferred()
   let requests = 0
   const server = createServer((_, response) => {
     requests += 1
     response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
     if (requests === 1) {
-      response.end(mp3)
+      response.write(mp3)
+      void finishFirstResponse.promise.then(() => response.end())
       return
     }
-    response.write(repeatBytes(mp3, 6))
+    response.write(mp3)
     void keepSecondResponseOpen.promise.then(() => response.end())
   })
   const baseUrl = await listen(server)
@@ -451,14 +454,44 @@ test("Audio drains clean EOF before reconnecting", async () => {
     reconnect: { initialDelayMs: 0, maxDelayMs: 0, retryOnEnd: true },
   })
   stream.on("error", () => {})
+  await waitFor(() => stream.getStats().bufferedFrames > 0, "Audio stream did not buffer its first response")
+
+  const silentSound = audio.loadSound(fixture)
+  expect(silentSound).not.toBeNull()
+  if (silentSound == null) return
+  for (let voice = 0; voice < 31; voice += 1) {
+    expect(audio.play(silentSound, { loop: true, volume: 0 })).not.toBeNull()
+  }
+  expect(audio.getStats()?.voicesActive).toBe(32)
+  expect(stream.setVolume(0.6)).toBe(true)
+  expect(stream.setPan(0.2)).toBe(true)
+
+  const reconnectStats: { value?: AudioStreamStats } = {}
+  stream.on("reconnecting", () => {
+    reconnectStats.value = stream.getStats()
+  })
+  finishFirstResponse.resolve()
   await waitFor(
-    () => requests === 2,
+    () => requests === 2 && reconnectStats.value != null,
     "Audio stream did not reconnect after draining clean EOF",
     () => audio.mixFrames(256, 2),
   )
+  const statsAtReconnect = reconnectStats.value
+  if (statsAtReconnect == null) throw new Error("Audio stream reconnect stats were unavailable")
+  await waitFor(
+    () => {
+      const stats = stream.getStats()
+      return (
+        stats.bytesReceived > statsAtReconnect.bytesReceived && stats.framesDecoded > statsAtReconnect.framesDecoded
+      )
+    },
+    "Audio stream did not resume decoding after clean EOF",
+    () => audio.mixFrames(256, 2),
+  )
 
-  expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
+  expect(stream.getStats().framesPlayed).toBeGreaterThan(statsAtReconnect.framesPlayed)
   expect(stream.getStats().reconnectAttempts).toBe(1)
+  expect(audio.getStats()?.voicesActive).toBe(32)
   stream.dispose()
   keepSecondResponseOpen.resolve()
   await stream.closed
@@ -621,16 +654,29 @@ test("Audio rejects an invalid MP3 during decoder setup", async () => {
 test("Audio reports a byte-source failure after stream setup", async () => {
   const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 6)
   const failSource = deferred()
-  async function* source(): AsyncGenerator<Uint8Array> {
-    yield mp3
-    await failSource.promise
-    throw new Error("test source failure")
+  let sourceReturned = false
+  let pulls = 0
+  const source: AsyncIterable<Uint8Array> = {
+    [Symbol.asyncIterator]() {
+      return {
+        async next() {
+          pulls += 1
+          if (pulls === 1) return { done: false as const, value: mp3 }
+          await failSource.promise
+          throw new Error("test source failure")
+        },
+        async return() {
+          sourceReturned = true
+          return { done: true as const, value: undefined }
+        },
+      }
+    },
   }
   const audio = Audio.create({ autoStart: false })
   audios.push(audio)
   expect(audio.startMixer()).toBe(true)
 
-  const stream = await audio.playStream(source(), {
+  const stream = await audio.playStream(source, {
     buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
   })
   const streamErrors: Error[] = []
@@ -646,7 +692,43 @@ test("Audio reports a byte-source failure after stream setup", async () => {
 
   expect(stream.state).toBe("errored")
   expect(streamErrors[0]?.message).toContain("source failed")
+  expect(sourceReturned).toBe(true)
   expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Source failure cleanup cannot overwrite reentrant Audio disposal", async () => {
+  const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 6)
+  const failSource = deferred()
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  let pulls = 0
+  const source: AsyncIterable<Uint8Array> = {
+    [Symbol.asyncIterator]() {
+      return {
+        async next() {
+          pulls += 1
+          if (pulls === 1) return { done: false as const, value: mp3 }
+          await failSource.promise
+          throw new Error("test source failure")
+        },
+        async return() {
+          audio.dispose()
+          return { done: true as const, value: undefined }
+        },
+      }
+    },
+  }
+
+  const stream = await audio.playStream(source, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  stream.on("error", () => {})
+  failSource.resolve()
+  await stream.closed
+
+  expect(stream.state).toBe("disposed")
 })
 
 test("Audio accepts empty chunks without starving stream setup", async () => {
@@ -760,6 +842,7 @@ test("Stream teardown tolerates source cancellation disposing the owning Audio",
   expect(activeVoicesAtCancel).toBe(1)
   expect(audioDisposed).toBe(true)
   expect(stream.state).toBe("disposed")
+  expect(stream.getStats().bufferedFrames).toBe(0)
 })
 
 test("Disposal settles even when a byte source does not finish cancelling", async () => {

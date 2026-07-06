@@ -105,7 +105,7 @@ audio.dispose()
 
 `playStream()` resolves after the native MP3 decoder is ready, normally while the stream is still buffering. Setup failures reject the promise. Later failures emit `error` on the returned `AudioStream`.
 
-URL reconnect is opt-in. It retries network failures, interrupted response bodies, HTTP 408/425/429, and HTTP 5xx responses. Decoded PCM remains playable while an interrupted response reconnects. `retryOnEnd` reconnects after a clean response ends and its buffered PCM drains. When reconnect is enabled, omitted `maxAttempts` means unlimited retries; an `AbortSignal` or `dispose()` stops them.
+URL reconnect is opt-in. It retries network failures, interrupted response bodies, HTTP 408/425/429, and HTTP 5xx responses. Reconnects restart the decoder in the same native stream session, preserving controls, counters, the voice slot, and any decoded PCM still available after an interruption. `retryOnEnd` restarts the same session after a clean response ends and its buffered PCM drains. `maxAttempts` limits consecutive attempts for one outage and resets after a replacement decoder becomes ready; omitting it means unlimited retries. An `AbortSignal` or `dispose()` stops them.
 
 Byte-stream inputs are one-shot and do not accept reconnect options. Input chunks must be `Uint8Array` values. Backpressure is automatic and both encoded and decoded buffering remain bounded.
 

@@ -1459,7 +1459,8 @@ pub fn restartStream(engine: *Engine, stream_id: u32) i32 {
 
     stream.input_lock.lock();
     const state = loadStreamState(stream);
-    if (isTerminalStreamState(state) or
+    if (state == StreamState.failed or
+        state == StreamState.cancelled or
         @atomicLoad(u32, &stream.cancel_requested, .acquire) != 0 or
         stream.worker == null)
     {
@@ -1494,6 +1495,18 @@ pub fn restartStream(engine: *Engine, stream_id: u32) i32 {
     @atomicStore(i32, &stream.error_code, 0, .release);
     @atomicStore(u32, &stream.decoder_stop_requested, 0, .release);
     stream.input_lock.unlock();
+
+    if (state == StreamState.ended) {
+        // start() clears atEnd only after its is-playing check; stop first so its
+        // tolerated seek on this unseekable source also resets the ended latch.
+        if (!stream.sound_ready or
+            c.ma_sound_stop(&stream.sound) != c.MA_SUCCESS or
+            c.ma_sound_start(&stream.sound) != c.MA_SUCCESS)
+        {
+            failStreamWithCode(stream, Status.err_device);
+            return Status.err_device;
+        }
+    }
 
     stream.worker = std.Thread.spawn(.{}, streamDecoderWorker, .{stream}) catch {
         failStreamWithCode(stream, Status.err_no_space);
