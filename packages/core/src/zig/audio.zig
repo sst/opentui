@@ -22,6 +22,10 @@ const default_stream_resume_frames: u32 = 2_048;
 const max_stream_probe_bytes: usize = 1024 * 1024;
 const stream_decoder_chunk_frames: u32 = 2_048;
 const max_stream_generation: u32 = 0x00ffffff;
+const stream_channels: u32 = 2;
+const stream_bytes_per_frame: u32 = stream_channels * @sizeOf(f32);
+const max_stream_ring_bytes: u32 = 0x7fffffff - (@as(u32, c.MA_SIMD_ALIGNMENT) - 1);
+pub const max_stream_pcm_capacity_frames: u32 = max_stream_ring_bytes / stream_bytes_per_frame;
 
 pub const CreateOptions = extern struct {
     sample_rate: u32 = default_sample_rate,
@@ -1208,8 +1212,7 @@ fn validStreamOptions(options: StreamOptions) bool {
     if (options.startup_frames == 0 or options.resume_frames == 0) return false;
     if (options.startup_frames > options.pcm_capacity_frames or options.resume_frames > options.pcm_capacity_frames) return false;
 
-    const max_pcm_frames: u32 = 0x7fffffff / (2 * @sizeOf(f32));
-    return options.pcm_capacity_frames <= max_pcm_frames;
+    return options.pcm_capacity_frames <= max_stream_pcm_capacity_frames;
 }
 
 fn streamIdForSlot(engine: *const Engine, slot_index: usize) u32 {
@@ -1244,6 +1247,23 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
     if (!validStreamOptions(options)) return Status.err_invalid;
 
     const e = engine;
+    const preflight = blk: {
+        e.lock.lock();
+        defer e.lock.unlock();
+
+        reapFinishedVoices(e);
+        const group_index: usize = @intCast(options.group_id);
+        if (group_index >= e.groups.items.len) return Status.err_invalid;
+        if (e.activeVoiceAndStreamCount() >= max_voices) return Status.err_no_space;
+
+        for (e.streams, 0..) |existing_stream, slot_index| {
+            if (existing_stream == null and e.stream_generations[slot_index] != 0) {
+                break :blk .{ .group_index = group_index, .slot_index = slot_index };
+            }
+        }
+        return Status.err_no_space;
+    };
+
     const stream = e.allocator.create(Stream) catch return Status.err_no_space;
     const input_buffer = e.allocator.alloc(u8, options.input_capacity_bytes) catch {
         e.allocator.destroy(stream);
@@ -1290,35 +1310,9 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
     stream.source_ready = true;
 
     e.lock.lock();
-    reapFinishedVoices(e);
-    const group_index: usize = @intCast(options.group_id);
-    if (group_index >= e.groups.items.len) {
-        e.lock.unlock();
-        destroyStreamStorage(stream);
-        return Status.err_invalid;
-    }
-    if (e.activeVoiceAndStreamCount() >= max_voices) {
-        e.lock.unlock();
-        destroyStreamStorage(stream);
-        return Status.err_no_space;
-    }
-
-    var stream_slot: ?usize = null;
-    for (e.streams, 0..) |existing_stream, slot_index| {
-        if (existing_stream == null and e.stream_generations[slot_index] != 0) {
-            stream_slot = slot_index;
-            break;
-        }
-    }
-    if (stream_slot == null) {
-        e.lock.unlock();
-        destroyStreamStorage(stream);
-        return Status.err_no_space;
-    }
-
     const data_source: *c.ma_data_source = @ptrCast(&stream.source);
     const sound_flags: c.ma_uint32 = c.MA_SOUND_FLAG_NO_SPATIALIZATION | c.MA_SOUND_FLAG_NO_PITCH;
-    if (c.ma_sound_init_from_data_source(&e.core, data_source, sound_flags, &e.groups.items[group_index].node, &stream.sound) != c.MA_SUCCESS) {
+    if (c.ma_sound_init_from_data_source(&e.core, data_source, sound_flags, &e.groups.items[preflight.group_index].node, &stream.sound) != c.MA_SUCCESS) {
         e.lock.unlock();
         destroyStreamStorage(stream);
         return Status.err_device;
@@ -1334,7 +1328,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
         return Status.err_device;
     }
 
-    const slot_index = stream_slot.?;
+    const slot_index = preflight.slot_index;
     e.streams[slot_index] = stream;
     const stream_id = streamIdForSlot(e, slot_index);
     e.updateActiveVoiceCount();

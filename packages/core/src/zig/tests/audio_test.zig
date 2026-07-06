@@ -12,6 +12,18 @@ fn createEngine(options_ptr: ?*const audio.CreateOptions) !*audio.Engine {
     return audio.create(testing.allocator, options_ptr) orelse error.TestUnexpectedResult;
 }
 
+fn streamOptions() audio.StreamOptions {
+    return .{
+        .input_capacity_bytes = 1024,
+        .pcm_capacity_frames = 256,
+        .startup_frames = 64,
+        .resume_frames = 32,
+        .volume = 1,
+        .pan = 0,
+        .group_id = 0,
+    };
+}
+
 fn buildPcm16Wav(allocator: std.mem.Allocator, channels: u16, sample_rate: u32, samples: []const i16) ![]u8 {
     if (channels == 0 or samples.len == 0) return error.InvalidInput;
     if (samples.len % @as(usize, channels) != 0) return error.InvalidInput;
@@ -436,4 +448,121 @@ test "audio - getStats returns current counters" {
     try testing.expect(after.last_rms > 0);
 
     try expectStatusOk(audio.stopVoice(engine, voice_id));
+}
+
+test "audio stream preflight rejects invalid group without allocating" {
+    var failing = testing.FailingAllocator.init(testing.allocator, .{});
+    const engine = audio.create(failing.allocator(), null) orelse return error.TestUnexpectedResult;
+    defer audio.destroy(engine);
+
+    const allocation_index = failing.alloc_index;
+    failing.fail_index = allocation_index;
+
+    var options = streamOptions();
+    options.group_id = std.math.maxInt(u32);
+    var stream_id: u32 = 0xdeadbeef;
+    try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, &options, &stream_id));
+    try testing.expectEqual(allocation_index, failing.alloc_index);
+    try testing.expect(!failing.has_induced_failure);
+    try testing.expectEqual(@as(u32, 0xdeadbeef), stream_id);
+}
+
+test "audio stream preflight rejects capacity above miniaudio limit without allocating" {
+    var failing = testing.FailingAllocator.init(testing.allocator, .{});
+    const engine = audio.create(failing.allocator(), null) orelse return error.TestUnexpectedResult;
+    defer audio.destroy(engine);
+
+    const allocation_index = failing.alloc_index;
+    failing.fail_index = allocation_index;
+
+    var options = streamOptions();
+    options.pcm_capacity_frames = audio.max_stream_pcm_capacity_frames + 1;
+    options.startup_frames = 1;
+    options.resume_frames = 1;
+    var stream_id: u32 = 0xdeadbeef;
+    try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, &options, &stream_id));
+    try testing.expectEqual(allocation_index, failing.alloc_index);
+    try testing.expect(!failing.has_induced_failure);
+    try testing.expectEqual(@as(u32, 0xdeadbeef), stream_id);
+}
+
+test "audio stream preflight accepts exact miniaudio capacity bound" {
+    var failing = testing.FailingAllocator.init(testing.allocator, .{});
+    const engine = audio.create(failing.allocator(), null) orelse return error.TestUnexpectedResult;
+    defer audio.destroy(engine);
+
+    const allocation_index = failing.alloc_index;
+    failing.fail_index = allocation_index;
+
+    var options = streamOptions();
+    options.pcm_capacity_frames = audio.max_stream_pcm_capacity_frames;
+    options.startup_frames = 1;
+    options.resume_frames = 1;
+    var stream_id: u32 = 0;
+    try testing.expectEqual(audio.Status.err_no_space, audio.createStream(engine, &options, &stream_id));
+    try testing.expectEqual(allocation_index, failing.alloc_index);
+    try testing.expect(failing.has_induced_failure);
+}
+
+test "audio stream preflight rejects shared voice exhaustion without allocating" {
+    var failing = testing.FailingAllocator.init(testing.allocator, .{});
+    const engine = audio.create(failing.allocator(), null) orelse return error.TestUnexpectedResult;
+    defer audio.destroy(engine);
+
+    const mono_samples = [_]i16{ 2000, -2000, 4000, -4000, 2000, -2000 };
+    const sound_id = try loadSoundFromSamples(engine, 1, &mono_samples);
+    for (0..audio.max_voices) |_| {
+        _ = try playLoop(engine, sound_id, 0, 0);
+    }
+
+    const allocation_index = failing.alloc_index;
+    failing.fail_index = allocation_index;
+
+    var options = streamOptions();
+    var stream_id: u32 = 0xdeadbeef;
+    try testing.expectEqual(audio.Status.err_no_space, audio.createStream(engine, &options, &stream_id));
+    try testing.expectEqual(allocation_index, failing.alloc_index);
+    try testing.expect(!failing.has_induced_failure);
+    try testing.expectEqual(@as(u32, 0xdeadbeef), stream_id);
+}
+
+test "audio stream preflight rejects retired slots without allocating" {
+    var failing = testing.FailingAllocator.init(testing.allocator, .{});
+    const engine = audio.create(failing.allocator(), null) orelse return error.TestUnexpectedResult;
+    defer audio.destroy(engine);
+
+    @memset(&engine.stream_generations, 0);
+    const allocation_index = failing.alloc_index;
+    failing.fail_index = allocation_index;
+
+    var options = streamOptions();
+    var stream_id: u32 = 0xdeadbeef;
+    try testing.expectEqual(audio.Status.err_no_space, audio.createStream(engine, &options, &stream_id));
+    try testing.expectEqual(allocation_index, failing.alloc_index);
+    try testing.expect(!failing.has_induced_failure);
+    try testing.expectEqual(@as(u32, 0xdeadbeef), stream_id);
+}
+
+test "audio stream reuses retired slot with a new generation" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    var options = streamOptions();
+    var first_stream_id: u32 = 0;
+    try expectStatusOk(audio.createStream(engine, &options, &first_stream_id));
+    try testing.expect(first_stream_id != 0);
+    try expectStatusOk(audio.destroyStream(engine, first_stream_id));
+
+    var second_stream_id: u32 = 0;
+    try expectStatusOk(audio.createStream(engine, &options, &second_stream_id));
+    try testing.expect(second_stream_id != 0);
+    try testing.expect(first_stream_id != second_stream_id);
+
+    var stale_stats: audio.StreamStats = undefined;
+    try testing.expectEqual(audio.Status.err_not_found, audio.getStreamStats(engine, first_stream_id, &stale_stats));
+    try expectStatusOk(audio.destroyStream(engine, second_stream_id));
+
+    var stats: audio.Stats = undefined;
+    try expectStatusOk(audio.getStats(engine, &stats));
+    try testing.expectEqual(@as(u32, 0), stats.voices_active);
 }

@@ -2,7 +2,7 @@ import { once } from "node:events"
 import { readFile } from "node:fs/promises"
 import { createServer, type Server } from "node:http"
 import { afterEach, expect, test } from "bun:test"
-import { Audio, type AudioStream } from "../audio.js"
+import { Audio, type AudioStream, type AudioStreamErrorContext } from "../audio.js"
 
 const SAMPLE_RATE = 48_000
 const MP3_URL = new URL("./fixtures/audio/tone-750hz-48k-mono-1s.mp3", import.meta.url)
@@ -371,6 +371,98 @@ test("Audio rejects non-successful stream responses", async () => {
 
   await expect(audio.playStream(`${baseUrl}/missing`)).rejects.toThrow("HTTP 404")
   expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Audio rejects unsupported stream buffer capacity before consuming the source", async () => {
+  const audio = Audio.create({ autoStart: false, sampleRate: 1000 })
+  audios.push(audio)
+
+  let sourceConsumed = false
+  async function* source(): AsyncGenerator<Uint8Array> {
+    sourceConsumed = true
+  }
+
+  let rejection: unknown
+  try {
+    await audio.playStream(source(), {
+      buffer: {
+        capacityMs: 268_435_453,
+        startupMs: 1,
+        resumeMs: 1,
+      },
+    })
+  } catch (error) {
+    rejection = error
+  }
+
+  expect((rejection as { context?: AudioStreamErrorContext })?.context).toEqual({
+    action: "create",
+    status: -1,
+  })
+  expect(sourceConsumed).toBe(false)
+  expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Audio validates the stream group before consuming the source", async () => {
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+
+  let sourceConsumed = false
+  async function* source(): AsyncGenerator<Uint8Array> {
+    sourceConsumed = true
+  }
+
+  let rejection: unknown
+  try {
+    await audio.playStream(source(), {
+      groupId: 0xffffffff,
+      buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    })
+  } catch (error) {
+    rejection = error
+  }
+
+  expect((rejection as { context?: AudioStreamErrorContext })?.context).toEqual({
+    action: "create",
+    status: -1,
+  })
+  expect(sourceConsumed).toBe(false)
+  expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Audio streams share the existing 32 active voice slots", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  const sound = audio.loadSound(mp3)
+  expect(sound).not.toBeNull()
+  if (sound == null) return
+
+  for (let index = 0; index < 32; index += 1) {
+    expect(audio.play(sound, { loop: true })).not.toBeNull()
+  }
+  expect(audio.getStats()?.voicesActive).toBe(32)
+
+  let sourceConsumed = false
+  async function* source(): AsyncGenerator<Uint8Array> {
+    sourceConsumed = true
+  }
+
+  let rejection: unknown
+  try {
+    await audio.playStream(source(), {
+      buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    })
+  } catch (error) {
+    rejection = error
+  }
+
+  expect((rejection as { context?: AudioStreamErrorContext })?.context).toEqual({
+    action: "create",
+    status: -2,
+  })
+  expect(sourceConsumed).toBe(false)
+  expect(audio.getStats()?.voicesActive).toBe(32)
 })
 
 test("Audio rejects an invalid MP3 during decoder setup", async () => {

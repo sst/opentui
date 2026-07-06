@@ -59,7 +59,7 @@ Create a new `Audio` instance to change `sampleRate` or `playbackChannels`.
 | `setGroupVolume(group, volume)` | Set group volume                                              |
 | `setMasterVolume(volume)`       | Set master volume                                             |
 
-`play()` accepts `{ volume, pan, loop, groupId }`. Native playback clamps `volume` to `0..4` and `pan` to `-1..1`. The engine has 32 voice slots.
+`play()` accepts `{ volume, pan, loop, groupId }`. Native playback clamps `volume` to `0..4` and `pan` to `-1..1`. The engine supports 32 active voices and streams in total.
 
 ## MP3 streams
 
