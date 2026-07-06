@@ -35,9 +35,11 @@ const FFT_SIZE = 2048
 const FFT_UPDATE_MS = 50
 const VOLUME_STEP = 0.1
 const PAN_STEP = 0.1
-const BAND_CENTERS = [60, 120, 250, 500, 1000, 2000, 4000, 8000]
+const BAND_CENTERS = [63, 160, 400, 1000, 2500, 6000, 12000, 16000]
 const BAR_WIDTH = 20
 const FFT_PEAK_FALLOFF = 0.04
+const FFT_DB_FLOOR = -72
+const FFT_DB_CEILING = 0
 
 const FFT_BAR_RGB = [
   [244, 63, 94],
@@ -132,6 +134,7 @@ class AudioStreamingDemo {
   private pan = 0
   private useDimGroup = false
   private fftElapsedMs = 0
+  private fftWindowSum = 0
   private lastAnalyzedFrame = -1n
   private peak = 0
   private rms = 0
@@ -141,7 +144,9 @@ class AudioStreamingDemo {
     this.renderer.setBackgroundColor(PALETTE.background)
 
     for (let index = 0; index < FFT_SIZE; index += 1) {
-      this.fftWindow[index] = 0.5 * (1 - Math.cos((2 * Math.PI * index) / (FFT_SIZE - 1)))
+      const windowValue = 0.5 * (1 - Math.cos((2 * Math.PI * index) / (FFT_SIZE - 1)))
+      this.fftWindow[index] = windowValue
+      this.fftWindowSum += windowValue
     }
 
     this.root = new BoxRenderable(renderer, {
@@ -635,30 +640,28 @@ class AudioStreamingDemo {
     }
     this.fft.realTransform(this.fftOutput, this.fftInput)
 
-    const nyquist = SAMPLE_RATE / 2
     const magnitudes = this.fftMagnitudes
     for (let band = 0; band < BAND_CENTERS.length; band += 1) {
       const center = BAND_CENTERS[band] ?? 60
       const previous = BAND_CENTERS[band - 1]
       const next = BAND_CENTERS[band + 1]
-      const low = previous ? Math.sqrt(previous * center) : 30
-      const high = next ? Math.sqrt(center * next) : nyquist
-      const firstBin = Math.max(1, Math.floor((low / nyquist) * (FFT_SIZE / 2 - 1)))
-      const lastBin = Math.min(FFT_SIZE / 2, Math.ceil((high / nyquist) * (FFT_SIZE / 2 - 1)))
-      let total = 0
-      let count = 0
+      const low = previous ? Math.sqrt(previous * center) : center / Math.sqrt((next ?? center * 2) / center)
+      const high = next ? Math.sqrt(center * next) : center * Math.sqrt(center / (previous ?? center / 2))
+      const firstBin = Math.max(1, Math.floor((low * FFT_SIZE) / SAMPLE_RATE))
+      const lastBin = Math.min(FFT_SIZE / 2, Math.ceil((high * FFT_SIZE) / SAMPLE_RATE))
+      let maximum = 0
       for (let bin = firstBin; bin < lastBin; bin += 1) {
         const real = this.fftOutput[bin * 2] ?? 0
         const imaginary = this.fftOutput[bin * 2 + 1] ?? 0
-        total += Math.sqrt(real * real + imaginary * imaginary)
-        count += 1
+        maximum = Math.max(maximum, (2 * Math.sqrt(real * real + imaginary * imaginary)) / this.fftWindowSum)
       }
-      magnitudes[band] = count > 0 ? total / count : 0
+      magnitudes[band] = maximum
     }
 
-    const maximum = Math.max(0.00001, ...magnitudes)
+    // A fixed dBFS scale preserves level changes instead of pinning each frame's strongest band.
     for (let index = 0; index < this.spectrum.length; index += 1) {
-      const incoming = Math.pow((magnitudes[index] ?? 0) / maximum, 0.45)
+      const decibels = 20 * Math.log10(Math.max(magnitudes[index] ?? 0, 1e-8))
+      const incoming = clamp((decibels - FFT_DB_FLOOR) / (FFT_DB_CEILING - FFT_DB_FLOOR), 0, 1)
       const previous = this.spectrum[index] ?? 0
       this.spectrum[index] = incoming > previous ? incoming : previous * 0.8 + incoming * 0.2
     }
