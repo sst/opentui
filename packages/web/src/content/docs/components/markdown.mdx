@@ -13,7 +13,7 @@ Render markdown content with syntax-aware styling and optional Tree-sitter highl
 ### Renderable API
 
 ````typescript
-import { MarkdownRenderable, SyntaxStyle, RGBA, createCliRenderer } from "@opentui/core"
+import { MarkdownRenderable, SyntaxStyle, RGBA, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -46,7 +46,7 @@ Code fence info strings are normalized before Tree-sitter highlighting.
 Normalization uses `infoStringToFiletype()`. You can extend or override mappings at runtime:
 
 ```typescript
-import { extensionToFiletype, basenameToFiletype } from "@opentui/core"
+import { extensionToFiletype, basenameToFiletype } from "@lexwdex-org/core"
 
 extensionToFiletype.set("templ", "html")
 basenameToFiletype.set("mytoolrc", "yaml")
@@ -89,7 +89,7 @@ markdown.streaming = false
 To use it, render with `internalBlockMode: "top-level"`. The renderable keeps each top-level markdown block (heading, paragraph, list, table, fenced code) as its own child renderable, and exposes `markdown._stableBlockCount` — the number of blocks at the head of the tree that are stable right now. This matches the shape [`ScrollbackSurface`](/docs/core-concepts/renderer#writing-to-scrollback) expects when you commit streamed output row-by-row.
 
 ```typescript
-import { MarkdownRenderable, RGBA, SyntaxStyle } from "@opentui/core"
+import { MarkdownRenderable, RGBA, SyntaxStyle } from "@lexwdex-org/core"
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromHex("#E6EDF3") },
@@ -180,7 +180,7 @@ const markdown = new MarkdownRenderable(renderer, {
 Use `createMarkdownCodeBlockRenderer` when you only want to replace specific fenced-code languages. The language key is matched against the normalized fence info string, so a `tsx` fence maps to `typescriptreact`, and custom DSL names like `taskflow` can be matched directly.
 
 ````typescript
-import { BoxRenderable, MarkdownRenderable, TextRenderable, createMarkdownCodeBlockRenderer } from "@opentui/core"
+import { BoxRenderable, MarkdownRenderable, TextRenderable, createMarkdownCodeBlockRenderer } from "@lexwdex-org/core"
 
 const renderTaskFlow = (renderer) => (token) => {
   const steps = token.text

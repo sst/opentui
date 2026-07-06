@@ -8,9 +8,9 @@ import {
   bold,
   fg,
   BoxRenderable,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { TextRenderable } from "@opentui/core"
+import { TextRenderable } from "@lexwdex-org/core"
 
 let nameInput: InputRenderable | null = null
 let emailInput: InputRenderable | null = null

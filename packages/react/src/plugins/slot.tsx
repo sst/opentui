@@ -8,7 +8,7 @@ import {
   type ResolvedSlotRenderer,
   type SlotMode,
   type SlotRegistryOptions,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import React, { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode } from "react"
 
@@ -59,7 +59,7 @@ export function createReactSlotRegistry<TSlots extends SlotMap, TContext extends
   options: SlotRegistryOptions = {},
 ): SlotRegistry<ReactNode, TSlots, TContext> {
   // React slots intentionally use one registry key per renderer instance.
-  // Use createSlotRegistry from @opentui/core with a custom key for independent registries.
+  // Use createSlotRegistry from @lexwdex-org/core with a custom key for independent registries.
   return createSlotRegistry<ReactNode, TSlots, TContext>(renderer, "react:slot-registry", context, options)
 }
 

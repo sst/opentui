@@ -13,7 +13,7 @@ Horizontal tab-based selection component with descriptions and scroll support. T
 ### Renderable API
 
 ```typescript
-import { TabSelectRenderable, TabSelectRenderableEvents, createCliRenderer } from "@opentui/core"
+import { TabSelectRenderable, TabSelectRenderableEvents, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -39,7 +39,7 @@ renderer.root.add(tabs)
 ### Construct API
 
 ```typescript
-import { TabSelect, createCliRenderer } from "@opentui/core"
+import { TabSelect, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -74,7 +74,7 @@ When focused, the tab select responds to these keys:
 Emitted when the user presses Enter on a tab:
 
 ```typescript
-import { TabSelectRenderableEvents, type TabSelectOption } from "@opentui/core"
+import { TabSelectRenderableEvents, type TabSelectOption } from "@lexwdex-org/core"
 
 tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index: number, option: TabSelectOption) => {
   console.log(`Selected tab ${index}: ${option.name}`)
@@ -87,7 +87,7 @@ tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index: number, option: TabSele
 Emitted when the highlighted tab changes:
 
 ```typescript
-import { TabSelectRenderableEvents, type TabSelectOption } from "@opentui/core"
+import { TabSelectRenderableEvents, type TabSelectOption } from "@lexwdex-org/core"
 
 tabs.on(TabSelectRenderableEvents.SELECTION_CHANGED, (index: number, option: TabSelectOption) => {
   console.log(`Hovering: ${option.name}`)
@@ -118,7 +118,7 @@ tabs.on(TabSelectRenderableEvents.SELECTION_CHANGED, (index: number, option: Tab
 ## Example: Tabbed Interface
 
 ```typescript
-import { Box, Text, TabSelect, createCliRenderer } from "@opentui/core"
+import { Box, Text, TabSelect, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { RGBA } from "@opentui/core"
+import { RGBA } from "@lexwdex-org/core"
 import { testRender } from "../index.js"
 import { createSignal } from "solid-js"
 

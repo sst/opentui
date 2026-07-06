@@ -1,8 +1,8 @@
 import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
-import { registerBaseLayoutFallback } from "@opentui/keymap/addons/opentui"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { createTestRenderer, type TestRenderer } from "@lexwdex-org/core/testing"
+import { registerBaseLayoutFallback } from "@lexwdex-org/keymap/addons/opentui"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 import { createDiagnosticHarness } from "../../../tests/diagnostic-harness.js"
 
 let renderer: TestRenderer

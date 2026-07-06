@@ -9,7 +9,7 @@ import {
   FrameBufferRenderable,
   BoxRenderable,
   ASCIIFontRenderable,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 /**

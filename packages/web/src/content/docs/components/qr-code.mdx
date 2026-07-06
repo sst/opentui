@@ -11,7 +11,7 @@ Display text or URLs as scannable standard QR Codes in the terminal. `QRCodeRend
 Install the QR code package separately:
 
 ```bash
-bun install @opentui/qrcode
+bun install @lexwdex-org/qrcode
 ```
 
 ## Basic Usage
@@ -19,8 +19,8 @@ bun install @opentui/qrcode
 ### Renderable API
 
 ```typescript
-import { createCliRenderer } from "@opentui/core"
-import { QRCodeRenderable } from "@opentui/qrcode"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { QRCodeRenderable } from "@lexwdex-org/qrcode"
 
 const renderer = await createCliRenderer()
 
@@ -37,8 +37,8 @@ renderer.root.add(qr)
 ### React JSX
 
 ```tsx
-import { createRoot } from "@opentui/react"
-import { registerQRCode } from "@opentui/qrcode/react"
+import { createRoot } from "@lexwdex-org/react"
+import { registerQRCode } from "@lexwdex-org/qrcode/react"
 
 registerQRCode()
 
@@ -56,8 +56,8 @@ createRoot(renderer).render(
 ### Solid JSX
 
 ```tsx
-import { render } from "@opentui/solid"
-import { registerQRCode } from "@opentui/qrcode/solid"
+import { render } from "@lexwdex-org/solid"
+import { registerQRCode } from "@lexwdex-org/qrcode/solid"
 
 registerQRCode()
 
@@ -106,7 +106,7 @@ const qr = new QRCodeRenderable(renderer, {
 Set `errorCorrectionLevel` with the QR package error correction enum:
 
 ```typescript
-import { ErrorCorrectionLevel, QRCodeRenderable } from "@opentui/qrcode"
+import { ErrorCorrectionLevel, QRCodeRenderable } from "@lexwdex-org/qrcode"
 
 const qr = new QRCodeRenderable(renderer, {
   content: "opentui.com",

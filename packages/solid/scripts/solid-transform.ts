@@ -61,7 +61,7 @@ export async function transformSolidSource(code: string, options: TransformSolid
     presets.push([
       solid,
       {
-        moduleName: options.moduleName ?? "@opentui/solid",
+        moduleName: options.moduleName ?? "@lexwdex-org/solid",
         generate: "universal",
       },
     ])

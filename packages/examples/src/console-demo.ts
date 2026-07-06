@@ -10,7 +10,7 @@ import {
   type MouseEvent,
   OptimizedBuffer,
   type RenderContext,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let titleText: TextRenderable | null = null

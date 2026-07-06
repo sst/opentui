@@ -1,4 +1,4 @@
-export * from "@opentui/keymap/addons"
+export * from "@lexwdex-org/keymap/addons"
 export { registerBaseLayoutFallback } from "./base-layout.js"
 export {
   createTextareaBindings,

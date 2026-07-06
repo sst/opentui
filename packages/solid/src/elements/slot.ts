@@ -1,4 +1,4 @@
-import { BaseRenderable, isTextNodeRenderable, TextNodeRenderable, TextRenderable, Yoga } from "@opentui/core"
+import { BaseRenderable, isTextNodeRenderable, TextNodeRenderable, TextRenderable, Yoga } from "@lexwdex-org/core"
 
 type LayoutNodeProvider = {
   getLayoutNode?: () => Yoga.Node

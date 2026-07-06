@@ -1,5 +1,5 @@
-import { createCliRenderer, TextAttributes } from "@opentui/core"
-import { createRoot, useTimeline } from "@opentui/react"
+import { createCliRenderer, TextAttributes } from "@lexwdex-org/core"
+import { createRoot, useTimeline } from "@lexwdex-org/react"
 import { useEffect, useState } from "react"
 
 type Stats = {

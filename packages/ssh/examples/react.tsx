@@ -1,7 +1,7 @@
 /**
- * Example: serve a React (@opentui/react) app over SSH.
+ * Example: serve a React (@lexwdex-org/react) app over SSH.
  *
- * `@opentui/ssh` is renderer-agnostic and hands you a wired `CliRenderer` on
+ * `@lexwdex-org/ssh` is renderer-agnostic and hands you a wired `CliRenderer` on
  * `session.renderer`; drive it with any front-end. For React that's
  * `createRoot(renderer).render(…)`, with the renderer's I/O bound to the SSH
  * channel instead of a terminal.
@@ -10,11 +10,11 @@
  *   ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
  *       guest@localhost
  *
- * @opentui/react is not a dependency of @opentui/ssh; the package stays
+ * @lexwdex-org/react is not a dependency of @lexwdex-org/ssh; the package stays
  * react/solid-free. It's imported here only to demonstrate the handoff.
  */
 import { createServer } from "../src/index.js"
-import { createRoot, useKeyboard } from "@opentui/react"
+import { createRoot, useKeyboard } from "@lexwdex-org/react"
 import { useState } from "react"
 
 const PORT = Number(process.env.PORT ?? 2222)
@@ -42,7 +42,7 @@ function App({ name }: { name: string }) {
         alignItems: "center",
         justifyContent: "center",
       }}
-      title=" @opentui/ssh · react "
+      title=" @lexwdex-org/ssh · react "
       titleAlignment="center"
     >
       <text content={`Hello, ${name}! 👋`} fg="#e2e8f0" />

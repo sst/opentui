@@ -16,7 +16,7 @@ The `CliRenderer` drives OpenTUI. It manages terminal output, handles input even
 Create a renderer with the async factory function:
 
 ```typescript
-import { createCliRenderer } from "@opentui/core"
+import { createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: true,
@@ -180,7 +180,7 @@ Both APIs require `screenMode: "split-footer"` and `externalOutputMode: "capture
 Render a renderable tree into an off-screen buffer and commit it as one scrollback snapshot.
 
 ```typescript
-import { TextRenderable } from "@opentui/core"
+import { TextRenderable } from "@lexwdex-org/core"
 
 renderer.writeToScrollback((ctx) => {
   const root = new TextRenderable(ctx.renderContext, {
@@ -271,7 +271,7 @@ For React and Solid, use the binding-level helpers that wrap `writeToScrollback`
 Every renderer has a `root` property. It is a special `RootRenderable` at the top of the component tree:
 
 ```typescript
-import { Box, Text } from "@opentui/core"
+import { Box, Text } from "@lexwdex-org/core"
 
 // Add components to the root
 renderer.root.add(Box({ width: 40, height: 10, borderStyle: "rounded" }, Text({ content: "Hello, OpenTUI!" })))
@@ -428,7 +428,7 @@ OpenTUI detects the terminal's preferred color scheme (dark or light) through tw
 Read the current mode via `renderer.themeMode` (`"dark"`, `"light"`, or `null` before detection completes) and subscribe to the `theme_mode` event for later changes.
 
 ```typescript
-import { type ThemeMode } from "@opentui/core"
+import { type ThemeMode } from "@lexwdex-org/core"
 
 const mode = renderer.themeMode
 
@@ -475,7 +475,7 @@ renderer.resetTerminalBgColor()
 OpenTUI can set and clear the terminal's clipboard via OSC 52. This works across SSH sessions and remote editors. Terminals that opt out silently ignore these calls.
 
 ```typescript
-import { ClipboardTarget } from "@opentui/core"
+import { ClipboardTarget } from "@lexwdex-org/core"
 
 if (renderer.isOsc52Supported()) {
   renderer.copyToClipboardOSC52("https://opentui.dev")
@@ -578,7 +578,7 @@ Use the debug overlay to show FPS, memory usage, and other stats:
 renderer.toggleDebugOverlay()
 
 // You can also configure it
-import { DebugOverlayCorner } from "@opentui/core"
+import { DebugOverlayCorner } from "@lexwdex-org/core"
 
 renderer.configureDebugOverlay({
   enabled: true,

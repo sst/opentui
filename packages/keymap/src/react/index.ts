@@ -1,4 +1,4 @@
-import type { KeyEvent, Renderable } from "@opentui/core"
+import type { KeyEvent, Renderable } from "@lexwdex-org/core"
 import {
   type ActiveKey,
   type ActiveKeyOptions,

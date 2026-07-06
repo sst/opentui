@@ -16,8 +16,8 @@ import {
   type KeyEvent,
   type SelectOption,
   type ThemeMode,
-} from "@opentui/core"
-import { measureText } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { measureText } from "@lexwdex-org/core"
 import * as boxExample from "./fonts.js"
 import * as framebufferExample from "./framebuffer-demo.js"
 import * as opentuiDemo from "./opentui-demo.js"
@@ -166,8 +166,8 @@ const CATEGORY_LABELS: Record<ExampleCategory, string> = {
 function unavailableThreeExample(name: string, description: string): ExampleDefinition {
   return {
     name,
-    description: `${description} (Requires @opentui/three in Node.js)`,
-    unavailableMessage: "This example requires @opentui/three and remains disabled in the Node.js examples bundle.",
+    description: `${description} (Requires @lexwdex-org/three in Node.js)`,
+    unavailableMessage: "This example requires @lexwdex-org/three and remains disabled in the Node.js examples bundle.",
   }
 }
 

@@ -17,15 +17,15 @@ If you have not read the shared model yet, start with [Plugin Slots](/docs/plugi
 If your app loads plugins from disk at runtime (for example `await import(fileUrl)`), add this import once in your app entry:
 
 ```ts
-import "@opentui/react/runtime-plugin-support"
+import "@lexwdex-org/react/runtime-plugin-support"
 ```
 
-This installs Bun runtime support so external TS/TSX plugin modules resolve against the host runtime instances (`@opentui/react`, React JSX runtime modules, and core runtime modules).
+This installs Bun runtime support so external TS/TSX plugin modules resolve against the host runtime instances (`@lexwdex-org/react`, React JSX runtime modules, and core runtime modules).
 
 Use this for plugin systems in both normal Bun runs and standalone compiled executables.
 
 ```ts
-import "@opentui/react/runtime-plugin-support"
+import "@lexwdex-org/react/runtime-plugin-support"
 
 const mod = await import(pathToFileURL(pluginPath).href)
 registry.register(mod.loadExternalPlugin())
@@ -34,7 +34,7 @@ registry.register(mod.loadExternalPlugin())
 If plugins need additional host-resolved modules, configure runtime support before the side-effect import is loaded:
 
 ```ts
-import { ensureRuntimePluginSupport } from "@opentui/react/runtime-plugin-support/configure"
+import { ensureRuntimePluginSupport } from "@lexwdex-org/react/runtime-plugin-support/configure"
 
 ensureRuntimePluginSupport({
   additional: {
@@ -43,11 +43,11 @@ ensureRuntimePluginSupport({
 })
 ```
 
-First-party packages expose side-effect-free runtime module maps. For plugins that import `@opentui/three`, install `@opentui/three` in the host app and pass its runtime modules explicitly:
+First-party packages expose side-effect-free runtime module maps. For plugins that import `@lexwdex-org/three`, install `@lexwdex-org/three` in the host app and pass its runtime modules explicitly:
 
 ```ts
-import { runtimeModules as threeRuntimeModules } from "@opentui/three/runtime-modules"
-import { ensureRuntimePluginSupport } from "@opentui/react/runtime-plugin-support/configure"
+import { runtimeModules as threeRuntimeModules } from "@lexwdex-org/three/runtime-modules"
+import { ensureRuntimePluginSupport } from "@lexwdex-org/react/runtime-plugin-support/configure"
 
 ensureRuntimePluginSupport({
   additional: threeRuntimeModules,
@@ -62,16 +62,16 @@ The side-effect import and configurable entrypoint install the same runtime plug
 - `Slot<TSlots, TContext>` — generic slot component that takes `registry` as a required prop
 - `createSlot(registry, options?)` — optional convenience helper that returns a registry-bound `<Slot />` component
 - `ReactPlugin<TSlots, TContext>` — convenience type alias for a plugin that returns `ReactNode`
-- `@opentui/react/runtime-plugin-support` — one-line runtime support for external plugin/module loading
-- `@opentui/react/runtime-plugin-support/configure` — configurable runtime support without import-time side effects
+- `@lexwdex-org/react/runtime-plugin-support` — one-line runtime support for external plugin/module loading
+- `@lexwdex-org/react/runtime-plugin-support/configure` — configurable runtime support without import-time side effects
 
 Register plugins directly with `registry.register()` — no wrapper function is needed (unlike core's `registerCorePlugin`).
 
 ## Basic usage
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createReactSlotRegistry, createRoot, Slot } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createReactSlotRegistry, createRoot, Slot } from "@lexwdex-org/react"
 
 type Slots = {
   statusbar: { user: string }

@@ -1,6 +1,6 @@
 import { createMemo, For, createSignal } from "solid-js"
-import { LinearScrollAccel, MacOSScrollAccel } from "@opentui/core"
-import { useKeyboard } from "@opentui/solid"
+import { LinearScrollAccel, MacOSScrollAccel } from "@lexwdex-org/core"
+import { useKeyboard } from "@lexwdex-org/solid"
 
 /**
  * Custom scroll acceleration that applies a simple quadratic curve

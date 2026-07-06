@@ -13,7 +13,7 @@ Multi-line text input with cursor, selection, and rich keybindings.
 ### Renderable API
 
 ```typescript
-import { TextareaRenderable, createCliRenderer } from "@opentui/core"
+import { TextareaRenderable, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -37,7 +37,7 @@ textarea.focus()
 Bind a submit action and listen for `onSubmit`:
 
 ```typescript
-import { TextareaRenderable } from "@opentui/core"
+import { TextareaRenderable } from "@lexwdex-org/core"
 
 const textarea = new TextareaRenderable(renderer, {
   width: 50,
@@ -160,7 +160,7 @@ These methods update the cursor, clear any active global selection, and call `re
 The `traits` property lets an editor advertise intent to a host UI — which built-in keys it wants to capture, whether it wants the chrome to visually suspend, and a short status label for a footer or status bar. Assigning a new `EditorTraits` object emits the `traits-changed` event when the value differs from the previous one.
 
 ```typescript
-import { EditBufferRenderableEvents, type EditorTraits } from "@opentui/core"
+import { EditBufferRenderableEvents, type EditorTraits } from "@lexwdex-org/core"
 
 textarea.traits = {
   capture: ["escape", "submit"], // consume these before host binds

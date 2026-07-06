@@ -13,8 +13,8 @@ import {
   type CliRenderer,
   type RenderContext,
   BoxRenderable,
-} from "@opentui/core"
-import { VignetteEffect } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { VignetteEffect } from "@lexwdex-org/core"
 
 type FullUnicodeDemoState = {
   keyHandler: (key: KeyEvent) => void

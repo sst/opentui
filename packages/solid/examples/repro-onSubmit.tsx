@@ -1,5 +1,5 @@
 import { createSignal, Match, Show, Switch } from "solid-js"
-import { render, useKeyboard, useRenderer } from "@opentui/solid"
+import { render, useKeyboard, useRenderer } from "@lexwdex-org/solid"
 
 process.env.DEBUG = "true"
 

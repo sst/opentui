@@ -64,13 +64,13 @@ describe("runtime plugin", () => {
     const { build, resolveHandlers, modules } = createMockBuild()
     createRuntimePlugin().setup(build as any)
 
-    const coreResolution = await resolveSpecifier(resolveHandlers, "@opentui/core")
-    const threeResolution = await resolveSpecifier(resolveHandlers, "@opentui/three")
-    const coreTestingResolution = await resolveSpecifier(resolveHandlers, "@opentui/core/testing")
+    const coreResolution = await resolveSpecifier(resolveHandlers, "@lexwdex-org/core")
+    const threeResolution = await resolveSpecifier(resolveHandlers, "@lexwdex-org/three")
+    const coreTestingResolution = await resolveSpecifier(resolveHandlers, "@lexwdex-org/core/testing")
 
-    expect(coreResolution).toEqual({ path: runtimeModuleIdForSpecifier("@opentui/core") })
+    expect(coreResolution).toEqual({ path: runtimeModuleIdForSpecifier("@lexwdex-org/core") })
     expect(threeResolution).toBeUndefined()
-    expect(coreTestingResolution).toEqual({ path: runtimeModuleIdForSpecifier("@opentui/core/testing") })
+    expect(coreTestingResolution).toEqual({ path: runtimeModuleIdForSpecifier("@lexwdex-org/core/testing") })
 
     if (!coreResolution || !coreTestingResolution) {
       throw new Error("Expected core runtime module resolutions")
@@ -100,21 +100,21 @@ describe("runtime plugin", () => {
     expect(typeof coreTestingModule.exports.createTestRenderer).toBe("function")
   })
 
-  it("registers @opentui/three only when added explicitly", async () => {
+  it("registers @lexwdex-org/three only when added explicitly", async () => {
     const { build, resolveHandlers, modules } = createMockBuild()
 
     createRuntimePlugin({
       additional: {
-        "@opentui/three": { ThreeRenderable: "three-value" },
+        "@lexwdex-org/three": { ThreeRenderable: "three-value" },
       },
     }).setup(build as any)
 
-    const threeResolution = await resolveSpecifier(resolveHandlers, "@opentui/three")
+    const threeResolution = await resolveSpecifier(resolveHandlers, "@lexwdex-org/three")
 
-    expect(threeResolution).toEqual({ path: runtimeModuleIdForSpecifier("@opentui/three") })
+    expect(threeResolution).toEqual({ path: runtimeModuleIdForSpecifier("@lexwdex-org/three") })
 
     if (!threeResolution) {
-      throw new Error("Expected @opentui/three runtime module resolution")
+      throw new Error("Expected @lexwdex-org/three runtime module resolution")
     }
 
     const threeModuleFactory = modules.get(threeResolution.path)
@@ -122,7 +122,7 @@ describe("runtime plugin", () => {
     expect(threeModuleFactory).toBeDefined()
 
     if (!threeModuleFactory) {
-      throw new Error("Expected @opentui/three runtime module factory")
+      throw new Error("Expected @lexwdex-org/three runtime module factory")
     }
 
     expect(await threeModuleFactory()).toEqual({
@@ -142,11 +142,11 @@ describe("runtime plugin", () => {
       },
     }).setup(build as any)
 
-    const coreResolution = await resolveSpecifier(resolveHandlers, "@opentui/core")
+    const coreResolution = await resolveSpecifier(resolveHandlers, "@lexwdex-org/core")
     const syncResolution = await resolveSpecifier(resolveHandlers, "fixture-sync")
     const asyncResolution = await resolveSpecifier(resolveHandlers, "@fixture/async-module")
 
-    expect(coreResolution).toEqual({ path: runtimeModuleIdForSpecifier("@opentui/core") })
+    expect(coreResolution).toEqual({ path: runtimeModuleIdForSpecifier("@lexwdex-org/core") })
     expect(syncResolution).toEqual({ path: runtimeModuleIdForSpecifier("fixture-sync") })
     expect(asyncResolution).toEqual({ path: runtimeModuleIdForSpecifier("@fixture/async-module") })
 
@@ -188,8 +188,8 @@ describe("runtime plugin", () => {
   })
 
   it("encodes runtime module IDs deterministically", () => {
-    expect(runtimeModuleIdForSpecifier("@opentui/core/testing")).toBe(
-      "opentui:runtime-module:%40opentui%2Fcore%2Ftesting",
+    expect(runtimeModuleIdForSpecifier("@lexwdex-org/core/testing")).toBe(
+      "opentui:runtime-module:%40lexwdex-org%2Fcore%2Ftesting",
     )
   })
 

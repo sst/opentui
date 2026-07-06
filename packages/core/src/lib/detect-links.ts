@@ -17,6 +17,9 @@ export function detectLinks(
     if (!URL_SCOPES.includes(group)) continue
 
     const url = content.slice(start, end)
+    // Skip ranges whose URL is empty or whitespace-only: opening an OSC 8 link
+    // with no target produces a phantom hover with no URL.
+    if (url.trim().length === 0) continue
     ranges.push({ start, end, url })
 
     for (let j = i - 1; j >= 0; j--) {

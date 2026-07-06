@@ -11,7 +11,7 @@
  *
  * Set AUTHORIZED_KEYS=/path/to/authorized_keys to use a different file.
  */
-import { BoxRenderable, TextRenderable } from "@opentui/core"
+import { BoxRenderable, TextRenderable } from "@lexwdex-org/core"
 import { createServer } from "../src/index.js"
 
 const PORT = Number(process.env.PORT ?? 2222)
@@ -32,7 +32,7 @@ const server = createServer({
     border: true,
     borderStyle: "rounded",
     borderColor: "#22c55e",
-    title: " @opentui/ssh · authorized_keys ",
+    title: " @lexwdex-org/ssh · authorized_keys ",
     titleAlignment: "center",
     flexDirection: "column",
     alignItems: "center",

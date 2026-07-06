@@ -1,4 +1,4 @@
-import { CliRenderer, CliRenderEvents, engine } from "@opentui/core"
+import { CliRenderer, CliRenderEvents, engine } from "@lexwdex-org/core"
 import React, { type ReactNode } from "react"
 import type { OpaqueRoot } from "react-reconciler"
 import { AppContext } from "../components/app.js"

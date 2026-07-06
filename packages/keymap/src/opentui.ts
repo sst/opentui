@@ -1,6 +1,6 @@
-import { CliRenderEvents, KeyEvent, RenderableEvents, type CliRenderer, type Renderable } from "@opentui/core"
-import { Keymap, type HostMetadata, type HostPlatform, type KeymapHost } from "@opentui/keymap"
-import { registerDefaultKeys, registerEnabledFields, registerMetadataFields } from "@opentui/keymap/addons"
+import { CliRenderEvents, KeyEvent, RenderableEvents, type CliRenderer, type Renderable } from "@lexwdex-org/core"
+import { Keymap, type HostMetadata, type HostPlatform, type KeymapHost } from "@lexwdex-org/keymap"
+import { registerDefaultKeys, registerEnabledFields, registerMetadataFields } from "@lexwdex-org/keymap/addons"
 
 function createSyntheticCommandEvent(): KeyEvent {
   return new KeyEvent({

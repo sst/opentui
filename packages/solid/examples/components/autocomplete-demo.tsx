@@ -1,7 +1,7 @@
-import { type InputRenderable, type BoxRenderable, type KeyEvent, TextAttributes } from "@opentui/core"
+import { type InputRenderable, type BoxRenderable, type KeyEvent, TextAttributes } from "@lexwdex-org/core"
 import { createSignal, createMemo, For, Show, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
-import { useRenderer } from "@opentui/solid"
+import { useRenderer } from "@lexwdex-org/solid"
 
 type AutocompleteOption = {
   display: string

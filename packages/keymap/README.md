@@ -1,4 +1,4 @@
-# @opentui/keymap
+# @lexwdex-org/keymap
 
 A host-agnostic keymap engine for terminal and DOM apps. Same core, multiple adapters.
 
@@ -22,7 +22,7 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 
 ## Addons
 
-`@opentui/keymap/addons` ships ready-made building blocks:
+`@lexwdex-org/keymap/addons` ships ready-made building blocks:
 
 - `registerDefaultKeys` — `ctrl+shift+s` style parser and event matching.
 - `registerLeader`, `registerTimedLeader` — leader tokens with optional timeout.
@@ -33,27 +33,27 @@ It models keybindings as priority-ordered, focus-scoped layers attached to targe
 - `registerNeovimDisambiguation`, `registerEscapeClearsPendingSequence`, `registerBackspacePopsPendingSequence`.
 - `registerDeadBindingWarnings`, `registerUnresolvedCommandWarnings`.
 
-`@opentui/keymap/addons/opentui` adds OpenTUI-specific pieces: layout-independent matching via `event.baseCode`, and pre-wired textarea / edit-buffer commands. Direct event matches win before fallback matches, even across layers.
+`@lexwdex-org/keymap/addons/opentui` adds OpenTUI-specific pieces: layout-independent matching via `event.baseCode`, and pre-wired textarea / edit-buffer commands. Direct event matches win before fallback matches, even across layers.
 
 ## Entry Points
 
-- `@opentui/keymap` — core API
-- `@opentui/keymap/addons` — universal addons
-- `@opentui/keymap/addons/opentui` — universal + OpenTUI addons
-- `@opentui/keymap/extras/graph` — graph snapshot helpers for debug and graph UIs
-- `@opentui/keymap/testing` — host-agnostic fake keymap host and diagnostics for addon tests
-- `@opentui/keymap/html` — HTML adapter
-- `@opentui/keymap/opentui` — OpenTUI adapter
-- `@opentui/keymap/react` — `KeymapProvider`, `useKeymap`, `useBindings`, `useActiveKeys`, `usePendingSequence`, `reactiveMatcherFromStore`
-- `@opentui/keymap/solid` — `KeymapProvider`, `useKeymap`, `useKeymapSelector`, `useBindings`, `reactiveMatcherFromSignal`
-- `@opentui/keymap/extras` — helpers for cheat-sheet UIs (`createBindingLookup`, `commandBindings`, `formatCommandBindings`)
+- `@lexwdex-org/keymap` — core API
+- `@lexwdex-org/keymap/addons` — universal addons
+- `@lexwdex-org/keymap/addons/opentui` — universal + OpenTUI addons
+- `@lexwdex-org/keymap/extras/graph` — graph snapshot helpers for debug and graph UIs
+- `@lexwdex-org/keymap/testing` — host-agnostic fake keymap host and diagnostics for addon tests
+- `@lexwdex-org/keymap/html` — HTML adapter
+- `@lexwdex-org/keymap/opentui` — OpenTUI adapter
+- `@lexwdex-org/keymap/react` — `KeymapProvider`, `useKeymap`, `useBindings`, `useActiveKeys`, `usePendingSequence`, `reactiveMatcherFromStore`
+- `@lexwdex-org/keymap/solid` — `KeymapProvider`, `useKeymap`, `useKeymapSelector`, `useBindings`, `reactiveMatcherFromSignal`
+- `@lexwdex-org/keymap/extras` — helpers for cheat-sheet UIs (`createBindingLookup`, `commandBindings`, `formatCommandBindings`)
 
 ## Usage
 
 ```tsx
-import { registerDefaultKeys } from "@opentui/keymap/addons"
-import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
-import { KeymapProvider } from "@opentui/keymap/react"
+import { registerDefaultKeys } from "@lexwdex-org/keymap/addons"
+import { createOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
+import { KeymapProvider } from "@lexwdex-org/keymap/react"
 
 const keymap = createOpenTuiKeymap(renderer)
 registerDefaultKeys(keymap)
@@ -91,7 +91,7 @@ Structural re-entry is **not** supported. Do not register or unregister layers, 
 ## Installation
 
 ```bash
-bun install @opentui/keymap
+bun install @lexwdex-org/keymap
 ```
 
 ## Development

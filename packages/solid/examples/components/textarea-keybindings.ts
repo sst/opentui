@@ -1,5 +1,5 @@
 import { createMemo } from "solid-js"
-import type { KeyBinding } from "@opentui/core"
+import type { KeyBinding } from "@lexwdex-org/core"
 
 const TEXTAREA_ACTIONS = [
   "submit",

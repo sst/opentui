@@ -12,10 +12,10 @@ import {
   t,
   fg,
   bold,
-} from "@opentui/core"
-import { TextNodeRenderable } from "@opentui/core"
-import { ScrollBoxRenderable } from "@opentui/core"
-import { InputRenderable, InputRenderableEvents } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { TextNodeRenderable } from "@lexwdex-org/core"
+import { ScrollBoxRenderable } from "@lexwdex-org/core"
+import { InputRenderable, InputRenderableEvents } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import { readFile, stat, writeFile } from "node:fs/promises"
 

@@ -11,8 +11,8 @@ OpenTUI Keymap is host-agnostic. A host adapts a runtime's focus model, hierarch
 
 The package ships two built-in hosts:
 
-- `@opentui/keymap/opentui` for terminal apps built on `CliRenderer` and `Renderable`
-- `@opentui/keymap/html` for browser UIs rooted in an `HTMLElement`
+- `@lexwdex-org/keymap/opentui` for terminal apps built on `CliRenderer` and `Renderable`
+- `@lexwdex-org/keymap/html` for browser UIs rooted in an `HTMLElement`
 
 If you have not read the shared model yet, start with [Keymap overview](/docs/keymap/overview).
 
@@ -71,12 +71,12 @@ If your host implements `onRawInput()`, it must call each listener before key pa
 
 ## Built-in host helpers
 
-Both built-in host packages export adapter-specific helpers. Import the shared `Keymap`, stringifiers and core types from `@opentui/keymap`.
+Both built-in host packages export adapter-specific helpers. Import the shared `Keymap`, stringifiers and core types from `@lexwdex-org/keymap`.
 
 | Package                   | Host adapter                        | Bare keymap helper              | Default helper                         |
 | ------------------------- | ----------------------------------- | ------------------------------- | -------------------------------------- |
-| `@opentui/keymap/opentui` | `createOpenTuiKeymapHost(renderer)` | `createOpenTuiKeymap(renderer)` | `createDefaultOpenTuiKeymap(renderer)` |
-| `@opentui/keymap/html`    | `createHtmlKeymapHost(root)`        | `createHtmlKeymap(root)`        | `createDefaultHtmlKeymap(root)`        |
+| `@lexwdex-org/keymap/opentui` | `createOpenTuiKeymapHost(renderer)` | `createOpenTuiKeymap(renderer)` | `createDefaultOpenTuiKeymap(renderer)` |
+| `@lexwdex-org/keymap/html`    | `createHtmlKeymapHost(root)`        | `createHtmlKeymap(root)`        | `createDefaultHtmlKeymap(root)`        |
 
 - The host adapter returns a `KeymapHost` implementation.
 - The bare helper creates a `new Keymap(host)` with only the host installed; parser and addon stages remain opt-in.
@@ -84,7 +84,7 @@ Both built-in host packages export adapter-specific helpers. Import the shared `
 
 ## OpenTUI host
 
-`@opentui/keymap/opentui` is the host package for terminal apps built on `@opentui/core`.
+`@lexwdex-org/keymap/opentui` is the host package for terminal apps built on `@lexwdex-org/core`.
 
 ### What it adds
 
@@ -95,8 +95,8 @@ Both built-in host packages export adapter-specific helpers. Import the shared `
 ### Basic usage
 
 ```ts
-import { createCliRenderer } from "@opentui/core"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 
 const renderer = await createCliRenderer()
 const keymap = createDefaultOpenTuiKeymap(renderer)
@@ -140,7 +140,7 @@ If you want to control the installed addons yourself, start from `createOpenTuiK
 - `registerEnabledFields()`
 - `registerMetadataFields()`
 
-It does not install leader tokens, ex commands, disambiguation addons, warning analyzers, base-layout fallback or textarea helpers. Call `registerBaseLayoutFallback()` from `@opentui/keymap/addons/opentui` if you want bindings to ignore active keyboard-layout changes.
+It does not install leader tokens, ex commands, disambiguation addons, warning analyzers, base-layout fallback or textarea helpers. Call `registerBaseLayoutFallback()` from `@lexwdex-org/keymap/addons/opentui` if you want bindings to ignore active keyboard-layout changes.
 
 ### Event notes
 
@@ -150,7 +150,7 @@ It does not install leader tokens, ex commands, disambiguation addons, warning a
 
 ### OpenTUI-specific addons
 
-`@opentui/keymap/addons/opentui` adds helpers on top of the shared addon set:
+`@lexwdex-org/keymap/addons/opentui` adds helpers on top of the shared addon set:
 
 - `registerBaseLayoutFallback()` - match against Kitty base-layout codepoints
 - `createTextareaBindings()` - generate textarea bindings from the shared edit-buffer command set
@@ -164,7 +164,7 @@ See [Built-in Addons](/docs/keymap/addons) for the rest of the shipped addon sur
 
 ## HTML host
 
-`@opentui/keymap/html` is the host package for browser UIs rooted in an `HTMLElement` subtree.
+`@lexwdex-org/keymap/html` is the host package for browser UIs rooted in an `HTMLElement` subtree.
 
 Live demo: [HTML keymap demo](/demos/keymap-html/)
 
@@ -181,7 +181,7 @@ Live demo: [HTML keymap demo](/demos/keymap-html/)
 ### Basic usage
 
 ```ts
-import { createDefaultHtmlKeymap } from "@opentui/keymap/html"
+import { createDefaultHtmlKeymap } from "@lexwdex-org/keymap/html"
 
 const root = document.getElementById("app")!
 const keymap = createDefaultHtmlKeymap(root)
@@ -246,7 +246,7 @@ Call `prependEventMatchResolver(...)` for any custom resolver that must run befo
 If neither built-in host fits your runtime, implement `KeymapHost` yourself and construct the engine directly:
 
 ```ts
-import { Keymap, type KeymapHost } from "@opentui/keymap"
+import { Keymap, type KeymapHost } from "@lexwdex-org/keymap"
 
 const keymap = new Keymap(host as KeymapHost<object>)
 ```

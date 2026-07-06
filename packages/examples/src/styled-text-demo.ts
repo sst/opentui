@@ -12,8 +12,8 @@ import {
   link,
   BoxRenderable,
   type KeyEvent,
-} from "@opentui/core"
-import { TextRenderable } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { TextRenderable } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let parentContainer: BoxRenderable | null = null

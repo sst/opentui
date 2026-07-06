@@ -1,4 +1,4 @@
-import { TextAttributes, type TextareaRenderable } from "@opentui/core"
+import { TextAttributes, type TextareaRenderable } from "@lexwdex-org/core"
 import { useTextareaKeybindings } from "./textarea-keybindings.js"
 
 export function TextareaMinimalDemo() {

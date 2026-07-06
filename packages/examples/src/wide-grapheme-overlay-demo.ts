@@ -11,8 +11,8 @@ import {
   fg,
   type MouseEvent,
   type KeyEvent,
-} from "@opentui/core"
-import type { CliRenderer, RenderContext } from "@opentui/core"
+} from "@lexwdex-org/core"
+import type { CliRenderer, RenderContext } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const GRAPHEME_LINES: string[] = [

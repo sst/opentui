@@ -1,5 +1,5 @@
 /**
- * The smallest @opentui/ssh server: render a TUI to anyone who connects.
+ * The smallest @lexwdex-org/ssh server: render a TUI to anyone who connects.
  *
  *   bun run packages/ssh/examples/minimal.ts
  *
@@ -10,7 +10,7 @@
  * Auth defaults to none and the bind defaults to localhost. See
  * authorized-keys.ts before exposing a server publicly.
  */
-import { BoxRenderable, TextRenderable } from "@opentui/core"
+import { BoxRenderable, TextRenderable } from "@lexwdex-org/core"
 import { createServer } from "../src/index.js"
 
 const server = createServer().serve((session) => {
@@ -20,7 +20,7 @@ const server = createServer().serve((session) => {
     height: "100%",
     border: true,
     borderStyle: "rounded",
-    title: " @opentui/ssh ",
+    title: " @lexwdex-org/ssh ",
     titleAlignment: "center",
     justifyContent: "center",
     alignItems: "center",
@@ -31,7 +31,7 @@ const server = createServer().serve((session) => {
   renderer.keyInput.on("keypress", (key) => {
     if (key.name === "q" || (key.ctrl && key.name === "c")) session.end()
   })
-  // @opentui/ssh owns the renderer it created and destroys it on disconnect;
+  // @lexwdex-org/ssh owns the renderer it created and destroys it on disconnect;
   // wire session.onClose only for your own cleanup (e.g. root.unmount()).
 })
 

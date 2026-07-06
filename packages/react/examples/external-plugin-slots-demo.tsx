@@ -2,7 +2,7 @@ import { existsSync } from "node:fs"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import "@opentui/react/runtime-plugin-support"
+import "@lexwdex-org/react/runtime-plugin-support"
 import {
   Slot,
   createReactSlotRegistry,
@@ -10,7 +10,7 @@ import {
   type SlotMode,
   useKeyboard,
   useRenderer,
-} from "@opentui/react"
+} from "@lexwdex-org/react"
 import { useEffect, useMemo, useState } from "react"
 
 const STATUSBAR_LABEL = "host-status"

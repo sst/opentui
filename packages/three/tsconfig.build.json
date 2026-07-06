@@ -13,8 +13,8 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@opentui/core": ["../core/dist"],
-      "@opentui/core/*": ["../core/dist/*"]
+      "@lexwdex-org/core": ["../core/dist"],
+      "@lexwdex-org/core/*": ["../core/dist/*"]
     }
   },
   "include": ["src/**/*"],

@@ -1,5 +1,5 @@
-import { createCliRenderer, type ASCIIFontName } from "@opentui/core"
-import { createRoot } from "@opentui/react"
+import { createCliRenderer, type ASCIIFontName } from "@lexwdex-org/core"
+import { createRoot } from "@lexwdex-org/react"
 import { useState } from "react"
 
 export const App = () => {

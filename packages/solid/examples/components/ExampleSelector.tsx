@@ -1,5 +1,5 @@
-import { measureText } from "@opentui/core"
-import { TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { measureText } from "@lexwdex-org/core"
+import { TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@lexwdex-org/solid"
 import { createSignal, Match, onMount, Switch } from "solid-js"
 import { Session } from "../session.tsx"
 import { SplitModeDemo } from "./animation-demo.tsx"

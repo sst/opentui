@@ -4,13 +4,13 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "jsxImportSource": "@opentui/react",
+    "jsxImportSource": "@lexwdex-org/react",
     "baseUrl": ".",
     "paths": {
-      "@opentui/core": ["../core/dist"],
-      "@opentui/core/*": ["../core/dist/*"],
-      "@opentui/react": ["../react/dist"],
-      "@opentui/react/*": ["../react/dist/*"]
+      "@lexwdex-org/core": ["../core/dist"],
+      "@lexwdex-org/core/*": ["../core/dist/*"],
+      "@lexwdex-org/react": ["../react/dist"],
+      "@lexwdex-org/react/*": ["../react/dist/*"]
     }
   },
   "include": ["examples/react.tsx", "src/**/*.ts"],

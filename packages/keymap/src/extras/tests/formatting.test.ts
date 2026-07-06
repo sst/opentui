@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
+import { createTestRenderer, type TestRenderer } from "@lexwdex-org/core/testing"
 import { formatCommandBindings, formatKeySequence } from "../index.js"
 import { createDefaultOpenTuiKeymap } from "../../opentui.js"
 import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"

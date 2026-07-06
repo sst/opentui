@@ -1,5 +1,5 @@
 {
-  "name": "@opentui/qrcode",
+  "name": "@lexwdex-org/qrcode",
   "version": "0.4.3",
   "description": "QR code encoder and renderable for OpenTUI",
   "license": "MIT",
@@ -32,23 +32,23 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@opentui/core": "workspace:*"
+    "@lexwdex-org/core": "workspace:*"
   },
   "peerDependencies": {
-    "@opentui/react": "workspace:*",
-    "@opentui/solid": "workspace:*"
+    "@lexwdex-org/react": "workspace:*",
+    "@lexwdex-org/solid": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@opentui/react": {
+    "@lexwdex-org/react": {
       "optional": true
     },
-    "@opentui/solid": {
+    "@lexwdex-org/solid": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@opentui/react": "workspace:*",
-    "@opentui/solid": "workspace:*",
+    "@lexwdex-org/react": "workspace:*",
+    "@lexwdex-org/solid": "workspace:*",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
     "typescript": "^5"

@@ -21,7 +21,7 @@ OpenTUI does not automatically clean up on `process.exit` or unhandled errors. T
 Call `destroy()` when your app exits:
 
 ```typescript
-import { createCliRenderer } from "@opentui/core"
+import { createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -34,7 +34,7 @@ renderer.destroy()
 For reliable cleanup, keep renderer teardown in the same control flow as your app startup:
 
 ```typescript
-import { createCliRenderer } from "@opentui/core"
+import { createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -121,7 +121,7 @@ The `destroy()` method cleans up these resources:
 For socket, SSH, or pty sessions, give each connection its own renderer. Destroy it before closing the transport:
 
 ```typescript
-import { createCliRenderer, type CliRenderer } from "@opentui/core"
+import { createCliRenderer, type CliRenderer } from "@lexwdex-org/core"
 
 interface TerminalSession {
   renderer: CliRenderer

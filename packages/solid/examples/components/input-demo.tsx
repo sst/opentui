@@ -1,5 +1,5 @@
-import type { InputRenderable } from "@opentui/core"
-import { usePaste, useRenderer } from "@opentui/solid"
+import type { InputRenderable } from "@lexwdex-org/core"
+import { usePaste, useRenderer } from "@lexwdex-org/solid"
 import { createSignal, onMount } from "solid-js"
 
 const InputScene = () => {

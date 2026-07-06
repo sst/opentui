@@ -13,7 +13,7 @@ for (const [name, entrypoint, extraArgs] of [
   ["lifecycle", "examples/lifecycle.ts", []],
   ["middleware", "examples/middleware.ts", []],
   ["React", "examples/react.tsx", []],
-  ["Solid", "examples/solid.tsx", ["--jsx-import-source", "@opentui/solid"]],
+  ["Solid", "examples/solid.tsx", ["--jsx-import-source", "@lexwdex-org/solid"]],
 ] as const) {
   test(`${name} example compiles`, () => {
     const outdir = mkdtempSync(join(tmpdir(), `opentui-ssh-${name.toLowerCase()}-`))

@@ -6,11 +6,11 @@ import {
   TextRenderable,
   type ParsedKey,
   ScrollBoxRenderable,
-} from "@opentui/core"
-import { parseColor } from "@opentui/core"
-import { getTreeSitterClient } from "@opentui/core"
-import { MarkdownRenderable } from "@opentui/core"
-import { SyntaxStyle } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { parseColor } from "@lexwdex-org/core"
+import { getTreeSitterClient } from "@lexwdex-org/core"
+import { MarkdownRenderable } from "@lexwdex-org/core"
+import { SyntaxStyle } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 // Rich markdown example showcasing various features
@@ -132,7 +132,7 @@ This paragraph follows the numeric list and should align like ordinary body text
 Here's how to use it:
 
 \`\`\`typescript
-import { MarkdownRenderable } from "@opentui/core"
+import { MarkdownRenderable } from "@lexwdex-org/core"
 
 const md = new MarkdownRenderable(renderer, {
   content: "# Hello World",

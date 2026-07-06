@@ -1,5 +1,5 @@
 /**
- * Example: serve a SolidJS (@opentui/solid) app over SSH.
+ * Example: serve a SolidJS (@lexwdex-org/solid) app over SSH.
  *
  *   bun run packages/ssh/examples/solid.tsx
  *
@@ -9,6 +9,6 @@
  * Solid JSX needs a Bun transform plugin. Register it before dynamically
  * loading the JSX implementation so this example works without CLI preloads.
  */
-import "@opentui/solid/preload"
+import "@lexwdex-org/solid/preload"
 
 await import("./solid-app.js")

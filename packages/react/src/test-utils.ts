@@ -1,4 +1,4 @@
-import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
+import { createTestRenderer, type TestRendererOptions } from "@lexwdex-org/core/testing"
 import { act, type ReactNode } from "react"
 import { createRoot, type Root } from "./reconciler/renderer.js"
 

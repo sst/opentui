@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test"
-import { TextAttributes, TextRenderable, getLinkId, parseColor, type RenderContext } from "@opentui/core"
-import { createTestRenderer } from "@opentui/core/testing"
+import { TextAttributes, TextRenderable, getLinkId, parseColor, type RenderContext } from "@lexwdex-org/core"
+import { createTestRenderer } from "@lexwdex-org/core/testing"
 import { onCleanup } from "solid-js"
 import { createScrollbackWriter, useRenderer, useTerminalDimensions, writeSolidToScrollback } from "../index.js"
 

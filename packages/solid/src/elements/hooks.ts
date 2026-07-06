@@ -6,7 +6,7 @@ import {
   type CliRenderer,
   type KeyEvent,
   type TimelineOptions,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()

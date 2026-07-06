@@ -1,5 +1,5 @@
-import { createCliRenderer } from "@opentui/core"
-import { createRoot, flushSync, useKeyboard } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot, flushSync, useKeyboard } from "@lexwdex-org/react"
 import { useRef, useState } from "react"
 
 /**

@@ -7,10 +7,10 @@
  *
  *   ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null guest@localhost
  *
- * You get a bordered box rendered by @opentui/core, wired to the SSH channel.
+ * You get a bordered box rendered by @lexwdex-org/core, wired to the SSH channel.
  * Resize your terminal — the box tracks it live. Press q or Ctrl-C to close the session.
  */
-import { BoxRenderable, TextRenderable } from "@opentui/core"
+import { BoxRenderable, TextRenderable } from "@lexwdex-org/core"
 import { createServer } from "../src/index.js"
 
 const PORT = Number(process.env.PORT ?? 2222)
@@ -29,7 +29,7 @@ const server = createServer({
     border: true,
     borderStyle: "rounded",
     borderColor: "#8b5cf6",
-    title: " @opentui/ssh ",
+    title: " @lexwdex-org/ssh ",
     titleAlignment: "center",
     flexDirection: "column",
     alignItems: "center",
@@ -56,7 +56,7 @@ const server = createServer({
 })
 
 const { host, port, fingerprints } = await server.listen(PORT)
-console.log(`@opentui/ssh  ▸  ssh://${host === "0.0.0.0" ? "localhost" : host}:${port}`)
+console.log(`@lexwdex-org/ssh  ▸  ssh://${host === "0.0.0.0" ? "localhost" : host}:${port}`)
 console.log(`host keys     ${fingerprints.join(" ")}`)
 console.log("waiting for connections… (Ctrl-C to stop)")
 

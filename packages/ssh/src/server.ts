@@ -59,7 +59,7 @@ function buildServer<Id extends Identity>(
         // tunnels, and proxies can expose localhost listeners too.
         if (runtime.noneOnly && !isLoopback(host)) {
           console.warn(
-            `@opentui/ssh: no authentication configured while listening on ${host}. ` +
+            `@lexwdex-org/ssh: no authentication configured while listening on ${host}. ` +
               "Anyone who can reach this port, including through published container ports, tunnels, " +
               "or proxies, gets a session. Set `auth` to restrict access.",
           )

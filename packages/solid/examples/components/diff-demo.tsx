@@ -1,5 +1,5 @@
-import { RGBA, SyntaxStyle } from "@opentui/core"
-import { useKeyboard } from "@opentui/solid"
+import { RGBA, SyntaxStyle } from "@lexwdex-org/core"
+import { useKeyboard } from "@lexwdex-org/solid"
 import { createSignal } from "solid-js"
 
 interface DiffTheme {

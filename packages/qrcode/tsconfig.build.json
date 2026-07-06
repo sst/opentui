@@ -10,11 +10,11 @@
     "types": ["bun", "node"],
     "baseUrl": ".",
     "paths": {
-      "@opentui/core": ["../core/dist"],
-      "@opentui/core/*": ["../core/dist/*"],
-      "@opentui/react": ["./src/framework-react.d.ts"],
-      "@opentui/solid": ["./src/framework-solid.d.ts"],
-      "@opentui/solid/components": ["./src/framework-solid.d.ts"]
+      "@lexwdex-org/core": ["../core/dist"],
+      "@lexwdex-org/core/*": ["../core/dist/*"],
+      "@lexwdex-org/react": ["./src/framework-react.d.ts"],
+      "@lexwdex-org/solid": ["./src/framework-solid.d.ts"],
+      "@lexwdex-org/solid/components": ["./src/framework-solid.d.ts"]
     },
     "skipLibCheck": true,
     "module": "ESNext",

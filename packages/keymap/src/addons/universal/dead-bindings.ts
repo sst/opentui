@@ -1,5 +1,5 @@
-import { stringifyKeySequence, stringifyKeyStroke } from "@opentui/keymap"
-import type { Keymap, KeymapEvent, LayerBindingAnalysis, LayerAnalysisContext } from "@opentui/keymap"
+import { stringifyKeySequence, stringifyKeyStroke } from "@lexwdex-org/keymap"
+import type { Keymap, KeymapEvent, LayerBindingAnalysis, LayerAnalysisContext } from "@lexwdex-org/keymap"
 
 const DEAD_BINDING_WARNINGS_RESOURCE = Symbol("keymap:dead-binding-warnings")
 

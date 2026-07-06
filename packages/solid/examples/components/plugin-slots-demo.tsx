@@ -1,4 +1,4 @@
-import type { PluginErrorEvent } from "@opentui/core"
+import type { PluginErrorEvent } from "@lexwdex-org/core"
 import {
   Slot,
   createSolidSlotRegistry,
@@ -6,7 +6,7 @@ import {
   type SolidPlugin,
   useKeyboard,
   useRenderer,
-} from "@opentui/solid"
+} from "@lexwdex-org/solid"
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show, type JSX } from "solid-js"
 
 type DemoSlots = {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { registerCommaBindings, registerDefaultKeys, registerModBindings } from "@opentui/keymap/addons"
+import { registerCommaBindings, registerDefaultKeys, registerModBindings } from "@lexwdex-org/keymap/addons"
 import { Keymap, type HostMetadata } from "../../../index.js"
 import {
   createTestHostMetadata,

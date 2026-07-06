@@ -6,8 +6,8 @@ import {
   RGBA,
   TextRenderable,
   type KeyEvent,
-} from "@opentui/core"
-import { renderFontToFrameBuffer } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { renderFontToFrameBuffer } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let scrollY = 0

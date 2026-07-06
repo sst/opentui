@@ -8,18 +8,18 @@ import {
   FrameBufferRenderable,
   BoxRenderable,
   type KeyEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as THREE from "three"
-import { SpriteAnimator, TiledSprite, type SpriteDefinition, type AnimationDefinition } from "@opentui/three"
-import { SpriteResourceManager, type ResourceConfig } from "@opentui/three"
-import { ExplosionManager, type ExplosionHandle, type ExplosionEffectParameters } from "@opentui/three"
+import { SpriteAnimator, TiledSprite, type SpriteDefinition, type AnimationDefinition } from "@lexwdex-org/three"
+import { SpriteResourceManager, type ResourceConfig } from "@lexwdex-org/three"
+import { ExplosionManager, type ExplosionHandle, type ExplosionEffectParameters } from "@lexwdex-org/three"
 
 // @ts-ignore
 import mainCharIdlePath from "./assets/main_char_idle.png" with { type: "image/png" }
 import { randFloat } from "three/src/math/MathUtils.js"
 import { MeshLambertNodeMaterial } from "three/webgpu"
-import { ThreeCliRenderer } from "@opentui/three"
+import { ThreeCliRenderer } from "@lexwdex-org/three"
 
 interface SpriteAnimationDemoState {
   engine: ThreeCliRenderer

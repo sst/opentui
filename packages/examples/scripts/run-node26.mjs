@@ -53,7 +53,7 @@ function buildNodeExamples() {
       "--define",
       "OPENTUI_BUN_ONLY_EXAMPLES=false",
       "--external",
-      "@opentui/core",
+      "@lexwdex-org/core",
     ],
     packageRoot,
   )
@@ -61,18 +61,18 @@ function buildNodeExamples() {
 
 function prepareCorePackage() {
   const nativePackageName = `core-${process.platform === "win32" ? "win32" : process.platform}-${process.arch}`
-  const sourceNativeDir = resolve(coreRoot, "node_modules", "@opentui", nativePackageName)
-  const targetNativeDir = resolve(packageRoot, "node_modules", "@opentui", nativePackageName)
+  const sourceNativeDir = resolve(coreRoot, "node_modules", "@lexwdex-org", nativePackageName)
+  const targetNativeDir = resolve(packageRoot, "node_modules", "@lexwdex-org", nativePackageName)
 
   run("bun", ["run", "build"], coreRoot)
 
-  mkdirSync(resolve(packageRoot, "node_modules", "@opentui"), { recursive: true })
+  mkdirSync(resolve(packageRoot, "node_modules", "@lexwdex-org"), { recursive: true })
   rmSync(targetNativeDir, { recursive: true, force: true })
   cpSync(sourceNativeDir, targetNativeDir, { recursive: true, dereference: true })
 }
 
 function copyCoreDistPackage() {
-  const targetCoreDir = resolve(bundleDir, "node_modules", "@opentui", "core")
+  const targetCoreDir = resolve(bundleDir, "node_modules", "@lexwdex-org", "core")
 
   mkdirSync(resolve(targetCoreDir, ".."), { recursive: true })
   cpSync(coreDistDir, targetCoreDir, { recursive: true })

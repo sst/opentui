@@ -10,7 +10,7 @@ import {
   type SolidPlugin,
   useKeyboard,
   useRenderer,
-} from "@opentui/solid"
+} from "@lexwdex-org/solid"
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js"
 import { resolveExternalPluginCandidates } from "./external-plugin-path.js"
 

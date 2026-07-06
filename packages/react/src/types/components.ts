@@ -33,7 +33,7 @@ import type {
   CursorChangeEvent,
   ContentChangeEvent,
   KeyEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import type React from "react"
 
 // ============================================================================

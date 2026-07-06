@@ -1,10 +1,10 @@
 import { plugin as registerBunPlugin } from "bun"
-import * as coreRuntime from "@opentui/core"
+import * as coreRuntime from "@lexwdex-org/core"
 import {
   createRuntimePlugin,
   type RuntimeModuleEntry,
   type RuntimePluginRewriteOptions,
-} from "@opentui/core/runtime-plugin"
+} from "@lexwdex-org/core/runtime-plugin"
 import * as reactRuntime from "react"
 import * as reactJsxRuntime from "react/jsx-runtime"
 import * as reactJsxDevRuntime from "react/jsx-dev-runtime"
@@ -29,9 +29,9 @@ type RuntimePluginSupportState = typeof globalThis & {
 }
 
 const defaultRuntimeModules: Record<string, RuntimeModuleEntry> = {
-  "@opentui/react": opentuiReactRuntime as Record<string, unknown>,
-  "@opentui/react/jsx-runtime": reactJsxRuntime as Record<string, unknown>,
-  "@opentui/react/jsx-dev-runtime": reactJsxDevRuntime as Record<string, unknown>,
+  "@lexwdex-org/react": opentuiReactRuntime as Record<string, unknown>,
+  "@lexwdex-org/react/jsx-runtime": reactJsxRuntime as Record<string, unknown>,
+  "@lexwdex-org/react/jsx-dev-runtime": reactJsxDevRuntime as Record<string, unknown>,
   react: reactRuntime as Record<string, unknown>,
   "react/jsx-runtime": reactJsxRuntime as Record<string, unknown>,
   "react/jsx-dev-runtime": reactJsxDevRuntime as Record<string, unknown>,
@@ -56,7 +56,7 @@ function assertCompatibleInstall(
   for (const specifier of Object.keys(modules)) {
     if (!install.specifiers.has(specifier)) {
       throw new Error(
-        `OpenTUI React runtime plugin support is already installed without ${specifier}. Call ensureRuntimePluginSupport({ additional }) from @opentui/react/runtime-plugin-support/configure before importing @opentui/react/runtime-plugin-support.`,
+        `OpenTUI React runtime plugin support is already installed without ${specifier}. Call ensureRuntimePluginSupport({ additional }) from @lexwdex-org/react/runtime-plugin-support/configure before importing @lexwdex-org/react/runtime-plugin-support.`,
       )
     }
   }

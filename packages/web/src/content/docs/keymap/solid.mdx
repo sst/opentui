@@ -7,9 +7,9 @@ navTitle: Solid (OpenTUI)
 
 # Solid keymap bindings (OpenTUI)
 
-This page covers `@opentui/keymap/solid`.
+This page covers `@lexwdex-org/keymap/solid`.
 
-These bindings are for OpenTUI Solid apps. They consume a pre-created `Keymap<Renderable, KeyEvent>` from `@opentui/keymap/opentui`; they do not wrap the DOM/HTML adapter used in browser Solid apps.
+These bindings are for OpenTUI Solid apps. They consume a pre-created `Keymap<Renderable, KeyEvent>` from `@lexwdex-org/keymap/opentui`; they do not wrap the DOM/HTML adapter used in browser Solid apps.
 
 If you have not read the shared model yet, start with [Keymap overview](/docs/keymap/overview). For keymap construction, see [Keymap hosts](/docs/keymap/hosts).
 
@@ -24,10 +24,10 @@ If you have not read the shared model yet, start with [Keymap overview](/docs/ke
 ## Basic usage
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
-import { KeymapProvider, useBindings } from "@opentui/keymap/solid"
-import { render } from "@opentui/solid"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
+import { KeymapProvider, useBindings } from "@lexwdex-org/keymap/solid"
+import { render } from "@lexwdex-org/solid"
 
 const renderer = await createCliRenderer()
 const keymap = createDefaultOpenTuiKeymap(renderer)

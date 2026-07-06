@@ -1,8 +1,8 @@
-import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "@opentui/core"
+import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { parseColor } from "@opentui/core"
-import { hastToStyledText, type HASTElement } from "@opentui/core"
-import { SyntaxStyle } from "@opentui/core"
+import { parseColor } from "@lexwdex-org/core"
+import { hastToStyledText, type HASTElement } from "@lexwdex-org/core"
+import { SyntaxStyle } from "@lexwdex-org/core"
 import exampleHAST from "./assets/hast-example.json" with { type: "json" }
 
 const typedExampleHAST = exampleHAST as HASTElement

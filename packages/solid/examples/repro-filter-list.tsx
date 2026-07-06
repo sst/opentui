@@ -1,5 +1,5 @@
 import { createSignal, For } from "solid-js"
-import { render, useRenderer } from "@opentui/solid"
+import { render, useRenderer } from "@lexwdex-org/solid"
 
 process.env.DEBUG = "true"
 

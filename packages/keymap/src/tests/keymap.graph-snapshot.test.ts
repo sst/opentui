@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
+import { createTestRenderer, type MockInput, type TestRenderer } from "@lexwdex-org/core/testing"
 import { stringifyKeySequence } from "../index.js"
 import { getGraphSnapshot, type GraphSnapshot } from "../extras/graph.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"

@@ -20,7 +20,7 @@ On top of `createSlotRegistry`, core provides:
 - `registerCorePlugin` — register a plugin using the core-specific `CorePlugin` interface
 - `SlotRenderable` — a `Renderable` that mounts a slot into the renderable tree
 - `resolveCoreSlot` — resolve slot entries without mounting
-- `@opentui/core/runtime-plugin-support` / `createRuntimePlugin` — runtime module support for external plugin/module loading in Bun
+- `@lexwdex-org/core/runtime-plugin-support` / `createRuntimePlugin` — runtime module support for external plugin/module loading in Bun
 
 Core slot renderers receive both the host context and slot data: `(ctx, data) => BaseRenderable`.
 
@@ -31,15 +31,15 @@ Core slot renderers receive both the host context and slot data: `(ctx, data) =>
 If your app loads plugin modules from disk at runtime, import this once in your app entry:
 
 ```ts
-import "@opentui/core/runtime-plugin-support"
+import "@lexwdex-org/core/runtime-plugin-support"
 ```
 
-This installs Bun runtime support for `@opentui/core` plus default core runtime entrypoints (`@opentui/core/testing`). Add first-party package runtime modules explicitly when a plugin imports them.
+This installs Bun runtime support for `@lexwdex-org/core` plus default core runtime entrypoints (`@lexwdex-org/core/testing`). Add first-party package runtime modules explicitly when a plugin imports them.
 
 If you need additional host-resolved modules, configure runtime support before the side-effect import is loaded:
 
 ```ts
-const { ensureRuntimePluginSupport } = await import("@opentui/core/runtime-plugin-support/configure")
+const { ensureRuntimePluginSupport } = await import("@lexwdex-org/core/runtime-plugin-support/configure")
 
 ensureRuntimePluginSupport({
   additional: {
@@ -48,11 +48,11 @@ ensureRuntimePluginSupport({
 })
 ```
 
-For plugins that import `@opentui/three`, install `@opentui/three` in the host app and pass its runtime module map:
+For plugins that import `@lexwdex-org/three`, install `@lexwdex-org/three` in the host app and pass its runtime module map:
 
 ```ts
-import { runtimeModules as threeRuntimeModules } from "@opentui/three/runtime-modules"
-import { ensureRuntimePluginSupport } from "@opentui/core/runtime-plugin-support/configure"
+import { runtimeModules as threeRuntimeModules } from "@lexwdex-org/three/runtime-modules"
+import { ensureRuntimePluginSupport } from "@lexwdex-org/core/runtime-plugin-support/configure"
 
 ensureRuntimePluginSupport({
   additional: threeRuntimeModules,
@@ -85,7 +85,7 @@ import {
   registerCorePlugin,
   SlotRenderable,
   TextRenderable,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 
 type Slots = "statusbar"
 type SlotData = { label: string }
@@ -163,7 +163,7 @@ Because `SlotRenderable` extends `Renderable`, it accepts all standard layout op
 Resolve slot entries without mounting them. Useful when you need to inspect or render plugin output manually.
 
 ```typescript
-import { createCliRenderer, createCoreSlotRegistry, resolveCoreSlot } from "@opentui/core"
+import { createCliRenderer, createCoreSlotRegistry, resolveCoreSlot } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 const registry = createCoreSlotRegistry<"statusbar">(renderer, {

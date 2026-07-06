@@ -3,7 +3,7 @@ import { testRender } from "../index.js"
 import { For, Show, createSignal } from "solid-js"
 import type { ScrollBoxRenderable } from "../../core/src/renderables/index.js"
 import { SyntaxStyle } from "../../core/src/syntax-style.js"
-import { MockTreeSitterClient } from "@opentui/core/testing"
+import { MockTreeSitterClient } from "@lexwdex-org/core/testing"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 let mockTreeSitterClient: MockTreeSitterClient

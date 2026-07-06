@@ -16,7 +16,7 @@ Text input field with cursor, placeholder text, and focus states. Focus the inpu
 ### Renderable api
 
 ```typescript
-import { InputRenderable, InputRenderableEvents, createCliRenderer } from "@opentui/core"
+import { InputRenderable, InputRenderableEvents, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -37,7 +37,7 @@ renderer.root.add(input)
 ### Construct api
 
 ```typescript
-import { Input, createCliRenderer } from "@opentui/core"
+import { Input, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -73,7 +73,7 @@ const input = new InputRenderable(renderer, {
 Fires on every keystroke as the value changes:
 
 ```typescript
-import { InputRenderableEvents } from "@opentui/core"
+import { InputRenderableEvents } from "@lexwdex-org/core"
 
 input.on(InputRenderableEvents.INPUT, (value: string) => {
   console.log("Current value:", value)
@@ -129,7 +129,7 @@ input.value = "New value"
 ## Example: Login form
 
 ```typescript
-import { Box, Text, Input, delegate, createCliRenderer } from "@opentui/core"
+import { Box, Text, Input, delegate, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 

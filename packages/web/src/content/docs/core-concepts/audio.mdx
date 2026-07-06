@@ -9,12 +9,12 @@ skill:
 
 # Native audio
 
-OpenTUI exposes a native miniaudio-backed `Audio` engine from `@opentui/core`. It can decode audio bytes or files, play sounds through named groups, choose playback devices, mix into PCM buffers, and expose recent mixed frames for visualization.
+OpenTUI exposes a native miniaudio-backed `Audio` engine from `@lexwdex-org/core`. It can decode audio bytes or files, play sounds through named groups, choose playback devices, mix into PCM buffers, and expose recent mixed frames for visualization.
 
 ## Basic usage
 
 ```typescript
-import { Audio } from "@opentui/core"
+import { Audio } from "@lexwdex-org/core"
 
 const audio = Audio.create({ autoStart: false })
 
@@ -71,7 +71,7 @@ Bun embeds files in `bun build --compile` executables when they are imported wit
 
 ```typescript
 import { file } from "bun"
-import { Audio } from "@opentui/core"
+import { Audio } from "@lexwdex-org/core"
 import clickPath from "./click.wav" with { type: "file" }
 
 const audio = Audio.create({ autoStart: false })

@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
-import { createTestRenderer, setRendererCapabilities, type MockInput, type TestRenderer } from "@opentui/core/testing"
+import { BoxRenderable, KeyEvent, type Renderable } from "@lexwdex-org/core"
+import { createTestRenderer, setRendererCapabilities, type MockInput, type TestRenderer } from "@lexwdex-org/core/testing"
 import * as addons from "../addons/index.js"
 import {
   stringifyKeySequence,

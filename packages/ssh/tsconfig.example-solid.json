@@ -4,13 +4,13 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "preserve",
-    "jsxImportSource": "@opentui/solid",
+    "jsxImportSource": "@lexwdex-org/solid",
     "baseUrl": ".",
     "paths": {
-      "@opentui/core": ["../core/dist"],
-      "@opentui/core/*": ["../core/dist/*"],
-      "@opentui/solid": ["../solid/dist"],
-      "@opentui/solid/*": ["../solid/dist/*"]
+      "@lexwdex-org/core": ["../core/dist"],
+      "@lexwdex-org/core/*": ["../core/dist/*"],
+      "@lexwdex-org/solid": ["../solid/dist"],
+      "@lexwdex-org/solid/*": ["../solid/dist/*"]
     }
   },
   "include": ["examples/solid.tsx", "examples/solid-app.tsx", "src/**/*.ts"],

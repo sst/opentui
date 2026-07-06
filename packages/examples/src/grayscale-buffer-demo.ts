@@ -7,7 +7,7 @@ import {
   RGBA,
   FrameBufferRenderable,
   type KeyEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let framebuffer: OptimizedBuffer | null = null

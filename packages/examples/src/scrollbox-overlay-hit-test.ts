@@ -8,8 +8,8 @@ import {
   fg,
   bold,
   type KeyEvent,
-} from "@opentui/core"
-import { ScrollBoxRenderable } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { ScrollBoxRenderable } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let overlay: BoxRenderable | null = null

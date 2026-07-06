@@ -15,7 +15,7 @@ Every color also carries **color intent** inside the packed value: an RGB snapsh
 ### From integers (0-255)
 
 ```typescript
-import { RGBA } from "@opentui/core"
+import { RGBA } from "@lexwdex-org/core"
 
 const red = RGBA.fromInts(255, 0, 0, 255)
 const semiTransparentBlue = RGBA.fromInts(0, 0, 255, 128)
@@ -42,7 +42,7 @@ const withAlpha = RGBA.fromHex("#FF000080") // Semi-transparent red
 Most component properties accept both `RGBA` objects and color strings:
 
 ```typescript
-import { Text, Box } from "@opentui/core"
+import { Text, Box } from "@lexwdex-org/core"
 
 // Using hex strings
 Text({ content: "Hello", fg: "#00FF00" })
@@ -63,7 +63,7 @@ Box({ backgroundColor: "transparent" })
 The `parseColor()` function converts various color formats to RGBA:
 
 ```typescript
-import { parseColor } from "@opentui/core"
+import { parseColor } from "@lexwdex-org/core"
 
 const color1 = parseColor("#FF0000") // Hex
 const color2 = parseColor("blue") // CSS color name
@@ -84,7 +84,7 @@ Each color still carries its RGBA values so alpha blending and non-ANSI renderer
 ### Default foreground and background
 
 ```typescript
-import { RGBA } from "@opentui/core"
+import { RGBA } from "@lexwdex-org/core"
 
 // Will emit SGR 39 / 49 when rendered
 const fg = RGBA.defaultForeground()
@@ -100,7 +100,7 @@ const fg = RGBA.defaultForeground("#E6EDF3")
 ### Indexed ANSI colors (0-255)
 
 ```typescript
-import { RGBA, ansi256IndexToRgb } from "@opentui/core"
+import { RGBA, ansi256IndexToRgb } from "@lexwdex-org/core"
 
 // Indexed colors keep their palette slot even if the user changes their theme
 const ansiRed = RGBA.fromIndex(1)
@@ -116,7 +116,7 @@ const [r, g, b] = ansi256IndexToRgb(196)
 ### Inspecting color intent
 
 ```typescript
-import { RGBA } from "@opentui/core"
+import { RGBA } from "@lexwdex-org/core"
 
 const fg = RGBA.defaultForeground()
 fg.intent // => "default"
@@ -179,7 +179,7 @@ Useful members:
 You can use transparent cells and alpha blending for layered effects:
 
 ```typescript
-import { FrameBufferRenderable, RGBA } from "@opentui/core"
+import { FrameBufferRenderable, RGBA } from "@lexwdex-org/core"
 
 const canvas = new FrameBufferRenderable(renderer, {
   id: "canvas",
@@ -200,7 +200,7 @@ Blended colors become literal RGB colors internally. This is intentional: once c
 Combine colors with text attributes:
 
 ```typescript
-import { TextRenderable, TextAttributes, RGBA } from "@opentui/core"
+import { TextRenderable, TextAttributes, RGBA } from "@lexwdex-org/core"
 
 const styledText = new TextRenderable(renderer, {
   id: "styled",

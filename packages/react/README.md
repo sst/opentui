@@ -1,4 +1,4 @@
-# @opentui/react
+# @lexwdex-org/react
 
 A React renderer for building terminal user interfaces using [OpenTUI core](https://github.com/anomalyco/opentui). Create rich, interactive console applications with familiar React patterns and components.
 
@@ -13,14 +13,14 @@ bun create tui --template react
 Manual installation:
 
 ```bash
-bun install @opentui/react @opentui/core react
+bun install @lexwdex-org/react @lexwdex-org/core react
 ```
 
 ## Quick Start
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot } from "@lexwdex-org/react"
 
 function App() {
   return <text>Hello, world!</text>
@@ -42,7 +42,7 @@ For optimal TypeScript support, configure your `tsconfig.json`:
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "jsxImportSource": "@opentui/react",
+    "jsxImportSource": "@lexwdex-org/react",
     "strict": true,
     "skipLibCheck": true
   }
@@ -102,7 +102,7 @@ OpenTUI React provides several built-in components that map to OpenTUI core rend
 - **`<scrollbox>`** - A scrollable box
 - **`<ascii-font>`** - Display ASCII art text with different font styles
 
-QR code support is available from `@opentui/qrcode/react` and must be registered explicitly with `registerQRCode()`.
+QR code support is available from `@lexwdex-org/qrcode/react` and must be registered explicitly with `registerQRCode()`.
 
 **Input Components:**
 
@@ -144,8 +144,8 @@ Components can be styled using props or the `style` prop:
 Creates a root for rendering a React tree with the given CLI renderer.
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot } from "@lexwdex-org/react"
 
 const renderer = await createCliRenderer({
   // Optional renderer configuration
@@ -173,7 +173,7 @@ Renders a React element to the terminal. This function is deprecated in favor of
 Access the OpenTUI renderer instance.
 
 ```tsx
-import { useRenderer } from "@opentui/react"
+import { useRenderer } from "@lexwdex-org/react"
 
 function App() {
   const renderer = useRenderer()
@@ -192,7 +192,7 @@ function App() {
 Handle keyboard events.
 
 ```tsx
-import { useKeyboard } from "@opentui/react"
+import { useKeyboard } from "@lexwdex-org/react"
 
 function App() {
   useKeyboard((key) => {
@@ -216,7 +216,7 @@ By default, only receives press events (including key repeats with `repeated: tr
 **Example with release events:**
 
 ```tsx
-import { useKeyboard } from "@opentui/react"
+import { useKeyboard } from "@lexwdex-org/react"
 import { useState } from "react"
 
 function App() {
@@ -250,8 +250,8 @@ function App() {
 Handle terminal paste events (bracketed paste).
 
 ```tsx
-import { decodePasteBytes } from "@opentui/core"
-import { usePaste } from "@opentui/react"
+import { decodePasteBytes } from "@lexwdex-org/core"
+import { usePaste } from "@lexwdex-org/react"
 
 function App() {
   usePaste((event) => {
@@ -265,14 +265,14 @@ function App() {
 
 **Parameters:**
 
-- `handler`: Callback function that receives a `PasteEvent` object with `bytes: Uint8Array` (decode with `decodePasteBytes` from `@opentui/core`)
+- `handler`: Callback function that receives a `PasteEvent` object with `bytes: Uint8Array` (decode with `decodePasteBytes` from `@lexwdex-org/core`)
 
 #### `useFocus(handler)`
 
 Subscribe to terminal window focus events. Fires when the terminal window gains focus.
 
 ```tsx
-import { useFocus } from "@opentui/react"
+import { useFocus } from "@lexwdex-org/react"
 
 function App() {
   useFocus(() => {
@@ -292,7 +292,7 @@ function App() {
 Subscribe to terminal window blur events. Fires when the terminal window loses focus.
 
 ```tsx
-import { useBlur } from "@opentui/react"
+import { useBlur } from "@lexwdex-org/react"
 
 function App() {
   useBlur(() => {
@@ -312,7 +312,7 @@ function App() {
 Handle text selection events (e.g., when the user selects text via mouse drag).
 
 ```tsx
-import { useSelectionHandler } from "@opentui/react"
+import { useSelectionHandler } from "@lexwdex-org/react"
 
 function App() {
   useSelectionHandler((selection) => {
@@ -333,7 +333,7 @@ function App() {
 Handle terminal resize events.
 
 ```tsx
-import { useOnResize, useRenderer } from "@opentui/react"
+import { useOnResize, useRenderer } from "@lexwdex-org/react"
 import { useEffect } from "react"
 
 function App() {
@@ -356,7 +356,7 @@ function App() {
 Get current terminal dimensions and automatically update when the terminal is resized.
 
 ```tsx
-import { useTerminalDimensions } from "@opentui/react"
+import { useTerminalDimensions } from "@lexwdex-org/react"
 
 function App() {
   const { width, height } = useTerminalDimensions()
@@ -381,7 +381,7 @@ function App() {
 Create and manage animations using OpenTUI's timeline system. This hook automatically registers and unregisters the timeline with the animation engine.
 
 ```tsx
-import { useTimeline } from "@opentui/react"
+import { useTimeline } from "@lexwdex-org/react"
 import { useEffect, useState } from "react"
 
 function App() {
@@ -621,8 +621,8 @@ function App() {
 #### Textarea Component
 
 ```tsx
-import type { TextareaRenderable } from "@opentui/core"
-import { useKeyboard, useRenderer } from "@opentui/react"
+import type { TextareaRenderable } from "@lexwdex-org/core"
+import { useKeyboard, useRenderer } from "@lexwdex-org/react"
 import { useEffect, useRef } from "react"
 
 function App() {
@@ -652,7 +652,7 @@ function App() {
 Dropdown selection component.
 
 ```tsx
-import type { SelectOption } from "@opentui/core"
+import type { SelectOption } from "@lexwdex-org/core"
 import { useState } from "react"
 
 function App() {
@@ -685,7 +685,7 @@ function App() {
 #### Code Component
 
 ```tsx
-import { RGBA, SyntaxStyle } from "@opentui/core"
+import { RGBA, SyntaxStyle } from "@lexwdex-org/core"
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   keyword: { fg: RGBA.fromHex("#ff6b6b"), bold: true }, // red, bold
@@ -718,8 +718,8 @@ function App() {
 Display code with line numbers, and optionally add diff highlights or diagnostic indicators.
 
 ```tsx
-import type { LineNumberRenderable } from "@opentui/core"
-import { RGBA, SyntaxStyle } from "@opentui/core"
+import type { LineNumberRenderable } from "@lexwdex-org/core"
+import { RGBA, SyntaxStyle } from "@lexwdex-org/core"
 import { useEffect, useRef } from "react"
 
 function App() {
@@ -780,8 +780,8 @@ For a complete interactive example with theme switching and keybindings, see [`e
 ### Login Form
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot, useKeyboard } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot, useKeyboard } from "@lexwdex-org/react"
 import { useCallback, useState } from "react"
 
 function App() {
@@ -844,8 +844,8 @@ createRoot(renderer).render(<App />)
 ### Counter with Timer
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot } from "@lexwdex-org/react"
 import { useEffect, useState } from "react"
 
 function App() {
@@ -873,8 +873,8 @@ createRoot(renderer).render(<App />)
 ### System Monitor Animation
 
 ```tsx
-import { createCliRenderer, TextAttributes } from "@opentui/core"
-import { createRoot, useTimeline } from "@opentui/react"
+import { createCliRenderer, TextAttributes } from "@lexwdex-org/core"
+import { createRoot, useTimeline } from "@lexwdex-org/react"
 import { useEffect, useState } from "react"
 
 type Stats = {
@@ -957,8 +957,8 @@ createRoot(renderer).render(<App />)
 ### Styled Text Showcase
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot } from "@lexwdex-org/react"
 
 function App() {
   return (
@@ -1002,8 +1002,8 @@ import {
   RGBA,
   type BoxOptions,
   type RenderContext,
-} from "@opentui/core"
-import { createRoot, extend } from "@opentui/react"
+} from "@lexwdex-org/core"
+import { createRoot, extend } from "@lexwdex-org/react"
 
 // Create custom component class
 class ButtonRenderable extends BoxRenderable {
@@ -1038,7 +1038,7 @@ class ButtonRenderable extends BoxRenderable {
 }
 
 // Add TypeScript support
-declare module "@opentui/react" {
+declare module "@lexwdex-org/react" {
   interface OpenTUIComponents {
     consoleButton: typeof ButtonRenderable
   }

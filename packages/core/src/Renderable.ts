@@ -34,7 +34,7 @@ import {
   isOverflowType,
 } from "./lib/renderable.validations.js"
 
-const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
+const BrandedRenderable: unique symbol = Symbol.for("@lexwdex-org/core/Renderable")
 
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",

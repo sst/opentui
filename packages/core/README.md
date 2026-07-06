@@ -13,7 +13,7 @@ OpenTUI is a native terminal UI core written in Zig with TypeScript bindings. Th
 ## Install
 
 ```bash
-bun install @opentui/core
+bun install @lexwdex-org/core
 ```
 
 ## Build
@@ -53,7 +53,7 @@ NativeSpanFeed TypeScript benchmarks:
 Renderables are hierarchical objects that can be positioned, nested, styled and rendered to the terminal:
 
 ```typescript
-import { createCliRenderer, TextRenderable } from "@opentui/core"
+import { createCliRenderer, TextRenderable } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 

@@ -54,7 +54,7 @@ if (!bunWebgpuVersion) {
 const workspaceAliasPlugin: BunPlugin = {
   name: "workspace-alias",
   setup(build) {
-    build.onResolve({ filter: /^@opentui\/core-(?:darwin|linux|win32)-/ }, (args) => {
+    build.onResolve({ filter: /^@lexwdex-org\/core-(?:darwin|linux|win32)-/ }, (args) => {
       if (existsSync(join(coreRoot, "node_modules", args.path))) return
 
       // Bun resolves unreachable dynamic imports while compiling. Keep absent
@@ -62,27 +62,27 @@ const workspaceAliasPlugin: BunPlugin = {
       return { path: args.path, external: true }
     })
 
-    build.onResolve({ filter: /^@opentui\/core$/ }, () => ({
+    build.onResolve({ filter: /^@lexwdex-org\/core$/ }, () => ({
       path: join(coreRoot, "src", "index.ts"),
     }))
 
-    build.onResolve({ filter: /^@opentui\/three$/ }, () => ({
+    build.onResolve({ filter: /^@lexwdex-org\/three$/ }, () => ({
       path: join(threeRoot, "src", "index.ts"),
     }))
 
-    build.onResolve({ filter: /^@opentui\/keymap$/ }, () => ({
+    build.onResolve({ filter: /^@lexwdex-org\/keymap$/ }, () => ({
       path: join(keymapRoot, "src", "index.ts"),
     }))
 
-    build.onResolve({ filter: /^@opentui\/qrcode$/ }, () => ({
+    build.onResolve({ filter: /^@lexwdex-org\/qrcode$/ }, () => ({
       path: join(qrcodeRoot, "src", "index.ts"),
     }))
 
-    build.onResolve({ filter: /^@opentui\/keymap\/addons\/opentui$/ }, () => ({
+    build.onResolve({ filter: /^@lexwdex-org\/keymap\/addons\/opentui$/ }, () => ({
       path: join(keymapRoot, "src", "addons", "opentui", "index.ts"),
     }))
 
-    build.onResolve({ filter: /^@opentui\/keymap\/opentui$/ }, () => ({
+    build.onResolve({ filter: /^@lexwdex-org\/keymap\/opentui$/ }, () => ({
       path: join(keymapRoot, "src", "opentui.ts"),
     }))
   },
@@ -90,7 +90,7 @@ const workspaceAliasPlugin: BunPlugin = {
 
 function getNativePackageDir(platform: string, arch: string): string {
   const packagePlatform = platform === "windows" ? "win32" : platform
-  return join(coreRoot, "node_modules", "@opentui", `core-${packagePlatform}-${arch}`)
+  return join(coreRoot, "node_modules", "@lexwdex-org", `core-${packagePlatform}-${arch}`)
 }
 
 function getHostBuildTarget(): BuildTarget {

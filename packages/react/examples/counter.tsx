@@ -1,5 +1,5 @@
-import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot } from "@lexwdex-org/react"
 import { useEffect, useState } from "react"
 
 export const App = () => {

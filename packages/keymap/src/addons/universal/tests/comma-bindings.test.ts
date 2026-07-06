@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { registerCommaBindings } from "@opentui/keymap/addons"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { createTestRenderer, type MockInput, type TestRenderer } from "@lexwdex-org/core/testing"
+import { registerCommaBindings } from "@lexwdex-org/keymap/addons"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 import { createDiagnosticHarness } from "../../../tests/diagnostic-harness.js"
 
 let renderer: TestRenderer

@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, BoxRenderable, TextRenderable, type KeyEvent } from "@opentui/core"
+import { CliRenderer, createCliRenderer, RGBA, BoxRenderable, TextRenderable, type KeyEvent } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { TextureUtils } from "@opentui/three"
+import { TextureUtils } from "@lexwdex-org/three"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -15,7 +15,7 @@ import {
 } from "three"
 import { MeshPhongNodeMaterial } from "three/webgpu"
 import { lights } from "three/tsl"
-import { ThreeRenderable, SuperSampleAlgorithm } from "@opentui/three"
+import { ThreeRenderable, SuperSampleAlgorithm } from "@lexwdex-org/three"
 
 // @ts-ignore
 import cratePath from "./assets/crate.png" with { type: "image/png" }

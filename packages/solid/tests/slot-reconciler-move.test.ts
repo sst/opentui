@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
-import { BoxRenderable, Yoga } from "@opentui/core"
-import { createTestRenderer } from "@opentui/core/testing"
+import { BoxRenderable, Yoga } from "@lexwdex-org/core"
+import { createTestRenderer } from "@lexwdex-org/core/testing"
 import { batch, createRoot, createSignal } from "solid-js"
 import { createSlotNode, insert } from "../index.js"
 

@@ -4,7 +4,7 @@ import TuiSurface from "../components/TuiSurface.astro"
 
 const installCommands = {
   create: { cmd: "bun create", pkg: "tui" },
-  manual: { cmd: "bun add", pkg: "@opentui/core" },
+  manual: { cmd: "bun add", pkg: "@lexwdex-org/core" },
   skill: { cmd: "npx skills add", pkg: "anomalyco/opentui --skill opentui --global" },
 }
 
@@ -172,7 +172,7 @@ const features = [
               <div class="code-editor-lines">
                 <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
               </div>
-              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Text {"}"} <span class="keyword">from</span> <span class="string">"@opentui/core"</span>
+              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Text {"}"} <span class="keyword">from</span> <span class="string">"@lexwdex-org/core"</span>
 
 <span class="keyword">const</span> renderer <span class="operator">=</span> <span class="keyword">await</span> <span class="function">createCliRenderer</span>()
 
@@ -189,7 +189,7 @@ renderer.root.<span class="function">add</span>(
               <div class="code-editor-lines">
                 <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span>
               </div>
-              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Input {"}"} <span class="keyword">from</span> <span class="string">"@opentui/core"</span>
+              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Input {"}"} <span class="keyword">from</span> <span class="string">"@lexwdex-org/core"</span>
 
 <span class="keyword">const</span> renderer <span class="operator">=</span> <span class="keyword">await</span> <span class="function">createCliRenderer</span>()
 
@@ -207,7 +207,7 @@ renderer.root.<span class="function">add</span>(input)</code></pre>
               <div class="code-editor-lines">
                 <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span>
               </div>
-              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Box, Text {"}"} <span class="keyword">from</span> <span class="string">"@opentui/core"</span>
+              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Box, Text {"}"} <span class="keyword">from</span> <span class="string">"@lexwdex-org/core"</span>
 
 <span class="keyword">const</span> renderer <span class="operator">=</span> <span class="keyword">await</span> <span class="function">createCliRenderer</span>()
 
@@ -277,7 +277,7 @@ renderer.root.<span class="function">add</span>(
 <script>
   const installCommands: Record<string, { cmd: string; pkg: string }> = {
     create: { cmd: "bun create", pkg: "tui" },
-    manual: { cmd: "bun add", pkg: "@opentui/core" },
+    manual: { cmd: "bun add", pkg: "@lexwdex-org/core" },
     skill: { cmd: "npx skills add", pkg: "anomalyco/opentui --skill opentui --global" },
   }
 

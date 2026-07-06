@@ -1,5 +1,5 @@
-import { stringifyKeySequence, stringifyKeyStroke } from "@opentui/keymap"
-import type { Keymap, KeymapEvent, LayerAnalysisContext, ParsedBinding } from "@opentui/keymap"
+import { stringifyKeySequence, stringifyKeyStroke } from "@lexwdex-org/keymap"
+import type { Keymap, KeymapEvent, LayerAnalysisContext, ParsedBinding } from "@lexwdex-org/keymap"
 
 const UNRESOLVED_COMMAND_WARNINGS_RESOURCE = Symbol("keymap:unresolved-command-warnings")
 

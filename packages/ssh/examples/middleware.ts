@@ -33,7 +33,7 @@
  * No type annotations are needed below: under `publicKey` auth the identity
  * flows from the builder, and each contribution is inferred from `next({ ... })`.
  */
-import { BoxRenderable, TextRenderable } from "@opentui/core"
+import { BoxRenderable, TextRenderable } from "@lexwdex-org/core"
 import { createServer } from "../src/index.js"
 
 const PORT = Number(process.env.PORT ?? 2222)
@@ -74,7 +74,7 @@ const server = createServer({
       border: true,
       borderStyle: "rounded",
       borderColor: "#a855f7",
-      title: " @opentui/ssh · middleware ",
+      title: " @lexwdex-org/ssh · middleware ",
       titleAlignment: "center",
       flexDirection: "column",
       alignItems: "center",

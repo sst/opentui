@@ -22,7 +22,7 @@ This page describes the **shared registry API** that the core, React, and Solid 
 - [React slots](/docs/plugins/react) — `ReactNode`
 - [Solid slots](/docs/plugins/solid) — `JSX.Element`
 
-If you load plugin modules from disk at runtime, see the runtime support notes on the [React slots page](/docs/plugins/react#runtime-loaded-external-plugins) and [Solid slots page](/docs/plugins/solid#runtime-loaded-external-plugins). For custom hosts, use `@opentui/core/runtime-plugin-support` or `createRuntimePlugin` from `@opentui/core/runtime-plugin`.
+If you load plugin modules from disk at runtime, see the runtime support notes on the [React slots page](/docs/plugins/react#runtime-loaded-external-plugins) and [Solid slots page](/docs/plugins/solid#runtime-loaded-external-plugins). For custom hosts, use `@lexwdex-org/core/runtime-plugin-support` or `createRuntimePlugin` from `@lexwdex-org/core/runtime-plugin`.
 
 Read on if you need to understand the underlying model, want to build a custom binding for another framework, or need direct access to the registry API.
 
@@ -38,7 +38,7 @@ Read on if you need to understand the underlying model, want to build a custom b
 Slot names map to the props each slot receives. The host context is a shared object passed to every plugin renderer.
 
 ```typescript
-import type { PluginContext } from "@opentui/core"
+import type { PluginContext } from "@lexwdex-org/core"
 
 type AppSlots = {
   statusbar: { user: string }
@@ -56,7 +56,7 @@ The context can be any object. `PluginContext` is a type alias for `object` — 
 ## Create a registry
 
 ```typescript
-import { createSlotRegistry } from "@opentui/core"
+import { createSlotRegistry } from "@lexwdex-org/core"
 
 type AppSlots = {
   statusbar: { user: string }

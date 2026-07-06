@@ -63,43 +63,43 @@ const targets = buildAll ? ALL_TARGETS : [getHostTarget()]
 const workspaceAliasPlugin: BunPlugin = {
   name: "workspace-alias",
   setup(build) {
-    build.onResolve({ filter: /^@opentui\/solid$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/solid$/ }, () => {
       return {
         path: join(packageRoot, "index.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/core$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/core$/ }, () => {
       return {
         path: join(packageRoot, "..", "core", "src", "index.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/core\/testing$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/core\/testing$/ }, () => {
       return {
         path: join(packageRoot, "..", "core", "src", "testing.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/three$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/three$/ }, () => {
       return {
         path: join(packageRoot, "..", "three", "src", "index.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/three\/runtime-modules$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/three\/runtime-modules$/ }, () => {
       return {
         path: join(packageRoot, "..", "three", "src", "runtime-modules.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/solid\/runtime-plugin-support$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/solid\/runtime-plugin-support$/ }, () => {
       return {
         path: join(packageRoot, "scripts", "runtime-plugin-support.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/solid\/runtime-plugin-support\/configure$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/solid\/runtime-plugin-support\/configure$/ }, () => {
       return {
         path: join(packageRoot, "scripts", "runtime-plugin-support-configure.ts"),
       }

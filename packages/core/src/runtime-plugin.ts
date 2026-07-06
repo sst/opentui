@@ -1,5 +1,5 @@
 /*
- * Exposes runtime-only modules (for example `@opentui/core`, `@opentui/solid`,
+ * Exposes runtime-only modules (for example `@lexwdex-org/core`, `@lexwdex-org/solid`,
  * `solid-js`) to externally loaded plugins by rewriting matching imports to
  * virtual `opentui:runtime-module:*` ids.
  *
@@ -60,8 +60,8 @@ export interface CreateRuntimePluginOptions {
   rewrite?: RuntimePluginRewriteOptions
 }
 
-const CORE_RUNTIME_SPECIFIER = "@opentui/core"
-const CORE_TESTING_RUNTIME_SPECIFIER = "@opentui/core/testing"
+const CORE_RUNTIME_SPECIFIER = "@lexwdex-org/core"
+const CORE_TESTING_RUNTIME_SPECIFIER = "@lexwdex-org/core/testing"
 const RUNTIME_MODULE_PREFIX = "opentui:runtime-module:"
 const MAX_RUNTIME_RESOLVE_PARENTS = 64
 const DEFAULT_RUNTIME_PLUGIN_REWRITE_OPTIONS: Required<RuntimePluginRewriteOptions> = {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
-import { type CliRenderer, ScrollBoxRenderable, TextRenderable } from "@opentui/core"
-import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
+import { type CliRenderer, ScrollBoxRenderable, TextRenderable } from "@lexwdex-org/core"
+import { createTestRenderer, type TestRendererOptions } from "@lexwdex-org/core/testing"
 import { createComponent, onCleanup, onMount, type JSX } from "solid-js"
 import {
   RendererContext,

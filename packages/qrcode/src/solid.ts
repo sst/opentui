@@ -1,7 +1,7 @@
-import { extend } from "@opentui/solid/components"
+import { extend } from "@lexwdex-org/solid/components"
 import { QRCodeRenderable } from "./renderables/QRCode.js"
 
-declare module "@opentui/solid" {
+declare module "@lexwdex-org/solid" {
   interface OpenTUIComponents {
     qr_code: typeof QRCodeRenderable
   }

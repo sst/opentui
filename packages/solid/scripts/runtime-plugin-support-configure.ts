@@ -1,18 +1,18 @@
 import { plugin as registerBunPlugin } from "bun"
-import * as coreRuntime from "@opentui/core"
+import * as coreRuntime from "@lexwdex-org/core"
 import {
   createRuntimePlugin,
   isCoreRuntimeModuleSpecifier,
   runtimeModuleIdForSpecifier,
   type RuntimeModuleEntry,
   type RuntimePluginRewriteOptions,
-} from "@opentui/core/runtime-plugin"
+} from "@lexwdex-org/core/runtime-plugin"
 import * as solidJsRuntime from "solid-js"
 import * as solidJsStoreRuntime from "solid-js/store"
-import * as solidRuntime from "@opentui/solid"
-import * as solidComponentsRuntime from "@opentui/solid/components"
-import * as solidJsxRuntime from "@opentui/solid/jsx-runtime"
-import * as solidJsxDevRuntime from "@opentui/solid/jsx-dev-runtime"
+import * as solidRuntime from "@lexwdex-org/solid"
+import * as solidComponentsRuntime from "@lexwdex-org/solid/components"
+import * as solidJsxRuntime from "@lexwdex-org/solid/jsx-runtime"
+import * as solidJsxDevRuntime from "@lexwdex-org/solid/jsx-dev-runtime"
 import { ensureSolidTransformPlugin } from "./solid-plugin.js"
 
 const runtimePluginSupportInstalledKey = Symbol.for("opentui.solid.runtime-plugin-support")
@@ -34,10 +34,10 @@ type RuntimePluginSupportState = typeof globalThis & {
 }
 
 const defaultRuntimeModules: Record<string, RuntimeModuleEntry> = {
-  "@opentui/solid": solidRuntime as Record<string, unknown>,
-  "@opentui/solid/components": solidComponentsRuntime as Record<string, unknown>,
-  "@opentui/solid/jsx-runtime": solidJsxRuntime as Record<string, unknown>,
-  "@opentui/solid/jsx-dev-runtime": solidJsxDevRuntime as Record<string, unknown>,
+  "@lexwdex-org/solid": solidRuntime as Record<string, unknown>,
+  "@lexwdex-org/solid/components": solidComponentsRuntime as Record<string, unknown>,
+  "@lexwdex-org/solid/jsx-runtime": solidJsxRuntime as Record<string, unknown>,
+  "@lexwdex-org/solid/jsx-dev-runtime": solidJsxDevRuntime as Record<string, unknown>,
   "solid-js": solidJsRuntime as Record<string, unknown>,
   "solid-js/store": solidJsStoreRuntime as Record<string, unknown>,
 }
@@ -61,7 +61,7 @@ function assertCompatibleInstall(
   for (const specifier of Object.keys(modules)) {
     if (!install.specifiers.has(specifier)) {
       throw new Error(
-        `OpenTUI Solid runtime plugin support is already installed without ${specifier}. Call ensureRuntimePluginSupport({ additional }) from @opentui/solid/runtime-plugin-support/configure before importing @opentui/solid/runtime-plugin-support.`,
+        `OpenTUI Solid runtime plugin support is already installed without ${specifier}. Call ensureRuntimePluginSupport({ additional }) from @lexwdex-org/solid/runtime-plugin-support/configure before importing @lexwdex-org/solid/runtime-plugin-support.`,
       )
     }
   }
@@ -88,7 +88,7 @@ export function ensureRuntimePluginSupport(options: SolidRuntimePluginSupportOpt
   }
 
   ensureSolidTransformPlugin({
-    moduleName: runtimeModuleIdForSpecifier("@opentui/solid"),
+    moduleName: runtimeModuleIdForSpecifier("@lexwdex-org/solid"),
     resolvePath(specifier) {
       if (!isCoreRuntimeModuleSpecifier(specifier) && !modules[specifier]) {
         return null

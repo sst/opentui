@@ -228,4 +228,68 @@ describe("detectLinks", () => {
     expect(result.find((c) => c.text === " for the API ")!.link).toBeUndefined()
     expect(result.find((c) => c.text === " reference")!.link).toBeUndefined()
   })
+
+  test("should not open a hyperlink for an empty URL range (e.g. [text]())", () => {
+    // markdown [text]() yields a markup.link.url highlight over an empty range
+    const content = "[text]()"
+    const highlights: SimpleHighlight[] = [
+      [0, 1, "markup.link"],
+      [1, 5, "markup.link.label"],
+      [5, 6, "markup.link"], // ]
+      [6, 7, "markup.link"], // (
+      [7, 7, "markup.link.url"], // empty href between ( and )
+      [7, 8, "markup.link"], // )
+    ]
+    const chunks = [chunk("["), chunk("text"), chunk("]"), chunk("("), chunk(")")]
+
+    const result = detectLinks(chunks, { content, highlights })
+
+    for (const c of result) {
+      expect(c.link).toBeUndefined()
+    }
+  })
+
+  test("should not open a hyperlink for a whitespace-only URL range (e.g. [text]( ))", () => {
+    const content = "[text]( )"
+    const highlights: SimpleHighlight[] = [
+      [0, 1, "markup.link"],
+      [1, 5, "markup.link.label"],
+      [5, 6, "markup.link"], // ]
+      [6, 7, "markup.link"], // (
+      [7, 8, "markup.link.url"], // href is a single space
+      [8, 9, "markup.link"], // )
+    ]
+    const chunks = [chunk("["), chunk("text"), chunk("]"), chunk("("), chunk(" "), chunk(")")]
+
+    const result = detectLinks(chunks, { content, highlights })
+
+    for (const c of result) {
+      expect(c.link).toBeUndefined()
+    }
+  })
+
+  test("should still attach a link for a real (non-empty, non-whitespace) URL", () => {
+    const content = "[text](https://example.com)"
+    const highlights: SimpleHighlight[] = [
+      [0, 1, "markup.link"],
+      [1, 5, "markup.link.label"],
+      [5, 6, "markup.link"], // ]
+      [6, 7, "markup.link"], // (
+      [7, 26, "markup.link.url"], // https://example.com
+      [26, 27, "markup.link"], // )
+    ]
+    const chunks = [
+      chunk("[", 0, 1),
+      chunk("text", 1, 5),
+      chunk("]", 5, 6),
+      chunk("(", 6, 7),
+      chunk("https://example.com", 7, 26),
+      chunk(")", 26, 27),
+    ]
+
+    const result = detectLinks(chunks, { content, highlights })
+
+    expect(result.find((c) => c.text === "https://example.com")!.link).toEqual({ url: "https://example.com" })
+    expect(result.find((c) => c.text === "text")!.link).toEqual({ url: "https://example.com" })
+  })
 })

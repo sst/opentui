@@ -6,7 +6,7 @@ import {
   type ScrollbackRenderContext,
   type ScrollbackSnapshot,
   type ScrollbackWriter,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { createSignal, type JSX } from "solid-js"
 import { RendererContext } from "./elements/index.js"
 import { _render as renderInternal, createComponent } from "./reconciler.js"

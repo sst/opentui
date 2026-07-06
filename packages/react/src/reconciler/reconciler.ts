@@ -1,4 +1,4 @@
-import type { RootRenderable } from "@opentui/core"
+import type { RootRenderable } from "@lexwdex-org/core"
 import React from "react"
 import ReactReconciler from "react-reconciler"
 import { ConcurrentRoot } from "react-reconciler/constants"

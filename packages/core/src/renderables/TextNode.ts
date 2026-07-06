@@ -12,7 +12,7 @@ export interface TextNodeOptions extends BaseRenderableOptions {
   link?: { url: string }
 }
 
-const BrandedTextNodeRenderable: unique symbol = Symbol.for("@opentui/core/TextNodeRenderable")
+const BrandedTextNodeRenderable: unique symbol = Symbol.for("@lexwdex-org/core/TextNodeRenderable")
 
 export function isTextNodeRenderable(obj: any): obj is TextNodeRenderable {
   return !!obj?.[BrandedTextNodeRenderable]

@@ -7,7 +7,7 @@ import {
   type OptimizedBuffer,
   type RenderableOptions,
   type RenderContext,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { ThreeCliRenderer, type ThreeCliRendererOptions } from "./WGPURenderer.js"
 
 export interface ThreeRenderableOptions extends RenderableOptions<ThreeRenderable> {

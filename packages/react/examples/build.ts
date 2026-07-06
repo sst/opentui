@@ -62,61 +62,61 @@ const targets = buildAll ? ALL_TARGETS : [getHostTarget()]
 const workspaceAliasPlugin: BunPlugin = {
   name: "workspace-alias",
   setup(build) {
-    build.onResolve({ filter: /^@opentui\/react$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/react$/ }, () => {
       return {
         path: join(packageRoot, "src", "index.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/react\/runtime-plugin-support$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/react\/runtime-plugin-support$/ }, () => {
       return {
         path: join(packageRoot, "scripts", "runtime-plugin-support.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/react\/runtime-plugin-support\/configure$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/react\/runtime-plugin-support\/configure$/ }, () => {
       return {
         path: join(packageRoot, "scripts", "runtime-plugin-support-configure.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/react\/jsx-runtime$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/react\/jsx-runtime$/ }, () => {
       return {
         path: join(packageRoot, "jsx-runtime.js"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/react\/jsx-dev-runtime$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/react\/jsx-dev-runtime$/ }, () => {
       return {
         path: join(packageRoot, "jsx-dev-runtime.js"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/core$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/core$/ }, () => {
       return {
         path: join(packageRoot, "..", "core", "src", "index.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/core\/extras$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/core\/extras$/ }, () => {
       return {
         path: join(packageRoot, "..", "core", "src", "extras.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/core\/3d$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/core\/3d$/ }, () => {
       return {
         path: join(packageRoot, "..", "core", "src", "3d.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/core\/testing$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/core\/testing$/ }, () => {
       return {
         path: join(packageRoot, "..", "core", "src", "testing.ts"),
       }
     })
 
-    build.onResolve({ filter: /^@opentui\/core\/runtime-plugin$/ }, () => {
+    build.onResolve({ filter: /^@lexwdex-org\/core\/runtime-plugin$/ }, () => {
       return {
         path: join(packageRoot, "..", "core", "src", "runtime-plugin.ts"),
       }

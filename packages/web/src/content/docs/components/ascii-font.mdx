@@ -13,7 +13,7 @@ Display text using ASCII art fonts with multiple font styles available. Great fo
 ### Renderable API
 
 ```typescript
-import { ASCIIFontRenderable, RGBA, createCliRenderer } from "@opentui/core"
+import { ASCIIFontRenderable, RGBA, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -30,7 +30,7 @@ renderer.root.add(title)
 ### Construct API
 
 ```typescript
-import { ASCIIFont, createCliRenderer } from "@opentui/core"
+import { ASCIIFont, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -116,7 +116,7 @@ const title = new ASCIIFontRenderable(renderer, {
 ## Example: Welcome Screen
 
 ```typescript
-import { Box, ASCIIFont, Text, createCliRenderer } from "@opentui/core"
+import { Box, ASCIIFont, Text, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -170,7 +170,7 @@ setInterval(() => {
 Create gradient-like effects by positioning multiple ASCII fonts:
 
 ```typescript
-import { Box, ASCIIFont } from "@opentui/core"
+import { Box, ASCIIFont } from "@lexwdex-org/core"
 
 const gradientTitle = Box(
   {},

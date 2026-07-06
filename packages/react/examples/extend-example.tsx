@@ -5,8 +5,8 @@ import {
   RGBA,
   type BoxOptions,
   type RenderContext,
-} from "@opentui/core"
-import { createRoot, extend } from "@opentui/react"
+} from "@lexwdex-org/core"
+import { createRoot, extend } from "@lexwdex-org/react"
 
 // Custom renderable that extends BoxRenderable
 class ConsoleButtonRenderable extends BoxRenderable {
@@ -44,7 +44,7 @@ class ConsoleButtonRenderable extends BoxRenderable {
 }
 
 // TypeScript module augmentation for proper typing
-declare module "@opentui/react" {
+declare module "@lexwdex-org/react" {
   interface OpenTUIComponents {
     consoleButton: typeof ConsoleButtonRenderable
   }

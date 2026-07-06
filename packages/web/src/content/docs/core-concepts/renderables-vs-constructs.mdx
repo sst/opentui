@@ -13,7 +13,7 @@ OpenTUI provides two ways to build your UI: the imperative Renderable API and th
 You create `Renderable` instances with a `RenderContext` and compose them using `add()`. You mutate state and behavior directly on instances through setters and methods.
 
 ```typescript
-import { BoxRenderable, TextRenderable, InputRenderable, createCliRenderer, type RenderContext } from "@opentui/core"
+import { BoxRenderable, TextRenderable, InputRenderable, createCliRenderer, type RenderContext } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -74,7 +74,7 @@ renderer.root.add(loginForm)
 Builds a lightweight VNode graph using functional constructs. Instances don't exist until you add the node to the tree. VNodes queue method calls and replay them when instantiated.
 
 ```typescript
-import { Text, Input, Box, createCliRenderer, delegate } from "@opentui/core"
+import { Text, Input, Box, createCliRenderer, delegate } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -168,7 +168,7 @@ button.focus() // Focuses the inner Box
 You can mix both approaches in the same application:
 
 ```typescript
-import { BoxRenderable, Text, Input } from "@opentui/core"
+import { BoxRenderable, Text, Input } from "@lexwdex-org/core"
 
 // Create a renderable container
 const container = new BoxRenderable(renderer, {

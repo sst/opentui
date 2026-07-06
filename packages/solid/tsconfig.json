@@ -6,7 +6,7 @@
     "module": "NodeNext",
     "moduleDetection": "force",
     "jsx": "preserve",
-    "jsxImportSource": "@opentui/solid",
+    "jsxImportSource": "@lexwdex-org/solid",
     "allowJs": true,
 
     // NodeNext module resolution

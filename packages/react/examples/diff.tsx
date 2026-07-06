@@ -1,5 +1,5 @@
-import { createCliRenderer, parseColor, SyntaxStyle } from "@opentui/core"
-import { createRoot, useKeyboard } from "@opentui/react"
+import { createCliRenderer, parseColor, SyntaxStyle } from "@lexwdex-org/core"
+import { createRoot, useKeyboard } from "@lexwdex-org/react"
 import { useState, useMemo } from "react"
 
 interface DiffTheme {

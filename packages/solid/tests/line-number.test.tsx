@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index.js"
-import { SyntaxStyle } from "@opentui/core"
-import { MockTreeSitterClient } from "@opentui/core/testing"
+import { SyntaxStyle } from "@lexwdex-org/core"
+import { MockTreeSitterClient } from "@lexwdex-org/core/testing"
 import { createSignal, Show } from "solid-js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>

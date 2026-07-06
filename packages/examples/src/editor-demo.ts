@@ -10,7 +10,7 @@ import {
   bold,
   cyan,
   fg,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const initialContent = `Welcome to the TextareaRenderable Demo!

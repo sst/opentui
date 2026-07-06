@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { stringifyKeySequence } from "@opentui/keymap"
-import { registerDefaultKeys, registerEnabledFields } from "@opentui/keymap/addons"
-import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { createTestRenderer, type MockInput, type TestRenderer } from "@lexwdex-org/core/testing"
+import { stringifyKeySequence } from "@lexwdex-org/keymap"
+import { registerDefaultKeys, registerEnabledFields } from "@lexwdex-org/keymap/addons"
+import { createOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 import { createDiagnosticHarness } from "../../../tests/diagnostic-harness.js"
 
 let renderer: TestRenderer

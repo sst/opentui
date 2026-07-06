@@ -1,4 +1,4 @@
-import { SyntaxStyle, RGBA } from "@opentui/core"
+import { SyntaxStyle, RGBA } from "@lexwdex-org/core"
 
 export function CodeDemo() {
   const syntaxStyle = SyntaxStyle.fromStyles({

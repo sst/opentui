@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index.js"
-import { SyntaxStyle, RGBA } from "@opentui/core"
+import { SyntaxStyle, RGBA } from "@lexwdex-org/core"
 import { createSignal, Show } from "solid-js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>

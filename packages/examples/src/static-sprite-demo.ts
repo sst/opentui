@@ -8,11 +8,11 @@ import {
   FrameBufferRenderable,
   BoxRenderable,
   type KeyEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as THREE from "three"
-import { ThreeCliRenderer } from "@opentui/three"
-import { SpriteUtils } from "@opentui/three"
+import { ThreeCliRenderer } from "@lexwdex-org/three"
+import { SpriteUtils } from "@lexwdex-org/three"
 
 // @ts-ignore - Bun specific import attribute for assets
 import staticImagePath from "./assets/main_char_idle.png" with { type: "image/png" }

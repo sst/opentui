@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { TextareaRenderable } from "@opentui/core"
-import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
+import { TextareaRenderable } from "@lexwdex-org/core"
+import { createTestRenderer, type TestRenderer } from "@lexwdex-org/core/testing"
 import {
   registerAliasesField,
   registerBackspacePopsPendingSequence,
@@ -15,10 +15,10 @@ import {
   registerMetadataFields,
   registerTimedLeader,
   registerUnresolvedCommandWarnings,
-} from "@opentui/keymap/addons"
-import { registerBaseLayoutFallback, registerManagedTextareaLayer } from "@opentui/keymap/addons/opentui"
-import { Keymap } from "@opentui/keymap"
-import { createDefaultOpenTuiKeymap, createOpenTuiKeymapHost } from "@opentui/keymap/opentui"
+} from "@lexwdex-org/keymap/addons"
+import { registerBaseLayoutFallback, registerManagedTextareaLayer } from "@lexwdex-org/keymap/addons/opentui"
+import { Keymap } from "@lexwdex-org/keymap"
+import { createDefaultOpenTuiKeymap, createOpenTuiKeymapHost } from "@lexwdex-org/keymap/opentui"
 import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"
 
 const diagnostics = createDiagnosticHarness()

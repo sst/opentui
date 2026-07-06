@@ -10,8 +10,8 @@ import {
   bold,
   underline,
   italic,
-} from "@opentui/core"
-import { ScrollBoxRenderable } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { ScrollBoxRenderable } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let scrollBox: ScrollBoxRenderable | null = null

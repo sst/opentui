@@ -15,7 +15,7 @@ OpenTUI Keymap is a host-agnostic binding engine for terminals and the browser. 
 ## Installation
 
 ```bash
-bun add @opentui/keymap
+bun add @lexwdex-org/keymap
 ```
 
 The keymap package contains only JavaScript. You can import it in Node.js without installing Bun or enabling native FFI.
@@ -131,7 +131,7 @@ Bindings that reference an unknown token fail closed. For example, `"<leader>s"`
 Sequence patterns are runtime captures used inside binding strings. Registration names are also semantic and delimiter-free; the default parser maps `{count}` syntax to the registered pattern named `"count"`.
 
 ```ts
-import type { Command, KeymapEvent } from "@opentui/keymap"
+import type { Command, KeymapEvent } from "@lexwdex-org/keymap"
 
 interface CountPayload {
   count?: number
@@ -296,18 +296,18 @@ A pending sequence is the prefix the user has already typed, such as `g` while w
 
 | Package                          | Description                                                                |
 | -------------------------------- | -------------------------------------------------------------------------- |
-| `@opentui/keymap`                | Main engine entry: `Keymap`, key stringifiers and shared types             |
-| `@opentui/keymap/addons`         | Universal addons for parser stages, metadata, diagnostics and sequences    |
-| `@opentui/keymap/addons/opentui` | Universal addons plus OpenTUI-specific base-layout and edit-buffer helpers |
-| `@opentui/keymap/extras`         | Pure config and formatting helpers                                         |
-| `@opentui/keymap/extras/graph`   | Graph snapshot helpers for debug and graph UIs                             |
-| `@opentui/keymap/testing`        | Host-agnostic fake host and diagnostics for addon tests                    |
-| `@opentui/keymap/opentui`        | OpenTUI host adapter for terminal apps built on `@opentui/core`            |
-| `@opentui/keymap/html`           | DOM host adapter for browser UIs rooted in an `HTMLElement`                |
-| `@opentui/keymap/react`          | React provider and hooks for an OpenTUI keymap                             |
-| `@opentui/keymap/solid`          | Solid provider and hooks for an OpenTUI keymap                             |
+| `@lexwdex-org/keymap`                | Main engine entry: `Keymap`, key stringifiers and shared types             |
+| `@lexwdex-org/keymap/addons`         | Universal addons for parser stages, metadata, diagnostics and sequences    |
+| `@lexwdex-org/keymap/addons/opentui` | Universal addons plus OpenTUI-specific base-layout and edit-buffer helpers |
+| `@lexwdex-org/keymap/extras`         | Pure config and formatting helpers                                         |
+| `@lexwdex-org/keymap/extras/graph`   | Graph snapshot helpers for debug and graph UIs                             |
+| `@lexwdex-org/keymap/testing`        | Host-agnostic fake host and diagnostics for addon tests                    |
+| `@lexwdex-org/keymap/opentui`        | OpenTUI host adapter for terminal apps built on `@lexwdex-org/core`            |
+| `@lexwdex-org/keymap/html`           | DOM host adapter for browser UIs rooted in an `HTMLElement`                |
+| `@lexwdex-org/keymap/react`          | React provider and hooks for an OpenTUI keymap                             |
+| `@lexwdex-org/keymap/solid`          | Solid provider and hooks for an OpenTUI keymap                             |
 
-Adapter entry points intentionally export adapter-specific helpers. Import the shared `Keymap`, stringifiers and core types from `@opentui/keymap`.
+Adapter entry points intentionally export adapter-specific helpers. Import the shared `Keymap`, stringifiers and core types from `@lexwdex-org/keymap`.
 
 ## Bare vs default helpers
 

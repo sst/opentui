@@ -1,8 +1,8 @@
-import type { RenderableOptions } from "@opentui/core"
-import { RGBA } from "@opentui/core"
-import { FrameBufferRenderable, type FrameBufferOptions } from "@opentui/core"
-import type { RenderContext } from "@opentui/core"
-import { TextAttributes } from "@opentui/core"
+import type { RenderableOptions } from "@lexwdex-org/core"
+import { RGBA } from "@lexwdex-org/core"
+import { FrameBufferRenderable, type FrameBufferOptions } from "@lexwdex-org/core"
+import type { RenderContext } from "@lexwdex-org/core"
+import { TextAttributes } from "@lexwdex-org/core"
 
 export interface PaletteGridOptions extends Omit<RenderableOptions<PaletteGridRenderable>, "width" | "height"> {
   colors: string[]

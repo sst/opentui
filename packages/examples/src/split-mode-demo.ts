@@ -10,7 +10,7 @@ import {
   type ScrollbackSnapshot,
   type ScrollbackWriter,
   type ThemeMode,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const DEFAULT_FOOTER_HEIGHT = 11

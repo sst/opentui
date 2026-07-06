@@ -1,4 +1,4 @@
-import { render, useKeyboard } from "@opentui/solid"
+import { render, useKeyboard } from "@lexwdex-org/solid"
 import { createSignal, onCleanup } from "solid-js"
 import { createServer } from "../src/index.js"
 
@@ -20,7 +20,7 @@ const App = (props: { name: string; onQuit: () => void }) => {
       border
       borderStyle="rounded"
       borderColor="#06b6d4"
-      title=" @opentui/ssh · solid "
+      title=" @lexwdex-org/ssh · solid "
       titleAlignment="center"
       flexDirection="column"
       alignItems="center"

@@ -3922,7 +3922,7 @@ Welcome to the **MarkdownRenderable** showcase! This demonstrates automatic tabl
 Here's how to use it:
 
 \`\`\`typescript
-import { MarkdownRenderable } from "@opentui/core"
+import { MarkdownRenderable } from "@lexwdex-org/core"
 
 const md = createMarkdownRenderable({
   content: "# Hello World",

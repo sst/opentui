@@ -1,10 +1,10 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index.js"
 import { createSignal } from "solid-js"
-import { decodePasteBytes } from "@opentui/core"
-import { createSpy } from "@opentui/core/testing"
+import { decodePasteBytes } from "@lexwdex-org/core"
+import { createSpy } from "@lexwdex-org/core/testing"
 import { onBlur, onFocus, usePaste, useKeyboard } from "../src/elements/hooks.js"
-import type { PasteEvent } from "@opentui/core"
+import type { PasteEvent } from "@lexwdex-org/core"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 

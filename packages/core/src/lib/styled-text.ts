@@ -3,7 +3,7 @@ import type { TextBuffer, TextChunk } from "../text-buffer.js"
 import { createTextAttributes } from "../utils.js"
 import { parseColor, type ColorInput } from "./RGBA.js"
 
-const BrandedStyledText: unique symbol = Symbol.for("@opentui/core/StyledText")
+const BrandedStyledText: unique symbol = Symbol.for("@lexwdex-org/core/StyledText")
 
 export type Color = ColorInput
 

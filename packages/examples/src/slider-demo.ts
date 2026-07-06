@@ -1,5 +1,5 @@
-import { type CliRenderer, createCliRenderer, t, fg, bold, BoxRenderable, TextRenderable } from "@opentui/core"
-import { SliderRenderable } from "@opentui/core"
+import { type CliRenderer, createCliRenderer, t, fg, bold, BoxRenderable, TextRenderable } from "@lexwdex-org/core"
+import { SliderRenderable } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let horizontalSlider1: SliderRenderable | null = null

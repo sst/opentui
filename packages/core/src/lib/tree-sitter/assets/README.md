@@ -39,7 +39,7 @@ bun update.ts --help
 **Programmatic Usage:**
 
 ```typescript
-import { updateAssets } from "@opentui/core/tree-sitter/update-assets"
+import { updateAssets } from "@lexwdex-org/core/tree-sitter/update-assets"
 
 await updateAssets({
   configPath: "./my-parsers-config.json",
@@ -88,7 +88,7 @@ Add the update script to your `package.json`:
 ```json
 {
   "scripts": {
-    "prebuild": "bun node_modules/@opentui/core/lib/tree-sitter/update-assets.js --config ./parsers-config.json --assets ./src/parsers --output ./src/parsers.ts",
+    "prebuild": "bun node_modules/@lexwdex-org/core/lib/tree-sitter/update-assets.js --config ./parsers-config.json --assets ./src/parsers --output ./src/parsers.ts",
     "build": "bun build ./src/index.ts"
   }
 }
@@ -97,7 +97,7 @@ Add the update script to your `package.json`:
 #### 3. Use the generated parsers
 
 ```typescript
-import { getTreeSitterClient } from "@opentui/core"
+import { getTreeSitterClient } from "@lexwdex-org/core"
 import { getParsers } from "./parsers"
 
 const client = getTreeSitterClient()

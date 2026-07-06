@@ -17,7 +17,7 @@ import {
   t,
   TextareaRenderable,
   TextRenderable,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const P = {

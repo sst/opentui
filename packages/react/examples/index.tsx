@@ -1,5 +1,5 @@
-import { createCliRenderer } from "@opentui/core"
-import { createRoot, TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot, TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@lexwdex-org/react"
 import { createElement, useEffect, useState, type ComponentType } from "react"
 import { App as AnimationDemo } from "./animation.js"
 import { App as AsciiDemo } from "./ascii.js"

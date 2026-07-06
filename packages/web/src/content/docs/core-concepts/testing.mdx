@@ -8,11 +8,11 @@ skill:
 
 # Testing
 
-`@opentui/core/testing` provides a renderer that does not write to the real terminal by default. It constructs `CliRenderer` directly with `screenMode: "main-screen"`, `consoleMode: "disabled"`, `externalOutputMode: "passthrough"`, and native memory output.
+`@lexwdex-org/core/testing` provides a renderer that does not write to the real terminal by default. It constructs `CliRenderer` directly with `screenMode: "main-screen"`, `consoleMode: "disabled"`, `externalOutputMode: "passthrough"`, and native memory output.
 
 ```typescript
-import { createTestRenderer } from "@opentui/core/testing"
-import { Text } from "@opentui/core"
+import { createTestRenderer } from "@lexwdex-org/core/testing"
+import { Text } from "@lexwdex-org/core"
 
 const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({ width: 40, height: 10 })
 

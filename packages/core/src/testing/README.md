@@ -5,7 +5,7 @@ Test utilities for opentui terminal UI testing.
 ## Test Renderer
 
 ```ts
-import { createTestRenderer } from "@opentui/core/testing"
+import { createTestRenderer } from "@lexwdex-org/core/testing"
 
 const { renderer, mockInput, mockMouse, renderOnce, captureCharFrame, resize } = await createTestRenderer({
   width: 80,
@@ -23,7 +23,7 @@ resize(100, 30)
 ## Terminal Capabilities
 
 ```ts
-import { createTerminalCapabilities, setRendererCapabilities } from "@opentui/core/testing"
+import { createTerminalCapabilities, setRendererCapabilities } from "@lexwdex-org/core/testing"
 
 const capabilities = createTerminalCapabilities({ kitty_keyboard: true })
 setRendererCapabilities(renderer, { notifications: true })
@@ -32,7 +32,7 @@ setRendererCapabilities(renderer, { notifications: true })
 ## Mock Keyboard Input
 
 ```ts
-import { createMockKeys, KeyCodes } from "@opentui/core/testing"
+import { createMockKeys, KeyCodes } from "@lexwdex-org/core/testing"
 
 const mockInput = createMockKeys(renderer)
 
@@ -81,7 +81,7 @@ All `pressKey()`, `pressEnter()`, `pressEscape()`, `pressTab()`, `pressBackspace
 ## Mock Mouse Input
 
 ```ts
-import { createMockMouse, MouseButtons } from "@opentui/core/testing"
+import { createMockMouse, MouseButtons } from "@lexwdex-org/core/testing"
 
 const mockMouse = createMockMouse(renderer)
 
@@ -130,7 +130,7 @@ const buttons = mockMouse.getPressedButtons() // MouseButton[]
 Simple function spy for testing callbacks.
 
 ```ts
-import { createSpy } from "@opentui/core/testing"
+import { createSpy } from "@lexwdex-org/core/testing"
 
 const spy = createSpy()
 
@@ -149,7 +149,7 @@ spy.reset()
 Record frames during rendering for testing or analysis.
 
 ```ts
-import { TestRecorder } from "@opentui/core/testing"
+import { TestRecorder } from "@lexwdex-org/core/testing"
 
 const { renderer, renderOnce } = await createTestRenderer({ width: 80, height: 24 })
 const recorder = new TestRecorder(renderer)
@@ -202,7 +202,7 @@ Each frame contains:
 
 ```ts
 import { test, expect } from "bun:test"
-import { createTestRenderer } from "@opentui/core/testing"
+import { createTestRenderer } from "@lexwdex-org/core/testing"
 
 test("button click", async () => {
   const { renderer, mockMouse, renderOnce, captureCharFrame } = await createTestRenderer({ width: 80, height: 24 })

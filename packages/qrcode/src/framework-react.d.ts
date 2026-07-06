@@ -1,6 +1,6 @@
-// Declaration-build shim: tsconfig.build maps @opentui/react here so qrcode
+// Declaration-build shim: tsconfig.build maps @lexwdex-org/react here so qrcode
 // can emit d.ts for its React entrypoint without importing framework sources.
-import type { BaseRenderable, RenderContext } from "@opentui/core"
+import type { BaseRenderable, RenderContext } from "@lexwdex-org/core"
 
 export type RenderableConstructor<TRenderable extends BaseRenderable = BaseRenderable> = new (
   ctx: RenderContext,

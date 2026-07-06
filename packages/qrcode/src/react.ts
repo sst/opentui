@@ -1,7 +1,7 @@
-import { extend } from "@opentui/react"
+import { extend } from "@lexwdex-org/react"
 import { QRCodeRenderable } from "./renderables/QRCode.js"
 
-declare module "@opentui/react" {
+declare module "@lexwdex-org/react" {
   interface OpenTUIComponents {
     "qr-code": typeof QRCodeRenderable
   }

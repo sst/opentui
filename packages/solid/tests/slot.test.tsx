@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { Yoga, type BaseRenderable } from "@opentui/core"
-import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
+import { Yoga, type BaseRenderable } from "@lexwdex-org/core"
+import { createTestRenderer, type TestRendererOptions } from "@lexwdex-org/core/testing"
 import { createContext, createComponent, createSignal, onCleanup, onMount, useContext, type JSX } from "solid-js"
 import { createSlot, createSolidSlotRegistry, Slot, type SolidPlugin } from "../src/plugins/slot.js"
 import { _render as renderInternal } from "../src/reconciler.js"

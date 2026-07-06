@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { KeyEvent } from "@opentui/core"
-import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
+import { KeyEvent } from "@lexwdex-org/core"
+import { createTestRenderer, type MockInput, type TestRenderer } from "@lexwdex-org/core/testing"
 import { stringifyKeySequence, type DispatchEvent } from "../index.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 import { createKeymapTestHelpers, type OpenTuiKeymap } from "./keymap.test-support.js"

@@ -8,7 +8,7 @@ import {
   type ResolvedSlotRenderer,
   type SlotMode,
   type SlotRegistryOptions,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { children, createMemo, createSignal, ErrorBoundary, For, onCleanup, splitProps, type JSX } from "solid-js"
 
 export type { SlotMode }
@@ -59,7 +59,7 @@ export function createSolidSlotRegistry<TSlots extends SlotMap, TContext extends
   options: SlotRegistryOptions = {},
 ): SlotRegistry<JSX.Element, TSlots, TContext> {
   // Solid slots intentionally use one registry key per renderer instance.
-  // Use createSlotRegistry from @opentui/core with a custom key for independent registries.
+  // Use createSlotRegistry from @lexwdex-org/core with a custom key for independent registries.
   return createSlotRegistry<JSX.Element, TSlots, TContext>(renderer, "solid:slot-registry", context, options)
 }
 

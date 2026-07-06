@@ -21,7 +21,7 @@ function assertCompatibleInstall(install: RuntimePluginSupportInstall, options: 
   for (const specifier of Object.keys(options.additional ?? {})) {
     if (!install.additionalSpecifiers.has(specifier)) {
       throw new Error(
-        `OpenTUI Core runtime plugin support is already installed without ${specifier}. Call ensureRuntimePluginSupport({ additional }) from @opentui/core/runtime-plugin-support/configure before importing @opentui/core/runtime-plugin-support.`,
+        `OpenTUI Core runtime plugin support is already installed without ${specifier}. Call ensureRuntimePluginSupport({ additional }) from @lexwdex-org/core/runtime-plugin-support/configure before importing @lexwdex-org/core/runtime-plugin-support.`,
       )
     }
   }

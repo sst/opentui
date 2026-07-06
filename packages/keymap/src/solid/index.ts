@@ -1,4 +1,4 @@
-import type { KeyEvent, Renderable } from "@opentui/core"
+import type { KeyEvent, Renderable } from "@lexwdex-org/core"
 import { type Keymap, type Layer, type ReactiveMatcher, type TargetMode } from "../index.js"
 import {
   createComponent,

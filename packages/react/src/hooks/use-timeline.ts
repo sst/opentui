@@ -1,4 +1,4 @@
-import { engine, Timeline, type TimelineOptions } from "@opentui/core"
+import { engine, Timeline, type TimelineOptions } from "@lexwdex-org/core"
 import { useEffect } from "react"
 
 export const useTimeline = (options: TimelineOptions = {}) => {

@@ -12,7 +12,7 @@ import {
   yellow,
   cyan,
   magenta,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let mainContainer: BoxRenderable | null = null

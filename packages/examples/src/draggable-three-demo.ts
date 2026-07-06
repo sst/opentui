@@ -8,7 +8,7 @@ import {
   TextRenderable,
   type KeyEvent,
   type MouseEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import {
   Scene as ThreeScene,
@@ -21,7 +21,7 @@ import {
   MeshPhongMaterial,
   Vector3,
 } from "three"
-import { ThreeRenderable } from "@opentui/three"
+import { ThreeRenderable } from "@lexwdex-org/three"
 
 let nextZIndex = 200
 let keyListener: ((key: KeyEvent) => void) | null = null

@@ -71,8 +71,8 @@ async function buildEntryPoint(source: string, output: string): Promise<void> {
     sourcemap: "external",
     external: [
       "bun:test",
-      "@opentui/core",
-      "@opentui/core/testing",
+      "@lexwdex-org/core",
+      "@lexwdex-org/core/testing",
       "solid-js/dist/solid.js",
       "solid-js/store/dist/store.js",
     ],
@@ -107,7 +107,7 @@ async function buildEntryPoint(source: string, output: string): Promise<void> {
 }
 
 function ensureCoreBuildArtifacts(): void {
-  const nativePackageName = `@opentui/core-${process.platform}-${process.arch}`
+  const nativePackageName = `@lexwdex-org/core-${process.platform}-${process.arch}`
   const nativePackageDir = join(corePackageRoot, "node_modules", nativePackageName)
   const hasCoreDist = existsSync(join(coreDistRoot, "index.js")) && existsSync(join(coreDistRoot, "testing.js"))
 
@@ -122,7 +122,7 @@ function ensureCoreBuildArtifacts(): void {
 }
 
 function writeCoreDistProxyPackage(): void {
-  const proxyDir = join(outDir, "node_modules", "@opentui", "core")
+  const proxyDir = join(outDir, "node_modules", "@lexwdex-org", "core")
   mkdirSync(proxyDir, { recursive: true })
 
   const relativeCoreDistIndex = relative(proxyDir, join(coreDistRoot, "index.js")).replaceAll("\\", "/")
@@ -135,7 +135,7 @@ function writeCoreDistProxyPackage(): void {
     join(proxyDir, "package.json"),
     JSON.stringify(
       {
-        name: "@opentui/core",
+        name: "@lexwdex-org/core",
         private: true,
         type: "module",
         exports: {

@@ -8,7 +8,7 @@ import { createRuntimePlugin } from "../runtime-plugin.js"
 const tempRoot = mkdtempSync(join(tmpdir(), "core-runtime-plugin-windows-file-url-fixture-"))
 const entryPath = join(tempRoot, "entry.ts")
 
-writeFileSync(entryPath, ['import { marker } from "@opentui/core"', "export const externalMarker = marker"].join("\n"))
+writeFileSync(entryPath, ['import { marker } from "@lexwdex-org/core"', "export const externalMarker = marker"].join("\n"))
 
 registerPlugin.clearAll()
 

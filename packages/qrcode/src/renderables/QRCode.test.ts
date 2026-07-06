@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { BoxRenderable, OptimizedBuffer } from "@opentui/core"
-import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
+import { BoxRenderable, OptimizedBuffer } from "@lexwdex-org/core"
+import { createTestRenderer, type TestRenderer } from "@lexwdex-org/core/testing"
 import { ErrorCorrectionLevel, QRCode, QrSegment } from "../lib/qrcode.js"
 import { QRCodeRenderable } from "./QRCode.js"
 

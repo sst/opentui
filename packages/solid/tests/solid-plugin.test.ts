@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { runtimeModuleIdForSpecifier } from "@opentui/core/runtime-plugin"
+import { runtimeModuleIdForSpecifier } from "@lexwdex-org/core/runtime-plugin"
 import { createSolidTransformPlugin } from "../scripts/solid-plugin.js"
 
 type ResolveCallback = (args: { path: string; importer: string }) => unknown | Promise<unknown>
@@ -82,7 +82,7 @@ describe("solid transform plugin", () => {
     expect(modules.size).toBe(0)
   })
 
-  it("uses @opentui/solid as the default JSX runtime module", async () => {
+  it("uses @lexwdex-org/solid as the default JSX runtime module", async () => {
     const tempFile = createTempTsxFile(
       ['import { value } from "fixture-sync"', "const node = <text>{value}</text>", "export { node }"].join("\n"),
     )
@@ -100,7 +100,7 @@ describe("solid transform plugin", () => {
       }
 
       expect(transformed.loader).toBe("js")
-      expect(transformed.contents).toContain("@opentui/solid")
+      expect(transformed.contents).toContain("@lexwdex-org/solid")
       expect(transformed.contents).toContain("fixture-sync")
       expect(transformed.contents).not.toContain("react/jsx-runtime")
     } finally {
@@ -109,13 +109,13 @@ describe("solid transform plugin", () => {
   })
 
   it("applies custom module resolver rewrites when configured", async () => {
-    const runtimeSolidModule = runtimeModuleIdForSpecifier("@opentui/solid")
-    const runtimeCoreModule = runtimeModuleIdForSpecifier("@opentui/core")
+    const runtimeSolidModule = runtimeModuleIdForSpecifier("@lexwdex-org/solid")
+    const runtimeCoreModule = runtimeModuleIdForSpecifier("@lexwdex-org/core")
     const runtimeFixtureModule = runtimeModuleIdForSpecifier("fixture-sync")
 
     const tempFile = createTempTsxFile(
       [
-        'import { engine } from "@opentui/core"',
+        'import { engine } from "@lexwdex-org/core"',
         'import { value } from "fixture-sync"',
         "const node = <text>{engine ? value : value}</text>",
         "export { node }",
@@ -128,7 +128,7 @@ describe("solid transform plugin", () => {
       createSolidTransformPlugin({
         moduleName: runtimeSolidModule,
         resolvePath(specifier) {
-          if (specifier === "@opentui/core") {
+          if (specifier === "@lexwdex-org/core") {
             return runtimeCoreModule
           }
 
@@ -151,7 +151,7 @@ describe("solid transform plugin", () => {
       expect(transformed.contents).toContain(runtimeSolidModule)
       expect(transformed.contents).toContain(runtimeCoreModule)
       expect(transformed.contents).toContain(runtimeFixtureModule)
-      expect(transformed.contents).not.toContain('from "@opentui/core"')
+      expect(transformed.contents).not.toContain('from "@lexwdex-org/core"')
       expect(transformed.contents).not.toContain('from "fixture-sync"')
     } finally {
       tempFile.dispose()
@@ -174,7 +174,7 @@ describe("solid transform plugin", () => {
       }
 
       expect(transformed.loader).toBe("js")
-      expect(transformed.contents).toContain("@opentui/solid")
+      expect(transformed.contents).toContain("@lexwdex-org/solid")
     } finally {
       tempFile.dispose()
     }
@@ -217,7 +217,7 @@ describe("solid transform plugin", () => {
       expect(transformed).toBeDefined()
       if (!transformed) throw new Error("Expected transformed output")
       expect(transformed.loader).toBe("js")
-      expect(transformed.contents).toContain("@opentui/solid")
+      expect(transformed.contents).toContain("@lexwdex-org/solid")
     } finally {
       process.chdir(prev)
       rmSync(hostile, { recursive: true, force: true })

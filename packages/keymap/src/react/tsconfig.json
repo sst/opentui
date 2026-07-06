@@ -5,7 +5,7 @@
     "module": "NodeNext",
     "moduleDetection": "force",
     "jsx": "react-jsx",
-    "jsxImportSource": "@opentui/react",
+    "jsxImportSource": "@lexwdex-org/react",
     "allowJs": true,
     "moduleResolution": "NodeNext",
     "verbatimModuleSyntax": true,

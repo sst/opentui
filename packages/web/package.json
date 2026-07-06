@@ -1,5 +1,5 @@
 {
-  "name": "@opentui/web",
+  "name": "@lexwdex-org/web",
   "version": "0.4.3",
   "private": true,
   "type": "module",
@@ -17,8 +17,8 @@
   },
   "dependencies": {
     "@astrojs/mdx": "^6.0.3",
-    "@opentui/core": "workspace:*",
-    "@opentui/keymap": "workspace:*",
+    "@lexwdex-org/core": "workspace:*",
+    "@lexwdex-org/keymap": "workspace:*",
     "astro": "^6.4.6"
   },
   "devDependencies": {

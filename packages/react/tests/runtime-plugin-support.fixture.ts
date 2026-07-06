@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { plugin as registerPlugin } from "bun"
-import * as coreRuntime from "@opentui/core"
+import * as coreRuntime from "@lexwdex-org/core"
 import * as reactRuntime from "react"
 import * as reactJsxRuntime from "react/jsx-runtime"
 import * as reactJsxDevRuntime from "react/jsx-dev-runtime"
@@ -25,11 +25,11 @@ const tempRoot = mkdtempSync(join(tmpdir(), "react-runtime-plugin-support-fixtur
 const entryPath = join(tempRoot, "entry.ts")
 
 const source = [
-  'import * as core from "@opentui/core"',
-  'import * as coreTesting from "@opentui/core/testing"',
-  'import * as opentuiReact from "@opentui/react"',
-  'import * as opentuiReactJsx from "@opentui/react/jsx-runtime"',
-  'import * as opentuiReactJsxDev from "@opentui/react/jsx-dev-runtime"',
+  'import * as core from "@lexwdex-org/core"',
+  'import * as coreTesting from "@lexwdex-org/core/testing"',
+  'import * as opentuiReact from "@lexwdex-org/react"',
+  'import * as opentuiReactJsx from "@lexwdex-org/react/jsx-runtime"',
+  'import * as opentuiReactJsxDev from "@lexwdex-org/react/jsx-dev-runtime"',
   'import * as react from "react"',
   'import * as reactJsx from "react/jsx-runtime"',
   'import * as reactJsxDev from "react/jsx-dev-runtime"',
@@ -54,7 +54,7 @@ writeFileSync(entryPath, source)
 const state = globalThis as FixtureState
 state.__reactRuntimeHost__ = {
   core: coreRuntime as Record<string, unknown>,
-  coreTesting: (await import("@opentui/core/testing")) as Record<string, unknown>,
+  coreTesting: (await import("@lexwdex-org/core/testing")) as Record<string, unknown>,
   opentuiReact: opentuiReactRuntime as Record<string, unknown>,
   opentuiReactJsx: (await import("../jsx-runtime.js")) as Record<string, unknown>,
   opentuiReactJsxDev: (await import("../jsx-dev-runtime.js")) as Record<string, unknown>,

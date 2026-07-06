@@ -13,7 +13,7 @@ OpenTUI integrates Tree-sitter for fast, accurate syntax highlighting. You can r
 Use `addDefaultParsers()` before creating clients:
 
 ```typescript
-import { addDefaultParsers, getTreeSitterClient } from "@opentui/core"
+import { addDefaultParsers, getTreeSitterClient } from "@lexwdex-org/core"
 
 addDefaultParsers([
   {
@@ -32,7 +32,7 @@ await client.initialize()
 ## Add parsers per client
 
 ```typescript
-import { TreeSitterClient } from "@opentui/core"
+import { TreeSitterClient } from "@lexwdex-org/core"
 
 const client = new TreeSitterClient({ dataPath: "./cache" })
 await client.initialize()
@@ -126,7 +126,7 @@ Use the `updateAssets` utility to download parsers and generate imports.
 ```json
 {
   "scripts": {
-    "prebuild": "bun node_modules/@opentui/core/lib/tree-sitter/update-assets.js --config ./parsers-config.json --assets ./src/parsers --output ./src/parsers.ts"
+    "prebuild": "bun node_modules/@lexwdex-org/core/lib/tree-sitter/update-assets.js --config ./parsers-config.json --assets ./src/parsers --output ./src/parsers.ts"
   }
 }
 ```
@@ -134,7 +134,7 @@ Use the `updateAssets` utility to download parsers and generate imports.
 ### Programmatic usage
 
 ```typescript
-import { updateAssets } from "@opentui/core/tree-sitter/update-assets"
+import { updateAssets } from "@lexwdex-org/core/tree-sitter/update-assets"
 
 await updateAssets({
   configPath: "./parsers-config.json",
@@ -146,7 +146,7 @@ await updateAssets({
 ## Using with CodeRenderable
 
 ```typescript
-import { CodeRenderable, RGBA, SyntaxStyle, getTreeSitterClient } from "@opentui/core"
+import { CodeRenderable, RGBA, SyntaxStyle, getTreeSitterClient } from "@lexwdex-org/core"
 
 const client = getTreeSitterClient()
 await client.initialize()
@@ -177,7 +177,7 @@ const client = new TreeSitterClient({
 ## File type resolution
 
 ```typescript
-import { pathToFiletype, extToFiletype, infoStringToFiletype } from "@opentui/core"
+import { pathToFiletype, extToFiletype, infoStringToFiletype } from "@lexwdex-org/core"
 
 const ft1 = pathToFiletype("src/main.rs")
 const ft2 = extToFiletype("ts")
@@ -189,7 +189,7 @@ const ft3 = infoStringToFiletype("TSX title=Button.tsx")
 You can extend or override mappings at runtime:
 
 ```typescript
-import { extensionToFiletype, basenameToFiletype } from "@opentui/core"
+import { extensionToFiletype, basenameToFiletype } from "@lexwdex-org/core"
 
 extensionToFiletype.set("templ", "html")
 basenameToFiletype.set("mytoolrc", "yaml")

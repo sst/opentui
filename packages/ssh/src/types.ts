@@ -1,4 +1,4 @@
-import type { CliRenderer } from "@opentui/core"
+import type { CliRenderer } from "@lexwdex-org/core"
 
 /** A client public key as surfaced by ssh2 during authentication. */
 export type PublicKey = { algorithm: string; blob: Buffer }

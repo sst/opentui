@@ -14,7 +14,7 @@ OpenTUI parses terminal input and provides structured key events. The `renderer.
 ## Basic key handling
 
 ```typescript
-import { createCliRenderer, type KeyEvent } from "@opentui/core"
+import { createCliRenderer, type KeyEvent } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 const keyHandler = renderer.keyInput
@@ -79,7 +79,7 @@ Aliases are one-step mappings from configured binding names to additional lookup
 Editable components that accept a `keyAliasMap` option (`InputRenderable`, `TextareaRenderable`, `SelectRenderable`, etc.) merge these defaults with your own map:
 
 ```typescript
-import { InputRenderable } from "@opentui/core"
+import { InputRenderable } from "@lexwdex-org/core"
 
 const input = new InputRenderable(renderer, {
   id: "field",
@@ -177,7 +177,7 @@ keyHandler.on("keypress", (key: KeyEvent) => {
 Handle pasted bytes separately from individual keypresses. Decode them explicitly when you expect text:
 
 ```typescript
-import { type PasteEvent } from "@opentui/core"
+import { type PasteEvent } from "@lexwdex-org/core"
 
 const textDecoder = new TextDecoder()
 
@@ -249,7 +249,7 @@ Kitty escape sequences still emit the same canonical key names as legacy input w
 Focus components to receive keyboard input. OpenTUI routes events to the focused component:
 
 ```typescript
-import { InputRenderable } from "@opentui/core"
+import { InputRenderable } from "@lexwdex-org/core"
 
 const input = new InputRenderable(renderer, {
   id: "my-input",
@@ -260,7 +260,7 @@ const input = new InputRenderable(renderer, {
 input.focus()
 
 // Or with constructs
-import { Input } from "@opentui/core"
+import { Input } from "@lexwdex-org/core"
 
 const inputNode = Input({ placeholder: "Type here..." })
 inputNode.focus() // Queued for when instantiated

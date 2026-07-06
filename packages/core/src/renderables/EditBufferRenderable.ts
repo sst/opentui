@@ -8,7 +8,7 @@ import type { OptimizedBuffer } from "../buffer.js"
 import type { SyntaxStyle } from "../syntax-style.js"
 import { NativeMeasureTargetKind, resolveRenderLib, type NativeRenderableHandle } from "../zig.js"
 
-const BrandedEditBufferRenderable: unique symbol = Symbol.for("@opentui/core/EditBufferRenderable")
+const BrandedEditBufferRenderable: unique symbol = Symbol.for("@lexwdex-org/core/EditBufferRenderable")
 
 export type EditorCapture = "escape" | "navigate" | "submit" | "tab"
 

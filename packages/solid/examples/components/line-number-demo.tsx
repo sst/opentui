@@ -1,5 +1,5 @@
-import { RGBA, SyntaxStyle, TextAttributes } from "@opentui/core"
-import { useKeyboard } from "@opentui/solid"
+import { RGBA, SyntaxStyle, TextAttributes } from "@lexwdex-org/core"
+import { useKeyboard } from "@lexwdex-org/solid"
 import { createSignal, onMount } from "solid-js"
 
 export default function LineNumberDemo() {

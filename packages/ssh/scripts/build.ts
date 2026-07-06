@@ -32,7 +32,7 @@ if (!packageJson.module) {
   process.exit(1)
 }
 
-console.log("Building @opentui/ssh library...")
+console.log("Building @lexwdex-org/ssh library...")
 
 const distDir = join(rootDir, "dist")
 rmSync(distDir, { recursive: true, force: true })
@@ -80,8 +80,8 @@ if (tscResult.status !== 0) {
 }
 
 const processedPeerDependencies = { ...packageJson.peerDependencies }
-if (processedPeerDependencies["@opentui/core"] === "workspace:*") {
-  processedPeerDependencies["@opentui/core"] = packageJson.version
+if (processedPeerDependencies["@lexwdex-org/core"] === "workspace:*") {
+  processedPeerDependencies["@lexwdex-org/core"] = packageJson.version
 }
 
 writeFileSync(

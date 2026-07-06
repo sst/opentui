@@ -16,7 +16,7 @@ If you want the shipped addon inventory instead, see [Built-in Addons](/docs/key
 ## Addon shape
 
 ```ts
-import type { Keymap, KeymapEvent } from "@opentui/keymap"
+import type { Keymap, KeymapEvent } from "@lexwdex-org/keymap"
 
 export function registerModeField<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
@@ -429,7 +429,7 @@ Options:
 | `getActiveKeys()` / `getGraphSnapshot(keymap)`                             | Build hint, graph or debug UIs                                  |
 | `getCommands()` / `getCommandEntries()` / `getCommandBindings()`           | Inspect command metadata and binding projections                |
 
-`getGraphSnapshot()` is imported from `@opentui/keymap/extras/graph`; the other helpers are `Keymap` methods.
+`getGraphSnapshot()` is imported from `@lexwdex-org/keymap/extras/graph`; the other helpers are `Keymap` methods.
 
 ## Shared resources with `acquireResource()`
 
@@ -447,10 +447,10 @@ This is how the OpenTUI textarea helpers safely share command and suspension inf
 
 ## Testing Addons
 
-`@opentui/keymap/testing` provides a small host-agnostic test harness for addon authors. It does not depend on OpenTUI renderers or `@opentui/core/testing`.
+`@lexwdex-org/keymap/testing` provides a small host-agnostic test harness for addon authors. It does not depend on OpenTUI renderers or `@lexwdex-org/core/testing`.
 
 ```ts
-import { createTestKeymap } from "@opentui/keymap/testing"
+import { createTestKeymap } from "@lexwdex-org/keymap/testing"
 import { registerMyAddon } from "./my-addon"
 
 const { keymap, host, diagnostics, cleanup } = createTestKeymap({ defaultKeys: true })

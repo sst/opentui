@@ -16,8 +16,8 @@ import {
   fg,
   parseColor,
   Box,
-} from "@opentui/core"
-import type { BoxOptions } from "@opentui/core"
+} from "@lexwdex-org/core"
+import type { BoxOptions } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let mainGroup: BoxRenderable | null = null

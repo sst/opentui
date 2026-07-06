@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
-import { registerDefaultKeys, registerMetadataFields } from "@opentui/keymap/addons"
-import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { createTestRenderer, type TestRenderer } from "@lexwdex-org/core/testing"
+import { registerDefaultKeys, registerMetadataFields } from "@lexwdex-org/keymap/addons"
+import { createOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 import { createDiagnosticHarness } from "../../../tests/diagnostic-harness.js"
 
 let renderer: TestRenderer

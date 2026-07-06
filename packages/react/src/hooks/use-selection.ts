@@ -1,4 +1,4 @@
-import type { Selection } from "@opentui/core"
+import type { Selection } from "@lexwdex-org/core"
 import { useEffect } from "react"
 import { useEffectEvent } from "./use-event.js"
 import { useRenderer } from "./use-renderer.js"

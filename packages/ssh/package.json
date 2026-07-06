@@ -1,5 +1,5 @@
 {
-  "name": "@opentui/ssh",
+  "name": "@lexwdex-org/ssh",
   "version": "0.4.3",
   "description": "Serve OpenTUI apps over SSH",
   "license": "MIT",
@@ -29,12 +29,12 @@
     "ssh2": "^1.16.0"
   },
   "peerDependencies": {
-    "@opentui/core": "workspace:*"
+    "@lexwdex-org/core": "workspace:*"
   },
   "devDependencies": {
-    "@opentui/core": "workspace:*",
-    "@opentui/react": "workspace:*",
-    "@opentui/solid": "workspace:*",
+    "@lexwdex-org/core": "workspace:*",
+    "@lexwdex-org/react": "workspace:*",
+    "@lexwdex-org/solid": "workspace:*",
     "@types/bun": "^1.3.14",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",

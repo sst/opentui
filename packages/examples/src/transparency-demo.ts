@@ -11,8 +11,8 @@ import {
   bold,
   underline,
   fg,
-} from "@opentui/core"
-import type { CliRenderer, RenderContext, ThemeMode } from "@opentui/core"
+} from "@lexwdex-org/core"
+import type { CliRenderer, RenderContext, ThemeMode } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let nextZIndex = 101

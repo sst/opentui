@@ -13,7 +13,7 @@ A vertical list for choosing from multiple options. Focus the select to enable k
 ### Renderable API
 
 ```typescript
-import { SelectRenderable, SelectRenderableEvents, createCliRenderer } from "@opentui/core"
+import { SelectRenderable, SelectRenderableEvents, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -40,7 +40,7 @@ renderer.root.add(menu)
 ### Construct API
 
 ```typescript
-import { Select, createCliRenderer } from "@opentui/core"
+import { Select, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -76,7 +76,7 @@ When focused, the select responds to these keys:
 Fires when the user presses Enter on an option:
 
 ```typescript
-import { SelectRenderableEvents } from "@opentui/core"
+import { SelectRenderableEvents } from "@lexwdex-org/core"
 
 menu.on(SelectRenderableEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
   console.log(`Selected index ${index}: ${option.name}`)
@@ -146,7 +146,7 @@ const styledMenu = new SelectRenderable(renderer, {
 ## Example: file menu
 
 ```typescript
-import { Box, Select, createCliRenderer } from "@opentui/core"
+import { Box, Select, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 

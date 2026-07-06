@@ -11,7 +11,7 @@ import {
   type CoreSlotRegistry,
   type PluginErrorEvent,
   type KeyEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 type DemoSlot = "statusbar" | "sidebar"

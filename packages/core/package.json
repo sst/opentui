@@ -1,5 +1,5 @@
 {
-  "name": "@opentui/core",
+  "name": "@lexwdex-org/core",
   "description": "OpenTUI is a TypeScript library on a native Zig core for building terminal user interfaces (TUIs)",
   "repository": {
     "type": "git",
@@ -32,7 +32,7 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@opentui/keymap": "workspace:*",
+    "@lexwdex-org/keymap": "workspace:*",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
     "commander": "^13.1.0",
@@ -50,14 +50,14 @@
     "web-tree-sitter": "0.25.10"
   },
   "optionalDependencies": {
-    "@opentui/core-darwin-x64": "0.4.3",
-    "@opentui/core-darwin-arm64": "0.4.3",
-    "@opentui/core-linux-x64": "0.4.3",
-    "@opentui/core-linux-arm64": "0.4.3",
-    "@opentui/core-win32-x64": "0.4.3",
-    "@opentui/core-win32-arm64": "0.4.3",
-    "@opentui/core-linux-x64-musl": "0.4.3",
-    "@opentui/core-linux-arm64-musl": "0.4.3"
+    "@lexwdex-org/core-darwin-x64": "0.4.3",
+    "@lexwdex-org/core-darwin-arm64": "0.4.3",
+    "@lexwdex-org/core-linux-x64": "0.4.3",
+    "@lexwdex-org/core-linux-arm64": "0.4.3",
+    "@lexwdex-org/core-win32-x64": "0.4.3",
+    "@lexwdex-org/core-win32-arm64": "0.4.3",
+    "@lexwdex-org/core-linux-x64-musl": "0.4.3",
+    "@lexwdex-org/core-linux-arm64-musl": "0.4.3"
   },
   "exports": {
     ".": {

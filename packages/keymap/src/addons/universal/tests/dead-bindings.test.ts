@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import type { KeyEvent, Renderable } from "@opentui/core"
-import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { registerDeadBindingWarnings } from "@opentui/keymap/addons"
-import type { Keymap, WarningEvent } from "@opentui/keymap"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import type { KeyEvent, Renderable } from "@lexwdex-org/core"
+import { createTestRenderer, type MockInput, type TestRenderer } from "@lexwdex-org/core/testing"
+import { registerDeadBindingWarnings } from "@lexwdex-org/keymap/addons"
+import type { Keymap, WarningEvent } from "@lexwdex-org/keymap"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 import { createDiagnosticHarness } from "../../../tests/diagnostic-harness.js"
 
 let renderer: TestRenderer

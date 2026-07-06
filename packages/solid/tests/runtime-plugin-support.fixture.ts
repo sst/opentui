@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { plugin as registerPlugin } from "bun"
-import * as coreRuntime from "@opentui/core"
+import * as coreRuntime from "@lexwdex-org/core"
 import * as solidJsRuntime from "solid-js"
 import * as solidRuntime from "../index.js"
 import { resetSolidTransformPluginState } from "../scripts/solid-plugin.js"
@@ -20,9 +20,9 @@ const tempRoot = mkdtempSync(join(tmpdir(), "solid-runtime-plugin-support-fixtur
 const entryPath = join(tempRoot, "entry.tsx")
 
 const source = [
-  'import * as solid from "@opentui/solid"',
-  'import * as core from "@opentui/core"',
-  'import * as coreTesting from "@opentui/core/testing"',
+  'import * as solid from "@lexwdex-org/solid"',
+  'import * as core from "@lexwdex-org/core"',
+  'import * as coreTesting from "@lexwdex-org/core/testing"',
   'import { createSignal } from "solid-js"',
   "const state = globalThis as { __solidRuntimeHost__?: { solid: Record<string, unknown>; core: Record<string, unknown>; coreTesting: Record<string, unknown>; solidJs: Record<string, unknown> } }",
   "const [value] = createSignal('ok')",
@@ -45,7 +45,7 @@ const state = globalThis as FixtureState
 state.__solidRuntimeHost__ = {
   solid: solidRuntime as Record<string, unknown>,
   core: coreRuntime as Record<string, unknown>,
-  coreTesting: (await import("@opentui/core/testing")) as Record<string, unknown>,
+  coreTesting: (await import("@lexwdex-org/core/testing")) as Record<string, unknown>,
   solidJs: solidJsRuntime as Record<string, unknown>,
 }
 

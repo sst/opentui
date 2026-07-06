@@ -1,4 +1,4 @@
-const singletonCacheSymbol = Symbol.for("@opentui/core/singleton")
+const singletonCacheSymbol = Symbol.for("@lexwdex-org/core/singleton")
 
 /**
  * Ensures a value is initialized once per process,

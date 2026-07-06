@@ -98,17 +98,17 @@ test("dist package self-imports resolve from dist when dist exists", () => {
   }
 
   const exportNames = [
-    "@opentui/keymap",
-    "@opentui/keymap/extras",
-    "@opentui/keymap/extras/graph",
-    "@opentui/keymap/addons",
-    "@opentui/keymap/addons/opentui",
-    "@opentui/keymap/testing",
-    "@opentui/keymap/html",
-    "@opentui/keymap/opentui",
-    "@opentui/keymap/react",
-    "@opentui/keymap/solid",
-    "@opentui/keymap/runtime-modules",
+    "@lexwdex-org/keymap",
+    "@lexwdex-org/keymap/extras",
+    "@lexwdex-org/keymap/extras/graph",
+    "@lexwdex-org/keymap/addons",
+    "@lexwdex-org/keymap/addons/opentui",
+    "@lexwdex-org/keymap/testing",
+    "@lexwdex-org/keymap/html",
+    "@lexwdex-org/keymap/opentui",
+    "@lexwdex-org/keymap/react",
+    "@lexwdex-org/keymap/solid",
+    "@lexwdex-org/keymap/runtime-modules",
   ] as const
 
   const result = spawnSync("bun", ["-e", `for (const spec of ${JSON.stringify(exportNames)}) await import(spec)`], {

@@ -7,14 +7,14 @@ import {
   type KeyEvent,
   type Renderable,
   type TextareaRenderable,
-} from "@opentui/core"
-import { type ActiveKey, type Binding, type Command } from "@opentui/keymap"
-import * as addons from "@opentui/keymap/addons/opentui"
-import type { ExCommandPayload } from "@opentui/keymap/addons/opentui"
-import { formatKeySequence } from "@opentui/keymap/extras"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
-import { KeymapProvider, useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/react"
-import { createRoot, useRenderer } from "@opentui/react"
+} from "@lexwdex-org/core"
+import { type ActiveKey, type Binding, type Command } from "@lexwdex-org/keymap"
+import * as addons from "@lexwdex-org/keymap/addons/opentui"
+import type { ExCommandPayload } from "@lexwdex-org/keymap/addons/opentui"
+import { formatKeySequence } from "@lexwdex-org/keymap/extras"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
+import { KeymapProvider, useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@lexwdex-org/keymap/react"
+import { createRoot, useRenderer } from "@lexwdex-org/react"
 import {
   useCallback,
   useEffect,

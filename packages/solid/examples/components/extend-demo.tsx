@@ -1,5 +1,5 @@
-import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions, type RenderContext } from "@opentui/core"
-import { extend } from "@opentui/solid"
+import { BoxRenderable, OptimizedBuffer, RGBA, type BoxOptions, type RenderContext } from "@lexwdex-org/core"
+import { extend } from "@lexwdex-org/solid"
 
 // Custom renderable that extends BoxRenderable
 class ConsoleButtonRenderable extends BoxRenderable {
@@ -37,7 +37,7 @@ class ConsoleButtonRenderable extends BoxRenderable {
 }
 
 // TypeScript module augmentation for proper typing
-declare module "@opentui/solid" {
+declare module "@lexwdex-org/solid" {
   interface OpenTUIComponents {
     consoleButton: typeof ConsoleButtonRenderable
   }

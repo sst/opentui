@@ -1,9 +1,9 @@
-import { TimeToFirstDrawRenderable } from "@opentui/core"
+import { TimeToFirstDrawRenderable } from "@lexwdex-org/core"
 import { createElement } from "react"
 import { extend } from "./components/index.js"
 import type { ExtendedComponentProps } from "./types/components.js"
 
-declare module "@opentui/react" {
+declare module "@lexwdex-org/react" {
   interface OpenTUIComponents {
     "time-to-first-draw": typeof TimeToFirstDrawRenderable
   }

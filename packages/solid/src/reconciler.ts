@@ -16,7 +16,7 @@ import {
   TextNodeRenderable,
   TextRenderable,
   type TextNodeOptions,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { decodeHTML } from "entities"
 import { useContext } from "solid-js"
 import { createRenderer } from "./renderer/index.js"

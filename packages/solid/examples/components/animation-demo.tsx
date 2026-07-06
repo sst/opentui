@@ -1,4 +1,4 @@
-import { render, useTerminalDimensions, useTimeline } from "@opentui/solid"
+import { render, useTerminalDimensions, useTimeline } from "@lexwdex-org/solid"
 import { createSignal, For } from "solid-js"
 
 export const SplitModeDemo = () => {

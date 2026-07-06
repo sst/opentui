@@ -13,7 +13,7 @@ A low-level rendering surface for custom graphics and complex visual effects. Fr
 ### Renderable API
 
 ```typescript
-import { FrameBufferRenderable, RGBA, createCliRenderer } from "@opentui/core"
+import { FrameBufferRenderable, RGBA, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -33,7 +33,7 @@ renderer.root.add(canvas)
 ### Construct API
 
 ```typescript
-import { FrameBuffer, createCliRenderer } from "@opentui/core"
+import { FrameBuffer, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -132,7 +132,7 @@ Apply native 4x4 RGBA matrix transforms for post-processing effects. Use `colorM
 transforms, and `colorMatrix` when you want to target specific cells.
 
 ```typescript
-import { INVERT_MATRIX, TargetChannel } from "@opentui/core"
+import { INVERT_MATRIX, TargetChannel } from "@lexwdex-org/core"
 
 // Full-buffer transform
 canvas.frameBuffer.colorMatrixUniform(INVERT_MATRIX, 1.0, TargetChannel.Both)
@@ -157,7 +157,7 @@ See [Color matrix reference](/docs/reference/color-matrix) for matrix layout, ma
 ## Example: Simple game canvas
 
 ```typescript
-import { FrameBufferRenderable, RGBA, createCliRenderer } from "@opentui/core"
+import { FrameBufferRenderable, RGBA, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 

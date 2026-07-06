@@ -28,13 +28,13 @@ writeFileSync(join(hostRuntimeDependencyDir, "index.js"), 'export const marker =
 
 writeFileSync(
   hostRuntimePath,
-  ['import { marker } from "@opentui/core"', "export const hostRuntimeMarker = marker"].join("\n"),
+  ['import { marker } from "@lexwdex-org/core"', "export const hostRuntimeMarker = marker"].join("\n"),
 )
 
 writeFileSync(
   isolatedPackagePath,
   [
-    'import { marker as coreMarker } from "@opentui/core"',
+    'import { marker as coreMarker } from "@lexwdex-org/core"',
     'import { marker as dependencyMarker } from "node-modules-bare-dependency"',
     "export const marker = `${coreMarker}:${dependencyMarker}`",
   ].join("\n"),

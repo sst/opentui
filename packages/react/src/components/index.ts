@@ -11,7 +11,7 @@ import {
   TabSelectRenderable,
   TextareaRenderable,
   TextRenderable,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import type { RenderableConstructor } from "../types/components.js"
 import {
   BoldSpanRenderable,

@@ -10,10 +10,10 @@ import {
   t,
   type BorderStyle,
   type KeyEvent,
-} from "@opentui/core"
-import type { Selection } from "@opentui/core"
-import type { TextTableColumnFitter, TextTableColumnWidthMode, TextTableContent } from "@opentui/core"
-import type { TextChunk } from "@opentui/core"
+} from "@lexwdex-org/core"
+import type { Selection } from "@lexwdex-org/core"
+import type { TextTableColumnFitter, TextTableColumnWidthMode, TextTableContent } from "@lexwdex-org/core"
+import type { TextChunk } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let container: BoxRenderable | null = null

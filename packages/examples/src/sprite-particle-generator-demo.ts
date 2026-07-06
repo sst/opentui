@@ -9,13 +9,13 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   type KeyEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as THREE from "three"
-import { SpriteAnimator, type TiledSprite, type SpriteDefinition, type AnimationDefinition } from "@opentui/three"
-import { SpriteResourceManager, type ResourceConfig } from "@opentui/three"
-import { SpriteParticleGenerator, type ParticleEffectParameters } from "@opentui/three"
-import { ThreeCliRenderer } from "@opentui/three"
+import { SpriteAnimator, type TiledSprite, type SpriteDefinition, type AnimationDefinition } from "@lexwdex-org/three"
+import { SpriteResourceManager, type ResourceConfig } from "@lexwdex-org/three"
+import { SpriteParticleGenerator, type ParticleEffectParameters } from "@lexwdex-org/three"
+import { ThreeCliRenderer } from "@lexwdex-org/three"
 
 // @ts-ignore
 import heartPath from "./assets/heart.png" with { type: "image/png" }

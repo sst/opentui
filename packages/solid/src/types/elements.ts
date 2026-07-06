@@ -26,7 +26,7 @@ import type {
   TextNodeRenderable,
   TextOptions,
   TextRenderable,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import type { Ref } from "solid-js"
 import type { JSX } from "../../jsx-runtime.js"
 

@@ -1,4 +1,4 @@
-import { type CliRenderer, TextRenderable, createCliRenderer } from "@opentui/core"
+import { type CliRenderer, TextRenderable, createCliRenderer } from "@lexwdex-org/core"
 
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 

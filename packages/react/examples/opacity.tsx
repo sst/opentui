@@ -1,5 +1,5 @@
-import { createCliRenderer } from "@opentui/core"
-import { createRoot, useKeyboard } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot, useKeyboard } from "@lexwdex-org/react"
 import { useState, useEffect } from "react"
 
 export default function App() {

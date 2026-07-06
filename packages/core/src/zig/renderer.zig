@@ -839,7 +839,7 @@ pub const CliRenderer = struct {
         }
 
         if (!frame_started.*) {
-            beginRenderFrame(writer);
+            beginRenderFrame(writer, self.terminal.getCapabilities().hyperlinks);
             frame_started.* = true;
         }
 
@@ -937,7 +937,7 @@ pub const CliRenderer = struct {
                 inline else => |*b| {
                     b.beginFrame();
                     var w = b.writer();
-                    beginRenderFrame(&w);
+                    beginRenderFrame(&w, self.terminal.getCapabilities().hyperlinks);
                     var frame_started = true;
                     self.applyPendingSplitFooterTransition(&w, &frame_started);
 
@@ -1063,6 +1063,12 @@ pub const CliRenderer = struct {
 
         const hyperlinksEnabled = self.terminal.getCapabilities().hyperlinks;
         const render_columns = @min(row_columns, snapshot.width);
+
+        // Defensive OSC 8 close at payload start: any hyperlink left open by a
+        // prior payload or live frame must not bleed into this scrollback commit.
+        if (hyperlinksEnabled) {
+            writer.writeAll("\x1b]8;;\x1b\\") catch {};
+        }
 
         for (0..snapshot.height) |uy| {
             const y = @as(u32, @intCast(uy));
@@ -1269,7 +1275,12 @@ pub const CliRenderer = struct {
         return redraw_footer;
     }
 
-    fn beginRenderFrame(writer: anytype) void {
+    fn beginRenderFrame(writer: anytype, hyperlinks_enabled: bool) void {
+        // Defensive OSC 8 close: any hyperlink left open by a prior frame
+        // (e.g. a torn/dropped write) must not bleed into this frame's cells.
+        if (hyperlinks_enabled) {
+            writer.writeAll("\x1b]8;;\x1b\\") catch {};
+        }
         writer.writeAll(ansi.ANSI.syncSet) catch {};
         writer.writeAll(ansi.ANSI.hideCursor) catch {};
     }
@@ -1371,7 +1382,7 @@ pub const CliRenderer = struct {
                 const cell = nextCell.?;
 
                 if (!frame_started) {
-                    beginRenderFrame(writer);
+                    beginRenderFrame(writer, hyperlinksEnabled);
                     frame_started = true;
                 }
 
@@ -1463,7 +1474,7 @@ pub const CliRenderer = struct {
 
         if (hyperlinksEnabled and currentLinkId != 0) {
             if (!frame_started) {
-                beginRenderFrame(writer);
+                beginRenderFrame(writer, hyperlinksEnabled);
                 frame_started = true;
             }
             writer.writeAll("\x1b]8;;\x1b\\") catch {};
@@ -1523,7 +1534,7 @@ pub const CliRenderer = struct {
 
             if (needsCursorRestore) {
                 if (!frame_started) {
-                    beginRenderFrame(writer);
+                    beginRenderFrame(writer, hyperlinksEnabled);
                     frame_started = true;
                 }
 
@@ -1546,7 +1557,7 @@ pub const CliRenderer = struct {
             self.lastCursorVisible = true;
         } else {
             if (!frame_started and (self.lastCursorVisible == null or self.lastCursorVisible.?)) {
-                beginRenderFrame(writer);
+                beginRenderFrame(writer, hyperlinksEnabled);
                 frame_started = true;
                 writer.writeAll(ansi.ANSI.hideCursor) catch {};
             }
@@ -1562,7 +1573,7 @@ pub const CliRenderer = struct {
         const mousePointer = self.terminal.getMousePointer();
         if (mousePointer != self.lastMousePointerStyle) {
             if (!frame_started) {
-                beginRenderFrame(writer);
+                beginRenderFrame(writer, hyperlinksEnabled);
                 frame_started = true;
             }
             ansi.ANSI.setMousePointerOutput(writer, mousePointer.toName()) catch {};

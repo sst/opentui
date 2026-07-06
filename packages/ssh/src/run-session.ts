@@ -45,7 +45,7 @@ export function runSession(
     // Contained by safe() → onError.
     let nextCalled = false
     const next = (add?: object): Promise<void> => {
-      if (nextCalled) throw new Error("@opentui/ssh: next() called more than once in a single middleware")
+      if (nextCalled) throw new Error("@lexwdex-org/ssh: next() called more than once in a single middleware")
       nextCalled = true
       if (add) Object.assign(context, add)
       return dispatch(index + 1)

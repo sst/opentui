@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import React, { useEffect, useState } from "react"
-import { createTestRenderer } from "@opentui/core/testing"
+import { createTestRenderer } from "@lexwdex-org/core/testing"
 import { createRoot } from "../src/reconciler/renderer.js"
 
 /**

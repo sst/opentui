@@ -13,7 +13,7 @@ Renderables are the building blocks of your UI. You can position, style, and nes
 Create a renderable by instantiating a class with a render context (the renderer) and options:
 
 ```typescript
-import { createCliRenderer, TextRenderable, BoxRenderable } from "@opentui/core"
+import { createCliRenderer, TextRenderable, BoxRenderable } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -48,7 +48,7 @@ OpenTUI provides these built-in renderables:
 | `MarkdownRenderable`    | Markdown renderer                             |
 | `SliderRenderable`      | Numeric slider control                        |
 
-QR code support is available from the separate `@opentui/qrcode` package.
+QR code support is available from the separate `@lexwdex-org/qrcode` package.
 
 ## The Renderable Tree
 
@@ -156,7 +156,7 @@ By default, left-clicking a renderable will auto-focus the closest focusable anc
 Listen for focus changes:
 
 ```typescript
-import { RenderableEvents } from "@opentui/core"
+import { RenderableEvents } from "@lexwdex-org/core"
 
 input.on(RenderableEvents.FOCUSED, () => {
   console.log("Input focused")
@@ -311,7 +311,7 @@ This moves the renderable visually without affecting layout.
 Enable offscreen rendering for complex content and use hooks to draw to the buffer:
 
 ```typescript
-import { RGBA } from "@opentui/core"
+import { RGBA } from "@lexwdex-org/core"
 
 const complex = new BoxRenderable(renderer, {
   id: "complex",

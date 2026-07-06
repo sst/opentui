@@ -1,4 +1,4 @@
-import { createComponent, createElement, spread } from "@opentui/solid"
+import { createComponent, createElement, spread } from "@lexwdex-org/solid"
 import type {
   AsciiFontProps,
   BoxProps,

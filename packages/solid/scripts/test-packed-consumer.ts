@@ -1,5 +1,5 @@
 /**
- * Smoke-tests the packed npm consumer contract for `@opentui/solid`.
+ * Smoke-tests the packed npm consumer contract for `@lexwdex-org/solid`.
  *
  * This verifies the built tarballs install in a fresh project, the published
  * `exports` map resolves correctly in Node, a consumer TSX file typechecks, the

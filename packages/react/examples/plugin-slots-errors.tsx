@@ -1,4 +1,4 @@
-import { createCliRenderer, type PluginErrorEvent } from "@opentui/core"
+import { createCliRenderer, type PluginErrorEvent } from "@lexwdex-org/core"
 import {
   Slot,
   createReactSlotRegistry,
@@ -7,7 +7,7 @@ import {
   type SlotMode,
   useKeyboard,
   useRenderer,
-} from "@opentui/react"
+} from "@lexwdex-org/react"
 import { useEffect, useMemo, useState } from "react"
 
 type DemoSlots = {

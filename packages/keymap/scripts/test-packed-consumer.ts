@@ -1,5 +1,5 @@
 /**
- * Smoke-tests the packed npm consumer contract for `@opentui/keymap`.
+ * Smoke-tests the packed npm consumer contract for `@lexwdex-org/keymap`.
  *
  * This verifies the built tarballs install in a fresh Node project and that the
  * Node-safe keymap entrypoints import and run without Bun or FFI flags.

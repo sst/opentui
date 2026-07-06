@@ -1,5 +1,5 @@
 {
-  "name": "@opentui/react",
+  "name": "@lexwdex-org/react",
   "version": "0.4.3",
   "description": "React renderer for building terminal user interfaces using OpenTUI core",
   "license": "MIT",
@@ -46,7 +46,7 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@opentui/keymap": "workspace:*",
+    "@lexwdex-org/keymap": "workspace:*",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
@@ -71,7 +71,7 @@
     }
   },
   "dependencies": {
-    "@opentui/core": "workspace:*",
+    "@lexwdex-org/core": "workspace:*",
     "react-reconciler": "^0.33.0"
   }
 }

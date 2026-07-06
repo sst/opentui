@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import type { CliRenderer } from "@opentui/core"
+import type { CliRenderer } from "@lexwdex-org/core"
 import { createServer } from "../../index.js"
 import { logging } from "../../logging.js"
 import type { AuthConfig, Identity, IdentityFor, Middleware, ServerConfig } from "../../types.js"

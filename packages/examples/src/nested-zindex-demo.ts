@@ -1,6 +1,6 @@
-import { TextAttributes, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "@opentui/core"
+import { TextAttributes, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import type { CliRenderer } from "@opentui/core"
+import type { CliRenderer } from "@lexwdex-org/core"
 
 let globalKeyboardHandler: ((key: KeyEvent) => void) | null = null
 let zIndexPhase = 0

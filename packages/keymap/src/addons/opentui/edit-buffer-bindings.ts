@@ -8,7 +8,7 @@ import {
   type KeyEvent,
   type Renderable,
   type TextareaAction,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import type { Binding, Bindings, Command, Keymap, Layer } from "../../index.js"
 
 interface KeyBindingLike {

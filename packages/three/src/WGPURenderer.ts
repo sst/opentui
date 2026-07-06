@@ -1,7 +1,7 @@
 import { PerspectiveCamera, OrthographicCamera, Color, NoToneMapping, LinearSRGBColorSpace, Scene } from "three"
 import { WebGPURenderer } from "three/webgpu"
 import { createWebGPUDevice, setupGlobals } from "bun-webgpu"
-import { CliRenderEvents, RGBA, type CliRenderer, type OptimizedBuffer } from "@opentui/core"
+import { CliRenderEvents, RGBA, type CliRenderer, type OptimizedBuffer } from "@lexwdex-org/core"
 import { CLICanvas, SuperSampleAlgorithm } from "./canvas.js"
 
 export enum SuperSampleType {

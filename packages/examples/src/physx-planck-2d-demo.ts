@@ -8,15 +8,15 @@ import {
   BoxRenderable,
   createCliRenderer,
   type KeyEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as THREE from "three"
-import { SpriteAnimator, TiledSprite, type SpriteDefinition, type AnimationDefinition } from "@opentui/three"
-import { SpriteResourceManager, type ResourceConfig } from "@opentui/three"
-import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "@opentui/three"
-import { PlanckPhysicsWorld } from "@opentui/three"
+import { SpriteAnimator, TiledSprite, type SpriteDefinition, type AnimationDefinition } from "@lexwdex-org/three"
+import { SpriteResourceManager, type ResourceConfig } from "@lexwdex-org/three"
+import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "@lexwdex-org/three"
+import { PlanckPhysicsWorld } from "@lexwdex-org/three"
 import * as planck from "planck"
-import { ThreeCliRenderer } from "@opentui/three"
+import { ThreeCliRenderer } from "@lexwdex-org/three"
 
 // @ts-ignore
 import cratePath from "./assets/crate.png" with { type: "image/png" }

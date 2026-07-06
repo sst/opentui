@@ -1,10 +1,10 @@
 import { plugin as registerPlugin } from "bun"
-import type { RuntimeModuleEntry } from "@opentui/core/runtime-plugin"
-import * as keymapRuntime from "@opentui/keymap"
-import * as keymapAddonsRuntime from "@opentui/keymap/addons"
-import * as keymapExtrasRuntime from "@opentui/keymap/extras"
-import * as keymapSolidRuntime from "@opentui/keymap/solid"
-import { ensureRuntimePluginSupport } from "@opentui/solid/runtime-plugin-support/configure"
+import type { RuntimeModuleEntry } from "@lexwdex-org/core/runtime-plugin"
+import * as keymapRuntime from "@lexwdex-org/keymap"
+import * as keymapAddonsRuntime from "@lexwdex-org/keymap/addons"
+import * as keymapExtrasRuntime from "@lexwdex-org/keymap/extras"
+import * as keymapSolidRuntime from "@lexwdex-org/keymap/solid"
+import { ensureRuntimePluginSupport } from "@lexwdex-org/solid/runtime-plugin-support/configure"
 import * as threeRuntime from "../../three/src/index.js"
 import { resetSolidTransformPluginState } from "../scripts/solid-plugin.js"
 
@@ -32,11 +32,11 @@ resetSolidTransformPluginState()
 
 try {
   const additional = {
-    "@opentui/keymap": keymapRuntime,
-    "@opentui/keymap/addons": keymapAddonsRuntime,
-    "@opentui/keymap/extras": keymapExtrasRuntime,
-    "@opentui/keymap/solid": keymapSolidRuntime,
-    "@opentui/three": threeRuntime,
+    "@lexwdex-org/keymap": keymapRuntime,
+    "@lexwdex-org/keymap/addons": keymapAddonsRuntime,
+    "@lexwdex-org/keymap/extras": keymapExtrasRuntime,
+    "@lexwdex-org/keymap/solid": keymapSolidRuntime,
+    "@lexwdex-org/three": threeRuntime,
   } satisfies Record<string, RuntimeModuleEntry>
   const first = ensureRuntimePluginSupport({ additional })
   const second = ensureRuntimePluginSupport({ additional })

@@ -8,9 +8,9 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   type KeyEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { TextureUtils } from "@opentui/three"
+import { TextureUtils } from "@lexwdex-org/three"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -29,7 +29,7 @@ import { TeapotGeometry } from "three/addons/geometries/TeapotGeometry.js"
 import normalTexPath from "./assets/Water_2_M_Normal.jpg" with { type: "image/jpeg" }
 // @ts-ignore
 import alphaTexPath from "./assets/roughness_map.jpg" with { type: "image/jpeg" }
-import { ThreeCliRenderer } from "@opentui/three"
+import { ThreeCliRenderer } from "@lexwdex-org/three"
 
 interface PhongDemoState {
   camera: PerspectiveCamera

@@ -1,5 +1,5 @@
-import { CliRenderer, createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
-import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
+import { CliRenderer, createCliRenderer, engine, type CliRendererConfig } from "@lexwdex-org/core"
+import { createTestRenderer, type TestRendererOptions } from "@lexwdex-org/core/testing"
 import type { JSX } from "./jsx-runtime.js"
 import { RendererContext } from "./src/elements/index.js"
 import { _render as renderInternal, createComponent } from "./src/reconciler.js"

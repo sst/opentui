@@ -3,11 +3,11 @@ import {
   createHtmlKeymapEvent,
   htmlEventMatchResolver,
   type HtmlKeymapEvent,
-} from "@opentui/keymap/html"
-import { Keymap, type ActiveKey, type DispatchEvent } from "@opentui/keymap"
-import * as addons from "@opentui/keymap/addons"
-import { getGraphSnapshot, type GraphBinding, type GraphSnapshot } from "@opentui/keymap/extras/graph"
-import { formatKeySequence } from "@opentui/keymap/extras"
+} from "@lexwdex-org/keymap/html"
+import { Keymap, type ActiveKey, type DispatchEvent } from "@lexwdex-org/keymap"
+import * as addons from "@lexwdex-org/keymap/addons"
+import { getGraphSnapshot, type GraphBinding, type GraphSnapshot } from "@lexwdex-org/keymap/extras/graph"
+import { formatKeySequence } from "@lexwdex-org/keymap/extras"
 
 type HtmlGraphSnapshot = GraphSnapshot<HTMLElement, HtmlKeymapEvent>
 type HtmlGraphBinding = GraphBinding<HTMLElement, HtmlKeymapEvent>

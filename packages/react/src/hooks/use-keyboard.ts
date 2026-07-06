@@ -1,4 +1,4 @@
-import type { KeyEvent } from "@opentui/core"
+import type { KeyEvent } from "@lexwdex-org/core"
 import { useEffect } from "react"
 import { useAppContext } from "../components/app.js"
 import { useEffectEvent } from "./use-event.js"

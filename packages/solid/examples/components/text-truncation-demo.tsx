@@ -1,5 +1,5 @@
-import { bold, cyan, green, magenta, t, yellow } from "@opentui/core"
-import { useKeyboard, useRenderer, useSelectionHandler } from "@opentui/solid"
+import { bold, cyan, green, magenta, t, yellow } from "@lexwdex-org/core"
+import { useKeyboard, useRenderer, useSelectionHandler } from "@lexwdex-org/solid"
 import { createMemo, createSignal, onMount, onCleanup } from "solid-js"
 
 const singleLineText1 =

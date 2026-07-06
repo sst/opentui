@@ -1,9 +1,9 @@
-import { Renderable, type RenderableOptions, RenderableEvents } from "@opentui/core"
-import { OptimizedBuffer } from "@opentui/core"
-import { BoxRenderable } from "@opentui/core"
-import { TabSelectRenderable, TabSelectRenderableEvents } from "@opentui/core"
-import type { CliRenderer, TabSelectOption } from "@opentui/core"
-import { parseColor, type ColorInput } from "@opentui/core"
+import { Renderable, type RenderableOptions, RenderableEvents } from "@lexwdex-org/core"
+import { OptimizedBuffer } from "@lexwdex-org/core"
+import { BoxRenderable } from "@lexwdex-org/core"
+import { TabSelectRenderable, TabSelectRenderableEvents } from "@lexwdex-org/core"
+import type { CliRenderer, TabSelectOption } from "@lexwdex-org/core"
+import { parseColor, type ColorInput } from "@lexwdex-org/core"
 
 export interface TabObject {
   title: string

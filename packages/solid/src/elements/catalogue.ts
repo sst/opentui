@@ -15,7 +15,7 @@ import {
   TextRenderable,
   type RenderContext,
   type TextNodeOptions,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import type { RenderableConstructor } from "../types/elements.js"
 
 class SpanRenderable extends TextNodeRenderable {

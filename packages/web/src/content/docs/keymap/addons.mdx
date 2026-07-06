@@ -7,15 +7,15 @@ navTitle: Built-in Addons
 
 # Built-in keymap addons
 
-`@opentui/keymap` keeps the engine bare. The built-in addon packages install parser stages, field compilers, diagnostics, disambiguation and host-specific helpers on top of the public registration APIs.
+`@lexwdex-org/keymap` keeps the engine bare. The built-in addon packages install parser stages, field compilers, diagnostics, disambiguation and host-specific helpers on top of the public registration APIs.
 
 If you want to build your own addon, see [Custom Addons](/docs/keymap/custom-addons).
 
 Every addon returns a disposer.
 
 ```ts
-import * as addons from "@opentui/keymap/addons"
-import * as opentuiAddons from "@opentui/keymap/addons/opentui"
+import * as addons from "@lexwdex-org/keymap/addons"
+import * as opentuiAddons from "@lexwdex-org/keymap/addons/opentui"
 ```
 
 ## Universal addons
@@ -104,7 +104,7 @@ Apps that support disabling leader keys can omit the leader addon or pass an emp
 `registerExCommands()` installs ex-command field compilers, a command transformer and a resolver for `:name ...args` strings. Register ex commands through normal keymap layers by using a colon-prefixed command name or `namespace: "excommands"`.
 
 ```ts
-import { registerExCommands } from "@opentui/keymap/addons"
+import { registerExCommands } from "@lexwdex-org/keymap/addons"
 
 registerExCommands(keymap)
 
@@ -142,7 +142,7 @@ keymap.registerLayer({
 
 ## OpenTUI addons
 
-`@opentui/keymap/addons/opentui` re-exports every universal addon and adds the OpenTUI-specific helpers below.
+`@lexwdex-org/keymap/addons/opentui` re-exports every universal addon and adds the OpenTUI-specific helpers below.
 
 ### `registerBaseLayoutFallback()`
 
@@ -212,6 +212,6 @@ Adds an event match resolver that falls back to `KeyEvent.baseCode` so bindings 
 | `select-all`              | `input.select.all`              | Select all                  |
 | `submit`                  | `input.submit`                  | Submit                      |
 
-The generated textarea bindings come from the shared `defaultTextareaKeyBindings` in `@opentui/core`. `createTextareaBindings()` prepends overrides before those defaults so custom bindings win by order.
+The generated textarea bindings come from the shared `defaultTextareaKeyBindings` in `@lexwdex-org/core`. `createTextareaBindings()` prepends overrides before those defaults so custom bindings win by order.
 
 See [Custom Addons](/docs/keymap/custom-addons) for the public addon-authoring APIs, lifecycle rules, callback contexts and extension-point quirks.

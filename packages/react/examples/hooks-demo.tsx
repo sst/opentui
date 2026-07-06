@@ -1,4 +1,4 @@
-import { createCliRenderer, decodePasteBytes } from "@opentui/core"
+import { createCliRenderer, decodePasteBytes } from "@lexwdex-org/core"
 import {
   createRoot,
   useBlur,
@@ -9,7 +9,7 @@ import {
   useRenderer,
   useSelectionHandler,
   useTerminalDimensions,
-} from "@opentui/react"
+} from "@lexwdex-org/react"
 import { useState } from "react"
 
 function App() {

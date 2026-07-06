@@ -1,8 +1,8 @@
-import { registerDefaultKeys } from "@opentui/keymap/addons"
-import { commandBindings } from "@opentui/keymap/extras"
-import { useKeymapSelector } from "@opentui/keymap/solid"
-import { stringifyKeyStroke } from "@opentui/keymap"
-import { ThreeRenderable } from "@opentui/three"
+import { registerDefaultKeys } from "@lexwdex-org/keymap/addons"
+import { commandBindings } from "@lexwdex-org/keymap/extras"
+import { useKeymapSelector } from "@lexwdex-org/keymap/solid"
+import { stringifyKeyStroke } from "@lexwdex-org/keymap"
+import { ThreeRenderable } from "@lexwdex-org/three"
 import { createSignal } from "solid-js"
 
 type FixtureState = typeof globalThis & {

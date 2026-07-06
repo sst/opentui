@@ -1,4 +1,4 @@
-import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
+import { BoxRenderable, KeyEvent, type Renderable } from "@lexwdex-org/core"
 import { createOpenTuiKeymap, createDefaultOpenTuiKeymap, createOpenTuiKeymapHost } from "../opentui.js"
 import * as addons from "../addons/index.js"
 import {
@@ -12,7 +12,7 @@ import {
   type ReactiveMatcher,
   type WarningEvent,
 } from "../index.js"
-import { type TestRenderer } from "@opentui/core/testing"
+import { type TestRenderer } from "@lexwdex-org/core/testing"
 import { type DiagnosticHarness } from "./diagnostic-harness.js"
 
 export type OpenTuiKeymap = Keymap<Renderable, KeyEvent>

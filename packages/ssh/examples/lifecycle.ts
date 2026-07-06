@@ -18,7 +18,7 @@
  *   - server-wide aggregate → a counter you keep yourself
  *   - errors with no session context → the `onError` sink
  */
-import { BoxRenderable, TextRenderable } from "@opentui/core"
+import { BoxRenderable, TextRenderable } from "@lexwdex-org/core"
 import { createServer, logging } from "../src/index.js"
 
 const PORT = Number(process.env.PORT ?? 2222)
@@ -44,7 +44,7 @@ const server = createServer({
       border: true,
       borderStyle: "rounded",
       borderColor: "#22c55e",
-      title: " @opentui/ssh · lifecycle ",
+      title: " @lexwdex-org/ssh · lifecycle ",
       titleAlignment: "center",
       flexDirection: "column",
       alignItems: "center",

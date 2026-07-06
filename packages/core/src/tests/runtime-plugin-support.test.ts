@@ -49,6 +49,6 @@ describe("runtime plugin support", () => {
     expect(stdout).toContain(
       "OpenTUI Core runtime plugin support is already installed without runtime-plugin-support-extra",
     )
-    expect(stdout).toContain("@opentui/core/runtime-plugin-support/configure")
+    expect(stdout).toContain("@lexwdex-org/core/runtime-plugin-support/configure")
   })
 })

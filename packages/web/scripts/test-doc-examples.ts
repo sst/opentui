@@ -5,7 +5,7 @@
  * Usage:
  *   bun scripts/test-doc-examples.ts [dir]
  *
- * This creates a directory with @opentui/core installed where you can
+ * This creates a directory with @lexwdex-org/core installed where you can
  * copy-paste code examples from the docs to verify they work.
  */
 
@@ -37,9 +37,9 @@ async function main() {
     process.exit(1)
   }
 
-  // Install @opentui/core
-  console.log("Installing @opentui/core...")
-  const install = Bun.spawnSync(["bun", "add", "@opentui/core"], {
+  // Install @lexwdex-org/core
+  console.log("Installing @lexwdex-org/core...")
+  const install = Bun.spawnSync(["bun", "add", "@lexwdex-org/core"], {
     cwd: targetDir,
     stdout: "pipe",
     stderr: "pipe",
@@ -49,9 +49,9 @@ async function main() {
     process.exit(1)
   }
 
-  // install @opentui/solid
-  console.log("Installing @opentui/solid...")
-  const installSolid = Bun.spawnSync(["bun", "add", "@opentui/solid"], {
+  // install @lexwdex-org/solid
+  console.log("Installing @lexwdex-org/solid...")
+  const installSolid = Bun.spawnSync(["bun", "add", "@lexwdex-org/solid"], {
     cwd: targetDir,
     stdout: "pipe",
     stderr: "pipe",
@@ -62,7 +62,7 @@ async function main() {
   }
 
   // Create a template file
-  const template = `import { createCliRenderer, Text, Box } from "@opentui/core"
+  const template = `import { createCliRenderer, Text, Box } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: true,

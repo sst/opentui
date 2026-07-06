@@ -16,7 +16,7 @@ const rootDir = resolve(__dirname, "..")
 
 const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
 
-console.log(`Publishing @opentui/core@${packageJson.version}...`)
+console.log(`Publishing @lexwdex-org/core@${packageJson.version}...`)
 console.log("Make sure you've run the pre-publish validation script first!")
 
 const libDir = join(rootDir, "dist")
@@ -57,4 +57,4 @@ Object.entries(packageJsons).forEach(([dir, { name, version }]) => {
   console.log(`Successfully published '${name}@${version}'`)
 })
 
-console.log(`\nAll @opentui/core packages published successfully!`)
+console.log(`\nAll @lexwdex-org/core packages published successfully!`)

@@ -13,7 +13,7 @@ A container component with borders, background colors, and layout capabilities. 
 ### Renderable API
 
 ```typescript
-import { BoxRenderable, createCliRenderer } from "@opentui/core"
+import { BoxRenderable, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -32,7 +32,7 @@ renderer.root.add(panel)
 ### Construct API
 
 ```typescript
-import { Box, Text, createCliRenderer } from "@opentui/core"
+import { Box, Text, createCliRenderer } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -187,7 +187,7 @@ const button = new BoxRenderable(renderer, {
 ## Example: Card component
 
 ```typescript
-import { Box, Text, t, bold, fg } from "@opentui/core"
+import { Box, Text, t, bold, fg } from "@lexwdex-org/core"
 
 function Card(props: { title: string; description: string }) {
   return Box(

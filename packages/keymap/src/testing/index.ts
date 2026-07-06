@@ -1,6 +1,6 @@
-import { Keymap } from "@opentui/keymap"
-import { registerDefaultKeys } from "@opentui/keymap/addons"
-import type { ErrorEvent, HostMetadata, KeymapEvent, KeymapHost, WarningEvent } from "@opentui/keymap"
+import { Keymap } from "@lexwdex-org/keymap"
+import { registerDefaultKeys } from "@lexwdex-org/keymap/addons"
+import type { ErrorEvent, HostMetadata, KeymapEvent, KeymapHost, WarningEvent } from "@lexwdex-org/keymap"
 
 export type TestKeyModifierOptions = Partial<Pick<KeymapEvent, "ctrl" | "shift" | "meta" | "super" | "hyper">>
 

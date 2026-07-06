@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test"
-import { getComponentCatalogue } from "@opentui/solid/components"
+import { getComponentCatalogue } from "@lexwdex-org/solid/components"
 import { QRCodeRenderable, registerQRCode } from "./solid.js"
 
-describe("@opentui/qrcode/solid", () => {
+describe("@lexwdex-org/qrcode/solid", () => {
   it("registers the qr_code JSX component", () => {
     const catalogue = getComponentCatalogue()
     const hadPrevious = Object.prototype.hasOwnProperty.call(catalogue, "qr_code")

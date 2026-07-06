@@ -7,7 +7,7 @@
  *
  * This script:
  * 1. Extracts TypeScript/JavaScript code blocks from MDX files
- * 2. Type-checks them against @opentui/core
+ * 2. Type-checks them against @lexwdex-org/core
  * 3. Reports any type errors found
  */
 
@@ -135,7 +135,7 @@ function wrapCodeForTypeCheck(code: string, blockIndex: number): string {
     return ""
   }
 
-  if (importedModules.some((module) => !module.startsWith("@opentui/core"))) {
+  if (importedModules.some((module) => !module.startsWith("@lexwdex-org/core"))) {
     return ""
   }
 
@@ -159,7 +159,7 @@ function wrapCodeForTypeCheck(code: string, blockIndex: number): string {
   if (usesRenderer && !definesRenderer) {
     // Add renderer declaration and createCliRenderer import if not already imported
     if (!preamble.includes("createCliRenderer")) {
-      preamble = `import { createCliRenderer } from "@opentui/core"\n` + preamble
+      preamble = `import { createCliRenderer } from "@lexwdex-org/core"\n` + preamble
     }
     preamble += `\ndeclare const renderer: Awaited<ReturnType<typeof createCliRenderer>>\n`
   }
@@ -343,7 +343,7 @@ async function setupTestEnv(): Promise<boolean> {
     join(VENDORED_CORE_PACKAGE, "package.json"),
     JSON.stringify(
       {
-        name: corePackageJson.name ?? "@opentui/core",
+        name: corePackageJson.name ?? "@lexwdex-org/core",
         version: corePackageJson.version ?? "0.0.0",
         type: corePackageJson.type ?? "module",
         main: corePackageJson.main ?? "src/index.ts",
@@ -366,7 +366,7 @@ async function setupTestEnv(): Promise<boolean> {
       name: "doc-verify",
       type: "module",
       dependencies: {
-        "@opentui/core": `file:${VENDORED_CORE_PACKAGE}`,
+        "@lexwdex-org/core": `file:${VENDORED_CORE_PACKAGE}`,
       },
     }),
   )

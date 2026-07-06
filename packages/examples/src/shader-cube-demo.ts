@@ -15,9 +15,9 @@ import {
   CRTRollingBarEffect,
   type OptimizedBuffer,
   type KeyEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { TextureUtils } from "@opentui/three"
+import { TextureUtils } from "@lexwdex-org/three"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -29,9 +29,9 @@ import {
   BoxGeometry,
   AmbientLight,
 } from "three"
-import * as Filters from "@opentui/core"
-import { ThreeCliRenderer } from "@opentui/three"
-import * as Matrices from "@opentui/core"
+import * as Filters from "@lexwdex-org/core"
+import { ThreeCliRenderer } from "@lexwdex-org/three"
+import * as Matrices from "@lexwdex-org/core"
 
 // State management for the demo
 interface ShaderCubeDemoState {

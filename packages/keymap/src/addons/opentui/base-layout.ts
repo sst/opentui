@@ -1,4 +1,4 @@
-import type { KeyEvent, Renderable } from "@opentui/core"
+import type { KeyEvent, Renderable } from "@lexwdex-org/core"
 import type { Keymap } from "../../index.js"
 
 const BASE_LAYOUT_FALLBACK_RESOURCE = Symbol("keymap:base-layout-fallback")

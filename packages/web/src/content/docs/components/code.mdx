@@ -13,7 +13,7 @@ Displays syntax-highlighted code using Tree-sitter. Supports many languages with
 ### Renderable API
 
 ```typescript
-import { CodeRenderable, createCliRenderer, SyntaxStyle, RGBA } from "@opentui/core"
+import { CodeRenderable, createCliRenderer, SyntaxStyle, RGBA } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -45,7 +45,7 @@ renderer.root.add(code)
 ### Construct API
 
 ```typescript
-import { Code, Box, createCliRenderer, SyntaxStyle, RGBA } from "@opentui/core"
+import { Code, Box, createCliRenderer, SyntaxStyle, RGBA } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -72,7 +72,7 @@ renderer.root.add(
 Use `SyntaxStyle.fromStyles()` to define colors and attributes for syntax tokens:
 
 ```typescript
-import { SyntaxStyle, RGBA, parseColor } from "@opentui/core"
+import { SyntaxStyle, RGBA, parseColor } from "@lexwdex-org/core"
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   // Basic tokens
@@ -186,7 +186,7 @@ const code = new CodeRenderable(renderer, {
 Use `LineNumberRenderable` to add line numbers:
 
 ```typescript
-import { CodeRenderable, LineNumberRenderable, RGBA, ScrollBoxRenderable, SyntaxStyle } from "@opentui/core"
+import { CodeRenderable, LineNumberRenderable, RGBA, ScrollBoxRenderable, SyntaxStyle } from "@lexwdex-org/core"
 
 const sourceCode = "const answer = 42\nconsole.log(answer)\n"
 const syntaxStyle = SyntaxStyle.fromStyles({

@@ -16,9 +16,9 @@ import {
   createCliRenderer,
   type KeyEvent,
   type SelectOption,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import FFT from "fft.js"
-import type { OptimizedBuffer } from "@opentui/core"
+import type { OptimizedBuffer } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 type SoundPreset = {

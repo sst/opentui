@@ -1,5 +1,5 @@
-import { render } from "@opentui/solid"
-import { ConsolePosition } from "@opentui/core"
+import { render } from "@lexwdex-org/solid"
+import { ConsolePosition } from "@lexwdex-org/core"
 import ExampleSelector from "./components/ExampleSelector.js"
 
 // Uncomment to debug solidjs reconciler

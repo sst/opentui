@@ -18,7 +18,7 @@ import {
   RGBA,
   TextAttributes,
   type MouseEvent,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let container: BoxRenderable | null = null

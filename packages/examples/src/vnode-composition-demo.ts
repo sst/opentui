@@ -1,4 +1,4 @@
-import { createCliRenderer, MouseEvent, type CliRenderer } from "@opentui/core"
+import { createCliRenderer, MouseEvent, type CliRenderer } from "@lexwdex-org/core"
 import {
   Box,
   Text,
@@ -10,13 +10,13 @@ import {
   BoxRenderable,
   type BoxOptions,
   vstyles,
-} from "@opentui/core"
-import type { RenderContext } from "@opentui/core"
-import type { OptimizedBuffer } from "@opentui/core"
+} from "@lexwdex-org/core"
+import type { RenderContext } from "@lexwdex-org/core"
+import type { OptimizedBuffer } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { RGBA, parseColor } from "@opentui/core"
-import type { Renderable } from "@opentui/core"
-import { TextAttributes } from "@opentui/core"
+import { RGBA, parseColor } from "@lexwdex-org/core"
+import type { Renderable } from "@lexwdex-org/core"
+import { TextAttributes } from "@lexwdex-org/core"
 
 const textColor = parseColor("#FFFFFF")
 const globalbgColor = parseColor("#333333")

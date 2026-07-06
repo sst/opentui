@@ -14,22 +14,22 @@ Build terminal user interfaces with Solid.js's fine-grained reactivity and OpenT
 ## Installation
 
 ```bash
-bun install solid-js @opentui/solid
+bun install solid-js @lexwdex-org/solid
 ```
 
 ## Runtime support
 
-`@opentui/solid` publishes one npm package with runtime-specific entrypoints behind the package `exports` map. The root package and JSX runtime subpaths work in both Bun and Node. Bun-specific helpers stay Bun-only and throw a clear runtime error if imported from Node.
+`@lexwdex-org/solid` publishes one npm package with runtime-specific entrypoints behind the package `exports` map. The root package and JSX runtime subpaths work in both Bun and Node. Bun-specific helpers stay Bun-only and throw a clear runtime error if imported from Node.
 
 | Entrypoint                                        | Bun | Node | Notes                                           |
 | ------------------------------------------------- | --- | ---- | ----------------------------------------------- |
-| `@opentui/solid`                                  | yes | yes  | Main renderer and test helpers                  |
-| `@opentui/solid/jsx-runtime`                      | yes | yes  | Real runtime module for compiled JSX            |
-| `@opentui/solid/jsx-dev-runtime`                  | yes | yes  | Real dev runtime module for compiled JSX        |
-| `@opentui/solid/preload`                          | yes | no   | Bun preload hook                                |
-| `@opentui/solid/bun-plugin`                       | yes | no   | Bun bundler/plugin entry                        |
-| `@opentui/solid/runtime-plugin-support`           | yes | no   | Bun runtime-loader support                      |
-| `@opentui/solid/runtime-plugin-support/configure` | yes | no   | Bun runtime-loader support without side effects |
+| `@lexwdex-org/solid`                                  | yes | yes  | Main renderer and test helpers                  |
+| `@lexwdex-org/solid/jsx-runtime`                      | yes | yes  | Real runtime module for compiled JSX            |
+| `@lexwdex-org/solid/jsx-dev-runtime`                  | yes | yes  | Real dev runtime module for compiled JSX        |
+| `@lexwdex-org/solid/preload`                          | yes | no   | Bun preload hook                                |
+| `@lexwdex-org/solid/bun-plugin`                       | yes | no   | Bun bundler/plugin entry                        |
+| `@lexwdex-org/solid/runtime-plugin-support`           | yes | no   | Bun runtime-loader support                      |
+| `@lexwdex-org/solid/runtime-plugin-support/configure` | yes | no   | Bun runtime-loader support without side effects |
 
 ## Setup
 
@@ -41,7 +41,7 @@ Add JSX config to `tsconfig.json`:
 {
   "compilerOptions": {
     "jsx": "preserve",
-    "jsxImportSource": "@opentui/solid"
+    "jsxImportSource": "@lexwdex-org/solid"
   }
 }
 ```
@@ -51,7 +51,7 @@ Add JSX config to `tsconfig.json`:
 Add preload script to `bunfig.toml`:
 
 ```toml
-preload = ["@opentui/solid/preload"]
+preload = ["@lexwdex-org/solid/preload"]
 ```
 
 ### 3. Configure Node compilation
@@ -76,7 +76,7 @@ export default {
       },
     ],
   ],
-  presets: [[solid, { moduleName: "@opentui/solid", generate: "universal" }], [ts]],
+  presets: [[solid, { moduleName: "@lexwdex-org/solid", generate: "universal" }], [ts]],
 }
 ```
 
@@ -87,7 +87,7 @@ The current Node runtime path is still lower-level than Bun. OpenTUI's native re
 If your app loads external TS/TSX modules at runtime (for example a file-based plugin system), import this once in your entry file before dynamic imports:
 
 ```ts
-import "@opentui/solid/runtime-plugin-support"
+import "@lexwdex-org/solid/runtime-plugin-support"
 ```
 
 This entrypoint is Bun-only.
@@ -95,7 +95,7 @@ This entrypoint is Bun-only.
 ### 5. Create your app
 
 ```tsx
-import { render } from "@opentui/solid"
+import { render } from "@lexwdex-org/solid"
 
 const App = () => <text>Hello, World!</text>
 
@@ -118,7 +118,7 @@ OpenTUI Solid provides JSX intrinsic elements that map to core renderables.
 - `<ascii_font>` - ASCII art text
 - `<markdown>` - Render Markdown content
 
-QR code support is available from `@opentui/qrcode/solid` and must be registered explicitly with `registerQRCode()`.
+QR code support is available from `@lexwdex-org/qrcode/solid` and must be registered explicitly with `registerQRCode()`.
 
 ### Input
 
@@ -151,7 +151,7 @@ Use inside `<text>` components:
 Render a Solid component tree into a CLI renderer.
 
 ```tsx
-import { render } from "@opentui/solid"
+import { render } from "@lexwdex-org/solid"
 
 // Simple usage
 render(() => <App />)
@@ -173,7 +173,7 @@ render(() => <App />, {
 Create a test renderer for snapshots and interaction tests.
 
 ```tsx
-import { testRender } from "@opentui/solid"
+import { testRender } from "@lexwdex-org/solid"
 
 const testSetup = await testRender(() => <App />, { width: 40, height: 10 })
 ```
@@ -183,7 +183,7 @@ const testSetup = await testRender(() => <App />, { width: 40, height: 10 })
 Register custom renderables as JSX intrinsic elements.
 
 ```tsx
-import { extend } from "@opentui/solid"
+import { extend } from "@lexwdex-org/solid"
 
 extend({ custom_box: CustomBoxRenderable })
 ```
@@ -203,7 +203,7 @@ In [`split-footer`](/docs/core-concepts/renderer#split-footer) mode with `extern
 Render a JSX node once and append it as a scrollback commit.
 
 ```tsx
-import { writeSolidToScrollback } from "@opentui/solid"
+import { writeSolidToScrollback } from "@lexwdex-org/solid"
 
 writeSolidToScrollback(renderer, () => <text fg="#8BD5CA">api responded in 12ms</text>)
 ```
@@ -213,7 +213,7 @@ writeSolidToScrollback(renderer, () => <text fg="#8BD5CA">api responded in 12ms<
 If you need to pass the same JSX rendering to multiple `writeToScrollback` calls (or hold onto the writer inside your own code), use the lower-level factory:
 
 ```tsx
-import { createScrollbackWriter } from "@opentui/solid"
+import { createScrollbackWriter } from "@lexwdex-org/solid"
 
 const writer = createScrollbackWriter(() => <text>logged at {new Date().toISOString()}</text>, { startOnNewLine: true })
 
@@ -239,7 +239,7 @@ The writer returns a `ScrollbackSnapshot` whose teardown disposes the inner Soli
 Access the OpenTUI renderer instance.
 
 ```tsx
-import { useRenderer } from "@opentui/solid"
+import { useRenderer } from "@lexwdex-org/solid"
 import { onMount } from "solid-js"
 
 const App = () => {
@@ -259,7 +259,7 @@ const App = () => {
 Subscribe to keyboard events.
 
 ```tsx
-import { useKeyboard, useRenderer } from "@opentui/solid"
+import { useKeyboard, useRenderer } from "@lexwdex-org/solid"
 
 const App = () => {
   const renderer = useRenderer()
@@ -306,7 +306,7 @@ const App = () => {
 Handle terminal resize events.
 
 ```tsx
-import { onResize } from "@opentui/solid"
+import { onResize } from "@lexwdex-org/solid"
 
 const App = () => {
   onResize((width, height) => {
@@ -322,7 +322,7 @@ const App = () => {
 Run side effects when the terminal window gains focus.
 
 ```tsx
-import { onFocus } from "@opentui/solid"
+import { onFocus } from "@lexwdex-org/solid"
 
 const App = () => {
   onFocus(() => {
@@ -338,7 +338,7 @@ const App = () => {
 Run side effects when the terminal window loses focus.
 
 ```tsx
-import { onBlur } from "@opentui/solid"
+import { onBlur } from "@lexwdex-org/solid"
 
 const App = () => {
   onBlur(() => {
@@ -356,7 +356,7 @@ These hooks listen for terminal focus-in/focus-out events when the terminal emul
 Get reactive terminal dimensions (returns a Solid signal).
 
 ```tsx
-import { useTerminalDimensions } from "@opentui/solid"
+import { useTerminalDimensions } from "@lexwdex-org/solid"
 
 const App = () => {
   const dimensions = useTerminalDimensions()
@@ -374,7 +374,7 @@ const App = () => {
 Subscribe to paste events.
 
 ```tsx
-import { usePaste } from "@opentui/solid"
+import { usePaste } from "@lexwdex-org/solid"
 
 const textDecoder = new TextDecoder()
 
@@ -392,7 +392,7 @@ const App = () => {
 Handle text selection events.
 
 ```tsx
-import { useSelectionHandler } from "@opentui/solid"
+import { useSelectionHandler } from "@lexwdex-org/solid"
 
 const App = () => {
   useSelectionHandler((selection) => {
@@ -408,7 +408,7 @@ const App = () => {
 Create and manage animations.
 
 ```tsx
-import { useTimeline } from "@opentui/solid"
+import { useTimeline } from "@lexwdex-org/solid"
 import { createSignal, onMount } from "solid-js"
 
 const App = () => {
@@ -444,7 +444,7 @@ const App = () => {
 Render children into a different mount point (useful for modals and overlays).
 
 ```tsx
-import { Portal, useRenderer } from "@opentui/solid"
+import { Portal, useRenderer } from "@lexwdex-org/solid"
 
 const App = () => {
   const renderer = useRenderer()
@@ -465,7 +465,7 @@ const App = () => {
 Render arbitrary intrinsic elements or components dynamically.
 
 ```tsx
-import { Dynamic } from "@opentui/solid"
+import { Dynamic } from "@lexwdex-org/solid"
 import { createSignal } from "solid-js"
 
 const App = () => {
@@ -480,7 +480,7 @@ const App = () => {
 Use [Bun.build](https://bun.sh/docs/bundler) with the Solid plugin:
 
 ```ts
-import solidPlugin from "@opentui/solid/bun-plugin"
+import solidPlugin from "@lexwdex-org/solid/bun-plugin"
 
 await Bun.build({
   entrypoints: ["./index.tsx"],
@@ -503,12 +503,12 @@ await Bun.build({
 })
 ```
 
-If that executable loads external plugins/modules at runtime, keep `import "@opentui/solid/runtime-plugin-support"` in your app entry.
+If that executable loads external plugins/modules at runtime, keep `import "@lexwdex-org/solid/runtime-plugin-support"` in your app entry.
 
 ## Example: counter
 
 ```tsx
-import { render, useKeyboard, useRenderer } from "@opentui/solid"
+import { render, useKeyboard, useRenderer } from "@lexwdex-org/solid"
 import { createSignal } from "solid-js"
 
 const App = () => {

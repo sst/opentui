@@ -44,7 +44,7 @@ if (!packageJson.module) {
   process.exit(1)
 }
 
-console.log("Building @opentui/qrcode library...")
+console.log("Building @lexwdex-org/qrcode library...")
 
 const distDir = join(rootDir, "dist")
 rmSync(distDir, { recursive: true, force: true })
@@ -78,7 +78,7 @@ const coreRootDir = resolve(rootDir, "../core")
 const corePackageJsonPath = join(coreRootDir, "package.json")
 
 if (existsSync(corePackageJsonPath)) {
-  console.log("Ensuring @opentui/core declarations are up to date...")
+  console.log("Ensuring @lexwdex-org/core declarations are up to date...")
 
   const coreBuildResult: SpawnSyncReturns<Buffer> = spawnSync("bun", ["run", "build:lib"], {
     cwd: coreRootDir,
@@ -86,7 +86,7 @@ if (existsSync(corePackageJsonPath)) {
   })
 
   if (coreBuildResult.status !== 0) {
-    console.error("Error: Failed to build @opentui/core declarations required by @opentui/qrcode")
+    console.error("Error: Failed to build @lexwdex-org/core declarations required by @lexwdex-org/qrcode")
     process.exit(1)
   }
 }
@@ -120,12 +120,12 @@ const exports = {
 }
 
 const processedDependencies = { ...packageJson.dependencies }
-if (processedDependencies["@opentui/core"] === "workspace:*") {
-  processedDependencies["@opentui/core"] = packageJson.version
+if (processedDependencies["@lexwdex-org/core"] === "workspace:*") {
+  processedDependencies["@lexwdex-org/core"] = packageJson.version
 }
 
 const processedPeerDependencies = { ...packageJson.peerDependencies }
-for (const dependencyName of ["@opentui/react", "@opentui/solid"]) {
+for (const dependencyName of ["@lexwdex-org/react", "@lexwdex-org/solid"]) {
   if (processedPeerDependencies[dependencyName] === "workspace:*") {
     processedPeerDependencies[dependencyName] = packageJson.version
   }

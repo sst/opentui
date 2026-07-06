@@ -1,6 +1,6 @@
 import { createSignal, Show } from "solid-js"
-import { render, useKeyboard, useRenderer } from "@opentui/solid"
-import { t } from "@opentui/core"
+import { render, useKeyboard, useRenderer } from "@lexwdex-org/solid"
+import { t } from "@lexwdex-org/core"
 
 process.env.DEBUG = "true"
 

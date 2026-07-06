@@ -8,7 +8,7 @@ import {
   createCliRenderer,
   createMarkdownCodeBlockRenderer,
   type MarkdownCodeBlockRenderer,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 interface TaskFlowStep {

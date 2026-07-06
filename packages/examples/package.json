@@ -1,5 +1,5 @@
 {
-  "name": "@opentui/examples",
+  "name": "@lexwdex-org/examples",
   "version": "0.4.3",
   "private": true,
   "description": "OpenTUI examples and standalone examples executable",
@@ -20,10 +20,10 @@
   },
   "dependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
-    "@opentui/core": "workspace:*",
-    "@opentui/keymap": "workspace:*",
-    "@opentui/qrcode": "workspace:*",
-    "@opentui/three": "workspace:*",
+    "@lexwdex-org/core": "workspace:*",
+    "@lexwdex-org/keymap": "workspace:*",
+    "@lexwdex-org/qrcode": "workspace:*",
+    "@lexwdex-org/three": "workspace:*",
     "bun-webgpu": "0.1.7",
     "fft.js": "^4.0.4",
     "planck": "^1.4.2",

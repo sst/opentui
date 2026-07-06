@@ -15,12 +15,12 @@ import {
   type KeyEvent,
   type Renderable,
   type TextChunk,
-} from "@opentui/core"
-import { type ActiveKey, type Command, type DispatchEvent, type Keymap } from "@opentui/keymap"
-import * as addons from "@opentui/keymap/addons/opentui"
-import { formatKeySequence } from "@opentui/keymap/extras"
-import { getGraphSnapshot, type GraphBinding, type GraphSnapshot } from "@opentui/keymap/extras/graph"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+} from "@lexwdex-org/core"
+import { type ActiveKey, type Command, type DispatchEvent, type Keymap } from "@lexwdex-org/keymap"
+import * as addons from "@lexwdex-org/keymap/addons/opentui"
+import { formatKeySequence } from "@lexwdex-org/keymap/extras"
+import { getGraphSnapshot, type GraphBinding, type GraphSnapshot } from "@lexwdex-org/keymap/extras/graph"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const P = {

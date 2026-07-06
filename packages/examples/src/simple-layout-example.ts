@@ -1,4 +1,4 @@
-import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "@opentui/core"
+import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 interface LayoutDemo {

@@ -10,10 +10,10 @@ import {
   BoxRenderable,
   InputRenderable,
   InputRenderableEvents,
-} from "@opentui/core"
-import { ScrollBoxRenderable } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { ScrollBoxRenderable } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import type { TerminalColors } from "@opentui/core"
+import type { TerminalColors } from "@lexwdex-org/core"
 import { PaletteGridRenderable } from "./lib/PaletteGrid.js"
 import { HexListRenderable } from "./lib/HexList.js"
 

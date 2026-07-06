@@ -1,4 +1,4 @@
-import { MeasureMode } from "@opentui/core/yoga"
+import { MeasureMode } from "@lexwdex-org/core/yoga"
 import {
   OptimizedBuffer,
   parseColor,
@@ -7,7 +7,7 @@ import {
   type ColorInput,
   type RenderableOptions,
   type RenderContext,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { ErrorCorrectionLevel, QRCode } from "../lib/qrcode.js"
 
 const DEFAULT_FOREGROUND = RGBA.fromHex("#000000")

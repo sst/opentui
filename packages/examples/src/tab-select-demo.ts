@@ -9,9 +9,9 @@ import {
   t,
   bold,
   fg,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { TextRenderable } from "@opentui/core"
+import { TextRenderable } from "@lexwdex-org/core"
 
 let tabSelect: TabSelectRenderable | null = null
 let renderer: CliRenderer | null = null

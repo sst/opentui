@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test"
-import { CliRenderer, CliRenderEvents } from "@opentui/core"
+import { CliRenderer, CliRenderEvents } from "@lexwdex-org/core"
 import type { Session } from "../../types.js"
 import { createHarness, deferred, sleep, type Shell } from "../support.js"
 
 /**
- * The package hands the handler a real `@opentui/core` `CliRenderer` whose I/O is
+ * The package hands the handler a real `@lexwdex-org/core` `CliRenderer` whose I/O is
  * the SSH channel, and tears it down via the shared destroy event. Solid's
  * `render()` adopts the renderer only when it `instanceof CliRenderer`; otherwise
  * it spins up its own renderer on process.stdout, hijacking the host terminal.

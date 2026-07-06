@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import type { Renderable } from "@opentui/core"
-import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
-import * as addons from "@opentui/keymap/addons"
-import { stringifyKeySequence } from "@opentui/keymap"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import type { Renderable } from "@lexwdex-org/core"
+import { createTestRenderer, type TestRendererOptions } from "@lexwdex-org/core/testing"
+import * as addons from "@lexwdex-org/keymap/addons"
+import { stringifyKeySequence } from "@lexwdex-org/keymap"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 import {
   KeymapProvider,
   reactiveMatcherFromSignal,
   useBindings,
   useKeymap,
   useKeymapSelector,
-} from "@opentui/keymap/solid"
-import { render, type JSX } from "@opentui/solid"
+} from "@lexwdex-org/keymap/solid"
+import { render, type JSX } from "@lexwdex-org/solid"
 import { Show, createSignal, onCleanup } from "solid-js"
 import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"
 

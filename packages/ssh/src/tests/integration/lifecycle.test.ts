@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { TextRenderable } from "@opentui/core"
+import { TextRenderable } from "@lexwdex-org/core"
 import { Client, type ClientChannel } from "ssh2"
 import type { Session } from "../../types.js"
 import { createHarness, deferred, SHELL_PTY, sleep, waitFor } from "../support.js"

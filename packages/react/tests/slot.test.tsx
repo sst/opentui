@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test"
-import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
+import { createTestRenderer, type TestRendererOptions } from "@lexwdex-org/core/testing"
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { act, type ReactNode } from "react"
 import { createReactSlotRegistry, createSlot, Slot, type ReactPlugin } from "../src/plugins/slot.js"

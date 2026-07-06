@@ -55,7 +55,7 @@ if (!packageJson.module) {
   process.exit(1)
 }
 
-console.log("Building @opentui/keymap library...")
+console.log("Building @lexwdex-org/keymap library...")
 
 const distDir = join(rootDir, "dist")
 rmSync(distDir, { recursive: true, force: true })
@@ -89,9 +89,9 @@ function verifyHtmlBundleIsolation(bundlePath: string): void {
 
   const htmlBundle = readFileSync(bundlePath, "utf8")
   const forbiddenMarkers = [
-    "@opentui/core",
-    "@opentui/react",
-    "@opentui/solid",
+    "@lexwdex-org/core",
+    "@lexwdex-org/react",
+    "@lexwdex-org/solid",
     "createOpenTuiKeymapHost",
     "registerManagedTextareaLayer",
     "registerEditBufferCommands",
@@ -212,12 +212,12 @@ const exports = {
 }
 
 const processedDependencies = { ...packageJson.dependencies }
-if (processedDependencies["@opentui/core"] === "workspace:*") {
-  processedDependencies["@opentui/core"] = packageJson.version
+if (processedDependencies["@lexwdex-org/core"] === "workspace:*") {
+  processedDependencies["@lexwdex-org/core"] = packageJson.version
 }
 
 const processedPeerDependencies = { ...packageJson.peerDependencies }
-for (const dependencyName of ["@opentui/react", "@opentui/solid"]) {
+for (const dependencyName of ["@lexwdex-org/react", "@lexwdex-org/solid"]) {
   if (processedPeerDependencies[dependencyName] === "workspace:*") {
     processedPeerDependencies[dependencyName] = packageJson.version
   }

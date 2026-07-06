@@ -1,16 +1,16 @@
-# @opentui/ssh
+# @lexwdex-org/ssh
 
 Serve OpenTUI apps over SSH.
 
-`@opentui/ssh` turns an incoming SSH session into a fully-wired OpenTUI
+`@lexwdex-org/ssh` turns an incoming SSH session into a fully-wired OpenTUI
 [`CliRenderer`](../core) whose input/output is the SSH channel and whose
 dimensions track the client's PTY. What you render onto it is up to you — the
-package is **renderer-agnostic**: it depends only on `@opentui/core`, never on
-`@opentui/react` or `@opentui/solid`, so the same server works with all three.
+package is **renderer-agnostic**: it depends only on `@lexwdex-org/core`, never on
+`@lexwdex-org/react` or `@lexwdex-org/solid`, so the same server works with all three.
 
 ```ts
-import { createServer } from "@opentui/ssh"
-import { BoxRenderable, TextRenderable } from "@opentui/core"
+import { createServer } from "@lexwdex-org/ssh"
+import { BoxRenderable, TextRenderable } from "@lexwdex-org/core"
 
 const server = createServer({
   hostKey: { path: "./host_key" }, // auto-generated & persisted on first run
@@ -33,12 +33,12 @@ ssh -p 2222 localhost
 ## Install
 
 ```sh
-bun add @opentui/ssh
+bun add @lexwdex-org/ssh
 # or
-npm install @opentui/ssh
+npm install @lexwdex-org/ssh
 ```
 
-`@opentui/core` is a peer dependency. Supported runtimes are Bun ≥ 1.3.0 and
+`@lexwdex-org/core` is a peer dependency. Supported runtimes are Bun ≥ 1.3.0 and
 Node.js 26.3.0. CI runs the SSH integration suite with Bun on macOS, Linux,
 and Windows, and installs, imports, starts, and closes the packed ESM package
 with Node.js 26.3.0.
@@ -98,7 +98,7 @@ Because the package's job ends at producing a `CliRenderer`, you mount whatever
 front-end you like onto `session.renderer`. Runnable versions of all three live
 in [`examples/`](./examples).
 
-### Imperative (`@opentui/core`)
+### Imperative (`@lexwdex-org/core`)
 
 ```ts
 createServer().serve((session) => {
@@ -108,13 +108,13 @@ createServer().serve((session) => {
 })
 ```
 
-### React (`@opentui/react`)
+### React (`@lexwdex-org/react`)
 
 `createRoot` adopts the existing renderer as-is — see
 [`examples/react.tsx`](./examples/react.tsx).
 
 ```tsx
-import { createRoot } from "@opentui/react"
+import { createRoot } from "@lexwdex-org/react"
 
 createServer().serve((session) => {
   const root = createRoot(session.renderer)
@@ -123,14 +123,14 @@ createServer().serve((session) => {
 })
 ```
 
-### Solid (`@opentui/solid`)
+### Solid (`@lexwdex-org/solid`)
 
 `render(node, renderer)` checks `instanceof CliRenderer` and **adopts** the
 renderer you pass — so the app draws onto the SSH channel, not the host terminal.
 See [`examples/solid.tsx`](./examples/solid.tsx).
 
 ```tsx
-import { render } from "@opentui/solid"
+import { render } from "@lexwdex-org/solid"
 
 createServer().serve(async (session) => {
   // Solid disposes its root when the renderer is destroyed — nothing to wire.
@@ -138,7 +138,7 @@ createServer().serve(async (session) => {
 })
 ```
 
-> `@opentui/react` / `@opentui/solid` are **not** runtime dependencies of this
+> `@lexwdex-org/react` / `@lexwdex-org/solid` are **not** runtime dependencies of this
 > package — the framework examples use workspace dev dependencies only to
 > demonstrate the hand-off. Run the Solid example with
 > `bun run packages/ssh/examples/solid.tsx`; its launcher registers the required
@@ -173,7 +173,7 @@ Supported methods (mix freely; the server advertises exactly what you configure)
 | `password: (ctx) => boolean`                      | Password check over `{ username, password }`.                                                                         |
 | `keyboardInteractive: (ctx) => boolean`           | Prompt/response flow.                                                                                                 |
 
-> Publickey auth is verified end-to-end: `@opentui/ssh` checks the client's
+> Publickey auth is verified end-to-end: `@lexwdex-org/ssh` checks the client's
 > signature itself (`ssh2` does not), so `publicKey: "any"` proves possession of
 > the private key rather than trusting a claimed key.
 
@@ -198,7 +198,7 @@ next() } finally { ... }` runs its cleanup as teardown.
    reads the sum.
 
 ```ts
-import { createServer, type Middleware } from "@opentui/ssh"
+import { createServer, type Middleware } from "@lexwdex-org/ssh"
 
 // SETUP/TEARDOWN — author a reusable middleware by typing it as `Middleware`. Before
 // next() is setup; the finally (after next() resolves at disconnect) is teardown.
@@ -237,14 +237,14 @@ see a `MiddlewareSession` without it; only the handler's `Session` has it.) See
 
 ### Built-in: `logging`
 
-`@opentui/ssh` ships one ready-made middleware. `logging()` is a setup/teardown
+`@lexwdex-org/ssh` ships one ready-made middleware. `logging()` is a setup/teardown
 link that emits a `connect` event on entry and a `disconnect` (with duration) on
 teardown. It is **pure observability** — it never reports errors, so `onError`
 stays the single error sink; a throwing handler is logged as a normal disconnect
 _and_ still flows to `onError`.
 
 ```ts
-import { createServer, logging } from "@opentui/ssh"
+import { createServer, logging } from "@lexwdex-org/ssh"
 
 createServer({ auth: { publicKey: "any" } })
   .use(logging()) // one line per event to console.log…
@@ -339,7 +339,7 @@ const server = createServer({
   — a graceful, global shutdown.
 
 ```
-@opentui/ssh  ▸  ssh://localhost:2222
+@lexwdex-org/ssh  ▸  ssh://localhost:2222
 host key      SHA256:nThbg6kX…0bGQ  (ssh-ed25519, generated ./host_key)
 auth          publickey, password
 authorized    2 keys  ·  SHA256:abc… SHA256:def…

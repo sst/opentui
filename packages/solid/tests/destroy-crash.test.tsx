@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { createTestRenderer } from "@opentui/core/testing"
+import { createTestRenderer } from "@lexwdex-org/core/testing"
 import { For, createSignal, onCleanup, onMount } from "solid-js"
 import { render } from "../index.js"
 

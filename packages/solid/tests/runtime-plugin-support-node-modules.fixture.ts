@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import * as coreRuntime from "@opentui/core"
+import * as coreRuntime from "@lexwdex-org/core"
 import * as solidJsRuntime from "solid-js"
 import * as solidJsStoreRuntime from "solid-js/store"
 import * as solidRuntime from "../index.js"
@@ -52,8 +52,8 @@ writeFileSync(
 writeFileSync(
   join(esmPrimitivesDependencyDir, "index.js"),
   [
-    'import { engine } from "@opentui/core"',
-    'import { extend } from "@opentui/solid"',
+    'import { engine } from "@lexwdex-org/core"',
+    'import { extend } from "@lexwdex-org/solid"',
     'import { createSignal } from "solid-js"',
     "const host = globalThis.__solidRuntimeHost__",
     "export const checks = {",
@@ -91,9 +91,9 @@ writeFileSync(
 )
 
 const source = [
-  'import * as solid from "@opentui/solid"',
-  'import * as core from "@opentui/core"',
-  'import * as coreTesting from "@opentui/core/testing"',
+  'import * as solid from "@lexwdex-org/solid"',
+  'import * as core from "@lexwdex-org/core"',
+  'import * as coreTesting from "@lexwdex-org/core/testing"',
   'import { createSignal } from "solid-js"',
   'import { parse } from "runtime-plugin-support-cjs-dependency"',
   'import { checks as esmChecks } from "runtime-plugin-support-esm-wrapper"',
@@ -118,7 +118,7 @@ const state = globalThis as FixtureState
 state.__solidRuntimeHost__ = {
   solid: solidRuntime as Record<string, unknown>,
   core: coreRuntime as Record<string, unknown>,
-  coreTesting: (await import("@opentui/core/testing")) as Record<string, unknown>,
+  coreTesting: (await import("@lexwdex-org/core/testing")) as Record<string, unknown>,
   solidJs: solidJsRuntime as Record<string, unknown>,
   solidJsStore: solidJsStoreRuntime as Record<string, unknown>,
 }

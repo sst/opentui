@@ -10,13 +10,13 @@
     "types": ["bun", "node", "react"],
     "skipLibCheck": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@opentui/react",
+    "jsxImportSource": "@lexwdex-org/react",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@opentui/core": ["../core/dist"],
-      "@opentui/core/*": ["../core/dist/*"]
+      "@lexwdex-org/core": ["../core/dist"],
+      "@lexwdex-org/core/*": ["../core/dist/*"]
     }
   },
   "include": [

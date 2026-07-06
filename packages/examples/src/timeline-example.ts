@@ -1,5 +1,5 @@
-import { createTimeline, type JSAnimation, Timeline } from "@opentui/core"
-import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "@opentui/core"
+import { createTimeline, type JSAnimation, Timeline } from "@lexwdex-org/core"
+import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 class TimelineExample {

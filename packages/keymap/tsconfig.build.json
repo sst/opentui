@@ -8,8 +8,8 @@
     "noEmit": false,
     "rootDir": ".",
     "paths": {
-      "@opentui/react": ["./src/framework-react.d.ts"],
-      "@opentui/solid": ["./src/framework-solid.d.ts"]
+      "@lexwdex-org/react": ["./src/framework-react.d.ts"],
+      "@lexwdex-org/solid": ["./src/framework-solid.d.ts"]
     },
     "skipLibCheck": true,
     "module": "ESNext",

@@ -16,7 +16,7 @@
  * Because `auth` mixes publickey and password, `session.identity` is a union:
  * discriminate on `.method`; `.fingerprint` is only readable in the publickey branch.
  */
-import { BoxRenderable, TextRenderable } from "@opentui/core"
+import { BoxRenderable, TextRenderable } from "@lexwdex-org/core"
 import { createServer } from "../src/index.js"
 
 const PORT = Number(process.env.PORT ?? 2222)
@@ -43,7 +43,7 @@ const server = createServer({
     border: true,
     borderStyle: "rounded",
     borderColor: "#8b5cf6",
-    title: " @opentui/ssh · auth ",
+    title: " @lexwdex-org/ssh · auth ",
     titleAlignment: "center",
     flexDirection: "column",
     alignItems: "center",

@@ -1,4 +1,4 @@
-import { TextNodeRenderable, TextRenderable, type Renderable } from "@opentui/core"
+import { TextNodeRenderable, TextRenderable, type Renderable } from "@lexwdex-org/core"
 import pkgJson from "../../package.json" with { type: "json" }
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
@@ -288,6 +288,6 @@ export const hostConfig: HostConfig<
     return null
   },
 
-  rendererPackageName: "@opentui/react",
+  rendererPackageName: "@lexwdex-org/react",
   rendererVersion: pkgJson.version,
 }

@@ -13,7 +13,7 @@ Constructs let you compose your UI in a declarative, React-like way. They are fa
 Constructs look like function calls that return component descriptions:
 
 ```typescript
-import { createCliRenderer, Box, Text, Input } from "@opentui/core"
+import { createCliRenderer, Box, Text, Input } from "@lexwdex-org/core"
 
 const renderer = await createCliRenderer()
 
@@ -45,7 +45,7 @@ import {
   TabSelect,
   Text,
   RGBA,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 
 // These create VNodes, not actual Renderables
 const syntaxStyle = SyntaxStyle.fromStyles({
@@ -127,7 +127,7 @@ renderer.root.add(box)
 Composite components often need outer method calls to reach a specific inner component. The `delegate()` function maps method and property names to descendant IDs:
 
 ```typescript
-import { delegate, Box, Text, Input } from "@opentui/core"
+import { delegate, Box, Text, Input } from "@lexwdex-org/core"
 
 function LabeledInput(props: { id: string; label: string; placeholder: string }) {
   return delegate(
@@ -192,7 +192,7 @@ renderer.root.add(Card({ title: "User Info" }, Text({ content: "Name: Alice" }),
 You can mix both approaches:
 
 ```typescript
-import { BoxRenderable, Text, Input } from "@opentui/core"
+import { BoxRenderable, Text, Input } from "@lexwdex-org/core"
 
 // Create a renderable directly
 const container = new BoxRenderable(renderer, {

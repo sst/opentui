@@ -22,14 +22,14 @@ bun create tui --template react
 Manual installation:
 
 ```bash
-bun install @opentui/react @opentui/core react
+bun install @lexwdex-org/react @lexwdex-org/core react
 ```
 
 ## Quick start
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot } from "@lexwdex-org/react"
 
 function App() {
   return <text>Hello, world!</text>
@@ -51,7 +51,7 @@ Configure your `tsconfig.json`:
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "jsxImportSource": "@opentui/react",
+    "jsxImportSource": "@lexwdex-org/react",
     "strict": true,
     "skipLibCheck": true
   }
@@ -63,7 +63,7 @@ Configure your `tsconfig.json`:
 If your app loads external TS/TSX modules at runtime (for example a file-based plugin system), import this once in your app entry before dynamic imports:
 
 ```ts
-import "@opentui/react/runtime-plugin-support"
+import "@lexwdex-org/react/runtime-plugin-support"
 ```
 
 Use this for both normal Bun runs and standalone compiled executables.
@@ -79,7 +79,7 @@ OpenTUI React provides JSX intrinsic elements that map to core renderables:
 - `<scrollbox>` - Scrollable container
 - `<ascii-font>` - ASCII art text
 
-QR code support is available from `@opentui/qrcode/react` and must be registered explicitly with `registerQRCode()`.
+QR code support is available from `@lexwdex-org/qrcode/react` and must be registered explicitly with `registerQRCode()`.
 
 ### Input
 
@@ -113,8 +113,8 @@ Use inside `<text>` components:
 Creates a React root for rendering into the terminal.
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot } from "@lexwdex-org/react"
 
 const renderer = await createCliRenderer()
 createRoot(renderer).render(<App />)
@@ -129,7 +129,7 @@ For plugin slots, see [Plugin Slots overview](/docs/plugins/slots) and [React sl
 Access the OpenTUI renderer instance.
 
 ```tsx
-import { useRenderer } from "@opentui/react"
+import { useRenderer } from "@lexwdex-org/react"
 import { useEffect } from "react"
 
 function App() {
@@ -149,7 +149,7 @@ function App() {
 Handle keyboard events.
 
 ```tsx
-import { useKeyboard, useRenderer } from "@opentui/react"
+import { useKeyboard, useRenderer } from "@lexwdex-org/react"
 
 function App() {
   const renderer = useRenderer()
@@ -184,7 +184,7 @@ useKeyboard(
 Handle terminal resize events.
 
 ```tsx
-import { useOnResize } from "@opentui/react"
+import { useOnResize } from "@lexwdex-org/react"
 
 function App() {
   useOnResize((width, height) => {
@@ -200,7 +200,7 @@ function App() {
 Get reactive terminal dimensions.
 
 ```tsx
-import { useTerminalDimensions } from "@opentui/react"
+import { useTerminalDimensions } from "@lexwdex-org/react"
 
 function App() {
   const { width, height } = useTerminalDimensions()
@@ -218,8 +218,8 @@ function App() {
 Handle terminal paste events (bracketed paste).
 
 ```tsx
-import { decodePasteBytes } from "@opentui/core"
-import { usePaste } from "@opentui/react"
+import { decodePasteBytes } from "@lexwdex-org/core"
+import { usePaste } from "@lexwdex-org/react"
 
 function App() {
   usePaste((event) => {
@@ -236,7 +236,7 @@ function App() {
 Subscribe to terminal window focus events.
 
 ```tsx
-import { useFocus } from "@opentui/react"
+import { useFocus } from "@lexwdex-org/react"
 
 function App() {
   useFocus(() => {
@@ -252,7 +252,7 @@ function App() {
 Subscribe to terminal window blur events.
 
 ```tsx
-import { useBlur } from "@opentui/react"
+import { useBlur } from "@lexwdex-org/react"
 
 function App() {
   useBlur(() => {
@@ -268,7 +268,7 @@ function App() {
 Handle text selection events (e.g., mouse drag selection).
 
 ```tsx
-import { useSelectionHandler } from "@opentui/react"
+import { useSelectionHandler } from "@lexwdex-org/react"
 
 function App() {
   useSelectionHandler((selection) => {
@@ -285,7 +285,7 @@ function App() {
 Create and manage animations.
 
 ```tsx
-import { useTimeline } from "@opentui/react"
+import { useTimeline } from "@lexwdex-org/react"
 import { useEffect, useState } from "react"
 
 function App() {
@@ -341,8 +341,8 @@ Style components with props or the `style` prop:
 ## Example: Login form
 
 ```tsx
-import { createCliRenderer } from "@opentui/core"
-import { createRoot, useKeyboard } from "@opentui/react"
+import { createCliRenderer } from "@lexwdex-org/core"
+import { createRoot, useKeyboard } from "@lexwdex-org/react"
 import { useCallback, useState } from "react"
 
 function App() {
@@ -401,8 +401,8 @@ createRoot(renderer).render(<App />)
 Register custom renderables as JSX elements:
 
 ```tsx
-import { BoxRenderable, createCliRenderer, type BoxOptions, type RenderContext } from "@opentui/core"
-import { createRoot, extend } from "@opentui/react"
+import { BoxRenderable, createCliRenderer, type BoxOptions, type RenderContext } from "@lexwdex-org/core"
+import { createRoot, extend } from "@lexwdex-org/react"
 
 class ConsoleButtonRenderable extends BoxRenderable {
   private _label: string = "Button"
@@ -425,7 +425,7 @@ class ConsoleButtonRenderable extends BoxRenderable {
 }
 
 // Add TypeScript support
-declare module "@opentui/react" {
+declare module "@lexwdex-org/react" {
   interface OpenTUIComponents {
     consoleButton: typeof ConsoleButtonRenderable
   }

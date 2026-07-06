@@ -1,10 +1,10 @@
-/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @lexwdex-org/react */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import type { Renderable } from "@opentui/core"
-import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
-import { stringifyKeySequence } from "@opentui/keymap"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import type { Renderable } from "@lexwdex-org/core"
+import { createTestRenderer, type TestRendererOptions } from "@lexwdex-org/core/testing"
+import { stringifyKeySequence } from "@lexwdex-org/keymap"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 import {
   KeymapProvider,
   reactiveMatcherFromStore,
@@ -12,8 +12,8 @@ import {
   useBindings,
   useKeymap,
   usePendingSequence,
-} from "@opentui/keymap/react"
-import { createRoot, type Root } from "@opentui/react"
+} from "@lexwdex-org/keymap/react"
+import { createRoot, type Root } from "@lexwdex-org/react"
 import { act, type ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react"
 import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"

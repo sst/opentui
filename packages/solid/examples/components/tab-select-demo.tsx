@@ -1,7 +1,7 @@
 import { createSignal, For, Match, onMount, Switch } from "solid-js"
 import { EventEmitter } from "events"
-import { render, useKeyboard, useRenderer } from "@opentui/solid"
-import { ConsolePosition } from "@opentui/core"
+import { render, useKeyboard, useRenderer } from "@lexwdex-org/solid"
+import { ConsolePosition } from "@lexwdex-org/core"
 
 const Tab = (props: { title: string; active: boolean; index: number }) => {
   return (

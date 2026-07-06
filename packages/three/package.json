@@ -1,5 +1,5 @@
 {
-  "name": "@opentui/three",
+  "name": "@lexwdex-org/three",
   "version": "0.4.3",
   "description": "Three.js WebGPU renderer for OpenTUI",
   "license": "MIT",
@@ -27,7 +27,7 @@
     }
   },
   "dependencies": {
-    "@opentui/core": "workspace:*",
+    "@lexwdex-org/core": "workspace:*",
     "jimp": "1.6.1",
     "three": "0.177.0"
   },

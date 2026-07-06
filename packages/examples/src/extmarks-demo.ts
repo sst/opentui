@@ -6,10 +6,10 @@ import {
   TextRenderable,
   KeyEvent,
   type ExtmarksController,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { SyntaxStyle } from "@opentui/core"
-import { RGBA } from "@opentui/core"
+import { SyntaxStyle } from "@lexwdex-org/core"
+import { RGBA } from "@lexwdex-org/core"
 
 const initialContent = `Welcome to the Extmarks Demo!
 

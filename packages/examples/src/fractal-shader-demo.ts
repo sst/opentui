@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { BoxRenderable, CliRenderer, createCliRenderer, RGBA, TextRenderable, type KeyEvent } from "@opentui/core"
+import { BoxRenderable, CliRenderer, createCliRenderer, RGBA, TextRenderable, type KeyEvent } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import { Scene as ThreeScene, Mesh as ThreeMesh, PerspectiveCamera, PlaneGeometry, Vector2 } from "three"
 import { MeshBasicNodeMaterial } from "three/webgpu"
@@ -21,7 +21,7 @@ import {
   Fn,
   int,
 } from "three/tsl"
-import { ThreeCliRenderer } from "@opentui/three"
+import { ThreeCliRenderer } from "@lexwdex-org/three"
 
 let engine: ThreeCliRenderer | null = null
 let sceneRoot: ThreeScene | null = null

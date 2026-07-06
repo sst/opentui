@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
-import { BoxRenderable, type KeyEvent, type Renderable } from "@opentui/core"
-import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
+import { BoxRenderable, type KeyEvent, type Renderable } from "@lexwdex-org/core"
+import { createTestRenderer, type MockInput, type TestRenderer } from "@lexwdex-org/core/testing"
 import * as addons from "./addons/index.js"
 import {
   createBindingLookup,

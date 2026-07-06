@@ -146,7 +146,7 @@ if (missingRequired.length > 0) {
   process.exit(1)
 }
 
-console.log(`Building @opentui/solid library${isDev ? " (dev mode)" : ""}...`)
+console.log(`Building @lexwdex-org/solid library${isDev ? " (dev mode)" : ""}...`)
 
 const distDir = join(rootDir, "dist")
 rmSync(distDir, { recursive: true, force: true })
@@ -189,7 +189,7 @@ const coreRootDir = resolve(rootDir, "../core")
 const corePackageJsonPath = join(coreRootDir, "package.json")
 
 if (existsSync(corePackageJsonPath)) {
-  console.log("Ensuring @opentui/core declarations are up to date...")
+  console.log("Ensuring @lexwdex-org/core declarations are up to date...")
 
   const coreBuildResult: SpawnSyncReturns<Buffer> = spawnSync("bun", ["run", "build:lib"], {
     cwd: coreRootDir,
@@ -197,7 +197,7 @@ if (existsSync(corePackageJsonPath)) {
   })
 
   if (coreBuildResult.status !== 0) {
-    console.error("Error: Failed to build @opentui/core declarations required by @opentui/solid")
+    console.error("Error: Failed to build @lexwdex-org/core declarations required by @lexwdex-org/solid")
     process.exit(1)
   }
 }
@@ -301,8 +301,8 @@ const exports = {
 
 // Process dependencies to replace workspace references with actual versions
 const processedDependencies = { ...packageJson.dependencies }
-if (processedDependencies["@opentui/core"] === "workspace:*") {
-  processedDependencies["@opentui/core"] = packageJson.version
+if (processedDependencies["@lexwdex-org/core"] === "workspace:*") {
+  processedDependencies["@lexwdex-org/core"] = packageJson.version
 }
 
 writeFileSync(

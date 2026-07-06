@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { BoxRenderable, TextRenderable } from "@opentui/core"
+import { BoxRenderable, TextRenderable } from "@lexwdex-org/core"
 import type { Session } from "../../types.js"
 import { createHarness, waitFor } from "../support.js"
 

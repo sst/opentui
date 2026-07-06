@@ -1,6 +1,6 @@
-import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "@opentui/core"
-import { InputRenderable, InputRenderableEvents } from "@opentui/core"
-import { SelectRenderable, SelectRenderableEvents, type SelectOption } from "@opentui/core"
+import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "@lexwdex-org/core"
+import { InputRenderable, InputRenderableEvents } from "@lexwdex-org/core"
+import { SelectRenderable, SelectRenderableEvents, type SelectOption } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let renderer: CliRenderer | null = null

@@ -15,7 +15,7 @@ export class SshError extends Error {
     // Prefix with the package name: these are dev-facing (startup/`onError`),
     // never shown to a client, so the prefix leaks nothing. `DenyError` is the
     // exception — its message is the client-facing deny reason, so it stays plain.
-    super(`@opentui/ssh: ${message}`)
+    super(`@lexwdex-org/ssh: ${message}`)
     this.name = new.target.name
     this.code = code
   }

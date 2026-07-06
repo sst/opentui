@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, BoxRenderable, TextRenderable, RGBA } from "@opentui/core"
-import { ASCIIFontRenderable } from "@opentui/core"
+import { CliRenderer, createCliRenderer, BoxRenderable, TextRenderable, RGBA } from "@lexwdex-org/core"
+import { ASCIIFontRenderable } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let mainContainer: BoxRenderable | null = null

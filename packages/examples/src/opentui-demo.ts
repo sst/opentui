@@ -8,8 +8,8 @@ import {
   parseColor,
   getBorderFromSides,
   type KeyEvent,
-} from "@opentui/core"
-import type { BorderCharacters, BorderSidesConfig, CliRenderer } from "@opentui/core"
+} from "@lexwdex-org/core"
+import type { BorderCharacters, BorderSidesConfig, CliRenderer } from "@lexwdex-org/core"
 import { TabControllerRenderable } from "./lib/tab-controller.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 

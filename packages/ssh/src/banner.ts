@@ -18,7 +18,7 @@ export function formatBanner(info: ListenInfo, descriptor: BannerDescriptor): st
   const displayHost = info.host === "0.0.0.0" || info.host === "::" ? "localhost" : info.host
   const urlHost = displayHost.includes(":") ? `[${displayHost}]` : displayHost
   const lines = [
-    `@opentui/ssh  ▸  ssh://${urlHost}:${info.port}`,
+    `@lexwdex-org/ssh  ▸  ssh://${urlHost}:${info.port}`,
     ...info.fingerprints.map(
       (fingerprint, index) => `host key      ${fingerprint}  (${descriptor.algorithms[index]}, ${descriptor.source})`,
     ),

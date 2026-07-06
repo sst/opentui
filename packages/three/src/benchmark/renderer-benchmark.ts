@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "@opentui/core"
+import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "@lexwdex-org/core"
 import { ThreeCliRenderer } from "../WGPURenderer.js"
 import { TextureUtils } from "../TextureUtils.js"
 import {

@@ -7,7 +7,7 @@ import {
   TabSelectRenderable,
   TabSelectRenderableEvents,
   TextareaRenderable,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import type { Instance, Props, Type } from "../types/host.js"
 
 function initEventListeners(instance: Instance, eventName: string, listener: any, previousListener?: any) {

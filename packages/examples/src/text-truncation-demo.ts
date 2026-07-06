@@ -11,7 +11,7 @@ import {
   cyan,
   yellow,
   magenta,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let renderer: CliRenderer | null = null

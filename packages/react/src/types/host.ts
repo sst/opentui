@@ -1,4 +1,4 @@
-import type { BaseRenderable, RootRenderable, TextNodeRenderable } from "@opentui/core"
+import type { BaseRenderable, RootRenderable, TextNodeRenderable } from "@lexwdex-org/core"
 import { baseComponents } from "../components/index.js"
 
 export type Type = keyof typeof baseComponents

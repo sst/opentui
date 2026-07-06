@@ -8,8 +8,8 @@ const tempRoot = mkdtempSync(join(tmpdir(), "core-runtime-plugin-fixture-"))
 const entryPath = join(tempRoot, "entry.ts")
 
 const source = [
-  'import { marker as coreMarker } from "@opentui/core"',
-  'import { createTestRenderer } from "@opentui/core/testing"',
+  'import { marker as coreMarker } from "@lexwdex-org/core"',
+  'import { createTestRenderer } from "@lexwdex-org/core/testing"',
   'import { value as syncValue } from "fixture-sync"',
   'import { value as asyncValue } from "@fixture/async-module"',
   "console.log(`core=${coreMarker};coreTesting=${typeof createTestRenderer === 'function'};sync=${syncValue};async=${asyncValue}`)",

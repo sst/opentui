@@ -34,7 +34,7 @@ import {
   fg,
   type KeyEvent,
   type TextChunk,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const INDEX_HTML = readFileSync(join(__dirname, "index.html"), "utf8")

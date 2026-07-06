@@ -10,8 +10,8 @@ import {
   createCliRenderer,
   type KeyEvent,
   type SelectOption,
-} from "@opentui/core"
-import { ErrorCorrectionLevel, QRCode, QRCodeRenderable } from "@opentui/qrcode"
+} from "@lexwdex-org/core"
+import { ErrorCorrectionLevel, QRCode, QRCodeRenderable } from "@lexwdex-org/qrcode"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const ROOT_ID = "qrcode-demo-root"

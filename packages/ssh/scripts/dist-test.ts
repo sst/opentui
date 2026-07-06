@@ -28,7 +28,7 @@ function run(command: string, args: string[], cwd: string): string {
 try {
   if (!skipBuild) run("bun", ["run", "build"], root)
   const distPackage = JSON.parse(readFileSync(join(root, "dist/package.json"), "utf8")) as {
-    peerDependencies: { "@opentui/core": string }
+    peerDependencies: { "@lexwdex-org/core": string }
   }
   for (const file of readdirSync(join(root, "dist"))) {
     if (file.startsWith("opentui-ssh-") && file.endsWith(".tgz")) unlinkSync(join(root, "dist", file))
@@ -40,8 +40,8 @@ try {
   writeFileSync(
     join(coreStub, "package.json"),
     JSON.stringify({
-      name: "@opentui/core",
-      version: distPackage.peerDependencies["@opentui/core"],
+      name: "@lexwdex-org/core",
+      version: distPackage.peerDependencies["@lexwdex-org/core"],
       type: "module",
       types: "./index.d.ts",
       exports: { ".": { types: "./index.d.ts", import: "./index.js" } },
@@ -61,8 +61,8 @@ try {
       private: true,
       type: "module",
       dependencies: {
-        "@opentui/core": "file:./core-stub",
-        "@opentui/ssh": `file:${tarball}`,
+        "@lexwdex-org/core": "file:./core-stub",
+        "@lexwdex-org/ssh": `file:${tarball}`,
         "@types/node": "^24.0.0",
         ssh2: "^1.16.0",
         typescript: "^5",
@@ -71,7 +71,7 @@ try {
   )
   writeFileSync(
     join(temp, "consumer.mjs"),
-    `import { createServer, logging, ConfigError } from "@opentui/ssh"
+    `import { createServer, logging, ConfigError } from "@lexwdex-org/ssh"
 import ssh2 from "ssh2"
 const { Client } = ssh2
 if (typeof createServer !== "function" || typeof logging !== "function" || typeof ConfigError !== "function") process.exit(1)
@@ -103,7 +103,7 @@ await server.close()
   )
   writeFileSync(
     join(temp, "consumer.ts"),
-    'import { createServer, type ListenInfo } from "@opentui/ssh"; const server = createServer().serve(() => {}); const listen: Promise<ListenInfo> = server.listen(0); void listen\n',
+    'import { createServer, type ListenInfo } from "@lexwdex-org/ssh"; const server = createServer().serve(() => {}); const listen: Promise<ListenInfo> = server.listen(0); void listen\n',
   )
   run("npm", ["install", "--ignore-scripts", "--no-package-lock"], temp)
   run(nodePath, ["consumer.mjs"], temp)

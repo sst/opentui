@@ -17,7 +17,7 @@ Both methods work on normalized RGBA values (`0.0` to `1.0`) and can target fore
 ## API
 
 ```typescript
-import { TargetChannel } from "@opentui/core"
+import { TargetChannel } from "@lexwdex-org/core"
 
 frameBuffer.colorMatrix(
   matrix: Float32Array,
@@ -98,7 +98,7 @@ Result values are not clamped to `[0, 1]`. Matrix coefficients and strengths can
 ## Example: invert whole buffer
 
 ```typescript
-import { INVERT_MATRIX, TargetChannel } from "@opentui/core"
+import { INVERT_MATRIX, TargetChannel } from "@lexwdex-org/core"
 
 frameBuffer.colorMatrixUniform(INVERT_MATRIX, 1.0, TargetChannel.Both)
 ```
@@ -106,7 +106,7 @@ frameBuffer.colorMatrixUniform(INVERT_MATRIX, 1.0, TargetChannel.Both)
 ## Example: apply sepia to selected cells
 
 ```typescript
-import { SEPIA_MATRIX, TargetChannel } from "@opentui/core"
+import { SEPIA_MATRIX, TargetChannel } from "@lexwdex-org/core"
 
 // Affect only three cells at custom strengths
 const cellMask = new Float32Array([
@@ -127,7 +127,7 @@ frameBuffer.colorMatrix(SEPIA_MATRIX, cellMask, 1.0, TargetChannel.FG)
 ## Example: custom saturation matrix
 
 ```typescript
-import { TargetChannel } from "@opentui/core"
+import { TargetChannel } from "@lexwdex-org/core"
 
 function createSaturationMatrix(saturation: number): Float32Array {
   const rw = 0.299

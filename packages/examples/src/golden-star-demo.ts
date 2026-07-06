@@ -9,7 +9,7 @@ import {
   ASCIIFontRenderable,
   type ASCIIFontName,
   type OptimizedBuffer,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -30,7 +30,7 @@ import {
   Quaternion,
   ConeGeometry,
 } from "three"
-import { ThreeCliRenderer } from "@opentui/three"
+import { ThreeCliRenderer } from "@lexwdex-org/three"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 interface StarParticle {

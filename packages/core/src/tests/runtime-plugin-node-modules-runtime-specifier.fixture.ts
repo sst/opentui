@@ -22,7 +22,7 @@ writeFileSync(
 
 writeFileSync(
   externalPackageEntryPath,
-  ['import { marker } from "@opentui/core"', "export const externalMarker = marker"].join("\n"),
+  ['import { marker } from "@lexwdex-org/core"', "export const externalMarker = marker"].join("\n"),
 )
 
 registerPlugin.clearAll()

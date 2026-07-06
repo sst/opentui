@@ -8,10 +8,10 @@ import {
   type KeyEvent,
   type PasteEvent,
   decodePasteBytes,
-} from "@opentui/core"
-import { ScrollBoxRenderable } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { ScrollBoxRenderable } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { env, registerEnvVar } from "@opentui/core"
+import { env, registerEnvVar } from "@lexwdex-org/core"
 import { writeFile } from "node:fs/promises"
 
 registerEnvVar({

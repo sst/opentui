@@ -1,5 +1,5 @@
 import { Readable, Writable } from "node:stream"
-import { CliRenderEvents, createCliRenderer, type CliRenderer } from "@opentui/core"
+import { CliRenderEvents, createCliRenderer, type CliRenderer } from "@lexwdex-org/core"
 import type { ServerChannel } from "ssh2"
 import { DenyError } from "./errors.js"
 import { ignoreErrors, type SafeInvoke } from "./safe.js"
@@ -172,7 +172,7 @@ export function createSessionBridge(channel: ServerChannel, options: SessionBrid
     get renderer() {
       if (!renderer) {
         throw new Error(
-          "@opentui/ssh: session.renderer is unavailable until the handler runs — a middleware must call next() before using it",
+          "@lexwdex-org/ssh: session.renderer is unavailable until the handler runs — a middleware must call next() before using it",
         )
       }
       return renderer

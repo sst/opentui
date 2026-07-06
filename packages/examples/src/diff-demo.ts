@@ -5,10 +5,10 @@ import {
   BoxRenderable,
   TextRenderable,
   type ParsedKey,
-} from "@opentui/core"
+} from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { parseColor, type RGBA } from "@opentui/core"
-import { SyntaxStyle } from "@opentui/core"
+import { parseColor, type RGBA } from "@lexwdex-org/core"
+import { SyntaxStyle } from "@lexwdex-org/core"
 
 interface DiffTheme {
   name: string

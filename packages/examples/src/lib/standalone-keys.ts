@@ -1,4 +1,4 @@
-import { resolveRenderLib, type CliRenderer, type KeyEvent } from "@opentui/core"
+import { resolveRenderLib, type CliRenderer, type KeyEvent } from "@lexwdex-org/core"
 
 export function setupCommonDemoKeys(renderer: CliRenderer) {
   renderer.keyInput.on("keypress", (key: KeyEvent) => {

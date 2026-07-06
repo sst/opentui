@@ -1,5 +1,5 @@
 {
-  "name": "@opentui/solid",
+  "name": "@lexwdex-org/solid",
   "version": "0.4.3",
   "description": "SolidJS renderer for OpenTUI",
   "repository": {
@@ -53,7 +53,7 @@
     }
   },
   "devDependencies": {
-    "@opentui/keymap": "workspace:*",
+    "@lexwdex-org/keymap": "workspace:*",
     "@types/babel__core": "7.20.5",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
@@ -63,7 +63,7 @@
   "dependencies": {
     "@babel/core": "7.28.0",
     "@babel/preset-typescript": "7.27.1",
-    "@opentui/core": "workspace:*",
+    "@lexwdex-org/core": "workspace:*",
     "babel-plugin-module-resolver": "5.0.2",
     "babel-preset-solid": "1.9.12",
     "entities": "7.0.1",

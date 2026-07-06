@@ -7,14 +7,14 @@ import {
   TextAttributes,
   type Renderable,
   type TextareaRenderable,
-} from "@opentui/core"
-import { type ActiveKey, type Command } from "@opentui/keymap"
-import * as addons from "@opentui/keymap/addons/opentui"
-import type { ExCommandPayload } from "@opentui/keymap/addons/opentui"
-import { formatKeySequence } from "@opentui/keymap/extras"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
-import { KeymapProvider, useBindings, useKeymap, useKeymapSelector } from "@opentui/keymap/solid"
-import { render, useRenderer } from "@opentui/solid"
+} from "@lexwdex-org/core"
+import { type ActiveKey, type Command } from "@lexwdex-org/keymap"
+import * as addons from "@lexwdex-org/keymap/addons/opentui"
+import type { ExCommandPayload } from "@lexwdex-org/keymap/addons/opentui"
+import { formatKeySequence } from "@lexwdex-org/keymap/extras"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
+import { KeymapProvider, useBindings, useKeymap, useKeymapSelector } from "@lexwdex-org/keymap/solid"
+import { render, useRenderer } from "@lexwdex-org/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 
 const palette = {

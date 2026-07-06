@@ -11,7 +11,7 @@ const aliasEntryPath = join(aliasRoot, "external.ts")
 
 writeFileSync(
   realEntryPath,
-  ['import { marker } from "@opentui/core"', "export const externalMarker = marker"].join("\n"),
+  ['import { marker } from "@lexwdex-org/core"', "export const externalMarker = marker"].join("\n"),
 )
 
 symlinkSync(realRoot, aliasRoot, process.platform === "win32" ? "junction" : "dir")

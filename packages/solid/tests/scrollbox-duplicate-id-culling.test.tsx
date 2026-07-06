@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
-import type { Renderable, ScrollBoxRenderable } from "@opentui/core"
+import type { Renderable, ScrollBoxRenderable } from "@lexwdex-org/core"
 import { createSignal, For } from "solid-js"
 import { testRender } from "../index.js"
 

@@ -1,5 +1,5 @@
-import { BoxRenderable, type CliRenderer, createCliRenderer, TextRenderable, t, fg, bold } from "@opentui/core"
-import { ScrollBoxRenderable } from "@opentui/core"
+import { BoxRenderable, type CliRenderer, createCliRenderer, TextRenderable, t, fg, bold } from "@lexwdex-org/core"
+import { ScrollBoxRenderable } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let scrollBox: ScrollBoxRenderable | null = null

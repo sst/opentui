@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { BoxRenderable, TextareaRenderable, type Renderable } from "@opentui/core"
-import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { registerExCommands, registerLeader } from "@opentui/keymap/addons"
-import { registerManagedTextareaLayer } from "@opentui/keymap/addons/opentui"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { BoxRenderable, TextareaRenderable, type Renderable } from "@lexwdex-org/core"
+import { createTestRenderer, type MockInput, type TestRenderer } from "@lexwdex-org/core/testing"
+import { registerExCommands, registerLeader } from "@lexwdex-org/keymap/addons"
+import { registerManagedTextareaLayer } from "@lexwdex-org/keymap/addons/opentui"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 import { createDiagnosticHarness } from "../../tests/diagnostic-harness.js"
 
 let renderer: TestRenderer

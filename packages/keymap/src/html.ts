@@ -1,5 +1,5 @@
-import { Keymap } from "@opentui/keymap"
-import { registerDefaultKeys, registerEnabledFields, registerMetadataFields } from "@opentui/keymap/addons"
+import { Keymap } from "@lexwdex-org/keymap"
+import { registerDefaultKeys, registerEnabledFields, registerMetadataFields } from "@lexwdex-org/keymap/addons"
 import type {
   EventMatchResolver,
   HostMetadata,
@@ -7,7 +7,7 @@ import type {
   KeyStrokeInput,
   KeymapEvent,
   KeymapHost,
-} from "@opentui/keymap"
+} from "@lexwdex-org/keymap"
 
 export interface HtmlKeymapEvent extends KeymapEvent {
   readonly originalEvent?: KeyboardEvent

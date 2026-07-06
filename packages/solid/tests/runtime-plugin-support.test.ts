@@ -55,7 +55,7 @@ describe("solid runtime plugin support", () => {
     const stdout = result.stdout.toString().trim()
 
     expect(result.exitCode).toBe(0)
-    expect(stdout).toContain("OpenTUI Solid runtime plugin support is already installed without @opentui/keymap")
-    expect(stdout).toContain("@opentui/solid/runtime-plugin-support/configure")
+    expect(stdout).toContain("OpenTUI Solid runtime plugin support is already installed without @lexwdex-org/keymap")
+    expect(stdout).toContain("@lexwdex-org/solid/runtime-plugin-support/configure")
   })
 })

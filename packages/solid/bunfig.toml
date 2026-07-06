@@ -1,5 +1,5 @@
-preload = ["@opentui/solid/preload"]
+preload = ["@lexwdex-org/solid/preload"]
 
 [test]
-preload = ["@opentui/solid/preload"]
+preload = ["@lexwdex-org/solid/preload"]
 root = "tests"

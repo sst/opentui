@@ -6,14 +6,14 @@ order: 3
 
 # Core keymap
 
-This page covers `@opentui/keymap` without any host-specific adapter.
+This page covers `@lexwdex-org/keymap` without any host-specific adapter.
 
 Use the bare engine when you want a custom host or when you want to build addons on top of the shared registration surface. If you want a ready-made host or need the host contract, start with [Hosts](/docs/keymap/hosts).
 
 ## Construct a keymap
 
 ```ts
-import { Keymap, type KeymapHost } from "@opentui/keymap"
+import { Keymap, type KeymapHost } from "@lexwdex-org/keymap"
 
 const keymap = new Keymap(host as KeymapHost<object>)
 ```
@@ -95,7 +95,7 @@ keymap.registerLayer({
 | Object stroke   | `{ name: "return", ctrl: true }`     | Skips string parsing and normalizes directly  |
 | Release binding | `{ key: "a", event: "release", ...}` | Release bindings support a single stroke only |
 
-The core engine only accepts full `Binding[]` arrays. If you want command-to-key config sugar, use `commandBindings(map)` from `@opentui/keymap/extras` to build the array before calling `registerLayer()`.
+The core engine only accepts full `Binding[]` arrays. If you want command-to-key config sugar, use `commandBindings(map)` from `@lexwdex-org/keymap/extras` to build the array before calling `registerLayer()`.
 
 `Binding` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 
@@ -211,10 +211,10 @@ keymap.registerCommandFields({
 
 In that example, layer `name` exposes metadata for graph/debug UIs. Command `enabled` controls availability but exposes no metadata, while command `title` exposes normalized metadata for command palettes and help UIs.
 
-Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical formatting renders `return` as `enter`; `preferDisplay: true` keeps preserved token displays such as `<leader>`. Both are exported from `@opentui/keymap`:
+Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical formatting renders `return` as `enter`; `preferDisplay: true` keeps preserved token displays such as `<leader>`. Both are exported from `@lexwdex-org/keymap`:
 
 ```ts
-import { stringifyKeyStroke, stringifyKeySequence } from "@opentui/keymap"
+import { stringifyKeyStroke, stringifyKeySequence } from "@lexwdex-org/keymap"
 ```
 
 ## Commands and queries
@@ -250,7 +250,7 @@ Command queries search and filter across top-level command fields and compiled c
 | `runCommand(cmd, options?)`      | Runs a command against the registered command chain plus command resolvers      |
 | `dispatchCommand(cmd, options?)` | Runs a command through the active dispatch chain for the supplied/current focus |
 
-Pure extra exported from `@opentui/keymap/extras`:
+Pure extra exported from `@lexwdex-org/keymap/extras`:
 
 | Helper                           | Description                                                                                       |
 | -------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -266,7 +266,7 @@ Pure extra exported from `@opentui/keymap/extras`:
 Example:
 
 ```ts
-import { commandBindings } from "@opentui/keymap/extras"
+import { commandBindings } from "@lexwdex-org/keymap/extras"
 
 const bindings = commandBindings({
   "  save-file  ": "ctrl+s",
@@ -282,7 +282,7 @@ keymap.registerLayer({ bindings })
 ```
 
 ```ts
-import { formatCommandBindings, formatKeySequence } from "@opentui/keymap/extras"
+import { formatCommandBindings, formatKeySequence } from "@lexwdex-org/keymap/extras"
 
 formatKeySequence(keymap.parseKeySequence("<leader>s"), {
   tokenDisplay: { leader: "space" },
@@ -300,7 +300,7 @@ It deliberately keeps command identity separate from UI/layer grouping. Which bi
 Use `commandMap` when user-facing config names should differ from internal command names. Mapping happens when the lookup is created or updated; runtime lookups use internal command names.
 
 ```ts
-import { createBindingLookup } from "@opentui/keymap/extras"
+import { createBindingLookup } from "@lexwdex-org/keymap/extras"
 
 const bindings = createBindingLookup(
   {
@@ -423,12 +423,12 @@ The returned map preserves the requested command order and includes every reques
 
 ## Graph snapshots
 
-`getGraphSnapshot(keymap, options?)` from `@opentui/keymap/extras/graph` returns a diagnostic projection for graph visualizers and debug UIs. It includes layers, commands, bindings, sequence nodes, active keys and the current pending sequence.
+`getGraphSnapshot(keymap, options?)` from `@lexwdex-org/keymap/extras/graph` returns a diagnostic projection for graph visualizers and debug UIs. It includes layers, commands, bindings, sequence nodes, active keys and the current pending sequence.
 
 Layer custom fields remain available as raw `GraphLayer.fields`; compiled layer metadata published with `ctx.attr(...)` appears as `GraphLayer.attrs`. Use attrs for stable visualization metadata such as layer display names.
 
 ```ts
-import { getGraphSnapshot } from "@opentui/keymap/extras/graph"
+import { getGraphSnapshot } from "@lexwdex-org/keymap/extras/graph"
 
 keymap.registerLayerFields({
   name(value, ctx) {

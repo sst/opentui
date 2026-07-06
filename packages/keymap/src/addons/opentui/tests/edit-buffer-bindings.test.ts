@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { BoxRenderable, InputRenderable, InputRenderableEvents, TextareaRenderable } from "@opentui/core"
-import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { commandBindings } from "@opentui/keymap/extras"
+import { BoxRenderable, InputRenderable, InputRenderableEvents, TextareaRenderable } from "@lexwdex-org/core"
+import { createTestRenderer, type MockInput, type TestRenderer } from "@lexwdex-org/core/testing"
+import { commandBindings } from "@lexwdex-org/keymap/extras"
 import {
   createTextareaBindings,
   registerEditBufferCommands,
   registerManagedTextareaLayer,
   registerTextareaMappingSuspension,
-} from "@opentui/keymap/addons/opentui"
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+} from "@lexwdex-org/keymap/addons/opentui"
+import { createDefaultOpenTuiKeymap } from "@lexwdex-org/keymap/opentui"
 import { createDiagnosticHarness } from "../../../tests/diagnostic-harness.js"
 
 let renderer: TestRenderer

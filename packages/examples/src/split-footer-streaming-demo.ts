@@ -9,12 +9,12 @@ import {
   type CliRenderer,
   type KeyEvent,
   type ScrollbackSurface,
-} from "@opentui/core"
-import { RGBA, parseColor } from "@opentui/core"
-import { getTreeSitterClient } from "@opentui/core"
-import type { TextTableContent } from "@opentui/core"
-import { SyntaxStyle } from "@opentui/core"
-import type { TextChunk } from "@opentui/core"
+} from "@lexwdex-org/core"
+import { RGBA, parseColor } from "@lexwdex-org/core"
+import { getTreeSitterClient } from "@lexwdex-org/core"
+import type { TextTableContent } from "@lexwdex-org/core"
+import { SyntaxStyle } from "@lexwdex-org/core"
+import type { TextChunk } from "@lexwdex-org/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const FOOTER_HEIGHT = 10
