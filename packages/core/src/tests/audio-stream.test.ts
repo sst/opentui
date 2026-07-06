@@ -235,6 +235,147 @@ test("Audio reconnects a URL stream after its response body is interrupted", asy
   expect(requestHeaders).toEqual(["reconnect", "reconnect"])
 })
 
+test("Audio keeps playing decoded buffered frames while reconnecting an interrupted response", async () => {
+  const fixture = new Uint8Array(await readFile(MP3_URL))
+  const mp3 = repeatBytes(fixture, 8)
+  const interruptResponse = deferred()
+  const keepSecondResponseOpen = deferred()
+  let requests = 0
+  const server = createServer((_, response) => {
+    requests += 1
+    response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
+    if (requests > 1) {
+      response.write(mp3)
+      void keepSecondResponseOpen.promise.then(() => response.end())
+      return
+    }
+    response.write(mp3)
+    void interruptResponse.promise.then(() => response.destroy())
+  })
+  const baseUrl = await listen(server)
+
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 2000, startupMs: 200, resumeMs: 200 },
+    reconnect: { maxAttempts: 1, initialDelayMs: 100, maxDelayMs: 100 },
+  })
+  stream.on("error", () => {})
+
+  try {
+    await waitFor(
+      () => stream.getStats().bufferedDurationMs >= 1000,
+      "Audio stream did not buffer enough decoded PCM before interruption",
+    )
+
+    let heardBeforeInterruption = false
+    await waitFor(
+      () => heardBeforeInterruption,
+      "Audio stream did not produce audible PCM before interruption",
+      () => {
+        const mixed = audio.mixFrames(256, 2)
+        heardBeforeInterruption = mixed?.some((sample) => Math.abs(sample) > 0.005) ?? false
+      },
+    )
+    await waitFor(
+      () => stream.getStats().bufferedDurationMs >= 1000,
+      "Audio stream did not retain enough decoded PCM before interruption",
+    )
+
+    const silentSound = audio.loadSound(fixture)
+    expect(silentSound).not.toBeNull()
+    if (silentSound == null) return
+    for (let voice = 0; voice < 31; voice += 1) {
+      expect(audio.play(silentSound, { loop: true, volume: 0 })).not.toBeNull()
+    }
+    expect(audio.getStats()?.voicesActive).toBe(32)
+
+    let observedReconnect = false
+    stream.on("reconnecting", () => {
+      observedReconnect = true
+    })
+    interruptResponse.resolve()
+    await waitFor(() => observedReconnect, "Audio stream did not enter reconnecting state after interruption")
+
+    const reconnectStats = stream.getStats()
+    let heardBufferedAudio = false
+    for (let block = 0; block < 20; block += 1) {
+      const mixed = audio.mixFrames(256, 2)
+      if (mixed?.some((sample) => Math.abs(sample) > 0.005)) heardBufferedAudio = true
+      await sleep(1)
+    }
+
+    expect(heardBufferedAudio).toBe(true)
+    expect(stream.getStats().framesPlayed).toBeGreaterThan(reconnectStats.framesPlayed)
+    expect(stream.setVolume(0.6)).toBe(true)
+    expect(stream.setPan(-0.25)).toBe(true)
+
+    await waitFor(
+      () => {
+        const stats = stream.getStats()
+        return (
+          requests === 2 &&
+          stats.bytesReceived > reconnectStats.bytesReceived &&
+          stats.framesDecoded > reconnectStats.framesDecoded
+        )
+      },
+      "Audio stream did not resume decoding after reconnecting",
+      () => {
+        audio.mixFrames(256, 2)
+      },
+    )
+    expect(audio.getStats()?.voicesActive).toBe(32)
+  } finally {
+    keepSecondResponseOpen.resolve()
+    stream.dispose()
+    await stream.closed
+  }
+}, 10_000)
+
+test("Audio disposes a buffered stream while reconnecting", async () => {
+  const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 8)
+  const interruptResponse = deferred()
+  let requests = 0
+  const server = createServer((_, response) => {
+    requests += 1
+    response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
+    response.write(mp3)
+    void interruptResponse.promise.then(() => response.destroy())
+  })
+  const baseUrl = await listen(server)
+
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 1000, startupMs: 100, resumeMs: 100 },
+    reconnect: { maxAttempts: 1, initialDelayMs: 1000, maxDelayMs: 1000 },
+  })
+  stream.on("error", () => {})
+  await waitFor(
+    () => stream.getStats().bufferedDurationMs >= 500,
+    "Audio stream did not buffer enough decoded PCM before interruption",
+  )
+
+  let observedReconnect = false
+  stream.on("reconnecting", () => {
+    observedReconnect = true
+  })
+  interruptResponse.resolve()
+  await waitFor(() => observedReconnect, "Audio stream did not enter reconnecting state after interruption")
+
+  stream.dispose()
+  await stream.closed
+  await sleep(20)
+
+  expect(stream.state).toBe("disposed")
+  expect(audio.getStats()?.voicesActive).toBe(0)
+  expect(requests).toBe(1)
+})
+
 test("Throwing reconnecting listeners do not interrupt reconnection or other listeners", async () => {
   const mp3 = new Uint8Array(await readFile(MP3_URL))
   const interruptFirstResponse = deferred()

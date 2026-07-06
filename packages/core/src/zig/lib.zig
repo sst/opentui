@@ -429,6 +429,11 @@ export fn audioEndStream(engine_handle: NativeHandle, stream_id: u32) i32 {
     return native_audio.endStream(object_ptr, stream_id);
 }
 
+export fn audioRestartStream(engine_handle: NativeHandle, stream_id: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.restartStream(object_ptr, stream_id);
+}
+
 export fn audioSetStreamVolume(engine_handle: NativeHandle, stream_id: u32, volume: f32) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
     return native_audio.setStreamVolume(object_ptr, stream_id, volume);

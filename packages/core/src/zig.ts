@@ -1531,6 +1531,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "u32"],
       returns: "i32",
     },
+    audioRestartStream: {
+      args: ["u32", "u32"],
+      returns: "i32",
+    },
     audioSetStreamVolume: {
       args: ["u32", "u32", "f32"],
       returns: "i32",
@@ -1945,6 +1949,7 @@ export const NativeAudioStreamState = {
   Ended: 3,
   Failed: 4,
   Cancelled: 5,
+  Reconnecting: 6,
 } as const
 
 export type NativeAudioStreamState = (typeof NativeAudioStreamState)[keyof typeof NativeAudioStreamState]
@@ -1971,6 +1976,7 @@ export interface AudioEngineLib {
     data: Uint8Array,
   ) => { status: number; bytesWritten: number }
   audioEndStream: (engine: AudioEngineHandle, streamId: number) => number
+  audioRestartStream: (engine: AudioEngineHandle, streamId: number) => number
   audioSetStreamVolume: (engine: AudioEngineHandle, streamId: number, volume: number) => number
   audioSetStreamPan: (engine: AudioEngineHandle, streamId: number, pan: number) => number
   audioSetStreamGroup: (engine: AudioEngineHandle, streamId: number, groupId: number) => number
@@ -5022,6 +5028,10 @@ class FFIRenderLib implements RenderLib {
 
   public audioEndStream(engine: AudioEngineHandle, streamId: number): number {
     return this.opentui.symbols.audioEndStream(engine, streamId)
+  }
+
+  public audioRestartStream(engine: AudioEngineHandle, streamId: number): number {
+    return this.opentui.symbols.audioRestartStream(engine, streamId)
   }
 
   public audioSetStreamVolume(engine: AudioEngineHandle, streamId: number, volume: number): number {

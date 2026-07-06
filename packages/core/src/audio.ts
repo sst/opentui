@@ -94,6 +94,7 @@ export type AudioStreamAction =
   | "create"
   | "write"
   | "end"
+  | "restart"
   | "stats"
   | "decoder"
   | "destroy"
@@ -346,7 +347,15 @@ function resolveAudioStreamOptions(
   }
 }
 
-const NATIVE_STREAM_STATES = ["initializing", "buffering", "playing", "ended", "errored", "disposed"] as const
+const NATIVE_STREAM_STATES = [
+  "initializing",
+  "buffering",
+  "playing",
+  "ended",
+  "errored",
+  "disposed",
+  "reconnecting",
+] as const
 
 function runBoundedCleanup(cleanup: () => unknown, timeoutMs: number = 50): Promise<void> {
   let result: Promise<unknown>
@@ -723,7 +732,11 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       return
     }
 
-    if (!this.createNativeStream(generation)) return
+    if (this.nativeStream == null) {
+      if (!this.createNativeStream(generation)) return
+    } else {
+      this.nativeStream.generation = generation
+    }
     void this.waitForDecoderReady(generation)
     this.startSourcePump(response.body, generation, true)
   }
@@ -786,7 +799,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         )
         return
       }
-      if (state !== "initializing") {
+      if (state !== "initializing" && state !== "reconnecting") {
         if (state === "errored" || state === "disposed") {
           await this.failDecoder(stats)
           return
@@ -1002,21 +1015,30 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       return
     }
 
+    const restartNative =
+      this.nativeStream != null &&
+      nativeStats != null &&
+      (nativeStats.state === NativeAudioStreamState.Initializing ||
+        nativeStats.state === NativeAudioStreamState.Buffering ||
+        nativeStats.state === NativeAudioStreamState.Playing ||
+        nativeStats.state === NativeAudioStreamState.Reconnecting)
+
     this.generation += 1
     this.activeController?.abort()
     this.activeController = null
+    const transitionResult = restartNative ? this.restartCurrentNative() : this.destroyCurrentNative()
     const cleanup = this.takeSourceCleanup()
-    const destroyResult = this.destroyCurrentNative()
     await cleanup
-    if (destroyResult.status !== 0) {
-      const destroyContext: AudioStreamErrorContext = { action: "destroy", status: destroyResult.status }
+    if (transitionResult.status !== 0) {
+      const action: AudioStreamAction = restartNative ? "restart" : "destroy"
+      const transitionContext: AudioStreamErrorContext = { action, status: transitionResult.status }
       await this.fail(
         new AudioStreamOperationError(
-          "Audio stream destroy failed during reconnect",
-          destroyContext,
-          destroyResult.cause,
+          `Audio stream ${action} failed during reconnect`,
+          transitionContext,
+          transitionResult.cause,
         ),
-        destroyContext,
+        transitionContext,
       )
       return
     }
@@ -1030,7 +1052,6 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     )
     const delayMs = retryAfterMs ?? exponentialDelay
     this.currentState = "reconnecting"
-    this.lastBufferedFrames = 0
     const reconnectEvent: AudioStreamReconnectEvent = {
       attempt: this.consecutiveReconnectAttempts,
       delayMs,
@@ -1209,6 +1230,16 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     this.lastBufferedFrames = 0
     try {
       return { status: this.lib.audioDestroyStream(this.engine, native.id) }
+    } catch (cause) {
+      return { status: -1, cause }
+    }
+  }
+
+  private restartCurrentNative(): { status: number; cause?: unknown } {
+    const native = this.nativeStream
+    if (native == null) return { status: -1 }
+    try {
+      return { status: this.lib.audioRestartStream(this.engine, native.id) }
     } catch (cause) {
       return { status: -1, cause }
     }

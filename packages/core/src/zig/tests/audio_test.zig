@@ -3,6 +3,7 @@ const testing = std.testing;
 const audio = @import("../audio.zig");
 
 const TEST_SAMPLE_RATE: u32 = 48_000;
+const TEST_MP3_PATH = "../tests/fixtures/audio/tone-750hz-48k-mono-1s.mp3";
 
 fn expectStatusOk(status: i32) !void {
     try testing.expectEqual(audio.Status.ok, status);
@@ -95,6 +96,29 @@ fn hasSignal(samples: []const f32) bool {
         if (@abs(sample) > 0.0005) return true;
     }
     return false;
+}
+
+fn writeAllStreamBytes(engine: *audio.Engine, stream_id: u32, bytes: []const u8) !void {
+    var offset: usize = 0;
+    var attempts: usize = 0;
+    while (offset < bytes.len and attempts < 5_000) : (attempts += 1) {
+        var written: u32 = 0;
+        try expectStatusOk(audio.writeStream(engine, stream_id, bytes[offset..].ptr, @intCast(bytes.len - offset), &written));
+        offset += written;
+        if (written == 0) std.Thread.sleep(std.time.ns_per_ms);
+    }
+    try testing.expectEqual(bytes.len, offset);
+}
+
+fn waitForBufferedFrames(engine: *audio.Engine, stream_id: u32, minimum: u32) !audio.StreamStats {
+    var stats: audio.StreamStats = undefined;
+    for (0..5_000) |_| {
+        try expectStatusOk(audio.getStreamStats(engine, stream_id, &stats));
+        if (stats.buffered_frames >= minimum) return stats;
+        if (stats.state == audio.StreamState.failed) return error.TestUnexpectedResult;
+        std.Thread.sleep(std.time.ns_per_ms);
+    }
+    return error.TestUnexpectedResult;
 }
 
 test "audio - create initializes engine with defaults" {
@@ -565,4 +589,110 @@ test "audio stream reuses retired slot with a new generation" {
     var stats: audio.Stats = undefined;
     try expectStatusOk(audio.getStats(engine, &stats));
     try testing.expectEqual(@as(u32, 0), stats.voices_active);
+}
+
+test "audio stream restart retains PCM and resumes decoding with the same id" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+    try expectStatusOk(audio.startMixer(engine));
+    const mp3 = try std.fs.cwd().readFileAlloc(testing.allocator, TEST_MP3_PATH, 16 * 1024);
+    defer testing.allocator.free(mp3);
+
+    var options = streamOptions();
+    options.input_capacity_bytes = 64 * 1024;
+    options.pcm_capacity_frames = 16 * 1024;
+    options.startup_frames = 256;
+    options.resume_frames = 128;
+
+    var stream_id: u32 = 0;
+    try expectStatusOk(audio.createStream(engine, &options, &stream_id));
+    for (0..8) |_| try writeAllStreamBytes(engine, stream_id, mp3);
+    _ = try waitForBufferedFrames(engine, stream_id, 8 * 1024);
+
+    var warmup: [512 * 2]f32 = undefined;
+    try expectStatusOk(audio.mixToBuffer(engine, &warmup, 512, 2));
+
+    var before_restart: audio.StreamStats = undefined;
+    try expectStatusOk(audio.getStreamStats(engine, stream_id, &before_restart));
+    try testing.expect(before_restart.frames_played > 0);
+    try testing.expect(before_restart.buffered_frames > 4 * 1024);
+
+    try expectStatusOk(audio.restartStream(engine, stream_id));
+
+    var reconnecting: audio.StreamStats = undefined;
+    try expectStatusOk(audio.getStreamStats(engine, stream_id, &reconnecting));
+    try testing.expectEqual(audio.StreamState.reconnecting, reconnecting.state);
+    try testing.expectEqual(before_restart.bytes_received, reconnecting.bytes_received);
+    try testing.expect(reconnecting.frames_decoded >= before_restart.frames_decoded);
+    try testing.expectEqual(before_restart.frames_played, reconnecting.frames_played);
+
+    var retained: [256 * 2]f32 = undefined;
+    var heard_retained_pcm = false;
+    var after_retained: audio.StreamStats = undefined;
+    for (0..100) |_| {
+        try expectStatusOk(audio.mixToBuffer(engine, &retained, 256, 2));
+        heard_retained_pcm = heard_retained_pcm or hasSignal(&retained);
+        try expectStatusOk(audio.getStreamStats(engine, stream_id, &after_retained));
+        if (after_retained.buffered_frames == 0) break;
+    }
+    try testing.expect(heard_retained_pcm);
+    try testing.expectEqual(@as(u32, 0), after_retained.buffered_frames);
+    try testing.expectEqual(audio.StreamState.reconnecting, after_retained.state);
+    try testing.expectEqual(reconnecting.frames_played + reconnecting.buffered_frames, after_retained.frames_played);
+
+    var silence: [256 * 2]f32 = undefined;
+    var reached_silence = false;
+    for (0..16) |_| {
+        try expectStatusOk(audio.mixToBuffer(engine, &silence, 256, 2));
+        if (!hasSignal(&silence)) {
+            reached_silence = true;
+            break;
+        }
+    }
+    try testing.expect(reached_silence);
+    var after_silence: audio.StreamStats = undefined;
+    try expectStatusOk(audio.getStreamStats(engine, stream_id, &after_silence));
+    try testing.expectEqual(audio.StreamState.reconnecting, after_silence.state);
+    try testing.expectEqual(after_retained.frames_played, after_silence.frames_played);
+
+    try writeAllStreamBytes(engine, stream_id, mp3);
+    try expectStatusOk(audio.endStream(engine, stream_id));
+
+    var mixed: [256 * 2]f32 = undefined;
+    var final_stats: audio.StreamStats = undefined;
+    for (0..5_000) |_| {
+        try expectStatusOk(audio.mixToBuffer(engine, &mixed, 256, 2));
+        try expectStatusOk(audio.getStreamStats(engine, stream_id, &final_stats));
+        if (final_stats.state == audio.StreamState.ended) break;
+        if (final_stats.state == audio.StreamState.failed) return error.TestUnexpectedResult;
+        std.Thread.sleep(std.time.ns_per_ms);
+    }
+
+    try testing.expectEqual(audio.StreamState.ended, final_stats.state);
+    try testing.expect(final_stats.frames_decoded > reconnecting.frames_decoded);
+    try testing.expect(final_stats.frames_played > after_retained.frames_played);
+    try testing.expectEqual(@as(u64, mp3.len * 9), final_stats.bytes_received);
+    try testing.expectEqual(audio.Status.err_invalid, audio.restartStream(engine, stream_id));
+}
+
+test "audio stream destroy wakes a restarted decoder waiting for bytes" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+    const mp3 = try std.fs.cwd().readFileAlloc(testing.allocator, TEST_MP3_PATH, 16 * 1024);
+    defer testing.allocator.free(mp3);
+
+    var options = streamOptions();
+    options.input_capacity_bytes = 64 * 1024;
+    options.pcm_capacity_frames = 8 * 1024;
+    options.startup_frames = 256;
+    options.resume_frames = 128;
+
+    var stream_id: u32 = 0;
+    try expectStatusOk(audio.createStream(engine, &options, &stream_id));
+    for (0..8) |_| try writeAllStreamBytes(engine, stream_id, mp3);
+    _ = try waitForBufferedFrames(engine, stream_id, 4 * 1024);
+
+    try expectStatusOk(audio.restartStream(engine, stream_id));
+    try expectStatusOk(audio.destroyStream(engine, stream_id));
+    try testing.expectEqual(audio.Status.err_not_found, audio.restartStream(engine, stream_id));
 }

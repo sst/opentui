@@ -74,6 +74,7 @@ pub const StreamState = struct {
     pub const ended: u32 = 3;
     pub const failed: u32 = 4;
     pub const cancelled: u32 = 5;
+    pub const reconnecting: u32 = 6;
 };
 
 pub const StreamStats = extern struct {
@@ -137,6 +138,7 @@ const Stream = struct {
     input_condition: std.Thread.Condition = .{},
     input_ended: u32 = 0,
     cancel_requested: u32 = 0,
+    decoder_stop_requested: u32 = 0,
     decoder_abort: bool = false,
     probe_active: bool = true,
     probe_bytes: usize = 0,
@@ -382,13 +384,29 @@ fn isTerminalStreamState(state: u32) bool {
     return state == StreamState.ended or state == StreamState.failed or state == StreamState.cancelled;
 }
 
-fn failStream(stream: *Stream) void {
-    @atomicStore(i32, &stream.error_code, Status.err_decode, .release);
+fn failStreamWithCode(stream: *Stream, error_code: i32) void {
+    @atomicStore(i32, &stream.error_code, error_code, .release);
 
     var state = loadStreamState(stream);
     while (!isTerminalStreamState(state)) {
         state = @cmpxchgWeak(u32, &stream.state, state, StreamState.failed, .acq_rel, .acquire) orelse return;
     }
+}
+
+fn failStream(stream: *Stream) void {
+    failStreamWithCode(stream, Status.err_decode);
+}
+
+fn decoderExitRequested(stream: *const Stream) bool {
+    return @atomicLoad(u32, &stream.cancel_requested, .acquire) != 0 or
+        @atomicLoad(u32, &stream.decoder_stop_requested, .acquire) != 0;
+}
+
+fn failDecoderWorker(stream: *Stream) void {
+    stream.input_lock.lock();
+    defer stream.input_lock.unlock();
+    if (decoderExitRequested(stream)) return;
+    failStream(stream);
 }
 
 fn endStreamPlayback(stream: *Stream) void {
@@ -460,6 +478,7 @@ fn streamDataSourceRead(
     var available = c.ma_pcm_rb_available_read(&stream.pcm_ring);
     const decoder_finished = @atomicLoad(u32, &stream.decoder_finished, .acquire) != 0;
 
+    const consume_while_reconnecting = state == StreamState.reconnecting;
     if (state == StreamState.buffering) {
         const threshold = if (stream.has_started_playback) stream.resume_frames else stream.startup_frames;
         if (available >= threshold or (decoder_finished and available > 0)) {
@@ -478,7 +497,7 @@ fn streamDataSourceRead(
         }
     }
 
-    if (state != StreamState.playing) {
+    if (state != StreamState.playing and !consume_while_reconnecting) {
         return c.MA_AT_END;
     }
 
@@ -504,14 +523,14 @@ fn streamDataSourceRead(
     }
 
     available = c.ma_pcm_rb_available_read(&stream.pcm_ring);
-    if (decoder_finished and available == 0) {
+    if (!consume_while_reconnecting and decoder_finished and available == 0) {
         endStreamPlayback(stream);
         if (frames_read_out != null) frames_read_out[0] = total_read;
         return if (total_read == 0) c.MA_AT_END else c.MA_SUCCESS;
     }
 
     if (total_read < requested_frames) {
-        if (transitionStreamState(stream, StreamState.playing, StreamState.buffering)) {
+        if (!consume_while_reconnecting and transitionStreamState(stream, StreamState.playing, StreamState.buffering)) {
             _ = @atomicRmw(u32, &stream.underruns, .Add, 1, .monotonic);
         }
         if (frames_read_out != null) frames_read_out[0] = frame_count;
@@ -573,6 +592,7 @@ fn streamDecoderRead(
     while (stream.input_count == 0 and
         @atomicLoad(u32, &stream.input_ended, .acquire) == 0 and
         @atomicLoad(u32, &stream.cancel_requested, .acquire) == 0 and
+        @atomicLoad(u32, &stream.decoder_stop_requested, .acquire) == 0 and
         !stream.decoder_abort)
     {
         if (stream.probe_active and stream.probe_bytes >= max_stream_probe_bytes) {
@@ -582,7 +602,7 @@ fn streamDecoderRead(
         stream.input_condition.wait(&stream.input_lock);
     }
 
-    if (@atomicLoad(u32, &stream.cancel_requested, .acquire) != 0 or stream.decoder_abort) {
+    if (decoderExitRequested(stream) or stream.decoder_abort) {
         return c.MA_CANCELLED;
     }
     if (stream.input_count == 0 and @atomicLoad(u32, &stream.input_ended, .acquire) != 0) {
@@ -633,23 +653,26 @@ fn streamDecoderWorker(stream: *Stream) void {
     var decoder: c.ma_decoder = undefined;
     const init_result = c.ma_decoder_init(streamDecoderRead, streamDecoderSeek, stream, &config, &decoder);
     if (init_result != c.MA_SUCCESS) {
-        if (@atomicLoad(u32, &stream.cancel_requested, .acquire) != 0) {
-            setStreamState(stream, StreamState.cancelled);
-        } else {
-            failStream(stream);
-        }
+        failDecoderWorker(stream);
         return;
     }
     defer _ = c.ma_decoder_uninit(&decoder);
 
     stream.input_lock.lock();
     stream.probe_active = false;
-    stream.input_lock.unlock();
-    if (!transitionStreamState(stream, StreamState.initializing, StreamState.buffering)) {
-        if (@atomicLoad(u32, &stream.cancel_requested, .acquire) != 0) return;
+    if (decoderExitRequested(stream)) {
+        stream.input_lock.unlock();
+        return;
     }
+    const state = loadStreamState(stream);
+    if (state == StreamState.initializing) {
+        _ = transitionStreamState(stream, StreamState.initializing, StreamState.buffering);
+    } else if (state == StreamState.reconnecting) {
+        _ = transitionStreamState(stream, StreamState.reconnecting, StreamState.buffering);
+    }
+    stream.input_lock.unlock();
 
-    while (@atomicLoad(u32, &stream.cancel_requested, .acquire) == 0) {
+    while (!decoderExitRequested(stream)) {
         const writable = c.ma_pcm_rb_available_write(&stream.pcm_ring);
         if (writable == 0) {
             std.Thread.sleep(std.time.ns_per_ms);
@@ -659,36 +682,43 @@ fn streamDecoderWorker(stream: *Stream) void {
         var contiguous_frames: u32 = @min(writable, stream_decoder_chunk_frames);
         var pcm_ptr: ?*anyopaque = null;
         if (c.ma_pcm_rb_acquire_write(&stream.pcm_ring, &contiguous_frames, &pcm_ptr) != c.MA_SUCCESS or contiguous_frames == 0 or pcm_ptr == null) {
-            failStream(stream);
+            failDecoderWorker(stream);
             return;
         }
 
         var frames_read: c.ma_uint64 = 0;
         const result = c.ma_decoder_read_pcm_frames(&decoder, pcm_ptr, contiguous_frames, &frames_read);
         const decoded_frames = std.math.cast(u32, frames_read) orelse {
-            failStream(stream);
+            failDecoderWorker(stream);
             return;
         };
 
         if (decoded_frames > 0) {
             if (c.ma_pcm_rb_commit_write(&stream.pcm_ring, decoded_frames) != c.MA_SUCCESS) {
-                failStream(stream);
+                failDecoderWorker(stream);
                 return;
             }
             _ = @atomicRmw(u64, &stream.frames_decoded, .Add, decoded_frames, .monotonic);
         }
 
-        if (@atomicLoad(u32, &stream.cancel_requested, .acquire) != 0) return;
+        if (decoderExitRequested(stream)) return;
         if (result != c.MA_SUCCESS and result != c.MA_AT_END) {
-            failStream(stream);
+            failDecoderWorker(stream);
             return;
         }
         if (frames_read == 0) {
-            if (@atomicLoad(u32, &stream.input_ended, .acquire) == 0) {
-                failStream(stream);
+            stream.input_lock.lock();
+            if (decoderExitRequested(stream)) {
+                stream.input_lock.unlock();
                 return;
             }
-            @atomicStore(u32, &stream.decoder_finished, 1, .release);
+            if (@atomicLoad(u32, &stream.input_ended, .acquire) != 0) {
+                @atomicStore(u32, &stream.decoder_finished, 1, .release);
+                stream.input_lock.unlock();
+                return;
+            }
+            stream.input_lock.unlock();
+            failDecoderWorker(stream);
             return;
         }
     }
@@ -1414,6 +1444,62 @@ pub fn endStream(engine: *Engine, stream_id: u32) i32 {
     }
     @atomicStore(u32, &stream.input_ended, 1, .release);
     stream.input_condition.broadcast();
+    return Status.ok;
+}
+
+pub fn restartStream(engine: *Engine, stream_id: u32) i32 {
+    if (stream_id == 0) return Status.err_invalid;
+    const e = engine;
+
+    e.lock.lock();
+    const stream = getStream(e, stream_id) orelse {
+        e.lock.unlock();
+        return Status.err_not_found;
+    };
+
+    stream.input_lock.lock();
+    const state = loadStreamState(stream);
+    if (isTerminalStreamState(state) or
+        @atomicLoad(u32, &stream.cancel_requested, .acquire) != 0 or
+        stream.worker == null)
+    {
+        stream.input_lock.unlock();
+        e.lock.unlock();
+        return Status.err_invalid;
+    }
+
+    setStreamState(stream, StreamState.reconnecting);
+    @atomicStore(u32, &stream.decoder_stop_requested, 1, .release);
+    stream.input_condition.broadcast();
+    stream.input_lock.unlock();
+
+    const worker = stream.worker.?;
+    stream.worker = null;
+    e.lock.unlock();
+
+    worker.join();
+
+    e.lock.lock();
+    defer e.lock.unlock();
+
+    stream.input_lock.lock();
+    stream.input_read = 0;
+    stream.input_write = 0;
+    stream.input_count = 0;
+    @atomicStore(u32, &stream.input_ended, 0, .release);
+    @atomicStore(u32, &stream.decoder_finished, 0, .release);
+    stream.decoder_abort = false;
+    stream.probe_active = true;
+    stream.probe_bytes = 0;
+    @atomicStore(i32, &stream.error_code, 0, .release);
+    @atomicStore(u32, &stream.decoder_stop_requested, 0, .release);
+    stream.input_lock.unlock();
+
+    stream.worker = std.Thread.spawn(.{}, streamDecoderWorker, .{stream}) catch {
+        failStreamWithCode(stream, Status.err_no_space);
+        return Status.err_no_space;
+    };
+
     return Status.ok;
 }
 
