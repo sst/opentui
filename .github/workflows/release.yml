@@ -75,13 +75,15 @@ jobs:
         run: |
           echo "registry=https://registry.npmjs.org/" >> ~/.npmrc
           echo "//registry.npmjs.org/:_authToken=${{ secrets.AUTH_TOKEN }}" >> ~/.npmrc
+          echo "=== npm whoami ==="
+          npm whoami
 
       - name: Publish native packages
         run: |
           for pkg in core-darwin-arm64 core-linux-x64 core-linux-x64-musl core-win32-x64; do
             dir="packages/core/node_modules/@lexwdex-org/$pkg"
-            echo "Publishing @lexwdex-org/$pkg..."
-            (cd "$dir" && npm publish --access public) || echo "⚠️  $pkg may already exist, skipping"
+            echo "=== Publishing @lexwdex-org/$pkg ==="
+            (cd "$dir" && npm publish --access public 2>&1) || echo "⚠️  $pkg failed (may already exist)"
           done
 
       - name: Build library (TS bundle)
