@@ -80,7 +80,7 @@ function captureAudioEvents(run: () => void): string[] {
   return events
 }
 
-test("Audio.create throws synchronously without emitting when engine creation fails", () => {
+test("Audio.create throws synchronously when engine creation fails", () => {
   let thrown: unknown
   const events = captureAudioEvents(() => {
     try {
@@ -99,7 +99,7 @@ test("setupAudio uses the same synchronous initialization contract", () => {
   expect(() => setupAudio({ playbackChannels: 0xffffffff })).toThrow(AudioInitializationError)
 })
 
-test("Audio auto-start failure throws without emitting and destroys the native engine", () => {
+test("Audio auto-start failure throws and destroys the native engine", () => {
   const lib = resolveRenderLib()
   const originalDestroy = lib.destroyAudioEngine
   let destroyCalls = 0
@@ -130,7 +130,7 @@ test("Audio auto-start failure throws without emitting and destroys the native e
   expect(destroyCalls).toBe(1)
 })
 
-test("Audio auto-start succeeds without emitting constructor lifecycle events", () => {
+test("Audio auto-start success updates started state", () => {
   const lib = resolveRenderLib()
   let audio!: Audio
   const restoreStart = replaceMethod(lib, "audioStart", () => 0)
@@ -148,7 +148,7 @@ test("Audio auto-start succeeds without emitting constructor lifecycle events", 
   instances.push(audio)
 })
 
-test("Audio explicit start still emits started after construction", () => {
+test("Audio explicit start emits started after construction", () => {
   const lib = resolveRenderLib()
   const restoreStart = replaceMethod(lib, "audioStart", () => 0)
   try {
@@ -205,10 +205,15 @@ test("Audio start reports playback availability only", () => {
 
   expect(audio.isStarted()).toBe(false)
   expect(audio.isMixerStarted()).toBe(false)
+  let startedEvents = 0
+  audio.on("started", () => {
+    startedEvents += 1
+  })
 
   const started = audio.start()
   expect(audio.isStarted()).toBe(started)
   expect(audio.isMixerStarted()).toBe(started)
+  expect(startedEvents).toBe(started ? 1 : 0)
 })
 
 test("Audio startMixer enables headless mixing without playback", () => {

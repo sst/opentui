@@ -393,7 +393,7 @@ function parseRetryAfter(value: string | null, maxDelayMs: number): number | und
 }
 
 function isRetryableHttpStatus(status: number): boolean {
-  return status === 408 || status === 425 || status === 429 || status >= 500
+  return status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599)
 }
 
 function isAllowedMp3ContentType(value: string): boolean {
@@ -1152,6 +1152,7 @@ export class Audio extends EventEmitter<AudioEvents> {
   private readonly streams = new Set<AudioStream>()
   private playbackStarted = false
   private mixerStarted = false
+  private disposing = false
 
   private constructor(lib: RenderLib, options: AudioSetupOptions) {
     super()
@@ -1580,15 +1581,20 @@ export class Audio extends EventEmitter<AudioEvents> {
   }
 
   dispose(): void {
-    if (!this.engine) return
-    for (const stream of [...this.streams]) stream.dispose()
-    if (this.mixerStarted) {
-      this.stop()
+    if (!this.engine || this.disposing) return
+    this.disposing = true
+    try {
+      for (const stream of [...this.streams]) stream.dispose()
+      if (this.mixerStarted) {
+        this.stop()
+      }
+      this.groups.clear()
+      this.lib.destroyAudioEngine(this.engine)
+      this.engine = null
+      this.emit("disposed")
+    } finally {
+      this.disposing = false
     }
-    this.groups.clear()
-    this.lib.destroyAudioEngine(this.engine)
-    this.engine = null
-    this.emit("disposed")
   }
 }
 

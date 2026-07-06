@@ -65,6 +65,8 @@ Create a new `Audio` instance to change `sampleRate` or `playbackChannels`.
 
 `playStream()` progressively decodes an MP3 URL, `ReadableStream<Uint8Array>`, or `AsyncIterable<Uint8Array>` without waiting for the source to end. Streaming is MP3-only; static `loadSound()` also supports WAV and FLAC.
 
+URL responses may use `audio/mpeg`, `audio/mp3`, `application/mp3`, or `application/octet-stream`; a missing content type is also accepted so Icecast-style endpoints can stream directly.
+
 ```typescript
 import { Audio, type AudioStream } from "@opentui/core"
 
