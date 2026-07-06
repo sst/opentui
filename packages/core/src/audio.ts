@@ -1133,6 +1133,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   }
 
   private emitAsync<K extends keyof AudioStreamEvents>(event: K, ...args: AudioStreamEvents[K]): void {
+    // Events are observational; listener failures must not stall lifecycle work or skip later listeners.
     setTimeout(() => {
       const listeners = this.rawListeners(event)
       for (const listener of listeners) {
