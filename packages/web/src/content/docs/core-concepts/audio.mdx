@@ -71,34 +71,20 @@ import { Audio, type AudioStream } from "@opentui/core"
 const audio = Audio.create({ autoStart: false })
 let stream: AudioStream | null = null
 
+audio.on("error", (error) => {
+  console.error(error.message)
+})
+
 try {
   if (!audio.start()) throw new Error("No playback device available")
 
   stream = await audio.playStream("https://anomaly.fm/radio", {
-    volume: 0.8,
-    buffer: {
-      capacityMs: 2000,
-      startupMs: 1000,
-      resumeMs: 1000,
-    },
-    reconnect: {
-      retryOnEnd: true,
-      initialDelayMs: 1000,
-      maxDelayMs: 15000,
-      backoffFactor: 2,
-    },
-  })
-
-  stream.on("reconnecting", ({ attempt, delayMs }) => {
-    console.error(`Reconnecting attempt ${attempt} in ${delayMs}ms`)
+    reconnect: { retryOnEnd: true },
   })
 
   stream.on("error", (error) => {
     console.error(error.message)
   })
-
-  stream.setVolume(0.6)
-  stream.setPan(0)
 
   // Run the application until playback should stop.
 } finally {
