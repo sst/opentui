@@ -167,6 +167,7 @@ test("Audio streams an MP3 before the HTTP response ends and exposes it through 
 test("Audio accepts an async iterable and drains it to completion", async () => {
   const mp3 = new Uint8Array(await readFile(MP3_URL))
   async function* chunks(): AsyncGenerator<Uint8Array> {
+    yield new Uint8Array(0)
     for (let offset = 0; offset < mp3.length; offset += 97) {
       yield mp3.subarray(offset, Math.min(mp3.length, offset + 97))
     }
@@ -345,6 +346,7 @@ test("Audio keeps playing decoded buffered frames while reconnecting an interrup
       },
     )
     expect(audio.getStats()?.voicesActive).toBe(32)
+    expect(stream.getStats().reconnectAttempts).toBe(1)
 
     let replacementOutput: Float32Array | null = null
     await waitFor(
