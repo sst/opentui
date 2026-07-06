@@ -19,7 +19,14 @@ import {
 import FFT from "fft.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
-const DEFAULT_STREAM_URL = "https://anomaly.fm/radio"
+const DEMO_STATIONS = [
+  { name: "FIP", url: "https://icecast.radiofrance.fr/fip-midfi.mp3" },
+  { name: "WFMU", url: "https://stream0.wfmu.org/freeform-128k" },
+  { name: "NPO Radio 5", url: "https://icecast.omroep.nl/radio5-bb-mp3" },
+  { name: "NPR", url: "https://npr-ice.streamguys1.com/live.mp3" },
+  { name: "Dance Wave", url: "https://dancewave.online/dance.mp3" },
+] as const
+const DEFAULT_STREAM_URL = DEMO_STATIONS[0].url
 const SAMPLE_RATE = 48_000
 const FFT_SIZE = 2048
 const FFT_UPDATE_MS = 50
@@ -67,6 +74,7 @@ class AudioStreamingDemo {
   private readonly renderer: CliRenderer
   private readonly root: BoxRenderable
   private readonly urlInput: InputRenderable
+  private readonly stationButtons: Array<{ box: BoxRenderable; label: TextRenderable }> = []
   private readonly spectrumText: TextRenderable
   private readonly statsText: TextRenderable
   private readonly controlsText: TextRenderable
@@ -89,6 +97,7 @@ class AudioStreamingDemo {
   private outputMode = "starting"
   private statusMessage = "Initializing native audio"
   private statusColor = PALETTE.warning
+  private selectedStationIndex = 0
   private volume = 0.8
   private pan = 0
   private useDimGroup = false
@@ -114,20 +123,12 @@ class AudioStreamingDemo {
       backgroundColor: PALETTE.background,
     })
 
-    const header = new TextRenderable(renderer, {
-      id: "audio-streaming-demo-header",
-      content: "LIVE MP3 STREAM  /  native decoder + bounded buffers + master-tap FFT",
-      fg: PALETTE.accent,
-      height: 1,
-      flexShrink: 0,
-    })
-    this.root.add(header)
-
     const inputPanel = new BoxRenderable(renderer, {
       id: "audio-streaming-demo-input-panel",
-      title: " MP3 stream URL ",
+      title: " LIVE MP3 STREAM / URL + station presets ",
       width: "100%",
-      height: 4,
+      height: 6,
+      flexDirection: "column",
       border: true,
       borderStyle: "rounded",
       borderColor: PALETTE.border,
@@ -140,6 +141,7 @@ class AudioStreamingDemo {
     this.urlInput = new InputRenderable(renderer, {
       id: "audio-streaming-demo-url",
       width: "100%",
+      flexShrink: 0,
       value: DEFAULT_STREAM_URL,
       placeholder: "https://example.com/live.mp3",
       maxLength: 2048,
@@ -151,6 +153,43 @@ class AudioStreamingDemo {
       cursorColor: PALETTE.accent,
     })
     inputPanel.add(this.urlInput)
+
+    const stationRow = new BoxRenderable(renderer, {
+      id: "audio-streaming-demo-stations",
+      width: "100%",
+      height: 3,
+      flexDirection: "row",
+      gap: 0,
+      flexShrink: 0,
+    })
+    for (const [index, station] of DEMO_STATIONS.entries()) {
+      const box = new BoxRenderable(renderer, {
+        id: `audio-streaming-demo-station-${index + 1}`,
+        border: true,
+        borderStyle: "single",
+        borderColor: index === this.selectedStationIndex ? PALETTE.accent : PALETTE.border,
+        backgroundColor: index === this.selectedStationIndex ? PALETTE.panelAlt : PALETTE.panel,
+        flexGrow: 1,
+        flexBasis: 0,
+        minWidth: 0,
+        alignItems: "center",
+        justifyContent: "center",
+        onMouseDown: (event) => {
+          event.stopPropagation()
+          this.selectStation(index)
+        },
+      })
+      const label = new TextRenderable(renderer, {
+        id: `audio-streaming-demo-station-label-${index + 1}`,
+        content: `${index + 1} ${station.name}`,
+        fg: index === this.selectedStationIndex ? PALETTE.signal : PALETTE.muted,
+        height: 1,
+      })
+      box.add(label)
+      stationRow.add(box)
+      this.stationButtons.push({ box, label })
+    }
+    inputPanel.add(stationRow)
     this.root.add(inputPanel)
 
     const body = new BoxRenderable(renderer, {
@@ -318,6 +357,10 @@ class AudioStreamingDemo {
       return
     }
 
+    this.selectedStationIndex = DEMO_STATIONS.findIndex((station) => station.url === url.href)
+    this.refreshStationButtons()
+    const sourceName = this.selectedStationIndex >= 0 ? DEMO_STATIONS[this.selectedStationIndex]!.name : url.host
+
     const generation = ++this.connectionGeneration
     this.streamController?.abort()
     this.streamController = new AbortController()
@@ -330,7 +373,7 @@ class AudioStreamingDemo {
     this.rms = 0
     this.audio.disableTap()
     this.audio.enableTap(8192)
-    this.statusMessage = `Connecting to ${url.host}`
+    this.statusMessage = `Connecting to ${sourceName}`
     this.statusColor = PALETTE.warning
     this.refreshText()
 
@@ -390,7 +433,7 @@ class AudioStreamingDemo {
     const groupApplied = nextStream.setGroup(this.activeGroup())
     this.streamStats = nextStream.getStats()
     if (volumeApplied && panApplied && groupApplied) {
-      this.statusMessage = `Connected to ${url.host}`
+      this.statusMessage = `Connected to ${sourceName}`
       this.statusColor = PALETTE.accent
     } else {
       this.statusMessage = "Connected, but current stream controls could not be applied"
@@ -401,6 +444,24 @@ class AudioStreamingDemo {
 
   private isCurrent(stream: AudioStream, generation: number): boolean {
     return !this.destroyed && this.stream === stream && this.connectionGeneration === generation
+  }
+
+  private selectStation(index: number): void {
+    const station = DEMO_STATIONS[index]
+    if (!station) return
+    this.urlInput.value = station.url
+    this.urlInput.blur()
+    this.refreshControls()
+    void this.connect(station.url)
+  }
+
+  private refreshStationButtons(): void {
+    for (const [index, button] of this.stationButtons.entries()) {
+      const selected = index === this.selectedStationIndex
+      button.box.borderColor = selected ? PALETTE.accent : PALETTE.border
+      button.box.backgroundColor = selected ? PALETTE.panelAlt : PALETTE.panel
+      button.label.fg = selected ? PALETTE.signal : PALETTE.muted
+    }
   }
 
   private stopStream(): void {
@@ -466,6 +527,13 @@ class AudioStreamingDemo {
     }
 
     if (this.urlInput.focused || key.ctrl || key.meta) return
+
+    const stationIndex = Number.parseInt(key.name, 10) - 1
+    if (key.name.length === 1 && stationIndex >= 0 && stationIndex < DEMO_STATIONS.length) {
+      key.preventDefault()
+      this.selectStation(stationIndex)
+      return
+    }
 
     switch (key.name) {
       case "r":
@@ -611,7 +679,7 @@ ${label("group")}${fg(PALETTE.signal)(this.useDimGroup ? "dim (35%)" : "full")}`
   private refreshControls(): void {
     const mode = this.urlInput.focused ? "URL EDIT" : "CONTROLS"
     this.controlsText.content =
-      `${mode} | Enter connect | Tab edit/controls | R reconnect | S stop\n` +
+      `${mode} | 1-5 stations | Enter connect | Tab edit/controls | R reconnect | S stop\n` +
       `J/K volume (${this.volume.toFixed(1)}) | H/L pan (${this.pan.toFixed(1)}) | G group (${this.useDimGroup ? "dim" : "full"}) | Esc back`
   }
 
