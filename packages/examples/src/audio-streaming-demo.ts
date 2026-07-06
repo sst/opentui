@@ -7,7 +7,10 @@ import {
   InputRenderable,
   InputRenderableEvents,
   TextRenderable,
+  bold,
   createCliRenderer,
+  fg,
+  t,
   type AudioGroup,
   type AudioStream,
   type AudioStreamStats,
@@ -64,7 +67,6 @@ class AudioStreamingDemo {
   private readonly renderer: CliRenderer
   private readonly root: BoxRenderable
   private readonly urlInput: InputRenderable
-  private readonly statusText: TextRenderable
   private readonly spectrumText: TextRenderable
   private readonly statsText: TextRenderable
   private readonly controlsText: TextRenderable
@@ -86,6 +88,7 @@ class AudioStreamingDemo {
   private liveRequested = false
   private outputMode = "starting"
   private statusMessage = "Initializing native audio"
+  private statusColor = PALETTE.warning
   private volume = 0.8
   private pan = 0
   private useDimGroup = false
@@ -107,8 +110,7 @@ class AudioStreamingDemo {
       width: "100%",
       height: "100%",
       flexDirection: "column",
-      padding: 1,
-      gap: 1,
+      gap: 0,
       backgroundColor: PALETTE.background,
     })
 
@@ -151,35 +153,13 @@ class AudioStreamingDemo {
     inputPanel.add(this.urlInput)
     this.root.add(inputPanel)
 
-    const statusPanel = new BoxRenderable(renderer, {
-      id: "audio-streaming-demo-status-panel",
-      title: " Connection ",
-      width: "100%",
-      height: 3,
-      border: true,
-      borderStyle: "single",
-      borderColor: PALETTE.border,
-      backgroundColor: PALETTE.panel,
-      paddingLeft: 1,
-      paddingRight: 1,
-      flexShrink: 0,
-    })
-    this.statusText = new TextRenderable(renderer, {
-      id: "audio-streaming-demo-status",
-      content: "",
-      fg: PALETTE.warning,
-      height: 1,
-    })
-    statusPanel.add(this.statusText)
-    this.root.add(statusPanel)
-
     const body = new BoxRenderable(renderer, {
       id: "audio-streaming-demo-body",
       width: "100%",
       flexDirection: "row",
       flexGrow: 1,
       flexShrink: 1,
-      gap: 1,
+      gap: 0,
       minHeight: 12,
     })
 
@@ -190,7 +170,8 @@ class AudioStreamingDemo {
       borderStyle: "rounded",
       borderColor: PALETTE.signal,
       backgroundColor: PALETTE.panel,
-      padding: 1,
+      paddingLeft: 1,
+      paddingRight: 1,
       flexGrow: 2,
       flexBasis: 0,
       minWidth: 0,
@@ -211,7 +192,8 @@ class AudioStreamingDemo {
       borderStyle: "rounded",
       borderColor: PALETTE.purple,
       backgroundColor: PALETTE.panel,
-      padding: 1,
+      paddingLeft: 1,
+      paddingRight: 1,
       flexGrow: 1,
       flexBasis: 0,
       minWidth: 30,
@@ -257,7 +239,7 @@ class AudioStreamingDemo {
     this.audio.on("error", (error, context) => {
       if (this.destroyed) return
       this.statusMessage = `${context.action}: ${error.message}`
-      this.statusText.fg = PALETTE.error
+      this.statusColor = PALETTE.error
       this.refreshText()
     })
 
@@ -305,7 +287,7 @@ class AudioStreamingDemo {
     const value = rawValue.trim()
     if (value.length === 0) {
       this.statusMessage = "Enter an MP3 stream URL"
-      this.statusText.fg = PALETTE.error
+      this.statusColor = PALETTE.error
       return null
     }
 
@@ -313,13 +295,13 @@ class AudioStreamingDemo {
       const url = new URL(value)
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         this.statusMessage = "Stream URL must use http or https"
-        this.statusText.fg = PALETTE.error
+        this.statusColor = PALETTE.error
         return null
       }
       return url
     } catch {
       this.statusMessage = "Stream URL is not valid"
-      this.statusText.fg = PALETTE.error
+      this.statusColor = PALETTE.error
       return null
     }
   }
@@ -349,7 +331,7 @@ class AudioStreamingDemo {
     this.audio.disableTap()
     this.audio.enableTap(8192)
     this.statusMessage = `Connecting to ${url.host}`
-    this.statusText.fg = PALETTE.warning
+    this.statusColor = PALETTE.warning
     this.refreshText()
 
     let nextStream: AudioStream
@@ -374,7 +356,7 @@ class AudioStreamingDemo {
     } catch (error) {
       if (this.destroyed || generation !== this.connectionGeneration) return
       this.statusMessage = error instanceof Error ? error.message : "Stream connection failed"
-      this.statusText.fg = PALETTE.error
+      this.statusColor = PALETTE.error
       this.refreshText()
       return
     }
@@ -389,18 +371,18 @@ class AudioStreamingDemo {
       if (!this.isCurrent(nextStream, generation)) return
       this.streamStats = nextStream.getStats()
       this.statusMessage = error.message
-      this.statusText.fg = PALETTE.error
+      this.statusColor = PALETTE.error
     })
     nextStream.on("reconnecting", ({ attempt, delayMs, error }) => {
       if (!this.isCurrent(nextStream, generation)) return
       this.statusMessage = `Reconnect ${attempt} in ${delayMs}ms: ${error.message}`
-      this.statusText.fg = PALETTE.warning
+      this.statusColor = PALETTE.warning
     })
     nextStream.on("ended", () => {
       if (!this.isCurrent(nextStream, generation)) return
       this.streamStats = nextStream.getStats()
       this.statusMessage = "Stream ended"
-      this.statusText.fg = PALETTE.muted
+      this.statusColor = PALETTE.muted
     })
 
     const volumeApplied = nextStream.setVolume(this.volume)
@@ -409,10 +391,10 @@ class AudioStreamingDemo {
     this.streamStats = nextStream.getStats()
     if (volumeApplied && panApplied && groupApplied) {
       this.statusMessage = `Connected to ${url.host}`
-      this.statusText.fg = PALETTE.accent
+      this.statusColor = PALETTE.accent
     } else {
       this.statusMessage = "Connected, but current stream controls could not be applied"
-      this.statusText.fg = PALETTE.error
+      this.statusColor = PALETTE.error
     }
     this.refreshText()
   }
@@ -430,7 +412,7 @@ class AudioStreamingDemo {
     this.streamStats = null
     this.lastAnalyzedFrame = -1n
     this.statusMessage = "Stream stopped"
-    this.statusText.fg = PALETTE.muted
+    this.statusColor = PALETTE.muted
     this.refreshText()
   }
 
@@ -438,12 +420,12 @@ class AudioStreamingDemo {
     const next = clamp(this.volume + delta, 0, 4)
     if (this.stream && !this.stream.setVolume(next)) {
       this.statusMessage = "Could not update stream volume"
-      this.statusText.fg = PALETTE.error
+      this.statusColor = PALETTE.error
       return
     }
     this.volume = next
     this.statusMessage = `Stream volume ${this.volume.toFixed(1)}`
-    this.statusText.fg = PALETTE.accent
+    this.statusColor = PALETTE.accent
     this.refreshText()
   }
 
@@ -451,12 +433,12 @@ class AudioStreamingDemo {
     const next = clamp(this.pan + delta, -1, 1)
     if (this.stream && !this.stream.setPan(next)) {
       this.statusMessage = "Could not update stream pan"
-      this.statusText.fg = PALETTE.error
+      this.statusColor = PALETTE.error
       return
     }
     this.pan = next
     this.statusMessage = `Stream pan ${this.pan.toFixed(1)}`
-    this.statusText.fg = PALETTE.accent
+    this.statusColor = PALETTE.accent
     this.refreshText()
   }
 
@@ -465,12 +447,12 @@ class AudioStreamingDemo {
     const nextGroup = nextDimmed ? this.dimGroup : this.fullGroup
     if (this.stream && !this.stream.setGroup(nextGroup)) {
       this.statusMessage = "Could not move the stream to another group"
-      this.statusText.fg = PALETTE.error
+      this.statusColor = PALETTE.error
       return
     }
     this.useDimGroup = nextDimmed
     this.statusMessage = nextDimmed ? "Stream routed through 35% group" : "Stream routed through full group"
-    this.statusText.fg = PALETTE.accent
+    this.statusColor = PALETTE.accent
     this.refreshText()
   }
 
@@ -583,7 +565,6 @@ class AudioStreamingDemo {
 
   private refreshText(): void {
     const state = this.streamStats?.state ?? (this.stream ? this.stream.state : "idle")
-    this.statusText.content = `${state.toUpperCase()}  |  output: ${this.outputMode}  |  ${this.statusMessage}`
 
     const spectrumLines = [
       `Peak ${meter(this.peak)} ${this.peak.toFixed(3)}`,
@@ -596,39 +577,34 @@ class AudioStreamingDemo {
     ]
     this.spectrumText.content = spectrumLines.join("\n")
 
-    if (!this.streamStats) {
-      this.statsText.content = [
-        "state        idle",
-        "buffer       0 ms",
-        "received     0 B",
-        "decoded      0 frames",
-        "played       0 frames",
-        "underruns    0",
-        "reconnects   0",
-        "",
-        `volume       ${this.volume.toFixed(1)}`,
-        `pan          ${this.pan.toFixed(1)}`,
-        `group        ${this.useDimGroup ? "dim (35%)" : "full"}`,
-      ].join("\n")
-    } else {
-      const stats = this.streamStats
-      const capacityMs = stats.sampleRate > 0 ? (stats.capacityFrames * 1000) / stats.sampleRate : 0
-      const bufferRatio = stats.capacityFrames > 0 ? stats.bufferedFrames / stats.capacityFrames : 0
-      this.statsText.content = [
-        `state        ${stats.state}`,
-        `buffer       ${stats.bufferedDurationMs.toFixed(0)} / ${capacityMs.toFixed(0)} ms`,
-        `             ${meter(bufferRatio, 16)}`,
-        `received     ${formatBytes(stats.bytesReceived)}`,
-        `decoded      ${stats.framesDecoded.toString()} frames`,
-        `played       ${stats.framesPlayed.toString()} frames`,
-        `underruns    ${stats.underruns}`,
-        `reconnects   ${stats.reconnectAttempts}`,
-        "",
-        `volume       ${this.volume.toFixed(1)}`,
-        `pan          ${this.pan.toFixed(1)}`,
-        `group        ${this.useDimGroup ? "dim (35%)" : "full"}`,
-      ].join("\n")
-    }
+    const stats = this.streamStats
+    const capacityMs = stats && stats.sampleRate > 0 ? (stats.capacityFrames * 1000) / stats.sampleRate : 0
+    const bufferRatio = stats && stats.capacityFrames > 0 ? stats.bufferedFrames / stats.capacityFrames : 0
+    const stateColor =
+      state === "playing"
+        ? PALETTE.signal
+        : state === "errored"
+          ? PALETTE.error
+          : state === "idle" || state === "ended" || state === "disposed"
+            ? PALETTE.muted
+            : PALETTE.warning
+    const bufferColor = bufferRatio >= 0.5 ? PALETTE.signal : bufferRatio > 0 ? PALETTE.warning : PALETTE.muted
+    const label = (value: string) => fg(PALETTE.muted)(value.padEnd(13))
+    const underruns = stats?.underruns ?? 0
+    const reconnects = stats?.reconnectAttempts ?? 0
+
+    this.statsText.content = t`${label("state")}${bold(fg(stateColor)(state))}
+${label("output")}${fg(PALETTE.accent)(this.outputMode)}
+${label("status")}${fg(this.statusColor)(this.statusMessage)}
+${label("buffer")}${fg(bufferColor)(`${stats?.bufferedDurationMs.toFixed(0) ?? "0"} / ${capacityMs.toFixed(0)} ms`)}
+${label("")}${fg(bufferColor)(meter(bufferRatio, 16))}
+${label("received")}${fg(PALETTE.accent)(formatBytes(stats?.bytesReceived ?? 0n))}
+${label("decoded")}${fg(PALETTE.purple)(`${stats?.framesDecoded.toString() ?? "0"} frames`)}
+${label("played")}${fg(PALETTE.signal)(`${stats?.framesPlayed.toString() ?? "0"} frames`)}
+${label("underruns")}${fg(underruns > 0 ? PALETTE.error : PALETTE.muted)(underruns)}
+${label("reconnects")}${fg(reconnects > 0 ? PALETTE.warning : PALETTE.muted)(reconnects)}
+${label("volume")}${fg(PALETTE.accent)(this.volume.toFixed(1))}  ${fg(PALETTE.muted)("pan")} ${fg(PALETTE.purple)(this.pan.toFixed(1))}
+${label("group")}${fg(PALETTE.signal)(this.useDimGroup ? "dim (35%)" : "full")}`
     this.refreshControls()
   }
 
