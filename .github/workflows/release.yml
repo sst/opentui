@@ -31,6 +31,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -71,14 +77,16 @@ jobs:
           test -f packages/core/node_modules/@lexwdex-org/core-win32-x64/opentui.dll || (echo "❌ win32-x64 missing" && exit 1)
           echo "✅ All 4 native targets verified"
 
-      - name: Configure npm auth
+      - name: Verify npm auth
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
         run: |
-          echo "registry=https://registry.npmjs.org/" >> ~/.npmrc
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.AUTH_TOKEN }}" >> ~/.npmrc
           echo "=== npm whoami ==="
           npm whoami
 
       - name: Publish native packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
         run: |
           for pkg in core-darwin-arm64 core-linux-x64 core-linux-x64-musl core-win32-x64; do
             dir="packages/core/node_modules/@lexwdex-org/$pkg"
