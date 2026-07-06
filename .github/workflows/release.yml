@@ -19,23 +19,23 @@ env:
   BUN_VERSION: "1.3.14"
 
 jobs:
-  # ─── Build + publish all 4 native targets from a macOS runner ─────────────
-  # macOS runner has the macOS SDK for darwin-arm64, and Zig cross-compiles
-  # the other 3 targets (linux-x64 gnu+musl, win32-x64) without extra SDKs.
-  build-and-publish:
-    name: Build & Publish
-    runs-on: macos-latest
-    environment: NPM
+  # ─── Build native libraries on each platform's native runner ──────────────
+  # No cross-compilation: each target builds on its matching OS runner.
+  build-native:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: darwin-arm64,  runner: macos-latest,  platform: darwin, arch: arm64, artifact: libopentui.dylib }
+          - { target: linux-x64,      runner: ubuntu-latest, platform: linux,  arch: x64,   artifact: libopentui.so }
+          - { target: linux-x64-musl, runner: ubuntu-latest, platform: linux,  arch: x64,   abi: musl, artifact: libopentui.so }
+          - { target: win32-x64,      runner: windows-latest,platform: win32,  arch: x64,   artifact: opentui.dll }
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -50,6 +50,115 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Resolve zig target
+        id: zt
+        shell: bash
+        run: |
+          case="${{ matrix.target }}"
+          case "$case" in
+            darwin-arm64)  echo "target=aarch64-macos"           >> $GITHUB_OUTPUT ;;
+            linux-x64)     echo "target=x86_64-linux-gnu.2.17"   >> $GITHUB_OUTPUT ;;
+            linux-x64-musl) echo "target=x86_64-linux-musl"      >> $GITHUB_OUTPUT ;;
+            win32-x64)     echo "target=x86_64-windows-gnu"      >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Build native library (single target)
+        working-directory: packages/core/src/zig
+        env:
+          ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}/.zig-cache
+          ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.zig-cache
+        run: zig build -Dtarget=${{ steps.zt.outputs.target }} -Doptimize=ReleaseFast
+
+      - name: Stage native package
+        shell: bash
+        run: |
+          set -e
+          ZIG_OUT="${{ matrix.target }}"
+          # map matrix target to the output_name dir used by build.zig
+          case="${{ matrix.target }}"
+          case "$case" in
+            darwin-arm64)   OUT="aarch64-macos" ;;
+            linux-x64)      OUT="x86_64-linux" ;;
+            linux-x64-musl) OUT="x86_64-linux-musl" ;;
+            win32-x64)      OUT="x86_64-windows" ;;
+          esac
+          SRC="packages/core/src/zig/zig-out/lib"
+          echo "Built artifact in: $SRC"
+          ls -la "$SRC/"
+
+          # Create the native subpackage directory structure
+          PKG_DIR="packages/core/node_modules/@lexwdex-org/core-${{ matrix.target }}"
+          mkdir -p "$PKG_DIR"
+          cp "$SRC/${{ matrix.artifact }}" "$PKG_DIR/"
+
+          # Generate package.json, index.js, etc. for the subpackage
+          cd packages/core
+          # Temporarily set the platform/arch so build.ts only packages this one
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+            const nativeName = pkg.name + '-${{ matrix.target }}';
+            const dir = path.join('node_modules', nativeName);
+            fs.mkdirSync(dir, {recursive: true});
+            fs.writeFileSync(path.join(dir,'package.json'), JSON.stringify({
+              name: nativeName,
+              version: pkg.version,
+              description: 'Prebuilt ${{ matrix.target }} binaries for ' + pkg.name,
+              type: 'module',
+              main: 'index.js',
+              module: 'index.js',
+              types: 'index.d.ts',
+              license: 'MIT',
+              repository: pkg.repository,
+              keywords: ['prebuild','prebuilt'],
+              exports: { '.': { bun: './index.bun.js', import: './index.js', types: './index.d.ts' } },
+              os: ['${{ matrix.platform }}' === 'win32' ? 'win32' : '${{ matrix.platform }}'],
+              cpu: ['${{ matrix.arch }}']
+            }, null, 2));
+            fs.writeFileSync(path.join(dir,'index.js'),
+              'import { fileURLToPath } from \"node:url\"\nexport default fileURLToPath(new URL(\"./${{ matrix.artifact }}\", import.meta.url))\n');
+            fs.writeFileSync(path.join(dir,'index.bun.js'),
+              'const module = await import(\"./${{ matrix.artifact }}\", { with: { type: \"file\" } })\nexport default module.default\n');
+            fs.writeFileSync(path.join(dir,'index.d.ts'),
+              'declare const path: string\nexport default path\n');
+          "
+
+          echo "=== Staged package ==="
+          ls -la "node_modules/@lexwdex-org/core-${{ matrix.target }}/"
+
+      - name: Upload native package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.target }}
+          path: packages/core/node_modules/@lexwdex-org/core-${{ matrix.target }}/
+          if-no-files-found: error
+
+  # ─── Publish: collect all native packages, build TS, publish everything ───
+  publish:
+    name: Publish to npm
+    needs: build-native
+    runs-on: ubuntu-latest
+    environment: NPM
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install
+
       - name: Resolve version
         id: ver
         run: |
@@ -59,30 +168,30 @@ jobs:
             V="${GITHUB_REF#refs/tags/v}"
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "Publishing version: $V"
 
-      - name: Build native binaries (all 4 fork targets)
-        working-directory: packages/core
-        run: bun run build:native -- --all
+      - name: Download all native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: packages/core/node_modules/@lexwdex-org/
+          merge-multiple: false
 
-      - name: Verify native outputs
+      - name: Reorganize native packages
         run: |
           set -e
-          echo "Built native packages:"
-          ls packages/core/node_modules/@lexwdex-org/
-
-          test -f packages/core/node_modules/@lexwdex-org/core-darwin-arm64/libopentui.dylib || (echo "❌ darwin-arm64 missing" && exit 1)
-          test -f packages/core/node_modules/@lexwdex-org/core-linux-x64/libopentui.so || (echo "❌ linux-x64 missing" && exit 1)
-          test -f packages/core/node_modules/@lexwdex-org/core-linux-x64-musl/libopentui.so || (echo "❌ linux-x64-musl missing" && exit 1)
-          test -f packages/core/node_modules/@lexwdex-org/core-win32-x64/opentui.dll || (echo "❌ win32-x64 missing" && exit 1)
-          echo "✅ All 4 native targets verified"
+          BASE="packages/core/node_modules/@lexwdex-org"
+          for d in "$BASE"/native-*/; do
+            target=$(basename "$d" | sed 's/native-//')
+            mv "$d" "$BASE/core-$target/"
+            echo "✓ core-$target staged"
+          done
+          echo "=== All native packages ==="
+          ls "$BASE/"
 
       - name: Verify npm auth
         env:
           NODE_AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
-        run: |
-          echo "=== npm whoami ==="
-          npm whoami
+        run: npm whoami
 
       - name: Publish native packages
         env:
@@ -99,31 +208,28 @@ jobs:
         run: bun run build:lib
 
       - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
         run: |
-          echo "Publishing @lexwdex-org/core..."
-          (cd packages/core/dist && npm publish --access public) || echo "⚠️  core may already exist, skipping"
+          echo "=== Publishing @lexwdex-org/core ==="
+          (cd packages/core/dist && npm publish --access public 2>&1) || echo "⚠️  core may already exist"
 
       - name: Build & publish keymap
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
         run: |
           cd packages/keymap && bun run build
-          (cd dist && npm publish --access public) || echo "⚠️  keymap may already exist, skipping"
+          (cd dist && npm publish --access public 2>&1) || echo "⚠️  keymap may already exist"
 
       - name: Build & publish solid
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
         run: |
           cd packages/solid && bun run build
-          (cd dist && npm publish --access public) || echo "⚠️  solid may already exist, skipping"
+          (cd dist && npm publish --access public 2>&1) || echo "⚠️  solid may already exist"
 
       - name: Summary
         run: |
           echo "============================================"
           echo "Published @lexwdex-org/*@${{ steps.ver.outputs.version }}"
           echo "============================================"
-          echo "Native targets:"
-          echo "  - @lexwdex-org/core-darwin-arm64  (Apple Silicon)"
-          echo "  - @lexwdex-org/core-linux-x64     (glibc)"
-          echo "  - @lexwdex-org/core-linux-x64-musl (Alpine)"
-          echo "  - @lexwdex-org/core-win32-x64     (Win10/11)"
-          echo "Main packages:"
-          echo "  - @lexwdex-org/core"
-          echo "  - @lexwdex-org/keymap"
-          echo "  - @lexwdex-org/solid"
