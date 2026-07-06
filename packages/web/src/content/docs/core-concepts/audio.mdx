@@ -32,11 +32,13 @@ audio.dispose()
 
 Use `setupAudio(options?)` when you prefer a function wrapper around `Audio.create(options?)`.
 
+`Audio.create()` and `setupAudio()` initialize synchronously and throw `AudioInitializationError` if native library resolution, engine creation, or `autoStart` fails. Construction never emits events; successful `autoStart` also does not emit `started` before listeners can be attached.
+
 ## Engine options
 
 | Option             | Default  | Description                                    |
 | ------------------ | -------- | ---------------------------------------------- |
-| `autoStart`        | `false`  | Call `start()` during creation                 |
+| `autoStart`        | `false`  | Start playback during synchronous construction |
 | `sampleRate`       | `48000`  | Engine sample rate                             |
 | `playbackChannels` | `2`      | Requested playback channel count               |
 | `startOptions`     | defaults | Options passed to `start()` when auto-starting |
@@ -181,4 +183,4 @@ The tap is disabled by default. When enabled, it stores the latest frames and ov
 
 ## Lifecycle and errors
 
-Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. `Audio` emits `started`, `mixerStarted`, `stopped`, `disposed`, and `error`. Methods that fail return `false` or `null` and emit `error` with `{ action, status }` context.
+Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. After construction, `Audio` emits `started`, `mixerStarted`, `stopped`, `disposed`, and `error`. Methods that fail return `false` or `null` and emit `error` with `{ action, status }` context.

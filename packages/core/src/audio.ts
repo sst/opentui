@@ -167,6 +167,21 @@ export interface AudioEvents {
   disposed: []
 }
 
+export type AudioInitializationAction = "resolveRenderLib" | "createAudioEngine" | "start"
+
+export class AudioInitializationError extends Error {
+  readonly action: AudioInitializationAction
+  readonly status?: number
+
+  constructor(action: AudioInitializationAction, message: string, status?: number, cause?: unknown) {
+    super(message)
+    this.name = "AudioInitializationError"
+    this.action = action
+    this.status = status
+    if (cause !== undefined) (this as Error & { cause?: unknown }).cause = cause
+  }
+}
+
 function statusToError(action: string, status: number): Error {
   return new Error(`Audio ${action} failed: ${status}`)
 }
@@ -1245,7 +1260,18 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
 
 export class Audio extends EventEmitter<AudioEvents> {
   static create(options: AudioSetupOptions = {}): Audio {
-    return new Audio(resolveRenderLib(), options)
+    let lib: RenderLib
+    try {
+      lib = resolveRenderLib()
+    } catch (cause) {
+      throw new AudioInitializationError(
+        "resolveRenderLib",
+        "Failed to resolve the native audio library",
+        undefined,
+        cause,
+      )
+    }
+    return new Audio(lib, options)
   }
 
   readonly sampleRate: number
@@ -1275,15 +1301,50 @@ export class Audio extends EventEmitter<AudioEvents> {
             playbackChannels:
               options.playbackChannels == null ? undefined : Math.max(0, Math.trunc(options.playbackChannels)),
           }
-    this.engine = this.lib.createAudioEngine(createOptions)
+    try {
+      this.engine = this.lib.createAudioEngine(createOptions)
+    } catch (cause) {
+      throw new AudioInitializationError("createAudioEngine", "Audio engine creation failed", undefined, cause)
+    }
     if (!this.engine) {
-      this.emitError("createAudioEngine", undefined, "Audio createAudioEngine returned null")
-      return
+      throw new AudioInitializationError("createAudioEngine", "Audio createAudioEngine returned null")
     }
 
     if (options.autoStart ?? false) {
-      this.start(this.defaultStartOptions)
+      let status: number
+      try {
+        status = this.lib.audioStart(this.engine, this.defaultStartOptions)
+      } catch (cause) {
+        this.throwAfterInitializationCleanup(
+          new AudioInitializationError("start", "Audio auto-start failed", undefined, cause),
+        )
+      }
+      if (status !== 0) {
+        this.throwAfterInitializationCleanup(
+          new AudioInitializationError("start", `Audio auto-start failed: ${status}`, status),
+        )
+      }
+      this.playbackStarted = true
+      this.mixerStarted = true
     }
+  }
+
+  private throwAfterInitializationCleanup(error: AudioInitializationError): never {
+    const engine = this.engine
+    this.engine = null
+    if (engine) {
+      try {
+        this.lib.destroyAudioEngine(engine)
+      } catch (cleanupCause) {
+        throw new AudioInitializationError(
+          error.action,
+          error.message,
+          error.status,
+          new AggregateError([error, cleanupCause], "Audio initialization and cleanup failed"),
+        )
+      }
+    }
+    throw error
   }
 
   private emitError(action: AudioAction, status?: number, message?: string, cause?: unknown): void {

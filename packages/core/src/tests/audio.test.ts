@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
-import { Audio } from "../audio.js"
+import { Audio, AudioInitializationError, setupAudio } from "../audio.js"
 import { resolveRenderLib } from "../zig.js"
 
 const SAMPLE_RATE = 48_000
@@ -50,6 +50,208 @@ const instances: Audio[] = []
 afterEach(() => {
   for (const instance of instances.splice(0)) {
     instance.dispose()
+  }
+})
+
+function replaceMethod(target: object, name: string, replacement: unknown): () => void {
+  const previous = Object.getOwnPropertyDescriptor(target, name)
+  Object.defineProperty(target, name, {
+    configurable: true,
+    writable: true,
+    value: replacement,
+  })
+  return () => {
+    if (previous) Object.defineProperty(target, name, previous)
+    else delete (target as Record<string, unknown>)[name]
+  }
+}
+
+function captureAudioEvents(run: () => void): string[] {
+  const events: string[] = []
+  const restoreEmit = replaceMethod(Audio.prototype, "emit", (event: string) => {
+    events.push(event)
+    return false
+  })
+  try {
+    run()
+  } finally {
+    restoreEmit()
+  }
+  return events
+}
+
+test("Audio.create throws synchronously without emitting when engine creation fails", () => {
+  let thrown: unknown
+  const events = captureAudioEvents(() => {
+    try {
+      Audio.create({ playbackChannels: 0xffffffff })
+    } catch (error) {
+      thrown = error
+    }
+  })
+
+  expect(thrown).toBeInstanceOf(AudioInitializationError)
+  expect((thrown as AudioInitializationError).action).toBe("createAudioEngine")
+  expect(events).toEqual([])
+})
+
+test("setupAudio uses the same synchronous initialization contract", () => {
+  expect(() => setupAudio({ playbackChannels: 0xffffffff })).toThrow(AudioInitializationError)
+})
+
+test("Audio.create wraps synchronous native engine creation exceptions without emitting", () => {
+  const lib = resolveRenderLib()
+  const nativeError = new Error("synthetic engine creation failure")
+  const restoreCreate = replaceMethod(lib, "createAudioEngine", () => {
+    throw nativeError
+  })
+  let thrown: unknown
+  try {
+    const events = captureAudioEvents(() => {
+      try {
+        Audio.create()
+      } catch (error) {
+        thrown = error
+      }
+    })
+    expect(events).toEqual([])
+  } finally {
+    restoreCreate()
+  }
+
+  expect(thrown).toBeInstanceOf(AudioInitializationError)
+  expect((thrown as AudioInitializationError).action).toBe("createAudioEngine")
+  expect((thrown as Error & { cause?: unknown }).cause).toBe(nativeError)
+})
+
+test("Audio auto-start failure throws without emitting and destroys the native engine", () => {
+  const lib = resolveRenderLib()
+  const originalDestroy = lib.destroyAudioEngine
+  let destroyCalls = 0
+  let thrown: unknown
+
+  const restoreStart = replaceMethod(lib, "audioStart", () => -5)
+  const restoreDestroy = replaceMethod(lib, "destroyAudioEngine", (engine: Parameters<typeof originalDestroy>[0]) => {
+    destroyCalls += 1
+    originalDestroy.call(lib, engine)
+  })
+  try {
+    const events = captureAudioEvents(() => {
+      try {
+        Audio.create({ autoStart: true })
+      } catch (error) {
+        thrown = error
+      }
+    })
+    expect(events).toEqual([])
+  } finally {
+    restoreDestroy()
+    restoreStart()
+  }
+
+  expect(thrown).toBeInstanceOf(AudioInitializationError)
+  expect((thrown as AudioInitializationError).action).toBe("start")
+  expect((thrown as AudioInitializationError).status).toBe(-5)
+  expect(destroyCalls).toBe(1)
+})
+
+test("Audio auto-start exceptions throw without emitting and destroy the native engine", () => {
+  const lib = resolveRenderLib()
+  const originalDestroy = lib.destroyAudioEngine
+  const nativeError = new Error("synthetic auto-start failure")
+  let destroyCalls = 0
+  let thrown: unknown
+  const restoreStart = replaceMethod(lib, "audioStart", () => {
+    throw nativeError
+  })
+  const restoreDestroy = replaceMethod(lib, "destroyAudioEngine", (engine: Parameters<typeof originalDestroy>[0]) => {
+    destroyCalls += 1
+    originalDestroy.call(lib, engine)
+  })
+  try {
+    const events = captureAudioEvents(() => {
+      try {
+        Audio.create({ autoStart: true })
+      } catch (error) {
+        thrown = error
+      }
+    })
+    expect(events).toEqual([])
+  } finally {
+    restoreDestroy()
+    restoreStart()
+  }
+
+  expect(thrown).toBeInstanceOf(AudioInitializationError)
+  expect((thrown as AudioInitializationError).action).toBe("start")
+  expect((thrown as Error & { cause?: unknown }).cause).toBe(nativeError)
+  expect(destroyCalls).toBe(1)
+})
+
+test("Audio reports cleanup exceptions without hiding the initialization failure", () => {
+  const lib = resolveRenderLib()
+  const originalDestroy = lib.destroyAudioEngine
+  const cleanupError = new Error("synthetic cleanup failure")
+  let thrown: unknown
+  const restoreStart = replaceMethod(lib, "audioStart", () => -5)
+  const restoreDestroy = replaceMethod(lib, "destroyAudioEngine", (engine: Parameters<typeof originalDestroy>[0]) => {
+    originalDestroy.call(lib, engine)
+    throw cleanupError
+  })
+  try {
+    try {
+      Audio.create({ autoStart: true })
+    } catch (error) {
+      thrown = error
+    }
+  } finally {
+    restoreDestroy()
+    restoreStart()
+  }
+
+  expect(thrown).toBeInstanceOf(AudioInitializationError)
+  expect((thrown as AudioInitializationError).action).toBe("start")
+  const cause = (thrown as Error & { cause?: unknown }).cause
+  expect(cause).toBeInstanceOf(AggregateError)
+  expect((cause as AggregateError).errors).toEqual([
+    expect.objectContaining({ name: "AudioInitializationError", status: -5 }),
+    cleanupError,
+  ])
+})
+
+test("Audio auto-start succeeds without emitting constructor lifecycle events", () => {
+  const lib = resolveRenderLib()
+  let audio!: Audio
+  const restoreStart = replaceMethod(lib, "audioStart", () => 0)
+  try {
+    const events = captureAudioEvents(() => {
+      audio = Audio.create({ autoStart: true })
+    })
+    expect(events).toEqual([])
+  } finally {
+    restoreStart()
+  }
+
+  expect(audio.isStarted()).toBe(true)
+  expect(audio.isMixerStarted()).toBe(true)
+  instances.push(audio)
+})
+
+test("Audio explicit start still emits started after construction", () => {
+  const lib = resolveRenderLib()
+  const restoreStart = replaceMethod(lib, "audioStart", () => 0)
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    let startedEvents = 0
+    audio.on("started", () => {
+      startedEvents += 1
+    })
+
+    expect(audio.start()).toBe(true)
+    expect(startedEvents).toBe(1)
+  } finally {
+    restoreStart()
   }
 })
 
