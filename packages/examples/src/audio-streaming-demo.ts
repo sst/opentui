@@ -6,6 +6,9 @@ import {
   CliRenderer,
   InputRenderable,
   InputRenderableEvents,
+  OptimizedBuffer,
+  RGBA,
+  TextAttributes,
   TextRenderable,
   bold,
   createCliRenderer,
@@ -34,6 +37,26 @@ const VOLUME_STEP = 0.1
 const PAN_STEP = 0.1
 const BAND_CENTERS = [60, 120, 250, 500, 1000, 2000, 4000, 8000]
 const BAR_WIDTH = 20
+const FFT_PEAK_FALLOFF = 0.04
+
+const FFT_BAR_RGB = [
+  [244, 63, 94],
+  [249, 115, 22],
+  [250, 204, 21],
+  [74, 222, 128],
+  [45, 212, 191],
+  [56, 189, 248],
+  [129, 140, 248],
+  [192, 132, 252],
+] as const
+
+const BUFFER_COLORS = {
+  peak: RGBA.fromInts(251, 113, 133),
+  rms: RGBA.fromInts(56, 189, 248),
+  value: RGBA.fromInts(226, 232, 240),
+  muted: RGBA.fromInts(124, 145, 163),
+}
+const FFT_LABEL_COLORS = FFT_BAR_RGB.map(([red, green, blue]) => RGBA.fromInts(red, green, blue))
 
 const PALETTE = {
   background: "#071018",
@@ -70,12 +93,17 @@ function formatFrequency(value: number): string {
   return value >= 1000 ? `${value / 1000}k` : value.toString()
 }
 
+function writeBufferRgb(buffer: Uint16Array, index: number, red: number, green: number, blue: number): void {
+  buffer[index] = ((buffer[index] ?? 0) & 0xff00) | red
+  buffer[index + 1] = ((buffer[index + 1] ?? 0) & 0xff00) | green
+  buffer[index + 2] = ((buffer[index + 2] ?? 0) & 0xff00) | blue
+}
+
 class AudioStreamingDemo {
   private readonly renderer: CliRenderer
   private readonly root: BoxRenderable
   private readonly urlInput: InputRenderable
   private readonly stationButtons: Array<{ box: BoxRenderable; label: TextRenderable }> = []
-  private readonly spectrumText: TextRenderable
   private readonly statsText: TextRenderable
   private readonly controlsText: TextRenderable
   private readonly audio: Audio
@@ -85,7 +113,9 @@ class AudioStreamingDemo {
   private readonly fftInput = new Float32Array(FFT_SIZE)
   private readonly fftOutput = this.fft.createComplexArray()
   private readonly fftWindow = new Float32Array(FFT_SIZE)
+  private readonly fftMagnitudes = new Float32Array(BAND_CENTERS.length)
   private readonly spectrum = new Float32Array(BAND_CENTERS.length)
+  private readonly spectrumPeaks = new Float32Array(BAND_CENTERS.length)
   private readonly frameCallback: (deltaMs: number) => Promise<void>
 
   private stream: AudioStream | null = null
@@ -202,6 +232,7 @@ class AudioStreamingDemo {
       minHeight: 12,
     })
 
+    const demo = this
     const spectrumPanel = new BoxRenderable(renderer, {
       id: "audio-streaming-demo-spectrum-panel",
       title: " Master mix spectrum ",
@@ -214,15 +245,10 @@ class AudioStreamingDemo {
       flexGrow: 2,
       flexBasis: 0,
       minWidth: 0,
+      renderAfter(buffer) {
+        demo.renderSpectrum(buffer, this)
+      },
     })
-    this.spectrumText = new TextRenderable(renderer, {
-      id: "audio-streaming-demo-spectrum",
-      content: "",
-      fg: PALETTE.signal,
-      width: "100%",
-      height: "100%",
-    })
-    spectrumPanel.add(this.spectrumText)
 
     const statsPanel = new BoxRenderable(renderer, {
       id: "audio-streaming-demo-stats-panel",
@@ -368,6 +394,7 @@ class AudioStreamingDemo {
     this.stream = null
     this.streamStats = null
     this.spectrum.fill(0)
+    this.spectrumPeaks.fill(0)
     this.lastAnalyzedFrame = 0n
     this.peak = 0
     this.rms = 0
@@ -591,6 +618,12 @@ class AudioStreamingDemo {
     } else {
       for (let index = 0; index < this.spectrum.length; index += 1) this.spectrum[index] *= 0.94
     }
+    for (let index = 0; index < this.spectrumPeaks.length; index += 1) {
+      this.spectrumPeaks[index] = Math.max(
+        this.spectrum[index] ?? 0,
+        (this.spectrumPeaks[index] ?? 0) - FFT_PEAK_FALLOFF,
+      )
+    }
     this.refreshText()
   }
 
@@ -603,7 +636,7 @@ class AudioStreamingDemo {
     this.fft.realTransform(this.fftOutput, this.fftInput)
 
     const nyquist = SAMPLE_RATE / 2
-    const magnitudes = new Float32Array(BAND_CENTERS.length)
+    const magnitudes = this.fftMagnitudes
     for (let band = 0; band < BAND_CENTERS.length; band += 1) {
       const center = BAND_CENTERS[band] ?? 60
       const previous = BAND_CENTERS[band - 1]
@@ -631,19 +664,126 @@ class AudioStreamingDemo {
     }
   }
 
+  private renderSpectrum(buffer: OptimizedBuffer, panel: BoxRenderable): void {
+    const innerX = panel.x + 1
+    const innerY = panel.y + 1
+    const innerWidth = Math.max(0, panel.width - 2)
+    const innerHeight = Math.max(0, panel.height - 2)
+    if (innerWidth < 8 || innerHeight < 4) return
+
+    const backgrounds = buffer.buffers.bg
+    this.renderLevelMeter(
+      buffer,
+      backgrounds,
+      innerX,
+      innerY,
+      innerWidth,
+      "PEAK",
+      this.peak,
+      BUFFER_COLORS.peak,
+      [251, 113, 133],
+    )
+    this.renderLevelMeter(
+      buffer,
+      backgrounds,
+      innerX,
+      innerY + 1,
+      innerWidth,
+      "RMS",
+      this.rms,
+      BUFFER_COLORS.rms,
+      [56, 189, 248],
+    )
+
+    const showLabels = innerHeight >= 7
+    const labelY = innerY + innerHeight - 1
+    const barsTop = innerY + 2
+    const barsBottom = showLabels ? labelY - 1 : innerY + innerHeight - 1
+    const availableHeight = barsBottom - barsTop + 1
+    if (availableHeight <= 0) return
+
+    const bandCount = Math.min(BAND_CENTERS.length, innerWidth)
+    const gap = innerWidth >= bandCount * 3 ? 1 : 0
+    const barWidth = Math.max(1, Math.floor((innerWidth - gap * (bandCount - 1)) / bandCount))
+    const totalWidth = bandCount * barWidth + (bandCount - 1) * gap
+    const offsetX = innerX + Math.max(0, Math.floor((innerWidth - totalWidth) / 2))
+
+    for (let bar = 0; bar < bandCount; bar += 1) {
+      const band = bandCount === 1 ? 0 : Math.round((bar * (BAND_CENTERS.length - 1)) / (bandCount - 1))
+      const level = clamp(this.spectrum[band] ?? 0, 0, 1)
+      const peak = clamp(this.spectrumPeaks[band] ?? 0, 0, 1)
+      const filledHeight = level * availableHeight
+      const rows = Math.ceil(filledHeight)
+      const [baseRed, baseGreen, baseBlue] = FFT_BAR_RGB[band] ?? FFT_BAR_RGB[0]
+      const xStart = offsetX + bar * (barWidth + gap)
+
+      for (let row = 0; row < rows; row += 1) {
+        const y = barsBottom - row
+        const coverage = Math.min(1, filledHeight - row)
+        const heightRatio = availableHeight <= 1 ? 1 : row / (availableHeight - 1)
+        const intensity = (0.42 + heightRatio * 0.58) * (0.35 + coverage * 0.65)
+        const red = Math.round(baseRed * intensity)
+        const green = Math.round(baseGreen * intensity)
+        const blue = Math.round(baseBlue * intensity)
+        for (let x = xStart; x < xStart + barWidth; x += 1) {
+          writeBufferRgb(backgrounds, (y * buffer.width + x) * 4, red, green, blue)
+        }
+      }
+
+      if (peak > 0.01) {
+        const peakY = barsBottom - Math.round(peak * Math.max(0, availableHeight - 1))
+        const peakRed = Math.round(baseRed * 0.45 + 140)
+        const peakGreen = Math.round(baseGreen * 0.45 + 140)
+        const peakBlue = Math.round(baseBlue * 0.45 + 140)
+        for (let x = xStart; x < xStart + barWidth; x += 1) {
+          writeBufferRgb(backgrounds, (peakY * buffer.width + x) * 4, peakRed, peakGreen, peakBlue)
+        }
+      }
+
+      if (showLabels && bandCount === BAND_CENTERS.length && barWidth >= 3) {
+        const label = formatFrequency(BAND_CENTERS[band] ?? 0)
+        const labelX = xStart + Math.max(0, Math.floor((barWidth - label.length) / 2))
+        buffer.drawText(label, labelX, labelY, FFT_LABEL_COLORS[band] ?? BUFFER_COLORS.muted)
+      }
+    }
+  }
+
+  private renderLevelMeter(
+    buffer: OptimizedBuffer,
+    backgrounds: Uint16Array,
+    x: number,
+    y: number,
+    width: number,
+    label: string,
+    value: number,
+    labelColor: RGBA,
+    rgb: readonly [number, number, number],
+  ): void {
+    const valueText = value.toFixed(3)
+    const valueX = x + width - valueText.length
+    const meterX = x + label.length + 1
+    const meterWidth = Math.max(0, valueX - meterX - 1)
+    const filled = Math.round(clamp(value, 0, 1) * meterWidth)
+
+    for (let column = 0; column < meterWidth; column += 1) {
+      const active = column < filled
+      const progress = meterWidth <= 1 ? 1 : column / (meterWidth - 1)
+      const intensity = active ? 0.45 + progress * 0.55 : 0.16
+      writeBufferRgb(
+        backgrounds,
+        (y * buffer.width + meterX + column) * 4,
+        Math.round(rgb[0] * intensity),
+        Math.round(rgb[1] * intensity),
+        Math.round(rgb[2] * intensity),
+      )
+    }
+
+    buffer.drawText(label, x, y, labelColor, undefined, TextAttributes.BOLD)
+    buffer.drawText(valueText, valueX, y, BUFFER_COLORS.value)
+  }
+
   private refreshText(): void {
     const state = this.streamStats?.state ?? (this.stream ? this.stream.state : "idle")
-
-    const spectrumLines = [
-      `Peak ${meter(this.peak)} ${this.peak.toFixed(3)}`,
-      `RMS  ${meter(this.rms)} ${this.rms.toFixed(3)}`,
-      "",
-      ...BAND_CENTERS.map((frequency, index) => {
-        const label = `${formatFrequency(frequency)} Hz`.padStart(6)
-        return `${label} ${meter(this.spectrum[index] ?? 0)}`
-      }),
-    ]
-    this.spectrumText.content = spectrumLines.join("\n")
 
     const stats = this.streamStats
     const capacityMs = stats && stats.sampleRate > 0 ? (stats.capacityFrames * 1000) / stats.sampleRate : 0
