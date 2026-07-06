@@ -375,10 +375,12 @@ class AudioStreamingDemo {
     }
 
     this.stream = nextStream
-    this.streamStats = nextStream.getStats()
-    this.statusMessage = `Connected to ${url.host}`
-    this.statusText.fg = PALETTE.accent
-
+    nextStream.on("error", (error) => {
+      if (!this.isCurrent(nextStream, generation)) return
+      this.streamStats = nextStream.getStats()
+      this.statusMessage = error.message
+      this.statusText.fg = PALETTE.error
+    })
     nextStream.on("reconnecting", ({ attempt, delayMs, error }) => {
       if (!this.isCurrent(nextStream, generation)) return
       this.statusMessage = `Reconnect ${attempt} in ${delayMs}ms: ${error.message}`
@@ -390,12 +392,18 @@ class AudioStreamingDemo {
       this.statusMessage = "Stream ended"
       this.statusText.fg = PALETTE.muted
     })
-    nextStream.on("error", (error) => {
-      if (!this.isCurrent(nextStream, generation)) return
-      this.streamStats = nextStream.getStats()
-      this.statusMessage = error.message
+
+    const volumeApplied = nextStream.setVolume(this.volume)
+    const panApplied = nextStream.setPan(this.pan)
+    const groupApplied = nextStream.setGroup(this.activeGroup())
+    this.streamStats = nextStream.getStats()
+    if (volumeApplied && panApplied && groupApplied) {
+      this.statusMessage = `Connected to ${url.host}`
+      this.statusText.fg = PALETTE.accent
+    } else {
+      this.statusMessage = "Connected, but current stream controls could not be applied"
       this.statusText.fg = PALETTE.error
-    })
+    }
     this.refreshText()
   }
 
