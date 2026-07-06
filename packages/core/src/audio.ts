@@ -511,7 +511,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   }
 
   getStats(): AudioStreamStats {
-    const native = this.readNativeStats()
+    const native = this.nativeStreamId == null ? this.readNativeStats() : this.requireNativeStats()
     if (native == null) return this.toPublicStats(null)
 
     const state = NATIVE_STREAM_STATES[native.state] ?? null
@@ -925,7 +925,16 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     retryAfterMs?: number,
   ): Promise<boolean> {
     if (this.terminal) return false
-    const nativeStats = this.readNativeStats()
+    let nativeStats: NativeAudioStreamStats | null = null
+    if (this.nativeStreamId != null) {
+      try {
+        nativeStats = this.requireNativeStats()
+      } catch (cause) {
+        const error = this.statsError(cause)
+        await this.fail(error, error.context)
+        return false
+      }
+    }
     if (
       nativeStats?.state === NativeAudioStreamState.Failed ||
       nativeStats?.state === NativeAudioStreamState.Cancelled
@@ -979,10 +988,12 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
 
   private async pollNativeState(attempt: AudioStreamAttempt, waitForEnd: boolean): Promise<boolean> {
     while (this.isAttemptActive(attempt)) {
-      const stats = this.readNativeStats(false)
-      if (stats == null) {
-        const context: AudioStreamErrorContext = { action: "stats" }
-        await this.fail(new AudioStreamOperationError("Audio stream stats failed", context), context)
+      let stats: NativeAudioStreamStats
+      try {
+        stats = this.requireNativeStats()
+      } catch (cause) {
+        const error = this.statsError(cause)
+        await this.fail(error, error.context)
         return false
       }
       const state = NATIVE_STREAM_STATES[stats.state] ?? null
@@ -1163,15 +1174,40 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     }
   }
 
-  private readNativeStats(useCached = true): NativeAudioStreamStats | null {
+  private requireNativeStats(): NativeAudioStreamStats {
     const streamId = this.nativeStreamId
-    if (streamId == null) return useCached ? this.lastNativeStats : null
+    if (streamId == null) {
+      const context: AudioStreamErrorContext = { action: "stats" }
+      throw new AudioStreamOperationError("Audio stream stats unavailable", context)
+    }
+    try {
+      const stats = this.lib.audioGetStreamStats(this.engine, streamId)
+      if (stats == null) {
+        const context: AudioStreamErrorContext = { action: "stats" }
+        throw new AudioStreamOperationError("Audio stream stats failed", context)
+      }
+      this.lastNativeStats = stats
+      return stats
+    } catch (cause) {
+      throw this.statsError(cause)
+    }
+  }
+
+  private statsError(cause: unknown): AudioStreamOperationError {
+    if (cause instanceof AudioStreamOperationError) return cause
+    const context: AudioStreamErrorContext = { action: "stats" }
+    return new AudioStreamOperationError("Audio stream stats failed", context, cause)
+  }
+
+  private readNativeStats(): NativeAudioStreamStats | null {
+    const streamId = this.nativeStreamId
+    if (streamId == null) return this.lastNativeStats
     try {
       const stats = this.lib.audioGetStreamStats(this.engine, streamId)
       if (stats != null) this.lastNativeStats = stats
       return stats
     } catch {
-      return useCached ? this.lastNativeStats : null
+      return this.lastNativeStats
     }
   }
 

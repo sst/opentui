@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import { createServer, type Server } from "node:http"
 import { afterEach, expect, test } from "bun:test"
 import { Audio, type AudioStream, type AudioStreamErrorContext, type AudioStreamStats } from "../audio.js"
+import { resolveRenderLib } from "../zig.js"
 
 const SAMPLE_RATE = 48_000
 const MP3_URL = new URL("./fixtures/audio/tone-750hz-48k-mono-1s.mp3", import.meta.url)
@@ -873,4 +874,46 @@ test("Disposal settles even when a byte source does not finish cancelling", asyn
 
   expect(stream.state).toBe("disposed")
   expect(stream.getStats().bufferedFrames).toBe(0)
+})
+
+test("AudioStream.getStats throws when native stats retrieval fails", async () => {
+  const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 6)
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(mp3)
+    },
+  })
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(source, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+
+  const lib = resolveRenderLib()
+  const originalGetStreamStats = lib.audioGetStreamStats
+  const nativeFailure = new Error("test native stats failure")
+  try {
+    lib.audioGetStreamStats = () => null
+    expect(() => stream.getStats()).toThrow("Audio stream stats failed")
+
+    lib.audioGetStreamStats = () => {
+      throw nativeFailure
+    }
+    let thrown: unknown
+    try {
+      stream.getStats()
+    } catch (error) {
+      thrown = error
+    }
+    const statsError = thrown as Error & { cause?: unknown; context?: AudioStreamErrorContext }
+    expect(statsError.message).toBe("Audio stream stats failed")
+    expect(statsError.cause).toBe(nativeFailure)
+    expect(statsError.context?.action).toBe("stats")
+  } finally {
+    lib.audioGetStreamStats = originalGetStreamStats
+  }
+
+  expect(stream.getStats().state).not.toBe("errored")
 })
