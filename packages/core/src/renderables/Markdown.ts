@@ -444,6 +444,10 @@ export class MarkdownRenderable extends Renderable {
 
   private createChunk(text: string, group: string, link?: { url: string }): TextChunk {
     const style = this.getStyle(group) || this.getStyle("default")
+    // Never attach a hyperlink with an empty/whitespace-only URI: opening an
+    // OSC 8 link with no target produces phantom "Ctrl+Click to open URL"
+    // hover state with no URL. Render the text as plain styled text instead.
+    const safeLink = link && link.url.trim() !== "" ? link : undefined
     return {
       __isChunk: true,
       text,
@@ -457,7 +461,7 @@ export class MarkdownRenderable extends Renderable {
             dim: style.dim,
           })
         : 0,
-      link,
+      link: safeLink,
     }
   }
 
