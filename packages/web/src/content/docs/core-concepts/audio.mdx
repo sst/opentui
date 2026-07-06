@@ -66,41 +66,46 @@ Create a new `Audio` instance to change `sampleRate` or `playbackChannels`.
 `playStream()` progressively decodes an MP3 URL, `ReadableStream<Uint8Array>`, or `AsyncIterable<Uint8Array>` without waiting for the source to end. Streaming is MP3-only; static `loadSound()` also supports WAV and FLAC.
 
 ```typescript
-import { Audio } from "@opentui/core"
+import { Audio, type AudioStream } from "@opentui/core"
 
 const audio = Audio.create({ autoStart: false })
-if (!audio.start()) throw new Error("No playback device available")
+let stream: AudioStream | null = null
 
-const stream = await audio.playStream("https://anomaly.fm/radio", {
-  volume: 0.8,
-  buffer: {
-    capacityMs: 2000,
-    startupMs: 1000,
-    resumeMs: 1000,
-  },
-  reconnect: {
-    retryOnEnd: true,
-    initialDelayMs: 1000,
-    maxDelayMs: 15000,
-    backoffFactor: 2,
-  },
-})
+try {
+  if (!audio.start()) throw new Error("No playback device available")
 
-stream.on("reconnecting", ({ attempt, delayMs }) => {
-  console.error(`Reconnecting attempt ${attempt} in ${delayMs}ms`)
-})
+  stream = await audio.playStream("https://anomaly.fm/radio", {
+    volume: 0.8,
+    buffer: {
+      capacityMs: 2000,
+      startupMs: 1000,
+      resumeMs: 1000,
+    },
+    reconnect: {
+      retryOnEnd: true,
+      initialDelayMs: 1000,
+      maxDelayMs: 15000,
+      backoffFactor: 2,
+    },
+  })
 
-stream.on("error", (error) => {
-  console.error(error.message)
-})
+  stream.on("reconnecting", ({ attempt, delayMs }) => {
+    console.error(`Reconnecting attempt ${attempt} in ${delayMs}ms`)
+  })
 
-stream.setVolume(0.6)
-stream.setPan(0)
+  stream.on("error", (error) => {
+    console.error(error.message)
+  })
 
-// Later:
-stream.dispose()
-await stream.closed
-audio.dispose()
+  stream.setVolume(0.6)
+  stream.setPan(0)
+
+  // Run the application until playback should stop.
+} finally {
+  stream?.dispose()
+  await stream?.closed
+  audio.dispose()
+}
 ```
 
 `playStream()` resolves after the native MP3 decoder is ready, normally while the stream is still buffering. Setup failures reject the promise. Later failures emit `error` on the returned `AudioStream`.
