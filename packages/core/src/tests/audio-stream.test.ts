@@ -399,6 +399,38 @@ test("Disposing an audio stream cancels its byte source and releases its voice",
   expect(audio.getStats()?.voicesActive).toBe(0)
 })
 
+test("Stream teardown tolerates source cancellation disposing the owning Audio", async () => {
+  const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 6)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  let activeVoicesAtCancel: number | undefined
+  let audioDisposed = false
+  audio.on("disposed", () => {
+    audioDisposed = true
+  })
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(mp3)
+    },
+    cancel() {
+      activeVoicesAtCancel = audio.getStats()?.voicesActive
+      audio.dispose()
+    },
+  })
+
+  const stream = await audio.playStream(source, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  stream.dispose()
+  await stream.closed
+
+  expect(activeVoicesAtCancel).toBe(1)
+  expect(audioDisposed).toBe(true)
+  expect(stream.state).toBe("disposed")
+})
+
 test("Disposal settles even when a byte source does not finish cancelling", async () => {
   const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 6)
   const never = new Promise<void>(() => {})
