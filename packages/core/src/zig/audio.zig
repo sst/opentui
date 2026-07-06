@@ -155,9 +155,6 @@ const Stream = struct {
     resume_frames: u32,
     sample_rate: u32,
     capacity_frames: u32,
-    volume: f32,
-    pan: f32,
-    group_id: u32,
     state: u32 = StreamState.initializing,
     bytes_received: u64 = 0,
     frames_decoded: u64 = 0,
@@ -1320,9 +1317,6 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
         .resume_frames = options.resume_frames,
         .sample_rate = e.sample_rate,
         .capacity_frames = options.pcm_capacity_frames,
-        .volume = clamp(options.volume, 0, 4),
-        .pan = clamp(options.pan, -1, 1),
-        .group_id = options.group_id,
     };
     stream.source.stream = stream;
 
@@ -1350,8 +1344,8 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
         return Status.err_device;
     }
     stream.sound_ready = true;
-    c.ma_sound_set_pan(&stream.sound, stream.pan);
-    c.ma_sound_set_volume(&stream.sound, stream.volume);
+    c.ma_sound_set_pan(&stream.sound, clamp(options.pan, -1, 1));
+    c.ma_sound_set_volume(&stream.sound, clamp(options.volume, 0, 4));
     if (c.ma_sound_start(&stream.sound) != c.MA_SUCCESS) {
         c.ma_sound_uninit(&stream.sound);
         stream.sound_ready = false;
@@ -1523,8 +1517,7 @@ pub fn setStreamVolume(engine: *Engine, stream_id: u32, volume: f32) i32 {
     defer e.lock.unlock();
     const stream = getStream(e, stream_id) orelse return Status.err_not_found;
 
-    stream.volume = clamp(volume, 0, 4);
-    c.ma_sound_set_volume(&stream.sound, stream.volume);
+    c.ma_sound_set_volume(&stream.sound, clamp(volume, 0, 4));
     return Status.ok;
 }
 
@@ -1535,8 +1528,7 @@ pub fn setStreamPan(engine: *Engine, stream_id: u32, pan: f32) i32 {
     defer e.lock.unlock();
     const stream = getStream(e, stream_id) orelse return Status.err_not_found;
 
-    stream.pan = clamp(pan, -1, 1);
-    c.ma_sound_set_pan(&stream.sound, stream.pan);
+    c.ma_sound_set_pan(&stream.sound, clamp(pan, -1, 1));
     return Status.ok;
 }
 
@@ -1553,7 +1545,6 @@ pub fn setStreamGroup(engine: *Engine, stream_id: u32, group_id: u32) i32 {
     if (c.ma_node_attach_output_bus(@ptrCast(&stream.sound), 0, @ptrCast(&e.groups.items[group_index].node), 0) != c.MA_SUCCESS) {
         return Status.err_device;
     }
-    stream.group_id = group_id;
     return Status.ok;
 }
 

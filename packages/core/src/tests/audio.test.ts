@@ -99,31 +99,6 @@ test("setupAudio uses the same synchronous initialization contract", () => {
   expect(() => setupAudio({ playbackChannels: 0xffffffff })).toThrow(AudioInitializationError)
 })
 
-test("Audio.create wraps synchronous native engine creation exceptions without emitting", () => {
-  const lib = resolveRenderLib()
-  const nativeError = new Error("synthetic engine creation failure")
-  const restoreCreate = replaceMethod(lib, "createAudioEngine", () => {
-    throw nativeError
-  })
-  let thrown: unknown
-  try {
-    const events = captureAudioEvents(() => {
-      try {
-        Audio.create()
-      } catch (error) {
-        thrown = error
-      }
-    })
-    expect(events).toEqual([])
-  } finally {
-    restoreCreate()
-  }
-
-  expect(thrown).toBeInstanceOf(AudioInitializationError)
-  expect((thrown as AudioInitializationError).action).toBe("createAudioEngine")
-  expect((thrown as Error & { cause?: unknown }).cause).toBe(nativeError)
-})
-
 test("Audio auto-start failure throws without emitting and destroys the native engine", () => {
   const lib = resolveRenderLib()
   const originalDestroy = lib.destroyAudioEngine
@@ -153,70 +128,6 @@ test("Audio auto-start failure throws without emitting and destroys the native e
   expect((thrown as AudioInitializationError).action).toBe("start")
   expect((thrown as AudioInitializationError).status).toBe(-5)
   expect(destroyCalls).toBe(1)
-})
-
-test("Audio auto-start exceptions throw without emitting and destroy the native engine", () => {
-  const lib = resolveRenderLib()
-  const originalDestroy = lib.destroyAudioEngine
-  const nativeError = new Error("synthetic auto-start failure")
-  let destroyCalls = 0
-  let thrown: unknown
-  const restoreStart = replaceMethod(lib, "audioStart", () => {
-    throw nativeError
-  })
-  const restoreDestroy = replaceMethod(lib, "destroyAudioEngine", (engine: Parameters<typeof originalDestroy>[0]) => {
-    destroyCalls += 1
-    originalDestroy.call(lib, engine)
-  })
-  try {
-    const events = captureAudioEvents(() => {
-      try {
-        Audio.create({ autoStart: true })
-      } catch (error) {
-        thrown = error
-      }
-    })
-    expect(events).toEqual([])
-  } finally {
-    restoreDestroy()
-    restoreStart()
-  }
-
-  expect(thrown).toBeInstanceOf(AudioInitializationError)
-  expect((thrown as AudioInitializationError).action).toBe("start")
-  expect((thrown as Error & { cause?: unknown }).cause).toBe(nativeError)
-  expect(destroyCalls).toBe(1)
-})
-
-test("Audio reports cleanup exceptions without hiding the initialization failure", () => {
-  const lib = resolveRenderLib()
-  const originalDestroy = lib.destroyAudioEngine
-  const cleanupError = new Error("synthetic cleanup failure")
-  let thrown: unknown
-  const restoreStart = replaceMethod(lib, "audioStart", () => -5)
-  const restoreDestroy = replaceMethod(lib, "destroyAudioEngine", (engine: Parameters<typeof originalDestroy>[0]) => {
-    originalDestroy.call(lib, engine)
-    throw cleanupError
-  })
-  try {
-    try {
-      Audio.create({ autoStart: true })
-    } catch (error) {
-      thrown = error
-    }
-  } finally {
-    restoreDestroy()
-    restoreStart()
-  }
-
-  expect(thrown).toBeInstanceOf(AudioInitializationError)
-  expect((thrown as AudioInitializationError).action).toBe("start")
-  const cause = (thrown as Error & { cause?: unknown }).cause
-  expect(cause).toBeInstanceOf(AggregateError)
-  expect((cause as AggregateError).errors).toEqual([
-    expect.objectContaining({ name: "AudioInitializationError", status: -5 }),
-    cleanupError,
-  ])
 })
 
 test("Audio auto-start succeeds without emitting constructor lifecycle events", () => {

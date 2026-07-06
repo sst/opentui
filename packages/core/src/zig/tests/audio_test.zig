@@ -739,9 +739,6 @@ test "audio stream repeatedly restarts after clean EOF with one persistent voice
     try testing.expectEqual(stream_ptr, engine.streams[0].?);
     try testing.expectEqual(pcm_buffer_ptr, stream_ptr.pcm_buffer.ptr);
     try testing.expect(stream_ptr.has_started_playback);
-    try testing.expectApproxEqAbs(@as(f32, 0.6), stream_ptr.volume, 0.0001);
-    try testing.expectApproxEqAbs(@as(f32, -0.25), stream_ptr.pan, 0.0001);
-    try testing.expectEqual(first_group, stream_ptr.group_id);
 
     var waiting_mix: [256 * 2]f32 = undefined;
     try expectStatusOk(audio.mixToBuffer(engine, &waiting_mix, 256, 2));
@@ -765,9 +762,6 @@ test "audio stream repeatedly restarts after clean EOF with one persistent voice
     try testing.expect(second_end.frames_played > first_end.frames_played);
 
     try expectStatusOk(audio.restartStream(engine, stream_id));
-    try testing.expectApproxEqAbs(@as(f32, 0.8), stream_ptr.volume, 0.0001);
-    try testing.expectApproxEqAbs(@as(f32, 0.35), stream_ptr.pan, 0.0001);
-    try testing.expectEqual(second_group, stream_ptr.group_id);
     try expectStatusOk(audio.setStreamVolume(engine, stream_id, 0.4));
     try expectStatusOk(audio.setStreamPan(engine, stream_id, -0.4));
     try expectStatusOk(audio.setStreamGroup(engine, stream_id, first_group));
