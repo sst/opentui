@@ -15,10 +15,7 @@ pub const Status = struct {
 pub const max_voices: usize = 32;
 pub const default_sample_rate: u32 = 48_000;
 pub const default_playback_channels: u32 = 2;
-const default_stream_input_capacity: u32 = 256 * 1024;
-const default_stream_pcm_capacity: u32 = 16_384;
-const default_stream_startup_frames: u32 = 4_096;
-const default_stream_resume_frames: u32 = 2_048;
+const stream_input_capacity: u32 = 256 * 1024;
 const max_stream_probe_bytes: usize = 1024 * 1024;
 const stream_decoder_chunk_frames: u32 = 2_048;
 const max_stream_generation: u32 = 0x00ffffff;
@@ -58,10 +55,9 @@ pub const VoiceOptions = extern struct {
 };
 
 pub const StreamOptions = extern struct {
-    input_capacity_bytes: u32,
-    pcm_capacity_frames: u32,
-    startup_frames: u32,
-    resume_frames: u32,
+    capacity_ms: u32,
+    startup_ms: u32,
+    resume_ms: u32,
     volume: f32,
     pan: f32,
     group_id: u32,
@@ -88,6 +84,13 @@ pub const StreamStats = extern struct {
     capacity_frames: u32,
     underruns: u32,
     error_code: i32,
+    ready_generation: u32,
+};
+
+pub const StreamCloseReason = struct {
+    pub const preserve_native_terminal: u32 = 0;
+    pub const transport_error: u32 = 1;
+    pub const disposed: u32 = 2;
 };
 
 pub const Stats = extern struct {
@@ -161,6 +164,7 @@ const Stream = struct {
     frames_played: u64 = 0,
     underruns: u32 = 0,
     error_code: i32 = 0,
+    ready_generation: u32 = 0,
     has_started_playback: bool = false,
 };
 
@@ -259,13 +263,14 @@ pub const Engine = struct {
                 c.ma_sound_uninit(&stream.sound);
                 stream.sound_ready = false;
             }
+            transitionStreamToTerminal(stream, StreamState.cancelled);
             requestStreamCancellation(stream);
         }
         self.lock.unlock();
 
         for (&self.streams) |*stream_ptr| {
             const stream = stream_ptr.* orelse continue;
-            destroyStreamStorage(stream);
+            destroyStreamStorage(stream, null);
             stream_ptr.* = null;
         }
 
@@ -381,13 +386,16 @@ fn isTerminalStreamState(state: u32) bool {
     return state == StreamState.ended or state == StreamState.failed or state == StreamState.cancelled;
 }
 
-fn failStreamWithCode(stream: *Stream, error_code: i32) void {
-    @atomicStore(i32, &stream.error_code, error_code, .release);
-
+fn transitionStreamToTerminal(stream: *Stream, terminal_state: u32) void {
     var state = loadStreamState(stream);
     while (!isTerminalStreamState(state)) {
-        state = @cmpxchgWeak(u32, &stream.state, state, StreamState.failed, .acq_rel, .acquire) orelse return;
+        state = @cmpxchgWeak(u32, &stream.state, state, terminal_state, .acq_rel, .acquire) orelse return;
     }
+}
+
+fn failStreamWithCode(stream: *Stream, error_code: i32) void {
+    @atomicStore(i32, &stream.error_code, error_code, .release);
+    transitionStreamToTerminal(stream, StreamState.failed);
 }
 
 fn failStream(stream: *Stream) void {
@@ -407,25 +415,22 @@ fn failDecoderWorker(stream: *Stream) void {
 }
 
 fn endStreamPlayback(stream: *Stream) void {
-    var state = loadStreamState(stream);
-    while (!isTerminalStreamState(state)) {
-        state = @cmpxchgWeak(u32, &stream.state, state, StreamState.ended, .acq_rel, .acquire) orelse return;
-    }
+    transitionStreamToTerminal(stream, StreamState.ended);
 }
 
 fn requestStreamCancellation(stream: *Stream) void {
     stream.input_lock.lock();
     @atomicStore(u32, &stream.cancel_requested, 1, .release);
-    setStreamState(stream, StreamState.cancelled);
     stream.input_condition.broadcast();
     stream.input_lock.unlock();
 }
 
-fn destroyStreamStorage(stream: *Stream) void {
+fn destroyStreamStorage(stream: *Stream, out_final_stats: ?*StreamStats) void {
     if (stream.worker) |worker| {
         worker.join();
         stream.worker = null;
     }
+    if (out_final_stats) |stats| stats.* = snapshotStream(stream, true);
     if (stream.source_ready) {
         c.ma_data_source_uninit(@ptrCast(&stream.source));
         stream.source_ready = false;
@@ -667,6 +672,8 @@ fn streamDecoderWorker(stream: *Stream) void {
     } else if (state == StreamState.reconnecting) {
         _ = transitionStreamState(stream, StreamState.reconnecting, StreamState.buffering);
     }
+    const ready_generation = @atomicLoad(u32, &stream.ready_generation, .acquire);
+    @atomicStore(u32, &stream.ready_generation, if (ready_generation == std.math.maxInt(u32)) 1 else ready_generation + 1, .release);
     stream.input_lock.unlock();
 
     while (!decoderExitRequested(stream)) {
@@ -1224,24 +1231,26 @@ pub fn stop(engine: *Engine) i32 {
     return Status.ok;
 }
 
-fn defaultStreamOptions() StreamOptions {
-    return .{
-        .input_capacity_bytes = default_stream_input_capacity,
-        .pcm_capacity_frames = default_stream_pcm_capacity,
-        .startup_frames = default_stream_startup_frames,
-        .resume_frames = default_stream_resume_frames,
-        .volume = 1,
-        .pan = 0,
-        .group_id = 0,
-    };
+const StreamFrameOptions = struct {
+    capacity_frames: u32,
+    startup_frames: u32,
+    resume_frames: u32,
+};
+
+fn durationToFrames(duration_ms: u32, sample_rate: u32) ?u32 {
+    if (duration_ms == 0 or sample_rate == 0) return null;
+    const frames = (@as(u64, duration_ms) * @as(u64, sample_rate) + 999) / 1_000;
+    if (frames > std.math.maxInt(u32)) return null;
+    return @intCast(frames);
 }
 
-fn validStreamOptions(options: StreamOptions) bool {
-    if (options.input_capacity_bytes == 0 or options.pcm_capacity_frames == 0) return false;
-    if (options.startup_frames == 0 or options.resume_frames == 0) return false;
-    if (options.startup_frames > options.pcm_capacity_frames or options.resume_frames > options.pcm_capacity_frames) return false;
+fn resolveStreamFrameOptions(options: StreamOptions, sample_rate: u32) ?StreamFrameOptions {
+    const capacity = durationToFrames(options.capacity_ms, sample_rate) orelse return null;
+    const startup = durationToFrames(options.startup_ms, sample_rate) orelse return null;
+    const resume_frames = durationToFrames(options.resume_ms, sample_rate) orelse return null;
+    if (startup > capacity or resume_frames > capacity or capacity > max_stream_pcm_capacity_frames) return null;
 
-    return options.pcm_capacity_frames <= max_stream_pcm_capacity_frames;
+    return .{ .capacity_frames = capacity, .startup_frames = startup, .resume_frames = resume_frames };
 }
 
 fn streamIdForSlot(engine: *const Engine, slot_index: usize) u32 {
@@ -1271,9 +1280,9 @@ fn retireStreamSlotLocked(engine: *Engine, slot_index: usize) void {
 }
 
 pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_stream_id: ?*u32) i32 {
-    if (out_stream_id == null) return Status.err_invalid;
-    const options = if (options_ptr) |provided| provided.* else defaultStreamOptions();
-    if (!validStreamOptions(options)) return Status.err_invalid;
+    if (options_ptr == null or out_stream_id == null) return Status.err_invalid;
+    const options = options_ptr.?.*;
+    const frame_options = resolveStreamFrameOptions(options, engine.sample_rate) orelse return Status.err_invalid;
 
     const e = engine;
     const preflight = blk: {
@@ -1294,11 +1303,11 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
     };
 
     const stream = e.allocator.create(Stream) catch return Status.err_no_space;
-    const input_buffer = e.allocator.alloc(u8, options.input_capacity_bytes) catch {
+    const input_buffer = e.allocator.alloc(u8, stream_input_capacity) catch {
         e.allocator.destroy(stream);
         return Status.err_no_space;
     };
-    const pcm_sample_count = std.math.mul(usize, @as(usize, options.pcm_capacity_frames), 2) catch {
+    const pcm_sample_count = std.math.mul(usize, @as(usize, frame_options.capacity_frames), 2) catch {
         e.allocator.free(input_buffer);
         e.allocator.destroy(stream);
         return Status.err_no_space;
@@ -1313,15 +1322,15 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
         .allocator = e.allocator,
         .input_buffer = input_buffer,
         .pcm_buffer = pcm_buffer,
-        .startup_frames = options.startup_frames,
-        .resume_frames = options.resume_frames,
+        .startup_frames = frame_options.startup_frames,
+        .resume_frames = frame_options.resume_frames,
         .sample_rate = e.sample_rate,
-        .capacity_frames = options.pcm_capacity_frames,
+        .capacity_frames = frame_options.capacity_frames,
     };
     stream.source.stream = stream;
 
-    if (c.ma_pcm_rb_init(c.ma_format_f32, 2, options.pcm_capacity_frames, pcm_buffer.ptr, null, &stream.pcm_ring) != c.MA_SUCCESS) {
-        destroyStreamStorage(stream);
+    if (c.ma_pcm_rb_init(c.ma_format_f32, 2, frame_options.capacity_frames, pcm_buffer.ptr, null, &stream.pcm_ring) != c.MA_SUCCESS) {
+        destroyStreamStorage(stream, null);
         return Status.err_device;
     }
     stream.pcm_ring_ready = true;
@@ -1330,7 +1339,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
     var source_config = c.ma_data_source_config_init();
     source_config.vtable = &stream_data_source_vtable;
     if (c.ma_data_source_init(&source_config, @ptrCast(&stream.source)) != c.MA_SUCCESS) {
-        destroyStreamStorage(stream);
+        destroyStreamStorage(stream, null);
         return Status.err_device;
     }
     stream.source_ready = true;
@@ -1340,7 +1349,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
     const sound_flags: c.ma_uint32 = c.MA_SOUND_FLAG_NO_SPATIALIZATION | c.MA_SOUND_FLAG_NO_PITCH;
     if (c.ma_sound_init_from_data_source(&e.core, data_source, sound_flags, &e.groups.items[preflight.group_index].node, &stream.sound) != c.MA_SUCCESS) {
         e.lock.unlock();
-        destroyStreamStorage(stream);
+        destroyStreamStorage(stream, null);
         return Status.err_device;
     }
     stream.sound_ready = true;
@@ -1350,7 +1359,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
         c.ma_sound_uninit(&stream.sound);
         stream.sound_ready = false;
         e.lock.unlock();
-        destroyStreamStorage(stream);
+        destroyStreamStorage(stream, null);
         return Status.err_device;
     }
 
@@ -1370,8 +1379,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
         retireStreamSlotLocked(e, slot_index);
         e.updateActiveVoiceCount();
         e.lock.unlock();
-        requestStreamCancellation(stream);
-        destroyStreamStorage(stream);
+        destroyStreamStorage(stream, null);
         return Status.err_no_space;
     };
 
@@ -1384,10 +1392,8 @@ pub fn writeStream(
     stream_id: u32,
     data_ptr: ?[*]const u8,
     data_len: u32,
-    out_written: ?*u32,
 ) i32 {
-    if (stream_id == 0 or out_written == null or (data_len > 0 and data_ptr == null)) return Status.err_invalid;
-    out_written.?.* = 0;
+    if (stream_id == 0 or (data_len > 0 and data_ptr == null)) return Status.err_invalid;
 
     const e = engine;
     e.lock.lock();
@@ -1402,11 +1408,11 @@ pub fn writeStream(
     {
         return Status.err_invalid;
     }
-    if (data_len == 0) return Status.ok;
+    if (data_len == 0) return 0;
 
     const available = stream.input_buffer.len - stream.input_count;
     const write_count = @min(@as(usize, data_len), available);
-    if (write_count == 0) return Status.ok;
+    if (write_count == 0) return 0;
 
     const data = data_ptr.?[0..write_count];
     const first_count = @min(write_count, stream.input_buffer.len - stream.input_write);
@@ -1419,9 +1425,8 @@ pub fn writeStream(
     stream.input_write = (stream.input_write + write_count) % stream.input_buffer.len;
     stream.input_count += write_count;
     _ = @atomicRmw(u64, &stream.bytes_received, .Add, write_count, .monotonic);
-    out_written.?.* = @intCast(write_count);
     stream.input_condition.signal();
-    return Status.ok;
+    return @intCast(write_count);
 }
 
 pub fn endStream(engine: *Engine, stream_id: u32) i32 {
@@ -1548,28 +1553,33 @@ pub fn setStreamGroup(engine: *Engine, stream_id: u32, group_id: u32) i32 {
     return Status.ok;
 }
 
-pub fn getStreamStats(engine: *Engine, stream_id: u32, out_stats: ?*StreamStats) i32 {
-    if (stream_id == 0 or out_stats == null) return Status.err_invalid;
-    // Native entry is serialized, and private audio threads never mutate stream slots.
-    const stream = getStream(engine, stream_id) orelse return Status.err_not_found;
-
-    out_stats.?.* = .{
+fn snapshotStream(stream: *Stream, final: bool) StreamStats {
+    return .{
         .bytes_received = @atomicLoad(u64, &stream.bytes_received, .monotonic),
         .frames_decoded = @atomicLoad(u64, &stream.frames_decoded, .monotonic),
         .frames_played = @atomicLoad(u64, &stream.frames_played, .monotonic),
         .state = loadStreamState(stream),
         .sample_rate = stream.sample_rate,
         .channels = 2,
-        .buffered_frames = c.ma_pcm_rb_available_read(&stream.pcm_ring),
+        .buffered_frames = if (final) 0 else c.ma_pcm_rb_available_read(&stream.pcm_ring),
         .capacity_frames = stream.capacity_frames,
         .underruns = @atomicLoad(u32, &stream.underruns, .monotonic),
         .error_code = @atomicLoad(i32, &stream.error_code, .acquire),
+        .ready_generation = @atomicLoad(u32, &stream.ready_generation, .acquire),
     };
+}
+
+pub fn getStreamStats(engine: *Engine, stream_id: u32, out_stats: ?*StreamStats) i32 {
+    if (stream_id == 0 or out_stats == null) return Status.err_invalid;
+    // Native entry is serialized, and private audio threads never mutate stream slots.
+    const stream = getStream(engine, stream_id) orelse return Status.err_not_found;
+
+    out_stats.?.* = snapshotStream(stream, false);
     return Status.ok;
 }
 
-pub fn destroyStream(engine: *Engine, stream_id: u32) i32 {
-    if (stream_id == 0) return Status.err_invalid;
+pub fn closeStream(engine: *Engine, stream_id: u32, reason: u32, out_final_stats: ?*StreamStats) i32 {
+    if (stream_id == 0 or out_final_stats == null or reason > StreamCloseReason.disposed) return Status.err_invalid;
     const e = engine;
     e.lock.lock();
     const slot_index = streamSlotIndex(e, stream_id) orelse {
@@ -1581,6 +1591,11 @@ pub fn destroyStream(engine: *Engine, stream_id: u32) i32 {
         return Status.err_not_found;
     };
 
+    transitionStreamToTerminal(
+        stream,
+        if (reason == StreamCloseReason.transport_error) StreamState.failed else StreamState.cancelled,
+    );
+
     if (stream.sound_ready) {
         _ = c.ma_sound_stop(&stream.sound);
         c.ma_sound_uninit(&stream.sound);
@@ -1591,7 +1606,7 @@ pub fn destroyStream(engine: *Engine, stream_id: u32) i32 {
     e.lock.unlock();
 
     requestStreamCancellation(stream);
-    destroyStreamStorage(stream);
+    destroyStreamStorage(stream, out_final_stats);
     return Status.ok;
 }
 

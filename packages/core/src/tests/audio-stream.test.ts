@@ -2,7 +2,7 @@ import { once } from "node:events"
 import { readFile } from "node:fs/promises"
 import { createServer, type Server } from "node:http"
 import { afterEach, expect, test } from "bun:test"
-import { Audio, type AudioStream, type AudioStreamErrorContext, type AudioStreamStats } from "../audio.js"
+import { Audio, AudioStream, type AudioStreamErrorContext, type AudioStreamStats } from "../audio.js"
 
 const SAMPLE_RATE = 48_000
 const MP3_URL = new URL("./fixtures/audio/tone-750hz-48k-mono-1s.mp3", import.meta.url)
@@ -162,6 +162,33 @@ test("Audio streams an MP3 before the HTTP response ends and exposes it through 
   await waitFor(() => responseEnded, "Test server did not finish the MP3 response")
   stream.dispose()
   await stream.closed
+})
+
+test("Audio does not reserve a native voice before a URL response is valid", async () => {
+  const fixture = new Uint8Array(await readFile(MP3_URL))
+  const requestStarted = deferred()
+  const releaseResponse = deferred()
+  const server = createServer((_, response) => {
+    requestStarted.resolve()
+    void releaseResponse.promise.then(() => {
+      response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
+      response.end(fixture)
+    })
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const opening = audio.playStream(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  await requestStarted.promise
+  expect(audio.getStats()?.voicesActive).toBe(0)
+
+  releaseResponse.resolve()
+  const stream = await opening
+  await drainStream(audio, stream)
 })
 
 test("Audio accepts an async iterable and drains it to completion", async () => {
@@ -573,6 +600,26 @@ test("Audio validates the stream group before consuming the source", async () =>
       groupId: 0xffffffff,
       buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
     })
+  } catch (error) {
+    rejection = error
+  }
+
+  expect((rejection as { context?: AudioStreamErrorContext })?.context).toEqual({ action: "create", status: -1 })
+  expect(sourceConsumed).toBe(false)
+  expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Audio rejects a fractional stream group before consuming the source", async () => {
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  let sourceConsumed = false
+  async function* source(): AsyncGenerator<Uint8Array> {
+    sourceConsumed = true
+  }
+
+  let rejection: unknown
+  try {
+    await audio.playStream(source(), { groupId: 1.5 })
   } catch (error) {
     rejection = error
   }
@@ -1000,7 +1047,8 @@ test("Audio stream volume, pan, and group controls affect real mixed PCM", async
     volume: 0,
     buffer: { capacityMs: 2000, startupMs: 25, resumeMs: 25 },
   })
-  stream.on("error", () => {})
+  const controlErrors: AudioStreamErrorContext[] = []
+  stream.on("error", (_error, context) => controlErrors.push(context))
   await waitFor(() => stream.getStats().bufferedDurationMs >= 500, "Audio stream did not buffer control audio")
 
   const mutedFramesBefore = stream.getStats().framesPlayed
@@ -1043,6 +1091,12 @@ test("Audio stream volume, pan, and group controls affect real mixed PCM", async
   const groupAudibleOutput = audio.mixFrames(2048, 2)
   expect(groupAudibleOutput).not.toBeNull()
   expect(hasSignal(groupAudibleOutput ?? new Float32Array())).toBe(true)
+  expect(stream.setGroup(1.5)).toBe(false)
+  await waitFor(
+    () => controlErrors.some((context) => context.action === "setGroup" && context.status == null),
+    "Fractional group ID did not emit its nonterminal error",
+  )
+  expect(stream.state).not.toBe("errored")
   expect(stream.setGroup(0xffffffff)).toBe(false)
   expect(stream.state).not.toBe("errored")
 
@@ -1051,6 +1105,32 @@ test("Audio stream volume, pan, and group controls affect real mixed PCM", async
   expect(stream.setVolume(1)).toBe(false)
   expect(stream.setPan(0)).toBe(false)
   expect(stream.setGroup(0)).toBe(false)
+})
+
+test("AudioStream async emission preserves EventEmitter throw semantics", () => {
+  const stream = Object.create(AudioStream.prototype) as AudioStream
+  const callbacks: Array<() => void> = []
+  const originalSetTimeout = globalThis.setTimeout
+  globalThis.setTimeout = ((callback: TimerHandler) => {
+    callbacks.push(callback as () => void)
+    return 0 as unknown as ReturnType<typeof setTimeout>
+  }) as unknown as typeof setTimeout
+
+  const unhandledError = new Error("unhandled stream error")
+  const listenerError = new Error("stream listener failed")
+  try {
+    ;(stream as any).emitAsync("error", unhandledError, { action: "source" })
+    stream.on("ended", () => {
+      throw listenerError
+    })
+    ;(stream as any).emitAsync("ended")
+  } finally {
+    globalThis.setTimeout = originalSetTimeout
+  }
+
+  expect(callbacks).toHaveLength(2)
+  expect(() => callbacks[0]!()).toThrow(unhandledError)
+  expect(() => callbacks[1]!()).toThrow(listenerError)
 })
 
 test("Audio retries only documented HTTP statuses and enforces maxAttempts", async () => {

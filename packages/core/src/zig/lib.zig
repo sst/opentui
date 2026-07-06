@@ -418,10 +418,9 @@ export fn audioWriteStream(
     stream_id: u32,
     data_ptr: ?[*]const u8,
     data_len: u32,
-    out_written: ?*u32,
 ) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    return native_audio.writeStream(object_ptr, stream_id, data_ptr, data_len, out_written);
+    return native_audio.writeStream(object_ptr, stream_id, data_ptr, data_len);
 }
 
 export fn audioEndStream(engine_handle: NativeHandle, stream_id: u32) i32 {
@@ -454,10 +453,14 @@ export fn audioGetStreamStats(engine_handle: NativeHandle, stream_id: u32, out_s
     return native_audio.getStreamStats(object_ptr, stream_id, out_stats);
 }
 
-export fn audioDestroyStream(engine_handle: NativeHandle, stream_id: u32) i32 {
-    // Once both handles resolve, stream teardown has no fallible path.
+export fn audioCloseStream(
+    engine_handle: NativeHandle,
+    stream_id: u32,
+    reason: u32,
+    out_final_stats: ?*native_audio.StreamStats,
+) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    return native_audio.destroyStream(object_ptr, stream_id);
+    return native_audio.closeStream(object_ptr, stream_id, reason, out_final_stats);
 }
 
 export fn audioLoad(engine_handle: NativeHandle, data_ptr: ?[*]const u8, data_len: u32, out_sound_id: ?*u32) i32 {

@@ -333,10 +333,9 @@ export type AudioVoiceOptions = {
 }
 
 export type AudioStreamCreateOptions = {
-  inputCapacityBytes: number
-  pcmCapacityFrames: number
-  startupFrames: number
-  resumeFrames: number
+  capacityMs: number
+  startupMs: number
+  resumeMs: number
   volume: number
   pan: number
   groupId: number
@@ -353,7 +352,36 @@ export type NativeAudioStreamStats = {
   capacityFrames: number
   underruns: number
   errorCode: number
+  readyGeneration: number
 }
+
+export const NativeAudioStreamState = {
+  Initializing: 0,
+  Buffering: 1,
+  Playing: 2,
+  Ended: 3,
+  Failed: 4,
+  Cancelled: 5,
+  Reconnecting: 6,
+} as const
+
+export type NativeAudioStreamState = (typeof NativeAudioStreamState)[keyof typeof NativeAudioStreamState]
+
+export const NativeAudioStreamStateNames = [
+  "initializing",
+  "buffering",
+  "playing",
+  "ended",
+  "errored",
+  "disposed",
+  "reconnecting",
+] as const
+
+export const NativeAudioStreamCloseReason = {
+  PreserveNativeTerminal: 0,
+  TransportError: 1,
+  Disposed: 2,
+} as const
 
 export type AudioStats = {
   soundsLoaded: number
@@ -395,10 +423,9 @@ export const AudioVoiceOptionsStruct = defineStruct([
 ])
 
 export const AudioStreamCreateOptionsStruct = defineStruct([
-  ["inputCapacityBytes", "u32"],
-  ["pcmCapacityFrames", "u32"],
-  ["startupFrames", "u32"],
-  ["resumeFrames", "u32"],
+  ["capacityMs", "u32"],
+  ["startupMs", "u32"],
+  ["resumeMs", "u32"],
   ["volume", "f32"],
   ["pan", "f32"],
   ["groupId", "u32"],
@@ -415,6 +442,7 @@ export const AudioStreamStatsStruct = defineStruct([
   ["capacityFrames", "u32"],
   ["underruns", "u32"],
   ["errorCode", "i32"],
+  ["readyGeneration", "u32"],
 ])
 
 export const AudioStatsStruct = defineStruct([
