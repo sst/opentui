@@ -1158,13 +1158,15 @@ pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
         }
     }
 
+    // Device startup can fail after mixer-only mode is active; preserve that mode.
+    const was_started = e.started;
     e.started = true;
     e.lock.unlock();
 
     const start_result = c.ma_device_start(&e.device);
     if (start_result != c.MA_SUCCESS) {
         e.lock.lock();
-        e.started = false;
+        e.started = was_started;
         c.ma_device_uninit(&e.device);
         e.has_device = false;
         e.lock.unlock();
