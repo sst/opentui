@@ -1,7 +1,7 @@
 import { type KeyEvent } from "../lib/index.js"
 import { getObjectsInViewport } from "../lib/objects-in-viewport.js"
 import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration.js"
-import type { Renderable, RenderableOptions } from "../Renderable.js"
+import type { BaseRenderable, Renderable, RenderableOptions } from "../Renderable.js"
 import type { MouseEvent } from "../renderer.js"
 import type { RenderContext } from "../types.js"
 import { BoxRenderable, type BoxOptions } from "./Box.js"
@@ -519,12 +519,24 @@ export class ScrollBoxRenderable extends BoxRenderable {
     return this.content.insertBefore(obj, anchor)
   }
 
-  public remove(id: string): void {
-    this.content.remove(id)
+  public remove(child: BaseRenderable): void {
+    // Internal parts (wrapper, scrollbars) are direct children of the root,
+    // not of content. Route by actual parentage so destroy() and explicit
+    // removals of internals detach them instead of silently no-oping through
+    // the content delegation.
+    if (child.parent === this) {
+      super.remove(child)
+      return
+    }
+    this.content.remove(child)
   }
 
   public getChildren(): Renderable[] {
     return this.content.getChildren()
+  }
+
+  public getRenderable(id: string): Renderable | undefined {
+    return this.content.getRenderable(id)
   }
 
   protected onMouseEvent(event: MouseEvent): void {

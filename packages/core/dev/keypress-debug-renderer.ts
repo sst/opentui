@@ -56,7 +56,7 @@ function addEvent(eventType: string, event: object) {
   if (children.length > 50) {
     const oldest = children[0]
     if (oldest) {
-      scrollBox.remove(oldest.id)
+      scrollBox.remove(oldest)
       oldest.destroyRecursively()
     }
   }

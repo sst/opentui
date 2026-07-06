@@ -231,7 +231,8 @@ export function destroy(renderer: CliRenderer): void {
     renderer.keyInput.off("keypress", demoState.keyHandler)
   }
   renderer.clearPostProcessFns()
-  renderer.root.remove("full-unicode-root")
+  const root = renderer.root.getRenderable("full-unicode-root")
+  if (root) renderer.root.remove(root)
   demoState = null
 }
 

@@ -225,6 +225,9 @@ pub const CliRenderer = struct {
         remote_mode: Terminal.RemoteMode = .local,
         output: OutputTarget = .stdout,
         clearOnShutdown: bool = true,
+        // Optional override for terminal environment lookups. Borrowed: the
+        // caller owns the map and must keep it alive for the renderer's lifetime.
+        env_map: ?*const std.process.EnvMap = null,
     };
 
     pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool) !*CliRenderer {
@@ -286,7 +289,7 @@ pub const CliRenderer = struct {
             .buffered => |buffered_output| .{ .buffered = try BufferedBackend.create(allocator, buffered_output) },
             .feed => |feed_ptr| .{ .feed = FeedBackend.create(feed_ptr) },
         };
-        errdefer backend.deinit(allocator);
+        errdefer backend.deinit();
 
         self.* = .{
             .width = width,
@@ -296,7 +299,7 @@ pub const CliRenderer = struct {
             .pool = pool,
             .backgroundColor = ansi.rgbColor(0, 0, 0, 0),
             .renderOffset = 0,
-            .terminal = Terminal.init(.{ .remote_mode = opts.remote_mode }),
+            .terminal = Terminal.init(.{ .remote_mode = opts.remote_mode, .env_map = opts.env_map }),
             .clearOnShutdown = opts.clearOnShutdown,
             .backend = backend,
             .lastCursorStyleTag = null,
@@ -356,7 +359,7 @@ pub const CliRenderer = struct {
         // without replaying the stale last-frame buffer on top of the
         // freshly-restored terminal.
         self.performShutdownSequence();
-        self.backend.deinit(self.allocator);
+        self.backend.deinit();
         self.terminal.deinit();
 
         self.currentRenderBuffer.deinit();

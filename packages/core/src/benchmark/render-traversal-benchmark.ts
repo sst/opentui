@@ -46,6 +46,7 @@ type ScenarioResult = {
   minMs: number
   maxMs: number
   stdDevMs: number
+  rmePercent: number
   approxUsPerRenderable: number
 }
 
@@ -56,6 +57,7 @@ type TimingStats = {
   minMs: number
   maxMs: number
   stdDevMs: number
+  rmePercent: number
 }
 
 type TreeStats = {
@@ -181,7 +183,10 @@ try {
     writeLine(outputEnabled, `Running ${scenario.name}...`)
     const result = await runScenario(scenario, ctx, iterations, warmupIterations)
     results.push(result)
-    writeLine(outputEnabled, `  avg=${result.avgMs.toFixed(4)}ms p95=${result.p95Ms.toFixed(4)}ms`)
+    writeLine(
+      outputEnabled,
+      `  avg=${result.avgMs.toFixed(4)}ms p95=${result.p95Ms.toFixed(4)}ms rme=${result.rmePercent.toFixed(2)}%`,
+    )
   }
 } finally {
   renderer.destroy()
@@ -195,6 +200,7 @@ if (outputEnabled) {
       layoutOnlyBoxes: result.layoutOnlyBoxesPerIteration,
       avgMs: result.avgMs,
       p95Ms: result.p95Ms,
+      "rme%": result.rmePercent,
       usPerRenderable: result.approxUsPerRenderable,
     })),
   )
@@ -343,6 +349,10 @@ function createScenarios(): ScenarioDefinition[] {
         }
       },
     },
+    createCullingScalingScenario(100),
+    createCullingScalingScenario(1000),
+    createCullingScalingScenario(5000),
+    createCullingScalingScenario(10000),
     {
       name: "scrollbar_stack",
       description: "Visible scrollbars and slider tracks with arrows",
@@ -456,6 +466,82 @@ function createScenarios(): ScenarioDefinition[] {
       },
     },
   ]
+}
+
+// Frame-time scaling with total child count under viewport culling, at a
+// constant visible count (~viewport height). This is the per-frame
+// O(total children) layout-refresh path in Renderable.updateLayout for
+// _hasVisibleChildFilter parents: before culling can read screen positions,
+// every child gets one updateFromLayout (FFI getComputedLayout) per frame,
+// so steady-state frame time grows with hidden children. Watch
+// approxUsPerRenderable across the scaling scenarios: roughly constant means
+// the per-frame cost is linear in total children; if the refresh path ever
+// becomes O(visible), it should drop as childCount grows.
+function createCullingScalingScenario(childCount: number): ScenarioDefinition {
+  return {
+    name: `scrollbox_culling_scaling_${childCount}`,
+    description: `Scrolling viewport-culled scrollbox with ${childCount} rows, constant visible count`,
+    setup: async (ctx) => {
+      clearRoot(ctx.renderer)
+      resetBuffers(ctx.renderer)
+
+      let renderables = 0
+      let layoutOnlyBoxes = 0
+
+      const root = new BoxRenderable(ctx.renderer, {
+        id: `bench-culling-scaling-root-${childCount}`,
+        width: "100%",
+        height: "100%",
+        border: false,
+        backgroundColor: COLORS.transparent,
+      })
+      renderables += 1
+      layoutOnlyBoxes += 1
+      ctx.renderer.root.add(root)
+
+      const scrollBox = new ScrollBoxRenderable(ctx.renderer, {
+        id: `bench-culling-scaling-scrollbox-${childCount}`,
+        width: "100%",
+        height: "100%",
+        viewportCulling: true,
+      })
+      renderables += 1
+      layoutOnlyBoxes += 1
+      root.add(scrollBox)
+
+      for (let i = 0; i < childCount; i += 1) {
+        const row = new BoxRenderable(ctx.renderer, {
+          id: `bench-culling-scaling-row-${i}`,
+          width: "100%",
+          height: 1,
+          flexShrink: 0,
+          border: false,
+          backgroundColor: i % 2 === 0 ? COLORS.panel : COLORS.element,
+        })
+        renderables += 1
+        scrollBox.add(row)
+      }
+
+      await ctx.renderOnce()
+      scrollBox.scrollTo(Math.floor(childCount / 2))
+      await ctx.renderOnce()
+
+      return {
+        renderablesPerIteration: renderables,
+        layoutOnlyBoxesPerIteration: layoutOnlyBoxes,
+        runIteration: async (iteration) => {
+          // Alternate 1-row scrolls: every frame is a real translate change
+          // (the steady-state streaming/scrolling workload) while the visible
+          // count stays constant and the position returns home every 2 frames.
+          scrollBox.scrollBy(iteration % 2 === 0 ? 1 : -1)
+          await ctx.renderOnce()
+        },
+        teardown: () => {
+          root.destroyRecursively()
+        },
+      }
+    },
+  }
 }
 
 async function buildOpencodeLayoutTree(ctx: BenchmarkContext, options: LayoutTreeOptions): Promise<LayoutTreeState> {
@@ -731,6 +817,7 @@ async function runScenario(
       minMs: round(stats.minMs, 4),
       maxMs: round(stats.maxMs, 4),
       stdDevMs: round(stats.stdDevMs, 4),
+      rmePercent: round(stats.rmePercent, 2),
       approxUsPerRenderable:
         runtime.renderablesPerIteration > 0 ? round((stats.avgMs * 1000) / runtime.renderablesPerIteration, 3) : 0,
     }
@@ -765,6 +852,7 @@ function calculateStats(samples: number[]): TimingStats {
       minMs: 0,
       maxMs: 0,
       stdDevMs: 0,
+      rmePercent: 0,
     }
   }
 
@@ -792,7 +880,35 @@ function calculateStats(samples: number[]): TimingStats {
     minMs,
     maxMs,
     stdDevMs: Math.sqrt(variance),
+    rmePercent: relativeMarginOfError(samples, avgMs),
   }
+}
+
+// 95% confidence relative margin of error via Student-t, matching the
+// convention in layout-benchmark.ts.
+function relativeMarginOfError(samples: readonly number[], average: number): number {
+  if (samples.length <= 1 || average === 0) {
+    return 0
+  }
+
+  let variance = 0
+  for (const value of samples) {
+    const diff = value - average
+    variance += diff * diff
+  }
+  variance /= samples.length - 1
+
+  const sem = Math.sqrt(variance) / Math.sqrt(samples.length)
+  return Math.abs((sem * tCritical95(samples.length - 1) * 100) / average)
+}
+
+function tCritical95(degreesOfFreedom: number): number {
+  const table = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228]
+  if (degreesOfFreedom <= 0) {
+    return 0
+  }
+
+  return table[degreesOfFreedom - 1] ?? 1.96
 }
 
 function round(value: number, places: number): number {

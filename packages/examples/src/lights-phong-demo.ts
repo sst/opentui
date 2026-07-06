@@ -274,8 +274,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
 export function destroy(renderer: CliRenderer): void {
   if (demoState) {
     demoState.cleanup()
-    renderer.root.remove("phong-main")
-    renderer.root.remove("phong-container")
+    for (const id of ["phong-main", "phong-container"]) {
+      const child = renderer.root.getRenderable(id)
+      if (child) renderer.root.remove(child)
+    }
     demoState = null
   }
 }

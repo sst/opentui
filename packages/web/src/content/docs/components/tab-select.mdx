@@ -158,7 +158,7 @@ contentArea.add(currentPanel)
 tabs.on("itemSelected", (index, option) => {
   // Remove current panel
   if (currentPanel) {
-    contentArea.remove(currentPanel.id)
+    contentArea.remove(currentPanel)
   }
   // Add new panel based on selection
   switch (option.name) {
