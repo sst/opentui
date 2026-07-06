@@ -512,7 +512,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     if (this.terminal && this.currentState !== "ended") throw this.terminalError ?? createAbortError()
 
     this.exposed = true
-    if (this.pendingEnded) this.emitAsync(() => this.emit("ended"))
+    if (this.pendingEnded) this.emitAsync("ended")
     this.pendingEnded = false
   }
 
@@ -636,7 +636,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     if (!wasExposed) this.pendingEnded = false
     void cleanup.finally(() => {
       this.closedResolve()
-      if (wasExposed) this.emitAsync(() => this.emit("disposed"))
+      if (wasExposed) this.emitAsync("disposed")
     })
   }
 
@@ -1022,7 +1022,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       maxAttempts: reconnect.maxAttempts,
       error,
     }
-    if (this.exposed) this.emitAsync(() => this.emit("reconnecting", reconnectEvent))
+    if (this.exposed) this.emitAsync("reconnecting", reconnectEvent)
 
     try {
       await waitForDelay(delayMs, this.lifecycleController.signal)
@@ -1122,18 +1122,28 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
 
   private notifyEnded(): void {
     if (this.exposed) {
-      this.emitAsync(() => this.emit("ended"))
+      this.emitAsync("ended")
     } else {
       this.pendingEnded = true
     }
   }
 
   private notifyError(error: Error, context: AudioStreamErrorContext): void {
-    if (this.exposed) this.emitAsync(() => this.emit("error", error, context))
+    if (this.exposed) this.emitAsync("error", error, context)
   }
 
-  private emitAsync(emit: () => void): void {
-    setTimeout(emit, 0)
+  private emitAsync<K extends keyof AudioStreamEvents>(event: K, ...args: AudioStreamEvents[K]): void {
+    setTimeout(() => {
+      const listeners = this.rawListeners(event)
+      for (const listener of listeners) {
+        try {
+          const result = Reflect.apply(listener, this, args) as unknown
+          if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+            void Promise.resolve(result).catch(() => {})
+          }
+        } catch {}
+      }
+    }, 0)
   }
 
   private isCurrent(generation: number): boolean {

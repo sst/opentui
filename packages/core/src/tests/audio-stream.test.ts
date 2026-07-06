@@ -162,6 +162,13 @@ test("Audio accepts an async iterable and drains it to completion", async () => 
     groupId: group ?? 0,
     buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
   })
+  let observedEnded = false
+  stream.on("ended", () => {
+    throw new Error("test ended listener failure")
+  })
+  stream.on("ended", () => {
+    observedEnded = true
+  })
 
   expect(stream.setVolume(0.6)).toBe(true)
   expect(stream.setPan(-0.25)).toBe(true)
@@ -170,6 +177,7 @@ test("Audio accepts an async iterable and drains it to completion", async () => 
   expect(stream.setGroup(0xffffffff)).toBe(false)
   expect(stream.state).not.toBe("errored")
   await drainStream(audio, stream)
+  await waitFor(() => observedEnded, "Throwing ended listener interrupted other ended listeners")
 
   const stats = stream.getStats()
   expect(stats.bytesReceived).toBe(BigInt(mp3.length))
@@ -225,6 +233,56 @@ test("Audio reconnects a URL stream after its response body is interrupted", asy
   expect(reconnectGroupResult).toBe(false)
   expect(stream.state).toBe("ended")
   expect(requestHeaders).toEqual(["reconnect", "reconnect"])
+})
+
+test("Throwing reconnecting listeners do not interrupt reconnection or other listeners", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const interruptFirstResponse = deferred()
+  const keepSecondResponseOpen = deferred()
+  let requests = 0
+  const server = createServer((_, response) => {
+    requests += 1
+    response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
+    if (requests === 1) {
+      response.write(mp3.subarray(0, Math.floor(mp3.length * 0.75)))
+      void interruptFirstResponse.promise.then(() => response.destroy())
+      return
+    }
+    response.write(repeatBytes(mp3, 6))
+    void keepSecondResponseOpen.promise.then(() => response.end())
+  })
+  const baseUrl = await listen(server)
+
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
+    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+  })
+  stream.on("error", () => {})
+  let observedReconnect = false
+  stream.on("reconnecting", () => {
+    throw new Error("test reconnecting listener failure")
+  })
+  stream.on("reconnecting", () => {
+    observedReconnect = true
+  })
+
+  try {
+    interruptFirstResponse.resolve()
+    await waitFor(
+      () => requests === 2 && observedReconnect,
+      "Throwing reconnecting listener interrupted stream reconnection",
+      () => audio.mixFrames(256, 2),
+      1000,
+    )
+  } finally {
+    stream.dispose()
+    keepSecondResponseOpen.resolve()
+    await stream.closed
+  }
 })
 
 test("Audio drains clean EOF before reconnecting", async () => {
@@ -343,6 +401,9 @@ test("Audio reports a byte-source failure after stream setup", async () => {
     buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
   })
   const streamErrors: Error[] = []
+  stream.on("error", () => {
+    throw new Error("test error listener failure")
+  })
   stream.on("error", (error) => {
     streamErrors.push(error)
   })
@@ -391,8 +452,16 @@ test("Disposing an audio stream cancels its byte source and releases its voice",
   const stream = await audio.playStream(source, {
     buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
   })
+  let observedDisposed = false
+  stream.on("disposed", () => {
+    throw new Error("test disposed listener failure")
+  })
+  stream.on("disposed", () => {
+    observedDisposed = true
+  })
   stream.dispose()
   await stream.closed
+  await waitFor(() => observedDisposed, "Throwing disposed listener interrupted other disposed listeners")
 
   expect(cancelled).toBe(true)
   expect(stream.state).toBe("disposed")
