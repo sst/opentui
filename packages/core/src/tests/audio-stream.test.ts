@@ -526,6 +526,35 @@ test("Audio accepts empty chunks without starving stream setup", async () => {
   expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
 })
 
+test("Audio stream setup remains abortable while a source emits empty chunks", async () => {
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+
+  const abortController = new AbortController()
+  const maximumPullsBeforeAbort = 100_000
+  let pulls = 0
+  async function* source(): AsyncGenerator<Uint8Array> {
+    while (pulls < maximumPullsBeforeAbort) {
+      pulls += 1
+      yield new Uint8Array(0)
+    }
+    await new Promise<void>(() => {})
+  }
+
+  const setup = audio.playStream(source(), { signal: abortController.signal })
+  setTimeout(() => abortController.abort(), 0)
+
+  let rejection: unknown
+  try {
+    await setup
+  } catch (error) {
+    rejection = error
+  }
+
+  expect((rejection as Error)?.name).toBe("AbortError")
+  expect(pulls).toBeLessThan(maximumPullsBeforeAbort)
+})
+
 test("Disposing an audio stream cancels its byte source and releases its voice", async () => {
   const mp3 = new Uint8Array(await readFile(MP3_URL))
   let cancelled = false
