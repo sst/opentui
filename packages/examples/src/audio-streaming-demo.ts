@@ -342,7 +342,12 @@ class AudioStreamingDemo {
     this.stream?.dispose()
     this.stream = null
     this.streamStats = null
-    this.lastAnalyzedFrame = -1n
+    this.spectrum.fill(0)
+    this.lastAnalyzedFrame = 0n
+    this.peak = 0
+    this.rms = 0
+    this.audio.disableTap()
+    this.audio.enableTap(8192)
     this.statusMessage = `Connecting to ${url.host}`
     this.statusText.fg = PALETTE.warning
     this.refreshText()
@@ -529,7 +534,7 @@ class AudioStreamingDemo {
     this.rms = engineStats?.lastRms ?? 0
 
     const playedFrames = this.streamStats?.framesPlayed ?? -1n
-    if (playedFrames !== this.lastAnalyzedFrame) {
+    if (playedFrames > 0n && playedFrames !== this.lastAnalyzedFrame) {
       this.lastAnalyzedFrame = playedFrames
       const tap = this.audio.readTapFrames(FFT_SIZE, 2)
       if (tap && tap.framesRead >= FFT_SIZE) this.computeSpectrum(tap.frames)
