@@ -56,6 +56,7 @@ jobs:
           echo "Publishing version: $V"
 
       - name: Build native binaries (all 4 fork targets)
+        working-directory: packages/core
         run: bun run build:native -- --all
 
       - name: Verify native outputs
@@ -84,6 +85,7 @@ jobs:
           done
 
       - name: Build library (TS bundle)
+        working-directory: packages/core
         run: bun run build:lib
 
       - name: Publish main package
