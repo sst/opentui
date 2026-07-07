@@ -334,18 +334,22 @@ fn addMacOSSDKSearchPaths(b: *std.Build, module: *std.Build.Module, sdk_path: []
     module.addLibraryPath(.{ .cwd_relative = lib_path });
 }
 
-fn addMacOSSystemLibraries(b: *std.Build, module: *std.Build.Module, sdk_path: []const u8) void {
+fn addMacOSClipboardDependencies(b: *std.Build, module: *std.Build.Module, sdk_path: []const u8) void {
     module.addCSourceFile(.{
-        .file = b.path("clipboard_macos_shim.m"),
+        .file = b.path("clipboard/macos-shim.m"),
         .flags = &.{ "-fobjc-arc", "-fobjc-arc-exceptions", "-isysroot", sdk_path },
     });
     module.linkFramework("AppKit", .{});
     module.linkFramework("Foundation", .{});
+    module.linkSystemLibrary("pthread", .{});
+    addMacOSSDKSearchPaths(b, module, sdk_path);
+}
+
+fn addMacOSSystemLibraries(b: *std.Build, module: *std.Build.Module, sdk_path: []const u8) void {
+    addMacOSClipboardDependencies(b, module, sdk_path);
     module.linkFramework("CoreFoundation", .{});
     module.linkFramework("CoreAudio", .{});
     module.linkFramework("AudioToolbox", .{});
-    module.linkSystemLibrary("pthread", .{});
-    addMacOSSDKSearchPaths(b, module, sdk_path);
 }
 
 fn addNativeAudioDependencies(
