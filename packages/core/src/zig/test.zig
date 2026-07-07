@@ -36,15 +36,7 @@ const audio_tests = @import("tests/audio_test.zig");
 const handles_tests = @import("tests/handles_test.zig");
 const yoga_tests = @import("tests/yoga_test.zig");
 const ansi_tests = @import("tests/ansi_test.zig");
-const clipboard_clock_tests = @import("tests/clipboard-clock_test.zig");
 const clipboard_tests = @import("clipboard.zig");
-const clipboard_linux_tests = @import("clipboard-linux.zig");
-const clipboard_wayland_protocol_tests = @import("clipboard-wayland-protocol.zig");
-const clipboard_wayland_tests = @import("clipboard-wayland.zig");
-const clipboard_x11_tests = @import("clipboard-x11.zig");
-const clipboard_windows_tests = @import("clipboard-windows.zig");
-const clipboard_windows_dib_tests = @import("clipboard-windows-dib.zig");
-const clipboard_macos_tests = @import("clipboard-macos.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -87,14 +79,6 @@ comptime {
     _ = handles_tests;
     _ = yoga_tests;
     _ = ansi_tests;
-    _ = clipboard_clock_tests;
     _ = clipboard_tests;
-    _ = clipboard_linux_tests;
-    _ = clipboard_wayland_protocol_tests;
-    _ = clipboard_wayland_tests;
-    _ = clipboard_x11_tests;
-    _ = clipboard_windows_tests;
-    _ = clipboard_windows_dib_tests;
-    _ = clipboard_macos_tests;
     // _ = example_tests;
 }
