@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const clipboard_clock = @import("clipboard-clock.zig");
-const clipboard_windows_dib = @import("clipboard-windows-dib.zig");
+const clipboard_clock = @import("clock.zig");
+const clipboard_windows_dib = @import("windows-dib.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -97,7 +97,7 @@ pub const Result = struct {
 };
 
 pub const ReadJob = struct {
-    // Same framing as clipboard.zig: u32 count, then repeated u32 byte length and MIME bytes.
+    // Same framing as host.zig: u32 count, then repeated u32 byte length and MIME bytes.
     request: []const u8,
     max_bytes: u32,
     max_image_pixels: u32,

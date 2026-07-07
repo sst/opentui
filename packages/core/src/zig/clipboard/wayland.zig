@@ -1,8 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const clipboard_clock = @import("clipboard-clock.zig");
-const linux = @import("clipboard-linux.zig");
-const protocol = @import("clipboard-wayland-protocol.zig");
+const clipboard_clock = @import("clock.zig");
+const linux = @import("linux.zig");
+const protocol = @import("wayland-protocol.zig");
 
 const WlArgument = linux.WlArgument;
 const WlInterface = linux.WlInterface;
