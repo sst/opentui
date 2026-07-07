@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+
 import { describe, expect, test } from "bun:test"
 import { NativeAudioStreamState as ExportedAudioStreamState, resolveRenderLib } from "../zig.js"
 import {
@@ -271,6 +273,26 @@ describe("borrowed pointer call sites", () => {
       ).toEqual({ status: -1, streamId: null })
       expect(calls).toHaveLength(1)
     })
+
+  test("clipboard native worker passes every transient buffer as an object value", () => {
+    const sourceExtension = import.meta.url.endsWith(".ts") ? "ts" : "js"
+    const source = readFileSync(
+      new URL(`./clipboard-native-worker.internal.${sourceExtension}`, import.meta.url),
+      "utf8",
+    )
+    const normalizedSource = source.replace(/\s+/g, "").replace(/,\)/g, ")")
+    const directCalls = [
+      "clipboardTestOperationStart(service,request.byteLength===0?null:request,request.byteLength,delayMs,output)",
+      "clipboardReadOperationStart(service,request.byteLength===0?null:request,request.byteLength,selection,maxBytes,64*1024*1024,512*1024*1024,timeoutMs,output)",
+      "clipboardWriteOperationStart(service,text.byteLength===0?null:text,text.byteLength,selection,timeoutMs,output)",
+      "clipboardClearOperationStart(service, selection, timeoutMs, output)",
+      "clipboardOperationResultMimeCopy(operation,output.byteLength===0?null:output,output.byteLength)",
+      "clipboardOperationResultDataCopy(operation,output.byteLength===0?null:output,output.byteLength)",
+      "symbol(operation, output)",
+    ]
+
+    expect(source).not.toMatch(/\bptr\s*\(/)
+    for (const directCall of directCalls) expect(normalizedSource).toContain(directCall.replace(/\s+/g, ""))
   })
 
   test("textBufferSetStyledText passes the packed chunk buffer as an object value", () => {

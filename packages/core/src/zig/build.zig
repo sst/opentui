@@ -176,7 +176,7 @@ fn addMacOSSDKSearchPaths(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_
 fn addMacOSSystemLibraries(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
     artifact.addCSourceFile(.{
         .file = b.path("clipboard_macos_shim.m"),
-        .flags = &.{ "-fobjc-arc", "-isysroot", sdk_path },
+        .flags = &.{ "-fobjc-arc", "-fobjc-arc-exceptions", "-isysroot", sdk_path },
     });
     artifact.linkFramework("AppKit");
     artifact.linkFramework("Foundation");

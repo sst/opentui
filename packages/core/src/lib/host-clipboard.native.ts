@@ -16,12 +16,15 @@ import type {
   HostClipboardClearResult,
   HostClipboardWriteResult,
 } from "./clipboard.js"
-import type { HostClipboardBackendFactory } from "./host-clipboard.internal.js"
+import {
+  HOST_CLIPBOARD_MIME_ESSENCE_BYTES_MAX,
+  HOST_CLIPBOARD_MIME_PREFERENCE_COUNT_MAX,
+  type HostClipboardBackendFactory,
+} from "./host-clipboard.internal.js"
+import { NativeClipboardPollScheduler } from "./host-clipboard.native.scheduler.js"
 
 type NativeResult = ClipboardReadResult | HostClipboardWriteResult | HostClipboardClearResult
-const MAX_U32 = 0xffff_ffff
-const OPERATION_POLL_INTERVAL_MS = 1
-const PROVIDER_POLL_INTERVAL_MS = 8
+const SHUTDOWN_POLL_INTERVAL_MS = 1
 
 interface PendingOperation {
   readonly handle: ClipboardOperationHandle
@@ -33,23 +36,15 @@ interface PendingOperation {
 
 const selectionValue = (selection: ClipboardSelection): number => (selection === "clipboard" ? 0 : 1)
 
-const schedule = (
-  callback: () => void,
-  delayMs = OPERATION_POLL_INTERVAL_MS,
-  keepAlive = true,
-): ReturnType<typeof setTimeout> => {
-  const timer = setTimeout(callback, delayMs)
-  if (!keepAlive && typeof timer === "object" && "unref" in timer) timer.unref()
-  return timer
-}
-
 const encodeReadRequest = (preferredTypes: readonly [string, ...string[]]): Uint8Array => {
-  if (preferredTypes.length > MAX_U32) throw new RangeError("Clipboard MIME preference count exceeds native u32 limit")
+  if (preferredTypes.length > HOST_CLIPBOARD_MIME_PREFERENCE_COUNT_MAX) {
+    throw new RangeError("Clipboard MIME preference count exceeds native protocol capacity")
+  }
   let size = 4
   for (const mimeType of preferredTypes) {
     // MIME validation permits ASCII token bytes only, so code units equal UTF-8 bytes here.
-    if (mimeType.length > MAX_U32 || size > MAX_U32 - 4 - mimeType.length) {
-      throw new RangeError("Clipboard MIME preference request exceeds native u32 limit")
+    if (mimeType.length > HOST_CLIPBOARD_MIME_ESSENCE_BYTES_MAX) {
+      throw new RangeError("Clipboard MIME essence exceeds native protocol capacity")
     }
     size += 4 + mimeType.length
   }
@@ -77,7 +72,7 @@ class NativeClipboardBackend implements HostClipboardBackend {
   private readonly library: RenderLib
   private readonly service: ClipboardServiceHandle
   private readonly pending = new Map<ClipboardOperationHandle, PendingOperation>()
-  private timer: ReturnType<typeof setTimeout> | undefined
+  private readonly scheduler = new NativeClipboardPollScheduler({ set: setTimeout, clear: clearTimeout })
   private providerActive = false
   private disposed = false
   private disposePromise: Promise<void> | undefined
@@ -164,20 +159,7 @@ class NativeClipboardBackend implements HostClipboardBackend {
   }
 
   private ensureScheduled(): void {
-    if (this.timer) {
-      if (this.pending.size > 0 && typeof this.timer === "object" && "ref" in this.timer) this.timer.ref()
-      return
-    }
-    if (this.pending.size === 0 && !this.providerActive) return
-    const hasPendingOperation = this.pending.size > 0
-    this.timer = schedule(
-      () => {
-        this.timer = undefined
-        this.drain()
-      },
-      hasPendingOperation ? OPERATION_POLL_INTERVAL_MS : PROVIDER_POLL_INTERVAL_MS,
-      hasPendingOperation,
-    )
+    this.scheduler.schedule(this.pending.size > 0, this.providerActive, () => this.drain())
   }
 
   private drain(): void {
@@ -212,14 +194,7 @@ class NativeClipboardBackend implements HostClipboardBackend {
           : { status: "failed", error: new Error("Native clipboard operation became invalid before destruction") },
       )
     }
-    if (this.pending.size === 0 && !this.providerActive && this.timer) {
-      clearTimeout(this.timer)
-      this.timer = undefined
-    } else if (this.pending.size === 0 && this.timer && typeof this.timer === "object" && "unref" in this.timer) {
-      this.timer.unref()
-    } else {
-      this.ensureScheduled()
-    }
+    this.ensureScheduled()
   }
 
   private rotate(operation: PendingOperation): void {
@@ -296,13 +271,10 @@ class NativeClipboardBackend implements HostClipboardBackend {
   }
 
   private async shutdown(): Promise<void> {
-    if (this.timer) {
-      clearTimeout(this.timer)
-      this.timer = undefined
-    }
+    this.scheduler.dispose()
     let status = this.library.clipboardServiceBeginShutdown(this.service)
     while (status === NativeClipboardShutdownStatus.Pending) {
-      await new Promise<void>((resolve) => schedule(resolve))
+      await new Promise<void>((resolve) => setTimeout(resolve, SHUTDOWN_POLL_INTERVAL_MS))
       status = this.library.clipboardServicePollShutdown(this.service)
     }
     if (status !== NativeClipboardShutdownStatus.Ready) throw new Error("Native clipboard service became invalid")

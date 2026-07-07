@@ -162,6 +162,31 @@ describe("createHostClipboard", () => {
     await host.dispose()
   })
 
+  it("rejects MIME preferences beyond native protocol capacities without dispatch", async () => {
+    const fake = createBackend()
+    const host = createHost(fake.backend)
+    const tooManyTypes = Array.from({ length: 65 }, (_, index) => `application/x-${index}`) as [string, ...string[]]
+    const tooLongType = `application/${"a".repeat(244)}`
+
+    await expect(host.read({ preferredTypes: tooManyTypes })).rejects.toThrow(RangeError)
+    await expect(host.read({ preferredTypes: [tooLongType] })).rejects.toThrow(RangeError)
+    expect(fake.reads).toHaveLength(0)
+    await host.dispose()
+  })
+
+  it("accepts MIME preferences at native protocol capacities", async () => {
+    const fake = createBackend()
+    const host = createHost(fake.backend)
+    const preferredTypes = Array.from({ length: 64 }, (_, index) => `Application/X-${index}`) as [string, ...string[]]
+    preferredTypes[63] = `Application/${"A".repeat(243)}`
+
+    await host.read({ preferredTypes })
+    expect(fake.reads).toHaveLength(1)
+    expect(fake.reads[0]?.preferredTypes).toEqual(preferredTypes.map((mimeType) => mimeType.toLowerCase()))
+    expect(fake.reads[0]?.preferredTypes[63]).toHaveLength(255)
+    await host.dispose()
+  })
+
   it("accepts asterisks inside concrete MIME type tokens", async () => {
     const fake = createBackend()
     const host = createHost(fake.backend)
