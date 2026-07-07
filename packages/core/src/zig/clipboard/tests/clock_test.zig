@@ -1,5 +1,5 @@
 const std = @import("std");
-const clipboard_clock = @import("../clipboard-clock.zig");
+const clipboard_clock = @import("../clock.zig");
 
 test "clipboard clock is monotonic process-relative time" {
     try clipboard_clock.init();
@@ -11,12 +11,12 @@ test "clipboard clock is monotonic process-relative time" {
 
 test "clipboard production timestamps use the shared clock" {
     const sources = .{
-        @embedFile("../clipboard.zig"),
-        @embedFile("../clipboard-wayland.zig"),
-        @embedFile("../clipboard-x11.zig"),
-        @embedFile("../clipboard-windows.zig"),
-        @embedFile("../clipboard-windows-dib.zig"),
-        @embedFile("../clipboard-macos.zig"),
+        @embedFile("../host.zig"),
+        @embedFile("../wayland.zig"),
+        @embedFile("../x11.zig"),
+        @embedFile("../windows.zig"),
+        @embedFile("../windows-dib.zig"),
+        @embedFile("../macos.zig"),
     };
 
     inline for (sources) |source| {

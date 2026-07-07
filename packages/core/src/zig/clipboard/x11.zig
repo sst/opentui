@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const clipboard_clock = @import("clipboard-clock.zig");
-const linux = @import("clipboard-linux.zig");
+const clipboard_clock = @import("clock.zig");
+const linux = @import("linux.zig");
 
 pub const ATOM_PRIMARY: u32 = 1;
 pub const ATOM_ATOM: u32 = 4;
