@@ -36,6 +36,7 @@ const audio_tests = @import("tests/audio_test.zig");
 const handles_tests = @import("tests/handles_test.zig");
 const yoga_tests = @import("tests/yoga_test.zig");
 const ansi_tests = @import("tests/ansi_test.zig");
+const clipboard_clock_tests = @import("tests/clipboard-clock_test.zig");
 const clipboard_tests = @import("clipboard.zig");
 const clipboard_linux_tests = @import("clipboard-linux.zig");
 const clipboard_wayland_protocol_tests = @import("clipboard-wayland-protocol.zig");
@@ -86,6 +87,7 @@ comptime {
     _ = handles_tests;
     _ = yoga_tests;
     _ = ansi_tests;
+    _ = clipboard_clock_tests;
     _ = clipboard_tests;
     _ = clipboard_linux_tests;
     _ = clipboard_wayland_protocol_tests;
