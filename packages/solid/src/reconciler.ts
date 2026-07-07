@@ -100,7 +100,7 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 
   const children = getNodeChildren(parent)
 
-  const anchorIndex = children.findIndex((el) => el.id === anchor.id)
+  const anchorIndex = children.indexOf(anchor)
   if (anchorIndex === -1) {
     log("[INSERT]", "Could not find anchor", logId(parent), logId(anchor), "[children]", ...children.map((c) => c.id))
   }
@@ -126,7 +126,7 @@ function _removeNode(parent: DomNode, node: DomNode): void {
     node = slotChild
   }
 
-  parent.remove(node.id)
+  parent.remove(node)
 
   slotParent?.didRemoveSlotChild(parent, node)
 

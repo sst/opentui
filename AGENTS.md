@@ -20,7 +20,8 @@ Don't use bun-specific APIs. Generated code should work in Bun, Node.js and Deno
 - In portable FFI code, stay within the `node:ffi`/`bun:ffi` type intersection.
 - Avoid backend-specific ABI names in shared definitions: no `usize`, `napi_env`, or `napi_value`. Use explicit widths like `u32`/`u64`.
 - Treat `i64`/`u64` as `bigint`, and native booleans as `0`/`1`.
-- For pointer params, pass `ptr(view)` explicitly and keep shared `Pointer` values as `number | bigint`.
+- For pointer params backed by transient JavaScript memory, pass the `ArrayBuffer` or view directly; the FFI backend borrows it for the duration of the synchronous call. Never pre-resolve such arguments with `ptr()` — a raw address carries no ownership and the runtime may collect the buffer before native code reads it.
+- Use `ptr(view)` only for addresses serialized into structs or retained by native code, and keep the owning buffer alive for as long as native code can read the address. Shared `Pointer` values stay `number | bigint`.
 - For C strings, encode to bytes and pass pointers; do not assume raw JS strings or portable native string return normalization.
 - Create callbacks through the loaded library/platform facade, not `new JSCallback(...)`, and only assume same-thread callback behavior.
 

@@ -1352,7 +1352,7 @@ class ExampleSelector {
     }
 
     if (this.notImplementedText) {
-      this.renderer.root.remove(this.notImplementedText.id)
+      this.renderer.root.remove(this.notImplementedText)
       this.notImplementedText = null
     }
 

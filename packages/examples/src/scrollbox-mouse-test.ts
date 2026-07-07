@@ -94,7 +94,7 @@ export function run(renderer: CliRenderer): void {
 
 export function destroy(renderer: CliRenderer): void {
   renderer.root.getChildren().forEach((child) => {
-    renderer.root.remove(child.id)
+    renderer.root.remove(child)
     child.destroyRecursively()
   })
   scrollBox = null

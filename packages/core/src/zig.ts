@@ -130,6 +130,7 @@ export type EditorViewHandle = NativeHandle<"editor_view">
 export type SyntaxStyleHandle = NativeHandle<"syntax_style">
 export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
+export type NativeRenderableHandle = NativeHandle<"native_renderable">
 let targetLibPath = nativePackage.default
 
 if (isBunfsPath(targetLibPath)) {
@@ -243,6 +244,22 @@ function getOpenTUILib(libPath?: string) {
     destroyEventSink: {
       args: ["u32"],
       returns: "void",
+    },
+    createNativeRenderable: {
+      args: [],
+      returns: "u32",
+    },
+    destroyNativeRenderable: {
+      args: ["u32"],
+      returns: "void",
+    },
+    nativeRenderableAttachYogaNode: {
+      args: ["u32", "ptr"],
+      returns: "bool",
+    },
+    nativeRenderableSetMeasureTarget: {
+      args: ["u32", "u32", "u32"],
+      returns: "bool",
     },
     // Renderer management
     createRenderer: {
@@ -1421,7 +1438,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     yogaNodeSetMeasureFunc: {
-      args: ["ptr", "ptr"],
+      args: ["ptr", "bool"],
       returns: "void",
     },
     yogaNodeUnsetMeasureFunc: {
@@ -1433,7 +1450,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "bool",
     },
     yogaNodeSetDirtiedFunc: {
-      args: ["ptr", "ptr"],
+      args: ["ptr", "bool"],
       returns: "void",
     },
     yogaNodeUnsetDirtiedFunc: {
@@ -1442,6 +1459,14 @@ function getOpenTUILib(libPath?: string) {
     },
     yogaStoreMeasureResult: {
       args: ["f32", "f32"],
+      returns: "void",
+    },
+    yogaSetMeasureCallback: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    yogaSetDirtiedCallback: {
+      args: ["ptr"],
       returns: "void",
     },
 
@@ -1865,7 +1890,17 @@ export type NativeYogaMeasureCallback = (
   heightMode: number,
 ) => void
 
-export type NativeYogaDirtiedCallback = () => void
+export type NativeYogaDirtiedCallback = (node: Pointer | null) => void
+
+export const NativeMeasureTargetKind = {
+  None: 0,
+  TextBufferView: 1,
+  EditorView: 2,
+} as const
+
+export type NativeMeasureTargetKind = (typeof NativeMeasureTargetKind)[keyof typeof NativeMeasureTargetKind]
+
+export type NativeMeasureTargetHandle = TextBufferViewHandle | EditorViewHandle
 
 export interface AudioEngineLib {
   createAudioEngine: (options?: AudioCreateOptions | null) => AudioEngineHandle | null
@@ -2183,12 +2218,14 @@ export interface RenderLib extends AudioEngineLib {
   yogaNodeStyleGetBorder: (node: Pointer, edge: number) => number
   yogaNodeStyleSetValue: (node: Pointer, kind: number, edgeOrGutter: number, unit: number, value: number) => void
   yogaNodeStyleGetValue: (node: Pointer, kind: number, edgeOrGutter: number) => number | bigint
-  yogaNodeSetMeasureFunc: (node: Pointer, callback: Pointer | null) => void
+  yogaNodeSetMeasureFunc: (node: Pointer, enabled: boolean) => void
   yogaNodeUnsetMeasureFunc: (node: Pointer) => void
   yogaNodeHasMeasureFunc: (node: Pointer) => boolean
-  yogaNodeSetDirtiedFunc: (node: Pointer, callback: Pointer | null) => void
+  yogaNodeSetDirtiedFunc: (node: Pointer, enabled: boolean) => void
   yogaNodeUnsetDirtiedFunc: (node: Pointer) => void
   yogaStoreMeasureResult: (width: number, height: number) => void
+  yogaSetMeasureCallback: (callback: Pointer | null) => void
+  yogaSetDirtiedCallback: (callback: Pointer | null) => void
   createYogaMeasureCallback: (callback: NativeYogaMeasureCallback) => FFICallbackInstance
   createYogaDirtiedCallback: (callback: NativeYogaDirtiedCallback) => FFICallbackInstance
 
@@ -2496,6 +2533,14 @@ export interface RenderLib extends AudioEngineLib {
   streamGetStats: (stream: Pointer) => NativeSpanFeedStats | null
   streamReserve: (stream: Pointer, minLen: number) => { status: number; info: ReserveInfo | null }
   streamCommitReserved: (stream: Pointer, length: number) => number
+  createNativeRenderable: () => NativeRenderableHandle
+  destroyNativeRenderable: (handle: NativeRenderableHandle) => void
+  nativeRenderableAttachYogaNode: (handle: NativeRenderableHandle, node: Pointer) => boolean
+  nativeRenderableSetMeasureTarget: (
+    handle: NativeRenderableHandle,
+    kind: NativeMeasureTargetKind,
+    target: NativeMeasureTargetHandle | 0,
+  ) => boolean
   onNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   onceNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   offNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
@@ -2513,6 +2558,29 @@ class FFIRenderLib implements RenderLib {
   private _anyEventHandlers: Array<(name: string, data: ArrayBuffer) => void> = []
   private nativeSpanFeedCallbackWrapper: FFICallbackInstance | null = null
   private nativeSpanFeedHandlers = new Map<Pointer, NativeSpanFeedEventHandler>()
+
+  public createNativeRenderable(): NativeRenderableHandle {
+    const handle = this.opentui.symbols.createNativeRenderable() as NativeRenderableHandle
+    if (!handle) throw new Error("Failed to create native renderable")
+    return handle
+  }
+
+  public destroyNativeRenderable(handle: NativeRenderableHandle): void {
+    this.opentui.symbols.destroyNativeRenderable(handle)
+  }
+
+  public nativeRenderableAttachYogaNode(handle: NativeRenderableHandle, node: Pointer): boolean {
+    // Node's FFI returns bools as 0/1 numbers; normalize so the interface stays truthful.
+    return Boolean(this.opentui.symbols.nativeRenderableAttachYogaNode(handle, node))
+  }
+
+  public nativeRenderableSetMeasureTarget(
+    handle: NativeRenderableHandle,
+    kind: NativeMeasureTargetKind,
+    target: NativeMeasureTargetHandle | 0,
+  ): boolean {
+    return Boolean(this.opentui.symbols.nativeRenderableSetMeasureTarget(handle, kind, target))
+  }
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
@@ -2587,6 +2655,8 @@ class FFIRenderLib implements RenderLib {
         this.eventSinkPtr = null
       }
 
+      this.yogaSetMeasureCallback(null)
+      this.yogaSetDirtiedCallback(null)
       this.setLogCallback(null)
     } finally {
       try {
@@ -3189,7 +3259,7 @@ class FFIRenderLib implements RenderLib {
     const cursor = options.cursor != null ? MOUSE_STYLE_TO_ID[options.cursor] : 255
 
     const buffer = CursorStyleOptionsStruct.pack({ style, blinking, color: options.color, cursor })
-    this.opentui.symbols.setCursorStyleOptions(renderer, ptr(buffer))
+    this.opentui.symbols.setCursorStyleOptions(renderer, buffer)
   }
 
   public render(renderer: Pointer, force: boolean): number {
@@ -3625,8 +3695,8 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.yogaNodeStyleGetValue(node, kind, edgeOrGutter)
   }
 
-  public yogaNodeSetMeasureFunc(node: Pointer, callback: Pointer | null): void {
-    this.opentui.symbols.yogaNodeSetMeasureFunc(node, callback)
+  public yogaNodeSetMeasureFunc(node: Pointer, enabled: boolean): void {
+    this.opentui.symbols.yogaNodeSetMeasureFunc(node, ffiBool(enabled))
   }
 
   public yogaNodeUnsetMeasureFunc(node: Pointer): void {
@@ -3634,11 +3704,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public yogaNodeHasMeasureFunc(node: Pointer): boolean {
-    return this.opentui.symbols.yogaNodeHasMeasureFunc(node)
+    // Node's FFI returns bools as 0/1 numbers; normalize so the interface stays truthful.
+    return Boolean(this.opentui.symbols.yogaNodeHasMeasureFunc(node))
   }
 
-  public yogaNodeSetDirtiedFunc(node: Pointer, callback: Pointer | null): void {
-    this.opentui.symbols.yogaNodeSetDirtiedFunc(node, callback)
+  public yogaNodeSetDirtiedFunc(node: Pointer, enabled: boolean): void {
+    this.opentui.symbols.yogaNodeSetDirtiedFunc(node, ffiBool(enabled))
   }
 
   public yogaNodeUnsetDirtiedFunc(node: Pointer): void {
@@ -3647,6 +3718,14 @@ class FFIRenderLib implements RenderLib {
 
   public yogaStoreMeasureResult(width: number, height: number): void {
     this.opentui.symbols.yogaStoreMeasureResult(width, height)
+  }
+
+  public yogaSetMeasureCallback(callback: Pointer | null): void {
+    this.opentui.symbols.yogaSetMeasureCallback(callback)
+  }
+
+  public yogaSetDirtiedCallback(callback: Pointer | null): void {
+    this.opentui.symbols.yogaSetDirtiedCallback(callback)
   }
 
   public createYogaMeasureCallback(callback: NativeYogaMeasureCallback): FFICallbackInstance {
@@ -3658,7 +3737,7 @@ class FFIRenderLib implements RenderLib {
 
   public createYogaDirtiedCallback(callback: NativeYogaDirtiedCallback): FFICallbackInstance {
     return this.opentui.createCallback(callback, {
-      args: [],
+      args: ["ptr"],
       returns: "void",
     })
   }
@@ -3780,7 +3859,7 @@ class FFIRenderLib implements RenderLib {
     }
 
     const chunksBuffer = StyledChunkStruct.packList(chunks)
-    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), chunks.length)
+    this.opentui.symbols.textBufferSetStyledText(buffer, chunksBuffer, chunks.length)
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {
@@ -5093,7 +5172,7 @@ class FFIRenderLib implements RenderLib {
     }
 
     const chunksBuffer = StyledChunkStruct.packList(nonEmptyChunks)
-    this.opentui.symbols.editorViewSetPlaceholderStyledText(view, ptr(chunksBuffer), nonEmptyChunks.length)
+    this.opentui.symbols.editorViewSetPlaceholderStyledText(view, chunksBuffer, nonEmptyChunks.length)
   }
 
   public editorViewSetTabIndicator(view: EditorViewHandle, indicator: number): void {

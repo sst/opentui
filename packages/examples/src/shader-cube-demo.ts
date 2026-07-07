@@ -996,8 +996,10 @@ export function destroy(renderer: CliRenderer): void {
   demoState.engine.destroy()
   renderer.clearPostProcessFns()
 
-  renderer.root.remove("shader-cube-main")
-  renderer.root.remove("shader-cube-container")
+  for (const id of ["shader-cube-main", "shader-cube-container"]) {
+    const child = renderer.root.getRenderable(id)
+    if (child) renderer.root.remove(child)
+  }
 
   demoState = null
 }

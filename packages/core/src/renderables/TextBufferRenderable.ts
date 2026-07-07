@@ -5,8 +5,7 @@ import { TextBufferView } from "../text-buffer-view.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
 import { type RenderContext, type LineInfoProvider } from "../types.js"
 import type { OptimizedBuffer } from "../buffer.js"
-import { MeasureMode } from "../yoga.js"
-import type { LineInfo } from "../zig.js"
+import { NativeMeasureTargetKind, resolveRenderLib, type LineInfo, type NativeRenderableHandle } from "../zig.js"
 import { SyntaxStyle } from "../syntax-style.js"
 
 export interface TextBufferOptions extends RenderableOptions<TextBufferRenderable> {
@@ -42,6 +41,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
   protected _textBufferSyntaxStyle: SyntaxStyle
+  private nativeRenderable: NativeRenderableHandle | null = null
 
   protected _defaultOptions = {
     fg: RGBA.fromValues(1, 1, 1, 1),
@@ -81,7 +81,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
     this.textBufferView.setWrapMode(this._wrapMode)
     this.textBufferView.setFirstLineOffset(this._firstLineOffset)
-    this.setupMeasureFunc()
+    this.setupNativeRenderable()
 
     this.textBuffer.setDefaultFg(this._defaultFg)
     this.textBuffer.setDefaultBg(this._defaultBg)
@@ -373,53 +373,28 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this.emit("line-info-change")
   }
 
-  // Undefined = 0,
-  // Exactly = 1,
-  // AtMost = 2
-  private setupMeasureFunc(): void {
-    const measureFunc = (
-      width: number,
-      widthMode: MeasureMode,
-      height: number,
-      heightMode: MeasureMode,
-    ): { width: number; height: number } => {
-      // When widthMode is Undefined, Yoga is asking for the intrinsic/natural width
-      // Pass width=0 to measureForDimensions to signal we want max-content (no wrapping)
-      // The Zig code treats width=0 with wrap_mode != none as null wrap_width,
-      // which triggers no-wrap mode and returns iter_mod.getMaxLineWidth()
-      let effectiveWidth: number
-      if (widthMode === MeasureMode.Undefined || isNaN(width)) {
-        effectiveWidth = 0
-      } else {
-        effectiveWidth = width
-      }
-
-      const effectiveHeight = isNaN(height) ? 1 : height
-
-      const measureResult = this.textBufferView.measureForDimensions(
-        Math.floor(effectiveWidth),
-        Math.floor(effectiveHeight),
-      )
-
-      const measuredWidth = measureResult ? Math.max(1, measureResult.widthColsMax) : 1
-      const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
-
-      if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
-        return {
-          width: Math.min(effectiveWidth, measuredWidth),
-          height: Math.min(effectiveHeight, measuredHeight),
-        }
-      }
-
-      // NOTE: Yoga may use these measurements or not.
-      // If the yoga node settings and the parent allow this node to grow, it will.
-      return {
-        width: measuredWidth,
-        height: measuredHeight,
-      }
+  private setupNativeRenderable(): void {
+    const lib = resolveRenderLib()
+    // Transitional native backing: JS still owns the render tree and Yoga nodes,
+    // while native owns only hot measurement state. Attach the existing JS-created
+    // Yoga node for now. The intended direction is for every Renderable to become
+    // native-backed and for Yoga node ownership to move native-side with it.
+    const nativeRenderable = lib.createNativeRenderable()
+    if (!lib.nativeRenderableAttachYogaNode(nativeRenderable, this.yogaNode.ptr)) {
+      lib.destroyNativeRenderable(nativeRenderable)
+      throw new Error("Failed to attach native renderable Yoga node")
     }
-
-    this.yogaNode.setMeasureFunc(measureFunc)
+    if (
+      !lib.nativeRenderableSetMeasureTarget(
+        nativeRenderable,
+        NativeMeasureTargetKind.TextBufferView,
+        this.textBufferView.ptr,
+      )
+    ) {
+      lib.destroyNativeRenderable(nativeRenderable)
+      throw new Error("Failed to attach text buffer native measure target")
+    }
+    this.nativeRenderable = nativeRenderable
   }
 
   shouldStartSelection(x: number, y: number): boolean {
@@ -504,6 +479,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   destroy(): void {
     if (this.isDestroyed) return
 
+    if (this.nativeRenderable) {
+      resolveRenderLib().destroyNativeRenderable(this.nativeRenderable)
+      this.nativeRenderable = null
+    }
     this.textBuffer.setSyntaxStyle(null)
     this._textBufferSyntaxStyle.destroy()
     this.textBufferView.destroy()

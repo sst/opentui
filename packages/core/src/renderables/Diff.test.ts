@@ -2954,9 +2954,8 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
 
   const correctFrame = captureFrame()
 
-  // Clean up
+  // Clean up (destroyRecursively already detaches from the parent)
   parentContainer1.destroyRecursively()
-  renderer.root.remove("parent-container-1")
   await renderOnce()
 
   // PART 2: BUGGY PATH

@@ -201,11 +201,12 @@ function createCard(
 
 export function destroy(renderer: CliRenderer): void {
   for (const box of draggableBoxes) {
-    renderer.root.remove(box.id)
+    renderer.root.remove(box)
   }
   draggableBoxes = []
   dragModeEnabled = false
-  renderer.root.remove("main-container")
+  const mainContainer = renderer.root.getRenderable("main-container")
+  if (mainContainer) renderer.root.remove(mainContainer)
   renderer.setCursorPosition(0, 0, false)
 }
 

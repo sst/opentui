@@ -213,11 +213,11 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
   rendererInstance.keyInput.off("keypress", handleKeyPress)
   if (header) {
-    rendererInstance.root.remove("opacity-demo-header")
+    rendererInstance.root.remove(header)
     header = null
   }
   if (container) {
-    rendererInstance.root.remove("opacity-demo-container")
+    rendererInstance.root.remove(container)
     container = null
   }
   boxes = []

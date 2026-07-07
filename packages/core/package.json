@@ -9,7 +9,7 @@
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "type": "module",
   "scripts": {
     "build": "bun run build:native && bun run build:lib",
@@ -21,6 +21,7 @@
     "bench:native": "cd src/zig && zig build bench -Dbench-optimize=ReleaseFast --",
     "bench:layout": "bun src/benchmark/layout-benchmark.ts",
     "bench:box-draw": "bun src/benchmark/box-draw-benchmark.ts",
+    "bench:render-traversal": "bun src/benchmark/render-traversal-benchmark.ts",
     "bench:text-table": "bun src/benchmark/text-table-benchmark.ts",
     "bench:ts": "bun src/benchmark/native-span-feed-benchmark.ts --suite=quick --json=src/benchmark/latest-quick-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=default --json=src/benchmark/latest-default-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=large --json=src/benchmark/latest-large-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=all --json=src/benchmark/latest-all-bench-run.json && bun src/benchmark/native-span-feed-async-benchmark.ts --json=src/benchmark/latest-async-bench-run.json",
     "publish": "bun scripts/publish.ts",
@@ -39,7 +40,7 @@
     "web-tree-sitter": "0.25.10"
   },
   "dependencies": {
-    "bun-ffi-structs": "0.2.3",
+    "bun-ffi-structs": "0.2.4",
     "diff": "9.0.0",
     "marked": "17.0.1",
     "string-width": "7.2.0",
@@ -49,14 +50,14 @@
     "web-tree-sitter": "0.25.10"
   },
   "optionalDependencies": {
-    "@opentui/core-darwin-x64": "0.4.2",
-    "@opentui/core-darwin-arm64": "0.4.2",
-    "@opentui/core-linux-x64": "0.4.2",
-    "@opentui/core-linux-arm64": "0.4.2",
-    "@opentui/core-win32-x64": "0.4.2",
-    "@opentui/core-win32-arm64": "0.4.2",
-    "@opentui/core-linux-x64-musl": "0.4.2",
-    "@opentui/core-linux-arm64-musl": "0.4.2"
+    "@opentui/core-darwin-x64": "0.4.3",
+    "@opentui/core-darwin-arm64": "0.4.3",
+    "@opentui/core-linux-x64": "0.4.3",
+    "@opentui/core-linux-arm64": "0.4.3",
+    "@opentui/core-win32-x64": "0.4.3",
+    "@opentui/core-win32-arm64": "0.4.3",
+    "@opentui/core-linux-x64-musl": "0.4.3",
+    "@opentui/core-linux-arm64-musl": "0.4.3"
   },
   "exports": {
     ".": {
