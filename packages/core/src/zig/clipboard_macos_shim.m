@@ -40,17 +40,27 @@ int32_t ot_clipboard_macos_read(const uint32_t *preferred, uint32_t preferred_co
                 NSData *data = nil;
 
                 if (mime == OT_CLIPBOARD_MACOS_MIME_TEXT_PLAIN) {
-                    text = [pasteboard stringForType:NSPasteboardTypeString];
-                    if (text == nil) {
+                    NSString *offered_type = [pasteboard availableTypeFromArray:@[ NSPasteboardTypeString ]];
+                    if (offered_type == nil) {
                         continue;
                     }
+                    NSString *offered_value = [pasteboard stringForType:NSPasteboardTypeString];
+                    if (offered_value == nil) {
+                        return OT_CLIPBOARD_MACOS_STATUS_FAILED;
+                    }
+                    text = offered_value;
                     length = [text lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
                     source = [text UTF8String];
                 } else if (mime == OT_CLIPBOARD_MACOS_MIME_IMAGE_PNG) {
-                    data = [pasteboard dataForType:NSPasteboardTypePNG];
-                    if (data == nil) {
+                    NSString *offered_type = [pasteboard availableTypeFromArray:@[ NSPasteboardTypePNG ]];
+                    if (offered_type == nil) {
                         continue;
                     }
+                    NSData *offered_value = [pasteboard dataForType:NSPasteboardTypePNG];
+                    if (offered_value == nil) {
+                        return OT_CLIPBOARD_MACOS_STATUS_FAILED;
+                    }
+                    data = offered_value;
                     length = [data length];
                     if (length == 0) {
                         continue;
