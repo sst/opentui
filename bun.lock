@@ -47,6 +47,7 @@
       "dependencies": {
         "@dimforge/rapier2d-simd-compat": "^0.17.3",
         "@opentui/core": "workspace:*",
+        "@opentui/forms": "workspace:*",
         "@opentui/keymap": "workspace:*",
         "@opentui/qrcode": "workspace:*",
         "@opentui/three": "workspace:*",
@@ -60,6 +61,18 @@
         "@types/bun": "latest",
         "@types/node": "^24.0.0",
         "@types/three": "0.177.0",
+        "typescript": "^5",
+      },
+    },
+    "packages/forms": {
+      "name": "@opentui/forms",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@opentui/core": "workspace:*",
+        "@types/bun": "latest",
+      },
+      "peerDependencies": {
+        "@opentui/core": "workspace:*",
         "typescript": "^5",
       },
     },
@@ -119,6 +132,7 @@
       "version": "0.4.2",
       "dependencies": {
         "@opentui/core": "workspace:*",
+        "@opentui/forms": "workspace:*",
         "react-reconciler": "^0.33.0",
       },
       "devDependencies": {
@@ -150,6 +164,7 @@
         "@babel/core": "7.28.0",
         "@babel/preset-typescript": "7.27.1",
         "@opentui/core": "workspace:*",
+        "@opentui/forms": "workspace:*",
         "babel-plugin-module-resolver": "5.0.2",
         "babel-preset-solid": "1.9.12",
         "entities": "7.0.1",
@@ -506,6 +521,8 @@
     "@opentui/core-win32-x64": ["@opentui/core-win32-x64@0.4.2", "", { "os": "win32", "cpu": "x64" }, "sha512-P2oguG3ng3OMjAdasFSA3GhHaQXtzDUsIRDGbzWFOimpZ/zMemidp+JQ0V8V6XwK6Utk5G0aQ03oBaRCoLyYDw=="],
 
     "@opentui/examples": ["@opentui/examples@workspace:packages/examples"],
+
+    "@opentui/forms": ["@opentui/forms@workspace:packages/forms"],
 
     "@opentui/keymap": ["@opentui/keymap@workspace:packages/keymap"],
 
@@ -1491,10 +1508,6 @@
 
     "@mdx-js/mdx/unist-util-visit": ["unist-util-visit@5.0.0", "", { "dependencies": { "@types/unist": "^3.0.0", "unist-util-is": "^6.0.0", "unist-util-visit-parents": "^6.0.0" } }, "sha512-MR04uvD+07cwl/yhVuVWAtw+3GOR/knlL55Nd/wAdblk27GCVt3lqpTivy/tkJcZoNPzTwS1Y+KMojlLDhoTzg=="],
 
-    "@opentui/examples/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
-
-    "@opentui/three/@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
-
     "@rollup/pluginutils/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
 
     "@rollup/pluginutils/picomatch": ["picomatch@4.0.3", "", {}, "sha512-5gTmgEY/sqK6gFXLIsQNH19lWb4ebPDLA4SdLP7dsWkIXHWlG66oPuVvXSGFPppYZz8ZDZq0dYYrbHfBCVUb1Q=="],
@@ -1562,10 +1575,6 @@
     "unstorage/lru-cache": ["lru-cache@11.5.1", "", {}, "sha512-RPimw/7aMdv2oqRrxKwvZXcPfwBrn/JZ2xYcY9Hus/6LaS3VOAKVWKWgNLCFSiOm1ESXinjsDlidVU7JlnCN2A=="],
 
     "xml2js/sax": ["sax@1.4.3", "", {}, "sha512-yqYn1JhPczigF94DMS+shiDMjDowYO6y9+wB/4WgO0Y19jWYk0lQ4tuG5KI7kj4FTp1wxPj5IFfcrz/s1c3jjQ=="],
-
-    "@opentui/examples/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
-
-    "@opentui/three/@types/bun/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@types/ssh2/@types/node/undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
 

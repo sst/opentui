@@ -72,6 +72,7 @@
   },
   "dependencies": {
     "@opentui/core": "workspace:*",
+    "@opentui/forms": "workspace:*",
     "react-reconciler": "^0.33.0"
   }
 }

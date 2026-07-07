@@ -25,7 +25,7 @@
     "publish:keymap": "cd packages/keymap && bun run publish",
     "publish:ssh": "cd packages/ssh && bun run publish",
     "prepare-release": "bun scripts/prepare-release.ts",
-    "test": "bun run --filter '@opentui/core' --filter '@opentui/qrcode' --filter '@opentui/three' --filter '@opentui/solid' --filter '@opentui/react' --filter '@opentui/keymap' --filter '@opentui/ssh' --if-present test"
+    "test": "bun run --filter '@opentui/core' --filter '@opentui/qrcode' --filter '@opentui/three' --filter '@opentui/solid' --filter '@opentui/react' --filter '@opentui/keymap' --filter '@opentui/ssh' --filter '@opentui/forms' --if-present test"
   },
   "devDependencies": {
     "oxfmt": "0.41.0",

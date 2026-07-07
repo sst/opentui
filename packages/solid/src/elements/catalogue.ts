@@ -16,6 +16,7 @@ import {
   type RenderContext,
   type TextNodeOptions,
 } from "@opentui/core"
+import { RadioButtonRenderable } from "@opentui/forms"
 import type { RenderableConstructor } from "../types/elements.js"
 
 class SpanRenderable extends TextNodeRenderable {
@@ -93,6 +94,7 @@ export const baseComponents = {
   text: TextRenderable,
   input: InputRenderable,
   select: SelectRenderable,
+  radio_button: RadioButtonRenderable,
   textarea: TextareaRenderable,
   ascii_font: ASCIIFontRenderable,
   tab_select: TabSelectRenderable,
