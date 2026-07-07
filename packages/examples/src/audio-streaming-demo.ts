@@ -92,9 +92,7 @@ function formatFrequency(value: number): string {
 
 function displayMetadata(value: string | undefined): string {
   const sanitized = value?.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim()
-  if (!sanitized) return "-"
-  const characters = Array.from(sanitized)
-  return characters.length > 13 ? `${characters.slice(0, 10).join("")}...` : sanitized
+  return sanitized || "-"
 }
 
 function writeBufferRgb(buffer: Uint16Array, index: number, red: number, green: number, blue: number): void {
