@@ -64,6 +64,12 @@ pub const WlArgument = extern union {
 };
 
 pub const XcbConnection = opaque {};
+pub const XcbAuthInfo = extern struct {
+    name_length: c_int,
+    name: [*]u8,
+    data_length: c_int,
+    data: [*]u8,
+};
 pub const XcbGenericEvent = extern struct {
     response_type: u8,
     pad0: u8,
@@ -200,9 +206,9 @@ pub const WaylandSymbols = struct {
     wl_display_connect: *const fn (?[*:0]const u8) callconv(.c) ?*WlDisplay,
     wl_display_disconnect: *const fn (*WlDisplay) callconv(.c) void,
     wl_display_get_fd: *const fn (*WlDisplay) callconv(.c) c_int,
-    wl_display_dispatch_pending: *const fn (*WlDisplay) callconv(.c) c_int,
-    // Required to preserve the one-callback-per-work-unit bound.
-    wl_display_dispatch_pending_single: ?*const fn (*WlDisplay) callconv(.c) c_int,
+    wl_display_dispatch_pending_single: *const fn (*WlDisplay) callconv(.c) c_int,
+    wl_display_get_error: *const fn (*WlDisplay) callconv(.c) c_int,
+    wl_display_set_max_buffer_size: *const fn (*WlDisplay, usize) callconv(.c) void,
     wl_display_flush: *const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_prepare_read: *const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_read_events: *const fn (*WlDisplay) callconv(.c) c_int,
@@ -230,7 +236,7 @@ pub const WaylandSymbols = struct {
 };
 
 pub const XcbSymbols = struct {
-    xcb_connect: *const fn (?[*:0]const u8, ?*c_int) callconv(.c) ?*XcbConnection,
+    xcb_connect_to_fd: *const fn (c_int, ?*XcbAuthInfo) callconv(.c) ?*XcbConnection,
     xcb_connection_has_error: *const fn (*XcbConnection) callconv(.c) c_int,
     xcb_disconnect: *const fn (*XcbConnection) callconv(.c) void,
     xcb_get_file_descriptor: *const fn (*XcbConnection) callconv(.c) c_int,
@@ -506,8 +512,9 @@ test "clipboard linux environment recognizes WSL kernel releases without environ
 
 test "clipboard Wayland backend declares the minimum bounded-dispatch library version" {
     try std.testing.expectEqualStrings("1.25.0", MIN_WAYLAND_CLIENT_VERSION);
-    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_dispatch_pending_single")) == .optional);
-    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_dispatch_pending")) != .optional);
+    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_dispatch_pending_single")) != .optional);
+    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_set_max_buffer_size")) != .optional);
+    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_get_error")) != .optional);
 }
 
 test "clipboard XCB ABI types match the core protocol layouts" {
