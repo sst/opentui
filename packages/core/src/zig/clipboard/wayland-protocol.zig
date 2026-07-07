@@ -1,4 +1,4 @@
-const linux = @import("clipboard-linux.zig");
+const linux = @import("linux.zig");
 
 const WlInterface = linux.WlInterface;
 const WlMessage = linux.WlMessage;
