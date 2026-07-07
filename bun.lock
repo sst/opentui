@@ -132,10 +132,10 @@
       "version": "0.4.3",
       "dependencies": {
         "@opentui/core": "workspace:*",
-        "@opentui/forms": "workspace:*",
         "react-reconciler": "^0.33.0",
       },
       "devDependencies": {
+        "@opentui/forms": "workspace:*",
         "@opentui/keymap": "workspace:*",
         "@types/bun": "latest",
         "@types/node": "^24.0.0",
@@ -164,13 +164,13 @@
         "@babel/core": "7.28.0",
         "@babel/preset-typescript": "7.27.1",
         "@opentui/core": "workspace:*",
-        "@opentui/forms": "workspace:*",
         "babel-plugin-module-resolver": "5.0.2",
         "babel-preset-solid": "1.9.12",
         "entities": "7.0.1",
         "s-js": "^0.4.9",
       },
       "devDependencies": {
+        "@opentui/forms": "workspace:*",
         "@opentui/keymap": "workspace:*",
         "@types/babel__core": "7.20.5",
         "@types/bun": "latest",
