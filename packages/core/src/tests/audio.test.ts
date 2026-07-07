@@ -394,6 +394,56 @@ test("audioLoad rejects oversized payload lengths before truncating to u32", () 
   }
 })
 
+test("audioWriteStream rejects oversized payload lengths before truncating to u32", () => {
+  const lib = resolveRenderLib()
+  const engine = lib.createAudioEngine()
+  expect(engine).not.toBeNull()
+  if (engine == null) return
+
+  const oversized = {
+    buffer: new ArrayBuffer(1),
+    byteOffset: 0,
+    byteLength: 0x1_0000_0000,
+    length: 0x1_0000_0000,
+  } as unknown as Uint8Array
+
+  try {
+    expect(() => lib.audioWriteStream(engine, 1, oversized)).toThrow(
+      "Audio stream data length exceeds native u32 length limit",
+    )
+  } finally {
+    lib.destroyAudioEngine(engine)
+  }
+})
+
+test("audio stream wrappers reject a destroyed engine handle", () => {
+  const lib = resolveRenderLib()
+  const engine = lib.createAudioEngine()
+  expect(engine).not.toBeNull()
+  if (engine == null) return
+  lib.destroyAudioEngine(engine)
+
+  expect(
+    lib.audioCreateStream(engine, {
+      capacityMs: 100,
+      startupMs: 10,
+      resumeMs: 10,
+      volume: 1,
+      pan: 0,
+      groupId: 0,
+      maxProbeBytes: 1024 * 1024,
+    }),
+  ).toEqual({ status: -1, streamId: null })
+  expect(lib.audioWriteStream(engine, 1, new Uint8Array())).toBe(-1)
+  expect(lib.audioEndStream(engine, 1)).toBe(-1)
+  expect(lib.audioRestartStream(engine, 1)).toBe(-1)
+  expect(lib.audioSetStreamVolume(engine, 1, 1)).toBe(-1)
+  expect(lib.audioSetStreamPan(engine, 1, 0)).toBe(-1)
+  expect(lib.audioSetStreamGroup(engine, 1, 0)).toBe(-1)
+  expect(lib.audioGetStreamStats(engine, 1)).toBeNull()
+  expect(lib.audioCloseStream(engine, 1, 2)).toEqual({ status: -1, stats: null })
+})
+
 test("audioCreateGroup rejects oversized encoded name lengths before truncating to u32", () => {
   const lib = resolveRenderLib()
   const engine = lib.createAudioEngine()

@@ -138,6 +138,30 @@ fn mixStreamToEnd(engine: *audio.Engine, stream_id: u32) !audio.StreamStats {
     return error.TestUnexpectedResult;
 }
 
+test "audio stream ABI layouts remain stable" {
+    try testing.expectEqual(@as(usize, 28), @sizeOf(audio.StreamOptions));
+    try testing.expectEqual(@as(usize, 0), @offsetOf(audio.StreamOptions, "capacity_ms"));
+    try testing.expectEqual(@as(usize, 4), @offsetOf(audio.StreamOptions, "startup_ms"));
+    try testing.expectEqual(@as(usize, 8), @offsetOf(audio.StreamOptions, "resume_ms"));
+    try testing.expectEqual(@as(usize, 12), @offsetOf(audio.StreamOptions, "volume"));
+    try testing.expectEqual(@as(usize, 16), @offsetOf(audio.StreamOptions, "pan"));
+    try testing.expectEqual(@as(usize, 20), @offsetOf(audio.StreamOptions, "group_id"));
+    try testing.expectEqual(@as(usize, 24), @offsetOf(audio.StreamOptions, "max_probe_bytes"));
+
+    try testing.expectEqual(@as(usize, 56), @sizeOf(audio.StreamStats));
+    try testing.expectEqual(@as(usize, 0), @offsetOf(audio.StreamStats, "bytes_received"));
+    try testing.expectEqual(@as(usize, 8), @offsetOf(audio.StreamStats, "frames_decoded"));
+    try testing.expectEqual(@as(usize, 16), @offsetOf(audio.StreamStats, "frames_played"));
+    try testing.expectEqual(@as(usize, 24), @offsetOf(audio.StreamStats, "state"));
+    try testing.expectEqual(@as(usize, 28), @offsetOf(audio.StreamStats, "sample_rate"));
+    try testing.expectEqual(@as(usize, 32), @offsetOf(audio.StreamStats, "channels"));
+    try testing.expectEqual(@as(usize, 36), @offsetOf(audio.StreamStats, "buffered_frames"));
+    try testing.expectEqual(@as(usize, 40), @offsetOf(audio.StreamStats, "capacity_frames"));
+    try testing.expectEqual(@as(usize, 44), @offsetOf(audio.StreamStats, "underruns"));
+    try testing.expectEqual(@as(usize, 48), @offsetOf(audio.StreamStats, "error_code"));
+    try testing.expectEqual(@as(usize, 52), @offsetOf(audio.StreamStats, "ready_generation"));
+}
+
 test "audio - create initializes engine with defaults" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);
@@ -508,6 +532,87 @@ test "audio stream preflight rejects invalid group without allocating" {
     try testing.expectEqual(@as(u32, 0xdeadbeef), stream_id);
 }
 
+test "audio stream preflight rejects malformed options without allocating" {
+    var failing = testing.FailingAllocator.init(testing.allocator, .{});
+    const engine = audio.create(failing.allocator(), null) orelse return error.TestUnexpectedResult;
+    defer audio.destroy(engine);
+
+    const allocation_index = failing.alloc_index;
+    failing.fail_index = allocation_index;
+    var stream_id: u32 = 0xdeadbeef;
+    var options = streamOptions();
+
+    try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, null, &stream_id));
+    try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, &options, null));
+    options.max_probe_bytes = 0;
+    try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, &options, &stream_id));
+    options = streamOptions();
+    options.capacity_ms = 0;
+    try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, &options, &stream_id));
+    options = streamOptions();
+    options.startup_ms = options.capacity_ms + 1;
+    try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, &options, &stream_id));
+    options = streamOptions();
+    options.resume_ms = options.capacity_ms + 1;
+    try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, &options, &stream_id));
+
+    try testing.expectEqual(allocation_index, failing.alloc_index);
+    try testing.expect(!failing.has_induced_failure);
+    try testing.expectEqual(@as(u32, 0xdeadbeef), stream_id);
+}
+
+test "audio stream entry points reject invalid arguments without retiring a live stream" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+    const options = streamOptions();
+    var stream_id: u32 = 0;
+    try expectStatusOk(audio.createStream(engine, &options, &stream_id));
+
+    var stats = std.mem.zeroes(audio.StreamStats);
+    try testing.expectEqual(audio.Status.err_invalid, audio.writeStream(engine, 0, null, 0));
+    try testing.expectEqual(audio.Status.err_invalid, audio.writeStream(engine, stream_id, null, 1));
+    try testing.expectEqual(@as(i32, 0), audio.writeStream(engine, stream_id, null, 0));
+    try testing.expectEqual(audio.Status.err_invalid, audio.endStream(engine, 0));
+    try testing.expectEqual(audio.Status.err_invalid, audio.restartStream(engine, 0));
+    try testing.expectEqual(audio.Status.err_invalid, audio.setStreamVolume(engine, 0, 1));
+    try testing.expectEqual(audio.Status.err_invalid, audio.setStreamPan(engine, 0, 0));
+    try testing.expectEqual(audio.Status.err_invalid, audio.setStreamGroup(engine, 0, 0));
+    try testing.expectEqual(audio.Status.err_invalid, audio.getStreamStats(engine, 0, &stats));
+    try testing.expectEqual(audio.Status.err_invalid, audio.getStreamStats(engine, stream_id, null));
+    try testing.expectEqual(
+        audio.Status.err_invalid,
+        audio.closeStream(engine, stream_id, audio.StreamCloseReason.disposed, null),
+    );
+    try testing.expectEqual(
+        audio.Status.err_invalid,
+        audio.closeStream(engine, stream_id, audio.StreamCloseReason.disposed + 1, &stats),
+    );
+
+    try expectStatusOk(audio.getStreamStats(engine, stream_id, &stats));
+    try testing.expectEqual(audio.StreamState.initializing, stats.state);
+    try expectStatusOk(audio.closeStream(engine, stream_id, audio.StreamCloseReason.disposed, &stats));
+}
+
+test "audio stream allocation failures clean up each partial allocation" {
+    for (0..3) |failure_offset| {
+        var failing = testing.FailingAllocator.init(testing.allocator, .{});
+        const engine = audio.create(failing.allocator(), null) orelse return error.TestUnexpectedResult;
+        defer audio.destroy(engine);
+        const allocation_index = failing.alloc_index;
+        failing.fail_index = allocation_index + failure_offset;
+
+        const options = streamOptions();
+        var stream_id: u32 = 0xdeadbeef;
+        try testing.expectEqual(audio.Status.err_no_space, audio.createStream(engine, &options, &stream_id));
+        try testing.expect(failing.has_induced_failure);
+        try testing.expectEqual(@as(u32, 0xdeadbeef), stream_id);
+        for (engine.streams) |stream| try testing.expect(stream == null);
+        var stats: audio.Stats = undefined;
+        try expectStatusOk(audio.getStats(engine, &stats));
+        try testing.expectEqual(@as(u32, 0), stats.voices_active);
+    }
+}
+
 test "audio stream preflight rejects millisecond capacity above miniaudio limit without allocating" {
     var failing = testing.FailingAllocator.init(testing.allocator, .{});
     const engine = audio.create(failing.allocator(), null) orelse return error.TestUnexpectedResult;
@@ -622,8 +727,40 @@ test "audio stream reuses retired slot with a new generation" {
     try testing.expect(second_stream_id != 0);
     try testing.expect(first_stream_id != second_stream_id);
 
+    const byte = [_]u8{0};
     var stale_stats: audio.StreamStats = undefined;
+    var stale_final = std.mem.zeroes(audio.StreamStats);
+    try testing.expectEqual(audio.Status.err_not_found, audio.writeStream(engine, first_stream_id, &byte, byte.len));
+    try testing.expectEqual(audio.Status.err_not_found, audio.endStream(engine, first_stream_id));
+    try testing.expectEqual(audio.Status.err_not_found, audio.restartStream(engine, first_stream_id));
+    try testing.expectEqual(audio.Status.err_not_found, audio.setStreamVolume(engine, first_stream_id, 0.5));
+    try testing.expectEqual(audio.Status.err_not_found, audio.setStreamPan(engine, first_stream_id, 0.5));
+    try testing.expectEqual(audio.Status.err_not_found, audio.setStreamGroup(engine, first_stream_id, 0));
     try testing.expectEqual(audio.Status.err_not_found, audio.getStreamStats(engine, first_stream_id, &stale_stats));
+    try testing.expectEqual(
+        audio.Status.err_not_found,
+        audio.closeStream(engine, first_stream_id, audio.StreamCloseReason.disposed, &stale_final),
+    );
+
+    var second_stats: audio.StreamStats = undefined;
+    try expectStatusOk(audio.getStreamStats(engine, second_stream_id, &second_stats));
+    try testing.expectEqual(audio.StreamState.initializing, second_stats.state);
+    try testing.expectEqual(@as(u64, 0), second_stats.bytes_received);
+    try testing.expectEqual(@as(u64, 0), second_stats.frames_decoded);
+    try testing.expectEqual(@as(u64, 0), second_stats.frames_played);
+    try testing.expectEqual(TEST_SAMPLE_RATE, second_stats.sample_rate);
+    try testing.expectEqual(@as(u32, 2), second_stats.channels);
+    try testing.expectEqual(@as(u32, 0), second_stats.buffered_frames);
+    try testing.expectEqual(options.capacity_ms * (TEST_SAMPLE_RATE / 1_000), second_stats.capacity_frames);
+    try testing.expectEqual(@as(u32, 0), second_stats.underruns);
+    try testing.expectEqual(@as(i32, 0), second_stats.error_code);
+    try testing.expectEqual(@as(u32, 0), second_stats.ready_generation);
+    try testing.expectEqual(
+        audio.Status.err_invalid,
+        audio.closeStream(engine, second_stream_id, audio.StreamCloseReason.disposed + 1, &stale_final),
+    );
+    try expectStatusOk(audio.getStreamStats(engine, second_stream_id, &second_stats));
+
     var second_final: audio.StreamStats = undefined;
     try expectStatusOk(audio.closeStream(engine, second_stream_id, audio.StreamCloseReason.disposed, &second_final));
     try testing.expectEqual(audio.StreamState.cancelled, second_final.state);
@@ -827,6 +964,33 @@ test "audio stream repeatedly restarts after clean EOF with one persistent voice
     try testing.expectEqual(audio.Status.err_not_found, audio.restartStream(engine, stream_id));
 }
 
+test "audio stream ready generation wraps to one" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+    const mp3 = try std.fs.cwd().readFileAlloc(testing.allocator, TEST_MP3_PATH, 16 * 1024);
+    defer testing.allocator.free(mp3);
+
+    const options = streamOptions();
+    var stream_id: u32 = 0;
+    try expectStatusOk(audio.createStream(engine, &options, &stream_id));
+    const stream = engine.streams[0] orelse return error.TestUnexpectedResult;
+    @atomicStore(u32, &stream.ready_generation, std.math.maxInt(u32), .release);
+
+    try writeAllStreamBytes(engine, stream_id, mp3);
+    try expectStatusOk(audio.endStream(engine, stream_id));
+    var stats: audio.StreamStats = undefined;
+    for (0..5_000) |_| {
+        try expectStatusOk(audio.getStreamStats(engine, stream_id, &stats));
+        if (stats.ready_generation == 1) break;
+        if (stats.state == audio.StreamState.failed) return error.TestUnexpectedResult;
+        std.Thread.sleep(std.time.ns_per_ms);
+    }
+    try testing.expectEqual(@as(u32, 1), stats.ready_generation);
+
+    var final_stats: audio.StreamStats = undefined;
+    try expectStatusOk(audio.closeStream(engine, stream_id, audio.StreamCloseReason.disposed, &final_stats));
+}
+
 test "audio stream restart rejects failed streams" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);
@@ -846,6 +1010,8 @@ test "audio stream restart rejects failed streams" {
         std.Thread.sleep(std.time.ns_per_ms);
     }
     try testing.expectEqual(audio.StreamState.failed, stats.state);
+    try testing.expectEqual(audio.Status.err_invalid, audio.writeStream(engine, stream_id, invalid_mp3, invalid_mp3.len));
+    try testing.expectEqual(audio.Status.err_invalid, audio.endStream(engine, stream_id));
     try testing.expectEqual(audio.Status.err_invalid, audio.restartStream(engine, stream_id));
     var final_stats: audio.StreamStats = undefined;
     try expectStatusOk(audio.closeStream(engine, stream_id, audio.StreamCloseReason.disposed, &final_stats));

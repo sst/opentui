@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { NativeAudioStreamState as ExportedAudioStreamState, resolveRenderLib } from "../zig.js"
 import {
+  AudioStreamCreateOptionsStruct,
   AudioStreamStatsStruct,
   CursorStyleOptionsStruct,
   NativeAudioStreamCloseReason,
@@ -56,6 +57,75 @@ function readPackedColor(packed: ArrayBuffer, offset: number): number[] {
 }
 
 describe("borrowed pointer call sites", () => {
+  test("audio stream structs preserve the native ABI", () => {
+    expect(AudioStreamCreateOptionsStruct.size).toBe(28)
+    expect(
+      Object.fromEntries(
+        ["capacityMs", "startupMs", "resumeMs", "volume", "pan", "groupId", "maxProbeBytes"].map((name) => [
+          name,
+          fieldOffset(AudioStreamCreateOptionsStruct, name),
+        ]),
+      ),
+    ).toEqual({
+      capacityMs: 0,
+      startupMs: 4,
+      resumeMs: 8,
+      volume: 12,
+      pan: 16,
+      groupId: 20,
+      maxProbeBytes: 24,
+    })
+
+    const packed = AudioStreamCreateOptionsStruct.pack({
+      capacityMs: 2000,
+      startupMs: 1000,
+      resumeMs: 500,
+      volume: 0.75,
+      pan: -0.25,
+      groupId: 7,
+      maxProbeBytes: 2 * 1024 * 1024,
+    })
+    const view = new DataView(packed)
+    expect(view.getUint32(0, true)).toBe(2000)
+    expect(view.getUint32(4, true)).toBe(1000)
+    expect(view.getUint32(8, true)).toBe(500)
+    expect(view.getFloat32(12, true)).toBe(0.75)
+    expect(view.getFloat32(16, true)).toBe(-0.25)
+    expect(view.getUint32(20, true)).toBe(7)
+    expect(view.getUint32(24, true)).toBe(2 * 1024 * 1024)
+
+    expect(AudioStreamStatsStruct.size).toBe(56)
+    expect(
+      Object.fromEntries(
+        [
+          "bytesReceived",
+          "framesDecoded",
+          "framesPlayed",
+          "state",
+          "sampleRate",
+          "channels",
+          "bufferedFrames",
+          "capacityFrames",
+          "underruns",
+          "errorCode",
+          "readyGeneration",
+        ].map((name) => [name, fieldOffset(AudioStreamStatsStruct, name)]),
+      ),
+    ).toEqual({
+      bytesReceived: 0,
+      framesDecoded: 8,
+      framesPlayed: 16,
+      state: 24,
+      sampleRate: 28,
+      channels: 32,
+      bufferedFrames: 36,
+      capacityFrames: 40,
+      underruns: 44,
+      errorCode: 48,
+      readyGeneration: 52,
+    })
+  })
+
   test("audioCloseStream forwards its reason and unpacks the owned output buffer", () => {
     const calls: any[][] = []
     const original = symbols.audioCloseStream
@@ -112,7 +182,7 @@ describe("borrowed pointer call sites", () => {
   test("audioWriteStream passes the byte owner directly and forwards count, zero, and errors", () => {
     const calls: any[][] = []
     const original = symbols.audioWriteStream
-    const results = [3, 0, -4]
+    const results = [3, 0, -4, 0]
     symbols.audioWriteStream = (...args: any[]) => {
       calls.push(args)
       return results.shift()
@@ -122,10 +192,13 @@ describe("borrowed pointer call sites", () => {
       expect(lib.audioWriteStream(0 as any, 1, bytes)).toBe(3)
       expect(lib.audioWriteStream(0 as any, 1, bytes)).toBe(0)
       expect(lib.audioWriteStream(0 as any, 1, bytes)).toBe(-4)
-      expect(calls).toHaveLength(3)
+      expect(lib.audioWriteStream(0 as any, 1, new Uint8Array())).toBe(0)
+      expect(calls).toHaveLength(4)
       expect(calls[0]).toHaveLength(4)
       expect(calls[0]![2]).toBe(bytes)
       expect(calls[0]![3]).toBe(bytes.byteLength)
+      expect(calls[3]![2]).toBeNull()
+      expect(calls[3]![3]).toBe(0)
     } finally {
       symbols.audioWriteStream = original
     }
