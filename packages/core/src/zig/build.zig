@@ -337,7 +337,7 @@ fn addMacOSSDKSearchPaths(b: *std.Build, module: *std.Build.Module, sdk_path: []
 fn addMacOSSystemLibraries(b: *std.Build, module: *std.Build.Module, sdk_path: []const u8) void {
     module.addCSourceFile(.{
         .file = b.path("clipboard_macos_shim.m"),
-        .flags = &.{ "-fobjc-arc", "-isysroot", sdk_path },
+        .flags = &.{ "-fobjc-arc", "-fobjc-arc-exceptions", "-isysroot", sdk_path },
     });
     module.linkFramework("AppKit", .{});
     module.linkFramework("Foundation", .{});

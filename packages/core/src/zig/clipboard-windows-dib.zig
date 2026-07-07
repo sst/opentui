@@ -1,4 +1,5 @@
 const std = @import("std");
+const clipboard_clock = @import("clipboard-clock.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -482,7 +483,8 @@ fn checkStop(options: ConvertOptions) ConvertError!void {
     if (options.cancel_requested) |cancelled| {
         if (cancelled.load(.acquire)) return error.Cancelled;
     }
-    if (std.time.nanoTimestamp() >= options.deadline_ns) return error.TimedOut;
+    if (options.deadline_ns == std.math.maxInt(i128)) return;
+    if (clipboard_clock.nowNs() >= options.deadline_ns) return error.TimedOut;
 }
 
 fn testOptions() ConvertOptions {
@@ -673,13 +675,14 @@ test "Windows DIB conversion enforces pixel conversion and output limits" {
 }
 
 test "Windows DIB conversion observes cancellation and deadlines" {
+    try clipboard_clock.init();
     const dib = dibFixture();
     var cancelled = std.atomic.Value(bool).init(true);
     var options = testOptions();
     options.cancel_requested = &cancelled;
     try std.testing.expectError(error.Cancelled, convertToPng(std.testing.allocator, &dib, options));
     cancelled.store(false, .release);
-    options.deadline_ns = std.time.nanoTimestamp() - 1;
+    options.deadline_ns = clipboard_clock.nowNs() - 1;
     try std.testing.expectError(error.TimedOut, convertToPng(std.testing.allocator, &dib, options));
 }
 

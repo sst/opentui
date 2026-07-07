@@ -15,6 +15,8 @@ const DEFAULT_CLIPBOARD_MAX_PROVIDER_TRANSFERS = 16
 const DEFAULT_CLIPBOARD_MAX_WORK_UNITS_PER_DRAIN = 64
 const MAX_U32 = 0xffff_ffff
 const MIME_ESSENCE_PATTERN = /^[a-z0-9!#$%&'*+.^_`|~-]+\/[a-z0-9!#$%&'*+.^_`|~-]+$/i
+export const HOST_CLIPBOARD_MIME_PREFERENCE_COUNT_MAX = 64
+export const HOST_CLIPBOARD_MIME_ESSENCE_BYTES_MAX = 255
 
 export interface NormalizedHostClipboardOptions {
   readonly timeoutMs: number
@@ -91,8 +93,22 @@ const normalizePreferredTypes = (preferredTypes: readonly [string, ...string[]])
   if (!Array.isArray(preferredTypes) || preferredTypes.length === 0) {
     throw new TypeError("preferredTypes must contain at least one MIME essence type")
   }
+  if (preferredTypes.length > HOST_CLIPBOARD_MIME_PREFERENCE_COUNT_MAX) {
+    throw new RangeError(
+      `preferredTypes must contain at most ${HOST_CLIPBOARD_MIME_PREFERENCE_COUNT_MAX} MIME essence types`,
+    )
+  }
   const normalized = preferredTypes.map((mimeType) => {
-    if (typeof mimeType !== "string" || !MIME_ESSENCE_PATTERN.test(mimeType)) {
+    if (typeof mimeType !== "string") {
+      throw new TypeError("preferredTypes must contain valid MIME essence types without parameters")
+    }
+    // Valid MIME essence tokens are ASCII, so code units equal encoded bytes.
+    if (mimeType.length > HOST_CLIPBOARD_MIME_ESSENCE_BYTES_MAX) {
+      throw new RangeError(
+        `preferredTypes MIME essences must be at most ${HOST_CLIPBOARD_MIME_ESSENCE_BYTES_MAX} ASCII bytes`,
+      )
+    }
+    if (!MIME_ESSENCE_PATTERN.test(mimeType)) {
       throw new TypeError("preferredTypes must contain valid MIME essence types without parameters")
     }
     return mimeType.toLowerCase()
