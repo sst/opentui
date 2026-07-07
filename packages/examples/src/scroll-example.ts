@@ -195,7 +195,7 @@ export function run(rendererInstance: CliRenderer): void {
 
 export function destroy(rendererInstance: CliRenderer): void {
   if (mainContainer) {
-    rendererInstance.root.remove(mainContainer.id)
+    rendererInstance.root.remove(mainContainer)
     mainContainer.destroyRecursively()
     mainContainer = null
   }

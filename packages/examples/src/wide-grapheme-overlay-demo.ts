@@ -257,7 +257,7 @@ export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
 
   for (const box of draggableBoxes) {
-    renderer.root.remove(box.id)
+    renderer.root.remove(box)
   }
   draggableBoxes = []
   nextZIndex = 101
@@ -265,7 +265,8 @@ export function destroy(renderer: CliRenderer): void {
   scrim = null
   headerDisplay = null
 
-  renderer.root.remove("wg-overlay-root")
+  const root = renderer.root.getRenderable("wg-overlay-root")
+  if (root) renderer.root.remove(root)
   renderer.setCursorPosition(0, 0, false)
 }
 

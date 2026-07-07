@@ -10,6 +10,9 @@ import {
 import * as solidJsRuntime from "solid-js"
 import * as solidJsStoreRuntime from "solid-js/store"
 import * as solidRuntime from "@opentui/solid"
+import * as solidComponentsRuntime from "@opentui/solid/components"
+import * as solidJsxRuntime from "@opentui/solid/jsx-runtime"
+import * as solidJsxDevRuntime from "@opentui/solid/jsx-dev-runtime"
 import { ensureSolidTransformPlugin } from "./solid-plugin.js"
 
 const runtimePluginSupportInstalledKey = Symbol.for("opentui.solid.runtime-plugin-support")
@@ -32,6 +35,9 @@ type RuntimePluginSupportState = typeof globalThis & {
 
 const defaultRuntimeModules: Record<string, RuntimeModuleEntry> = {
   "@opentui/solid": solidRuntime as Record<string, unknown>,
+  "@opentui/solid/components": solidComponentsRuntime as Record<string, unknown>,
+  "@opentui/solid/jsx-runtime": solidJsxRuntime as Record<string, unknown>,
+  "@opentui/solid/jsx-dev-runtime": solidJsxDevRuntime as Record<string, unknown>,
   "solid-js": solidJsRuntime as Record<string, unknown>,
   "solid-js/store": solidJsStoreRuntime as Record<string, unknown>,
 }

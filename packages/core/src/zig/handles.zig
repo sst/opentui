@@ -23,6 +23,7 @@ pub const ObjectKind = enum(u4) {
     syntax_style = 6,
     event_sink = 7,
     audio_engine = 8,
+    native_renderable = 9,
 };
 
 const SlotState = enum(u8) {

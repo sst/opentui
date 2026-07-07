@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { cpSync, mkdirSync, rmSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -59,6 +59,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/renderer.notifications.test.js",
   ".node-test/src/tests/renderer.selection.test.js",
   ".node-test/src/console.test.js",
+  ".node-test/src/native-handle.test.js",
   ".node-test/src/renderables/Box.test.js",
   ".node-test/src/renderables/Code.test.js",
   ".node-test/src/renderables/Diff.regression.test.js",
@@ -123,7 +124,10 @@ const emittedAllowlist = [
   ".node-test/src/tests/audio.test.js",
   ".node-test/src/tests/destroy-on-exit.test.js",
   ".node-test/src/tests/destroy-during-render.test.js",
+  ".node-test/src/tests/ffi-borrowed-pointer-callsites.test.js",
   ".node-test/src/tests/hover-cursor.test.js",
+  ".node-test/src/tests/native-backed-measurement-lifecycle.test.js",
+  ".node-test/src/tests/native-backed-measurement-parity.test.js",
   ".node-test/src/tests/native-span-feed-async.test.js",
   ".node-test/src/tests/native-span-feed-close.test.js",
   ".node-test/src/tests/native-span-feed-coverage.test.js",
@@ -149,6 +153,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/scrollbox-culling-bug.test.js",
   ".node-test/src/tests/scrollbox-hitgrid-resize.test.js",
   ".node-test/src/tests/scrollbox-hitgrid.test.js",
+  ".node-test/src/tests/yoga-callback-stress.test.js",
   ".node-test/src/tests/yoga-setters.test.js",
   ".node-test/src/tests/wrap-resize-perf.test.js",
   ".node-test/src/text-buffer.test.js",
@@ -161,6 +166,17 @@ try {
   rmSync(outDir, { recursive: true, force: true })
 
   exitCode = run(process.execPath, ["x", "tsc", "-p", "tsconfig.node-test.json"])
+
+  // node --test silently ignores nonexistent file arguments, so a missing
+  // emitted test (e.g. not listed in tsconfig.node-test.json) would skip
+  // coverage without failing. Fail loudly instead.
+  if (exitCode === 0) {
+    const missing = emittedAllowlist.filter((path) => !existsSync(resolve(packageRoot, path)))
+    if (missing.length > 0) {
+      console.error(`Missing emitted node tests (add them to tsconfig.node-test.json?):\n${missing.join("\n")}`)
+      exitCode = 1
+    }
+  }
 
   if (exitCode === 0) {
     cpSync(resolve(packageRoot, treeSitterAssetsDir), resolve(outDir, treeSitterAssetsDir), { recursive: true })

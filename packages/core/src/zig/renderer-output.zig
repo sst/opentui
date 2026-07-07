@@ -153,9 +153,9 @@ pub const OutputBackend = union(enum) {
         }
     }
 
-    pub fn deinit(self: *OutputBackend, allocator: Allocator) void {
+    pub fn deinit(self: *OutputBackend) void {
         switch (self.*) {
-            inline else => |*b| b.deinit(allocator),
+            inline else => |*b| b.deinit(),
         }
     }
 };
@@ -168,6 +168,13 @@ pub const OutputBackend = union(enum) {
 pub const BufferedBackend = struct {
     const BufferId = enum { A, B };
 
+    /// Number of consecutive frames that fit in the default buffer before an
+    /// oversized buffer is shrunk back to OUTPUT_BUFFER_SIZE. Keeps a workload
+    /// of sustained large frames from realloc-churning while still returning
+    /// spike memory once frames are consistently small again.
+    const SHRINK_AFTER_SMALL_FRAMES = 64;
+
+    allocator: Allocator,
     output: BufferedOutput,
     ownedStdoutOutput: ?*StdoutOutput = null,
     ownedMemoryOutput: ?*MemoryOutput = null,
@@ -179,6 +186,11 @@ pub const BufferedBackend = struct {
     activeBuffer: BufferId = .A,
     lastCommittedBuffer: BufferId = .A,
     hasCommittedFrame: bool = false,
+    /// Set when frame bytes were dropped because a buffer could not grow.
+    /// endFrame consumes it and reports the frame as failed so the renderer
+    /// forces a full repaint instead of trusting the committed cell diff.
+    frameWriteFailed: bool = false,
+    smallFrameStreak: u32 = 0,
 
     useThread: bool = false,
     renderThread: ?std.Thread = null,
@@ -201,6 +213,7 @@ pub const BufferedBackend = struct {
         errdefer allocator.free(b_buf);
 
         return BufferedBackend{
+            .allocator = allocator,
             .output = output,
             .outputA = a_buf,
             .outputB = b_buf,
@@ -227,7 +240,10 @@ pub const BufferedBackend = struct {
         return backend;
     }
 
-    pub fn deinit(self: *BufferedBackend, allocator: Allocator) void {
+    /// Frees with the allocator captured at create time. The buffers may have
+    /// been realloc-grown by frame writes, so freeing them with any other
+    /// allocator would be undefined behavior.
+    pub fn deinit(self: *BufferedBackend) void {
         if (self.renderThread) |thread| {
             self.renderMutex.lock();
             while (self.renderInProgress) {
@@ -245,15 +261,15 @@ pub const BufferedBackend = struct {
             self.renderThread = null;
         }
 
-        allocator.free(self.outputA);
-        allocator.free(self.outputB);
+        self.allocator.free(self.outputA);
+        self.allocator.free(self.outputB);
         if (self.ownedStdoutOutput) |stdoutOutput| {
-            allocator.destroy(stdoutOutput);
+            self.allocator.destroy(stdoutOutput);
             self.ownedStdoutOutput = null;
         }
         if (self.ownedMemoryOutput) |memoryOutput| {
             memoryOutput.deinit();
-            allocator.destroy(memoryOutput);
+            self.allocator.destroy(memoryOutput);
             self.ownedMemoryOutput = null;
         }
     }
@@ -329,16 +345,19 @@ pub const BufferedBackend = struct {
             &self.outputLenA
         else
             &self.outputLenB;
-        const buffer = if (self.activeBuffer == .A)
-            self.outputA
-        else
-            self.outputB;
+        const required = bufferLen.* + data.len;
 
-        if (bufferLen.* + data.len > buffer.len) {
-            return error.BufferFull;
+        const buffer = if (self.activeBuffer == .A) &self.outputA else &self.outputB;
+
+        if (required > buffer.*.len) {
+            const capacity = @max(required, buffer.*.len * 2);
+            buffer.* = self.allocator.realloc(buffer.*, capacity) catch {
+                self.frameWriteFailed = true;
+                return error.BufferFull;
+            };
         }
 
-        @memcpy(buffer[bufferLen.*..][0..data.len], data);
+        @memcpy(buffer.*[bufferLen.*..][0..data.len], data);
         bufferLen.* += data.len;
         return data.len;
     }
@@ -350,6 +369,8 @@ pub const BufferedBackend = struct {
     }
 
     pub fn beginFrame(self: *BufferedBackend) void {
+        self.frameWriteFailed = false;
+        self.maybeShrinkActiveBuffer();
         if (self.activeBuffer == .A) {
             self.outputLenA = 0;
         } else {
@@ -357,8 +378,40 @@ pub const BufferedBackend = struct {
         }
     }
 
+    /// Give spike memory back once frames have been consistently small again.
+    /// Runs at frame start when the active buffer is exclusively owned by the
+    /// producer: in threaded mode the render thread only ever reads the buffer
+    /// handed off at the previous endFrame, which is the other one.
+    fn maybeShrinkActiveBuffer(self: *BufferedBackend) void {
+        if (self.smallFrameStreak < SHRINK_AFTER_SMALL_FRAMES) return;
+        const buffer = if (self.activeBuffer == .A) &self.outputA else &self.outputB;
+        if (buffer.*.len <= OUTPUT_BUFFER_SIZE) return;
+        buffer.* = self.allocator.realloc(buffer.*, OUTPUT_BUFFER_SIZE) catch return;
+    }
+
+    fn updateSmallFrameStreak(self: *BufferedBackend, frame_len: usize) void {
+        if (frame_len <= OUTPUT_BUFFER_SIZE) {
+            self.smallFrameStreak +|= 1;
+        } else {
+            self.smallFrameStreak = 0;
+        }
+    }
+
     pub fn endFrame(self: *BufferedBackend) WriteStatus {
         const frame_len = if (self.activeBuffer == .A) self.outputLenA else self.outputLenB;
+
+        if (self.frameWriteFailed) {
+            // Frame bytes were dropped mid-frame. Flushing the truncated ANSI
+            // stream could leave the terminal inside an escape sequence, so
+            // drop the partial frame entirely and report failure; the renderer
+            // reacts by forcing a full repaint on the next frame.
+            self.frameWriteFailed = false;
+            self.smallFrameStreak = 0;
+            return .failed;
+        }
+
+        self.updateSmallFrameStreak(frame_len);
+
         if (self.useThread and frame_len == 0) {
             self.lastCommittedBuffer = self.activeBuffer;
             self.hasCommittedFrame = true;
@@ -518,7 +571,7 @@ pub const FeedBackend = struct {
         return FeedBackend{ .feed = feed };
     }
 
-    pub fn deinit(_: *FeedBackend, _: Allocator) void {
+    pub fn deinit(_: *FeedBackend) void {
         // Feed memory is owned by the TypeScript side. Nothing to free here.
     }
 

@@ -19,6 +19,7 @@ const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const native_span_feed = @import("native-span-feed.zig");
 const native_audio = @import("audio.zig");
+const native_renderable = @import("native-renderable.zig");
 const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
@@ -85,6 +86,10 @@ fn acquireAudioEngine(handle: NativeHandle) ?*native_audio.Engine {
     return handles.acquire(handle, .audio_engine, native_audio.Engine);
 }
 
+fn acquireNativeRenderable(handle: NativeHandle) ?*native_renderable.NativeRenderable {
+    return handles.acquire(handle, .native_renderable, native_renderable.NativeRenderable);
+}
+
 fn emptyLineInfo(outPtr: *ExternalLineInfo) void {
     outPtr.* = .{
         .start_cols_ptr = EMPTY_U32[0..].ptr,
@@ -117,6 +122,7 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
 comptime {
     _ = native_span_feed;
     _ = native_audio;
+    _ = native_renderable;
     _ = native_yoga;
 }
 
@@ -141,6 +147,59 @@ fn clearEditBufferEventSinkRefs(sink: *event_bus.EventSink) void {
         }
         handles.unpause(token.handle);
     }
+}
+
+export fn createNativeRenderable() NativeHandle {
+    const renderable = globalAllocator.create(native_renderable.NativeRenderable) catch return INVALID_HANDLE;
+    renderable.* = .{};
+    return handles.insert(.native_renderable, erasePtr(renderable)) catch {
+        globalAllocator.destroy(renderable);
+        return INVALID_HANDLE;
+    };
+}
+
+export fn destroyNativeRenderable(native_renderable_handle: NativeHandle) void {
+    const token = handles.beginDestroy(native_renderable_handle, .native_renderable, native_renderable.NativeRenderable) orelse return;
+    token.ptr.deinit();
+    globalAllocator.destroy(token.ptr);
+    handles.finishDestroy(token.handle);
+}
+
+export fn nativeRenderableAttachYogaNode(native_renderable_handle: NativeHandle, node: native_yoga.YGNodeRef) bool {
+    // Temporary bridge: JS-created Renderables still own Yoga nodes, so native
+    // renderables borrow and attach them after construction. This should go away
+    // when the renderable tree and Yoga ownership move native-side.
+    const renderable = acquireNativeRenderable(native_renderable_handle) orelse return false;
+    if (node == null) return false;
+    renderable.attachYogaNode(node);
+    return true;
+}
+
+export fn nativeRenderableSetMeasureTarget(
+    native_renderable_handle: NativeHandle,
+    kind: u32,
+    target_handle: NativeHandle,
+) bool {
+    const renderable = acquireNativeRenderable(native_renderable_handle) orelse return false;
+
+    // Resolve handles once at setup time. The Yoga measure callback then uses raw
+    // native pointers and does not pay handle-registry lookup cost on the hot path.
+    // Kind `none` clears the measure target; unknown kinds are rejected.
+    const measure_kind: native_renderable.MeasureTargetKind = switch (kind) {
+        @intFromEnum(native_renderable.MeasureTargetKind.none) => .none,
+        @intFromEnum(native_renderable.MeasureTargetKind.text_buffer_view) => .text_buffer_view,
+        @intFromEnum(native_renderable.MeasureTargetKind.editor_view) => .editor_view,
+        else => return false,
+    };
+
+    const target: native_renderable.MeasureTarget = switch (measure_kind) {
+        .none => .none,
+        .text_buffer_view => .{ .text_buffer_view = acquireTextBufferView(target_handle) orelse return false },
+        .editor_view => .{ .editor_view = acquireEditorView(target_handle) orelse return false },
+    };
+
+    renderable.setMeasureTarget(target);
+    return true;
 }
 
 export fn destroyEventSink(sink_handle: NativeHandle) void {
