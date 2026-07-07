@@ -1,5 +1,5 @@
 const std = @import("std");
-const clipboard_clock = @import("clipboard-clock.zig");
+const clipboard_clock = @import("clock.zig");
 
 const Allocator = std.mem.Allocator;
 
