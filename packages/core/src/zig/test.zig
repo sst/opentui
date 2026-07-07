@@ -40,6 +40,7 @@ const ghostty_vt_tests = @import("tests/ghostty_vt_test.zig");
 const image_tests = @import("tests/image_test.zig");
 const terminal_image_tests = @import("tests/terminal-image_test.zig");
 const lib_tests = @import("lib.zig");
+const clipboard_clock_tests = @import("tests/clipboard-clock_test.zig");
 const clipboard_tests = @import("clipboard.zig");
 const clipboard_linux_tests = @import("clipboard-linux.zig");
 const clipboard_wayland_protocol_tests = @import("clipboard-wayland-protocol.zig");
@@ -94,6 +95,7 @@ comptime {
     _ = image_tests;
     _ = terminal_image_tests;
     _ = lib_tests;
+    _ = clipboard_clock_tests;
     _ = clipboard_tests;
     _ = clipboard_linux_tests;
     _ = clipboard_wayland_protocol_tests;

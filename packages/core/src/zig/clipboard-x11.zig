@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const clipboard_clock = @import("clipboard-clock.zig");
 const linux = @import("clipboard-linux.zig");
 
 pub const ATOM_PRIMARY: u32 = 1;
@@ -14,6 +15,17 @@ const EVENT_MASK_PROPERTY_CHANGE: u32 = 1 << 22;
 const PROPERTY_DELETE: u8 = 1;
 const MAX_PROVIDERS = 4;
 const TRANSFER_IDLE_TIMEOUT_NS = 30 * std.time.ns_per_s;
+const CONNECT_POLL_SLICE_MS: i32 = 20;
+const CONNECT_POLL_COUNT_MAX: u16 = 500;
+const TEST_CONNECT_WAIT_COUNT_MAX: u16 = 2000;
+const XAUTHORITY_SIZE_MAX: usize = 1024 * 1024;
+const XAUTHORITY_READ_CHUNK_SIZE: usize = 16 * 1024;
+const DISPLAY_SIZE_MAX: usize = 4096;
+const XAUTH_NAME = "MIT-MAGIC-COOKIE-1";
+const XAUTH_FAMILY_INTERNET: u16 = 0;
+const XAUTH_FAMILY_INTERNET6: u16 = 6;
+const XAUTH_FAMILY_LOCAL: u16 = 256;
+const XAUTH_FAMILY_WILD: u16 = 65535;
 
 const ATOM_NAMES = [_][]const u8{
     "CLIPBOARD",
@@ -36,8 +48,37 @@ pub const SelectionResult = enum { ok, pending, committed, unsupported, failed }
 pub const ReadResult = enum { pending, ready, refused, candidate_failed, limit_exceeded, out_of_memory, failed };
 
 const Phase = enum { idle, atoms, flush, replies, window, window_flush, ready, unsupported, failed };
+const ConnectStage = enum { idle, display, socket, connecting, setup, exited };
 const FlushReadiness = enum { pending, ready, failed };
 const OutputResult = enum { complete, pending, failed };
+
+const DisplayKind = enum { unix, tcp4, tcp6 };
+const DisplayEndpoint = struct {
+    kind: DisplayKind,
+    display: u16,
+    screen: c_int,
+    unix_path: [108]u8 = @splat(0),
+    unix_path_length: u8 = 0,
+    unix_abstract_first: bool = false,
+    tcp4_fallback: bool = false,
+};
+
+const DisplayAddress = struct {
+    address: std.net.Address,
+    length: std.posix.socklen_t,
+    kind: DisplayKind,
+};
+
+const XauthorityMatch = struct {
+    storage: []u8 = &.{},
+    name: []u8 = &.{},
+    data: []u8 = &.{},
+
+    fn deinit(match: *XauthorityMatch, allocator: std.mem.Allocator) void {
+        if (match.storage.len > 0) allocator.free(match.storage);
+        match.* = .{};
+    }
+};
 
 const ReadPhase = enum { idle, selection, property, incremental, ready, refused, limit_exceeded, failed };
 pub const ReadState = struct {
@@ -61,7 +102,6 @@ pub const WriteState = struct {
     mutation_dispatched: bool = false,
     committed: bool = false,
     timestamp: u32 = 0,
-    owner_cookie: ?linux.XcbCookie = null,
     failed: bool = false,
     timestamp_window: u32 = 0,
     timestamp_window_sequence: u32 = 0,
@@ -69,6 +109,7 @@ pub const WriteState = struct {
 };
 
 const Transfer = struct {
+    id: u64,
     provider: *Provider,
     data: []const u8,
     requestor: u32,
@@ -87,7 +128,9 @@ const PendingResponse = struct {
     property: u32,
     transfer_requestor: u32 = 0,
     transfer_property: u32 = 0,
+    transfer_id: u64 = 0,
     notify: bool = true,
+    transfer_expired: bool = false,
 };
 
 pub const Provider = struct {
@@ -140,6 +183,7 @@ pub const Connection = struct {
     transfers: []Transfer = &.{},
     transfer_count: u32 = 0,
     transfer_cursor: u32 = 0,
+    transfer_id_next: u64 = 1,
     responses: []PendingResponse = &.{},
     response_count: u32 = 0,
     output_pending: bool = false,
@@ -147,9 +191,17 @@ pub const Connection = struct {
     retired_timestamp_window_sequence: u32 = 0,
     retired_timestamp_property_sequence: u32 = 0,
     connect_thread: ?std.Thread = null,
-    connect_finished: std.atomic.Value(bool) = .init(false),
+    connect_exited: std.atomic.Value(bool) = .init(false),
     connect_result: ?*linux.XcbConnection = null,
     connect_screen_index: c_int = 0,
+    connect_mutex: std.Thread.Mutex = .{},
+    connect_stage: ConnectStage = .idle,
+    connect_cancel_requested: bool = false,
+    connect_cancel_fd: ?std.posix.fd_t = null,
+    test_connected_fd: ?std.posix.fd_t = null,
+    test_connect_pending: bool = false,
+    test_connect_attempt_count: u8 = 0,
+    test_connect_stage_restore_count: u8 = 0,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -245,15 +297,88 @@ pub const Connection = struct {
     }
 
     fn connectWorker(self: *Connection) void {
-        var screen: c_int = 0;
-        self.connect_result = self.symbols.xcb_connect(null, &screen);
-        self.connect_screen_index = screen;
-        self.connect_finished.store(true, .release);
+        self.connectWorkerRun() catch {};
+        self.connect_mutex.lock();
+        std.debug.assert(self.connect_cancel_fd == null);
+        self.connect_stage = .exited;
+        self.connect_mutex.unlock();
+        self.connect_exited.store(true, .release);
+    }
+
+    fn connectWorkerRun(self: *Connection) !void {
+        self.setConnectStage(.idle, .display) orelse return;
+        var endpoint: DisplayEndpoint = undefined;
+        var fd: std.posix.fd_t = undefined;
+        var fd_owned = false;
+        defer if (fd_owned) std.posix.close(fd);
+        if (comptime builtin.is_test) {
+            if (self.test_connected_fd) |test_fd| {
+                self.test_connected_fd = null;
+                endpoint = .{ .kind = .unix, .display = 0, .screen = 0 };
+                fd = test_fd;
+                fd_owned = true;
+                if (!self.advanceConnectStage(.display, .socket)) return;
+                if (self.test_connect_pending) {
+                    if (!self.advanceConnectStage(.socket, .connecting)) return;
+                    var wait_count: u16 = 0;
+                    while (wait_count < TEST_CONNECT_WAIT_COUNT_MAX and !self.cancelRequested()) : (wait_count += 1) {
+                        std.Thread.sleep(std.time.ns_per_ms);
+                    }
+                    return;
+                }
+            } else {
+                endpoint = try parseDisplay(std.posix.getenv("DISPLAY") orelse return error.UnsupportedDisplay);
+                fd = try self.connectSocket(&endpoint);
+                fd_owned = true;
+            }
+        } else {
+            endpoint = try parseDisplay(std.posix.getenv("DISPLAY") orelse return error.UnsupportedDisplay);
+            fd = try self.connectSocket(&endpoint);
+            fd_owned = true;
+        }
+
+        const cancel_fd = try duplicateCancellationFd(fd);
+        if (!self.publishCancellationFd(cancel_fd)) {
+            std.posix.close(cancel_fd);
+            return;
+        }
+        defer self.unpublishCancellationFd(cancel_fd);
+        if (self.cancelRequested()) return;
+
+        var auth = if (builtin.is_test and endpoint.unix_path_length == 0)
+            XauthorityMatch{}
+        else
+            try loadXauthority(self, endpoint);
+        defer auth.deinit(self.allocator);
+        if (!self.advanceConnectStage(.socket, .setup)) return;
+        var auth_info: linux.XcbAuthInfo = undefined;
+        const auth_pointer: ?*linux.XcbAuthInfo = if (auth.name.len == 0) null else blk: {
+            auth_info = .{
+                .name_length = @intCast(auth.name.len),
+                .name = auth.name.ptr,
+                .data_length = @intCast(auth.data.len),
+                .data = auth.data.ptr,
+            };
+            break :blk &auth_info;
+        };
+        fd_owned = false;
+        const result = self.symbols.xcb_connect_to_fd(fd, auth_pointer);
+
+        self.connect_mutex.lock();
+        if (self.connect_cancel_requested) {
+            self.connect_mutex.unlock();
+            if (result) |connection| self.symbols.xcb_disconnect(connection);
+            return;
+        }
+        std.debug.assert(self.connect_stage == .setup);
+        self.connect_result = result;
+        self.connect_screen_index = endpoint.screen;
+        self.connect_mutex.unlock();
     }
 
     fn joinConnectThread(self: *Connection) bool {
         const thread = self.connect_thread orelse return true;
-        if (!self.connect_finished.load(.acquire)) return false;
+        if (!self.connect_exited.load(.acquire)) return false;
         thread.join();
         self.connect_thread = null;
         self.connection = self.connect_result;
@@ -264,6 +389,109 @@ pub const Connection = struct {
 
     pub fn shutdownReady(self: *Connection) bool {
         return self.joinConnectThread();
+    }
+
+    pub fn requestShutdown(self: *Connection) void {
+        self.connect_mutex.lock();
+        self.connect_cancel_requested = true;
+        if (self.connect_cancel_fd) |fd| std.posix.shutdown(fd, .recv) catch {};
+        self.connect_mutex.unlock();
+    }
+
+    fn setConnectStage(self: *Connection, expected: ConnectStage, next: ConnectStage) ?void {
+        self.connect_mutex.lock();
+        defer self.connect_mutex.unlock();
+        std.debug.assert(self.connect_stage == expected);
+        if (self.connect_cancel_requested) return null;
+        self.connect_stage = next;
+    }
+
+    fn advanceConnectStage(self: *Connection, expected: ConnectStage, next: ConnectStage) bool {
+        self.setConnectStage(expected, next) orelse return false;
+        return true;
+    }
+
+    fn cancelRequested(self: *Connection) bool {
+        self.connect_mutex.lock();
+        defer self.connect_mutex.unlock();
+        return self.connect_cancel_requested;
+    }
+
+    fn publishCancellationFd(self: *Connection, fd: std.posix.fd_t) bool {
+        self.connect_mutex.lock();
+        defer self.connect_mutex.unlock();
+        std.debug.assert(self.connect_cancel_fd == null);
+        std.debug.assert(self.connect_stage == .socket);
+        if (self.connect_cancel_requested) return false;
+        self.connect_cancel_fd = fd;
+        return true;
+    }
+
+    fn unpublishCancellationFd(self: *Connection, fd: std.posix.fd_t) void {
+        self.connect_mutex.lock();
+        std.debug.assert(self.connect_cancel_fd == fd);
+        self.connect_cancel_fd = null;
+        std.posix.close(fd);
+        self.connect_mutex.unlock();
+    }
+
+    fn connectSocket(self: *Connection, endpoint: *DisplayEndpoint) !std.posix.fd_t {
+        const candidate_count: u8 = displayCandidateCount(endpoint.*);
+        var candidate_index: u8 = 0;
+        while (candidate_index < candidate_count) : (candidate_index += 1) {
+            const candidate = try displayAddress(endpoint.*, candidate_index);
+            if (comptime builtin.is_test) self.test_connect_attempt_count += 1;
+            const fd = self.connectCandidate(candidate) catch |err| {
+                if (err == error.Cancelled) return err;
+                if (!self.advanceConnectStage(.socket, .display)) return error.Cancelled;
+                if (comptime builtin.is_test) self.test_connect_stage_restore_count += 1;
+                continue;
+            };
+            endpoint.kind = candidate.kind;
+            return fd;
+        }
+        return error.ConnectionRefused;
+    }
+
+    fn connectCandidate(self: *Connection, candidate: DisplayAddress) !std.posix.fd_t {
+        if (!self.advanceConnectStage(.display, .socket)) return error.Cancelled;
+        const fd = try std.posix.socket(
+            candidate.address.any.family,
+            std.posix.SOCK.STREAM | std.posix.SOCK.NONBLOCK | std.posix.SOCK.CLOEXEC,
+            0,
+        );
+        errdefer std.posix.close(fd);
+
+        std.posix.connect(fd, &candidate.address.any, candidate.length) catch |err| switch (err) {
+            error.WouldBlock, error.ConnectionPending => {
+                if (!self.advanceConnectStage(.socket, .connecting)) return error.Cancelled;
+                errdefer self.restoreSocketStage();
+                var poll_count: u16 = 0;
+                while (poll_count < CONNECT_POLL_COUNT_MAX) : (poll_count += 1) {
+                    if (self.cancelRequested()) return error.Cancelled;
+                    var descriptors = [_]std.posix.pollfd{.{
+                        .fd = fd,
+                        .events = std.posix.POLL.OUT,
+                        .revents = 0,
+                    }};
+                    const count = try std.posix.poll(&descriptors, CONNECT_POLL_SLICE_MS);
+                    if (count == 0) continue;
+                    if (descriptors[0].revents & std.posix.POLL.NVAL != 0) return error.SocketInvalid;
+                    try std.posix.getsockoptError(fd);
+                    break;
+                }
+                if (poll_count == CONNECT_POLL_COUNT_MAX) return error.ConnectionTimedOut;
+                if (!self.advanceConnectStage(.connecting, .socket)) return error.Cancelled;
+            },
+            else => return err,
+        };
+        return fd;
+    }
+
+    fn restoreSocketStage(self: *Connection) void {
+        self.connect_mutex.lock();
+        defer self.connect_mutex.unlock();
+        if (self.connect_stage == .connecting) self.connect_stage = .socket;
     }
 
     fn requestAtom(self: *Connection) Progress {
@@ -646,50 +874,16 @@ pub const Connection = struct {
 
     pub fn driveWrite(self: *Connection, state: *WriteState) SelectionResult {
         if (state.failed) return .failed;
+        if (state.committed) return .committed;
         if (self.output_pending) switch (self.flushOutput()) {
             .complete => {},
             .pending => return .pending,
             .failed => return self.abortWrite(state),
         };
-        if (state.committed) return .committed;
-        const cookie = state.owner_cookie orelse return .pending;
-        var reply_pointer: ?*anyopaque = null;
-        var error_pointer: ?*linux.XcbGenericError = null;
-        const available = self.symbols.xcb_poll_for_reply(
-            self.connection.?,
-            cookie.sequence,
-            &reply_pointer,
-            &error_pointer,
-        );
-        if (available == 0) return .pending;
-        state.owner_cookie = null;
-        defer if (reply_pointer) |pointer| std.c.free(pointer);
-        defer if (error_pointer) |pointer| std.c.free(pointer);
-        if (error_pointer != null or reply_pointer == null) return self.abortWrite(state);
-        const reply: *const linux.XcbGetSelectionOwnerReply = @ptrCast(@alignCast(reply_pointer.?));
-        if (state.clear) {
-            if (reply.owner != 0) return self.abortWrite(state);
-            self.retireCurrent(state.selection);
-        } else {
-            if (reply.owner != self.owner_window) return self.abortWrite(state);
-            const provider = state.provider.?;
-            provider.timestamp = state.timestamp;
-            provider.owns_data = true;
-            const previous = self.currentProvider(provider.selection);
-            if (previous) |old| self.retireProvider(old);
-            self.setCurrentProvider(provider);
-            state.provider = null;
-        }
-        state.committed = true;
-        return .committed;
+        return .pending;
     }
 
     pub fn cleanupWrite(self: *Connection, state: *WriteState) void {
-        if (state.owner_cookie) |cookie| {
-            self.symbols.xcb_discard_reply(self.connection.?, cookie.sequence);
-            _ = self.symbols.xcb_set_selection_owner(self.connection.?, 0, state.selection, state.timestamp);
-            _ = self.queueFlush();
-        }
         if (state.provider) |provider| self.removeProvider(provider, false);
         if (state.waiting_timestamp) self.retireTimestampWindow(state) else self.destroyTimestampWindow(state);
         state.* = .{};
@@ -697,7 +891,6 @@ pub const Connection = struct {
 
     pub fn finishMutationForShutdown(self: *Connection, state: *WriteState) void {
         std.debug.assert(state.mutation_dispatched);
-        if (state.owner_cookie) |cookie| self.symbols.xcb_discard_reply(self.connection.?, cookie.sequence);
         if (state.provider) |provider| self.removeProvider(provider, false);
         state.* = .{};
     }
@@ -755,9 +948,29 @@ pub const Connection = struct {
             notify.time,
         );
         state.mutation_dispatched = true;
-        state.owner_cookie = self.symbols.xcb_get_selection_owner(self.connection.?, state.selection);
-        if (self.queueFlush() == .failed) _ = self.abortWrite(state);
+        if (state.clear) {
+            self.retireCurrent(state.selection);
+        } else {
+            const provider = state.provider.?;
+            provider.timestamp = state.timestamp;
+            provider.owns_data = true;
+            if (self.currentProvider(provider.selection)) |old| self.retireProvider(old);
+            self.setCurrentProvider(provider);
+            state.provider = null;
+        }
+        state.committed = true;
+        _ = self.queueFlush();
         return true;
+    }
+
+    pub fn isMutationTimestampEvent(
+        self: *const Connection,
+        state: *const WriteState,
+        event: *const linux.XcbGenericEvent,
+    ) bool {
+        if (!state.waiting_timestamp or (event.response_type & 0x7f) != EVENT_PROPERTY_NOTIFY) return false;
+        const notify: *const linux.XcbPropertyNotifyEvent = @ptrCast(@alignCast(event));
+        return notify.window == state.timestamp_window and notify.atom == self.atom_values[10] and notify.state == 0;
     }
 
     pub fn pollEvent(self: *Connection) ?*linux.XcbGenericEvent {
@@ -787,17 +1000,19 @@ pub const Connection = struct {
             self.releaseProviders();
             return false;
         }
-        if (self.response_count > 0) {
-            self.drivePendingResponse();
-            return self.hasWork();
-        }
         if (self.transfer_count > 0) {
-            const now = std.time.nanoTimestamp();
+            const now = clipboard_clock.nowNs();
             const index = self.transfer_cursor % self.transfer_count;
             self.transfer_cursor = (self.transfer_cursor + 1) % self.transfer_count;
             if (now - self.transfers[index].last_progress_ns >= TRANSFER_IDLE_TIMEOUT_NS) {
+                self.expireTransferResponse(self.transfers[index].id);
                 self.removeTransfer(index);
+                return self.hasWork();
             }
+        }
+        if (self.response_count > 0) {
+            self.drivePendingResponse();
+            return self.hasWork();
         }
         return self.hasWork();
     }
@@ -858,10 +1073,7 @@ pub const Connection = struct {
     }
 
     fn abortWrite(self: *Connection, state: *WriteState) SelectionResult {
-        if (state.timestamp != 0 and state.selection != 0) {
-            _ = self.symbols.xcb_set_selection_owner(self.connection.?, 0, state.selection, state.timestamp);
-            _ = self.queueFlush();
-        }
+        std.debug.assert(!state.mutation_dispatched);
         if (state.provider) |provider| self.removeProvider(provider, false);
         self.destroyTimestampWindow(state);
         state.* = .{};
@@ -982,7 +1194,9 @@ pub const Connection = struct {
 
     fn handleSelectionClear(self: *Connection, event: *const linux.XcbSelectionClearEvent) void {
         if (event.owner != self.owner_window) return;
-        self.retireCurrent(event.selection);
+        const provider = self.currentProvider(event.selection) orelse return;
+        if (!timestampBefore(provider.timestamp, event.time)) return;
+        self.retireProvider(provider);
     }
 
     fn handleSelectionRequest(self: *Connection, event: *const linux.XcbSelectionRequestEvent) void {
@@ -1021,7 +1235,7 @@ pub const Connection = struct {
                 @intCast(target_count),
                 &targets,
             );
-            self.queuePropertyResponse(event, property_cookie, property, 0, 0);
+            self.queuePropertyResponse(event, property_cookie, property, 0, 0, 0);
             return;
         }
         if (event.target == atoms_value.timestamp) {
@@ -1036,7 +1250,7 @@ pub const Connection = struct {
                 1,
                 &timestamp,
             );
-            self.queuePropertyResponse(event, property_cookie, property, 0, 0);
+            self.queuePropertyResponse(event, property_cookie, property, 0, 0, 0);
             return;
         }
         const output_type = if (event.target == atoms_value.text) atoms_value.utf8_string else event.target;
@@ -1059,7 +1273,7 @@ pub const Connection = struct {
                 @intCast(output_data.len),
                 if (output_data.len == 0) null else output_data.ptr,
             );
-            self.queuePropertyResponse(event, property_cookie, property, 0, 0);
+            self.queuePropertyResponse(event, property_cookie, property, 0, 0, 0);
             return;
         }
         if (self.transfer_count >= self.transfers.len or self.hasTransfer(event.requestor, property)) {
@@ -1079,17 +1293,19 @@ pub const Connection = struct {
             1,
             &length,
         );
+        const transfer_id = self.allocateTransferID();
         self.transfers[self.transfer_count] = .{
+            .id = transfer_id,
             .provider = provider,
             .data = output_data,
             .requestor = event.requestor,
             .property = property,
             .target = output_type,
-            .last_progress_ns = std.time.nanoTimestamp(),
+            .last_progress_ns = clipboard_clock.nowNs(),
         };
         self.transfer_count += 1;
         provider.transfer_count += 1;
-        self.queuePropertyResponse(event, property_cookie, property, event.requestor, property);
+        self.queuePropertyResponse(event, property_cookie, property, event.requestor, property, transfer_id);
     }
 
     fn sendSelectionNotify(self: *Connection, request: *const linux.XcbSelectionRequestEvent, property: u32) void {
@@ -1116,8 +1332,10 @@ pub const Connection = struct {
         property: u32,
         transfer_requestor: u32,
         transfer_property: u32,
+        transfer_id: u64,
     ) void {
         std.debug.assert(self.response_count < self.responses.len);
+        std.debug.assert((transfer_requestor == 0) == (transfer_id == 0));
         self.responses[self.response_count] = .{
             .request = request.*,
             .property_cookie = property_cookie,
@@ -1125,6 +1343,7 @@ pub const Connection = struct {
             .property = property,
             .transfer_requestor = transfer_requestor,
             .transfer_property = transfer_property,
+            .transfer_id = transfer_id,
         };
         self.response_count += 1;
         _ = self.queueFlush();
@@ -1132,6 +1351,7 @@ pub const Connection = struct {
 
     fn drivePendingResponse(self: *Connection) void {
         const response = self.responses[0];
+        std.debug.assert((response.transfer_requestor == 0) == (response.transfer_id == 0));
         var reply_pointer: ?*anyopaque = null;
         var error_pointer: ?*linux.XcbGenericError = null;
         const available = self.symbols.xcb_poll_for_reply(
@@ -1145,17 +1365,17 @@ pub const Connection = struct {
         defer if (error_pointer) |pointer| std.c.free(pointer);
         const property_error = self.symbols.xcb_request_check(self.connection.?, response.property_cookie);
         defer if (property_error) |pointer| std.c.free(pointer);
-        const success = reply_pointer != null and error_pointer == null and property_error == null;
+        const success = !response.transfer_expired and reply_pointer != null and error_pointer == null and property_error == null;
         if (response.notify) self.sendSelectionNotify(&response.request, if (success) response.property else 0);
-        if (!success and response.transfer_requestor != 0) {
-            self.removeTransferByKey(response.transfer_requestor, response.transfer_property);
+        if (!success and response.transfer_id != 0) {
+            self.removeTransferByID(response.transfer_id);
         }
         self.response_count -= 1;
         if (self.response_count > 0) {
             std.mem.copyForwards(PendingResponse, self.responses[0..self.response_count], self.responses[1 .. self.response_count + 1]);
         }
-        if (success and response.transfer_requestor != 0) {
-            self.advancePendingTransfer(response.transfer_requestor, response.transfer_property);
+        if (success and response.transfer_id != 0) {
+            self.advancePendingTransfer(response.transfer_id);
         }
     }
 
@@ -1195,7 +1415,7 @@ pub const Connection = struct {
         );
         transfer.offset += @intCast(count);
         transfer.sent_terminal = count == 0;
-        transfer.last_progress_ns = std.time.nanoTimestamp();
+        transfer.last_progress_ns = clipboard_clock.nowNs();
         self.responses[self.response_count] = .{
             .request = std.mem.zeroes(linux.XcbSelectionRequestEvent),
             .property_cookie = property_cookie,
@@ -1203,6 +1423,7 @@ pub const Connection = struct {
             .property = transfer.property,
             .transfer_requestor = transfer.requestor,
             .transfer_property = transfer.property,
+            .transfer_id = transfer.id,
             .notify = false,
         };
         self.response_count += 1;
@@ -1227,11 +1448,21 @@ pub const Connection = struct {
         return false;
     }
 
-    fn advancePendingTransfer(self: *Connection, requestor: u32, property: u32) void {
+    fn expireTransferResponse(self: *Connection, transfer_id: u64) void {
+        std.debug.assert(transfer_id != 0);
+        for (self.responses[0..self.response_count]) |*response| {
+            if (response.transfer_id != transfer_id) continue;
+            if (response.notify) response.transfer_expired = true;
+            return;
+        }
+    }
+
+    fn advancePendingTransfer(self: *Connection, transfer_id: u64) void {
+        std.debug.assert(transfer_id != 0);
         var index: u32 = 0;
         while (index < self.transfer_count) : (index += 1) {
             const transfer = &self.transfers[index];
-            if (transfer.requestor != requestor or transfer.property != property or !transfer.delete_pending) continue;
+            if (transfer.id != transfer_id or !transfer.delete_pending) continue;
             if (transfer.sent_terminal) {
                 self.removeTransfer(index);
             } else if (self.response_count < self.responses.len) {
@@ -1242,6 +1473,7 @@ pub const Connection = struct {
     }
 
     fn removeTransfer(self: *Connection, index: u32) void {
+        std.debug.assert(self.transfers[index].id != 0);
         const provider = self.transfers[index].provider;
         std.debug.assert(provider.transfer_count > 0);
         provider.transfer_count -= 1;
@@ -1251,13 +1483,22 @@ pub const Connection = struct {
         if (provider.retired and provider.transfer_count == 0) self.removeProvider(provider, true);
     }
 
-    fn removeTransferByKey(self: *Connection, requestor: u32, property: u32) void {
+    fn removeTransferByID(self: *Connection, transfer_id: u64) void {
+        std.debug.assert(transfer_id != 0);
         var index: u32 = 0;
         while (index < self.transfer_count) : (index += 1) {
-            if (self.transfers[index].requestor != requestor or self.transfers[index].property != property) continue;
+            if (self.transfers[index].id != transfer_id) continue;
             self.removeTransfer(index);
             return;
         }
+    }
+
+    fn allocateTransferID(self: *Connection) u64 {
+        const transfer_id = self.transfer_id_next;
+        std.debug.assert(transfer_id != 0);
+        std.debug.assert(transfer_id < std.math.maxInt(u64));
+        self.transfer_id_next = transfer_id + 1;
+        return transfer_id;
     }
 
     fn createOwnerWindow(self: *Connection) Progress {
@@ -1314,6 +1555,233 @@ pub const Connection = struct {
         return .failed;
     }
 };
+
+fn parseDisplay(display: []const u8) !DisplayEndpoint {
+    if (display.len == 0 or display.len > DISPLAY_SIZE_MAX) return error.UnsupportedDisplay;
+    if (display[0] == '/') {
+        const base = std.fs.path.basename(display);
+        if (base.len < 2 or base[0] != 'X') return error.UnsupportedDisplay;
+        const number = try parseDisplayNumber(base[1..]);
+        return unixEndpoint(number, 0, display);
+    }
+
+    var host: []const u8 = undefined;
+    var suffix: []const u8 = undefined;
+    if (display[0] == '[') {
+        const close = std.mem.indexOfScalar(u8, display, ']') orelse return error.UnsupportedDisplay;
+        if (close + 1 >= display.len or display[close + 1] != ':') return error.UnsupportedDisplay;
+        host = display[1..close];
+        suffix = display[close + 2 ..];
+    } else {
+        const colon = std.mem.lastIndexOfScalar(u8, display, ':') orelse return error.UnsupportedDisplay;
+        host = display[0..colon];
+        suffix = display[colon + 1 ..];
+    }
+    const dot = std.mem.indexOfScalar(u8, suffix, '.');
+    const number_text = if (dot) |index| suffix[0..index] else suffix;
+    const screen_text = if (dot) |index| suffix[index + 1 ..] else "0";
+    const number = try parseDisplayNumber(number_text);
+    const screen = std.fmt.parseInt(c_int, screen_text, 10) catch return error.UnsupportedDisplay;
+    if (screen < 0) return error.UnsupportedDisplay;
+
+    if (host.len == 0 or std.mem.eql(u8, host, "unix") or std.mem.eql(u8, host, "unix/")) {
+        var path_buffer: [108]u8 = undefined;
+        const path = std.fmt.bufPrint(&path_buffer, "/tmp/.X11-unix/X{d}", .{number}) catch
+            return error.UnsupportedDisplay;
+        var endpoint = try unixEndpoint(number, screen, path);
+        endpoint.unix_abstract_first = true;
+        return endpoint;
+    }
+    if (std.mem.endsWith(u8, host, "/unix")) {
+        var path_buffer: [108]u8 = undefined;
+        const path = std.fmt.bufPrint(&path_buffer, "/tmp/.X11-unix/X{d}", .{number}) catch
+            return error.UnsupportedDisplay;
+        var endpoint = try unixEndpoint(number, screen, path);
+        endpoint.unix_abstract_first = true;
+        return endpoint;
+    }
+    if (std.mem.eql(u8, host, "localhost")) {
+        if (number > 59535) return error.UnsupportedDisplay;
+        return .{ .kind = .tcp6, .display = number, .screen = screen, .tcp4_fallback = true };
+    }
+    if (std.mem.eql(u8, host, "127.0.0.1")) {
+        if (number > 59535) return error.UnsupportedDisplay;
+        return .{ .kind = .tcp4, .display = number, .screen = screen };
+    }
+    if (std.mem.eql(u8, host, "::1")) {
+        if (number > 59535) return error.UnsupportedDisplay;
+        return .{ .kind = .tcp6, .display = number, .screen = screen };
+    }
+    // Remote DNS is intentionally unsupported; this backend only connects to local displays.
+    return error.UnsupportedDisplay;
+}
+
+fn duplicateCancellationFd(fd: std.posix.fd_t) !std.posix.fd_t {
+    const duplicate = try std.posix.dup(fd);
+    errdefer std.posix.close(duplicate);
+    _ = try std.posix.fcntl(duplicate, std.posix.F.SETFD, std.posix.FD_CLOEXEC);
+    return duplicate;
+}
+
+fn parseDisplayNumber(text: []const u8) !u16 {
+    if (text.len == 0 or text.len > 5) return error.UnsupportedDisplay;
+    return std.fmt.parseInt(u16, text, 10) catch error.UnsupportedDisplay;
+}
+
+fn unixEndpoint(display: u16, screen: c_int, path: []const u8) !DisplayEndpoint {
+    if (path.len == 0 or path.len >= 108) return error.UnsupportedDisplay;
+    var endpoint: DisplayEndpoint = .{ .kind = .unix, .display = display, .screen = screen };
+    @memcpy(endpoint.unix_path[0..path.len], path);
+    endpoint.unix_path_length = @intCast(path.len);
+    return endpoint;
+}
+
+fn displayCandidateCount(endpoint: DisplayEndpoint) u8 {
+    if (endpoint.kind == .unix and endpoint.unix_abstract_first) return 2;
+    if (endpoint.kind == .tcp6 and endpoint.tcp4_fallback) return 2;
+    return 1;
+}
+
+fn displayAddress(endpoint: DisplayEndpoint, candidate_index: u8) !DisplayAddress {
+    std.debug.assert(candidate_index < displayCandidateCount(endpoint));
+    if (endpoint.kind == .unix) {
+        if (endpoint.unix_abstract_first and candidate_index == 0) {
+            var abstract_path: [108]u8 = @splat(0);
+            const path_length: usize = endpoint.unix_path_length;
+            if (path_length + 1 > abstract_path.len) return error.UnsupportedDisplay;
+            @memcpy(abstract_path[1 .. path_length + 1], endpoint.unix_path[0..path_length]);
+            const address = try std.net.Address.initUnix(abstract_path[0 .. path_length + 1]);
+            return .{
+                .address = address,
+                .length = @intCast(@offsetOf(std.posix.sockaddr.un, "path") + path_length + 1),
+                .kind = .unix,
+            };
+        }
+        const address = try std.net.Address.initUnix(endpoint.unix_path[0..endpoint.unix_path_length]);
+        return .{ .address = address, .length = address.getOsSockLen(), .kind = .unix };
+    }
+    const kind: DisplayKind = if (endpoint.kind == .tcp6 and endpoint.tcp4_fallback and candidate_index == 1)
+        .tcp4
+    else
+        endpoint.kind;
+    const address = switch (kind) {
+        .tcp4 => std.net.Address.initIp4(.{ 127, 0, 0, 1 }, 6000 + endpoint.display),
+        .tcp6 => std.net.Address.initIp6(
+            .{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
+            6000 + endpoint.display,
+            0,
+            0,
+        ),
+        .unix => unreachable,
+    };
+    return .{ .address = address, .length = address.getOsSockLen(), .kind = kind };
+}
+
+fn loadXauthority(self: *Connection, endpoint: DisplayEndpoint) !XauthorityMatch {
+    const allocator = self.allocator;
+    var allocated_path: []u8 = &.{};
+    defer if (allocated_path.len > 0) allocator.free(allocated_path);
+    const path = if (std.posix.getenv("XAUTHORITY")) |configured|
+        configured
+    else if (std.posix.getenv("HOME")) |home| blk: {
+        allocated_path = try std.fs.path.join(allocator, &.{ home, ".Xauthority" });
+        break :blk allocated_path;
+    } else return .{};
+    if (path.len == 0 or path.len > std.fs.max_path_bytes) return .{};
+    return loadXauthorityPath(self, endpoint, path);
+}
+
+fn loadXauthorityPath(self: *Connection, endpoint: DisplayEndpoint, path: []const u8) !XauthorityMatch {
+    const open_flags: std.posix.O = .{
+        .ACCMODE = .RDONLY,
+        .NONBLOCK = true,
+        .CLOEXEC = true,
+        .NOFOLLOW = true,
+    };
+    // O_NONBLOCK bounds FIFOs and devices. A hostile FUSE filesystem may still block open itself.
+    const fd = std.posix.open(path, open_flags, 0) catch return .{};
+    defer std.posix.close(fd);
+    const stat = std.posix.fstat(fd) catch return .{};
+    if (!std.posix.S.ISREG(stat.mode)) return .{};
+    if (stat.size > XAUTHORITY_SIZE_MAX) return .{};
+    const size_bytes: usize = @intCast(stat.size);
+    const storage = try self.allocator.alloc(u8, size_bytes);
+    errdefer self.allocator.free(storage);
+    var offset: usize = 0;
+    while (offset < storage.len) {
+        if (self.cancelRequested()) return error.Cancelled;
+        const chunk_end = @min(storage.len, offset + XAUTHORITY_READ_CHUNK_SIZE);
+        const count = std.posix.read(fd, storage[offset..chunk_end]) catch {
+            self.allocator.free(storage);
+            return .{};
+        };
+        if (count == 0) break;
+        offset += count;
+    }
+    if (offset != storage.len) {
+        const resized = self.allocator.realloc(storage, offset) catch {
+            self.allocator.free(storage);
+            return .{};
+        };
+        return parseXauthority(resized, endpoint) catch return .{ .storage = resized };
+    }
+    return parseXauthority(storage, endpoint) catch return .{ .storage = storage };
+}
+
+fn parseXauthority(storage: []u8, endpoint: DisplayEndpoint) !XauthorityMatch {
+    var hostname_buffer: [std.posix.HOST_NAME_MAX]u8 = undefined;
+    const hostname = std.posix.getenv("XAUTHLOCALHOSTNAME") orelse
+        (std.posix.gethostname(&hostname_buffer) catch &.{});
+    var best_score: u8 = 0;
+    var best_name: []u8 = &.{};
+    var best_data: []u8 = &.{};
+    var offset: usize = 0;
+    while (offset < storage.len) {
+        const family = try readXauthorityU16(storage, &offset);
+        const address = try readXauthorityField(storage, &offset);
+        const number = try readXauthorityField(storage, &offset);
+        const name = try readXauthorityField(storage, &offset);
+        const data = try readXauthorityField(storage, &offset);
+        // XDM-AUTHORIZATION-1 is intentionally unsupported; local MIT cookies cover the supported transports.
+        if (!std.mem.eql(u8, name, XAUTH_NAME)) continue;
+        if (!displayNumberMatches(number, endpoint.display)) continue;
+        const score = xauthorityAddressScore(family, address, hostname, endpoint.kind);
+        if (score <= best_score) continue;
+        best_score = score;
+        best_name = name;
+        best_data = data;
+    }
+    return .{ .storage = storage, .name = best_name, .data = best_data };
+}
+
+fn readXauthorityU16(storage: []const u8, offset: *usize) !u16 {
+    if (storage.len -| offset.* < 2) return error.InvalidXauthority;
+    const value = std.mem.readInt(u16, storage[offset.*..][0..2], .big);
+    offset.* += 2;
+    return value;
+}
+
+fn readXauthorityField(storage: []u8, offset: *usize) ![]u8 {
+    const length = try readXauthorityU16(storage, offset);
+    if (length > storage.len -| offset.*) return error.InvalidXauthority;
+    const field = storage[offset.*..][0..length];
+    offset.* += length;
+    return field;
+}
+
+fn displayNumberMatches(number: []const u8, display: u16) bool {
+    if (number.len == 0 or number.len > 5) return false;
+    return (std.fmt.parseInt(u16, number, 10) catch return false) == display;
+}
+
+fn xauthorityAddressScore(family: u16, address: []const u8, hostname: []const u8, kind: DisplayKind) u8 {
+    if (family == XAUTH_FAMILY_WILD) return 1;
+    if (family == XAUTH_FAMILY_LOCAL and std.mem.eql(u8, address, hostname)) return 4;
+    if (kind == .tcp4 and family == XAUTH_FAMILY_INTERNET and std.mem.eql(u8, address, &.{ 127, 0, 0, 1 })) return 5;
+    if (kind == .tcp6 and family == XAUTH_FAMILY_INTERNET6 and
+        std.mem.eql(u8, address, &.{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 })) return 5;
+    return 0;
+}
 
 fn propertyLongLength(max_bytes: u32) u32 {
     return max_bytes / 4 + @intFromBool(max_bytes % 4 != 0);
@@ -1518,6 +1986,7 @@ test "X11 buffers INCR deletions while a checked chunk response is pending" {
     var connection: Connection = undefined;
     var provider: Provider = .{ .selection = 1, .data = &.{}, .transfer_count = 1 };
     var transfers: [1]Transfer = .{.{
+        .id = 1,
         .provider = &provider,
         .data = &.{},
         .requestor = 10,
@@ -1525,7 +1994,15 @@ test "X11 buffers INCR deletions while a checked chunk response is pending" {
         .target = 30,
         .last_progress_ns = 1,
     }};
-    var responses: [1]PendingResponse = undefined;
+    var responses = [_]PendingResponse{.{
+        .request = std.mem.zeroes(linux.XcbSelectionRequestEvent),
+        .property_cookie = .{ .sequence = 1 },
+        .barrier_cookie = .{ .sequence = 2 },
+        .property = 20,
+        .transfer_requestor = 10,
+        .transfer_property = 20,
+        .transfer_id = 1,
+    }};
     connection.transfers = &transfers;
     connection.transfer_count = 1;
     connection.responses = &responses;
@@ -1588,6 +2065,252 @@ test "X11 timestamp events are isolated by per-mutation windows" {
     try std.testing.expect(!connection.routeWriteEvent(&successor, @ptrCast(&stale)));
     try std.testing.expect(successor.waiting_timestamp);
     try std.testing.expectEqual(@as(u32, 0), successor.timestamp);
+}
+
+test "X11 write and clear commit when SetSelectionOwner is dispatched" {
+    var symbols: linux.XcbSymbols = undefined;
+    symbols.xcb_destroy_window = fakeDestroyWindow;
+    symbols.xcb_set_selection_owner = fakeSetSelectionOwner;
+    symbols.xcb_get_selection_owner = fakeGetSelectionOwner;
+    symbols.xcb_flush = fakeFlush;
+    var fake: FakeXcb = .{};
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    connection.connection = @ptrCast(&fake);
+    connection.phase = .ready;
+    connection.output_ready_override = true;
+    connection.owner_window = 1;
+    connection.atom_values[10] = 110;
+    const old_provider = try std.testing.allocator.create(Provider);
+    old_provider.* = .{ .selection = ATOM_PRIMARY, .data = &.{}, .owns_data = true, .transfer_count = 1 };
+    const new_provider = try std.testing.allocator.create(Provider);
+    new_provider.* = .{ .selection = ATOM_PRIMARY, .data = &.{} };
+    connection.providers = .{ old_provider, new_provider, null, null };
+    connection.primary_provider = old_provider;
+    var state: WriteState = .{
+        .provider = new_provider,
+        .selection = ATOM_PRIMARY,
+        .waiting_timestamp = true,
+        .timestamp_window = 22,
+    };
+    const event: linux.XcbPropertyNotifyEvent = .{
+        .response_type = EVENT_PROPERTY_NOTIFY,
+        .pad0 = 0,
+        .sequence = 0,
+        .window = 22,
+        .atom = 110,
+        .time = 7,
+        .state = 0,
+        .pad1 = .{0} ** 3,
+    };
+
+    try std.testing.expect(connection.routeWriteEvent(&state, @ptrCast(&event)));
+    try std.testing.expect(state.mutation_dispatched);
+    try std.testing.expect(state.committed);
+    try std.testing.expect(state.provider == null);
+    try std.testing.expect(connection.primary_provider == new_provider);
+    try std.testing.expect(old_provider.retired);
+    try std.testing.expectEqual(SelectionResult.committed, connection.driveWrite(&state));
+    try std.testing.expectEqual(@as(u32, 0), fake.get_owner_count);
+
+    var clear_state: WriteState = .{
+        .clear = true,
+        .selection = ATOM_PRIMARY,
+        .waiting_timestamp = true,
+        .timestamp_window = 23,
+    };
+    var clear_event = event;
+    clear_event.window = 23;
+    clear_event.time = 8;
+    try std.testing.expect(connection.routeWriteEvent(&clear_state, @ptrCast(&clear_event)));
+    try std.testing.expect(clear_state.committed);
+    try std.testing.expect(connection.primary_provider == null);
+    try std.testing.expectEqual(@as(u32, 0), fake.get_owner_count);
+
+    connection.releaseProviders();
+}
+
+test "X11 stale and equal SelectionClear events preserve a newer provider generation" {
+    var connection: Connection = undefined;
+    connection.owner_window = 1;
+    var provider: Provider = .{
+        .selection = ATOM_PRIMARY,
+        .data = &.{},
+        .timestamp = 7,
+        .owns_data = true,
+        .transfer_count = 1,
+    };
+    connection.providers = .{ &provider, null, null, null };
+    connection.primary_provider = &provider;
+    var event: linux.XcbSelectionClearEvent = .{
+        .response_type = EVENT_SELECTION_CLEAR,
+        .pad0 = 0,
+        .sequence = 0,
+        .time = 6,
+        .owner = 1,
+        .selection = ATOM_PRIMARY,
+    };
+
+    connection.handleSelectionClear(&event);
+    try std.testing.expect(connection.primary_provider == &provider);
+    event.time = 7;
+    connection.handleSelectionClear(&event);
+    try std.testing.expect(connection.primary_provider == &provider);
+    event.time = 8;
+    connection.handleSelectionClear(&event);
+    try std.testing.expect(connection.primary_provider == null);
+    try std.testing.expect(provider.retired);
+}
+
+test "X11 INCR expiry runs while provider responses remain pending" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    symbols.xcb_poll_for_reply = fakePendingReply;
+    var fake: FakeXcb = .{};
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    connection.connection = @ptrCast(&fake);
+    connection.phase = .ready;
+    var provider: Provider = .{ .selection = ATOM_PRIMARY, .data = &.{}, .transfer_count = 1 };
+    var transfers = [_]Transfer{.{
+        .id = 1,
+        .provider = &provider,
+        .data = &.{},
+        .requestor = 10,
+        .property = 20,
+        .target = 30,
+        .last_progress_ns = clipboard_clock.nowNs() - TRANSFER_IDLE_TIMEOUT_NS,
+    }};
+    var responses = [_]PendingResponse{.{
+        .request = std.mem.zeroes(linux.XcbSelectionRequestEvent),
+        .property_cookie = .{ .sequence = 1 },
+        .barrier_cookie = .{ .sequence = 2 },
+        .property = 20,
+    }};
+    connection.transfers = &transfers;
+    connection.transfer_count = 1;
+    connection.responses = &responses;
+    connection.response_count = 1;
+
+    _ = connection.driveProviderUnit();
+
+    try std.testing.expectEqual(@as(u32, 0), connection.transfer_count);
+    try std.testing.expectEqual(@as(u32, 0), provider.transfer_count);
+    try std.testing.expectEqual(@as(u32, 1), connection.response_count);
+}
+
+test "X11 expired initial INCR response refuses its delayed checked reply" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    symbols.xcb_poll_for_reply = fakePollForReply;
+    symbols.xcb_request_check = fakeRequestCheck;
+    symbols.xcb_send_event = fakeSendEvent;
+    symbols.xcb_flush = fakeFlush;
+    var fake: FakeXcb = .{ .replies_ready = true };
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    connection.connection = @ptrCast(&fake);
+    connection.phase = .ready;
+    connection.output_ready_override = true;
+    var provider: Provider = .{ .selection = ATOM_PRIMARY, .data = &.{}, .transfer_count = 1 };
+    var transfers = [_]Transfer{.{
+        .id = 1,
+        .provider = &provider,
+        .data = &.{},
+        .requestor = 10,
+        .property = 20,
+        .target = 30,
+        .last_progress_ns = clipboard_clock.nowNs() - TRANSFER_IDLE_TIMEOUT_NS,
+    }};
+    var responses = [_]PendingResponse{.{
+        .request = .{
+            .response_type = EVENT_SELECTION_REQUEST,
+            .pad0 = 0,
+            .sequence = 0,
+            .time = 1,
+            .owner = 2,
+            .requestor = 10,
+            .selection = ATOM_PRIMARY,
+            .target = 30,
+            .property = 20,
+        },
+        .property_cookie = .{ .sequence = 1 },
+        .barrier_cookie = .{ .sequence = 2 },
+        .property = 20,
+        .transfer_requestor = 10,
+        .transfer_property = 20,
+        .transfer_id = 1,
+    }};
+    connection.transfers = &transfers;
+    connection.transfer_count = 1;
+    connection.responses = &responses;
+    connection.response_count = 1;
+
+    _ = connection.driveProviderUnit();
+    _ = connection.driveProviderUnit();
+
+    try std.testing.expectEqual(@as(u32, 0), connection.transfer_count);
+    try std.testing.expectEqual(@as(u32, 0), connection.response_count);
+    try std.testing.expectEqual(@as(u32, 0), fake.last_notify_property);
+    try std.testing.expectEqual(@as(u32, 1), fake.send_event_count);
+}
+
+test "X11 delayed expired INCR response preserves replacement transfer" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    symbols.xcb_poll_for_reply = fakePollForReply;
+    symbols.xcb_request_check = fakeRequestCheck;
+    symbols.xcb_send_event = fakeSendEvent;
+    symbols.xcb_flush = fakeFlush;
+    var fake: FakeXcb = .{ .replies_ready = true };
+    var connection = Connection.init(std.testing.allocator, &symbols, 2);
+    connection.connection = @ptrCast(&fake);
+    connection.phase = .ready;
+    connection.output_ready_override = true;
+    var provider_a: Provider = .{ .selection = ATOM_PRIMARY, .data = &.{}, .transfer_count = 1 };
+    var provider_b: Provider = .{ .selection = ATOM_PRIMARY, .data = &.{}, .transfer_count = 0 };
+    var transfers: [2]Transfer = undefined;
+    transfers[0] = .{
+        .id = 1,
+        .provider = &provider_a,
+        .data = &.{},
+        .requestor = 10,
+        .property = 20,
+        .target = 30,
+        .last_progress_ns = clipboard_clock.nowNs() - TRANSFER_IDLE_TIMEOUT_NS,
+    };
+    var responses = [_]PendingResponse{.{
+        .request = std.mem.zeroes(linux.XcbSelectionRequestEvent),
+        .property_cookie = .{ .sequence = 1 },
+        .barrier_cookie = .{ .sequence = 2 },
+        .property = 20,
+        .transfer_requestor = 10,
+        .transfer_property = 20,
+        .transfer_id = 1,
+    }};
+    connection.transfers = &transfers;
+    connection.transfer_count = 1;
+    connection.responses = &responses;
+    connection.response_count = 1;
+
+    fake.replies_ready = false;
+    _ = connection.driveProviderUnit();
+    try std.testing.expectEqual(@as(u32, 0), connection.transfer_count);
+
+    transfers[0] = .{
+        .id = 2,
+        .provider = &provider_b,
+        .data = &.{},
+        .requestor = 10,
+        .property = 20,
+        .target = 30,
+        .last_progress_ns = clipboard_clock.nowNs(),
+    };
+    connection.transfer_count = 1;
+    provider_b.transfer_count = 1;
+    fake.replies_ready = true;
+    _ = connection.driveProviderUnit();
+
+    try std.testing.expectEqual(@as(u32, 1), connection.transfer_count);
+    try std.testing.expect(connection.transfers[0].provider == &provider_b);
+    try std.testing.expectEqual(@as(u32, 1), provider_b.transfer_count);
 }
 
 test "X11 cancelled timestamp windows remain tombstoned until their event is consumed" {
@@ -1665,20 +2388,270 @@ test "X11 event polling is inert until connection initialization completes" {
     try std.testing.expect(connection.pollEvent() == null);
 }
 
-test "X11 connection establishment does not block a drive unit" {
+test "X11 DISPLAY parser accepts bounded local transports and rejects remote hosts" {
+    const accepted = [_]struct { display: []const u8, kind: DisplayKind, number: u16, screen: c_int }{
+        .{ .display = ":0", .kind = .unix, .number = 0, .screen = 0 },
+        .{ .display = ":12.3", .kind = .unix, .number = 12, .screen = 3 },
+        .{ .display = "unix:1", .kind = .unix, .number = 1, .screen = 0 },
+        .{ .display = "unix/:2", .kind = .unix, .number = 2, .screen = 0 },
+        .{ .display = "host/unix:3", .kind = .unix, .number = 3, .screen = 0 },
+        .{ .display = "/tmp/.X11-unix/X4", .kind = .unix, .number = 4, .screen = 0 },
+        .{ .display = "localhost:10.1", .kind = .tcp6, .number = 10, .screen = 1 },
+        .{ .display = "127.0.0.1:11", .kind = .tcp4, .number = 11, .screen = 0 },
+        .{ .display = "[::1]:12", .kind = .tcp6, .number = 12, .screen = 0 },
+    };
+    for (accepted) |expected| {
+        const endpoint = try parseDisplay(expected.display);
+        try std.testing.expectEqual(expected.kind, endpoint.kind);
+        try std.testing.expectEqual(expected.number, endpoint.display);
+        try std.testing.expectEqual(expected.screen, endpoint.screen);
+    }
+    try std.testing.expect((try parseDisplay(":0")).unix_abstract_first);
+    try std.testing.expect((try parseDisplay("localhost:0")).tcp4_fallback);
+    try std.testing.expect(!(try parseDisplay("127.0.0.1:0")).tcp4_fallback);
+    try std.testing.expect(!(try parseDisplay("[::1]:0")).tcp4_fallback);
+    const rejected = [_][]const u8{
+        "", "example.com:0", "192.0.2.1:0", "[::2]:0", "localhost", ":", ":1.-1", "localhost:59536",
+    };
+    for (rejected) |display| try std.testing.expectError(error.UnsupportedDisplay, parseDisplay(display));
+}
+
+test "X11 Xauthority parser selects exact loopback MIT cookie and rejects truncation" {
+    var bytes: std.ArrayListUnmanaged(u8) = .{};
+    defer bytes.deinit(std.testing.allocator);
+    try appendTestXauthorityRecord(&bytes, XAUTH_FAMILY_WILD, &.{}, "10", XAUTH_NAME, "wild");
+    try appendTestXauthorityRecord(&bytes, XAUTH_FAMILY_INTERNET, &.{ 127, 0, 0, 1 }, "10", XAUTH_NAME, "best");
+    const endpoint = try parseDisplay("127.0.0.1:10");
+    const match = try parseXauthority(bytes.items, endpoint);
+    try std.testing.expectEqualStrings(XAUTH_NAME, match.name);
+    try std.testing.expectEqualStrings("best", match.data);
+    try std.testing.expectError(error.InvalidXauthority, parseXauthority(bytes.items[0 .. bytes.items.len - 1], endpoint));
+}
+
+test "X11 Xauthority loading accepts only bounded regular files and observes cancellation" {
+    try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
-    symbols.xcb_connect = fakeSlowConnect;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    const endpoint = try parseDisplay("127.0.0.1:10");
+    var bytes: std.ArrayListUnmanaged(u8) = .{};
+    defer bytes.deinit(std.testing.allocator);
+    try appendTestXauthorityRecord(&bytes, XAUTH_FAMILY_INTERNET, &.{ 127, 0, 0, 1 }, "10", XAUTH_NAME, "cookie");
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const file = try tmp.dir.createFile("authority", .{});
+    try file.writeAll(bytes.items);
+    file.close();
+    const dir_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir_path);
+    const authority_path = try std.fs.path.join(std.testing.allocator, &.{ dir_path, "authority" });
+    defer std.testing.allocator.free(authority_path);
+
+    var match = try loadXauthorityPath(&connection, endpoint, authority_path);
+    defer match.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("cookie", match.data);
+
+    const oversized = try tmp.dir.createFile("oversized", .{});
+    try oversized.setEndPos(XAUTHORITY_SIZE_MAX + 1);
+    oversized.close();
+    const oversized_path = try std.fs.path.join(std.testing.allocator, &.{ dir_path, "oversized" });
+    defer std.testing.allocator.free(oversized_path);
+    var oversized_match = try loadXauthorityPath(&connection, endpoint, oversized_path);
+    defer oversized_match.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), oversized_match.storage.len);
+
+    connection.requestShutdown();
+    try std.testing.expectError(error.Cancelled, loadXauthorityPath(&connection, endpoint, authority_path));
+}
+
+test "X11 Xauthority FIFO is rejected without waiting for a writer" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    const endpoint = try parseDisplay(":0");
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir_path);
+    const fifo_path = try std.fs.path.join(std.testing.allocator, &.{ dir_path, "authority.fifo" });
+    defer std.testing.allocator.free(fifo_path);
+    const fifo_path_z = try std.testing.allocator.dupeZ(u8, fifo_path);
+    defer std.testing.allocator.free(fifo_path_z);
+    if (mkfifo(fifo_path_z, 0o600) != 0) return error.MkfifoFailed;
+
+    const started_ns = clipboard_clock.nowNs();
+    var match = try loadXauthorityPath(&connection, endpoint, fifo_path);
+    defer match.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), match.storage.len);
+    try std.testing.expect(clipboard_clock.nowNs() - started_ns < 500 * std.time.ns_per_ms);
+}
+
+test "X11 bare DISPLAY connects to an abstract-only listener" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    connection.connect_stage = .display;
+    const listener = try testDisplayListener(.unix, 0);
+    defer std.posix.close(listener.fd);
+    var endpoint = listener.endpoint;
+
+    const fd = try connection.connectSocket(&endpoint);
+    defer std.posix.close(fd);
+    try std.testing.expectEqual(DisplayKind.unix, endpoint.kind);
+    try std.testing.expectEqual(ConnectStage.socket, connection.connect_stage);
+    try std.testing.expectEqual(@as(u8, 1), connection.test_connect_attempt_count);
+    try std.testing.expectEqual(@as(u8, 0), connection.test_connect_stage_restore_count);
+}
+
+test "X11 bare DISPLAY falls back to a filesystem listener" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    connection.connect_stage = .display;
+    const listener = try testDisplayListener(.unix, 1);
+    defer std.posix.close(listener.fd);
+    var endpoint = listener.endpoint;
+    defer std.posix.unlink(endpoint.unix_path[0..endpoint.unix_path_length]) catch {};
+
+    const fd = try connection.connectSocket(&endpoint);
+    defer std.posix.close(fd);
+    try std.testing.expectEqual(DisplayKind.unix, endpoint.kind);
+    try std.testing.expectEqual(ConnectStage.socket, connection.connect_stage);
+    try std.testing.expectEqual(@as(u8, 2), connection.test_connect_attempt_count);
+    try std.testing.expectEqual(@as(u8, 1), connection.test_connect_stage_restore_count);
+}
+
+test "X11 localhost DISPLAY connects to an IPv6-only listener" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    connection.connect_stage = .display;
+    const listener = testDisplayListener(.tcp6, 0) catch |err| switch (err) {
+        error.AddressFamilyNotSupported => return error.SkipZigTest,
+        else => return err,
+    };
+    defer std.posix.close(listener.fd);
+    var endpoint = listener.endpoint;
+
+    const fd = try connection.connectSocket(&endpoint);
+    defer std.posix.close(fd);
+    try std.testing.expectEqual(DisplayKind.tcp6, endpoint.kind);
+    try std.testing.expectEqual(ConnectStage.socket, connection.connect_stage);
+    try std.testing.expectEqual(@as(u8, 1), connection.test_connect_attempt_count);
+    try std.testing.expectEqual(@as(u8, 0), connection.test_connect_stage_restore_count);
+}
+
+test "X11 localhost DISPLAY falls back to an IPv4-only listener" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    connection.connect_stage = .display;
+    const listener = try testDisplayListener(.tcp4, 1);
+    defer std.posix.close(listener.fd);
+    var endpoint = listener.endpoint;
+
+    const fd = try connection.connectSocket(&endpoint);
+    defer std.posix.close(fd);
+    try std.testing.expectEqual(DisplayKind.tcp4, endpoint.kind);
+    try std.testing.expectEqual(ConnectStage.socket, connection.connect_stage);
+    try std.testing.expectEqual(@as(u8, 2), connection.test_connect_attempt_count);
+    try std.testing.expectEqual(@as(u8, 1), connection.test_connect_stage_restore_count);
+}
+
+test "X11 shutdown before fd publication exits without joining early" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    connection.requestShutdown();
+    connection.requestShutdown();
+    try std.testing.expectEqual(Progress.pending, connection.drive());
+    try expectShutdownReady(&connection);
+    connection.deinit();
+}
+
+test "X11 shutdown observes cancellation during nonblocking connect progression" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    const sockets = try testSocketPair();
+    defer std.posix.close(sockets[1]);
+    connection.test_connected_fd = sockets[0];
+    connection.test_connect_pending = true;
+    try std.testing.expectEqual(Progress.pending, connection.drive());
+    try expectConnectStage(&connection, .connecting);
+    connection.requestShutdown();
+    try expectShutdownReady(&connection);
+    connection.deinit();
+}
+
+test "X11 connection establishment does not block a drive unit" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    symbols.xcb_connect_to_fd = fakeSlowConnectToFd;
     symbols.xcb_connection_has_error = fakeConnectionHasError;
     symbols.xcb_disconnect = fakeDisconnect;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    const sockets = try testSocketPair();
+    defer std.posix.close(sockets[1]);
+    connection.test_connected_fd = sockets[0];
 
-    const started_ns = std.time.nanoTimestamp();
+    const started_ns = clipboard_clock.nowNs();
     try std.testing.expectEqual(Progress.pending, connection.drive());
-    try std.testing.expect(std.time.nanoTimestamp() - started_ns < 50 * std.time.ns_per_ms);
+    try std.testing.expect(clipboard_clock.nowNs() - started_ns < 50 * std.time.ns_per_ms);
 
     std.Thread.sleep(250 * std.time.ns_per_ms);
     try std.testing.expectEqual(Progress.pending, connection.drive());
     connection.deinit();
+}
+
+test "X11 shutdown cancels a silent setup connection" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    symbols.xcb_connect_to_fd = fakeSilentConnectToFd;
+    symbols.xcb_connection_has_error = fakeConnectionHasError;
+    symbols.xcb_disconnect = fakeDisconnect;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    const sockets = try testSocketPair();
+    defer std.posix.close(sockets[1]);
+    connection.test_connected_fd = sockets[0];
+    try std.testing.expectEqual(Progress.pending, connection.drive());
+    try expectConnectStage(&connection, .setup);
+    connection.requestShutdown();
+    connection.requestShutdown();
+    try expectShutdownReady(&connection);
+    connection.deinit();
+    var byte: [1]u8 = undefined;
+    try std.testing.expectEqual(@as(usize, 0), try std.posix.read(sockets[1], &byte));
+}
+
+test "X11 shutdown immediately after setup completion still joins and closes" {
+    try clipboard_clock.init();
+    var symbols: linux.XcbSymbols = undefined;
+    symbols.xcb_connect_to_fd = fakeImmediateConnectToFd;
+    symbols.xcb_disconnect = fakeDisconnect;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    const sockets = try testSocketPair();
+    defer std.posix.close(sockets[1]);
+    connection.test_connected_fd = sockets[0];
+    fake_slow_connection = .{};
+    fake_setup_completed.store(false, .release);
+
+    try std.testing.expectEqual(Progress.pending, connection.drive());
+    const deadline_ns = clipboard_clock.nowNs() + 2 * std.time.ns_per_s;
+    while (!fake_setup_completed.load(.acquire) and clipboard_clock.nowNs() < deadline_ns) {
+        std.Thread.sleep(std.time.ns_per_ms);
+    }
+    if (!fake_setup_completed.load(.acquire)) {
+        reportConnectStage(&connection, "X11 setup completion timed out");
+        connection.requestShutdown();
+        try expectShutdownReady(&connection);
+        connection.deinit();
+        return error.TestConnectStageTimeout;
+    }
+    connection.requestShutdown();
+    try expectShutdownReady(&connection);
+    connection.deinit();
+    try std.testing.expect(fake_slow_connection.disconnected);
 }
 
 const FakeXcb = struct {
@@ -1687,8 +2660,52 @@ const FakeXcb = struct {
     error_sequence: u32 = 0,
     flush_count: u32 = 0,
     discard_count: u32 = 0,
+    get_owner_count: u32 = 0,
     disconnected: bool = false,
+    send_event_count: u32 = 0,
+    last_notify_property: u32 = std.math.maxInt(u32),
 };
+
+fn expectConnectStage(connection: *Connection, expected: ConnectStage) !void {
+    const deadline_ns = clipboard_clock.nowNs() + 2 * std.time.ns_per_s;
+    var exited_early = false;
+    while (clipboard_clock.nowNs() < deadline_ns) {
+        connection.connect_mutex.lock();
+        const stage = connection.connect_stage;
+        const exited = connection.connect_exited.load(.acquire);
+        connection.connect_mutex.unlock();
+        if (stage == expected) return;
+        if (exited) {
+            exited_early = true;
+            break;
+        }
+        std.Thread.sleep(std.time.ns_per_ms);
+    }
+    var message_buffer: [128]u8 = undefined;
+    const message = try std.fmt.bufPrint(&message_buffer, "expected X11 connect stage {s}", .{@tagName(expected)});
+    reportConnectStage(connection, message);
+    connection.requestShutdown();
+    try expectShutdownReady(connection);
+    return if (exited_early) error.TestConnectExitedEarly else error.TestConnectStageTimeout;
+}
+
+fn expectShutdownReady(connection: *Connection) !void {
+    const deadline_ns = clipboard_clock.nowNs() + 2 * std.time.ns_per_s;
+    while (clipboard_clock.nowNs() < deadline_ns) {
+        if (connection.shutdownReady()) return;
+        std.Thread.sleep(std.time.ns_per_ms);
+    }
+    reportConnectStage(connection, "X11 connect shutdown timed out");
+    return error.TestConnectShutdownTimeout;
+}
+
+fn reportConnectStage(connection: *Connection, message: []const u8) void {
+    connection.connect_mutex.lock();
+    const stage = connection.connect_stage;
+    const exited = connection.connect_exited.load(.acquire);
+    connection.connect_mutex.unlock();
+    std.debug.print("{s}: stage={s}, exited={}\n", .{ message, @tagName(stage), exited });
+}
 
 test "X11 atom initialization polls one reply per drive without blocking" {
     var symbols: linux.XcbSymbols = undefined;
@@ -1764,10 +2781,105 @@ fn fakeConnectionHasError(_: *linux.XcbConnection) callconv(.c) c_int {
     return 0;
 }
 
-fn fakeSlowConnect(_: ?[*:0]const u8, screen: ?*c_int) callconv(.c) ?*linux.XcbConnection {
+fn fakeSlowConnectToFd(fd: c_int, _: ?*linux.XcbAuthInfo) callconv(.c) ?*linux.XcbConnection {
     std.Thread.sleep(200 * std.time.ns_per_ms);
-    screen.?.* = 0;
+    std.posix.close(fd);
     return @ptrCast(&fake_slow_connection);
+}
+
+fn fakeSilentConnectToFd(fd: c_int, _: ?*linux.XcbAuthInfo) callconv(.c) ?*linux.XcbConnection {
+    var byte: [1]u8 = undefined;
+    _ = std.posix.read(fd, &byte) catch {};
+    std.posix.close(fd);
+    return null;
+}
+
+var fake_setup_completed: std.atomic.Value(bool) = .init(false);
+
+fn fakeImmediateConnectToFd(fd: c_int, _: ?*linux.XcbAuthInfo) callconv(.c) ?*linux.XcbConnection {
+    std.posix.close(fd);
+    fake_setup_completed.store(true, .release);
+    return @ptrCast(&fake_slow_connection);
+}
+
+fn testSocketPair() ![2]std.posix.fd_t {
+    var sockets: [2]std.posix.fd_t = undefined;
+    if (std.c.socketpair(std.posix.AF.UNIX, std.posix.SOCK.STREAM | std.posix.SOCK.CLOEXEC, 0, &sockets) != 0) {
+        return error.SocketPairFailed;
+    }
+    return sockets;
+}
+
+const TestDisplayListener = struct {
+    fd: std.posix.fd_t,
+    endpoint: DisplayEndpoint,
+};
+
+fn testDisplayListener(kind: DisplayKind, candidate_index: u8) !TestDisplayListener {
+    std.debug.assert(kind == .unix or kind == .tcp4 or kind == .tcp6);
+    std.debug.assert(candidate_index < 2);
+    const seed: u16 = @truncate(@as(u128, @bitCast(clipboard_clock.nowNs())));
+    var attempt: u16 = 0;
+    while (attempt < 128) : (attempt += 1) {
+        const display: u16 = if (kind == .unix)
+            seed +% attempt
+        else
+            (seed +% attempt) % 59536;
+        const endpoint = if (kind == .unix)
+            try parseDisplayNumberEndpoint(display)
+        else
+            DisplayEndpoint{ .kind = .tcp6, .display = display, .screen = 0, .tcp4_fallback = true };
+        const candidate = try displayAddress(endpoint, candidate_index);
+        std.debug.assert(candidate.kind == kind);
+        const fd = try std.posix.socket(
+            candidate.address.any.family,
+            std.posix.SOCK.STREAM | std.posix.SOCK.CLOEXEC,
+            0,
+        );
+        std.posix.bind(fd, &candidate.address.any, candidate.length) catch |err| {
+            std.posix.close(fd);
+            if (err == error.AddressInUse or err == error.AccessDenied) continue;
+            return err;
+        };
+        errdefer std.posix.close(fd);
+        try std.posix.listen(fd, 1);
+        return .{ .fd = fd, .endpoint = endpoint };
+    }
+    return error.NoTestDisplayAddress;
+}
+
+fn parseDisplayNumberEndpoint(display: u16) !DisplayEndpoint {
+    var path_buffer: [108]u8 = undefined;
+    const path = try std.fmt.bufPrint(&path_buffer, "/tmp/.X11-unix/X{d}", .{display});
+    var endpoint = try unixEndpoint(display, 0, path);
+    endpoint.unix_abstract_first = true;
+    return endpoint;
+}
+
+extern fn mkfifo(path: [*:0]const u8, mode: std.posix.mode_t) c_int;
+
+fn appendTestXauthorityRecord(
+    bytes: *std.ArrayListUnmanaged(u8),
+    family: u16,
+    address: []const u8,
+    number: []const u8,
+    name: []const u8,
+    data: []const u8,
+) !void {
+    var family_bytes: [2]u8 = undefined;
+    std.mem.writeInt(u16, &family_bytes, family, .big);
+    try bytes.appendSlice(std.testing.allocator, &family_bytes);
+    try appendTestXauthorityField(bytes, address);
+    try appendTestXauthorityField(bytes, number);
+    try appendTestXauthorityField(bytes, name);
+    try appendTestXauthorityField(bytes, data);
+}
+
+fn appendTestXauthorityField(bytes: *std.ArrayListUnmanaged(u8), field: []const u8) !void {
+    var length_bytes: [2]u8 = undefined;
+    std.mem.writeInt(u16, &length_bytes, @intCast(field.len), .big);
+    try bytes.appendSlice(std.testing.allocator, &length_bytes);
+    try bytes.appendSlice(std.testing.allocator, field);
 }
 
 var fake_slow_connection: FakeXcb = .{};
@@ -1793,6 +2905,53 @@ fn fakeFlush(connection: *linux.XcbConnection) callconv(.c) c_int {
     const fake: *FakeXcb = @ptrCast(@alignCast(connection));
     fake.flush_count += 1;
     return 1;
+}
+
+fn fakeSetSelectionOwner(
+    connection: *linux.XcbConnection,
+    _: u32,
+    _: u32,
+    _: u32,
+) callconv(.c) linux.XcbCookie {
+    const fake: *FakeXcb = @ptrCast(@alignCast(connection));
+    const sequence = fake.next_sequence;
+    fake.next_sequence += 1;
+    return .{ .sequence = sequence };
+}
+
+fn fakeGetSelectionOwner(connection: *linux.XcbConnection, _: u32) callconv(.c) linux.XcbCookie {
+    const fake: *FakeXcb = @ptrCast(@alignCast(connection));
+    fake.get_owner_count += 1;
+    const sequence = fake.next_sequence;
+    fake.next_sequence += 1;
+    return .{ .sequence = sequence };
+}
+
+fn fakePendingReply(
+    _: *linux.XcbConnection,
+    _: u32,
+    _: *?*anyopaque,
+    _: *?*linux.XcbGenericError,
+) callconv(.c) c_int {
+    return 0;
+}
+
+fn fakeRequestCheck(_: *linux.XcbConnection, _: linux.XcbCookie) callconv(.c) ?*linux.XcbGenericError {
+    return null;
+}
+
+fn fakeSendEvent(
+    connection: *linux.XcbConnection,
+    _: u8,
+    _: u32,
+    _: u32,
+    event: [*]const u8,
+) callconv(.c) linux.XcbCookie {
+    const fake: *FakeXcb = @ptrCast(@alignCast(connection));
+    const notify: *const linux.XcbSelectionNotifyEvent = @ptrCast(@alignCast(event));
+    fake.send_event_count += 1;
+    fake.last_notify_property = notify.property;
+    return .{ .sequence = fake.next_sequence };
 }
 
 fn fakePollForReply(
