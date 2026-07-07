@@ -1,4 +1,4 @@
-import { dlopen, ptr, type Library } from "../platform/ffi.js"
+import { dlopen, type Library } from "../platform/ffi.js"
 import {
   NativeClipboardCancelStatus,
   NativeClipboardCopyStatus,
@@ -116,10 +116,10 @@ export class ClipboardNativeWorkerTestLib {
     const output = new Uint32Array(1)
     const status = this.library.symbols.clipboardTestOperationStart(
       service,
-      request.byteLength === 0 ? null : ptr(request),
+      request.byteLength === 0 ? null : request,
       request.byteLength,
       delayMs,
-      ptr(output),
+      output,
     )
     const operation = output[0] === 0 ? null : (output[0] as ClipboardOperationHandle)
     if (operation) this.operations.add(operation)
@@ -136,14 +136,14 @@ export class ClipboardNativeWorkerTestLib {
     return this.startOperation((output) =>
       this.library.symbols.clipboardReadOperationStart(
         service,
-        request.byteLength === 0 ? null : ptr(request),
+        request.byteLength === 0 ? null : request,
         request.byteLength,
         selection,
         maxBytes,
         64 * 1024 * 1024,
         512 * 1024 * 1024,
         timeoutMs,
-        ptr(output),
+        output,
       ),
     )
   }
@@ -157,11 +157,11 @@ export class ClipboardNativeWorkerTestLib {
     return this.startOperation((output) =>
       this.library.symbols.clipboardWriteOperationStart(
         service,
-        text.byteLength === 0 ? null : ptr(text),
+        text.byteLength === 0 ? null : text,
         text.byteLength,
         selection,
         timeoutMs,
-        ptr(output),
+        output,
       ),
     )
   }
@@ -172,7 +172,7 @@ export class ClipboardNativeWorkerTestLib {
     timeoutMs: number,
   ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
     return this.startOperation((output) =>
-      this.library.symbols.clipboardClearOperationStart(service, selection, timeoutMs, ptr(output)),
+      this.library.symbols.clipboardClearOperationStart(service, selection, timeoutMs, output),
     )
   }
 
@@ -194,7 +194,7 @@ export class ClipboardNativeWorkerTestLib {
     if (!this.operations.has(operation)) return NativeClipboardCopyStatus.InvalidHandle
     return this.library.symbols.clipboardOperationResultMimeCopy(
       operation,
-      output.byteLength === 0 ? null : ptr(output),
+      output.byteLength === 0 ? null : output,
       output.byteLength,
     )
   }
@@ -207,7 +207,7 @@ export class ClipboardNativeWorkerTestLib {
     if (!this.operations.has(operation)) return NativeClipboardCopyStatus.InvalidHandle
     return this.library.symbols.clipboardOperationResultDataCopy(
       operation,
-      output.byteLength === 0 ? null : ptr(output),
+      output.byteLength === 0 ? null : output,
       output.byteLength,
     )
   }
