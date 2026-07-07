@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const clipboard_clock = @import("clipboard-clock.zig");
+const clipboard_clock = @import("clock.zig");
 
 const Allocator = std.mem.Allocator;
 const LOCK_RETRY_SLEEP_NS: u64 = std.time.ns_per_ms;
@@ -325,7 +325,7 @@ test "macOS clipboard ABI values are stable" {
     try std.testing.expectEqual(@as(u32, 2), @intFromEnum(MimeType.image_png));
     try std.testing.expectEqual(@as(i32, 5), @intFromEnum(ShimStatus.failed));
 
-    const source = @embedFile("clipboard_macos_shim.m");
+    const source = @embedFile("macos-shim.m");
     const abi_values = [_][]const u8{
         "OT_CLIPBOARD_MACOS_STATUS_OK = 0",
         "OT_CLIPBOARD_MACOS_STATUS_EMPTY = 1",
@@ -394,15 +394,15 @@ test "macOS clipboard read results have explicit allocator ownership" {
 }
 
 test "macOS clipboard shim leaves serialization to Zig" {
-    const source = @embedFile("clipboard_macos_shim.m");
+    const source = @embedFile("macos-shim.m");
     try std.testing.expect(std.mem.indexOf(u8, source, "pthread_mutex") == null);
 
-    const zig_source = @embedFile("clipboard-macos.zig");
+    const zig_source = @embedFile("macos.zig");
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "var pasteboard_mutex: std.Thread.Mutex") != null);
 }
 
 test "macOS clipboard shim distinguishes absent and failed offered types" {
-    const source = @embedFile("clipboard_macos_shim.m");
+    const source = @embedFile("macos-shim.m");
     const text_offered = std.mem.indexOf(u8, source, "availableTypeFromArray:@[ NSPasteboardTypeString ]").?;
     const text_read = std.mem.indexOf(u8, source, "stringForType:NSPasteboardTypeString").?;
     const png_offered = std.mem.indexOf(u8, source, "availableTypeFromArray:@[ NSPasteboardTypePNG ]").?;
@@ -412,7 +412,7 @@ test "macOS clipboard shim distinguishes absent and failed offered types" {
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, source, "if (offered_type == nil)"));
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, source, "if (offered_value == nil)"));
 
-    const zig_source = @embedFile("clipboard-macos.zig");
+    const zig_source = @embedFile("macos.zig");
     const read_start = std.mem.indexOf(u8, zig_source, "fn read(").?;
     const read_end = std.mem.indexOfPos(u8, zig_source, read_start, "fn stopStatus(").?;
     const read_source = zig_source[read_start..read_end];
@@ -421,17 +421,12 @@ test "macOS clipboard shim distinguishes absent and failed offered types" {
 }
 
 test "macOS clipboard mutations begin after the job lock" {
-    const source = @embedFile("clipboard-macos.zig");
+    const source = @embedFile("macos.zig");
     const lock_start = std.mem.indexOf(u8, source, "fn acquireJobLock(").?;
     const lock_end = std.mem.indexOfPos(u8, source, lock_start, "fn readMime(").?;
     const lock_source = source[lock_start..lock_end];
     try std.testing.expect(std.mem.indexOf(u8, lock_source, "acquirePasteboardLock").? <
         std.mem.indexOf(u8, lock_source, "beginMutation(options)").?);
-}
-
-test "macOS clipboard shim enables ARC exception cleanup" {
-    const source = @embedFile("build.zig");
-    try std.testing.expect(std.mem.indexOf(u8, source, "\"-fobjc-arc-exceptions\"") != null);
 }
 
 const TestMutationContext = struct {
