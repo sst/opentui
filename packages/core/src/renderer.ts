@@ -1016,8 +1016,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
    *   - Calls `lib.createRenderer` → native Zig allocation
    *   - Registers in the process-wide `rendererTracker`
    *   - Adds `process.on(...)` listeners for SIGWINCH (process.stdout only),
-   *     "warning", "uncaughtException", "unhandledRejection", "beforeExit",
-   *     plus the configured `exitSignals`
+   *     "warning", "uncaughtException", "unhandledRejection", plus the
+   *     configured `exitSignals`
    *   - Replaces `global.requestAnimationFrame` with the renderer's impl
    *   - When `setupTerminal()` is called, it will put `stdin` in raw mode and
    *     call `stdin.resume()`
@@ -1153,6 +1153,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       "SIGQUIT", // Ctrl+\
       "SIGABRT", // Abort signal
       "SIGHUP", // Hangup (terminal closed)
+      "SIGPIPE", // Broken output pipe
       "SIGBREAK", // Ctrl+Break on Windows
       "SIGBUS", // Bus error
     ]

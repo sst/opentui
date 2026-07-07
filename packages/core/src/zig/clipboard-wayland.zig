@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const clipboard_clock = @import("clipboard-clock.zig");
 const linux = @import("clipboard-linux.zig");
 const protocol = @import("clipboard-wayland-protocol.zig");
 
@@ -12,6 +13,9 @@ const MAX_OFFERS = 8;
 const MAX_MIME_TYPES = 64;
 const MAX_MIME_BYTES = 255;
 const MAX_PROVIDERS = 4;
+// Clipboard payloads use file descriptors, so protocol metadata does not need unbounded connection buffers.
+const WAYLAND_CONNECTION_BUFFER_SIZE_MAX = 1024 * 1024;
+const WL_SEAT_CAPABILITY_KEYBOARD = 2;
 const PROVIDER_TRANSFER_IDLE_TIMEOUT_NS = 30 * std.time.ns_per_s;
 
 pub const Progress = enum { pending, ready, unsupported, failed };
@@ -35,6 +39,7 @@ const Seat = struct {
     proxy: *WlProxy,
     name: [MAX_SEAT_NAME_BYTES]u8 = undefined,
     name_length: u8 = 0,
+    capabilities: u32 = 0,
 
     fn nameSlice(self: *const Seat) []const u8 {
         return self.name[0..self.name_length];
@@ -71,6 +76,12 @@ const Provider = struct {
     transfer_count: u32 = 0,
     transfer_cursor: u32 = 0,
     retired: bool = false,
+    cancelled: bool = false,
+};
+
+pub const MimeMatch = struct {
+    offered: []const u8,
+    requested: []const u8,
 };
 
 pub const Connection = struct {
@@ -125,11 +136,11 @@ pub const Connection = struct {
     clipboard_provider: ?*Provider = null,
     primary_provider: ?*Provider = null,
     provider_cursor: u8 = 0,
-    allow_bulk_dispatch: bool = false,
     allow_core_data_device: bool = false,
     flush_outcome_override: ?FlushOutcome = null,
     test_marshal_count: u8 = 0,
     test_flush_marshal_count: u8 = 0,
+    display_error_override: ?c_int = null,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -170,10 +181,6 @@ pub const Connection = struct {
     }
 
     pub fn drive(self: *Connection) Progress {
-        if (!self.canDispatchPending()) {
-            self.phase = .unsupported;
-            return .unsupported;
-        }
         if (self.output_pending) {
             switch (self.flushOutput()) {
                 .complete => {},
@@ -250,6 +257,7 @@ pub const Connection = struct {
 
     pub fn acquireCoreSelection(self: *Connection) CoreSelectionProgress {
         if (!self.core_data_device) return .unsupported;
+        if (self.phase == .failed) return .failed;
         std.debug.assert(self.core_focus_users < std.math.maxInt(u32));
         self.core_focus_users += 1;
         if (self.core_focus_users > 1) return .pending;
@@ -266,9 +274,10 @@ pub const Connection = struct {
 
     pub fn coreSelectionProgress(self: *const Connection) CoreSelectionProgress {
         if (!self.core_data_device) return .unsupported;
+        if (self.phase == .failed) return .failed;
         if (self.core_focus_users == 0 or self.helper_surface == null) return .failed;
         if (self.core_focus_lost) return .failed;
-        return if (self.core_selection_seen) .ready else .pending;
+        return if (self.core_focus_entered and self.core_selection_seen) .ready else .pending;
     }
 
     pub fn releaseCoreSelection(self: *Connection) void {
@@ -329,11 +338,17 @@ pub const Connection = struct {
         }
         var arguments = [_]WlArgument{.{ .o = source }};
         _ = self.marshal(device, if (primary) 2 else 0, null, self.symbols.wl_proxy_get_version(device), 0, &arguments);
-        const flush_result = self.queueFlush();
+        if (!self.displayHealthy()) {
+            self.symbols.wl_proxy_destroy(source);
+            self.allocator.free(transfers);
+            self.allocator.destroy(provider);
+            return self.selectionFailure(.protocol);
+        }
         const previous = if (primary) self.primary_provider else self.clipboard_provider;
         if (previous) |old| self.retireProvider(old);
         slot.* = provider;
         if (primary) self.primary_provider = provider else self.clipboard_provider = provider;
+        const flush_result = self.queueFlush();
         if (flush_result == .failed) self.phase = .failed;
         return if (flush_result == .complete) .ok else .committed;
     }
@@ -345,10 +360,11 @@ pub const Connection = struct {
         const device = self.device orelse return self.selectionFailure(.protocol);
         var arguments = [_]WlArgument{.{ .o = null }};
         _ = self.marshal(device, if (primary) 2 else 0, null, self.symbols.wl_proxy_get_version(device), 0, &arguments);
-        const flush_result = self.queueFlush();
+        if (!self.displayHealthy()) return self.selectionFailure(.protocol);
         const provider = if (primary) self.primary_provider else self.clipboard_provider;
         if (provider) |value| self.retireProvider(value);
         if (primary) self.primary_provider = null else self.clipboard_provider = null;
+        const flush_result = self.queueFlush();
         if (flush_result == .failed) self.phase = .failed;
         return if (flush_result == .complete) .ok else .committed;
     }
@@ -376,9 +392,11 @@ pub const Connection = struct {
     pub fn retireProviders(self: *Connection) void {
         self.clipboard_provider = null;
         self.primary_provider = null;
+        self.output_pending = false;
         for (&self.providers) |*slot| {
             const provider = slot.* orelse continue;
             provider.retired = true;
+            provider.cancelled = true;
             if (provider.transfer_count > 0) continue;
             self.freeProvider(provider);
             slot.* = null;
@@ -391,7 +409,7 @@ pub const Connection = struct {
             const slot_index = self.provider_cursor;
             self.provider_cursor = (self.provider_cursor + 1) % MAX_PROVIDERS;
             const provider = self.providers[slot_index] orelse continue;
-            if (provider.retired and provider.transfer_count == 0) {
+            if (provider.cancelled and provider.transfer_count == 0) {
                 self.retireProvider(provider);
                 continue;
             }
@@ -404,28 +422,20 @@ pub const Connection = struct {
         return self.hasWork();
     }
 
-    pub fn offeredMime(offer: *const Offer, preferred: []const u8) ?[]const u8 {
+    pub fn offeredMime(self: *const Connection, offer: *const Offer, preferred: []const u8) ?MimeMatch {
+        const requested = canonicalMimeEssence(preferred) orelse return null;
         for (offer.mimes[0..offer.mime_count]) |*mime| {
-            if (std.ascii.eqlIgnoreCase(mime.slice(), preferred)) return mime.slice();
-        }
-        for (offer.mimes[0..offer.mime_count]) |*mime| {
-            if (std.ascii.eqlIgnoreCase(preferred, "text/plain") and
-                (std.ascii.eqlIgnoreCase(mime.slice(), "text/plain;charset=utf-8") or
-                    std.ascii.eqlIgnoreCase(mime.slice(), "text/plain;charset=UTF-8")))
-            {
-                return mime.slice();
-            }
-            if (std.ascii.eqlIgnoreCase(preferred, "image/png") and
-                std.ascii.eqlIgnoreCase(mime.slice(), "image/bmp"))
-            {
-                return mime.slice();
-            }
+            const offered = canonicalMimeEssence(mime.slice()) orelse continue;
+            if (std.ascii.eqlIgnoreCase(offered, requested)) return .{ .offered = mime.slice(), .requested = requested };
+            if (self.core_data_device and std.ascii.eqlIgnoreCase(requested, "image/png") and
+                std.ascii.eqlIgnoreCase(offered, "image/bmp")) return .{ .offered = mime.slice(), .requested = requested };
         }
         return null;
     }
 
     fn start(self: *Connection) !void {
         const display = self.symbols.wl_display_connect(null) orelse return error.ConnectFailed;
+        self.symbols.wl_display_set_max_buffer_size(display, WAYLAND_CONNECTION_BUFFER_SIZE_MAX);
         self.display = display;
         const registry = self.marshal(@ptrCast(display), 1, self.symbols.wl_registry_interface, 1, 0, &.{}) orelse
             return error.RegistryFailed;
@@ -446,10 +456,12 @@ pub const Connection = struct {
 
     fn dispatchAvailable(self: *Connection) bool {
         const display = self.display orelse return false;
-        if (self.dispatchPending(display) < 0) return false;
+        const dispatched = self.symbols.wl_display_dispatch_pending_single(display);
+        if (dispatched < 0) return false;
         if (self.queueFlush() == .failed) return false;
+        if (dispatched > 0) return true;
         if (self.symbols.wl_display_prepare_read(display) != 0) {
-            return self.dispatchPending(display) >= 0;
+            return self.symbols.wl_display_dispatch_pending_single(display) >= 0;
         }
 
         var descriptor = [_]std.posix.pollfd{.{
@@ -466,18 +478,7 @@ pub const Connection = struct {
             return descriptor[0].revents & (std.posix.POLL.ERR | std.posix.POLL.HUP | std.posix.POLL.NVAL) == 0;
         }
         if (self.symbols.wl_display_read_events(display) < 0) return false;
-        return self.dispatchPending(display) >= 0;
-    }
-
-    fn dispatchPending(self: *Connection, display: *linux.WlDisplay) c_int {
-        if (self.symbols.wl_display_dispatch_pending_single) |dispatch_single| return dispatch_single(display);
-        // WSLg commonly ships Wayland 1.24; only its trusted local compositor may use bulk dispatch.
-        std.debug.assert(self.allow_bulk_dispatch);
-        return self.symbols.wl_display_dispatch_pending(display);
-    }
-
-    fn canDispatchPending(self: *const Connection) bool {
-        return self.symbols.wl_display_dispatch_pending_single != null or self.allow_bulk_dispatch;
+        return true;
     }
 
     fn queueFlush(self: *Connection) FlushResult {
@@ -509,7 +510,7 @@ pub const Connection = struct {
         mime_z[mime.len] = 0;
         var arguments = [_]WlArgument{.{ .s = mime_z[0..mime.len :0].ptr }};
         _ = self.marshal(source, 0, null, 1, 0, &arguments);
-        return true;
+        return self.displayHealthy();
     }
 
     fn freeProviderSlot(self: *Connection) ?*?*Provider {
@@ -530,7 +531,7 @@ pub const Connection = struct {
         if (self.clipboard_provider == provider) self.clipboard_provider = null;
         if (self.primary_provider == provider) self.primary_provider = null;
         provider.retired = true;
-        if (provider.transfer_count > 0) return;
+        if (!provider.cancelled or provider.transfer_count > 0) return;
         for (&self.providers) |*slot| {
             if (slot.* != provider) continue;
             self.freeProvider(provider);
@@ -658,7 +659,7 @@ pub const Connection = struct {
 
     fn driveProviderTransfer(_: *Connection, provider: *Provider, index: u32) void {
         const transfer = &provider.transfers[index];
-        const now_ns = std.time.nanoTimestamp();
+        const now_ns = clipboard_clock.nowNs();
         if (providerTransferExpired(transfer.last_progress_ns, now_ns)) {
             finishProviderTransfer(provider, index);
             return;
@@ -706,6 +707,7 @@ pub const Connection = struct {
 
     fn bindCoreDevice(self: *Connection, seat: *const Seat) SelectionResult {
         if (!self.coreDataDeviceAvailable()) return .unsupported;
+        if (seat.capabilities & WL_SEAT_CAPABILITY_KEYBOARD == 0) return .unsupported;
         const manager = self.bind(
             self.core_manager_global.?,
             self.symbols.wl_data_device_manager_interface,
@@ -792,6 +794,14 @@ pub const Connection = struct {
         var empty: [1]WlArgument = undefined;
         const pointer: [*]WlArgument = if (arguments.len == 0) &empty else @constCast(arguments.ptr);
         return self.symbols.wl_proxy_marshal_array_flags(proxy, opcode, interface, version, flags, pointer);
+    }
+
+    fn displayHealthy(self: *const Connection) bool {
+        if (comptime builtin.is_test) {
+            if (self.display_error_override) |display_error| return display_error == 0;
+        }
+        const display = self.display orelse return false;
+        return self.symbols.wl_display_get_error(display) == 0;
     }
 
     fn addListener(self: *Connection, proxy: *WlProxy, listener: []const *const anyopaque) c_int {
@@ -885,7 +895,21 @@ pub const Connection = struct {
         _ = self.addListener(proxy, &seat_listener);
     }
 
-    fn seatCapabilities(_: ?*anyopaque, _: ?*WlProxy, _: u32) callconv(.c) void {}
+    fn seatCapabilities(data: ?*anyopaque, proxy: ?*WlProxy, capabilities: u32) callconv(.c) void {
+        const self: *Connection = @ptrCast(@alignCast(data.?));
+        for (self.seats[0..self.seat_count]) |*seat| {
+            if (seat.proxy != proxy) continue;
+            const had_keyboard = seat.capabilities & WL_SEAT_CAPABILITY_KEYBOARD != 0;
+            seat.capabilities = capabilities;
+            const has_keyboard = capabilities & WL_SEAT_CAPABILITY_KEYBOARD != 0;
+            if (self.core_data_device and self.bound_seat_global == seat.global_name and had_keyboard and !has_keyboard) {
+                self.core_focus_lost = true;
+                self.failure = .protocol;
+                self.phase = .failed;
+            }
+            return;
+        }
+    }
 
     fn seatName(data: ?*anyopaque, proxy: ?*WlProxy, name_pointer: [*:0]const u8) callconv(.c) void {
         const self: *Connection = @ptrCast(@alignCast(data.?));
@@ -920,7 +944,7 @@ pub const Connection = struct {
 
     fn deviceSelection(data: ?*anyopaque, _: ?*WlProxy, offer: ?*WlProxy) callconv(.c) void {
         const self: *Connection = @ptrCast(@alignCast(data.?));
-        if (self.core_data_device and !self.core_focus_entered) {
+        if (self.core_data_device and (self.core_focus_users == 0 or self.helper_surface == null)) {
             if (offer) |proxy| self.removeOffer(proxy);
             return;
         }
@@ -1030,8 +1054,10 @@ pub const Connection = struct {
         if (!isRelevantMime(mime)) return;
         for (self.offers[0..self.offer_count]) |*offer| {
             if (offer.proxy != proxy) continue;
+            const essence = canonicalMimeEssence(mime).?;
             for (offer.mimes[0..offer.mime_count]) |*existing| {
-                if (std.ascii.eqlIgnoreCase(existing.slice(), mime)) return;
+                const existing_essence = canonicalMimeEssence(existing.slice()).?;
+                if (std.ascii.eqlIgnoreCase(existing_essence, essence)) return;
             }
             if (offer.mime_count == MAX_MIME_TYPES) return;
             const entry = &offer.mimes[offer.mime_count];
@@ -1046,9 +1072,9 @@ pub const Connection = struct {
         if (comptime builtin.os.tag != .linux) return;
         const provider: *Provider = @ptrCast(@alignCast(data.?));
         const mime = std.mem.span(mime_pointer);
-        if ((!std.ascii.eqlIgnoreCase(mime, "text/plain") and
-            !std.ascii.eqlIgnoreCase(mime, "text/plain;charset=utf-8")) or
-            provider.retired or provider.transfer_count == provider.transfers.len)
+        const essence = canonicalMimeEssence(mime);
+        if (essence == null or !std.ascii.eqlIgnoreCase(essence.?, "text/plain") or
+            provider.cancelled or provider.transfer_count == provider.transfers.len)
         {
             std.posix.close(fd);
             return;
@@ -1064,7 +1090,7 @@ pub const Connection = struct {
         };
         provider.transfers[provider.transfer_count] = .{
             .fd = fd,
-            .last_progress_ns = std.time.nanoTimestamp(),
+            .last_progress_ns = clipboard_clock.nowNs(),
         };
         provider.transfer_count += 1;
     }
@@ -1072,6 +1098,7 @@ pub const Connection = struct {
     fn sourceCancelled(data: ?*anyopaque, _: ?*WlProxy) callconv(.c) void {
         const provider: *Provider = @ptrCast(@alignCast(data.?));
         provider.retired = true;
+        provider.cancelled = true;
         if (provider.connection.clipboard_provider == provider) provider.connection.clipboard_provider = null;
         if (provider.connection.primary_provider == provider) provider.connection.primary_provider = null;
     }
@@ -1089,10 +1116,36 @@ fn providerTransferExpired(last_progress_ns: i128, now_ns: i128) bool {
 }
 
 fn isRelevantMime(mime: []const u8) bool {
-    return std.ascii.eqlIgnoreCase(mime, "image/png") or
-        std.ascii.eqlIgnoreCase(mime, "image/bmp") or
-        std.ascii.eqlIgnoreCase(mime, "text/plain") or
-        std.ascii.eqlIgnoreCase(mime, "text/plain;charset=utf-8");
+    if (mime.len > MAX_MIME_BYTES) return false;
+    return canonicalMimeEssence(mime) != null;
+}
+
+pub fn canonicalMimeEssence(mime: []const u8) ?[]const u8 {
+    var parts = std.mem.splitScalar(u8, mime, ';');
+    const raw_essence = std.mem.trim(u8, parts.next() orelse return null, " \t\r\n");
+    const essence: []const u8 = if (std.ascii.eqlIgnoreCase(raw_essence, "text/plain"))
+        "text/plain"
+    else if (std.ascii.eqlIgnoreCase(raw_essence, "image/png"))
+        "image/png"
+    else if (std.ascii.eqlIgnoreCase(raw_essence, "image/bmp"))
+        "image/bmp"
+    else
+        return null;
+
+    while (parts.next()) |raw_parameter| {
+        const parameter = std.mem.trim(u8, raw_parameter, " \t\r\n");
+        if (parameter.len == 0) continue;
+        const separator = std.mem.indexOfScalar(u8, parameter, '=') orelse continue;
+        const name = std.mem.trim(u8, parameter[0..separator], " \t\r\n");
+        if (!std.ascii.eqlIgnoreCase(name, "charset")) continue;
+        if (!std.ascii.eqlIgnoreCase(essence, "text/plain")) continue;
+        var value = std.mem.trim(u8, parameter[separator + 1 ..], " \t\r\n");
+        if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') {
+            value = std.mem.trim(u8, value[1 .. value.len - 1], " \t\r\n");
+        }
+        if (!std.ascii.eqlIgnoreCase(value, "utf-8")) return null;
+    }
+    return essence;
 }
 
 fn classifyFlush(result: c_int, errno: std.posix.E) FlushResult {
@@ -1194,15 +1247,60 @@ test "Wayland flush completion distinguishes EAGAIN from completion and hard fai
     try std.testing.expectEqual(FlushResult.failed, classifyFlush(-1, .PIPE));
 }
 
-test "Wayland bulk dispatch compatibility is opt-in" {
+test "Wayland connection setup applies the finite receive buffer cap" {
     var symbols: linux.WaylandSymbols = undefined;
-    symbols.wl_display_dispatch_pending_single = null;
-    var connection: Connection = undefined;
-    connection.symbols = &symbols;
-    connection.allow_bulk_dispatch = false;
-    try std.testing.expect(!connection.canDispatchPending());
-    connection.allow_bulk_dispatch = true;
-    try std.testing.expect(connection.canDispatchPending());
+    symbols.wl_display_connect = testDisplayConnect;
+    symbols.wl_display_set_max_buffer_size = testSetMaxBufferSize;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_add_listener = testAddListener;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
+    test_max_buffer_size = 0;
+
+    try connection.start();
+
+    try std.testing.expectEqual(@as(usize, WAYLAND_CONNECTION_BUFFER_SIZE_MAX), test_max_buffer_size);
+}
+
+test "Wayland dispatch executes at most one queued callback per invocation" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_display_dispatch_pending_single = testDispatchPendingSingle;
+    symbols.wl_display_prepare_read = testPrepareReadBlocked;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    connection.display = @ptrFromInt(1);
+    connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
+    test_dispatch_call_count = 0;
+    test_dispatched_callback_count = 0;
+
+    try std.testing.expect(connection.dispatchAvailable());
+
+    try std.testing.expectEqual(@as(u32, 2), test_dispatch_call_count);
+    try std.testing.expectEqual(@as(u32, 1), test_dispatched_callback_count);
+}
+
+test "Wayland read queues callbacks for the next dispatch invocation" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
+    const pipe = try std.posix.pipe2(.{ .CLOEXEC = true });
+    defer std.posix.close(pipe[0]);
+    defer std.posix.close(pipe[1]);
+    _ = try std.posix.write(pipe[1], "x");
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_display_dispatch_pending_single = testDispatchNoPending;
+    symbols.wl_display_prepare_read = testPrepareReadReady;
+    symbols.wl_display_get_fd = testDisplayGetFd;
+    symbols.wl_display_read_events = testReadEvents;
+    symbols.wl_display_cancel_read = testCancelRead;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    connection.display = @ptrFromInt(1);
+    connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
+    test_display_fd = pipe[0];
+    test_dispatch_call_count = 0;
+    test_read_event_count = 0;
+
+    try std.testing.expect(connection.dispatchAvailable());
+
+    try std.testing.expectEqual(@as(u32, 1), test_dispatch_call_count);
+    try std.testing.expectEqual(@as(u32, 1), test_read_event_count);
 }
 
 test "Wayland writes and clears settle deterministically after marshalling for every flush outcome" {
@@ -1247,7 +1345,59 @@ fn testReadyConnection(symbols: *const linux.WaylandSymbols, flush: FlushOutcome
     connection.device = @ptrFromInt(3);
     connection.phase = .ready;
     connection.flush_outcome_override = flush;
+    connection.display_error_override = 0;
     return connection;
+}
+
+var test_max_buffer_size: usize = 0;
+var test_dispatch_call_count: u32 = 0;
+var test_dispatched_callback_count: u32 = 0;
+var test_display_fd: std.posix.fd_t = -1;
+var test_read_event_count: u32 = 0;
+var test_display_error_call_count: u32 = 0;
+
+fn testDisplayConnect(_: ?[*:0]const u8) callconv(.c) ?*linux.WlDisplay {
+    return @ptrFromInt(1);
+}
+
+fn testSetMaxBufferSize(_: *linux.WlDisplay, size: usize) callconv(.c) void {
+    test_max_buffer_size = size;
+}
+
+fn testDispatchPendingSingle(_: *linux.WlDisplay) callconv(.c) c_int {
+    test_dispatch_call_count += 1;
+    if (test_dispatch_call_count == 1) return 0;
+    test_dispatched_callback_count += 1;
+    return 1;
+}
+
+fn testPrepareReadBlocked(_: *linux.WlDisplay) callconv(.c) c_int {
+    return -1;
+}
+
+fn testDispatchNoPending(_: *linux.WlDisplay) callconv(.c) c_int {
+    test_dispatch_call_count += 1;
+    return 0;
+}
+
+fn testPrepareReadReady(_: *linux.WlDisplay) callconv(.c) c_int {
+    return 0;
+}
+
+fn testDisplayGetFd(_: *linux.WlDisplay) callconv(.c) c_int {
+    return test_display_fd;
+}
+
+fn testReadEvents(_: *linux.WlDisplay) callconv(.c) c_int {
+    test_read_event_count += 1;
+    return 0;
+}
+
+fn testCancelRead(_: *linux.WlDisplay) callconv(.c) void {}
+
+fn testDisplayError(_: *linux.WlDisplay) callconv(.c) c_int {
+    test_display_error_call_count += 1;
+    return 1;
 }
 
 fn testMarshal(
@@ -1291,17 +1441,63 @@ test "Wayland MIME retention ignores irrelevant metadata without consuming the b
     try std.testing.expectEqualStrings("image/png", connection.offers[0].mimes[0].slice());
 }
 
-test "Wayland MIME matching prefers PNG and falls back to BMP conversion" {
+test "Wayland MIME matching parses essence and UTF-8 charset parameters" {
+    const proxy: *WlProxy = @ptrFromInt(1);
+    var connection: Connection = undefined;
+    connection.core_data_device = false;
+    connection.offer_count = 1;
+    connection.offers[0] = .{ .proxy = proxy };
+    Connection.offerMime(&connection, proxy, " Text/Plain ; format=flowed ; charset=\"UtF-8\" ");
+    Connection.offerMime(&connection, proxy, "text/plain;charset=iso-8859-1");
+    Connection.offerMime(&connection, proxy, " IMAGE/PNG ; version=1 ");
+
+    try std.testing.expectEqualStrings(
+        "text/plain",
+        connection.offeredMime(&connection.offers[0], " TEXT/PLAIN ; charset=UTF-8 ").?.requested,
+    );
+    try std.testing.expectEqualStrings(
+        " Text/Plain ; format=flowed ; charset=\"UtF-8\" ",
+        connection.offeredMime(&connection.offers[0], "text/plain").?.offered,
+    );
+    try std.testing.expectEqualStrings(
+        "image/png",
+        connection.offeredMime(&connection.offers[0], "image/png").?.requested,
+    );
+}
+
+test "Wayland MIME retention deduplicates canonical supported essences" {
     const proxy: *WlProxy = @ptrFromInt(1);
     var connection: Connection = undefined;
     connection.offer_count = 1;
     connection.offers[0] = .{ .proxy = proxy };
+
+    var index: u8 = 0;
+    while (index < MAX_MIME_TYPES) : (index += 1) {
+        Connection.offerMime(&connection, proxy, "text/plain;charset=UTF-8");
+    }
+    Connection.offerMime(&connection, proxy, "text/plain; charset=utf-8; format=flowed");
+    Connection.offerMime(&connection, proxy, "image/png; version=1");
+
+    try std.testing.expectEqual(@as(u8, 2), connection.offers[0].mime_count);
+    try std.testing.expectEqualStrings("text/plain;charset=UTF-8", connection.offers[0].mimes[0].slice());
+    try std.testing.expectEqualStrings("image/png; version=1", connection.offers[0].mimes[1].slice());
+}
+
+test "Wayland BMP conversion fallback is restricted to WSL core compatibility" {
+    const proxy: *WlProxy = @ptrFromInt(1);
+    var connection: Connection = undefined;
+    connection.core_data_device = false;
+    connection.offer_count = 1;
+    connection.offers[0] = .{ .proxy = proxy };
     Connection.offerMime(&connection, proxy, "image/bmp");
 
-    try std.testing.expectEqualStrings("image/bmp", Connection.offeredMime(&connection.offers[0], "image/png").?);
+    try std.testing.expect(connection.offeredMime(&connection.offers[0], "image/png") == null);
 
-    Connection.offerMime(&connection, proxy, "image/png");
-    try std.testing.expectEqualStrings("image/png", Connection.offeredMime(&connection.offers[0], "image/png").?);
+    connection.core_data_device = true;
+    try std.testing.expectEqualStrings(
+        "image/bmp",
+        connection.offeredMime(&connection.offers[0], "image/png").?.offered,
+    );
 }
 
 test "Wayland core data-device fallback is WSL-gated and read-only" {
@@ -1322,6 +1518,26 @@ test "Wayland core data-device fallback is WSL-gated and read-only" {
     try std.testing.expectEqual(Failure.none, connection.failure);
 }
 
+test "Wayland core helper requires an advertised keyboard capability" {
+    const seat_proxy: *WlProxy = @ptrFromInt(1);
+    var connection: Connection = undefined;
+    connection.seat_count = 1;
+    connection.seats[0] = .{ .global_name = 1, .proxy = seat_proxy };
+
+    try std.testing.expectEqual(@as(u32, 0), connection.seats[0].capabilities);
+    Connection.seatCapabilities(&connection, seat_proxy, WL_SEAT_CAPABILITY_KEYBOARD);
+    try std.testing.expectEqual(WL_SEAT_CAPABILITY_KEYBOARD, connection.seats[0].capabilities);
+    Connection.seatCapabilities(&connection, seat_proxy, 0);
+    try std.testing.expectEqual(@as(u32, 0), connection.seats[0].capabilities);
+
+    connection.allow_core_data_device = true;
+    connection.core_manager_global = 1;
+    connection.compositor_global = 2;
+    connection.shm_global = 3;
+    connection.shell_global = 4;
+    try std.testing.expectEqual(SelectionResult.unsupported, connection.bindCoreDevice(&connection.seats[0]));
+}
+
 test "Wayland core focus lifecycle rejects stale and unfocused offers" {
     var symbols: linux.WaylandSymbols = undefined;
     symbols.wl_proxy_marshal_array_flags = testMarshal;
@@ -1332,6 +1548,8 @@ test "Wayland core focus lifecycle rejects stale and unfocused offers" {
     connection.symbols = &symbols;
     connection.core_data_device = true;
     connection.core_focus_entered = false;
+    connection.core_focus_users = 0;
+    connection.helper_surface = null;
     connection.offer_count = 1;
     connection.offers[0] = .{ .proxy = offer };
     connection.clipboard_offer = null;
@@ -1355,6 +1573,85 @@ test "Wayland core focus lifecycle rejects stale and unfocused offers" {
     try std.testing.expect(!connection.core_selection_seen);
     try std.testing.expectEqual(@as(u8, 0), connection.offer_count);
     try std.testing.expect(connection.clipboard_offer == null);
+}
+
+test "Wayland core selection becomes ready after focus and selection in either order" {
+    const offer: *WlProxy = @ptrFromInt(1);
+    const surface: *WlProxy = @ptrFromInt(2);
+    var connection: Connection = undefined;
+    connection.core_data_device = true;
+    connection.phase = .ready;
+    connection.core_focus_users = 1;
+    connection.helper_surface = surface;
+    connection.core_focus_entered = false;
+    connection.core_focus_lost = false;
+    connection.core_selection_seen = false;
+    connection.clipboard_offer = null;
+    connection.primary_offer = null;
+    connection.offer_count = 1;
+    connection.offers[0] = .{ .proxy = offer };
+
+    Connection.deviceSelection(&connection, null, offer);
+    try std.testing.expectEqual(offer, connection.clipboard_offer.?);
+    try std.testing.expectEqual(CoreSelectionProgress.pending, connection.coreSelectionProgress());
+    Connection.keyboardEnter(&connection, null, 1, surface, null);
+    try std.testing.expectEqual(CoreSelectionProgress.ready, connection.coreSelectionProgress());
+
+    connection.core_focus_entered = false;
+    connection.core_selection_seen = false;
+    connection.clipboard_offer = null;
+    Connection.keyboardEnter(&connection, null, 2, surface, null);
+    try std.testing.expectEqual(CoreSelectionProgress.pending, connection.coreSelectionProgress());
+    Connection.deviceSelection(&connection, null, offer);
+    try std.testing.expectEqual(CoreSelectionProgress.ready, connection.coreSelectionProgress());
+}
+
+test "Wayland core selection rejects events without an active helper acquisition" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_get_version = testProxyVersion;
+    const offer: *WlProxy = @ptrFromInt(1);
+    var connection: Connection = undefined;
+    connection.symbols = &symbols;
+    connection.core_data_device = true;
+    connection.core_focus_users = 0;
+    connection.helper_surface = null;
+    connection.clipboard_offer = null;
+    connection.primary_offer = null;
+    connection.offer_count = 1;
+    connection.offers[0] = .{ .proxy = offer };
+    connection.test_marshal_count = 0;
+
+    Connection.deviceSelection(&connection, null, offer);
+
+    try std.testing.expect(connection.clipboard_offer == null);
+    try std.testing.expectEqual(@as(u8, 0), connection.offer_count);
+}
+
+test "Wayland bound core seat keyboard loss fails active and future acquisitions" {
+    const seat_proxy: *WlProxy = @ptrFromInt(1);
+    var connection: Connection = undefined;
+    connection.core_data_device = true;
+    connection.bound_seat_global = 7;
+    connection.seat_count = 1;
+    connection.seats[0] = .{
+        .global_name = 7,
+        .proxy = seat_proxy,
+        .capabilities = WL_SEAT_CAPABILITY_KEYBOARD,
+    };
+    connection.core_focus_users = 1;
+    connection.helper_surface = @ptrFromInt(2);
+    connection.core_focus_lost = false;
+    connection.failure = .none;
+    connection.phase = .ready;
+
+    Connection.seatCapabilities(&connection, seat_proxy, 0);
+
+    try std.testing.expectEqual(CoreSelectionProgress.failed, connection.coreSelectionProgress());
+    connection.core_focus_users = 0;
+    try std.testing.expectEqual(CoreSelectionProgress.failed, connection.acquireCoreSelection());
+    try std.testing.expectEqual(Phase.failed, connection.phase);
+    try std.testing.expectEqual(Failure.protocol, connection.failure);
 }
 
 test "Wayland provider retirement preserves active transfers" {
@@ -1383,6 +1680,91 @@ test "Wayland provider retirement preserves active transfers" {
     connection.retireProviders();
     try std.testing.expect(provider.retired);
     try std.testing.expect(connection.providers[0] == &provider);
+}
+
+test "Wayland failed connection cancels providers and frees idle generations" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_get_version = testProxyVersion;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    const provider = try std.testing.allocator.create(Provider);
+    provider.* = .{
+        .connection = &connection,
+        .source = @ptrFromInt(1),
+        .primary = false,
+        .data = &.{},
+        .transfers = try std.testing.allocator.alloc(Transfer, 1),
+    };
+    connection.providers[0] = provider;
+    connection.clipboard_provider = provider;
+
+    connection.retireProviders();
+
+    try std.testing.expect(connection.providers[0] == null);
+    try std.testing.expect(!connection.hasWork());
+}
+
+test "Wayland failed connection lets active transfers drain but rejects new sends" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_get_version = testProxyVersion;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    const provider = try std.testing.allocator.create(Provider);
+    provider.* = .{
+        .connection = &connection,
+        .source = @ptrFromInt(1),
+        .primary = false,
+        .data = &.{},
+        .transfers = try std.testing.allocator.alloc(Transfer, 1),
+        .transfer_count = 1,
+    };
+    const active_pipe = try std.posix.pipe2(.{ .CLOEXEC = true });
+    defer std.posix.close(active_pipe[0]);
+    provider.transfers[0] = .{ .fd = active_pipe[1], .last_progress_ns = 0 };
+    connection.providers[0] = provider;
+    connection.clipboard_provider = provider;
+
+    connection.retireProviders();
+    try std.testing.expect(provider.cancelled);
+    try std.testing.expect(connection.providers[0] == provider);
+
+    const rejected_pipe = try std.posix.pipe2(.{ .CLOEXEC = true });
+    defer std.posix.close(rejected_pipe[0]);
+    Connection.sourceSend(provider, null, "text/plain", rejected_pipe[1]);
+    try std.testing.expectEqual(@as(u32, 1), provider.transfer_count);
+
+    finishProviderTransfer(provider, 0);
+    _ = connection.driveProviderUnit();
+    try std.testing.expect(connection.providers[0] == null);
+    try std.testing.expect(!connection.hasWork());
+}
+
+test "Wayland retired provider accepts queued sends until compositor cancellation" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
+    try clipboard_clock.init();
+    var connection: Connection = undefined;
+    var transfers: [1]Transfer = undefined;
+    var provider: Provider = .{
+        .connection = &connection,
+        .source = undefined,
+        .primary = false,
+        .data = &.{},
+        .transfers = &transfers,
+        .retired = true,
+    };
+    connection.clipboard_provider = null;
+    connection.primary_provider = null;
+    connection.providers = .{ &provider, null, null, null };
+    const pipe = try std.posix.pipe2(.{ .CLOEXEC = true });
+    defer std.posix.close(pipe[0]);
+
+    Connection.sourceSend(&provider, null, "text/plain", pipe[1]);
+
+    try std.testing.expectEqual(@as(u32, 1), provider.transfer_count);
+    Connection.sourceCancelled(&provider, null);
+    try std.testing.expect(provider.retired);
+    finishProviderTransfer(&provider, 0);
 }
 
 test "Wayland reserves provider capacity independently for each selection" {
@@ -1489,4 +1871,55 @@ test "Wayland selection failures do not leak across operations" {
     try std.testing.expectEqual(Failure.protocol, connection.failure);
     try std.testing.expectEqual(Failure.protocol, connection.takeFailure());
     try std.testing.expectEqual(Failure.none, connection.failure);
+}
+
+test "Wayland local marshal failure preserves the current provider" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_add_listener = testAddListener;
+    symbols.wl_proxy_destroy = testDestroyProxy;
+    symbols.wl_proxy_get_version = testProxyVersion;
+    symbols.wl_display_get_error = testDisplayError;
+    var connection = testReadyConnection(&symbols, .{ .result = 0, .errno = .SUCCESS });
+    connection.display_error_override = null;
+    var transfers: [1]Transfer = undefined;
+    var current: Provider = .{
+        .connection = &connection,
+        .source = @ptrFromInt(8),
+        .primary = false,
+        .data = &.{},
+        .transfers = &transfers,
+    };
+    connection.providers = .{ &current, null, null, null };
+    connection.clipboard_provider = &current;
+
+    test_display_error_call_count = 0;
+    try std.testing.expectEqual(SelectionResult.failed, connection.clearSelection(false));
+    try std.testing.expectEqual(@as(u32, 1), test_display_error_call_count);
+    try std.testing.expect(connection.clipboard_provider == &current);
+    try std.testing.expect(!current.retired);
+}
+
+test "Wayland failed source offer does not replace the current provider" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_add_listener = testAddListener;
+    symbols.wl_proxy_destroy = testDestroyProxy;
+    symbols.wl_proxy_get_version = testProxyVersion;
+    var connection = testReadyConnection(&symbols, .{ .result = 0, .errno = .SUCCESS });
+    connection.display_error_override = 1;
+    var transfers: [1]Transfer = undefined;
+    var current: Provider = .{
+        .connection = &connection,
+        .source = @ptrFromInt(8),
+        .primary = false,
+        .data = &.{},
+        .transfers = &transfers,
+    };
+    connection.providers = .{ &current, null, null, null };
+    connection.clipboard_provider = &current;
+
+    try std.testing.expectEqual(SelectionResult.failed, connection.publishText(false, &.{}));
+    try std.testing.expect(connection.clipboard_provider == &current);
+    try std.testing.expect(!current.retired);
 }

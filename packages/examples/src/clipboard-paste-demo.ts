@@ -77,6 +77,12 @@ interface Status {
   text: string
 }
 
+export interface EditorSelectionSnapshot {
+  start: number
+  end: number
+  text: string
+}
+
 interface Fixture {
   name: string
   short: string
@@ -234,6 +240,8 @@ let selectionStatus: Status = { tone: "muted", text: "mouse selection has not pu
 let readStatus: Status = { tone: "muted", text: "not attempted" }
 let clearStatus: Status = { tone: "muted", text: "not attempted" }
 let serviceStatus: Status = { tone: "muted", text: "initializing" }
+let operationEpoch = { write: 0, read: 0, clear: 0, selection: 0 }
+let destroyPromise: Promise<void> | null = null
 
 function fixture(): Fixture {
   return FIXTURES[selectedFixture]!
@@ -353,20 +361,67 @@ function addLog(renderer: CliRenderer, tone: Tone, message: string, detail?: str
   }
 }
 
-function writeSucceeded(result: ClipboardWriteResult): boolean {
+export function isConfirmedHostWrite(result: ClipboardWriteResult): boolean {
+  return result.host.status === "written"
+}
+
+export function selectionMatchesSnapshot(
+  snapshot: EditorSelectionSnapshot,
+  selection: { start: number; end: number } | null,
+  text: string,
+): boolean {
+  return selection?.start === snapshot.start && selection.end === snapshot.end && text === snapshot.text
+}
+
+function writeDispatched(result: ClipboardWriteResult): boolean {
   return result.host.status === "written" || result.terminal.status === "attempted"
 }
 
-function clearSucceeded(result: ClipboardClearResult): boolean {
+function writeResultTone(result: ClipboardWriteResult): Tone {
+  if (result.host.status === "written") return "ok"
+  if (result.host.status === "failed") return "bad"
+  return result.terminal.status === "attempted" ? "warn" : "bad"
+}
+
+function clearDispatched(result: ClipboardClearResult): boolean {
   return result.host.status === "cleared" || result.terminal.status === "attempted"
 }
 
+function clearResultTone(result: ClipboardClearResult): Tone {
+  if (result.host.status === "cleared") return "ok"
+  if (result.host.status === "failed") return "bad"
+  return result.terminal.status === "attempted" ? "warn" : "bad"
+}
+
 function writeResultLabel(result: ClipboardWriteResult): string {
-  return `host ${result.host.status} / terminal ${result.terminal.status} (${result.terminal.capability})`
+  const terminal =
+    result.terminal.status === "attempted"
+      ? `attempted, unconfirmed (${result.terminal.capability})`
+      : `${result.terminal.status} (${result.terminal.capability})`
+  return `host ${result.host.status} / terminal ${terminal}`
 }
 
 function clearResultLabel(result: ClipboardClearResult): string {
-  return `host ${result.host.status} / terminal ${result.terminal.status} (${result.terminal.capability})`
+  const terminal =
+    result.terminal.status === "attempted"
+      ? `attempted, unconfirmed (${result.terminal.capability})`
+      : `${result.terminal.status} (${result.terminal.capability})`
+  return `host ${result.host.status} / terminal ${terminal}`
+}
+
+type OperationKind = keyof typeof operationEpoch
+
+function beginOperation(kind: OperationKind): number {
+  operationEpoch[kind] += 1
+  return operationEpoch[kind]
+}
+
+function isCurrentOperation(kind: OperationKind, epoch: number): boolean {
+  return operationEpoch[kind] === epoch
+}
+
+function nativeReadLabel(renderer: CliRenderer): string {
+  return renderer.capabilities?.remote === true ? "server-host native read" : "process-host native read"
 }
 
 function updatePlatformPanel(renderer: CliRenderer): void {
@@ -460,6 +515,14 @@ function selectedEditorText(): string | null {
   return text.length > 0 ? text : null
 }
 
+function selectedEditorSnapshot(): EditorSelectionSnapshot | null {
+  if (!editor || editor.isDestroyed) return null
+  const selection = editor.getSelection()
+  const text = editor.getSelectedText()
+  if (!selection || text.length === 0) return null
+  return { ...selection, text }
+}
+
 function selectAllEditorText(): boolean {
   if (!editor || editor.isDestroyed) return false
   const text = editor.plainText
@@ -474,28 +537,30 @@ async function writeClipboardText(
   selection: ClipboardSelection,
   destination: ClipboardWriteDestination,
   source: string,
+  isCurrent: () => boolean,
 ): Promise<ClipboardWriteResult | null> {
   const service = clipboardService
-  if (!service) {
-    copyStatus = { tone: "bad", text: "service unavailable" }
-    updateStatePanel(renderer)
-    return null
-  }
+  if (!service) return null
 
   try {
     const result = await service.writeText(text, { destination, selection })
-    if (service !== clipboardService) return null
-    const ok = writeSucceeded(result)
-    addLog(renderer, ok ? "ok" : "warn", `${source} -> ${selection} · ${byteLength(text)} B`, writeResultLabel(result))
+    if (service !== clipboardService || !isCurrent()) return null
+    addLog(
+      renderer,
+      writeResultTone(result),
+      `${source} -> ${selection} · ${byteLength(text)} B`,
+      writeResultLabel(result),
+    )
     return result
   } catch (error) {
-    if (service !== clipboardService) return null
+    if (service !== clipboardService || !isCurrent()) return null
     addLog(renderer, "bad", `${source} write failed`, errorMessage(error))
     return null
   }
 }
 
 async function copyCommand(renderer: CliRenderer): Promise<boolean> {
+  const epoch = beginOperation("write")
   const text = selectedEditorText()
   if (!text) {
     copyStatus = { tone: "warn", text: "no editor selection to copy" }
@@ -506,44 +571,69 @@ async function copyCommand(renderer: CliRenderer): Promise<boolean> {
 
   copyStatus = { tone: "info", text: `copying ${byteLength(text)} B to clipboard` }
   updateStatePanel(renderer)
-  const result = await writeClipboardText(renderer, text, "clipboard", "best-available", "copy")
+  const result = await writeClipboardText(renderer, text, "clipboard", "best-available", "copy", () =>
+    isCurrentOperation("write", epoch),
+  )
+  if (!isCurrentOperation("write", epoch)) return false
   if (!result) {
     copyStatus = { tone: "bad", text: "copy failed" }
   } else {
     copyStatus = {
-      tone: writeSucceeded(result) ? "ok" : "warn",
+      tone: writeResultTone(result),
       text: `${byteLength(text)} B · ${writeResultLabel(result)}`,
     }
   }
   updateStatePanel(renderer)
-  return result ? writeSucceeded(result) : false
+  return result ? writeDispatched(result) : false
 }
 
 async function cutCommand(renderer: CliRenderer): Promise<boolean> {
-  const text = selectedEditorText()
-  if (!text || !editor || editor.isDestroyed) {
+  const epoch = beginOperation("write")
+  const snapshot = selectedEditorSnapshot()
+  const selectedEditor = editor
+  if (!snapshot || !selectedEditor || selectedEditor.isDestroyed) {
     cutStatus = { tone: "warn", text: "no editor selection to cut" }
     updateStatePanel(renderer)
     addLog(renderer, "warn", "cut ignored", "Select editor text first.")
     return false
   }
 
-  cutStatus = { tone: "info", text: `copying ${byteLength(text)} B before delete` }
+  cutStatus = { tone: "info", text: `copying ${byteLength(snapshot.text)} B before delete` }
   updateStatePanel(renderer)
-  const result = await writeClipboardText(renderer, text, "clipboard", "best-available", "cut")
-  if (result && writeSucceeded(result) && editor && !editor.isDestroyed) {
-    editor.deleteSelection()
-    cutStatus = { tone: "ok", text: `${byteLength(text)} B copied, then deleted` }
+  const result = await writeClipboardText(renderer, snapshot.text, "clipboard", "best-available", "cut", () =>
+    isCurrentOperation("write", epoch),
+  )
+  if (!isCurrentOperation("write", epoch)) return false
+  if (result && isConfirmedHostWrite(result) && !selectedEditor.isDestroyed) {
+    const selectionUnchanged = selectionMatchesSnapshot(
+      snapshot,
+      selectedEditor.getSelection(),
+      selectedEditor.getSelectedText(),
+    )
+    if (!selectionUnchanged) {
+      cutStatus = { tone: "warn", text: "host write confirmed; selection changed, so delete was skipped" }
+      updateStatePanel(renderer)
+      addLog(renderer, "warn", "cut delete skipped", "Editor selection changed while the host write was pending.")
+      return false
+    }
+    selectedEditor.deleteSelection()
+    cutStatus = { tone: "ok", text: `${byteLength(snapshot.text)} B host-confirmed, then deleted` }
     updateStatePanel(renderer)
     return true
   }
 
-  cutStatus = { tone: "bad", text: result ? writeResultLabel(result) : "copy failed; selection preserved" }
+  cutStatus = result
+    ? {
+        tone: writeResultTone(result),
+        text: `${writeResultLabel(result)}; unconfirmed, selection preserved`,
+      }
+    : { tone: "bad", text: "copy failed; selection preserved" }
   updateStatePanel(renderer)
   return false
 }
 
 async function pasteCommand(renderer: CliRenderer, selection: ClipboardSelection): Promise<boolean> {
+  const epoch = beginOperation("read")
   const service = clipboardService
   if (!service || !editor || editor.isDestroyed) {
     pasteStatus = { tone: "bad", text: "service or editor unavailable" }
@@ -555,7 +645,8 @@ async function pasteCommand(renderer: CliRenderer, selection: ClipboardSelection
   updateStatePanel(renderer)
   try {
     const result = await service.read({ preferredTypes: ["text/plain"], selection })
-    if (service !== clipboardService || !editor || editor.isDestroyed) return false
+    if (service !== clipboardService || !isCurrentOperation("read", epoch) || !editor || editor.isDestroyed)
+      return false
     if (result.status !== "read") {
       pasteStatus = { tone: result.status === "failed" ? "bad" : "warn", text: `${selection} read: ${result.status}` }
       addLog(
@@ -570,12 +661,18 @@ async function pasteCommand(renderer: CliRenderer, selection: ClipboardSelection
 
     const text = stripAnsiSequences(decoder.decode(result.representation.bytes))
     editor.insertText(normalizeNewlines(text))
-    pasteStatus = { tone: "ok", text: `${selection} inserted ${byteLength(text)} B via native read` }
-    addLog(renderer, "ok", `paste <- ${selection} · inserted ${byteLength(text)} B`, escapedPreview(text, 56))
+    const readLabel = nativeReadLabel(renderer)
+    pasteStatus = { tone: "ok", text: `${selection} inserted ${byteLength(text)} B via ${readLabel}` }
+    addLog(
+      renderer,
+      "ok",
+      `paste <- ${selection} via ${readLabel} · inserted ${byteLength(text)} B`,
+      escapedPreview(text, 56),
+    )
     updateStatePanel(renderer)
     return true
   } catch (error) {
-    if (service !== clipboardService) return false
+    if (service !== clipboardService || !isCurrentOperation("read", epoch)) return false
     pasteStatus = { tone: "bad", text: `read rejected: ${errorMessage(error)}` }
     addLog(renderer, "bad", `paste read rejected · ${selection}`, errorMessage(error))
     updateStatePanel(renderer)
@@ -591,6 +688,7 @@ function selectAllCommand(renderer: CliRenderer): boolean {
 }
 
 function loadSampleCommand(renderer: CliRenderer): boolean {
+  beginOperation("read")
   if (!editor || editor.isDestroyed) return false
   const current = fixture()
   editor.focus()
@@ -604,6 +702,7 @@ function loadSampleCommand(renderer: CliRenderer): boolean {
 }
 
 function resetEditorCommand(renderer: CliRenderer): boolean {
+  beginOperation("read")
   editor?.setText("")
   pasteStatus = { tone: "muted", text: "editor cleared" }
   readStatus = { tone: "muted", text: "not attempted" }
@@ -622,6 +721,7 @@ function selectFixtureCommand(renderer: CliRenderer, index: number): boolean {
 }
 
 async function readClipboardCommand(renderer: CliRenderer, selection: ClipboardSelection): Promise<boolean> {
+  const epoch = beginOperation("read")
   const service = clipboardService
   if (!service) {
     readStatus = { tone: "bad", text: "service unavailable" }
@@ -636,7 +736,7 @@ async function readClipboardCommand(renderer: CliRenderer, selection: ClipboardS
       preferredTypes: ["image/png", "text/plain"],
       selection,
     })
-    if (service !== clipboardService) return false
+    if (service !== clipboardService || !isCurrentOperation("read", epoch)) return false
     if (result.status !== "read") {
       readStatus = { tone: result.status === "failed" ? "bad" : "warn", text: `${selection}: ${result.status}` }
       addLog(
@@ -651,22 +751,23 @@ async function readClipboardCommand(renderer: CliRenderer, selection: ClipboardS
 
     const { mimeType, bytes } = result.representation
     const digest = await sha256(bytes)
-    if (service !== clipboardService) return false
+    if (service !== clipboardService || !isCurrentOperation("read", epoch)) return false
+    const readLabel = nativeReadLabel(renderer)
     const exactFixture = mimeType === "text/plain" && decoder.decode(bytes) === fixture().payload
     readStatus = {
       tone: exactFixture ? "ok" : "info",
-      text: `${selection}: ${mimeType} · ${bytes.length} B${exactFixture ? " · exact sample" : ""}`,
+      text: `${selection}: ${mimeType} · ${bytes.length} B via ${readLabel}${exactFixture ? " · exact sample" : ""}`,
     }
     addLog(
       renderer,
       readStatus.tone,
-      `read check <- ${selection} · ${mimeType} · ${bytes.length} B`,
+      `read check <- ${selection} via ${readLabel} · ${mimeType} · ${bytes.length} B`,
       `sha256 ${digest} · hex ${hexPrefix(bytes, 8)}`,
     )
     updateStatePanel(renderer)
     return true
   } catch (error) {
-    if (service !== clipboardService) return false
+    if (service !== clipboardService || !isCurrentOperation("read", epoch)) return false
     readStatus = { tone: "bad", text: `rejected: ${errorMessage(error)}` }
     addLog(renderer, "bad", `read check rejected · ${selection}`, errorMessage(error))
     updateStatePanel(renderer)
@@ -675,6 +776,7 @@ async function readClipboardCommand(renderer: CliRenderer, selection: ClipboardS
 }
 
 async function clearClipboardCommand(renderer: CliRenderer, selection: ClipboardSelection): Promise<boolean> {
+  const epoch = beginOperation("clear")
   const service = clipboardService
   if (!service) {
     clearStatus = { tone: "bad", text: "service unavailable" }
@@ -686,16 +788,16 @@ async function clearClipboardCommand(renderer: CliRenderer, selection: Clipboard
   updateStatePanel(renderer)
   try {
     const result = await service.clear({ destination: "all-available", selection })
-    if (service !== clipboardService) return false
+    if (service !== clipboardService || !isCurrentOperation("clear", epoch)) return false
     clearStatus = {
-      tone: clearSucceeded(result) ? "ok" : "warn",
+      tone: clearResultTone(result),
       text: `${selection}: ${clearResultLabel(result)}`,
     }
     addLog(renderer, clearStatus.tone, `clear -> ${selection}`, clearResultLabel(result))
     updateStatePanel(renderer)
-    return clearSucceeded(result)
+    return clearDispatched(result)
   } catch (error) {
-    if (service !== clipboardService) return false
+    if (service !== clipboardService || !isCurrentOperation("clear", epoch)) return false
     clearStatus = { tone: "bad", text: `rejected: ${errorMessage(error)}` }
     addLog(renderer, "bad", `clear rejected · ${selection}`, errorMessage(error))
     updateStatePanel(renderer)
@@ -704,16 +806,20 @@ async function clearClipboardCommand(renderer: CliRenderer, selection: Clipboard
 }
 
 async function publishMouseSelection(renderer: CliRenderer, text: string): Promise<void> {
+  const epoch = beginOperation("selection")
   const profile = platformProfile()
   const selection = profile.selectionTarget
   selectionStatus = { tone: "info", text: `publishing ${byteLength(text)} B to ${selection}` }
   updateStatePanel(renderer)
-  const result = await writeClipboardText(renderer, text, selection, "all-available", "mouse selection")
+  const result = await writeClipboardText(renderer, text, selection, "all-available", "mouse selection", () =>
+    isCurrentOperation("selection", epoch),
+  )
+  if (!isCurrentOperation("selection", epoch)) return
   if (!result) {
     selectionStatus = { tone: "bad", text: "selection publish failed" }
   } else {
     selectionStatus = {
-      tone: writeSucceeded(result) ? "ok" : "warn",
+      tone: writeResultTone(result),
       text: `${selection} · ${byteLength(text)} B · ${writeResultLabel(result)}`,
     }
   }
@@ -837,7 +943,8 @@ function registerKeymap(renderer: CliRenderer): void {
           title: "Quit",
           desc: "Destroy the renderer",
           category: "Application",
-          run() {
+          async run() {
+            await destroy(renderer)
             renderer.destroy()
           },
         },
@@ -897,6 +1004,7 @@ function registerKeymap(renderer: CliRenderer): void {
 }
 
 export function run(renderer: CliRenderer): void {
+  destroyPromise = null
   renderer.setBackgroundColor(P.bg)
   selectedFixture = 0
   lastLoggedCapability = ""
@@ -907,6 +1015,7 @@ export function run(renderer: CliRenderer): void {
   readStatus = { tone: "muted", text: "not attempted" }
   clearStatus = { tone: "muted", text: "not attempted" }
   serviceStatus = { tone: "muted", text: "initializing" }
+  operationEpoch = { write: 0, read: 0, clear: 0, selection: 0 }
 
   const destroyOnRendererDestroy = () => {
     destroy(renderer)
@@ -1038,6 +1147,7 @@ ${fg(P.muted)("Use platform copy/paste keys. F1-F4 sample, F5 load, F6 clear edi
   renderer.root.add(root)
 
   pasteHandler = (event) => {
+    beginOperation("read")
     const current = fixture()
     const pasted = decodePasteBytes(event.bytes)
     const exact = pasted === current.payload
@@ -1096,7 +1206,16 @@ ${fg(P.muted)("Use platform copy/paste keys. F1-F4 sample, F5 load, F6 clear edi
   loadSampleCommand(renderer)
 }
 
-export function destroy(renderer: CliRenderer): void {
+export function destroy(renderer: CliRenderer): Promise<void> {
+  destroyPromise ??= destroyDemo(renderer)
+  return destroyPromise
+}
+
+async function destroyDemo(renderer: CliRenderer): Promise<void> {
+  beginOperation("write")
+  beginOperation("read")
+  beginOperation("clear")
+  beginOperation("selection")
   while (disposers.length > 0) {
     const dispose = disposers.pop()
     try {
@@ -1113,9 +1232,11 @@ export function destroy(renderer: CliRenderer): void {
 
   const service = clipboardService
   clipboardService = null
-  void service?.dispose().catch((error) => {
+  try {
+    await service?.dispose()
+  } catch (error) {
     console.error("Error disposing clipboard service:", error)
-  })
+  }
 
   root?.destroyRecursively()
   root = null
