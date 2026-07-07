@@ -1,9 +1,15 @@
 import { once } from "node:events"
 import { readFile } from "node:fs/promises"
-import { createServer, type Server } from "node:http"
+import { createServer, type Server, type ServerResponse } from "node:http"
 import { runInNewContext } from "node:vm"
 import { afterEach, expect, test } from "bun:test"
-import { Audio, AudioStream, type AudioStreamErrorContext, type AudioStreamStats } from "../audio.js"
+import {
+  Audio,
+  AudioStream,
+  type AudioStreamErrorContext,
+  type AudioStreamMetadata,
+  type AudioStreamStats,
+} from "../audio.js"
 import { NativeAudioStreamState } from "../zig-structs.js"
 
 const SAMPLE_RATE = 48_000
@@ -79,6 +85,50 @@ function repeatBytes(bytes: Uint8Array, count: number): Uint8Array {
   const repeated = new Uint8Array(bytes.length * count)
   for (let index = 0; index < count; index += 1) repeated.set(bytes, index * bytes.length)
   return repeated
+}
+
+function icyMetadataBlock(payload: string | Uint8Array | null): Uint8Array {
+  if (payload == null) return new Uint8Array(1)
+  const bytes = typeof payload === "string" ? new TextEncoder().encode(payload) : payload
+  const blocks = Math.ceil(bytes.byteLength / 16)
+  if (blocks > 255) throw new Error("ICY test metadata exceeds the wire limit")
+  const framed = new Uint8Array(1 + blocks * 16)
+  framed[0] = blocks
+  framed.set(bytes, 1)
+  return framed
+}
+
+function interleaveIcy(
+  audio: Uint8Array,
+  interval: number,
+  metadata: ReadonlyArray<string | Uint8Array | null> = [],
+): Uint8Array {
+  const chunks: Uint8Array[] = []
+  let outputLength = 0
+  let metadataIndex = 0
+  for (let offset = 0; offset < audio.byteLength; offset += interval) {
+    const end = Math.min(audio.byteLength, offset + interval)
+    const audioChunk = audio.subarray(offset, end)
+    chunks.push(audioChunk)
+    outputLength += audioChunk.byteLength
+    if (audioChunk.byteLength === interval) {
+      const metadataChunk = icyMetadataBlock(metadata[metadataIndex] ?? null)
+      metadataIndex += 1
+      chunks.push(metadataChunk)
+      outputLength += metadataChunk.byteLength
+    }
+  }
+  const output = new Uint8Array(outputLength)
+  let outputOffset = 0
+  for (const chunk of chunks) {
+    output.set(chunk, outputOffset)
+    outputOffset += chunk.byteLength
+  }
+  return output
+}
+
+function latin1(value: string): Uint8Array {
+  return Uint8Array.from(value, (character) => character.charCodeAt(0))
 }
 
 function replaceMethod(target: object, name: string, replacement: unknown): () => void {
@@ -171,6 +221,7 @@ test("Audio streams an MP3 before the HTTP response ends and exposes it through 
 
   const stream = await audio.playStream(new URL("/radio", baseUrl))
   expect(["buffering", "playing"]).toContain(stream.getStats().state)
+  expect(stream.getMetadata()).toBeNull()
   const pcm = await waitForTapSignal(audio, stream)
 
   expect(responseEnded).toBe(false)
@@ -187,6 +238,449 @@ test("Audio streams an MP3 before the HTTP response ends and exposes it through 
   releaseTail.resolve()
   await waitFor(() => responseEnded, "Test server did not finish the MP3 response")
   stream.dispose()
+  await stream.closed
+})
+
+test("Audio strips negotiated ICY metadata and exposes changed metadata without duplicate events", async () => {
+  const fixture = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 4)
+  const interval = 1024
+  const initialAudioLength = interval * 8
+  const firstPayload = "StreamTitle='First track';StreamUrl='https://example.test/first';"
+  const secondPayload = "StreamTitle='Second; mix';Custom='value';__proto__='safe';"
+  let requestMetadataHeader: string | string[] | undefined
+  const activeResponse: { current: ServerResponse | null } = { current: null }
+  const responseReady = deferred()
+  const server = createServer((request, currentResponse) => {
+    requestMetadataHeader = request.headers["icy-metadata"]
+    currentResponse.writeHead(200, {
+      "Content-Type": "audio/mpeg",
+      "icy-metaint": interval,
+      "icy-name": "Test station",
+      "icy-genre": "Test genre",
+      Connection: "close",
+    })
+    currentResponse.write(interleaveIcy(fixture.subarray(0, initialAudioLength), interval, [firstPayload]))
+    activeResponse.current = currentResponse
+    responseReady.resolve()
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 500, startupMs: 25, resumeMs: 25 },
+  })
+  await responseReady.promise
+  if (activeResponse.current == null) throw new Error("ICY test response was not created")
+
+  expect(requestMetadataHeader).toBe("1")
+  expect(stream.getMetadata()).toEqual({
+    format: "icy",
+    headers: {
+      "icy-genre": "Test genre",
+      "icy-metaint": interval.toString(),
+      "icy-name": "Test station",
+    },
+    fields: {
+      StreamTitle: "First track",
+      StreamUrl: "https://example.test/first",
+    },
+  })
+  expect(Object.isFrozen(stream.getMetadata())).toBe(true)
+  expect(Object.isFrozen(stream.getMetadata()?.headers)).toBe(true)
+  expect(Object.isFrozen(stream.getMetadata()?.fields)).toBe(true)
+
+  const metadataEvents: AudioStreamMetadata[] = []
+  stream.on("metadata", (metadata) => {
+    if (metadata != null) metadataEvents.push(metadata)
+  })
+  await waitFor(() => metadataEvents.length === 1, "Initial ICY metadata event was not observable after setup")
+  await waitFor(
+    () => stream.getStats().bytesReceived === BigInt(initialAudioLength),
+    "Initial ICY response bytes were not fully consumed",
+  )
+
+  let audioOffset = initialAudioLength
+  const writeCycle = async (payload: string | null): Promise<void> => {
+    const previousBytes = stream.getStats().bytesReceived
+    activeResponse.current!.write(
+      interleaveIcy(fixture.subarray(audioOffset, audioOffset + interval), interval, [payload]),
+    )
+    audioOffset += interval
+    await waitFor(
+      () => stream.getStats().bytesReceived >= previousBytes + BigInt(interval),
+      "ICY test cycle was not consumed",
+    )
+    await sleep(0)
+  }
+
+  await writeCycle(firstPayload)
+  await writeCycle(null)
+  await writeCycle("not a metadata assignment")
+  expect(metadataEvents).toHaveLength(1)
+
+  await writeCycle(secondPayload)
+  await waitFor(() => metadataEvents.length === 2, "Changed ICY metadata did not emit an event")
+  expect(metadataEvents[1]?.fields.StreamTitle).toBe("Second; mix")
+  expect(metadataEvents[1]?.fields.Custom).toBe("value")
+  expect(metadataEvents[1]?.fields["__proto__"]).toBe("safe")
+  expect(Object.prototype.hasOwnProperty.call(metadataEvents[1]?.fields, "__proto__")).toBe(true)
+
+  await writeCycle("StreamTitle='';")
+  await waitFor(() => metadataEvents.length === 3, "An explicit empty ICY title did not emit an event")
+  expect(metadataEvents.map((metadata) => metadata.fields.StreamTitle)).toEqual(["First track", "Second; mix", ""])
+
+  activeResponse.current.end(interleaveIcy(fixture.subarray(audioOffset), interval))
+  await drainStream(audio, stream)
+  expect(stream.getStats().bytesReceived).toBe(BigInt(fixture.byteLength))
+  expect(stream.getStats().framesDecoded).toBeGreaterThan(0n)
+  expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
+  expect(stream.getMetadata()?.fields).toEqual({ StreamTitle: "" })
+})
+
+test("Audio coalesces rapid ICY changes into the latest metadata event", async () => {
+  const fixture = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 3)
+  const interval = 1024
+  const initialAudioLength = interval * 8
+  const controllerRef: { current: ReadableStreamDefaultController<Uint8Array> | null } = { current: null }
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (() => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controllerRef.current = controller
+        controller.enqueue(interleaveIcy(fixture.subarray(0, initialAudioLength), interval, ["StreamTitle='Initial';"]))
+      },
+    })
+    return Promise.resolve(
+      new Response(body, {
+        headers: { "Content-Type": "audio/mpeg", "icy-metaint": interval.toString() },
+      }),
+    )
+  }) as unknown as typeof fetch
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  try {
+    const stream = await audio.playStream("https://example.test/radio", {
+      buffer: { capacityMs: 500, startupMs: 25, resumeMs: 25 },
+    })
+    if (controllerRef.current == null) throw new Error("ICY response controller was not created")
+    const metadataEvents: AudioStreamMetadata[] = []
+    stream.on("metadata", (metadata) => {
+      if (metadata != null) metadataEvents.push(metadata)
+    })
+    await waitFor(() => metadataEvents.length === 1, "Initial metadata event was not emitted")
+
+    controllerRef.current.enqueue(
+      interleaveIcy(fixture.subarray(initialAudioLength, initialAudioLength + interval * 2), interval, [
+        "StreamTitle='Intermediate';",
+        "StreamTitle='Latest';",
+      ]),
+    )
+    await waitFor(() => stream.getMetadata()?.fields.StreamTitle === "Latest", "Latest metadata was not stored")
+    await waitFor(() => metadataEvents.length === 2, "Coalesced metadata event was not emitted")
+    await sleep(10)
+    expect(metadataEvents.map((metadata) => metadata.fields.StreamTitle)).toEqual(["Initial", "Latest"])
+
+    controllerRef.current.enqueue(interleaveIcy(fixture.subarray(initialAudioLength + interval * 2), interval))
+    controllerRef.current.close()
+    await drainStream(audio, stream)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("Audio preserves an explicit ICY negotiation override and exposes response metadata without framing", async () => {
+  const fixture = new Uint8Array(await readFile(MP3_URL))
+  let requestMetadataHeader: string | string[] | undefined
+  let customHeader: string | string[] | undefined
+  const server = createServer((request, response) => {
+    requestMetadataHeader = request.headers["icy-metadata"]
+    customHeader = request.headers["x-audio-test"]
+    response.writeHead(200, {
+      "Content-Type": "audio/mpeg",
+      "icy-name": "Headers only",
+      Connection: "close",
+    })
+    response.end(fixture)
+  })
+  const baseUrl = await listen(server)
+  const headers = new Headers([
+    ["Icy-MetaData", "0"],
+    ["X-Audio-Test", "preserved"],
+  ])
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(`${baseUrl}/radio`, {
+    request: { headers },
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  await drainStream(audio, stream)
+
+  expect(requestMetadataHeader).toBe("0")
+  expect(customHeader).toBe("preserved")
+  expect(stream.getStats().bytesReceived).toBe(BigInt(fixture.byteLength))
+  expect(stream.getMetadata()).toEqual({
+    format: "icy",
+    headers: { "icy-name": "Headers only" },
+    fields: {},
+  })
+})
+
+test("Audio decodes ICY metadata with the documented default and an explicit encoding", async () => {
+  const fixture = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 2)
+  const scenarios = [
+    {
+      payload: latin1("StreamTitle='Price \x80';"),
+      options: {},
+      expected: "Price €",
+    },
+    {
+      payload: new TextEncoder().encode("StreamTitle='日本語 UTF-8';"),
+      options: { metadataEncoding: "utf-8" },
+      expected: "日本語 UTF-8",
+    },
+  ]
+
+  for (const scenario of scenarios) {
+    const server = createServer((_, response) => {
+      response.writeHead(200, {
+        "Content-Type": "audio/mpeg",
+        "icy-metaint": "1024",
+        Connection: "close",
+      })
+      response.end(interleaveIcy(fixture, 1024, [scenario.payload]))
+    })
+    const baseUrl = await listen(server)
+    const audio = Audio.create({ autoStart: false })
+    audios.push(audio)
+    expect(audio.startMixer()).toBe(true)
+
+    const stream = await audio.playStream(`${baseUrl}/radio`, {
+      ...scenario.options,
+      buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    })
+    await drainStream(audio, stream)
+    expect(stream.getMetadata()?.fields.StreamTitle).toBe(scenario.expected)
+    expect(stream.getStats().bytesReceived).toBe(BigInt(fixture.byteLength))
+    audio.dispose()
+  }
+})
+
+test("Audio handles maximum-size ICY metadata across one-byte response chunks", async () => {
+  const fixture = new Uint8Array(await readFile(MP3_URL))
+  const payload = new Uint8Array(255 * 16)
+  payload.set(new TextEncoder().encode("StreamTitle='Fragmented metadata';"))
+  const interval = 1024
+  const wireBytes = interleaveIcy(fixture, interval, [payload])
+  const originalFetch = globalThis.fetch
+  const observedRequest: { metadataHeader: string | null } = { metadataHeader: null }
+  globalThis.fetch = ((_input, init) => {
+    observedRequest.metadataHeader = new Headers(init?.headers).get("icy-metadata")
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(wireBytes.subarray(0, interval))
+        const metadataEnd = interval + 1 + payload.byteLength
+        for (let offset = interval; offset < metadataEnd; offset += 1) {
+          controller.enqueue(wireBytes.subarray(offset, offset + 1))
+        }
+        for (let offset = metadataEnd; offset < wireBytes.byteLength; offset += 13) {
+          controller.enqueue(wireBytes.subarray(offset, Math.min(wireBytes.byteLength, offset + 13)))
+        }
+        controller.close()
+      },
+    })
+    return Promise.resolve(
+      new Response(body, {
+        headers: { "Content-Type": "audio/mpeg", "icy-metaint": "001024" },
+      }),
+    )
+  }) as typeof fetch
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  try {
+    const stream = await audio.playStream("https://example.test/radio", {
+      buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    })
+    await drainStream(audio, stream)
+    expect(observedRequest.metadataHeader).toBe("1")
+    expect(stream.getMetadata()?.fields.StreamTitle).toBe("Fragmented metadata")
+    expect(stream.getStats().bytesReceived).toBe(BigInt(fixture.byteLength))
+    expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("Audio rejects ambiguous ICY intervals before allocating a native stream", async () => {
+  const fixture = new Uint8Array(await readFile(MP3_URL))
+  for (const interval of ["-1", "1.5", "invalid", "1, 2", "9007199254740992"]) {
+    const server = createServer((_, response) => {
+      response.writeHead(200, {
+        "Content-Type": "audio/mpeg",
+        "icy-metaint": interval,
+        Connection: "close",
+      })
+      response.end(fixture)
+    })
+    const baseUrl = await listen(server)
+    const audio = Audio.create({ autoStart: false })
+    audios.push(audio)
+
+    let rejection: unknown
+    try {
+      await audio.playStream(`${baseUrl}/radio`)
+    } catch (error) {
+      rejection = error
+    }
+    expect((rejection as Error)?.message).toContain("Invalid icy-metaint")
+    expect((rejection as { context?: AudioStreamErrorContext }).context).toEqual({
+      action: "response",
+      status: 200,
+    })
+    expect(audio.getStats()?.voicesActive).toBe(0)
+    audio.dispose()
+  }
+})
+
+test("Audio selects a fresh ICY parser after reconnecting from a partial metadata block", async () => {
+  const firstFixture = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 12)
+  const replacementFixture = repeatBytes(new Uint8Array(await readFile(MP3_3000_URL)), 12)
+  const interrupt = deferred()
+  const releaseReplacementBody = deferred()
+  const keepReplacementOpen = deferred()
+  const requestMetadataHeaders: Array<string | string[] | undefined> = []
+  let requests = 0
+  const server = createServer((request, response) => {
+    requests += 1
+    requestMetadataHeaders.push(request.headers["icy-metadata"])
+    if (requests === 1) {
+      response.writeHead(200, {
+        "Content-Type": "audio/mpeg",
+        "icy-metaint": "1024",
+        "icy-name": "First station",
+        Connection: "close",
+      })
+      response.write(interleaveIcy(firstFixture.subarray(0, 8192), 1024, ["StreamTitle='First track';"]))
+      void interrupt.promise.then(() => {
+        response.write(firstFixture.subarray(8192, 8192 + 1024))
+        response.write(Uint8Array.of(2))
+        response.end("partial")
+      })
+      return
+    }
+
+    response.writeHead(200, {
+      "Content-Type": "audio/mpeg",
+      "icy-metaint": "777",
+      "icy-name": "Replacement station",
+      Connection: "close",
+    })
+    response.flushHeaders()
+    void releaseReplacementBody.promise.then(() => {
+      response.write(interleaveIcy(replacementFixture.subarray(0, 777 * 12), 777, ["StreamTitle='Replacement track';"]))
+      void keepReplacementOpen.promise.then(() => response.end())
+    })
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  const stream = await audio.playStream(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 500, startupMs: 25, resumeMs: 25 },
+    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+  })
+  stream.on("error", () => {})
+  expect(stream.getMetadata()?.fields.StreamTitle).toBe("First track")
+
+  let reconnecting = false
+  stream.on("reconnecting", () => {
+    reconnecting = true
+  })
+  interrupt.resolve()
+  await waitFor(
+    () =>
+      reconnecting &&
+      requests === 2 &&
+      stream.getMetadata()?.headers["icy-metaint"] === "777" &&
+      Object.keys(stream.getMetadata()?.fields ?? {}).length === 0,
+    "Replacement ICY response did not clear the previous response fields",
+  )
+  releaseReplacementBody.resolve()
+  await waitFor(
+    () =>
+      stream.getMetadata()?.headers["icy-metaint"] === "777" &&
+      stream.getMetadata()?.fields.StreamTitle === "Replacement track",
+    "Audio stream did not adopt replacement ICY framing and metadata",
+  )
+  expect(requestMetadataHeaders).toEqual(["1", "1"])
+  expect(stream.getStats().reconnectAttempts).toBe(1)
+  expect(stream.getStats().framesDecoded).toBeGreaterThan(0n)
+  expect(stream.getMetadata()).toEqual({
+    format: "icy",
+    headers: {
+      "icy-metaint": "777",
+      "icy-name": "Replacement station",
+    },
+    fields: { StreamTitle: "Replacement track" },
+  })
+
+  stream.dispose()
+  keepReplacementOpen.resolve()
+  await stream.closed
+})
+
+test("Audio clears ICY metadata when a replacement response is plain MP3", async () => {
+  const fixture = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 12)
+  const interrupt = deferred()
+  const keepReplacementOpen = deferred()
+  let requests = 0
+  const server = createServer((_, response) => {
+    requests += 1
+    if (requests === 1) {
+      response.writeHead(200, {
+        "Content-Type": "audio/mpeg",
+        "icy-metaint": "1024",
+        Connection: "close",
+      })
+      response.write(interleaveIcy(fixture.subarray(0, 8192), 1024, ["StreamTitle='ICY track';"]))
+      void interrupt.promise.then(() => {
+        response.end(fixture.subarray(8192, 8192 + 1024))
+      })
+      return
+    }
+    response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
+    response.write(fixture)
+    void keepReplacementOpen.promise.then(() => response.end())
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  const stream = await audio.playStream(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 500, startupMs: 25, resumeMs: 25 },
+    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+  })
+  stream.on("error", () => {})
+  expect(stream.getMetadata()?.fields.StreamTitle).toBe("ICY track")
+
+  const metadataEvents: Array<AudioStreamMetadata | null> = []
+  stream.on("metadata", (metadata) => metadataEvents.push(metadata))
+  interrupt.resolve()
+  await waitFor(
+    () => requests === 2 && stream.getMetadata() == null && stream.getStats().reconnectAttempts === 1,
+    "Plain replacement response did not clear ICY metadata",
+  )
+  await waitFor(() => metadataEvents.includes(null), "Metadata clear event was not emitted")
+
+  stream.dispose()
+  keepReplacementOpen.resolve()
   await stream.closed
 })
 
@@ -2181,6 +2675,16 @@ test("Audio validates public stream and reconnect options before consuming a sou
     response.end()
   })
   const validationUrl = await listen(validationServer)
+  const invalidMetadataEncodingAudio = Audio.create({ autoStart: false })
+  audios.push(invalidMetadataEncodingAudio)
+  await expect(
+    invalidMetadataEncodingAudio.playStream(`${validationUrl}/radio`, {
+      metadataEncoding: "not-a-real-encoding",
+    }),
+  ).rejects.toThrow("metadataEncoding")
+  expect(validationRequests).toBe(0)
+  invalidMetadataEncodingAudio.dispose()
+
   const invalidReconnectOptions = [
     { reconnect: { maxAttempts: -1 }, message: "reconnect.maxAttempts" },
     { reconnect: { maxAttempts: 1.5 }, message: "reconnect.maxAttempts" },
@@ -2203,7 +2707,11 @@ test("Audio validates public stream and reconnect options before consuming a sou
   }
   expect(validationRequests).toBe(0)
 
-  for (const urlOnlyOptions of [{ reconnect: {} }, { request: { headers: { "x-test": "value" } } }]) {
+  for (const urlOnlyOptions of [
+    { reconnect: {} },
+    { request: { headers: { "x-test": "value" } } },
+    { metadataEncoding: "utf-8" },
+  ]) {
     let pulls = 0
     const source: AsyncIterable<Uint8Array> = {
       async *[Symbol.asyncIterator]() {

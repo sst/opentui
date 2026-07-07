@@ -16,6 +16,7 @@ import {
   t,
   type AudioGroup,
   type AudioStream,
+  type AudioStreamMetadata,
   type AudioStreamStats,
   type KeyEvent,
 } from "@opentui/core"
@@ -36,7 +37,6 @@ const FFT_UPDATE_MS = 50
 const VOLUME_STEP = 0.1
 const PAN_STEP = 0.1
 const BAND_CENTERS = [63, 160, 400, 1000, 2500, 6000, 12000, 16000]
-const BAR_WIDTH = 20
 const FFT_PEAK_FALLOFF = 0.04
 const FFT_DB_FLOOR = -72
 const FFT_DB_CEILING = 0
@@ -78,11 +78,6 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value))
 }
 
-function meter(value: number, width: number = BAR_WIDTH): string {
-  const filled = Math.round(clamp(value, 0, 1) * width)
-  return `[${"#".repeat(filled)}${"-".repeat(width - filled)}]`
-}
-
 function formatBytes(value: bigint): string {
   const bytes = Number(value)
   if (!Number.isFinite(bytes)) return `${value.toString()} B`
@@ -93,6 +88,13 @@ function formatBytes(value: bigint): string {
 
 function formatFrequency(value: number): string {
   return value >= 1000 ? `${value / 1000}k` : value.toString()
+}
+
+function displayMetadata(value: string | undefined): string {
+  const sanitized = value?.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim()
+  if (!sanitized) return "-"
+  const characters = Array.from(sanitized)
+  return characters.length > 13 ? `${characters.slice(0, 10).join("")}...` : sanitized
 }
 
 function writeBufferRgb(buffer: Uint16Array, index: number, red: number, green: number, blue: number): void {
@@ -123,6 +125,7 @@ class AudioStreamingDemo {
   private stream: AudioStream | null = null
   private streamController: AbortController | null = null
   private streamStats: AudioStreamStats | null = null
+  private streamMetadata: AudioStreamMetadata | null = null
   private connectionGeneration = 0
   private destroyed = false
   private liveRequested = false
@@ -266,7 +269,7 @@ class AudioStreamingDemo {
       paddingRight: 1,
       flexGrow: 1,
       flexBasis: 0,
-      minWidth: 30,
+      minWidth: 40,
     })
     this.statsText = new TextRenderable(renderer, {
       id: "audio-streaming-demo-stats",
@@ -398,6 +401,7 @@ class AudioStreamingDemo {
     this.stream?.dispose()
     this.stream = null
     this.streamStats = null
+    this.streamMetadata = null
     this.spectrum.fill(0)
     this.spectrumPeaks.fill(0)
     this.lastAnalyzedFrame = 0n
@@ -442,6 +446,12 @@ class AudioStreamingDemo {
     }
 
     this.stream = nextStream
+    this.streamMetadata = nextStream.getMetadata()
+    nextStream.on("metadata", (metadata) => {
+      if (!this.isCurrent(nextStream, generation)) return
+      this.streamMetadata = metadata
+      this.refreshText()
+    })
     nextStream.on("error", (error) => {
       if (!this.isCurrent(nextStream, generation)) return
       this.streamStats = nextStream.getStats()
@@ -503,6 +513,7 @@ class AudioStreamingDemo {
     this.stream?.dispose()
     this.stream = null
     this.streamStats = null
+    this.streamMetadata = null
     this.lastAnalyzedFrame = -1n
     this.statusMessage = "Stream stopped"
     this.statusColor = PALETTE.muted
@@ -789,7 +800,6 @@ class AudioStreamingDemo {
     const state = this.streamStats?.state ?? (this.stream ? this.stream.state : "idle")
 
     const stats = this.streamStats
-    const capacityMs = stats && stats.sampleRate > 0 ? (stats.capacityFrames * 1000) / stats.sampleRate : 0
     const bufferRatio = stats && stats.capacityFrames > 0 ? stats.bufferedFrames / stats.capacityFrames : 0
     const stateColor =
       state === "playing"
@@ -800,20 +810,22 @@ class AudioStreamingDemo {
             ? PALETTE.muted
             : PALETTE.warning
     const bufferColor = bufferRatio >= 0.5 ? PALETTE.signal : bufferRatio > 0 ? PALETTE.warning : PALETTE.muted
-    const label = (value: string) => fg(PALETTE.muted)(value.padEnd(13))
+    const label = (value: string) => fg(PALETTE.muted)(value.padEnd(9))
     const underruns = stats?.underruns ?? 0
     const reconnects = stats?.reconnectAttempts ?? 0
+    const station = displayMetadata(this.streamMetadata?.headers["icy-name"])
+    const title = displayMetadata(this.streamMetadata?.fields.StreamTitle)
 
     this.statsText.content = t`${label("state")}${bold(fg(stateColor)(state))}
 ${label("output")}${fg(PALETTE.accent)(this.outputMode)}
-${label("status")}${fg(this.statusColor)(this.statusMessage)}
-${label("buffer")}${fg(bufferColor)(`${stats?.bufferedDurationMs.toFixed(0) ?? "0"} / ${capacityMs.toFixed(0)} ms`)}
-${label("")}${fg(bufferColor)(meter(bufferRatio, 16))}
+${label("status")}${fg(this.statusColor)(displayMetadata(this.statusMessage))}
+${label("station")}${fg(PALETTE.accent)(station)}
+${label("title")}${fg(PALETTE.signal)(title)}
+${label("buffer")}${fg(bufferColor)(`${stats?.bufferedDurationMs.toFixed(0) ?? "0"}ms ${Math.round(bufferRatio * 100)}%`)}
 ${label("received")}${fg(PALETTE.accent)(formatBytes(stats?.bytesReceived ?? 0n))}
 ${label("decoded")}${fg(PALETTE.purple)(`${stats?.framesDecoded.toString() ?? "0"} frames`)}
 ${label("played")}${fg(PALETTE.signal)(`${stats?.framesPlayed.toString() ?? "0"} frames`)}
-${label("underruns")}${fg(underruns > 0 ? PALETTE.error : PALETTE.muted)(underruns)}
-${label("reconnects")}${fg(reconnects > 0 ? PALETTE.warning : PALETTE.muted)(reconnects)}
+${label("health")}${fg(underruns > 0 ? PALETTE.error : PALETTE.muted)(`u:${underruns}`)}  ${fg(reconnects > 0 ? PALETTE.warning : PALETTE.muted)(`r:${reconnects}`)}
 ${label("volume")}${fg(PALETTE.accent)(this.volume.toFixed(1))}  ${fg(PALETTE.muted)("pan")} ${fg(PALETTE.purple)(this.pan.toFixed(1))}
 ${label("group")}${fg(PALETTE.signal)(this.useDimGroup ? "dim (35%)" : "full")}`
     this.refreshControls()

@@ -84,6 +84,13 @@ try {
     reconnect: { retryOnEnd: true },
   })
 
+  const initialMetadata = stream.getMetadata()
+  console.log(initialMetadata?.fields.StreamTitle)
+
+  stream.on("metadata", (metadata) => {
+    console.log(metadata?.headers["icy-name"], metadata?.fields.StreamTitle)
+  })
+
   stream.on("error", (error) => {
     console.error(error.message)
   })
@@ -98,13 +105,25 @@ try {
 
 `playStream()` resolves after the native MP3 decoder is ready, normally while the stream is still buffering. Setup failures reject the promise. Later failures emit `error` on the returned `AudioStream`.
 
+URL streams request ICY metadata with `Icy-MetaData: 1` unless `request.headers` already contains that header. Set it to `0` explicitly to disable negotiation. A positive `icy-metaint` response header selects the ICY parser; URLs, content types, station headers, and server names are not used to infer framing. Invalid or ambiguous intervals reject the response before a native voice is allocated.
+
+ICY framing is removed in TypeScript before bytes reach the native MP3 decoder. `getMetadata()` returns the latest immutable `{ format, headers, fields }` snapshot or `null`. ICY response header names are lowercase in `headers`; in-band field names such as `StreamTitle` and `StreamUrl` retain their original case. Unknown fields are preserved. The `metadata` event emits the latest changed snapshot, and emits `null` when a replacement response no longer advertises ICY metadata. Rapid changes can coalesce into one asynchronous event; `getMetadata()` always returns the current snapshot. Zero-length and repeated equivalent metadata blocks do not emit events.
+
+ICY does not define a text encoding. OpenTUI follows Icecast's documented non-Ogg default of ISO-8859-1, represented by the Encoding Standard's `windows-1252` decoder. Set `metadataEncoding`, for example `metadataEncoding: "utf-8"`, when the station uses another encoding. Metadata is untrusted text and should be sanitized before writing it directly to a terminal or interpreting metadata URLs.
+
+Metadata events follow response ingestion, not audible playback. Native PCM buffering means a title can arrive before its corresponding audio is heard. Metadata received during setup is retained and the latest snapshot is emitted asynchronously after `playStream()` resolves, allowing a listener to be attached immediately afterward.
+
 URL reconnect is opt-in. It retries network failures, interrupted response bodies, HTTP 408/425/429, and HTTP 5xx responses. Reconnects restart the decoder in the same native stream session, preserving controls, counters, the voice slot, and any decoded PCM still available after an interruption. `retryOnEnd` restarts the same session after a clean response ends and its buffered PCM drains. `maxAttempts` limits consecutive attempts for one outage and resets after a replacement decoder becomes ready; omitting it means unlimited retries. An `AbortSignal` or `dispose()` stops them.
+
+Each replacement response selects a new parser and can advertise a different ICY interval. Existing metadata remains available while reconnecting, then the replacement response clears the previous in-band fields before publishing its own metadata. A plain MP3 replacement clears the metadata snapshot.
 
 Byte-stream inputs are one-shot and do not accept reconnect options. Input chunks must be `Uint8Array` values. Backpressure is automatic and both encoded and decoded buffering remain bounded.
 
 Decoder setup examines at most 1 MiB by default before rejecting an unrecognized stream. Set `maxProbeBytes` when valid MP3 metadata requires a larger probe.
 
-`AudioStream.getStats()` reads stream state and counters on demand; normal playback does not run a background JavaScript polling loop. Call it from an application's existing render or status-update cadence. It returns buffered frames and duration, received bytes, decoded and played frames, underruns, and reconnect attempts. Native decoder failures after setup are surfaced when the source next writes or ends, or when `getStats()` observes the failed state. `setVolume()`, `setPan()`, and `setGroup()` remain effective after reconnecting. A naturally completed stream keeps final stats in the `ended` state until disposed.
+`AudioStream.getStats()` reads stream state and counters on demand; normal playback does not run a background JavaScript polling loop. Call it from an application's existing render or status-update cadence. It returns buffered frames and duration, received MP3 bytes, decoded and played frames, underruns, and reconnect attempts. ICY length bytes, metadata, and padding are excluded from `bytesReceived`. Native decoder failures after setup are surfaced when the source next writes or ends, or when `getStats()` observes the failed state. `setVolume()`, `setPan()`, and `setGroup()` remain effective after reconnecting. Final stats and metadata remain readable after natural completion.
+
+In browser-like Fetch environments, cross-origin ICY negotiation requires an appropriate `Access-Control-Allow-Origin`, permission for the `Icy-MetaData` request header, and exposure of `icy-metaint` through CORS. Other `icy-*` response headers must also be exposed for them to appear in `getMetadata().headers`. Legacy servers that respond with the non-HTTP `ICY 200 OK` status line can be rejected by `fetch()` before OpenTUI receives a response.
 
 Streams use the same mixer and master tap as loaded sounds. Once `enableTap()` is active, `readTapFrames()` includes streamed audio automatically. The tap is the combined master mix, not an isolated copy of one stream.
 

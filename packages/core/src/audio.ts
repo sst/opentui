@@ -1,5 +1,6 @@
 import { EventEmitter } from "events"
 import { readFile } from "node:fs/promises"
+import { selectAudioStreamParser, type AudioStreamParserSelection } from "./audio-stream/parser.js"
 import { resolveRenderLib, type AudioEngineHandle, type RenderLib } from "./zig.js"
 import {
   NativeAudioStreamCloseReason as CloseReason,
@@ -69,6 +70,7 @@ export interface AudioStreamBodyOptions {
 export interface AudioStreamUrlOptions extends AudioStreamBodyOptions {
   request?: Omit<RequestInit, "body" | "signal">
   reconnect?: AudioStreamReconnectOptions
+  metadataEncoding?: string
 }
 
 export type AudioStreamState =
@@ -92,6 +94,14 @@ export interface AudioStreamStats {
   framesPlayed: bigint
   underruns: number
   reconnectAttempts: number
+}
+
+export type AudioStreamMetadataFormat = "icy"
+
+export interface AudioStreamMetadata {
+  readonly format: AudioStreamMetadataFormat
+  readonly headers: Readonly<Record<string, string>>
+  readonly fields: Readonly<Record<string, string>>
 }
 
 export type AudioStreamAction =
@@ -124,6 +134,7 @@ export interface AudioStreamReconnectEvent {
 }
 
 export interface AudioStreamEvents {
+  metadata: [metadata: AudioStreamMetadata | null]
   reconnecting: [event: AudioStreamReconnectEvent]
   ended: []
   error: [error: Error, context: AudioStreamErrorContext]
@@ -224,6 +235,7 @@ interface ResolvedAudioStreamOptions {
   signal?: AbortSignal
   request?: Omit<RequestInit, "body" | "signal">
   reconnect?: ResolvedAudioStreamReconnectOptions
+  metadataEncoding: string
 }
 
 interface AudioStreamInit {
@@ -300,8 +312,22 @@ function resolveAudioStreamOptions(
   if (resumeMs > capacityMs) throw new RangeError("buffer.resumeMs must not exceed buffer.capacityMs")
 
   const urlOptions = options as AudioStreamUrlOptions
-  if (!urlSource && (urlOptions.reconnect !== undefined || urlOptions.request !== undefined)) {
-    throw new TypeError("request and reconnect options are only supported for URL audio streams")
+  if (
+    !urlSource &&
+    (urlOptions.reconnect !== undefined ||
+      urlOptions.request !== undefined ||
+      urlOptions.metadataEncoding !== undefined)
+  ) {
+    throw new TypeError("request, reconnect, and metadataEncoding options are only supported for URL audio streams")
+  }
+
+  let metadataEncoding = "windows-1252"
+  if (urlSource) {
+    try {
+      metadataEncoding = new TextDecoder(urlOptions.metadataEncoding ?? "iso-8859-1").encoding
+    } catch {
+      throw new TypeError(`Unsupported metadataEncoding: ${urlOptions.metadataEncoding}`)
+    }
   }
 
   let request: Omit<RequestInit, "body" | "signal"> | undefined
@@ -322,6 +348,7 @@ function resolveAudioStreamOptions(
     request,
     reconnect:
       urlSource && urlOptions.reconnect !== undefined ? resolveReconnectOptions(urlOptions.reconnect) : undefined,
+    metadataEncoding,
   }
 }
 
@@ -398,6 +425,23 @@ function isUint8Array(value: unknown): value is Uint8Array {
   return ArrayBuffer.isView(value) && Object.prototype.toString.call(value) === "[object Uint8Array]"
 }
 
+const EMPTY_STREAM_METADATA_FIELDS: Readonly<Record<string, string>> = Object.freeze(Object.create(null))
+
+function metadataRecordsEqual(
+  left: Readonly<Record<string, string>>,
+  right: Readonly<Record<string, string>>,
+): boolean {
+  const keys = Object.keys(left)
+  if (keys.length !== Object.keys(right).length) return false
+  return keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && left[key] === right[key])
+}
+
+function streamMetadataEqual(left: AudioStreamMetadata | null, right: AudioStreamMetadata | null): boolean {
+  if (left === right) return true
+  if (left == null || right == null || left.format !== right.format) return false
+  return metadataRecordsEqual(left.headers, right.headers) && metadataRecordsEqual(left.fields, right.fields)
+}
+
 let createAudioStream: (init: AudioStreamInit) => AudioStream
 let openAudioStream: (stream: AudioStream) => Promise<void>
 
@@ -418,6 +462,9 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   private disposed = false
   private exposed = false
   private terminalError: Error | null = null
+  private metadata: AudioStreamMetadata | null = null
+  private pendingMetadataEvent = false
+  private metadataEventScheduled = false
   private setupResolve!: () => void
   private setupReject!: (error: Error) => void
   private closedResolve!: () => void
@@ -456,6 +503,8 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     if (this.lifecycleController.signal.aborted && this.state !== "ended")
       throw this.terminalError ?? createAbortError()
     this.exposed = true
+    if (this.pendingMetadataEvent && this.metadata != null) this.emitMetadata()
+    this.pendingMetadataEvent = false
     if (this.state === "ended") this.emitAsync("ended")
   }
 
@@ -476,6 +525,10 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       }
     }
     return this.toPublicStats()
+  }
+
+  getMetadata(): AudioStreamMetadata | null {
+    return this.metadata
   }
 
   setVolume(volume: number): boolean {
@@ -587,8 +640,11 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       this.activeAttempt = attempt
       let response: Response
       try {
+        const headers = new Headers(this.options.request?.headers)
+        if (!headers.has("icy-metadata")) headers.set("Icy-MetaData", "1")
         response = await globalThis.fetch(this.source as string | URL, {
           ...this.options.request,
+          headers,
           signal: attempt.controller.signal,
         })
       } catch (cause) {
@@ -640,9 +696,40 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         if (await this.retry(error, true)) continue
         return
       }
+      let parserSelection: AudioStreamParserSelection
+      try {
+        parserSelection = selectAudioStreamParser({
+          url: response.url || String(this.source),
+          headers: response.headers,
+          metadataEncoding: this.options.metadataEncoding,
+        })
+      } catch (cause) {
+        await runBoundedCleanup(() => response.body?.cancel())
+        await this.stopSource(attempt)
+        const context: AudioStreamErrorContext = { action: "response", status: response.status }
+        await this.finish(
+          CloseReason.TransportError,
+          new AudioStreamOperationError(
+            cause instanceof Error ? cause.message : "Invalid audio stream metadata response",
+            context,
+            cause,
+          ),
+        )
+        return
+      }
+      this.publishMetadata(
+        parserSelection.format == null
+          ? null
+          : Object.freeze({
+              format: parserSelection.format,
+              headers: parserSelection.headers,
+              fields: EMPTY_STREAM_METADATA_FIELDS,
+            }),
+        attempt,
+      )
       this.createNativeStream()
       try {
-        if (!(await this.consumeSource(response.body, attempt, true))) return
+        if (!(await this.consumeSource(response.body, attempt, true, parserSelection))) return
       } catch (cause) {
         if (this.lifecycleController.signal.aborted) return
         const context: AudioStreamErrorContext =
@@ -671,12 +758,13 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     source: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
     attempt: AudioStreamAttempt,
     retryableBody: boolean,
+    parserSelection?: AudioStreamParserSelection,
   ): Promise<boolean> {
     const initial = await this.pollNativeSnapshot(attempt)
     if (initial == null) return false
     const decoderReady = this.awaitReady(attempt, initial.readyGeneration)
     try {
-      await this.pumpSource(source, attempt, retryableBody)
+      await this.pumpSource(source, attempt, retryableBody, parserSelection)
     } catch (cause) {
       await this.stopSource(attempt)
       await decoderReady
@@ -699,6 +787,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     source: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
     attempt: AudioStreamAttempt,
     retryableBody: boolean,
+    parserSelection?: AudioStreamParserSelection,
   ): Promise<void> {
     const reader = isReadableStreamSource(source) ? source.getReader() : null
     const iterator = reader == null ? (source as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]() : null
@@ -740,6 +829,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         if (result.done) {
           release()
           if (attempt.cleanup === cancel) attempt.cleanup = null
+          parserSelection?.parser?.finish()
           return
         }
         const chunk = result.value
@@ -751,28 +841,24 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
           continue
         }
 
-        let offset = 0
-        while (offset < chunk.byteLength && this.isAttemptActive(attempt)) {
-          const streamId = this.nativeStreamId
-          if (streamId == null) return
-          let accepted: number
-          try {
-            accepted = this.lib.audioWriteStream(this.engine, streamId, chunk.subarray(offset))
-          } catch (cause) {
-            const context: AudioStreamErrorContext = { action: "write" }
-            throw new AudioStreamOperationError("Audio stream write failed", context, cause)
+        if (parserSelection?.parser == null || parserSelection.format == null) {
+          await this.writeStreamChunk(chunk, attempt)
+          continue
+        }
+        for (const output of parserSelection.parser.push(chunk)) {
+          if (!this.isAttemptActive(attempt)) return
+          if (output.type === "audio") {
+            await this.writeStreamChunk(output.data, attempt)
+          } else {
+            this.publishMetadata(
+              Object.freeze({
+                format: parserSelection.format,
+                headers: parserSelection.headers,
+                fields: output.fields,
+              }),
+              attempt,
+            )
           }
-          if (accepted < 0) {
-            const context: AudioStreamErrorContext = { action: "write", status: accepted }
-            throw new AudioStreamOperationError(`Audio stream write failed: ${accepted}`, context)
-          }
-          if (accepted === 0) {
-            // Polling exists only for the current backpressured write; no idle timer remains afterward.
-            if ((await this.pollNativeSnapshot(attempt)) == null) return
-            await waitForDelay(STREAM_POLL_INTERVAL_MS, attempt.controller.signal)
-            continue
-          }
-          offset += accepted
         }
       }
     } catch (cause) {
@@ -785,6 +871,32 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       }
       const context: AudioStreamErrorContext = { action: retryableBody ? "fetch" : "source" }
       throw new AudioStreamOperationError("Audio stream source failed", context, cause)
+    }
+  }
+
+  private async writeStreamChunk(chunk: Uint8Array, attempt: AudioStreamAttempt): Promise<void> {
+    let offset = 0
+    while (offset < chunk.byteLength && this.isAttemptActive(attempt)) {
+      const streamId = this.nativeStreamId
+      if (streamId == null) return
+      let accepted: number
+      try {
+        accepted = this.lib.audioWriteStream(this.engine, streamId, chunk.subarray(offset))
+      } catch (cause) {
+        const context: AudioStreamErrorContext = { action: "write" }
+        throw new AudioStreamOperationError("Audio stream write failed", context, cause)
+      }
+      if (accepted < 0) {
+        const context: AudioStreamErrorContext = { action: "write", status: accepted }
+        throw new AudioStreamOperationError(`Audio stream write failed: ${accepted}`, context)
+      }
+      if (accepted === 0) {
+        // Polling exists only for the current backpressured write; no idle timer remains afterward.
+        if ((await this.pollNativeSnapshot(attempt)) == null) return
+        await waitForDelay(STREAM_POLL_INTERVAL_MS, attempt.controller.signal)
+        continue
+      }
+      offset += accepted
     }
   }
 
@@ -908,6 +1020,25 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       if (error != null) this.emitAsync("error", error, context!)
       else this.emitAsync("ended")
     }
+  }
+
+  private publishMetadata(metadata: AudioStreamMetadata | null, attempt: AudioStreamAttempt): void {
+    if (!this.isAttemptActive(attempt) || streamMetadataEqual(this.metadata, metadata)) return
+    this.metadata = metadata
+    if (!this.exposed) {
+      this.pendingMetadataEvent = true
+      return
+    }
+    this.emitMetadata()
+  }
+
+  private emitMetadata(): void {
+    if (this.metadataEventScheduled) return
+    this.metadataEventScheduled = true
+    setTimeout(() => {
+      this.metadataEventScheduled = false
+      if (!this.disposed) EventEmitter.prototype.emit.call(this, "metadata", this.metadata)
+    }, 0)
   }
 
   private emitAsync<K extends keyof AudioStreamEvents>(event: K, ...args: AudioStreamEvents[K]): void {
