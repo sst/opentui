@@ -10,6 +10,12 @@ import {
   type AudioStreamMetadata,
   type AudioStreamStats,
 } from "../audio.js"
+import type {
+  Audio as PublicAudio,
+  AudioStreamBodyOptions,
+  AudioStreamSource,
+  AudioStreamUrlOptions,
+} from "../index.js"
 import { NativeAudioStreamState } from "../zig-structs.js"
 
 const SAMPLE_RATE = 48_000
@@ -19,6 +25,23 @@ const MP3_5S_URL = new URL("./fixtures/audio/tone-750hz-48k-mono-5s.mp3", import
 const MP3_3000_URL = new URL("./fixtures/audio/tone-3000hz-48k-mono-1s.mp3", import.meta.url)
 const audios: Audio[] = []
 const servers: Server[] = []
+
+function assertPublicAudioStreamSourceOverload(
+  audio: PublicAudio,
+  source: AudioStreamSource,
+  bodySource: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
+  urlSource: string | URL,
+  options: AudioStreamBodyOptions,
+  urlOptions: AudioStreamUrlOptions,
+): void {
+  void audio.playStream(source)
+  void audio.playStream(source, options)
+  void audio.playStream(urlSource, urlOptions)
+  // @ts-expect-error URL-only options require a URL-narrowed source.
+  void audio.playStream(source, urlOptions)
+  // @ts-expect-error URL-only options are not valid for byte sources.
+  void audio.playStream(bodySource, urlOptions)
+}
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void
@@ -2720,9 +2743,8 @@ test("Audio validates public stream and reconnect options before consuming a sou
     }
     const audio = Audio.create({ autoStart: false })
     audios.push(audio)
-    await expect(audio.playStream(source, urlOnlyOptions as Parameters<Audio["playStream"]>[1])).rejects.toThrow(
-      "only supported for URL",
-    )
+    // @ts-expect-error Exercise runtime validation for untyped callers.
+    await expect(audio.playStream(source, urlOnlyOptions)).rejects.toThrow("only supported for URL")
     expect(pulls).toBe(0)
     expect(audio.getStats()?.voicesActive).toBe(0)
     audio.dispose()

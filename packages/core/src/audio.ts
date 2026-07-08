@@ -58,7 +58,7 @@ export interface AudioStreamReconnectOptions {
   retryOnEnd?: boolean
 }
 
-export interface AudioStreamBodyOptions {
+interface AudioStreamSharedOptions {
   volume?: number
   pan?: number
   groupId?: number
@@ -67,7 +67,13 @@ export interface AudioStreamBodyOptions {
   signal?: AbortSignal
 }
 
-export interface AudioStreamUrlOptions extends AudioStreamBodyOptions {
+export interface AudioStreamBodyOptions extends AudioStreamSharedOptions {
+  request?: never
+  reconnect?: never
+  metadataEncoding?: never
+}
+
+export interface AudioStreamUrlOptions extends AudioStreamSharedOptions {
   request?: Omit<RequestInit, "body" | "signal">
   reconnect?: AudioStreamReconnectOptions
   metadataEncoding?: string
@@ -1324,6 +1330,7 @@ export class Audio extends EventEmitter<AudioEvents> {
     source: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
     options?: AudioStreamBodyOptions,
   ): Promise<AudioStream>
+  playStream(source: AudioStreamSource, options?: AudioStreamBodyOptions): Promise<AudioStream>
   async playStream(
     source: AudioStreamSource,
     options: AudioStreamUrlOptions | AudioStreamBodyOptions = {},
