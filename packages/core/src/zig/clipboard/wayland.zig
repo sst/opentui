@@ -666,7 +666,7 @@ pub const Connection = struct {
         }
         const remaining = provider.data[transfer.offset..];
         const chunk = remaining[0..@min(remaining.len, 64 * 1024)];
-        const count = std.posix.write(transfer.fd, chunk) catch |err| switch (err) {
+        const count = writeProviderPipe(transfer.fd, chunk) catch |err| switch (err) {
             error.WouldBlock => return,
             else => 0,
         };
@@ -1103,6 +1103,38 @@ pub const Connection = struct {
         if (provider.connection.primary_provider == provider) provider.connection.primary_provider = null;
     }
 };
+
+fn writeProviderPipe(fd: std.posix.fd_t, bytes: []const u8) std.posix.WriteError!usize {
+    if (comptime builtin.os.tag != .linux) return std.posix.write(fd, bytes);
+
+    const Signal = struct {
+        extern "c" fn sigpending(set: *std.posix.sigset_t) c_int;
+        extern "c" fn sigtimedwait(
+            set: *const std.posix.sigset_t,
+            info: ?*std.posix.siginfo_t,
+            timeout: *const std.posix.timespec,
+        ) c_int;
+    };
+
+    var blocked = std.posix.sigemptyset();
+    std.posix.sigaddset(&blocked, std.posix.SIG.PIPE);
+    var previous: std.posix.sigset_t = undefined;
+    std.posix.sigprocmask(std.posix.SIG.BLOCK, &blocked, &previous);
+    defer std.posix.sigprocmask(std.posix.SIG.SETMASK, &previous, null);
+
+    var pending = std.posix.sigemptyset();
+    const pipe_was_pending = Signal.sigpending(&pending) != 0 or std.posix.sigismember(&pending, std.posix.SIG.PIPE);
+    return std.posix.write(fd, bytes) catch |err| {
+        if (err == error.BrokenPipe and !pipe_was_pending) {
+            const timeout: std.posix.timespec = .{ .sec = 0, .nsec = 0 };
+            while (true) {
+                const result = Signal.sigtimedwait(&blocked, null, &timeout);
+                if (result >= 0 or std.posix.errno(result) != .INTR) break;
+            }
+        }
+        return err;
+    };
+}
 
 fn finishProviderTransfer(provider: *Provider, index: u32) void {
     std.posix.close(provider.transfers[index].fd);
@@ -1824,6 +1856,40 @@ test "Wayland clear retires the current provider at the generation bound" {
 test "Wayland provider transfers expire after a bounded idle interval" {
     try std.testing.expect(!providerTransferExpired(1, 1 + PROVIDER_TRANSFER_IDLE_TIMEOUT_NS - 1));
     try std.testing.expect(providerTransferExpired(1, 1 + PROVIDER_TRANSFER_IDLE_TIMEOUT_NS));
+}
+
+test "Wayland provider handles a closed consumer pipe locally" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
+
+    const State = struct {
+        var sigpipe_count: std.atomic.Value(u32) = .init(0);
+
+        fn handleSigpipe(_: c_int) callconv(.c) void {
+            _ = sigpipe_count.fetchAdd(1, .seq_cst);
+        }
+    };
+
+    var old_action: std.posix.Sigaction = undefined;
+    const action: std.posix.Sigaction = .{
+        .handler = .{ .handler = &State.handleSigpipe },
+        .mask = std.posix.sigemptyset(),
+        .flags = 0,
+    };
+    std.posix.sigaction(std.posix.SIG.PIPE, &action, &old_action);
+    defer std.posix.sigaction(std.posix.SIG.PIPE, &old_action, null);
+
+    var old_mask: std.posix.sigset_t = undefined;
+    var unblocked = std.posix.sigemptyset();
+    std.posix.sigaddset(&unblocked, std.posix.SIG.PIPE);
+    std.posix.sigprocmask(std.posix.SIG.UNBLOCK, &unblocked, &old_mask);
+    defer std.posix.sigprocmask(std.posix.SIG.SETMASK, &old_mask, null);
+
+    const pipe = try std.posix.pipe2(.{ .CLOEXEC = true });
+    std.posix.close(pipe[0]);
+    defer std.posix.close(pipe[1]);
+
+    try std.testing.expectError(error.BrokenPipe, writeProviderPipe(pipe[1], "clipboard"));
+    try std.testing.expectEqual(@as(u32, 0), State.sigpipe_count.load(.seq_cst));
 }
 
 test "Wayland registry removal invalidates cached globals and selected seats" {
