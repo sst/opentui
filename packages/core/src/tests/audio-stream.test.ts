@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises"
 import { createServer, type Server, type ServerResponse } from "node:http"
 import { runInNewContext } from "node:vm"
 import { afterEach, expect, test } from "bun:test"
-import { Audio as PublicAudio, AudioStreamError } from "../index.js"
+import { Audio as PublicAudio, AudioStreamError, NativeAudioStreamCloseReason } from "../index.js"
 import {
   Audio,
   AudioStream,
@@ -11,7 +11,15 @@ import {
   type AudioStreamMetadata,
   type AudioStreamStats,
 } from "../audio.js"
-import type { AudioStreamBodyOptions, AudioStreamSource, AudioStreamUrlOptions } from "../index.js"
+import type {
+  AudioEngineLib,
+  AudioStream as PublicAudioStream,
+  AudioStreamBodyOptions,
+  AudioStreamCreateOptions,
+  AudioStreamSource,
+  AudioStreamUrlOptions,
+  NativeAudioStreamStats,
+} from "../index.js"
 import { NativeAudioStreamState } from "../zig-structs.js"
 
 const SAMPLE_RATE = 48_000
@@ -37,6 +45,25 @@ function assertPublicAudioStreamSourceOverload(
   void audio.playStream(source, urlOptions)
   // @ts-expect-error URL-only options are not valid for byte sources.
   void audio.playStream(bodySource, urlOptions)
+}
+
+function assertPublicReconnectError(stream: PublicAudioStream): void {
+  stream.on("reconnecting", ({ error }) => {
+    const streamError: AudioStreamError = error
+    void streamError
+  })
+}
+
+function assertPublicNativeAudioStreamTypes(
+  lib: AudioEngineLib,
+  engine: Parameters<AudioEngineLib["audioCreateStream"]>[0],
+  options: AudioStreamCreateOptions,
+): NativeAudioStreamStats | null {
+  void lib.audioCreateStream(engine, options)
+  void lib.audioCloseStream(engine, 1, NativeAudioStreamCloseReason.TransportError)
+  // @ts-expect-error Arbitrary numbers are not valid native stream close reasons.
+  void lib.audioCloseStream(engine, 1, 99)
+  return lib.audioGetStreamStats(engine, 1)
 }
 
 function expectAudioStreamError(value: unknown): AudioStreamError {
@@ -2007,10 +2034,12 @@ test("Audio applies exponential reconnect backoff and caps it at maxDelayMs", as
   })
   const attempts: number[] = []
   const delays: number[] = []
+  const reconnectErrors: AudioStreamError[] = []
   let terminalContext: AudioStreamErrorContext | undefined
-  stream.on("reconnecting", ({ attempt, delayMs }) => {
+  stream.on("reconnecting", ({ attempt, delayMs, error }) => {
     attempts.push(attempt)
     delays.push(delayMs)
+    reconnectErrors.push(error)
   })
   stream.on("error", (_error, context) => {
     terminalContext = context
@@ -2032,6 +2061,11 @@ test("Audio applies exponential reconnect backoff and caps it at maxDelayMs", as
 
   expect(attempts).toEqual([1, 2, 3])
   expect(delays).toEqual([10, 20, 25])
+  expect(reconnectErrors.map((error) => expectAudioStreamError(error).context.action)).toEqual([
+    "fetch",
+    "response",
+    "response",
+  ])
   expect(scheduledDelays).toEqual(delays)
   expect(requests).toBe(4)
   expect(terminalContext).toEqual({ action: "response", status: 503, attempt: 3 })

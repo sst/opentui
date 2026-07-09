@@ -7,6 +7,7 @@ import {
   NativeAudioStreamState as StreamState,
   NativeAudioStreamStateNames as StateNames,
   type AudioStats,
+  type NativeAudioStreamCloseReason,
   type NativeAudioStreamStats,
 } from "./zig-structs.js"
 
@@ -136,7 +137,7 @@ export interface AudioStreamReconnectEvent {
   attempt: number
   delayMs: number
   maxAttempts: number
-  error: Error
+  error: AudioStreamError
 }
 
 export interface AudioStreamEvents {
@@ -734,7 +735,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
           cause instanceof AudioStreamError ? cause.context : { action: "source" }
         const error =
           cause instanceof Error ? cause : new AudioStreamError("Audio stream source failed", context, cause)
-        if (context.action !== "fetch" || error instanceof TypeError) {
+        if (context.action !== "fetch" || !(error instanceof AudioStreamError)) {
           await this.finish(CloseReason.TransportError, error, context)
           return
         }
@@ -898,7 +899,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     }
   }
 
-  private async retry(error: Error, retryable: boolean, retryAfterMs?: number): Promise<boolean> {
+  private async retry(error: AudioStreamError, retryable: boolean, retryAfterMs?: number): Promise<boolean> {
     if (this.lifecycleController.signal.aborted) return false
     const reconnect = this.options.reconnect
     if (!retryable || reconnect == null || this.consecutiveReconnectAttempts >= reconnect.maxAttempts) {
@@ -999,7 +1000,11 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     )
   }
 
-  private async finish(reason: number, error?: Error, context?: AudioStreamErrorContext): Promise<void> {
+  private async finish(
+    reason: NativeAudioStreamCloseReason,
+    error?: Error,
+    context?: AudioStreamErrorContext,
+  ): Promise<void> {
     if (this.lifecycleController.signal.aborted) return
     if (error instanceof AudioStreamError) context = error.context
     this.lifecycleController.abort()
@@ -1058,7 +1063,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     return cleanup == null ? Promise.resolve() : runBoundedCleanup(cleanup)
   }
 
-  private closeNativeStream(reason: number): number {
+  private closeNativeStream(reason: NativeAudioStreamCloseReason): number {
     const streamId = this.nativeStreamId
     if (streamId == null) return 0
     const result = this.lib.audioCloseStream(this.engine, streamId, reason)

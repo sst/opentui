@@ -96,11 +96,6 @@ function displayMetadata(value: string | undefined): string {
   return sanitized || "-"
 }
 
-function describeStreamError(error: unknown): string {
-  if (error instanceof AudioStreamError) return `${error.context.action}: ${error.message}`
-  return error instanceof Error ? error.message : "Stream connection failed"
-}
-
 function writeBufferRgb(buffer: Uint16Array, index: number, red: number, green: number, blue: number): void {
   buffer[index] = ((buffer[index] ?? 0) & 0xff00) | red
   buffer[index + 1] = ((buffer[index + 1] ?? 0) & 0xff00) | green
@@ -438,7 +433,12 @@ class AudioStreamingDemo {
       })
     } catch (error) {
       if (this.destroyed || generation !== this.connectionGeneration) return
-      this.statusMessage = describeStreamError(error)
+      this.statusMessage =
+        error instanceof AudioStreamError
+          ? `${error.context.action}: ${error.message}`
+          : error instanceof Error
+            ? error.message
+            : "Stream connection failed"
       this.statusColor = PALETTE.error
       this.refreshText()
       return
@@ -464,7 +464,7 @@ class AudioStreamingDemo {
     })
     nextStream.on("reconnecting", ({ attempt, delayMs, error }) => {
       if (!this.isCurrent(nextStream, generation)) return
-      this.statusMessage = `Reconnect ${attempt} in ${delayMs}ms: ${describeStreamError(error)}`
+      this.statusMessage = `Reconnect ${attempt} in ${delayMs}ms: ${error.context.action}: ${error.message}`
       this.statusColor = PALETTE.warning
     })
     nextStream.on("ended", () => {

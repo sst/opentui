@@ -21,7 +21,14 @@ import {
   type LineInfo,
   type MousePointerStyle,
 } from "./types.js"
-export type { LineInfo, AllocatorStats, BuildOptions, NativeRenderStats }
+export type {
+  LineInfo,
+  AllocatorStats,
+  AudioStreamCreateOptions,
+  BuildOptions,
+  NativeAudioStreamStats,
+  NativeRenderStats,
+}
 
 import { RGBA } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
@@ -47,6 +54,7 @@ import {
   AudioVoiceOptionsStruct,
   AudioStreamCreateOptionsStruct,
   AudioStreamStatsStruct,
+  NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonValue,
   NativeAudioStreamState as NativeAudioStreamStateValue,
   AudioStatsStruct,
   BuildOptionsStruct,
@@ -61,6 +69,7 @@ import type {
   AudioStartOptions,
   AudioVoiceOptions,
   AudioStreamCreateOptions,
+  NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonType,
   NativeAudioStreamState as NativeAudioStreamStateType,
   NativeAudioStreamStats,
   AudioStats,
@@ -70,6 +79,8 @@ import type {
 } from "./zig-structs.js"
 export const NativeAudioStreamState = NativeAudioStreamStateValue
 export type NativeAudioStreamState = NativeAudioStreamStateType
+export const NativeAudioStreamCloseReason = NativeAudioStreamCloseReasonValue
+export type NativeAudioStreamCloseReason = NativeAudioStreamCloseReasonType
 import { isBunfsPath } from "./lib/bunfs.js"
 
 registerEnvVar({
@@ -1976,7 +1987,7 @@ export interface AudioEngineLib {
   audioCloseStream: (
     engine: AudioEngineHandle,
     streamId: number,
-    reason: number,
+    reason: NativeAudioStreamCloseReason,
   ) => { status: number; stats: NativeAudioStreamStats | null }
   audioLoad: (engine: AudioEngineHandle, data: Uint8Array) => { status: number; soundId: number | null }
   audioUnload: (engine: AudioEngineHandle, soundId: number) => number
@@ -5042,7 +5053,7 @@ class FFIRenderLib implements RenderLib {
   public audioCloseStream(
     engine: AudioEngineHandle,
     streamId: number,
-    reason: number,
+    reason: NativeAudioStreamCloseReason,
   ): { status: number; stats: NativeAudioStreamStats | null } {
     const outBuffer = new ArrayBuffer(AudioStreamStatsStruct.size)
     const status = this.opentui.symbols.audioCloseStream(engine, streamId, reason, outBuffer)

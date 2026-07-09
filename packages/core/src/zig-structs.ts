@@ -384,6 +384,9 @@ export const NativeAudioStreamCloseReason = {
   Disposed: 2,
 } as const
 
+export type NativeAudioStreamCloseReason =
+  (typeof NativeAudioStreamCloseReason)[keyof typeof NativeAudioStreamCloseReason]
+
 export type AudioStats = {
   soundsLoaded: number
   voicesActive: number
