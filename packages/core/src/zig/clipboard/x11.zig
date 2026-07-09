@@ -17,7 +17,6 @@ const MAX_PROVIDERS = 4;
 const TRANSFER_IDLE_TIMEOUT_NS = 30 * std.time.ns_per_s;
 const CONNECT_POLL_SLICE_MS: i32 = 20;
 const CONNECT_POLL_COUNT_MAX: u16 = 500;
-const TEST_CONNECT_WAIT_COUNT_MAX: u16 = 2000;
 const XAUTHORITY_SIZE_MAX: usize = 1024 * 1024;
 const XAUTHORITY_READ_CHUNK_SIZE: usize = 16 * 1024;
 const DISPLAY_SIZE_MAX: usize = 4096;
@@ -48,7 +47,6 @@ pub const SelectionResult = enum { ok, pending, committed, unsupported, failed }
 pub const ReadResult = enum { pending, ready, refused, candidate_failed, limit_exceeded, out_of_memory, failed };
 
 const Phase = enum { idle, atoms, flush, replies, window, window_flush, ready, unsupported, failed };
-const ConnectStage = enum { idle, display, socket, connecting, setup, exited };
 const FlushReadiness = enum { pending, ready, failed };
 const OutputResult = enum { complete, pending, failed };
 
@@ -104,6 +102,12 @@ pub const WriteState = struct {
     timestamp_window: u32 = 0,
     timestamp_window_sequence: u32 = 0,
     timestamp_property_sequence: u32 = 0,
+};
+
+const RetiredTimestamp = struct {
+    window: u32 = 0,
+    window_sequence: u32 = 0,
+    property_sequence: u32 = 0,
 };
 
 const Transfer = struct {
@@ -179,21 +183,15 @@ pub const Connection = struct {
     responses: []PendingResponse = &.{},
     response_count: u32 = 0,
     output_pending: bool = false,
-    retired_timestamp_window: u32 = 0,
-    retired_timestamp_window_sequence: u32 = 0,
-    retired_timestamp_property_sequence: u32 = 0,
+    retired_timestamps: [2]RetiredTimestamp = .{ .{}, .{} },
     connect_thread: ?std.Thread = null,
     connect_exited: std.atomic.Value(bool) = .init(false),
     connect_result: ?*linux.XcbConnection = null,
     connect_screen_index: c_int = 0,
     connect_mutex: std.Thread.Mutex = .{},
-    connect_stage: ConnectStage = .idle,
     connect_cancel_requested: bool = false,
     connect_cancel_fd: ?std.posix.fd_t = null,
     test_connected_fd: ?std.posix.fd_t = null,
-    test_connect_pending: bool = false,
-    test_connect_attempt_count: u8 = 0,
-    test_connect_stage_restore_count: u8 = 0,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -215,8 +213,8 @@ pub const Connection = struct {
                 self.symbols.xcb_discard_reply(connection, self.cookies[index].sequence);
             }
             self.releaseProviders();
-            if (self.retired_timestamp_window != 0) {
-                _ = self.symbols.xcb_destroy_window(connection, self.retired_timestamp_window);
+            for (self.retired_timestamps) |retired| {
+                if (retired.window != 0) _ = self.symbols.xcb_destroy_window(connection, retired.window);
             }
             if (self.owner_window != 0) _ = self.symbols.xcb_destroy_window(connection, self.owner_window);
             self.symbols.xcb_disconnect(connection);
@@ -287,13 +285,12 @@ pub const Connection = struct {
         self.connectWorkerRun() catch {};
         self.connect_mutex.lock();
         std.debug.assert(self.connect_cancel_fd == null);
-        self.connect_stage = .exited;
         self.connect_mutex.unlock();
         self.connect_exited.store(true, .release);
     }
 
     fn connectWorkerRun(self: *Connection) !void {
-        self.setConnectStage(.idle, .display) orelse return;
+        if (self.cancelRequested()) return;
         var endpoint: DisplayEndpoint = undefined;
         var fd: std.posix.fd_t = undefined;
         var fd_owned = false;
@@ -304,15 +301,6 @@ pub const Connection = struct {
                 endpoint = .{ .kind = .unix, .display = 0, .screen = 0 };
                 fd = test_fd;
                 fd_owned = true;
-                if (!self.advanceConnectStage(.display, .socket)) return;
-                if (self.test_connect_pending) {
-                    if (!self.advanceConnectStage(.socket, .connecting)) return;
-                    var wait_count: u16 = 0;
-                    while (wait_count < TEST_CONNECT_WAIT_COUNT_MAX and !self.cancelRequested()) : (wait_count += 1) {
-                        std.Thread.sleep(std.time.ns_per_ms);
-                    }
-                    return;
-                }
             } else {
                 endpoint = try parseDisplay(std.posix.getenv("DISPLAY") orelse return error.UnsupportedDisplay);
                 fd = try self.connectSocket(&endpoint);
@@ -337,7 +325,6 @@ pub const Connection = struct {
         else
             try loadXauthority(self, endpoint);
         defer auth.deinit(self.allocator);
-        if (!self.advanceConnectStage(.socket, .setup)) return;
         var auth_info: linux.XcbAuthInfo = undefined;
         const auth_pointer: ?*linux.XcbAuthInfo = if (auth.name.len == 0) null else blk: {
             auth_info = .{
@@ -357,7 +344,6 @@ pub const Connection = struct {
             if (result) |connection| self.symbols.xcb_disconnect(connection);
             return;
         }
-        std.debug.assert(self.connect_stage == .setup);
         self.connect_result = result;
         self.connect_screen_index = endpoint.screen;
         self.connect_mutex.unlock();
@@ -385,19 +371,6 @@ pub const Connection = struct {
         self.connect_mutex.unlock();
     }
 
-    fn setConnectStage(self: *Connection, expected: ConnectStage, next: ConnectStage) ?void {
-        self.connect_mutex.lock();
-        defer self.connect_mutex.unlock();
-        std.debug.assert(self.connect_stage == expected);
-        if (self.connect_cancel_requested) return null;
-        self.connect_stage = next;
-    }
-
-    fn advanceConnectStage(self: *Connection, expected: ConnectStage, next: ConnectStage) bool {
-        self.setConnectStage(expected, next) orelse return false;
-        return true;
-    }
-
     fn cancelRequested(self: *Connection) bool {
         self.connect_mutex.lock();
         defer self.connect_mutex.unlock();
@@ -408,7 +381,6 @@ pub const Connection = struct {
         self.connect_mutex.lock();
         defer self.connect_mutex.unlock();
         std.debug.assert(self.connect_cancel_fd == null);
-        std.debug.assert(self.connect_stage == .socket);
         if (self.connect_cancel_requested) return false;
         self.connect_cancel_fd = fd;
         return true;
@@ -427,11 +399,8 @@ pub const Connection = struct {
         var candidate_index: u8 = 0;
         while (candidate_index < candidate_count) : (candidate_index += 1) {
             const candidate = try displayAddress(endpoint.*, candidate_index);
-            if (comptime builtin.is_test) self.test_connect_attempt_count += 1;
             const fd = self.connectCandidate(candidate) catch |err| {
                 if (err == error.Cancelled) return err;
-                if (!self.advanceConnectStage(.socket, .display)) return error.Cancelled;
-                if (comptime builtin.is_test) self.test_connect_stage_restore_count += 1;
                 continue;
             };
             endpoint.kind = candidate.kind;
@@ -441,7 +410,7 @@ pub const Connection = struct {
     }
 
     fn connectCandidate(self: *Connection, candidate: DisplayAddress) !std.posix.fd_t {
-        if (!self.advanceConnectStage(.display, .socket)) return error.Cancelled;
+        if (self.cancelRequested()) return error.Cancelled;
         const fd = try std.posix.socket(
             candidate.address.any.family,
             std.posix.SOCK.STREAM | std.posix.SOCK.NONBLOCK | std.posix.SOCK.CLOEXEC,
@@ -451,8 +420,6 @@ pub const Connection = struct {
 
         std.posix.connect(fd, &candidate.address.any, candidate.length) catch |err| switch (err) {
             error.WouldBlock, error.ConnectionPending => {
-                if (!self.advanceConnectStage(.socket, .connecting)) return error.Cancelled;
-                errdefer self.restoreSocketStage();
                 var poll_count: u16 = 0;
                 while (poll_count < CONNECT_POLL_COUNT_MAX) : (poll_count += 1) {
                     if (self.cancelRequested()) return error.Cancelled;
@@ -468,17 +435,10 @@ pub const Connection = struct {
                     break;
                 }
                 if (poll_count == CONNECT_POLL_COUNT_MAX) return error.ConnectionTimedOut;
-                if (!self.advanceConnectStage(.connecting, .socket)) return error.Cancelled;
             },
             else => return err,
         };
         return fd;
-    }
-
-    fn restoreSocketStage(self: *Connection) void {
-        self.connect_mutex.lock();
-        defer self.connect_mutex.unlock();
-        if (self.connect_stage == .connecting) self.connect_stage = .socket;
     }
 
     fn requestAtom(self: *Connection) Progress {
@@ -748,7 +708,7 @@ pub const Connection = struct {
             state.phase = .limit_exceeded;
             return .limit_exceeded;
         }
-        if (textPropertyUsesLatin1(state.actual_type)) {
+        if (state.actual_type == ATOM_STRING) {
             const appended = appendLatin1(self.allocator, data, bytes, max_bytes) catch {
                 state.phase = .failed;
                 return .out_of_memory;
@@ -789,7 +749,7 @@ pub const Connection = struct {
     }
 
     pub fn beginWrite(self: *Connection, state: *WriteState, primary: bool, data: []u8) SelectionResult {
-        if (self.retired_timestamp_window != 0) return .pending;
+        if (self.retiredTimestamp(self.selectionAtom(primary)).window != 0) return .pending;
         if (!self.canPublish(primary)) return self.selectionFailure(.provider);
         const slot = self.freeProviderSlot() orelse return self.selectionFailure(.provider);
         const provider = self.allocator.create(Provider) catch return self.selectionFailure(.provider);
@@ -831,7 +791,7 @@ pub const Connection = struct {
     }
 
     pub fn beginClear(self: *Connection, state: *WriteState, primary: bool) SelectionResult {
-        if (self.retired_timestamp_window != 0) return .pending;
+        if (self.retiredTimestamp(self.selectionAtom(primary)).window != 0) return .pending;
         const connection = self.connection orelse return self.selectionFailure(.connection);
         const selection = self.selectionAtom(primary);
         state.* = .{
@@ -876,34 +836,36 @@ pub const Connection = struct {
         state.* = .{};
     }
 
-    pub fn finishMutationForShutdown(self: *Connection, state: *WriteState) void {
+    pub fn finishMutationForShutdown(_: *Connection, state: *WriteState) void {
         std.debug.assert(state.mutation_dispatched);
-        if (state.provider) |provider| self.removeProvider(provider, false);
         state.* = .{};
     }
 
     pub fn consumeRetiredTimestampEvent(self: *Connection, event: *const linux.XcbGenericEvent) bool {
-        if (self.retired_timestamp_window == 0) return false;
-        if (event.response_type == 0) {
-            const x_error: *const linux.XcbGenericError = @ptrCast(@alignCast(event));
-            if (x_error.resource_id != self.retired_timestamp_window and
-                !requestSequenceMatches(self.retired_timestamp_window_sequence, x_error.full_sequence) and
-                !requestSequenceMatches(self.retired_timestamp_property_sequence, x_error.full_sequence))
-            {
-                return false;
+        for (&self.retired_timestamps) |*retired| {
+            if (retired.window == 0) continue;
+            if (event.response_type == 0) {
+                const x_error: *const linux.XcbGenericError = @ptrCast(@alignCast(event));
+                if (x_error.resource_id != retired.window and
+                    !requestSequenceMatches(retired.window_sequence, x_error.full_sequence) and
+                    !requestSequenceMatches(retired.property_sequence, x_error.full_sequence))
+                {
+                    continue;
+                }
+                self.destroyRetiredTimestampWindow(retired);
+                return true;
             }
-            self.destroyRetiredTimestampWindow();
+            if ((event.response_type & 0x7f) != EVENT_PROPERTY_NOTIFY) continue;
+            const notify: *const linux.XcbPropertyNotifyEvent = @ptrCast(@alignCast(event));
+            if (notify.window != retired.window or
+                notify.atom != self.atom_values[ATOM_TIMESTAMP_INDEX] or notify.state != 0)
+            {
+                continue;
+            }
+            self.destroyRetiredTimestampWindow(retired);
             return true;
         }
-        if ((event.response_type & 0x7f) != EVENT_PROPERTY_NOTIFY) return false;
-        const notify: *const linux.XcbPropertyNotifyEvent = @ptrCast(@alignCast(event));
-        if (notify.window != self.retired_timestamp_window or
-            notify.atom != self.atom_values[ATOM_TIMESTAMP_INDEX] or notify.state != 0)
-        {
-            return false;
-        }
-        self.destroyRetiredTimestampWindow();
-        return true;
+        return false;
     }
 
     pub fn routeWriteEvent(self: *Connection, state: *WriteState, event: *const linux.XcbGenericEvent) bool {
@@ -1008,7 +970,8 @@ pub const Connection = struct {
 
     pub fn hasWork(self: *const Connection) bool {
         if (self.phase == .failed) return false;
-        return self.output_pending or self.retired_timestamp_window != 0 or self.response_count > 0 or self.clipboard_provider != null or
+        return self.output_pending or self.retired_timestamps[0].window != 0 or self.retired_timestamps[1].window != 0 or
+            self.response_count > 0 or self.clipboard_provider != null or
             self.primary_provider != null or self.transfer_count > 0;
     }
 
@@ -1117,22 +1080,27 @@ pub const Connection = struct {
 
     fn retireTimestampWindow(self: *Connection, state: *WriteState) void {
         if (state.timestamp_window == 0) return;
-        std.debug.assert(self.retired_timestamp_window == 0);
-        self.retired_timestamp_window = state.timestamp_window;
-        self.retired_timestamp_window_sequence = state.timestamp_window_sequence;
-        self.retired_timestamp_property_sequence = state.timestamp_property_sequence;
+        const retired = self.retiredTimestamp(state.selection);
+        std.debug.assert(retired.window == 0);
+        retired.* = .{
+            .window = state.timestamp_window,
+            .window_sequence = state.timestamp_window_sequence,
+            .property_sequence = state.timestamp_property_sequence,
+        };
         state.timestamp_window = 0;
         state.timestamp_window_sequence = 0;
         state.timestamp_property_sequence = 0;
         _ = self.queueFlush();
     }
 
-    fn destroyRetiredTimestampWindow(self: *Connection) void {
-        _ = self.symbols.xcb_destroy_window(self.connection.?, self.retired_timestamp_window);
-        self.retired_timestamp_window = 0;
-        self.retired_timestamp_window_sequence = 0;
-        self.retired_timestamp_property_sequence = 0;
+    fn destroyRetiredTimestampWindow(self: *Connection, retired: *RetiredTimestamp) void {
+        _ = self.symbols.xcb_destroy_window(self.connection.?, retired.window);
+        retired.* = .{};
         _ = self.queueFlush();
+    }
+
+    fn retiredTimestamp(self: *Connection, selection: u32) *RetiredTimestamp {
+        return &self.retired_timestamps[@intFromBool(selection == ATOM_PRIMARY)];
     }
 
     fn freeProviderSlot(self: *Connection) ?*?*Provider {
@@ -1798,10 +1766,6 @@ fn requestSequenceMatches(expected: u32, actual: u32) bool {
     return expected != 0 and expected == actual;
 }
 
-fn textPropertyUsesLatin1(actual_type: u32) bool {
-    return actual_type == ATOM_STRING;
-}
-
 fn encodeLatin1(allocator: std.mem.Allocator, utf8: []const u8) ![]u8 {
     var count: usize = 0;
     var offset: usize = 0;
@@ -1926,11 +1890,6 @@ test "X11 STRING conversion is Latin-1 aware and bounded after UTF-8 expansion" 
     try std.testing.expect(try appendLatin1(std.testing.allocator, &output, latin1, 3));
     try std.testing.expectEqualStrings("A\u{e9}", output.items);
     try std.testing.expect(!(try appendLatin1(std.testing.allocator, &output, &.{0xff}, 4)));
-}
-
-test "X11 text compatibility decodes by returned property type" {
-    try std.testing.expect(textPropertyUsesLatin1(ATOM_STRING));
-    try std.testing.expect(!textPropertyUsesLatin1(102));
 }
 
 test "X11 timestamp ordering handles server timestamp wraparound" {
@@ -2298,13 +2257,15 @@ test "X11 cancelled timestamp windows remain tombstoned until their event is con
     symbols.xcb_destroy_window = fakeDestroyWindow;
     symbols.xcb_flush = fakeFlush;
     var fake: FakeXcb = .{};
-    var connection: Connection = undefined;
-    connection.symbols = &symbols;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
     connection.connection = @ptrCast(&fake);
     connection.phase = .ready;
     connection.output_ready_override = true;
     connection.atom_values[10] = 110;
-    connection.retired_timestamp_window = 21;
+    var clipboard: WriteState = .{ .selection = 100, .waiting_timestamp = true, .timestamp_window = 21 };
+    var primary: WriteState = .{ .selection = ATOM_PRIMARY, .waiting_timestamp = true, .timestamp_window = 22 };
+    connection.cleanupWrite(&clipboard);
+    connection.cleanupWrite(&primary);
     const event: linux.XcbPropertyNotifyEvent = .{
         .response_type = EVENT_PROPERTY_NOTIFY,
         .pad0 = 0,
@@ -2317,8 +2278,8 @@ test "X11 cancelled timestamp windows remain tombstoned until their event is con
     };
 
     try std.testing.expect(connection.consumeRetiredTimestampEvent(@ptrCast(&event)));
-    try std.testing.expectEqual(@as(u32, 0), connection.retired_timestamp_window);
-    try std.testing.expectEqual(@as(u32, 1), fake.flush_count);
+    try std.testing.expectEqual(@as(u32, 0), connection.retired_timestamps[0].window);
+    try std.testing.expectEqual(@as(u32, 22), connection.retired_timestamps[1].window);
 }
 
 test "X11 timestamp request errors retire active and tombstoned windows" {
@@ -2354,18 +2315,11 @@ test "X11 timestamp request errors retire active and tombstoned windows" {
     try std.testing.expect(active.provider == null);
     try std.testing.expect(connection.providers[0] == null);
 
-    connection.retired_timestamp_window = 22;
+    connection.retired_timestamps[0].window = 22;
     var retired_error = active_error;
     retired_error.resource_id = 22;
     try std.testing.expect(connection.consumeRetiredTimestampEvent(@ptrCast(&retired_error)));
-    try std.testing.expectEqual(@as(u32, 0), connection.retired_timestamp_window);
-}
-
-test "X11 event polling is inert until connection initialization completes" {
-    var connection: Connection = undefined;
-    connection.connection = null;
-    connection.phase = .idle;
-    try std.testing.expect(connection.pollEvent() == null);
+    try std.testing.expectEqual(@as(u32, 0), connection.retired_timestamps[0].window);
 }
 
 test "X11 DISPLAY parser accepts bounded local transports and rejects remote hosts" {
@@ -2470,7 +2424,6 @@ test "X11 bare DISPLAY connects to an abstract-only listener" {
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
-    connection.connect_stage = .display;
     const listener = try testDisplayListener(.unix, 0);
     defer std.posix.close(listener.fd);
     var endpoint = listener.endpoint;
@@ -2478,16 +2431,12 @@ test "X11 bare DISPLAY connects to an abstract-only listener" {
     const fd = try connection.connectSocket(&endpoint);
     defer std.posix.close(fd);
     try std.testing.expectEqual(DisplayKind.unix, endpoint.kind);
-    try std.testing.expectEqual(ConnectStage.socket, connection.connect_stage);
-    try std.testing.expectEqual(@as(u8, 1), connection.test_connect_attempt_count);
-    try std.testing.expectEqual(@as(u8, 0), connection.test_connect_stage_restore_count);
 }
 
 test "X11 bare DISPLAY falls back to a filesystem listener" {
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
-    connection.connect_stage = .display;
     const listener = try testDisplayListener(.unix, 1);
     defer std.posix.close(listener.fd);
     var endpoint = listener.endpoint;
@@ -2496,16 +2445,12 @@ test "X11 bare DISPLAY falls back to a filesystem listener" {
     const fd = try connection.connectSocket(&endpoint);
     defer std.posix.close(fd);
     try std.testing.expectEqual(DisplayKind.unix, endpoint.kind);
-    try std.testing.expectEqual(ConnectStage.socket, connection.connect_stage);
-    try std.testing.expectEqual(@as(u8, 2), connection.test_connect_attempt_count);
-    try std.testing.expectEqual(@as(u8, 1), connection.test_connect_stage_restore_count);
 }
 
 test "X11 localhost DISPLAY connects to an IPv6-only listener" {
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
-    connection.connect_stage = .display;
     const listener = testDisplayListener(.tcp6, 0) catch |err| switch (err) {
         error.AddressFamilyNotSupported => return error.SkipZigTest,
         else => return err,
@@ -2516,16 +2461,12 @@ test "X11 localhost DISPLAY connects to an IPv6-only listener" {
     const fd = try connection.connectSocket(&endpoint);
     defer std.posix.close(fd);
     try std.testing.expectEqual(DisplayKind.tcp6, endpoint.kind);
-    try std.testing.expectEqual(ConnectStage.socket, connection.connect_stage);
-    try std.testing.expectEqual(@as(u8, 1), connection.test_connect_attempt_count);
-    try std.testing.expectEqual(@as(u8, 0), connection.test_connect_stage_restore_count);
 }
 
 test "X11 localhost DISPLAY falls back to an IPv4-only listener" {
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
-    connection.connect_stage = .display;
     const listener = try testDisplayListener(.tcp4, 1);
     defer std.posix.close(listener.fd);
     var endpoint = listener.endpoint;
@@ -2533,9 +2474,6 @@ test "X11 localhost DISPLAY falls back to an IPv4-only listener" {
     const fd = try connection.connectSocket(&endpoint);
     defer std.posix.close(fd);
     try std.testing.expectEqual(DisplayKind.tcp4, endpoint.kind);
-    try std.testing.expectEqual(ConnectStage.socket, connection.connect_stage);
-    try std.testing.expectEqual(@as(u8, 2), connection.test_connect_attempt_count);
-    try std.testing.expectEqual(@as(u8, 1), connection.test_connect_stage_restore_count);
 }
 
 test "X11 shutdown before fd publication exits without joining early" {
@@ -2545,21 +2483,6 @@ test "X11 shutdown before fd publication exits without joining early" {
     connection.requestShutdown();
     connection.requestShutdown();
     try std.testing.expectEqual(Progress.pending, connection.drive());
-    try expectShutdownReady(&connection);
-    connection.deinit();
-}
-
-test "X11 shutdown observes cancellation during nonblocking connect progression" {
-    try clipboard_clock.init();
-    var symbols: linux.XcbSymbols = undefined;
-    var connection = Connection.init(std.testing.allocator, &symbols, 1);
-    const sockets = try testSocketPair();
-    defer std.posix.close(sockets[1]);
-    connection.test_connected_fd = sockets[0];
-    connection.test_connect_pending = true;
-    try std.testing.expectEqual(Progress.pending, connection.drive());
-    try expectConnectStage(&connection, .connecting);
-    connection.requestShutdown();
     try expectShutdownReady(&connection);
     connection.deinit();
 }
@@ -2594,8 +2517,9 @@ test "X11 shutdown cancels a silent setup connection" {
     const sockets = try testSocketPair();
     defer std.posix.close(sockets[1]);
     connection.test_connected_fd = sockets[0];
+    fake_setup_started.store(false, .release);
     try std.testing.expectEqual(Progress.pending, connection.drive());
-    try expectConnectStage(&connection, .setup);
+    try expectSetupStarted(&connection, &fake_setup_started);
     connection.requestShutdown();
     connection.requestShutdown();
     try expectShutdownReady(&connection);
@@ -2617,17 +2541,7 @@ test "X11 shutdown immediately after setup completion still joins and closes" {
     fake_setup_completed.store(false, .release);
 
     try std.testing.expectEqual(Progress.pending, connection.drive());
-    const deadline_ns = clipboard_clock.nowNs() + 2 * std.time.ns_per_s;
-    while (!fake_setup_completed.load(.acquire) and clipboard_clock.nowNs() < deadline_ns) {
-        std.Thread.sleep(std.time.ns_per_ms);
-    }
-    if (!fake_setup_completed.load(.acquire)) {
-        reportConnectStage(&connection, "X11 setup completion timed out");
-        connection.requestShutdown();
-        try expectShutdownReady(&connection);
-        connection.deinit();
-        return error.TestConnectStageTimeout;
-    }
+    try expectSetupStarted(&connection, &fake_setup_completed);
     connection.requestShutdown();
     try expectShutdownReady(&connection);
     connection.deinit();
@@ -2646,27 +2560,16 @@ const FakeXcb = struct {
     last_notify_property: u32 = std.math.maxInt(u32),
 };
 
-fn expectConnectStage(connection: *Connection, expected: ConnectStage) !void {
+fn expectSetupStarted(connection: *Connection, flag: *std.atomic.Value(bool)) !void {
     const deadline_ns = clipboard_clock.nowNs() + 2 * std.time.ns_per_s;
-    var exited_early = false;
     while (clipboard_clock.nowNs() < deadline_ns) {
-        connection.connect_mutex.lock();
-        const stage = connection.connect_stage;
-        const exited = connection.connect_exited.load(.acquire);
-        connection.connect_mutex.unlock();
-        if (stage == expected) return;
-        if (exited) {
-            exited_early = true;
-            break;
-        }
+        if (flag.load(.acquire)) return;
         std.Thread.sleep(std.time.ns_per_ms);
     }
-    var message_buffer: [128]u8 = undefined;
-    const message = try std.fmt.bufPrint(&message_buffer, "expected X11 connect stage {s}", .{@tagName(expected)});
-    reportConnectStage(connection, message);
     connection.requestShutdown();
     try expectShutdownReady(connection);
-    return if (exited_early) error.TestConnectExitedEarly else error.TestConnectStageTimeout;
+    connection.deinit();
+    return error.TestConnectSetupTimeout;
 }
 
 fn expectShutdownReady(connection: *Connection) !void {
@@ -2675,16 +2578,7 @@ fn expectShutdownReady(connection: *Connection) !void {
         if (connection.shutdownReady()) return;
         std.Thread.sleep(std.time.ns_per_ms);
     }
-    reportConnectStage(connection, "X11 connect shutdown timed out");
     return error.TestConnectShutdownTimeout;
-}
-
-fn reportConnectStage(connection: *Connection, message: []const u8) void {
-    connection.connect_mutex.lock();
-    const stage = connection.connect_stage;
-    const exited = connection.connect_exited.load(.acquire);
-    connection.connect_mutex.unlock();
-    std.debug.print("{s}: stage={s}, exited={}\n", .{ message, @tagName(stage), exited });
 }
 
 test "X11 atom initialization polls one reply per drive without blocking" {
@@ -2765,12 +2659,14 @@ fn fakeSlowConnectToFd(fd: c_int, _: ?*linux.XcbAuthInfo) callconv(.c) ?*linux.X
 }
 
 fn fakeSilentConnectToFd(fd: c_int, _: ?*linux.XcbAuthInfo) callconv(.c) ?*linux.XcbConnection {
+    fake_setup_started.store(true, .release);
     var byte: [1]u8 = undefined;
     _ = std.posix.read(fd, &byte) catch {};
     std.posix.close(fd);
     return null;
 }
 
+var fake_setup_started: std.atomic.Value(bool) = .init(false);
 var fake_setup_completed: std.atomic.Value(bool) = .init(false);
 
 fn fakeImmediateConnectToFd(fd: c_int, _: ?*linux.XcbAuthInfo) callconv(.c) ?*linux.XcbConnection {

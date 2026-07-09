@@ -16,10 +16,11 @@ const createServices = (
     remote?: boolean
     hostStatus?: "written" | "unsupported" | "cancelled"
     maxWriteBytes?: number
+    backend?: Partial<HostClipboardBackend>
+    terminal?: Partial<TerminalClipboardAdapter>
   } = {},
 ) => {
   const events: string[] = []
-  let hostDisposeCount = 0
   const backend: HostClipboardBackend = {
     async read() {
       events.push("host-read")
@@ -31,11 +32,10 @@ const createServices = (
     },
     async clear() {
       events.push("host-clear")
-      return { status: options.hostStatus === "cancelled" ? "cancelled" : "cleared" }
+      return { status: "cleared" }
     },
-    async dispose() {
-      hostDisposeCount++
-    },
+    async dispose() {},
+    ...options.backend,
   }
   const terminal: TerminalClipboardAdapter = {
     remote: options.remote ?? false,
@@ -47,58 +47,55 @@ const createServices = (
       events.push("terminal-clear")
       return { status: "attempted", capability: "supported" }
     },
+    ...options.terminal,
   }
   const clipboard = createClipboard({
     host: createHost(backend, options.maxWriteBytes),
     terminal,
   })
-  return {
-    clipboard,
-    events,
-    get hostDisposeCount() {
-      return hostDisposeCount
-    },
-  }
+  return { clipboard, events }
 }
 
 describe("createClipboard", () => {
-  it("applies local destination policies and best-available fallback", async () => {
-    const local = createServices()
-    expect((await local.clipboard.writeText("one", { destination: "terminal-only" })).host.status).toBe("not-attempted")
-    expect((await local.clipboard.writeText("two", { destination: "host-only" })).terminal.status).toBe("not-attempted")
-    const best = await local.clipboard.writeText("three", { destination: "best-available" })
-    expect(best.host.status).toBe("written")
-    expect(best.terminal.status).toBe("not-attempted")
-    await local.clipboard.clear({ destination: "all-available" })
-    expect(local.events).toEqual(["terminal-write", "host-write", "host-write", "host-clear", "terminal-clear"])
-    await local.clipboard.dispose()
+  it("applies local destination policies and best-available stop/fallback", async () => {
+    const cases = [
+      ["terminal-only", undefined, "not-attempted", "attempted", ["terminal-write"]],
+      ["host-only", undefined, "written", "not-attempted", ["host-write"]],
+      ["best-available", "written", "written", "not-attempted", ["host-write"]],
+      ["best-available", "cancelled", "cancelled", "not-attempted", ["host-write"]],
+      ["best-available", "unsupported", "unsupported", "attempted", ["host-write", "terminal-write"]],
+      ["all-available", undefined, "written", "attempted", ["host-write", "terminal-write"]],
+    ] as const
+    for (const [destination, hostStatus, expectedHost, expectedTerminal, events] of cases) {
+      const service = createServices({ hostStatus })
+      const result = await service.clipboard.writeText("text", { destination })
+      expect([result.host.status, result.terminal.status]).toEqual([expectedHost, expectedTerminal])
+      expect(service.events).toEqual([...events])
+      await service.clipboard.dispose()
+    }
 
-    const fallback = createServices({ hostStatus: "unsupported" })
-    const result = await fallback.clipboard.writeText("fallback", { destination: "best-available" })
-    expect(result.host.status).toBe("unsupported")
-    expect(result.terminal.status).toBe("attempted")
-    expect(fallback.events).toEqual(["host-write", "terminal-write"])
-    await fallback.clipboard.dispose()
+    const clear = createServices()
+    await clear.clipboard.clear({ destination: "all-available" })
+    expect(clear.events).toEqual(["host-clear", "terminal-clear"])
+    await clear.clipboard.dispose()
   })
 
   it("enforces remote host authorization for every policy", async () => {
-    const remote = createServices({ remote: true })
-    const deniedHost = await remote.clipboard.writeText("one", { destination: "host-only" })
-    const best = await remote.clipboard.writeText("two", { destination: "best-available", allowRemoteHost: true })
-    const deniedAll = await remote.clipboard.writeText("three", { destination: "all-available" })
-    const allowedAll = await remote.clipboard.writeText("four", {
-      destination: "all-available",
-      allowRemoteHost: true,
-    })
-
-    expect(deniedHost.host.status).toBe("not-attempted")
-    expect(deniedHost.terminal.status).toBe("not-attempted")
-    expect(best.host.status).toBe("not-attempted")
-    expect(best.terminal.status).toBe("attempted")
-    expect(deniedAll.host.status).toBe("not-attempted")
-    expect(allowedAll.host.status).toBe("written")
-    expect(remote.events).toEqual(["terminal-write", "terminal-write", "host-write", "terminal-write"])
-    await remote.clipboard.dispose()
+    const cases = [
+      ["terminal-only", false, "not-attempted", "attempted", ["terminal-write"]],
+      ["host-only", false, "not-attempted", "not-attempted", []],
+      ["host-only", true, "written", "not-attempted", ["host-write"]],
+      ["best-available", true, "not-attempted", "attempted", ["terminal-write"]],
+      ["all-available", false, "not-attempted", "attempted", ["terminal-write"]],
+      ["all-available", true, "written", "attempted", ["host-write", "terminal-write"]],
+    ] as const
+    for (const [destination, allowRemoteHost, expectedHost, expectedTerminal, events] of cases) {
+      const service = createServices({ remote: true })
+      const result = await service.clipboard.writeText("text", { destination, allowRemoteHost })
+      expect([result.host.status, result.terminal.status]).toEqual([expectedHost, expectedTerminal])
+      expect(service.events).toEqual([...events])
+      await service.clipboard.dispose()
+    }
   })
 
   it("rejects invalid text before either destination", async () => {
@@ -130,81 +127,51 @@ describe("createClipboard", () => {
 
   it("preserves terminal dispatch when all-available host work is later cancelled", async () => {
     let operation: HostClipboardWriteOptions | undefined
-    const backend: HostClipboardBackend = {
-      async read() {
-        return { status: "empty" }
+    const service = createServices({
+      backend: {
+        async writeText(_text, options) {
+          operation = options
+          return await new Promise((resolve) => {
+            options.signal.addEventListener("abort", () => resolve({ status: "cancelled" }), { once: true })
+          })
+        },
       },
-      async writeText(_text, options) {
-        operation = options
-        return await new Promise((resolve) => {
-          options.signal.addEventListener("abort", () => resolve({ status: "cancelled" }), { once: true })
-        })
-      },
-      async clear() {
-        return { status: "cleared" }
-      },
-      async dispose() {},
-    }
-    let terminalCalls = 0
-    const terminal: TerminalClipboardAdapter = {
-      remote: false,
-      writeText() {
-        terminalCalls++
-        return { status: "attempted", capability: "unknown" }
-      },
-      clear() {
-        return { status: "attempted", capability: "unknown" }
-      },
-    }
-    const clipboard = createClipboard({ host: createHost(backend), terminal })
+    })
     const controller = new AbortController()
-    const pending = clipboard.writeText("text", { destination: "all-available", signal: controller.signal })
-    expect(terminalCalls).toBe(1)
+    const pending = service.clipboard.writeText("text", { destination: "all-available", signal: controller.signal })
+    expect(service.events).toEqual(["terminal-write"])
     controller.abort()
     expect(operation?.signal.aborted).toBe(true)
     expect(await pending).toEqual({
       host: { status: "cancelled" },
-      terminal: { status: "attempted", capability: "unknown" },
+      terminal: { status: "attempted", capability: "supported" },
     })
-    await clipboard.dispose()
+    await service.clipboard.dispose()
   })
 
   it("owns host disposal, waits for active composition, and rejects later operations", async () => {
     let release: (() => void) | undefined
     let disposeCount = 0
-    const backend: HostClipboardBackend = {
-      async read(options) {
-        await new Promise<void>((resolve) => {
-          options.signal.addEventListener(
-            "abort",
-            () => {
-              release = resolve
-            },
-            { once: true },
-          )
-        })
-        return { status: "cancelled" }
+    const service = createServices({
+      backend: {
+        async read(options) {
+          await new Promise<void>((resolve) => {
+            options.signal.addEventListener(
+              "abort",
+              () => {
+                release = resolve
+              },
+              { once: true },
+            )
+          })
+          return { status: "cancelled" }
+        },
+        async dispose() {
+          disposeCount++
+        },
       },
-      async writeText() {
-        return { status: "written" }
-      },
-      async clear() {
-        return { status: "cleared" }
-      },
-      async dispose() {
-        disposeCount++
-      },
-    }
-    const terminal: TerminalClipboardAdapter = {
-      remote: false,
-      writeText() {
-        return { status: "attempted", capability: "unknown" }
-      },
-      clear() {
-        return { status: "attempted", capability: "unknown" }
-      },
-    }
-    const clipboard = createClipboard({ host: createHost(backend), terminal })
+    })
+    const clipboard = service.clipboard
     const read = clipboard.read({ preferredTypes: ["text/plain"] })
     const firstDispose = clipboard.dispose()
     expect(clipboard.dispose()).toBe(firstDispose)

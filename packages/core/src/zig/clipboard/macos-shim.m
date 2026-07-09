@@ -19,14 +19,13 @@ enum {
 };
 
 int32_t ot_clipboard_macos_read(uint32_t mime, uint32_t max_bytes, uint8_t **out_bytes,
-                                uint32_t *out_length, uint32_t *out_mime) {
-    if (out_bytes == NULL || out_length == NULL || out_mime == NULL) {
+                                uint32_t *out_length) {
+    if (out_bytes == NULL || out_length == NULL) {
         return OT_CLIPBOARD_MACOS_STATUS_INVALID_ARGUMENT;
     }
 
     *out_bytes = NULL;
     *out_length = 0;
-    *out_mime = 0;
 
     @autoreleasepool {
         @try {
@@ -81,7 +80,6 @@ int32_t ot_clipboard_macos_read(uint32_t mime, uint32_t max_bytes, uint8_t **out
 
             *out_bytes = copy;
             *out_length = (uint32_t)length;
-            *out_mime = mime;
             return OT_CLIPBOARD_MACOS_STATUS_OK;
         } @catch (__unused NSException *exception) {
             return OT_CLIPBOARD_MACOS_STATUS_FAILED;
@@ -128,7 +126,6 @@ int32_t ot_clipboard_macos_clear(void) {
     }
 }
 
-void ot_clipboard_macos_free_bytes(uint8_t *bytes, uint32_t length) {
-    (void)length;
+void ot_clipboard_macos_free_bytes(uint8_t *bytes) {
     free(bytes);
 }
