@@ -18,10 +18,9 @@ enum {
     OT_CLIPBOARD_MACOS_MIME_IMAGE_PNG = 2,
 };
 
-int32_t ot_clipboard_macos_read(const uint32_t *preferred, uint32_t preferred_count, uint32_t max_bytes,
-                                uint8_t **out_bytes, uint32_t *out_length, uint32_t *out_mime) {
-    if (out_bytes == NULL || out_length == NULL || out_mime == NULL ||
-        (preferred_count > 0 && preferred == NULL)) {
+int32_t ot_clipboard_macos_read(uint32_t mime, uint32_t max_bytes, uint8_t **out_bytes,
+                                uint32_t *out_length, uint32_t *out_mime) {
+    if (out_bytes == NULL || out_length == NULL || out_mime == NULL) {
         return OT_CLIPBOARD_MACOS_STATUS_INVALID_ARGUMENT;
     }
 
@@ -32,66 +31,58 @@ int32_t ot_clipboard_macos_read(const uint32_t *preferred, uint32_t preferred_co
     @autoreleasepool {
         @try {
             NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
-            for (uint32_t index = 0; index < preferred_count; index++) {
-                uint32_t mime = preferred[index];
-                const void *source = NULL;
-                NSUInteger length = 0;
-                NSString *text = nil;
-                NSData *data = nil;
+            const void *source = NULL;
+            NSUInteger length = 0;
+            NSString *text = nil;
+            NSData *data = nil;
 
-                if (mime == OT_CLIPBOARD_MACOS_MIME_TEXT_PLAIN) {
-                    NSString *offered_type = [pasteboard availableTypeFromArray:@[ NSPasteboardTypeString ]];
-                    if (offered_type == nil) {
-                        continue;
-                    }
-                    NSString *offered_value = [pasteboard stringForType:NSPasteboardTypeString];
-                    if (offered_value == nil) {
-                        return OT_CLIPBOARD_MACOS_STATUS_FAILED;
-                    }
-                    text = offered_value;
-                    length = [text lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
-                    source = [text UTF8String];
-                } else if (mime == OT_CLIPBOARD_MACOS_MIME_IMAGE_PNG) {
-                    NSString *offered_type = [pasteboard availableTypeFromArray:@[ NSPasteboardTypePNG ]];
-                    if (offered_type == nil) {
-                        continue;
-                    }
-                    NSData *offered_value = [pasteboard dataForType:NSPasteboardTypePNG];
-                    if (offered_value == nil) {
-                        return OT_CLIPBOARD_MACOS_STATUS_FAILED;
-                    }
-                    data = offered_value;
-                    length = [data length];
-                    if (length == 0) {
-                        continue;
-                    }
-                    source = [data bytes];
-                } else {
-                    continue;
+            if (mime == OT_CLIPBOARD_MACOS_MIME_TEXT_PLAIN) {
+                if ([pasteboard availableTypeFromArray:@[ NSPasteboardTypeString ]] == nil) {
+                    return OT_CLIPBOARD_MACOS_STATUS_EMPTY;
                 }
-
-                if (length > max_bytes || length > UINT32_MAX) {
-                    return OT_CLIPBOARD_MACOS_STATUS_LIMIT_EXCEEDED;
-                }
-                if (length > 0 && source == NULL) {
+                text = [pasteboard stringForType:NSPasteboardTypeString];
+                if (text == nil) {
                     return OT_CLIPBOARD_MACOS_STATUS_FAILED;
                 }
-
-                uint8_t *copy = NULL;
-                if (length > 0) {
-                    copy = malloc(length);
-                    if (copy == NULL) {
-                        return OT_CLIPBOARD_MACOS_STATUS_FAILED;
-                    }
-                    memcpy(copy, source, length);
+                length = [text lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+                source = [text UTF8String];
+            } else if (mime == OT_CLIPBOARD_MACOS_MIME_IMAGE_PNG) {
+                if ([pasteboard availableTypeFromArray:@[ NSPasteboardTypePNG ]] == nil) {
+                    return OT_CLIPBOARD_MACOS_STATUS_EMPTY;
                 }
-
-                *out_bytes = copy;
-                *out_length = (uint32_t)length;
-                *out_mime = mime;
-                return OT_CLIPBOARD_MACOS_STATUS_OK;
+                data = [pasteboard dataForType:NSPasteboardTypePNG];
+                if (data == nil) {
+                    return OT_CLIPBOARD_MACOS_STATUS_FAILED;
+                }
+                length = [data length];
+                if (length == 0) {
+                    return OT_CLIPBOARD_MACOS_STATUS_EMPTY;
+                }
+                source = [data bytes];
+            } else {
+                return OT_CLIPBOARD_MACOS_STATUS_EMPTY;
             }
-            return OT_CLIPBOARD_MACOS_STATUS_EMPTY;
+
+            if (length > max_bytes || length > UINT32_MAX) {
+                return OT_CLIPBOARD_MACOS_STATUS_LIMIT_EXCEEDED;
+            }
+            if (length > 0 && source == NULL) {
+                return OT_CLIPBOARD_MACOS_STATUS_FAILED;
+            }
+
+            uint8_t *copy = NULL;
+            if (length > 0) {
+                copy = malloc(length);
+                if (copy == NULL) {
+                    return OT_CLIPBOARD_MACOS_STATUS_FAILED;
+                }
+                memcpy(copy, source, length);
+            }
+
+            *out_bytes = copy;
+            *out_length = (uint32_t)length;
+            *out_mime = mime;
+            return OT_CLIPBOARD_MACOS_STATUS_OK;
         } @catch (__unused NSException *exception) {
             return OT_CLIPBOARD_MACOS_STATUS_FAILED;
         }

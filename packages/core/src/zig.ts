@@ -141,7 +141,6 @@ export enum NativeClipboardStartStatus {
   LimitExceeded = 3,
   InvalidArgument = 4,
   OutOfMemory = 5,
-  WorkerStartFailed = 6,
 }
 
 export enum NativeClipboardCancelStatus {
@@ -2428,7 +2427,7 @@ export interface RenderLib extends AudioEngineLib {
   copyToClipboardOSC52: (renderer: RendererHandle, target: number, textUtf8: Uint8Array) => boolean
   clearClipboardOSC52: (renderer: RendererHandle, target: number) => boolean
   clipboardServiceCreate: (
-    maxOperations: number,
+    maxConcurrentOperations: number,
     maxProviderTransfers: number,
     waylandSeat?: string,
   ) => ClipboardServiceHandle | null
@@ -3861,14 +3860,14 @@ class FFIRenderLib implements RenderLib {
   }
 
   public clipboardServiceCreate(
-    maxOperations: number,
+    maxConcurrentOperations: number,
     maxProviderTransfers: number,
     waylandSeat?: string,
   ): ClipboardServiceHandle | null {
     const seat = waylandSeat === undefined ? null : this.encoder.encode(waylandSeat)
     const handle = this.opentui.symbols.clipboardServiceCreate(
-      toSafeFFIU32Length(maxOperations, "maxOperations"),
-      toSafeFFIU32Length(maxProviderTransfers, "maxProviderTransfers"),
+      toSafeFFIU32Length(maxConcurrentOperations, "clipboard operation limit"),
+      toSafeFFIU32Length(maxProviderTransfers, "clipboard provider transfer limit"),
       seat,
       seat?.byteLength ?? 0,
     )
@@ -4024,7 +4023,7 @@ class FFIRenderLib implements RenderLib {
     status: NativeClipboardCopyStatus
     errorCode: number
   } {
-    const output = new Int32Array(1)
+    const output = new Uint32Array(1)
     const status = this.opentui.symbols.clipboardOperationResultErrorCode(operation, output)
     return { status, errorCode: output[0] }
   }

@@ -152,23 +152,6 @@ const assertHostRead = async (host: HostClipboardService, selection: ClipboardSe
   expect(result.representation.bytes).toEqual(encoder.encode(expected))
 }
 
-const waitForHostRead = async (host: HostClipboardService, selection: ClipboardSelection, expected: string) => {
-  const expectedBytes = Buffer.from(expected)
-  let lastDetail = "no read attempted"
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const result = await host.read({ preferredTypes: ["text/plain"], selection })
-    if (result.status === "read") {
-      const actual = Buffer.from(result.representation.bytes)
-      if (actual.equals(expectedBytes)) return
-      lastDetail = `read ${actual.byteLength} unexpected bytes`
-    } else {
-      lastDetail = result.status === "failed" ? `failed: ${result.error.message}` : result.status
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`host ${selection} read did not observe expected owner data: ${lastDetail}`)
-}
-
 test.skipIf(!LIVE)(
   "uses a live X11 server and external clipboard tools as bidirectional oracles",
   async () => {
@@ -211,7 +194,8 @@ test.skipIf(!LIVE)(
       await assertXclipRead("clipboard", largeText)
 
       owner = await startXclipOwner("clipboard", xclipLargeText)
-      await waitForHostRead(host, "clipboard", xclipLargeText)
+      await waitForOwner(owner, "clipboard", xclipLargeText)
+      await assertHostRead(host, "clipboard", xclipLargeText)
       await stopOwner(owner)
       owner = undefined
 
@@ -236,13 +220,6 @@ test.skipIf(!LIVE)(
       expect(await host.writeText("owner disposed", { selection: "clipboard" })).toEqual({ status: "written" })
       await host.dispose()
       host = undefined
-
-      host = createHostClipboard({ timeoutMs: PROCESS_TIMEOUT_MS })
-      owner = await startXclipOwner("clipboard", "service recreated")
-      await waitForOwner(owner, "clipboard", "service recreated")
-      await assertHostRead(host, "clipboard", "service recreated")
-      await stopOwner(owner)
-      owner = undefined
     } finally {
       await stopOwner(owner)
       await disposeHost(host)

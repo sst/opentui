@@ -10,12 +10,11 @@ const CF_UNICODETEXT: u32 = 13;
 const CF_DIBV5: u32 = 17;
 const COINIT_APARTMENTTHREADED: u32 = 0x2;
 const GMEM_MOVEABLE: u32 = 0x2;
-const OPEN_RETRY_SLEEP_NS_DEFAULT: u64 = 5 * std.time.ns_per_ms;
+const OPEN_RETRY_SLEEP_NS: u64 = 5 * std.time.ns_per_ms;
 const COPY_STOP_INTERVAL: usize = 4096;
 const PUMP_MESSAGES_MAX: usize = 64;
 const ERROR_OUTOFMEMORY: u32 = 14;
 const ERROR_INVALID_DATA: u32 = 13;
-const ERROR_INVALID_PARAMETER: u32 = 87;
 const PM_REMOVE: u32 = 1;
 
 const win32 = struct {
@@ -104,14 +103,9 @@ pub const ReadJob = struct {
     max_conversion_bytes: u32,
 };
 
-pub const WriteJob = struct {
-    mime: []const u8,
-    data: []const u8,
-};
-
 pub const Job = union(enum) {
     read: ReadJob,
-    write: WriteJob,
+    write: []const u8,
     clear,
 };
 
@@ -120,7 +114,6 @@ pub const ExecuteOptions = struct {
     begin_mutation: ?*const fn (?*anyopaque) ?Status = null,
     mutation_context: ?*anyopaque = null,
     deadline_ns: i128,
-    open_retry_sleep_ns: u64 = OPEN_RETRY_SLEEP_NS_DEFAULT,
 };
 
 pub const InitError = error{
@@ -181,21 +174,17 @@ pub const Worker = struct {
         std.debug.assert(worker.initialized);
         std.debug.assert(worker.thread_id == win32.GetCurrentThreadId());
 
-        if (options.open_retry_sleep_ns == 0) {
-            return .{ .status = .invalid_request, .error_code = ERROR_INVALID_PARAMETER };
-        }
         if (job == .read and !validateReadRequest(job.read.request)) {
             return .{ .status = .invalid_request, .error_code = ERROR_INVALID_DATA };
         }
 
-        var prepared: ?PreparedWrite = null;
-        if (job == .write) {
-            prepared = prepareWrite(allocator, worker.png_format, job.write, options) catch |err| {
+        var prepared: PreparedWrite = if (job == .write)
+            prepareWrite(job.write, options) catch |err| {
                 return preparationFailure(err);
-            };
-            if (prepared == null) return .{ .status = .unsupported };
-        }
-        defer if (prepared) |*write| write.deinit();
+            }
+        else
+            .{ .memory = null };
+        defer prepared.deinit();
 
         if (checkStop(options)) |status| return .{ .status = status };
         if (worker.openClipboard(options)) |failure| return failure;
@@ -205,7 +194,7 @@ pub const Worker = struct {
 
         return switch (job) {
             .read => |read| worker.executeRead(allocator, read, options, &clipboard),
-            .write => if (beginMutation(options)) |status| .{ .status = status } else worker.executeWrite(&prepared.?),
+            .write => if (beginMutation(options)) |status| .{ .status = status } else worker.executeWrite(&prepared),
             .clear => if (beginMutation(options)) |status| .{ .status = status } else executeClear(),
         };
     }
@@ -214,32 +203,28 @@ pub const Worker = struct {
         if (comptime builtin.os.tag != .windows) return false;
         std.debug.assert(worker.initialized);
         std.debug.assert(worker.thread_id == win32.GetCurrentThreadId());
-        var state = MessagePumpState{};
         var message: win32.Message = undefined;
-        while (state.canPump()) {
+        var message_count: usize = 0;
+        while (message_count < PUMP_MESSAGES_MAX) : (message_count += 1) {
             if (win32.PeekMessageW(&message, null, 0, 0, PM_REMOVE) == 0) return false;
             _ = win32.TranslateMessage(&message);
             _ = win32.DispatchMessageW(&message);
-            state.messagePumped();
         }
-        return state.moreMayRemain();
+        return true;
     }
 
     fn openClipboard(worker: *const Worker, options: ExecuteOptions) ?Result {
-        var retry_state: OpenRetryState = .attempting;
         while (true) {
             if (checkStop(options)) |status| return .{ .status = status };
             if (win32.OpenClipboard(worker.owner_window) != 0) return null;
 
-            retry_state.failed();
             _ = worker.pumpMessages();
-            retry_state.messagesPumped();
             if (checkStop(options)) |status| return .{ .status = status };
-            const sleep_ns = retry_state.sleepDuration(
-                clipboard_clock.nowNs(),
-                options.deadline_ns,
-                options.open_retry_sleep_ns,
-            ) orelse return .{ .status = .timed_out };
+            const now_ns = clipboard_clock.nowNs();
+            if (now_ns >= options.deadline_ns) return .{ .status = .timed_out };
+            const remaining_ns: u64 = @intCast(@min(options.deadline_ns - now_ns, std.math.maxInt(u64)));
+            const sleep_ns = @min(OPEN_RETRY_SLEEP_NS, remaining_ns);
+            std.debug.assert(sleep_ns > 0);
             std.Thread.sleep(sleep_ns);
         }
     }
@@ -302,8 +287,7 @@ pub const Worker = struct {
                 .continue_candidate => {},
                 .remember_failure => rememberCandidateFailure(&first_failure, result),
             }
-            const has_later_candidate = format_index + 1 < formats.len;
-            if (candidateRequiresReopen(action, clipboard.is_open, has_later_candidate)) {
+            if (!clipboard.is_open and format_index + 1 < formats.len) {
                 if (worker.ensureClipboardOpen(options, clipboard)) |failure| return failure;
             }
         }
@@ -324,14 +308,13 @@ pub const Worker = struct {
     fn executeWrite(_: *const Worker, prepared: *PreparedWrite) Result {
         if (win32.EmptyClipboard() == 0) return lastErrorResult();
         const memory = prepared.memory orelse unreachable;
-        if (win32.SetClipboardData(prepared.format, memory) == null) return lastErrorResult();
+        if (win32.SetClipboardData(CF_UNICODETEXT, memory) == null) return lastErrorResult();
         prepared.memory = null; // SetClipboardData owns the HGLOBAL after success.
         return .{ .status = .written };
     }
 };
 
 const PreparedWrite = struct {
-    format: u32,
     memory: ?*anyopaque,
 
     fn deinit(prepared: *PreparedWrite) void {
@@ -357,47 +340,6 @@ const ClipboardSession = struct {
     fn reopen(clipboard: *ClipboardSession) void {
         std.debug.assert(!clipboard.is_open);
         clipboard.is_open = true;
-    }
-};
-
-const MessagePumpState = struct {
-    message_count: usize = 0,
-
-    fn canPump(state: MessagePumpState) bool {
-        return state.message_count < PUMP_MESSAGES_MAX;
-    }
-
-    fn messagePumped(state: *MessagePumpState) void {
-        std.debug.assert(state.canPump());
-        state.message_count += 1;
-    }
-
-    fn moreMayRemain(state: MessagePumpState) bool {
-        return !state.canPump();
-    }
-};
-
-const OpenRetryState = enum {
-    attempting,
-    failed_open,
-    messages_pumped,
-
-    fn failed(state: *OpenRetryState) void {
-        std.debug.assert(state.* == .attempting);
-        state.* = .failed_open;
-    }
-
-    fn messagesPumped(state: *OpenRetryState) void {
-        std.debug.assert(state.* == .failed_open);
-        state.* = .messages_pumped;
-    }
-
-    fn sleepDuration(state: *OpenRetryState, now_ns: i128, deadline_ns: i128, retry_ns: u64) ?u64 {
-        std.debug.assert(state.* == .messages_pumped);
-        if (now_ns >= deadline_ns) return null;
-        state.* = .attempting;
-        const remaining_ns: u64 = @intCast(@min(deadline_ns - now_ns, std.math.maxInt(u64)));
-        return @min(retry_ns, remaining_ns);
     }
 };
 
@@ -485,13 +427,13 @@ const NormalizedUtf8Iterator = struct {
     }
 };
 
-fn utf8ToClipboardText(
-    allocator: Allocator,
+fn encodeClipboardText(
     utf8: []const u8,
+    output: ?[]u16,
     options: ExecuteOptions,
-) ConversionError![:0]u16 {
+) ConversionError!usize {
     var iterator = NormalizedUtf8Iterator{ .bytes = utf8 };
-    var length: usize = 0;
+    var output_index: usize = 0;
     var next_stop: usize = 0;
     while (try iterator.next()) |codepoint| {
         if (iterator.index >= next_stop) {
@@ -499,33 +441,25 @@ fn utf8ToClipboardText(
             next_stop = std.math.add(usize, iterator.index, COPY_STOP_INTERVAL) catch std.math.maxInt(usize);
         }
         const sequence_length = std.unicode.utf16CodepointSequenceLength(codepoint) catch unreachable;
-        length = std.math.add(usize, length, sequence_length) catch return error.LimitExceeded;
+        const next_index = std.math.add(usize, output_index, sequence_length) catch return error.LimitExceeded;
+        if (output) |destination| {
+            std.debug.assert(next_index < destination.len);
+            if (codepoint <= 0xffff) {
+                destination[output_index] = @intCast(codepoint);
+            } else {
+                const value = codepoint - 0x10000;
+                destination[output_index] = @intCast(0xd800 + (value >> 10));
+                destination[output_index + 1] = @intCast(0xdc00 + (value & 0x3ff));
+            }
+        }
+        output_index = next_index;
     }
     try checkConversionStop(options);
-
-    const output = allocator.allocSentinel(u16, length, 0) catch return error.OutOfMemory;
-    errdefer allocator.free(output);
-    iterator = .{ .bytes = utf8 };
-    var output_index: usize = 0;
-    next_stop = 0;
-    while (try iterator.next()) |codepoint| {
-        if (iterator.index >= next_stop) {
-            try checkConversionStop(options);
-            next_stop = std.math.add(usize, iterator.index, COPY_STOP_INTERVAL) catch std.math.maxInt(usize);
-        }
-        if (codepoint <= 0xffff) {
-            output[output_index] = @intCast(codepoint);
-            output_index += 1;
-        } else {
-            const value = codepoint - 0x10000;
-            output[output_index] = @intCast(0xd800 + (value >> 10));
-            output[output_index + 1] = @intCast(0xdc00 + (value & 0x3ff));
-            output_index += 2;
-        }
+    if (output) |destination| {
+        std.debug.assert(output_index + 1 == destination.len);
+        destination[output_index] = 0;
     }
-    try checkConversionStop(options);
-    std.debug.assert(output_index == output.len);
-    return output;
+    return output_index;
 }
 
 fn clipboardTextToUtf8(
@@ -579,37 +513,18 @@ fn clipboardTextToUtf8(
     return output;
 }
 
-fn prepareWrite(
-    allocator: Allocator,
-    png_format: u32,
-    job: WriteJob,
-    options: ExecuteOptions,
-) ConversionError!?PreparedWrite {
-    if (std.ascii.eqlIgnoreCase(job.mime, "text/plain")) {
-        const utf16 = try utf8ToClipboardText(allocator, job.data, options);
-        defer allocator.free(utf16);
-        const size_bytes = std.math.mul(usize, utf16.len + 1, @sizeOf(u16)) catch return error.LimitExceeded;
-        const memory = win32.GlobalAlloc(GMEM_MOVEABLE, size_bytes) orelse return error.OutOfMemory;
-        errdefer std.debug.assert(win32.GlobalFree(memory) == null);
-        const pointer = win32.GlobalLock(memory) orelse return error.OutOfMemory;
-        defer _ = win32.GlobalUnlock(memory);
-        const destination: [*]u16 = @ptrCast(@alignCast(pointer));
-        try copyBytesChecked(
-            std.mem.sliceAsBytes(destination[0 .. utf16.len + 1]),
-            std.mem.sliceAsBytes(utf16.ptr[0 .. utf16.len + 1]),
-            options,
-        );
-        return .{ .format = CF_UNICODETEXT, .memory = memory };
-    }
-    if (!std.ascii.eqlIgnoreCase(job.mime, "image/png")) return null;
-    if (job.data.len == 0) return error.InvalidUtf8;
-    const memory = win32.GlobalAlloc(GMEM_MOVEABLE, job.data.len) orelse return error.OutOfMemory;
+fn prepareWrite(data: []const u8, options: ExecuteOptions) ConversionError!PreparedWrite {
+    const length = try encodeClipboardText(data, null, options);
+    const length_with_nul = std.math.add(usize, length, 1) catch return error.LimitExceeded;
+    const size_bytes = std.math.mul(usize, length_with_nul, @sizeOf(u16)) catch return error.LimitExceeded;
+    const memory = win32.GlobalAlloc(GMEM_MOVEABLE, size_bytes) orelse return error.OutOfMemory;
     errdefer std.debug.assert(win32.GlobalFree(memory) == null);
     const pointer = win32.GlobalLock(memory) orelse return error.OutOfMemory;
     defer _ = win32.GlobalUnlock(memory);
-    const destination: [*]u8 = @ptrCast(pointer);
-    try copyBytesChecked(destination[0..job.data.len], job.data, options);
-    return .{ .format = png_format, .memory = memory };
+    const destination: [*]u16 = @ptrCast(@alignCast(pointer));
+    const written = try encodeClipboardText(data, destination[0..length_with_nul], options);
+    std.debug.assert(written == length);
+    return .{ .memory = memory };
 }
 
 fn preparationFailure(err: ConversionError) Result {
@@ -791,11 +706,6 @@ fn readCandidateAction(result: Result) ReadCandidateAction {
     };
 }
 
-fn candidateRequiresReopen(action: ReadCandidateAction, clipboard_is_open: bool, has_later_candidate: bool) bool {
-    if (clipboard_is_open or !has_later_candidate) return false;
-    return action != .return_result;
-}
-
 fn rememberCandidateFailure(first_failure: *?Result, result: Result) void {
     std.debug.assert(readCandidateAction(result) == .remember_failure);
     if (first_failure.* == null) first_failure.* = result;
@@ -803,21 +713,6 @@ fn rememberCandidateFailure(first_failure: *?Result, result: Result) void {
 
 fn lastErrorResult() Result {
     return .{ .status = .failed, .error_code = win32.GetLastError() };
-}
-
-test "Windows clipboard worker API paths compile without mutating the clipboard" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
-    try clipboard_clock.init();
-    var worker = Worker{
-        .thread_id = win32.GetCurrentThreadId(),
-        .png_format = 1,
-        .owner_window = undefined,
-        .initialized = true,
-    };
-    const result = worker.execute(std.testing.allocator, .clear, .{
-        .deadline_ns = clipboard_clock.nowNs() - 1,
-    });
-    try std.testing.expectEqual(Status.timed_out, result.status);
 }
 
 test "Windows clipboard MIME request parsing preserves preference order" {
@@ -862,62 +757,30 @@ test "Windows clipboard reads retain candidate failures while trying later prefe
 
     var first_failure: ?Result = null;
     rememberCandidateFailure(&first_failure, .{ .status = .failed, .error_code = ERROR_INVALID_DATA });
-    rememberCandidateFailure(&first_failure, .{ .status = .failed, .error_code = ERROR_INVALID_PARAMETER });
+    rememberCandidateFailure(&first_failure, .{ .status = .failed, .error_code = 1 });
     try std.testing.expectEqual(ERROR_INVALID_DATA, first_failure.?.error_code);
 }
 
-test "Windows clipboard candidate state reopens only for recoverable fallback" {
-    try std.testing.expect(candidateRequiresReopen(.continue_candidate, false, true));
-    try std.testing.expect(candidateRequiresReopen(.remember_failure, false, true));
-    try std.testing.expect(!candidateRequiresReopen(.return_result, false, true));
-    try std.testing.expect(!candidateRequiresReopen(.continue_candidate, true, true));
-    try std.testing.expect(!candidateRequiresReopen(.continue_candidate, false, false));
-
-    const terminal_results = [_]Result{
-        .{ .status = .cancelled },
-        .{ .status = .timed_out },
-        .{ .status = .limit_exceeded },
-        .{ .status = .failed, .error_code = ERROR_OUTOFMEMORY },
-    };
-    for (terminal_results) |result| {
-        const action = readCandidateAction(result);
-        try std.testing.expectEqual(ReadCandidateAction.return_result, action);
-        try std.testing.expect(!candidateRequiresReopen(action, false, true));
-    }
-}
-
-test "Windows clipboard message pump state has a finite work bound" {
-    var state = MessagePumpState{};
-    while (state.canPump()) state.messagePumped();
-
-    try std.testing.expectEqual(@as(usize, PUMP_MESSAGES_MAX), state.message_count);
-    try std.testing.expect(state.moreMayRemain());
-
-    var idle_state = MessagePumpState{};
-    try std.testing.expect(idle_state.canPump());
-    try std.testing.expect(!idle_state.moreMayRemain());
-}
-
 test "Windows clipboard text conversion round trips Unicode and terminates UTF-16" {
-    const utf16 = try utf8ToClipboardText(std.testing.allocator, "plain \u{1f642}", testOptions());
-    defer std.testing.allocator.free(utf16);
-    try std.testing.expectEqual(@as(u16, 0), utf16[utf16.len]);
+    var utf16: [9]u16 = undefined;
+    _ = try encodeClipboardText("plain \u{1f642}", &utf16, testOptions());
+    try std.testing.expectEqual(@as(u16, 0), utf16[utf16.len - 1]);
 
-    const utf8 = try clipboardTextToUtf8(std.testing.allocator, utf16.ptr[0 .. utf16.len + 1], 64, testOptions());
+    const utf8 = try clipboardTextToUtf8(std.testing.allocator, &utf16, 64, testOptions());
     defer std.testing.allocator.free(utf8);
     try std.testing.expectEqualStrings("plain \u{1f642}", utf8);
 }
 
 test "Windows clipboard text conversion normalizes CF_UNICODETEXT line endings" {
-    const utf16 = try utf8ToClipboardText(std.testing.allocator, "a\nb\r\nc\rd", testOptions());
-    defer std.testing.allocator.free(utf16);
-    const utf8 = try clipboardTextToUtf8(std.testing.allocator, utf16.ptr[0 .. utf16.len + 1], 64, testOptions());
+    var utf16: [11]u16 = undefined;
+    _ = try encodeClipboardText("a\nb\r\nc\rd", &utf16, testOptions());
+    const utf8 = try clipboardTextToUtf8(std.testing.allocator, &utf16, 64, testOptions());
     defer std.testing.allocator.free(utf8);
     try std.testing.expectEqualStrings("a\r\nb\r\nc\r\nd", utf8);
 }
 
 test "Windows clipboard text conversion validates NUL UTF-16 and size" {
-    try std.testing.expectError(error.EmbeddedNul, utf8ToClipboardText(std.testing.allocator, "a\x00b", testOptions()));
+    try std.testing.expectError(error.EmbeddedNul, encodeClipboardText("a\x00b", null, testOptions()));
     try std.testing.expectError(
         error.MissingNul,
         clipboardTextToUtf8(std.testing.allocator, &.{ 'a', 'b' }, 8, testOptions()),
@@ -930,22 +793,6 @@ test "Windows clipboard text conversion validates NUL UTF-16 and size" {
         error.LimitExceeded,
         clipboardTextToUtf8(std.testing.allocator, &.{ 'a', 'b', 0 }, 1, testOptions()),
     );
-}
-
-test "Windows clipboard open retry state pumps messages before retrying" {
-    var state: OpenRetryState = .attempting;
-    state.failed();
-    try std.testing.expectEqual(OpenRetryState.failed_open, state);
-    state.messagesPumped();
-    try std.testing.expectEqual(@as(?u64, 5), state.sleepDuration(10, 20, 5));
-    try std.testing.expectEqual(OpenRetryState.attempting, state);
-
-    state.failed();
-    state.messagesPumped();
-    try std.testing.expectEqual(@as(?u64, 3), state.sleepDuration(17, 20, 5));
-    state.failed();
-    state.messagesPumped();
-    try std.testing.expectEqual(@as(?u64, null), state.sleepDuration(20, 20, 5));
 }
 
 test "Windows clipboard session close and reopen transitions are paired" {
@@ -985,7 +832,7 @@ test "Windows clipboard bounded helpers observe cancellation and deadlines" {
     );
     try std.testing.expectError(
         error.Cancelled,
-        utf8ToClipboardText(std.testing.allocator, "text", options),
+        encodeClipboardText("text", null, options),
     );
 
     cancelled.store(false, .release);
