@@ -23,7 +23,7 @@ const native_renderable = @import("native-renderable.zig");
 const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
-const clipboard = @import("clipboard.zig");
+const clipboard = @import("clipboard/host.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -391,22 +391,6 @@ export fn clipboardServiceDrain(service_handle: NativeHandle) u8 {
     return clipboard.drainService(service_handle);
 }
 
-export fn clipboardTestOperationStart(
-    service_handle: NativeHandle,
-    request_pointer: ?[*]const u8,
-    request_length: u32,
-    delay_ms: u32,
-    out_operation_handle: ?*NativeHandle,
-) u8 {
-    return @intFromEnum(clipboard.startTestOperation(
-        service_handle,
-        request_pointer,
-        request_length,
-        delay_ms,
-        out_operation_handle,
-    ));
-}
-
 export fn clipboardReadOperationStart(
     service_handle: NativeHandle,
     request_pointer: ?[*]const u8,
@@ -487,7 +471,7 @@ export fn clipboardOperationResultDataCopy(operation_handle: NativeHandle, out_p
     return @intFromEnum(clipboard.resultDataCopy(operation_handle, out_pointer, capacity));
 }
 
-export fn clipboardOperationResultErrorCode(operation_handle: NativeHandle, out_error_code: ?*i32) u8 {
+export fn clipboardOperationResultErrorCode(operation_handle: NativeHandle, out_error_code: ?*u32) u8 {
     return @intFromEnum(clipboard.resultErrorCode(operation_handle, out_error_code));
 }
 

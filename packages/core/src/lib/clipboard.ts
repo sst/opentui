@@ -2,7 +2,12 @@
 // Delegates to native Zig implementation for ANSI sequence generation.
 
 import type { RendererHandle, RenderLib } from "../zig.js"
-import { createHostClipboardWithBackend, validateClipboardText } from "./host-clipboard.internal.js"
+import {
+  createHostClipboardWithBackend,
+  runTrackedOperation,
+  validateClipboardText,
+  type ActiveClipboardOperation,
+} from "./host-clipboard.internal.js"
 import { createNativeHostClipboardBackend } from "./host-clipboard.native.js"
 
 export interface ClipboardRepresentation {
@@ -153,47 +158,6 @@ const validateSelection = (selection: ClipboardSelection | undefined): Clipboard
   return normalized
 }
 
-interface ActiveClipboardOperation {
-  readonly controller: AbortController
-  readonly settled: Promise<void>
-  settle(): void
-}
-
-const createActiveOperation = (callerSignal?: AbortSignal): ActiveClipboardOperation => {
-  const controller = new AbortController()
-  let settle = () => {}
-  const settled = new Promise<void>((resolve) => {
-    settle = resolve
-  })
-  if (callerSignal) {
-    callerSignal.addEventListener("abort", () => controller.abort(callerSignal.reason), {
-      once: true,
-      signal: controller.signal,
-    })
-  }
-  return { controller, settled, settle }
-}
-
-const runTrackedOperation = <T>(
-  active: Set<ActiveClipboardOperation>,
-  callerSignal: AbortSignal | undefined,
-  operation: (signal: AbortSignal) => Promise<T>,
-): Promise<T> => {
-  const state = createActiveOperation(callerSignal)
-  active.add(state)
-  let result: Promise<T>
-  try {
-    result = operation(state.controller.signal)
-  } catch (error) {
-    result = Promise.reject(error)
-  }
-  return result.finally(() => {
-    active.delete(state)
-    state.controller.abort()
-    state.settle()
-  })
-}
-
 export const createHostClipboard = (options: HostClipboardOptions = {}): HostClipboardService =>
   createHostClipboardWithBackend(options, createNativeHostClipboardBackend)
 
@@ -220,6 +184,41 @@ export const createClipboard = ({ host, terminal }: ClipboardOptions): Clipboard
   const canUseRemoteHost = (options: ClipboardWriteOptions): boolean =>
     !terminal.remote || options.allowRemoteHost === true
 
+  type HostMutationResult = HostClipboardWriteResult | HostClipboardClearResult
+  type MutationResult<Result extends HostMutationResult> = {
+    readonly host: Result | { readonly status: "not-attempted" }
+    readonly terminal: TerminalClipboardOperationResult
+  }
+
+  const composeMutation = async <Result extends HostMutationResult>(
+    options: ClipboardWriteOptions,
+    hostOperation: () => Promise<Result>,
+    terminalOperation: () => TerminalClipboardOperationResult,
+  ): Promise<MutationResult<Result>> => {
+    if (options.destination === "terminal-only") {
+      return { host: { status: "not-attempted" }, terminal: terminalOperation() }
+    }
+    if (options.destination === "host-only") {
+      const hostResult = canUseRemoteHost(options) ? await hostOperation() : { status: "not-attempted" as const }
+      return { host: hostResult, terminal: NOT_ATTEMPTED_TERMINAL }
+    }
+    if (options.destination === "best-available") {
+      if (terminal.remote) {
+        return { host: { status: "not-attempted" }, terminal: terminalOperation() }
+      }
+      const hostResult = await hostOperation()
+      const terminalResult =
+        hostResult.status === "unsupported" || hostResult.status === "failed"
+          ? terminalOperation()
+          : NOT_ATTEMPTED_TERMINAL
+      return { host: hostResult, terminal: terminalResult }
+    }
+    const hostPromise = canUseRemoteHost(options)
+      ? hostOperation()
+      : Promise.resolve({ status: "not-attempted" as const })
+    const terminalResult = terminalOperation()
+    return { host: await hostPromise, terminal: terminalResult }
+  }
   return {
     read(options) {
       try {
@@ -239,33 +238,13 @@ export const createClipboard = ({ host, terminal }: ClipboardOptions): Clipboard
         validateDestination(options.destination)
         validateClipboardText(text, host.maxWriteBytes)
         const selection = validateSelection(options.selection)
-        return runTrackedOperation(active, options.signal, async (signal) => {
+        return runTrackedOperation(active, options.signal, (signal) => {
           const operationOptions = { selection, signal }
-          if (options.destination === "terminal-only") {
-            return { host: { status: "not-attempted" }, terminal: terminal.writeText(text, selection) }
-          }
-          if (options.destination === "host-only") {
-            const hostResult = canUseRemoteHost(options)
-              ? await host.writeText(text, operationOptions)
-              : { status: "not-attempted" as const }
-            return { host: hostResult, terminal: NOT_ATTEMPTED_TERMINAL }
-          }
-          if (options.destination === "best-available") {
-            if (terminal.remote) {
-              return { host: { status: "not-attempted" }, terminal: terminal.writeText(text, selection) }
-            }
-            const hostResult = await host.writeText(text, operationOptions)
-            const terminalResult =
-              hostResult.status === "unsupported" || hostResult.status === "failed"
-                ? terminal.writeText(text, selection)
-                : NOT_ATTEMPTED_TERMINAL
-            return { host: hostResult, terminal: terminalResult }
-          }
-          const hostPromise = canUseRemoteHost(options)
-            ? host.writeText(text, operationOptions)
-            : Promise.resolve({ status: "not-attempted" as const })
-          const terminalResult = terminal.writeText(text, selection)
-          return { host: await hostPromise, terminal: terminalResult }
+          return composeMutation(
+            options,
+            () => host.writeText(text, operationOptions),
+            () => terminal.writeText(text, selection),
+          )
         })
       } catch (error) {
         return Promise.reject(error)
@@ -279,33 +258,13 @@ export const createClipboard = ({ host, terminal }: ClipboardOptions): Clipboard
         }
         validateDestination(options.destination)
         const selection = validateSelection(options.selection)
-        return runTrackedOperation(active, options.signal, async (signal) => {
+        return runTrackedOperation(active, options.signal, (signal) => {
           const operationOptions = { selection, signal }
-          if (options.destination === "terminal-only") {
-            return { host: { status: "not-attempted" }, terminal: terminal.clear(selection) }
-          }
-          if (options.destination === "host-only") {
-            const hostResult = canUseRemoteHost(options)
-              ? await host.clear(operationOptions)
-              : { status: "not-attempted" as const }
-            return { host: hostResult, terminal: NOT_ATTEMPTED_TERMINAL }
-          }
-          if (options.destination === "best-available") {
-            if (terminal.remote) {
-              return { host: { status: "not-attempted" }, terminal: terminal.clear(selection) }
-            }
-            const hostResult = await host.clear(operationOptions)
-            const terminalResult =
-              hostResult.status === "unsupported" || hostResult.status === "failed"
-                ? terminal.clear(selection)
-                : NOT_ATTEMPTED_TERMINAL
-            return { host: hostResult, terminal: terminalResult }
-          }
-          const hostPromise = canUseRemoteHost(options)
-            ? host.clear(operationOptions)
-            : Promise.resolve({ status: "not-attempted" as const })
-          const terminalResult = terminal.clear(selection)
-          return { host: await hostPromise, terminal: terminalResult }
+          return composeMutation(
+            options,
+            () => host.clear(operationOptions),
+            () => terminal.clear(selection),
+          )
         })
       } catch (error) {
         return Promise.reject(error)

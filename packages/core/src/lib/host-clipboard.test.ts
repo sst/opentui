@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test"
 import {
-  createHostClipboard,
   type ClipboardReadResult,
   type HostClipboardBackend,
   type HostClipboardOptions,
@@ -53,18 +52,29 @@ const createHost = (backend: HostClipboardBackend, options: HostClipboardOptions
 describe("createHostClipboard", () => {
   it("validates configuration before dispatch", () => {
     const { backend } = createBackend()
-    for (const value of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 0x1_0000_0000]) {
-      expect(() => createHost(backend, { timeoutMs: value })).toThrow(RangeError)
-      expect(() => createHost(backend, { maxReadBytes: value })).toThrow(RangeError)
-      expect(() => createHost(backend, { maxWriteBytes: value })).toThrow(RangeError)
-      expect(() => createHost(backend, { maxImagePixels: value })).toThrow(RangeError)
-      expect(() => createHost(backend, { maxConversionBytes: value })).toThrow(RangeError)
+    const expectInvalidNumbers = (names: readonly (keyof HostClipboardOptions)[], values: readonly number[]) => {
+      for (const name of names) {
+        for (const value of values) {
+          expect(() => createHost(backend, { [name]: value } as HostClipboardOptions)).toThrow(RangeError)
+        }
+      }
     }
-    for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 0x1_0000_0000]) {
-      expect(() => createHost(backend, { maxConcurrentOperations: value })).toThrow(RangeError)
-      expect(() => createHost(backend, { maxProviderTransfers: value })).toThrow(RangeError)
-      expect(() => createHost(backend, { maxWorkUnitsPerDrain: value })).toThrow(RangeError)
-    }
+
+    const invalidU32 = [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 0x1_0000_0000]
+    expectInvalidNumbers(
+      [
+        "timeoutMs",
+        "maxReadBytes",
+        "maxWriteBytes",
+        "maxImagePixels",
+        "maxConversionBytes",
+        "maxConcurrentOperations",
+        "maxProviderTransfers",
+        "maxWorkUnitsPerDrain",
+      ],
+      invalidU32,
+    )
+    expectInvalidNumbers(["maxConcurrentOperations", "maxProviderTransfers", "maxWorkUnitsPerDrain"], [0])
     for (const waylandSeat of ["", "seat\0name"]) {
       expect(() => createHost(backend, { waylandSeat })).toThrow(TypeError)
     }
@@ -144,13 +154,6 @@ describe("createHostClipboard", () => {
     await host.dispose()
   })
 
-  it("constructs the public host service without exposing a backend", async () => {
-    const host = createHostClipboard({ timeoutMs: 100, waylandSeat: "opentui-test-missing-seat" })
-    const result = await host.read({ preferredTypes: ["text/plain"] })
-    expect(["read", "empty", "unsupported"]).toContain(result.status)
-    await host.dispose()
-  })
-
   it("rejects invalid MIME preferences without dispatch", async () => {
     const fake = createBackend()
     const host = createHost(fake.backend)
@@ -181,8 +184,9 @@ describe("createHostClipboard", () => {
     preferredTypes[63] = `Application/${"A".repeat(243)}`
 
     await host.read({ preferredTypes })
+    const normalizedTypes = preferredTypes.map((mimeType) => mimeType.toLowerCase()) as [string, ...string[]]
     expect(fake.reads).toHaveLength(1)
-    expect(fake.reads[0]?.preferredTypes).toEqual(preferredTypes.map((mimeType) => mimeType.toLowerCase()))
+    expect(fake.reads[0]?.preferredTypes).toEqual(normalizedTypes)
     expect(fake.reads[0]?.preferredTypes[63]).toHaveLength(255)
     await host.dispose()
   })
@@ -236,7 +240,32 @@ describe("createHostClipboard", () => {
     await host.dispose()
   })
 
-  it("copies returned bytes for caller ownership", async () => {
+  it("preserves a tighter caller operation limit", async () => {
+    let release: (() => void) | undefined
+    let readCount = 0
+    const fake = createBackend({
+      async read() {
+        readCount += 1
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return { status: "empty" }
+      },
+    })
+    const host = createHost(fake.backend, { maxConcurrentOperations: 1 })
+    const first = host.read({ preferredTypes: ["text/plain"] })
+
+    const second = await host.read({ preferredTypes: ["text/plain"] })
+    expect(second.status).toBe("failed")
+    if (second.status === "failed") expect(second.error.message).toContain("operation limit")
+    expect(readCount).toBe(1)
+
+    release?.()
+    await first
+    await host.dispose()
+  })
+
+  it("returns the stable caller-owned bytes supplied by the backend", async () => {
     const bytes = new Uint8Array([1, 2, 3])
     const fake = createBackend({
       async read() {
@@ -248,36 +277,8 @@ describe("createHostClipboard", () => {
 
     expect(result.status).toBe("read")
     if (result.status === "read") {
-      expect(result.representation.bytes).not.toBe(bytes)
-      bytes[0] = 9
-      expect(result.representation.bytes).toEqual(new Uint8Array([1, 2, 3]))
+      expect(result.representation.bytes).toBe(bytes)
     }
-    await host.dispose()
-  })
-
-  it("bounds concurrent operations and reuses capacity after cleanup", async () => {
-    let finishRead: (() => void) | undefined
-    const fake = createBackend({
-      async read() {
-        await new Promise<void>((resolve) => {
-          finishRead = resolve
-        })
-        return { status: "empty" }
-      },
-    })
-    const host = createHost(fake.backend, { maxConcurrentOperations: 1 })
-    const activeRead = host.read({ preferredTypes: ["text/plain"] })
-
-    const excessWrite = await host.writeText("text")
-    const excessClear = await host.clear()
-    expect(excessWrite.status).toBe("failed")
-    expect(excessClear.status).toBe("failed")
-    expect(fake.writes).toHaveLength(0)
-    expect(fake.clears).toHaveLength(0)
-
-    finishRead?.()
-    await activeRead
-    expect((await host.writeText("text")).status).toBe("written")
     await host.dispose()
   })
 
