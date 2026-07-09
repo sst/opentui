@@ -1,23 +1,21 @@
-import { IcyStreamParser } from "./icy/parser.js"
+import { createIcyStreamDemuxer } from "./icy/parser.js"
+import type { AudioStreamMetadata } from "../audio.js"
 
-export type AudioStreamParserOutput =
-  | { type: "audio"; data: Uint8Array }
-  | { type: "metadata"; fields: Readonly<Record<string, string>> }
+export type AudioStreamDemuxOutput<M> = { type: "audio"; data: Uint8Array } | { type: "metadata"; metadata: M | null }
 
-export interface AudioStreamBodyParser {
-  push(chunk: Uint8Array): IterableIterator<AudioStreamParserOutput>
-  finish(): void
+export interface AudioStreamDemuxer<M> {
+  readonly initialMetadata: M | null
+  push(chunk: Uint8Array): Iterable<AudioStreamDemuxOutput<M>>
+  flush(): Iterable<AudioStreamDemuxOutput<M>>
+  abort?(reason: unknown): void
 }
 
-export type AudioStreamParserSelection =
-  | { format: null; headers: Readonly<Record<string, string>>; parser: null }
-  | { format: "icy"; headers: Readonly<Record<string, string>>; parser: AudioStreamBodyParser | null }
+export type AudioStreamDemuxerFactory<M> = () => AudioStreamDemuxer<M>
 
-export function selectAudioStreamParser(options: {
-  url: string
+export function selectAudioStreamDemuxer(options: {
   headers: Headers
   metadataEncoding: string
-}): AudioStreamParserSelection {
+}): AudioStreamDemuxer<AudioStreamMetadata> | null {
   const icyHeaders: Record<string, string> = Object.create(null)
   options.headers.forEach((value, name) => {
     if (name.toLowerCase().startsWith("icy-")) icyHeaders[name.toLowerCase()] = value
@@ -25,21 +23,14 @@ export function selectAudioStreamParser(options: {
   const headers = Object.freeze(icyHeaders)
   const rawInterval = options.headers.get("icy-metaint")
   if (rawInterval == null) {
-    return {
-      format: Object.keys(headers).length === 0 ? null : "icy",
-      headers,
-      parser: null,
-    }
+    return Object.keys(headers).length === 0
+      ? null
+      : createIcyStreamDemuxer({ metadataInterval: 0, metadataEncoding: options.metadataEncoding, headers })
   }
 
   const value = rawInterval.trim()
   if (!/^\d+$/.test(value)) throw new Error(`Invalid icy-metaint response header: ${rawInterval}`)
   const interval = Number(value)
   if (!Number.isSafeInteger(interval)) throw new Error(`Invalid icy-metaint response header: ${rawInterval}`)
-  if (interval === 0) return { format: "icy", headers, parser: null }
-  return {
-    format: "icy",
-    headers,
-    parser: new IcyStreamParser(interval, new TextDecoder(options.metadataEncoding)),
-  }
+  return createIcyStreamDemuxer({ metadataInterval: interval, metadataEncoding: options.metadataEncoding, headers })
 }

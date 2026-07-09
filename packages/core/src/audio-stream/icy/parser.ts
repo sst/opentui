@@ -1,19 +1,60 @@
 import { parseIcyMetadata } from "./metadata.js"
-import type { AudioStreamBodyParser, AudioStreamParserOutput } from "../parser.js"
+import type { AudioStreamMetadata } from "../../audio.js"
+import type { AudioStreamDemuxer, AudioStreamDemuxOutput } from "../parser.js"
 
-export class IcyStreamParser implements AudioStreamBodyParser {
+export interface IcyStreamDemuxerOptions {
+  metadataInterval: number
+  metadataEncoding?: string
+  headers?: Readonly<Record<string, string>>
+}
+
+const EMPTY_FIELDS: Readonly<Record<string, string>> = Object.freeze(Object.create(null))
+
+function copyHeaders(headers: Readonly<Record<string, string>> | undefined): Readonly<Record<string, string>> {
+  const copy: Record<string, string> = Object.create(null)
+  for (const [name, value] of Object.entries(headers ?? {})) copy[name.toLowerCase()] = value
+  return Object.freeze(copy)
+}
+
+function fieldsEqual(left: Readonly<Record<string, string>>, right: Readonly<Record<string, string>>): boolean {
+  const keys = Object.keys(left)
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && left[key] === right[key])
+  )
+}
+
+export class IcyStreamDemuxer implements AudioStreamDemuxer<AudioStreamMetadata> {
+  readonly initialMetadata: AudioStreamMetadata
   private audioRemaining: number
   private metadata: Uint8Array | null = null
   private metadataOffset = 0
+  private fields = EMPTY_FIELDS
+  private readonly interval: number
+  private readonly decoder: TextDecoder
+  private readonly headers: Readonly<Record<string, string>>
 
-  constructor(
-    private readonly interval: number,
-    private readonly decoder: TextDecoder,
-  ) {
-    this.audioRemaining = interval
+  constructor(options: IcyStreamDemuxerOptions) {
+    if (!Number.isSafeInteger(options.metadataInterval) || options.metadataInterval < 0) {
+      throw new TypeError("metadataInterval must be a non-negative safe integer")
+    }
+    this.interval = options.metadataInterval
+    try {
+      this.decoder = new TextDecoder(options.metadataEncoding ?? "iso-8859-1")
+    } catch {
+      throw new TypeError(`Unsupported metadataEncoding: ${options.metadataEncoding}`)
+    }
+    this.headers = copyHeaders(options.headers)
+    this.audioRemaining = this.interval
+    this.initialMetadata = Object.freeze({ format: "icy", headers: this.headers, fields: this.fields })
   }
 
-  *push(chunk: Uint8Array): IterableIterator<AudioStreamParserOutput> {
+  *push(chunk: Uint8Array): IterableIterator<AudioStreamDemuxOutput<AudioStreamMetadata>> {
+    if (this.interval === 0) {
+      if (chunk.byteLength > 0) yield { type: "audio", data: chunk }
+      return
+    }
+
     let offset = 0
     while (offset < chunk.byteLength) {
       if (this.audioRemaining > 0) {
@@ -46,13 +87,24 @@ export class IcyStreamParser implements AudioStreamBodyParser {
       this.metadata = null
       this.metadataOffset = 0
       this.audioRemaining = this.interval
-      if (fields != null) yield { type: "metadata", fields }
+      if (fields != null && !fieldsEqual(this.fields, fields)) {
+        this.fields = fields
+        yield {
+          type: "metadata",
+          metadata: Object.freeze({ format: "icy", headers: this.headers, fields }),
+        }
+      }
     }
   }
 
-  finish(): void {
+  *flush(): IterableIterator<AudioStreamDemuxOutput<AudioStreamMetadata>> {
+    if (this.interval === 0) return
     if (this.audioRemaining === 0 || this.metadata != null) {
       throw new Error("ICY stream ended inside a metadata block")
     }
   }
+}
+
+export function createIcyStreamDemuxer(options: IcyStreamDemuxerOptions): AudioStreamDemuxer<AudioStreamMetadata> {
+  return new IcyStreamDemuxer(options)
 }

@@ -414,7 +414,7 @@ class AudioStreamingDemo {
 
     let nextStream: AudioStream
     try {
-      nextStream = await this.audio.playStream(url, {
+      nextStream = await this.audio.playStreamUrl(url, {
         signal: this.streamController.signal,
         volume: this.volume,
         pan: this.pan,
@@ -425,6 +425,7 @@ class AudioStreamingDemo {
           resumeMs: 1000,
         },
         reconnect: {
+          maxAttempts: 5,
           retryOnEnd: true,
           initialDelayMs: 1000,
           maxDelayMs: 15_000,

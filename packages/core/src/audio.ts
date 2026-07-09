@@ -1,6 +1,11 @@
 import { EventEmitter } from "events"
 import { readFile } from "node:fs/promises"
-import { selectAudioStreamParser, type AudioStreamParserSelection } from "./audio-stream/parser.js"
+import {
+  selectAudioStreamDemuxer,
+  type AudioStreamDemuxer,
+  type AudioStreamDemuxerFactory,
+  type AudioStreamDemuxOutput,
+} from "./audio-stream/parser.js"
 import { resolveRenderLib, type AudioEngineHandle, type RenderLib } from "./zig.js"
 import {
   NativeAudioStreamCloseReason as CloseReason,
@@ -43,7 +48,33 @@ export interface AudioPlayOptions {
   groupId?: number
 }
 
-export type AudioStreamSource = string | URL | ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>
+export type AudioStreamBody = ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>
+
+export interface AudioStreamConnectContext {
+  readonly signal: AbortSignal
+  readonly attempt: number
+}
+
+export interface AudioStreamConnection<I = unknown> {
+  readonly body: AudioStreamBody
+  readonly info: I
+  close?(): void | Promise<void>
+}
+
+export type AudioStreamRetryPhase = "connect" | "read"
+
+export interface AudioStreamRetryContext {
+  readonly attempt: number
+  readonly maxAttempts: number
+  readonly phase: AudioStreamRetryPhase
+}
+
+export type AudioStreamRetryDecision = false | { readonly delayMs?: number }
+
+export interface AudioStreamConnector<I = unknown> {
+  connect(context: AudioStreamConnectContext): Promise<AudioStreamConnection<I>>
+  retry?(error: AudioStreamError, context: AudioStreamRetryContext): AudioStreamRetryDecision
+}
 
 export interface AudioStreamBufferOptions {
   capacityMs?: number
@@ -59,7 +90,7 @@ export interface AudioStreamReconnectOptions {
   retryOnEnd?: boolean
 }
 
-interface AudioStreamSharedOptions {
+export interface AudioStreamOptions {
   volume?: number
   pan?: number
   groupId?: number
@@ -68,16 +99,25 @@ interface AudioStreamSharedOptions {
   signal?: AbortSignal
 }
 
-export interface AudioStreamBodyOptions extends AudioStreamSharedOptions {
+export interface AudioStreamBodyOptions<M = AudioStreamMetadata> extends AudioStreamOptions {
+  demuxer?: AudioStreamDemuxerFactory<M>
   request?: never
   reconnect?: never
   metadataEncoding?: never
 }
 
-export interface AudioStreamUrlOptions extends AudioStreamSharedOptions {
+export interface AudioStreamSourceOptions<I = unknown, M = AudioStreamMetadata> extends AudioStreamOptions {
+  demuxer?: (info: I) => AudioStreamDemuxer<M> | null
+  reconnect?: AudioStreamReconnectOptions
+  request?: never
+  metadataEncoding?: never
+}
+
+export interface AudioStreamUrlOptions extends AudioStreamOptions {
   request?: Omit<RequestInit, "body" | "signal">
   reconnect?: AudioStreamReconnectOptions
   metadataEncoding?: string
+  demuxer?: never
 }
 
 export type AudioStreamState =
@@ -115,6 +155,7 @@ export type AudioStreamAction =
   | "fetch"
   | "response"
   | "source"
+  | "demuxer"
   | "create"
   | "write"
   | "end"
@@ -140,8 +181,8 @@ export interface AudioStreamReconnectEvent {
   error: AudioStreamError
 }
 
-export interface AudioStreamEvents {
-  metadata: [metadata: AudioStreamMetadata | null]
+export interface AudioStreamEvents<M = AudioStreamMetadata> {
+  metadata: [metadata: M | null]
   reconnecting: [event: AudioStreamReconnectEvent]
   ended: []
   error: [error: Error, context: AudioStreamErrorContext]
@@ -240,23 +281,35 @@ interface ResolvedAudioStreamOptions {
   groupId: number
   maxProbeBytes: number
   signal?: AbortSignal
-  request?: Omit<RequestInit, "body" | "signal">
   reconnect?: ResolvedAudioStreamReconnectOptions
-  metadataEncoding: string
 }
 
-interface AudioStreamInit {
+interface ResolvedAudioStreamConnector<I> {
+  connect(context: AudioStreamConnectContext): Promise<AudioStreamConnection<I>>
+  retry?(error: AudioStreamError, context: AudioStreamRetryContext): AudioStreamRetryDecision
+}
+
+interface ResolvedAudioStreamConnection<I> {
+  readonly body: AudioStreamBody
+  readonly info: I
+  readonly close?: () => void | Promise<void>
+}
+
+interface AudioStreamInit<I, M> {
   lib: RenderLib
   engine: AudioEngineHandle
-  source: AudioStreamSource
-  options: AudioStreamUrlOptions | AudioStreamBodyOptions
-  urlSource: boolean
+  connector: ResolvedAudioStreamConnector<I>
+  demuxer?: (info: I) => AudioStreamDemuxer<M> | null
+  options: AudioStreamOptions & { reconnect?: AudioStreamReconnectOptions }
+  readAction: "fetch" | "source"
   removeFromOwner: () => void
 }
 
-interface AudioStreamAttempt {
+interface AudioStreamAttempt<M> {
   controller: AbortController
   cleanup: (() => unknown) | null
+  demuxer: AudioStreamDemuxer<M> | null
+  demuxerFinished: boolean
 }
 
 export class AudioStreamError extends Error {
@@ -267,6 +320,32 @@ export class AudioStreamError extends Error {
     this.name = "AudioStreamError"
     this.context = context
     if (cause !== undefined) (this as Error & { cause?: unknown }).cause = cause
+  }
+}
+
+class ClassifiedAudioStreamError extends AudioStreamError {
+  readonly retryable: boolean
+  readonly retryAfterMs?: number
+
+  constructor(
+    message: string,
+    context: AudioStreamErrorContext,
+    retryable: boolean,
+    retryAfterMs?: number,
+    cause?: unknown,
+  ) {
+    super(message, context, cause)
+    this.retryable = retryable
+    this.retryAfterMs = retryAfterMs
+  }
+}
+
+class AudioStreamConnectionResolutionError extends Error {
+  constructor(
+    readonly failure: unknown,
+    readonly closeConnection?: () => void | Promise<void>,
+  ) {
+    super("Audio stream connection could not be read")
   }
 }
 
@@ -308,8 +387,7 @@ function resolveReconnectOptions(options: AudioStreamReconnectOptions): Resolved
 }
 
 function resolveAudioStreamOptions(
-  options: AudioStreamUrlOptions | AudioStreamBodyOptions,
-  urlSource: boolean,
+  options: AudioStreamOptions & { reconnect?: AudioStreamReconnectOptions },
 ): ResolvedAudioStreamOptions {
   const capacityMs = resolvePositiveU32(options.buffer?.capacityMs, 2000, "buffer.capacityMs")
   const startupMs = resolvePositiveU32(options.buffer?.startupMs, 1000, "buffer.startupMs")
@@ -317,31 +395,6 @@ function resolveAudioStreamOptions(
   const maxProbeBytes = resolvePositiveU32(options.maxProbeBytes, DEFAULT_STREAM_PROBE_BYTES, "maxProbeBytes")
   if (startupMs > capacityMs) throw new RangeError("buffer.startupMs must not exceed buffer.capacityMs")
   if (resumeMs > capacityMs) throw new RangeError("buffer.resumeMs must not exceed buffer.capacityMs")
-
-  const urlOptions = options as AudioStreamUrlOptions
-  if (
-    !urlSource &&
-    (urlOptions.reconnect !== undefined ||
-      urlOptions.request !== undefined ||
-      urlOptions.metadataEncoding !== undefined)
-  ) {
-    throw new TypeError("request, reconnect, and metadataEncoding options are only supported for URL audio streams")
-  }
-
-  let metadataEncoding = "windows-1252"
-  if (urlSource) {
-    try {
-      metadataEncoding = new TextDecoder(urlOptions.metadataEncoding ?? "iso-8859-1").encoding
-    } catch {
-      throw new TypeError(`Unsupported metadataEncoding: ${urlOptions.metadataEncoding}`)
-    }
-  }
-
-  let request: Omit<RequestInit, "body" | "signal"> | undefined
-  if (urlSource && urlOptions.request !== undefined) {
-    const { body: _body, signal: _signal, ...safeRequest } = urlOptions.request as RequestInit
-    request = safeRequest
-  }
 
   return {
     capacityMs,
@@ -352,10 +405,20 @@ function resolveAudioStreamOptions(
     groupId: options.groupId ?? 0,
     maxProbeBytes,
     signal: options.signal,
-    request,
-    reconnect:
-      urlSource && urlOptions.reconnect !== undefined ? resolveReconnectOptions(urlOptions.reconnect) : undefined,
-    metadataEncoding,
+    reconnect: options.reconnect === undefined ? undefined : resolveReconnectOptions(options.reconnect),
+  }
+}
+
+function resolveAudioStreamConnector<I>(connector: AudioStreamConnector<I>): ResolvedAudioStreamConnector<I> {
+  const connect = connector?.connect
+  if (typeof connect !== "function") throw new TypeError("Audio stream connector must define connect()")
+  const retry = connector.retry
+  if (retry !== undefined && typeof retry !== "function") {
+    throw new TypeError("Audio stream connector retry must be a function")
+  }
+  return {
+    connect: (context) => connect.call(connector, context),
+    retry: retry == null ? undefined : (error, context) => retry.call(connector, error, context),
   }
 }
 
@@ -420,56 +483,128 @@ function isAllowedMp3ContentType(value: string): boolean {
   return ["audio/mpeg", "audio/mp3", "application/octet-stream", "application/mp3"].includes(contentType ?? "")
 }
 
+interface AudioStreamUrlConnectionInfo {
+  readonly headers: Headers
+  readonly status: number
+}
+
+function createAudioStreamUrlConnector(
+  source: string | URL,
+  request: Omit<RequestInit, "body" | "signal"> | undefined,
+  maxRetryDelayMs: number,
+): AudioStreamConnector<AudioStreamUrlConnectionInfo> {
+  return {
+    async connect({ signal, attempt }) {
+      let response: Response
+      try {
+        const headers = new Headers(request?.headers)
+        if (!headers.has("icy-metadata")) headers.set("Icy-MetaData", "1")
+        response = await globalThis.fetch(source, { ...request, headers, signal })
+      } catch (cause) {
+        throw new ClassifiedAudioStreamError(
+          "Audio stream fetch failed",
+          { action: "fetch", attempt },
+          true,
+          undefined,
+          cause,
+        )
+      }
+
+      if (!response.ok) {
+        const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"), maxRetryDelayMs)
+        await runBoundedCleanup(() => response.body?.cancel())
+        const retryable =
+          [408, 425, 429].includes(response.status) || (response.status >= 500 && response.status <= 599)
+        throw new ClassifiedAudioStreamError(
+          `Audio stream request failed with HTTP ${response.status}`,
+          { action: "response", status: response.status, attempt },
+          retryable,
+          retryAfterMs,
+        )
+      }
+
+      const contentType = response.headers.get("content-type")
+      if (contentType != null && !isAllowedMp3ContentType(contentType)) {
+        await runBoundedCleanup(() => response.body?.cancel())
+        throw new ClassifiedAudioStreamError(
+          `Unsupported audio stream Content-Type: ${contentType}`,
+          { action: "response", status: response.status, attempt },
+          false,
+        )
+      }
+      if (response.body == null) {
+        throw new ClassifiedAudioStreamError(
+          "Audio stream response has no body",
+          { action: "response", status: response.status, attempt },
+          true,
+        )
+      }
+      return {
+        body: response.body,
+        info: { headers: response.headers, status: response.status },
+      }
+    },
+  }
+}
+
+function resolveMetadataEncoding(value: string | undefined): string {
+  try {
+    return new TextDecoder(value ?? "iso-8859-1").encoding
+  } catch {
+    throw new TypeError(`Unsupported metadataEncoding: ${value}`)
+  }
+}
+
+function resolveAudioStreamRequest(
+  request: Omit<RequestInit, "body" | "signal"> | undefined,
+): Omit<RequestInit, "body" | "signal"> | undefined {
+  if (request === undefined) return undefined
+  const { body: _body, signal: _signal, ...safeRequest } = request as RequestInit
+  return safeRequest
+}
+
 function isReadableStreamSource(source: unknown): source is ReadableStream<Uint8Array> {
-  return typeof (source as ReadableStream<Uint8Array> | null)?.getReader === "function"
+  try {
+    return typeof (source as ReadableStream<Uint8Array> | null)?.getReader === "function"
+  } catch {
+    return false
+  }
 }
 
 function isAsyncIterableSource(source: unknown): source is AsyncIterable<Uint8Array> {
-  return typeof (source as AsyncIterable<Uint8Array> | null)?.[Symbol.asyncIterator] === "function"
+  try {
+    return typeof (source as AsyncIterable<Uint8Array> | null)?.[Symbol.asyncIterator] === "function"
+  } catch {
+    return false
+  }
 }
 
 function isUint8Array(value: unknown): value is Uint8Array {
   return ArrayBuffer.isView(value) && Object.prototype.toString.call(value) === "[object Uint8Array]"
 }
 
-const EMPTY_STREAM_METADATA_FIELDS: Readonly<Record<string, string>> = Object.freeze(Object.create(null))
+let createAudioStream: <I, M>(init: AudioStreamInit<I, M>) => AudioStream<M>
+let openAudioStream: <M>(stream: AudioStream<M>) => Promise<void>
 
-function metadataRecordsEqual(
-  left: Readonly<Record<string, string>>,
-  right: Readonly<Record<string, string>>,
-): boolean {
-  const keys = Object.keys(left)
-  if (keys.length !== Object.keys(right).length) return false
-  return keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && left[key] === right[key])
-}
-
-function streamMetadataEqual(left: AudioStreamMetadata | null, right: AudioStreamMetadata | null): boolean {
-  if (left === right) return true
-  if (left == null || right == null || left.format !== right.format) return false
-  return metadataRecordsEqual(left.headers, right.headers) && metadataRecordsEqual(left.fields, right.fields)
-}
-
-let createAudioStream: (init: AudioStreamInit) => AudioStream
-let openAudioStream: (stream: AudioStream) => Promise<void>
-
-export class AudioStream extends EventEmitter<AudioStreamEvents> {
+export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStreamEvents<M>> {
   readonly closed: Promise<void>
   private readonly lib: RenderLib
   private readonly engine: AudioEngineHandle
-  private readonly source: AudioStreamSource
-  private readonly urlSource: boolean
+  private readonly connector: ResolvedAudioStreamConnector<unknown>
+  private readonly demuxerFactory?: (info: unknown) => AudioStreamDemuxer<M> | null
+  private readonly readAction: "fetch" | "source"
   private readonly options: ResolvedAudioStreamOptions
   private readonly removeFromOwner: () => void
   private readonly lifecycleController = new AbortController()
   private nativeStreamId: number | null = null
   private nativeStats: NativeAudioStreamStats | null = null
-  private activeAttempt: AudioStreamAttempt | null = null
+  private activeAttempt: AudioStreamAttempt<M> | null = null
   private reconnectAttempts = 0
   private consecutiveReconnectAttempts = 0
   private disposed = false
   private exposed = false
   private terminalError: Error | null = null
-  private metadata: AudioStreamMetadata | null = null
+  private metadata: M | null = null
   private pendingMetadataEvent = false
   private metadataEventScheduled = false
   private setupResolve!: () => void
@@ -479,17 +614,18 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   private readonly overallAbortListener = () => this.dispose()
 
   static {
-    createAudioStream = (init) => new AudioStream(init)
-    openAudioStream = (stream) => stream.open()
+    createAudioStream = <I, T>(init: AudioStreamInit<I, T>) => new AudioStream<T>(init as AudioStreamInit<unknown, T>)
+    openAudioStream = <T>(stream: AudioStream<T>) => stream.open()
   }
 
-  private constructor(init: AudioStreamInit) {
+  private constructor(init: AudioStreamInit<unknown, M>) {
     super()
     this.lib = init.lib
     this.engine = init.engine
-    this.source = init.source
-    this.urlSource = init.urlSource
-    this.options = resolveAudioStreamOptions(init.options, init.urlSource)
+    this.connector = init.connector
+    this.demuxerFactory = init.demuxer
+    this.readAction = init.readAction
+    this.options = resolveAudioStreamOptions(init.options)
     this.removeFromOwner = init.removeFromOwner
     this.setupPromise = new Promise((resolve, reject) => ((this.setupResolve = resolve), (this.setupReject = reject)))
     this.closed = new Promise((resolve) => (this.closedResolve = resolve))
@@ -519,7 +655,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     const stats = this.readNativeStats()
     if (!this.lifecycleController.signal.aborted && this.nativeStreamId != null) {
       const error = this.snapshotError(stats)
-      const ended = stats?.state === StreamState.Ended && !(this.urlSource && this.options.reconnect?.retryOnEnd)
+      const ended = stats?.state === StreamState.Ended && !this.options.reconnect?.retryOnEnd
       if (error != null || ended) {
         queueMicrotask(() => {
           if (this.lifecycleController.signal.aborted) return
@@ -534,7 +670,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     return this.toPublicStats()
   }
 
-  getMetadata(): AudioStreamMetadata | null {
+  getMetadata(): M | null {
     return this.metadata
   }
 
@@ -589,29 +725,125 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   }
 
   private async runLifecycle(): Promise<void> {
-    try {
-      if (this.urlSource) await this.runUrlLifecycle()
-      else {
-        this.createNativeStream()
-        const source = this.source as ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>
-        const attempt: AudioStreamAttempt = { controller: new AbortController(), cleanup: null }
-        this.activeAttempt = attempt
-        if (await this.consumeSource(source, attempt, false)) {
-          await this.finish(CloseReason.PreserveNativeTerminal)
+    while (!this.lifecycleController.signal.aborted) {
+      const attempt: AudioStreamAttempt<M> = {
+        controller: new AbortController(),
+        cleanup: null,
+        demuxer: null,
+        demuxerFinished: false,
+      }
+      this.activeAttempt = attempt
+
+      let returnedConnection: AudioStreamConnection<unknown> | null = null
+      let connection: ResolvedAudioStreamConnection<unknown>
+      try {
+        returnedConnection = await this.connector.connect({
+          signal: attempt.controller.signal,
+          attempt: this.consecutiveReconnectAttempts,
+        })
+        connection = this.resolveConnection(returnedConnection)
+      } catch (cause) {
+        const failure = cause instanceof AudioStreamConnectionResolutionError ? cause.failure : cause
+        if (cause instanceof AudioStreamConnectionResolutionError && cause.closeConnection != null) {
+          await runBoundedCleanup(cause.closeConnection)
+        } else if (returnedConnection != null) {
+          await this.closeRejectedConnection(returnedConnection)
         }
+        if (!this.isAttemptActive(attempt)) return
+        const context: AudioStreamErrorContext = {
+          action: this.readAction,
+          attempt: this.consecutiveReconnectAttempts,
+        }
+        const error =
+          failure instanceof AudioStreamError
+            ? failure
+            : new AudioStreamError(
+                failure instanceof Error ? failure.message : "Audio stream connection failed",
+                context,
+                failure,
+              )
+        await this.stopSource(attempt)
+        const decision = await this.resolveRetryDecision(error, "connect")
+        if (await this.retry(error, decision !== false, decision === false ? undefined : decision.delayMs)) continue
+        return
       }
-    } catch (cause) {
-      if (this.lifecycleController.signal.aborted) return
-      const context: AudioStreamErrorContext = {
-        action: this.urlSource ? "fetch" : "source",
+
+      if (!this.isAttemptActive(attempt)) {
+        await this.closeUnconsumedConnection(connection)
+        return
       }
-      const error =
-        cause instanceof AudioStreamError
-          ? cause
-          : cause instanceof TypeError && cause.message === INVALID_STREAM_CHUNK_MESSAGE
+      if (!isReadableStreamSource(connection.body) && !isAsyncIterableSource(connection.body)) {
+        await this.closeUnconsumedConnection(connection)
+        const context: AudioStreamErrorContext = { action: "source" }
+        await this.finish(
+          CloseReason.TransportError,
+          new AudioStreamError("Audio stream connection body must be a ReadableStream or AsyncIterable", context),
+        )
+        return
+      }
+
+      let initialMetadata: M | null
+      try {
+        attempt.demuxer = this.demuxerFactory?.(connection.info) ?? null
+        initialMetadata = attempt.demuxer?.initialMetadata ?? null
+      } catch (cause) {
+        await this.closeUnconsumedConnection(connection, attempt.demuxer)
+        const error =
+          cause instanceof AudioStreamError
             ? cause
-            : new AudioStreamError(`Audio stream ${context.action} failed`, context, cause)
-      await this.finish(CloseReason.TransportError, error, error instanceof AudioStreamError ? error.context : context)
+            : new AudioStreamError(
+                cause instanceof Error ? cause.message : "Audio stream demuxer creation failed",
+                { action: "demuxer" },
+                cause,
+              )
+        await this.finish(CloseReason.TransportError, error)
+        return
+      }
+      if (!this.isAttemptActive(attempt)) {
+        await this.closeUnconsumedConnection(connection, attempt.demuxer)
+        return
+      }
+
+      this.publishMetadata(initialMetadata, attempt)
+      try {
+        this.createNativeStream()
+      } catch (cause) {
+        await this.closeUnconsumedConnection(connection, attempt.demuxer)
+        await this.stopSource(attempt)
+        const error =
+          cause instanceof AudioStreamError
+            ? cause
+            : new AudioStreamError("Audio stream create failed", { action: "create" }, cause)
+        await this.finish(CloseReason.TransportError, error)
+        return
+      }
+      try {
+        if (!(await this.consumeSource(connection, attempt))) return
+      } catch (cause) {
+        if (this.lifecycleController.signal.aborted) return
+        const error =
+          cause instanceof AudioStreamError
+            ? cause
+            : cause instanceof TypeError && cause.message === INVALID_STREAM_CHUNK_MESSAGE
+              ? cause
+              : new AudioStreamError("Audio stream source failed", { action: "source" }, cause)
+        if (error instanceof ClassifiedAudioStreamError) {
+          const decision = await this.resolveRetryDecision(error, "read")
+          if (await this.retry(error, decision !== false, decision === false ? undefined : decision.delayMs)) continue
+          return
+        }
+        const context = error instanceof AudioStreamError ? error.context : { action: "source" as const }
+        await this.finish(CloseReason.TransportError, error, context)
+        return
+      }
+
+      if (!this.options.reconnect?.retryOnEnd) {
+        await this.finish(CloseReason.PreserveNativeTerminal)
+        return
+      }
+      const error = new AudioStreamError("Audio stream source ended", { action: "source" })
+      if (await this.retry(error, true)) continue
+      return
     }
   }
 
@@ -633,137 +865,15 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     this.nativeStreamId = created.streamId
   }
 
-  private async runUrlLifecycle(): Promise<void> {
-    while (!this.lifecycleController.signal.aborted) {
-      const attempt: AudioStreamAttempt = { controller: new AbortController(), cleanup: null }
-      this.activeAttempt = attempt
-      let response: Response
-      try {
-        const headers = new Headers(this.options.request?.headers)
-        if (!headers.has("icy-metadata")) headers.set("Icy-MetaData", "1")
-        response = await globalThis.fetch(this.source as string | URL, {
-          ...this.options.request,
-          headers,
-          signal: attempt.controller.signal,
-        })
-      } catch (cause) {
-        if (!this.isAttemptActive(attempt)) return
-        const context: AudioStreamErrorContext = { action: "fetch", attempt: this.consecutiveReconnectAttempts }
-        const error = new AudioStreamError("Audio stream fetch failed", context, cause)
-        await this.stopSource(attempt)
-        if (await this.retry(error, true)) continue
-        return
-      }
-      if (!this.isAttemptActive(attempt)) {
-        await runBoundedCleanup(() => response.body?.cancel())
-        return
-      }
-      if (!response.ok) {
-        const retryAfterMs = parseRetryAfter(
-          response.headers.get("retry-after"),
-          this.options.reconnect?.maxDelayMs ?? 15_000,
-        )
-        await runBoundedCleanup(() => response.body?.cancel())
-        await this.stopSource(attempt)
-        const context: AudioStreamErrorContext = {
-          action: "response",
-          status: response.status,
-          attempt: this.consecutiveReconnectAttempts,
-        }
-        const error = new AudioStreamError(`Audio stream request failed with HTTP ${response.status}`, context)
-        const retryable =
-          [408, 425, 429].includes(response.status) || (response.status >= 500 && response.status <= 599)
-        if (await this.retry(error, retryable, retryAfterMs)) continue
-        return
-      }
-
-      const contentType = response.headers.get("content-type")
-      if (contentType != null && !isAllowedMp3ContentType(contentType)) {
-        await runBoundedCleanup(() => response.body?.cancel())
-        await this.stopSource(attempt)
-        const context: AudioStreamErrorContext = { action: "response", status: response.status }
-        await this.finish(
-          CloseReason.TransportError,
-          new AudioStreamError(`Unsupported audio stream Content-Type: ${contentType}`, context),
-        )
-        return
-      }
-      if (response.body == null) {
-        await this.stopSource(attempt)
-        const context: AudioStreamErrorContext = { action: "response", status: response.status }
-        const error = new AudioStreamError("Audio stream response has no body", context)
-        if (await this.retry(error, true)) continue
-        return
-      }
-      let parserSelection: AudioStreamParserSelection
-      try {
-        parserSelection = selectAudioStreamParser({
-          url: response.url || String(this.source),
-          headers: response.headers,
-          metadataEncoding: this.options.metadataEncoding,
-        })
-      } catch (cause) {
-        await runBoundedCleanup(() => response.body?.cancel())
-        await this.stopSource(attempt)
-        const context: AudioStreamErrorContext = { action: "response", status: response.status }
-        await this.finish(
-          CloseReason.TransportError,
-          new AudioStreamError(
-            cause instanceof Error ? cause.message : "Invalid audio stream metadata response",
-            context,
-            cause,
-          ),
-        )
-        return
-      }
-      this.publishMetadata(
-        parserSelection.format == null
-          ? null
-          : Object.freeze({
-              format: parserSelection.format,
-              headers: parserSelection.headers,
-              fields: EMPTY_STREAM_METADATA_FIELDS,
-            }),
-        attempt,
-      )
-      this.createNativeStream()
-      try {
-        if (!(await this.consumeSource(response.body, attempt, true, parserSelection))) return
-      } catch (cause) {
-        if (this.lifecycleController.signal.aborted) return
-        const context: AudioStreamErrorContext =
-          cause instanceof AudioStreamError ? cause.context : { action: "source" }
-        const error =
-          cause instanceof Error ? cause : new AudioStreamError("Audio stream source failed", context, cause)
-        if (context.action !== "fetch" || !(error instanceof AudioStreamError)) {
-          await this.finish(CloseReason.TransportError, error, context)
-          return
-        }
-        if (await this.retry(error, true)) continue
-        return
-      }
-      if (!this.options.reconnect?.retryOnEnd) {
-        await this.finish(CloseReason.PreserveNativeTerminal)
-        return
-      }
-      const context: AudioStreamErrorContext = { action: "source" }
-      const error = new AudioStreamError("Audio stream response ended", context)
-      if (await this.retry(error, true)) continue
-      return
-    }
-  }
-
   private async consumeSource(
-    source: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
-    attempt: AudioStreamAttempt,
-    retryableBody: boolean,
-    parserSelection?: AudioStreamParserSelection,
+    connection: ResolvedAudioStreamConnection<unknown>,
+    attempt: AudioStreamAttempt<M>,
   ): Promise<boolean> {
     const initial = await this.pollNativeSnapshot(attempt)
     if (initial == null) return false
     const decoderReady = this.awaitReady(attempt, initial.readyGeneration)
     try {
-      await this.pumpSource(source, attempt, retryableBody, parserSelection)
+      await this.pumpSource(connection, attempt)
     } catch (cause) {
       await this.stopSource(attempt)
       await decoderReady
@@ -783,14 +893,14 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
   }
 
   private async pumpSource(
-    source: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
-    attempt: AudioStreamAttempt,
-    retryableBody: boolean,
-    parserSelection?: AudioStreamParserSelection,
+    connection: ResolvedAudioStreamConnection<unknown>,
+    attempt: AudioStreamAttempt<M>,
   ): Promise<void> {
-    const reader = isReadableStreamSource(source) ? source.getReader() : null
-    const iterator = reader == null ? (source as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]() : null
+    const source = connection.body
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+    let iterator: AsyncIterator<Uint8Array> | null = null
     let released = false
+    let cleaned = false
     const release = (): void => {
       if (released) return
       if (reader == null) {
@@ -803,77 +913,130 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       } catch {}
     }
     const next = (): Promise<{ done?: boolean; value?: unknown }> => (reader == null ? iterator!.next() : reader.read())
-    const cancel = (): unknown => {
-      if (released) return
-      if (reader == null) {
-        released = true
-        return iterator!.return?.()
+    const cancelAcquiredSource = (): Promise<unknown>[] => {
+      const pending: Promise<unknown>[] = []
+      if (!released && (reader != null || iterator != null)) {
+        try {
+          if (reader == null) {
+            released = true
+            pending.push(Promise.resolve(iterator!.return?.()))
+          } else {
+            const result = reader.cancel(createAbortError())
+            void result.then(release, release)
+            release()
+            pending.push(result)
+          }
+        } catch {}
       }
-      const result = reader.cancel(createAbortError())
-      void result.then(release, release)
-      release()
-      return result
+      return pending
+    }
+    const cleanup = (): unknown => {
+      const pending = cancelAcquiredSource()
+      if (cleaned) return Promise.all(pending)
+      cleaned = true
+      if (!attempt.demuxerFinished) {
+        try {
+          attempt.demuxer?.abort?.(createAbortError())
+        } catch {}
+      }
+      if (connection.close != null) {
+        try {
+          pending.push(Promise.resolve(connection.close()))
+        } catch {}
+      }
+      return Promise.all(pending)
+    }
+
+    attempt.cleanup = cleanup
+    try {
+      reader = isReadableStreamSource(source) ? source.getReader() : null
+      iterator = reader == null ? (source as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]() : null
+    } catch (cause) {
+      const context: AudioStreamErrorContext = { action: this.readAction }
+      throw new ClassifiedAudioStreamError("Audio stream source failed", context, true, undefined, cause)
     }
 
     if (!this.isAttemptActive(attempt)) {
-      await runBoundedCleanup(cancel)
+      await runBoundedCleanup(cleanup)
       return
     }
-    attempt.cleanup = cancel
 
-    try {
-      while (this.isAttemptActive(attempt)) {
-        const result = await next()
-        if (!this.isAttemptActive(attempt)) return
-        if (result.done) {
-          release()
-          if (attempt.cleanup === cancel) attempt.cleanup = null
-          parserSelection?.parser?.finish()
-          return
-        }
-        const chunk = result.value
-        if (!isUint8Array(chunk)) {
-          throw new TypeError(INVALID_STREAM_CHUNK_MESSAGE)
-        }
-        if (chunk.byteLength === 0) {
-          await waitForDelay(0, attempt.controller.signal)
-          continue
-        }
-
-        if (parserSelection?.parser == null || parserSelection.format == null) {
-          await this.writeStreamChunk(chunk, attempt)
-          continue
-        }
-        for (const output of parserSelection.parser.push(chunk)) {
-          if (!this.isAttemptActive(attempt)) return
-          if (output.type === "audio") {
-            await this.writeStreamChunk(output.data, attempt)
-          } else {
-            this.publishMetadata(
-              Object.freeze({
-                format: parserSelection.format,
-                headers: parserSelection.headers,
-                fields: output.fields,
-              }),
-              attempt,
+    while (this.isAttemptActive(attempt)) {
+      let result: { done?: boolean; value?: unknown }
+      try {
+        result = await next()
+      } catch (cause) {
+        const context: AudioStreamErrorContext = { action: this.readAction }
+        throw new ClassifiedAudioStreamError("Audio stream source failed", context, true, undefined, cause)
+      }
+      if (!this.isAttemptActive(attempt)) return
+      if (result.done) {
+        release()
+        if (attempt.demuxer != null) {
+          try {
+            await this.processDemuxOutput(attempt.demuxer.flush(), attempt)
+          } catch (cause) {
+            if (cause instanceof AudioStreamError) throw cause
+            const context: AudioStreamErrorContext = { action: this.readAction }
+            throw new ClassifiedAudioStreamError(
+              cause instanceof Error ? cause.message : "Audio stream demuxer flush failed",
+              context,
+              true,
+              undefined,
+              cause,
             )
           }
         }
+        attempt.demuxerFinished = true
+        await runBoundedCleanup(cleanup)
+        return
       }
-    } catch (cause) {
-      if (!this.isAttemptActive(attempt) || attempt.controller.signal.aborted) return
-      if (
-        cause instanceof AudioStreamError ||
-        (cause instanceof TypeError && cause.message === INVALID_STREAM_CHUNK_MESSAGE)
-      ) {
-        throw cause
+      const chunk = result.value
+      if (!isUint8Array(chunk)) throw new TypeError(INVALID_STREAM_CHUNK_MESSAGE)
+      if (chunk.byteLength === 0) {
+        await waitForDelay(0, attempt.controller.signal)
+        continue
       }
-      const context: AudioStreamErrorContext = { action: retryableBody ? "fetch" : "source" }
-      throw new AudioStreamError("Audio stream source failed", context, cause)
+
+      if (attempt.demuxer == null) {
+        await this.writeStreamChunk(chunk, attempt)
+        continue
+      }
+      try {
+        await this.processDemuxOutput(attempt.demuxer.push(chunk), attempt)
+      } catch (cause) {
+        if (cause instanceof AudioStreamError) throw cause
+        throw new AudioStreamError(
+          cause instanceof Error ? cause.message : "Audio stream demuxer failed",
+          { action: "demuxer" },
+          cause,
+        )
+      }
     }
   }
 
-  private async writeStreamChunk(chunk: Uint8Array, attempt: AudioStreamAttempt): Promise<void> {
+  private async processDemuxOutput(
+    outputs: Iterable<AudioStreamDemuxOutput<M>>,
+    attempt: AudioStreamAttempt<M>,
+  ): Promise<void> {
+    for (const output of outputs) {
+      if (!this.isAttemptActive(attempt)) return
+      if (output.type === "audio") {
+        if (!isUint8Array(output.data)) {
+          throw new AudioStreamError("Audio stream demuxer audio output must be a Uint8Array", {
+            action: "demuxer",
+          })
+        }
+        await this.writeStreamChunk(output.data, attempt)
+      } else if (output.type === "metadata") {
+        this.publishMetadata(output.metadata, attempt)
+      } else {
+        throw new AudioStreamError("Audio stream demuxer returned an invalid output", { action: "demuxer" })
+      }
+    }
+  }
+
+  private async writeStreamChunk(chunk: Uint8Array, attempt: AudioStreamAttempt<M>): Promise<void> {
     let offset = 0
     while (offset < chunk.byteLength && this.isAttemptActive(attempt)) {
       const streamId = this.nativeStreamId
@@ -897,6 +1060,111 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       }
       offset += accepted
     }
+  }
+
+  private resolveConnection(connection: AudioStreamConnection<unknown>): ResolvedAudioStreamConnection<unknown> {
+    let closeConnection: (() => void | Promise<void>) | undefined
+    try {
+      const close = connection.close
+      if (close !== undefined && typeof close !== "function") {
+        throw new TypeError("Audio stream connection close must be a function")
+      }
+      closeConnection = close == null ? undefined : () => close.call(connection)
+      const info = connection.info
+      const body = connection.body
+      return { body, info, close: closeConnection }
+    } catch (cause) {
+      throw new AudioStreamConnectionResolutionError(cause, closeConnection)
+    }
+  }
+
+  private async closeRejectedConnection(connection: AudioStreamConnection<unknown>): Promise<void> {
+    let close: (() => void | Promise<void>) | undefined
+    try {
+      const method = connection.close
+      if (typeof method === "function") close = () => method.call(connection)
+    } catch {}
+    if (close != null) await runBoundedCleanup(close)
+  }
+
+  private async closeUnconsumedConnection(
+    connection: ResolvedAudioStreamConnection<unknown>,
+    demuxer: AudioStreamDemuxer<M> | null = null,
+  ): Promise<void> {
+    await runBoundedCleanup(() => {
+      const pending: Promise<unknown>[] = []
+      try {
+        demuxer?.abort?.(createAbortError())
+      } catch {}
+      try {
+        if (isReadableStreamSource(connection.body)) {
+          pending.push(connection.body.cancel(createAbortError()))
+        } else if (isAsyncIterableSource(connection.body)) {
+          pending.push(Promise.resolve(connection.body[Symbol.asyncIterator]().return?.()))
+        }
+      } catch {}
+      if (connection.close != null) {
+        try {
+          pending.push(Promise.resolve(connection.close()))
+        } catch {}
+      }
+      return Promise.all(pending)
+    })
+  }
+
+  private async resolveRetryDecision(
+    error: AudioStreamError,
+    phase: AudioStreamRetryPhase,
+  ): Promise<AudioStreamRetryDecision> {
+    const reconnect = this.options.reconnect
+    if (reconnect == null || this.consecutiveReconnectAttempts >= reconnect.maxAttempts) return false
+    let decision: AudioStreamRetryDecision =
+      error instanceof ClassifiedAudioStreamError ? (error.retryable ? { delayMs: error.retryAfterMs } : false) : {}
+    if (this.connector.retry != null) {
+      try {
+        const result = this.connector.retry(error, {
+          attempt: this.consecutiveReconnectAttempts + 1,
+          maxAttempts: reconnect.maxAttempts,
+          phase,
+        })
+        if (result !== false && (result == null || typeof result !== "object")) {
+          await this.finish(
+            CloseReason.TransportError,
+            new AudioStreamError("Audio stream retry policy must return false or a retry decision", {
+              action: "source",
+            }),
+          )
+          return false
+        }
+        decision = result
+      } catch (cause) {
+        await this.finish(
+          CloseReason.TransportError,
+          new AudioStreamError("Audio stream retry policy failed", { action: "source" }, cause),
+        )
+        return false
+      }
+    }
+    if (decision === false) return false
+    let delayMs: number | undefined
+    try {
+      delayMs = decision.delayMs
+    } catch (cause) {
+      await this.finish(
+        CloseReason.TransportError,
+        new AudioStreamError("Audio stream retry policy failed", { action: "source" }, cause),
+      )
+      return false
+    }
+    if (delayMs === undefined) return {}
+    if (!Number.isFinite(delayMs) || !Number.isInteger(delayMs) || delayMs < 0) {
+      await this.finish(
+        CloseReason.TransportError,
+        new AudioStreamError("Audio stream retry delay must be a finite non-negative integer", { action: "source" }),
+      )
+      return false
+    }
+    return { delayMs: Math.min(reconnect.maxDelayMs, delayMs) }
   }
 
   private async retry(error: AudioStreamError, retryable: boolean, retryAfterMs?: number): Promise<boolean> {
@@ -948,7 +1216,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       .catch(() => false)
   }
 
-  private async awaitReady(attempt: AudioStreamAttempt, previousGeneration: number): Promise<boolean> {
+  private async awaitReady(attempt: AudioStreamAttempt<M>, previousGeneration: number): Promise<boolean> {
     while (this.isAttemptActive(attempt)) {
       const stats = await this.pollNativeSnapshot(attempt)
       if (stats == null) return false
@@ -962,7 +1230,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     return false
   }
 
-  private async awaitEnded(attempt: AudioStreamAttempt): Promise<boolean> {
+  private async awaitEnded(attempt: AudioStreamAttempt<M>): Promise<boolean> {
     while (this.isAttemptActive(attempt)) {
       const stats = await this.pollNativeSnapshot(attempt)
       if (stats == null) return false
@@ -972,7 +1240,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     return false
   }
 
-  private async pollNativeSnapshot(attempt: AudioStreamAttempt): Promise<NativeAudioStreamStats | null> {
+  private async pollNativeSnapshot(attempt: AudioStreamAttempt<M>): Promise<NativeAudioStreamStats | null> {
     if (!this.isAttemptActive(attempt)) return null
     const stats = this.readNativeStats()
     const error = this.snapshotError(stats)
@@ -1027,8 +1295,8 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     }
   }
 
-  private publishMetadata(metadata: AudioStreamMetadata | null, attempt: AudioStreamAttempt): void {
-    if (!this.isAttemptActive(attempt) || streamMetadataEqual(this.metadata, metadata)) return
+  private publishMetadata(metadata: M | null, attempt: AudioStreamAttempt<M>): void {
+    if (!this.isAttemptActive(attempt) || Object.is(this.metadata, metadata)) return
     this.metadata = metadata
     if (!this.exposed) {
       this.pendingMetadataEvent = true
@@ -1046,15 +1314,15 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     }, 0)
   }
 
-  private emitAsync<K extends keyof AudioStreamEvents>(event: K, ...args: AudioStreamEvents[K]): void {
+  private emitAsync<K extends keyof AudioStreamEvents<M>>(event: K, ...args: AudioStreamEvents<M>[K]): void {
     setTimeout(() => EventEmitter.prototype.emit.call(this, event, ...args), 0)
   }
 
-  private isAttemptActive(attempt: AudioStreamAttempt): boolean {
+  private isAttemptActive(attempt: AudioStreamAttempt<M>): boolean {
     return !this.lifecycleController.signal.aborted && this.activeAttempt === attempt
   }
 
-  private stopSource(attempt: AudioStreamAttempt | null = this.activeAttempt): Promise<void> {
+  private stopSource(attempt: AudioStreamAttempt<M> | null = this.activeAttempt): Promise<void> {
     if (attempt == null || this.activeAttempt !== attempt) return Promise.resolve()
     this.activeAttempt = null
     attempt.controller.abort()
@@ -1127,7 +1395,7 @@ export class Audio extends EventEmitter<AudioEvents> {
   private readonly defaultStartOptions: AudioStartOptions | undefined
   private engine: AudioEngineHandle | null = null
   private readonly groups = new Map<string, number>()
-  private readonly streams = new Set<AudioStream>()
+  private readonly streams = new Set<{ dispose(): void }>()
   private playbackStarted = false
   private mixerStarted = false
   private disposing = false
@@ -1324,31 +1592,97 @@ export class Audio extends EventEmitter<AudioEvents> {
     return result.voiceId
   }
 
-  playStream(source: string | URL, options?: AudioStreamUrlOptions): Promise<AudioStream>
-  playStream(
-    source: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
-    options?: AudioStreamBodyOptions,
-  ): Promise<AudioStream>
-  playStream(source: AudioStreamSource, options?: AudioStreamBodyOptions): Promise<AudioStream>
-  async playStream(
-    source: AudioStreamSource,
-    options: AudioStreamUrlOptions | AudioStreamBodyOptions = {},
-  ): Promise<AudioStream> {
-    const engine = this.engine
-    if (!engine) throw new Error("Audio engine unavailable during playStream")
-
-    const urlSource = typeof source === "string" || source instanceof URL
-    if (!urlSource && !isReadableStreamSource(source) && !isAsyncIterableSource(source)) {
-      throw new TypeError("Audio stream source must be a URL, ReadableStream, or AsyncIterable")
+  async playStream<M = AudioStreamMetadata>(
+    source: AudioStreamBody,
+    options: AudioStreamBodyOptions<M> = {},
+  ): Promise<AudioStream<M>> {
+    const urlOptions = options as AudioStreamUrlOptions
+    if (
+      urlOptions.request !== undefined ||
+      urlOptions.reconnect !== undefined ||
+      urlOptions.metadataEncoding !== undefined
+    ) {
+      return Promise.reject(
+        new TypeError("request, reconnect, and metadataEncoding options are only supported by playStreamUrl()"),
+      )
     }
+    if (!isReadableStreamSource(source) && !isAsyncIterableSource(source)) {
+      return Promise.reject(new TypeError("Audio stream source must be a ReadableStream or AsyncIterable"))
+    }
+    const { demuxer, ...streamOptions } = options
+    const connector: AudioStreamConnector<void> = {
+      async connect() {
+        return { body: source, info: undefined }
+      },
+    }
+    return this.openStream(connector, demuxer == null ? undefined : () => demuxer(), streamOptions, "source")
+  }
 
-    let stream: AudioStream
+  async playStreamUrl(
+    source: string | URL,
+    options: AudioStreamUrlOptions = {},
+  ): Promise<AudioStream<AudioStreamMetadata>> {
+    if ((options as AudioStreamBodyOptions).demuxer !== undefined) {
+      throw new TypeError("demuxer is only supported by playStream() and playStreamSource()")
+    }
+    if (typeof source !== "string" && Object.prototype.toString.call(source) !== "[object URL]") {
+      return Promise.reject(new TypeError("Audio stream URL source must be a string or URL"))
+    }
+    const { request, metadataEncoding, reconnect, ...streamOptions } = options
+    const encoding = resolveMetadataEncoding(metadataEncoding)
+    const connector = createAudioStreamUrlConnector(
+      source,
+      resolveAudioStreamRequest(request),
+      reconnect?.maxDelayMs ?? 15_000,
+    )
+    return this.openStream(
+      connector,
+      (info) => {
+        try {
+          return selectAudioStreamDemuxer({ headers: info.headers, metadataEncoding: encoding })
+        } catch (cause) {
+          throw new AudioStreamError(
+            cause instanceof Error ? cause.message : "Invalid audio stream metadata response",
+            { action: "response", status: info.status },
+            cause,
+          )
+        }
+      },
+      { ...streamOptions, reconnect },
+      "fetch",
+    )
+  }
+
+  async playStreamSource<I, M = AudioStreamMetadata>(
+    connector: AudioStreamConnector<I>,
+    options: AudioStreamSourceOptions<I, M> = {},
+  ): Promise<AudioStream<M>> {
+    const urlOptions = options as AudioStreamUrlOptions
+    if (urlOptions.request !== undefined || urlOptions.metadataEncoding !== undefined) {
+      return Promise.reject(new TypeError("request and metadataEncoding are only supported by playStreamUrl()"))
+    }
+    const { demuxer, ...streamOptions } = options
+    return this.openStream(connector, demuxer, streamOptions, "source")
+  }
+
+  private async openStream<I, M>(
+    connector: AudioStreamConnector<I>,
+    demuxer: ((info: I) => AudioStreamDemuxer<M> | null) | undefined,
+    options: AudioStreamOptions & { reconnect?: AudioStreamReconnectOptions },
+    readAction: "fetch" | "source",
+  ): Promise<AudioStream<M>> {
+    const engine = this.engine
+    if (!engine) throw new Error("Audio engine unavailable during stream playback")
+    const resolvedConnector = resolveAudioStreamConnector(connector)
+
+    let stream: AudioStream<M>
     stream = createAudioStream({
       lib: this.lib,
       engine,
-      source,
+      connector: resolvedConnector,
+      demuxer,
       options,
-      urlSource,
+      readAction,
       removeFromOwner: () => this.streams.delete(stream),
     })
     this.streams.add(stream)
