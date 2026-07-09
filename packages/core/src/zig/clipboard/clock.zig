@@ -17,3 +17,9 @@ pub fn nowNs() i128 {
 
     return @intCast(timer.?.read());
 }
+
+test "clipboard clock is monotonic process-relative time" {
+    try init();
+    const before_ns = nowNs();
+    try std.testing.expect(nowNs() >= before_ns);
+}
