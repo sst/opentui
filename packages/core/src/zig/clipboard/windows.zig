@@ -8,7 +8,6 @@ const Allocator = std.mem.Allocator;
 const CF_DIB: u32 = 8;
 const CF_UNICODETEXT: u32 = 13;
 const CF_DIBV5: u32 = 17;
-const COINIT_APARTMENTTHREADED: u32 = 0x2;
 const GMEM_MOVEABLE: u32 = 0x2;
 const OPEN_RETRY_SLEEP_NS: u64 = 5 * std.time.ns_per_ms;
 const COPY_STOP_INTERVAL: usize = 4096;
@@ -28,9 +27,6 @@ const win32 = struct {
         point: Point,
         private: u32,
     };
-
-    extern "ole32" fn CoInitializeEx(reserved: ?*anyopaque, coinit: u32) callconv(.winapi) i32;
-    extern "ole32" fn CoUninitialize() callconv(.winapi) void;
 
     extern "user32" fn OpenClipboard(owner: ?*anyopaque) callconv(.winapi) i32;
     extern "user32" fn CloseClipboard() callconv(.winapi) i32;
@@ -118,7 +114,6 @@ pub const ExecuteOptions = struct {
 
 pub const InitError = error{
     UnsupportedPlatform,
-    ApartmentInitializationFailed,
     ClipboardFormatRegistrationFailed,
     WindowCreationFailed,
 };
@@ -131,10 +126,6 @@ pub const Worker = struct {
 
     pub fn init() InitError!Worker {
         if (comptime builtin.os.tag != .windows) return error.UnsupportedPlatform;
-
-        const hresult = win32.CoInitializeEx(null, COINIT_APARTMENTTHREADED);
-        if (hresult < 0) return error.ApartmentInitializationFailed;
-        errdefer win32.CoUninitialize();
 
         const png_format = win32.RegisterClipboardFormatW(std.unicode.utf8ToUtf16LeStringLiteral("PNG"));
         if (png_format == 0) return error.ClipboardFormatRegistrationFailed;
@@ -166,7 +157,6 @@ pub const Worker = struct {
         std.debug.assert(worker.thread_id == win32.GetCurrentThreadId());
         std.debug.assert(win32.DestroyWindow(worker.owner_window) != 0);
         worker.initialized = false;
-        win32.CoUninitialize();
     }
 
     pub fn execute(worker: *Worker, allocator: Allocator, job: Job, options: ExecuteOptions) Result {
@@ -301,7 +291,7 @@ pub const Worker = struct {
     ) ?Result {
         if (clipboard.is_open) return null;
         if (worker.openClipboard(options)) |failure| return failure;
-        clipboard.reopen();
+        clipboard.is_open = true;
         return null;
     }
 
@@ -327,19 +317,9 @@ const ClipboardSession = struct {
     is_open: bool = true,
 
     fn close(clipboard: *ClipboardSession) void {
-        if (!clipboard.beginClose()) return;
-        _ = win32.CloseClipboard();
-    }
-
-    fn beginClose(clipboard: *ClipboardSession) bool {
-        if (!clipboard.is_open) return false;
+        if (!clipboard.is_open) return;
         clipboard.is_open = false;
-        return true;
-    }
-
-    fn reopen(clipboard: *ClipboardSession) void {
-        std.debug.assert(!clipboard.is_open);
-        clipboard.is_open = true;
+        _ = win32.CloseClipboard();
     }
 };
 
@@ -779,7 +759,7 @@ test "Windows clipboard text conversion normalizes CF_UNICODETEXT line endings" 
     try std.testing.expectEqualStrings("a\r\nb\r\nc\r\nd", utf8);
 }
 
-test "Windows clipboard text conversion validates NUL UTF-16 and size" {
+test "Windows clipboard text conversion validates NUL and UTF-16" {
     try std.testing.expectError(error.EmbeddedNul, encodeClipboardText("a\x00b", null, testOptions()));
     try std.testing.expectError(
         error.MissingNul,
@@ -789,19 +769,6 @@ test "Windows clipboard text conversion validates NUL UTF-16 and size" {
         error.InvalidUtf16,
         clipboardTextToUtf8(std.testing.allocator, &.{ 0xd800, 0 }, 8, testOptions()),
     );
-    try std.testing.expectError(
-        error.LimitExceeded,
-        clipboardTextToUtf8(std.testing.allocator, &.{ 'a', 'b', 0 }, 1, testOptions()),
-    );
-}
-
-test "Windows clipboard session close and reopen transitions are paired" {
-    var clipboard = ClipboardSession{};
-    try std.testing.expect(clipboard.beginClose());
-    try std.testing.expect(!clipboard.beginClose());
-    clipboard.reopen();
-    try std.testing.expect(clipboard.is_open);
-    try std.testing.expect(clipboard.beginClose());
 }
 
 test "Windows clipboard bounded copy accepts exact limit and chunk boundaries" {

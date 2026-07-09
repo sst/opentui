@@ -186,7 +186,6 @@ pub const XcbSelectionNotifyEvent = extern struct {
 };
 
 const LibraryKind = enum { wayland, x11 };
-const LoadLibraryFn = *const fn (context: *anyopaque, kind: LibraryKind) bool;
 pub const WaylandSymbols = struct {
     wl_display_connect: *const fn (?[*:0]const u8) callconv(.c) ?*WlDisplay,
     wl_display_disconnect: *const fn (*WlDisplay) callconv(.c) void,
@@ -255,10 +254,9 @@ fn CachedLibrary(comptime Symbols: type) type {
 var cache_mutex: std.Thread.Mutex = .{};
 var wayland_cache: CachedLibrary(WaylandSymbols) = .{};
 var xcb_cache: CachedLibrary(XcbSymbols) = .{};
-var production_context: u8 = 0;
 
 pub fn initialize(env: Environment) Libraries {
-    return selectLibraries(env, &production_context, loadProductionLibrary);
+    return selectLibraries(env, ProductionLoader{});
 }
 
 pub fn waylandSymbols() ?*const WaylandSymbols {
@@ -275,30 +273,24 @@ pub fn xcbSymbols() ?*const XcbSymbols {
     return null;
 }
 
-fn selectLibraries(env: Environment, context: *anyopaque, load_library: LoadLibraryFn) Libraries {
+fn selectLibraries(env: Environment, loader: anytype) Libraries {
     var libraries: Libraries = .{ .is_wsl = env.is_wsl };
-    if (env.has_wayland_display) libraries.wayland = load_library(context, .wayland);
-    if (env.has_x11_display) libraries.x11 = load_library(context, .x11);
+    if (env.has_wayland_display) libraries.wayland = loader.load(.wayland);
+    if (env.has_x11_display) libraries.x11 = loader.load(.x11);
     return libraries;
 }
 
-fn loadProductionLibrary(_: *anyopaque, kind: LibraryKind) bool {
-    cache_mutex.lock();
-    defer cache_mutex.unlock();
+const ProductionLoader = struct {
+    fn load(_: ProductionLoader, kind: LibraryKind) bool {
+        cache_mutex.lock();
+        defer cache_mutex.unlock();
 
-    return switch (kind) {
-        .wayland => loadCachedLibrary(
-            WaylandSymbols,
-            &wayland_cache,
-            "libwayland-client.so.0",
-        ),
-        .x11 => loadCachedLibrary(
-            XcbSymbols,
-            &xcb_cache,
-            "libxcb.so.1",
-        ),
-    };
-}
+        return switch (kind) {
+            .wayland => loadCachedLibrary(WaylandSymbols, &wayland_cache, "libwayland-client.so.0"),
+            .x11 => loadCachedLibrary(XcbSymbols, &xcb_cache, "libxcb.so.1"),
+        };
+    }
+};
 
 fn loadCachedLibrary(
     comptime Symbols: type,
@@ -341,8 +333,7 @@ const FakeLoader = struct {
     wayland_attempts: u32 = 0,
     x11_attempts: u32 = 0,
 
-    fn load(context: *anyopaque, kind: LibraryKind) bool {
-        const self: *FakeLoader = @ptrCast(@alignCast(context));
+    fn load(self: *FakeLoader, kind: LibraryKind) bool {
         return switch (kind) {
             .wayland => blk: {
                 self.wayland_attempts += 1;
@@ -367,7 +358,7 @@ test "clipboard linux routing loads WSLg libraries and represents headless WSL" 
         .is_wsl = true,
         .has_wayland_display = true,
         .has_x11_display = true,
-    }, &loader, FakeLoader.load);
+    }, &loader);
 
     try std.testing.expect(wslg_libraries.is_wsl);
     try std.testing.expect(wslg_libraries.wayland);
@@ -381,7 +372,7 @@ test "clipboard linux routing loads WSLg libraries and represents headless WSL" 
         .is_wsl = true,
         .has_wayland_display = false,
         .has_x11_display = false,
-    }, &loader, FakeLoader.load);
+    }, &loader);
     try std.testing.expect(headless_libraries.is_wsl);
     try std.testing.expect(!headless_libraries.wayland);
     try std.testing.expect(!headless_libraries.x11);
@@ -395,7 +386,7 @@ test "clipboard linux routing loads only libraries for applicable displays" {
         .is_wsl = false,
         .has_wayland_display = false,
         .has_x11_display = false,
-    }, &headless_loader, FakeLoader.load), false, false);
+    }, &headless_loader), false, false);
     try std.testing.expectEqual(@as(u32, 0), headless_loader.wayland_attempts);
     try std.testing.expectEqual(@as(u32, 0), headless_loader.x11_attempts);
 
@@ -404,7 +395,7 @@ test "clipboard linux routing loads only libraries for applicable displays" {
         .is_wsl = false,
         .has_wayland_display = true,
         .has_x11_display = false,
-    }, &wayland_loader, FakeLoader.load), true, false);
+    }, &wayland_loader), true, false);
     try std.testing.expectEqual(@as(u32, 1), wayland_loader.wayland_attempts);
     try std.testing.expectEqual(@as(u32, 0), wayland_loader.x11_attempts);
 
@@ -413,7 +404,7 @@ test "clipboard linux routing loads only libraries for applicable displays" {
         .is_wsl = false,
         .has_wayland_display = false,
         .has_x11_display = true,
-    }, &x11_loader, FakeLoader.load), false, true);
+    }, &x11_loader), false, true);
     try std.testing.expectEqual(@as(u32, 0), x11_loader.wayland_attempts);
     try std.testing.expectEqual(@as(u32, 1), x11_loader.x11_attempts);
 }
@@ -424,7 +415,7 @@ test "clipboard linux routing preserves independent Wayland and X11 load results
         .is_wsl = false,
         .has_wayland_display = true,
         .has_x11_display = true,
-    }, &loader, FakeLoader.load), false, true);
+    }, &loader), false, true);
     try std.testing.expectEqual(@as(u32, 1), loader.wayland_attempts);
     try std.testing.expectEqual(@as(u32, 1), loader.x11_attempts);
 }

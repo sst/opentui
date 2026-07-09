@@ -160,7 +160,6 @@ const emittedAllowlist = [
   ".node-test/src/tests/renderer.input.test.js",
   ".node-test/src/tests/renderer.mouse.test.js",
   ".node-test/src/tests/renderer.palette.test.js",
-  ".node-test/src/tests/renderer.sigpipe.test.js",
   ".node-test/src/tests/renderer.scrollback-surface.test.js",
   ".node-test/src/tests/renderer.slot-registry.test.js",
   ".node-test/src/tests/renderer.useMouse.test.js",
