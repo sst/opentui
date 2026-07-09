@@ -41,7 +41,7 @@ const embedded_terminal_tests = @import("embedded-terminal/tests.zig");
 const image_tests = @import("tests/image_test.zig");
 const terminal_image_tests = @import("tests/terminal-image_test.zig");
 const lib_tests = @import("lib.zig");
-const clipboard_tests = @import("clipboard.zig");
+const clipboard_tests = @import("clipboard/host.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files

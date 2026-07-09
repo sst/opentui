@@ -10,7 +10,7 @@ const WlProxy = linux.WlProxy;
 const MAX_SEATS = 16;
 const MAX_SEAT_NAME_BYTES = 255;
 const MAX_OFFERS = 8;
-const MAX_MIME_TYPES = 64;
+const MAX_OFFER_MIME_TYPES = 3;
 const MAX_MIME_BYTES = 255;
 const MAX_PROVIDERS = 4;
 // Clipboard payloads use file descriptors, so protocol metadata does not need unbounded connection buffers.
@@ -20,7 +20,6 @@ const PROVIDER_TRANSFER_IDLE_TIMEOUT_NS = 30 * std.time.ns_per_s;
 
 pub const Progress = enum { pending, ready, unsupported, failed };
 pub const SelectionResult = enum { ok, pending, committed, unsupported, failed };
-pub const CoreSelectionProgress = enum { pending, ready, unsupported, failed };
 const FlushResult = enum { complete, pending, failed };
 const FlushOutcome = struct { result: c_int, errno: std.posix.E };
 
@@ -57,7 +56,7 @@ const Mime = struct {
 
 pub const Offer = struct {
     proxy: *WlProxy,
-    mimes: [MAX_MIME_TYPES]Mime = undefined,
+    mimes: [MAX_OFFER_MIME_TYPES]Mime = undefined,
     mime_count: u8 = 0,
 };
 
@@ -75,7 +74,6 @@ const Provider = struct {
     transfers: []Transfer,
     transfer_count: u32 = 0,
     transfer_cursor: u32 = 0,
-    retired: bool = false,
     cancelled: bool = false,
 };
 
@@ -130,7 +128,6 @@ pub const Connection = struct {
     clipboard_offer: ?*WlProxy = null,
     primary_offer: ?*WlProxy = null,
     primary_supported: bool = false,
-    primary_event_seen: bool = false,
     bound_seat_global: ?u32 = null,
     providers: [MAX_PROVIDERS]?*Provider = .{null} ** MAX_PROVIDERS,
     clipboard_provider: ?*Provider = null,
@@ -234,7 +231,6 @@ pub const Connection = struct {
                 if (!self.sendSync()) return self.fail(.protocol);
             },
             .device => {
-                self.primary_supported = self.primary_event_seen;
                 self.phase = .ready;
             },
             else => {},
@@ -255,7 +251,7 @@ pub const Connection = struct {
         return self.core_data_device;
     }
 
-    pub fn acquireCoreSelection(self: *Connection) CoreSelectionProgress {
+    pub fn acquireCoreSelection(self: *Connection) Progress {
         if (!self.core_data_device) return .unsupported;
         if (self.phase == .failed) return .failed;
         std.debug.assert(self.core_focus_users < std.math.maxInt(u32));
@@ -272,7 +268,7 @@ pub const Connection = struct {
         return .pending;
     }
 
-    pub fn coreSelectionProgress(self: *const Connection) CoreSelectionProgress {
+    pub fn coreSelectionProgress(self: *const Connection) Progress {
         if (!self.core_data_device) return .unsupported;
         if (self.phase == .failed) return .failed;
         if (self.core_focus_users == 0 or self.helper_surface == null) return .failed;
@@ -395,7 +391,6 @@ pub const Connection = struct {
         self.output_pending = false;
         for (&self.providers) |*slot| {
             const provider = slot.* orelse continue;
-            provider.retired = true;
             provider.cancelled = true;
             if (provider.transfer_count > 0) continue;
             self.freeProvider(provider);
@@ -530,7 +525,6 @@ pub const Connection = struct {
     fn retireProvider(self: *Connection, provider: *Provider) void {
         if (self.clipboard_provider == provider) self.clipboard_provider = null;
         if (self.primary_provider == provider) self.primary_provider = null;
-        provider.retired = true;
         if (!provider.cancelled or provider.transfer_count > 0) return;
         for (&self.providers) |*slot| {
             if (slot.* != provider) continue;
@@ -1029,7 +1023,7 @@ pub const Connection = struct {
 
     fn devicePrimarySelection(data: ?*anyopaque, _: ?*WlProxy, offer: ?*WlProxy) callconv(.c) void {
         const self: *Connection = @ptrCast(@alignCast(data.?));
-        self.primary_event_seen = true;
+        self.primary_supported = true;
         if (self.primary_offer) |previous| {
             if (previous != offer and previous != self.clipboard_offer) self.removeOffer(previous);
         }
@@ -1059,7 +1053,7 @@ pub const Connection = struct {
                 const existing_essence = canonicalMimeEssence(existing.slice()).?;
                 if (std.ascii.eqlIgnoreCase(existing_essence, essence)) return;
             }
-            if (offer.mime_count == MAX_MIME_TYPES) return;
+            if (offer.mime_count == MAX_OFFER_MIME_TYPES) return;
             const entry = &offer.mimes[offer.mime_count];
             @memcpy(entry.bytes[0..mime.len], mime);
             entry.length = @intCast(mime.len);
@@ -1097,7 +1091,6 @@ pub const Connection = struct {
 
     fn sourceCancelled(data: ?*anyopaque, _: ?*WlProxy) callconv(.c) void {
         const provider: *Provider = @ptrCast(@alignCast(data.?));
-        provider.retired = true;
         provider.cancelled = true;
         if (provider.connection.clipboard_provider == provider) provider.connection.clipboard_provider = null;
         if (provider.connection.primary_provider == provider) provider.connection.primary_provider = null;
@@ -1465,7 +1458,7 @@ test "Wayland MIME retention ignores irrelevant metadata without consuming the b
     connection.offer_count = 1;
     connection.offers[0] = .{ .proxy = proxy };
     var index: u8 = 0;
-    while (index < MAX_MIME_TYPES) : (index += 1) {
+    while (index < MAX_OFFER_MIME_TYPES) : (index += 1) {
         Connection.offerMime(&connection, proxy, "application/x-irrelevant");
     }
     Connection.offerMime(&connection, proxy, "image/png");
@@ -1504,7 +1497,7 @@ test "Wayland MIME retention deduplicates canonical supported essences" {
     connection.offers[0] = .{ .proxy = proxy };
 
     var index: u8 = 0;
-    while (index < MAX_MIME_TYPES) : (index += 1) {
+    while (index < MAX_OFFER_MIME_TYPES) : (index += 1) {
         Connection.offerMime(&connection, proxy, "text/plain;charset=UTF-8");
     }
     Connection.offerMime(&connection, proxy, "text/plain; charset=utf-8; format=flowed");
@@ -1625,17 +1618,17 @@ test "Wayland core selection becomes ready after focus and selection in either o
 
     Connection.deviceSelection(&connection, null, offer);
     try std.testing.expectEqual(offer, connection.clipboard_offer.?);
-    try std.testing.expectEqual(CoreSelectionProgress.pending, connection.coreSelectionProgress());
+    try std.testing.expectEqual(Progress.pending, connection.coreSelectionProgress());
     Connection.keyboardEnter(&connection, null, 1, surface, null);
-    try std.testing.expectEqual(CoreSelectionProgress.ready, connection.coreSelectionProgress());
+    try std.testing.expectEqual(Progress.ready, connection.coreSelectionProgress());
 
     connection.core_focus_entered = false;
     connection.core_selection_seen = false;
     connection.clipboard_offer = null;
     Connection.keyboardEnter(&connection, null, 2, surface, null);
-    try std.testing.expectEqual(CoreSelectionProgress.pending, connection.coreSelectionProgress());
+    try std.testing.expectEqual(Progress.pending, connection.coreSelectionProgress());
     Connection.deviceSelection(&connection, null, offer);
-    try std.testing.expectEqual(CoreSelectionProgress.ready, connection.coreSelectionProgress());
+    try std.testing.expectEqual(Progress.ready, connection.coreSelectionProgress());
 }
 
 test "Wayland core selection rejects events without an active helper acquisition" {
@@ -1679,9 +1672,9 @@ test "Wayland bound core seat keyboard loss fails active and future acquisitions
 
     Connection.seatCapabilities(&connection, seat_proxy, 0);
 
-    try std.testing.expectEqual(CoreSelectionProgress.failed, connection.coreSelectionProgress());
+    try std.testing.expectEqual(Progress.failed, connection.coreSelectionProgress());
     connection.core_focus_users = 0;
-    try std.testing.expectEqual(CoreSelectionProgress.failed, connection.acquireCoreSelection());
+    try std.testing.expectEqual(Progress.failed, connection.acquireCoreSelection());
     try std.testing.expectEqual(Phase.failed, connection.phase);
     try std.testing.expectEqual(Failure.protocol, connection.failure);
 }
@@ -1703,14 +1696,11 @@ test "Wayland provider retirement preserves active transfers" {
 
     connection.retireProvider(&provider);
 
-    try std.testing.expect(provider.retired);
     try std.testing.expect(connection.clipboard_provider == null);
     try std.testing.expect(connection.providers[0] == &provider);
 
     connection.clipboard_provider = &provider;
-    provider.retired = false;
     connection.retireProviders();
-    try std.testing.expect(provider.retired);
     try std.testing.expect(connection.providers[0] == &provider);
 }
 
@@ -1783,7 +1773,6 @@ test "Wayland retired provider accepts queued sends until compositor cancellatio
         .primary = false,
         .data = &.{},
         .transfers = &transfers,
-        .retired = true,
     };
     connection.clipboard_provider = null;
     connection.primary_provider = null;
@@ -1795,7 +1784,6 @@ test "Wayland retired provider accepts queued sends until compositor cancellatio
 
     try std.testing.expectEqual(@as(u32, 1), provider.transfer_count);
     Connection.sourceCancelled(&provider, null);
-    try std.testing.expect(provider.retired);
     finishProviderTransfer(&provider, 0);
 }
 
@@ -1803,10 +1791,8 @@ test "Wayland reserves provider capacity independently for each selection" {
     var connection: Connection = undefined;
     var current: Provider = undefined;
     current.primary = false;
-    current.retired = false;
     var retired: Provider = undefined;
     retired.primary = false;
-    retired.retired = true;
     connection.clipboard_provider = &current;
     connection.primary_provider = null;
     connection.providers = .{ &current, &retired, null, null };
@@ -1814,7 +1800,6 @@ test "Wayland reserves provider capacity independently for each selection" {
     try std.testing.expect(!connection.canPublishProvider(false));
     try std.testing.expect(connection.canPublishProvider(true));
     connection.clipboard_provider = null;
-    current.retired = true;
     try std.testing.expect(!connection.canPublishProvider(false));
     connection.providers[1] = null;
     try std.testing.expect(connection.canPublishProvider(false));
@@ -1835,7 +1820,6 @@ test "Wayland clear retires the current provider at the generation bound" {
         .data = &.{},
         .transfers = &old_transfers,
         .transfer_count = 1,
-        .retired = true,
     };
     var current: Provider = .{
         .connection = &connection,
@@ -1850,7 +1834,6 @@ test "Wayland clear retires the current provider at the generation bound" {
 
     try std.testing.expectEqual(SelectionResult.ok, connection.clearSelection(false));
     try std.testing.expect(connection.clipboard_provider == null);
-    try std.testing.expect(current.retired);
 }
 
 test "Wayland provider transfers expire after a bounded idle interval" {
@@ -1963,7 +1946,6 @@ test "Wayland local marshal failure preserves the current provider" {
     try std.testing.expectEqual(SelectionResult.failed, connection.clearSelection(false));
     try std.testing.expectEqual(@as(u32, 1), test_display_error_call_count);
     try std.testing.expect(connection.clipboard_provider == &current);
-    try std.testing.expect(!current.retired);
 }
 
 test "Wayland failed source offer does not replace the current provider" {
@@ -1987,5 +1969,4 @@ test "Wayland failed source offer does not replace the current provider" {
 
     try std.testing.expectEqual(SelectionResult.failed, connection.publishText(false, &.{}));
     try std.testing.expect(connection.clipboard_provider == &current);
-    try std.testing.expect(!current.retired);
 }
