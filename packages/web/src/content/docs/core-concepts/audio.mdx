@@ -109,7 +109,7 @@ try {
 }
 ```
 
-`playStream()` resolves after the native MP3 decoder is ready, normally while the stream is still buffering. Operational setup failures reject with `AudioStreamError`; its `context` contains the failing `action` and, when available, `status`, `errorCode`, or `attempt`. Input validation can reject with `TypeError` or `RangeError`, and cancellation uses `AbortError`. Retryable failures emit `reconnecting` with an `AudioStreamError`; terminal failures emit `error` and the context separately on the returned `AudioStream`.
+`playStream()` resolves after the native MP3 decoder is ready, normally while the stream is still buffering. Operational setup failures reject with `AudioStreamError`; its `context` contains the failing `action` and, when available, `status`, `errorCode`, or `attempt`. Input validation can reject with `TypeError` or `RangeError`, and cancellation uses `AbortError`. After setup, retryable failures emit `reconnecting` with an `AudioStreamError`; terminal failures emit `error` and the context separately on the returned `AudioStream`.
 
 URL streams request ICY metadata with `Icy-MetaData: 1` unless `request.headers` already contains that header. Set it to `0` explicitly to disable negotiation. A positive `icy-metaint` response header selects the ICY parser; URLs, content types, station headers, and server names are not used to infer framing. Invalid or ambiguous intervals reject the response before a native voice is allocated.
 
@@ -119,7 +119,7 @@ ICY does not define a text encoding. OpenTUI follows Icecast's documented non-Og
 
 Metadata events follow response ingestion, not audible playback. Native PCM buffering means a title can arrive before its corresponding audio is heard. Metadata received during setup is retained and the latest snapshot is emitted asynchronously after `playStream()` resolves, allowing a listener to be attached immediately afterward.
 
-URL reconnect is opt-in. It retries network failures, interrupted response bodies, HTTP 408/425/429, and HTTP 5xx responses. Reconnects restart the decoder in the same native stream session, preserving controls, counters, the voice slot, and any decoded PCM still available after an interruption. `retryOnEnd` restarts the same session after a clean response ends and its buffered PCM drains. `maxAttempts` limits consecutive attempts for one outage and resets after a replacement decoder becomes ready; omitting it means unlimited retries. An `AbortSignal` or `dispose()` stops them.
+URL reconnect is opt-in. It retries network failures, interrupted response bodies, HTTP 408/425/429, and HTTP 5xx responses. Reconnects restart the decoder in the same native stream session, preserving controls, counters, the voice slot, and any decoded PCM still available after an interruption. `retryOnEnd` restarts the same session after a clean response ends and its buffered PCM drains. Initial retries happen while `playStream()` is pending and do not emit `reconnecting` because the stream has not been returned yet. `maxAttempts` limits consecutive attempts for one outage and resets after a replacement decoder becomes ready; omitting it means unlimited retries. An `AbortSignal` or `dispose()` stops them.
 
 Each replacement response selects a new parser and can advertise a different ICY interval. Existing metadata remains available while reconnecting, then the replacement response clears the previous in-band fields before publishing its own metadata. A plain MP3 replacement clears the metadata snapshot.
 

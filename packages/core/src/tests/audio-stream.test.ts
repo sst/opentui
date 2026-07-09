@@ -1934,6 +1934,38 @@ test("Audio retries initial fetch failures without a default attempt limit", asy
   expect(stream.getStats().reconnectAttempts).toBe(3)
 })
 
+test("Audio does not replay initial reconnect attempts after stream setup", async () => {
+  const fixture = new Uint8Array(await readFile(MP3_URL))
+  let requests = 0
+  const server = createServer((_, response) => {
+    requests += 1
+    if (requests === 1) {
+      response.writeHead(503, { Connection: "close" })
+      response.end()
+      return
+    }
+    response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
+    response.end(fixture)
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+  })
+  const reconnectAttempts: number[] = []
+  stream.on("reconnecting", ({ attempt }) => reconnectAttempts.push(attempt))
+  await sleep(0)
+
+  expect(requests).toBe(2)
+  expect(stream.getStats().reconnectAttempts).toBe(1)
+  expect(reconnectAttempts).toEqual([])
+  await drainStream(audio, stream)
+})
+
 test("Audio retries only documented HTTP statuses and enforces maxAttempts", async () => {
   const fixture = new Uint8Array(await readFile(MP3_URL))
   const retryableStatuses = [408, 425, 429, 500, 503, 599]

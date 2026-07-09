@@ -933,8 +933,8 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         reconnect.maxDelayMs,
         reconnect.initialDelayMs * reconnect.backoffFactor ** (this.consecutiveReconnectAttempts - 1),
       )
-    // Initial retries are setup work while playStream() is still pending. Callers can bound or cancel them with
-    // reconnect.maxAttempts or signal; reconnecting events begin once the ready AudioStream has been exposed.
+    // Initial retries happen before callers receive the AudioStream and can attach listeners. Do not replay completed
+    // setup retries after success; callers can bound or cancel pending setup with reconnect.maxAttempts or signal.
     if (this.exposed) {
       this.emitAsync("reconnecting", {
         attempt: this.consecutiveReconnectAttempts,
