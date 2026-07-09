@@ -3449,6 +3449,53 @@ test("Audio creates a fresh demuxer for every connector attempt", async () => {
   expect(stream.getStats().reconnectAttempts).toBe(1)
 })
 
+test("Audio waits for connection cleanup before reconnecting", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const failFirst = deferred()
+  const releaseFirstClose = deferred()
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  let connections = 0
+  let firstCloseStarted = false
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      connections += 1
+      const connection = connections
+      return {
+        info: undefined,
+        body: (async function* () {
+          yield mp3
+          if (connection === 1) {
+            await failFirst.promise
+            throw new Error("interrupted")
+          }
+        })(),
+        close() {
+          if (connection !== 1) return
+          firstCloseStarted = true
+          return releaseFirstClose.promise
+        },
+      }
+    },
+  }
+
+  const stream = await audio.playStreamSource(connector, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
+  })
+  failFirst.resolve()
+  await waitFor(() => firstCloseStarted, "First connection cleanup did not start")
+  await sleep(75)
+  expect(connections).toBe(1)
+
+  releaseFirstClose.resolve()
+  await waitFor(() => connections === 2, "Replacement connection did not start after cleanup")
+  await drainStream(audio, stream)
+  expect(stream.getStats().reconnectAttempts).toBe(1)
+})
+
 test("Audio honors a reconnect retry decision", async () => {
   const audio = Audio.create({ autoStart: false })
   audios.push(audio)
@@ -4297,6 +4344,43 @@ test("AudioStream.closed waits for all cleanup after one cleanup rejects", async
   releaseClose.resolve()
   await stream.closed
   expect(closed).toBe(true)
+})
+
+test("AudioStream.closed remains bounded while connection cleanup is pending", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const releaseClose = deferred()
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  let closeStarted = false
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      return {
+        info: undefined,
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(mp3)
+          },
+        }),
+        close() {
+          closeStarted = true
+          return releaseClose.promise
+        },
+      }
+    },
+  }
+
+  const stream = await audio.playStreamSource(connector, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  stream.dispose()
+  await waitFor(() => closeStarted, "Connection cleanup did not start")
+  const closedBeforeRelease = await Promise.race([stream.closed.then(() => true), sleep(250).then(() => false)])
+  releaseClose.resolve()
+
+  expect(closedBeforeRelease).toBe(true)
+  await stream.closed
 })
 
 test("AudioStream.closed resolves after the ended event", async () => {

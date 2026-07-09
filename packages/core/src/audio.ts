@@ -853,7 +853,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
                 context,
                 failure,
               )
-        if (await this.retry(error, "connect")) continue
+        if (await this.retry(error, attempt, "connect")) continue
         return
       }
 
@@ -929,7 +929,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
               ? cause
               : new AudioStreamError("Audio stream source failed", { action: "source" }, cause)
         if (error instanceof ClassifiedAudioStreamError) {
-          if (await this.retry(error, "read")) continue
+          if (await this.retry(error, attempt, "read")) continue
           return
         }
         const context = error instanceof AudioStreamError ? error.context : { action: "source" as const }
@@ -942,7 +942,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
         return
       }
       const error = new AudioStreamError("Audio stream source ended", { action: "source" })
-      if (await this.retry(error, undefined, true)) continue
+      if (await this.retry(error, attempt, undefined, true)) continue
       return
     }
   }
@@ -999,7 +999,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
   ): Promise<void> {
     const source = connection.body
     if (!this.isAttemptActive(attempt)) {
-      await this.runAttemptCleanup(attempt)
+      await this.runBoundedAttemptCleanup(attempt)
       return
     }
     const release = (): void => {
@@ -1029,7 +1029,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     }
 
     if (!this.isAttemptActive(attempt)) {
-      await this.runAttemptCleanup(attempt)
+      await this.runBoundedAttemptCleanup(attempt)
       return
     }
 
@@ -1060,7 +1060,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
           }
         }
         attempt.demuxerFinished = true
-        await this.runAttemptCleanup(attempt)
+        await this.runBoundedAttemptCleanup(attempt)
         return
       }
       const chunk = result.value
@@ -1232,7 +1232,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     await Promise.allSettled(pending)
   }
 
-  private runAttemptCleanup(attempt: AudioStreamAttempt<M>): Promise<void> {
+  private runBoundedAttemptCleanup(attempt: AudioStreamAttempt<M>): Promise<void> {
     if (this.pendingCleanup != null) return this.pendingCleanup
     let resolveCleanup!: () => void
     let rejectCleanup!: (error: unknown) => void
@@ -1252,6 +1252,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
 
   private async retry(
     error: AudioStreamError,
+    attempt: AudioStreamAttempt<M>,
     phase?: AudioStreamRetryPhase,
     cleanEnd: boolean = false,
   ): Promise<boolean> {
@@ -1318,6 +1319,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
 
     if (retryDelayMs !== undefined) retryDelayMs = Math.min(reconnect.maxDelayMs, retryDelayMs)
 
+    await this.cleanupAttempt(attempt)
     if (this.lifecycleController.signal.aborted) return false
 
     if (this.nativeStreamId != null) {
@@ -1483,7 +1485,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     if (attempt == null) return this.pendingCleanup ?? Promise.resolve()
     if (this.activeAttempt === attempt) this.activeAttempt = null
     attempt.controller.abort()
-    return this.runAttemptCleanup(attempt)
+    return this.runBoundedAttemptCleanup(attempt)
   }
 
   private closeNativeStream(reason: NativeAudioStreamCloseReason): number {
