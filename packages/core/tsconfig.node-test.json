@@ -128,8 +128,6 @@
     "src/tests/renderer.input.test.ts",
     "src/tests/renderer.mouse.test.ts",
     "src/tests/renderer.palette.test.ts",
-    "src/tests/renderer.sigpipe.test.ts",
-    "src/tests/renderer-sigpipe.fixture.ts",
     "src/tests/renderer.scrollback-surface.test.ts",
     "src/tests/renderer.slot-registry.test.ts",
     "src/tests/renderer.useMouse.test.ts",
