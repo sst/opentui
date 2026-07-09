@@ -332,6 +332,12 @@ export type AudioVoiceOptions = {
   groupId?: number
 }
 
+export const NativeAudioStreamFormat = {
+  Mp3: 1,
+} as const
+
+export type NativeAudioStreamFormat = (typeof NativeAudioStreamFormat)[keyof typeof NativeAudioStreamFormat]
+
 export type AudioStreamCreateOptions = {
   capacityMs: number
   startupMs: number
@@ -340,6 +346,7 @@ export type AudioStreamCreateOptions = {
   pan: number
   groupId: number
   maxProbeBytes: number
+  format: NativeAudioStreamFormat
 }
 
 export type NativeAudioStreamStats = {
@@ -435,6 +442,7 @@ export const AudioStreamCreateOptionsStruct = defineStruct([
   ["groupId", "u32"],
   // Keep additions at the end so newer JS preserves the previous native prefix during local rebuilds.
   ["maxProbeBytes", "u32"],
+  ["format", "u32"],
 ])
 
 export const AudioStreamStatsStruct = defineStruct([

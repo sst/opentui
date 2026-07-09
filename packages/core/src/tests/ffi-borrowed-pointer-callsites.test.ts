@@ -5,6 +5,7 @@ import {
   AudioStreamStatsStruct,
   CursorStyleOptionsStruct,
   NativeAudioStreamCloseReason,
+  NativeAudioStreamFormat,
   NativeAudioStreamState,
   StyledChunkStruct,
 } from "../zig-structs.js"
@@ -58,10 +59,10 @@ function readPackedColor(packed: ArrayBuffer, offset: number): number[] {
 
 describe("borrowed pointer call sites", () => {
   test("audio stream structs preserve the native ABI", () => {
-    expect(AudioStreamCreateOptionsStruct.size).toBe(28)
+    expect(AudioStreamCreateOptionsStruct.size).toBe(32)
     expect(
       Object.fromEntries(
-        ["capacityMs", "startupMs", "resumeMs", "volume", "pan", "groupId", "maxProbeBytes"].map((name) => [
+        ["capacityMs", "startupMs", "resumeMs", "volume", "pan", "groupId", "maxProbeBytes", "format"].map((name) => [
           name,
           fieldOffset(AudioStreamCreateOptionsStruct, name),
         ]),
@@ -74,6 +75,7 @@ describe("borrowed pointer call sites", () => {
       pan: 16,
       groupId: 20,
       maxProbeBytes: 24,
+      format: 28,
     })
 
     const packed = AudioStreamCreateOptionsStruct.pack({
@@ -84,6 +86,7 @@ describe("borrowed pointer call sites", () => {
       pan: -0.25,
       groupId: 7,
       maxProbeBytes: 2 * 1024 * 1024,
+      format: NativeAudioStreamFormat.Mp3,
     })
     const view = new DataView(packed)
     expect(view.getUint32(0, true)).toBe(2000)
@@ -93,6 +96,7 @@ describe("borrowed pointer call sites", () => {
     expect(view.getFloat32(16, true)).toBe(-0.25)
     expect(view.getUint32(20, true)).toBe(7)
     expect(view.getUint32(24, true)).toBe(2 * 1024 * 1024)
+    expect(view.getUint32(28, true)).toBe(NativeAudioStreamFormat.Mp3)
 
     expect(AudioStreamStatsStruct.size).toBe(56)
     expect(
@@ -204,8 +208,8 @@ describe("borrowed pointer call sites", () => {
     }
   })
 
-  test("stream group wrappers reject fractional IDs before FFI conversion", () => {
-    withStubbedSymbol("audioSetStreamGroup", (calls) => {
+  test("stream create wrappers reject invalid groups and formats before FFI conversion", () => {
+    withStubbedSymbol("audioCreateStream", (calls) => {
       expect(lib.audioSetStreamGroup(0 as any, 1, 1.5)).toBe(-1)
       expect(
         lib.audioCreateStream(0 as any, {
@@ -213,9 +217,31 @@ describe("borrowed pointer call sites", () => {
           startupMs: 10,
           resumeMs: 10,
           maxProbeBytes: 1024 * 1024,
+          format: NativeAudioStreamFormat.Mp3,
           volume: 1,
           pan: 0,
           groupId: 1.5,
+        }),
+      ).toEqual({ status: -1, streamId: null })
+      const validOptions = {
+        capacityMs: 100,
+        startupMs: 10,
+        resumeMs: 10,
+        maxProbeBytes: 1024 * 1024,
+        volume: 1,
+        pan: 0,
+        groupId: 0,
+      }
+      expect(
+        lib.audioCreateStream(0 as any, {
+          ...validOptions,
+          format: 1.5 as never,
+        }),
+      ).toEqual({ status: -1, streamId: null })
+      expect(
+        lib.audioCreateStream(0 as any, {
+          ...validOptions,
+          format: 2 as never,
         }),
       ).toEqual({ status: -1, streamId: null })
       expect(calls).toHaveLength(0)

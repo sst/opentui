@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import { Audio, AudioInitializationError, setupAudio } from "../audio.js"
-import { resolveRenderLib } from "../zig.js"
+import { NativeAudioStreamFormat, resolveRenderLib } from "../zig.js"
 
 const SAMPLE_RATE = 48_000
 
@@ -432,6 +432,7 @@ test("audio stream wrappers reject a destroyed engine handle", () => {
       pan: 0,
       groupId: 0,
       maxProbeBytes: 1024 * 1024,
+      format: NativeAudioStreamFormat.Mp3,
     }),
   ).toEqual({ status: -1, streamId: null })
   expect(lib.audioWriteStream(engine, 1, new Uint8Array())).toBe(-1)

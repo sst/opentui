@@ -55,6 +55,7 @@ import {
   AudioStreamCreateOptionsStruct,
   AudioStreamStatsStruct,
   NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonValue,
+  NativeAudioStreamFormat as NativeAudioStreamFormatValue,
   NativeAudioStreamState as NativeAudioStreamStateValue,
   AudioStatsStruct,
   BuildOptionsStruct,
@@ -70,6 +71,7 @@ import type {
   AudioVoiceOptions,
   AudioStreamCreateOptions,
   NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonType,
+  NativeAudioStreamFormat as NativeAudioStreamFormatType,
   NativeAudioStreamState as NativeAudioStreamStateType,
   NativeAudioStreamStats,
   AudioStats,
@@ -81,6 +83,8 @@ export const NativeAudioStreamState = NativeAudioStreamStateValue
 export type NativeAudioStreamState = NativeAudioStreamStateType
 export const NativeAudioStreamCloseReason = NativeAudioStreamCloseReasonValue
 export type NativeAudioStreamCloseReason = NativeAudioStreamCloseReasonType
+export const NativeAudioStreamFormat = NativeAudioStreamFormatValue
+export type NativeAudioStreamFormat = NativeAudioStreamFormatType
 import { isBunfsPath } from "./lib/bunfs.js"
 
 registerEnvVar({
@@ -5009,7 +5013,9 @@ class FFIRenderLib implements RenderLib {
     engine: AudioEngineHandle,
     options: AudioStreamCreateOptions,
   ): { status: number; streamId: number | null } {
-    if (!isFFIU32(options.groupId)) return { status: -1, streamId: null }
+    if (!isFFIU32(options.groupId) || options.format !== NativeAudioStreamFormat.Mp3) {
+      return { status: -1, streamId: null }
+    }
     const optionsBuffer = AudioStreamCreateOptionsStruct.pack(options)
     const outBuffer = new ArrayBuffer(4)
     const status = this.opentui.symbols.audioCreateStream(engine, optionsBuffer, outBuffer)

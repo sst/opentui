@@ -64,6 +64,11 @@ pub const StreamOptions = extern struct {
     group_id: u32,
     // Append fields so newer bindings preserve the previous native prefix during local rebuilds.
     max_probe_bytes: u32 = default_stream_probe_bytes,
+    format: u32 = StreamFormat.mp3,
+};
+
+pub const StreamFormat = struct {
+    pub const mp3: u32 = 1;
 };
 
 pub const StreamState = struct {
@@ -150,6 +155,7 @@ const Stream = struct {
     probe_active: bool = true,
     probe_bytes: usize = 0,
     max_probe_bytes: usize,
+    format: u32,
     decoder_finished: u32 = 0,
     pcm_buffer: []f32,
     pcm_ring: c.ma_pcm_rb = undefined,
@@ -659,7 +665,10 @@ fn streamDecoderSeek(decoder: ?*c.ma_decoder, byte_offset: c.ma_int64, origin: c
 
 fn streamDecoderWorker(stream: *Stream) void {
     var config = c.ma_decoder_config_init(c.ma_format_f32, 2, stream.sample_rate);
-    config.encodingFormat = c.ma_encoding_format_mp3;
+    config.encodingFormat = switch (stream.format) {
+        StreamFormat.mp3 => c.ma_encoding_format_mp3,
+        else => unreachable,
+    };
     config.seekPointCount = 0;
 
     var decoder: c.ma_decoder = undefined;
@@ -1293,7 +1302,7 @@ fn retireStreamSlotLocked(engine: *Engine, slot_index: usize) void {
 pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_stream_id: ?*u32) i32 {
     if (options_ptr == null or out_stream_id == null) return Status.err_invalid;
     const options = options_ptr.?.*;
-    if (options.max_probe_bytes == 0) return Status.err_invalid;
+    if (options.max_probe_bytes == 0 or options.format != StreamFormat.mp3) return Status.err_invalid;
     const frame_options = resolveStreamFrameOptions(options, engine.sample_rate) orelse return Status.err_invalid;
 
     const e = engine;
@@ -1337,6 +1346,7 @@ pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_str
         .startup_frames = frame_options.startup_frames,
         .resume_frames = frame_options.resume_frames,
         .max_probe_bytes = options.max_probe_bytes,
+        .format = options.format,
         .sample_rate = e.sample_rate,
         .capacity_frames = frame_options.capacity_frames,
     };

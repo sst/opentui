@@ -63,7 +63,7 @@ Create a new `Audio` instance to change `sampleRate` or `playbackChannels`.
 
 ## MP3 streams
 
-Streaming is MP3-only; static `loadSound()` also supports WAV and FLAC. Choose the entry point by source ownership:
+Streaming currently supports only `format: "mp3"`; that format is passed through to the native decoder and exposed as `AudioStream.format`. The option defaults to `"mp3"`, and unsupported formats reject before opening a source. Static `loadSound()` also supports WAV and FLAC. Choose the entry point by source ownership:
 
 | Method                               | Use                                                                  |
 | ------------------------------------ | -------------------------------------------------------------------- |
@@ -90,6 +90,7 @@ try {
   if (!audio.start()) throw new Error("No playback device available")
 
   stream = await audio.playStreamUrl("https://anomaly.fm/radio", {
+    format: "mp3",
     reconnect: { maxRetries: 5, retryOnEnd: true },
   })
 
@@ -118,7 +119,7 @@ try {
 }
 ```
 
-URL responses may use `audio/mpeg`, `audio/mp3`, `application/mp3`, or `application/octet-stream`; a missing content type is accepted. `request` accepts `RequestInit` except `body` and `signal`; use the stream-level `signal` option for cancellation.
+The default `contentTypePolicy: "validate"` accepts `audio/mpeg`, `audio/mp3`, `application/mp3`, `application/octet-stream`, or a missing content type. Set it to `"ignore"` to let the decoder validate mislabeled responses, or pass a callback receiving `{ format, contentType, status, url }` and return a boolean. Every response, including reconnect replacements, is evaluated before its bytes reach the decoder. `request` accepts `RequestInit` except `body` and `signal`; use the stream-level `signal` option for cancellation.
 
 URL streams request ICY metadata with `Icy-MetaData: 1` unless `request.headers` already contains that header. Set it to `0` explicitly to disable negotiation. A positive `icy-metaint` response header selects the ICY demuxer; URLs, content types, station headers, and server names are not used to infer framing. Invalid or ambiguous intervals reject the response before a native voice is allocated.
 
@@ -144,6 +145,7 @@ Pass a demuxer factory when framing or metadata is interleaved with the MP3 byte
 import { Audio, createIcyStreamDemuxer } from "@opentui/core"
 
 const stream = await audio.playStream(socketBytes, {
+  format: "mp3",
   demuxer: () =>
     createIcyStreamDemuxer({
       metadataInterval: negotiatedInterval,
@@ -182,6 +184,7 @@ const connector: AudioStreamConnector<RadioInfo> = {
 }
 
 const stream = await audio.playStreamSource(connector, {
+  format: "mp3",
   reconnect: {
     maxRetries: 5,
     retry() {
@@ -200,6 +203,7 @@ Custom demuxers expose `initialMetadata`, `push(chunk)`, and `flush()`, with opt
 
 | Shared option       | Default | Description                                               |
 | ------------------- | ------- | --------------------------------------------------------- |
+| `format`            | `"mp3"` | Encoded stream format; currently only MP3 is supported    |
 | `volume`            | `1`     | Stream volume; native playback clamps to `0..4`           |
 | `pan`               | `0`     | Stereo pan; native playback clamps to `-1..1`             |
 | `groupId`           | `0`     | Mixer group                                               |

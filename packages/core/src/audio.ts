@@ -9,10 +9,12 @@ import {
 import { resolveRenderLib, type AudioEngineHandle, type RenderLib } from "./zig.js"
 import {
   NativeAudioStreamCloseReason as CloseReason,
+  NativeAudioStreamFormat as NativeStreamFormat,
   NativeAudioStreamState as StreamState,
   NativeAudioStreamStateNames as StateNames,
   type AudioStats,
   type NativeAudioStreamCloseReason,
+  type NativeAudioStreamFormat,
   type NativeAudioStreamStats,
 } from "./zig-structs.js"
 
@@ -49,6 +51,17 @@ export interface AudioPlayOptions {
 }
 
 export type AudioStreamBody = ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>
+
+export type AudioStreamFormat = "mp3"
+
+export interface AudioStreamContentTypeContext {
+  readonly format: AudioStreamFormat
+  readonly contentType: string | null
+  readonly status: number
+  readonly url: string
+}
+
+export type AudioStreamContentTypePolicy = "validate" | "ignore" | ((context: AudioStreamContentTypeContext) => boolean)
 
 export interface AudioStreamConnectContext {
   readonly signal: AbortSignal
@@ -91,6 +104,7 @@ export interface AudioStreamReconnectOptions {
 }
 
 export interface AudioStreamOptions {
+  format?: AudioStreamFormat
   volume?: number
   pan?: number
   groupId?: number
@@ -101,6 +115,7 @@ export interface AudioStreamOptions {
 
 export interface AudioStreamBodyOptions<M = AudioStreamMetadata> extends AudioStreamOptions {
   demuxer?: AudioStreamDemuxerFactory<M>
+  contentTypePolicy?: never
   request?: never
   reconnect?: never
   metadataEncoding?: never
@@ -109,6 +124,7 @@ export interface AudioStreamBodyOptions<M = AudioStreamMetadata> extends AudioSt
 export interface AudioStreamSourceOptions<I = unknown, M = AudioStreamMetadata> extends AudioStreamOptions {
   demuxer?: (info: I) => AudioStreamDemuxer<M> | null
   reconnect?: AudioStreamReconnectOptions
+  contentTypePolicy?: never
   request?: never
   metadataEncoding?: never
 }
@@ -117,6 +133,7 @@ export interface AudioStreamUrlOptions extends AudioStreamOptions {
   request?: Omit<RequestInit, "body" | "signal">
   reconnect?: AudioStreamReconnectOptions
   metadataEncoding?: string
+  contentTypePolicy?: AudioStreamContentTypePolicy
   demuxer?: never
 }
 
@@ -274,6 +291,7 @@ interface ResolvedAudioStreamReconnectOptions {
 }
 
 interface ResolvedAudioStreamOptions {
+  format: AudioStreamFormat
   capacityMs: number
   startupMs: number
   resumeMs: number
@@ -399,6 +417,7 @@ function resolveReconnectOptions(options: AudioStreamReconnectOptions): Resolved
 function resolveAudioStreamOptions(
   options: AudioStreamOptions & { reconnect?: AudioStreamReconnectOptions },
 ): ResolvedAudioStreamOptions {
+  const format = resolveAudioStreamFormat(options.format)
   const capacityMs = resolvePositiveU32(options.buffer?.capacityMs, 2000, "buffer.capacityMs")
   const startupMs = resolvePositiveU32(options.buffer?.startupMs, 1000, "buffer.startupMs")
   const resumeMs = resolvePositiveU32(options.buffer?.resumeMs, 1000, "buffer.resumeMs")
@@ -407,6 +426,7 @@ function resolveAudioStreamOptions(
   if (resumeMs > capacityMs) throw new RangeError("buffer.resumeMs must not exceed buffer.capacityMs")
 
   return {
+    format,
     capacityMs,
     startupMs,
     resumeMs,
@@ -481,9 +501,36 @@ function parseRetryAfter(value: string | null, maxDelayMs: number): number | und
   return Math.min(maxDelayMs, Math.max(0, date - Date.now()))
 }
 
-function isAllowedMp3ContentType(value: string): boolean {
+function resolveAudioStreamFormat(value: AudioStreamFormat | undefined): AudioStreamFormat {
+  const format = value ?? "mp3"
+  if (format !== "mp3") throw new TypeError(`Unsupported audio stream format: ${format}`)
+  return format
+}
+
+function toNativeAudioStreamFormat(format: AudioStreamFormat): NativeAudioStreamFormat {
+  switch (format) {
+    case "mp3":
+      return NativeStreamFormat.Mp3
+  }
+}
+
+function resolveContentTypePolicy(
+  value: AudioStreamContentTypePolicy | undefined,
+  receiver: AudioStreamUrlOptions,
+): AudioStreamContentTypePolicy {
+  const policy = value ?? "validate"
+  if (policy !== "validate" && policy !== "ignore" && typeof policy !== "function") {
+    throw new TypeError("contentTypePolicy must be 'validate', 'ignore', or a function")
+  }
+  return typeof policy === "function" ? (context) => policy.call(receiver, context) : policy
+}
+
+function isAllowedContentType(format: AudioStreamFormat, value: string): boolean {
   const contentType = value.split(";", 1)[0]?.trim().toLowerCase()
-  return ["audio/mpeg", "audio/mp3", "application/octet-stream", "application/mp3"].includes(contentType ?? "")
+  switch (format) {
+    case "mp3":
+      return ["audio/mpeg", "audio/mp3", "application/octet-stream", "application/mp3"].includes(contentType ?? "")
+  }
 }
 
 interface AudioStreamUrlConnectionInfo {
@@ -494,6 +541,8 @@ interface AudioStreamUrlConnectionInfo {
 function createAudioStreamUrlConnector(
   source: string | URL,
   request: Omit<RequestInit, "body" | "signal"> | undefined,
+  format: AudioStreamFormat,
+  contentTypePolicy: AudioStreamContentTypePolicy,
 ): AudioStreamConnector<AudioStreamUrlConnectionInfo> {
   return {
     async connect({ signal, attempt }) {
@@ -526,7 +575,33 @@ function createAudioStreamUrlConnector(
       }
 
       const contentType = response.headers.get("content-type")
-      if (contentType != null && !isAllowedMp3ContentType(contentType)) {
+      let contentTypeAccepted = contentType == null || contentTypePolicy === "ignore"
+      if (!contentTypeAccepted && contentTypePolicy === "validate") {
+        contentTypeAccepted = isAllowedContentType(format, contentType!)
+      } else if (typeof contentTypePolicy === "function") {
+        try {
+          const result = contentTypePolicy(
+            Object.freeze({
+              format,
+              contentType,
+              status: response.status,
+              url: response.url || String(source),
+            }),
+          )
+          if (typeof result !== "boolean") throw new TypeError("contentTypePolicy must return a boolean")
+          contentTypeAccepted = result
+        } catch (cause) {
+          await runBoundedCleanup(() => response.body?.cancel())
+          throw new ClassifiedAudioStreamError(
+            cause instanceof Error ? cause.message : "Audio stream content type policy failed",
+            { action: "response", status: response.status, attempt },
+            false,
+            undefined,
+            cause,
+          )
+        }
+      }
+      if (!contentTypeAccepted) {
         await runBoundedCleanup(() => response.body?.cancel())
         throw new ClassifiedAudioStreamError(
           `Unsupported audio stream Content-Type: ${contentType}`,
@@ -590,6 +665,7 @@ let openAudioStream: <M>(stream: AudioStream<M>) => Promise<void>
 
 export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStreamEvents<M>> {
   readonly closed: Promise<void>
+  readonly format: AudioStreamFormat
   private readonly lib: RenderLib
   private readonly engine: AudioEngineHandle
   private readonly connector: AudioStreamConnector<unknown>
@@ -630,6 +706,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     this.demuxerFactory = init.demuxer
     this.readAction = init.readAction
     this.options = resolveAudioStreamOptions(init.options)
+    this.format = this.options.format
     this.removeFromOwner = init.removeFromOwner
     this.setupPromise = new Promise((resolve, reject) => ((this.setupResolve = resolve), (this.setupReject = reject)))
     this.closed = new Promise((resolve) => (this.closedResolve = resolve))
@@ -880,6 +957,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
       volume: this.options.volume,
       pan: this.options.pan,
       groupId: this.options.groupId,
+      format: toNativeAudioStreamFormat(this.options.format),
     })
     if (created.status !== 0 || created.streamId == null) {
       const context: AudioStreamErrorContext = { action: "create", status: created.status }
@@ -1677,10 +1755,13 @@ export class Audio extends EventEmitter<AudioEvents> {
     if (
       urlOptions.request !== undefined ||
       urlOptions.reconnect !== undefined ||
-      urlOptions.metadataEncoding !== undefined
+      urlOptions.metadataEncoding !== undefined ||
+      urlOptions.contentTypePolicy !== undefined
     ) {
       return Promise.reject(
-        new TypeError("request, reconnect, and metadataEncoding options are only supported by playStreamUrl()"),
+        new TypeError(
+          "request, reconnect, metadataEncoding, and contentTypePolicy options are only supported by playStreamUrl()",
+        ),
       )
     }
     if (!isReadableStreamSource(source) && !isAsyncIterableSource(source)) {
@@ -1705,9 +1786,16 @@ export class Audio extends EventEmitter<AudioEvents> {
     if (typeof source !== "string" && Object.prototype.toString.call(source) !== "[object URL]") {
       return Promise.reject(new TypeError("Audio stream URL source must be a string or URL"))
     }
-    const { request, metadataEncoding, reconnect, ...streamOptions } = options
+    const { request, metadataEncoding, reconnect, format, contentTypePolicy, ...streamOptions } = options
+    const resolvedFormat = resolveAudioStreamFormat(format)
+    const resolvedContentTypePolicy = resolveContentTypePolicy(contentTypePolicy, options)
     const encoding = resolveMetadataEncoding(metadataEncoding)
-    const connector = createAudioStreamUrlConnector(source, resolveAudioStreamRequest(request))
+    const connector = createAudioStreamUrlConnector(
+      source,
+      resolveAudioStreamRequest(request),
+      resolvedFormat,
+      resolvedContentTypePolicy,
+    )
     return this.openStream(
       connector,
       (info) => {
@@ -1721,7 +1809,7 @@ export class Audio extends EventEmitter<AudioEvents> {
           )
         }
       },
-      { ...streamOptions, reconnect },
+      { ...streamOptions, reconnect, format: resolvedFormat },
       "fetch",
     )
   }
@@ -1731,8 +1819,14 @@ export class Audio extends EventEmitter<AudioEvents> {
     options: AudioStreamSourceOptions<I, M> = {},
   ): Promise<AudioStream<M>> {
     const urlOptions = options as AudioStreamUrlOptions
-    if (urlOptions.request !== undefined || urlOptions.metadataEncoding !== undefined) {
-      return Promise.reject(new TypeError("request and metadataEncoding are only supported by playStreamUrl()"))
+    if (
+      urlOptions.request !== undefined ||
+      urlOptions.metadataEncoding !== undefined ||
+      urlOptions.contentTypePolicy !== undefined
+    ) {
+      return Promise.reject(
+        new TypeError("request, metadataEncoding, and contentTypePolicy are only supported by playStreamUrl()"),
+      )
     }
     const { demuxer, ...streamOptions } = options
     return this.openStream(connector, demuxer, streamOptions, "source")

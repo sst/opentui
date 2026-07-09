@@ -17,9 +17,11 @@ import type {
   AudioStreamBodyOptions,
   AudioStreamConnection,
   AudioStreamConnector,
+  AudioStreamContentTypeContext,
   AudioStreamCreateOptions,
   AudioStreamDemuxOutput,
   AudioStreamDemuxer,
+  AudioStreamFormat,
   AudioStreamMetadata,
   AudioStreamReconnectOptions,
   AudioStreamUrlOptions,
@@ -50,6 +52,7 @@ function assertPublicAudioStreamApis(
 ): void {
   const bodyStream: Promise<PublicAudioStream<TestStreamMetadata>> = audio.playStream(bodySource, {
     ...options,
+    format: "mp3",
     demuxer: () => demuxer,
   })
   const sourceStream: Promise<PublicAudioStream<TestStreamMetadata>> = audio.playStreamSource(connector, {
@@ -75,6 +78,14 @@ function assertPublicAudioStreamApis(
   void audio.playStreamSource(connector, urlOptions)
   const reconnectOptions: AudioStreamReconnectOptions = { maxRetries: 1 }
   void reconnectOptions
+  const format: AudioStreamFormat = "mp3"
+  const contentTypeContext: AudioStreamContentTypeContext = {
+    format,
+    contentType: "audio/mpeg",
+    status: 200,
+    url: "https://example.test/radio",
+  }
+  void contentTypeContext
   const connectorWithRetry: AudioStreamConnector<{ readonly station: string }> = {
     ...connector,
     // @ts-expect-error Retry policy belongs to reconnect options.
@@ -86,6 +97,14 @@ function assertPublicAudioStreamApis(
     maxAttempts: 1,
   }
   void legacyReconnectOptions
+  // @ts-expect-error MP3 is the only supported stream format.
+  void audio.playStream(bodySource, { format: "wav" })
+  void audio.playStreamUrl(urlSource, { contentTypePolicy: "ignore" })
+  void audio.playStreamUrl(urlSource, { contentTypePolicy: "validate" })
+  // @ts-expect-error Content-type policy applies only to URL streams.
+  void audio.playStream(bodySource, { contentTypePolicy: "ignore" })
+  // @ts-expect-error Content-type policy applies only to URL streams.
+  void audio.playStreamSource(connector, { contentTypePolicy: "ignore" })
 }
 
 function assertPublicReconnectError(stream: PublicAudioStream): void {
@@ -1593,6 +1612,7 @@ test("Audio ends cleanly when retryOnEnd has no retry budget", async () => {
   }
 
   const stream = await audio.playStreamSource(connector, {
+    format: "mp3",
     buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
     reconnect: { maxRetries: 0, retryOnEnd: true },
   })
@@ -2493,6 +2513,7 @@ test("Audio enforces the documented HTTP content-type policy", async () => {
     expect(audio.startMixer()).toBe(true)
 
     const stream = await audio.playStreamUrl(new URL("/radio", baseUrl), {
+      ...(contentType === "audio/mpeg" ? { contentTypePolicy: "validate" as const } : {}),
       buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
     })
     await drainStream(audio, stream)
@@ -2507,16 +2528,341 @@ test("Audio enforces the documented HTTP content-type policy", async () => {
     response.end(fixture)
   })
   const unsupportedUrl = await listen(unsupportedServer)
-  const unsupportedAudio = Audio.create({ autoStart: false })
-  audios.push(unsupportedAudio)
-  await expect(
-    unsupportedAudio.playStreamUrl(`${unsupportedUrl}/radio`, {
-      reconnect: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
-    }),
-  ).rejects.toThrow("Unsupported audio stream Content-Type")
-  expect(unsupportedRequests).toBe(1)
-  expect(unsupportedAudio.getStats()?.voicesActive).toBe(0)
-  unsupportedAudio.dispose()
+  for (const contentTypePolicy of [undefined, "validate" as const]) {
+    const unsupportedAudio = Audio.create({ autoStart: false })
+    audios.push(unsupportedAudio)
+    await expect(
+      unsupportedAudio.playStreamUrl(`${unsupportedUrl}/radio`, {
+        contentTypePolicy,
+        reconnect: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
+      }),
+    ).rejects.toThrow("Unsupported audio stream Content-Type")
+    expect(unsupportedAudio.getStats()?.voicesActive).toBe(0)
+    unsupportedAudio.dispose()
+  }
+  expect(unsupportedRequests).toBe(2)
+})
+
+test("Audio exposes MP3 as the resolved stream format", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStream(
+    (async function* () {
+      yield mp3
+    })(),
+    {
+      format: "mp3",
+      buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    },
+  )
+  expect(stream.format).toBe("mp3")
+  await drainStream(audio, stream)
+})
+
+test("Audio rejects unsupported stream formats before opening a source", async () => {
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  let bodyPulls = 0
+  const body: AsyncIterable<Uint8Array> = {
+    async *[Symbol.asyncIterator]() {
+      bodyPulls += 1
+    },
+  }
+  await expect(audio.playStream(body, { format: "wav" as never })).rejects.toThrow("Unsupported audio stream format")
+  expect(bodyPulls).toBe(0)
+
+  let connections = 0
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      connections += 1
+      return { body, info: undefined }
+    },
+  }
+  await expect(audio.playStreamSource(connector, { format: "wav" as never })).rejects.toThrow(
+    "Unsupported audio stream format",
+  )
+  expect(connections).toBe(0)
+  await expect(audio.playStreamSource(connector, { contentTypePolicy: "ignore" } as never)).rejects.toThrow(
+    "only supported by playStreamUrl",
+  )
+  expect(connections).toBe(0)
+
+  const originalFetch = globalThis.fetch
+  let requests = 0
+  globalThis.fetch = (() => {
+    requests += 1
+    return Promise.reject(new Error("unexpected request"))
+  }) as unknown as typeof fetch
+  try {
+    await expect(audio.playStreamUrl("https://example.test/radio", { format: "wav" as never })).rejects.toThrow(
+      "Unsupported audio stream format",
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+  expect(requests).toBe(0)
+  expect(audio.getStats()?.voicesActive).toBe(0)
+})
+
+test("Audio can ignore URL content type validation explicitly", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const server = createServer((_, response) => {
+    response.writeHead(200, { "Content-Type": "text/plain", Connection: "close" })
+    response.end(mp3)
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+
+  const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
+    format: "mp3",
+    contentTypePolicy: "ignore",
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  expect(stream.format).toBe("mp3")
+  await drainStream(audio, stream)
+})
+
+test("Audio passes format-aware response context to content type policy", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const server = createServer((_, response) => {
+    response.writeHead(200, { "Content-Type": "audio/custom", Connection: "close" })
+    response.end(mp3)
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  const contexts: AudioStreamContentTypeContext[] = []
+
+  const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
+    format: "mp3",
+    contentTypePolicy(context) {
+      contexts.push(context)
+      return context.format === "mp3" && context.contentType === "audio/custom"
+    },
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  await drainStream(audio, stream)
+  expect(contexts).toEqual([
+    {
+      format: "mp3",
+      contentType: "audio/custom",
+      status: 200,
+      url: `${baseUrl}/radio`,
+    },
+  ])
+})
+
+test("Audio content type policy receives the effective redirected URL", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const server = createServer((request, response) => {
+    if (request.url === "/redirect") {
+      response.writeHead(302, { Location: "/radio", Connection: "close" })
+      response.end()
+      return
+    }
+    response.writeHead(200, { "Content-Type": "audio/custom", Connection: "close" })
+    response.end(mp3)
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  let effectiveUrl: string | undefined
+
+  const stream = await audio.playStreamUrl(`${baseUrl}/redirect`, {
+    contentTypePolicy(context) {
+      effectiveUrl = context.url
+      return context.url === `${baseUrl}/radio`
+    },
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  await drainStream(audio, stream)
+  expect(effectiveUrl).toBe(`${baseUrl}/radio`)
+})
+
+test("Audio re-evaluates and enforces content type policy for reconnect responses", async () => {
+  const initialMp3 = new Uint8Array(await readFile(MP3_5S_URL))
+  const replacementMp3 = new Uint8Array(await readFile(MP3_URL))
+  const interrupt = deferred()
+  let requests = 0
+  const server = createServer((_, response) => {
+    requests += 1
+    if (requests === 1) {
+      response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
+      response.write(initialMp3)
+      void interrupt.promise.then(() => response.destroy())
+      return
+    }
+    response.writeHead(200, { "Content-Type": "audio/custom", Connection: "close" })
+    response.end(replacementMp3)
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  const contentTypes: Array<string | null> = []
+  let replacementRejected = false
+
+  const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
+    contentTypePolicy(context) {
+      contentTypes.push(context.contentType)
+      if (context.contentType === "audio/custom") replacementRejected = true
+      return context.contentType === "audio/mpeg"
+    },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
+  })
+  const errors: Array<{ error: Error; context: AudioStreamErrorContext }> = []
+  stream.on("error", (error, context) => {
+    errors.push({ error, context })
+  })
+  await waitFor(
+    () => stream.getStats().bytesReceived >= BigInt(initialMp3.byteLength),
+    "Initial response bytes were not accepted before interruption",
+  )
+  const internals = stream as unknown as {
+    lib: {
+      audioWriteStream: (...args: unknown[]) => number
+    }
+  }
+  const originalWriteStream = internals.lib.audioWriteStream
+  let rejectedResponseWrites = 0
+  const restoreWriteStream = replaceMethod(internals.lib, "audioWriteStream", (...args: unknown[]) => {
+    if (replacementRejected) rejectedResponseWrites += 1
+    return originalWriteStream.apply(internals.lib, args)
+  })
+  try {
+    interrupt.resolve()
+    await stream.closed
+  } finally {
+    restoreWriteStream()
+  }
+  expect(requests).toBe(2)
+  expect(contentTypes).toEqual(["audio/mpeg", "audio/custom"])
+  expect(errors).toHaveLength(1)
+  expect(errors[0]?.context).toEqual({ action: "response", status: 200, attempt: 1 })
+  expect(rejectedResponseWrites).toBe(0)
+})
+
+test("Audio validates URL content type policy before requesting", async () => {
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  const originalFetch = globalThis.fetch
+  let requests = 0
+  globalThis.fetch = (() => {
+    requests += 1
+    return Promise.reject(new Error("unexpected request"))
+  }) as unknown as typeof fetch
+  try {
+    await expect(
+      audio.playStreamUrl("https://example.test/radio", { contentTypePolicy: "invalid" as never }),
+    ).rejects.toThrow("contentTypePolicy")
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+  expect(requests).toBe(0)
+})
+
+test("Audio treats content type callbacks as authoritative before native allocation", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const originalFetch = globalThis.fetch
+  try {
+    for (const contentType of ["audio/mpeg", null]) {
+      globalThis.fetch = (async () =>
+        new Response(mp3, {
+          status: 200,
+          headers: contentType == null ? undefined : { "Content-Type": contentType },
+        })) as unknown as typeof fetch
+      const audio = Audio.create({ autoStart: false })
+      audios.push(audio)
+      const internals = audio as unknown as {
+        lib: {
+          audioCreateStream: (...args: unknown[]) => unknown
+        }
+      }
+      const originalCreateStream = internals.lib.audioCreateStream
+      let nativeCreates = 0
+      const restoreCreateStream = replaceMethod(internals.lib, "audioCreateStream", (...args: unknown[]) => {
+        nativeCreates += 1
+        return originalCreateStream.apply(internals.lib, args)
+      })
+      let context: AudioStreamContentTypeContext | undefined
+      let rejection: unknown
+      try {
+        await audio.playStreamUrl("https://example.test/radio", {
+          contentTypePolicy(value) {
+            context = value
+            return false
+          },
+        })
+      } catch (error) {
+        rejection = error
+      } finally {
+        restoreCreateStream()
+      }
+      const streamError = expectAudioStreamError(rejection)
+      expect(streamError.context).toEqual({ action: "response", status: 200, attempt: 0 })
+      expect(context?.contentType).toBe(contentType)
+      expect(nativeCreates).toBe(0)
+      expect(audio.getStats()?.voicesActive).toBe(0)
+      audio.dispose()
+    }
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("Audio rejects invalid content type policy results before native allocation", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response(mp3, {
+      status: 200,
+      headers: { "Content-Type": "audio/custom" },
+    })) as unknown as typeof fetch
+  try {
+    const scenarios = [
+      {
+        policy: () => false,
+        message: "Unsupported audio stream Content-Type",
+      },
+      {
+        policy: () => "yes" as never,
+        message: "contentTypePolicy must return a boolean",
+      },
+      {
+        policy: () => {
+          throw new Error("policy failed")
+        },
+        message: "policy failed",
+      },
+    ]
+    for (const scenario of scenarios) {
+      const audio = Audio.create({ autoStart: false })
+      audios.push(audio)
+      let rejection: unknown
+      try {
+        await audio.playStreamUrl("https://example.test/radio", {
+          contentTypePolicy: scenario.policy,
+        })
+      } catch (error) {
+        rejection = error
+      }
+      const streamError = expectAudioStreamError(rejection)
+      expect(streamError.message).toContain(scenario.message)
+      expect(streamError.context).toEqual({ action: "response", status: 200, attempt: 0 })
+      expect(audio.getStats()?.voicesActive).toBe(0)
+      audio.dispose()
+    }
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test("Audio classifies invalid chunks and invalid reconnect media at the public boundary", async () => {
@@ -2953,6 +3299,7 @@ test("Audio validates public stream and reconnect options before consuming a sou
     { reconnect: {} },
     { request: { headers: { "x-test": "value" } } },
     { metadataEncoding: "utf-8" },
+    { contentTypePolicy: "ignore" },
   ]) {
     let pulls = 0
     const source: AsyncIterable<Uint8Array> = {
@@ -3009,7 +3356,7 @@ test("Audio publishes custom demuxer metadata and writes flush output", async ()
 })
 
 test("Audio uses the public ICY demuxer with a non-HTTP byte source", async () => {
-  const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 2)
+  const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 8)
   const interval = 1024
   const framed = interleaveIcy(mp3, interval, ["StreamTitle='Custom transport';"])
   const audio = Audio.create({ autoStart: false })
@@ -3021,7 +3368,7 @@ test("Audio uses the public ICY demuxer with a non-HTTP byte source", async () =
       for (let offset = 0; offset < framed.byteLength; offset += 37) yield framed.subarray(offset, offset + 37)
     })(),
     {
-      buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+      buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
       demuxer: () =>
         createIcyStreamDemuxer({
           metadataInterval: interval,
@@ -3098,6 +3445,7 @@ test("Audio creates a fresh demuxer for every connector attempt", async () => {
   expect(connectAttempts).toEqual([0, 1])
   expect(retryContexts).toEqual([{ attempt: 1, maxRetries: 1, phase: "read" }])
   expect(stream.getMetadata()).toEqual({ title: "Connection 2" })
+  expect(stream.format).toBe("mp3")
   expect(stream.getStats().reconnectAttempts).toBe(1)
 })
 

@@ -21,6 +21,7 @@ fn streamOptions() audio.StreamOptions {
         .volume = 1,
         .pan = 0,
         .group_id = 0,
+        .format = audio.StreamFormat.mp3,
     };
 }
 
@@ -139,7 +140,7 @@ fn mixStreamToEnd(engine: *audio.Engine, stream_id: u32) !audio.StreamStats {
 }
 
 test "audio stream ABI layouts remain stable" {
-    try testing.expectEqual(@as(usize, 28), @sizeOf(audio.StreamOptions));
+    try testing.expectEqual(@as(usize, 32), @sizeOf(audio.StreamOptions));
     try testing.expectEqual(@as(usize, 0), @offsetOf(audio.StreamOptions, "capacity_ms"));
     try testing.expectEqual(@as(usize, 4), @offsetOf(audio.StreamOptions, "startup_ms"));
     try testing.expectEqual(@as(usize, 8), @offsetOf(audio.StreamOptions, "resume_ms"));
@@ -147,6 +148,7 @@ test "audio stream ABI layouts remain stable" {
     try testing.expectEqual(@as(usize, 16), @offsetOf(audio.StreamOptions, "pan"));
     try testing.expectEqual(@as(usize, 20), @offsetOf(audio.StreamOptions, "group_id"));
     try testing.expectEqual(@as(usize, 24), @offsetOf(audio.StreamOptions, "max_probe_bytes"));
+    try testing.expectEqual(@as(usize, 28), @offsetOf(audio.StreamOptions, "format"));
 
     try testing.expectEqual(@as(usize, 56), @sizeOf(audio.StreamStats));
     try testing.expectEqual(@as(usize, 0), @offsetOf(audio.StreamStats, "bytes_received"));
@@ -545,6 +547,9 @@ test "audio stream preflight rejects malformed options without allocating" {
     try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, null, &stream_id));
     try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, &options, null));
     options.max_probe_bytes = 0;
+    try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, &options, &stream_id));
+    options = streamOptions();
+    options.format = 999;
     try testing.expectEqual(audio.Status.err_invalid, audio.createStream(engine, &options, &stream_id));
     options = streamOptions();
     options.capacity_ms = 0;

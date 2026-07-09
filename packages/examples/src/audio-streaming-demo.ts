@@ -415,6 +415,7 @@ class AudioStreamingDemo {
     let nextStream: AudioStream
     try {
       nextStream = await this.audio.playStreamUrl(url, {
+        format: "mp3",
         signal: this.streamController.signal,
         volume: this.volume,
         pan: this.pan,
