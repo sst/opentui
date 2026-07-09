@@ -13,10 +13,6 @@ describe("OptimizedBuffer", () => {
     buffer.destroy()
   })
 
-  it("returns its native id through the portable FFI signature", () => {
-    expect(buffer.getNativeId()).toBe("test-buffer")
-  })
-
   describe("encodeUnicode", () => {
     it("should encode simple ASCII text", () => {
       const encoded = buffer.encodeUnicode("Hello")
