@@ -95,8 +95,7 @@ const DeflateWriter = struct {
     output: *BoundedOutput,
     bits: u64 = 0,
     bit_count: u6 = 0,
-    adler_a: u32 = 1,
-    adler_b: u32 = 0,
+    adler: std.hash.Adler32 = .{},
     previous_byte: u8 = 0,
     has_previous_byte: bool = false,
 
@@ -135,8 +134,7 @@ const DeflateWriter = struct {
     fn finish(writer: *DeflateWriter) ConvertError!void {
         try writer.writeFixedSymbol(256);
         try writer.flushBits();
-        const adler = (writer.adler_b << 16) | writer.adler_a;
-        try writer.output.appendInt(adler);
+        try writer.output.appendInt(writer.adler.adler);
     }
 
     fn writeRun(writer: *DeflateWriter, length: u16) ConvertError!void {
@@ -187,13 +185,8 @@ const DeflateWriter = struct {
         var offset: usize = 0;
         while (offset < data.len) {
             try checkStop(options);
-            const end = @min(data.len, offset + 5552);
-            for (data[offset..end]) |byte| {
-                writer.adler_a += byte;
-                writer.adler_b += writer.adler_a;
-            }
-            writer.adler_a %= 65521;
-            writer.adler_b %= 65521;
+            const end = @min(data.len, offset + CONVERSION_STOP_INTERVAL);
+            writer.adler.update(data[offset..end]);
             offset = end;
         }
     }
@@ -324,6 +317,7 @@ fn parseDib(dib: []const u8, explicit_pixel_offset: ?usize, options: ConvertOpti
         return error.Unsupported;
     }
     if (bits_per_pixel == 24 and compression != BI_RGB) return error.Unsupported;
+    if (height_signed < 0 and compression == BI_ALPHABITFIELDS) return error.InvalidData;
 
     const width: u32 = @intCast(width_signed);
     const height: u32 = @intCast(if (height_signed < 0) -height_signed else height_signed);
@@ -652,6 +646,12 @@ test "Windows DIB conversion rejects malformed and unsupported headers" {
     var dib_v5 = dibV5Fixture();
     std.mem.writeInt(u32, dib_v5[40..44], 0x00ff00ff, .little);
     try std.testing.expectError(error.InvalidData, convertToPng(std.testing.allocator, &dib_v5, testOptions()));
+}
+
+test "Windows DIB conversion rejects top-down BI_ALPHABITFIELDS" {
+    var dib = dibV5Fixture();
+    std.mem.writeInt(u32, dib[16..20], BI_ALPHABITFIELDS, .little);
+    try std.testing.expectError(error.InvalidData, convertToPng(std.testing.allocator, &dib, testOptions()));
 }
 
 test "Windows DIB conversion enforces pixel conversion and output limits" {
