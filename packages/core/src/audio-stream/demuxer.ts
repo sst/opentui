@@ -1,4 +1,4 @@
-import { createIcyStreamDemuxer } from "./icy/parser.js"
+import { createIcyStreamDemuxer } from "./icy/demuxer.js"
 import type { AudioStreamMetadata } from "../audio.js"
 
 export type AudioStreamDemuxOutput<M> = { type: "audio"; data: Uint8Array } | { type: "metadata"; metadata: M | null }

@@ -1,6 +1,6 @@
 import { parseIcyMetadata } from "./metadata.js"
 import type { AudioStreamMetadata } from "../../audio.js"
-import type { AudioStreamDemuxer, AudioStreamDemuxOutput } from "../parser.js"
+import type { AudioStreamDemuxer, AudioStreamDemuxOutput } from "../demuxer.js"
 
 export interface IcyStreamDemuxerOptions {
   metadataInterval: number

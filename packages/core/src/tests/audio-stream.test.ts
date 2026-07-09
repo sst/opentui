@@ -21,6 +21,7 @@ import type {
   AudioStreamDemuxOutput,
   AudioStreamDemuxer,
   AudioStreamMetadata,
+  AudioStreamReconnectOptions,
   AudioStreamUrlOptions,
   NativeAudioStreamStats,
 } from "../index.js"
@@ -53,6 +54,10 @@ function assertPublicAudioStreamApis(
   })
   const sourceStream: Promise<PublicAudioStream<TestStreamMetadata>> = audio.playStreamSource(connector, {
     demuxer: () => demuxer,
+    reconnect: {
+      maxRetries: 1,
+      retry: (_error, context) => (context.maxRetries === 1 ? {} : false),
+    },
   })
   const urlStream: Promise<PublicAudioStream<AudioStreamMetadata>> = audio.playStreamUrl(urlSource, urlOptions)
   void bodyStream
@@ -68,6 +73,19 @@ function assertPublicAudioStreamApis(
   void audio.playStreamUrl(urlSource, options)
   // @ts-expect-error URL request options are not valid for custom connectors.
   void audio.playStreamSource(connector, urlOptions)
+  const reconnectOptions: AudioStreamReconnectOptions = { maxRetries: 1 }
+  void reconnectOptions
+  const connectorWithRetry: AudioStreamConnector<{ readonly station: string }> = {
+    ...connector,
+    // @ts-expect-error Retry policy belongs to reconnect options.
+    retry: () => ({}),
+  }
+  void connectorWithRetry
+  const legacyReconnectOptions: AudioStreamReconnectOptions = {
+    // @ts-expect-error maxAttempts was renamed to maxRetries.
+    maxAttempts: 1,
+  }
+  void legacyReconnectOptions
 }
 
 function assertPublicReconnectError(stream: PublicAudioStream): void {
@@ -689,7 +707,7 @@ test("Audio selects a fresh ICY demuxer after reconnecting from a partial metada
   expect(audio.startMixer()).toBe(true)
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 500, startupMs: 25, resumeMs: 25 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
   })
   stream.on("error", () => {})
   expect(stream.getMetadata()?.fields.StreamTitle).toBe("First track")
@@ -760,7 +778,7 @@ test("Audio clears ICY metadata when a replacement response is plain MP3", async
   expect(audio.startMixer()).toBe(true)
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 500, startupMs: 25, resumeMs: 25 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
   })
   stream.on("error", () => {})
   expect(stream.getMetadata()?.fields.StreamTitle).toBe("ICY track")
@@ -945,7 +963,7 @@ test("Audio keeps playing decoded buffered frames while reconnecting an interrup
 
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 2000, startupMs: 200, resumeMs: 200 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 100, maxDelayMs: 100 },
+    reconnect: { maxRetries: 1, initialDelayMs: 100, maxDelayMs: 100 },
     request: { headers: { "x-audio-test": "reconnect" } },
   })
   stream.on("error", () => {})
@@ -978,10 +996,10 @@ test("Audio keeps playing decoded buffered frames while reconnecting an interrup
     }
     expect(audio.getStats()?.voicesActive).toBe(32)
 
-    const reconnectEvent: { value?: { attempt: number; delayMs: number; maxAttempts: number } } = {}
+    const reconnectEvent: { value?: { attempt: number; delayMs: number; maxRetries: number } } = {}
     let reconnectGroupResult: boolean | undefined
-    stream.on("reconnecting", ({ attempt, delayMs, maxAttempts }) => {
-      reconnectEvent.value = { attempt, delayMs, maxAttempts }
+    stream.on("reconnecting", ({ attempt, delayMs, maxRetries }) => {
+      reconnectEvent.value = { attempt, delayMs, maxRetries }
       reconnectGroupResult = stream.setGroup(0xffffffff)
     })
     interruptResponse.resolve()
@@ -989,7 +1007,7 @@ test("Audio keeps playing decoded buffered frames while reconnecting an interrup
       () => reconnectEvent.value != null,
       "Audio stream did not enter reconnecting state after interruption",
     )
-    expect(reconnectEvent.value).toEqual({ attempt: 1, delayMs: 100, maxAttempts: 1 })
+    expect(reconnectEvent.value).toEqual({ attempt: 1, delayMs: 100, maxRetries: 1 })
     expect(reconnectGroupResult).toBe(false)
 
     const reconnectStats = stream.getStats()
@@ -1096,7 +1114,7 @@ test("Audio preserves the initial startup threshold when reconnecting before pla
 
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 2000, startupMs: 1200, resumeMs: 100 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
   })
   stream.on("error", () => {})
   try {
@@ -1175,7 +1193,7 @@ test("Audio disposes a buffered stream while reconnecting", async () => {
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     signal: abortController.signal,
     buffer: { capacityMs: 1000, startupMs: 100, resumeMs: 100 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 1000, maxDelayMs: 1000 },
+    reconnect: { maxRetries: 1, initialDelayMs: 1000, maxDelayMs: 1000 },
   })
   stream.on("error", () => {})
   await waitFor(
@@ -1289,7 +1307,7 @@ test("A short clean MP3 can finish setup before retryOnEnd reconnects", async ()
 
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0, retryOnEnd: true },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0, retryOnEnd: true },
   })
   stream.on("error", () => {})
   await waitFor(
@@ -1509,6 +1527,11 @@ test("Audio reports a byte-source failure after stream setup", async () => {
     streamErrors.push(error)
   })
   failSource.resolve()
+  await waitFor(
+    () => stream.state === "errored",
+    "Audio stream did not enter its errored state",
+    () => audio.mixFrames(256, 2),
+  )
   await stream.closed
   await waitFor(() => streamErrors.length === 1, "Audio stream did not emit its source failure")
 
@@ -1551,6 +1574,36 @@ test("Source failure cleanup cannot overwrite reentrant Audio disposal", async (
   await stream.closed
 
   expect(stream.state).toBe("disposed")
+})
+
+test("Audio ends cleanly when retryOnEnd has no retry budget", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      return {
+        info: undefined,
+        body: (async function* () {
+          yield mp3
+        })(),
+      }
+    },
+  }
+
+  const stream = await audio.playStreamSource(connector, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    reconnect: { maxRetries: 0, retryOnEnd: true },
+  })
+  let errors = 0
+  stream.on("error", () => {
+    errors += 1
+  })
+  await drainStream(audio, stream)
+  expect(stream.state).toBe("ended")
+  expect(errors).toBe(0)
+  expect(stream.getStats().reconnectAttempts).toBe(0)
 })
 
 test("Audio stream setup remains abortable while a source emits empty chunks", async () => {
@@ -1977,7 +2030,7 @@ test("Audio does not replay initial reconnect attempts after stream setup", asyn
 
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
   })
   const reconnectAttempts: number[] = []
   stream.on("reconnecting", ({ attempt }) => reconnectAttempts.push(attempt))
@@ -1989,7 +2042,7 @@ test("Audio does not replay initial reconnect attempts after stream setup", asyn
   await drainStream(audio, stream)
 })
 
-test("Audio retries only documented HTTP statuses and enforces maxAttempts", async () => {
+test("Audio retries only documented HTTP statuses and enforces maxRetries", async () => {
   const fixture = new Uint8Array(await readFile(MP3_URL))
   const retryableStatuses = [408, 425, 429, 500, 503, 599]
   for (const status of retryableStatuses) {
@@ -2011,7 +2064,7 @@ test("Audio retries only documented HTTP statuses and enforces maxAttempts", asy
 
     const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
       buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
-      reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+      reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
     })
     await drainStream(audio, stream)
     expect(requests).toBe(2)
@@ -2033,7 +2086,7 @@ test("Audio retries only documented HTTP statuses and enforces maxAttempts", asy
 
     await expect(
       audio.playStreamUrl(`${baseUrl}/radio`, {
-        reconnect: { maxAttempts: 2, initialDelayMs: 0, maxDelayMs: 0 },
+        reconnect: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
       }),
     ).rejects.toThrow(`HTTP ${status}`)
     expect(requests).toBe(1)
@@ -2041,7 +2094,7 @@ test("Audio retries only documented HTTP statuses and enforces maxAttempts", asy
     audio.dispose()
   }
 
-  for (const maxAttempts of [0, 2]) {
+  for (const maxRetries of [0, 2]) {
     let requests = 0
     const server = createServer((_, response) => {
       requests += 1
@@ -2054,13 +2107,51 @@ test("Audio retries only documented HTTP statuses and enforces maxAttempts", asy
 
     await expect(
       audio.playStreamUrl(`${baseUrl}/radio`, {
-        reconnect: { maxAttempts, initialDelayMs: 0, maxDelayMs: 0 },
+        reconnect: { maxRetries, initialDelayMs: 0, maxDelayMs: 0 },
       }),
     ).rejects.toThrow("HTTP 503")
-    expect(requests).toBe(maxAttempts + 1)
+    expect(requests).toBe(maxRetries + 1)
     expect(audio.getStats()?.voicesActive).toBe(0)
     audio.dispose()
   }
+})
+
+test("Audio reconnect policy can override default URL response classification", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  let requests = 0
+  const server = createServer((_, response) => {
+    requests += 1
+    if (requests === 1) {
+      response.writeHead(404, { Connection: "close" })
+      response.end()
+      return
+    }
+    response.writeHead(200, { "Content-Type": "audio/mpeg", Connection: "close" })
+    response.end(mp3)
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  let policies = 0
+
+  const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    reconnect: {
+      maxRetries: 1,
+      initialDelayMs: 0,
+      maxDelayMs: 0,
+      retry(error, context) {
+        policies += 1
+        expect(error.context).toEqual({ action: "response", status: 404, attempt: 0 })
+        expect(context.phase).toBe("connect")
+        return {}
+      },
+    },
+  })
+  await drainStream(audio, stream)
+  expect(requests).toBe(2)
+  expect(policies).toBe(1)
 })
 
 test("Audio applies exponential reconnect backoff and caps it at maxDelayMs", async () => {
@@ -2085,7 +2176,7 @@ test("Audio applies exponential reconnect backoff and caps it at maxDelayMs", as
 
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
-    reconnect: { maxAttempts: 3, initialDelayMs: 10, maxDelayMs: 25, backoffFactor: 2 },
+    reconnect: { maxRetries: 3, initialDelayMs: 10, maxDelayMs: 25, backoffFactor: 2 },
   })
   const attempts: number[] = []
   const delays: number[] = []
@@ -2167,7 +2258,7 @@ test("Audio resets consecutive reconnect attempts after decoder recovery", async
 
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
   })
   stream.on("error", () => {})
   const attempts: number[] = []
@@ -2235,7 +2326,13 @@ test("Audio reports Retry-After delay through reconnect events without waiting f
 
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
-    reconnect: { maxAttempts: 3, initialDelayMs: 0, maxDelayMs: 100, backoffFactor: 2 },
+    reconnect: {
+      maxRetries: 3,
+      initialDelayMs: 0,
+      maxDelayMs: 100,
+      backoffFactor: 2,
+      retry: () => ({}),
+    },
   })
   stream.on("error", () => {})
   const delays: number[] = []
@@ -2275,7 +2372,7 @@ test("Audio preserves long reconnect delays across runtime timer limits", async 
   const delayMs = 3_000_000_000
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
-    reconnect: { maxAttempts: 1, initialDelayMs: delayMs, maxDelayMs: delayMs },
+    reconnect: { maxRetries: 1, initialDelayMs: delayMs, maxDelayMs: delayMs },
   })
   stream.on("error", () => {})
   const reconnecting = new Promise<void>((resolve) => {
@@ -2346,7 +2443,7 @@ test("Audio retries successful URL responses that have no body", async () => {
   let rejection: unknown
   try {
     await audio.playStreamUrl("https://example.test/radio", {
-      reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+      reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
     })
   } catch (error) {
     rejection = error
@@ -2406,7 +2503,7 @@ test("Audio enforces the documented HTTP content-type policy", async () => {
   audios.push(unsupportedAudio)
   await expect(
     unsupportedAudio.playStreamUrl(`${unsupportedUrl}/radio`, {
-      reconnect: { maxAttempts: 2, initialDelayMs: 0, maxDelayMs: 0 },
+      reconnect: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
     }),
   ).rejects.toThrow("Unsupported audio stream Content-Type")
   expect(unsupportedRequests).toBe(1)
@@ -2470,7 +2567,7 @@ test("Audio classifies invalid chunks and invalid reconnect media at the public 
   const baseUrl = await listen(server)
   const reconnectStream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
-    reconnect: { maxAttempts: 2, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
   })
   const reconnectErrorContext: { value?: AudioStreamErrorContext } = {}
   reconnectStream.on("error", (_error, context) => {
@@ -2502,7 +2599,7 @@ test("Audio reports a native restart failure during reconnect and releases the s
   expect(audio.startMixer()).toBe(true)
   const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
     buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
   })
 
   const internals = stream as unknown as {
@@ -2822,11 +2919,12 @@ test("Audio validates public stream and reconnect options before consuming a sou
   invalidMetadataEncodingAudio.dispose()
 
   const invalidReconnectOptions = [
-    { reconnect: { maxAttempts: -1 }, message: "reconnect.maxAttempts" },
-    { reconnect: { maxAttempts: 1.5 }, message: "reconnect.maxAttempts" },
+    { reconnect: { maxRetries: -1 }, message: "reconnect.maxRetries" },
+    { reconnect: { maxRetries: 1.5 }, message: "reconnect.maxRetries" },
     { reconnect: { initialDelayMs: -1 }, message: "reconnect.initialDelayMs" },
     { reconnect: { maxDelayMs: 1.5 }, message: "reconnect.maxDelayMs" },
     { reconnect: { backoffFactor: 0.5 }, message: "reconnect.backoffFactor" },
+    { reconnect: { retryOnEnd: "false" as never }, message: "reconnect.retryOnEnd" },
     {
       reconnect: { backoffFactor: Number.POSITIVE_INFINITY },
       message: "reconnect.backoffFactor",
@@ -2939,7 +3037,7 @@ test("Audio creates a fresh demuxer for every connector attempt", async () => {
   let demuxers = 0
   let closes = 0
   const connectAttempts: number[] = []
-  const retryContexts: Array<{ attempt: number; maxAttempts: number; phase: string }> = []
+  const retryContexts: Array<{ attempt: number; maxRetries: number; phase: string }> = []
   const connector: AudioStreamConnector<{ readonly connection: number }> = {
     async connect({ attempt }) {
       connectAttempts.push(attempt)
@@ -2959,15 +3057,19 @@ test("Audio creates a fresh demuxer for every connector attempt", async () => {
         },
       }
     },
-    retry(_error, context) {
-      retryContexts.push(context)
-      return {}
-    },
   }
 
   const stream = await audio.playStreamSource(connector, {
     buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: {
+      maxRetries: 1,
+      initialDelayMs: 0,
+      maxDelayMs: 0,
+      retry(_error, context) {
+        retryContexts.push(context)
+        return {}
+      },
+    },
     demuxer(info): AudioStreamDemuxer<TestStreamMetadata> {
       demuxers += 1
       const ownConnection = info.connection
@@ -2986,12 +3088,12 @@ test("Audio creates a fresh demuxer for every connector attempt", async () => {
   expect(demuxers).toBe(2)
   expect(closes).toBe(2)
   expect(connectAttempts).toEqual([0, 1])
-  expect(retryContexts).toEqual([{ attempt: 1, maxAttempts: 1, phase: "read" }])
+  expect(retryContexts).toEqual([{ attempt: 1, maxRetries: 1, phase: "read" }])
   expect(stream.getMetadata()).toEqual({ title: "Connection 2" })
   expect(stream.getStats().reconnectAttempts).toBe(1)
 })
 
-test("Audio honors a connector retry decision", async () => {
+test("Audio honors a reconnect retry decision", async () => {
   const audio = Audio.create({ autoStart: false })
   audios.push(audio)
   let connections = 0
@@ -3001,23 +3103,27 @@ test("Audio honors a connector retry decision", async () => {
       connections += 1
       throw new Error("not retryable")
     },
-    retry(_error, context) {
-      decisions += 1
-      expect(context.attempt).toBe(1)
-      return false
-    },
   }
 
   await expect(
     audio.playStreamSource(connector, {
-      reconnect: { maxAttempts: 3, initialDelayMs: 0, maxDelayMs: 0 },
+      reconnect: {
+        maxRetries: 3,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        retry(_error, context) {
+          decisions += 1
+          expect(context.attempt).toBe(1)
+          return false
+        },
+      },
     }),
   ).rejects.toThrow("not retryable")
   expect(connections).toBe(1)
   expect(decisions).toBe(1)
 })
 
-test("Audio rejects an invalid connector retry delay without reconnecting", async () => {
+test("Audio rejects an invalid reconnect retry delay without reconnecting", async () => {
   const audio = Audio.create({ autoStart: false })
   audios.push(audio)
   let connections = 0
@@ -3026,14 +3132,16 @@ test("Audio rejects an invalid connector retry delay without reconnecting", asyn
       connections += 1
       throw new Error("retry me")
     },
-    retry() {
-      return { delayMs: -1 }
-    },
   }
 
   await expect(
     audio.playStreamSource(connector, {
-      reconnect: { maxAttempts: 3, initialDelayMs: 0, maxDelayMs: 0 },
+      reconnect: {
+        maxRetries: 3,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        retry: () => ({ delayMs: -1 }),
+      },
     }),
   ).rejects.toThrow("retry delay")
   expect(connections).toBe(1)
@@ -3225,6 +3333,91 @@ test("Audio preserves resolved cleanup when later connection metadata throws", a
   expect(bodyReads).toBe(0)
 })
 
+test("Audio applies custom retry policy from reconnect options", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  let connections = 0
+  let policyCalls = 0
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      connections += 1
+      if (connections === 1) throw new Error("stop retrying")
+      return {
+        info: undefined,
+        body: (async function* () {
+          yield mp3
+        })(),
+      }
+    },
+  }
+
+  await expect(
+    audio.playStreamSource(connector, {
+      reconnect: {
+        maxRetries: 1,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        retry(error, context) {
+          policyCalls += 1
+          expect(error.message).toContain("stop retrying")
+          expect(context).toEqual({ attempt: 1, maxRetries: 1, phase: "connect" })
+          return false
+        },
+      },
+    }),
+  ).rejects.toThrow("stop retrying")
+  expect(connections).toBe(1)
+  expect(policyCalls).toBe(1)
+})
+
+test("Audio stops retry processing when reconnect policy disposes the stream", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const failSource = deferred()
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  let connections = 0
+  let stream!: AudioStream
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      connections += 1
+      return {
+        info: undefined,
+        body: (async function* () {
+          yield mp3
+          await failSource.promise
+          throw new Error("interrupted")
+        })(),
+      }
+    },
+  }
+
+  stream = await audio.playStreamSource(connector, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    reconnect: {
+      maxRetries: 1,
+      initialDelayMs: 0,
+      maxDelayMs: 0,
+      retry() {
+        stream.dispose()
+        return {}
+      },
+    },
+  })
+  let reconnecting = 0
+  stream.on("reconnecting", () => {
+    reconnecting += 1
+  })
+  failSource.resolve()
+  await stream.closed
+  await sleep(5)
+  expect(connections).toBe(1)
+  expect(stream.getStats().reconnectAttempts).toBe(0)
+  expect(reconnecting).toBe(0)
+})
+
 test("Audio cleans up when setup is cancelled during demuxer creation", async () => {
   const audio = Audio.create({ autoStart: false })
   audios.push(audio)
@@ -3311,49 +3504,55 @@ test("Audio cleans up a connector when acquiring its body fails", async () => {
   expect(aborts).toBe(1)
 })
 
-test("Audio rejects a malformed connector retry decision", async () => {
+test("Audio rejects a malformed reconnect retry decision", async () => {
   const audio = Audio.create({ autoStart: false })
   audios.push(audio)
   const connector: AudioStreamConnector<void> = {
     async connect() {
       throw new Error("connect failed")
     },
-    retry() {
-      return undefined as never
-    },
   }
 
   await expect(
     audio.playStreamSource(connector, {
-      reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+      reconnect: {
+        maxRetries: 1,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        retry: () => undefined as never,
+      },
     }),
   ).rejects.toThrow("retry policy")
 })
 
-test("Audio rejects a connector retry decision with a throwing delay", async () => {
+test("Audio rejects a reconnect retry decision with a throwing delay", async () => {
   const audio = Audio.create({ autoStart: false })
   audios.push(audio)
   const connector: AudioStreamConnector<void> = {
     async connect() {
       throw new Error("connect failed")
     },
-    retry() {
-      return {
-        get delayMs(): number {
-          throw new Error("delay failed")
-        },
-      }
-    },
   }
 
   await expect(
     audio.playStreamSource(connector, {
-      reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+      reconnect: {
+        maxRetries: 1,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        retry() {
+          return {
+            get delayMs(): number {
+              throw new Error("delay failed")
+            },
+          }
+        },
+      },
     }),
   ).rejects.toThrow("retry policy failed")
 })
 
-test("Audio reads a connector retry delay once", async () => {
+test("Audio reads a reconnect retry delay once", async () => {
   const mp3 = new Uint8Array(await readFile(MP3_URL))
   const audio = Audio.create({ autoStart: false })
   audios.push(audio)
@@ -3371,45 +3570,46 @@ test("Audio reads a connector retry delay once", async () => {
         })(),
       }
     },
-    retry() {
-      return {
-        get delayMs(): number {
-          delayReads += 1
-          if (delayReads > 1) throw new Error("delay read twice")
-          return 0
-        },
-      }
-    },
   }
 
   const stream = await audio.playStreamSource(connector, {
     buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: {
+      maxRetries: 1,
+      initialDelayMs: 0,
+      maxDelayMs: 0,
+      retry() {
+        return {
+          get delayMs(): number {
+            delayReads += 1
+            if (delayReads > 1) throw new Error("delay read twice")
+            return 0
+          },
+        }
+      },
+    },
   })
   await drainStream(audio, stream)
   expect(delayReads).toBe(1)
 })
 
-test("Audio rejects a throwing connector retry getter before setup", async () => {
+test("Audio rejects a throwing reconnect retry getter before setup", async () => {
   const audio = Audio.create({ autoStart: false })
   audios.push(audio)
   let connections = 0
-  const connector = Object.defineProperty(
-    {
-      async connect(): Promise<AudioStreamConnection<void>> {
-        connections += 1
-        throw new Error("should not connect")
-      },
+  const connector: AudioStreamConnector<void> = {
+    async connect(): Promise<AudioStreamConnection<void>> {
+      connections += 1
+      throw new Error("should not connect")
     },
-    "retry",
-    {
-      get() {
-        throw new Error("retry getter failed")
-      },
+  }
+  const reconnect = Object.defineProperty({ maxRetries: 1 }, "retry", {
+    get() {
+      throw new Error("retry getter failed")
     },
-  ) as AudioStreamConnector<void>
+  }) as AudioStreamReconnectOptions
 
-  await expect(audio.playStreamSource(connector)).rejects.toThrow("retry getter failed")
+  await expect(audio.playStreamSource(connector, { reconnect })).rejects.toThrow("retry getter failed")
   expect(connections).toBe(0)
 })
 
@@ -3434,14 +3634,14 @@ test("Audio retries connector failures by default", async () => {
 
   const stream = await audio.playStreamSource(connector, {
     buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
   })
   await drainStream(audio, stream)
   expect(connections).toBe(2)
   expect(stream.getStats().reconnectAttempts).toBe(1)
 })
 
-test("Audio does not call connector retry after exhausting the retry budget", async () => {
+test("Audio does not call retry policy after exhausting the retry budget", async () => {
   const audio = Audio.create({ autoStart: false })
   audios.push(audio)
   let decisions = 0
@@ -3449,15 +3649,19 @@ test("Audio does not call connector retry after exhausting the retry budget", as
     async connect() {
       throw new Error("connect failed")
     },
-    retry() {
-      decisions += 1
-      return {}
-    },
   }
 
   await expect(
     audio.playStreamSource(connector, {
-      reconnect: { maxAttempts: 0, initialDelayMs: 0, maxDelayMs: 0 },
+      reconnect: {
+        maxRetries: 0,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        retry() {
+          decisions += 1
+          return {}
+        },
+      },
     }),
   ).rejects.toThrow("connect failed")
   expect(decisions).toBe(0)
@@ -3479,16 +3683,20 @@ test("Audio treats demuxer push failures as terminal", async () => {
         })(),
       }
     },
-    retry() {
-      retryDecisions += 1
-      return {}
-    },
   }
 
   let rejection: unknown
   try {
     await audio.playStreamSource(connector, {
-      reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+      reconnect: {
+        maxRetries: 1,
+        initialDelayMs: 0,
+        maxDelayMs: 0,
+        retry() {
+          retryDecisions += 1
+          return {}
+        },
+      },
       demuxer(): AudioStreamDemuxer<TestStreamMetadata> {
         return {
           initialMetadata: null,
@@ -3526,15 +3734,19 @@ test("Audio retries a connector when demuxer flush reports truncated input", asy
         })(),
       }
     },
-    retry(_error, context) {
-      retryPhases.push(context.phase)
-      return {}
-    },
   }
 
   const stream = await audio.playStreamSource(connector, {
     buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
-    reconnect: { maxAttempts: 1, initialDelayMs: 0, maxDelayMs: 0 },
+    reconnect: {
+      maxRetries: 1,
+      initialDelayMs: 0,
+      maxDelayMs: 0,
+      retry(_error, context) {
+        retryPhases.push(context.phase)
+        return {}
+      },
+    },
     demuxer(info): AudioStreamDemuxer<TestStreamMetadata> {
       return {
         initialMetadata: null,
@@ -3592,4 +3804,280 @@ test("Audio returns an iterator acquired during cancellation", async () => {
   )
   expect(returns).toBe(1)
   expect(closes).toBe(1)
+})
+
+test("Audio does not reacquire an async iterator after acquisition fails", async () => {
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  let acquisitions = 0
+  let closes = 0
+  const body: AsyncIterable<Uint8Array> = {
+    [Symbol.asyncIterator]() {
+      acquisitions += 1
+      throw new Error("iterator acquisition failed")
+    },
+  }
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      return {
+        body,
+        info: undefined,
+        close() {
+          closes += 1
+        },
+      }
+    },
+  }
+
+  await expect(audio.playStreamSource(connector)).rejects.toThrow("Audio stream source failed")
+  expect(acquisitions).toBe(1)
+  expect(closes).toBe(1)
+})
+
+test("AudioStream.closed waits for resources discovered during cancellation", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const failFirst = deferred()
+  const releaseCancel = deferred()
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  let connections = 0
+  let cancelStarted = false
+  let stream!: AudioStream
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      connections += 1
+      if (connections === 1) {
+        return {
+          info: undefined,
+          body: (async function* () {
+            yield mp3
+            await failFirst.promise
+            throw new Error("interrupted")
+          })(),
+        }
+      }
+      return {
+        get info(): undefined {
+          stream.dispose()
+          return undefined
+        },
+        body: new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelStarted = true
+            return releaseCancel.promise
+          },
+        }),
+      }
+    },
+  }
+
+  stream = await audio.playStreamSource(connector, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    reconnect: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 0 },
+  })
+  let closed = false
+  void stream.closed.then(() => {
+    closed = true
+  })
+  failFirst.resolve()
+  await waitFor(
+    () => cancelStarted,
+    "Cancellation did not discover the replacement body",
+    () => audio.mixFrames(256, 2),
+  )
+  await sleep(5)
+  expect(closed).toBe(false)
+  releaseCancel.resolve()
+  await stream.closed
+  expect(closed).toBe(true)
+})
+
+test("AudioStream.closed waits for all cleanup after one cleanup rejects", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const releaseClose = deferred()
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  let pulls = 0
+  let closeStarted = false
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      return {
+        info: undefined,
+        body: {
+          [Symbol.asyncIterator]() {
+            return {
+              next() {
+                pulls += 1
+                if (pulls === 1) return Promise.resolve({ done: false as const, value: mp3 })
+                return new Promise<IteratorResult<Uint8Array>>(() => {})
+              },
+              return() {
+                return Promise.reject(new Error("return failed"))
+              },
+            }
+          },
+        },
+        close() {
+          closeStarted = true
+          return releaseClose.promise
+        },
+      }
+    },
+  }
+
+  const stream = await audio.playStreamSource(connector, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  let closed = false
+  void stream.closed.then(() => {
+    closed = true
+  })
+  stream.dispose()
+  await waitFor(() => closeStarted, "Connection cleanup did not start")
+  await sleep(5)
+  expect(closed).toBe(false)
+  releaseClose.resolve()
+  await stream.closed
+  expect(closed).toBe(true)
+})
+
+test("Audio does not reacquire a source after cancellation during initial native polling", async () => {
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  let acquisitions = 0
+  let returns = 0
+  const source: AsyncIterable<Uint8Array> = {
+    [Symbol.asyncIterator]() {
+      acquisitions += 1
+      return {
+        next: () => new Promise<IteratorResult<Uint8Array>>(() => {}),
+        return() {
+          returns += 1
+          return Promise.resolve({ done: true, value: undefined })
+        },
+      }
+    },
+  }
+  const internals = audio as unknown as {
+    lib: {
+      audioGetStreamStats: (...args: unknown[]) => unknown
+    }
+  }
+  const originalGetStats = internals.lib.audioGetStreamStats
+  let disposed = false
+  const restoreGetStats = replaceMethod(internals.lib, "audioGetStreamStats", (...args: unknown[]) => {
+    const stats = originalGetStats.apply(internals.lib, args)
+    if (!disposed) {
+      disposed = true
+      audio.dispose()
+    }
+    return stats
+  })
+
+  try {
+    await expect(audio.playStream(source)).rejects.toHaveProperty("name", "AbortError")
+  } finally {
+    restoreGetStats()
+  }
+  expect(acquisitions).toBe(1)
+  expect(returns).toBe(1)
+})
+
+test("Audio does not create a demuxer after cancellation during body classification", async () => {
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  const controller = new AbortController()
+  let demuxers = 0
+  const body = {
+    get getReader() {
+      controller.abort()
+      return () => {
+        throw new Error("reader should not be acquired")
+      }
+    },
+  } as unknown as ReadableStream<Uint8Array>
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      return { body, info: undefined }
+    },
+  }
+
+  await expect(
+    audio.playStreamSource(connector, {
+      signal: controller.signal,
+      demuxer() {
+        demuxers += 1
+        return null
+      },
+    }),
+  ).rejects.toHaveProperty("name", "AbortError")
+  expect(demuxers).toBe(0)
+})
+
+test("Audio snapshots URL reconnect options before requesting", async () => {
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  let reads = 0
+  let requests = 0
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (() => {
+    requests += 1
+    return Promise.reject(new Error("unexpected request"))
+  }) as unknown as typeof fetch
+  const reconnect = {
+    maxRetries: 0,
+    get maxDelayMs(): number {
+      reads += 1
+      return reads === 1 ? -1 : 100
+    },
+  }
+
+  try {
+    await expect(audio.playStreamUrl("https://example.test/radio", { reconnect })).rejects.toThrow(
+      "reconnect.maxDelayMs",
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+  expect(reads).toBe(1)
+  expect(requests).toBe(0)
+})
+
+test("Audio reads retryOnEnd once while resolving reconnect options", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  let reads = 0
+  let connections = 0
+  const reconnect = {
+    maxRetries: 1,
+    initialDelayMs: 0,
+    maxDelayMs: 0,
+    get retryOnEnd(): boolean {
+      reads += 1
+      return reads === 1 ? false : ("true" as unknown as boolean)
+    },
+  }
+  const connector: AudioStreamConnector<void> = {
+    async connect() {
+      connections += 1
+      return {
+        info: undefined,
+        body: (async function* () {
+          yield mp3
+        })(),
+      }
+    },
+  }
+
+  const stream = await audio.playStreamSource(connector, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+    reconnect,
+  })
+  await drainStream(audio, stream)
+  expect(reads).toBe(1)
+  expect(connections).toBe(1)
 })

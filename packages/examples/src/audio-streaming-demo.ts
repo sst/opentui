@@ -425,7 +425,7 @@ class AudioStreamingDemo {
           resumeMs: 1000,
         },
         reconnect: {
-          maxAttempts: 5,
+          maxRetries: 5,
           retryOnEnd: true,
           initialDelayMs: 1000,
           maxDelayMs: 15_000,

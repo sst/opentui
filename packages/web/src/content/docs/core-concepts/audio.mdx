@@ -67,7 +67,7 @@ Streaming is MP3-only; static `loadSound()` also supports WAV and FLAC. Choose t
 
 | Method                               | Use                                                                  |
 | ------------------------------------ | -------------------------------------------------------------------- |
-| `playStreamUrl(url, options?)`       | Fetch, ICY negotiation, HTTP retry, reconnect, and response parsing  |
+| `playStreamUrl(url, options?)`       | Fetch, ICY negotiation, HTTP retry, reconnect, and response demuxing |
 | `playStream(bytes, options?)`        | One-shot `ReadableStream<Uint8Array>` or `AsyncIterable<Uint8Array>` |
 | `playStreamSource(connector, opts?)` | Reconnectable custom transport with per-connection demuxing          |
 
@@ -90,7 +90,7 @@ try {
   if (!audio.start()) throw new Error("No playback device available")
 
   stream = await audio.playStreamUrl("https://anomaly.fm/radio", {
-    reconnect: { maxAttempts: 5, retryOnEnd: true },
+    reconnect: { maxRetries: 5, retryOnEnd: true },
   })
 
   const initialMetadata = stream.getMetadata()
@@ -128,11 +128,11 @@ ICY does not define a text encoding. OpenTUI follows Icecast's documented non-Og
 
 Metadata events follow response ingestion, not audible playback. Native buffering means a title can arrive before its audio is heard. Metadata received during setup is retained and emitted asynchronously after `playStreamUrl()` resolves.
 
-URL reconnect is opt-in. It retries network failures, interrupted or missing response bodies, HTTP 408/425/429, and HTTP 5xx responses. Reconnects restart the decoder in the same native stream session, preserving controls, counters, the voice slot, and any decoded PCM still available after an interruption. `retryOnEnd` restarts the same session after a clean response ends and its buffered PCM drains. Initial retries happen while `playStreamUrl()` is pending and do not emit `reconnecting` because the stream has not been returned yet. `maxAttempts` limits consecutive retries for one outage and resets after a replacement decoder becomes ready; omitting it means unlimited retries. An `AbortSignal` or `dispose()` stops them.
+URL reconnect is opt-in. It retries network failures, interrupted or missing response bodies, HTTP 408/425/429, and HTTP 5xx responses. Reconnects restart the decoder in the same native stream session, preserving controls, counters, the voice slot, and any decoded PCM still available after an interruption. `retryOnEnd` restarts the same session after a clean response ends and its buffered PCM drains. Initial retries happen while `playStreamUrl()` is pending and do not emit `reconnecting` because the stream has not been returned yet. `maxRetries` limits consecutive retries for one outage and resets after a replacement decoder becomes ready; omitting it means unlimited retries. An `AbortSignal` or `dispose()` stops them.
 
 Each replacement response creates a new demuxer and can advertise a different ICY interval. Existing metadata remains available while reconnecting, then the replacement clears prior fields. A plain MP3 replacement clears metadata.
 
-Reconnect options default to `initialDelayMs: 1000`, `maxDelayMs: 15000`, `backoffFactor: 2`, `retryOnEnd: false`, and unlimited `maxAttempts`. Valid `Retry-After` values override exponential backoff up to `maxDelayMs`.
+Reconnect options default to `initialDelayMs: 1000`, `maxDelayMs: 15000`, `backoffFactor: 2`, `retryOnEnd: false`, and unlimited `maxRetries`. Valid `Retry-After` values override exponential backoff up to `maxDelayMs`. `reconnect.retry` can override default URL response classification; `{}` keeps the transport delay, while `{ delayMs }` replaces it.
 
 ### Byte streams
 
@@ -179,20 +179,22 @@ const connector: AudioStreamConnector<RadioInfo> = {
       close: () => connection.close(),
     }
   },
-  retry() {
-    return {}
-  },
 }
 
 const stream = await audio.playStreamSource(connector, {
-  reconnect: { maxAttempts: 5 },
+  reconnect: {
+    maxRetries: 5,
+    retry() {
+      return {}
+    },
+  },
   demuxer: (info) => createIcyStreamDemuxer({ metadataInterval: info.metadataInterval }),
 })
 ```
 
-`retry(error, context)` is optional. With reconnect enabled, connector and body-read failures are retryable by default. Return `false` to stop, `{}` for normal backoff, or `{ delayMs }` for a bounded finite non-negative integer delay. `context` contains the next `attempt`, `maxAttempts`, and `phase`. `close()` is invoked once after EOF, failure, or cancellation; cleanup gets a bounded grace period so an uncooperative transport cannot prevent shutdown.
+`reconnect.retry(error, context)` is optional for URL and custom connectors. Custom connector and body-read failures are retryable by default. Return `false` to stop, `{}` to keep the transport hint or normal backoff, or `{ delayMs }` for a bounded finite non-negative integer delay. `context` contains the next `attempt`, `maxRetries`, and `phase`. `close()` is invoked once after EOF, failure, or cancellation; cleanup gets a bounded grace period so an uncooperative transport cannot prevent shutdown.
 
-Custom demuxers expose `initialMetadata`, `push(chunk)`, and `flush()`, with optional `abort(reason)`. `push()` and `flush()` return ordered `{ type: "audio", data }` or `{ type: "metadata", metadata }` outputs. Flush output is consumed before decoder EOF; interruption calls `abort()` instead. A `push()` exception is a terminal demuxer error. A `flush()` exception reports truncated input and follows the connector read-retry policy. `AudioStream<M>` exposes the same metadata type through `getMetadata()` and `metadata` events. Custom demuxers should return immutable snapshots and suppress equivalent updates when desired.
+Custom demuxers expose `initialMetadata`, `push(chunk)`, and `flush()`, with optional `abort(reason)`. `push()` and `flush()` return ordered `{ type: "audio", data }` or `{ type: "metadata", metadata }` outputs. Flush output is consumed before decoder EOF; interruption calls `abort()` instead. A `push()` exception is a terminal demuxer error. A `flush()` exception reports truncated input and follows the reconnect read policy. `AudioStream<M>` exposes the same metadata type through `getMetadata()` and `metadata` events. Custom demuxers should return immutable snapshots and suppress equivalent updates when desired.
 
 ### Options and lifecycle
 
