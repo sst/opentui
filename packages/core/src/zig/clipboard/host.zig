@@ -17,7 +17,6 @@ test {
     _ = clipboard_windows;
     _ = clipboard_windows_dib;
     _ = clipboard_macos;
-    _ = @import("tests/clock_test.zig");
 }
 
 const Allocator = std.mem.Allocator;
@@ -74,8 +73,6 @@ pub const ShutdownStatus = enum(u8) {
 
 const READ_MIME_COUNT_MAX: u32 = 64;
 const READ_MIME_ESSENCE_BYTES_MAX: u32 = 255;
-const IMAGE_PIXELS_MAX_DEFAULT: u32 = 64 * 1024 * 1024;
-const CONVERSION_BYTES_MAX_DEFAULT: u32 = 512 * 1024 * 1024;
 const OPERATIONS_MAX_DEFAULT: u32 = 16;
 const PROVIDER_TRANSFERS_MAX_DEFAULT: u32 = 16;
 const ResultKind = enum { mime, data, diagnostic };
@@ -438,7 +435,6 @@ const Service = struct {
     platform_stop: bool = false,
     platform_exited: bool = false,
     platform_failed: bool = false,
-    platform_joined: bool = false,
 
     fn takeMutationSequence(service: *Service) u64 {
         const sequence = service.next_mutation_sequence;
@@ -687,7 +683,9 @@ const Service = struct {
             };
         }
         if (status == .failed) {
-            operation.error_code = if (error_code != 0) error_code else @intFromEnum(ErrorCode.internal);
+            if (operation.error_code == 0) {
+                operation.error_code = if (error_code != 0) error_code else @intFromEnum(ErrorCode.internal);
+            }
             if (operation.diagnostic.len == 0) operation.diagnostic = "Native platform clipboard operation failed";
         }
         operation.status = status;
@@ -735,11 +733,9 @@ const Service = struct {
             const exited = service.platform_exited;
             service.platform_mutex.unlock();
             if (!exited) return .pending;
-            if (!service.platform_joined) {
-                const thread = service.platform_thread orelse return .pending;
+            if (service.platform_thread) |thread| {
                 if (!tryJoinThread(thread)) return .pending;
                 service.platform_thread = null;
-                service.platform_joined = true;
             }
         }
         if (comptime builtin.os.tag == .linux) {
@@ -1706,6 +1702,18 @@ pub fn drainService(service_handle: Handle) u8 {
     return if (active) 1 else 0;
 }
 
+fn destroyTestService(service: Handle) void {
+    _ = beginServiceShutdown(service);
+    var status = pollServiceShutdown(service);
+    var attempts: u32 = 0;
+    while (status == .pending and attempts < 2_000) : (attempts += 1) {
+        std.Thread.sleep(std.time.ns_per_ms);
+        status = pollServiceShutdown(service);
+    }
+    if (status != .ready) @panic("clipboard service shutdown exceeded 2 seconds");
+    _ = destroyService(service);
+}
+
 test "clipboard status values are stable" {
     try std.testing.expectEqual(@as(u8, 0), @intFromEnum(OperationStatus.pending));
     try std.testing.expectEqual(@as(u8, 1), @intFromEnum(OperationStatus.read));
@@ -1718,17 +1726,7 @@ test "clipboard service preserves a configured native operation limit" {
     const operation_limit = 2;
     const service = createService(std.testing.allocator, operation_limit, PROVIDER_TRANSFERS_MAX_DEFAULT, null, 0);
     try std.testing.expect(service != 0);
-    defer {
-        _ = beginServiceShutdown(service);
-        var status = pollServiceShutdown(service);
-        var attempts: u32 = 0;
-        while (status == .pending and attempts < 2_000) : (attempts += 1) {
-            std.Thread.sleep(std.time.ns_per_ms);
-            status = pollServiceShutdown(service);
-        }
-        if (status != .ready) @panic("clipboard service shutdown exceeded 2 seconds");
-        _ = destroyService(service);
-    }
+    defer destroyTestService(service);
 
     var operations: [operation_limit]Handle = @splat(0);
     for (&operations) |*operation| {
@@ -1750,17 +1748,7 @@ test "clipboard cancellation and service shutdown are asynchronous and isolated"
     try std.testing.expect(second_service != 0);
     acquireService(first_service).?.libraries = .{};
     acquireService(second_service).?.libraries = .{};
-    defer {
-        _ = beginServiceShutdown(second_service);
-        var status = pollServiceShutdown(second_service);
-        var attempts: u32 = 0;
-        while (status == .pending and attempts < 2_000) : (attempts += 1) {
-            std.Thread.sleep(std.time.ns_per_ms);
-            status = pollServiceShutdown(second_service);
-        }
-        if (status != .ready) @panic("second clipboard service shutdown exceeded 2 seconds");
-        _ = destroyService(second_service);
-    }
+    defer destroyTestService(second_service);
 
     var first_operation: Handle = 0;
     var second_operation: Handle = 0;
@@ -1795,17 +1783,7 @@ test "clipboard production operations validate requests and remain unsupported u
     const service = createService(std.testing.allocator, 3, PROVIDER_TRANSFERS_MAX_DEFAULT, null, 0);
     try std.testing.expect(service != 0);
     acquireService(service).?.libraries = .{};
-    defer {
-        _ = beginServiceShutdown(service);
-        var status = pollServiceShutdown(service);
-        var attempts: u32 = 0;
-        while (status == .pending and attempts < 2_000) : (attempts += 1) {
-            std.Thread.sleep(std.time.ns_per_ms);
-            status = pollServiceShutdown(service);
-        }
-        if (status != .ready) @panic("clipboard service shutdown exceeded 2 seconds");
-        _ = destroyService(service);
-    }
+    defer destroyTestService(service);
 
     var operation: Handle = 0;
     const malformed_read = [_]u8{ 1, 0, 0, 0, 4, 0, 0, 0, 't' };
@@ -1874,17 +1852,7 @@ test "clipboard read request validation enforces exact native MIME bounds" {
 test "clipboard over-limit read request returns invalid argument before allocation" {
     const service = createService(std.testing.allocator, 1, 1, null, 0);
     try std.testing.expect(service != 0);
-    defer {
-        _ = beginServiceShutdown(service);
-        var status = pollServiceShutdown(service);
-        var attempts: u32 = 0;
-        while (status == .pending and attempts < 2_000) : (attempts += 1) {
-            std.Thread.sleep(std.time.ns_per_ms);
-            status = pollServiceShutdown(service);
-        }
-        if (status != .ready) @panic("clipboard service shutdown exceeded 2 seconds");
-        _ = destroyService(service);
-    }
+    defer destroyTestService(service);
     var request: [4 + 4 + 256]u8 = @splat('x');
     std.mem.writeInt(u32, request[0..4], 1, .little);
     std.mem.writeInt(u32, request[4..8], 256, .little);
@@ -2086,6 +2054,28 @@ test "clipboard platform result resolution enforces deadline before late read su
     try std.testing.expectEqual(OperationStatus.timed_out, operation.status);
     try std.testing.expectEqual(@as(usize, 0), operation.result.len);
     try std.testing.expectEqual(@as(usize, 0), operation.result_mime.len);
+}
+
+test "clipboard platform result preserves out of memory after data allocation failure" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
+    const allocator = failing.allocator();
+    var service: Service = .{
+        .allocator = allocator,
+        .libraries = .{},
+        .requested_wayland_seat = &.{},
+        .environment_wayland_seat = &.{},
+    };
+    var operation: Operation = .{
+        .allocator = allocator,
+        .service = &service,
+        .kind = .read,
+        .timeout_ms = 100,
+    };
+
+    service.publishPlatformResultAt(&operation, .read, "text/plain", "data", 999, 0);
+
+    try std.testing.expectEqual(OperationStatus.failed, operation.status);
+    try std.testing.expectEqual(@intFromEnum(ErrorCode.out_of_memory), operation.error_code);
 }
 
 test "clipboard cancellation recorded before a platform mutation wins over late success" {

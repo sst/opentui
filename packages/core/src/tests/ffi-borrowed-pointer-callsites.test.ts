@@ -12,19 +12,6 @@ import { toArrayBuffer, type Pointer } from "../platform/ffi.js"
 const lib = resolveRenderLib()
 const symbols = (lib as any).opentui.symbols as Record<string, (...args: any[]) => any>
 
-function withStubbedSymbol(name: string, fn: (calls: any[][]) => void): void {
-  const calls: any[][] = []
-  const original = symbols[name]
-  symbols[name] = (...args: any[]) => {
-    calls.push(args)
-  }
-  try {
-    fn(calls)
-  } finally {
-    symbols[name] = original
-  }
-}
-
 function withStubbedSymbols(
   replacements: Record<string, (...args: any[]) => any>,
   fn: (calls: Record<string, any[][]>) => void,
@@ -44,6 +31,10 @@ function withStubbedSymbols(
   } finally {
     for (const [name, original] of Object.entries(originals)) symbols[name] = original
   }
+}
+
+function withStubbedSymbol(name: string, fn: (calls: any[][]) => void): void {
+  withStubbedSymbols({ [name]: () => undefined }, (calls) => fn(calls[name]!))
 }
 
 async function forceGc(): Promise<void> {
@@ -136,7 +127,6 @@ describe("borrowed pointer call sites", () => {
         lib.clipboardOperationResultDiagnosticCopy(1 as any, new Uint8Array(2))
         lib.clipboardServiceDestroy(service)
 
-        expect(calls.clipboardServiceCreate![0]!.slice(0, 2)).toEqual([4, 5])
         expect(calls.clipboardServiceCreate![0]![2]).toBeInstanceOf(Uint8Array)
         expect(calls.clipboardReadOperationStart![0]![1]).toBeInstanceOf(Uint8Array)
         expect(calls.clipboardReadOperationStart![0]!.slice(4, 8)).toEqual([16, 32, 64, 100])

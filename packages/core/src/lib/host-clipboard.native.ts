@@ -154,7 +154,8 @@ class NativeClipboardBackend implements HostClipboardBackend {
   }
 
   private drain(): void {
-    // A write can publish a provider before its operation becomes terminal while output is backpressured.
+    // A service drain gives cancellation cleanup and queued events their turn before operations settle.
+    this.providerActive = false
     try {
       this.providerActive = this.library.clipboardServiceDrain(this.service) === 1
     } catch (error) {
@@ -180,6 +181,7 @@ class NativeClipboardBackend implements HostClipboardBackend {
             this.rotate(operation)
             continue
           }
+          this.providerActive = true
           const destroyed = this.library.clipboardOperationDestroy(operation.handle)
           if (destroyed === NativeClipboardDestroyStatus.NotReady) {
             this.rotate(operation)
@@ -195,10 +197,8 @@ class NativeClipboardBackend implements HostClipboardBackend {
           this.rotate(operation)
           continue
         }
+        this.providerActive = true
         const result = this.readResult(operation.handle, operation.kind, status)
-        if (status === NativeClipboardOperationStatus.Written || status === NativeClipboardOperationStatus.Cleared) {
-          this.providerActive = true
-        }
         const destroyed = this.library.clipboardOperationDestroy(operation.handle)
         if (destroyed === NativeClipboardDestroyStatus.NotReady) {
           this.rotate(operation)

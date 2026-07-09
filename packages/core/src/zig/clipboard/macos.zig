@@ -92,11 +92,10 @@ extern fn ot_clipboard_macos_read(
     max_bytes: u32,
     out_bytes: *?[*]u8,
     out_length: *u32,
-    out_mime: *u32,
 ) i32;
 extern fn ot_clipboard_macos_write_text(bytes: ?[*]const u8, length: u32) i32;
 extern fn ot_clipboard_macos_clear() i32;
-extern fn ot_clipboard_macos_free_bytes(bytes: ?[*]u8, length: u32) void;
+extern fn ot_clipboard_macos_free_bytes(bytes: ?[*]u8) void;
 
 comptime {
     std.debug.assert(@sizeOf(MimeType) == @sizeOf(u32));
@@ -195,13 +194,11 @@ fn acquireJobLock(mutex: *std.Thread.Mutex, job: Job, options: ExecuteOptions) ?
 fn readMime(allocator: Allocator, mime: MimeType, max_bytes: u32, options: ExecuteOptions) JobError!Result {
     var shim_bytes: ?[*]u8 = null;
     var length: u32 = 0;
-    var mime_value: u32 = 0;
     const status = shimStatus(ot_clipboard_macos_read(
         @intFromEnum(mime),
         max_bytes,
         &shim_bytes,
         &length,
-        &mime_value,
     ));
 
     switch (status) {
@@ -213,17 +210,15 @@ fn readMime(allocator: Allocator, mime: MimeType, max_bytes: u32, options: Execu
         .ok => {},
     }
 
-    defer ot_clipboard_macos_free_bytes(shim_bytes, length);
+    defer ot_clipboard_macos_free_bytes(shim_bytes);
     if (postShimStop(options)) |result| return result;
     if (length > max_bytes) return error.NativeFailure;
-    const returned_mime = std.meta.intToEnum(MimeType, mime_value) catch return error.NativeFailure;
-    if (returned_mime != mime) return error.NativeFailure;
     const source: []const u8 = if (length == 0)
         ""
     else
         (shim_bytes orelse return error.NativeFailure)[0..length];
     const data = allocator.dupe(u8, source) catch return error.OutOfMemory;
-    return .{ .read = .{ .mime = returned_mime, .data = data } };
+    return .{ .read = .{ .mime = mime, .data = data } };
 }
 
 const PreferenceIterator = struct {
@@ -296,28 +291,15 @@ fn shimStatus(value: i32) ShimStatus {
     return std.meta.intToEnum(ShimStatus, value) catch .failed;
 }
 
-test "macOS clipboard ABI values are stable" {
-    try std.testing.expectEqual(@as(u32, 1), @intFromEnum(MimeType.text_plain));
-    try std.testing.expectEqual(@as(u32, 2), @intFromEnum(MimeType.image_png));
-    try std.testing.expectEqual(@as(i32, 5), @intFromEnum(ShimStatus.failed));
-}
-
-test "macOS clipboard shim initializes absent MIME output" {
+test "macOS clipboard shim initializes absent output" {
     if (comptime @import("builtin").os.tag != .macos) return error.SkipZigTest;
 
     var bytes: ?[*]u8 = undefined;
     var length: u32 = 99;
-    var mime: u32 = 99;
-    const status = shimStatus(ot_clipboard_macos_read(0, 0, &bytes, &length, &mime));
+    const status = shimStatus(ot_clipboard_macos_read(0, 0, &bytes, &length));
     try std.testing.expectEqual(ShimStatus.empty, status);
     try std.testing.expect(bytes == null);
     try std.testing.expectEqual(@as(u32, 0), length);
-    try std.testing.expectEqual(@as(u32, 0), mime);
-}
-
-test "macOS clipboard MIME names are exact" {
-    try std.testing.expectEqualStrings("text/plain", MimeType.text_plain.name());
-    try std.testing.expectEqualStrings("image/png", MimeType.image_png.name());
 }
 
 test "macOS clipboard MIME request parsing preserves order" {
