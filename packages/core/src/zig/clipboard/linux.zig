@@ -29,13 +29,7 @@ pub const Libraries = struct {
     is_wsl: bool = false,
 };
 
-pub const Route = union(enum) {
-    unsupported,
-    linux: Libraries,
-};
-
 pub const Mechanism = enum { wayland, x11 };
-pub const MechanismOutcome = enum { unavailable, unsupported, failed, cancelled, timed_out, limit_exceeded };
 
 pub const WlDisplay = opaque {};
 pub const WlProxy = opaque {};
@@ -105,13 +99,6 @@ pub const XcbGetPropertyReply = extern struct {
     bytes_after: u32,
     value_length: u32,
     pad0: [12]u8,
-};
-pub const XcbGetSelectionOwnerReply = extern struct {
-    response_type: u8,
-    pad0: u8,
-    sequence: u16,
-    length: u32,
-    owner: u32,
 };
 pub const XcbSetup = extern struct {
     status: u8,
@@ -200,8 +187,6 @@ pub const XcbSelectionNotifyEvent = extern struct {
 
 const LibraryKind = enum { wayland, x11 };
 const LoadLibraryFn = *const fn (context: *anyopaque, kind: LibraryKind) bool;
-pub const MIN_WAYLAND_CLIENT_VERSION = "1.25.0";
-
 pub const WaylandSymbols = struct {
     wl_display_connect: *const fn (?[*:0]const u8) callconv(.c) ?*WlDisplay,
     wl_display_disconnect: *const fn (*WlDisplay) callconv(.c) void,
@@ -217,7 +202,6 @@ pub const WaylandSymbols = struct {
     wl_proxy_add_listener: *const fn (*WlProxy, [*]const *const anyopaque, ?*anyopaque) callconv(.c) c_int,
     wl_proxy_destroy: *const fn (*WlProxy) callconv(.c) void,
     wl_proxy_get_version: *const fn (*WlProxy) callconv(.c) u32,
-    wl_display_interface: *const WlInterface,
     wl_registry_interface: *const WlInterface,
     wl_callback_interface: *const WlInterface,
     wl_seat_interface: *const WlInterface,
@@ -231,8 +215,6 @@ pub const WaylandSymbols = struct {
     wl_keyboard_interface: *const WlInterface,
     wl_data_device_manager_interface: *const WlInterface,
     wl_data_device_interface: *const WlInterface,
-    wl_data_source_interface: *const WlInterface,
-    wl_data_offer_interface: *const WlInterface,
 };
 
 pub const XcbSymbols = struct {
@@ -253,22 +235,18 @@ pub const XcbSymbols = struct {
     xcb_change_window_attributes: *const fn (*XcbConnection, u32, u32, ?*const anyopaque) callconv(.c) XcbCookie,
     xcb_destroy_window: *const fn (*XcbConnection, u32) callconv(.c) XcbCookie,
     xcb_intern_atom: *const fn (*XcbConnection, u8, u16, [*]const u8) callconv(.c) XcbCookie,
-    xcb_intern_atom_reply: *const fn (*XcbConnection, XcbCookie, ?*?*XcbGenericError) callconv(.c) ?*XcbInternAtomReply,
     xcb_get_property: *const fn (*XcbConnection, u8, u32, u32, u32, u32, u32) callconv(.c) XcbCookie,
-    xcb_get_property_reply: *const fn (*XcbConnection, XcbCookie, ?*?*XcbGenericError) callconv(.c) ?*XcbGetPropertyReply,
     xcb_change_property: *const fn (*XcbConnection, u8, u32, u32, u32, u8, u32, ?*const anyopaque) callconv(.c) XcbCookie,
     xcb_change_property_checked: *const fn (*XcbConnection, u8, u32, u32, u32, u8, u32, ?*const anyopaque) callconv(.c) XcbCookie,
     xcb_delete_property: *const fn (*XcbConnection, u32, u32) callconv(.c) XcbCookie,
     xcb_convert_selection: *const fn (*XcbConnection, u32, u32, u32, u32, u32) callconv(.c) XcbCookie,
     xcb_set_selection_owner: *const fn (*XcbConnection, u32, u32, u32) callconv(.c) XcbCookie,
     xcb_get_selection_owner: *const fn (*XcbConnection, u32) callconv(.c) XcbCookie,
-    xcb_get_selection_owner_reply: *const fn (*XcbConnection, XcbCookie, ?*?*XcbGenericError) callconv(.c) ?*XcbGetSelectionOwnerReply,
     xcb_send_event: *const fn (*XcbConnection, u8, u32, u32, [*]const u8) callconv(.c) XcbCookie,
 };
 
 fn CachedLibrary(comptime Symbols: type) type {
     return struct {
-        attempted: bool = false,
         library: ?std.DynLib = null,
         symbols: ?Symbols = null,
     };
@@ -279,7 +257,7 @@ var wayland_cache: CachedLibrary(WaylandSymbols) = .{};
 var xcb_cache: CachedLibrary(XcbSymbols) = .{};
 var production_context: u8 = 0;
 
-pub fn initialize(env: Environment) Route {
+pub fn initialize(env: Environment) Libraries {
     return selectLibraries(env, &production_context, loadProductionLibrary);
 }
 
@@ -297,13 +275,11 @@ pub fn xcbSymbols() ?*const XcbSymbols {
     return null;
 }
 
-fn selectLibraries(env: Environment, context: *anyopaque, load_library: LoadLibraryFn) Route {
-    if (env.is_wsl and !env.has_wayland_display and !env.has_x11_display) return .unsupported;
-
+fn selectLibraries(env: Environment, context: *anyopaque, load_library: LoadLibraryFn) Libraries {
     var libraries: Libraries = .{ .is_wsl = env.is_wsl };
     if (env.has_wayland_display) libraries.wayland = load_library(context, .wayland);
     if (env.has_x11_display) libraries.x11 = load_library(context, .x11);
-    return .{ .linux = libraries };
+    return libraries;
 }
 
 fn loadProductionLibrary(_: *anyopaque, kind: LibraryKind) bool {
@@ -314,12 +290,12 @@ fn loadProductionLibrary(_: *anyopaque, kind: LibraryKind) bool {
         .wayland => loadCachedLibrary(
             WaylandSymbols,
             &wayland_cache,
-            &.{"libwayland-client.so.0"},
+            "libwayland-client.so.0",
         ),
         .x11 => loadCachedLibrary(
             XcbSymbols,
             &xcb_cache,
-            &.{"libxcb.so.1"},
+            "libxcb.so.1",
         ),
     };
 }
@@ -327,28 +303,24 @@ fn loadProductionLibrary(_: *anyopaque, kind: LibraryKind) bool {
 fn loadCachedLibrary(
     comptime Symbols: type,
     cache: *CachedLibrary(Symbols),
-    names: []const []const u8,
+    name: []const u8,
 ) bool {
-    if (cache.attempted) return cache.symbols != null;
-    cache.attempted = true;
+    if (cache.symbols != null) return true;
 
-    for (names) |name| {
-        const library = std.DynLib.open(name) catch continue;
-        cache.library = library;
-        cache.symbols = loadSymbols(Symbols, &cache.library.?);
-        return cache.symbols != null;
-    }
-    return false;
+    var library = std.DynLib.open(name) catch return false;
+    const symbols = loadSymbols(Symbols, &library) orelse {
+        library.close();
+        return false;
+    };
+    cache.library = library;
+    cache.symbols = symbols;
+    return true;
 }
 
 fn loadSymbols(comptime Symbols: type, library: *std.DynLib) ?Symbols {
     var symbols: Symbols = undefined;
     inline for (@typeInfo(Symbols).@"struct".fields) |field| {
-        if (@typeInfo(field.type) == .optional) {
-            @field(symbols, field.name) = library.lookup(@typeInfo(field.type).optional.child, field.name);
-        } else {
-            @field(symbols, field.name) = library.lookup(field.type, field.name) orelse return null;
-        }
+        @field(symbols, field.name) = library.lookup(field.type, field.name) orelse return null;
     }
     return symbols;
 }
@@ -361,20 +333,6 @@ fn hasNonEmptyValue(env: *const std.process.EnvMap, name: []const u8) bool {
 fn isWslKernelRelease(release: []const u8) bool {
     return std.ascii.indexOfIgnoreCase(release, "microsoft") != null or
         std.ascii.indexOfIgnoreCase(release, "wsl") != null;
-}
-
-pub fn firstMechanism(libraries: Libraries) ?Mechanism {
-    if (libraries.wayland) return .wayland;
-    if (libraries.x11) return .x11;
-    return null;
-}
-
-pub fn fallbackMechanism(libraries: Libraries, current: Mechanism, outcome: MechanismOutcome) ?Mechanism {
-    if (current != .wayland or !libraries.x11) return null;
-    return switch (outcome) {
-        .unavailable, .unsupported => .x11,
-        .failed, .cancelled, .timed_out, .limit_exceeded => null,
-    };
 }
 
 const FakeLoader = struct {
@@ -398,43 +356,35 @@ const FakeLoader = struct {
     }
 };
 
-fn expectLibraries(route: Route, wayland: bool, x11: bool) !void {
-    switch (route) {
-        .unsupported => return error.UnexpectedUnsupportedRoute,
-        .linux => |libraries| {
-            try std.testing.expectEqual(wayland, libraries.wayland);
-            try std.testing.expectEqual(x11, libraries.x11);
-        },
-    }
+fn expectLibraries(libraries: Libraries, wayland: bool, x11: bool) !void {
+    try std.testing.expectEqual(wayland, libraries.wayland);
+    try std.testing.expectEqual(x11, libraries.x11);
 }
 
-test "clipboard linux routing loads WSLg libraries and rejects headless WSL" {
+test "clipboard linux routing loads WSLg libraries and represents headless WSL" {
     var loader: FakeLoader = .{ .wayland_available = true, .x11_available = true };
-    const wslg_route = selectLibraries(.{
+    const wslg_libraries = selectLibraries(.{
         .is_wsl = true,
         .has_wayland_display = true,
         .has_x11_display = true,
     }, &loader, FakeLoader.load);
 
-    switch (wslg_route) {
-        .unsupported => return error.UnexpectedUnsupportedRoute,
-        .linux => |libraries| {
-            try std.testing.expect(libraries.is_wsl);
-            try std.testing.expect(libraries.wayland);
-            try std.testing.expect(libraries.x11);
-        },
-    }
+    try std.testing.expect(wslg_libraries.is_wsl);
+    try std.testing.expect(wslg_libraries.wayland);
+    try std.testing.expect(wslg_libraries.x11);
     try std.testing.expectEqual(@as(u32, 1), loader.wayland_attempts);
     try std.testing.expectEqual(@as(u32, 1), loader.x11_attempts);
 
     loader.wayland_attempts = 0;
     loader.x11_attempts = 0;
-    const headless_route = selectLibraries(.{
+    const headless_libraries = selectLibraries(.{
         .is_wsl = true,
         .has_wayland_display = false,
         .has_x11_display = false,
     }, &loader, FakeLoader.load);
-    try std.testing.expect(headless_route == .unsupported);
+    try std.testing.expect(headless_libraries.is_wsl);
+    try std.testing.expect(!headless_libraries.wayland);
+    try std.testing.expect(!headless_libraries.x11);
     try std.testing.expectEqual(@as(u32, 0), loader.wayland_attempts);
     try std.testing.expectEqual(@as(u32, 0), loader.x11_attempts);
 }
@@ -479,18 +429,6 @@ test "clipboard linux routing preserves independent Wayland and X11 load results
     try std.testing.expectEqual(@as(u32, 1), loader.x11_attempts);
 }
 
-test "clipboard linux routing falls back from Wayland only for unavailable or unsupported outcomes" {
-    const libraries: Libraries = .{ .wayland = true, .x11 = true };
-    try std.testing.expectEqual(Mechanism.wayland, firstMechanism(libraries).?);
-    try std.testing.expectEqual(Mechanism.x11, fallbackMechanism(libraries, .wayland, .unavailable).?);
-    try std.testing.expectEqual(Mechanism.x11, fallbackMechanism(libraries, .wayland, .unsupported).?);
-    try std.testing.expectEqual(null, fallbackMechanism(libraries, .wayland, .failed));
-    try std.testing.expectEqual(null, fallbackMechanism(libraries, .wayland, .cancelled));
-    try std.testing.expectEqual(null, fallbackMechanism(libraries, .wayland, .timed_out));
-    try std.testing.expectEqual(null, fallbackMechanism(libraries, .wayland, .limit_exceeded));
-    try std.testing.expectEqual(null, fallbackMechanism(libraries, .x11, .unsupported));
-}
-
 test "clipboard linux environment treats display variables as nonempty and WSL as presence based" {
     var env = std.process.EnvMap.init(std.testing.allocator);
     defer env.deinit();
@@ -510,18 +448,10 @@ test "clipboard linux environment recognizes WSL kernel releases without environ
     try std.testing.expect(!isWslKernelRelease("6.12.31-1-lts"));
 }
 
-test "clipboard Wayland backend declares the minimum bounded-dispatch library version" {
-    try std.testing.expectEqualStrings("1.25.0", MIN_WAYLAND_CLIENT_VERSION);
-    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_dispatch_pending_single")) != .optional);
-    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_set_max_buffer_size")) != .optional);
-    try std.testing.expect(@typeInfo(@FieldType(WaylandSymbols, "wl_display_get_error")) != .optional);
-}
-
 test "clipboard XCB ABI types match the core protocol layouts" {
     try std.testing.expectEqual(@as(usize, 4), @sizeOf(XcbCookie));
     try std.testing.expectEqual(@as(usize, 12), @sizeOf(XcbInternAtomReply));
     try std.testing.expectEqual(@as(usize, 32), @sizeOf(XcbGetPropertyReply));
-    try std.testing.expectEqual(@as(usize, 12), @sizeOf(XcbGetSelectionOwnerReply));
     try std.testing.expectEqual(@as(usize, 36), @sizeOf(XcbGenericEvent));
     try std.testing.expectEqual(@as(usize, 36), @sizeOf(XcbGenericError));
     try std.testing.expectEqual(@as(usize, 40), @sizeOf(XcbSetup));
