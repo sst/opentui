@@ -37,7 +37,7 @@ export const normalizeRemainingTimeout = (timeoutMs: number, elapsedMs: number):
   return exactRemainingMs <= 0 ? 0 : Math.max(1, Math.floor(exactRemainingMs))
 }
 
-interface ActiveClipboardOperation {
+export interface ActiveClipboardOperation {
   readonly controller: AbortController
   readonly settled: Promise<void>
   settle(): void
@@ -167,7 +167,7 @@ const createActiveOperation = (callerSignal?: AbortSignal): ActiveClipboardOpera
   return { controller, settled, settle }
 }
 
-const runTrackedOperation = <T>(
+export const runTrackedOperation = <T>(
   active: Set<ActiveClipboardOperation>,
   callerSignal: AbortSignal | undefined,
   operation: (signal: AbortSignal) => Promise<T>,
@@ -186,19 +186,6 @@ const runTrackedOperation = <T>(
     state.settle()
   })
 }
-
-export const createUnsupportedHostClipboardBackend: HostClipboardBackendFactory = () => ({
-  async read() {
-    return { status: "unsupported" }
-  },
-  async writeText() {
-    return { status: "unsupported" }
-  },
-  async clear() {
-    return { status: "unsupported" }
-  },
-  async dispose() {},
-})
 
 export const createHostClipboardWithBackend = (
   options: HostClipboardOptions,
@@ -219,7 +206,6 @@ export const createHostClipboardWithBackend = (
     active.size >= config.maxConcurrentOperations
       ? { status: "failed", error: new Error("Host clipboard operation limit reached") }
       : undefined
-
   return {
     maxWriteBytes: config.maxWriteBytes,
     read(readOptions) {
@@ -243,10 +229,7 @@ export const createHostClipboardWithBackend = (
           })
           if (result.status !== "read") return result
           if (result.representation.bytes.byteLength > config.maxReadBytes) return { status: "limit-exceeded" }
-          return {
-            status: "read",
-            representation: { mimeType: result.representation.mimeType, bytes: result.representation.bytes.slice() },
-          }
+          return { status: "read", representation: result.representation }
         })
       } catch (error) {
         return Promise.reject(error)

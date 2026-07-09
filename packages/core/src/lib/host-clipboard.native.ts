@@ -16,11 +16,7 @@ import type {
   HostClipboardClearResult,
   HostClipboardWriteResult,
 } from "./clipboard.js"
-import {
-  HOST_CLIPBOARD_MIME_ESSENCE_BYTES_MAX,
-  HOST_CLIPBOARD_MIME_PREFERENCE_COUNT_MAX,
-  type HostClipboardBackendFactory,
-} from "./host-clipboard.internal.js"
+import { type HostClipboardBackendFactory } from "./host-clipboard.internal.js"
 import { NativeClipboardPollScheduler } from "./host-clipboard.native.scheduler.js"
 
 type NativeResult = ClipboardReadResult | HostClipboardWriteResult | HostClipboardClearResult
@@ -31,25 +27,16 @@ interface PendingOperation {
   readonly kind: "read" | "write" | "clear"
   readonly signal: AbortSignal
   readonly resolve: (result: NativeResult) => void
-  terminalResult?: NativeResult
+  readonly reject: (error: unknown) => void
+  cleanupError?: unknown
 }
 
 const selectionValue = (selection: ClipboardSelection): number => (selection === "clipboard" ? 0 : 1)
 
 const encodeReadRequest = (preferredTypes: readonly [string, ...string[]]): Uint8Array => {
-  if (preferredTypes.length > HOST_CLIPBOARD_MIME_PREFERENCE_COUNT_MAX) {
-    throw new RangeError("Clipboard MIME preference count exceeds native protocol capacity")
-  }
-  let size = 4
-  for (const mimeType of preferredTypes) {
-    // MIME validation permits ASCII token bytes only, so code units equal UTF-8 bytes here.
-    if (mimeType.length > HOST_CLIPBOARD_MIME_ESSENCE_BYTES_MAX) {
-      throw new RangeError("Clipboard MIME essence exceeds native protocol capacity")
-    }
-    size += 4 + mimeType.length
-  }
   const encoder = new TextEncoder()
   const encoded = preferredTypes.map((mimeType) => encoder.encode(mimeType))
+  const size = encoded.reduce((total, mimeType) => total + 4 + mimeType.byteLength, 4)
   const request = new Uint8Array(size)
   const view = new DataView(request.buffer)
   view.setUint32(0, encoded.length, true)
@@ -143,8 +130,8 @@ class NativeClipboardBackend implements HostClipboardBackend {
     if (started.status !== NativeClipboardStartStatus.Ok || !started.operation) {
       return Promise.resolve(startFailure(started.status))
     }
-    return new Promise((resolve) => {
-      const operation: PendingOperation = { handle: started.operation!, kind, signal, resolve }
+    return new Promise((resolve, reject) => {
+      const operation: PendingOperation = { handle: started.operation!, kind, signal, resolve, reject }
       this.pending.set(operation.handle, operation)
       signal.addEventListener("abort", () => this.requestCancel(operation), { once: true })
       this.ensureScheduled()
@@ -154,7 +141,11 @@ class NativeClipboardBackend implements HostClipboardBackend {
 
   private requestCancel(operation: PendingOperation): void {
     if (!this.pending.has(operation.handle)) return
-    this.library.clipboardOperationCancel(operation.handle)
+    try {
+      this.library.clipboardOperationCancel(operation.handle)
+    } catch (error) {
+      operation.cleanupError ??= error
+    }
     this.ensureScheduled()
   }
 
@@ -164,35 +155,68 @@ class NativeClipboardBackend implements HostClipboardBackend {
 
   private drain(): void {
     // A write can publish a provider before its operation becomes terminal while output is backpressured.
-    this.providerActive = this.library.clipboardServiceDrain(this.service) === 1
+    try {
+      this.providerActive = this.library.clipboardServiceDrain(this.service) === 1
+    } catch (error) {
+      for (const operation of this.pending.values()) {
+        operation.cleanupError ??= error
+        try {
+          this.library.clipboardOperationCancel(operation.handle)
+        } catch {}
+      }
+    }
     let workUnits = 0
     while (workUnits < this.maxWorkUnitsPerDrain && this.pending.size > 0) {
       const operation = this.pending.values().next().value
       if (!operation) break
       workUnits += 1
-      if (operation.signal.aborted) this.library.clipboardOperationCancel(operation.handle)
-      if (!operation.terminalResult) {
+      try {
+        if (operation.cleanupError !== undefined) {
+          try {
+            this.library.clipboardOperationCancel(operation.handle)
+          } catch {}
+          const status = this.library.clipboardOperationPoll(operation.handle)
+          if (status === NativeClipboardOperationStatus.Pending) {
+            this.rotate(operation)
+            continue
+          }
+          const destroyed = this.library.clipboardOperationDestroy(operation.handle)
+          if (destroyed === NativeClipboardDestroyStatus.NotReady) {
+            this.rotate(operation)
+            continue
+          }
+          this.pending.delete(operation.handle)
+          operation.reject(operation.cleanupError)
+          continue
+        }
+        if (operation.signal.aborted) this.library.clipboardOperationCancel(operation.handle)
         const status = this.library.clipboardOperationPoll(operation.handle)
         if (status === NativeClipboardOperationStatus.Pending) {
           this.rotate(operation)
           continue
         }
-        operation.terminalResult = this.readResult(operation.handle, operation.kind, status)
+        const result = this.readResult(operation.handle, operation.kind, status)
         if (status === NativeClipboardOperationStatus.Written || status === NativeClipboardOperationStatus.Cleared) {
           this.providerActive = true
         }
-      }
-      const destroyed = this.library.clipboardOperationDestroy(operation.handle)
-      if (destroyed === NativeClipboardDestroyStatus.NotReady) {
+        const destroyed = this.library.clipboardOperationDestroy(operation.handle)
+        if (destroyed === NativeClipboardDestroyStatus.NotReady) {
+          this.rotate(operation)
+          continue
+        }
+        this.pending.delete(operation.handle)
+        operation.resolve(
+          destroyed === NativeClipboardDestroyStatus.Destroyed
+            ? result
+            : { status: "failed", error: new Error("Native clipboard operation became invalid before destruction") },
+        )
+      } catch (error) {
+        operation.cleanupError ??= error
+        try {
+          this.library.clipboardOperationCancel(operation.handle)
+        } catch {}
         this.rotate(operation)
-        continue
       }
-      this.pending.delete(operation.handle)
-      operation.resolve(
-        destroyed === NativeClipboardDestroyStatus.Destroyed
-          ? operation.terminalResult
-          : { status: "failed", error: new Error("Native clipboard operation became invalid before destruction") },
-      )
     }
     this.ensureScheduled()
   }

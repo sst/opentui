@@ -15,7 +15,6 @@ const Names = struct {
 };
 
 pub const Metadata = struct {
-    kind: Kind,
     types: [10]?*const WlInterface,
     manager_requests: [3]WlMessage,
     device_requests: [3]WlMessage,
@@ -49,7 +48,6 @@ pub const Metadata = struct {
             },
         };
 
-        self.kind = kind;
         self.manager = interface(names.manager, names.version, 3, &self.manager_requests, 0, null);
         self.device = interface(names.device, names.version, 3, &self.device_requests, 4, &self.device_events);
         self.source = interface(names.source, 1, 2, &self.source_requests, 2, &self.source_events);
