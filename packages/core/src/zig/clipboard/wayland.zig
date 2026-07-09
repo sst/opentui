@@ -758,13 +758,14 @@ pub const Connection = struct {
     }
 
     fn selectSeat(self: *Connection) ?*Seat {
-        if (self.seats_overflowed or self.seat_count == 0) return null;
+        if (self.seat_count == 0) return null;
         if (self.requested_seat.len > 0) {
             for (self.seats[0..self.seat_count]) |*seat| {
                 if (std.mem.eql(u8, seat.nameSlice(), self.requested_seat)) return seat;
             }
             return null;
         }
+        if (self.seats_overflowed) return null;
         if (self.environment_seat.len > 0) {
             for (self.seats[0..self.seat_count]) |*seat| {
                 if (std.mem.eql(u8, seat.nameSlice(), self.environment_seat)) return seat;
@@ -1275,6 +1276,9 @@ test "Wayland seat selection treats XDG_SEAT as advisory but explicit configurat
     // A failed bind makes automatic fallback conservative without retaining removed globals.
     connection.addSeat(3, 2);
     try std.testing.expect(connection.seats_overflowed);
+    connection.requested_seat = "Hyprland";
+    try std.testing.expect(connection.selectSeat() == &connection.seats[0]);
+    connection.requested_seat = "";
     try std.testing.expect(connection.selectSeat() == null);
 }
 
