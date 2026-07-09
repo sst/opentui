@@ -601,6 +601,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
   private nativeStreamId: number | null = null
   private nativeStats: NativeAudioStreamStats | null = null
   private activeAttempt: AudioStreamAttempt<M> | null = null
+  private pendingCleanup: Promise<void> | null = null
   private reconnectAttempts = 0
   private consecutiveReconnectAttempts = 0
   private disposed = false
@@ -609,6 +610,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
   private metadata: M | null = null
   private pendingMetadataEvent = false
   private metadataEventScheduled = false
+  private terminalEventScheduled = false
   private setupResolve!: () => void
   private setupReject!: (error: Error) => void
   private closedResolve!: () => void
@@ -650,7 +652,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     this.exposed = true
     if (this.pendingMetadataEvent && this.metadata != null) this.emitMetadata()
     this.pendingMetadataEvent = false
-    if (this.state === "ended") this.emitAsync("ended")
+    if (this.state === "ended") this.emitTerminal("ended")
   }
 
   getStats(): AudioStreamStats {
@@ -721,8 +723,8 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     this.setupReject(createAbortError())
     if (this.closeNativeStream(CloseReason.Disposed) === 0) this.removeOwner()
     void cleanup.finally(() => {
-      this.closedResolve()
-      if (wasExposed) this.emitAsync("disposed")
+      if (wasExposed && !this.terminalEventScheduled) this.emitTerminal("disposed")
+      else if (!this.terminalEventScheduled) this.closedResolve()
     })
   }
 
@@ -919,7 +921,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
   ): Promise<void> {
     const source = connection.body
     if (!this.isAttemptActive(attempt)) {
-      await runBoundedCleanup(() => this.cleanupAttempt(attempt))
+      await this.runAttemptCleanup(attempt)
       return
     }
     const release = (): void => {
@@ -949,7 +951,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     }
 
     if (!this.isAttemptActive(attempt)) {
-      await runBoundedCleanup(() => this.cleanupAttempt(attempt))
+      await this.runAttemptCleanup(attempt)
       return
     }
 
@@ -980,7 +982,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
           }
         }
         attempt.demuxerFinished = true
-        await runBoundedCleanup(() => this.cleanupAttempt(attempt))
+        await this.runAttemptCleanup(attempt)
         return
       }
       const chunk = result.value
@@ -1150,6 +1152,24 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
       } catch {}
     }
     await Promise.allSettled(pending)
+  }
+
+  private runAttemptCleanup(attempt: AudioStreamAttempt<M>): Promise<void> {
+    if (this.pendingCleanup != null) return this.pendingCleanup
+    let resolveCleanup!: () => void
+    let rejectCleanup!: (error: unknown) => void
+    const pendingCleanup = new Promise<void>((resolve, reject) => {
+      resolveCleanup = resolve
+      rejectCleanup = reject
+    })
+    this.pendingCleanup = pendingCleanup
+    const cleanup = runBoundedCleanup(() => this.cleanupAttempt(attempt))
+    void cleanup.then(resolveCleanup, rejectCleanup)
+    const clearCleanup = (): void => {
+      if (this.pendingCleanup === pendingCleanup) this.pendingCleanup = null
+    }
+    void pendingCleanup.then(clearCleanup, clearCleanup)
+    return pendingCleanup
   }
 
   private async retry(
@@ -1336,11 +1356,10 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     if (error != null) this.setupReject(error)
     else this.setupResolve()
     if (closeStatus === 0) this.removeOwner()
-    this.closedResolve()
     if (!this.disposed && this.exposed) {
-      if (error != null) this.emitAsync("error", error, context!)
-      else this.emitAsync("ended")
-    }
+      if (error != null) this.emitTerminal("error", error, context!)
+      else this.emitTerminal("ended")
+    } else if (error != null && !this.disposed) this.closedResolve()
   }
 
   private publishMetadata(metadata: M | null, attempt: AudioStreamAttempt<M>): void {
@@ -1366,15 +1385,27 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     setTimeout(() => EventEmitter.prototype.emit.call(this, event, ...args), 0)
   }
 
+  private emitTerminal<K extends "ended" | "error" | "disposed">(event: K, ...args: AudioStreamEvents<M>[K]): void {
+    if (this.terminalEventScheduled) return
+    this.terminalEventScheduled = true
+    setTimeout(() => {
+      try {
+        EventEmitter.prototype.emit.call(this, event, ...args)
+      } finally {
+        this.closedResolve()
+      }
+    }, 0)
+  }
+
   private isAttemptActive(attempt: AudioStreamAttempt<M>): boolean {
     return !this.lifecycleController.signal.aborted && this.activeAttempt === attempt
   }
 
   private stopSource(attempt: AudioStreamAttempt<M> | null = this.activeAttempt): Promise<void> {
-    if (attempt == null) return Promise.resolve()
+    if (attempt == null) return this.pendingCleanup ?? Promise.resolve()
     if (this.activeAttempt === attempt) this.activeAttempt = null
     attempt.controller.abort()
-    return runBoundedCleanup(() => this.cleanupAttempt(attempt))
+    return this.runAttemptCleanup(attempt)
   }
 
   private closeNativeStream(reason: NativeAudioStreamCloseReason): number {

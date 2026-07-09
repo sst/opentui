@@ -128,7 +128,7 @@ ICY does not define a text encoding. OpenTUI follows Icecast's documented non-Og
 
 Metadata events follow response ingestion, not audible playback. Native buffering means a title can arrive before its audio is heard. Metadata received during setup is retained and emitted asynchronously after `playStreamUrl()` resolves.
 
-URL reconnect is opt-in. It retries network failures, interrupted or missing response bodies, HTTP 408/425/429, and HTTP 5xx responses. Reconnects restart the decoder in the same native stream session, preserving controls, counters, the voice slot, and any decoded PCM still available after an interruption. `retryOnEnd` restarts the same session after a clean response ends and its buffered PCM drains. Initial retries happen while `playStreamUrl()` is pending and do not emit `reconnecting` because the stream has not been returned yet. `maxRetries` limits consecutive retries for one outage and resets after a replacement decoder becomes ready; omitting it means unlimited retries. An `AbortSignal` or `dispose()` stops them.
+URL reconnect is opt-in. It retries network failures, interrupted or missing response bodies, HTTP 408/425/429, and HTTP 5xx responses. Reconnects restart the decoder in the same native stream session, preserving controls, counters, the voice slot, and any decoded PCM still available after an interruption. `retryOnEnd` restarts the same session after a clean response ends and its buffered PCM drains. Initial retries happen while `playStreamUrl()` is pending and do not emit `reconnecting` because the stream has not been returned yet; `reconnect.retry` still observes and can stop them. `maxRetries` limits consecutive retries for one outage and resets after a replacement decoder becomes ready; omitting it means unlimited retries. An `AbortSignal` or `dispose()` stops them.
 
 Each replacement response creates a new demuxer and can advertise a different ICY interval. Existing metadata remains available while reconnecting, then the replacement clears prior fields. A plain MP3 replacement clears metadata.
 
@@ -218,9 +218,9 @@ Buffer values must be positive integers; startup and resume thresholds cannot ex
 | `getMetadata()`                         | Latest metadata snapshot or `null`                                                                                                          |
 | `setVolume()`, `setPan()`, `setGroup()` | Controls that remain effective across reconnects                                                                                            |
 | `dispose()`                             | Cancels transport, demuxer, retries, and native playback                                                                                    |
-| `closed`                                | Resolves after native cleanup and the bounded source-cleanup grace period; terminal events are asynchronous and may follow                  |
+| `closed`                                | Resolves after bounded cleanup and delivery of the terminal `ended`, `error`, or `disposed` event                                           |
 
-Events are `metadata`, `reconnecting`, `ended`, `error`, and `disposed`. Operational setup failures reject with `AudioStreamError`; input validation uses `TypeError`/`RangeError`, and cancellation uses `AbortError`. Later terminal failures emit `error` with context. Disposing the owning `Audio` also disposes pending and active streams.
+Events are `metadata`, `reconnecting`, `ended`, `error`, and `disposed`. Operational setup failures reject with `AudioStreamError`; input validation uses `TypeError`/`RangeError`, cancellation uses `AbortError`, and starting a stream after its owning `Audio` was disposed rejects with `Error`. Later terminal failures emit `error` with context. Disposing the owning `Audio` also disposes pending and active streams.
 
 `bytesReceived` counts only MP3 bytes emitted by the demuxer; framing and metadata are excluded. Final stats and metadata remain readable after natural completion. Native readiness, backpressure, and EOF draining use short-lived polling; there is no persistent idle statistics loop.
 
@@ -298,4 +298,4 @@ The tap is disabled by default. When enabled, it stores the latest frames and ov
 
 ## Lifecycle and errors
 
-Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. After construction, `Audio` emits `started`, `mixerStarted`, `stopped`, `disposed`, and `error`. Methods that fail return `false` or `null` and emit `error` with `{ action, status }` context.
+Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. After construction, `Audio` emits `started`, `mixerStarted`, `stopped`, `disposed`, and `error`. Most non-stream operations report failure by returning `false` or `null` and emitting `Audio.error` with `{ action, status }`; stream setup rejection and `AudioStream` errors are described above.

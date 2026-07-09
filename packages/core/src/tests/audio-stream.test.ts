@@ -1950,7 +1950,7 @@ test("Audio stream volume, pan, and group controls affect real mixed PCM", async
   expect(stream.setGroup(0)).toBe(false)
 })
 
-test("AudioStream async emission preserves EventEmitter throw semantics", () => {
+test("AudioStream async and terminal emission preserve EventEmitter throw semantics", () => {
   const stream = Object.create(AudioStream.prototype) as AudioStream
   const callbacks: Array<() => void> = []
   const originalSetTimeout = globalThis.setTimeout
@@ -1961,19 +1961,27 @@ test("AudioStream async emission preserves EventEmitter throw semantics", () => 
 
   const unhandledError = new Error("unhandled stream error")
   const listenerError = new Error("stream listener failed")
+  let closed = 0
   try {
     ;(stream as any).emitAsync("error", unhandledError, { action: "source" })
     stream.on("ended", () => {
       throw listenerError
     })
     ;(stream as any).emitAsync("ended")
+    ;(stream as any).terminalEventScheduled = false
+    ;(stream as any).closedResolve = () => {
+      closed += 1
+    }
+    ;(stream as any).emitTerminal("ended")
   } finally {
     globalThis.setTimeout = originalSetTimeout
   }
 
-  expect(callbacks).toHaveLength(2)
+  expect(callbacks).toHaveLength(3)
   expect(() => callbacks[0]!()).toThrow(unhandledError)
   expect(() => callbacks[1]!()).toThrow(listenerError)
+  expect(() => callbacks[2]!()).toThrow(listenerError)
+  expect(closed).toBe(1)
 })
 
 test("Audio retries initial fetch failures without a default attempt limit", async () => {
@@ -3941,6 +3949,195 @@ test("AudioStream.closed waits for all cleanup after one cleanup rejects", async
   releaseClose.resolve()
   await stream.closed
   expect(closed).toBe(true)
+})
+
+test("AudioStream.closed resolves after the ended event", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  const stream = await audio.playStream(
+    (async function* () {
+      yield mp3
+    })(),
+    { buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 } },
+  )
+  const order: string[] = []
+  stream.on("ended", () => {
+    order.push("ended")
+  })
+  void stream.closed.then(() => {
+    order.push("closed")
+  })
+
+  await drainStream(audio, stream)
+  expect(order).toEqual(["ended", "closed"])
+})
+
+test("AudioStream.closed resolves after the error event", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const failSource = deferred()
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  const stream = await audio.playStream(
+    (async function* () {
+      yield mp3
+      await failSource.promise
+      throw new Error("terminal source failure")
+    })(),
+    { buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 } },
+  )
+  const order: string[] = []
+  stream.on("error", () => {
+    order.push("error")
+  })
+  void stream.closed.then(() => {
+    order.push("closed")
+  })
+
+  failSource.resolve()
+  await waitFor(
+    () => stream.state === "errored",
+    "Audio stream did not reach its errored state",
+    () => audio.mixFrames(256, 2),
+  )
+  await stream.closed
+  expect(order).toEqual(["error", "closed"])
+})
+
+test("AudioStream.closed resolves after the disposed event", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  const stream = await audio.playStream(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(mp3)
+      },
+    }),
+    { buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 } },
+  )
+  const order: string[] = []
+  stream.on("disposed", () => {
+    order.push("disposed")
+  })
+  void stream.closed.then(() => {
+    order.push("closed")
+  })
+
+  stream.dispose()
+  await stream.closed
+  expect(order).toEqual(["disposed", "closed"])
+})
+
+test("AudioStream.closed waits for reentrant disposal during source cleanup", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_URL))
+  const failSource = deferred()
+  const releaseReturn = deferred()
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  let pulls = 0
+  let returnStarted = false
+  let stream!: AudioStream
+  const source: AsyncIterable<Uint8Array> = {
+    [Symbol.asyncIterator]() {
+      return {
+        async next() {
+          pulls += 1
+          if (pulls === 1) return { done: false as const, value: mp3 }
+          await failSource.promise
+          throw new Error("source failed")
+        },
+        async return() {
+          returnStarted = true
+          stream.dispose()
+          await releaseReturn.promise
+          return { done: true as const, value: undefined }
+        },
+      }
+    },
+  }
+
+  stream = await audio.playStream(source, {
+    buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+  })
+  const order: string[] = []
+  stream.on("disposed", () => {
+    order.push("disposed")
+  })
+  void stream.closed.then(() => {
+    order.push("closed")
+  })
+
+  failSource.resolve()
+  await waitFor(
+    () => returnStarted,
+    "Source cleanup did not start",
+    () => audio.mixFrames(256, 2),
+  )
+  await sleep(5)
+  expect(order).toEqual([])
+  releaseReturn.resolve()
+  await stream.closed
+  expect(order).toEqual(["disposed", "closed"])
+})
+
+test("AudioStream.closed waits for reentrant disposal during decoder-error cleanup", async () => {
+  const mp3 = new Uint8Array(await readFile(MP3_5S_URL))
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  let stream!: AudioStream
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(mp3)
+    },
+    cancel() {
+      stream.dispose()
+    },
+  })
+  stream = await audio.playStream(source, {
+    buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },
+  })
+  const internals = stream as unknown as {
+    engine: unknown
+    nativeStreamId: number
+    lib: {
+      audioGetStreamStats: (...args: unknown[]) => {
+        state: number
+        errorCode: number
+      } | null
+    }
+  }
+  const originalGetStats = internals.lib.audioGetStreamStats
+  const nativeStats = originalGetStats.call(internals.lib, internals.engine, internals.nativeStreamId)
+  if (nativeStats == null) throw new Error("Native stream stats unavailable before fault injection")
+  const restoreGetStats = replaceMethod(internals.lib, "audioGetStreamStats", () => ({
+    ...nativeStats,
+    state: NativeAudioStreamState.Failed,
+    errorCode: -88,
+  }))
+  const order: string[] = []
+  stream.on("error", () => {
+    order.push("error")
+  })
+  stream.on("disposed", () => {
+    order.push("disposed")
+  })
+  void stream.closed.then(() => {
+    order.push("closed")
+  })
+
+  try {
+    expect(stream.getStats().state).toBe("errored")
+  } finally {
+    restoreGetStats()
+  }
+  await stream.closed
+  expect(order).toEqual(["disposed", "closed"])
 })
 
 test("Audio does not reacquire a source after cancellation during initial native polling", async () => {
