@@ -13,7 +13,6 @@ import {
   decodePasteBytes,
   type KeyEvent,
   type PasteEvent,
-  type Selection,
   TextareaRenderable,
   TextRenderable,
 } from "@opentui/core"
@@ -21,7 +20,6 @@ import {
 const COLORS = {
   background: "#071018",
   panel: "#101c28",
-  border: "#36516c",
   text: "#e5edf5",
   muted: "#8ba0b5",
   accent: "#66d9ef",
@@ -30,23 +28,25 @@ const COLORS = {
 
 const READ_MAX_BYTES = 2 * 1024 * 1024
 const UNICODE_PAYLOAD = "OpenTUI clipboard round-trip\nUnicode: \u4e16\u754c cafe \ud83d\ude80\nLine endings: LF\nEnd"
-const LARGE_PAYLOAD = "0123456789abcdef".repeat(1024)
+const LARGE_PAYLOAD = `OpenTUI large clipboard payload\n${"0123456789abcdef".repeat(1024)}`
+
+type LifecycleIntent = "create" | "dispose" | "recreate"
 
 let root: BoxRenderable | null = null
 let editor: TextareaRenderable | null = null
-let stateText: TextRenderable | null = null
-let readText: TextRenderable | null = null
+let statusText: TextRenderable | null = null
 let clipboard: ClipboardService | null = null
 let selection: ClipboardSelection = "clipboard"
-let destination: ClipboardWriteDestination = "all-available"
 let payload = UNICODE_PAYLOAD
 let operationStatus = "Ready"
 let pasteStatus = "No PasteEvent received"
+let operationVersion = 0
+let lifecycleVersion = 0
+let pasteGeneration = 0
+let lifecycleQueue: Promise<void> = Promise.resolve()
 let keyHandler: ((key: KeyEvent) => void) | null = null
 let pasteHandler: ((event: PasteEvent) => void) | null = null
-let selectionHandler: ((selection: Selection) => void) | null = null
 let destroyPromise: Promise<void> | null = null
-let serviceDisposal: Promise<void> = Promise.resolve()
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -69,166 +69,155 @@ function terminalResult(status: string, capability: string): string {
   return status === "attempted" ? `attempted, unconfirmed (${capability})` : `${status} (${capability})`
 }
 
-function updateState(): void {
-  if (!stateText) return
-  const payloadName = payload === UNICODE_PAYLOAD ? "exact Unicode" : "exact 16 KiB"
-  stateText.content = [
-    `Service: ${clipboard ? "active" : "disposed"}`,
-    `Selection: ${selection} | Last destination: ${destination}`,
+function updateStatus(): void {
+  if (!statusText) return
+  const payloadName = payload === UNICODE_PAYLOAD ? "exact Unicode" : "exact 16,416-byte large fixture"
+  statusText.content = [
+    `Service: ${clipboard ? "active" : "disposed"} | Selection: ${selection}`,
     `Payload: ${payloadName}, ${byteCount(payload)} bytes`,
     `Operation: ${operationStatus}`,
     `PasteEvent: ${pasteStatus}`,
   ].join("\n")
 }
 
-function setOperation(status: string): void {
+function beginOperation(status: string): number {
+  operationVersion += 1
   operationStatus = status
-  updateState()
+  updateStatus()
+  return operationVersion
 }
 
-async function createService(renderer: CliRenderer): Promise<void> {
-  if (clipboard) {
-    setOperation("Service is already active")
-    return
-  }
-
-  await serviceDisposal.catch(() => {})
-  if (destroyPromise) return
-  if (clipboard) {
-    setOperation("Service is already active")
-    return
-  }
-  try {
-    clipboard = createClipboard({
-      host: createHostClipboard({ maxReadBytes: READ_MAX_BYTES }),
-      terminal: createRendererClipboardAdapter(renderer),
-    })
-    setOperation("Created host and terminal clipboard service")
-  } catch (error) {
-    setOperation(`Create failed: ${errorMessage(error)}`)
-  }
+function finishOperation(version: number, status: string): void {
+  if (version === operationVersion) operationStatus = status
+  updateStatus()
 }
 
-async function disposeService(): Promise<void> {
+function requestLifecycle(renderer: CliRenderer, intent: LifecycleIntent): Promise<void> {
+  const lifecycle = ++lifecycleVersion
+  const operation = beginOperation(
+    intent === "create"
+      ? "Creating clipboard service"
+      : intent === "dispose"
+        ? "Disposing clipboard service"
+        : "Recreating clipboard service",
+  )
+  const service = intent === "create" ? null : clipboard
+  if (intent !== "create") {
+    clipboard = null
+    updateStatus()
+  }
+
+  lifecycleQueue = lifecycleQueue.then(async () => {
+    if (service) {
+      try {
+        await service.dispose()
+      } catch (error) {
+        if (lifecycle === lifecycleVersion) finishOperation(operation, `Dispose failed: ${errorMessage(error)}`)
+        return
+      }
+    }
+    if (lifecycle !== lifecycleVersion) return
+    if (intent === "dispose") {
+      finishOperation(operation, service ? "Service disposal awaited" : "Service is already disposed")
+      return
+    }
+    if (intent === "create" && clipboard) {
+      finishOperation(operation, "Service is already active")
+      return
+    }
+
+    try {
+      clipboard = createClipboard({
+        host: createHostClipboard({ maxReadBytes: READ_MAX_BYTES }),
+        terminal: createRendererClipboardAdapter(renderer),
+      })
+      finishOperation(operation, "Created host and terminal clipboard service")
+    } catch (error) {
+      finishOperation(operation, `Create failed: ${errorMessage(error)}`)
+    }
+  })
+  return lifecycleQueue
+}
+
+async function write(destination: ClipboardWriteDestination): Promise<void> {
   const service = clipboard
-  clipboard = null
-  updateState()
-  if (service) {
-    serviceDisposal = serviceDisposal.catch(() => {}).then(() => service.dispose())
-  }
-
-  try {
-    await serviceDisposal
-    setOperation(service ? "Service disposal awaited" : "Service is already disposed")
-  } catch (error) {
-    setOperation(`Dispose failed: ${errorMessage(error)}`)
-  }
-}
-
-async function recreateService(renderer: CliRenderer): Promise<void> {
-  await disposeService()
-  await createService(renderer)
-}
-
-async function write(renderer: CliRenderer, nextDestination: ClipboardWriteDestination): Promise<void> {
-  destination = nextDestination
-  const service = clipboard
+  const chosenPayload = payload
+  const chosenSelection = selection
+  const operation = beginOperation(`Writing ${byteCount(chosenPayload)} bytes to ${chosenSelection} via ${destination}`)
   if (!service) {
-    setOperation("Write skipped: service disposed (F11 recreates)")
+    finishOperation(operation, "Write skipped: service disposed (F11 recreates)")
     return
   }
 
-  setOperation(`Writing ${byteCount(payload)} bytes to ${selection} via ${destination}`)
   try {
-    const result = await service.writeText(payload, { destination, selection })
+    const result = await service.writeText(chosenPayload, { destination, selection: chosenSelection })
     if (service !== clipboard) return
-    setOperation(
-      `Write ${selection}: host ${result.host.status}; terminal ${terminalResult(result.terminal.status, result.terminal.capability)}`,
+    finishOperation(
+      operation,
+      `Write ${chosenSelection}: host ${result.host.status}; terminal ${terminalResult(result.terminal.status, result.terminal.capability)}`,
     )
   } catch (error) {
-    if (service === clipboard) setOperation(`Write failed: ${errorMessage(error)}`)
+    if (service === clipboard) finishOperation(operation, `Write failed: ${errorMessage(error)}`)
   }
-  editor?.focus()
-  renderer.requestRender()
 }
 
 async function readHost(chosenSelection: ClipboardSelection): Promise<void> {
   const service = clipboard
+  const expectedPayload = payload
+  const operation = beginOperation(`Reading host ${chosenSelection}; prefers image/png then text/plain`)
   if (!service) {
-    setOperation("Read skipped: service disposed (F11 recreates)")
+    finishOperation(operation, "Read skipped: service disposed (F11 recreates)")
     return
   }
 
-  setOperation(`Reading host ${chosenSelection}; prefers image/png then text/plain`)
   try {
     const result = await service.read({ preferredTypes: ["image/png", "text/plain"], selection: chosenSelection })
-    if (service !== clipboard) return
+    if (service !== clipboard || operation !== operationVersion) return
     if (result.status !== "read") {
       const detail = result.status === "failed" ? `: ${result.error.message}` : ""
-      if (readText) readText.content = `${chosenSelection}: ${result.status}${detail}`
-      setOperation(`Host read ${result.status}`)
+      finishOperation(operation, `Host read ${chosenSelection}: ${result.status}${detail}`)
       return
     }
 
     const { mimeType, bytes } = result.representation
     const digest = await sha256(bytes)
     if (service !== clipboard) return
-    const exact = mimeType === "text/plain" && new TextDecoder().decode(bytes) === payload
-    if (readText) {
-      readText.content = `${chosenSelection} | ${mimeType} | ${bytes.length} bytes | exact fixture: ${exact ? "yes" : "no"}\nSHA-256 ${digest}`
-    }
-    setOperation("Host read completed as data; no PasteEvent was synthesized")
+    const exact = mimeType === "text/plain" && new TextDecoder().decode(bytes) === expectedPayload
+    finishOperation(
+      operation,
+      `Host read ${chosenSelection}: ${mimeType}, ${bytes.length} bytes, exact fixture ${exact ? "yes" : "no"}; SHA-256 ${digest}. No PasteEvent synthesized.`,
+    )
   } catch (error) {
-    if (service === clipboard) setOperation(`Read failed: ${errorMessage(error)}`)
+    if (service === clipboard) finishOperation(operation, `Read failed: ${errorMessage(error)}`)
   }
 }
 
-async function clear(chosenSelection: ClipboardSelection, chosenDestination: ClipboardWriteDestination): Promise<void> {
+async function clear(chosenSelection: ClipboardSelection, destination: ClipboardWriteDestination): Promise<void> {
   const service = clipboard
+  const operation = beginOperation(`Clearing ${chosenSelection} via ${destination}`)
   if (!service) {
-    setOperation("Clear skipped: service disposed (F11 recreates)")
+    finishOperation(operation, "Clear skipped: service disposed (F11 recreates)")
     return
   }
 
-  setOperation(`Clearing ${chosenSelection} via ${chosenDestination}`)
   try {
-    const result = await service.clear({ destination: chosenDestination, selection: chosenSelection })
+    const result = await service.clear({ destination, selection: chosenSelection })
     if (service !== clipboard) return
-    setOperation(
+    finishOperation(
+      operation,
       `Clear ${chosenSelection}: host ${result.host.status}; terminal ${terminalResult(result.terminal.status, result.terminal.capability)}`,
     )
   } catch (error) {
-    if (service === clipboard) setOperation(`Clear failed: ${errorMessage(error)}`)
+    if (service === clipboard) finishOperation(operation, `Clear failed: ${errorMessage(error)}`)
   }
 }
 
-async function publishSelection(text: string): Promise<void> {
-  const service = clipboard
-  if (!service) return
-
-  try {
-    const result = await service.writeText(text, { destination: "all-available", selection })
-    if (service !== clipboard) return
-    setOperation(
-      `Mouse selection published ${byteCount(text)} bytes to ${selection}: host ${result.host.status}; terminal ${terminalResult(result.terminal.status, result.terminal.capability)}`,
-    )
-  } catch (error) {
-    if (service === clipboard) setOperation(`Selection publish failed: ${errorMessage(error)}`)
-  }
-}
-
-function panel(renderer: CliRenderer, id: string, title: string, height?: number): BoxRenderable {
-  return new BoxRenderable(renderer, {
-    id,
-    title: ` ${title} `,
-    border: true,
-    borderStyle: "rounded",
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.panel,
-    paddingLeft: 1,
-    paddingRight: 1,
-    ...(height === undefined ? { flexGrow: 1 } : { height }),
-  })
+function selectPayload(nextPayload: string, name: string): void {
+  pasteGeneration += 1
+  payload = nextPayload
+  editor?.setText("")
+  pasteStatus = "No PasteEvent received for selected fixture"
+  beginOperation(`Selected ${name}; paste target reset`)
 }
 
 function handleKey(renderer: CliRenderer, key: KeyEvent): void {
@@ -240,37 +229,35 @@ function handleKey(renderer: CliRenderer, key: KeyEvent): void {
 
   switch (key.name) {
     case "f1":
-      payload = UNICODE_PAYLOAD
-      setOperation("Selected exact Unicode payload")
+      selectPayload(UNICODE_PAYLOAD, "exact Unicode payload")
       break
     case "f2":
-      void write(renderer, "host-only")
+      void write("host-only")
       break
     case "f3":
       selection = selection === "clipboard" ? "primary" : "clipboard"
-      setOperation(`Selected ${selection}`)
+      beginOperation(`Selected ${selection}`)
       break
     case "f4":
-      payload = LARGE_PAYLOAD
-      setOperation("Selected exact 16 KiB payload")
+      selectPayload(LARGE_PAYLOAD, "exact 16,416-byte large fixture")
       break
     case "f5":
-      void write(renderer, "terminal-only")
+      void write("terminal-only")
       break
     case "f6":
-      void write(renderer, "all-available")
+      void write("all-available")
       break
     case "f8":
       void clear("clipboard", "all-available")
       break
     case "f9":
-      void clear(selection, destination)
+      void clear(selection, "terminal-only")
       break
     case "f10":
-      void disposeService()
+      void requestLifecycle(renderer, "dispose")
       break
     case "f11":
-      void recreateService(renderer)
+      void requestLifecycle(renderer, "recreate")
       break
     default:
       return
@@ -281,115 +268,88 @@ function handleKey(renderer: CliRenderer, key: KeyEvent): void {
 
 export function run(renderer: CliRenderer): void {
   destroyPromise = null
+  pasteGeneration += 1
   selection = "clipboard"
-  destination = "all-available"
   payload = UNICODE_PAYLOAD
   operationStatus = "Ready"
   pasteStatus = "No PasteEvent received"
   renderer.setBackgroundColor(COLORS.background)
 
   root = new BoxRenderable(renderer, {
-    id: "clipboard-demo-root",
     width: "100%",
     height: "100%",
     padding: 1,
     flexDirection: "column",
     gap: 1,
-    backgroundColor: COLORS.background,
   })
 
   const instructions = new TextRenderable(renderer, {
-    id: "clipboard-demo-instructions",
     height: 5,
     fg: COLORS.muted,
     content: [
       "CLIPBOARD AND PASTE MANUAL ACCEPTANCE",
-      "F1 Unicode | F2 host write | F3 clipboard/primary | F4 16 KiB | F5 terminal write | F6 all write",
-      "F7 read clipboard | Shift+F7 read primary | F8 clear clipboard/all | F9 clear selected destination/selection",
+      "F1 Unicode | F2 host write | F3 clipboard/primary | F4 16,416-byte fixture | F5 terminal write | F6 all write",
+      "F7 read clipboard | Shift+F7 read primary | F8 clear clipboard/all | F9 terminal clear (selected selection)",
       "F10 dispose | F11 recreate | Menu: Escape returns | Standalone: Ctrl+C/Ctrl+Q quits",
       "Terminal attempts are unconfirmed. Paste normally into the focused textarea below.",
     ].join("\n"),
   })
 
-  const editorPanel = panel(renderer, "clipboard-demo-editor-panel", "Focused Paste Target")
   editor = new TextareaRenderable(renderer, {
-    id: "clipboard-demo-editor",
     width: "100%",
-    height: "100%",
-    placeholder: "Ordinary terminal paste bytes/text appear here...",
+    flexGrow: 1,
+    placeholder: "FOCUSED PASTE TARGET: ordinary terminal paste bytes/text appear here...",
     textColor: COLORS.text,
     backgroundColor: COLORS.panel,
-    focusedBackgroundColor: COLORS.panel,
     cursorColor: COLORS.accent,
     selectionBg: COLORS.selection,
-    selectionFg: COLORS.text,
     wrapMode: "word",
   })
-  editorPanel.add(editor)
 
-  const statePanel = panel(renderer, "clipboard-demo-state-panel", "Current State", 7)
-  stateText = new TextRenderable(renderer, { id: "clipboard-demo-state", content: "", fg: COLORS.text })
-  statePanel.add(stateText)
-
-  const readPanel = panel(renderer, "clipboard-demo-read-panel", "Latest Host Read", 4)
-  readText = new TextRenderable(renderer, {
-    id: "clipboard-demo-read",
-    content: "No host read yet",
+  statusText = new TextRenderable(renderer, {
+    height: 7,
     fg: COLORS.text,
-    selectionBg: COLORS.selection,
-    selectionFg: COLORS.text,
   })
-  readPanel.add(readText)
 
   root.add(instructions)
-  root.add(editorPanel)
-  root.add(statePanel)
-  root.add(readPanel)
+  root.add(editor)
+  root.add(statusText)
   renderer.root.add(root)
 
   keyHandler = (key) => handleKey(renderer, key)
   pasteHandler = (event) => {
+    const generation = ++pasteGeneration
     const expected = payload
     const rawMatch = decodePasteBytes(event.bytes) === expected
     pasteStatus = `${event.bytes.length} bytes | raw fixture match: ${rawMatch ? "yes" : "no"} | editor match: pending`
-    updateState()
+    updateStatus()
     queueMicrotask(() => {
+      if (generation !== pasteGeneration) return
       const editorMatch = editor?.plainText === normalizeNewlines(expected)
       pasteStatus = `${event.bytes.length} bytes | raw fixture match: ${rawMatch ? "yes" : "no"} | editor normalized match: ${editorMatch ? "yes" : "no"}`
-      updateState()
+      updateStatus()
     })
-  }
-  selectionHandler = (currentSelection) => {
-    if (currentSelection.isDragging) return
-    const text = currentSelection.getSelectedText()
-    if (text.trim().length === 0) return
-    renderer.clearSelection()
-    void publishSelection(text)
   }
 
   renderer.keyInput.on("keypress", keyHandler)
   renderer.keyInput.on("paste", pasteHandler)
-  renderer.on("selection", selectionHandler)
-  void createService(renderer)
-  updateState()
+  void requestLifecycle(renderer, "create")
   editor.focus()
 }
 
 export function destroy(renderer: CliRenderer): Promise<void> {
   destroyPromise ??= (async () => {
+    pasteGeneration += 1
     if (keyHandler) renderer.keyInput.off("keypress", keyHandler)
     if (pasteHandler) renderer.keyInput.off("paste", pasteHandler)
-    if (selectionHandler) renderer.off("selection", selectionHandler)
     keyHandler = null
     pasteHandler = null
-    selectionHandler = null
     renderer.clearSelection()
-    await disposeService()
+    await requestLifecycle(renderer, "dispose")
     root?.destroyRecursively()
     root = null
     editor = null
-    stateText = null
-    readText = null
+    statusText = null
   })()
   return destroyPromise
 }
@@ -399,6 +359,8 @@ if (import.meta.main) {
   run(renderer)
   renderer.keyInput.on("keypress", (key: KeyEvent) => {
     if ((key.name === "c" && key.ctrl) || (key.name === "q" && key.ctrl)) {
+      key.preventDefault()
+      key.stopPropagation()
       void destroy(renderer).finally(() => renderer.destroy())
     }
   })

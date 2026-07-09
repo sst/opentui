@@ -3104,7 +3104,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public async setupTerminal(): Promise<void> {
     if (this._terminalIsSetup) return
     this._terminalIsSetup = true
-    this.startTerminalKeepAlive()
 
     const startupCursorCprActive = this._screenMode === "split-footer" && this._externalOutputMode === "capture-stdout"
     this.updateStdinParserProtocolContext({

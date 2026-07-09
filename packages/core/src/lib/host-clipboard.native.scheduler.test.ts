@@ -70,3 +70,26 @@ test("tracks process liveness as provider and operation work changes", () => {
   scheduler.dispose()
   expect(timers[3]?.cleared).toBe(true)
 })
+
+test("schedules one unrefed service turn after any final terminal operation poll", () => {
+  const { scheduler, timers } = createHarness()
+  let hasOperation = true
+  let providerActive = false
+  const drain = () => {
+    providerActive = false
+    if (!hasOperation) {
+      scheduler.schedule(hasOperation, providerActive, drain)
+      return
+    }
+    hasOperation = false
+    providerActive = true
+    scheduler.schedule(hasOperation, providerActive, drain)
+  }
+
+  scheduler.schedule(hasOperation, false, drain)
+  timers[0]!.callback()
+
+  expect(timers[1]).toMatchObject({ cleared: false, refed: false })
+  timers[1]!.callback()
+  expect(timers).toHaveLength(2)
+})

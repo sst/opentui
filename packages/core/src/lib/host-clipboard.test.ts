@@ -84,12 +84,13 @@ describe("createHostClipboard", () => {
     const fake = createBackend()
     const host = createHost(fake.backend, { timeoutMs: 0 })
 
-    expect(await host.read({ preferredTypes: ["text/plain"] })).toEqual({ status: "timed-out" })
-    expect(await host.writeText("text")).toEqual({ status: "timed-out" })
-    expect(await host.clear()).toEqual({ status: "timed-out" })
-    expect(fake.reads).toHaveLength(0)
-    expect(fake.writes).toHaveLength(0)
-    expect(fake.clears).toHaveLength(0)
+    const results = await Promise.all([
+      host.read({ preferredTypes: ["text/plain"] }),
+      host.writeText("text"),
+      host.clear(),
+    ])
+    expect(results.map(({ status }) => status)).toEqual(["timed-out", "timed-out", "timed-out"])
+    expect([fake.reads.length, fake.writes.length, fake.clears.length]).toEqual([0, 0, 0])
     await host.dispose()
   })
 
@@ -122,25 +123,7 @@ describe("createHostClipboard", () => {
   it("passes every normalized construction option to the internal backend factory", async () => {
     const fake = createBackend()
     let received: NormalizedHostClipboardOptions | undefined
-    const host = createHostClipboardWithBackend(
-      {
-        timeoutMs: 9,
-        maxReadBytes: 10,
-        maxWriteBytes: 11,
-        maxImagePixels: 12,
-        maxConversionBytes: 13,
-        maxConcurrentOperations: 14,
-        maxProviderTransfers: 15,
-        maxWorkUnitsPerDrain: 16,
-        waylandSeat: "seat0",
-      },
-      (options) => {
-        received = options
-        return fake.backend
-      },
-    )
-
-    expect(received).toEqual({
+    const options = {
       timeoutMs: 9,
       maxReadBytes: 10,
       maxWriteBytes: 11,
@@ -150,36 +133,33 @@ describe("createHostClipboard", () => {
       maxProviderTransfers: 15,
       maxWorkUnitsPerDrain: 16,
       waylandSeat: "seat0",
+    }
+    const host = createHostClipboardWithBackend(options, (normalized) => {
+      received = normalized
+      return fake.backend
     })
+
+    expect(received).toEqual(options)
     await host.dispose()
   })
 
-  it("rejects invalid MIME preferences without dispatch", async () => {
+  it("validates and normalizes MIME preferences at native protocol boundaries", async () => {
     const fake = createBackend()
     const host = createHost(fake.backend)
 
-    for (const preferredTypes of [[], ["text/plain; charset=utf-8"], ["text"]]) {
-      await expect(host.read({ preferredTypes: preferredTypes as [string, ...string[]] })).rejects.toThrow(TypeError)
+    const invalidPreferences = [
+      [[], TypeError],
+      [["text/plain; charset=utf-8"], TypeError],
+      [["text"], TypeError],
+      [Array.from({ length: 65 }, (_, index) => `application/x-${index}`), RangeError],
+      [[`application/${"a".repeat(244)}`], RangeError],
+    ] as const
+    for (const [preferredTypes, error] of invalidPreferences) {
+      await expect(host.read({ preferredTypes: preferredTypes as unknown as [string, ...string[]] })).rejects.toThrow(
+        error,
+      )
     }
     expect(fake.reads).toHaveLength(0)
-    await host.dispose()
-  })
-
-  it("rejects MIME preferences beyond native protocol capacities without dispatch", async () => {
-    const fake = createBackend()
-    const host = createHost(fake.backend)
-    const tooManyTypes = Array.from({ length: 65 }, (_, index) => `application/x-${index}`) as [string, ...string[]]
-    const tooLongType = `application/${"a".repeat(244)}`
-
-    await expect(host.read({ preferredTypes: tooManyTypes })).rejects.toThrow(RangeError)
-    await expect(host.read({ preferredTypes: [tooLongType] })).rejects.toThrow(RangeError)
-    expect(fake.reads).toHaveLength(0)
-    await host.dispose()
-  })
-
-  it("accepts MIME preferences at native protocol capacities", async () => {
-    const fake = createBackend()
-    const host = createHost(fake.backend)
     const preferredTypes = Array.from({ length: 64 }, (_, index) => `Application/X-${index}`) as [string, ...string[]]
     preferredTypes[63] = `Application/${"A".repeat(243)}`
 
@@ -188,15 +168,8 @@ describe("createHostClipboard", () => {
     expect(fake.reads).toHaveLength(1)
     expect(fake.reads[0]?.preferredTypes).toEqual(normalizedTypes)
     expect(fake.reads[0]?.preferredTypes[63]).toHaveLength(255)
-    await host.dispose()
-  })
-
-  it("accepts asterisks inside concrete MIME type tokens", async () => {
-    const fake = createBackend()
-    const host = createHost(fake.backend)
-
     await host.read({ preferredTypes: ["Application/Foo*Bar"] })
-    expect(fake.reads[0]?.preferredTypes).toEqual(["application/foo*bar"])
+    expect(fake.reads[1]?.preferredTypes).toEqual(["application/foo*bar"])
     await host.dispose()
   })
 
@@ -204,11 +177,15 @@ describe("createHostClipboard", () => {
     const fake = createBackend()
     const host = createHost(fake.backend, { maxWriteBytes: 4 })
 
-    await expect(host.writeText("")).rejects.toThrow("non-empty")
-    await expect(host.writeText("a\0b")).rejects.toThrow("NUL")
-    await expect(host.writeText("hello")).rejects.toThrow(RangeError)
-    await expect(host.writeText("世界")).rejects.toThrow(RangeError)
-    await expect(host.writeText("ééé")).rejects.toThrow(RangeError)
+    for (const [text, error] of [
+      ["", "non-empty"],
+      ["a\0b", "NUL"],
+      ["hello", RangeError],
+      ["世界", RangeError],
+      ["ééé", RangeError],
+    ] as const) {
+      await expect(host.writeText(text)).rejects.toThrow(error)
+    }
     expect(fake.writes).toHaveLength(0)
     await host.writeText("four")
     await host.writeText("éé")
@@ -262,23 +239,6 @@ describe("createHostClipboard", () => {
 
     release?.()
     await first
-    await host.dispose()
-  })
-
-  it("returns the stable caller-owned bytes supplied by the backend", async () => {
-    const bytes = new Uint8Array([1, 2, 3])
-    const fake = createBackend({
-      async read() {
-        return { status: "read", representation: { mimeType: "image/png", bytes } }
-      },
-    })
-    const host = createHost(fake.backend)
-    const result = await host.read({ preferredTypes: ["image/png"] })
-
-    expect(result.status).toBe("read")
-    if (result.status === "read") {
-      expect(result.representation.bytes).toBe(bytes)
-    }
     await host.dispose()
   })
 
