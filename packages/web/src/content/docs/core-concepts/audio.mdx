@@ -121,7 +121,7 @@ try {
 
 The default `contentTypePolicy: "validate"` accepts `audio/mpeg`, `audio/mp3`, `application/mp3`, `application/octet-stream`, or a missing content type. Set it to `"ignore"` to let the decoder validate mislabeled responses, or pass a callback receiving `{ format, contentType, status, url }` and return a boolean. Every response, including reconnect replacements, is evaluated before its bytes reach the decoder. `request` accepts `RequestInit` except `body` and `signal`; use the stream-level `signal` option for cancellation.
 
-URL streams request ICY metadata with `Icy-MetaData: 1` unless `request.headers` already contains that header. Set it to `0` explicitly to disable negotiation. A positive `icy-metaint` response header selects the ICY demuxer; URLs, content types, station headers, and server names are not used to infer framing. Invalid or ambiguous intervals reject the response before a native voice is allocated.
+URL streams request ICY metadata with `Icy-MetaData: 1` unless `request.headers` already contains that header. Set it to `0` explicitly to disable negotiation. Any `icy-*` response headers are exposed as an ICY metadata snapshot; a positive `icy-metaint` additionally enables in-band framing. URLs, content types, station headers, and server names are not used to infer framing. Invalid or ambiguous intervals reject the response before a native voice is allocated.
 
 ICY framing is removed in TypeScript before bytes reach the native MP3 decoder. `getMetadata()` returns the latest immutable `{ format, headers, fields }` snapshot or `null`. ICY response header names are lowercase in `headers`; in-band field names such as `StreamTitle` and `StreamUrl` retain their original case. Unknown fields are preserved. The `metadata` event emits the latest changed snapshot, and emits `null` when a replacement response no longer advertises ICY metadata. Rapid changes can coalesce into one asynchronous event; `getMetadata()` always returns the current snapshot. Zero-length and repeated equivalent metadata blocks do not emit events.
 
@@ -207,7 +207,7 @@ Custom demuxers expose `initialMetadata`, `push(chunk)`, and `flush()`, with opt
 | `volume`            | `1`     | Stream volume; native playback clamps to `0..4`           |
 | `pan`               | `0`     | Stereo pan; native playback clamps to `-1..1`             |
 | `groupId`           | `0`     | Mixer group                                               |
-| `buffer.capacityMs` | `2000`  | Encoded/decoded stream capacity                           |
+| `buffer.capacityMs` | `2000`  | Decoded PCM buffer capacity                               |
 | `buffer.startupMs`  | `1000`  | Initial playback threshold                                |
 | `buffer.resumeMs`   | `1000`  | Resume threshold after starvation                         |
 | `maxProbeBytes`     | `1 MiB` | Maximum encoded bytes inspected during decoder setup      |
@@ -224,7 +224,7 @@ Buffer values must be positive integers; startup and resume thresholds cannot ex
 | `dispose()`                             | Cancels transport, demuxer, retries, and native playback                                                                                    |
 | `closed`                                | Resolves after bounded cleanup and delivery of the terminal `ended`, `error`, or `disposed` event                                           |
 
-Events are `metadata`, `reconnecting`, `ended`, `error`, and `disposed`. Operational setup failures reject with `AudioStreamError`; input validation uses `TypeError`/`RangeError`, cancellation uses `AbortError`, and starting a stream after its owning `Audio` was disposed rejects with `Error`. Later terminal failures emit `error` with context. Disposing the owning `Audio` also disposes pending and active streams.
+Events are `metadata`, `reconnecting`, `ended`, `error`, and `disposed`. Transport, response, demuxer, native creation, and decoder setup failures reject with `AudioStreamError`; validation performed in JavaScript uses `TypeError`/`RangeError`, cancellation uses `AbortError`, and starting a stream after its owning `Audio` was disposed rejects with `Error`. Later terminal failures emit `error` with context. Disposing the owning `Audio` also disposes pending and active streams.
 
 `bytesReceived` counts only MP3 bytes emitted by the demuxer; framing and metadata are excluded. Final stats and metadata remain readable after natural completion. Native readiness, backpressure, and EOF draining use short-lived polling; there is no persistent idle statistics loop.
 
