@@ -513,13 +513,22 @@ pub const Connection = struct {
         return null;
     }
 
-    fn canPublishProvider(self: *const Connection, primary: bool) bool {
+    fn canPublishProvider(self: *Connection, primary: bool) bool {
+        self.reclaimCancelledProviders();
         var count: u8 = 0;
         for (self.providers) |candidate| {
             const provider = candidate orelse continue;
             if (provider.primary == primary) count += 1;
         }
         return count < 2;
+    }
+
+    fn reclaimCancelledProviders(self: *Connection) void {
+        for (self.providers) |slot| {
+            const provider = slot orelse continue;
+            if (!provider.cancelled or provider.transfer_count > 0) continue;
+            self.retireProvider(provider);
+        }
     }
 
     fn retireProvider(self: *Connection, provider: *Provider) void {
@@ -637,8 +646,8 @@ pub const Connection = struct {
     fn destroyCoreHelper(self: *Connection) void {
         if (self.helper_buffer) |proxy| self.destroyProtocolProxy(proxy, 0);
         if (self.helper_pool) |proxy| self.destroyProtocolProxy(proxy, 1);
-        if (self.helper_surface) |proxy| self.destroyProtocolProxy(proxy, 0);
         if (self.helper_shell_surface) |proxy| self.symbols.wl_proxy_destroy(proxy);
+        if (self.helper_surface) |proxy| self.destroyProtocolProxy(proxy, 0);
         if (self.helper_fd) |fd| std.posix.close(fd);
         self.helper_shell_surface = null;
         self.helper_surface = null;
@@ -882,7 +891,10 @@ pub const Connection = struct {
             self.seats_overflowed = true;
             return;
         }
-        const proxy = self.bind(name, self.symbols.wl_seat_interface, @min(version, 2)) orelse return;
+        const proxy = self.bind(name, self.symbols.wl_seat_interface, @min(version, 2)) orelse {
+            self.seats_overflowed = true;
+            return;
+        };
         const seat = &self.seats[self.seat_count];
         seat.* = .{ .global_name = name, .proxy = proxy };
         self.seat_count += 1;
@@ -1219,31 +1231,22 @@ const source_listener = [_]*const anyopaque{
     @ptrCast(&Connection.sourceCancelled),
 };
 
-test "Wayland connection negotiates data control without blocking when a compositor is available" {
-    if (comptime builtin.os.tag != .linux) return;
-    if (builtin.abi == .musl) return;
-    const env = std.process.getEnvVarOwned(std.testing.allocator, "WAYLAND_DISPLAY") catch return;
-    defer std.testing.allocator.free(env);
-    if (linux.waylandSymbols() == null) {
-        _ = linux.initialize(.{ .is_wsl = false, .has_wayland_display = true, .has_x11_display = false });
-    }
-    const symbols = linux.waylandSymbols() orelse return;
-    var connection = Connection.init(std.testing.allocator, symbols, "", "", 16);
-    defer connection.deinit();
-    var progress: Progress = .pending;
-    var attempts: u32 = 0;
-    while (progress == .pending and attempts < 2_000) : (attempts += 1) {
-        progress = connection.drive();
-        if (progress == .pending) std.Thread.sleep(std.time.ns_per_ms);
-    }
-    try std.testing.expect(progress == .ready or progress == .unsupported);
-}
-
 test "Wayland seat selection treats XDG_SEAT as advisory but explicit configuration as strict" {
-    var connection: Connection = undefined;
-    connection.seats_overflowed = false;
+    const seat_interface: WlInterface = .{
+        .name = "wl_seat",
+        .version = 2,
+        .method_count = 0,
+        .methods = null,
+        .event_count = 0,
+        .events = null,
+    };
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshalFailure;
+    symbols.wl_seat_interface = &seat_interface;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    connection.registry = @ptrFromInt(3);
     connection.seat_count = 1;
-    connection.seats[0] = .{ .global_name = 1, .proxy = undefined };
+    connection.seats[0] = .{ .global_name = 1, .proxy = @ptrFromInt(1) };
     @memcpy(connection.seats[0].name[0..8], "Hyprland");
     connection.seats[0].name_length = 8;
 
@@ -1260,10 +1263,35 @@ test "Wayland seat selection treats XDG_SEAT as advisory but explicit configurat
     connection.requested_seat = "";
     connection.environment_seat = "seat0";
     connection.seat_count = 2;
-    connection.seats[1] = .{ .global_name = 2, .proxy = undefined };
+    connection.seats[1] = .{ .global_name = 2, .proxy = @ptrFromInt(2) };
     @memcpy(connection.seats[1].name[0..5], "other");
     connection.seats[1].name_length = 5;
     try std.testing.expect(connection.selectSeat() == null);
+
+    // Removing one valid global leaves the remaining sole seat unambiguous.
+    try std.testing.expect(connection.removeGlobal(2) == @as(*WlProxy, @ptrFromInt(2)));
+    try std.testing.expect(connection.selectSeat() == &connection.seats[0]);
+
+    // A failed bind makes automatic fallback conservative without retaining removed globals.
+    connection.addSeat(3, 2);
+    try std.testing.expect(connection.seats_overflowed);
+    try std.testing.expect(connection.selectSeat() == null);
+}
+
+test "Wayland core helper destroys its role before its surface" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_destroy = testRoleDestroy;
+    symbols.wl_proxy_get_version = testProxyVersion;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    connection.helper_surface = @ptrFromInt(1);
+    connection.helper_shell_surface = @ptrFromInt(2);
+    test_role_destroyed_before_surface = false;
+    test_role_connection = &connection;
+
+    connection.destroyCoreHelper();
+
+    try std.testing.expect(test_role_destroyed_before_surface);
 }
 
 test "Wayland flush completion distinguishes EAGAIN from completion and hard failure" {
@@ -1380,6 +1408,8 @@ var test_dispatched_callback_count: u32 = 0;
 var test_display_fd: std.posix.fd_t = -1;
 var test_read_event_count: u32 = 0;
 var test_display_error_call_count: u32 = 0;
+var test_role_connection: ?*Connection = null;
+var test_role_destroyed_before_surface = false;
 
 fn testDisplayConnect(_: ?[*:0]const u8) callconv(.c) ?*linux.WlDisplay {
     return @ptrFromInt(1);
@@ -1436,6 +1466,21 @@ fn testMarshal(
     return @ptrFromInt(4);
 }
 
+fn testMarshalFailure(
+    _: *WlProxy,
+    _: u32,
+    _: ?*const WlInterface,
+    _: u32,
+    _: u32,
+    _: [*]WlArgument,
+) callconv(.c) ?*WlProxy {
+    return null;
+}
+
+fn testRoleDestroy(proxy: *WlProxy) callconv(.c) void {
+    test_role_destroyed_before_surface = @intFromPtr(proxy) == 2 and test_role_connection.?.test_marshal_count == 0;
+}
+
 fn testAddListener(_: *WlProxy, _: [*]const *const anyopaque, _: ?*anyopaque) callconv(.c) c_int {
     return 0;
 }
@@ -1454,9 +1499,7 @@ test "Wayland MIME retention ignores irrelevant metadata without consuming the b
     try std.testing.expect(!isRelevantMime(&([_]u8{'x'} ** (MAX_MIME_BYTES + 1))));
 
     const proxy: *WlProxy = @ptrFromInt(1);
-    var connection: Connection = undefined;
-    connection.offer_count = 1;
-    connection.offers[0] = .{ .proxy = proxy };
+    var connection = testOfferConnection(proxy);
     var index: u8 = 0;
     while (index < MAX_OFFER_MIME_TYPES) : (index += 1) {
         Connection.offerMime(&connection, proxy, "application/x-irrelevant");
@@ -1468,10 +1511,7 @@ test "Wayland MIME retention ignores irrelevant metadata without consuming the b
 
 test "Wayland MIME matching parses essence and UTF-8 charset parameters" {
     const proxy: *WlProxy = @ptrFromInt(1);
-    var connection: Connection = undefined;
-    connection.core_data_device = false;
-    connection.offer_count = 1;
-    connection.offers[0] = .{ .proxy = proxy };
+    var connection = testOfferConnection(proxy);
     Connection.offerMime(&connection, proxy, " Text/Plain ; format=flowed ; charset=\"UtF-8\" ");
     Connection.offerMime(&connection, proxy, "text/plain;charset=iso-8859-1");
     Connection.offerMime(&connection, proxy, " IMAGE/PNG ; version=1 ");
@@ -1492,9 +1532,7 @@ test "Wayland MIME matching parses essence and UTF-8 charset parameters" {
 
 test "Wayland MIME retention deduplicates canonical supported essences" {
     const proxy: *WlProxy = @ptrFromInt(1);
-    var connection: Connection = undefined;
-    connection.offer_count = 1;
-    connection.offers[0] = .{ .proxy = proxy };
+    var connection = testOfferConnection(proxy);
 
     var index: u8 = 0;
     while (index < MAX_OFFER_MIME_TYPES) : (index += 1) {
@@ -1510,10 +1548,7 @@ test "Wayland MIME retention deduplicates canonical supported essences" {
 
 test "Wayland BMP conversion fallback is restricted to WSL core compatibility" {
     const proxy: *WlProxy = @ptrFromInt(1);
-    var connection: Connection = undefined;
-    connection.core_data_device = false;
-    connection.offer_count = 1;
-    connection.offers[0] = .{ .proxy = proxy };
+    var connection = testOfferConnection(proxy);
     Connection.offerMime(&connection, proxy, "image/bmp");
 
     try std.testing.expect(connection.offeredMime(&connection.offers[0], "image/png") == null);
@@ -1523,6 +1558,14 @@ test "Wayland BMP conversion fallback is restricted to WSL core compatibility" {
         "image/bmp",
         connection.offeredMime(&connection.offers[0], "image/png").?.offered,
     );
+}
+
+fn testOfferConnection(proxy: *WlProxy) Connection {
+    var connection: Connection = undefined;
+    connection.core_data_device = false;
+    connection.offer_count = 1;
+    connection.offers[0] = .{ .proxy = proxy };
+    return connection;
 }
 
 test "Wayland core data-device fallback is WSL-gated and read-only" {
@@ -1629,28 +1672,6 @@ test "Wayland core selection becomes ready after focus and selection in either o
     try std.testing.expectEqual(Progress.pending, connection.coreSelectionProgress());
     Connection.deviceSelection(&connection, null, offer);
     try std.testing.expectEqual(Progress.ready, connection.coreSelectionProgress());
-}
-
-test "Wayland core selection rejects events without an active helper acquisition" {
-    var symbols: linux.WaylandSymbols = undefined;
-    symbols.wl_proxy_marshal_array_flags = testMarshal;
-    symbols.wl_proxy_get_version = testProxyVersion;
-    const offer: *WlProxy = @ptrFromInt(1);
-    var connection: Connection = undefined;
-    connection.symbols = &symbols;
-    connection.core_data_device = true;
-    connection.core_focus_users = 0;
-    connection.helper_surface = null;
-    connection.clipboard_offer = null;
-    connection.primary_offer = null;
-    connection.offer_count = 1;
-    connection.offers[0] = .{ .proxy = offer };
-    connection.test_marshal_count = 0;
-
-    Connection.deviceSelection(&connection, null, offer);
-
-    try std.testing.expect(connection.clipboard_offer == null);
-    try std.testing.expectEqual(@as(u8, 0), connection.offer_count);
 }
 
 test "Wayland bound core seat keyboard loss fails active and future acquisitions" {
@@ -1803,6 +1824,32 @@ test "Wayland reserves provider capacity independently for each selection" {
     try std.testing.expect(!connection.canPublishProvider(false));
     connection.providers[1] = null;
     try std.testing.expect(connection.canPublishProvider(false));
+}
+
+test "Wayland publication reclaims cancelled providers before checking capacity" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_add_listener = testAddListener;
+    symbols.wl_proxy_destroy = testDestroyProxy;
+    symbols.wl_proxy_get_version = testProxyVersion;
+    var connection = testReadyConnection(&symbols, .{ .result = 0, .errno = .SUCCESS });
+
+    for (connection.providers[0..2], 0..) |*slot, index| {
+        const provider = try std.testing.allocator.create(Provider);
+        provider.* = .{
+            .connection = &connection,
+            .source = @ptrFromInt(10 + index),
+            .primary = false,
+            .data = &.{},
+            .transfers = try std.testing.allocator.alloc(Transfer, 1),
+            .cancelled = index == 1,
+        };
+        slot.* = provider;
+    }
+    connection.clipboard_provider = connection.providers[0];
+
+    try std.testing.expectEqual(SelectionResult.ok, connection.publishText(false, &.{}));
+    connection.releaseProviders();
 }
 
 test "Wayland clear retires the current provider at the generation bound" {

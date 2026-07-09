@@ -1212,6 +1212,8 @@ class ExampleSelector {
   private setupKeyboardHandling(): void {
     this.renderer.keyInput.on("keypress", (key: KeyEvent) => {
       if (key.name === "c" && key.ctrl) {
+        key.preventDefault()
+        key.stopPropagation()
         this.requestIntent("quit")
         return
       }
@@ -1219,6 +1221,8 @@ class ExampleSelector {
       if (!this.inMenu) {
         switch (key.name) {
           case "escape":
+            key.preventDefault()
+            key.stopPropagation()
             this.requestIntent("menu")
             break
         }
@@ -1275,10 +1279,6 @@ class ExampleSelector {
         }
       }
 
-      if (key.name === "c" && key.ctrl) {
-        this.requestIntent("quit")
-        return
-      }
       switch (key.name) {
         case "c":
           console.log("Capabilities:", this.renderer.capabilities)
