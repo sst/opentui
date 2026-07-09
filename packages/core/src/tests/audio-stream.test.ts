@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import { createServer, type Server, type ServerResponse } from "node:http"
 import { runInNewContext } from "node:vm"
 import { afterEach, expect, test } from "bun:test"
+import { Audio as PublicAudio, AudioStreamError } from "../index.js"
 import {
   Audio,
   AudioStream,
@@ -10,12 +11,7 @@ import {
   type AudioStreamMetadata,
   type AudioStreamStats,
 } from "../audio.js"
-import type {
-  Audio as PublicAudio,
-  AudioStreamBodyOptions,
-  AudioStreamSource,
-  AudioStreamUrlOptions,
-} from "../index.js"
+import type { AudioStreamBodyOptions, AudioStreamSource, AudioStreamUrlOptions } from "../index.js"
 import { NativeAudioStreamState } from "../zig-structs.js"
 
 const SAMPLE_RATE = 48_000
@@ -41,6 +37,12 @@ function assertPublicAudioStreamSourceOverload(
   void audio.playStream(source, urlOptions)
   // @ts-expect-error URL-only options are not valid for byte sources.
   void audio.playStream(bodySource, urlOptions)
+}
+
+function expectAudioStreamError(value: unknown): AudioStreamError {
+  expect(value).toBeInstanceOf(AudioStreamError)
+  if (!(value instanceof AudioStreamError)) throw new Error("Expected AudioStreamError")
+  return value
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -220,6 +222,25 @@ afterEach(async () => {
       await closed
     }
   }
+})
+
+test("Audio exposes typed stream setup failures through the public API", async () => {
+  const server = createServer((_, response) => {
+    response.writeHead(404, { Connection: "close" })
+    response.end()
+  })
+  const baseUrl = await listen(server)
+  const audio = PublicAudio.create({ autoStart: false })
+  audios.push(audio)
+
+  let rejection: unknown
+  try {
+    await audio.playStream(`${baseUrl}/missing`)
+  } catch (error) {
+    rejection = error
+  }
+
+  expect(expectAudioStreamError(rejection).context).toEqual({ action: "response", status: 404, attempt: 0 })
 })
 
 test("Audio streams an MP3 before the HTTP response ends and exposes it through the tap", async () => {
@@ -562,8 +583,9 @@ test("Audio rejects ambiguous ICY intervals before allocating a native stream", 
     } catch (error) {
       rejection = error
     }
-    expect((rejection as Error)?.message).toContain("Invalid icy-metaint")
-    expect((rejection as { context?: AudioStreamErrorContext }).context).toEqual({
+    const streamError = expectAudioStreamError(rejection)
+    expect(streamError.message).toContain("Invalid icy-metaint")
+    expect(streamError.context).toEqual({
       action: "response",
       status: 200,
     })
@@ -1255,7 +1277,7 @@ test("Audio rejects unsupported stream buffer capacity before consuming the sour
     rejection = error
   }
 
-  expect((rejection as { context?: AudioStreamErrorContext })?.context).toEqual({ action: "create", status: -1 })
+  expect(expectAudioStreamError(rejection).context).toEqual({ action: "create", status: -1 })
   expect(sourceConsumed).toBe(false)
   expect(audio.getStats()?.voicesActive).toBe(0)
 })
@@ -1279,7 +1301,7 @@ test("Audio validates the stream group before consuming the source", async () =>
     rejection = error
   }
 
-  expect((rejection as { context?: AudioStreamErrorContext })?.context).toEqual({ action: "create", status: -1 })
+  expect(expectAudioStreamError(rejection).context).toEqual({ action: "create", status: -1 })
   expect(sourceConsumed).toBe(false)
   expect(audio.getStats()?.voicesActive).toBe(0)
 })
@@ -1299,7 +1321,7 @@ test("Audio rejects a fractional stream group before consuming the source", asyn
     rejection = error
   }
 
-  expect((rejection as { context?: AudioStreamErrorContext })?.context).toEqual({ action: "create", status: -1 })
+  expect(expectAudioStreamError(rejection).context).toEqual({ action: "create", status: -1 })
   expect(sourceConsumed).toBe(false)
   expect(audio.getStats()?.voicesActive).toBe(0)
 })
@@ -1331,7 +1353,7 @@ test("Audio streams share the existing 32 active voice slots", async () => {
     rejection = error
   }
 
-  expect((rejection as { context?: AudioStreamErrorContext })?.context).toEqual({ action: "create", status: -2 })
+  expect(expectAudioStreamError(rejection).context).toEqual({ action: "create", status: -2 })
   expect(sourceConsumed).toBe(false)
   expect(audio.getStats()?.voicesActive).toBe(32)
 
@@ -1378,7 +1400,7 @@ test("Audio enforces the default decoder probe limit and accepts a configured ov
   } catch (error) {
     defaultRejection = error
   }
-  expect((defaultRejection as { context?: AudioStreamErrorContext }).context).toEqual({
+  expect(expectAudioStreamError(defaultRejection).context).toEqual({
     action: "decoder",
     errorCode: -3,
   })
@@ -2243,8 +2265,9 @@ test("Audio retries successful URL responses that have no body", async () => {
     globalThis.fetch = originalFetch
   }
 
-  expect((rejection as Error)?.message).toContain("response has no body")
-  expect((rejection as { context?: AudioStreamErrorContext }).context).toEqual({
+  const streamError = expectAudioStreamError(rejection)
+  expect(streamError.message).toContain("response has no body")
+  expect(streamError.context).toEqual({
     action: "response",
     status: 200,
   })

@@ -258,7 +258,7 @@ interface AudioStreamAttempt {
   cleanup: (() => unknown) | null
 }
 
-class AudioStreamOperationError extends Error {
+export class AudioStreamError extends Error {
   readonly context: AudioStreamErrorContext
 
   constructor(message: string, context: AudioStreamErrorContext, cause?: unknown) {
@@ -549,7 +549,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     if (!isU32(groupId)) {
       const context: AudioStreamErrorContext = { action: "setGroup" }
       if (this.exposed) {
-        this.emitAsync("error", new AudioStreamOperationError("Invalid audio stream group", context), context)
+        this.emitAsync("error", new AudioStreamError("Invalid audio stream group", context), context)
       }
       return false
     }
@@ -563,11 +563,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     if (status !== 0) {
       const context: AudioStreamErrorContext = { action, status }
       if (this.exposed) {
-        this.emitAsync(
-          "error",
-          new AudioStreamOperationError(`Audio stream ${action} failed: ${status}`, context),
-          context,
-        )
+        this.emitAsync("error", new AudioStreamError(`Audio stream ${action} failed: ${status}`, context), context)
       }
       return false
     }
@@ -609,16 +605,12 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         action: this.urlSource ? "fetch" : "source",
       }
       const error =
-        cause instanceof AudioStreamOperationError
+        cause instanceof AudioStreamError
           ? cause
           : cause instanceof TypeError && cause.message === INVALID_STREAM_CHUNK_MESSAGE
             ? cause
-            : new AudioStreamOperationError(`Audio stream ${context.action} failed`, context, cause)
-      await this.finish(
-        CloseReason.TransportError,
-        error,
-        error instanceof AudioStreamOperationError ? error.context : context,
-      )
+            : new AudioStreamError(`Audio stream ${context.action} failed`, context, cause)
+      await this.finish(CloseReason.TransportError, error, error instanceof AudioStreamError ? error.context : context)
     }
   }
 
@@ -635,7 +627,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     })
     if (created.status !== 0 || created.streamId == null) {
       const context: AudioStreamErrorContext = { action: "create", status: created.status }
-      throw new AudioStreamOperationError(`Audio stream create failed: ${created.status}`, context)
+      throw new AudioStreamError(`Audio stream create failed: ${created.status}`, context)
     }
     this.nativeStreamId = created.streamId
   }
@@ -656,7 +648,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       } catch (cause) {
         if (!this.isAttemptActive(attempt)) return
         const context: AudioStreamErrorContext = { action: "fetch", attempt: this.consecutiveReconnectAttempts }
-        const error = new AudioStreamOperationError("Audio stream fetch failed", context, cause)
+        const error = new AudioStreamError("Audio stream fetch failed", context, cause)
         await this.stopSource(attempt)
         if (await this.retry(error, true)) continue
         return
@@ -677,7 +669,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
           status: response.status,
           attempt: this.consecutiveReconnectAttempts,
         }
-        const error = new AudioStreamOperationError(`Audio stream request failed with HTTP ${response.status}`, context)
+        const error = new AudioStreamError(`Audio stream request failed with HTTP ${response.status}`, context)
         const retryable =
           [408, 425, 429].includes(response.status) || (response.status >= 500 && response.status <= 599)
         if (await this.retry(error, retryable, retryAfterMs)) continue
@@ -691,14 +683,14 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         const context: AudioStreamErrorContext = { action: "response", status: response.status }
         await this.finish(
           CloseReason.TransportError,
-          new AudioStreamOperationError(`Unsupported audio stream Content-Type: ${contentType}`, context),
+          new AudioStreamError(`Unsupported audio stream Content-Type: ${contentType}`, context),
         )
         return
       }
       if (response.body == null) {
         await this.stopSource(attempt)
         const context: AudioStreamErrorContext = { action: "response", status: response.status }
-        const error = new AudioStreamOperationError("Audio stream response has no body", context)
+        const error = new AudioStreamError("Audio stream response has no body", context)
         if (await this.retry(error, true)) continue
         return
       }
@@ -715,7 +707,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         const context: AudioStreamErrorContext = { action: "response", status: response.status }
         await this.finish(
           CloseReason.TransportError,
-          new AudioStreamOperationError(
+          new AudioStreamError(
             cause instanceof Error ? cause.message : "Invalid audio stream metadata response",
             context,
             cause,
@@ -739,9 +731,9 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
       } catch (cause) {
         if (this.lifecycleController.signal.aborted) return
         const context: AudioStreamErrorContext =
-          cause instanceof AudioStreamOperationError ? cause.context : { action: "source" }
+          cause instanceof AudioStreamError ? cause.context : { action: "source" }
         const error =
-          cause instanceof Error ? cause : new AudioStreamOperationError("Audio stream source failed", context, cause)
+          cause instanceof Error ? cause : new AudioStreamError("Audio stream source failed", context, cause)
         if (context.action !== "fetch" || error instanceof TypeError) {
           await this.finish(CloseReason.TransportError, error, context)
           return
@@ -754,7 +746,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         return
       }
       const context: AudioStreamErrorContext = { action: "source" }
-      const error = new AudioStreamOperationError("Audio stream response ended", context)
+      const error = new AudioStreamError("Audio stream response ended", context)
       if (await this.retry(error, true)) continue
       return
     }
@@ -781,7 +773,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     const status = this.lib.audioEndStream(this.engine, this.nativeStreamId!)
     if (status !== 0) {
       const context: AudioStreamErrorContext = { action: "end", status }
-      throw new AudioStreamOperationError(`Audio stream end failed: ${status}`, context)
+      throw new AudioStreamError(`Audio stream end failed: ${status}`, context)
     }
     if (!(await decoderReady) || this.lifecycleController.signal.aborted) return false
     if (!(await this.awaitEnded(attempt))) return false
@@ -870,13 +862,13 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     } catch (cause) {
       if (!this.isAttemptActive(attempt) || attempt.controller.signal.aborted) return
       if (
-        cause instanceof AudioStreamOperationError ||
+        cause instanceof AudioStreamError ||
         (cause instanceof TypeError && cause.message === INVALID_STREAM_CHUNK_MESSAGE)
       ) {
         throw cause
       }
       const context: AudioStreamErrorContext = { action: retryableBody ? "fetch" : "source" }
-      throw new AudioStreamOperationError("Audio stream source failed", context, cause)
+      throw new AudioStreamError("Audio stream source failed", context, cause)
     }
   }
 
@@ -890,11 +882,11 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         accepted = this.lib.audioWriteStream(this.engine, streamId, chunk.subarray(offset))
       } catch (cause) {
         const context: AudioStreamErrorContext = { action: "write" }
-        throw new AudioStreamOperationError("Audio stream write failed", context, cause)
+        throw new AudioStreamError("Audio stream write failed", context, cause)
       }
       if (accepted < 0) {
         const context: AudioStreamErrorContext = { action: "write", status: accepted }
-        throw new AudioStreamOperationError(`Audio stream write failed: ${accepted}`, context)
+        throw new AudioStreamError(`Audio stream write failed: ${accepted}`, context)
       }
       if (accepted === 0) {
         // Polling exists only for the current backpressured write; no idle timer remains afterward.
@@ -926,7 +918,7 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
         const restartContext: AudioStreamErrorContext = { action: "restart", status: restartStatus }
         await this.finish(
           CloseReason.TransportError,
-          new AudioStreamOperationError("Audio stream restart failed during reconnect", restartContext),
+          new AudioStreamError("Audio stream restart failed during reconnect", restartContext),
         )
         return false
       }
@@ -992,14 +984,14 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
     return stats!
   }
 
-  private snapshotError(stats: NativeAudioStreamStats | null): AudioStreamOperationError | null {
-    if (stats == null) return new AudioStreamOperationError("Audio stream stats failed", { action: "stats" })
+  private snapshotError(stats: NativeAudioStreamStats | null): AudioStreamError | null {
+    if (stats == null) return new AudioStreamError("Audio stream stats failed", { action: "stats" })
     if (StateNames[stats.state] == null) {
-      return new AudioStreamOperationError(`Unknown native audio stream state: ${stats.state}`, { action: "stats" })
+      return new AudioStreamError(`Unknown native audio stream state: ${stats.state}`, { action: "stats" })
     }
     if (stats.state !== StreamState.Failed && stats.state !== StreamState.Cancelled) return null
     const context: AudioStreamErrorContext = { action: "decoder", errorCode: stats.errorCode }
-    return new AudioStreamOperationError(
+    return new AudioStreamError(
       stats.state === StreamState.Failed
         ? `Audio stream decoder failed: ${stats.errorCode}`
         : "Audio stream was cancelled by the decoder",
@@ -1009,14 +1001,14 @@ export class AudioStream extends EventEmitter<AudioStreamEvents> {
 
   private async finish(reason: number, error?: Error, context?: AudioStreamErrorContext): Promise<void> {
     if (this.lifecycleController.signal.aborted) return
-    if (error instanceof AudioStreamOperationError) context = error.context
+    if (error instanceof AudioStreamError) context = error.context
     this.lifecycleController.abort()
     this.terminalError = error ?? null
     const cleanup = this.stopSource()
     const closeStatus = this.closeNativeStream(reason)
     if (error == null && closeStatus !== 0) {
       context = { action: "destroy", status: closeStatus }
-      error = new AudioStreamOperationError("Audio stream destroy failed after end", context)
+      error = new AudioStreamError("Audio stream destroy failed after end", context)
       this.terminalError = error
     }
     await cleanup

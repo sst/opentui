@@ -68,7 +68,7 @@ Create a new `Audio` instance to change `sampleRate` or `playbackChannels`.
 URL responses may use `audio/mpeg`, `audio/mp3`, `application/mp3`, or `application/octet-stream`; a missing content type is also accepted so Icecast-style endpoints can stream directly.
 
 ```typescript
-import { Audio, type AudioStream } from "@opentui/core"
+import { Audio, AudioStreamError, type AudioStream } from "@opentui/core"
 
 const audio = Audio.create({ autoStart: false })
 let stream: AudioStream | null = null
@@ -96,6 +96,12 @@ try {
   })
 
   // Run the application until playback should stop.
+} catch (error) {
+  if (error instanceof AudioStreamError) {
+    console.error(`${error.context.action}: ${error.message}`)
+  } else {
+    throw error
+  }
 } finally {
   stream?.dispose()
   await stream?.closed
@@ -103,7 +109,7 @@ try {
 }
 ```
 
-`playStream()` resolves after the native MP3 decoder is ready, normally while the stream is still buffering. Setup failures reject the promise. Later failures emit `error` on the returned `AudioStream`.
+`playStream()` resolves after the native MP3 decoder is ready, normally while the stream is still buffering. Operational setup failures reject with `AudioStreamError`; its `context` contains the failing `action` and, when available, `status`, `errorCode`, or `attempt`. Input validation can reject with `TypeError` or `RangeError`, and cancellation uses `AbortError`. Retryable failures emit `reconnecting` with the error; terminal failures emit `error` and the context separately on the returned `AudioStream`.
 
 URL streams request ICY metadata with `Icy-MetaData: 1` unless `request.headers` already contains that header. Set it to `0` explicitly to disable negotiation. A positive `icy-metaint` response header selects the ICY parser; URLs, content types, station headers, and server names are not used to infer framing. Invalid or ambiguous intervals reject the response before a native voice is allocated.
 
