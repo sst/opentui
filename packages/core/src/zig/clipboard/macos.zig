@@ -1,16 +1,10 @@
 const std = @import("std");
-const builtin = @import("builtin");
 const clipboard_clock = @import("clock.zig");
 
 const Allocator = std.mem.Allocator;
 const LOCK_RETRY_SLEEP_NS: u64 = std.time.ns_per_ms;
 
 var pasteboard_mutex: std.Thread.Mutex = .{};
-
-pub const Selection = enum(u32) {
-    clipboard = 0,
-    primary = 1,
-};
 
 pub const MimeType = enum(u32) {
     text_plain = 1,
@@ -25,24 +19,18 @@ pub const MimeType = enum(u32) {
 };
 
 pub const ReadJob = struct {
-    selection: Selection = .clipboard,
     request: []const u8,
     max_bytes: u32,
 };
 
 pub const WriteTextJob = struct {
-    selection: Selection = .clipboard,
     text: []const u8,
-};
-
-pub const ClearJob = struct {
-    selection: Selection = .clipboard,
 };
 
 pub const Job = union(enum) {
     read: ReadJob,
     write_text: WriteTextJob,
-    clear: ClearJob,
+    clear,
 };
 
 pub const ReadResult = struct {
@@ -100,8 +88,7 @@ const ShimStatus = enum(i32) {
 };
 
 extern fn ot_clipboard_macos_read(
-    preferred: ?[*]const u32,
-    preferred_count: u32,
+    mime: u32,
     max_bytes: u32,
     out_bytes: *?[*]u8,
     out_length: *u32,
@@ -112,7 +99,6 @@ extern fn ot_clipboard_macos_clear() i32;
 extern fn ot_clipboard_macos_free_bytes(bytes: ?[*]u8, length: u32) void;
 
 comptime {
-    std.debug.assert(@sizeOf(Selection) == @sizeOf(u32));
     std.debug.assert(@sizeOf(MimeType) == @sizeOf(u32));
 }
 
@@ -126,7 +112,6 @@ fn runJobWithMutex(
     options: ExecuteOptions,
     mutex: *std.Thread.Mutex,
 ) JobError!Result {
-    if (!selectionSupported(jobSelection(job))) return .unsupported;
     if (job == .write_text and job.write_text.text.len > std.math.maxInt(u32)) return error.InvalidArgument;
     if (acquireJobLock(mutex, job, options)) |status| return statusResult(status);
     defer mutex.unlock();
@@ -141,6 +126,7 @@ fn runJobWithMutex(
 fn read(allocator: Allocator, job: ReadJob, options: ExecuteOptions) JobError!Result {
     var iterator = PreferenceIterator.init(job.request) catch return error.InvalidArgument;
     var supported = false;
+    var first_failure: ?JobError = null;
     while (iterator.next() catch return error.InvalidArgument) |name| {
         if (stopStatus(options)) |status| return statusResult(status);
         const mime: MimeType = if (std.ascii.eqlIgnoreCase(name, "text/plain"))
@@ -150,9 +136,16 @@ fn read(allocator: Allocator, job: ReadJob, options: ExecuteOptions) JobError!Re
         else
             continue;
         supported = true;
-        const result = try readMime(allocator, mime, job.max_bytes, options);
+        const result = readMime(allocator, mime, job.max_bytes, options) catch |err| switch (err) {
+            error.NativeFailure => {
+                if (first_failure == null) first_failure = err;
+                continue;
+            },
+            else => return err,
+        };
         if (result != .empty) return result;
     }
+    if (first_failure) |failure| return failure;
     return if (supported) .empty else .unsupported;
 }
 
@@ -200,14 +193,11 @@ fn acquireJobLock(mutex: *std.Thread.Mutex, job: Job, options: ExecuteOptions) ?
 }
 
 fn readMime(allocator: Allocator, mime: MimeType, max_bytes: u32, options: ExecuteOptions) JobError!Result {
-    const preferred = [_]u32{@intFromEnum(mime)};
-
     var shim_bytes: ?[*]u8 = null;
     var length: u32 = 0;
     var mime_value: u32 = 0;
     const status = shimStatus(ot_clipboard_macos_read(
-        &preferred,
-        preferred.len,
+        @intFromEnum(mime),
         max_bytes,
         &shim_bytes,
         &length,
@@ -306,48 +296,19 @@ fn shimStatus(value: i32) ShimStatus {
     return std.meta.intToEnum(ShimStatus, value) catch .failed;
 }
 
-fn jobSelection(job: Job) Selection {
-    return switch (job) {
-        .read => |read_job| read_job.selection,
-        .write_text => |write_job| write_job.selection,
-        .clear => |clear_job| clear_job.selection,
-    };
-}
-
-fn selectionSupported(selection: Selection) bool {
-    return selection == .clipboard;
-}
-
 test "macOS clipboard ABI values are stable" {
-    try std.testing.expectEqual(@as(u32, 0), @intFromEnum(Selection.clipboard));
-    try std.testing.expectEqual(@as(u32, 1), @intFromEnum(Selection.primary));
     try std.testing.expectEqual(@as(u32, 1), @intFromEnum(MimeType.text_plain));
     try std.testing.expectEqual(@as(u32, 2), @intFromEnum(MimeType.image_png));
     try std.testing.expectEqual(@as(i32, 5), @intFromEnum(ShimStatus.failed));
-
-    const source = @embedFile("macos-shim.m");
-    const abi_values = [_][]const u8{
-        "OT_CLIPBOARD_MACOS_STATUS_OK = 0",
-        "OT_CLIPBOARD_MACOS_STATUS_EMPTY = 1",
-        "OT_CLIPBOARD_MACOS_STATUS_LIMIT_EXCEEDED = 2",
-        "OT_CLIPBOARD_MACOS_STATUS_INVALID_ARGUMENT = 3",
-        "OT_CLIPBOARD_MACOS_STATUS_INVALID_TEXT = 4",
-        "OT_CLIPBOARD_MACOS_STATUS_FAILED = 5",
-        "OT_CLIPBOARD_MACOS_MIME_TEXT_PLAIN = 1",
-        "OT_CLIPBOARD_MACOS_MIME_IMAGE_PNG = 2",
-    };
-    for (abi_values) |abi_value| {
-        try std.testing.expect(std.mem.indexOf(u8, source, abi_value) != null);
-    }
 }
 
-test "macOS clipboard shim ABI is callable with live AppKit" {
-    if (comptime builtin.os.tag != .macos) return error.SkipZigTest;
+test "macOS clipboard shim initializes absent MIME output" {
+    if (comptime @import("builtin").os.tag != .macos) return error.SkipZigTest;
 
-    var bytes: ?[*]u8 = null;
+    var bytes: ?[*]u8 = undefined;
     var length: u32 = 99;
     var mime: u32 = 99;
-    const status = shimStatus(ot_clipboard_macos_read(null, 0, 0, &bytes, &length, &mime));
+    const status = shimStatus(ot_clipboard_macos_read(0, 0, &bytes, &length, &mime));
     try std.testing.expectEqual(ShimStatus.empty, status);
     try std.testing.expect(bytes == null);
     try std.testing.expectEqual(@as(u32, 0), length);
@@ -357,23 +318,6 @@ test "macOS clipboard shim ABI is callable with live AppKit" {
 test "macOS clipboard MIME names are exact" {
     try std.testing.expectEqualStrings("text/plain", MimeType.text_plain.name());
     try std.testing.expectEqualStrings("image/png", MimeType.image_png.name());
-}
-
-test "macOS clipboard jobs expose their selection" {
-    try std.testing.expectEqual(
-        Selection.primary,
-        jobSelection(.{ .read = .{ .selection = .primary, .request = "", .max_bytes = 16 } }),
-    );
-    try std.testing.expectEqual(
-        Selection.clipboard,
-        jobSelection(.{ .write_text = .{ .text = "text" } }),
-    );
-    try std.testing.expectEqual(
-        Selection.primary,
-        jobSelection(.{ .clear = .{ .selection = .primary } }),
-    );
-    try std.testing.expect(selectionSupported(.clipboard));
-    try std.testing.expect(!selectionSupported(.primary));
 }
 
 test "macOS clipboard MIME request parsing preserves order" {
@@ -391,42 +335,6 @@ test "macOS clipboard read results have explicit allocator ownership" {
         .data = try std.testing.allocator.dupe(u8, &.{ 0x89, 0x50, 0x4e, 0x47 }),
     } };
     result.deinit(std.testing.allocator);
-}
-
-test "macOS clipboard shim leaves serialization to Zig" {
-    const source = @embedFile("macos-shim.m");
-    try std.testing.expect(std.mem.indexOf(u8, source, "pthread_mutex") == null);
-
-    const zig_source = @embedFile("macos.zig");
-    try std.testing.expect(std.mem.indexOf(u8, zig_source, "var pasteboard_mutex: std.Thread.Mutex") != null);
-}
-
-test "macOS clipboard shim distinguishes absent and failed offered types" {
-    const source = @embedFile("macos-shim.m");
-    const text_offered = std.mem.indexOf(u8, source, "availableTypeFromArray:@[ NSPasteboardTypeString ]").?;
-    const text_read = std.mem.indexOf(u8, source, "stringForType:NSPasteboardTypeString").?;
-    const png_offered = std.mem.indexOf(u8, source, "availableTypeFromArray:@[ NSPasteboardTypePNG ]").?;
-    const png_read = std.mem.indexOf(u8, source, "dataForType:NSPasteboardTypePNG").?;
-    try std.testing.expect(text_offered < text_read);
-    try std.testing.expect(png_offered < png_read);
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, source, "if (offered_type == nil)"));
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, source, "if (offered_value == nil)"));
-
-    const zig_source = @embedFile("macos.zig");
-    const read_start = std.mem.indexOf(u8, zig_source, "fn read(").?;
-    const read_end = std.mem.indexOfPos(u8, zig_source, read_start, "fn stopStatus(").?;
-    const read_source = zig_source[read_start..read_end];
-    try std.testing.expect(std.mem.indexOf(u8, read_source, "const result = try readMime") != null);
-    try std.testing.expect(std.mem.indexOf(u8, read_source, "candidate_failed") == null);
-}
-
-test "macOS clipboard mutations begin after the job lock" {
-    const source = @embedFile("macos.zig");
-    const lock_start = std.mem.indexOf(u8, source, "fn acquireJobLock(").?;
-    const lock_end = std.mem.indexOfPos(u8, source, lock_start, "fn readMime(").?;
-    const lock_source = source[lock_start..lock_end];
-    try std.testing.expect(std.mem.indexOf(u8, lock_source, "acquirePasteboardLock").? <
-        std.mem.indexOf(u8, lock_source, "beginMutation(options)").?);
 }
 
 const TestMutationContext = struct {

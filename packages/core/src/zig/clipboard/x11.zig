@@ -37,10 +37,10 @@ const ATOM_NAMES = [_][]const u8{
     "image/png",
     "OPENTUI_CLIPBOARD",
     "INCR",
-    "MULTIPLE",
     "TIMESTAMP",
-    "SAVE_TARGETS",
 };
+const ATOM_VALUE_COUNT = 11;
+const ATOM_TIMESTAMP_INDEX = 10;
 
 pub const Progress = enum { pending, ready, unsupported, failed };
 pub const Failure = enum { none, connection, flush, atom, protocol, provider };
@@ -87,7 +87,6 @@ pub const ReadState = struct {
     selection: u32 = 0,
     target: u32 = 0,
     property_cookie: ?linux.XcbCookie = null,
-    expected_type: u32 = 0,
     incremental: bool = false,
     max_bytes: u32 = 0,
     notification_pending: bool = false,
@@ -101,7 +100,6 @@ pub const WriteState = struct {
     waiting_timestamp: bool = false,
     mutation_dispatched: bool = false,
     committed: bool = false,
-    timestamp: u32 = 0,
     failed: bool = false,
     timestamp_window: u32 = 0,
     timestamp_window_sequence: u32 = 0,
@@ -126,8 +124,6 @@ const PendingResponse = struct {
     property_cookie: linux.XcbCookie,
     barrier_cookie: linux.XcbCookie,
     property: u32,
-    transfer_requestor: u32 = 0,
-    transfer_property: u32 = 0,
     transfer_id: u64 = 0,
     notify: bool = true,
     transfer_expired: bool = false,
@@ -144,9 +140,6 @@ pub const Provider = struct {
 };
 
 pub const Atoms = struct {
-    primary: u32,
-    atom: u32,
-    string: u32,
     clipboard: u32,
     targets: u32,
     utf8_string: u32,
@@ -156,9 +149,7 @@ pub const Atoms = struct {
     png: u32,
     property: u32,
     incr: u32,
-    multiple: u32,
     timestamp: u32,
-    save_targets: u32,
 };
 
 pub const Connection = struct {
@@ -169,7 +160,8 @@ pub const Connection = struct {
     phase: Phase = .idle,
     failure: Failure = .none,
     cookies: [ATOM_NAMES.len]linux.XcbCookie = undefined,
-    atom_values: [ATOM_NAMES.len]u32 = undefined,
+    // Keep the former MULTIPLE slot so host-side timestamp fixtures retain their stable index.
+    atom_values: [ATOM_VALUE_COUNT]u32 = undefined,
     request_index: u8 = 0,
     reply_index: u8 = 0,
     output_ready_override: ?bool = null,
@@ -251,9 +243,6 @@ pub const Connection = struct {
     pub fn atoms(self: *const Connection) ?Atoms {
         if (self.phase != .ready) return null;
         return .{
-            .primary = ATOM_PRIMARY,
-            .atom = ATOM_ATOM,
-            .string = ATOM_STRING,
             .clipboard = self.atom_values[0],
             .targets = self.atom_values[1],
             .utf8_string = self.atom_values[2],
@@ -263,9 +252,7 @@ pub const Connection = struct {
             .png = self.atom_values[6],
             .property = self.atom_values[7],
             .incr = self.atom_values[8],
-            .multiple = self.atom_values[9],
-            .timestamp = self.atom_values[10],
-            .save_targets = self.atom_values[11],
+            .timestamp = self.atom_values[ATOM_TIMESTAMP_INDEX],
         };
     }
 
@@ -564,7 +551,8 @@ pub const Connection = struct {
         const opaque_reply = reply_pointer orelse return self.fail(.atom);
         const reply: *const linux.XcbInternAtomReply = @ptrCast(@alignCast(opaque_reply));
         if (reply.atom == 0) return self.fail(.atom);
-        self.atom_values[self.reply_index - 1] = reply.atom;
+        const atom_index = self.reply_index - 1;
+        self.atom_values[if (atom_index < 9) atom_index else ATOM_TIMESTAMP_INDEX] = reply.atom;
 
         if (self.reply_index < self.request_index) return .pending;
         self.phase = .window;
@@ -587,7 +575,7 @@ pub const Connection = struct {
             atoms_value.utf8_string,
             atoms_value.text_plain,
             atoms_value.text,
-            atoms_value.string,
+            ATOM_STRING,
         };
         return output;
     }
@@ -618,7 +606,6 @@ pub const Connection = struct {
         const atoms_value = self.atoms().?;
         state.selection = self.selectionAtom(primary);
         state.target = target;
-        state.expected_type = target;
         state.max_bytes = max_bytes;
         state.phase = .selection;
         _ = self.symbols.xcb_delete_property(connection, state.window, atoms_value.property);
@@ -748,7 +735,7 @@ pub const Connection = struct {
         const accepted_type = if (target_is_text)
             ((state.actual_type == 0 and text_type_supported) or reply.atom_type == state.actual_type)
         else
-            reply.atom_type == state.expected_type;
+            reply.atom_type == state.target;
         if (reply.format != 8 or !accepted_type) {
             return failReadCandidate(state);
         }
@@ -791,6 +778,7 @@ pub const Connection = struct {
     }
 
     pub fn cleanupRead(self: *Connection, state: *ReadState) void {
+        defer state.* = .{};
         const connection = self.connection orelse return;
         if (state.property_cookie) |cookie| self.symbols.xcb_discard_reply(connection, cookie.sequence);
         if (state.window != 0) {
@@ -798,7 +786,6 @@ pub const Connection = struct {
             _ = self.symbols.xcb_destroy_window(connection, state.window);
             if (self.phase == .ready) _ = self.queueFlush();
         }
-        state.* = .{};
     }
 
     pub fn beginWrite(self: *Connection, state: *WriteState, primary: bool, data: []u8) SelectionResult {
@@ -910,7 +897,9 @@ pub const Connection = struct {
         }
         if ((event.response_type & 0x7f) != EVENT_PROPERTY_NOTIFY) return false;
         const notify: *const linux.XcbPropertyNotifyEvent = @ptrCast(@alignCast(event));
-        if (notify.window != self.retired_timestamp_window or notify.atom != self.atom_values[10] or notify.state != 0) {
+        if (notify.window != self.retired_timestamp_window or
+            notify.atom != self.atom_values[ATOM_TIMESTAMP_INDEX] or notify.state != 0)
+        {
             return false;
         }
         self.destroyRetiredTimestampWindow();
@@ -939,7 +928,6 @@ pub const Connection = struct {
         const notify: *const linux.XcbPropertyNotifyEvent = @ptrCast(@alignCast(event));
         if (notify.window != state.timestamp_window or notify.atom != self.atoms().?.timestamp or notify.state != 0) return false;
         state.waiting_timestamp = false;
-        state.timestamp = notify.time;
         self.destroyTimestampWindow(state);
         _ = self.symbols.xcb_set_selection_owner(
             self.connection.?,
@@ -952,7 +940,7 @@ pub const Connection = struct {
             self.retireCurrent(state.selection);
         } else {
             const provider = state.provider.?;
-            provider.timestamp = state.timestamp;
+            provider.timestamp = notify.time;
             provider.owns_data = true;
             if (self.currentProvider(provider.selection)) |old| self.retireProvider(old);
             self.setCurrentProvider(provider);
@@ -970,7 +958,8 @@ pub const Connection = struct {
     ) bool {
         if (!state.waiting_timestamp or (event.response_type & 0x7f) != EVENT_PROPERTY_NOTIFY) return false;
         const notify: *const linux.XcbPropertyNotifyEvent = @ptrCast(@alignCast(event));
-        return notify.window == state.timestamp_window and notify.atom == self.atom_values[10] and notify.state == 0;
+        return notify.window == state.timestamp_window and
+            notify.atom == self.atom_values[ATOM_TIMESTAMP_INDEX] and notify.state == 0;
     }
 
     pub fn pollEvent(self: *Connection) ?*linux.XcbGenericEvent {
@@ -1222,7 +1211,7 @@ pub const Connection = struct {
                 atoms_value.text_plain_utf8,
                 atoms_value.text_plain,
                 atoms_value.text,
-                atoms_value.string,
+                ATOM_STRING,
             };
             const target_count: usize = if (provider.latin1.len > 0) targets.len else targets.len - 1;
             const property_cookie = self.symbols.xcb_change_property_checked(
@@ -1235,7 +1224,7 @@ pub const Connection = struct {
                 @intCast(target_count),
                 &targets,
             );
-            self.queuePropertyResponse(event, property_cookie, property, 0, 0, 0);
+            self.queuePropertyResponse(event, property_cookie, property, 0);
             return;
         }
         if (event.target == atoms_value.timestamp) {
@@ -1250,18 +1239,18 @@ pub const Connection = struct {
                 1,
                 &timestamp,
             );
-            self.queuePropertyResponse(event, property_cookie, property, 0, 0, 0);
+            self.queuePropertyResponse(event, property_cookie, property, 0);
             return;
         }
         const output_type = if (event.target == atoms_value.text) atoms_value.utf8_string else event.target;
         if (event.target != atoms_value.utf8_string and event.target != atoms_value.text_plain_utf8 and
             event.target != atoms_value.text_plain and event.target != atoms_value.text and
-            (event.target != atoms_value.string or provider.latin1.len == 0))
+            (event.target != ATOM_STRING or provider.latin1.len == 0))
         {
             self.sendSelectionNotify(event, 0);
             return;
         }
-        const output_data = if (event.target == atoms_value.string) provider.latin1 else provider.data;
+        const output_data = if (event.target == ATOM_STRING) provider.latin1 else provider.data;
         if (output_data.len <= self.directPayloadBytes()) {
             const property_cookie = self.symbols.xcb_change_property_checked(
                 self.connection.?,
@@ -1273,7 +1262,7 @@ pub const Connection = struct {
                 @intCast(output_data.len),
                 if (output_data.len == 0) null else output_data.ptr,
             );
-            self.queuePropertyResponse(event, property_cookie, property, 0, 0, 0);
+            self.queuePropertyResponse(event, property_cookie, property, 0);
             return;
         }
         if (self.transfer_count >= self.transfers.len or self.hasTransfer(event.requestor, property)) {
@@ -1305,7 +1294,7 @@ pub const Connection = struct {
         };
         self.transfer_count += 1;
         provider.transfer_count += 1;
-        self.queuePropertyResponse(event, property_cookie, property, event.requestor, property, transfer_id);
+        self.queuePropertyResponse(event, property_cookie, property, transfer_id);
     }
 
     fn sendSelectionNotify(self: *Connection, request: *const linux.XcbSelectionRequestEvent, property: u32) void {
@@ -1330,19 +1319,14 @@ pub const Connection = struct {
         request: *const linux.XcbSelectionRequestEvent,
         property_cookie: linux.XcbCookie,
         property: u32,
-        transfer_requestor: u32,
-        transfer_property: u32,
         transfer_id: u64,
     ) void {
         std.debug.assert(self.response_count < self.responses.len);
-        std.debug.assert((transfer_requestor == 0) == (transfer_id == 0));
         self.responses[self.response_count] = .{
             .request = request.*,
             .property_cookie = property_cookie,
             .barrier_cookie = self.symbols.xcb_get_selection_owner(self.connection.?, request.selection),
             .property = property,
-            .transfer_requestor = transfer_requestor,
-            .transfer_property = transfer_property,
             .transfer_id = transfer_id,
         };
         self.response_count += 1;
@@ -1351,7 +1335,6 @@ pub const Connection = struct {
 
     fn drivePendingResponse(self: *Connection) void {
         const response = self.responses[0];
-        std.debug.assert((response.transfer_requestor == 0) == (response.transfer_id == 0));
         var reply_pointer: ?*anyopaque = null;
         var error_pointer: ?*linux.XcbGenericError = null;
         const available = self.symbols.xcb_poll_for_reply(
@@ -1389,7 +1372,7 @@ pub const Connection = struct {
                 self.removeTransfer(index);
                 return;
             }
-            if (self.response_count >= self.responses.len or self.hasPendingResponseForTransfer(event.window, event.atom)) {
+            if (self.response_count >= self.responses.len or self.hasPendingResponseForTransfer(transfer.id)) {
                 transfer.delete_pending = true;
                 return;
             }
@@ -1421,8 +1404,6 @@ pub const Connection = struct {
             .property_cookie = property_cookie,
             .barrier_cookie = self.symbols.xcb_get_selection_owner(self.connection.?, transfer.provider.selection),
             .property = transfer.property,
-            .transfer_requestor = transfer.requestor,
-            .transfer_property = transfer.property,
             .transfer_id = transfer.id,
             .notify = false,
         };
@@ -1441,9 +1422,10 @@ pub const Connection = struct {
         return false;
     }
 
-    fn hasPendingResponseForTransfer(self: *const Connection, requestor: u32, property: u32) bool {
+    fn hasPendingResponseForTransfer(self: *const Connection, transfer_id: u64) bool {
+        std.debug.assert(transfer_id != 0);
         for (self.responses[0..self.response_count]) |response| {
-            if (response.transfer_requestor == requestor and response.transfer_property == property) return true;
+            if (response.transfer_id == transfer_id) return true;
         }
         return false;
     }
@@ -1999,8 +1981,6 @@ test "X11 buffers INCR deletions while a checked chunk response is pending" {
         .property_cookie = .{ .sequence = 1 },
         .barrier_cookie = .{ .sequence = 2 },
         .property = 20,
-        .transfer_requestor = 10,
-        .transfer_property = 20,
         .transfer_id = 1,
     }};
     connection.transfers = &transfers;
@@ -2039,6 +2019,11 @@ test "X11 read cleanup remains safe after the connection enters failed phase" {
     connection.cleanupRead(&state);
 
     try std.testing.expectEqual(@as(u32, 0), state.window);
+
+    connection.connection = null;
+    state = .{ .phase = .failed, .window = 43 };
+    connection.cleanupRead(&state);
+    try std.testing.expectEqual(ReadState{}, state);
 }
 
 test "X11 timestamp events are isolated by per-mutation windows" {
@@ -2064,7 +2049,6 @@ test "X11 timestamp events are isolated by per-mutation windows" {
 
     try std.testing.expect(!connection.routeWriteEvent(&successor, @ptrCast(&stale)));
     try std.testing.expect(successor.waiting_timestamp);
-    try std.testing.expectEqual(@as(u32, 0), successor.timestamp);
 }
 
 test "X11 write and clear commit when SetSelectionOwner is dispatched" {
@@ -2234,8 +2218,6 @@ test "X11 expired initial INCR response refuses its delayed checked reply" {
         .property_cookie = .{ .sequence = 1 },
         .barrier_cookie = .{ .sequence = 2 },
         .property = 20,
-        .transfer_requestor = 10,
-        .transfer_property = 20,
         .transfer_id = 1,
     }};
     connection.transfers = &transfers;
@@ -2281,8 +2263,6 @@ test "X11 delayed expired INCR response preserves replacement transfer" {
         .property_cookie = .{ .sequence = 1 },
         .barrier_cookie = .{ .sequence = 2 },
         .property = 20,
-        .transfer_requestor = 10,
-        .transfer_property = 20,
         .transfer_id = 1,
     }};
     connection.transfers = &transfers;
@@ -2744,11 +2724,8 @@ test "X11 atom initialization polls one reply per drive without blocking" {
     try std.testing.expectEqual(Progress.pending, connection.drive());
     try std.testing.expectEqual(Progress.ready, connection.drive());
     const atoms = connection.atoms().?;
-    try std.testing.expectEqual(ATOM_PRIMARY, atoms.primary);
-    try std.testing.expectEqual(ATOM_ATOM, atoms.atom);
-    try std.testing.expectEqual(ATOM_STRING, atoms.string);
     try std.testing.expectEqual(@as(u32, 101), atoms.clipboard);
-    try std.testing.expectEqual(@as(u32, 112), atoms.save_targets);
+    try std.testing.expectEqual(@as(u32, 110), atoms.timestamp);
     try std.testing.expectEqual(@as(u32, 0), fake.discard_count);
 }
 
