@@ -73,6 +73,8 @@ pub const ShutdownStatus = enum(u8) {
 
 const READ_MIME_COUNT_MAX: u32 = 64;
 const READ_MIME_ESSENCE_BYTES_MAX: u32 = 255;
+// Bounds within-operation restarts when a chosen offer's source vanishes mid-read.
+const WAYLAND_READ_STALE_RETRY_MAX: u8 = 2;
 const OPERATIONS_MAX_DEFAULT: u32 = 16;
 const PROVIDER_TRANSFERS_MAX_DEFAULT: u32 = 16;
 const ResultKind = enum { mime, data, diagnostic };
@@ -149,6 +151,8 @@ const Operation = struct {
     wayland_transfer_format: WaylandTransferFormat = .direct,
     wayland_core_focus_acquired: bool = false,
     wayland_conversion_started: bool = false,
+    wayland_barrier_serial: u64 = 0,
+    wayland_stale_retry_count: u8 = 0,
     max_bytes: u32 = 0,
     max_image_pixels: u32 = 0,
     max_conversion_bytes: u32 = 0,
@@ -919,14 +923,8 @@ const Service = struct {
             if (count == 0) {
                 const transfer_format = operation.wayland_transfer_format;
                 operation.cleanupTransfer();
-                if (std.ascii.eqlIgnoreCase(operation.result_mime, "image/png") and
-                    operation.transfer_data.items.len == 0)
-                {
-                    operation.implemented_candidate_attempted = true;
-                    operation.allocator.free(operation.result_mime);
-                    operation.result_mime = &.{};
-                    operation.transfer_data.clearRetainingCapacity();
-                    return .pending;
+                if (operation.transfer_data.items.len == 0) {
+                    return service.retryStaleWaylandRead(operation);
                 }
                 return service.completeWaylandRead(operation, transfer_format);
             }
@@ -967,6 +965,19 @@ const Service = struct {
                 .unsupported => return service.fallbackCurrentWayland(operation),
                 .failed => return service.finishWaylandFailure(operation),
             }
+        } else {
+            // Selection events are dispatched only while the connection is driven,
+            // so after idle time the cached offer can be stale. One sync roundtrip
+            // issued at read admission proves the offer reflects the compositor's
+            // current selection before it is chosen. The core data-device path
+            // above has a stronger freshness protocol through focus acquisition.
+            if (operation.wayland_barrier_serial == 0) {
+                operation.wayland_barrier_serial = service.wayland.?.requestSelectionBarrier() orelse
+                    return service.finishWaylandFailure(operation);
+            }
+            if (!service.wayland.?.selectionBarrierReached(operation.wayland_barrier_serial)) {
+                return .pending;
+            }
         }
         const offer = service.wayland.?.currentOffer(primary) orelse {
             operation.releaseCoreFocus();
@@ -993,6 +1004,23 @@ const Service = struct {
             implemented or operation.implemented_candidate_attempted,
             operation.candidate_failed,
         ));
+    }
+
+    // A zero-byte transfer means the offer's source vanished, usually because the
+    // selection changed after the offer was chosen. Restart candidate selection
+    // behind a fresh barrier a bounded number of times; afterwards the preference
+    // loop finishes the read as empty.
+    fn retryStaleWaylandRead(_: *Service, operation: *Operation) OperationStatus {
+        operation.implemented_candidate_attempted = true;
+        if (operation.result_mime.len > 0) operation.allocator.free(operation.result_mime);
+        operation.result_mime = &.{};
+        operation.transfer_data.clearRetainingCapacity();
+        if (operation.wayland_stale_retry_count < WAYLAND_READ_STALE_RETRY_MAX) {
+            operation.wayland_stale_retry_count += 1;
+            operation.wayland_barrier_serial = 0;
+            operation.preference_offset = 4;
+        }
+        return .pending;
     }
 
     fn completeWaylandRead(
