@@ -5018,7 +5018,10 @@ class FFIRenderLib implements RenderLib {
     engine: AudioEngineHandle,
     options: AudioStreamCreateOptions,
   ): { status: number; streamId: number | null } {
-    if (!isFFIU32(options.groupId) || options.format !== NativeAudioStreamFormat.Mp3) {
+    if (
+      !isFFIU32(options.groupId) ||
+      (options.format !== NativeAudioStreamFormat.Mp3 && options.format !== NativeAudioStreamFormat.Flac)
+    ) {
       return { status: -1, streamId: null }
     }
     const optionsBuffer = AudioStreamCreateOptionsStruct.pack(options)

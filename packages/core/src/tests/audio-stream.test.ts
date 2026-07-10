@@ -34,6 +34,7 @@ const MP3_URL = new URL("./fixtures/audio/tone-750hz-48k-mono-1s.mp3", import.me
 const MP3_HIGH_BITRATE_URL = new URL("./fixtures/audio/tone-750hz-48k-mono-1s-320k.mp3", import.meta.url)
 const MP3_5S_URL = new URL("./fixtures/audio/tone-750hz-48k-mono-5s.mp3", import.meta.url)
 const MP3_3000_URL = new URL("./fixtures/audio/tone-3000hz-48k-mono-1s.mp3", import.meta.url)
+const FLAC_URL = new URL("./fixtures/audio/tone-750hz-48k-mono-1s.flac", import.meta.url)
 const audios: Audio[] = []
 const servers: Server[] = []
 
@@ -79,6 +80,7 @@ function assertPublicAudioStreamApis(
   const reconnectOptions: AudioStreamReconnectOptions = { maxRetries: 1 }
   void reconnectOptions
   const format: AudioStreamFormat = "mp3"
+  const flacFormat: AudioStreamFormat = "flac"
   const contentTypeContext: AudioStreamContentTypeContext = {
     format,
     contentType: "audio/mpeg",
@@ -86,6 +88,7 @@ function assertPublicAudioStreamApis(
     url: "https://example.test/radio",
   }
   void contentTypeContext
+  void flacFormat
   const connectorWithRetry: AudioStreamConnector<{ readonly station: string }> = {
     ...connector,
     // @ts-expect-error Retry policy belongs to reconnect options.
@@ -97,7 +100,7 @@ function assertPublicAudioStreamApis(
     maxAttempts: 1,
   }
   void legacyReconnectOptions
-  // @ts-expect-error MP3 is the only supported stream format.
+  // @ts-expect-error WAV is not a supported stream format.
   void audio.playStream(bodySource, { format: "wav" })
   void audio.playStreamUrl(urlSource, { contentTypePolicy: "ignore" })
   void audio.playStreamUrl(urlSource, { contentTypePolicy: "validate" })
@@ -370,6 +373,40 @@ test("Audio streams an MP3 before the HTTP response ends and exposes it through 
   await waitFor(() => responseEnded, "Test server did not finish the MP3 response")
   stream.dispose()
   await stream.closed
+})
+
+test("Audio streams FLAC before the HTTP response ends", async () => {
+  const flac = new Uint8Array(await readFile(FLAC_URL))
+  const releaseTail = deferred()
+  let responseEnded = false
+  const split = Math.floor(flac.length * 0.75)
+  const server = createServer((_, response) => {
+    response.writeHead(200, { "Content-Type": "audio/flac", Connection: "close" })
+    response.write(flac.subarray(0, split))
+    void releaseTail.promise.then(() => {
+      responseEnded = true
+      response.end(flac.subarray(split))
+    })
+  })
+  const baseUrl = await listen(server)
+  const audio = Audio.create({ autoStart: false })
+  audios.push(audio)
+  expect(audio.startMixer()).toBe(true)
+  expect(audio.enableTap(4096)).toBe(true)
+
+  const stream = await audio.playStreamUrl(`${baseUrl}/radio`, {
+    format: "flac",
+    buffer: { capacityMs: 500, startupMs: 25, resumeMs: 25 },
+  })
+  const pcm = await waitForTapSignal(audio, stream)
+
+  expect(responseEnded).toBe(false)
+  expect(stream.format).toBe("flac")
+  expect(tonePower(pcm, 2048, 750)).toBeGreaterThan(tonePower(pcm, 2048, 3000) * 10)
+
+  releaseTail.resolve()
+  await drainStream(audio, stream)
+  expect(stream.getStats().bytesReceived).toBe(BigInt(flac.byteLength))
 })
 
 test("Audio strips negotiated ICY metadata and exposes changed metadata without duplicate events", async () => {
@@ -2491,56 +2528,73 @@ test("Audio retries successful URL responses that have no body", async () => {
 })
 
 test("Audio enforces the documented HTTP content-type policy", async () => {
-  const fixture = new Uint8Array(await readFile(MP3_URL))
-  const allowedContentTypes: Array<string | undefined> = [
-    "audio/mpeg",
-    "audio/mp3",
-    "application/octet-stream",
-    "application/mp3",
-    "Audio/MPEG; charset=binary",
-    undefined,
+  const fixtures = {
+    mp3: new Uint8Array(await readFile(MP3_URL)),
+    flac: new Uint8Array(await readFile(FLAC_URL)),
+  }
+  const scenarios: Array<{ format: AudioStreamFormat; contentTypes: Array<string | undefined> }> = [
+    {
+      format: "mp3",
+      contentTypes: [
+        "audio/mpeg",
+        "audio/mp3",
+        "application/octet-stream",
+        "application/mp3",
+        "Audio/MPEG; charset=binary",
+        undefined,
+      ],
+    },
+    {
+      format: "flac",
+      contentTypes: ["audio/flac", "audio/x-flac", "application/octet-stream", undefined],
+    },
   ]
-  for (const contentType of allowedContentTypes) {
-    const server = createServer((_, response) => {
-      const headers: Record<string, string> = { Connection: "close" }
-      if (contentType != null) headers["Content-Type"] = contentType
-      response.writeHead(200, headers)
-      response.end(fixture)
-    })
-    const baseUrl = await listen(server)
-    const audio = Audio.create({ autoStart: false })
-    audios.push(audio)
-    expect(audio.startMixer()).toBe(true)
+  for (const scenario of scenarios) {
+    for (const contentType of scenario.contentTypes) {
+      const server = createServer((_, response) => {
+        const headers: Record<string, string> = { Connection: "close" }
+        if (contentType != null) headers["Content-Type"] = contentType
+        response.writeHead(200, headers)
+        response.end(fixtures[scenario.format])
+      })
+      const baseUrl = await listen(server)
+      const audio = Audio.create({ autoStart: false })
+      audios.push(audio)
+      expect(audio.startMixer()).toBe(true)
 
-    const stream = await audio.playStreamUrl(new URL("/radio", baseUrl), {
-      ...(contentType === "audio/mpeg" ? { contentTypePolicy: "validate" as const } : {}),
-      buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
-    })
-    await drainStream(audio, stream)
-    expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
-    audio.dispose()
+      const stream = await audio.playStreamUrl(new URL("/radio", baseUrl), {
+        format: scenario.format,
+        buffer: { capacityMs: 250, startupMs: 25, resumeMs: 25 },
+      })
+      await drainStream(audio, stream)
+      expect(stream.getStats().framesPlayed).toBeGreaterThan(0n)
+      audio.dispose()
+    }
   }
 
-  let unsupportedRequests = 0
-  const unsupportedServer = createServer((_, response) => {
-    unsupportedRequests += 1
-    response.writeHead(200, { "Content-Type": "text/plain", Connection: "close" })
-    response.end(fixture)
-  })
-  const unsupportedUrl = await listen(unsupportedServer)
-  for (const contentTypePolicy of [undefined, "validate" as const]) {
+  for (const scenario of [
+    { format: "mp3" as const, contentType: "audio/flac" },
+    { format: "flac" as const, contentType: "audio/mpeg" },
+  ]) {
+    let requests = 0
+    const server = createServer((_, response) => {
+      requests += 1
+      response.writeHead(200, { "Content-Type": scenario.contentType, Connection: "close" })
+      response.end(fixtures[scenario.format])
+    })
+    const baseUrl = await listen(server)
     const unsupportedAudio = Audio.create({ autoStart: false })
     audios.push(unsupportedAudio)
     await expect(
-      unsupportedAudio.playStreamUrl(`${unsupportedUrl}/radio`, {
-        contentTypePolicy,
+      unsupportedAudio.playStreamUrl(`${baseUrl}/radio`, {
+        format: scenario.format,
         reconnect: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 0 },
       }),
     ).rejects.toThrow("Unsupported audio stream Content-Type")
     expect(unsupportedAudio.getStats()?.voicesActive).toBe(0)
+    expect(requests).toBe(1)
     unsupportedAudio.dispose()
   }
-  expect(unsupportedRequests).toBe(2)
 })
 
 test("Audio exposes MP3 as the resolved stream format", async () => {

@@ -52,7 +52,7 @@ export interface AudioPlayOptions {
 
 export type AudioStreamBody = ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>
 
-export type AudioStreamFormat = "mp3"
+export type AudioStreamFormat = "mp3" | "flac"
 
 export interface AudioStreamContentTypeContext {
   readonly format: AudioStreamFormat
@@ -503,7 +503,7 @@ function parseRetryAfter(value: string | null, maxDelayMs: number): number | und
 
 function resolveAudioStreamFormat(value: AudioStreamFormat | undefined): AudioStreamFormat {
   const format = value ?? "mp3"
-  if (format !== "mp3") throw new TypeError(`Unsupported audio stream format: ${format}`)
+  if (format !== "mp3" && format !== "flac") throw new TypeError(`Unsupported audio stream format: ${format}`)
   return format
 }
 
@@ -511,6 +511,8 @@ function toNativeAudioStreamFormat(format: AudioStreamFormat): NativeAudioStream
   switch (format) {
     case "mp3":
       return NativeStreamFormat.Mp3
+    case "flac":
+      return NativeStreamFormat.Flac
   }
 }
 
@@ -530,6 +532,8 @@ function isAllowedContentType(format: AudioStreamFormat, value: string): boolean
   switch (format) {
     case "mp3":
       return ["audio/mpeg", "audio/mp3", "application/octet-stream", "application/mp3"].includes(contentType ?? "")
+    case "flac":
+      return ["audio/flac", "audio/x-flac", "application/octet-stream"].includes(contentType ?? "")
   }
 }
 

@@ -232,6 +232,10 @@ describe("borrowed pointer call sites", () => {
         pan: 0,
         groupId: 0,
       }
+      void lib.audioCreateStream(0 as any, {
+        ...validOptions,
+        format: NativeAudioStreamFormat.Flac,
+      })
       expect(
         lib.audioCreateStream(0 as any, {
           ...validOptions,
@@ -241,10 +245,10 @@ describe("borrowed pointer call sites", () => {
       expect(
         lib.audioCreateStream(0 as any, {
           ...validOptions,
-          format: 2 as never,
+          format: 3 as never,
         }),
       ).toEqual({ status: -1, streamId: null })
-      expect(calls).toHaveLength(0)
+      expect(calls).toHaveLength(1)
     })
   })
 

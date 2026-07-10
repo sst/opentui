@@ -334,6 +334,7 @@ export type AudioVoiceOptions = {
 
 export const NativeAudioStreamFormat = {
   Mp3: 1,
+  Flac: 2,
 } as const
 
 export type NativeAudioStreamFormat = (typeof NativeAudioStreamFormat)[keyof typeof NativeAudioStreamFormat]

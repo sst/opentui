@@ -69,6 +69,7 @@ pub const StreamOptions = extern struct {
 
 pub const StreamFormat = struct {
     pub const mp3: u32 = 1;
+    pub const flac: u32 = 2;
 };
 
 pub const StreamState = struct {
@@ -653,20 +654,26 @@ fn streamDecoderRead(
 }
 
 fn streamDecoderSeek(decoder: ?*c.ma_decoder, byte_offset: c.ma_int64, origin: c.ma_seek_origin) callconv(.c) c.ma_result {
-    _ = byte_offset;
-    _ = origin;
-    const stream = streamFromDecoder(decoder) orelse return c.MA_INVALID_ARGS;
-    stream.input_lock.lock();
-    stream.decoder_abort = true;
-    stream.input_condition.broadcast();
-    stream.input_lock.unlock();
-    return c.MA_NOT_IMPLEMENTED;
+    if (origin != c.ma_seek_origin_current or byte_offset < 0) return c.MA_NOT_IMPLEMENTED;
+
+    var remaining: u64 = @intCast(byte_offset);
+    var scratch: [4096]u8 = undefined;
+    while (remaining > 0) {
+        const requested: usize = @intCast(@min(remaining, scratch.len));
+        var bytes_read: usize = 0;
+        const result = streamDecoderRead(decoder, &scratch, requested, &bytes_read);
+        if (result != c.MA_SUCCESS) return result;
+        if (bytes_read == 0) return c.MA_AT_END;
+        remaining -= bytes_read;
+    }
+    return c.MA_SUCCESS;
 }
 
 fn streamDecoderWorker(stream: *Stream) void {
     var config = c.ma_decoder_config_init(c.ma_format_f32, 2, stream.sample_rate);
     config.encodingFormat = switch (stream.format) {
         StreamFormat.mp3 => c.ma_encoding_format_mp3,
+        StreamFormat.flac => c.ma_encoding_format_flac,
         else => unreachable,
     };
     config.seekPointCount = 0;
@@ -1302,7 +1309,8 @@ fn retireStreamSlotLocked(engine: *Engine, slot_index: usize) void {
 pub fn createStream(engine: *Engine, options_ptr: ?*const StreamOptions, out_stream_id: ?*u32) i32 {
     if (options_ptr == null or out_stream_id == null) return Status.err_invalid;
     const options = options_ptr.?.*;
-    if (options.max_probe_bytes == 0 or options.format != StreamFormat.mp3) return Status.err_invalid;
+    if (options.max_probe_bytes == 0 or
+        (options.format != StreamFormat.mp3 and options.format != StreamFormat.flac)) return Status.err_invalid;
     const frame_options = resolveStreamFrameOptions(options, engine.sample_rate) orelse return Status.err_invalid;
 
     const e = engine;
