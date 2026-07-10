@@ -346,7 +346,6 @@ class AudioStreamingDemo {
     this.renderer.requestLive()
     this.liveRequested = true
 
-    this.urlInput.focus()
     this.refreshText()
     void this.connect(DEFAULT_STREAM_URL)
   }
