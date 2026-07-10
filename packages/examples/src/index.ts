@@ -71,6 +71,7 @@ import * as corePluginSlotsDemo from "./core-plugin-slots-demo.js"
 import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 import * as nativeAudioDemo from "./native-audio-demo.js"
 import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
+import * as proportionalDocumentDemo from "./proportional-document-demo.js"
 
 type ExampleCategory =
   | "Layout & Composition"
@@ -464,6 +465,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       description: "Markdown rendering with table alignment, syntax highlighting, and theme switching",
       run: markdownDemo.run,
       destroy: markdownDemo.destroy,
+    },
+    {
+      name: "Proportional Document Demo",
+      description: "Print-inspired prose layout with justified text, marginal notes, and responsive measure",
+      run: proportionalDocumentDemo.run,
+      destroy: proportionalDocumentDemo.destroy,
     },
     {
       name: "Markdown Code Block Renderer Demo",
