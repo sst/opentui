@@ -4997,7 +4997,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public audioStart(engine: Pointer, options?: AudioStartOptions | null): number {
-    const optionsBuffer = options == null ? null : AudioStartOptionsStruct.pack(options)
+    let optionsBuffer: ArrayBuffer | null
+    try {
+      optionsBuffer = options == null ? null : AudioStartOptionsStruct.pack(options)
+    } catch {
+      return -1
+    }
     return this.opentui.symbols.audioStart(engine, optionsBuffer ? ptr(optionsBuffer) : null)
   }
 

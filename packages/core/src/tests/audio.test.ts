@@ -130,6 +130,69 @@ test("Audio auto-start failure throws and destroys the native engine", () => {
   expect(destroyCalls).toBe(1)
 })
 
+test("Audio wraps an auto-start option packing failure and destroys the native engine", () => {
+  const lib = resolveRenderLib()
+  const originalCreate = lib.createAudioEngine
+  const originalDestroy = lib.destroyAudioEngine
+  const startFailure = new Error("start option getter failed")
+  const startOptions = Object.defineProperty({}, "periodSizeInFrames", {
+    get() {
+      throw startFailure
+    },
+  })
+  let createdEngine: ReturnType<typeof originalCreate> = null
+  let destroyCalls = 0
+  let thrown: unknown
+
+  const restoreCreate = replaceMethod(lib, "createAudioEngine", (options: Parameters<typeof originalCreate>[0]) => {
+    createdEngine = originalCreate.call(lib, options)
+    return createdEngine
+  })
+  const restoreDestroy = replaceMethod(lib, "destroyAudioEngine", (engine: Parameters<typeof originalDestroy>[0]) => {
+    destroyCalls += 1
+    originalDestroy.call(lib, engine)
+  })
+
+  try {
+    try {
+      Audio.create({ autoStart: true, startOptions })
+    } catch (error) {
+      thrown = error
+    }
+  } finally {
+    restoreDestroy()
+    restoreCreate()
+    if (createdEngine != null && destroyCalls === 0) originalDestroy.call(lib, createdEngine)
+  }
+
+  expect({
+    wrapped: thrown instanceof AudioInitializationError,
+    action: thrown instanceof AudioInitializationError ? thrown.action : undefined,
+    status: thrown instanceof AudioInitializationError ? thrown.status : undefined,
+    destroyCalls,
+  }).toEqual({ wrapped: true, action: "start", status: -1, destroyCalls: 1 })
+})
+
+test("Audio.start reports an option packing failure through its status contract", () => {
+  const packingFailure = new Error("start option getter failed")
+  const startOptions = Object.defineProperty({}, "periodSizeInFrames", {
+    get() {
+      throw packingFailure
+    },
+  })
+  const audio = Audio.create({ autoStart: false })
+  instances.push(audio)
+  const errors: unknown[] = []
+  audio.on("error", (error, context) => {
+    errors.push({ message: error.message, context })
+  })
+
+  expect(audio.start(startOptions)).toBe(false)
+  expect(audio.isStarted()).toBe(false)
+  expect(audio.isMixerStarted()).toBe(false)
+  expect(errors).toEqual([{ message: "Audio start failed: -1", context: { action: "start", status: -1 } }])
+})
+
 test("Audio auto-start success updates started state", () => {
   const lib = resolveRenderLib()
   let audio!: Audio
