@@ -17,6 +17,9 @@ const MAX_PROVIDERS = 4;
 const WAYLAND_CONNECTION_BUFFER_SIZE_MAX = 1024 * 1024;
 const WL_SEAT_CAPABILITY_KEYBOARD = 2;
 const PROVIDER_TRANSFER_IDLE_TIMEOUT_NS = 30 * std.time.ns_per_s;
+// One drive call dispatches at most this many queued events, enough to settle a
+// selection-change backlog in one call while keeping per-call work bounded.
+const DISPATCH_EVENTS_PER_DRIVE_MAX = 64;
 
 pub const Progress = enum { pending, ready, unsupported, failed };
 pub const SelectionResult = enum { ok, pending, committed, unsupported, failed };
@@ -91,6 +94,12 @@ pub const Connection = struct {
     sync_callback: ?*WlProxy = null,
     phase: Phase = .idle,
     sync_done: bool = false,
+    // Selection barriers are wl_display.sync roundtrips issued at read admission.
+    // At most one is in flight; later admissions wait for the follow-up barrier.
+    barrier_callback: ?*WlProxy = null,
+    barrier_serial_completed: u64 = 0,
+    barrier_serial_inflight: u64 = 0,
+    barrier_serial_requested: u64 = 0,
     output_pending: bool = false,
     failure: Failure = .none,
     ext_global: ?u32 = null,
@@ -170,6 +179,7 @@ pub const Connection = struct {
         if (self.shm) |shm| self.symbols.wl_proxy_destroy(shm);
         if (self.compositor) |compositor| self.symbols.wl_proxy_destroy(compositor);
         for (self.seats[0..self.seat_count]) |seat| self.symbols.wl_proxy_destroy(seat.proxy);
+        if (self.barrier_callback) |callback| self.symbols.wl_proxy_destroy(callback);
         if (self.sync_callback) |callback| self.symbols.wl_proxy_destroy(callback);
         if (self.registry) |registry| self.symbols.wl_proxy_destroy(registry);
         if (self.display != null) _ = self.queueFlush();
@@ -249,6 +259,58 @@ pub const Connection = struct {
 
     pub fn usesCoreDataDevice(self: *const Connection) bool {
         return self.core_data_device;
+    }
+
+    // A selection barrier is one wl_display.sync roundtrip. Its completion proves
+    // every selection event the compositor emitted before the request has been
+    // dispatched, so a read admitted before the barrier cannot choose an offer
+    // that predates its admission.
+    pub fn requestSelectionBarrier(self: *Connection) ?u64 {
+        if (self.barrier_callback != null) {
+            // The in-flight sync was requested before this admission, so only the
+            // follow-up barrier issued at its completion covers this read.
+            self.barrier_serial_requested = self.barrier_serial_inflight + 1;
+            return self.barrier_serial_requested;
+        }
+        return self.issueSelectionBarrier();
+    }
+
+    pub fn selectionBarrierReached(self: *const Connection, serial: u64) bool {
+        return self.barrier_serial_completed >= serial;
+    }
+
+    fn issueSelectionBarrier(self: *Connection) ?u64 {
+        std.debug.assert(self.barrier_callback == null);
+        const display = self.display orelse return null;
+        const callback = self.marshal(@ptrCast(display), 0, self.symbols.wl_callback_interface, 1, 0, &.{}) orelse
+            return null;
+        if (self.addListener(callback, &barrier_listener) != 0) {
+            self.symbols.wl_proxy_destroy(callback);
+            return null;
+        }
+        self.barrier_callback = callback;
+        self.barrier_serial_inflight = self.barrier_serial_completed + 1;
+        if (self.barrier_serial_requested < self.barrier_serial_inflight) {
+            self.barrier_serial_requested = self.barrier_serial_inflight;
+        }
+        if (self.queueFlush() == .failed) return null;
+        return self.barrier_serial_inflight;
+    }
+
+    fn barrierDone(data: ?*anyopaque, callback: ?*WlProxy, _: u32) callconv(.c) void {
+        const self: *Connection = @ptrCast(@alignCast(data.?));
+        std.debug.assert(self.barrier_callback == callback);
+        std.debug.assert(self.barrier_serial_inflight == self.barrier_serial_completed + 1);
+        if (callback) |proxy| self.symbols.wl_proxy_destroy(proxy);
+        self.barrier_callback = null;
+        self.barrier_serial_completed += 1;
+        if (self.barrier_serial_requested <= self.barrier_serial_completed) return;
+        if (self.issueSelectionBarrier() == null) {
+            // Reads waiting on the follow-up barrier cannot progress on a
+            // connection that cannot even queue a sync request.
+            if (self.failure == .none) self.failure = .protocol;
+            self.phase = .failed;
+        }
     }
 
     pub fn acquireCoreSelection(self: *Connection) Progress {
@@ -451,10 +513,15 @@ pub const Connection = struct {
 
     fn dispatchAvailable(self: *Connection) bool {
         const display = self.display orelse return false;
-        const dispatched = self.symbols.wl_display_dispatch_pending_single(display);
-        if (dispatched < 0) return false;
+        var dispatched_count: u32 = 0;
+        while (dispatched_count < DISPATCH_EVENTS_PER_DRIVE_MAX) {
+            const dispatched = self.symbols.wl_display_dispatch_pending_single(display);
+            if (dispatched < 0) return false;
+            if (dispatched == 0) break;
+            dispatched_count += 1;
+        }
         if (self.queueFlush() == .failed) return false;
-        if (dispatched > 0) return true;
+        if (dispatched_count == DISPATCH_EVENTS_PER_DRIVE_MAX) return true;
         if (self.symbols.wl_display_prepare_read(display) != 0) {
             return self.symbols.wl_display_dispatch_pending_single(display) >= 0;
         }
@@ -1200,6 +1267,7 @@ const seat_listener = [_]*const anyopaque{
     @ptrCast(&Connection.seatName),
 };
 const callback_listener = [_]*const anyopaque{@ptrCast(&Connection.callbackDone)};
+const barrier_listener = [_]*const anyopaque{@ptrCast(&Connection.barrierDone)};
 const device_listener = [_]*const anyopaque{
     @ptrCast(&Connection.deviceDataOffer),
     @ptrCast(&Connection.deviceSelection),
@@ -1319,20 +1387,78 @@ test "Wayland connection setup applies the finite receive buffer cap" {
     try std.testing.expectEqual(@as(usize, WAYLAND_CONNECTION_BUFFER_SIZE_MAX), test_max_buffer_size);
 }
 
-test "Wayland dispatch executes at most one queued callback per invocation" {
+test "Wayland dispatch drains queued callbacks in one invocation" {
     var symbols: linux.WaylandSymbols = undefined;
-    symbols.wl_display_dispatch_pending_single = testDispatchPendingSingle;
+    symbols.wl_display_dispatch_pending_single = testDispatchQueue;
     symbols.wl_display_prepare_read = testPrepareReadBlocked;
     var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
     connection.display = @ptrFromInt(1);
     connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
     test_dispatch_call_count = 0;
     test_dispatched_callback_count = 0;
+    test_dispatch_queue_length = 3;
 
     try std.testing.expect(connection.dispatchAvailable());
 
-    try std.testing.expectEqual(@as(u32, 2), test_dispatch_call_count);
-    try std.testing.expectEqual(@as(u32, 1), test_dispatched_callback_count);
+    try std.testing.expectEqual(@as(u32, 3), test_dispatched_callback_count);
+    try std.testing.expectEqual(@as(u32, 0), test_dispatch_queue_length);
+}
+
+test "Wayland dispatch bounds the events drained per invocation" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_display_dispatch_pending_single = testDispatchQueue;
+    symbols.wl_display_prepare_read = testPrepareReadBlocked;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    connection.display = @ptrFromInt(1);
+    connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
+    test_dispatch_call_count = 0;
+    test_dispatched_callback_count = 0;
+    test_dispatch_queue_length = DISPATCH_EVENTS_PER_DRIVE_MAX + 5;
+
+    try std.testing.expect(connection.dispatchAvailable());
+
+    try std.testing.expectEqual(@as(u32, DISPATCH_EVENTS_PER_DRIVE_MAX), test_dispatched_callback_count);
+    try std.testing.expectEqual(@as(u32, 5), test_dispatch_queue_length);
+}
+
+test "Wayland selection barrier orders admissions across in-flight syncs" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_add_listener = testAddListener;
+    symbols.wl_proxy_destroy = testDestroyProxy;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    connection.display = @ptrFromInt(1);
+    connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
+
+    const first = connection.requestSelectionBarrier().?;
+    try std.testing.expectEqual(@as(u64, 1), first);
+    try std.testing.expectEqual(@as(u8, 1), connection.test_marshal_count);
+    try std.testing.expect(!connection.selectionBarrierReached(first));
+
+    // A read admitted while a sync is in flight must wait for the follow-up.
+    const second = connection.requestSelectionBarrier().?;
+    try std.testing.expectEqual(@as(u64, 2), second);
+    try std.testing.expectEqual(@as(u8, 1), connection.test_marshal_count);
+
+    Connection.barrierDone(&connection, connection.barrier_callback, 0);
+    try std.testing.expect(connection.selectionBarrierReached(first));
+    try std.testing.expect(!connection.selectionBarrierReached(second));
+    try std.testing.expectEqual(@as(u8, 2), connection.test_marshal_count);
+
+    Connection.barrierDone(&connection, connection.barrier_callback, 0);
+    try std.testing.expect(connection.selectionBarrierReached(second));
+    try std.testing.expect(connection.barrier_callback == null);
+    try std.testing.expectEqual(@as(u8, 2), connection.test_marshal_count);
+}
+
+test "Wayland selection barrier reports sync issue failure to the caller" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshalFailure;
+    var connection = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    connection.display = @ptrFromInt(1);
+
+    try std.testing.expect(connection.requestSelectionBarrier() == null);
+    try std.testing.expect(connection.barrier_callback == null);
 }
 
 test "Wayland read queues callbacks for the next dispatch invocation" {
@@ -1409,6 +1535,7 @@ fn testReadyConnection(symbols: *const linux.WaylandSymbols, flush: FlushOutcome
 var test_max_buffer_size: usize = 0;
 var test_dispatch_call_count: u32 = 0;
 var test_dispatched_callback_count: u32 = 0;
+var test_dispatch_queue_length: u32 = 0;
 var test_display_fd: std.posix.fd_t = -1;
 var test_read_event_count: u32 = 0;
 var test_display_error_call_count: u32 = 0;
@@ -1423,9 +1550,10 @@ fn testSetMaxBufferSize(_: *linux.WlDisplay, size: usize) callconv(.c) void {
     test_max_buffer_size = size;
 }
 
-fn testDispatchPendingSingle(_: *linux.WlDisplay) callconv(.c) c_int {
+fn testDispatchQueue(_: *linux.WlDisplay) callconv(.c) c_int {
     test_dispatch_call_count += 1;
-    if (test_dispatch_call_count == 1) return 0;
+    if (test_dispatch_queue_length == 0) return 0;
+    test_dispatch_queue_length -= 1;
     test_dispatched_callback_count += 1;
     return 1;
 }
