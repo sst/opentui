@@ -923,9 +923,16 @@ const Service = struct {
             if (count == 0) {
                 const transfer_format = operation.wayland_transfer_format;
                 operation.cleanupTransfer();
-                if (operation.transfer_data.items.len == 0) {
-                    return service.retryStaleWaylandRead(operation);
-                }
+                // Zero-byte text is valid clipboard content and stays a successful
+                // read, matching the macOS and X11 backends. Zero-byte image data
+                // is invalid and means the offer's source vanished mid-read, so
+                // only image candidates retry. Wayland cannot distinguish empty
+                // text from a vanished source; on compositors that skip the nil
+                // selection update after a clear (Hyprland 0.55), a cleared
+                // clipboard reads as zero-byte text instead of empty.
+                const empty_image = operation.transfer_data.items.len == 0 and
+                    !std.ascii.eqlIgnoreCase(operation.result_mime, "text/plain");
+                if (empty_image) return service.retryStaleWaylandRead(operation);
                 return service.completeWaylandRead(operation, transfer_format);
             }
             const transfer_limit: usize = @intCast(switch (operation.wayland_transfer_format) {
@@ -1006,10 +1013,10 @@ const Service = struct {
         ));
     }
 
-    // A zero-byte transfer means the offer's source vanished, usually because the
-    // selection changed after the offer was chosen. Restart candidate selection
-    // behind a fresh barrier a bounded number of times; afterwards the preference
-    // loop finishes the read as empty.
+    // A zero-byte image transfer means the offer's source vanished, usually
+    // because the selection changed after the offer was chosen. Restart candidate
+    // selection behind a fresh barrier a bounded number of times; afterwards the
+    // preference loop finishes the read as empty.
     fn retryStaleWaylandRead(_: *Service, operation: *Operation) OperationStatus {
         operation.implemented_candidate_attempted = true;
         if (operation.result_mime.len > 0) operation.allocator.free(operation.result_mime);

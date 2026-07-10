@@ -433,7 +433,9 @@ pub const Connection = struct {
     }
 
     pub fn hasWork(self: *const Connection) bool {
-        return self.output_pending or self.hasProviders();
+        // An in-flight barrier counts as work so a cancelled read cannot strand
+        // its sync callback once no operation keeps the connection draining.
+        return self.output_pending or self.barrier_callback != null or self.hasProviders();
     }
 
     pub fn releaseProviders(self: *Connection) void {
@@ -1430,10 +1432,12 @@ test "Wayland selection barrier orders admissions across in-flight syncs" {
     connection.display = @ptrFromInt(1);
     connection.flush_outcome_override = .{ .result = 0, .errno = .SUCCESS };
 
+    try std.testing.expect(!connection.hasWork());
     const first = connection.requestSelectionBarrier().?;
     try std.testing.expectEqual(@as(u64, 1), first);
     try std.testing.expectEqual(@as(u8, 1), connection.test_marshal_count);
     try std.testing.expect(!connection.selectionBarrierReached(first));
+    try std.testing.expect(connection.hasWork());
 
     // A read admitted while a sync is in flight must wait for the follow-up.
     const second = connection.requestSelectionBarrier().?;
@@ -1449,6 +1453,7 @@ test "Wayland selection barrier orders admissions across in-flight syncs" {
     try std.testing.expect(connection.selectionBarrierReached(second));
     try std.testing.expect(connection.barrier_callback == null);
     try std.testing.expectEqual(@as(u8, 2), connection.test_marshal_count);
+    try std.testing.expect(!connection.hasWork());
 }
 
 test "Wayland selection barrier reports sync issue failure to the caller" {
