@@ -1704,6 +1704,33 @@ describe("StdinParser", () => {
         p.destroy()
       }
     })
+
+    test("size cap finalizes an unterminated paste and resumes normal input", () => {
+      // No ESC[201~ end marker (ConPTY can drop/split it). With a small cap the
+      // paste must self-terminate so following bytes parse as keys, not vanish.
+      const p = createParser({ maxPasteBytes: 8 })
+      try {
+        p.push(Buffer.from("\x1b[200~" + "a".repeat(40)))
+        p.push(Buffer.from("z"))
+        expect(snap(p)).toEqual([paste("a".repeat(40)), k("z")])
+      } finally {
+        p.destroy()
+      }
+    })
+
+    test("idle timeout finalizes an unterminated paste and resumes normal input", () => {
+      const { parser, clock } = createTimedParser({ pasteTimeoutMs: 50 })
+      try {
+        parser.push(Buffer.from("\x1b[200~hello"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(60)
+        expect(snap(parser)).toEqual([paste("hello")])
+        parser.push(Buffer.from("z"))
+        expect(snap(parser)).toEqual([k("z")])
+      } finally {
+        parser.destroy()
+      }
+    })
   })
 
   describe("ESC-less SGR continuation recovery", () => {
