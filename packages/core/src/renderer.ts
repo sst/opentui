@@ -4024,7 +4024,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public resume(): void {
     if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(true)
+      try {
+        this.stdin.setRawMode(true)
+      } catch (error) {
+        // On Windows, uv_tty_set_mode can throw (EINVAL/ENOTTY/EBADF) when the
+        // console handle is in a transient state — e.g. right after shelling
+        // out to a child (git/editor/pager) that grabbed the console. Never let
+        // that skip re-attaching the "data" listener + resume() below, or input
+        // stays permanently dead while the render loop keeps running.
+        console.error("Failed to restore raw mode on resume:", error)
+      }
     }
 
     // Drain any input buffered during suspension before registering the
