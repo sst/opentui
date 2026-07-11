@@ -11,6 +11,28 @@
   "main": "src/index.ts",
   "version": "0.4.3",
   "type": "module",
+  "imports": {
+    "#opentui/default-parsers": {
+      "bun": "./src/lib/tree-sitter/default-parsers.ts",
+      "node": "./src/lib/tree-sitter/default-parsers.node.ts",
+      "default": "./src/lib/tree-sitter/default-parsers.node.ts"
+    },
+    "#opentui/native-package": {
+      "bun": "./src/platform/native-package.ts",
+      "node": "./src/platform/native-package.node.ts",
+      "default": "./src/platform/native-package.node.ts"
+    },
+    "#opentui/tree-sitter-wasm": {
+      "bun": "./src/lib/tree-sitter/tree-sitter-wasm.ts",
+      "node": "./src/lib/tree-sitter/tree-sitter-wasm.node.ts",
+      "default": "./src/lib/tree-sitter/tree-sitter-wasm.node.ts"
+    },
+    "#opentui/worker-path": {
+      "bun": "./src/lib/tree-sitter/worker-path.ts",
+      "node": "./src/lib/tree-sitter/worker-path.node.ts",
+      "default": "./src/lib/tree-sitter/worker-path.node.ts"
+    }
+  },
   "scripts": {
     "build": "bun run build:native && bun run build:lib",
     "build:dev": "bun run build:native:dev && bun run build:lib",
@@ -26,6 +48,7 @@
     "bench:ts": "bun src/benchmark/native-span-feed-benchmark.ts --suite=quick --json=src/benchmark/latest-quick-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=default --json=src/benchmark/latest-default-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=large --json=src/benchmark/latest-large-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=all --json=src/benchmark/latest-all-bench-run.json && bun src/benchmark/native-span-feed-async-benchmark.ts --json=src/benchmark/latest-async-bench-run.json",
     "publish": "bun scripts/publish.ts",
     "test:dist": "bun scripts/dist-test.ts",
+    "test:standalone": "bun scripts/standalone-test.ts",
     "test:js": "bun test",
     "test:js:node": "bun scripts/test-node.ts",
     "test": "bun run test:native && bun run test:js"
@@ -62,10 +85,13 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "node": "./src/index.ts",
       "import": "./src/index.ts"
     },
     "./testing": {
       "types": "./src/testing.ts",
+      "bun": "./src/testing.ts",
       "import": "./src/testing.ts"
     },
     "./runtime-plugin": {
@@ -82,6 +108,7 @@
     },
     "./yoga": {
       "types": "./src/yoga.ts",
+      "bun": "./src/yoga.ts",
       "import": "./src/yoga.ts"
     },
     "./tree-sitter/update-assets": {
@@ -90,7 +117,13 @@
     },
     "./parser.worker": {
       "types": "./src/lib/tree-sitter/parser.worker.ts",
+      "bun": "./src/lib/tree-sitter/parser.worker.ts",
+      "node": "./src/lib/tree-sitter/parser.worker.ts",
       "import": "./src/lib/tree-sitter/parser.worker.ts"
+    },
+    "./node-assets": {
+      "types": "./src/node-assets.ts",
+      "import": "./src/node-assets.ts"
     }
   },
   "engines": {

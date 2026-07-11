@@ -17,56 +17,67 @@ export function getParsers(): Promise<FiletypeParserOptions[]> {
 
 async function loadParsers(): Promise<FiletypeParserOptions[]> {
   const javascript_highlights = await resolveBundledFilePath(
+    "@opentui/core/assets/javascript/highlights.scm",
     () => import("./assets/javascript/highlights.scm" as string, { with: { type: "file" } }),
     "./assets/javascript/highlights.scm",
     import.meta.url,
   )
   const javascript_language = await resolveBundledFilePath(
+    "@opentui/core/assets/javascript/tree-sitter-javascript.wasm",
     () => import("./assets/javascript/tree-sitter-javascript.wasm" as string, { with: { type: "file" } }),
     "./assets/javascript/tree-sitter-javascript.wasm",
     import.meta.url,
   )
   const typescript_highlights = await resolveBundledFilePath(
+    "@opentui/core/assets/typescript/highlights.scm",
     () => import("./assets/typescript/highlights.scm" as string, { with: { type: "file" } }),
     "./assets/typescript/highlights.scm",
     import.meta.url,
   )
   const typescript_language = await resolveBundledFilePath(
+    "@opentui/core/assets/typescript/tree-sitter-typescript.wasm",
     () => import("./assets/typescript/tree-sitter-typescript.wasm" as string, { with: { type: "file" } }),
     "./assets/typescript/tree-sitter-typescript.wasm",
     import.meta.url,
   )
   const markdown_highlights = await resolveBundledFilePath(
+    "@opentui/core/assets/markdown/highlights.scm",
     () => import("./assets/markdown/highlights.scm" as string, { with: { type: "file" } }),
     "./assets/markdown/highlights.scm",
     import.meta.url,
   )
   const markdown_language = await resolveBundledFilePath(
+    "@opentui/core/assets/markdown/tree-sitter-markdown.wasm",
     () => import("./assets/markdown/tree-sitter-markdown.wasm" as string, { with: { type: "file" } }),
     "./assets/markdown/tree-sitter-markdown.wasm",
     import.meta.url,
   )
   const markdown_injections = await resolveBundledFilePath(
+    "@opentui/core/assets/markdown/injections.scm",
     () => import("./assets/markdown/injections.scm" as string, { with: { type: "file" } }),
     "./assets/markdown/injections.scm",
     import.meta.url,
   )
   const markdown_inline_highlights = await resolveBundledFilePath(
+    "@opentui/core/assets/markdown_inline/highlights.scm",
     () => import("./assets/markdown_inline/highlights.scm" as string, { with: { type: "file" } }),
     "./assets/markdown_inline/highlights.scm",
     import.meta.url,
   )
   const markdown_inline_language = await resolveBundledFilePath(
+    "@opentui/core/assets/markdown_inline/tree-sitter-markdown_inline.wasm",
     () => import("./assets/markdown_inline/tree-sitter-markdown_inline.wasm" as string, { with: { type: "file" } }),
     "./assets/markdown_inline/tree-sitter-markdown_inline.wasm",
     import.meta.url,
   )
   const zig_highlights = await resolveBundledFilePath(
+    "@opentui/core/assets/zig/highlights.scm",
     () => import("./assets/zig/highlights.scm" as string, { with: { type: "file" } }),
     "./assets/zig/highlights.scm",
     import.meta.url,
   )
   const zig_language = await resolveBundledFilePath(
+    "@opentui/core/assets/zig/tree-sitter-zig.wasm",
     () => import("./assets/zig/tree-sitter-zig.wasm" as string, { with: { type: "file" } }),
     "./assets/zig/tree-sitter-zig.wasm",
     import.meta.url,

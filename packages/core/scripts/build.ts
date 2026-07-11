@@ -1,6 +1,6 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs"
-import { dirname, join, resolve } from "path"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "fs"
+import { basename, dirname, join, resolve } from "path"
 import { ModuleKind, ScriptTarget, transpileModule } from "typescript"
 import { fileURLToPath } from "url"
 import process from "process"
@@ -35,6 +35,7 @@ interface PackageJson {
 interface BunBuildOptions {
   entryPoints: string[]
   externalPatterns?: string[]
+  outputFile?: string
   splitting?: boolean
   target: "bun" | "node"
 }
@@ -117,18 +118,43 @@ const runCommand = (command: string, commandArgs: string[], cwd: string, errorMe
   }
 }
 
-const runBunBuild = ({ entryPoints, externalPatterns = [], splitting = false, target }: BunBuildOptions): void => {
+const runBunBuild = ({
+  entryPoints,
+  externalPatterns = [],
+  outputFile,
+  splitting = false,
+  target,
+}: BunBuildOptions): void => {
+  if (outputFile && splitting) {
+    throw new Error("Bun builds with an output file cannot use splitting")
+  }
+
   const buildArgs = [
     "build",
     `--target=${target}`,
-    "--outdir=dist",
-    "--sourcemap",
+    outputFile ? `--outfile=${resolve(rootDir, outputFile)}` : "--outdir=dist",
+    ...(outputFile ? [] : ["--sourcemap"]),
     ...(splitting ? ["--splitting"] : []),
     ...externalPatterns.flatMap((pattern) => ["--external", pattern]),
     ...entryPoints,
   ]
 
   runCommand("bun", buildArgs, rootDir, `Error: Bun ${target} build failed for ${entryPoints.join(", ")}`)
+}
+
+const finalizeBunBuildOutput = (temporaryPath: string, outputPath: string): void => {
+  const temporaryAbsolute = resolve(rootDir, temporaryPath)
+  const outputAbsolute = resolve(rootDir, outputPath)
+  const temporaryMap = `${temporaryAbsolute}.map`
+  const outputMap = `${outputAbsolute}.map`
+
+  let source = readFileSync(temporaryAbsolute, "utf8")
+  source = source.replace(`sourceMappingURL=${basename(temporaryMap)}`, `sourceMappingURL=${basename(outputMap)}`)
+  writeFileSync(temporaryAbsolute, source)
+  renameSync(temporaryAbsolute, outputAbsolute)
+  if (existsSync(temporaryMap)) {
+    renameSync(temporaryMap, outputMap)
+  }
 }
 
 const transpileEntryPoint = (entryPoint: string, outputPath: string): void => {
@@ -272,8 +298,6 @@ if (buildLib) {
     process.exit(1)
   }
 
-  const portableEntryPoints: string[] = [packageJson.module, "src/testing.ts", "src/yoga.ts"]
-
   const bunOnlyEntryPoints = [
     {
       entryPoint: "src/runtime-plugin.ts",
@@ -289,22 +313,47 @@ if (buildLib) {
     },
   ]
 
-  // Build main entry points with code splitting
-  // External patterns to prevent bundling tree-sitter assets and default-parsers
-  // to allow standalone executables to work
-  const externalPatterns = [
-    ...externalDeps,
-    "*.wasm",
-    "*.scm",
-    "./lib/tree-sitter/assets/*",
-    "./lib/tree-sitter/default-parsers",
-    "./lib/tree-sitter/default-parsers.ts",
-  ]
+  // Keep runtime assets external so Bun consumers can discover literal file imports
+  // and Node consumers can resolve package-relative files.
+  const externalPatterns = [...externalDeps, "@opentui/core/parser.worker", "*.wasm", "*.scm"]
 
   runBunBuild({
-    entryPoints: portableEntryPoints,
+    entryPoints: [packageJson.module],
     externalPatterns,
-    splitting: true,
+    outputFile: "dist/index-node.js",
+    target: "node",
+  })
+  finalizeBunBuildOutput("dist/index-node.js", "dist/index.node.js")
+  runBunBuild({
+    entryPoints: [packageJson.module],
+    externalPatterns,
+    outputFile: "dist/index-bun.js",
+    target: "bun",
+  })
+  finalizeBunBuildOutput("dist/index-bun.js", "dist/index.bun.js")
+  writeFileSync(join(distDir, "index.js"), 'export * from "./index.bun.js"\n')
+  runBunBuild({
+    entryPoints: ["src/testing.ts", "src/yoga.ts"],
+    externalPatterns,
+    target: "node",
+  })
+  runBunBuild({
+    entryPoints: ["src/testing.ts"],
+    externalPatterns,
+    outputFile: "dist/testing-bun.js",
+    target: "bun",
+  })
+  finalizeBunBuildOutput("dist/testing-bun.js", "dist/testing.bun.js")
+  runBunBuild({
+    entryPoints: ["src/yoga.ts"],
+    externalPatterns,
+    outputFile: "dist/yoga-bun.js",
+    target: "bun",
+  })
+  finalizeBunBuildOutput("dist/yoga-bun.js", "dist/yoga.bun.js")
+  runBunBuild({
+    entryPoints: ["src/node-assets.ts"],
+    externalPatterns,
     target: "node",
   })
 
@@ -327,27 +376,40 @@ if (buildLib) {
     "Error: Bun build failed for src/lib/tree-sitter/update-assets.ts",
   )
 
-  // Build parser worker as standalone bundle (no splitting) so it can be loaded as a Worker
-  // Make web-tree-sitter external so it loads from node_modules with its WASM file
+  // Bundle all worker JavaScript. The tree-sitter WASM remains a manifest asset.
   runBunBuild({
     entryPoints: ["src/lib/tree-sitter/parser.worker.ts"],
-    externalPatterns: [...externalDeps, "web-tree-sitter"],
+    externalPatterns: ["*.wasm"],
+    outputFile: "dist/parser-worker-node.js",
     target: "node",
   })
+  finalizeBunBuildOutput("dist/parser-worker-node.js", "dist/parser.worker.js")
+  runBunBuild({
+    entryPoints: ["src/lib/tree-sitter/parser.worker.ts"],
+    externalPatterns: ["*.wasm"],
+    outputFile: "dist/parser-worker-bun.js",
+    target: "bun",
+  })
+  finalizeBunBuildOutput("dist/parser-worker-bun.js", "dist/parser.worker.bun.js")
 
   // Post-process to fix Bun's duplicate export issue
   // See: https://github.com/oven-sh/bun/issues/5344
   // and: https://github.com/oven-sh/bun/issues/10631
   console.log("Post-processing bundled files to fix duplicate exports...")
   const bundledFiles = [
-    "dist/index.js",
+    "dist/index.node.js",
+    "dist/index.bun.js",
+    "dist/node-assets.js",
     "dist/testing.js",
+    "dist/testing.bun.js",
     "dist/runtime-plugin.js",
     "dist/runtime-plugin-support.js",
     "dist/runtime-plugin-support-configure.js",
     "dist/yoga.js",
+    "dist/yoga.bun.js",
     "dist/lib/tree-sitter/update-assets.js",
     "dist/parser.worker.js",
+    "dist/parser.worker.bun.js",
   ]
   for (const filePath of bundledFiles) {
     const fullPath = join(rootDir, filePath)
@@ -433,10 +495,13 @@ if (buildLib) {
   // Configure exports for multiple entry points
   const exports = {
     ".": {
-      import: "./index.js",
       types: "./index.d.ts",
+      bun: "./index.bun.js",
+      node: "./index.node.js",
+      import: "./index.node.js",
     },
     "./testing": {
+      bun: "./testing.bun.js",
       import: "./testing.js",
       types: "./testing.d.ts",
     },
@@ -459,6 +524,7 @@ if (buildLib) {
       default: "./runtime-plugin-support-configure.node.js",
     },
     "./yoga": {
+      bun: "./yoga.bun.js",
       types: "./yoga.d.ts",
       import: "./yoga.js",
     },
@@ -472,9 +538,15 @@ if (buildLib) {
       import: "./lib/tree-sitter/update-assets.js",
     },
     "./parser.worker": {
+      bun: "./parser.worker.bun.js",
+      node: "./parser.worker.js",
       import: "./parser.worker.js",
       require: "./parser.worker.js",
       types: "./lib/tree-sitter/parser.worker.d.ts",
+    },
+    "./node-assets": {
+      types: "./node-assets.d.ts",
+      import: "./node-assets.js",
     },
   }
 
@@ -490,8 +562,8 @@ if (buildLib) {
     JSON.stringify(
       {
         name: packageJson.name,
-        module: "index.js",
-        main: "index.js",
+        module: "index.node.js",
+        main: "index.node.js",
         types: "index.d.ts",
         type: packageJson.type,
         version: packageJson.version,

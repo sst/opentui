@@ -78,7 +78,7 @@ export const isCoreRuntimeModuleSpecifier = (specifier: string): boolean => {
 }
 
 const loadCoreTestingRuntimeModule = async (): Promise<RuntimeModuleExports> => {
-  return (await import("./testing.js")) as RuntimeModuleExports
+  return (await import("@opentui/core/testing")) as RuntimeModuleExports
 }
 
 const escapeRegExp = (value: string): string => {

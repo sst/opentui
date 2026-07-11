@@ -13,7 +13,7 @@ import type {
   TreeSitterWorkerRequest,
   TreeSitterWorkerResponse,
 } from "./types.js"
-import { getParsers } from "./default-parsers.js"
+import { getParsers } from "#opentui/default-parsers"
 import { resolve, isAbsolute, parse } from "path"
 import { existsSync } from "fs"
 import { registerEnvVar, env } from "../env.js"
@@ -24,6 +24,8 @@ import {
   type WorkerMessageEvent,
   Worker as PlatformWorker,
 } from "../../platform/worker.js"
+import { resolveTreeSitterWasm } from "#opentui/tree-sitter-wasm"
+import { resolveDefaultTreeSitterWorkerPath } from "#opentui/worker-path"
 
 registerEnvVar({
   name: "OTUI_TREE_SITTER_WORKER_PATH",
@@ -210,9 +212,9 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return OTUI_TREE_SITTER_WORKER_PATH
     }
 
-    let workerPath = new URL("./parser.worker.js", import.meta.url).href
+    let workerPath = resolveDefaultTreeSitterWorkerPath()
 
-    if (!existsSync(resolve(import.meta.dirname, "parser.worker.js"))) {
+    if (process.env.OTUI_ASSET_ROOT === undefined && !existsSync(workerPath)) {
       workerPath = new URL("./parser.worker.ts", import.meta.url).href
     }
 
@@ -306,6 +308,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   private async initializeClient(generation: number, worker: TreeSitterWorkerHandle): Promise<void> {
+    const treeSitterWasmPath = await resolveTreeSitterWasm()
     await new Promise<void>((resolve, reject) => {
       const timeoutMs = this.options.initTimeout ?? 10000 // Default to 10 seconds
       const timeoutId = setTimeout(() => {
@@ -319,6 +322,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       this.sendWorkerMessage({
         type: "INIT",
         dataPath: this.options.dataPath,
+        treeSitterWasmPath,
       })
     })
 
