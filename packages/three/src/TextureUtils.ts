@@ -97,6 +97,7 @@ export class TextureUtils {
     endColor: Color = new Color(0.0, 0.0, 1.0),
     direction: "horizontal" | "vertical" | "radial" = "vertical",
   ): Texture {
+    size = Math.max(2, Math.floor(size))
     const data = new Uint8ClampedArray(size * size * 4)
 
     for (let y = 0; y < size; y++) {
