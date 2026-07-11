@@ -378,6 +378,13 @@ export class ExplodingSpriteEffect {
       this.resource.meshPool.releaseMesh(poolKey, this.instancedMesh)
     }
   }
+
+  static clearMaterialCache(): void {
+    for (const material of ExplodingSpriteEffect.baseMaterialCache.values()) {
+      material.dispose()
+    }
+    ExplodingSpriteEffect.baseMaterialCache.clear()
+  }
 }
 
 export class ExplosionManager {
@@ -509,5 +516,6 @@ export class ExplosionManager {
   public disposeAll(): void {
     this.activeExplosions.forEach((exp) => exp.dispose())
     this.activeExplosions = []
+    ExplodingSpriteEffect.clearMaterialCache()
   }
 }
