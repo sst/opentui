@@ -1097,7 +1097,9 @@ export class TerminalConsole extends EventEmitter {
     if (text && this.options.onCopySelection) {
       try {
         this.options.onCopySelection(text)
-      } catch {}
+      } catch (e) {
+        console.error("Error in onCopySelection callback:", e instanceof Error ? e.stack : String(e))
+      }
       this.clearSelection()
       this.markNeedsRerender()
     }

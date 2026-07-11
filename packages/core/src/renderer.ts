@@ -889,8 +889,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _debugInputs: Array<{ timestamp: string; sequence: string }> = []
   private _debugModeEnabled: boolean = env.OTUI_DEBUG
 
-  private handleError: (error: Error) => void = ((error: Error) => {
-    console.error(error)
+  private handleError: (error: unknown) => void = ((error: unknown) => {
+    if (error instanceof Error) {
+      console.error(error)
+    } else {
+      console.error("Unhandled error:", error)
+    }
 
     if (this._openConsoleOnError) {
       this.console.show()
