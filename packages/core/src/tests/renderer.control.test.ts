@@ -144,6 +144,28 @@ test("resume() forces the next alternate-screen render to fully repaint", async 
   await expectStartedResumeForcesNextRender("alternate-screen")
 })
 
+async function expectResizeForcesNextRender(screenMode: "main-screen" | "alternate-screen"): Promise<void> {
+  renderer.destroy()
+  ;({ renderer, mockInput, mockMouse, renderOnce } = await createTestRenderer({ screenMode, width: 80, height: 24 }))
+  ;(renderer as any)._terminalIsSetup = true
+  ;(renderer as any).forceFullRepaintRequested = false
+
+  renderer.resize(120, 40)
+
+  // A terminal resize invalidates what the diff renderer believes is on screen,
+  // so the next frame must fully repaint. Without this, growing back after a
+  // shrink leaves stale cells until another resize (see processResize).
+  expect((renderer as any).forceFullRepaintRequested).toBe(true)
+}
+
+test("resize() forces the next main-screen render to fully repaint", async () => {
+  await expectResizeForcesNextRender("main-screen")
+})
+
+test("resize() forces the next alternate-screen render to fully repaint", async () => {
+  await expectResizeForcesNextRender("alternate-screen")
+})
+
 test("stop() transitions to EXPLICIT_STOPPED and stops rendering", () => {
   renderer.start()
   expect(renderer.isRunning).toBe(true)

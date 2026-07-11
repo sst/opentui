@@ -3785,6 +3785,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._console.resize(this.width, this.height)
     this.root.resize(this.width, this.height)
     this.emit(CliRenderEvents.RESIZE, this.width, this.height)
+    // A terminal resize invalidates the on-screen contents the diff renderer
+    // compares against, so force the next frame to fully repaint. Without this a
+    // grow-back after a shrink leaves stale cells until another resize, matching
+    // every other geometry/mode transition (applyScreenMode, resume, etc.).
+    this.forceFullRepaintRequested = true
     this.requestRender()
   }
 
