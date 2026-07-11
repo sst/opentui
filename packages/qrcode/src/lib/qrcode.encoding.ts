@@ -47,7 +47,11 @@ export function validateBytes(bytes: number[]): number[] {
 
 export function asciiBytes(text: string): number[] {
   const result: number[] = []
-  for (let i = 0; i < text.length; i++) result.push(text.charCodeAt(i))
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)!
+    if (cp > 0x7f) throw new Error(`Character ${JSON.stringify(ch)} is not encodable in ASCII`)
+    result.push(cp)
+  }
   return result
 }
 
