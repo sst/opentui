@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process"
 import { delimiter, dirname } from "node:path"
 
-export const NODE26_VERSION = "v26.3.0"
+export const NODE26_VERSION = "v26.4.0"
 
 export function requireNode26() {
   const nodeCommand = typeof process.versions?.bun === "string" ? "node" : process.execPath
