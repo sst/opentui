@@ -145,6 +145,11 @@ jobs:
         working-directory: packages/core
         run: bun run test:dist --skip-build
 
+      - name: Test Node SEA executable
+        if: runner.os == 'Linux'
+        working-directory: packages/core
+        run: bun run test:standalone --skip-build
+
   # Gate job for branch protection
   build-complete:
     name: Core - Build and Test

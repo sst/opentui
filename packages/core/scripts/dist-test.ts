@@ -1,5 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process"
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, relative, resolve } from "node:path"
 import process from "node:process"
@@ -25,18 +25,19 @@ const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8
 const nativePackageName = `${packageJson.name}-${process.platform}-${process.arch}`
 const nativePackageDir = join(rootDir, "node_modules", nativePackageName)
 
-const declarationPaths = ["index.d.ts", "testing.d.ts", "lib/tree-sitter/parser.worker.d.ts"]
+const declarationPaths = ["index.d.ts", "node-assets.d.ts", "testing.d.ts", "lib/tree-sitter/parser.worker.d.ts"]
 
 function runCommand(
   command: string,
   commandArgs: string[],
   cwd: string,
   errorMessage: string,
-  options: { stdio?: "inherit" | "pipe" } = {},
+  options: { stdio?: "inherit" | "pipe"; timeout?: number } = {},
 ): SpawnSyncReturns<Buffer> {
   const result = spawnSync(command, commandArgs, {
     cwd,
     stdio: options.stdio ?? "inherit",
+    timeout: options.timeout,
   })
 
   if (result.error) {
@@ -96,6 +97,79 @@ function assertPortableDeclarations(): void {
   }
 }
 
+function assertRuntimeOutputs(): void {
+  const nodeSource = readRuntimeGraph(["index.node.js", "testing.js", "yoga.js"], "chunk-node-")
+  const bunSource = readRuntimeGraph(["index.bun.js", "testing.bun.js", "yoga.bun.js"], "chunk-bun-")
+  const workerSource = readFileSync(join(distDir, "parser.worker.js"), "utf8")
+  const distPackage = JSON.parse(readFileSync(join(distDir, "package.json"), "utf8")) as {
+    exports: Record<string, Record<string, string>>
+  }
+
+  for (const [name, source] of [
+    ["Node root", nodeSource],
+    ["Node parser worker", workerSource],
+  ] as const) {
+    if (/with:\s*\{\s*type:\s*["'](?:file|wasm)["']/.test(source)) {
+      throw new Error(`${name} contains a Bun file import attribute`)
+    }
+  }
+  if (/import\(["']@opentui\/core-(?:darwin|linux|win32)-/.test(nodeSource)) {
+    throw new Error("Node root contains a statically resolved OpenTUI native package import")
+  }
+  if (!/with:\s*\{\s*type:\s*["']file["']/.test(bunSource)) {
+    throw new Error("Bun root does not retain literal file imports")
+  }
+  if (/\b(?:from|import\()\s*["']web-tree-sitter["']/.test(workerSource)) {
+    throw new Error("Node parser worker still imports web-tree-sitter at runtime")
+  }
+  if (!workerSource.includes('"web-tree-sitter/tree-sitter.wasm"')) {
+    throw new Error("Node parser worker does not reference the stable tree-sitter WASM key")
+  }
+
+  const rootExport = distPackage.exports["."]
+  if (
+    rootExport?.bun !== "./index.bun.js" ||
+    rootExport?.node !== "./index.node.js" ||
+    rootExport?.import !== "./index.node.js"
+  ) {
+    throw new Error("Root package export does not select separate Bun and Node runtime outputs")
+  }
+  if (distPackage.exports["./node-assets"]?.import !== "./node-assets.js") {
+    throw new Error("Missing @opentui/core/node-assets package export")
+  }
+  const workerExport = distPackage.exports["./parser.worker"]
+  if (
+    workerExport?.bun !== "./parser.worker.js" ||
+    workerExport?.node !== "./parser.worker.js" ||
+    workerExport?.import !== "./parser.worker.js"
+  ) {
+    throw new Error("Parser worker package export does not select the shared worker output")
+  }
+
+  for (const sourceMap of ["index.node.js.map", "index.bun.js.map", "parser.worker.js.map"]) {
+    if (!existsSync(join(distDir, sourceMap))) {
+      throw new Error(`Missing source map ${sourceMap}`)
+    }
+  }
+  const workerSourceMap = JSON.parse(readFileSync(join(distDir, "parser.worker.js.map"), "utf8")) as {
+    sources?: string[]
+  }
+  const workerSourcePath = workerSourceMap.sources?.find((source) => source.endsWith("/parser.worker.ts"))
+  if (!workerSourcePath || !existsSync(resolve(distDir, workerSourcePath))) {
+    throw new Error("Parser worker source map does not resolve to parser.worker.ts")
+  }
+  if (existsSync(join(distDir, "parser.worker.bun.js"))) {
+    throw new Error("Found obsolete Bun-specific parser worker")
+  }
+}
+
+function readRuntimeGraph(entryPaths: string[], chunkPrefix: string): string {
+  const chunkPaths = readdirSync(distDir)
+    .filter((name) => name.startsWith(chunkPrefix) && name.endsWith(".js"))
+    .sort()
+  return [...entryPaths, ...chunkPaths].map((path) => readFileSync(join(distDir, path), "utf8")).join("\n")
+}
+
 function packArtifact(packageDir: string, packDir: string): string {
   const result = runCommand(
     "npm",
@@ -142,11 +216,16 @@ function writeNodeTest(nodeDir: string): void {
   writeFileSync(
     join(nodeDir, "index.mjs"),
     `import assert from "node:assert/strict"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 const nativePackageName = ${JSON.stringify(nativePackageName)}
 
 const core = await import(${JSON.stringify(packageJson.name)})
+const nodeAssets = await import(${JSON.stringify(`${packageJson.name}/node-assets`)})
 const testing = await import(${JSON.stringify(`${packageJson.name}/testing`)})
+const yoga = await import(${JSON.stringify(`${packageJson.name}/yoga`)})
 const parserWorker = await import(${JSON.stringify(`${packageJson.name}/parser.worker`)})
 const nativePackage = await import(nativePackageName)
 
@@ -158,8 +237,36 @@ assert.equal(core.NativeAudioStreamCloseReason.TransportError, 1)
 assert.equal(core.NativeAudioStreamFormat.Mp3, 1)
 assert.equal(core.NativeAudioStreamFormat.Flac, 2)
 assert.equal(typeof testing.createTestRenderer, "function")
+assert.equal(core.Yoga.Node, yoga.Node)
+assert.equal(Object.getPrototypeOf(testing.MockTreeSitterClient.prototype), core.TreeSitterClient.prototype)
 assert.equal(typeof parserWorker, "object")
 assert.equal(typeof nativePackage.default, "string")
+
+const manifest = nodeAssets.getNodeAssets({
+  platform: process.platform,
+  arch: process.arch,
+  ...(process.platform === "linux" ? { libc: "glibc" } : {}),
+})
+assert.equal(manifest.length, 14)
+assert.deepEqual(
+  manifest.map((asset) => asset.key),
+  manifest.map((asset) => asset.key).toSorted(),
+)
+
+const buffer = core.OptimizedBuffer.create(2, 1, "unicode")
+assert.equal(buffer.width, 2)
+buffer.destroy()
+
+const dataPath = mkdtempSync(join(tmpdir(), "opentui-node-dist-tree-sitter-"))
+const client = new core.TreeSitterClient({ dataPath })
+try {
+  const result = await client.highlightOnce(${JSON.stringify("# Title\n\n```js\nconst answer = 42\n```\n")}, "markdown")
+  assert.equal(result.error, undefined)
+  assert.ok(result.highlights?.length)
+} finally {
+  await client.destroy()
+  rmSync(dataPath, { recursive: true, force: true })
+}
 
 const expectBunOnlyFailure = async (specifier, expectedMessage) => {
   await assert.rejects(import(specifier), (error) => {
@@ -185,7 +292,13 @@ console.log("Node dist smoke test passed")
     join(nodeDir, "require.cjs"),
     `const assert = require("node:assert/strict")
 
-for (const specifier of [${JSON.stringify(packageJson.name)}, ${JSON.stringify(`${packageJson.name}/testing`)}, ${JSON.stringify(`${packageJson.name}/tree-sitter/update-assets`)}]) {
+assert.throws(
+  () => require(${JSON.stringify(packageJson.name)}),
+  (error) => error?.code === "ERR_REQUIRE_ASYNC_MODULE",
+  ${JSON.stringify(`Expected ${packageJson.name} CommonJS require to reject its async ESM graph`)},
+)
+
+for (const specifier of [${JSON.stringify(`${packageJson.name}/testing`)}, ${JSON.stringify(`${packageJson.name}/tree-sitter/update-assets`)}]) {
   assert.throws(
     () => require(specifier),
     (error) => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED",
@@ -210,6 +323,7 @@ describe("${packageJson.name} dist smoke test", () => {
   test("imports portable and Bun-only entrypoints", async () => {
     const core = await import(${JSON.stringify(packageJson.name)})
     const testing = await import(${JSON.stringify(`${packageJson.name}/testing`)})
+    const yoga = await import(${JSON.stringify(`${packageJson.name}/yoga`)})
     const parserWorker = await import(${JSON.stringify(`${packageJson.name}/parser.worker`)})
     const runtimePlugin = await import(${JSON.stringify(`${packageJson.name}/runtime-plugin`)})
     const nativePackage = await import(${JSON.stringify(nativePackageName)})
@@ -220,6 +334,8 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(core.NativeAudioStreamCloseReason.TransportError).toBe(1)
     expect(core.NativeAudioStreamFormat.Flac).toBe(2)
     expect(typeof testing.createTestRenderer).toBe("function")
+    expect(core.Yoga.Node).toBe(yoga.Node)
+    expect(Object.getPrototypeOf(testing.MockTreeSitterClient.prototype)).toBe(core.TreeSitterClient.prototype)
     expect(typeof parserWorker).toBe("object")
     expect(typeof runtimePlugin.createRuntimePlugin).toBe("function")
     expect(typeof nativePackage.default).toBe("string")
@@ -256,7 +372,9 @@ function assertNodeStaticImportFailure(
 function installAndTest(nodeDir: string, bunDir: string): void {
   runCommand("npm", ["install", "--ignore-scripts", "--no-package-lock"], nodeDir, "Node dist test install failed")
   runCommand(nodePath, ["-e", `import(${JSON.stringify(packageJson.name)})`], nodeDir, "Node import smoke check failed")
-  runCommand(nodePath, ["index.mjs"], nodeDir, "Node dist smoke tests failed")
+  runCommand(nodePath, ["--experimental-ffi", "--no-warnings", "index.mjs"], nodeDir, "Node dist smoke tests failed", {
+    timeout: 60_000,
+  })
   runCommand(nodePath, ["require.cjs"], nodeDir, "Node CommonJS export smoke tests failed")
 
   assertNodeStaticImportFailure(
@@ -287,6 +405,7 @@ let tempRoot: string | undefined
 try {
   ensureBuildArtifacts()
   assertPortableDeclarations()
+  assertRuntimeOutputs()
 
   tempRoot = mkdtempSync(join(tmpdir(), "opentui-core-dist-test-"))
   const packDir = join(tempRoot, "packs")

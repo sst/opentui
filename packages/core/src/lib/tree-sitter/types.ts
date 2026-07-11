@@ -53,7 +53,7 @@ export interface ParsedBuffer extends BufferState {
 export type TreeSitterWorkerLogType = "log" | "error" | "warn"
 
 export type TreeSitterWorkerRequest =
-  | { type: "INIT"; dataPath: string }
+  | { type: "INIT"; dataPath: string; treeSitterWasmPath?: string }
   | { type: "ADD_FILETYPE_PARSER"; filetypeParser: FiletypeParserOptions }
   | { type: "PRELOAD_PARSER"; filetype: string; messageId: string }
   | {

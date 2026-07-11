@@ -15,7 +15,7 @@ import type {
 } from "./types.js"
 import { DownloadUtils } from "./download-utils.js"
 import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
-import { resolveBundledFilePath } from "../../platform/runtime.js"
+import { resolveAssetPath } from "../../platform/assets.js"
 import {
   isWorkerRuntime,
   postWorkerMessage,
@@ -84,7 +84,7 @@ class ParserWorker {
     return DownloadUtils.fetchHighlightQueries(sources, this.tsDataPath, filetype)
   }
 
-  async initialize({ dataPath }: { dataPath: string }) {
+  async initialize({ dataPath, treeSitterWasmPath }: { dataPath: string; treeSitterWasmPath?: string }) {
     if (this.initializePromise) {
       return this.initializePromise
     }
@@ -95,11 +95,12 @@ class ParserWorker {
       await mkdir(path.join(this.tsDataPath, "languages"), { recursive: true })
       await mkdir(path.join(this.tsDataPath, "queries"), { recursive: true })
 
-      let treeWasm = await resolveBundledFilePath(
-        () => import("web-tree-sitter/tree-sitter.wasm" as string, { with: { type: "wasm" } }),
-        () => import.meta.resolve("web-tree-sitter/tree-sitter.wasm"),
-        import.meta.url,
-      )
+      let treeWasm =
+        treeSitterWasmPath ??
+        resolveAssetPath(
+          "web-tree-sitter/tree-sitter.wasm",
+          () => new URL(import.meta.resolve("web-tree-sitter/tree-sitter.wasm")),
+        )
 
       if (isBunfsPath(treeWasm)) {
         treeWasm = normalizeBunfsPath(path.parse(treeWasm).base)
@@ -945,7 +946,7 @@ if (isWorkerRuntime) {
       switch (message.type) {
         case "INIT":
           try {
-            await worker.initialize({ dataPath: message.dataPath })
+            await worker.initialize({ dataPath: message.dataPath, treeSitterWasmPath: message.treeSitterWasmPath })
             postWorkerMessage({ type: "INIT_RESPONSE" } satisfies TreeSitterWorkerResponse)
           } catch (error) {
             postWorkerMessage({
