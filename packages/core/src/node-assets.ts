@@ -2,7 +2,7 @@ import { statSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { defaultParserAssetPaths } from "./lib/tree-sitter/default-parser-assets.js"
+import { defaultParserAssetPaths } from "./lib/tree-sitter/default-parsers.js"
 import { getNativeAssetDescriptor, type NodeAssetTarget } from "./node-asset-target.js"
 import { validateAssetKey } from "./platform/assets.js"
 

@@ -1,5 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process"
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, relative, resolve } from "node:path"
 import process from "node:process"
@@ -97,8 +97,8 @@ function assertPortableDeclarations(): void {
 }
 
 function assertRuntimeOutputs(): void {
-  const nodeSource = readFileSync(join(distDir, "index.node.js"), "utf8")
-  const bunSource = readFileSync(join(distDir, "index.bun.js"), "utf8")
+  const nodeSource = readRuntimeGraph(["index.node.js", "testing.js", "yoga.js"], "chunk-node-")
+  const bunSource = readRuntimeGraph(["index.bun.js", "testing.bun.js", "yoga.bun.js"], "chunk-bun-")
   const workerSource = readFileSync(join(distDir, "parser.worker.js"), "utf8")
   const distPackage = JSON.parse(readFileSync(join(distDir, "package.json"), "utf8")) as {
     exports: Record<string, Record<string, string>>
@@ -136,6 +136,37 @@ function assertRuntimeOutputs(): void {
   if (distPackage.exports["./node-assets"]?.import !== "./node-assets.js") {
     throw new Error("Missing @opentui/core/node-assets package export")
   }
+  const workerExport = distPackage.exports["./parser.worker"]
+  if (
+    workerExport?.bun !== "./parser.worker.js" ||
+    workerExport?.node !== "./parser.worker.js" ||
+    workerExport?.import !== "./parser.worker.js"
+  ) {
+    throw new Error("Parser worker package export does not select the shared worker output")
+  }
+
+  for (const sourceMap of ["index.node.js.map", "index.bun.js.map", "parser.worker.js.map"]) {
+    if (!existsSync(join(distDir, sourceMap))) {
+      throw new Error(`Missing source map ${sourceMap}`)
+    }
+  }
+  const workerSourceMap = JSON.parse(readFileSync(join(distDir, "parser.worker.js.map"), "utf8")) as {
+    sources?: string[]
+  }
+  const workerSourcePath = workerSourceMap.sources?.find((source) => source.endsWith("/parser.worker.ts"))
+  if (!workerSourcePath || !existsSync(resolve(distDir, workerSourcePath))) {
+    throw new Error("Parser worker source map does not resolve to parser.worker.ts")
+  }
+  if (existsSync(join(distDir, "parser.worker.bun.js"))) {
+    throw new Error("Found obsolete Bun-specific parser worker")
+  }
+}
+
+function readRuntimeGraph(entryPaths: string[], chunkPrefix: string): string {
+  const chunkPaths = readdirSync(distDir)
+    .filter((name) => name.startsWith(chunkPrefix) && name.endsWith(".js"))
+    .sort()
+  return [...entryPaths, ...chunkPaths].map((path) => readFileSync(join(distDir, path), "utf8")).join("\n")
 }
 
 function packArtifact(packageDir: string, packDir: string): string {
@@ -193,11 +224,14 @@ const nativePackageName = ${JSON.stringify(nativePackageName)}
 const core = await import(${JSON.stringify(packageJson.name)})
 const nodeAssets = await import(${JSON.stringify(`${packageJson.name}/node-assets`)})
 const testing = await import(${JSON.stringify(`${packageJson.name}/testing`)})
+const yoga = await import(${JSON.stringify(`${packageJson.name}/yoga`)})
 const parserWorker = await import(${JSON.stringify(`${packageJson.name}/parser.worker`)})
 const nativePackage = await import(nativePackageName)
 
 assert.equal(typeof core.createCliRenderer, "function")
 assert.equal(typeof testing.createTestRenderer, "function")
+assert.equal(core.Yoga.Node, yoga.Node)
+assert.equal(Object.getPrototypeOf(testing.MockTreeSitterClient.prototype), core.TreeSitterClient.prototype)
 assert.equal(typeof parserWorker, "object")
 assert.equal(typeof nativePackage.default, "string")
 
@@ -282,12 +316,15 @@ describe("${packageJson.name} dist smoke test", () => {
   test("imports portable and Bun-only entrypoints", async () => {
     const core = await import(${JSON.stringify(packageJson.name)})
     const testing = await import(${JSON.stringify(`${packageJson.name}/testing`)})
+    const yoga = await import(${JSON.stringify(`${packageJson.name}/yoga`)})
     const parserWorker = await import(${JSON.stringify(`${packageJson.name}/parser.worker`)})
     const runtimePlugin = await import(${JSON.stringify(`${packageJson.name}/runtime-plugin`)})
     const nativePackage = await import(${JSON.stringify(nativePackageName)})
 
     expect(typeof core.createCliRenderer).toBe("function")
     expect(typeof testing.createTestRenderer).toBe("function")
+    expect(core.Yoga.Node).toBe(yoga.Node)
+    expect(Object.getPrototypeOf(testing.MockTreeSitterClient.prototype)).toBe(core.TreeSitterClient.prototype)
     expect(typeof parserWorker).toBe("object")
     expect(typeof runtimePlugin.createRuntimePlugin).toBe("function")
     expect(typeof nativePackage.default).toBe("string")

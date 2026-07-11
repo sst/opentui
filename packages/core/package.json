@@ -12,25 +12,10 @@
   "version": "0.4.3",
   "type": "module",
   "imports": {
-    "#opentui/default-parsers": {
-      "bun": "./src/lib/tree-sitter/default-parsers.ts",
-      "node": "./src/lib/tree-sitter/default-parsers.node.ts",
-      "default": "./src/lib/tree-sitter/default-parsers.node.ts"
-    },
-    "#opentui/native-package": {
-      "bun": "./src/platform/native-package.ts",
-      "node": "./src/platform/native-package.node.ts",
-      "default": "./src/platform/native-package.node.ts"
-    },
-    "#opentui/tree-sitter-wasm": {
-      "bun": "./src/lib/tree-sitter/tree-sitter-wasm.ts",
-      "node": "./src/lib/tree-sitter/tree-sitter-wasm.node.ts",
-      "default": "./src/lib/tree-sitter/tree-sitter-wasm.node.ts"
-    },
-    "#opentui/worker-path": {
-      "bun": "./src/lib/tree-sitter/worker-path.ts",
-      "node": "./src/lib/tree-sitter/worker-path.node.ts",
-      "default": "./src/lib/tree-sitter/worker-path.node.ts"
+    "#opentui/runtime-assets": {
+      "bun": "./src/platform/runtime-assets.bun.ts",
+      "node": "./src/platform/runtime-assets.node.ts",
+      "default": "./src/platform/runtime-assets.node.ts"
     }
   },
   "scripts": {

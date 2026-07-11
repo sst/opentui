@@ -13,7 +13,7 @@ import type {
   TreeSitterWorkerRequest,
   TreeSitterWorkerResponse,
 } from "./types.js"
-import { getParsers } from "#opentui/default-parsers"
+import { getParsers } from "./default-parsers.js"
 import { resolve, isAbsolute, parse } from "path"
 import { existsSync } from "fs"
 import { registerEnvVar, env } from "../env.js"
@@ -24,8 +24,7 @@ import {
   type WorkerMessageEvent,
   Worker as PlatformWorker,
 } from "../../platform/worker.js"
-import { resolveTreeSitterWasm } from "#opentui/tree-sitter-wasm"
-import { resolveDefaultTreeSitterWorkerPath } from "#opentui/worker-path"
+import { resolveDefaultTreeSitterWorkerPath, resolveTreeSitterWasm } from "#opentui/runtime-assets"
 
 registerEnvVar({
   name: "OTUI_TREE_SITTER_WORKER_PATH",
@@ -212,7 +211,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return OTUI_TREE_SITTER_WORKER_PATH
     }
 
-    let workerPath = resolveDefaultTreeSitterWorkerPath()
+    let workerPath = resolveDefaultTreeSitterWorkerPath(new URL("./parser.worker.js", import.meta.url))
 
     if (process.env.OTUI_ASSET_ROOT === undefined && !existsSync(workerPath)) {
       workerPath = new URL("./parser.worker.ts", import.meta.url).href

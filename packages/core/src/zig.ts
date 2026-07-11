@@ -63,7 +63,7 @@ import type {
   NativeRenderStats,
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
-import { resolveNativeLibraryPath } from "#opentui/native-package"
+import { resolveNativeLibraryPath } from "#opentui/runtime-assets"
 
 registerEnvVar({
   name: "OPENTUI_LIBC",

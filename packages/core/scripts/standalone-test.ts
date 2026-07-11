@@ -152,9 +152,10 @@ import { join } from "node:path"
 import { createTestRenderer } from ${JSON.stringify(`${packageJson.name}/testing`)}
 import * as Yoga from ${JSON.stringify(`${packageJson.name}/yoga`)}
 
-import { OptimizedBuffer, TreeSitterClient } from ${JSON.stringify(packageJson.name)}
+import { OptimizedBuffer, TreeSitterClient, Yoga as CoreYoga } from ${JSON.stringify(packageJson.name)}
 
 assert.equal(typeof createTestRenderer, "function")
+assert.equal(CoreYoga.Node, Yoga.Node)
 const yogaNode = Yoga.Node.create()
 yogaNode.free()
 

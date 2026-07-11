@@ -15,7 +15,7 @@ import type {
 } from "./types.js"
 import { DownloadUtils } from "./download-utils.js"
 import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
-import { resolveTreeSitterWasm } from "#opentui/tree-sitter-wasm"
+import { resolveAssetPath } from "../../platform/assets.js"
 import {
   isWorkerRuntime,
   postWorkerMessage,
@@ -95,7 +95,12 @@ class ParserWorker {
       await mkdir(path.join(this.tsDataPath, "languages"), { recursive: true })
       await mkdir(path.join(this.tsDataPath, "queries"), { recursive: true })
 
-      let treeWasm = treeSitterWasmPath ?? (await resolveTreeSitterWasm())
+      let treeWasm =
+        treeSitterWasmPath ??
+        resolveAssetPath(
+          "web-tree-sitter/tree-sitter.wasm",
+          () => new URL(import.meta.resolve("web-tree-sitter/tree-sitter.wasm")),
+        )
 
       if (isBunfsPath(treeWasm)) {
         treeWasm = normalizeBunfsPath(path.parse(treeWasm).base)

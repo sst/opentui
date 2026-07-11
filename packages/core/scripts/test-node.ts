@@ -178,10 +178,7 @@ try {
       JSON.stringify({
         type: "module",
         imports: {
-          "#opentui/default-parsers": "./src/lib/tree-sitter/default-parsers.node.js",
-          "#opentui/native-package": "./src/platform/native-package.node.js",
-          "#opentui/tree-sitter-wasm": "./src/lib/tree-sitter/tree-sitter-wasm.node.js",
-          "#opentui/worker-path": "./src/lib/tree-sitter/worker-path.node.js",
+          "#opentui/runtime-assets": "./src/platform/runtime-assets.node.js",
         },
       }),
     )
