@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -15,6 +15,7 @@ const treeSitterCacheTestDataPath = resolve(tmpdir(), "tree-sitter-cache-test")
 const treeSitterDefaultDataPath = resolve(tmpdir(), "tree-sitter-default-node-test")
 const treeSitterMarkdownRenderableTestDataPath = resolve(tmpdir(), "tree-sitter-markdown-renderable-test-data")
 const textBufferTestDataPath = resolve(tmpdir(), "text-buffer-node-test")
+const runtimeAssetTestDataPath = resolve(tmpdir(), "opentui-runtime-asset-node-test")
 const treeSitterClientTestDataPaths = [
   "tree-sitter-shared-test-data",
   "tree-sitter-injections-test-data",
@@ -28,6 +29,7 @@ const treeSitterTestDataPaths = [
   treeSitterDefaultDataPath,
   treeSitterMarkdownRenderableTestDataPath,
   textBufferTestDataPath,
+  runtimeAssetTestDataPath,
   ...treeSitterClientTestDataPaths,
 ]
 const treeSitterAssetsDir = "src/lib/tree-sitter/assets"
@@ -172,6 +174,15 @@ try {
   // emitted test (e.g. not listed in tsconfig.node-test.json) would skip
   // coverage without failing. Fail loudly instead.
   if (exitCode === 0) {
+    writeFileSync(
+      resolve(outDir, "package.json"),
+      JSON.stringify({
+        type: "module",
+        imports: {
+          "#opentui/runtime-assets": "./src/platform/runtime-assets.node.js",
+        },
+      }),
+    )
     const missing = emittedAllowlist.filter((path) => !existsSync(resolve(packageRoot, path)))
     if (missing.length > 0) {
       console.error(`Missing emitted node tests (add them to tsconfig.node-test.json?):\n${missing.join("\n")}`)
@@ -211,6 +222,7 @@ try {
         env: {
           ...process.env,
           OTUI_TEXT_BUFFER_TEST_TMPDIR: textBufferTestDataPath,
+          OTUI_RUNTIME_ASSET_TEST_TMPDIR: runtimeAssetTestDataPath,
           XDG_DATA_HOME: treeSitterDefaultDataPath,
         },
         timeout: nodeProcessTimeoutMs,

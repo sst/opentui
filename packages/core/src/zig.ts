@@ -86,6 +86,7 @@ export type NativeAudioStreamCloseReason = NativeAudioStreamCloseReasonType
 export const NativeAudioStreamFormat = NativeAudioStreamFormatValue
 export type NativeAudioStreamFormat = NativeAudioStreamFormatType
 import { isBunfsPath } from "./lib/bunfs.js"
+import { resolveNativeLibraryPath } from "#opentui/runtime-assets"
 
 registerEnvVar({
   name: "OPENTUI_LIBC",
@@ -93,55 +94,6 @@ registerEnvVar({
   type: "string",
   default: "",
 })
-
-function validateLinuxLibcOverride(): void {
-  const libc = process.env.OPENTUI_LIBC
-  if (libc === undefined || libc === "" || libc === "glibc" || libc === "musl") return
-  throw new Error(`On Linux, OPENTUI_LIBC must be unset, empty, "glibc", or "musl", got "${libc}"`)
-}
-
-async function resolveNativePackage() {
-  if (process.platform === "darwin") {
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "x64") return await import("@opentui/core-darwin-x64")
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "arm64") return await import("@opentui/core-darwin-arm64")
-  }
-
-  if (process.platform === "linux") {
-    validateLinuxLibcOverride()
-
-    if (process.arch === "x64") {
-      if (process.env.OPENTUI_LIBC === "musl") {
-        // @ts-ignore Optional native package may be absent unless building a musl target.
-        return await import("@opentui/core-linux-x64-musl")
-      } else {
-        // @ts-ignore Optional native package may be absent when building on another platform.
-        return await import("@opentui/core-linux-x64")
-      }
-    }
-
-    if (process.arch === "arm64") {
-      if (process.env.OPENTUI_LIBC === "musl") {
-        // @ts-ignore Optional native package may be absent unless building a musl target.
-        return await import("@opentui/core-linux-arm64-musl")
-      } else {
-        // @ts-ignore Optional native package may be absent when building on another platform.
-        return await import("@opentui/core-linux-arm64")
-      }
-    }
-  }
-
-  if (process.platform === "win32") {
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "x64") return await import("@opentui/core-win32-x64")
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "arm64") return await import("@opentui/core-win32-arm64")
-  }
-
-  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
-}
-const nativePackage = await resolveNativePackage()
 
 export type NativeHandle<T extends string> = Pointer & { readonly __nativeHandle: T }
 export type RendererHandle = NativeHandle<"renderer">
@@ -154,14 +106,19 @@ export type SyntaxStyleHandle = NativeHandle<"syntax_style">
 export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
 export type NativeRenderableHandle = NativeHandle<"native_renderable">
-let targetLibPath = nativePackage.default
+let targetLibPath: string | undefined
+let targetLibError: Error | undefined
 
-if (isBunfsPath(targetLibPath)) {
-  targetLibPath = targetLibPath.replace("../", "")
-}
-
-if (!existsSync(targetLibPath)) {
-  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+try {
+  targetLibPath = await resolveNativeLibraryPath()
+  if (isBunfsPath(targetLibPath)) {
+    targetLibPath = targetLibPath.replace("../", "")
+  }
+  if (!existsSync(targetLibPath)) {
+    throw new Error(`OpenTUI native library does not exist at ${JSON.stringify(targetLibPath)}`)
+  }
+} catch (error) {
+  targetLibError = error instanceof Error ? error : new Error(String(error))
 }
 
 registerEnvVar({
@@ -256,6 +213,12 @@ function optionalRgbaPtr(value: RGBA | null | undefined): Pointer | null {
 
 function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
+  if (!resolvedLibPath) {
+    throw (
+      targetLibError ??
+      new Error(`OpenTUI is not supported on the current platform: ${process.platform}-${process.arch}`)
+    )
+  }
 
   const rawSymbols = dlopen(resolvedLibPath, {
     // Logging

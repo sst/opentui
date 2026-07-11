@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url"
 import stringWidthLib from "string-width"
 import stripAnsiLib from "strip-ansi"
 
+import { resolveAssetRootPath } from "./assets.js"
+
 export interface WriteFileOptions {
   createPath?: boolean
   mode?: number
@@ -40,10 +42,19 @@ export const writeFile: (
 
 // Bun only discovers bundled file-like assets from the literal import expression at the call site.
 export async function resolveBundledFilePath(
+  key: string,
   loadBundledFile: () => Promise<FileImportModule>,
   fallbackPath: FilePathFallback,
   metaUrl: string,
+  useAssetRoot = true,
 ): Promise<string> {
+  if (useAssetRoot) {
+    const configuredPath = resolveAssetRootPath(key)
+    if (configuredPath !== undefined) {
+      return configuredPath
+    }
+  }
+
   if (!bun) {
     const path = resolveFallbackFilePath(fallbackPath, metaUrl)
     if (existsSync(path)) {
