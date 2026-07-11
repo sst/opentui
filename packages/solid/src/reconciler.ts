@@ -102,7 +102,9 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 
   const anchorIndex = children.indexOf(anchor)
   if (anchorIndex === -1) {
-    log("[INSERT]", "Could not find anchor", logId(parent), logId(anchor), "[children]", ...children.map((c) => c.id))
+    log("[INSERT]", "Could not find anchor, appending instead", logId(parent), logId(anchor), "[children]", ...children.map((c) => c.id))
+    parent.add(node)
+    return
   }
 
   parent.add(node, anchorIndex)
