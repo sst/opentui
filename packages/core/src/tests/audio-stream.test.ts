@@ -3409,7 +3409,7 @@ test("Audio publishes custom demuxer metadata and writes flush output", async ()
   expect(flushes).toBe(1)
 })
 
-test("Audio uses the public ICY demuxer with a non-HTTP byte source", async () => {
+test("Audio uses the public ICY demuxer with a slowly fragmented non-HTTP byte source", async () => {
   const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 8)
   const interval = 1024
   const framed = interleaveIcy(mp3, interval, ["StreamTitle='Custom transport';"])
@@ -3419,7 +3419,10 @@ test("Audio uses the public ICY demuxer with a non-HTTP byte source", async () =
 
   const stream = await audio.playStream(
     (async function* () {
-      for (let offset = 0; offset < framed.byteLength; offset += 37) yield framed.subarray(offset, offset + 37)
+      for (let offset = 0; offset < framed.byteLength; offset += 37) {
+        yield framed.subarray(offset, offset + 37)
+        await sleep(1)
+      }
     })(),
     {
       buffer: { capacityMs: 500, startupMs: 50, resumeMs: 50 },

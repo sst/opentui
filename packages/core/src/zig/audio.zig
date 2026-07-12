@@ -19,6 +19,8 @@ const stream_input_capacity: u32 = 256 * 1024;
 // Bounds endless invalid input during decoder setup; StreamOptions can raise it for valid metadata.
 pub const default_stream_probe_bytes: u32 = 1024 * 1024;
 const stream_decoder_chunk_frames: u32 = 2_048;
+// Coalesce tiny transport fragments without waiting for miniaudio's full decoder read request.
+const stream_decoder_read_granularity: usize = 2 * 1024;
 const max_stream_generation: u32 = 0x00ffffff;
 const stream_channels: u32 = 2;
 const stream_bytes_per_frame: u32 = stream_channels * @sizeOf(f32);
@@ -608,49 +610,53 @@ fn streamDecoderRead(
     stream.input_lock.lock();
     defer stream.input_lock.unlock();
 
-    while (stream.input_count == 0 and
-        @atomicLoad(u32, &stream.input_ended, .acquire) == 0 and
-        @atomicLoad(u32, &stream.cancel_requested, .acquire) == 0 and
-        @atomicLoad(u32, &stream.decoder_stop_requested, .acquire) == 0 and
-        !stream.decoder_abort)
-    {
-        if (stream.probe_active and stream.probe_bytes >= stream.max_probe_bytes) {
-            stream.decoder_abort = true;
-            break;
+    const output = @as([*]u8, @ptrCast(output_ptr))[0..bytes_to_read];
+    const target_read = @min(bytes_to_read, stream_decoder_read_granularity);
+    var total_read: usize = 0;
+    while (total_read < target_read) {
+        while (stream.input_count == 0 and
+            @atomicLoad(u32, &stream.input_ended, .acquire) == 0 and
+            @atomicLoad(u32, &stream.cancel_requested, .acquire) == 0 and
+            @atomicLoad(u32, &stream.decoder_stop_requested, .acquire) == 0 and
+            !stream.decoder_abort)
+        {
+            if (stream.probe_active and stream.probe_bytes >= stream.max_probe_bytes) {
+                stream.decoder_abort = true;
+                break;
+            }
+            stream.input_condition.wait(&stream.input_lock);
         }
-        stream.input_condition.wait(&stream.input_lock);
-    }
 
-    if (decoderExitRequested(stream) or stream.decoder_abort) {
-        return c.MA_CANCELLED;
-    }
-    if (stream.input_count == 0 and @atomicLoad(u32, &stream.input_ended, .acquire) != 0) {
-        return c.MA_AT_END;
-    }
+        if (decoderExitRequested(stream) or stream.decoder_abort) break;
+        if (stream.input_count == 0 and @atomicLoad(u32, &stream.input_ended, .acquire) != 0) break;
 
-    var copy_count = @min(bytes_to_read, stream.input_count);
-    if (stream.probe_active) {
-        const probe_remaining = stream.max_probe_bytes - stream.probe_bytes;
-        copy_count = @min(copy_count, probe_remaining);
-        if (copy_count == 0) {
-            stream.decoder_abort = true;
-            return c.MA_CANCELLED;
+        var copy_count = @min(bytes_to_read - total_read, stream.input_count);
+        if (stream.probe_active) {
+            const probe_remaining = stream.max_probe_bytes - stream.probe_bytes;
+            copy_count = @min(copy_count, probe_remaining);
+            if (copy_count == 0) {
+                stream.decoder_abort = true;
+                break;
+            }
         }
+
+        const first_count = @min(copy_count, stream.input_buffer.len - stream.input_read);
+        @memcpy(output[total_read .. total_read + first_count], stream.input_buffer[stream.input_read .. stream.input_read + first_count]);
+        const second_count = copy_count - first_count;
+        if (second_count > 0) {
+            @memcpy(output[total_read + first_count .. total_read + copy_count], stream.input_buffer[0..second_count]);
+        }
+
+        stream.input_read = (stream.input_read + copy_count) % stream.input_buffer.len;
+        stream.input_count -= copy_count;
+        if (stream.probe_active) stream.probe_bytes += copy_count;
+        total_read += copy_count;
     }
 
-    const output = @as([*]u8, @ptrCast(output_ptr))[0..copy_count];
-    const first_count = @min(copy_count, stream.input_buffer.len - stream.input_read);
-    @memcpy(output[0..first_count], stream.input_buffer[stream.input_read .. stream.input_read + first_count]);
-    const second_count = copy_count - first_count;
-    if (second_count > 0) {
-        @memcpy(output[first_count..], stream.input_buffer[0..second_count]);
-    }
-
-    stream.input_read = (stream.input_read + copy_count) % stream.input_buffer.len;
-    stream.input_count -= copy_count;
-    if (stream.probe_active) stream.probe_bytes += copy_count;
-    if (bytes_read_out != null) bytes_read_out[0] = copy_count;
-    return c.MA_SUCCESS;
+    if (bytes_read_out != null) bytes_read_out[0] = total_read;
+    if (total_read > 0) return c.MA_SUCCESS;
+    if (decoderExitRequested(stream) or stream.decoder_abort) return c.MA_CANCELLED;
+    return c.MA_AT_END;
 }
 
 fn streamDecoderSeek(decoder: ?*c.ma_decoder, byte_offset: c.ma_int64, origin: c.ma_seek_origin) callconv(.c) c.ma_result {
