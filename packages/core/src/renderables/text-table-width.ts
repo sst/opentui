@@ -1,3 +1,17 @@
+function comparePriority(leftGrowth: number, leftCapacity: number, rightGrowth: number, rightCapacity: number): number {
+  // Squared cross-products preserve exact ordering while ordinary table widths stay on the number fast path.
+  const left = leftGrowth * leftGrowth * rightCapacity
+  const right = rightGrowth * rightGrowth * leftCapacity
+
+  if (Number.isSafeInteger(left) && Number.isSafeInteger(right)) {
+    return left < right ? -1 : left > right ? 1 : 0
+  }
+
+  const exactLeft = BigInt(leftGrowth) * BigInt(leftGrowth) * BigInt(rightCapacity)
+  const exactRight = BigInt(rightGrowth) * BigInt(rightGrowth) * BigInt(leftCapacity)
+  return exactLeft < exactRight ? -1 : exactLeft > exactRight ? 1 : 0
+}
+
 export function allocateProportionalColumnWidths(widths: number[], targetWidth: number, minWidth: number): number[] {
   const baseWidths = widths.map((width) => Math.max(minWidth, Math.floor(width)))
   const totalBaseWidth = baseWidths.reduce((sum, width) => sum + width, 0)
@@ -37,15 +51,14 @@ export function allocateProportionalColumnWidths(widths: number[], targetWidth: 
 
   while (allocatedGrowth > available) {
     let worstIdx = -1
-    let worstPriority = Number.NEGATIVE_INFINITY
 
     for (let idx = 0; idx < baseWidths.length; idx++) {
       if (growth[idx] === 0) continue
 
-      const priority = growth[idx] / weights[idx]!
-      if (priority > worstPriority || (priority === worstPriority && idx > worstIdx)) {
+      const comparison =
+        worstIdx === -1 ? 1 : comparePriority(growth[idx]!, capacity[idx]!, growth[worstIdx]!, capacity[worstIdx]!)
+      if (comparison > 0 || (comparison === 0 && idx > worstIdx)) {
         worstIdx = idx
-        worstPriority = priority
       }
     }
 
@@ -57,15 +70,16 @@ export function allocateProportionalColumnWidths(widths: number[], targetWidth: 
   // Flooring leaves fewer than one cell per active column to resolve by exact priority.
   while (allocatedGrowth < available) {
     let bestIdx = -1
-    let bestPriority = Number.POSITIVE_INFINITY
 
     for (let idx = 0; idx < baseWidths.length; idx++) {
       if (growth[idx] >= capacity[idx]) continue
 
-      const priority = (growth[idx] + 1) / weights[idx]!
-      if (priority < bestPriority) {
+      const comparison =
+        bestIdx === -1
+          ? -1
+          : comparePriority(growth[idx]! + 1, capacity[idx]!, growth[bestIdx]! + 1, capacity[bestIdx]!)
+      if (comparison < 0) {
         bestIdx = idx
-        bestPriority = priority
       }
     }
 

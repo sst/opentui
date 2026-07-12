@@ -192,6 +192,7 @@ describe("TextTableRenderable", () => {
     expect(allocateProportionalColumnWidths([1000, 100], 401, 1)).toEqual([305, 96])
     expect(allocateProportionalColumnWidths([1000, 100], 402, 1)).toEqual([305, 97])
     expect(allocateProportionalColumnWidths([4, 49, 4, 54, 38], 104, 1)).toEqual([4, 33, 4, 34, 29])
+    expect(allocateProportionalColumnWidths([2_516_760, 2_528_584], 58_886, 1)).toEqual([29_408, 29_478])
   })
 
   test("proportional allocation resolves exact priority ties by lower index", () => {
@@ -199,6 +200,48 @@ describe("TextTableRenderable", () => {
     expect(allocateProportionalColumnWidths([7, 7, 7], 11, 3)).toEqual([4, 4, 3])
     expect(allocateProportionalColumnWidths([7, 7, 7], 12, 3)).toEqual([4, 4, 4])
     expect(allocateProportionalColumnWidths([7, 7, 7], 13, 3)).toEqual([5, 4, 4])
+    expect(allocateProportionalColumnWidths([19, 3], 5, 1)).toEqual([4, 1])
+    expect(allocateProportionalColumnWidths([4_000_000_001, 1_000_000_001], 300_001, 1)).toEqual([200_001, 100_000])
+  })
+
+  test("renders unequal-capacity priority ties in lower column index order", async () => {
+    // Capacities 18 and 2 make the third and first growth cells exact priority ties.
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      width: 8,
+      wrapMode: "word",
+      content: [[cell("ABCDEFGHIJKLMNOPQRS"), cell("XYZ")]],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const rowY = captureFrame()
+      .split("\n")
+      .findIndex((line) => line.includes("A") && line.includes("X"))
+    expect(rowY).toBeGreaterThanOrEqual(0)
+    expect(findVerticalBorderXs(renderer.currentRenderBuffer, rowY)).toEqual([0, 5, 7])
+  })
+
+  test("renders padded unequal-capacity priority ties in lower column index order", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      width: 12,
+      cellPaddingX: 1,
+      wrapMode: "word",
+      content: [[cell("ABCDEFGHIJKLMNOPQRS"), cell("XYZ")]],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const rowY = captureFrame()
+      .split("\n")
+      .findIndex((line) => line.includes("A") && line.includes("X"))
+    expect(rowY).toBeGreaterThanOrEqual(0)
+    expect(findVerticalBorderXs(renderer.currentRenderBuffer, rowY)).toEqual([0, 7, 11])
   })
 
   test("proportional allocation clamps targets and preserves hard minimums and intrinsic caps", () => {
@@ -226,10 +269,29 @@ describe("TextTableRenderable", () => {
       const minimumTotal = minWidth * widths.length
       const intrinsicTotal = widths.reduce((sum, width) => sum + width, 0)
       let previous = allocateProportionalColumnWidths(widths, minimumTotal, minWidth)
+      const capacity = widths.map((width) => width - minWidth)
+      const expectedGrowth = new Array(widths.length).fill(0)
 
       for (let target = minimumTotal + 1; target <= intrinsicTotal; target++) {
+        let bestIdx = -1
+        for (let idx = 0; idx < capacity.length; idx++) {
+          if (expectedGrowth[idx] >= capacity[idx]!) continue
+          if (bestIdx === -1) {
+            bestIdx = idx
+            continue
+          }
+
+          const candidate = BigInt(expectedGrowth[idx]! + 1)
+          const best = BigInt(expectedGrowth[bestIdx]! + 1)
+          const candidatePriority = candidate * candidate * BigInt(capacity[bestIdx]!)
+          const bestPriority = best * best * BigInt(capacity[idx]!)
+          if (candidatePriority < bestPriority) bestIdx = idx
+        }
+        expectedGrowth[bestIdx] += 1
+
         const next = allocateProportionalColumnWidths(widths, target, minWidth)
         const deltas = next.map((width, idx) => width - previous[idx]!)
+        expect(next).toEqual(expectedGrowth.map((growth) => growth + minWidth))
         expect(next.reduce((sum, width) => sum + width, 0)).toBe(target)
         expect(next.every((width, idx) => width >= minWidth && width <= widths[idx]!)).toBe(true)
         expect(deltas.filter((delta) => delta === 1)).toHaveLength(1)
