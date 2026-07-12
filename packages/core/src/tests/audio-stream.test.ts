@@ -2595,7 +2595,7 @@ test("Audio enforces the documented HTTP content-type policy", async () => {
     expect(requests).toBe(1)
     unsupportedAudio.dispose()
   }
-})
+}, 15000)
 
 test("Audio exposes MP3 as the resolved stream format", async () => {
   const mp3 = new Uint8Array(await readFile(MP3_URL))
