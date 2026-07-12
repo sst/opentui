@@ -89,6 +89,8 @@
   (image_description)
 ] @markup.link.label
 
+(html_tag) @markup.raw.inline
+
 ; Replace common HTML entities.
 ((entity_reference) @character.special
   (#eq? @character.special "&nbsp;")

@@ -376,6 +376,7 @@ export class CodeRenderable extends TextBufferRenderable {
         let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
           enabled: this._conceal,
           baseHighlight: this._baseHighlight,
+          detectLinks: filetype === "markdown",
         })
         // onChunks may rewrite text arbitrarily, so the conceal-only source map would be invalid.
         const renderedLineSources = this._onChunks ? undefined : this.getConcealLinesSourceMap(content, highlights)

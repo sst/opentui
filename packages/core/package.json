@@ -42,6 +42,7 @@
   "dependencies": {
     "bun-ffi-structs": "0.2.4",
     "diff": "9.0.0",
+    "entities": "7.0.1",
     "marked": "17.0.1",
     "string-width": "7.2.0",
     "strip-ansi": "7.1.2"

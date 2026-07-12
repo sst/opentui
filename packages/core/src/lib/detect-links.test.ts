@@ -1,98 +1,138 @@
-import { test, expect, describe } from "bun:test"
-import { detectLinks } from "./detect-links.js"
+import { describe, expect, test } from "bun:test"
+import { detectLinks } from "../index.js"
 import type { TextChunk } from "../text-buffer.js"
-import type { SimpleHighlight } from "./tree-sitter/types.js"
 import { RGBA } from "./RGBA.js"
+import { admitLinkTarget, detectBareLinks, detectSourceLinks } from "./detect-links.js"
+import type { SimpleHighlight } from "./tree-sitter/types.js"
 
 function chunk(text: string): TextChunk {
   return { __isChunk: true, text, fg: RGBA.fromInts(255, 255, 255, 255), attributes: 0 }
 }
 
-describe("detectLinks", () => {
-  test("should set link on markup.link.url chunks", () => {
-    const content = "[Click here](https://example.com)"
+describe("detectLinks public API", () => {
+  test("mutates and returns the same array, including one-character labels", () => {
+    const content = "[x](https://example.com)"
     const highlights: SimpleHighlight[] = [
-      [0, 1, "markup.link"],
-      [1, 11, "markup.link.label"],
-      [11, 13, "markup.link"],
-      [13, 32, "markup.link.url"],
-      [32, 33, "markup.link"],
+      [1, 2, "markup.link.label"],
+      [4, 23, "markup.link.url"],
     ]
-    const chunks = [chunk("["), chunk("Click here"), chunk("]("), chunk("https://example.com"), chunk(")")]
+    const chunks = [chunk("x"), chunk("https://example.com")]
 
-    const result = detectLinks(chunks, { content, highlights })
-
-    expect(result.find((c) => c.text === "https://example.com")!.link).toEqual({ url: "https://example.com" })
-    expect(result.find((c) => c.text === "Click here")!.link).toEqual({ url: "https://example.com" })
+    expect(detectLinks(chunks, { content, highlights })).toBe(chunks)
+    expect(chunks.map((item) => item.link)).toEqual([{ url: "https://example.com" }, { url: "https://example.com" }])
   })
 
-  test("should set link on string.special.url chunks", () => {
-    const content = "// see https://example.com for details"
-    const highlights: SimpleHighlight[] = [
-      [0, 38, "comment"],
-      [7, 26, "string.special.url"],
-    ]
-    const chunks = [chunk("// see "), chunk("https://example.com"), chunk(" for details")]
+  test("preserves dense explicit link mapping", () => {
+    const parts: string[] = []
+    const highlights: SimpleHighlight[] = []
+    const chunks: TextChunk[] = []
+    const expected: Array<{ url: string }> = []
+    let offset = 0
 
-    const result = detectLinks(chunks, { content, highlights })
-
-    expect(result.find((c) => c.text === "https://example.com")!.link).toEqual({ url: "https://example.com" })
-  })
-
-  test("should not set link on non-URL chunks", () => {
-    const content = "const x = 42"
-    const highlights: SimpleHighlight[] = [
-      [0, 5, "keyword"],
-      [6, 7, "variable"],
-      [10, 12, "number"],
-    ]
-    const chunks = [chunk("const"), chunk(" "), chunk("x"), chunk(" = "), chunk("42")]
-
-    const result = detectLinks(chunks, { content, highlights })
-
-    for (const c of result) {
-      expect(c.link).toBeUndefined()
+    for (let index = 0; index < 2_000; index++) {
+      const label = `label-${index}`
+      const url = `https://target-${index}.test`
+      const source = `[${label}](${url})`
+      parts.push(source)
+      highlights.push(
+        [offset + 1, offset + 1 + label.length, "markup.link.label"],
+        [offset + label.length + 3, offset + label.length + 3 + url.length, "markup.link.url"],
+      )
+      chunks.push(chunk(label), chunk(url))
+      expected.push({ url }, { url })
+      offset += source.length + 1
     }
+
+    expect(detectLinks(chunks, { content: parts.join(" "), highlights })).toBe(chunks)
+    expect(chunks.map((item) => item.link)).toEqual(expected)
   })
 
-  test("should return chunks unchanged when no URL scopes exist", () => {
-    const content = "hello world"
-    const highlights: SimpleHighlight[] = [[0, 5, "keyword"]]
-    const chunks = [chunk("hello"), chunk(" world")]
-
-    const result = detectLinks(chunks, { content, highlights })
-
-    expect(result).toBe(chunks)
-  })
-
-  test("should detect links when chunks have concealed text", () => {
-    // Original content: [Click here](https://example.com)
-    // With concealment, `[` and `]` are concealed to empty strings,
-    // and `(` and `)` are concealed to empty strings.
-    // This means chunk text lengths don't match original byte offsets.
-    const content = "[Click here](https://example.com)"
+  test("leaves missing and nonmonotonic chunks unchanged", () => {
+    const content = "[first](https://first.test) [second](https://second.test)"
     const highlights: SimpleHighlight[] = [
-      [0, 1, "markup.link"], // [
-      [1, 11, "markup.link.label"], // Click here
-      [11, 13, "markup.link"], // ](
-      [13, 32, "markup.link.url"], // https://example.com
-      [32, 33, "markup.link"], // )
+      [1, 6, "markup.link.label"],
+      [8, 26, "markup.link.url"],
+      [29, 35, "markup.link.label"],
+      [37, 56, "markup.link.url"],
     ]
-    // Simulate concealed chunks: `[` -> "", `](` -> " ", `)` -> ""
-    // The URL and label chunks remain unchanged.
-    const chunks = [
-      chunk(""), // concealed `[`
-      chunk("Click here"), // label, unchanged
-      chunk(" "), // concealed `](`
-      chunk("https://example.com"), // URL, unchanged
-      chunk(""), // concealed `)`
+    const chunks = [chunk("missing"), chunk("second"), chunk("first")]
+
+    detectLinks(chunks, { content, highlights })
+    expect(chunks.map((item) => item.link)).toEqual([undefined, { url: "https://second.test" }, undefined])
+  })
+})
+
+describe("detectSourceLinks", () => {
+  test("uses Marked-resolved explicit destinations and keeps labels continuous", () => {
+    const content =
+      "[a&amp;b](https://example.test/?a=1&amp;b=2) [angle](<https://x.test/a%20b>) [escape](https://x.test/a\\(b\\))"
+    const highlights: SimpleHighlight[] = [
+      [1, 8, "markup.link.label"],
+      [10, 43, "markup.link.url"],
+      [46, 51, "markup.link.label"],
+      [53, 75, "markup.link.url"],
+      [78, 84, "markup.link.label"],
+      [86, 107, "markup.link.url"],
     ]
 
-    const result = detectLinks(chunks, { content, highlights })
+    expect(
+      detectSourceLinks(content, highlights).map(({ start, end, url }) => [content.slice(start, end), url]),
+    ).toEqual([
+      ["a&amp;b", "https://example.test/?a=1&b=2"],
+      ["https://example.test/?a=1&amp;b=2", "https://example.test/?a=1&b=2"],
+      ["angle", "https://x.test/a%20b"],
+      ["<https://x.test/a%20b>", "https://x.test/a%20b"],
+      ["escape", "https://x.test/a(b)"],
+      ["https://x.test/a\\(b\\)", "https://x.test/a(b)"],
+    ])
+  })
 
-    // The URL chunk should still get its link despite concealed offsets
-    expect(result.find((c) => c.text === "https://example.com")!.link).toEqual({ url: "https://example.com" })
-    // The label chunk should also get the link
-    expect(result.find((c) => c.text === "Click here")!.link).toEqual({ url: "https://example.com" })
+  test("keeps explicit links authoritative without a dense quadratic fixture", () => {
+    const content = Array.from(
+      { length: 64 },
+      (_, index) => `[https://label${index}.test](https://target${index}.test)`,
+    ).join(" ")
+    const highlights: SimpleHighlight[] = []
+    for (const match of content.matchAll(/\[([^\]]+)\]\(([^)]+)\)/gu)) {
+      const label = match.index + 1
+      const url = label + match[1].length + 2
+      highlights.push(
+        [label, label + match[1].length, "markup.link.label"],
+        [url, url + match[2].length, "markup.link.url"],
+      )
+    }
+
+    const links = detectSourceLinks(content, highlights)
+    expect(links).toHaveLength(128)
+    expect(links.every((link) => !link.url.includes("label"))).toBe(true)
+  })
+})
+
+describe("parser-owned bare URLs", () => {
+  test("uses excluded ranges as hard boundaries and resumes after them", () => {
+    const content = "https://safe.example`https://code.example`HTTPS://AFTER.EXAMPLE"
+    const codeStart = content.indexOf("`")
+    expect(detectBareLinks(content, [{ start: codeStart, end: content.lastIndexOf("`") + 1 }])).toEqual([
+      { start: 0, end: 20, url: "https://safe.example" },
+      { start: 42, end: 63, url: "HTTPS://AFTER.EXAMPLE" },
+    ])
+  })
+
+  test("matches Marked's case and punctuation semantics", () => {
+    expect(
+      detectBareLinks("HTTPS://EXAMPLE.COM, https://x.test/a(b). https://x.test/foo).").map((link) => link.url),
+    ).toEqual(["HTTPS://EXAMPLE.COM", "https://x.test/a(b)", "https://x.test/foo"])
+  })
+
+  test("handles the former quadratic alternating suffix at review scale", () => {
+    const content = `https://x.test/${")] }".replace(" ", "").repeat(16_000)}`
+    expect(detectBareLinks(content)).toHaveLength(1)
+  })
+
+  test("rejects empty and decoded C0, DEL, and C1 targets", () => {
+    expect(admitLinkTarget("")).toBeUndefined()
+    for (const control of ["\0", "\x07", "\x1b", "\x7f", "\x80", "\x9c", "&#7;"]) {
+      expect(admitLinkTarget(`https://safe.example/${control}`)).toBeUndefined()
+    }
   })
 })
