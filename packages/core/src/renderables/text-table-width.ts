@@ -30,6 +30,11 @@ export function allocateProportionalColumnWidths(widths: number[], targetWidth: 
     .map((width, idx) => ({ idx, width, weight: weights[idx]! }))
     .filter((column) => column.width > 0)
     .sort((a, b) => a.weight - b.weight)
+  if (active.length === capacity.length && capacity.every((width) => width === capacity[0])) {
+    const sharedGrowth = Math.floor(available / capacity.length)
+    const remainder = available % capacity.length
+    return growth.map((_, idx) => minWidth + sharedGrowth + (idx < remainder ? 1 : 0))
+  }
   let remaining = available
   let totalWeight = active.reduce((sum, column) => sum + column.weight, 0)
 

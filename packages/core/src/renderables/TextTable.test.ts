@@ -200,6 +200,8 @@ describe("TextTableRenderable", () => {
     expect(allocateProportionalColumnWidths([7, 7, 7], 11, 3)).toEqual([4, 4, 3])
     expect(allocateProportionalColumnWidths([7, 7, 7], 12, 3)).toEqual([4, 4, 4])
     expect(allocateProportionalColumnWidths([7, 7, 7], 13, 3)).toEqual([5, 4, 4])
+    expect(allocateProportionalColumnWidths([7, 7, 7], 17, 3)).toEqual([6, 6, 5])
+    expect(allocateProportionalColumnWidths([7, 7, 7], 20, 3)).toEqual([7, 7, 6])
     expect(allocateProportionalColumnWidths([19, 3], 5, 1)).toEqual([4, 1])
     expect(allocateProportionalColumnWidths([4_000_000_001, 1_000_000_001], 300_001, 1)).toEqual([200_001, 100_000])
   })
