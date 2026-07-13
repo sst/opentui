@@ -514,6 +514,40 @@ describe("TerminalConsole", () => {
       expect(terminalConsole["_autoScrollInterval"]).toBeNull()
     })
 
+    test("should stop auto-scroll interval when console is hidden", async () => {
+      const clock = new ManualClock()
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+        clock,
+      })
+      terminalConsole["isVisible"] = true
+
+      const lines = []
+      for (let i = 0; i < 50; i++) {
+        lines.push({ text: `Line ${i}`, level: "LOG" as any, indent: false })
+      }
+      terminalConsole["_displayLines"] = lines
+      terminalConsole["scrollTopIndex"] = 20
+
+      const bounds = terminalConsole.bounds
+
+      // Start a selection dragged to the top edge so auto-scroll starts.
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 5, "down", 0))
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "drag", 0))
+      expect(terminalConsole["_autoScrollInterval"]).not.toBeNull()
+
+      // Hide without releasing the mouse button first (e.g. a toggle keybind
+      // fires mid-drag). The interval must stop instead of continuing to fire
+      // against a hidden console.
+      terminalConsole.hide()
+      expect(terminalConsole["_autoScrollInterval"]).toBeNull()
+
+      const scrollBeforeAdvance = terminalConsole["scrollTopIndex"]
+      clock.advance(200)
+      expect(terminalConsole["scrollTopIndex"]).toBe(scrollBeforeAdvance)
+    })
+
     test("should stop auto-scroll when dragging away from edge", async () => {
       terminalConsole = new TerminalConsole(mockRenderer as any, {
         position: ConsolePosition.BOTTOM,
