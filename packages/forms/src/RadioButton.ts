@@ -7,15 +7,7 @@ import {
   type KeyEvent,
   type RenderableOptions,
   type RenderContext,
-  type InternalKeyBinding as BaseKeyBinding,
-  mergeKeyBindings,
-  buildKeyBindingsMap,
-  getKeyBindingAction,
-  defaultKeyAliases,
-  mergeKeyAliases,
 } from "@opentui/core"
-
-type KeyAliasMap = Record<string, string>
 
 export type RadioButtonDefaultDesigns = "classic" | "filled" | "minimal" | "paren" | "arrow"
 
@@ -33,17 +25,6 @@ function resolveIndicators(design: RadioButtonDesign): [string, string] {
   return Array.isArray(design) ? design : BUILTIN_INDICATORS[design]
 }
 
-export type RadioButtonAction = "select" | "move-up" | "move-down"
-export type RadioButtonKeyBinding = BaseKeyBinding<RadioButtonAction>
-
-const defaultRadioKeyBindings: RadioButtonKeyBinding[] = [
-  { name: "up", action: "move-up" },
-  { name: "down", action: "move-down" },
-  { name: "return", action: "select" },
-  { name: "linefeed", action: "select" },
-  { name: "space", action: "select" },
-]
-
 export interface RadioButtonRenderableOptions extends RenderableOptions<RadioButtonRenderable> {
   label?: string
   checked?: boolean
@@ -57,9 +38,6 @@ export interface RadioButtonRenderableOptions extends RenderableOptions<RadioBut
   focusedTextColor?: ColorInput
   checkedTextColor?: ColorInput
   focusIndicatorColor?: ColorInput
-
-  keyBindings?: RadioButtonKeyBinding[]
-  keyAliasMap?: KeyAliasMap
 }
 
 export enum RadioButtonRenderableEvents {
@@ -116,10 +94,6 @@ export class RadioButtonRenderable extends Renderable {
   private _checkedTextColor: RGBA
   private _focusIndicatorColor: RGBA
 
-  private _keyBindingsMap: Map<string, RadioButtonAction>
-  private _keyAliasMap: KeyAliasMap
-  private _keyBindings: RadioButtonKeyBinding[]
-
   protected _defaultOptions = {
     label: "",
     checked: false,
@@ -149,11 +123,6 @@ export class RadioButtonRenderable extends Renderable {
     this._focusedTextColor = parseColor(options.focusedTextColor ?? this._defaultOptions.focusedTextColor)
     this._checkedTextColor = parseColor(options.checkedTextColor ?? this._defaultOptions.checkedTextColor)
     this._focusIndicatorColor = parseColor(options.focusIndicatorColor ?? this._defaultOptions.focusIndicatorColor)
-
-    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap ?? {})
-    this._keyBindings = options.keyBindings ?? []
-    const mergeBindings = mergeKeyBindings(defaultRadioKeyBindings, this._keyBindings)
-    this._keyBindingsMap = buildKeyBindingsMap(mergeBindings, this._keyAliasMap)
 
     if (options.group) {
       this._joinGroupInitial(options.group)
@@ -213,15 +182,14 @@ export class RadioButtonRenderable extends Renderable {
   }
 
   public override handleKeyPress(key: KeyEvent): boolean {
-    const action = getKeyBindingAction(this._keyBindingsMap, key)
-    switch (action) {
-      case "move-up":
+    switch (key.name) {
+      case "up":
         this.moveUp()
         return true
-      case "move-down":
+      case "down":
         this.moveDown()
         return true
-      case "select":
+      case "space":
         this.select()
         return true
     }

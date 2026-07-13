@@ -305,11 +305,11 @@ describe("RadioButtonRenderable", () => {
       expect(btn.checked).toBe(true)
     })
 
-    test("Enter selects the button", () => {
+    test("Enter does not select (left to the application)", () => {
       const btn = makeBtn()
       btn.focus()
-      expect(btn.handleKeyPress(createKeyEvent("return"))).toBe(true)
-      expect(btn.checked).toBe(true)
+      expect(btn.handleKeyPress(createKeyEvent("return"))).toBe(false)
+      expect(btn.checked).toBe(false)
     })
 
     test("Up arrow calls moveUp", () => {
@@ -335,13 +335,6 @@ describe("RadioButtonRenderable", () => {
       btn.focus()
       expect(btn.handleKeyPress(createKeyEvent("x"))).toBe(false)
       expect(btn.checked).toBe(false)
-    })
-
-    test("custom key bindings work", () => {
-      const btn = makeBtn({ keyBindings: [{ name: "s", action: "select" }] })
-      btn.focus()
-      expect(btn.handleKeyPress(createKeyEvent("s"))).toBe(true)
-      expect(btn.checked).toBe(true)
     })
   })
 
