@@ -21,6 +21,7 @@ const BUILTIN_INDICATORS: Record<RadioButtonDefaultDesigns, [string, string]> = 
   arrow: ["▷", "▶"],
 }
 
+
 function resolveIndicators(design: RadioButtonDesign): [string, string] {
   return Array.isArray(design) ? design : BUILTIN_INDICATORS[design]
 }
