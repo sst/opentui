@@ -23,6 +23,7 @@
     "bench:box-draw": "bun src/benchmark/box-draw-benchmark.ts",
     "bench:render-traversal": "bun src/benchmark/render-traversal-benchmark.ts",
     "bench:text-table": "bun src/benchmark/text-table-benchmark.ts",
+    "bench:text-table-width": "bun src/benchmark/text-table-width-benchmark.ts",
     "bench:ts": "bun src/benchmark/native-span-feed-benchmark.ts --suite=quick --json=src/benchmark/latest-quick-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=default --json=src/benchmark/latest-default-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=large --json=src/benchmark/latest-large-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=all --json=src/benchmark/latest-all-bench-run.json && bun src/benchmark/native-span-feed-async-benchmark.ts --json=src/benchmark/latest-async-bench-run.json",
     "publish": "bun scripts/publish.ts",
     "test:dist": "bun scripts/dist-test.ts",
