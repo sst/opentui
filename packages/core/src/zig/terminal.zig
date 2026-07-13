@@ -152,6 +152,7 @@ skip_graphics_query: bool = false,
 skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
 capability_queries_pending: bool = false,
+capability_response_pending: bool = false,
 startup_cursor_query_pending: bool = false,
 startup_cursor_query_captured: bool = false,
 
@@ -285,6 +286,7 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
     self.graphics_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
+    self.capability_response_pending = false;
     self.startup_cursor_query_pending = true;
     self.startup_cursor_query_captured = false;
 
@@ -359,6 +361,19 @@ pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
     return sent;
 }
 
+pub fn applyDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard: bool) !void {
+    if (self.capability_response_pending) {
+        var queries_applied = true;
+        _ = self.sendPendingQueries(tty) catch |err| blk: {
+            logger.warn("Failed to send pending queries: {}", .{err});
+            queries_applied = false;
+            break :blk false;
+        };
+        if (queries_applied) self.capability_response_pending = false;
+    }
+    try self.enableDetectedFeatures(tty, use_kitty_keyboard);
+}
+
 pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard: bool) !void {
     if (builtin.os.tag == .windows) {
         // Windows-specific defaults for ConPTY
@@ -373,7 +388,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
         try self.setModifyOtherKeys(tty, true);
     }
 
-    if (self.caps.kitty_keyboard and use_kitty_keyboard) {
+    if (use_kitty_keyboard and (self.caps.kitty_keyboard or self.opts.kitty_keyboard_flags == 0)) {
         // Keep modifyOtherKeys as the fallback when the owned Kitty entry has no enhancements.
         if (self.opts.kitty_keyboard_flags > 0 and self.state.modify_other_keys) {
             try self.setModifyOtherKeys(tty, false);
@@ -1056,6 +1071,7 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
 ///
 /// Parsing these is not complete yet
 pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
+    self.capability_response_pending = true;
     self.parseOsc99NotificationQuery(response);
     self.parseItermCapabilities(response);
     self.parseXtgettcapMs(response);

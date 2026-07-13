@@ -415,7 +415,7 @@ pub const CliRenderer = struct {
 
         self.terminal.setCursorPosition(1, 1, false);
         // Zero flags still need an owned stack entry to mask an inherited mode.
-        self.terminal.enableDetectedFeatures(writer, true) catch {};
+        self.terminal.applyDetectedFeatures(writer, true) catch {};
 
         self.backend.writeOut(stream.getWritten());
     }
@@ -1931,13 +1931,11 @@ pub const CliRenderer = struct {
     pub fn disableKittyKeyboard(self: *CliRenderer) void {
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
         self.terminal.setKittyKeyboardFlags(0);
-        if (self.terminal.state.kitty_keyboard) {
-            self.terminal.setKittyKeyboard(
-                stream.writer(),
-                self.terminalSetup and !self.terminalSuspended,
-                0,
-            ) catch {};
-        }
+        self.terminal.setKittyKeyboard(
+            stream.writer(),
+            self.terminalSetup and !self.terminalSuspended,
+            0,
+        ) catch {};
         if (self.terminalSetup and !self.terminalSuspended and !self.terminal.state.modify_other_keys) {
             self.terminal.setModifyOtherKeys(stream.writer(), true) catch {};
         }
@@ -1955,12 +1953,10 @@ pub const CliRenderer = struct {
 
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
+        if (!self.terminalSetup or self.terminalSuspended) return;
+
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        _ = self.terminal.sendPendingQueries(stream.writer()) catch |err| blk: {
-            logger.warn("Failed to send pending queries: {}", .{err});
-            break :blk false;
-        };
-        self.terminal.enableDetectedFeatures(stream.writer(), true) catch {};
+        self.terminal.applyDetectedFeatures(stream.writer(), true) catch {};
         self.writeOut(stream.getWritten());
     }
 

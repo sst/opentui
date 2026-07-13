@@ -195,9 +195,8 @@ test("optional flags default to false", () => {
   expect(flags & KITTY_FLAG_REPORT_TEXT).toBeFalsy()
 })
 
-// NOTE: These tests are not running the kitty activation sequences,
-// only verifying that the configuration is applied correctly
-// (renderer.useKittyKeyboard reads the flags back from the native renderer).
+// These tests only verify the public configuration state. Terminal activation,
+// parsing, and lifecycle behavior are covered by renderer.kitty-lifecycle.test.ts.
 describe("useKittyKeyboard configuration", () => {
   test("useKittyKeyboard: null disables the kitty keyboard protocol", async () => {
     const { renderer } = await createTestRenderer({
@@ -205,8 +204,11 @@ describe("useKittyKeyboard configuration", () => {
       exitOnCtrlC: false,
     })
 
-    expect(renderer.useKittyKeyboard).toBe(false)
-    renderer.destroy()
+    try {
+      expect(renderer.useKittyKeyboard).toBe(false)
+    } finally {
+      renderer.destroy()
+    }
   })
 
   test("useKittyKeyboard omitted enables the protocol with defaults", async () => {
@@ -214,8 +216,11 @@ describe("useKittyKeyboard configuration", () => {
       exitOnCtrlC: false,
     })
 
-    expect(renderer.useKittyKeyboard).toBe(true)
-    renderer.destroy()
+    try {
+      expect(renderer.useKittyKeyboard).toBe(true)
+    } finally {
+      renderer.destroy()
+    }
   })
 
   test("useKittyKeyboard options object enables the protocol", async () => {
@@ -224,7 +229,10 @@ describe("useKittyKeyboard configuration", () => {
       exitOnCtrlC: false,
     })
 
-    expect(renderer.useKittyKeyboard).toBe(true)
-    renderer.destroy()
+    try {
+      expect(renderer.useKittyKeyboard).toBe(true)
+    } finally {
+      renderer.destroy()
+    }
   })
 })
