@@ -46,7 +46,6 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@opentui/forms": "workspace:*",
     "@opentui/keymap": "workspace:*",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",

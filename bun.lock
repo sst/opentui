@@ -67,14 +67,27 @@
     "packages/forms": {
       "name": "@opentui/forms",
       "version": "0.0.0",
-      "devDependencies": {
+      "dependencies": {
         "@opentui/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@opentui/react": "workspace:*",
+        "@opentui/solid": "workspace:*",
         "@types/bun": "latest",
+        "@types/node": "^24.0.0",
+        "@types/react": "^19.2.0",
+        "react": ">=19.2.0",
+        "solid-js": "1.9.12",
       },
       "peerDependencies": {
-        "@opentui/core": "workspace:*",
+        "@opentui/react": "workspace:*",
+        "@opentui/solid": "workspace:*",
         "typescript": "^5",
       },
+      "optionalPeers": [
+        "@opentui/react",
+        "@opentui/solid",
+      ],
     },
     "packages/keymap": {
       "name": "@opentui/keymap",
@@ -135,7 +148,6 @@
         "react-reconciler": "^0.33.0",
       },
       "devDependencies": {
-        "@opentui/forms": "workspace:*",
         "@opentui/keymap": "workspace:*",
         "@types/bun": "latest",
         "@types/node": "^24.0.0",
@@ -170,7 +182,6 @@
         "s-js": "^0.4.9",
       },
       "devDependencies": {
-        "@opentui/forms": "workspace:*",
         "@opentui/keymap": "workspace:*",
         "@types/babel__core": "7.20.5",
         "@types/bun": "latest",

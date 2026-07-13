@@ -17,17 +17,42 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
+    },
+    "./react": {
+      "types": "./src/react.ts",
+      "import": "./src/react.ts"
+    },
+    "./solid": {
+      "types": "./src/solid.ts",
+      "import": "./src/solid.ts"
     }
   },
   "scripts": {
     "test": "bun test"
   },
-  "devDependencies": {
-    "@opentui/core": "workspace:*",
-    "@types/bun": "latest"
+  "dependencies": {
+    "@opentui/core": "workspace:*"
   },
   "peerDependencies": {
-    "@opentui/core": "workspace:*",
+    "@opentui/react": "workspace:*",
+    "@opentui/solid": "workspace:*",
     "typescript": "^5"
+  },
+  "peerDependenciesMeta": {
+    "@opentui/react": {
+      "optional": true
+    },
+    "@opentui/solid": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@opentui/react": "workspace:*",
+    "@opentui/solid": "workspace:*",
+    "@types/bun": "latest",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "react": ">=19.2.0",
+    "solid-js": "1.9.12"
   }
 }

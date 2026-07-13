@@ -12,7 +12,6 @@ import {
   TextareaRenderable,
   TextRenderable,
 } from "@opentui/core"
-import { RadioButtonRenderable } from "@opentui/forms"
 import type { RenderableConstructor } from "../types/components.js"
 import {
   BoldSpanRenderable,
@@ -31,7 +30,6 @@ export const baseComponents = {
   markdown: MarkdownRenderable,
   input: InputRenderable,
   select: SelectRenderable,
-  "radio-button": RadioButtonRenderable,
   textarea: TextareaRenderable,
   scrollbox: ScrollBoxRenderable,
   "ascii-font": ASCIIFontRenderable,
