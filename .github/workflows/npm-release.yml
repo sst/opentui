@@ -69,6 +69,7 @@ jobs:
           cd ../react && bun run build
           cd ../keymap && bun run build
           cd ../ssh && bun run build
+          cd ../forms && bun run build
 
       - name: Run packed Node smoke tests
         run: |
