@@ -1,4 +1,5 @@
 import { test, expect, beforeEach, afterEach, spyOn } from "bun:test"
+import { Readable } from "stream"
 import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer.js"
 import { ManualClock } from "../testing/manual-clock.js"
 import { RendererControlState } from "../renderer.js"
@@ -455,4 +456,32 @@ test("suspend/resume does not leak stdin listeners", () => {
   }
 
   expect(renderer.stdin.listenerCount("data")).toBe(baseline)
+})
+
+test("suspend/resume complete a full cycle once setRawMode starts throwing", async () => {
+  // Setup succeeds normally (constructor's raw-mode call is intentionally not
+  // guarded - see renderer.custom-stdout.test.ts/renderer.tracker.test.ts for
+  // that fail-fast contract). Only after that do later calls start throwing,
+  // simulating the transient Windows console-handle state suspend/resume/
+  // destroy must tolerate.
+  const stdin = new Readable({ read() {} }) as any
+  let setupDone = false
+  stdin.setRawMode = () => {
+    if (!setupDone) return
+    throw new Error("EIO: transient console handle state")
+  }
+
+  const { renderer: throwingRenderer } = await createTestRenderer({ stdin })
+  setupDone = true
+
+  try {
+    throwingRenderer.suspend()
+    expect(stdin.isPaused()).toBe(true)
+
+    throwingRenderer.resume()
+    expect(stdin.isPaused()).toBe(false)
+    expect(stdin.listenerCount("data")).toBeGreaterThan(0)
+  } finally {
+    throwingRenderer.destroy()
+  }
 })

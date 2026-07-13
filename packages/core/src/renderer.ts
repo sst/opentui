@@ -3982,6 +3982,26 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.internalPause()
   }
 
+  // On Windows, uv_tty_set_mode can throw (EINVAL/ENOTTY/EBADF) when the
+  // console handle is in a transient state — e.g. right after shelling out to
+  // a child (git/editor/pager) that grabbed the console. Once the renderer is
+  // already running, never let that abort suspend/resume/destroy, or input
+  // stays permanently dead while the render loop keeps running. (The initial
+  // setup call is intentionally NOT routed through this helper: a raw-mode
+  // failure at construction means the terminal can't be used at all, and
+  // callers rely on that rejecting — see renderer.custom-stdout.test.ts and
+  // renderer.tracker.test.ts.)
+  private trySetRawMode(mode: boolean, context: string): void {
+    if (!this.stdin.setRawMode) {
+      return
+    }
+    try {
+      this.stdin.setRawMode(mode)
+    } catch (error) {
+      console.error(`Failed to set raw mode (${mode}) during ${context}:`, error)
+    }
+  }
+
   public suspend(): void {
     this._previousControlState = this._controlState
 
@@ -4015,26 +4035,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.lib.suspendRenderer(this.rendererPtr)
 
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(false)
-    }
+    this.trySetRawMode(false, "suspend")
 
     this.stdin.pause()
   }
 
   public resume(): void {
-    if (this.stdin.setRawMode) {
-      try {
-        this.stdin.setRawMode(true)
-      } catch (error) {
-        // On Windows, uv_tty_set_mode can throw (EINVAL/ENOTTY/EBADF) when the
-        // console handle is in a transient state — e.g. right after shelling
-        // out to a child (git/editor/pager) that grabbed the console. Never let
-        // that skip re-attaching the "data" listener + resume() below, or input
-        // stays permanently dead while the render loop keeps running.
-        console.error("Failed to restore raw mode on resume:", error)
-      }
-    }
+    this.trySetRawMode(true, "resume")
 
     // Drain any input buffered during suspension before registering the
     // listener. Adding a "data" listener can auto-resume a Readable, so the
@@ -4194,13 +4201,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.setCapturedRenderable(undefined)
 
     this.stdin.removeListener("data", this.stdinListener)
-    if (this.stdin.setRawMode) {
-      try {
-        this.stdin.setRawMode(false)
-      } catch (e) {
-        console.error("Error disabling raw mode during destroy:", e)
-      }
-    }
+    this.trySetRawMode(false, "destroy")
     try {
       this.stdin.pause()
     } catch (e) {
