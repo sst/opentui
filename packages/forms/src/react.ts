@@ -1,10 +1,6 @@
 import { extend } from "@opentui/react"
 import { createElement, forwardRef, useImperativeHandle, useLayoutEffect, useRef, type Key, type Ref } from "react"
-import {
-  RadioButtonRenderable,
-  RadioButtonRenderableEvents,
-  type RadioButtonRenderableOptions,
-} from "./RadioButton.js"
+import { RadioButtonRenderable, RadioButtonRenderableEvents, type RadioButtonRenderableOptions } from "./RadioButton.js"
 
 declare module "@opentui/react" {
   interface OpenTUIComponents {
