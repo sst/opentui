@@ -207,6 +207,47 @@ describe("RadioButtonRenderable", () => {
     })
   })
 
+  describe("initial selection", () => {
+    test("last registered checked button wins", () => {
+      const a = makeBtn({ group: "init", checked: true, value: "a" })
+      const b = makeBtn({ group: "init", checked: true, value: "b" })
+      const c = makeBtn({ group: "init", checked: true, value: "c" })
+      expect(a.checked).toBe(false)
+      expect(b.checked).toBe(false)
+      expect(c.checked).toBe(true)
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "init")).toBe(c)
+    })
+
+    test("single checked button stays selected", () => {
+      makeBtn({ group: "init1", value: "a" })
+      const b = makeBtn({ group: "init1", checked: true, value: "b" })
+      expect(b.checked).toBe(true)
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "init1")).toBe(b)
+    })
+
+    test("no button selected when none checked", () => {
+      makeBtn({ group: "init2", value: "a" })
+      makeBtn({ group: "init2", value: "b" })
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "init2")).toBeNull()
+    })
+
+    test("does not emit events during construction", () => {
+      const a = makeBtn({ group: "init3", checked: true, value: "a" })
+      let changed = 0
+      let selected = 0
+      a.on(RadioButtonRenderableEvents.CHANGED, () => changed++)
+      a.on(RadioButtonRenderableEvents.SELECTED, () => selected++)
+
+      // Constructing a later checked sibling displaces `a` silently.
+      const b = makeBtn({ group: "init3", checked: true, value: "b" })
+
+      expect(a.checked).toBe(false)
+      expect(b.checked).toBe(true)
+      expect(changed).toBe(0)
+      expect(selected).toBe(0)
+    })
+  })
+
   describe("moveUp/moveDown", () => {
     test("moveDown transfers focus and checked state to next sibling", () => {
       const a = makeBtn({ group: "nav1", checked: true })

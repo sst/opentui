@@ -156,10 +156,26 @@ export class RadioButtonRenderable extends Renderable {
     this._keyBindingsMap = buildKeyBindingsMap(mergeBindings, this._keyAliasMap)
 
     if (options.group) {
-      this.group = options.group
+      this._joinGroupInitial(options.group)
     }
 
     this.requestRender()
+  }
+
+  // Adds this button to the specified group during construction
+  // clearing any existing selection in that group if this button is checked.
+  private _joinGroupInitial(group: string): void {
+    const members = RadioButtonRenderable.getMembersFromRegistry(this.ctx, group)
+    if (this._checked) {
+      for (const sibling of members) {
+        if (sibling._checked) {
+          sibling._checked = false
+          sibling.requestRender()
+        }
+      }
+    }
+    this._group = group
+    members.add(this)
   }
 
   protected override renderSelf(_buffer: OptimizedBuffer, _deltaTime: number): void {
