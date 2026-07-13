@@ -374,7 +374,8 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
     }
 
     if (self.caps.kitty_keyboard and use_kitty_keyboard) {
-        if (self.state.modify_other_keys) {
+        // Keep modifyOtherKeys as the fallback when the owned Kitty entry has no enhancements.
+        if (self.opts.kitty_keyboard_flags > 0 and self.state.modify_other_keys) {
             try self.setModifyOtherKeys(tty, false);
         }
         try self.setKittyKeyboard(tty, true, self.opts.kitty_keyboard_flags);
@@ -955,6 +956,11 @@ pub fn setFocusTracking(self: *Terminal, tty: anytype, enable: bool) !void {
 
 pub fn setKittyKeyboard(self: *Terminal, tty: anytype, enable: bool, flags: u8) !void {
     if (enable) {
+        if (self.state.kitty_keyboard and self.state.kitty_keyboard_flags != flags) {
+            try tty.writeAll(ansi.ANSI.csiUPop);
+            self.state.kitty_keyboard = false;
+            self.state.kitty_keyboard_flags = 0;
+        }
         if (!self.state.kitty_keyboard) {
             try tty.print(ansi.ANSI.csiUPush, .{flags});
             self.state.kitty_keyboard = true;

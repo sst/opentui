@@ -120,6 +120,7 @@ pub const CliRenderer = struct {
     terminal: Terminal,
     useAlternateScreen: bool = true,
     terminalSetup: bool = false,
+    terminalSuspended: bool = false,
     clearOnShutdown: bool = true,
 
     splitScrollback: split_scrollback.SplitScrollback = .{},
@@ -385,6 +386,7 @@ pub const CliRenderer = struct {
     pub fn setupTerminal(self: *CliRenderer, useAlternateScreen: bool) void {
         self.useAlternateScreen = useAlternateScreen;
         self.terminalSetup = true;
+        self.terminalSuspended = false;
 
         // Build capability query into a stack buffer, then emit via backend.
         // Buffer sized to accommodate all capability-query sequences with margin.
@@ -412,8 +414,8 @@ pub const CliRenderer = struct {
         }
 
         self.terminal.setCursorPosition(1, 1, false);
-        const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
-        self.terminal.enableDetectedFeatures(writer, useKitty) catch {};
+        // Zero flags still need an owned stack entry to mask an inherited mode.
+        self.terminal.enableDetectedFeatures(writer, true) catch {};
 
         self.backend.writeOut(stream.getWritten());
     }
@@ -421,10 +423,12 @@ pub const CliRenderer = struct {
     pub fn suspendRenderer(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
         self.performShutdownSequence();
+        self.terminalSuspended = true;
     }
 
     pub fn resumeRenderer(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
+        self.terminalSuspended = false;
         self.setupTerminalWithoutDetection(self.useAlternateScreen, self.renderOffset == 0);
     }
 
@@ -1910,14 +1914,33 @@ pub const CliRenderer = struct {
     }
 
     pub fn enableKittyKeyboard(self: *CliRenderer, flags: u8) void {
+        self.terminal.setKittyKeyboardFlags(flags);
+        if (!self.terminalSetup or self.terminalSuspended) return;
+
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        if (flags > 0 and self.terminal.caps.kitty_keyboard and self.terminal.state.modify_other_keys) {
+            self.terminal.setModifyOtherKeys(stream.writer(), false) catch {};
+        }
         self.terminal.setKittyKeyboard(stream.writer(), true, flags) catch {};
+        if (flags == 0 and self.terminalSetup and !self.terminalSuspended and !self.terminal.state.modify_other_keys) {
+            self.terminal.setModifyOtherKeys(stream.writer(), true) catch {};
+        }
         self.writeOut(stream.getWritten());
     }
 
     pub fn disableKittyKeyboard(self: *CliRenderer) void {
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setKittyKeyboard(stream.writer(), false, 0) catch {};
+        self.terminal.setKittyKeyboardFlags(0);
+        if (self.terminal.state.kitty_keyboard) {
+            self.terminal.setKittyKeyboard(
+                stream.writer(),
+                self.terminalSetup and !self.terminalSuspended,
+                0,
+            ) catch {};
+        }
+        if (self.terminalSetup and !self.terminalSuspended and !self.terminal.state.modify_other_keys) {
+            self.terminal.setModifyOtherKeys(stream.writer(), true) catch {};
+        }
         self.writeOut(stream.getWritten());
     }
 
@@ -1937,8 +1960,7 @@ pub const CliRenderer = struct {
             logger.warn("Failed to send pending queries: {}", .{err});
             break :blk false;
         };
-        const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
-        self.terminal.enableDetectedFeatures(stream.writer(), useKitty) catch {};
+        self.terminal.enableDetectedFeatures(stream.writer(), true) catch {};
         self.writeOut(stream.getWritten());
     }
 

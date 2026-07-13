@@ -570,7 +570,7 @@ export class StdinParser {
   private readonly maxPendingBytes: number
   private readonly armTimeouts: boolean
   private readonly onTimeoutFlush: (() => void) | null
-  private readonly useKittyKeyboard: boolean
+  private useKittyKeyboard: boolean
   private readonly mouseParser = new MouseParser()
   private readonly clock: Clock
   private protocolContext: StdinParserProtocolContext
@@ -618,6 +618,9 @@ export class StdinParser {
 
   public updateProtocolContext(patch: Partial<StdinParserProtocolContext>): void {
     this.ensureAlive()
+    if (patch.kittyKeyboardEnabled !== undefined) {
+      this.useKittyKeyboard = patch.kittyKeyboardEnabled
+    }
     this.protocolContext = { ...this.protocolContext, ...patch }
     this.reconcileDeferredStateWithProtocolContext()
     this.reconcileTimeoutState()
