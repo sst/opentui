@@ -980,6 +980,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     try {
       await this.pumpSource(connection, attempt)
     } catch (cause) {
+      this.observeReady(this.readNativeStats(), initial.readyGeneration)
       await this.stopSource(attempt)
       await decoderReady
       if (!this.lifecycleController.signal.aborted) throw cause
@@ -1372,14 +1373,17 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     while (this.isAttemptActive(attempt)) {
       const stats = await this.pollNativeSnapshot(attempt)
       if (stats == null) return false
-      if (stats.readyGeneration !== previousGeneration) {
-        this.consecutiveReconnectAttempts = 0
-        this.setupResolve()
-        return true
-      }
+      if (this.observeReady(stats, previousGeneration)) return true
       if (!(await waitForPoll(attempt.controller.signal))) return false
     }
     return false
+  }
+
+  private observeReady(stats: NativeAudioStreamStats | null, previousGeneration: number): boolean {
+    if (stats == null || stats.readyGeneration === previousGeneration) return false
+    this.consecutiveReconnectAttempts = 0
+    this.setupResolve()
+    return true
   }
 
   private async awaitEnded(attempt: AudioStreamAttempt<M>): Promise<boolean> {

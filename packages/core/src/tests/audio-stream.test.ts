@@ -147,6 +147,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function yieldToRuntime(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
+}
+
 async function listen(server: Server): Promise<string> {
   server.listen(0, "127.0.0.1")
   await once(server, "listening")
@@ -166,7 +170,7 @@ async function waitFor(
   while (Date.now() < deadline) {
     advance?.()
     if (predicate()) return
-    await sleep(2)
+    await yieldToRuntime()
   }
   throw new Error(message)
 }
@@ -280,7 +284,7 @@ async function waitForTapSignal<M>(audio: Audio, stream: AudioStream<M>): Promis
       frames = tap.frames
       break
     }
-    await sleep(2)
+    await yieldToRuntime()
   }
   if (frames.length === 0) {
     const stats = stream.getStats()
@@ -480,7 +484,7 @@ test("Audio strips negotiated ICY metadata and exposes changed metadata without 
       () => stream.getStats().bytesReceived >= previousBytes + BigInt(interval),
       "ICY test cycle was not consumed",
     )
-    await sleep(0)
+    await yieldToRuntime()
   }
 
   await writeCycle(firstPayload)
@@ -912,7 +916,7 @@ test("Audio accepts an async iterable and drains it to completion", async () => 
   expect(stream.state).not.toBe("errored")
   await drainStream(audio, stream)
   await waitFor(() => endedEvents === 1, "Audio stream did not emit ended")
-  await sleep(0)
+  await yieldToRuntime()
   expect(endedEvents).toBe(1)
 
   const stats = stream.getStats()
@@ -1071,7 +1075,7 @@ test("Audio keeps playing decoded buffered frames while reconnecting an interrup
     for (let block = 0; block < 20; block += 1) {
       const mixed = audio.mixFrames(256, 2)
       if (mixed?.some((sample) => Math.abs(sample) > 0.005)) heardBufferedAudio = true
-      await sleep(1)
+      await yieldToRuntime()
     }
 
     expect(heardBufferedAudio).toBe(true)
@@ -1327,7 +1331,9 @@ test("Audio drains clean EOF before reconnecting", async () => {
     () => {
       const stats = stream.getStats()
       return (
-        stats.bytesReceived > statsAtReconnect.bytesReceived && stats.framesDecoded > statsAtReconnect.framesDecoded
+        stats.bytesReceived > statsAtReconnect.bytesReceived &&
+        stats.framesDecoded > statsAtReconnect.framesDecoded &&
+        stats.framesPlayed > statsAtReconnect.framesPlayed
       )
     },
     "Audio stream did not resume decoding after clean EOF",
@@ -2099,7 +2105,7 @@ test("Audio does not replay initial reconnect attempts after stream setup", asyn
   })
   const reconnectAttempts: number[] = []
   stream.on("reconnecting", ({ attempt }) => reconnectAttempts.push(attempt))
-  await sleep(0)
+  await yieldToRuntime()
 
   expect(requests).toBe(2)
   expect(stream.getStats().reconnectAttempts).toBe(1)
@@ -2595,7 +2601,7 @@ test("Audio enforces the documented HTTP content-type policy", async () => {
     expect(requests).toBe(1)
     unsupportedAudio.dispose()
   }
-}, 15000)
+})
 
 test("Audio exposes MP3 as the resolved stream format", async () => {
   const mp3 = new Uint8Array(await readFile(MP3_URL))
@@ -3409,7 +3415,7 @@ test("Audio publishes custom demuxer metadata and writes flush output", async ()
   expect(flushes).toBe(1)
 })
 
-test("Audio uses the public ICY demuxer with a slowly fragmented non-HTTP byte source", async () => {
+test("Audio uses the public ICY demuxer with an incrementally fragmented non-HTTP byte source", async () => {
   const mp3 = repeatBytes(new Uint8Array(await readFile(MP3_URL)), 8)
   const interval = 1024
   const framed = interleaveIcy(mp3, interval, ["StreamTitle='Custom transport';"])
@@ -3421,7 +3427,7 @@ test("Audio uses the public ICY demuxer with a slowly fragmented non-HTTP byte s
     (async function* () {
       for (let offset = 0; offset < framed.byteLength; offset += 37) {
         yield framed.subarray(offset, offset + 37)
-        await sleep(1)
+        await yieldToRuntime()
       }
     })(),
     {
