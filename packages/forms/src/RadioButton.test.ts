@@ -189,21 +189,21 @@ describe("RadioButtonRenderable", () => {
     test("getSelected returns the checked button", () => {
       const a = makeBtn({ group: "gs", checked: true, value: "a" })
       const b = makeBtn({ group: "gs", value: "b" })
-      expect(RadioButtonRenderable.getSelected("gs")).toBe(a)
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "gs")).toBe(a)
       b.select()
-      expect(RadioButtonRenderable.getSelected("gs")).toBe(b)
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "gs")).toBe(b)
     })
 
     test("getSelectedValue returns value of checked button", () => {
       makeBtn({ group: "gv", checked: false, value: "x" })
       const b = makeBtn({ group: "gv", checked: true, value: "y" })
-      expect(RadioButtonRenderable.getSelectedValue("gv")).toBe("y")
+      expect(RadioButtonRenderable.getSelectedValue(currentRenderer, "gv")).toBe("y")
       b.deselect()
-      expect(RadioButtonRenderable.getSelectedValue("gv")).toBeNull()
+      expect(RadioButtonRenderable.getSelectedValue(currentRenderer, "gv")).toBeNull()
     })
 
     test("getSelected returns null for unknown group", () => {
-      expect(RadioButtonRenderable.getSelected("nonexistent")).toBeNull()
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "nonexistent")).toBeNull()
     })
   })
 
@@ -346,13 +346,67 @@ describe("RadioButtonRenderable", () => {
       const a = makeBtn({ group: "destroy-test", checked: true })
       makeBtn({ group: "destroy-test" })
       a.destroy()
-      expect(RadioButtonRenderable.getSelected("destroy-test")).not.toBe(a)
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "destroy-test")).not.toBe(a)
     })
 
     test("removes group entry when last button is destroyed", () => {
       const a = makeBtn({ group: "last-btn", checked: true })
       a.destroy()
-      expect(RadioButtonRenderable.getSelected("last-btn")).toBeNull()
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "last-btn")).toBeNull()
+    })
+  })
+
+  describe("renderer scoping", () => {
+    test("same-named groups in different renderers are isolated", async () => {
+      const { renderer: otherRenderer } = await createTestRenderer({})
+      try {
+        const a = new RadioButtonRenderable(currentRenderer, { value: "a", group: "shared", checked: true })
+        const b = new RadioButtonRenderable(otherRenderer, { value: "b", group: "shared", checked: true })
+
+        // Selecting in one renderer must not deselect the other renderer's button.
+        a.select()
+        expect(a.checked).toBe(true)
+        expect(b.checked).toBe(true)
+
+        expect(RadioButtonRenderable.getSelected(currentRenderer, "shared")).toBe(a)
+        expect(RadioButtonRenderable.getSelected(otherRenderer, "shared")).toBe(b)
+      } finally {
+        otherRenderer.destroy()
+      }
+    })
+  })
+
+  describe("group setter", () => {
+    test("moves button between groups", () => {
+      const a = makeBtn({ group: "src", value: "a" })
+      makeBtn({ group: "dst", value: "b" })
+      a.group = "dst"
+      expect(a.group).toBe("dst")
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "src")).toBeNull()
+    })
+
+    test("moving a checked button deselects existing selection in target group", () => {
+      const a = makeBtn({ group: "src", value: "a", checked: true })
+      const b = makeBtn({ group: "dst", value: "b", checked: true })
+      a.group = "dst"
+      expect(a.checked).toBe(true)
+      expect(b.checked).toBe(false)
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "dst")).toBe(a)
+    })
+
+    test("leaving a group keeps the button's own checked state", () => {
+      const a = makeBtn({ group: "src", value: "a", checked: true })
+      a.group = undefined
+      expect(a.group).toBeUndefined()
+      expect(a.checked).toBe(true)
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "src")).toBeNull()
+    })
+
+    test("setting the same group is a no-op", () => {
+      const a = makeBtn({ group: "same", value: "a", checked: true })
+      a.group = "same"
+      expect(a.checked).toBe(true)
+      expect(RadioButtonRenderable.getSelected(currentRenderer, "same")).toBe(a)
     })
   })
 

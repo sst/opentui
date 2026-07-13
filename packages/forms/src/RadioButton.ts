@@ -70,17 +70,37 @@ export enum RadioButtonRenderableEvents {
 export class RadioButtonRenderable extends Renderable {
   protected override _focusable: boolean = true
 
-  private static readonly _groups = new Map<string, Set<RadioButtonRenderable>>()
+  // Group registries are stored in a WeakMap keyed by RenderContext to keep them mutually exclusive.
+  private static readonly _registries = new WeakMap<RenderContext, Map<string, Set<RadioButtonRenderable>>>()
 
-  static getSelected(group: string): RadioButtonRenderable | null {
-    for (const btn of RadioButtonRenderable._groups.get(group) ?? []) {
+  private static getRegistry(ctx: RenderContext): Map<string, Set<RadioButtonRenderable>> {
+    let registry = RadioButtonRenderable._registries.get(ctx)
+    if (!registry) {
+      registry = new Map()
+      RadioButtonRenderable._registries.set(ctx, registry)
+    }
+    return registry
+  }
+
+  private static getMembersFromRegistry(ctx: RenderContext, group: string): Set<RadioButtonRenderable> {
+    const registry = RadioButtonRenderable.getRegistry(ctx)
+    let members = registry.get(group)
+    if (!members) {
+      members = new Set()
+      registry.set(group, members)
+    }
+    return members
+  }
+
+  static getSelected(ctx: RenderContext, group: string): RadioButtonRenderable | null {
+    for (const btn of RadioButtonRenderable._registries.get(ctx)?.get(group) ?? []) {
       if (btn.checked) return btn
     }
     return null
   }
 
-  static getSelectedValue(group: string): any {
-    return RadioButtonRenderable.getSelected(group)?.value ?? null
+  static getSelectedValue(ctx: RenderContext, group: string): any {
+    return RadioButtonRenderable.getSelected(ctx, group)?.value ?? null
   }
 
   private _label: string
@@ -119,7 +139,7 @@ export class RadioButtonRenderable extends Renderable {
     this._checked = options.checked ?? this._defaultOptions.checked
     this._value = options.value
     this._design = options.design ?? this._defaultOptions.design
-    this._group = options.group
+    this._group = undefined
 
     this._backgroundColor = parseColor(options.backgroundColor ?? this._defaultOptions.backgroundColor)
     this._textColor = parseColor(options.textColor ?? this._defaultOptions.textColor)
@@ -135,11 +155,8 @@ export class RadioButtonRenderable extends Renderable {
     const mergeBindings = mergeKeyBindings(defaultRadioKeyBindings, this._keyBindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergeBindings, this._keyAliasMap)
 
-    if (this._group) {
-      if (!RadioButtonRenderable._groups.has(this._group)) {
-        RadioButtonRenderable._groups.set(this._group, new Set())
-      }
-      RadioButtonRenderable._groups.get(this._group)!.add(this)
+    if (options.group) {
+      this.group = options.group
     }
 
     this.requestRender()
@@ -198,7 +215,7 @@ export class RadioButtonRenderable extends Renderable {
 
   public select(): void {
     if (this._group) {
-      for (const sibling of RadioButtonRenderable._groups.get(this._group) ?? []) {
+      for (const sibling of RadioButtonRenderable.getMembersFromRegistry(this.ctx, this._group)) {
         if (sibling !== this) sibling.deselect()
       }
     }
@@ -220,7 +237,7 @@ export class RadioButtonRenderable extends Renderable {
 
   public moveUp(): void {
     if (!this._group) return
-    const siblings = Array.from(RadioButtonRenderable._groups.get(this._group) ?? [])
+    const siblings = Array.from(RadioButtonRenderable.getMembersFromRegistry(this.ctx, this._group))
     const idx = siblings.indexOf(this)
     const target = siblings[idx - 1]
     if (idx > 0 && target) this._moveTo(target)
@@ -228,7 +245,7 @@ export class RadioButtonRenderable extends Renderable {
 
   public moveDown(): void {
     if (!this._group) return
-    const siblings = Array.from(RadioButtonRenderable._groups.get(this._group) ?? [])
+    const siblings = Array.from(RadioButtonRenderable.getMembersFromRegistry(this.ctx, this._group))
     const idx = siblings.indexOf(this)
     const target = siblings[idx + 1]
     if (idx >= 0 && idx < siblings.length - 1 && target) this._moveTo(target)
@@ -236,10 +253,10 @@ export class RadioButtonRenderable extends Renderable {
 
   public override destroy(): void {
     if (this._group) {
-      RadioButtonRenderable._groups.get(this._group)?.delete(this)
-      if (RadioButtonRenderable._groups.get(this._group)?.size === 0) {
-        RadioButtonRenderable._groups.delete(this._group)
-      }
+      const registry = RadioButtonRenderable._registries.get(this.ctx)
+      const members = registry?.get(this._group)
+      members?.delete(this)
+      if (members && members.size === 0) registry!.delete(this._group)
     }
     super.destroy()
   }
@@ -284,6 +301,29 @@ export class RadioButtonRenderable extends Renderable {
 
   public get group(): string | undefined {
     return this._group
+  }
+
+  // Atomically moves a button from one group to another.
+  // Clears all selection in the destination group & keeps the current button selected.
+  public set group(next: string | undefined) {
+    if (next === this._group) return
+
+    if (this._group) {
+      const registry = RadioButtonRenderable._registries.get(this.ctx)
+      const members = registry?.get(this._group)
+      members?.delete(this)
+      if (members && members.size === 0) registry!.delete(this._group)
+    }
+
+    this._group = next
+
+    if (next) {
+      const members = RadioButtonRenderable.getMembersFromRegistry(this.ctx, next)
+      if (this._checked) {
+        for (const sibling of members) sibling.deselect()
+      }
+      members.add(this)
+    }
   }
 
   public set backgroundColor(value: ColorInput) {
