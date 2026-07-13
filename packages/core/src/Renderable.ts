@@ -1575,10 +1575,10 @@ export abstract class Renderable extends BaseRenderable {
     try {
       this.yogaNode.free()
     } catch (e) {
-      // Might be already freed and will throw an error if we try to free it again
-      if (e instanceof Error && !e.message.includes("already been freed")) {
-        console.error("Error freeing yoga node:", e)
-      }
+      // Yoga.Node.free() already no-ops on a double-free (checks its own
+      // `freed` flag internally), so anything that reaches here is a real
+      // error worth surfacing rather than swallowing silently.
+      console.error("Error freeing yoga node:", e)
     }
   }
 
