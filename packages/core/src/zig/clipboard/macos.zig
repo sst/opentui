@@ -21,6 +21,8 @@ pub const MimeType = enum(u32) {
 pub const ReadJob = struct {
     request: []const u8,
     max_bytes: u32,
+    max_image_pixels: u32,
+    max_conversion_bytes: u32,
 };
 
 pub const WriteTextJob = struct {
@@ -85,11 +87,17 @@ const ShimStatus = enum(i32) {
     invalid_argument = 3,
     invalid_text = 4,
     failed = 5,
+    cancelled = 6,
+    timed_out = 7,
 };
 
 extern fn ot_clipboard_macos_read(
     mime: u32,
     max_bytes: u32,
+    max_image_pixels: u32,
+    max_conversion_bytes: u32,
+    stop_callback: ?*const fn (?*const anyopaque) callconv(.c) i32,
+    stop_context: ?*const anyopaque,
     out_bytes: *?[*]u8,
     out_length: *u32,
 ) i32;
@@ -135,7 +143,14 @@ fn read(allocator: Allocator, job: ReadJob, options: ExecuteOptions) JobError!Re
         else
             continue;
         supported = true;
-        const result = readMime(allocator, mime, job.max_bytes, options) catch |err| switch (err) {
+        const result = readMime(
+            allocator,
+            mime,
+            job.max_bytes,
+            job.max_image_pixels,
+            job.max_conversion_bytes,
+            options,
+        ) catch |err| switch (err) {
             error.NativeFailure => {
                 if (first_failure == null) first_failure = err;
                 continue;
@@ -191,12 +206,23 @@ fn acquireJobLock(mutex: *std.Thread.Mutex, job: Job, options: ExecuteOptions) ?
     return null;
 }
 
-fn readMime(allocator: Allocator, mime: MimeType, max_bytes: u32, options: ExecuteOptions) JobError!Result {
+fn readMime(
+    allocator: Allocator,
+    mime: MimeType,
+    max_bytes: u32,
+    max_image_pixels: u32,
+    max_conversion_bytes: u32,
+    options: ExecuteOptions,
+) JobError!Result {
     var shim_bytes: ?[*]u8 = null;
     var length: u32 = 0;
     const status = shimStatus(ot_clipboard_macos_read(
         @intFromEnum(mime),
         max_bytes,
+        max_image_pixels,
+        max_conversion_bytes,
+        shimStop,
+        &options,
         &shim_bytes,
         &length,
     ));
@@ -207,6 +233,8 @@ fn readMime(allocator: Allocator, mime: MimeType, max_bytes: u32, options: Execu
         .invalid_argument => return error.InvalidArgument,
         .invalid_text => return error.NativeFailure,
         .failed => return error.NativeFailure,
+        .cancelled => return .cancelled,
+        .timed_out => return .timed_out,
         .ok => {},
     }
 
@@ -219,6 +247,16 @@ fn readMime(allocator: Allocator, mime: MimeType, max_bytes: u32, options: Execu
         (shim_bytes orelse return error.NativeFailure)[0..length];
     const data = allocator.dupe(u8, source) catch return error.OutOfMemory;
     return .{ .read = .{ .mime = mime, .data = data } };
+}
+
+fn shimStop(context: ?*const anyopaque) callconv(.c) i32 {
+    const options: *const ExecuteOptions = @ptrCast(@alignCast(context orelse return @intFromEnum(ShimStatus.failed)));
+    const status = stopStatus(options.*) orelse return @intFromEnum(ShimStatus.ok);
+    return @intFromEnum(switch (status) {
+        .cancelled => ShimStatus.cancelled,
+        .timed_out => ShimStatus.timed_out,
+        .failed => ShimStatus.failed,
+    });
 }
 
 const PreferenceIterator = struct {
@@ -256,7 +294,7 @@ fn writeText(job: WriteTextJob) JobError!Result {
         .ok => .written,
         .invalid_argument => error.InvalidArgument,
         .invalid_text => error.InvalidText,
-        .empty, .limit_exceeded, .failed => error.NativeFailure,
+        .empty, .limit_exceeded, .failed, .cancelled, .timed_out => error.NativeFailure,
     };
 }
 
@@ -264,7 +302,7 @@ fn clear() JobError!Result {
     return switch (shimStatus(ot_clipboard_macos_clear())) {
         .ok => .cleared,
         .invalid_argument => error.InvalidArgument,
-        .empty, .limit_exceeded, .invalid_text, .failed => error.NativeFailure,
+        .empty, .limit_exceeded, .invalid_text, .failed, .cancelled, .timed_out => error.NativeFailure,
     };
 }
 
@@ -296,7 +334,7 @@ test "macOS clipboard shim initializes absent output" {
 
     var bytes: ?[*]u8 = undefined;
     var length: u32 = 99;
-    const status = shimStatus(ot_clipboard_macos_read(0, 0, &bytes, &length));
+    const status = shimStatus(ot_clipboard_macos_read(0, 0, 0, 0, null, null, &bytes, &length));
     try std.testing.expectEqual(ShimStatus.empty, status);
     try std.testing.expect(bytes == null);
     try std.testing.expectEqual(@as(u32, 0), length);
@@ -388,4 +426,18 @@ test "macOS clipboard post-shim stop maps exact terminal status" {
         .cancel_requested = &cancelled,
         .deadline_ns = clipboard_clock.nowNs(),
     }).? == .timed_out);
+}
+
+test "macOS clipboard shim callback maps exact terminal status" {
+    try clipboard_clock.init();
+    var cancelled = std.atomic.Value(bool).init(true);
+    var options = ExecuteOptions{
+        .cancel_requested = &cancelled,
+        .deadline_ns = std.math.maxInt(i128),
+    };
+    try std.testing.expectEqual(ShimStatus.cancelled, shimStatus(shimStop(&options)));
+
+    cancelled.store(false, .release);
+    options.deadline_ns = clipboard_clock.nowNs();
+    try std.testing.expectEqual(ShimStatus.timed_out, shimStatus(shimStop(&options)));
 }
