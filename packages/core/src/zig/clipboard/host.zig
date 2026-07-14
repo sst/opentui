@@ -620,7 +620,12 @@ const Service = struct {
                 return;
             }
             const job: clipboard_macos.Job = switch (operation.kind) {
-                .read => .{ .read = .{ .request = operation.request, .max_bytes = operation.max_bytes } },
+                .read => .{ .read = .{
+                    .request = operation.request,
+                    .max_bytes = operation.max_bytes,
+                    .max_image_pixels = operation.max_image_pixels,
+                    .max_conversion_bytes = operation.max_conversion_bytes,
+                } },
                 .write => .{ .write_text = .{ .text = operation.request } },
                 .clear => .clear,
             };
@@ -738,7 +743,11 @@ const Service = struct {
             service.platform_mutex.unlock();
             if (!exited) return .pending;
             if (service.platform_thread) |thread| {
-                if (!tryJoinThread(thread)) return .pending;
+                if (comptime builtin.os.tag == .macos) {
+                    // The worker publishes exited immediately before returning; Mach does not
+                    // reliably expose terminated pthreads as TH_STATE_HALTED.
+                    thread.join();
+                } else if (!tryJoinThread(thread)) return .pending;
                 service.platform_thread = null;
             }
         }
