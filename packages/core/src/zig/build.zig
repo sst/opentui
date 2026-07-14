@@ -100,6 +100,7 @@ fn isMacOSSDKAvailable(b: *std.Build, sdk_path: []const u8) bool {
         macOSSDKHasFramework(b, sdk_path, "CoreFoundation") and
         macOSSDKHasFramework(b, sdk_path, "AppKit") and
         macOSSDKHasFramework(b, sdk_path, "Foundation") and
+        macOSSDKHasFramework(b, sdk_path, "ImageIO") and
         macOSSDKHasFramework(b, sdk_path, "CoreAudio") and
         macOSSDKHasFramework(b, sdk_path, "AudioToolbox");
 }
@@ -303,6 +304,7 @@ fn addMacOSClipboardDependencies(b: *std.Build, artifact: *std.Build.Step.Compil
     });
     artifact.linkFramework("AppKit");
     artifact.linkFramework("Foundation");
+    artifact.linkFramework("ImageIO");
     artifact.linkSystemLibrary("pthread");
     addMacOSSDKSearchPaths(b, artifact, sdk_path);
 }
