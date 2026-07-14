@@ -33,15 +33,15 @@ function countSelectedCells(
 describe("Textarea - Scroll Tests", () => {
   beforeEach(async () => {
     clock = new ManualClock()
-      ; ({
-        renderer: currentRenderer,
-        renderOnce,
-        mockMouse: currentMouse,
-      } = await createTestRenderer({
-        width: 80,
-        height: 24,
-        clock,
-      }))
+    ;({
+      renderer: currentRenderer,
+      renderOnce,
+      mockMouse: currentMouse,
+    } = await createTestRenderer({
+      width: 80,
+      height: 24,
+      clock,
+    }))
   })
 
   afterEach(() => {
