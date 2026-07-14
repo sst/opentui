@@ -989,6 +989,8 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
     if (this.lifecycleController.signal.aborted) return false
     const status = this.lib.audioEndStream(this.engine, this.nativeStreamId!)
     if (status !== 0) {
+      const nativeError = this.snapshotError(this.readNativeStats())
+      if (nativeError?.context.action === "decoder") throw nativeError
       const context: AudioStreamErrorContext = { action: "end", status }
       throw new AudioStreamError(`Audio stream end failed: ${status}`, context)
     }
