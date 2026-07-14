@@ -50,8 +50,9 @@ describe("platform/runtime", () => {
     temporaryDirectories.push(root)
     process.env.OTUI_ASSET_ROOT = root
 
-    expect(() => resolveAssetPath(key, "/existing/fallback")).toThrow(key)
-    expect(() => resolveAssetPath(key, "/existing/fallback")).toThrow(join(root, key))
+    expect(() => resolveAssetPath(key, "/existing/fallback")).toThrow(
+      `Missing OpenTUI asset ${JSON.stringify(key)} at ${JSON.stringify(join(root, key))}`,
+    )
   })
 
   test("resolves bundled file paths through the active runtime path", async () => {
