@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { runInNewContext } from "node:vm"
 import {
   BUN_DLOPEN_NULL,
   FFIType,
@@ -407,6 +408,23 @@ describe("platform/ffi", () => {
     expect(functionCalls[0]?.args[2]).toBe(0n)
     expect(functionCalls[0]?.args[3]).toBe(77n)
     expect(functionCalls[0]?.args[4]).toBe(0n)
+  })
+
+  test("accepts cross-realm ArrayBuffers and views at Node pointer boundaries", () => {
+    const { backend, functionCalls } = createMockNodeBackend()
+    const buffer = runInNewContext("new ArrayBuffer(16)") as ArrayBuffer
+    const view = runInNewContext("new Uint8Array(new ArrayBuffer(16), 4, 8)") as Uint8Array
+    const library = backend.dlopen("mock", {
+      pointers: {
+        args: [FFIType.ptr, FFIType.ptr],
+        returns: FFIType.void,
+      },
+    })
+
+    expect(backend.ptr(buffer)).toBe(1000n as Pointer)
+    expect(backend.ptr(view)).toBe(1104n as Pointer)
+    library.symbols.pointers(buffer, view)
+    expect(functionCalls[0]?.args).toEqual([buffer, view])
   })
 
   test("rejects invalid Node ptr-like arguments deterministically", () => {

@@ -1,10 +1,10 @@
 ---
 title: Native audio
-description: Load, play, mix, and inspect audio with the native miniaudio backend
+description: Load, stream, play, mix, and inspect audio with the native miniaudio backend
 order: 11
 skill:
   entry: true
-  intents: [audio, native-audio, sound, playback, pcm, fft]
+  intents: [audio, native-audio, sound, playback, streaming, radio, mp3, flac, pcm, fft]
 ---
 
 # Native audio
@@ -32,11 +32,13 @@ audio.dispose()
 
 Use `setupAudio(options?)` when you prefer a function wrapper around `Audio.create(options?)`.
 
+`Audio.create()` and `setupAudio()` initialize synchronously and throw `AudioInitializationError` if native library resolution, engine creation, or `autoStart` fails. Construction never emits events; successful `autoStart` also does not emit `started` before listeners can be attached.
+
 ## Engine options
 
 | Option             | Default  | Description                                    |
 | ------------------ | -------- | ---------------------------------------------- |
-| `autoStart`        | `false`  | Call `start()` during creation                 |
+| `autoStart`        | `false`  | Start playback during synchronous construction |
 | `sampleRate`       | `48000`  | Engine sample rate                             |
 | `playbackChannels` | `2`      | Requested playback channel count               |
 | `startOptions`     | defaults | Options passed to `start()` when auto-starting |
@@ -57,7 +59,178 @@ Create a new `Audio` instance to change `sampleRate` or `playbackChannels`.
 | `setGroupVolume(group, volume)` | Set group volume                                              |
 | `setMasterVolume(volume)`       | Set master volume                                             |
 
-`play()` accepts `{ volume, pan, loop, groupId }`. Native playback clamps `volume` to `0..4` and `pan` to `-1..1`. The engine has 32 voice slots.
+`play()` accepts `{ volume, pan, loop, groupId }`. Native playback clamps `volume` to `0..4` and `pan` to `-1..1`. The engine supports 32 active voices and streams in total.
+
+## Encoded streams
+
+Streaming supports `format: "mp3"` (the default) and `format: "flac"`. The selected format is exposed as `AudioStream.format`; unsupported formats reject before opening a source. Choose the entry point by source ownership:
+
+| Method                               | Use                                                                  |
+| ------------------------------------ | -------------------------------------------------------------------- |
+| `playStreamUrl(url, options?)`       | Fetch, ICY negotiation, HTTP retry, reconnect, and response demuxing |
+| `playStream(bytes, options?)`        | One-shot encoded `ReadableStream` or `AsyncIterable`                 |
+| `playStreamSource(connector, opts?)` | Reconnectable custom transport with per-connection demuxing          |
+
+All three resolve after the native decoder is ready, normally while buffering. Streaming begins before the source ends.
+
+### URL streams
+
+```typescript
+import { Audio, AudioStreamError, type AudioStream } from "@opentui/core"
+
+const audio = Audio.create({ autoStart: false })
+let stream: AudioStream | null = null
+const safeMetadata = (value: string | undefined) => value?.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+
+audio.on("error", (error) => {
+  console.error(error.message)
+})
+
+try {
+  if (!audio.start()) throw new Error("No playback device available")
+
+  stream = await audio.playStreamUrl("https://anomaly.fm/radio", {
+    format: "mp3",
+    reconnect: { maxRetries: 5, retryOnEnd: true },
+  })
+
+  const initialMetadata = stream.getMetadata()
+  console.log(safeMetadata(initialMetadata?.fields.StreamTitle))
+
+  stream.on("metadata", (metadata) => {
+    console.log(safeMetadata(metadata?.headers["icy-name"]), safeMetadata(metadata?.fields.StreamTitle))
+  })
+
+  stream.on("error", (error) => {
+    console.error(error.message)
+  })
+
+  // Run the application until playback should stop.
+} catch (error) {
+  if (error instanceof AudioStreamError) {
+    console.error(`${error.context.action}: ${error.message}`)
+  } else {
+    throw error
+  }
+} finally {
+  stream?.dispose()
+  await stream?.closed
+  audio.dispose()
+}
+```
+
+The default `contentTypePolicy: "validate"` accepts `audio/mpeg`, `audio/mp3`, and `application/mp3` for MP3; `audio/flac` and `audio/x-flac` for FLAC; and `application/octet-stream` or a missing type for either format. Set it to `"ignore"` to let the decoder validate mislabeled responses, or pass a callback receiving `{ format, contentType, status, url }`. Every response, including reconnect replacements, is evaluated before its bytes reach the decoder. `request` accepts `RequestInit` except `body` and `signal`; use the stream-level `signal` option for cancellation.
+
+URL streams request ICY metadata with `Icy-MetaData: 1` unless `request.headers` already contains that header. Set it to `0` explicitly to disable negotiation. Any `icy-*` response headers are exposed as an ICY metadata snapshot; a positive `icy-metaint` additionally enables in-band framing. URLs, content types, station headers, and server names are not used to infer framing. Invalid or ambiguous intervals reject the response before a native voice is allocated.
+
+ICY framing is removed in TypeScript before bytes reach the native decoder. `getMetadata()` returns the latest immutable `{ format, headers, fields }` snapshot or `null`. ICY response header names are lowercase in `headers`; in-band field names such as `StreamTitle` and `StreamUrl` retain their original case. Unknown fields are preserved. The `metadata` event emits the latest changed snapshot, and emits `null` when a replacement response no longer advertises ICY metadata. Rapid changes can coalesce into one asynchronous event; `getMetadata()` always returns the current snapshot. Zero-length and repeated equivalent metadata blocks do not emit events.
+
+ICY does not define a text encoding. OpenTUI follows Icecast's documented non-Ogg default of ISO-8859-1, represented by the Encoding Standard's `windows-1252` decoder. Set `metadataEncoding`, for example `metadataEncoding: "utf-8"`, when the station uses another encoding. Metadata is untrusted text and should be sanitized before writing it directly to a terminal or interpreting metadata URLs.
+
+Metadata events follow response ingestion, not audible playback. Native buffering means a title can arrive before its audio is heard. Metadata received during setup is retained and emitted asynchronously after `playStreamUrl()` resolves.
+
+URL reconnect is opt-in. It retries network failures, interrupted or missing response bodies, HTTP 408/425/429, and HTTP 5xx responses. Reconnects restart the decoder in the same native stream session, preserving controls, counters, the voice slot, and any decoded PCM still available after an interruption. `retryOnEnd` restarts the same session after a clean response ends and its buffered PCM drains. Initial retries happen while `playStreamUrl()` is pending and do not emit `reconnecting` because the stream has not been returned yet; `reconnect.retry` still observes and can stop them. `maxRetries` limits consecutive retries for one outage and resets after a replacement decoder becomes ready; omitting it means unlimited retries. An `AbortSignal` or `dispose()` stops them.
+
+Each replacement response creates a new demuxer and can advertise a different ICY interval. Existing metadata remains available while reconnecting, then the replacement clears prior fields. A response without ICY headers clears metadata.
+
+Reconnect options default to `initialDelayMs: 1000`, `maxDelayMs: 15000`, `backoffFactor: 2`, `retryOnEnd: false`, and unlimited `maxRetries`. Valid `Retry-After` values override exponential backoff up to `maxDelayMs`. `reconnect.retry` can override default URL response classification; `{}` keeps the transport delay, while `{ delayMs }` replaces it.
+
+### Byte streams
+
+`playStream()` accepts encoded MP3 or FLAC bytes and is one-shot. Input chunks must be `Uint8Array`; request and reconnect options belong to the other entry points. Backpressure and encoded/decoded buffering remain bounded.
+
+Pass a demuxer factory when framing or metadata is interleaved with the encoded audio. The built-in ICY demuxer accepts semantic options directly and does not require HTTP headers:
+
+```typescript
+import { Audio, createIcyStreamDemuxer } from "@opentui/core"
+
+const stream = await audio.playStream(socketBytes, {
+  format: "mp3",
+  demuxer: () =>
+    createIcyStreamDemuxer({
+      metadataInterval: negotiatedInterval,
+      metadataEncoding: "utf-8",
+    }),
+})
+
+stream.on("metadata", (metadata) => {
+  const title = metadata?.fields.StreamTitle?.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+  console.log(title)
+})
+```
+
+`createIcyStreamDemuxer()` defaults to the same ISO-8859-1/`windows-1252` decoding as URL streams. Optional `headers` are copied, lowercased, and exposed in metadata; non-HTTP transports can omit them.
+
+### Custom connectors
+
+A connector creates one transport connection at a time. It receives `{ signal, attempt }` and returns `{ body, info, close? }`. The initial connection uses attempt `0`; every reconnect gets a new connection and demuxer. Consecutive attempt numbering resets after a replacement decoder becomes ready, while `getStats().reconnectAttempts` remains cumulative.
+
+```typescript
+import { Audio, createIcyStreamDemuxer, type AudioStreamConnector } from "@opentui/core"
+
+interface RadioInfo {
+  metadataInterval: number
+}
+
+const connector: AudioStreamConnector<RadioInfo> = {
+  async connect({ signal }) {
+    const connection = await openRadioConnection({ signal })
+    return {
+      body: connection.readable,
+      info: { metadataInterval: connection.metadataInterval },
+      close: () => connection.close(),
+    }
+  },
+}
+
+const stream = await audio.playStreamSource(connector, {
+  format: "mp3",
+  reconnect: {
+    maxRetries: 5,
+    retry() {
+      return {}
+    },
+  },
+  demuxer: (info) => createIcyStreamDemuxer({ metadataInterval: info.metadataInterval }),
+})
+```
+
+`reconnect.retry(error, context)` is optional for URL and custom connectors. Custom connector and body-read failures are retryable by default. Return `false` to stop, `{}` to keep the transport hint or normal backoff, or `{ delayMs }` for a bounded finite non-negative integer delay. `context` contains the next `attempt`, `maxRetries`, and `phase`. `close()` is invoked once after EOF, failure, or cancellation; cleanup gets a bounded grace period so an uncooperative transport cannot prevent shutdown.
+
+Custom demuxers expose `initialMetadata`, `push(chunk)`, and `flush()`, with optional `abort(reason)`. `push()` and `flush()` return ordered `{ type: "audio", data }` or `{ type: "metadata", metadata }` outputs. Flush output is consumed before decoder EOF; interruption calls `abort()` instead. A `push()` exception is a terminal demuxer error. A `flush()` exception reports truncated input and follows the reconnect read policy. `AudioStream<M>` exposes the same metadata type through `getMetadata()` and `metadata` events. Custom demuxers should return immutable snapshots and suppress equivalent updates when desired.
+
+### Options and lifecycle
+
+| Shared option       | Default | Description                                               |
+| ------------------- | ------- | --------------------------------------------------------- |
+| `format`            | `"mp3"` | Encoded stream format: MP3 or FLAC                        |
+| `volume`            | `1`     | Stream volume; native playback clamps to `0..4`           |
+| `pan`               | `0`     | Stereo pan; native playback clamps to `-1..1`             |
+| `groupId`           | `0`     | Mixer group                                               |
+| `buffer.capacityMs` | `2000`  | Decoded PCM buffer capacity                               |
+| `buffer.startupMs`  | `1000`  | Initial playback threshold                                |
+| `buffer.resumeMs`   | `1000`  | Resume threshold after starvation                         |
+| `maxProbeBytes`     | `1 MiB` | Maximum encoded bytes inspected during decoder setup      |
+| `signal`            | none    | Cancels setup, retries, source reads, and active playback |
+
+Buffer values must be positive integers; startup and resume thresholds cannot exceed capacity.
+
+| `AudioStream` member                    | Description                                                                                                                             |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `state`                                 | Latest cached lifecycle state                                                                                                           |
+| `getStats()`                            | Refreshes state and returns sample rate, channels, buffer capacity/use, encoded bytes, decoded/played frames, underruns, and reconnects |
+| `getMetadata()`                         | Latest metadata snapshot or `null`                                                                                                      |
+| `setVolume()`, `setPan()`, `setGroup()` | Controls that remain effective across reconnects                                                                                        |
+| `dispose()`                             | Cancels transport, demuxer, retries, and native playback                                                                                |
+| `closed`                                | Resolves after bounded cleanup and delivery of the terminal `ended`, `error`, or `disposed` event                                       |
+
+Events are `metadata`, `reconnecting`, `ended`, `error`, and `disposed`. Transport, response, demuxer, native creation, and decoder setup failures reject with `AudioStreamError`; validation performed in JavaScript uses `TypeError`/`RangeError`, cancellation uses `AbortError`, and starting a stream after its owning `Audio` was disposed rejects with `Error`. Later terminal failures emit `error` with context. Disposing the owning `Audio` also disposes pending and active streams.
+
+`bytesReceived` counts only encoded audio bytes emitted by the demuxer; framing and metadata are excluded. Final stats and metadata remain readable after natural completion. Native readiness, backpressure, and EOF draining use short-lived polling; there is no persistent idle statistics loop.
+
+In browser-like Fetch environments, cross-origin ICY negotiation requires an appropriate `Access-Control-Allow-Origin`, permission for the `Icy-MetaData` request header, and exposure of `icy-metaint` through CORS. Other `icy-*` response headers must also be exposed for them to appear in `getMetadata().headers`. Legacy servers that respond with the non-HTTP `ICY 200 OK` status line can be rejected by `fetch()` before OpenTUI receives a response.
+
+Streams use the same mixer and master tap as loaded sounds. Once `enableTap()` is active, `readTapFrames()` includes streamed audio automatically. The tap is the combined master mix, not an isolated copy of one stream.
 
 ## Starting audio
 
@@ -129,4 +302,4 @@ The tap is disabled by default. When enabled, it stores the latest frames and ov
 
 ## Lifecycle and errors
 
-Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. `Audio` emits `started`, `mixerStarted`, `stopped`, `disposed`, and `error`. Methods that fail return `false` or `null` and emit `error` with `{ action, status }` context.
+Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. After construction, `Audio` emits `started`, `mixerStarted`, `stopped`, `disposed`, and `error`. Most non-stream operations report failure by returning `false` or `null` and emitting `Audio.error` with `{ action, status }`; stream setup rejection and `AudioStream` errors are described above.

@@ -1,74 +1,49 @@
-# Agent Guidelines for opentui
+# OpenTUI Agent Guide
 
-Default to using Bun instead of Node.js.
+## Engineering
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Bun automatically loads .env, so don't use dotenv.
+- Reuse existing seams; do not duplicate policy, ownership, or state across TypeScript, Zig, and framework layers.
+- For bug fixes, first add a focused regression test of observable behavior or invariants. If automation is impossible,
+  record the evidence and remaining manual verification; do not substitute contract sketches or guesses.
+- Make native ownership explicit; clean up handles, callbacks, buffers, and listeners on every exit path. Bound
+  input-driven work and test lifecycle failures.
+- Do not interchange byte lengths, code points, graphemes, and terminal display-cell widths.
+- `oxfmt` is the formatting source of truth (`semi: false`, `printWidth: 120`); avoid unrelated formatting churn.
 
-NOTE: When only changing typescript, you do NOT need to run the build script.
-The build is only needed when changing native code.
+## Tooling And Runtimes
 
-## APIs
+- Use Bun for dependency management and development commands: `bun install`, `bun run <script>`, `bun test`, and `bun <file>`.
+- Run package scripts from the package directory unless the script is defined at the repository root.
+- Shared runtime code must preserve the supported Bun and Node paths. Keep runtime-specific behavior behind existing
+  platform/runtime/build seams; do not introduce Bun-only APIs into shared modules. Node checks use the version enforced
+  by `scripts/node26.mjs`.
 
-Don't use bun-specific APIs. Generated code should work in Bun, Node.js and Deno runtimes.
+## Verification
 
-## Portable FFI Types
+- Run the narrowest relevant test first, then the affected package suite.
+- Ordinary TypeScript source changes do not require the root build. Use the affected package's `test`, `typecheck`,
+  `build`, or validation scripts as applicable.
+- Run `bun run build` from the repository root after native or cross-package build/output changes, or when tests report
+  a missing/stale native artifact. It does not build web or examples; use their package scripts.
+- For native changes, run `bun run test:native` from `packages/core`. Filter with `bun run test:native -Dtest-filter="test name"` while iterating.
+- For runtime, FFI, build, or export changes, run the relevant Node and packed-distribution scripts from that package
+  (such as `test:js:node` or `test:dist`) when present.
+- Use root `bun run fmt:check` and `bun run lint` for final static checks when relevant.
 
-- In portable FFI code, stay within the `node:ffi`/`bun:ffi` type intersection.
-- Avoid backend-specific ABI names in shared definitions: no `usize`, `napi_env`, or `napi_value`. Use explicit widths like `u32`/`u64`.
-- Treat `i64`/`u64` as `bigint`, and native booleans as `0`/`1`.
-- For pointer params backed by transient JavaScript memory, pass the `ArrayBuffer` or view directly; the FFI backend borrows it for the duration of the synchronous call. Never pre-resolve such arguments with `ptr()` — a raw address carries no ownership and the runtime may collect the buffer before native code reads it.
-- Use `ptr(view)` only for addresses serialized into structs or retained by native code, and keep the owning buffer alive for as long as native code can read the address. Shared `Pointer` values stay `number | bigint`.
-- For C strings, encode to bytes and pass pointers; do not assume raw JS strings or portable native string return normalization.
-- Create callbacks through the loaded library/platform facade, not `new JSCallback(...)`, and only assume same-thread callback behavior.
+Prefer tests and `TestRenderer` for automated debugging. For interactive behavior, load the `terminal-control` skill and
+use its terminal tool to run, drive, and inspect the app; repository examples bind backtick to
+`renderer.console.toggle()` for captured `console.log` output. Ask for a user-run reproduction only when the required
+terminal or platform is unavailable locally.
 
-## Testing
+## Portable FFI
 
-Use `bun test` to run tests from the packages directories for a specific package.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.md`.
-
-## Build/Test Commands
-
-To build the project (before running typescript tests), run
-`bun run build`
-FROM THE REPO ROOT to make sure all packages are built correctly.
-
-To run native tests for `packages/core`, run
-`bun run test:native`
-FROM THE `packages/core` DIRECTORY.
-
-To filter native tests, use:
-`bun run test:native -Dtest-filter="test name"`
-FROM THE `packages/core` DIRECTORY.
-
-## Typescript Code Style
-
-- **Runtime**: Bun with TypeScript
-- **Formatting**: oxfmt (semi: false, printWidth: 120)
-- **Imports**: Use explicit imports, group by: built-ins, external deps, internal modules
-- **Types**: Strict TypeScript, use interfaces for options/configs, explicit return types for public APIs
-- **Naming**: camelCase for variables/functions, PascalCase for classes/interfaces, UPPER_CASE for constants
-- **Error Handling**: Use proper Error objects, avoid silent failures
-- **Async**: Prefer async/await over Promises, handle errors explicitly
-- **Comments**: Minimal comments, NO JSDoc
-- **File Structure**: Index files for clean exports, group related functionality
-- **Testing**: Bun test framework, descriptive test names, use beforeEach/afterEach for setup
-
-## Debugging
-
-- NOTE this is a terminal UI lib and when running examples or apps built with it,
-  you cannot currently see log output like console.log. Ask the user to run the example/app and provide the output.
-- Reproduce the issue in a test case. Do NOT start fixing without a reproducible test case.
-  Use debug logs to see what is actually happening. DO NOT GUESS.
+- Portable symbol signatures must stay within the `node:ffi`/`bun:ffi` intersection. Use explicit widths such as
+  `u32`/`u64`, not backend-only ABI names such as `usize`, `napi_env`, or `napi_value`; represent `i64`/`u64` as `bigint`,
+  native booleans as `0`/`1`, and shared pointers as `number | bigint`.
+- Pass transient `ArrayBuffer` values or views directly to synchronous pointer parameters so the backend borrows the
+  owner. Do not pre-resolve them with `ptr()`.
+- Use `ptr(view)` only for addresses stored in structs or retained by native code, and keep the backing buffer alive for
+  the complete native lifetime.
+- Model C-string inputs as pointer parameters and pass owned, NUL-terminated byte buffers directly; string returns are
+  not portable. Create callbacks through the loaded library/platform facade, not `new JSCallback(...)`, and assume only
+  same-thread callbacks.

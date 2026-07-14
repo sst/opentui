@@ -21,7 +21,14 @@ import {
   type LineInfo,
   type MousePointerStyle,
 } from "./types.js"
-export type { LineInfo, AllocatorStats, BuildOptions, NativeRenderStats }
+export type {
+  LineInfo,
+  AllocatorStats,
+  AudioStreamCreateOptions,
+  BuildOptions,
+  NativeAudioStreamStats,
+  NativeRenderStats,
+}
 
 import { RGBA } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
@@ -45,6 +52,11 @@ import {
   AudioCreateOptionsStruct,
   AudioStartOptionsStruct,
   AudioVoiceOptionsStruct,
+  AudioStreamCreateOptionsStruct,
+  AudioStreamStatsStruct,
+  NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonValue,
+  NativeAudioStreamFormat as NativeAudioStreamFormatValue,
+  NativeAudioStreamState as NativeAudioStreamStateValue,
   AudioStatsStruct,
   BuildOptionsStruct,
   AllocatorStatsStruct,
@@ -57,11 +69,22 @@ import type {
   AudioCreateOptions,
   AudioStartOptions,
   AudioVoiceOptions,
+  AudioStreamCreateOptions,
+  NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonType,
+  NativeAudioStreamFormat as NativeAudioStreamFormatType,
+  NativeAudioStreamState as NativeAudioStreamStateType,
+  NativeAudioStreamStats,
   AudioStats,
   BuildOptions,
   AllocatorStats,
   NativeRenderStats,
 } from "./zig-structs.js"
+export const NativeAudioStreamState = NativeAudioStreamStateValue
+export type NativeAudioStreamState = NativeAudioStreamStateType
+export const NativeAudioStreamCloseReason = NativeAudioStreamCloseReasonValue
+export type NativeAudioStreamCloseReason = NativeAudioStreamCloseReasonType
+export const NativeAudioStreamFormat = NativeAudioStreamFormatValue
+export type NativeAudioStreamFormat = NativeAudioStreamFormatType
 import { isBunfsPath } from "./lib/bunfs.js"
 
 registerEnvVar({
@@ -213,6 +236,10 @@ function toSafeFFIU32Length(value: number, label: string): number {
   }
 
   return value
+}
+
+function isFFIU32(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= MAX_FFI_U32
 }
 
 function ptrOrNull(value: ArrayBufferView): Pointer | null {
@@ -1515,6 +1542,42 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "i32",
     },
+    audioCreateStream: {
+      args: ["u32", "ptr", "ptr"],
+      returns: "i32",
+    },
+    audioWriteStream: {
+      args: ["u32", "u32", "ptr", "u32"],
+      returns: "i32",
+    },
+    audioEndStream: {
+      args: ["u32", "u32"],
+      returns: "i32",
+    },
+    audioRestartStream: {
+      args: ["u32", "u32"],
+      returns: "i32",
+    },
+    audioSetStreamVolume: {
+      args: ["u32", "u32", "f32"],
+      returns: "i32",
+    },
+    audioSetStreamPan: {
+      args: ["u32", "u32", "f32"],
+      returns: "i32",
+    },
+    audioSetStreamGroup: {
+      args: ["u32", "u32", "u32"],
+      returns: "i32",
+    },
+    audioGetStreamStats: {
+      args: ["u32", "u32", "ptr"],
+      returns: "i32",
+    },
+    audioCloseStream: {
+      args: ["u32", "u32", "u32", "ptr"],
+      returns: "i32",
+    },
     audioLoad: {
       args: ["u32", "ptr", "u32", "ptr"],
       returns: "i32",
@@ -1914,6 +1977,22 @@ export interface AudioEngineLib {
   audioStart: (engine: AudioEngineHandle, options?: AudioStartOptions | null) => number
   audioStartMixer: (engine: AudioEngineHandle) => number
   audioStop: (engine: AudioEngineHandle) => number
+  audioCreateStream: (
+    engine: AudioEngineHandle,
+    options: AudioStreamCreateOptions,
+  ) => { status: number; streamId: number | null }
+  audioWriteStream: (engine: AudioEngineHandle, streamId: number, data: Uint8Array) => number
+  audioEndStream: (engine: AudioEngineHandle, streamId: number) => number
+  audioRestartStream: (engine: AudioEngineHandle, streamId: number) => number
+  audioSetStreamVolume: (engine: AudioEngineHandle, streamId: number, volume: number) => number
+  audioSetStreamPan: (engine: AudioEngineHandle, streamId: number, pan: number) => number
+  audioSetStreamGroup: (engine: AudioEngineHandle, streamId: number, groupId: number) => number
+  audioGetStreamStats: (engine: AudioEngineHandle, streamId: number) => NativeAudioStreamStats | null
+  audioCloseStream: (
+    engine: AudioEngineHandle,
+    streamId: number,
+    reason: NativeAudioStreamCloseReason,
+  ) => { status: number; stats: NativeAudioStreamStats | null }
   audioLoad: (engine: AudioEngineHandle, data: Uint8Array) => { status: number; soundId: number | null }
   audioUnload: (engine: AudioEngineHandle, soundId: number) => number
   audioPlay: (
@@ -4918,7 +4997,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public audioStart(engine: Pointer, options?: AudioStartOptions | null): number {
-    const optionsBuffer = options == null ? null : AudioStartOptionsStruct.pack(options)
+    let optionsBuffer: ArrayBuffer | null
+    try {
+      optionsBuffer = options == null ? null : AudioStartOptionsStruct.pack(options)
+    } catch {
+      return -1
+    }
     return this.opentui.symbols.audioStart(engine, optionsBuffer ? ptr(optionsBuffer) : null)
   }
 
@@ -4928,6 +5012,67 @@ class FFIRenderLib implements RenderLib {
 
   public audioStop(engine: Pointer): number {
     return this.opentui.symbols.audioStop(engine)
+  }
+
+  public audioCreateStream(
+    engine: AudioEngineHandle,
+    options: AudioStreamCreateOptions,
+  ): { status: number; streamId: number | null } {
+    if (
+      !isFFIU32(options.groupId) ||
+      (options.format !== NativeAudioStreamFormat.Mp3 && options.format !== NativeAudioStreamFormat.Flac)
+    ) {
+      return { status: -1, streamId: null }
+    }
+    const optionsBuffer = AudioStreamCreateOptionsStruct.pack(options)
+    const outBuffer = new ArrayBuffer(4)
+    const status = this.opentui.symbols.audioCreateStream(engine, optionsBuffer, outBuffer)
+    if (status !== 0) return { status, streamId: null }
+    return { status, streamId: new Uint32Array(outBuffer)[0] ?? null }
+  }
+
+  public audioWriteStream(engine: AudioEngineHandle, streamId: number, data: Uint8Array): number {
+    const dataLength = toSafeFFIU32Length(data.byteLength, "Audio stream data length")
+    return this.opentui.symbols.audioWriteStream(engine, streamId, dataLength === 0 ? null : data, dataLength)
+  }
+
+  public audioEndStream(engine: AudioEngineHandle, streamId: number): number {
+    return this.opentui.symbols.audioEndStream(engine, streamId)
+  }
+
+  public audioRestartStream(engine: AudioEngineHandle, streamId: number): number {
+    return this.opentui.symbols.audioRestartStream(engine, streamId)
+  }
+
+  public audioSetStreamVolume(engine: AudioEngineHandle, streamId: number, volume: number): number {
+    return this.opentui.symbols.audioSetStreamVolume(engine, streamId, volume)
+  }
+
+  public audioSetStreamPan(engine: AudioEngineHandle, streamId: number, pan: number): number {
+    return this.opentui.symbols.audioSetStreamPan(engine, streamId, pan)
+  }
+
+  public audioSetStreamGroup(engine: AudioEngineHandle, streamId: number, groupId: number): number {
+    if (!isFFIU32(groupId)) return -1
+    return this.opentui.symbols.audioSetStreamGroup(engine, streamId, groupId)
+  }
+
+  public audioGetStreamStats(engine: AudioEngineHandle, streamId: number): NativeAudioStreamStats | null {
+    const outBuffer = new ArrayBuffer(AudioStreamStatsStruct.size)
+    const status = this.opentui.symbols.audioGetStreamStats(engine, streamId, outBuffer)
+    if (status !== 0) return null
+    return AudioStreamStatsStruct.unpack(outBuffer) as NativeAudioStreamStats
+  }
+
+  public audioCloseStream(
+    engine: AudioEngineHandle,
+    streamId: number,
+    reason: NativeAudioStreamCloseReason,
+  ): { status: number; stats: NativeAudioStreamStats | null } {
+    const outBuffer = new ArrayBuffer(AudioStreamStatsStruct.size)
+    const status = this.opentui.symbols.audioCloseStream(engine, streamId, reason, outBuffer)
+    if (status !== 0) return { status, stats: null }
+    return { status, stats: AudioStreamStatsStruct.unpack(outBuffer) as NativeAudioStreamStats }
   }
 
   public audioLoad(engine: Pointer, data: Uint8Array): { status: number; soundId: number | null } {
@@ -4950,6 +5095,7 @@ class FFIRenderLib implements RenderLib {
     soundId: number,
     options?: AudioVoiceOptions,
   ): { status: number; voiceId: number | null } {
+    if (options?.groupId !== undefined && !isFFIU32(options.groupId)) return { status: -1, voiceId: null }
     const outBuffer = new ArrayBuffer(4)
     const optionsBuffer = options ? AudioVoiceOptionsStruct.pack(options) : null
     const status = this.opentui.symbols.audioPlay(
@@ -4970,6 +5116,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public audioSetVoiceGroup(engine: Pointer, voiceId: number, groupId: number): number {
+    if (!isFFIU32(groupId)) return -1
     return this.opentui.symbols.audioSetVoiceGroup(engine, voiceId, groupId)
   }
 
