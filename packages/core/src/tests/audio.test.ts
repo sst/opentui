@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
-import { Audio } from "../audio.js"
-import { resolveRenderLib } from "../zig.js"
+import { Audio, AudioInitializationError, setupAudio } from "../audio.js"
+import { NativeAudioStreamFormat, resolveRenderLib } from "../zig.js"
 
 const SAMPLE_RATE = 48_000
 
@@ -53,6 +53,182 @@ afterEach(() => {
   }
 })
 
+function replaceMethod(target: object, name: string, replacement: unknown): () => void {
+  const previous = Object.getOwnPropertyDescriptor(target, name)
+  Object.defineProperty(target, name, {
+    configurable: true,
+    writable: true,
+    value: replacement,
+  })
+  return () => {
+    if (previous) Object.defineProperty(target, name, previous)
+    else delete (target as Record<string, unknown>)[name]
+  }
+}
+
+function captureAudioEvents(run: () => void): string[] {
+  const events: string[] = []
+  const restoreEmit = replaceMethod(Audio.prototype, "emit", (event: string) => {
+    events.push(event)
+    return false
+  })
+  try {
+    run()
+  } finally {
+    restoreEmit()
+  }
+  return events
+}
+
+test("Audio.create throws synchronously when engine creation fails", () => {
+  let thrown: unknown
+  const events = captureAudioEvents(() => {
+    try {
+      Audio.create({ playbackChannels: 0xffffffff })
+    } catch (error) {
+      thrown = error
+    }
+  })
+
+  expect(thrown).toBeInstanceOf(AudioInitializationError)
+  expect((thrown as AudioInitializationError).action).toBe("createAudioEngine")
+  expect(events).toEqual([])
+})
+
+test("setupAudio uses the same synchronous initialization contract", () => {
+  expect(() => setupAudio({ playbackChannels: 0xffffffff })).toThrow(AudioInitializationError)
+})
+
+test("Audio auto-start failure throws and destroys the native engine", () => {
+  const lib = resolveRenderLib()
+  const originalDestroy = lib.destroyAudioEngine
+  let destroyCalls = 0
+  let thrown: unknown
+
+  const restoreStart = replaceMethod(lib, "audioStart", () => -5)
+  const restoreDestroy = replaceMethod(lib, "destroyAudioEngine", (engine: Parameters<typeof originalDestroy>[0]) => {
+    destroyCalls += 1
+    originalDestroy.call(lib, engine)
+  })
+  try {
+    const events = captureAudioEvents(() => {
+      try {
+        Audio.create({ autoStart: true })
+      } catch (error) {
+        thrown = error
+      }
+    })
+    expect(events).toEqual([])
+  } finally {
+    restoreDestroy()
+    restoreStart()
+  }
+
+  expect(thrown).toBeInstanceOf(AudioInitializationError)
+  expect((thrown as AudioInitializationError).action).toBe("start")
+  expect((thrown as AudioInitializationError).status).toBe(-5)
+  expect(destroyCalls).toBe(1)
+})
+
+test("Audio wraps an auto-start option packing failure and destroys the native engine", () => {
+  const lib = resolveRenderLib()
+  const originalCreate = lib.createAudioEngine
+  const originalDestroy = lib.destroyAudioEngine
+  const startFailure = new Error("start option getter failed")
+  const startOptions = Object.defineProperty({}, "periodSizeInFrames", {
+    get() {
+      throw startFailure
+    },
+  })
+  let createdEngine: ReturnType<typeof originalCreate> = null
+  let destroyCalls = 0
+  let thrown: unknown
+
+  const restoreCreate = replaceMethod(lib, "createAudioEngine", (options: Parameters<typeof originalCreate>[0]) => {
+    createdEngine = originalCreate.call(lib, options)
+    return createdEngine
+  })
+  const restoreDestroy = replaceMethod(lib, "destroyAudioEngine", (engine: Parameters<typeof originalDestroy>[0]) => {
+    destroyCalls += 1
+    originalDestroy.call(lib, engine)
+  })
+
+  try {
+    try {
+      Audio.create({ autoStart: true, startOptions })
+    } catch (error) {
+      thrown = error
+    }
+  } finally {
+    restoreDestroy()
+    restoreCreate()
+    if (createdEngine != null && destroyCalls === 0) originalDestroy.call(lib, createdEngine)
+  }
+
+  expect({
+    wrapped: thrown instanceof AudioInitializationError,
+    action: thrown instanceof AudioInitializationError ? thrown.action : undefined,
+    status: thrown instanceof AudioInitializationError ? thrown.status : undefined,
+    destroyCalls,
+  }).toEqual({ wrapped: true, action: "start", status: -1, destroyCalls: 1 })
+})
+
+test("Audio.start reports an option packing failure through its status contract", () => {
+  const packingFailure = new Error("start option getter failed")
+  const startOptions = Object.defineProperty({}, "periodSizeInFrames", {
+    get() {
+      throw packingFailure
+    },
+  })
+  const audio = Audio.create({ autoStart: false })
+  instances.push(audio)
+  const errors: unknown[] = []
+  audio.on("error", (error, context) => {
+    errors.push({ message: error.message, context })
+  })
+
+  expect(audio.start(startOptions)).toBe(false)
+  expect(audio.isStarted()).toBe(false)
+  expect(audio.isMixerStarted()).toBe(false)
+  expect(errors).toEqual([{ message: "Audio start failed: -1", context: { action: "start", status: -1 } }])
+})
+
+test("Audio auto-start success updates started state", () => {
+  const lib = resolveRenderLib()
+  let audio!: Audio
+  const restoreStart = replaceMethod(lib, "audioStart", () => 0)
+  try {
+    const events = captureAudioEvents(() => {
+      audio = Audio.create({ autoStart: true })
+    })
+    expect(events).toEqual([])
+  } finally {
+    restoreStart()
+  }
+
+  expect(audio.isStarted()).toBe(true)
+  expect(audio.isMixerStarted()).toBe(true)
+  instances.push(audio)
+})
+
+test("Audio explicit start emits started after construction", () => {
+  const lib = resolveRenderLib()
+  const restoreStart = replaceMethod(lib, "audioStart", () => 0)
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    let startedEvents = 0
+    audio.on("started", () => {
+      startedEvents += 1
+    })
+
+    expect(audio.start()).toBe(true)
+    expect(startedEvents).toBe(1)
+  } finally {
+    restoreStart()
+  }
+})
+
 test("Audio loads wav and mixes frames", () => {
   const audio = Audio.create({ autoStart: false })
   instances.push(audio)
@@ -92,10 +268,15 @@ test("Audio start reports playback availability only", () => {
 
   expect(audio.isStarted()).toBe(false)
   expect(audio.isMixerStarted()).toBe(false)
+  let startedEvents = 0
+  audio.on("started", () => {
+    startedEvents += 1
+  })
 
   const started = audio.start()
   expect(audio.isStarted()).toBe(started)
   expect(audio.isMixerStarted()).toBe(started)
+  expect(startedEvents).toBe(started ? 1 : 0)
 })
 
 test("Audio startMixer enables headless mixing without playback", () => {
@@ -274,6 +455,57 @@ test("audioLoad rejects oversized payload lengths before truncating to u32", () 
   } finally {
     lib.destroyAudioEngine(engine)
   }
+})
+
+test("audioWriteStream rejects oversized payload lengths before truncating to u32", () => {
+  const lib = resolveRenderLib()
+  const engine = lib.createAudioEngine()
+  expect(engine).not.toBeNull()
+  if (engine == null) return
+
+  const oversized = {
+    buffer: new ArrayBuffer(1),
+    byteOffset: 0,
+    byteLength: 0x1_0000_0000,
+    length: 0x1_0000_0000,
+  } as unknown as Uint8Array
+
+  try {
+    expect(() => lib.audioWriteStream(engine, 1, oversized)).toThrow(
+      "Audio stream data length exceeds native u32 length limit",
+    )
+  } finally {
+    lib.destroyAudioEngine(engine)
+  }
+})
+
+test("audio stream wrappers reject a destroyed engine handle", () => {
+  const lib = resolveRenderLib()
+  const engine = lib.createAudioEngine()
+  expect(engine).not.toBeNull()
+  if (engine == null) return
+  lib.destroyAudioEngine(engine)
+
+  expect(
+    lib.audioCreateStream(engine, {
+      capacityMs: 100,
+      startupMs: 10,
+      resumeMs: 10,
+      volume: 1,
+      pan: 0,
+      groupId: 0,
+      maxProbeBytes: 1024 * 1024,
+      format: NativeAudioStreamFormat.Mp3,
+    }),
+  ).toEqual({ status: -1, streamId: null })
+  expect(lib.audioWriteStream(engine, 1, new Uint8Array())).toBe(-1)
+  expect(lib.audioEndStream(engine, 1)).toBe(-1)
+  expect(lib.audioRestartStream(engine, 1)).toBe(-1)
+  expect(lib.audioSetStreamVolume(engine, 1, 1)).toBe(-1)
+  expect(lib.audioSetStreamPan(engine, 1, 0)).toBe(-1)
+  expect(lib.audioSetStreamGroup(engine, 1, 0)).toBe(-1)
+  expect(lib.audioGetStreamStats(engine, 1)).toBeNull()
+  expect(lib.audioCloseStream(engine, 1, 2)).toEqual({ status: -1, stats: null })
 })
 
 test("audioCreateGroup rejects oversized encoded name lengths before truncating to u32", () => {

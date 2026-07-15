@@ -151,6 +151,12 @@ const parserWorker = await import(${JSON.stringify(`${packageJson.name}/parser.w
 const nativePackage = await import(nativePackageName)
 
 assert.equal(typeof core.createCliRenderer, "function")
+assert.equal(typeof core.Audio, "function")
+assert.equal(typeof core.AudioStreamError, "function")
+assert.equal(typeof core.createIcyStreamDemuxer, "function")
+assert.equal(core.NativeAudioStreamCloseReason.TransportError, 1)
+assert.equal(core.NativeAudioStreamFormat.Mp3, 1)
+assert.equal(core.NativeAudioStreamFormat.Flac, 2)
 assert.equal(typeof testing.createTestRenderer, "function")
 assert.equal(typeof parserWorker, "object")
 assert.equal(typeof nativePackage.default, "string")
@@ -209,6 +215,10 @@ describe("${packageJson.name} dist smoke test", () => {
     const nativePackage = await import(${JSON.stringify(nativePackageName)})
 
     expect(typeof core.createCliRenderer).toBe("function")
+    expect(typeof core.Audio).toBe("function")
+    expect(typeof core.AudioStreamError).toBe("function")
+    expect(core.NativeAudioStreamCloseReason.TransportError).toBe(1)
+    expect(core.NativeAudioStreamFormat.Flac).toBe(2)
     expect(typeof testing.createTestRenderer).toBe("function")
     expect(typeof parserWorker).toBe("object")
     expect(typeof runtimePlugin.createRuntimePlugin).toBe("function")
