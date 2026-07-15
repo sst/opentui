@@ -747,6 +747,7 @@ export class TerminalConsole extends EventEmitter {
 
   public hide(): void {
     if (this.isVisible) {
+      this.stopAutoScroll()
       this.isVisible = false
       this.blur()
       terminalConsoleCache.setCachingEnabled(true)

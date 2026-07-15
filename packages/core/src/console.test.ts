@@ -514,6 +514,34 @@ describe("TerminalConsole", () => {
       expect(terminalConsole["_autoScrollInterval"]).toBeNull()
     })
 
+    test("should stop auto-scroll when hidden", () => {
+      const clock = new ManualClock()
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+        clock,
+      })
+      terminalConsole["isVisible"] = true
+      terminalConsole["_displayLines"] = Array.from({ length: 50 }, (_, i) => ({
+        text: `Line ${i}`,
+        level: "LOG" as any,
+        indent: false,
+      }))
+      terminalConsole["scrollTopIndex"] = 20
+
+      const bounds = terminalConsole.bounds
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 5, "down", 0))
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "drag", 0))
+      expect(terminalConsole["_autoScrollInterval"]).not.toBeNull()
+
+      terminalConsole.hide()
+
+      expect(terminalConsole["_autoScrollInterval"]).toBeNull()
+      const scrollTopIndex = terminalConsole["scrollTopIndex"]
+      clock.advance(100)
+      expect(terminalConsole["scrollTopIndex"]).toBe(scrollTopIndex)
+    })
+
     test("should stop auto-scroll when dragging away from edge", async () => {
       terminalConsole = new TerminalConsole(mockRenderer as any, {
         position: ConsolePosition.BOTTOM,
