@@ -51,6 +51,8 @@ export interface StdinParserProtocolContext {
 export interface StdinParserOptions {
   timeoutMs?: number
   maxPendingBytes?: number
+  maxPasteBytes?: number
+  pasteTimeoutMs?: number
   armTimeouts?: boolean
   onTimeoutFlush?: () => void
   useKittyKeyboard?: boolean
@@ -112,6 +114,14 @@ interface PasteCollector {
 // this as a balanced default for now.
 const DEFAULT_TIMEOUT_MS = 20
 const DEFAULT_MAX_PENDING_BYTES = 64 * 1024
+// Hard ceiling on a single bracketed paste. Bounds memory and guarantees the
+// parser leaves paste mode even if the ESC[201~ end marker never arrives
+// (ConPTY is known to drop/split it), instead of swallowing all input forever.
+const DEFAULT_MAX_PASTE_BYTES = 8 * 1024 * 1024
+// Idle window after the last paste byte before an unterminated paste is
+// force-finalized. Real pastes stream in sub-window bursts and keep re-arming
+// this; only a dropped end marker lets the stream go idle long enough to fire.
+const DEFAULT_PASTE_TIMEOUT_MS = 250
 const INITIAL_PENDING_CAPACITY = 256
 const ESC = 0x1b
 const BEL = 0x07
@@ -568,6 +578,8 @@ export class StdinParser {
   private readonly events: StdinEvent[] = []
   private readonly timeoutMs: number
   private readonly maxPendingBytes: number
+  private readonly maxPasteBytes: number
+  private readonly pasteTimeoutMs: number
   private readonly armTimeouts: boolean
   private readonly onTimeoutFlush: (() => void) | null
   private readonly useKittyKeyboard: boolean
@@ -598,6 +610,8 @@ export class StdinParser {
   constructor(options: StdinParserOptions = {}) {
     this.timeoutMs = normalizePositiveOption(options.timeoutMs, DEFAULT_TIMEOUT_MS)
     this.maxPendingBytes = normalizePositiveOption(options.maxPendingBytes, DEFAULT_MAX_PENDING_BYTES)
+    this.maxPasteBytes = normalizePositiveOption(options.maxPasteBytes, DEFAULT_MAX_PASTE_BYTES)
+    this.pasteTimeoutMs = normalizePositiveOption(options.pasteTimeoutMs, DEFAULT_PASTE_TIMEOUT_MS)
     this.armTimeouts = options.armTimeouts ?? true
     this.onTimeoutFlush = options.onTimeoutFlush ?? null
     this.useKittyKeyboard = options.useKittyKeyboard ?? true
@@ -1914,8 +1928,37 @@ export class StdinParser {
       this.pushPasteBytes(combined.subarray(0, stableLength))
     }
 
+    if (paste.totalLength >= this.maxPasteBytes) {
+      // Cap reached without an end marker: flush the held tail as body and
+      // leave paste mode so subsequent bytes parse normally instead of being
+      // swallowed indefinitely.
+      this.pushPasteBytes(combined.subarray(stableLength))
+      paste.tail = EMPTY_BYTES
+      this.finalizePaste()
+      return EMPTY_BYTES
+    }
+
     paste.tail = Uint8Array.from(combined.subarray(stableLength))
     return EMPTY_BYTES
+  }
+
+  // Emits whatever the paste collector holds as a paste event and leaves paste
+  // mode. Used by the size cap and the idle timeout when no ESC[201~ end marker
+  // arrives, so a malformed/split paste can't swallow all input permanently.
+  private finalizePaste(): void {
+    const paste = this.paste
+    if (!paste) {
+      return
+    }
+    if (paste.tail.length > 0) {
+      this.pushPasteBytes(paste.tail)
+      paste.tail = EMPTY_BYTES
+    }
+    this.events.push({
+      type: "paste",
+      bytes: joinPasteBytes(paste.parts, paste.totalLength),
+    })
+    this.paste = null
   }
 
   private pushPasteBytes(bytes: Uint8Array): void {
@@ -1959,7 +2002,28 @@ export class StdinParser {
       return
     }
 
-    if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
+    if (this.paste) {
+      // While a bracketed paste is open, arm an idle timer instead of leaving
+      // input unguarded. A real paste streams in bursts and keeps re-arming
+      // this; if the end marker never arrives the stream goes idle and we
+      // finalize the paste rather than swallowing all later input forever.
+      this.clearTimeout()
+      this.timeoutId = this.clock.setTimeout(() => {
+        this.timeoutId = null
+        if (this.destroyed || !this.paste) {
+          return
+        }
+        try {
+          this.finalizePaste()
+          this.onTimeoutFlush?.()
+        } catch (error) {
+          console.error("stdin parser paste timeout flush failed", error)
+        }
+      }, this.pasteTimeoutMs)
+      return
+    }
+
+    if (this.pendingSinceMs === null || this.pending.length === 0) {
       this.clearTimeout()
       return
     }
