@@ -95,6 +95,7 @@ pub const WriteState = struct {
     provider: ?*Provider = null,
     clear: bool = false,
     selection: u32 = 0,
+    owner_cookie: ?linux.XcbCookie = null,
     waiting_timestamp: bool = false,
     mutation_dispatched: bool = false,
     committed: bool = false,
@@ -697,6 +698,10 @@ pub const Connection = struct {
         else
             reply.atom_type == state.target;
         if (reply.format != 8 or !accepted_type) {
+            if (state.target == atoms_value.text and state.actual_type == 0 and reply.format == 8) {
+                state.phase = .refused;
+                return .refused;
+            }
             return failReadCandidate(state);
         }
         if (state.actual_type == 0) state.actual_type = reply.atom_type;
@@ -825,19 +830,60 @@ pub const Connection = struct {
         if (self.output_pending) switch (self.flushOutput()) {
             .complete => {},
             .pending => return .pending,
-            .failed => return self.abortWrite(state),
+            .failed => {
+                if (!state.mutation_dispatched) return self.abortWrite(state);
+                self.output_pending = false;
+                _ = self.fail(.flush);
+                state.failed = true;
+                return .failed;
+            },
         };
-        return .pending;
+        const cookie = state.owner_cookie orelse return .pending;
+        var reply_pointer: ?*anyopaque = null;
+        var error_pointer: ?*linux.XcbGenericError = null;
+        const available = self.symbols.xcb_poll_for_reply(
+            self.connection.?,
+            cookie.sequence,
+            &reply_pointer,
+            &error_pointer,
+        );
+        if (available == 0) return .pending;
+        state.owner_cookie = null;
+        defer if (reply_pointer) |pointer| std.c.free(pointer);
+        defer if (error_pointer) |pointer| std.c.free(pointer);
+        const opaque_reply = reply_pointer orelse {
+            state.failed = true;
+            return .failed;
+        };
+        if (error_pointer != null) {
+            state.failed = true;
+            return .failed;
+        }
+        const reply: *const linux.XcbGetSelectionOwnerReply = @ptrCast(@alignCast(opaque_reply));
+        const expected_owner = if (state.clear) 0 else self.owner_window;
+        if (reply.owner != expected_owner) {
+            if (!state.clear) self.retireCurrent(state.selection);
+            state.failed = true;
+            return .failed;
+        }
+        state.committed = true;
+        return .committed;
     }
 
     pub fn cleanupWrite(self: *Connection, state: *WriteState) void {
+        if (state.owner_cookie) |cookie| {
+            if (self.connection) |connection| self.symbols.xcb_discard_reply(connection, cookie.sequence);
+        }
         if (state.provider) |provider| self.removeProvider(provider, false);
         if (state.waiting_timestamp) self.retireTimestampWindow(state) else self.destroyTimestampWindow(state);
         state.* = .{};
     }
 
-    pub fn finishMutationForShutdown(_: *Connection, state: *WriteState) void {
+    pub fn abandonMutationConfirmation(self: *Connection, state: *WriteState) void {
         std.debug.assert(state.mutation_dispatched);
+        if (state.owner_cookie) |cookie| {
+            if (self.connection) |connection| self.symbols.xcb_discard_reply(connection, cookie.sequence);
+        }
         state.* = .{};
     }
 
@@ -908,7 +954,7 @@ pub const Connection = struct {
             self.setCurrentProvider(provider);
             state.provider = null;
         }
-        state.committed = true;
+        state.owner_cookie = self.symbols.xcb_get_selection_owner(self.connection.?, state.selection);
         _ = self.queueFlush();
         return true;
     }
@@ -1424,6 +1470,7 @@ pub const Connection = struct {
 
     fn removeTransfer(self: *Connection, index: u32) void {
         std.debug.assert(self.transfers[index].id != 0);
+        const requestor = self.transfers[index].requestor;
         const provider = self.transfers[index].provider;
         std.debug.assert(provider.transfer_count > 0);
         provider.transfer_count -= 1;
@@ -1431,6 +1478,14 @@ pub const Connection = struct {
         if (index != self.transfer_count) self.transfers[index] = self.transfers[self.transfer_count];
         if (self.transfer_count == 0) self.transfer_cursor = 0 else self.transfer_cursor %= self.transfer_count;
         if (provider.retired and provider.transfer_count == 0) self.removeProvider(provider, true);
+        if (self.phase == .ready) {
+            for (self.transfers[0..self.transfer_count]) |transfer| {
+                if (transfer.requestor == requestor) return;
+            }
+            const mask = [_]u32{0};
+            _ = self.symbols.xcb_change_window_attributes(self.connection.?, requestor, 1 << 11, &mask);
+            _ = self.queueFlush();
+        }
     }
 
     fn removeTransferByID(self: *Connection, transfer_id: u64) void {
@@ -2010,13 +2065,14 @@ test "X11 timestamp events are isolated by per-mutation windows" {
     try std.testing.expect(successor.waiting_timestamp);
 }
 
-test "X11 write and clear commit when SetSelectionOwner is dispatched" {
+test "X11 write and clear commit after the server confirms selection ownership" {
     var symbols: linux.XcbSymbols = undefined;
     symbols.xcb_destroy_window = fakeDestroyWindow;
     symbols.xcb_set_selection_owner = fakeSetSelectionOwner;
     symbols.xcb_get_selection_owner = fakeGetSelectionOwner;
+    symbols.xcb_poll_for_reply = fakePollSelectionOwnerReply;
     symbols.xcb_flush = fakeFlush;
-    var fake: FakeXcb = .{};
+    var fake: FakeXcb = .{ .replies_ready = true };
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
     connection.connection = @ptrCast(&fake);
     connection.phase = .ready;
@@ -2048,12 +2104,12 @@ test "X11 write and clear commit when SetSelectionOwner is dispatched" {
 
     try std.testing.expect(connection.routeWriteEvent(&state, @ptrCast(&event)));
     try std.testing.expect(state.mutation_dispatched);
-    try std.testing.expect(state.committed);
+    try std.testing.expect(!state.committed);
     try std.testing.expect(state.provider == null);
     try std.testing.expect(connection.primary_provider == new_provider);
     try std.testing.expect(old_provider.retired);
     try std.testing.expectEqual(SelectionResult.committed, connection.driveWrite(&state));
-    try std.testing.expectEqual(@as(u32, 0), fake.get_owner_count);
+    try std.testing.expectEqual(@as(u32, 1), fake.get_owner_count);
 
     var clear_state: WriteState = .{
         .clear = true,
@@ -2065,9 +2121,37 @@ test "X11 write and clear commit when SetSelectionOwner is dispatched" {
     clear_event.window = 23;
     clear_event.time = 8;
     try std.testing.expect(connection.routeWriteEvent(&clear_state, @ptrCast(&clear_event)));
-    try std.testing.expect(clear_state.committed);
+    try std.testing.expect(!clear_state.committed);
     try std.testing.expect(connection.primary_provider == null);
-    try std.testing.expectEqual(@as(u32, 0), fake.get_owner_count);
+    try std.testing.expectEqual(SelectionResult.committed, connection.driveWrite(&clear_state));
+    try std.testing.expectEqual(@as(u32, 2), fake.get_owner_count);
+
+    const rejected_provider = try std.testing.allocator.create(Provider);
+    rejected_provider.* = .{ .selection = ATOM_PRIMARY, .data = &.{} };
+    connection.providers[1] = rejected_provider;
+    var rejected_state: WriteState = .{
+        .provider = rejected_provider,
+        .selection = ATOM_PRIMARY,
+        .waiting_timestamp = true,
+        .timestamp_window = 24,
+    };
+    var rejected_event = event;
+    rejected_event.window = 24;
+    rejected_event.time = 9;
+    fake.reject_selection_owner = true;
+    try std.testing.expect(connection.routeWriteEvent(&rejected_state, @ptrCast(&rejected_event)));
+    try std.testing.expectEqual(SelectionResult.failed, connection.driveWrite(&rejected_state));
+    try std.testing.expect(connection.primary_provider == null);
+    try std.testing.expect(connection.providers[1] == null);
+
+    fake.flush_fails = true;
+    connection.phase = .ready;
+    connection.output_pending = true;
+    var flush_failure: WriteState = .{ .mutation_dispatched = true };
+    try std.testing.expectEqual(SelectionResult.failed, connection.driveWrite(&flush_failure));
+    try std.testing.expectEqual(Failure.flush, connection.failure);
+    try std.testing.expectEqual(Phase.failed, connection.phase);
+    try std.testing.expect(!connection.output_pending);
 
     connection.releaseProviders();
 }
@@ -2108,10 +2192,13 @@ test "X11 INCR expiry runs while provider responses remain pending" {
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     symbols.xcb_poll_for_reply = fakePendingReply;
+    symbols.xcb_change_window_attributes = fakeChangeWindowAttributes;
+    symbols.xcb_flush = fakeFlush;
     var fake: FakeXcb = .{};
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
     connection.connection = @ptrCast(&fake);
     connection.phase = .ready;
+    connection.output_ready_override = true;
     var provider: Provider = .{ .selection = ATOM_PRIMARY, .data = &.{}, .transfer_count = 1 };
     var transfers = [_]Transfer{.{
         .id = 1,
@@ -2138,6 +2225,7 @@ test "X11 INCR expiry runs while provider responses remain pending" {
     try std.testing.expectEqual(@as(u32, 0), connection.transfer_count);
     try std.testing.expectEqual(@as(u32, 0), provider.transfer_count);
     try std.testing.expectEqual(@as(u32, 1), connection.response_count);
+    try std.testing.expectEqual(@as(u32, 1), fake.event_mask_clear_count);
 }
 
 test "X11 expired initial INCR response refuses its delayed checked reply" {
@@ -2146,6 +2234,7 @@ test "X11 expired initial INCR response refuses its delayed checked reply" {
     symbols.xcb_poll_for_reply = fakePollForReply;
     symbols.xcb_request_check = fakeRequestCheck;
     symbols.xcb_send_event = fakeSendEvent;
+    symbols.xcb_change_window_attributes = fakeChangeWindowAttributes;
     symbols.xcb_flush = fakeFlush;
     var fake: FakeXcb = .{ .replies_ready = true };
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
@@ -2199,6 +2288,7 @@ test "X11 delayed expired INCR response preserves replacement transfer" {
     symbols.xcb_poll_for_reply = fakePollForReply;
     symbols.xcb_request_check = fakeRequestCheck;
     symbols.xcb_send_event = fakeSendEvent;
+    symbols.xcb_change_window_attributes = fakeChangeWindowAttributes;
     symbols.xcb_flush = fakeFlush;
     var fake: FakeXcb = .{ .replies_ready = true };
     var connection = Connection.init(std.testing.allocator, &symbols, 2);
@@ -2555,6 +2645,10 @@ const FakeXcb = struct {
     flush_count: u32 = 0,
     discard_count: u32 = 0,
     get_owner_count: u32 = 0,
+    selection_owner: u32 = 0,
+    reject_selection_owner: bool = false,
+    event_mask_clear_count: u32 = 0,
+    flush_fails: bool = false,
     disconnected: bool = false,
     send_event_count: u32 = 0,
     last_notify_property: u32 = std.math.maxInt(u32),
@@ -2777,16 +2871,17 @@ fn fakeInternAtom(
 fn fakeFlush(connection: *linux.XcbConnection) callconv(.c) c_int {
     const fake: *FakeXcb = @ptrCast(@alignCast(connection));
     fake.flush_count += 1;
-    return 1;
+    return if (fake.flush_fails) 0 else 1;
 }
 
 fn fakeSetSelectionOwner(
     connection: *linux.XcbConnection,
-    _: u32,
+    owner: u32,
     _: u32,
     _: u32,
 ) callconv(.c) linux.XcbCookie {
     const fake: *FakeXcb = @ptrCast(@alignCast(connection));
+    if (!fake.reject_selection_owner) fake.selection_owner = owner;
     const sequence = fake.next_sequence;
     fake.next_sequence += 1;
     return .{ .sequence = sequence };
@@ -2798,6 +2893,40 @@ fn fakeGetSelectionOwner(connection: *linux.XcbConnection, _: u32) callconv(.c) 
     const sequence = fake.next_sequence;
     fake.next_sequence += 1;
     return .{ .sequence = sequence };
+}
+
+fn fakePollSelectionOwnerReply(
+    connection: *linux.XcbConnection,
+    _: u32,
+    reply_pointer: *?*anyopaque,
+    _: *?*linux.XcbGenericError,
+) callconv(.c) c_int {
+    const fake: *FakeXcb = @ptrCast(@alignCast(connection));
+    if (!fake.replies_ready) return 0;
+    const reply_memory = std.c.malloc(@sizeOf(linux.XcbGetSelectionOwnerReply)) orelse unreachable;
+    const reply: *linux.XcbGetSelectionOwnerReply = @ptrCast(@alignCast(reply_memory));
+    reply.* = .{
+        .response_type = 1,
+        .pad0 = 0,
+        .sequence = 0,
+        .length = 0,
+        .owner = fake.selection_owner,
+        .pad1 = .{0} ** 20,
+    };
+    reply_pointer.* = reply;
+    return 1;
+}
+
+fn fakeChangeWindowAttributes(
+    connection: *linux.XcbConnection,
+    _: u32,
+    _: u32,
+    values: ?*const anyopaque,
+) callconv(.c) linux.XcbCookie {
+    const fake: *FakeXcb = @ptrCast(@alignCast(connection));
+    const event_mask: *const u32 = @ptrCast(@alignCast(values.?));
+    if (event_mask.* == 0) fake.event_mask_clear_count += 1;
+    return .{ .sequence = fake.next_sequence };
 }
 
 fn fakePendingReply(
