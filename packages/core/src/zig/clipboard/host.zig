@@ -262,8 +262,12 @@ const Operation = struct {
         if (operation.x11_write.mutation_dispatched) {
             if (operation.x11_write.committed) {
                 operation.status = if (operation.kind == .write) .written else .cleared;
+                return .already_terminal;
             }
-            return .already_terminal;
+            if (operation.service.x11) |x11| x11.abandonMutationConfirmation(&operation.x11_write);
+            operation.cancel_requested = true;
+            operation.status = .cancelled;
+            return .requested;
         }
         operation.cancel_requested = true;
         operation.platform_cancel.store(true, .release);
@@ -315,9 +319,13 @@ const Operation = struct {
             return .cancelled;
         }
         const elapsed_ns = clipboard_clock.nowNs() - operation.started_ns;
-        if (!operation.x11_write.mutation_dispatched and
-            elapsed_ns >= @as(i128, operation.timeout_ms) * std.time.ns_per_ms)
-        {
+        if (elapsed_ns >= @as(i128, operation.timeout_ms) * std.time.ns_per_ms) {
+            if (operation.x11_write.mutation_dispatched) {
+                if (operation.service.x11) |x11| x11.abandonMutationConfirmation(&operation.x11_write);
+                operation.status = .timed_out;
+                operation.mutex.unlock();
+                return .timed_out;
+            }
             if (operation.wayland_conversion_started) {
                 operation.platform_cancel.store(true, .release);
                 operation.mutex.unlock();
@@ -708,19 +716,6 @@ const Service = struct {
         }
         if (comptime builtin.os.tag == .linux) {
             if (service.x11) |x11| x11.requestShutdown();
-            if (service.x11) |x11| {
-                for (service.operations.items) |operation| {
-                    if (operation.kind != .write and operation.kind != .clear) continue;
-                    operation.mutex.lock();
-                    if (operation.status != .pending or !operation.x11_write.mutation_dispatched) {
-                        operation.mutex.unlock();
-                        continue;
-                    }
-                    x11.finishMutationForShutdown(&operation.x11_write);
-                    operation.status = if (operation.kind == .write) .written else .cleared;
-                    operation.mutex.unlock();
-                }
-            }
             if (service.wayland) |wayland| wayland.releaseProviders();
             if (service.x11) |x11| x11.releaseProviders();
         }
@@ -981,19 +976,14 @@ const Service = struct {
                 .unsupported => return service.fallbackCurrentWayland(operation),
                 .failed => return service.finishWaylandFailure(operation),
             }
-        } else {
-            // Selection events are dispatched only while the connection is driven,
-            // so after idle time the cached offer can be stale. One sync roundtrip
-            // issued at read admission proves the offer reflects the compositor's
-            // current selection before it is chosen. The core data-device path
-            // above has a stronger freshness protocol through focus acquisition.
-            if (operation.wayland_barrier_serial == 0) {
-                operation.wayland_barrier_serial = service.wayland.?.requestSelectionBarrier() orelse
-                    return service.finishWaylandFailure(operation);
-            }
-            if (!service.wayland.?.selectionBarrierReached(operation.wayland_barrier_serial)) {
-                return .pending;
-            }
+        }
+        // Order every read after selection events emitted before its admission.
+        if (operation.wayland_barrier_serial == 0) {
+            operation.wayland_barrier_serial = service.wayland.?.requestSelectionBarrier() orelse
+                return service.finishWaylandFailure(operation);
+        }
+        if (!service.wayland.?.selectionBarrierReached(operation.wayland_barrier_serial)) {
+            return .pending;
         }
         const offer = service.wayland.?.currentOffer(primary) orelse {
             operation.releaseCoreFocus();
@@ -1083,8 +1073,22 @@ const Service = struct {
         offered: []const u8,
     ) OperationStatus {
         if (comptime builtin.os.tag != .linux) return service.finishOperation(operation, .unsupported);
-        const pipe = std.posix.pipe2(.{ .NONBLOCK = true, .CLOEXEC = true }) catch {
+        const pipe = std.posix.pipe2(.{ .CLOEXEC = true }) catch {
             operation.rememberFailure(.wayland_transfer, "Failed to create Wayland clipboard transfer pipe");
+            return service.rememberWaylandReadFailure(operation);
+        };
+        // Keep the transferred write end blocking; only the locally polled read end may return WouldBlock.
+        const flags = std.posix.fcntl(pipe[0], std.posix.F.GETFL, 0) catch {
+            std.posix.close(pipe[0]);
+            std.posix.close(pipe[1]);
+            operation.rememberFailure(.wayland_transfer, "Failed to configure Wayland clipboard transfer pipe");
+            return service.rememberWaylandReadFailure(operation);
+        };
+        const nonblocking: u32 = @bitCast(std.posix.O{ .NONBLOCK = true });
+        _ = std.posix.fcntl(pipe[0], std.posix.F.SETFL, flags | nonblocking) catch {
+            std.posix.close(pipe[0]);
+            std.posix.close(pipe[1]);
+            operation.rememberFailure(.wayland_transfer, "Failed to configure Wayland clipboard transfer pipe");
             return service.rememberWaylandReadFailure(operation);
         };
         const requested = service.wayland.?.receive(offer, offered, pipe[1]);
@@ -1144,8 +1148,10 @@ const Service = struct {
                 }
             }
             const routed = x11.routeWriteEvent(&candidate.x11_write, event);
+            if (routed and candidate.kind == .write and candidate.x11_write.mutation_dispatched) {
+                candidate.request = &.{};
+            }
             if (routed and candidate.x11_write.committed) {
-                if (candidate.kind == .write) candidate.request = &.{};
                 candidate.status = if (candidate.kind == .write) .written else .cleared;
             }
             candidate.mutex.unlock();
@@ -2173,18 +2179,40 @@ test "clipboard platform mutation callbacks mark the shared operation state" {
     try std.testing.expect(operation.platform_mutation_started.load(.acquire));
 }
 
-test "clipboard X11 cancellation cannot win after ownership mutation dispatch" {
+test "clipboard X11 cancellation and timeout settle pending ownership confirmation" {
     if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
+    try clipboard_clock.init();
+    var symbols: clipboard_linux.XcbSymbols = undefined;
+    symbols.xcb_discard_reply = testX11DiscardReply;
+    var fake_connection: u8 = 0;
+    var x11 = clipboard_x11.Connection.init(std.testing.allocator, &symbols, 1);
+    x11.connection = @ptrCast(&fake_connection);
+    var service: Service = .{
+        .allocator = std.testing.allocator,
+        .libraries = .{},
+        .requested_wayland_seat = &.{},
+        .environment_wayland_seat = &.{},
+        .x11 = &x11,
+    };
     var operation: Operation = .{
         .allocator = std.testing.allocator,
-        .service = undefined,
+        .service = &service,
         .kind = .write,
-        .x11_write = .{ .mutation_dispatched = true },
+        .x11_write = .{ .owner_cookie = .{ .sequence = 1 }, .mutation_dispatched = true },
     };
 
-    try std.testing.expectEqual(CancelStatus.already_terminal, operation.requestCancel());
-    try std.testing.expectEqual(OperationStatus.pending, operation.status);
-    try std.testing.expect(!operation.cancel_requested);
+    try std.testing.expectEqual(CancelStatus.requested, operation.requestCancel());
+    try std.testing.expectEqual(OperationStatus.cancelled, operation.status);
+    try std.testing.expect(operation.cancel_requested);
+    try std.testing.expect(operation.x11_write.owner_cookie == null);
+
+    operation.status = .pending;
+    operation.cancel_requested = false;
+    operation.timeout_ms = 1;
+    operation.started_ns = 0;
+    operation.x11_write = .{ .owner_cookie = .{ .sequence = 2 }, .mutation_dispatched = true };
+    try std.testing.expectEqual(OperationStatus.timed_out, operation.poll());
+    try std.testing.expect(operation.x11_write.owner_cookie == null);
 }
 
 test "clipboard mutation ordering is selection-scoped when operation storage is reordered" {
@@ -2410,7 +2438,7 @@ test "clipboard final X11 refusal cleans read state before publication" {
     try std.testing.expectEqual(clipboard_x11.ReadState{}, operation.x11_read);
 }
 
-test "clipboard shutdown settles dispatched X11 mutations before releasing providers" {
+test "clipboard shutdown cancels unconfirmed X11 mutations before releasing providers" {
     if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     var symbols: clipboard_linux.XcbSymbols = undefined;
     symbols.xcb_discard_reply = testX11DiscardReply;
@@ -2434,8 +2462,8 @@ test "clipboard shutdown settles dispatched X11 mutations before releasing provi
         .kind = .write,
         .x11_write = .{
             .selection = 1,
+            .owner_cookie = .{ .sequence = 1 },
             .mutation_dispatched = true,
-            .committed = true,
         },
     };
     var storage = [_]*Operation{&operation};
@@ -2443,7 +2471,7 @@ test "clipboard shutdown settles dispatched X11 mutations before releasing provi
 
     service.beginShutdown();
 
-    try std.testing.expectEqual(OperationStatus.written, operation.status);
+    try std.testing.expectEqual(OperationStatus.cancelled, operation.status);
     try std.testing.expect(operation.x11_write.provider == null);
     try std.testing.expect(x11.providers[0] == null);
 }
