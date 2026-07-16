@@ -6,6 +6,8 @@ const Allocator = std.mem.Allocator;
 const BI_RGB: u32 = 0;
 const BI_BITFIELDS: u32 = 3;
 const BI_ALPHABITFIELDS: u32 = 6;
+const LCS_WINDOWS_COLOR_SPACE: u32 = 0x57696e20;
+const LCS_SRGB: u32 = 0x73524742;
 const CONVERSION_STOP_INTERVAL: usize = 4096;
 const PNG_CHUNK_LENGTH_MAX: usize = 0x7fff_ffff;
 const PNG_SIGNATURE = "\x89PNG\r\n\x1a\n";
@@ -110,8 +112,12 @@ const DeflateWriter = struct {
     fn writeData(writer: *DeflateWriter, data: []const u8, options: ConvertOptions) ConvertError!void {
         try writer.updateAdler(data, options);
         var index: usize = 0;
+        var next_stop: usize = 0;
         while (index < data.len) {
-            if (index % CONVERSION_STOP_INTERVAL == 0) try checkStop(options);
+            if (index >= next_stop) {
+                try checkStop(options);
+                next_stop = std.math.add(usize, index, CONVERSION_STOP_INTERVAL) catch std.math.maxInt(usize);
+            }
             if (writer.has_previous_byte and data[index] == writer.previous_byte) {
                 var run_length: usize = 1;
                 while (run_length < 258 and index + run_length < data.len and data[index + run_length] == writer.previous_byte) {
@@ -304,6 +310,10 @@ fn parseDib(dib: []const u8, explicit_pixel_offset: ?usize, options: ConvertOpti
     switch (header_size_u32) {
         40, 52, 56, 108, 124 => {},
         else => return error.Unsupported,
+    }
+    if (header_size_u32 >= 108) {
+        const color_space = readInt(u32, dib, 56) catch return error.InvalidData;
+        if (color_space != LCS_SRGB and color_space != LCS_WINDOWS_COLOR_SPACE) return error.Unsupported;
     }
 
     const width_signed = readInt(i32, dib, 4) catch return error.InvalidData;
@@ -569,6 +579,7 @@ fn dibV5Fixture() [132]u8 {
     std.mem.writeInt(u32, dib[44..48], 0x0000ff00, .little);
     std.mem.writeInt(u32, dib[48..52], 0x000000ff, .little);
     std.mem.writeInt(u32, dib[52..56], 0xff000000, .little);
+    std.mem.writeInt(u32, dib[56..60], LCS_SRGB, .little);
     dib[124..132].* = .{ 10, 20, 30, 40, 50, 60, 70, 255 };
     return dib;
 }
@@ -646,6 +657,9 @@ test "Windows DIB conversion rejects malformed and unsupported headers" {
     var dib_v5 = dibV5Fixture();
     std.mem.writeInt(u32, dib_v5[40..44], 0x00ff00ff, .little);
     try std.testing.expectError(error.InvalidData, convertToPng(std.testing.allocator, &dib_v5, testOptions()));
+    dib_v5 = dibV5Fixture();
+    std.mem.writeInt(u32, dib_v5[56..60], 0, .little);
+    try std.testing.expectError(error.Unsupported, convertToPng(std.testing.allocator, &dib_v5, testOptions()));
 }
 
 test "Windows DIB conversion rejects top-down BI_ALPHABITFIELDS" {
