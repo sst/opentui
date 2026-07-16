@@ -293,7 +293,10 @@ pub const Connection = struct {
         if (self.barrier_serial_requested < self.barrier_serial_inflight) {
             self.barrier_serial_requested = self.barrier_serial_inflight;
         }
-        if (self.queueFlush() == .failed) return null;
+        if (self.queueFlush() == .failed) {
+            _ = self.fail(.flush);
+            return null;
+        }
         return self.barrier_serial_inflight;
     }
 
@@ -308,8 +311,7 @@ pub const Connection = struct {
         if (self.issueSelectionBarrier() == null) {
             // Reads waiting on the follow-up barrier cannot progress on a
             // connection that cannot even queue a sync request.
-            if (self.failure == .none) self.failure = .protocol;
-            self.phase = .failed;
+            _ = self.fail(.protocol);
         }
     }
 
@@ -407,7 +409,7 @@ pub const Connection = struct {
         slot.* = provider;
         if (primary) self.primary_provider = provider else self.clipboard_provider = provider;
         const flush_result = self.queueFlush();
-        if (flush_result == .failed) self.phase = .failed;
+        if (flush_result == .failed) _ = self.fail(.flush);
         return if (flush_result == .complete) .ok else .committed;
     }
 
@@ -423,7 +425,7 @@ pub const Connection = struct {
         if (provider) |value| self.retireProvider(value);
         if (primary) self.primary_provider = null else self.clipboard_provider = null;
         const flush_result = self.queueFlush();
-        if (flush_result == .failed) self.phase = .failed;
+        if (flush_result == .failed) _ = self.fail(.flush);
         return if (flush_result == .complete) .ok else .committed;
     }
 
@@ -882,6 +884,8 @@ pub const Connection = struct {
     }
 
     fn fail(self: *Connection, failure: Failure) Progress {
+        if (self.barrier_callback) |callback| self.symbols.wl_proxy_destroy(callback);
+        self.barrier_callback = null;
         if (self.failure == .none) self.failure = failure;
         self.phase = .failed;
         return .failed;
@@ -948,8 +952,7 @@ pub const Connection = struct {
             self.seat_count -= 1;
             self.seats[index] = self.seats[self.seat_count];
             if (self.bound_seat_global == name) {
-                self.failure = .protocol;
-                self.phase = .failed;
+                _ = self.fail(.protocol);
             }
             return proxy;
         }
@@ -980,8 +983,7 @@ pub const Connection = struct {
             const has_keyboard = capabilities & WL_SEAT_CAPABILITY_KEYBOARD != 0;
             if (self.core_data_device and self.bound_seat_global == seat.global_name and had_keyboard and !has_keyboard) {
                 self.core_focus_lost = true;
-                self.failure = .protocol;
-                self.phase = .failed;
+                _ = self.fail(.protocol);
             }
             return;
         }
@@ -1100,7 +1102,7 @@ pub const Connection = struct {
 
     fn deviceFinished(data: ?*anyopaque, _: ?*WlProxy) callconv(.c) void {
         const self: *Connection = @ptrCast(@alignCast(data.?));
-        self.phase = .failed;
+        _ = self.fail(.protocol);
     }
 
     fn devicePrimarySelection(data: ?*anyopaque, _: ?*WlProxy, offer: ?*WlProxy) callconv(.c) void {
@@ -1464,6 +1466,17 @@ test "Wayland selection barrier reports sync issue failure to the caller" {
 
     try std.testing.expect(connection.requestSelectionBarrier() == null);
     try std.testing.expect(connection.barrier_callback == null);
+
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_add_listener = testAddListener;
+    symbols.wl_proxy_destroy = testDestroyProxy;
+    var flush_failure = Connection.init(std.testing.allocator, &symbols, "", "", 1);
+    flush_failure.display = @ptrFromInt(1);
+    flush_failure.flush_outcome_override = .{ .result = -1, .errno = .PIPE };
+    try std.testing.expect(flush_failure.requestSelectionBarrier() == null);
+    try std.testing.expect(flush_failure.barrier_callback == null);
+    try std.testing.expectEqual(Phase.failed, flush_failure.phase);
+    try std.testing.expect(!flush_failure.hasWork());
 }
 
 test "Wayland read queues callbacks for the next dispatch invocation" {
@@ -1827,6 +1840,7 @@ test "Wayland bound core seat keyboard loss fails active and future acquisitions
     connection.core_focus_lost = false;
     connection.failure = .none;
     connection.phase = .ready;
+    connection.barrier_callback = null;
 
     Connection.seatCapabilities(&connection, seat_proxy, 0);
 
@@ -2069,6 +2083,7 @@ test "Wayland registry removal invalidates cached globals and selected seats" {
     connection.bound_seat_global = 12;
     connection.failure = .none;
     connection.phase = .ready;
+    connection.barrier_callback = null;
 
     try std.testing.expect(connection.removeGlobal(10) == null);
     try std.testing.expect(connection.ext_global == null);

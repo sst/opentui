@@ -144,7 +144,10 @@ static int32_t ot_clipboard_macos_read_png(NSPasteboard *pasteboard, uint32_t ma
         return OT_CLIPBOARD_MACOS_STATUS_FAILED;
     }
     CGImageDestinationRef destination = (__bridge CGImageDestinationRef)destination_owner;
-    CGImageDestinationAddImage(destination, image, NULL);
+    NSNumber *orientation = properties[(__bridge NSString *)kCGImagePropertyOrientation];
+    NSDictionary *destination_properties =
+        orientation == nil ? nil : @{ (__bridge NSString *)kCGImagePropertyOrientation : orientation };
+    CGImageDestinationAddImage(destination, image, (__bridge CFDictionaryRef)destination_properties);
     BOOL finalized = CGImageDestinationFinalize(destination);
     status = ot_clipboard_macos_check_stop(stop_callback, stop_context);
     if (status != OT_CLIPBOARD_MACOS_STATUS_OK) {

@@ -158,6 +158,7 @@ const validateSelection = (selection: ClipboardSelection | undefined): Clipboard
   return normalized
 }
 
+// WAYLAND_SOCKET-only launches can create one host service per process because the inherited fd is one-shot.
 export const createHostClipboard = (options: HostClipboardOptions = {}): HostClipboardService =>
   createHostClipboardWithBackend(options, createNativeHostClipboardBackend)
 
