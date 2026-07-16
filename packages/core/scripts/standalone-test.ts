@@ -259,7 +259,7 @@ try {
   }
 
   const hash = assetHash(assets)
-  const extractionRoot = join(tmpdir(), `opentui-core-sea-${hash}`)
+  const extractionRoot = join(dataDir, `opentui-core-sea-${hash}`)
   rmSync(extractionRoot, { recursive: true, force: true })
   const seaMain = join(consumerDir, "sea-main.mjs")
   writeFileSync(seaMain, seaPrelude(hash) + bundle)
@@ -293,7 +293,14 @@ try {
   if (process.platform !== "win32") chmodSync(deployedBunExecutable, 0o755)
   rmSync(buildDir, { recursive: true, force: true })
 
-  const runtimeEnv = { ...process.env, HOME: dataDir, XDG_DATA_HOME: dataDir }
+  const runtimeEnv = {
+    ...process.env,
+    HOME: dataDir,
+    XDG_DATA_HOME: dataDir,
+    TMPDIR: dataDir,
+    TEMP: dataDir,
+    TMP: dataDir,
+  }
   delete runtimeEnv.OTUI_ASSET_ROOT
   delete runtimeEnv.OTUI_TREE_SITTER_WORKER_PATH
   for (let runIndex = 0; runIndex < 2; runIndex++) {

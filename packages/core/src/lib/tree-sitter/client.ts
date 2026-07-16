@@ -213,7 +213,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     let workerPath = resolveDefaultTreeSitterWorkerPath(new URL("./parser.worker.js", import.meta.url))
 
-    if (process.env.OTUI_ASSET_ROOT === undefined && !existsSync(workerPath)) {
+    if (!process.env.OTUI_ASSET_ROOT && !existsSync(workerPath)) {
       workerPath = new URL("./parser.worker.ts", import.meta.url).href
     }
 

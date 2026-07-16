@@ -33,7 +33,7 @@ export function resolveAssetRootPath(key: string): string | undefined {
   validateAssetKey(key)
 
   const root = process.env.OTUI_ASSET_ROOT
-  if (root === undefined) {
+  if (!root) {
     return undefined
   }
 

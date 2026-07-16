@@ -26,6 +26,11 @@ interface FileImportModule {
 
 type FilePathFallback = string | URL | (() => string | URL)
 
+export interface ResolveBundledFilePathOptions {
+  loadBundledFileFallback?: boolean
+  useAssetRoot?: boolean
+}
+
 type GlobalWithBun = typeof globalThis & { Bun?: BunLike }
 
 const TEXT_ENCODER = new TextEncoder()
@@ -46,9 +51,9 @@ export async function resolveBundledFilePath(
   loadBundledFile: () => Promise<FileImportModule>,
   fallbackPath: FilePathFallback,
   metaUrl: string,
-  useAssetRoot = true,
+  options: ResolveBundledFilePathOptions = {},
 ): Promise<string> {
-  if (useAssetRoot) {
+  if (options.useAssetRoot ?? true) {
     const configuredPath = resolveAssetRootPath(key)
     if (configuredPath !== undefined) {
       return configuredPath
@@ -61,7 +66,7 @@ export async function resolveBundledFilePath(
       return path
     }
 
-    return (await loadBundledFilePath(loadBundledFile, metaUrl)) ?? path
+    return (await loadBundledFilePath(loadBundledFile, metaUrl, options.loadBundledFileFallback ?? false)) ?? path
   }
 
   return normalizeLoadedFilePath((await loadBundledFile()).default, metaUrl)
@@ -87,10 +92,18 @@ function normalizeLoadedFilePath(loadedPath: string, baseUrl: string): string {
 async function loadBundledFilePath(
   loadBundledFile: () => Promise<FileImportModule>,
   metaUrl: string,
+  loadBundledFileFallback: boolean,
 ): Promise<string | undefined> {
   const specifier = extractBundledImportSpecifier(loadBundledFile)
   if (!specifier) {
-    return undefined
+    if (!loadBundledFileFallback) {
+      return undefined
+    }
+    try {
+      return normalizeLoadedFilePath((await loadBundledFile()).default, metaUrl)
+    } catch {
+      return undefined
+    }
   }
 
   try {

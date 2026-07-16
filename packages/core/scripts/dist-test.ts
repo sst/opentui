@@ -32,11 +32,12 @@ function runCommand(
   commandArgs: string[],
   cwd: string,
   errorMessage: string,
-  options: { stdio?: "inherit" | "pipe" } = {},
+  options: { stdio?: "inherit" | "pipe"; timeout?: number } = {},
 ): SpawnSyncReturns<Buffer> {
   const result = spawnSync(command, commandArgs, {
     cwd,
     stdio: options.stdio ?? "inherit",
+    timeout: options.timeout,
   })
 
   if (result.error) {
@@ -371,7 +372,9 @@ function assertNodeStaticImportFailure(
 function installAndTest(nodeDir: string, bunDir: string): void {
   runCommand("npm", ["install", "--ignore-scripts", "--no-package-lock"], nodeDir, "Node dist test install failed")
   runCommand(nodePath, ["-e", `import(${JSON.stringify(packageJson.name)})`], nodeDir, "Node import smoke check failed")
-  runCommand(nodePath, ["--experimental-ffi", "--no-warnings", "index.mjs"], nodeDir, "Node dist smoke tests failed")
+  runCommand(nodePath, ["--experimental-ffi", "--no-warnings", "index.mjs"], nodeDir, "Node dist smoke tests failed", {
+    timeout: 60_000,
+  })
   runCommand(nodePath, ["require.cjs"], nodeDir, "Node CommonJS export smoke tests failed")
 
   assertNodeStaticImportFailure(

@@ -16,7 +16,7 @@ const bundledTreeSitterWorkerPath = await resolveBundledFilePath(
   () => import("@opentui/core/parser.worker" as string, { with: { type: "file" } }),
   new URL("../lib/tree-sitter/parser.worker.js", import.meta.url),
   import.meta.url,
-  false,
+  { useAssetRoot: false },
 )
 
 export function resolveDefaultParserAsset(relativePath: string, fallbackPath: URL): Promise<string> {

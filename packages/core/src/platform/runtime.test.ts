@@ -44,6 +44,14 @@ describe("platform/runtime", () => {
     )
   })
 
+  test("treats an empty OTUI_ASSET_ROOT as unset", () => {
+    process.env.OTUI_ASSET_ROOT = ""
+
+    expect(resolveAssetPath("@opentui/core/parser.worker.js", "/package/parser.worker.js")).toBe(
+      "/package/parser.worker.js",
+    )
+  })
+
   test("reports a configured asset key and resolved missing path without falling back", () => {
     const root = mkdtempSync(join(assetTestTmpdir, "opentui-assets-"))
     const key = "web-tree-sitter/tree-sitter.wasm"
@@ -98,6 +106,19 @@ describe("platform/runtime", () => {
       loadBundledFile,
       "./missing-bundled-tree-sitter.wasm",
       import.meta.url,
+    )
+
+    expect(resolved).toBe(fileURLToPath(bundledUrl))
+  })
+
+  test("resolves transformed asset loaders when a non-Bun bundle has no source fallback", async () => {
+    const bundledUrl = new URL("./bundled-tree-sitter.wasm", import.meta.url).href
+    const resolved = await resolveBundledFilePath(
+      "web-tree-sitter/tree-sitter.wasm",
+      async () => ({ default: bundledUrl }),
+      "./missing-transformed-tree-sitter.wasm",
+      import.meta.url,
+      { loadBundledFileFallback: true },
     )
 
     expect(resolved).toBe(fileURLToPath(bundledUrl))
