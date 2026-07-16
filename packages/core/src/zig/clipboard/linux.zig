@@ -8,7 +8,7 @@ pub const Environment = struct {
     pub fn fromMap(env: *const std.process.EnvMap) Environment {
         return .{
             .is_wsl = env.get("WSL_DISTRO_NAME") != null or env.get("WSL_INTEROP") != null,
-            .has_wayland_display = hasNonEmptyValue(env, "WAYLAND_DISPLAY"),
+            .has_wayland_display = hasNonEmptyValue(env, "WAYLAND_DISPLAY") or hasNonEmptyValue(env, "WAYLAND_SOCKET"),
             .has_x11_display = hasNonEmptyValue(env, "DISPLAY"),
         };
     }
@@ -89,6 +89,14 @@ pub const XcbInternAtomReply = extern struct {
     sequence: u16,
     length: u32,
     atom: u32,
+};
+pub const XcbGetSelectionOwnerReply = extern struct {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    length: u32,
+    owner: u32,
+    pad1: [20]u8,
 };
 pub const XcbGetPropertyReply = extern struct {
     response_type: u8,
@@ -190,6 +198,7 @@ pub const WaylandSymbols = struct {
     wl_display_connect: *const fn (?[*:0]const u8) callconv(.c) ?*WlDisplay,
     wl_display_disconnect: *const fn (*WlDisplay) callconv(.c) void,
     wl_display_get_fd: *const fn (*WlDisplay) callconv(.c) c_int,
+    // Deliberately require Wayland 1.25 rather than bulk-dispatching an unbounded event queue.
     wl_display_dispatch_pending_single: *const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_get_error: *const fn (*WlDisplay) callconv(.c) c_int,
     wl_display_set_max_buffer_size: *const fn (*WlDisplay, usize) callconv(.c) void,
@@ -431,6 +440,9 @@ test "clipboard linux environment treats display variables as nonempty and WSL a
     try std.testing.expect(detected.is_wsl);
     try std.testing.expect(!detected.has_wayland_display);
     try std.testing.expect(detected.has_x11_display);
+
+    try env.put("WAYLAND_SOCKET", "7");
+    try std.testing.expect(Environment.fromMap(&env).has_wayland_display);
 }
 
 test "clipboard linux environment recognizes WSL kernel releases without environment markers" {
@@ -442,6 +454,7 @@ test "clipboard linux environment recognizes WSL kernel releases without environ
 test "clipboard XCB ABI types match the core protocol layouts" {
     try std.testing.expectEqual(@as(usize, 4), @sizeOf(XcbCookie));
     try std.testing.expectEqual(@as(usize, 12), @sizeOf(XcbInternAtomReply));
+    try std.testing.expectEqual(@as(usize, 32), @sizeOf(XcbGetSelectionOwnerReply));
     try std.testing.expectEqual(@as(usize, 32), @sizeOf(XcbGetPropertyReply));
     try std.testing.expectEqual(@as(usize, 36), @sizeOf(XcbGenericEvent));
     try std.testing.expectEqual(@as(usize, 36), @sizeOf(XcbGenericError));
