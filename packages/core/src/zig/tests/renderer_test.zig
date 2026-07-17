@@ -1,5 +1,6 @@
 const std = @import("std");
 const renderer = @import("../renderer.zig");
+const renderer_output = @import("../renderer-output.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const buffer = @import("../buffer.zig");
@@ -2601,4 +2602,206 @@ test "buffered backend frees grown buffers cleanly on deinit" {
         try w.writeAll(&chunk);
     }
     try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
+}
+
+// ============================================================
+// hyperlink-output-integrity (fix-phantom-osc8-hyperlink)
+// ============================================================
+
+// Memory output that captures bytes AND can be made to report a write failure
+// via take_failed_fn, simulating a dropped/torn stdout write.
+const FailableMemoryOutput = struct {
+    allocator: std.mem.Allocator,
+    bytes: std.ArrayListUnmanaged(u8) = .{},
+    failed: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    last_write_start: usize = 0,
+    last_write_len: usize = 0,
+
+    fn init(allocator: std.mem.Allocator) FailableMemoryOutput {
+        return .{ .allocator = allocator };
+    }
+
+    fn deinit(self: *FailableMemoryOutput) void {
+        self.bytes.deinit(self.allocator);
+    }
+
+    fn bufferedOutput(self: *FailableMemoryOutput) renderer_output.BufferedOutput {
+        return .{ .ctx = self, .write_fn = write, .thread_safe = true, .take_failed_fn = takeFailed };
+    }
+
+    fn lastWrite(self: *const FailableMemoryOutput) []const u8 {
+        return self.bytes.items[self.last_write_start .. self.last_write_start + self.last_write_len];
+    }
+
+    fn write(ctx: *anyopaque, data: []const u8) void {
+        const self: *FailableMemoryOutput = @ptrCast(@alignCast(ctx));
+        const start = self.bytes.items.len;
+        self.bytes.appendSlice(self.allocator, data) catch return;
+        self.last_write_start = start;
+        self.last_write_len = data.len;
+    }
+
+    fn takeFailed(ctx: *anyopaque) bool {
+        const self: *FailableMemoryOutput = @ptrCast(@alignCast(ctx));
+        return self.failed.swap(false, .acq_rel);
+    }
+};
+
+test "BufferedBackend.endFrame returns failed when output reports write failure" {
+    var out = FailableMemoryOutput.init(std.testing.allocator);
+    defer out.deinit();
+    var backend = try renderer.BufferedBackend.create(std.testing.allocator, out.bufferedOutput());
+    defer backend.deinit();
+
+    backend.beginFrame();
+    try backend.writer().writeAll("frame bytes");
+    try std.testing.expectEqual(renderer_output.WriteStatus.ok, backend.endFrame());
+
+    // Mark the output as failed (as if a real stdout write had dropped bytes).
+    out.failed.store(true, .release);
+    backend.beginFrame();
+    try backend.writer().writeAll("next frame bytes");
+    try std.testing.expectEqual(renderer_output.WriteStatus.failed, backend.endFrame());
+
+    // Flag is check-and-clear: a subsequent clean frame returns ok.
+    backend.beginFrame();
+    try backend.writer().writeAll("clean frame");
+    try std.testing.expectEqual(renderer_output.WriteStatus.ok, backend.endFrame());
+}
+
+test "threaded byte-idle frame still surfaces a pending write failure" {
+    var out = FailableMemoryOutput.init(std.testing.allocator);
+    defer out.deinit();
+    var backend = try renderer.BufferedBackend.create(std.testing.allocator, out.bufferedOutput());
+    defer backend.deinit();
+    backend.setUseThread(true);
+    defer backend.setUseThread(false);
+
+    // A prior threaded write failed; the app then goes byte-idle. The empty
+    // frame must still report the failure so an idle app (the phantom
+    // scenario) recovers without waiting for its next non-empty frame.
+    out.failed.store(true, .release);
+    backend.beginFrame();
+    try std.testing.expectEqual(renderer_output.WriteStatus.failed, backend.endFrame());
+
+    // Cleared after the poll: the next idle frame is ok again.
+    backend.beginFrame();
+    try std.testing.expectEqual(renderer_output.WriteStatus.ok, backend.endFrame());
+}
+
+test "hyperlink-capable frame starts with OSC 8 close" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("Hi");
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var tr = try TestRenderer.create(std.testing.allocator, 10, 2, pool);
+    defer tr.deinit();
+    tr.renderer.terminal.caps.hyperlinks = true;
+
+    tr.renderer.getNextBuffer().drawTextBuffer(view, 0, 0);
+    _ = tr.renderer.render(false);
+
+    const out = tr.lastOutput();
+    try std.testing.expect(out.len > 0);
+    try std.testing.expect(std.mem.startsWith(u8, out, "\x1b]8;;\x1b\\"));
+}
+
+test "non-hyperlink frame does not emit the OSC 8 close reset" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("Hi");
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var tr = try TestRenderer.create(std.testing.allocator, 10, 2, pool);
+    defer tr.deinit();
+    tr.renderer.terminal.caps.hyperlinks = false;
+
+    tr.renderer.getNextBuffer().drawTextBuffer(view, 0, 0);
+    _ = tr.renderer.render(false);
+
+    const out = tr.lastOutput();
+    try std.testing.expect(out.len > 0);
+    try std.testing.expect(!std.mem.startsWith(u8, out, "\x1b]8;;\x1b\\"));
+    try std.testing.expect(std.mem.indexOf(u8, out, "\x1b]8;;") == null);
+}
+
+test "no-op diff still emits zero bytes for the frame" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("Hi");
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var tr = try TestRenderer.create(std.testing.allocator, 10, 2, pool);
+    defer tr.deinit();
+    tr.renderer.terminal.caps.hyperlinks = true;
+
+    tr.renderer.getNextBuffer().drawTextBuffer(view, 0, 0);
+    _ = tr.renderer.render(false); // settling frame: paints cells
+    _ = tr.renderer.render(false); // settling frame: settles cursor/mouse state
+
+    // Third render: content unchanged AND cursor/mouse state settled. No path
+    // reaches beginRenderFrame, so the frame emits nothing at all — in
+    // particular no frame-start OSC 8 reset.
+    _ = tr.renderer.render(false);
+    const out = tr.lastOutput();
+    try std.testing.expectEqual(@as(usize, 0), out.len);
+}
+
+test "write failure forces a full repaint on the next frame" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("Hi");
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var out = FailableMemoryOutput.init(std.testing.allocator);
+    defer out.deinit();
+    var cli = try CliRenderer.createWithOptions(std.testing.allocator, 4, 2, pool, .{
+        .output = .{ .buffered = out.bufferedOutput() },
+    });
+    defer cli.destroy();
+    cli.terminal.caps.hyperlinks = true;
+
+    // Paint a cell and report the commit as failed (torn write). render() must
+    // propagate .failed and set force_full_repaint for the next frame.
+    cli.getNextBuffer().drawTextBuffer(view, 0, 0);
+    out.failed.store(true, .release);
+    const status1 = cli.render(false);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, status1);
+    try std.testing.expect(cli.force_full_repaint);
+
+    // Next frame: force_full_repaint drives a full repaint and then clears.
+    out.failed.store(false, .release);
+    const status2 = cli.render(false);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, status2);
+    try std.testing.expect(!cli.force_full_repaint);
+
+    // A full repaint resyncs hyperlink state: it starts hyperlink-closed and
+    // rewrites every live-region cell.
+    const frame2 = out.lastWrite();
+    try std.testing.expect(std.mem.startsWith(u8, frame2, "\x1b]8;;\x1b\\"));
 }

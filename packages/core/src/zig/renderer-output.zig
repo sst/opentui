@@ -33,6 +33,12 @@ pub const BufferedOutput = struct {
     ctx: *anyopaque,
     write_fn: BufferedWriteFn,
     thread_safe: bool = false,
+    /// Optional check-and-clear: returns true if the output experienced a
+    /// write/flush failure since the last poll, clearing the flag. Null when
+    /// the output cannot fail (e.g. MemoryOutput). Lets BufferedBackend.endFrame
+    /// observe failures from any concrete output (Stdout or test-injected)
+    /// without changing the void BufferedWriteFn signature.
+    take_failed_fn: ?*const fn (ctx: *anyopaque) bool = null,
 
     pub fn write(self: BufferedOutput, data: []const u8) void {
         self.write_fn(self.ctx, data);
@@ -41,12 +47,17 @@ pub const BufferedOutput = struct {
 
 pub const StdoutOutput = struct {
     stdoutBuffer: [4096]u8 = undefined,
+    // Sticky failure flag set by writeAll/flush catch arms. Atomic because the
+    // threaded backend calls write() from renderThreadFn while endFrame() polls
+    // from the renderer thread.
+    write_failed: std.atomic.Value(bool) = .{ .raw = false },
 
     pub fn bufferedOutput(self: *StdoutOutput) BufferedOutput {
         return .{
             .ctx = self,
             .write_fn = write,
             .thread_safe = true,
+            .take_failed_fn = takeWriteFailed,
         };
     }
 
@@ -56,8 +67,20 @@ pub const StdoutOutput = struct {
         const self: *StdoutOutput = @ptrCast(@alignCast(ctx));
         var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
         const w = &stdoutWriter.interface;
-        w.writeAll(data) catch {};
-        w.flush() catch {};
+        w.writeAll(data) catch {
+            self.write_failed.store(true, .release);
+            return;
+        };
+        w.flush() catch {
+            self.write_failed.store(true, .release);
+        };
+    }
+
+    /// Check-and-clear: returns whether a write/flush failed since the last
+    /// poll, atomically resetting the flag.
+    fn takeWriteFailed(ctx: *anyopaque) bool {
+        const self: *StdoutOutput = @ptrCast(@alignCast(ctx));
+        return self.write_failed.swap(false, .acq_rel);
     }
 };
 
@@ -415,6 +438,11 @@ pub const BufferedBackend = struct {
         if (self.useThread and frame_len == 0) {
             self.lastCommittedBuffer = self.activeBuffer;
             self.hasCommittedFrame = true;
+            // Still poll for failures: a prior threaded write may have failed
+            // while the app is byte-idle (no cell changes). Without this, an
+            // idle app would defer failure recovery until its next non-empty
+            // frame — exactly the phantom-hyperlink scenario.
+            if (self.takeOutputFailure()) return .failed;
             return .ok;
         }
         const writeStart = std.time.microTimestamp();
@@ -453,7 +481,20 @@ pub const BufferedBackend = struct {
 
         self.lastCommittedBuffer = committed_buffer;
         self.hasCommittedFrame = true;
+
+        // Surface write/flush failures so the renderer can heal via a forced
+        // full repaint. In sync mode this reflects the just-written frame; in
+        // threaded mode the previous frame's write has completed (we waited on
+        // renderInProgress above), so its failure is observed one frame late —
+        // acceptable, since recovery is repaint, not replay.
+        if (self.takeOutputFailure()) return .failed;
         return .ok;
+    }
+
+    /// Check-and-clear the output's failure flag, if the output reports one.
+    fn takeOutputFailure(self: *BufferedBackend) bool {
+        const take_failed = self.output.take_failed_fn orelse return false;
+        return take_failed(self.output.ctx);
     }
 
     fn renderThreadFn(self: *BufferedBackend) void {
