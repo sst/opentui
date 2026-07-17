@@ -516,6 +516,7 @@ pub const Connection = struct {
     }
 
     fn dispatchAvailable(self: *Connection) bool {
+        if (comptime builtin.os.tag != .linux) return false;
         const display = self.display orelse return false;
         var dispatched_count: u32 = 0;
         while (dispatched_count < DISPATCH_EVENTS_PER_DRIVE_MAX) {
@@ -631,6 +632,7 @@ pub const Connection = struct {
     }
 
     fn createCoreHelper(self: *Connection) bool {
+        if (comptime builtin.os.tag != .linux) return false;
         std.debug.assert(self.core_data_device);
         std.debug.assert(self.helper_surface == null);
         // Core data-device selection is focus-scoped, so WSLg needs a transparent 1x1 focused surface.
@@ -1392,6 +1394,7 @@ test "Wayland connection setup applies the finite receive buffer cap" {
 }
 
 test "Wayland dispatch drains queued callbacks in one invocation" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     var symbols: linux.WaylandSymbols = undefined;
     symbols.wl_display_dispatch_pending_single = testDispatchQueue;
     symbols.wl_display_prepare_read = testPrepareReadBlocked;
@@ -1409,6 +1412,7 @@ test "Wayland dispatch drains queued callbacks in one invocation" {
 }
 
 test "Wayland dispatch bounds the events drained per invocation" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     var symbols: linux.WaylandSymbols = undefined;
     symbols.wl_display_dispatch_pending_single = testDispatchQueue;
     symbols.wl_display_prepare_read = testPrepareReadBlocked;
@@ -1734,6 +1738,18 @@ test "Wayland core data-device fallback is WSL-gated and read-only" {
     try std.testing.expectEqual(SelectionResult.unsupported, connection.publishText(false, &.{}));
     try std.testing.expectEqual(SelectionResult.unsupported, connection.clearSelection(false));
     try std.testing.expectEqual(Failure.none, connection.failure);
+}
+
+test "Wayland core helper acquisition fails closed outside Linux" {
+    if (comptime builtin.os.tag == .linux) return error.SkipZigTest;
+    var connection: Connection = undefined;
+    connection.core_data_device = true;
+    connection.phase = .ready;
+    connection.core_focus_users = 0;
+    connection.clipboard_offer = null;
+
+    try std.testing.expectEqual(Progress.failed, connection.acquireCoreSelection());
+    try std.testing.expectEqual(@as(u32, 0), connection.core_focus_users);
 }
 
 test "Wayland core helper requires an advertised keyboard capability" {
