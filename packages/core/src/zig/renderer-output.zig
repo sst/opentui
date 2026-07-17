@@ -41,13 +41,25 @@ pub const BufferedOutput = struct {
     }
 };
 
+fn isWindowsConsole(file: std.fs.File) bool {
+    if (builtin.os.tag != .windows) return false;
+
+    var console_mode: std.os.windows.DWORD = 0;
+    return std.os.windows.kernel32.GetConsoleMode(file.handle, &console_mode) != 0;
+}
+
 pub const StdoutOutput = struct {
     stdoutBuffer: [4096]u8 = undefined,
     previousOutputCodePage: ?u32 = null,
 
     pub fn init() StdoutOutput {
+        return initForFile(std.fs.File.stdout());
+    }
+
+    fn initForFile(stdout: std.fs.File) StdoutOutput {
         var result: StdoutOutput = .{};
         if (builtin.os.tag != .windows) return result;
+        if (!isWindowsConsole(stdout)) return result;
 
         const code_page = std.os.windows.kernel32.GetConsoleOutputCP();
         if (code_page == 0 or code_page == WINDOWS_UTF8_CODE_PAGE) return result;
@@ -60,7 +72,9 @@ pub const StdoutOutput = struct {
     pub fn deinit(self: *StdoutOutput) void {
         if (builtin.os.tag != .windows) return;
         const code_page = self.previousOutputCodePage orelse return;
-        _ = std.os.windows.kernel32.SetConsoleOutputCP(code_page);
+        if (std.os.windows.kernel32.GetConsoleOutputCP() == WINDOWS_UTF8_CODE_PAGE) {
+            _ = std.os.windows.kernel32.SetConsoleOutputCP(code_page);
+        }
         self.previousOutputCodePage = null;
     }
 
@@ -85,6 +99,7 @@ pub const StdoutOutput = struct {
 
 test "StdoutOutput restores the Windows console output code page" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
+    if (!isWindowsConsole(std.fs.File.stdout())) return error.SkipZigTest;
 
     const original_code_page = std.os.windows.kernel32.GetConsoleOutputCP();
     if (original_code_page == 0) return error.SkipZigTest;
@@ -97,6 +112,45 @@ test "StdoutOutput restores the Windows console output code page" {
 
     stdout_output.deinit();
     try std.testing.expectEqual(@as(u32, 437), std.os.windows.kernel32.GetConsoleOutputCP());
+}
+
+test "StdoutOutput leaves the code page unchanged for redirected output" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const original_code_page = std.os.windows.kernel32.GetConsoleOutputCP();
+    if (original_code_page == 0) return error.SkipZigTest;
+    defer _ = std.os.windows.kernel32.SetConsoleOutputCP(original_code_page);
+
+    if (std.os.windows.kernel32.SetConsoleOutputCP(437) == 0) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const file = try tmp.dir.createFile("stdout", .{});
+    defer file.close();
+    try std.testing.expect(!isWindowsConsole(file));
+
+    var stdout_output = StdoutOutput.initForFile(file);
+    defer stdout_output.deinit();
+    try std.testing.expectEqual(@as(u32, 437), std.os.windows.kernel32.GetConsoleOutputCP());
+}
+
+test "StdoutOutput preserves an intervening code page change" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    if (!isWindowsConsole(std.fs.File.stdout())) return error.SkipZigTest;
+
+    const original_code_page = std.os.windows.kernel32.GetConsoleOutputCP();
+    if (original_code_page == 0) return error.SkipZigTest;
+    defer _ = std.os.windows.kernel32.SetConsoleOutputCP(original_code_page);
+
+    if (std.os.windows.kernel32.SetConsoleOutputCP(437) == 0) return error.SkipZigTest;
+
+    var stdout_output = StdoutOutput.init();
+    defer stdout_output.deinit();
+    try std.testing.expectEqual(@as(u32, WINDOWS_UTF8_CODE_PAGE), std.os.windows.kernel32.GetConsoleOutputCP());
+
+    if (std.os.windows.kernel32.SetConsoleOutputCP(850) == 0) return error.SkipZigTest;
+    stdout_output.deinit();
+    try std.testing.expectEqual(@as(u32, 850), std.os.windows.kernel32.GetConsoleOutputCP());
 }
 
 pub const MemoryOutput = struct {
