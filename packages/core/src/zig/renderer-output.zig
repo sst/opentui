@@ -16,10 +16,12 @@
 //! writer without scattering backend-specific switches across the codebase.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const NativeSpanFeed = @import("native-span-feed.zig");
 
 pub const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2 MiB, double-buffered per BufferedBackend for thread handoff
+const WINDOWS_UTF8_CODE_PAGE = 65001;
 
 pub const WriteStatus = enum(u8) {
     ok = 0,
@@ -41,6 +43,26 @@ pub const BufferedOutput = struct {
 
 pub const StdoutOutput = struct {
     stdoutBuffer: [4096]u8 = undefined,
+    previousOutputCodePage: ?u32 = null,
+
+    pub fn init() StdoutOutput {
+        var result: StdoutOutput = .{};
+        if (builtin.os.tag != .windows) return result;
+
+        const code_page = std.os.windows.kernel32.GetConsoleOutputCP();
+        if (code_page == 0 or code_page == WINDOWS_UTF8_CODE_PAGE) return result;
+        if (std.os.windows.kernel32.SetConsoleOutputCP(WINDOWS_UTF8_CODE_PAGE) == 0) return result;
+
+        result.previousOutputCodePage = code_page;
+        return result;
+    }
+
+    pub fn deinit(self: *StdoutOutput) void {
+        if (builtin.os.tag != .windows) return;
+        const code_page = self.previousOutputCodePage orelse return;
+        _ = std.os.windows.kernel32.SetConsoleOutputCP(code_page);
+        self.previousOutputCodePage = null;
+    }
 
     pub fn bufferedOutput(self: *StdoutOutput) BufferedOutput {
         return .{
@@ -60,6 +82,22 @@ pub const StdoutOutput = struct {
         w.flush() catch {};
     }
 };
+
+test "StdoutOutput restores the Windows console output code page" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const original_code_page = std.os.windows.kernel32.GetConsoleOutputCP();
+    if (original_code_page == 0) return error.SkipZigTest;
+    defer _ = std.os.windows.kernel32.SetConsoleOutputCP(original_code_page);
+
+    if (std.os.windows.kernel32.SetConsoleOutputCP(437) == 0) return error.SkipZigTest;
+
+    var stdout_output = StdoutOutput.init();
+    try std.testing.expectEqual(@as(u32, WINDOWS_UTF8_CODE_PAGE), std.os.windows.kernel32.GetConsoleOutputCP());
+
+    stdout_output.deinit();
+    try std.testing.expectEqual(@as(u32, 437), std.os.windows.kernel32.GetConsoleOutputCP());
+}
 
 pub const MemoryOutput = struct {
     allocator: Allocator,
@@ -222,8 +260,11 @@ pub const BufferedBackend = struct {
 
     pub fn createStdout(allocator: Allocator) !BufferedBackend {
         const stdoutOutput = try allocator.create(StdoutOutput);
-        errdefer allocator.destroy(stdoutOutput);
-        stdoutOutput.* = .{};
+        stdoutOutput.* = StdoutOutput.init();
+        errdefer {
+            stdoutOutput.deinit();
+            allocator.destroy(stdoutOutput);
+        }
 
         var backend = try BufferedBackend.create(allocator, stdoutOutput.bufferedOutput());
         backend.ownedStdoutOutput = stdoutOutput;
@@ -264,6 +305,7 @@ pub const BufferedBackend = struct {
         self.allocator.free(self.outputA);
         self.allocator.free(self.outputB);
         if (self.ownedStdoutOutput) |stdoutOutput| {
+            stdoutOutput.deinit();
             self.allocator.destroy(stdoutOutput);
             self.ownedStdoutOutput = null;
         }
