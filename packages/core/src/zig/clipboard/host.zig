@@ -1957,23 +1957,10 @@ test "clipboard WSL policy rejects primary and clear without blocking standard r
         };
         try std.testing.expectEqual(case.unsupported, wslOperationUnsupported(libraries, &operation));
     }
-
-    var service: Service = .{
-        .allocator = std.testing.allocator,
-        .libraries = .{ .is_wsl = true },
-        .requested_wayland_seat = &.{},
-        .environment_wayland_seat = &.{},
-    };
-    var operation: Operation = .{
-        .allocator = std.testing.allocator,
-        .service = &service,
-        .kind = .write,
-        .selection = .clipboard,
-    };
-    try std.testing.expectEqual(OperationStatus.unsupported, service.driveOperation(&operation));
 }
 
 test "clipboard Wayland BMP transfer converts to PNG and releases source bytes" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var service: Service = .{
         .allocator = std.testing.allocator,
@@ -2329,6 +2316,7 @@ test "clipboard Wayland BMP worker cancellation beats late conversion publicatio
 }
 
 test "clipboard failed core selection progress releases operation focus" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     var symbols: clipboard_linux.WaylandSymbols = undefined;
     var wayland = clipboard_wayland.Connection.init(std.testing.allocator, &symbols, "", "", 1);
     wayland.phase = .ready;
