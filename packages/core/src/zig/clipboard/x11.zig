@@ -2229,6 +2229,7 @@ test "X11 INCR expiry runs while provider responses remain pending" {
 }
 
 test "X11 expired initial INCR response refuses its delayed checked reply" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     symbols.xcb_poll_for_reply = fakePollForReply;
@@ -2283,6 +2284,7 @@ test "X11 expired initial INCR response refuses its delayed checked reply" {
 }
 
 test "X11 delayed expired INCR response preserves replacement transfer" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     symbols.xcb_poll_for_reply = fakePollForReply;
