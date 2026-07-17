@@ -2441,6 +2441,7 @@ test "X11 DISPLAY parser accepts bounded local transports and rejects remote hos
 }
 
 test "X11 Xauthority parser selects exact loopback MIT cookie and rejects truncation" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     var bytes: std.ArrayListUnmanaged(u8) = .{};
     defer bytes.deinit(std.testing.allocator);
     try appendTestXauthorityRecord(&bytes, XAUTH_FAMILY_WILD, &.{}, "10", XAUTH_NAME, "wild");
@@ -2453,6 +2454,7 @@ test "X11 Xauthority parser selects exact loopback MIT cookie and rejects trunca
 }
 
 test "X11 Xauthority loading accepts only bounded regular files and observes cancellation" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
@@ -2489,6 +2491,7 @@ test "X11 Xauthority loading accepts only bounded regular files and observes can
 }
 
 test "X11 Xauthority FIFO is rejected without waiting for a writer" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
@@ -2511,6 +2514,7 @@ test "X11 Xauthority FIFO is rejected without waiting for a writer" {
 }
 
 test "X11 bare DISPLAY connects to an abstract-only listener" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
@@ -2524,6 +2528,7 @@ test "X11 bare DISPLAY connects to an abstract-only listener" {
 }
 
 test "X11 bare DISPLAY falls back to a filesystem listener" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
@@ -2538,6 +2543,7 @@ test "X11 bare DISPLAY falls back to a filesystem listener" {
 }
 
 test "X11 localhost DISPLAY connects to an IPv6-only listener" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
@@ -2554,6 +2560,7 @@ test "X11 localhost DISPLAY connects to an IPv6-only listener" {
 }
 
 test "X11 localhost DISPLAY falls back to an IPv4-only listener" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
@@ -2567,6 +2574,7 @@ test "X11 localhost DISPLAY falls back to an IPv4-only listener" {
 }
 
 test "X11 shutdown before fd publication exits without joining early" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     var connection = Connection.init(std.testing.allocator, &symbols, 1);
@@ -2578,6 +2586,7 @@ test "X11 shutdown before fd publication exits without joining early" {
 }
 
 test "X11 connection establishment does not block a drive unit" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     symbols.xcb_connect_to_fd = fakeSlowConnectToFd;
@@ -2598,6 +2607,7 @@ test "X11 connection establishment does not block a drive unit" {
 }
 
 test "X11 shutdown cancels a silent setup connection" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     symbols.xcb_connect_to_fd = fakeSilentConnectToFd;
@@ -2619,6 +2629,7 @@ test "X11 shutdown cancels a silent setup connection" {
 }
 
 test "X11 shutdown immediately after setup completion still joins and closes" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     try clipboard_clock.init();
     var symbols: linux.XcbSymbols = undefined;
     symbols.xcb_connect_to_fd = fakeImmediateConnectToFd;
@@ -2676,6 +2687,7 @@ fn expectShutdownReady(connection: *Connection) !void {
 }
 
 test "X11 atom initialization polls one reply per drive without blocking" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     var symbols: linux.XcbSymbols = undefined;
     symbols.xcb_connection_has_error = fakeConnectionHasError;
     symbols.xcb_disconnect = fakeDisconnect;
@@ -2718,6 +2730,7 @@ test "X11 atom initialization polls one reply per drive without blocking" {
 }
 
 test "X11 atom initialization fails on a polled protocol error and discards remaining replies" {
+    if (comptime builtin.os.tag != .linux) return error.SkipZigTest;
     var symbols: linux.XcbSymbols = undefined;
     symbols.xcb_connection_has_error = fakeConnectionHasError;
     symbols.xcb_disconnect = fakeDisconnect;
@@ -2950,7 +2963,10 @@ fn fakeSendEvent(
     event: [*]const u8,
 ) callconv(.c) linux.XcbCookie {
     const fake: *FakeXcb = @ptrCast(@alignCast(connection));
-    const notify: *const linux.XcbSelectionNotifyEvent = @ptrCast(@alignCast(event));
+    const notify = std.mem.bytesToValue(
+        linux.XcbSelectionNotifyEvent,
+        event[0..@sizeOf(linux.XcbSelectionNotifyEvent)],
+    );
     fake.send_event_count += 1;
     fake.last_notify_property = notify.property;
     return .{ .sequence = fake.next_sequence };
