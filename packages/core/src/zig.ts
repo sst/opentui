@@ -2591,6 +2591,10 @@ export interface RenderLib extends AudioEngineLib {
 
 class FFIRenderLib implements RenderLib {
   private opentui: ReturnType<typeof getOpenTUILib>
+  // Layout reads are synchronous and non-reentrant. Retain one backing buffer so
+  // Node does not allocate and resolve a new output pointer for every node.
+  private readonly yogaLayout = new Float32Array(6)
+  private readonly yogaLayoutPtr = ptr(this.yogaLayout)
   public readonly encoder: TextEncoder = new TextEncoder()
   public readonly decoder: TextDecoder = new TextDecoder()
   private logCallbackWrapper: FFICallbackInstance | null = null
@@ -3689,8 +3693,8 @@ class FFIRenderLib implements RenderLib {
   }
 
   public yogaNodeGetComputedLayout(node: Pointer): NativeYogaLayout {
-    const layout = new Float32Array(6)
-    this.opentui.symbols.yogaNodeGetComputedLayout(node, ptr(layout))
+    const layout = this.yogaLayout
+    this.opentui.symbols.yogaNodeGetComputedLayout(node, this.yogaLayoutPtr)
     return {
       left: layout[0]!,
       top: layout[1]!,
