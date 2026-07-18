@@ -96,3 +96,13 @@ It was rejected because it failed Bun non-inferiority.
 | --- | ---: | ---: | ---: | ---: | --- |
 | Node | 363.2 ns/op | 271.9 ns/op | -25.1% | [-31.3%, -16.7%] | Pass |
 | Bun | 21.5 ns/op | 128.8 ns/op | +498.2% | [+491.0%, +509.6%] | Fail |
+
+### Packed Split Footer Commit
+
+The three-scalar packed commit ABI was evaluated over 9 process rounds. It was rejected because it failed Bun
+non-inferiority.
+
+| Runtime | Baseline | Packed | Change | 95% CI | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Node | 1478.0 ns/op | 1199.6 ns/op | -18.8% | [-25.2%, -8.7%] | Pass |
+| Bun | 466.3 ns/op | 539.3 ns/op | +15.6% | [+12.6%, +17.9%] | Fail |
