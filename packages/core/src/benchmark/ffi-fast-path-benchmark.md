@@ -202,3 +202,19 @@ so it was rejected.
 
 The one-pointer box descriptor was rejected for lifecycle instability. The x86-64 Node child exited during the second
 titled-box round after the fill, titled, and frame scenarios completed once, so no valid comparison was produced.
+
+### Coordinate Range Input/Output Block
+
+The one-pointer combined header/output block was evaluated over 9 process rounds. All four workloads failed the
+acceptance gate, so it was rejected.
+
+| Scenario       | Runtime |     Baseline |    Candidate | Change |           95% CI | Decision |
+| -------------- | ------- | -----------: | -----------: | -----: | ---------------: | -------- |
+| Text short     | Node    | 1030.1 ns/op |  717.7 ns/op | -30.3% | [-50.0%, +11.4%] | Fail     |
+| Text short     | Bun     |  127.5 ns/op |  212.7 ns/op | +66.9% | [+66.0%, +71.0%] | Fail     |
+| Text multiline | Node    | 9620.0 ns/op | 9687.3 ns/op |  +0.7% |   [-4.0%, +9.9%] | Fail     |
+| Text multiline | Bun     | 3660.1 ns/op | 3891.3 ns/op |  +6.3% |   [+5.6%, +7.2%] | Fail     |
+| Edit short     | Node    | 1072.6 ns/op |  779.4 ns/op | -27.3% | [-49.3%, +23.7%] | Fail     |
+| Edit short     | Bun     |  127.6 ns/op |  214.4 ns/op | +68.1% | [+65.9%, +71.0%] | Fail     |
+| Edit multiline | Node    | 9339.1 ns/op | 9296.2 ns/op |  -0.5% |  [-20.8%, +8.9%] | Fail     |
+| Edit multiline | Bun     | 3654.5 ns/op | 3876.6 ns/op |  +6.1% |   [+5.3%, +7.0%] | Fail     |
