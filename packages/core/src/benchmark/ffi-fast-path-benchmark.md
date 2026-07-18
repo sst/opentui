@@ -148,3 +148,15 @@ non-inferiority; the scalar `bufferDrawChar` Node interval also crossed zero.
 | Scalar char     | Bun     |  36.9 ns/op | 185.3 ns/op | +401.9% | [+396.1%, +407.6%] | Fail     |
 | Packed grapheme | Node    | 878.4 ns/op | 601.2 ns/op |  -31.6% |   [-90.3%, -26.8%] | Pass     |
 | Packed grapheme | Bun     |  45.8 ns/op | 200.5 ns/op | +338.1% | [+327.7%, +345.7%] | Fail     |
+
+### Supersample Metadata Descriptor
+
+The three-argument supersample descriptor was evaluated over 9 process rounds at one-cell and 80x24 frame sizes. It was
+rejected because neither size passed both runtime gates.
+
+| Scenario    | Runtime |      Baseline |     Candidate |  Change |             95% CI | Decision |
+| ----------- | ------- | ------------: | ------------: | ------: | -----------------: | -------- |
+| One cell    | Node    |   626.6 ns/op |   316.8 ns/op |  -49.4% |    [-57.4%, -1.6%] | Pass     |
+| One cell    | Bun     |    35.5 ns/op |   144.8 ns/op | +308.2% | [+296.0%, +319.2%] | Fail     |
+| 80x24 frame | Node    | 31356.6 ns/op | 31335.9 ns/op |   -0.1% |     [-0.5%, +1.3%] | Fail     |
+| 80x24 frame | Bun     | 21789.3 ns/op | 21982.1 ns/op |   +0.9% |     [+0.5%, +1.2%] | Pass     |
