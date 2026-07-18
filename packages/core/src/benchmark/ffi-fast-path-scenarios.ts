@@ -226,7 +226,9 @@ function createScenarios(): ScenarioDefinition[] {
     createDrawCharScenario(true),
     createSuperSampleScenario("cell", 1, 1),
     createSuperSampleScenario("frame", 80, 24),
-    createPackedBufferScenario(),
+    createPackedBufferScenario("origin", 1, 1, 0, 0),
+    createPackedBufferScenario("positioned", 1, 1, 1, 1),
+    createPackedBufferScenario("frame", 80, 24, 0, 0),
     createGrayscaleScenario(false),
     createGrayscaleScenario(true),
     createGridScenario(),
@@ -365,23 +367,53 @@ function createSuperSampleScenario(
   }
 }
 
-function createPackedBufferScenario(): ScenarioDefinition {
+function createPackedBufferScenario(
+  variant: "origin" | "positioned" | "frame",
+  terminalWidth: number,
+  terminalHeight: number,
+  posX: number,
+  posY: number,
+): ScenarioDefinition {
   return {
-    name: "buffer_draw_packed_buffer",
+    name: `buffer_draw_packed_buffer_${variant}`,
     operation: "bufferDrawPackedBuffer",
-    description: "Draw one valid 48-byte CellResult payload",
+    description: `Draw a valid ${terminalWidth}x${terminalHeight} CellResult payload at ${posX},${posY}`,
     setup: ({ lib }) => {
-      const buffer = lib.createOptimizedBuffer(1, 1, "unicode", false, "ffi-bench-packed-buffer")
-      const packed = new ArrayBuffer(48)
-      const floats = new Float32Array(packed)
-      floats.set([0.08, 0.12, 0.18, 1, 0.85, 0.9, 1, 1])
-      new Uint32Array(packed)[8] = 0x2588
+      const buffer = lib.createOptimizedBuffer(
+        terminalWidth + posX,
+        terminalHeight + posY,
+        "unicode",
+        false,
+        `ffi-bench-packed-buffer-${variant}`,
+      )
+      const packed = new ArrayBuffer(terminalWidth * terminalHeight * 48)
+      const view = new DataView(packed)
+      for (let cell = 0; cell < terminalWidth * terminalHeight; cell++) {
+        const offset = cell * 48
+        view.setFloat32(offset, 0.08, true)
+        view.setFloat32(offset + 4, 0.12, true)
+        view.setFloat32(offset + 8, 0.18, true)
+        view.setFloat32(offset + 12, 1, true)
+        view.setFloat32(offset + 16, 0.85, true)
+        view.setFloat32(offset + 20, 0.9, true)
+        view.setFloat32(offset + 24, 1, true)
+        view.setFloat32(offset + 28, 1, true)
+        view.setUint32(offset + 32, 0x2588, true)
+      }
       const packedBytes = new Uint8Array(packed)
       const packedPtr = ptr(packedBytes)
       return {
         run: (operations) => {
           for (let index = 0; index < operations; index++) {
-            lib.bufferDrawPackedBuffer(buffer.ptr, packedPtr, packedBytes.byteLength, 0, 0, 1, 1)
+            lib.bufferDrawPackedBuffer(
+              buffer.ptr,
+              packedPtr,
+              packedBytes.byteLength,
+              posX,
+              posY,
+              terminalWidth,
+              terminalHeight,
+            )
           }
           return operations
         },
