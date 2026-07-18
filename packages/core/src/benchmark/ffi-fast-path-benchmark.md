@@ -184,3 +184,15 @@ runs exited intermittently during both origin and positioned scenarios, so no va
 The shared three-argument grayscale descriptor was rejected for lifecycle instability. Two independent 9-round runs
 exited during the x86-64 Node supersampled-frame scenario after earlier scenarios completed. Twenty isolated
 supersampled-frame processes passed, but the repeated suite failure prevents a valid comparison or acceptance.
+
+### Grid Draw Descriptor
+
+The expanded one-pointer grid descriptor was evaluated over 9 process rounds. Both grid sizes regressed on Bun and Node,
+so it was rejected.
+
+| Scenario | Runtime |     Baseline |    Candidate | Change |           95% CI | Decision |
+| -------- | ------- | -----------: | -----------: | -----: | ---------------: | -------- |
+| Small    | Node    | 1594.3 ns/op | 2074.6 ns/op | +30.1% | [-0.1%, +127.4%] | Fail     |
+| Small    | Bun     |  206.5 ns/op |  370.9 ns/op | +79.6% | [+72.3%, +87.0%] | Fail     |
+| 10x6     | Node    | 1821.7 ns/op | 2118.1 ns/op | +16.3% | [-36.0%, +25.5%] | Fail     |
+| 10x6     | Bun     |  961.0 ns/op | 1163.7 ns/op | +21.1% | [+18.7%, +22.4%] | Fail     |
