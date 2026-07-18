@@ -244,8 +244,10 @@ function createScenarios(): ScenarioDefinition[] {
     createBoxScenario("fill", 40, 12, 1 << 4, null, null),
     createBoxScenario("titled", 4, 3, 0b1_1111, "T", "B"),
     createBoxScenario("frame", 80, 24, 0b1_1111, "OpenTUI frame", "status"),
-    createTextRangeScenario(false),
-    createTextRangeScenario(true),
+    createTextRangeScenario(false, "short"),
+    createTextRangeScenario(false, "multiline"),
+    createTextRangeScenario(true, "short"),
+    createTextRangeScenario(true, "multiline"),
     createTextBufferSelectionScenario(false),
     createTextBufferSelectionScenario(true),
     createEditorSelectionScenario(false),
@@ -570,25 +572,44 @@ function createBoxScenario(
   )
 }
 
-function createTextRangeScenario(editable: boolean): ScenarioDefinition {
+function createTextRangeScenario(editable: boolean, variant: "short" | "multiline"): ScenarioDefinition {
+  const lines =
+    variant === "short"
+      ? ["alpha beta", "gamma delta", "unicode 界"]
+      : Array.from({ length: 200 }, (_, index) => `line ${index.toString().padStart(3, "0")} unicode 界🙂 payload`)
+  const text = lines.join("\n")
+  const maxLength = new TextEncoder().encode(text).byteLength
   return {
-    name: `${editable ? "edit" : "text"}_buffer_get_text_range_by_coords`,
+    name: `${editable ? "edit" : "text"}_buffer_get_text_range_by_coords_${variant}`,
     operation: editable ? "editBufferGetTextRangeByCoords" : "textBufferGetTextRangeByCoords",
-    description: `Read a coordinate range from a live ${editable ? "EditBuffer" : "TextBuffer"}`,
+    description: `Read a ${variant} coordinate range from a live ${editable ? "EditBuffer" : "TextBuffer"}`,
     setup: ({ lib }) => {
-      const text = "alpha beta\ngamma delta\nunicode 界"
       const owner = editable ? EditBuffer.create("unicode") : TextBuffer.create("unicode")
       owner.setText(text)
       const getRange = editable
         ? (startCol: number, endCol: number) =>
-            lib.editBufferGetTextRangeByCoords((owner as EditBuffer).ptr, 0, startCol, 1, endCol, 64)
+            lib.editBufferGetTextRangeByCoords(
+              (owner as EditBuffer).ptr,
+              0,
+              startCol,
+              variant === "short" ? 1 : lines.length - 1,
+              endCol,
+              maxLength,
+            )
         : (startCol: number, endCol: number) =>
-            lib.textBufferGetTextRangeByCoords((owner as TextBuffer).ptr, 0, startCol, 1, endCol, 64)
+            lib.textBufferGetTextRangeByCoords(
+              (owner as TextBuffer).ptr,
+              0,
+              startCol,
+              variant === "short" ? 1 : lines.length - 1,
+              endCol,
+              maxLength,
+            )
       return {
         run: (operations) => {
           let signal = 0
           for (let index = 0; index < operations; index++) {
-            const bytes = getRange(index & 1, 5 + (index & 1))
+            const bytes = getRange(index & 1, variant === "short" ? 5 + (index & 1) : lines.at(-1)!.length)
             signal = (signal + (bytes?.byteLength ?? 0) + (bytes?.[0] ?? 0)) >>> 0
           }
           return signal
