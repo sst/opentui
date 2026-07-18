@@ -233,7 +233,14 @@ function createScenarios(): ScenarioDefinition[] {
     createGrayscaleScenario(false, "frame", 80, 24),
     createGrayscaleScenario(true, "cell", 1, 1),
     createGrayscaleScenario(true, "frame", 80, 24),
-    createGridScenario(),
+    createGridScenario("small", new Int32Array([0, 2]), new Int32Array([0, 2]), 3, 3),
+    createGridScenario(
+      "large",
+      new Int32Array(Array.from({ length: 11 }, (_, index) => index * 8)),
+      new Int32Array(Array.from({ length: 7 }, (_, index) => index * 4)),
+      80,
+      24,
+    ),
     createBoxScenario(),
     createTextRangeScenario(false),
     createTextRangeScenario(true),
@@ -490,21 +497,35 @@ function createGrayscaleScenario(
   }
 }
 
-function createGridScenario(): ScenarioDefinition {
+function createGridScenario(
+  variant: "small" | "large",
+  columnOffsets: Int32Array,
+  rowOffsets: Int32Array,
+  width: number,
+  height: number,
+): ScenarioDefinition {
   return createSingleBufferScenario(
-    "buffer_draw_grid",
+    `buffer_draw_grid_${variant}`,
     "bufferDrawGrid",
-    "Draw one 2x2 grid with valid border and offset arrays",
-    3,
-    3,
+    `Draw a ${columnOffsets.length - 1}x${rowOffsets.length - 1} grid with valid offset arrays`,
+    width,
+    height,
     (lib, buffer, operations) => {
-      const columnOffsets = new Int32Array([0, 2])
-      const rowOffsets = new Int32Array([0, 2])
       for (let index = 0; index < operations; index++) {
-        lib.bufferDrawGrid(buffer.ptr, BorderCharArrays.single, COLORS.fg, COLORS.bg, columnOffsets, 1, rowOffsets, 1, {
-          drawInner: true,
-          drawOuter: true,
-        })
+        lib.bufferDrawGrid(
+          buffer.ptr,
+          BorderCharArrays.single,
+          COLORS.fg,
+          COLORS.bg,
+          columnOffsets,
+          columnOffsets.length - 1,
+          rowOffsets,
+          rowOffsets.length - 1,
+          {
+            drawInner: true,
+            drawOuter: true,
+          },
+        )
       }
       return operations
     },
