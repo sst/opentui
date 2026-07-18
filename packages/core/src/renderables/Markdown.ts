@@ -21,7 +21,7 @@ import type { TreeSitterClient } from "../lib/tree-sitter/index.js"
 import { infoStringToFiletype } from "../lib/tree-sitter/resolve-ft.js"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser.js"
 import type { OptimizedBuffer } from "../buffer.js"
-import { admitLinkTarget } from "../lib/detect-links.js"
+import { detectMarkdownLinks, resolveMarkedLinkTarget } from "../lib/detect-links.js"
 
 export type MarkdownTableStyle = "grid" | "columns"
 
@@ -537,7 +537,7 @@ export class MarkdownRenderable extends Renderable {
         break
 
       case "link": {
-        const target = admitLinkTarget(token.href)
+        const target = resolveMarkedLinkTarget(token)
         if (!target) {
           chunks.push(this.createDefaultChunk(token.text.replace(/[\u0000-\u001f\u007f-\u009f]/gu, "")))
           break
@@ -563,7 +563,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       case "image": {
-        const target = admitLinkTarget(token.href)
+        const target = resolveMarkedLinkTarget(token)
         if (!target) {
           chunks.push(this.createDefaultChunk((token.text || "image").replace(/[\u0000-\u001f\u007f-\u009f]/gu, "")))
           break
@@ -650,6 +650,7 @@ export class MarkdownRenderable extends Renderable {
       streaming: true,
       initialStyledText,
       baseHighlight,
+      onHighlight: detectMarkdownLinks,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
       marginBottom,

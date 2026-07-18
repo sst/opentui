@@ -2,17 +2,16 @@ import type { TextChunk } from "../text-buffer.js"
 import { StyledText } from "./styled-text.js"
 import { SyntaxStyle, type StyleDefinition } from "../syntax-style.js"
 import { TreeSitterClient } from "./tree-sitter/client.js"
-import type { SimpleHighlight } from "./tree-sitter/types.js"
+import type { LinkRange, SimpleHighlight } from "./tree-sitter/types.js"
 import { createTextAttributes } from "../utils.js"
 import { registerEnvVar, env } from "./env.js"
-import { detectSourceLinks } from "./detect-links.js"
 
 registerEnvVar({ name: "OTUI_TS_STYLE_WARN", default: false, description: "Enable warnings for missing syntax styles" })
 
 interface TextChunkOptions {
   enabled?: boolean
   baseHighlight?: string
-  detectLinks?: boolean
+  linkRanges?: LinkRange[]
 }
 
 interface Boundary {
@@ -38,6 +37,41 @@ function shouldSuppressInInjection(group: string, meta: any): boolean {
   return group === "markup.raw.block"
 }
 
+function pushLinkedChunks(
+  chunks: TextChunk[],
+  content: string,
+  links: LinkRange[],
+  linkIndex: number,
+  start: number,
+  end: number,
+  chunk: TextChunk,
+  replacement?: string,
+): number {
+  while (links[linkIndex] && links[linkIndex].end <= start) linkIndex++
+  if (replacement !== undefined) {
+    const link = links[linkIndex]
+    chunks.push({ ...chunk, text: replacement, link: link && link.start < end ? { url: link.url } : undefined })
+    return linkIndex
+  }
+  if (!links[linkIndex] || links[linkIndex].start >= end) {
+    chunks.push({ ...chunk, text: content.slice(start, end) })
+    return linkIndex
+  }
+
+  let offset = start
+  for (let index = linkIndex; links[index] && links[index].start < end; index++) {
+    const link = links[index]
+    const linkStart = Math.max(offset, link.start)
+    const linkEnd = Math.min(end, link.end)
+    if (linkEnd <= linkStart) continue
+    if (offset < linkStart) chunks.push({ ...chunk, text: content.slice(offset, linkStart) })
+    chunks.push({ ...chunk, text: content.slice(linkStart, linkEnd), link: { url: link.url } })
+    offset = linkEnd
+  }
+  if (offset < end) chunks.push({ ...chunk, text: content.slice(offset, end) })
+  return linkIndex
+}
+
 export function treeSitterToTextChunks(
   content: string,
   highlights: SimpleHighlight[],
@@ -48,35 +82,10 @@ export function treeSitterToTextChunks(
   const defaultStyle = syntaxStyle.getStyle("default")
   const concealEnabled = options?.enabled ?? true
   const baseStyle = options?.baseHighlight ? syntaxStyle.getStyle(options.baseHighlight) : undefined
-  const links = options?.detectLinks ? detectSourceLinks(content, highlights) : []
-  let linkIndex = 0
-
-  const pushChunk = (start: number, end: number, chunk: Omit<TextChunk, "text">, replacement?: string): void => {
-    while (links[linkIndex] && links[linkIndex].end <= start) linkIndex++
-    if (replacement !== undefined) {
-      const link = links[linkIndex]
-      chunks.push({ ...chunk, text: replacement, link: link && link.start < end ? { url: link.url } : undefined })
-      return
-    }
-    if (!links[linkIndex] || links[linkIndex].start >= end) {
-      chunks.push({ ...chunk, text: content.slice(start, end) })
-      return
-    }
-
-    let offset = start
-    for (let index = linkIndex; links[index] && links[index].start < end; index++) {
-      const link = links[index]
-      const linkStart = Math.max(offset, link.start)
-      const linkEnd = Math.min(end, link.end)
-      if (offset < linkStart) chunks.push({ ...chunk, text: content.slice(offset, linkStart) })
-      chunks.push({ ...chunk, text: content.slice(linkStart, linkEnd), link: { url: link.url } })
-      offset = linkEnd
-    }
-    if (offset < end) chunks.push({ ...chunk, text: content.slice(offset, end) })
-  }
 
   const injectionContainerRanges: Array<{ start: number; end: number }> = []
   const boundaries: Boundary[] = []
+  const links = options?.linkRanges ?? []
 
   for (let i = 0; i < highlights.length; i++) {
     const [start, end, , meta] = highlights[i]
@@ -99,6 +108,7 @@ export function treeSitterToTextChunks(
 
   const activeHighlights = new Set<number>()
   let currentOffset = 0
+  let linkIndex = 0
 
   for (let i = 0; i < boundaries.length; i++) {
     const boundary = boundaries[i]
@@ -130,24 +140,34 @@ export function treeSitterToTextChunks(
         }
 
         if (replacementText) {
-          pushChunk(
-            currentOffset,
-            boundary.offset,
-            {
-              __isChunk: true,
-              fg: defaultStyle?.fg,
-              bg: defaultStyle?.bg,
-              attributes: defaultStyle
-                ? createTextAttributes({
-                    bold: defaultStyle.bold,
-                    italic: defaultStyle.italic,
-                    underline: defaultStyle.underline,
-                    dim: defaultStyle.dim,
-                  })
-                : 0,
-            },
-            replacementText,
-          )
+          const chunk = {
+            __isChunk: true as const,
+            text: replacementText,
+            fg: defaultStyle?.fg,
+            bg: defaultStyle?.bg,
+            attributes: defaultStyle
+              ? createTextAttributes({
+                  bold: defaultStyle.bold,
+                  italic: defaultStyle.italic,
+                  underline: defaultStyle.underline,
+                  dim: defaultStyle.dim,
+                })
+              : 0,
+          }
+          if (links.length > 0) {
+            linkIndex = pushLinkedChunks(
+              chunks,
+              content,
+              links,
+              linkIndex,
+              currentOffset,
+              boundary.offset,
+              chunk,
+              replacementText,
+            )
+          } else {
+            chunks.push(chunk)
+          }
         }
       } else {
         const insideInjectionContainer = injectionContainerRanges.some(
@@ -214,8 +234,9 @@ export function treeSitterToTextChunks(
         // Use merged style, falling back to default if nothing was merged
         const finalStyle = Object.keys(mergedStyle).length > 0 ? mergedStyle : defaultStyle
 
-        pushChunk(currentOffset, boundary.offset, {
-          __isChunk: true,
+        const chunk = {
+          __isChunk: true as const,
+          text: content.slice(currentOffset, boundary.offset),
           fg: finalStyle?.fg,
           bg: finalStyle?.bg,
           attributes: finalStyle
@@ -226,12 +247,18 @@ export function treeSitterToTextChunks(
                 dim: finalStyle.dim,
               })
             : 0,
-        })
+        }
+        if (links.length > 0) {
+          linkIndex = pushLinkedChunks(chunks, content, links, linkIndex, currentOffset, boundary.offset, chunk)
+        } else {
+          chunks.push(chunk)
+        }
       }
     } else if (currentOffset < boundary.offset) {
       const style = baseStyle ?? defaultStyle
-      pushChunk(currentOffset, boundary.offset, {
-        __isChunk: true,
+      const chunk = {
+        __isChunk: true as const,
+        text: content.slice(currentOffset, boundary.offset),
         fg: style?.fg,
         bg: style?.bg,
         attributes: style
@@ -242,7 +269,12 @@ export function treeSitterToTextChunks(
               dim: style.dim,
             })
           : 0,
-      })
+      }
+      if (links.length > 0) {
+        linkIndex = pushLinkedChunks(chunks, content, links, linkIndex, currentOffset, boundary.offset, chunk)
+      } else {
+        chunks.push(chunk)
+      }
     }
 
     if (boundary.type === "start") {
@@ -286,8 +318,9 @@ export function treeSitterToTextChunks(
 
   if (currentOffset < content.length) {
     const style = baseStyle ?? defaultStyle
-    pushChunk(currentOffset, content.length, {
-      __isChunk: true,
+    const chunk = {
+      __isChunk: true as const,
+      text: content.slice(currentOffset),
       fg: style?.fg,
       bg: style?.bg,
       attributes: style
@@ -298,7 +331,12 @@ export function treeSitterToTextChunks(
             dim: style.dim,
           })
         : 0,
-    })
+    }
+    if (links.length > 0) {
+      pushLinkedChunks(chunks, content, links, linkIndex, currentOffset, content.length, chunk)
+    } else {
+      chunks.push(chunk)
+    }
   }
 
   return chunks

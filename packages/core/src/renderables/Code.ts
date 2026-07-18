@@ -4,7 +4,7 @@ import { SyntaxStyle } from "../syntax-style.js"
 import { getTreeSitterClient, TreeSitterClient } from "../lib/tree-sitter/index.js"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
 import type { OptimizedBuffer } from "../buffer.js"
-import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
+import type { LinkRange, SimpleHighlight } from "../lib/tree-sitter/types.js"
 import type { TextChunk } from "../text-buffer.js"
 import { treeSitterToTextChunks } from "../lib/tree-sitter-styled-text.js"
 
@@ -12,6 +12,7 @@ export interface HighlightContext {
   content: string
   filetype: string
   syntaxStyle: SyntaxStyle
+  linkRanges?: LinkRange[]
 }
 
 export type OnHighlightCallback = (
@@ -339,6 +340,7 @@ export class CodeRenderable extends TextBufferRenderable {
       if (this.isDestroyed) return
 
       let highlights = result.highlights ?? []
+      let linkRanges: LinkRange[] | undefined
 
       if (this._onHighlight && highlights.length >= 0) {
         const context: HighlightContext = {
@@ -350,6 +352,7 @@ export class CodeRenderable extends TextBufferRenderable {
         if (modified !== undefined) {
           highlights = modified
         }
+        linkRanges = context.linkRanges
       }
 
       if (snapshotId !== this._highlightSnapshotId) {
@@ -365,18 +368,19 @@ export class CodeRenderable extends TextBufferRenderable {
         }
       }
 
-      if (highlights.length > 0 || this._onChunks || this._baseHighlight) {
+      if (highlights.length > 0 || linkRanges?.length || this._onChunks || this._baseHighlight) {
         const context: ChunkRenderContext = {
           content,
           filetype,
           syntaxStyle: this._syntaxStyle,
           highlights,
+          linkRanges,
         }
 
         let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
           enabled: this._conceal,
           baseHighlight: this._baseHighlight,
-          detectLinks: filetype === "markdown",
+          linkRanges,
         })
         // onChunks may rewrite text arbitrarily, so the conceal-only source map would be invalid.
         const renderedLineSources = this._onChunks ? undefined : this.getConcealLinesSourceMap(content, highlights)

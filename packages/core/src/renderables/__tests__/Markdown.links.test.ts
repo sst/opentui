@@ -36,7 +36,10 @@ function linkSegments(bytes: Buffer): LinkSegment[] {
   for (let offset = 0; offset < input.length; ) {
     if (input.startsWith("\x1b]8;", offset)) {
       const end = input.indexOf("\x1b\\", offset)
-      const [params = "", target = ""] = input.slice(offset + 4, end).split(";", 2)
+      const payload = input.slice(offset + 4, end)
+      const separator = payload.indexOf(";")
+      const params = separator < 0 ? payload : payload.slice(0, separator)
+      const target = separator < 0 ? "" : payload.slice(separator + 1)
       id = params.startsWith("id=") ? params.slice(3) : ""
       url = target
       offset = end + 2
@@ -155,4 +158,18 @@ test("rejects table and image controls before native OSC or control output", asy
 test("keeps concealed entity replacement cells linked", async () => {
   const rendered = await render("[a&amp;b](https://x.test)")
   expect(rendered.links).toContainEqual(linked("a&b", "https://x.test"))
+})
+
+test("preserves literal ampersands in link targets", async () => {
+  const rendered = await render(
+    "[escaped](https://x.test/?q=\\&copy;) https://x.test/?a=1&copy [entity](https://x.test/?a=1&amp;b=2)",
+  )
+  expect(rendered.links).toContainEqual(linked("escaped", "https://x.test/?q=&copy;"))
+  expect(rendered.links).toContainEqual(linked("https://x.test/?a=1&copy", "https://x.test/?a=1&copy"))
+  expect(rendered.links).toContainEqual(linked("entity", "https://x.test/?a=1&b=2"))
+})
+
+test("links a normal label after an escaped image marker", async () => {
+  const rendered = await render("\\![label](https://x.test)")
+  expect(rendered.links).toContainEqual(linked("label", "https://x.test"))
 })

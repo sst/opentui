@@ -1,66 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { detectLinks } from "../index.js"
-import type { TextChunk } from "../text-buffer.js"
-import { RGBA } from "./RGBA.js"
-import { admitLinkTarget, detectBareLinks, detectSourceLinks } from "./detect-links.js"
+import { admitLinkTarget, detectBareLinks, detectMarkdownLinks, detectSourceLinks } from "./detect-links.js"
 import type { SimpleHighlight } from "./tree-sitter/types.js"
-
-function chunk(text: string): TextChunk {
-  return { __isChunk: true, text, fg: RGBA.fromInts(255, 255, 255, 255), attributes: 0 }
-}
-
-describe("detectLinks public API", () => {
-  test("mutates and returns the same array, including one-character labels", () => {
-    const content = "[x](https://example.com)"
-    const highlights: SimpleHighlight[] = [
-      [1, 2, "markup.link.label"],
-      [4, 23, "markup.link.url"],
-    ]
-    const chunks = [chunk("x"), chunk("https://example.com")]
-
-    expect(detectLinks(chunks, { content, highlights })).toBe(chunks)
-    expect(chunks.map((item) => item.link)).toEqual([{ url: "https://example.com" }, { url: "https://example.com" }])
-  })
-
-  test("preserves dense explicit link mapping", () => {
-    const parts: string[] = []
-    const highlights: SimpleHighlight[] = []
-    const chunks: TextChunk[] = []
-    const expected: Array<{ url: string }> = []
-    let offset = 0
-
-    for (let index = 0; index < 2_000; index++) {
-      const label = `label-${index}`
-      const url = `https://target-${index}.test`
-      const source = `[${label}](${url})`
-      parts.push(source)
-      highlights.push(
-        [offset + 1, offset + 1 + label.length, "markup.link.label"],
-        [offset + label.length + 3, offset + label.length + 3 + url.length, "markup.link.url"],
-      )
-      chunks.push(chunk(label), chunk(url))
-      expected.push({ url }, { url })
-      offset += source.length + 1
-    }
-
-    expect(detectLinks(chunks, { content: parts.join(" "), highlights })).toBe(chunks)
-    expect(chunks.map((item) => item.link)).toEqual(expected)
-  })
-
-  test("leaves missing and nonmonotonic chunks unchanged", () => {
-    const content = "[first](https://first.test) [second](https://second.test)"
-    const highlights: SimpleHighlight[] = [
-      [1, 6, "markup.link.label"],
-      [8, 26, "markup.link.url"],
-      [29, 35, "markup.link.label"],
-      [37, 56, "markup.link.url"],
-    ]
-    const chunks = [chunk("missing"), chunk("second"), chunk("first")]
-
-    detectLinks(chunks, { content, highlights })
-    expect(chunks.map((item) => item.link)).toEqual([undefined, { url: "https://second.test" }, undefined])
-  })
-})
 
 describe("detectSourceLinks", () => {
   test("uses Marked-resolved explicit destinations and keeps labels continuous", () => {
@@ -106,6 +46,51 @@ describe("detectSourceLinks", () => {
     expect(links).toHaveLength(128)
     expect(links.every((link) => !link.url.includes("label"))).toBe(true)
   })
+
+  test("preserves escaped and semicolonless ampersands in explicit targets", () => {
+    const content =
+      "[escaped](https://x.test/?q=\\&copy;) [literal](https://x.test/?a=1&copy) [entity](https://x.test/?a=1&amp;b=2)"
+    const highlights: SimpleHighlight[] = []
+    for (const match of content.matchAll(/\[([^\]]+)\]\(([^)]+)\)/gu)) {
+      const labelStart = match.index + 1
+      const urlStart = labelStart + match[1].length + 2
+      highlights.push(
+        [labelStart, labelStart + match[1].length, "markup.link.label"],
+        [urlStart, urlStart + match[2].length, "markup.link.url"],
+      )
+    }
+
+    expect(detectSourceLinks(content, highlights).map((link) => link.url)).toEqual([
+      "https://x.test/?q=&copy;",
+      "https://x.test/?q=&copy;",
+      "https://x.test/?a=1&copy",
+      "https://x.test/?a=1&copy",
+      "https://x.test/?a=1&b=2",
+      "https://x.test/?a=1&b=2",
+    ])
+  })
+
+  test("links a normal label after an escaped image marker", () => {
+    const content = "\\![label](https://x.test)"
+    const highlights: SimpleHighlight[] = [
+      [3, 8, "markup.link.label"],
+      [10, 24, "markup.link.url"],
+    ]
+
+    expect(detectSourceLinks(content, highlights)).toEqual([
+      { start: 3, end: 8, url: "https://x.test" },
+      { start: 10, end: 24, url: "https://x.test" },
+    ])
+  })
+
+  test("decorates source ranges through the highlight hook", () => {
+    const content = "plain https://x.test text"
+    const highlights: SimpleHighlight[] = [[0, content.length, "spell"]]
+    const context: { content: string; linkRanges?: Array<{ start: number; end: number; url: string }> } = { content }
+
+    expect(detectMarkdownLinks(highlights, context)).toBe(highlights)
+    expect(context.linkRanges).toEqual([{ start: 6, end: 20, url: "https://x.test" }])
+  })
 })
 
 describe("parser-owned bare URLs", () => {
@@ -124,6 +109,13 @@ describe("parser-owned bare URLs", () => {
     ).toEqual(["HTTPS://EXAMPLE.COM", "https://x.test/a(b)", "https://x.test/foo"])
   })
 
+  test("preserves semicolonless entity names in bare URL targets", () => {
+    expect(detectBareLinks("https://x.test/?a=1&copy https://x.test/?a=1&not").map((link) => link.url)).toEqual([
+      "https://x.test/?a=1&copy",
+      "https://x.test/?a=1&not",
+    ])
+  })
+
   test("handles the former quadratic alternating suffix at review scale", () => {
     const content = `https://x.test/${")] }".replace(" ", "").repeat(16_000)}`
     expect(detectBareLinks(content)).toHaveLength(1)
@@ -131,8 +123,16 @@ describe("parser-owned bare URLs", () => {
 
   test("rejects empty and decoded C0, DEL, and C1 targets", () => {
     expect(admitLinkTarget("")).toBeUndefined()
-    for (const control of ["\0", "\x07", "\x1b", "\x7f", "\x80", "\x9c", "&#7;"]) {
+    for (const control of ["\0", "\x07", "\x1b", "\x7f", "\x80", "\x9c"]) {
       expect(admitLinkTarget(`https://safe.example/${control}`)).toBeUndefined()
     }
+
+    const content = "[x](https://safe.example/&#7;)"
+    expect(
+      detectSourceLinks(content, [
+        [1, 2, "markup.link.label"],
+        [4, 29, "markup.link.url"],
+      ]),
+    ).toEqual([])
   })
 })

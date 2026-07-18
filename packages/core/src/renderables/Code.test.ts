@@ -1229,6 +1229,39 @@ test("CodeRenderable - onChunks callback can transform chunks when highlights ar
   expect(codeRenderable.plainText).toBe("HELLO")
 })
 
+test("CodeRenderable - onHighlight can add link ranges when highlights are empty", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({ default: {} })
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [] })
+  let chunks: Array<{ text: string; link?: { url: string } }> = []
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-link-ranges",
+    content: "visit example",
+    filetype: "plaintext",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    onHighlight: (highlights, context) => {
+      context.linkRanges = [{ start: 6, end: 13, url: "https://example.test" }]
+      return highlights
+    },
+  })
+  const textBuffer = (codeRenderable as any).textBuffer
+  const setStyledText = textBuffer.setStyledText.bind(textBuffer)
+  textBuffer.setStyledText = (styledText: { chunks: typeof chunks }) => {
+    chunks = styledText.chunks
+    setStyledText(styledText)
+  }
+
+  currentRenderer.root.add(codeRenderable)
+  await resolveMockHighlights(codeRenderable, mockClient)
+
+  expect(chunks.map(({ text, link }) => [text, link?.url])).toEqual([
+    ["visit ", undefined],
+    ["example", "https://example.test"],
+  ])
+})
+
 test("CodeRenderable - baseHighlight applies a style when parser highlights are empty", async () => {
   const quoteColor = RGBA.fromValues(0.25, 0.5, 0.75, 1)
   const syntaxStyle = SyntaxStyle.fromStyles({

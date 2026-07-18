@@ -1,44 +1,27 @@
-import { decodeHTML } from "entities"
-import { Lexer, type Token } from "marked"
-import type { TextChunk } from "../text-buffer.js"
-import type { SimpleHighlight } from "./tree-sitter/types.js"
+import { decodeHTMLStrict } from "entities"
+import { Lexer, type Token, type Tokens } from "marked"
+import type { LinkRange, SimpleHighlight } from "./tree-sitter/types.js"
 
-export interface SourceLink {
-  start: number
-  end: number
-  url: string
-}
+export type SourceLink = LinkRange
 
 const URL_SCOPES = new Set(["markup.link.url", "string.special.url"])
 const EXCLUDED_SCOPES = new Set(["markup.link.label", "markup.raw", "markup.raw.inline", "markup.raw.block"])
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u
 const URL_START = /https?:\/\//giu
+const MARKDOWN_ENTITY = /&(?:#\d+|#[xX][\dA-Fa-f]+|[A-Za-z][A-Za-z\d]+);/gu
 
 export function admitLinkTarget(target: string): string | undefined {
-  const decoded = decodeHTML(target)
-  if (!decoded || CONTROL_CHARACTERS.test(decoded)) return undefined
-  return decoded
+  if (!target || CONTROL_CHARACTERS.test(target)) return undefined
+  return target
 }
 
-export function detectLinks(
-  chunks: TextChunk[],
-  context: { content: string; highlights: SimpleHighlight[] },
-): TextChunk[] {
-  const ranges = detectSourceLinks(context.content, context.highlights)
-  if (ranges.length === 0) return chunks
-
-  let contentPosition = 0
-  let rangeIndex = 0
-  for (const chunk of chunks) {
-    if (chunk.text.length === 0) continue
-    const start = context.content.indexOf(chunk.text, contentPosition)
-    if (start < 0) continue
-    while (ranges[rangeIndex] && ranges[rangeIndex].end <= start) rangeIndex++
-    const range = ranges[rangeIndex]
-    if (range && start + chunk.text.length > range.start) chunk.link = { url: range.url }
-    contentPosition = start + chunk.text.length
-  }
-  return chunks
+export function detectMarkdownLinks(
+  highlights: SimpleHighlight[],
+  context: { content: string; linkRanges?: LinkRange[] },
+): SimpleHighlight[] {
+  const links = detectSourceLinks(context.content, highlights)
+  if (links.length > 0) context.linkRanges = links
+  return highlights
 }
 
 export function detectSourceLinks(content: string, highlights: SimpleHighlight[]): SourceLink[] {
@@ -93,7 +76,7 @@ function collectBareTokens(tokens: Token[], source: string, sourceStart: number,
     const start = source.indexOf(token.raw, offset)
     if (start < 0) continue
     if (token.type === "link" && /^https?:\/\//iu.test(token.raw)) {
-      const url = admitLinkTarget(token.href)
+      const url = resolveMarkedLinkTarget(token as Tokens.Link)
       if (url) links.push({ start: sourceStart + start, end: sourceStart + start + token.raw.length, url })
     } else if ("tokens" in token && Array.isArray(token.tokens)) {
       collectBareTokens(token.tokens, token.raw, sourceStart + start, links)
@@ -119,7 +102,8 @@ function detectExplicitLinks(content: string, highlights: SimpleHighlight[]) {
     for (let previous = index - 1; previous >= 0; previous--) {
       const [labelStart, labelEnd, previousGroup] = highlights[previous]
       if (previousGroup === "markup.link.label" && /^\]\(\s*<?$/u.test(content.slice(labelEnd, start))) {
-        if (content[labelStart - 2] !== "!") links.push({ start: labelStart, end: labelEnd, url })
+        const marker = labelStart - 2
+        if (content[marker] !== "!" || isEscaped(content, marker)) links.push({ start: labelStart, end: labelEnd, url })
         break
       }
       if (URL_SCOPES.has(previousGroup)) break
@@ -129,7 +113,28 @@ function detectExplicitLinks(content: string, highlights: SimpleHighlight[]) {
 }
 
 function resolveMarkdownDestination(destination: string): string | undefined {
-  const token = Lexer.lexInline(`[x](${destination})`)[0]
+  const token = Lexer.lexInline(`[x](${decodeMarkdownEntities(destination)})`)[0]
   if (token?.type !== "link") return undefined
   return admitLinkTarget(token.href)
+}
+
+export function resolveMarkedLinkTarget(token: Tokens.Link | Tokens.Image): string | undefined {
+  const decoded = decodeMarkdownEntities(token.raw)
+  if (decoded === token.raw) return admitLinkTarget(token.href)
+  const resolved = Lexer.lexInline(decoded)[0]
+  if (resolved?.type === token.type) return admitLinkTarget(resolved.href)
+  return admitLinkTarget(decodeHTMLStrict(token.href))
+}
+
+function decodeMarkdownEntities(source: string): string {
+  if (!source.includes("&")) return source
+  return source.replace(MARKDOWN_ENTITY, (entity, offset) =>
+    isEscaped(source, offset) ? entity : decodeHTMLStrict(entity),
+  )
+}
+
+function isEscaped(source: string, offset: number): boolean {
+  let backslashes = 0
+  for (let index = offset - 1; index >= 0 && source[index] === "\\"; index--) backslashes++
+  return backslashes % 2 === 1
 }
