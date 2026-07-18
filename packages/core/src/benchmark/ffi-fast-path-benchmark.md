@@ -218,3 +218,8 @@ acceptance gate, so it was rejected.
 | Edit short     | Bun     |  127.6 ns/op |  214.4 ns/op | +68.1% | [+65.9%, +71.0%] | Fail     |
 | Edit multiline | Node    | 9339.1 ns/op | 9296.2 ns/op |  -0.5% |  [-20.8%, +8.9%] | Fail     |
 | Edit multiline | Bun     | 3654.5 ns/op | 3876.6 ns/op |  +6.1% |   [+5.3%, +7.0%] | Fail     |
+
+### Local Selection Descriptor
+
+The shared one-pointer local-selection descriptor was rejected for lifecycle instability. The first x86-64 Node plain
+TextBufferView set scenario exited before producing a sample, so no valid comparison was possible.
