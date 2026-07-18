@@ -224,7 +224,8 @@ function createScenarios(): ScenarioDefinition[] {
     ),
     createDrawCharScenario(false),
     createDrawCharScenario(true),
-    createSuperSampleScenario(),
+    createSuperSampleScenario("cell", 1, 1),
+    createSuperSampleScenario("frame", 80, 24),
     createPackedBufferScenario(),
     createGrayscaleScenario(false),
     createGrayscaleScenario(true),
@@ -314,19 +315,46 @@ function createDrawCharScenario(packed: boolean): ScenarioDefinition {
   }
 }
 
-function createSuperSampleScenario(): ScenarioDefinition {
+function createSuperSampleScenario(
+  variant: "cell" | "frame",
+  terminalWidth: number,
+  terminalHeight: number,
+): ScenarioDefinition {
+  const pixelWidth = terminalWidth * 2
+  const pixelHeight = terminalHeight * 2
+  const alignedBytesPerRow = pixelWidth * 4
   return {
-    name: "buffer_draw_super_sample_buffer",
+    name: `buffer_draw_super_sample_buffer_${variant}`,
     operation: "bufferDrawSuperSampleBuffer",
-    description: "Draw one terminal cell from a retained 2x2 RGBA pixel buffer",
+    description: `Draw a ${terminalWidth}x${terminalHeight} terminal image from a retained RGBA pixel buffer`,
     setup: ({ lib }) => {
-      const buffer = lib.createOptimizedBuffer(1, 1, "unicode", false, "ffi-bench-super-sample")
-      const pixels = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255])
+      const buffer = lib.createOptimizedBuffer(
+        terminalWidth,
+        terminalHeight,
+        "unicode",
+        false,
+        `ffi-bench-super-sample-${variant}`,
+      )
+      const pixels = new Uint8Array(alignedBytesPerRow * pixelHeight)
+      for (let index = 0; index < pixels.length; index += 4) {
+        pixels[index] = (index >>> 2) & 0xff
+        pixels[index + 1] = (index >>> 5) & 0xff
+        pixels[index + 2] = (index >>> 8) & 0xff
+        pixels[index + 3] = 0xff
+      }
       const pixelsPtr = ptr(pixels)
       return {
         run: (operations) => {
           for (let index = 0; index < operations; index++) {
-            lib.bufferDrawSuperSampleBuffer(buffer.ptr, 0, 0, pixelsPtr, pixels.byteLength, "rgba8unorm", 8)
+            lib.bufferDrawSuperSampleBuffer(
+              buffer.ptr,
+              0,
+              0,
+              pixelsPtr,
+              pixels.byteLength,
+              "rgba8unorm",
+              alignedBytesPerRow,
+            )
           }
           return operations
         },
