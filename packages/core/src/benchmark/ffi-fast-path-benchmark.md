@@ -197,3 +197,8 @@ so it was rejected.
 | Small    | Bun     |  206.5 ns/op |  370.9 ns/op | +79.6% | [+72.3%, +87.0%] | Fail     |
 | 10x6     | Node    | 1821.7 ns/op | 2118.1 ns/op | +16.3% | [-36.0%, +25.5%] | Fail     |
 | 10x6     | Bun     |  961.0 ns/op | 1163.7 ns/op | +21.1% | [+18.7%, +22.4%] | Fail     |
+
+### Box Draw Descriptor
+
+The one-pointer box descriptor was rejected for lifecycle instability. The x86-64 Node child exited during the second
+titled-box round after the fill, titled, and frame scenarios completed once, so no valid comparison was produced.
