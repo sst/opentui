@@ -161,3 +161,20 @@ rejected because neither size passed both runtime gates.
 | One cell    | Bun     |    35.5 ns/op |   144.8 ns/op | +308.2% | [+296.0%, +319.2%] | Fail     |
 | 80x24 frame | Node    | 31356.6 ns/op | 31335.9 ns/op |   -0.1% |     [-0.5%, +1.3%] | Fail     |
 | 80x24 frame | Bun     | 21789.3 ns/op | 21982.1 ns/op |   +0.9% |     [+0.5%, +1.2%] | Pass     |
+
+### Packed Buffer Candidates
+
+The origin-specialized and packed-position Candidate A was evaluated over 9 process rounds. No scenario passed both
+runtime gates.
+
+| Scenario    | Runtime |      Baseline |   Candidate A |  Change |             95% CI | Decision |
+| ----------- | ------- | ------------: | ------------: | ------: | -----------------: | -------- |
+| Origin      | Node    |   670.4 ns/op |   496.0 ns/op |  -26.0% |   [-66.3%, +84.3%] | Fail     |
+| Origin      | Bun     |    27.5 ns/op |    22.7 ns/op |  -17.3% |   [-18.0%, -14.0%] | Pass     |
+| Positioned  | Node    |   638.6 ns/op |   237.7 ns/op |  -62.8% |   [-64.6%, +70.3%] | Fail     |
+| Positioned  | Bun     |    23.0 ns/op |    52.9 ns/op | +129.7% | [+124.2%, +134.9%] | Fail     |
+| 80x24 frame | Node    | 38198.0 ns/op | 38928.8 ns/op |   +1.9% |     [-3.4%, +5.9%] | Fail     |
+| 80x24 frame | Bun     | 10506.3 ns/op | 10106.0 ns/op |   -3.8% |     [-4.4%, -3.4%] | Pass     |
+
+Candidate B grouped metadata in a three-argument descriptor ABI. It was rejected because repeated x86-64 Node process
+runs exited intermittently during both origin and positioned scenarios, so no valid 9-round report could be produced.
