@@ -92,17 +92,29 @@ same-machine requirement remain mandatory.
 The one-pointer transition descriptor was evaluated on Node 26.4.0 x86-64 and Bun 1.3.14 arm64 over 9 process rounds.
 It was rejected because it failed Bun non-inferiority.
 
-| Runtime | Baseline | Descriptor | Change | 95% CI | Decision |
-| --- | ---: | ---: | ---: | ---: | --- |
-| Node | 363.2 ns/op | 271.9 ns/op | -25.1% | [-31.3%, -16.7%] | Pass |
-| Bun | 21.5 ns/op | 128.8 ns/op | +498.2% | [+491.0%, +509.6%] | Fail |
+| Runtime |    Baseline |  Descriptor |  Change |             95% CI | Decision |
+| ------- | ----------: | ----------: | ------: | -----------------: | -------- |
+| Node    | 363.2 ns/op | 271.9 ns/op |  -25.1% |   [-31.3%, -16.7%] | Pass     |
+| Bun     |  21.5 ns/op | 128.8 ns/op | +498.2% | [+491.0%, +509.6%] | Fail     |
 
 ### Packed Split Footer Commit
 
 The three-scalar packed commit ABI was evaluated over 9 process rounds. It was rejected because it failed Bun
 non-inferiority.
 
-| Runtime | Baseline | Packed | Change | 95% CI | Decision |
-| --- | ---: | ---: | ---: | ---: | --- |
-| Node | 1478.0 ns/op | 1199.6 ns/op | -18.8% | [-25.2%, -8.7%] | Pass |
-| Bun | 466.3 ns/op | 539.3 ns/op | +15.6% | [+12.6%, +17.9%] | Fail |
+| Runtime |     Baseline |       Packed | Change |           95% CI | Decision |
+| ------- | -----------: | -----------: | -----: | ---------------: | -------- |
+| Node    | 1478.0 ns/op | 1199.6 ns/op | -18.8% |  [-25.2%, -8.7%] | Pass     |
+| Bun     |  466.3 ns/op |  539.3 ns/op | +15.6% | [+12.6%, +17.9%] | Fail     |
+
+### Frame Buffer Full And Region Split
+
+The three-scalar full-blit path and one-pointer region descriptor were evaluated together over 9 process rounds. Both
+were rejected because they failed the acceptance gate.
+
+| Scenario | Runtime |    Baseline |    Candidate |  Change |             95% CI | Decision |
+| -------- | ------- | ----------: | -----------: | ------: | -----------------: | -------- |
+| Full     | Node    | 434.1 ns/op |  181.4 ns/op |  -58.2% |   [-64.1%, -48.4%] | Pass     |
+| Full     | Bun     |  27.9 ns/op |   40.8 ns/op |  +46.1% |   [+45.0%, +47.4%] | Fail     |
+| Region   | Node    | 444.2 ns/op | 1053.5 ns/op | +137.2% |  [-28.6%, +187.9%] | Fail     |
+| Region   | Bun     |  29.7 ns/op |  147.4 ns/op | +396.1% | [+391.8%, +402.0%] | Fail     |
