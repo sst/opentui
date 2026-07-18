@@ -229,8 +229,10 @@ function createScenarios(): ScenarioDefinition[] {
     createPackedBufferScenario("origin", 1, 1, 0, 0),
     createPackedBufferScenario("positioned", 1, 1, 1, 1),
     createPackedBufferScenario("frame", 80, 24, 0, 0),
-    createGrayscaleScenario(false),
-    createGrayscaleScenario(true),
+    createGrayscaleScenario(false, "cell", 1, 1),
+    createGrayscaleScenario(false, "frame", 80, 24),
+    createGrayscaleScenario(true, "cell", 1, 1),
+    createGrayscaleScenario(true, "frame", 80, 24),
     createGridScenario(),
     createBoxScenario(),
     createTextRangeScenario(false),
@@ -424,24 +426,56 @@ function createPackedBufferScenario(
   }
 }
 
-function createGrayscaleScenario(supersampled: boolean): ScenarioDefinition {
+function createGrayscaleScenario(
+  supersampled: boolean,
+  variant: "cell" | "frame",
+  terminalWidth: number,
+  terminalHeight: number,
+): ScenarioDefinition {
+  const sourceWidth = supersampled ? terminalWidth * 2 : terminalWidth
+  const sourceHeight = supersampled ? terminalHeight * 2 : terminalHeight
   return {
-    name: `buffer_draw_grayscale_buffer${supersampled ? "_supersampled" : ""}`,
+    name: `buffer_draw_grayscale_buffer${supersampled ? "_supersampled" : ""}_${variant}`,
     operation: supersampled ? "bufferDrawGrayscaleBufferSupersampled" : "bufferDrawGrayscaleBuffer",
-    description: supersampled ? "Draw one cell from four grayscale samples" : "Draw one grayscale cell",
+    description: `Draw a ${terminalWidth}x${terminalHeight} ${supersampled ? "supersampled " : ""}grayscale image`,
     setup: ({ lib }) => {
-      const buffer = lib.createOptimizedBuffer(1, 1, "unicode", false, `ffi-bench-grayscale-${supersampled}`)
-      const intensities = supersampled ? new Float32Array([0.2, 0.5, 0.8, 1]) : new Float32Array([0.75])
+      const buffer = lib.createOptimizedBuffer(
+        terminalWidth,
+        terminalHeight,
+        "unicode",
+        false,
+        `ffi-bench-grayscale-${supersampled}-${variant}`,
+      )
+      const intensities = new Float32Array(sourceWidth * sourceHeight)
+      for (let index = 0; index < intensities.length; index++) intensities[index] = (index % 17) / 16
       const intensitiesPtr = ptr(intensities)
       return {
         run: (operations) => {
           if (supersampled) {
             for (let index = 0; index < operations; index++) {
-              lib.bufferDrawGrayscaleBufferSupersampled(buffer.ptr, 0, 0, intensitiesPtr, 2, 2, COLORS.fg, COLORS.bg)
+              lib.bufferDrawGrayscaleBufferSupersampled(
+                buffer.ptr,
+                0,
+                0,
+                intensitiesPtr,
+                sourceWidth,
+                sourceHeight,
+                COLORS.fg,
+                COLORS.bg,
+              )
             }
           } else {
             for (let index = 0; index < operations; index++) {
-              lib.bufferDrawGrayscaleBuffer(buffer.ptr, 0, 0, intensitiesPtr, 1, 1, COLORS.fg, COLORS.bg)
+              lib.bufferDrawGrayscaleBuffer(
+                buffer.ptr,
+                0,
+                0,
+                intensitiesPtr,
+                sourceWidth,
+                sourceHeight,
+                COLORS.fg,
+                COLORS.bg,
+              )
             }
           }
           return operations
