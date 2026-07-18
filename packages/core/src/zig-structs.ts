@@ -332,6 +332,69 @@ export type AudioVoiceOptions = {
   groupId?: number
 }
 
+export const NativeAudioStreamFormat = {
+  Mp3: 1,
+  Flac: 2,
+} as const
+
+export type NativeAudioStreamFormat = (typeof NativeAudioStreamFormat)[keyof typeof NativeAudioStreamFormat]
+
+export type AudioStreamCreateOptions = {
+  capacityMs: number
+  startupMs: number
+  resumeMs: number
+  volume: number
+  pan: number
+  groupId: number
+  maxProbeBytes: number
+  format: NativeAudioStreamFormat
+}
+
+export type NativeAudioStreamStats = {
+  bytesReceived: bigint
+  framesDecoded: bigint
+  framesPlayed: bigint
+  state: number
+  sampleRate: number
+  channels: number
+  bufferedFrames: number
+  capacityFrames: number
+  underruns: number
+  errorCode: number
+  readyGeneration: number
+}
+
+export const NativeAudioStreamState = {
+  Initializing: 0,
+  Buffering: 1,
+  Playing: 2,
+  Ended: 3,
+  Failed: 4,
+  Cancelled: 5,
+  Reconnecting: 6,
+} as const
+
+export type NativeAudioStreamState = (typeof NativeAudioStreamState)[keyof typeof NativeAudioStreamState]
+
+export const NativeAudioStreamStateNames = [
+  "initializing",
+  "buffering",
+  "playing",
+  "ended",
+  "errored",
+  "disposed",
+  "reconnecting",
+] as const
+
+export const NativeAudioStreamCloseReason = {
+  PreserveNativeTerminal: 0,
+  TransportError: 1,
+  Disposed: 2,
+} as const
+
+export type NativeAudioStreamCloseReason =
+  (typeof NativeAudioStreamCloseReason)[keyof typeof NativeAudioStreamCloseReason]
+
 export type AudioStats = {
   soundsLoaded: number
   voicesActive: number
@@ -369,6 +432,32 @@ export const AudioVoiceOptionsStruct = defineStruct([
   ["pan", "f32", { default: 0 }],
   ["loop", "bool_u8", { default: false }],
   ["groupId", "u32", { default: 0 }],
+])
+
+export const AudioStreamCreateOptionsStruct = defineStruct([
+  ["capacityMs", "u32"],
+  ["startupMs", "u32"],
+  ["resumeMs", "u32"],
+  ["volume", "f32"],
+  ["pan", "f32"],
+  ["groupId", "u32"],
+  // Keep additions at the end so newer JS preserves the previous native prefix during local rebuilds.
+  ["maxProbeBytes", "u32"],
+  ["format", "u32"],
+])
+
+export const AudioStreamStatsStruct = defineStruct([
+  ["bytesReceived", "u64"],
+  ["framesDecoded", "u64"],
+  ["framesPlayed", "u64"],
+  ["state", "u32"],
+  ["sampleRate", "u32"],
+  ["channels", "u32"],
+  ["bufferedFrames", "u32"],
+  ["capacityFrames", "u32"],
+  ["underruns", "u32"],
+  ["errorCode", "i32"],
+  ["readyGeneration", "u32"],
 ])
 
 export const AudioStatsStruct = defineStruct([

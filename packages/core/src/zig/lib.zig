@@ -404,6 +404,65 @@ export fn audioStop(engine_handle: NativeHandle) i32 {
     return native_audio.stop(object_ptr);
 }
 
+export fn audioCreateStream(
+    engine_handle: NativeHandle,
+    options_ptr: ?*const native_audio.StreamOptions,
+    out_stream_id: ?*u32,
+) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.createStream(object_ptr, options_ptr, out_stream_id);
+}
+
+export fn audioWriteStream(
+    engine_handle: NativeHandle,
+    stream_id: u32,
+    data_ptr: ?[*]const u8,
+    data_len: u32,
+) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.writeStream(object_ptr, stream_id, data_ptr, data_len);
+}
+
+export fn audioEndStream(engine_handle: NativeHandle, stream_id: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.endStream(object_ptr, stream_id);
+}
+
+export fn audioRestartStream(engine_handle: NativeHandle, stream_id: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.restartStream(object_ptr, stream_id);
+}
+
+export fn audioSetStreamVolume(engine_handle: NativeHandle, stream_id: u32, volume: f32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.setStreamVolume(object_ptr, stream_id, volume);
+}
+
+export fn audioSetStreamPan(engine_handle: NativeHandle, stream_id: u32, pan: f32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.setStreamPan(object_ptr, stream_id, pan);
+}
+
+export fn audioSetStreamGroup(engine_handle: NativeHandle, stream_id: u32, group_id: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.setStreamGroup(object_ptr, stream_id, group_id);
+}
+
+export fn audioGetStreamStats(engine_handle: NativeHandle, stream_id: u32, out_stats: ?*native_audio.StreamStats) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.getStreamStats(object_ptr, stream_id, out_stats);
+}
+
+export fn audioCloseStream(
+    engine_handle: NativeHandle,
+    stream_id: u32,
+    reason: u32,
+    out_final_stats: ?*native_audio.StreamStats,
+) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.closeStream(object_ptr, stream_id, reason, out_final_stats);
+}
+
 export fn audioLoad(engine_handle: NativeHandle, data_ptr: ?[*]const u8, data_len: u32, out_sound_id: ?*u32) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
     return native_audio.load(object_ptr, data_ptr, @as(usize, data_len), out_sound_id);

@@ -162,6 +162,17 @@ export const POINTER_NEGATIVE = "Pointer must be non-negative"
 export const POINTER_OFFSET_NEGATIVE = "Pointer offset must be non-negative"
 export const POINTER_OFFSET_UNSAFE = "Pointer offset must be a safe integer"
 export const POINTER_UNSAFE = "Pointer exceeds safe integer range"
+const arrayBufferByteLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "byteLength")?.get
+
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+  if (value === null || typeof value !== "object" || arrayBufferByteLength == null) return false
+  try {
+    arrayBufferByteLength.call(value)
+    return true
+  } catch {
+    return false
+  }
+}
 
 function unavailable(cause?: unknown): never {
   throw new Error(FFI_UNAVAILABLE, { cause })
@@ -461,6 +472,28 @@ function wrapNodeSymbol(fn: (...args: any[]) => any, definition: FFIFunction): (
     return fn
   }
 
+  const pointerArgs = new Set(pointerArgIndexes)
+  const normalize = (value: unknown, index: number) =>
+    pointerArgs.has(index) ? toNodePointerArgumentFast(value) : value
+
+  switch (definition.args?.length) {
+    case 1:
+      return function (arg0: unknown) {
+        if (arguments.length !== 1) return Reflect.apply(fn, undefined, arguments)
+        return fn(normalize(arg0, 0))
+      }
+    case 2:
+      return function (arg0: unknown, arg1: unknown) {
+        if (arguments.length !== 2) return Reflect.apply(fn, undefined, arguments)
+        return fn(normalize(arg0, 0), normalize(arg1, 1))
+      }
+    case 3:
+      return function (arg0: unknown, arg1: unknown, arg2: unknown) {
+        if (arguments.length !== 3) return Reflect.apply(fn, undefined, arguments)
+        return fn(normalize(arg0, 0), normalize(arg1, 1), normalize(arg2, 2))
+      }
+  }
+
   return (...args: any[]) => {
     const normalizedArgs = args.slice()
 
@@ -470,6 +503,22 @@ function wrapNodeSymbol(fn: (...args: any[]) => any, definition: FFIFunction): (
 
     return fn(...normalizedArgs)
   }
+}
+
+function toNodePointerArgumentFast(value: unknown): bigint | ArrayBuffer | ArrayBufferView {
+  if (typeof value === "bigint") {
+    return value >= 0n ? value : toNodePointerArgument(value)
+  }
+
+  if (ArrayBuffer.isView(value) && value.byteLength > 0 && value.buffer instanceof ArrayBuffer) {
+    return value
+  }
+
+  if (value instanceof ArrayBuffer && value.byteLength > 0) {
+    return value
+  }
+
+  return toNodePointerArgument(value)
 }
 
 function isNodePointerArgumentType(type: FFITypeOrString): boolean {
@@ -486,7 +535,7 @@ function toNodePointerArgument(value: unknown): bigint | ArrayBuffer | ArrayBuff
   }
 
   if (ArrayBuffer.isView(value)) {
-    if (!(value.buffer instanceof ArrayBuffer)) {
+    if (!isArrayBuffer(value.buffer)) {
       throw new TypeError(NODE_PTR_VALUE)
     }
 
@@ -497,7 +546,7 @@ function toNodePointerArgument(value: unknown): bigint | ArrayBuffer | ArrayBuff
     return value
   }
 
-  if (value instanceof ArrayBuffer) {
+  if (isArrayBuffer(value)) {
     if (value.byteLength === 0) {
       return 0n
     }
@@ -510,14 +559,14 @@ function toNodePointerArgument(value: unknown): bigint | ArrayBuffer | ArrayBuff
 
 function toNodeSourcePointer(nodeFfi: NodeFfiBackend, value: PointerSource): bigint {
   if (ArrayBuffer.isView(value)) {
-    if (!(value.buffer instanceof ArrayBuffer)) {
+    if (!isArrayBuffer(value.buffer)) {
       throw new TypeError(NODE_PTR_VALUE)
     }
 
     return nodeFfi.getRawPointer(value.buffer) + BigInt(value.byteOffset)
   }
 
-  if (value instanceof ArrayBuffer) {
+  if (isArrayBuffer(value)) {
     return nodeFfi.getRawPointer(value)
   }
 

@@ -94,6 +94,7 @@
     "src/tests/absolute-positioning.snapshot.test.ts",
     "src/tests/renderable.snapshot.test.ts",
     "src/tests/allocator-stats.test.ts",
+    "src/tests/audio-stream.test.ts",
     "src/tests/audio.test.ts",
     "src/tests/destroy-on-exit.fixture.ts",
     "src/tests/destroy-on-exit.test.ts",

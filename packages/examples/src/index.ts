@@ -70,6 +70,7 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as corePluginSlotsDemo from "./core-plugin-slots-demo.js"
 import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 import * as nativeAudioDemo from "./native-audio-demo.js"
+import * as audioStreamingDemo from "./audio-streaming-demo.js"
 import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
 
 type ExampleCategory =
@@ -567,6 +568,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
     },
   ]),
   section("Terminal & Native", [
+    {
+      name: "Audio Streaming Demo",
+      description: "Live MP3 URL streaming with reconnect controls, telemetry, and master-mix FFT visualization",
+      run: audioStreamingDemo.run,
+      destroy: audioStreamingDemo.destroy,
+    },
     {
       name: "Audio Demo",
       description: "WAV-based native mixer with sound groups and live meter stats",

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { runInNewContext } from "node:vm"
 import {
   BUN_DLOPEN_NULL,
   FFIType,
@@ -407,6 +408,42 @@ describe("platform/ffi", () => {
     expect(functionCalls[0]?.args[2]).toBe(0n)
     expect(functionCalls[0]?.args[3]).toBe(77n)
     expect(functionCalls[0]?.args[4]).toBe(0n)
+  })
+
+  test("keeps short Node pointer wrappers fixed-arity", () => {
+    const { backend, functionCalls } = createMockNodeBackend()
+    const library = backend.dlopen("mock", {
+      one: { args: [FFIType.ptr], returns: FFIType.void },
+      two: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.void },
+      three: { args: [FFIType.ptr, FFIType.u32, FFIType.ptr], returns: FFIType.void },
+      four: { args: [FFIType.ptr, FFIType.u32, FFIType.u32, FFIType.ptr], returns: FFIType.void },
+    })
+
+    expect(library.symbols.one.length).toBe(1)
+    expect(library.symbols.two.length).toBe(2)
+    expect(library.symbols.three.length).toBe(3)
+    expect(library.symbols.four.length).toBe(0)
+
+    library.symbols.two(10n as Pointer)
+    library.symbols.two(10n as Pointer, 20, 30)
+    expect(functionCalls.map((call) => call.args)).toEqual([[10n], [10n, 20, 30]])
+  })
+
+  test("accepts cross-realm ArrayBuffers and views at Node pointer boundaries", () => {
+    const { backend, functionCalls } = createMockNodeBackend()
+    const buffer = runInNewContext("new ArrayBuffer(16)") as ArrayBuffer
+    const view = runInNewContext("new Uint8Array(new ArrayBuffer(16), 4, 8)") as Uint8Array
+    const library = backend.dlopen("mock", {
+      pointers: {
+        args: [FFIType.ptr, FFIType.ptr],
+        returns: FFIType.void,
+      },
+    })
+
+    expect(backend.ptr(buffer)).toBe(1000n as Pointer)
+    expect(backend.ptr(view)).toBe(1104n as Pointer)
+    library.symbols.pointers(buffer, view)
+    expect(functionCalls[0]?.args).toEqual([buffer, view])
   })
 
   test("rejects invalid Node ptr-like arguments deterministically", () => {

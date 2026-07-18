@@ -5,7 +5,7 @@ export const useTimeline = (options: TimelineOptions = {}) => {
   const timeline = new Timeline(options)
 
   useEffect(() => {
-    if (!options.autoplay) {
+    if (options.autoplay !== false) {
       timeline.play()
     }
 

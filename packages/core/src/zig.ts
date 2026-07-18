@@ -21,7 +21,14 @@ import {
   type LineInfo,
   type MousePointerStyle,
 } from "./types.js"
-export type { LineInfo, AllocatorStats, BuildOptions, NativeRenderStats }
+export type {
+  LineInfo,
+  AllocatorStats,
+  AudioStreamCreateOptions,
+  BuildOptions,
+  NativeAudioStreamStats,
+  NativeRenderStats,
+}
 
 import { RGBA } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
@@ -45,6 +52,11 @@ import {
   AudioCreateOptionsStruct,
   AudioStartOptionsStruct,
   AudioVoiceOptionsStruct,
+  AudioStreamCreateOptionsStruct,
+  AudioStreamStatsStruct,
+  NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonValue,
+  NativeAudioStreamFormat as NativeAudioStreamFormatValue,
+  NativeAudioStreamState as NativeAudioStreamStateValue,
   AudioStatsStruct,
   BuildOptionsStruct,
   AllocatorStatsStruct,
@@ -57,12 +69,24 @@ import type {
   AudioCreateOptions,
   AudioStartOptions,
   AudioVoiceOptions,
+  AudioStreamCreateOptions,
+  NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonType,
+  NativeAudioStreamFormat as NativeAudioStreamFormatType,
+  NativeAudioStreamState as NativeAudioStreamStateType,
+  NativeAudioStreamStats,
   AudioStats,
   BuildOptions,
   AllocatorStats,
   NativeRenderStats,
 } from "./zig-structs.js"
+export const NativeAudioStreamState = NativeAudioStreamStateValue
+export type NativeAudioStreamState = NativeAudioStreamStateType
+export const NativeAudioStreamCloseReason = NativeAudioStreamCloseReasonValue
+export type NativeAudioStreamCloseReason = NativeAudioStreamCloseReasonType
+export const NativeAudioStreamFormat = NativeAudioStreamFormatValue
+export type NativeAudioStreamFormat = NativeAudioStreamFormatType
 import { isBunfsPath } from "./lib/bunfs.js"
+import { resolveNativeLibraryPath } from "#opentui/runtime-assets"
 
 registerEnvVar({
   name: "OPENTUI_LIBC",
@@ -70,55 +94,6 @@ registerEnvVar({
   type: "string",
   default: "",
 })
-
-function validateLinuxLibcOverride(): void {
-  const libc = process.env.OPENTUI_LIBC
-  if (libc === undefined || libc === "" || libc === "glibc" || libc === "musl") return
-  throw new Error(`On Linux, OPENTUI_LIBC must be unset, empty, "glibc", or "musl", got "${libc}"`)
-}
-
-async function resolveNativePackage() {
-  if (process.platform === "darwin") {
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "x64") return await import("@opentui/core-darwin-x64")
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "arm64") return await import("@opentui/core-darwin-arm64")
-  }
-
-  if (process.platform === "linux") {
-    validateLinuxLibcOverride()
-
-    if (process.arch === "x64") {
-      if (process.env.OPENTUI_LIBC === "musl") {
-        // @ts-ignore Optional native package may be absent unless building a musl target.
-        return await import("@opentui/core-linux-x64-musl")
-      } else {
-        // @ts-ignore Optional native package may be absent when building on another platform.
-        return await import("@opentui/core-linux-x64")
-      }
-    }
-
-    if (process.arch === "arm64") {
-      if (process.env.OPENTUI_LIBC === "musl") {
-        // @ts-ignore Optional native package may be absent unless building a musl target.
-        return await import("@opentui/core-linux-arm64-musl")
-      } else {
-        // @ts-ignore Optional native package may be absent when building on another platform.
-        return await import("@opentui/core-linux-arm64")
-      }
-    }
-  }
-
-  if (process.platform === "win32") {
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "x64") return await import("@opentui/core-win32-x64")
-    // @ts-ignore Optional native package may be absent when building on another platform.
-    if (process.arch === "arm64") return await import("@opentui/core-win32-arm64")
-  }
-
-  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
-}
-const nativePackage = await resolveNativePackage()
 
 export type NativeHandle<T extends string> = Pointer & { readonly __nativeHandle: T }
 export type RendererHandle = NativeHandle<"renderer">
@@ -131,14 +106,19 @@ export type SyntaxStyleHandle = NativeHandle<"syntax_style">
 export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
 export type NativeRenderableHandle = NativeHandle<"native_renderable">
-let targetLibPath = nativePackage.default
+let targetLibPath: string | undefined
+let targetLibError: Error | undefined
 
-if (isBunfsPath(targetLibPath)) {
-  targetLibPath = targetLibPath.replace("../", "")
-}
-
-if (!existsSync(targetLibPath)) {
-  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+try {
+  targetLibPath = await resolveNativeLibraryPath()
+  if (isBunfsPath(targetLibPath)) {
+    targetLibPath = targetLibPath.replace("../", "")
+  }
+  if (!existsSync(targetLibPath)) {
+    throw new Error(`OpenTUI native library does not exist at ${JSON.stringify(targetLibPath)}`)
+  }
+} catch (error) {
+  targetLibError = error instanceof Error ? error : new Error(String(error))
 }
 
 registerEnvVar({
@@ -215,6 +195,10 @@ function toSafeFFIU32Length(value: number, label: string): number {
   return value
 }
 
+function isFFIU32(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= MAX_FFI_U32
+}
+
 function ptrOrNull(value: ArrayBufferView): Pointer | null {
   return value.byteLength === 0 ? null : ptr(value)
 }
@@ -229,6 +213,12 @@ function optionalRgbaPtr(value: RGBA | null | undefined): Pointer | null {
 
 function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
+  if (!resolvedLibPath) {
+    throw (
+      targetLibError ??
+      new Error(`OpenTUI is not supported on the current platform: ${process.platform}-${process.arch}`)
+    )
+  }
 
   const rawSymbols = dlopen(resolvedLibPath, {
     // Logging
@@ -1515,6 +1505,42 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "i32",
     },
+    audioCreateStream: {
+      args: ["u32", "ptr", "ptr"],
+      returns: "i32",
+    },
+    audioWriteStream: {
+      args: ["u32", "u32", "ptr", "u32"],
+      returns: "i32",
+    },
+    audioEndStream: {
+      args: ["u32", "u32"],
+      returns: "i32",
+    },
+    audioRestartStream: {
+      args: ["u32", "u32"],
+      returns: "i32",
+    },
+    audioSetStreamVolume: {
+      args: ["u32", "u32", "f32"],
+      returns: "i32",
+    },
+    audioSetStreamPan: {
+      args: ["u32", "u32", "f32"],
+      returns: "i32",
+    },
+    audioSetStreamGroup: {
+      args: ["u32", "u32", "u32"],
+      returns: "i32",
+    },
+    audioGetStreamStats: {
+      args: ["u32", "u32", "ptr"],
+      returns: "i32",
+    },
+    audioCloseStream: {
+      args: ["u32", "u32", "u32", "ptr"],
+      returns: "i32",
+    },
     audioLoad: {
       args: ["u32", "ptr", "u32", "ptr"],
       returns: "i32",
@@ -1914,6 +1940,22 @@ export interface AudioEngineLib {
   audioStart: (engine: AudioEngineHandle, options?: AudioStartOptions | null) => number
   audioStartMixer: (engine: AudioEngineHandle) => number
   audioStop: (engine: AudioEngineHandle) => number
+  audioCreateStream: (
+    engine: AudioEngineHandle,
+    options: AudioStreamCreateOptions,
+  ) => { status: number; streamId: number | null }
+  audioWriteStream: (engine: AudioEngineHandle, streamId: number, data: Uint8Array) => number
+  audioEndStream: (engine: AudioEngineHandle, streamId: number) => number
+  audioRestartStream: (engine: AudioEngineHandle, streamId: number) => number
+  audioSetStreamVolume: (engine: AudioEngineHandle, streamId: number, volume: number) => number
+  audioSetStreamPan: (engine: AudioEngineHandle, streamId: number, pan: number) => number
+  audioSetStreamGroup: (engine: AudioEngineHandle, streamId: number, groupId: number) => number
+  audioGetStreamStats: (engine: AudioEngineHandle, streamId: number) => NativeAudioStreamStats | null
+  audioCloseStream: (
+    engine: AudioEngineHandle,
+    streamId: number,
+    reason: NativeAudioStreamCloseReason,
+  ) => { status: number; stats: NativeAudioStreamStats | null }
   audioLoad: (engine: AudioEngineHandle, data: Uint8Array) => { status: number; soundId: number | null }
   audioUnload: (engine: AudioEngineHandle, soundId: number) => number
   audioPlay: (
@@ -2549,6 +2591,10 @@ export interface RenderLib extends AudioEngineLib {
 
 class FFIRenderLib implements RenderLib {
   private opentui: ReturnType<typeof getOpenTUILib>
+  // Layout reads are synchronous and non-reentrant. Retain one backing buffer so
+  // Node does not allocate and resolve a new output pointer for every node.
+  private readonly yogaLayout = new Float32Array(6)
+  private readonly yogaLayoutPtr = ptr(this.yogaLayout)
   public readonly encoder: TextEncoder = new TextEncoder()
   public readonly decoder: TextDecoder = new TextDecoder()
   private logCallbackWrapper: FFICallbackInstance | null = null
@@ -3647,8 +3693,8 @@ class FFIRenderLib implements RenderLib {
   }
 
   public yogaNodeGetComputedLayout(node: Pointer): NativeYogaLayout {
-    const layout = new Float32Array(6)
-    this.opentui.symbols.yogaNodeGetComputedLayout(node, ptr(layout))
+    const layout = this.yogaLayout
+    this.opentui.symbols.yogaNodeGetComputedLayout(node, this.yogaLayoutPtr)
     return {
       left: layout[0]!,
       top: layout[1]!,
@@ -4918,7 +4964,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public audioStart(engine: Pointer, options?: AudioStartOptions | null): number {
-    const optionsBuffer = options == null ? null : AudioStartOptionsStruct.pack(options)
+    let optionsBuffer: ArrayBuffer | null
+    try {
+      optionsBuffer = options == null ? null : AudioStartOptionsStruct.pack(options)
+    } catch {
+      return -1
+    }
     return this.opentui.symbols.audioStart(engine, optionsBuffer ? ptr(optionsBuffer) : null)
   }
 
@@ -4928,6 +4979,67 @@ class FFIRenderLib implements RenderLib {
 
   public audioStop(engine: Pointer): number {
     return this.opentui.symbols.audioStop(engine)
+  }
+
+  public audioCreateStream(
+    engine: AudioEngineHandle,
+    options: AudioStreamCreateOptions,
+  ): { status: number; streamId: number | null } {
+    if (
+      !isFFIU32(options.groupId) ||
+      (options.format !== NativeAudioStreamFormat.Mp3 && options.format !== NativeAudioStreamFormat.Flac)
+    ) {
+      return { status: -1, streamId: null }
+    }
+    const optionsBuffer = AudioStreamCreateOptionsStruct.pack(options)
+    const outBuffer = new ArrayBuffer(4)
+    const status = this.opentui.symbols.audioCreateStream(engine, optionsBuffer, outBuffer)
+    if (status !== 0) return { status, streamId: null }
+    return { status, streamId: new Uint32Array(outBuffer)[0] ?? null }
+  }
+
+  public audioWriteStream(engine: AudioEngineHandle, streamId: number, data: Uint8Array): number {
+    const dataLength = toSafeFFIU32Length(data.byteLength, "Audio stream data length")
+    return this.opentui.symbols.audioWriteStream(engine, streamId, dataLength === 0 ? null : data, dataLength)
+  }
+
+  public audioEndStream(engine: AudioEngineHandle, streamId: number): number {
+    return this.opentui.symbols.audioEndStream(engine, streamId)
+  }
+
+  public audioRestartStream(engine: AudioEngineHandle, streamId: number): number {
+    return this.opentui.symbols.audioRestartStream(engine, streamId)
+  }
+
+  public audioSetStreamVolume(engine: AudioEngineHandle, streamId: number, volume: number): number {
+    return this.opentui.symbols.audioSetStreamVolume(engine, streamId, volume)
+  }
+
+  public audioSetStreamPan(engine: AudioEngineHandle, streamId: number, pan: number): number {
+    return this.opentui.symbols.audioSetStreamPan(engine, streamId, pan)
+  }
+
+  public audioSetStreamGroup(engine: AudioEngineHandle, streamId: number, groupId: number): number {
+    if (!isFFIU32(groupId)) return -1
+    return this.opentui.symbols.audioSetStreamGroup(engine, streamId, groupId)
+  }
+
+  public audioGetStreamStats(engine: AudioEngineHandle, streamId: number): NativeAudioStreamStats | null {
+    const outBuffer = new ArrayBuffer(AudioStreamStatsStruct.size)
+    const status = this.opentui.symbols.audioGetStreamStats(engine, streamId, outBuffer)
+    if (status !== 0) return null
+    return AudioStreamStatsStruct.unpack(outBuffer) as NativeAudioStreamStats
+  }
+
+  public audioCloseStream(
+    engine: AudioEngineHandle,
+    streamId: number,
+    reason: NativeAudioStreamCloseReason,
+  ): { status: number; stats: NativeAudioStreamStats | null } {
+    const outBuffer = new ArrayBuffer(AudioStreamStatsStruct.size)
+    const status = this.opentui.symbols.audioCloseStream(engine, streamId, reason, outBuffer)
+    if (status !== 0) return { status, stats: null }
+    return { status, stats: AudioStreamStatsStruct.unpack(outBuffer) as NativeAudioStreamStats }
   }
 
   public audioLoad(engine: Pointer, data: Uint8Array): { status: number; soundId: number | null } {
@@ -4950,6 +5062,7 @@ class FFIRenderLib implements RenderLib {
     soundId: number,
     options?: AudioVoiceOptions,
   ): { status: number; voiceId: number | null } {
+    if (options?.groupId !== undefined && !isFFIU32(options.groupId)) return { status: -1, voiceId: null }
     const outBuffer = new ArrayBuffer(4)
     const optionsBuffer = options ? AudioVoiceOptionsStruct.pack(options) : null
     const status = this.opentui.symbols.audioPlay(
@@ -4970,6 +5083,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public audioSetVoiceGroup(engine: Pointer, voiceId: number, groupId: number): number {
+    if (!isFFIU32(groupId)) return -1
     return this.opentui.symbols.audioSetVoiceGroup(engine, voiceId, groupId)
   }
 
