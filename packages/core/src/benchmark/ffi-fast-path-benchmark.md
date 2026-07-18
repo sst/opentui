@@ -132,3 +132,19 @@ all workloads failed the acceptance gate.
 | Long     | Bun     | 1229.4 ns/op | 1737.1 ns/op |  +41.3% |   [+39.8%, +43.0%] | Fail     |
 | Unicode  | Node    | 7751.5 ns/op | 8531.0 ns/op |  +10.1% |  [+4.0%, +1243.0%] | Fail     |
 | Unicode  | Bun     | 4330.1 ns/op | 5253.9 ns/op |  +21.3% |   [+17.2%, +22.7%] | Fail     |
+
+### Scalar Cell ABI
+
+The six-scalar cell ABI was evaluated over 9 process rounds. It was rejected because every workload failed Bun
+non-inferiority; the scalar `bufferDrawChar` Node interval also crossed zero.
+
+| Scenario        | Runtime |    Baseline |   Candidate |  Change |             95% CI | Decision |
+| --------------- | ------- | ----------: | ----------: | ------: | -----------------: | -------- |
+| Alpha set       | Node    | 955.3 ns/op | 636.2 ns/op |  -33.4% |   [-45.3%, -15.6%] | Pass     |
+| Alpha set       | Bun     |  51.3 ns/op | 208.2 ns/op | +305.6% | [+301.4%, +309.8%] | Fail     |
+| Direct set      | Node    | 842.2 ns/op | 562.3 ns/op |  -33.2% |   [-91.4%, -19.2%] | Pass     |
+| Direct set      | Bun     |  37.1 ns/op | 190.8 ns/op | +414.1% | [+410.1%, +417.7%] | Fail     |
+| Scalar char     | Node    | 775.3 ns/op | 554.7 ns/op |  -28.5% |   [-91.2%, +27.8%] | Fail     |
+| Scalar char     | Bun     |  36.9 ns/op | 185.3 ns/op | +401.9% | [+396.1%, +407.6%] | Fail     |
+| Packed grapheme | Node    | 878.4 ns/op | 601.2 ns/op |  -31.6% |   [-90.3%, -26.8%] | Pass     |
+| Packed grapheme | Bun     |  45.8 ns/op | 200.5 ns/op | +338.1% | [+327.7%, +345.7%] | Fail     |
