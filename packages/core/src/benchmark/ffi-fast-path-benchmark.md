@@ -5,7 +5,7 @@ API path. It does not introduce or exercise a benchmark-only ABI.
 
 ## Scenarios
 
-The 29 scenarios split behaviorally distinct inputs while mapping to 19 calls:
+The 31 scenarios split behaviorally distinct inputs while mapping to 19 calls:
 
 - `setPendingSplitFooterTransition` and `commitSplitFooterSnapshot`
 - `drawFrameBuffer`, as full-buffer and explicit-region copies
@@ -15,7 +15,8 @@ The 29 scenarios split behaviorally distinct inputs while mapping to 19 calls:
 - `bufferDrawSuperSampleBuffer`, with one-cell and 80x24 terminal images
 - `bufferDrawPackedBuffer`, with origin, positioned, and 80x24 frame payloads
 - `bufferDrawGrayscaleBuffer` and `bufferDrawGrayscaleBufferSupersampled`, at one-cell and 80x24 output sizes
-- `bufferDrawGrid`, with small and 10x6 grids, and `bufferDrawBox`
+- `bufferDrawGrid`, with small and 10x6 grids
+- `bufferDrawBox`, with fill-only, titled, and 80x24 frame shapes
 - `textBufferGetTextRangeByCoords` and `editBufferGetTextRangeByCoords`
 - TextBufferView `setLocalSelection` and `updateLocalSelection`
 - EditorView `setLocalSelection` and `updateLocalSelection`

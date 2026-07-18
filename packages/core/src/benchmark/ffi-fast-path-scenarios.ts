@@ -241,7 +241,9 @@ function createScenarios(): ScenarioDefinition[] {
       80,
       24,
     ),
-    createBoxScenario(),
+    createBoxScenario("fill", 40, 12, 1 << 4, null, null),
+    createBoxScenario("titled", 4, 3, 0b1_1111, "T", "B"),
+    createBoxScenario("frame", 80, 24, 0b1_1111, "OpenTUI frame", "status"),
     createTextRangeScenario(false),
     createTextRangeScenario(true),
     createTextBufferSelectionScenario(false),
@@ -532,28 +534,35 @@ function createGridScenario(
   )
 }
 
-function createBoxScenario(): ScenarioDefinition {
+function createBoxScenario(
+  variant: "fill" | "titled" | "frame",
+  width: number,
+  height: number,
+  packedOptions: number,
+  title: string | null,
+  bottomTitle: string | null,
+): ScenarioDefinition {
   return createSingleBufferScenario(
-    "buffer_draw_box",
+    `buffer_draw_box_${variant}`,
     "bufferDrawBox",
-    "Draw a titled 4x3 box through the production wrapper",
-    4,
-    3,
+    `Draw a ${width}x${height} ${variant} box through the production wrapper`,
+    width,
+    height,
     (lib, buffer, operations) => {
       for (let index = 0; index < operations; index++) {
         lib.bufferDrawBox(
           buffer.ptr,
           0,
           0,
-          4,
-          3,
+          width,
+          height,
           BorderCharArrays.single,
-          0b1_1111,
+          packedOptions,
           COLORS.fg,
           COLORS.bg,
           COLORS.fg,
-          "T",
-          "B",
+          title,
+          bottomTitle,
         )
       }
       return operations
