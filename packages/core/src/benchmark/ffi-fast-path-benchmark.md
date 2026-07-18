@@ -84,3 +84,15 @@ The compare script marks acceptance false when either input has fewer than 9 pro
 seed is derived from scenario and runtime names and uses 20,000 replicates. Bootstrap determinism makes reports
 reproducible; it does not remove environmental noise, which is why isolated alternating process rounds and the
 same-machine requirement remain mandatory.
+
+## Decision Log
+
+### Split Footer Transition Descriptor
+
+The one-pointer transition descriptor was evaluated on Node 26.4.0 x86-64 and Bun 1.3.14 arm64 over 9 process rounds.
+It was rejected because it failed Bun non-inferiority.
+
+| Runtime | Baseline | Descriptor | Change | 95% CI | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Node | 363.2 ns/op | 271.9 ns/op | -25.1% | [-31.3%, -16.7%] | Pass |
+| Bun | 21.5 ns/op | 128.8 ns/op | +498.2% | [+491.0%, +509.6%] | Fail |
