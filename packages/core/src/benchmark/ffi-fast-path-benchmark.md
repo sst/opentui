@@ -178,3 +178,9 @@ runtime gates.
 
 Candidate B grouped metadata in a three-argument descriptor ABI. It was rejected because repeated x86-64 Node process
 runs exited intermittently during both origin and positioned scenarios, so no valid 9-round report could be produced.
+
+### Grayscale Metadata Descriptor
+
+The shared three-argument grayscale descriptor was rejected for lifecycle instability. Two independent 9-round runs
+exited during the x86-64 Node supersampled-frame scenario after earlier scenarios completed. Twenty isolated
+supersampled-frame processes passed, but the repeated suite failure prevents a valid comparison or acceptance.
