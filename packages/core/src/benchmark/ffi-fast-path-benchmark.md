@@ -5,7 +5,7 @@ API path. It does not introduce or exercise a benchmark-only ABI.
 
 ## Scenarios
 
-The 33 scenarios split behaviorally distinct inputs while mapping to 19 calls:
+The 37 scenarios split behaviorally distinct inputs while mapping to 19 calls:
 
 - `setPendingSplitFooterTransition` and `commitSplitFooterSnapshot`
 - `drawFrameBuffer`, as full-buffer and explicit-region copies
@@ -18,8 +18,8 @@ The 33 scenarios split behaviorally distinct inputs while mapping to 19 calls:
 - `bufferDrawGrid`, with small and 10x6 grids
 - `bufferDrawBox`, with fill-only, titled, and 80x24 frame shapes
 - `textBufferGetTextRangeByCoords` and `editBufferGetTextRangeByCoords`, with short and multiline Unicode ranges
-- TextBufferView `setLocalSelection` and `updateLocalSelection`
-- EditorView `setLocalSelection` and `updateLocalSelection`
+- TextBufferView `setLocalSelection` and `updateLocalSelection`, with plain and styled selections
+- EditorView `setLocalSelection` and `updateLocalSelection`, with plain and styled selections
 
 Every child process creates a headless renderer with `createTestRenderer`, obtains the production library through
 `resolveRenderLib`, and passes live native handles to the public wrappers. Pointer backing arrays and encoded graphemes

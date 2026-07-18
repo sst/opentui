@@ -248,10 +248,14 @@ function createScenarios(): ScenarioDefinition[] {
     createTextRangeScenario(false, "multiline"),
     createTextRangeScenario(true, "short"),
     createTextRangeScenario(true, "multiline"),
-    createTextBufferSelectionScenario(false),
-    createTextBufferSelectionScenario(true),
-    createEditorSelectionScenario(false),
-    createEditorSelectionScenario(true),
+    createTextBufferSelectionScenario(false, false),
+    createTextBufferSelectionScenario(false, true),
+    createTextBufferSelectionScenario(true, false),
+    createTextBufferSelectionScenario(true, true),
+    createEditorSelectionScenario(false, false),
+    createEditorSelectionScenario(false, true),
+    createEditorSelectionScenario(true, false),
+    createEditorSelectionScenario(true, true),
   ]
 }
 
@@ -622,25 +626,27 @@ function createTextRangeScenario(editable: boolean, variant: "short" | "multilin
   }
 }
 
-function createTextBufferSelectionScenario(update: boolean): ScenarioDefinition {
+function createTextBufferSelectionScenario(update: boolean, styled: boolean): ScenarioDefinition {
+  const bg = styled ? COLORS.bg : null
+  const fg = styled ? COLORS.fg : null
   return {
-    name: `text_buffer_view_${update ? "update" : "set"}_local_selection`,
+    name: `text_buffer_view_${update ? "update" : "set"}_local_selection_${styled ? "styled" : "plain"}`,
     operation: update ? "textBufferViewUpdateLocalSelection" : "textBufferViewSetLocalSelection",
-    description: `${update ? "Update" : "Set"} a local selection on a live TextBufferView`,
+    description: `${update ? "Update" : "Set"} a ${styled ? "styled" : "plain"} local selection on a live TextBufferView`,
     setup: ({ lib }) => {
       const buffer = TextBuffer.create("unicode")
       buffer.setText("alpha beta\ngamma delta")
       const view = TextBufferView.create(buffer)
       view.setViewportSize(20, 2)
-      view.setLocalSelection(0, 0, 1, 0, COLORS.bg, COLORS.fg)
+      view.setLocalSelection(0, 0, 1, 0, bg ?? undefined, fg ?? undefined)
       return {
         run: (operations) => {
           let signal = 0
           for (let index = 0; index < operations; index++) {
             const focus = index & 1 ? 5 : 9
             const changed = update
-              ? lib.textBufferViewUpdateLocalSelection(view.ptr, 0, 0, focus, 0, COLORS.bg, COLORS.fg)
-              : lib.textBufferViewSetLocalSelection(view.ptr, 0, 0, focus, 0, COLORS.bg, COLORS.fg)
+              ? lib.textBufferViewUpdateLocalSelection(view.ptr, 0, 0, focus, 0, bg, fg)
+              : lib.textBufferViewSetLocalSelection(view.ptr, 0, 0, focus, 0, bg, fg)
             signal = (signal + Number(changed) + focus) >>> 0
           }
           return signal
@@ -655,24 +661,26 @@ function createTextBufferSelectionScenario(update: boolean): ScenarioDefinition 
   }
 }
 
-function createEditorSelectionScenario(update: boolean): ScenarioDefinition {
+function createEditorSelectionScenario(update: boolean, styled: boolean): ScenarioDefinition {
+  const bg = styled ? COLORS.bg : null
+  const fg = styled ? COLORS.fg : null
   return {
-    name: `editor_view_${update ? "update" : "set"}_local_selection`,
+    name: `editor_view_${update ? "update" : "set"}_local_selection_${styled ? "styled" : "plain"}`,
     operation: update ? "editorViewUpdateLocalSelection" : "editorViewSetLocalSelection",
-    description: `${update ? "Update" : "Set"} a local selection on a live EditorView`,
+    description: `${update ? "Update" : "Set"} a ${styled ? "styled" : "plain"} local selection on a live EditorView`,
     setup: ({ lib }) => {
       const buffer = EditBuffer.create("unicode")
       buffer.setText("alpha beta\ngamma delta")
       const view = EditorView.create(buffer, 20, 2)
-      view.setLocalSelection(0, 0, 1, 0, COLORS.bg, COLORS.fg, false, false)
+      view.setLocalSelection(0, 0, 1, 0, bg ?? undefined, fg ?? undefined, false, false)
       return {
         run: (operations) => {
           let signal = 0
           for (let index = 0; index < operations; index++) {
             const focus = index & 1 ? 5 : 9
             const changed = update
-              ? lib.editorViewUpdateLocalSelection(view.ptr, 0, 0, focus, 0, COLORS.bg, COLORS.fg, false, false)
-              : lib.editorViewSetLocalSelection(view.ptr, 0, 0, focus, 0, COLORS.bg, COLORS.fg, false, false)
+              ? lib.editorViewUpdateLocalSelection(view.ptr, 0, 0, focus, 0, bg, fg, false, false)
+              : lib.editorViewSetLocalSelection(view.ptr, 0, 0, focus, 0, bg, fg, false, false)
             signal = (signal + Number(changed) + focus) >>> 0
           }
           return signal
