@@ -181,6 +181,25 @@ const code = new CodeRenderable(renderer, {
 })
 ```
 
+## Highlight hooks
+
+Use `onHighlight` to adjust source ranges before chunks are created. It can also set source-ordered, non-overlapping `context.linkRanges` when a language-specific integration provides hyperlink targets. Range starts are inclusive and ends are exclusive. Use `onChunks` for transformations that must run after highlighting and concealment. Returning `undefined` from either callback keeps the input unchanged.
+
+```typescript
+const code = new CodeRenderable(renderer, {
+  content: "const answer = 42",
+  filetype: "typescript",
+  syntaxStyle,
+  onHighlight: (highlights, context) => {
+    context.linkRanges = [{ start: 6, end: 12, url: "https://example.com/answer" }]
+    return highlights
+  },
+  onChunks: (chunks) => chunks,
+})
+```
+
+`CodeRenderable` does not infer terminal hyperlinks from a filetype. `MarkdownRenderable` owns Markdown link detection; custom `CodeRenderable` integrations can add link metadata through `onHighlight` source ranges.
+
 ## With line numbers
 
 Use `LineNumberRenderable` to add line numbers:
@@ -223,15 +242,18 @@ renderer.root.add(scrollbox)
 
 ## Properties
 
-| Property           | Type               | Default  | Description                              |
-| ------------------ | ------------------ | -------- | ---------------------------------------- |
-| `content`          | `string`           | `""`     | Source code to display                   |
-| `filetype`         | `string`           | -        | Language for syntax highlighting         |
-| `syntaxStyle`      | `SyntaxStyle`      | required | Syntax highlighting theme                |
-| `streaming`        | `boolean`          | `false`  | Optimize for incremental content updates |
-| `conceal`          | `boolean`          | `true`   | Hide concealed syntax elements           |
-| `drawUnstyledText` | `boolean`          | `true`   | Show text before highlighting completes  |
-| `treeSitterClient` | `TreeSitterClient` | -        | Custom Tree-sitter client instance       |
+| Property           | Type                  | Default  | Description                                       |
+| ------------------ | --------------------- | -------- | ------------------------------------------------- |
+| `content`          | `string`              | `""`     | Source code to display                            |
+| `filetype`         | `string`              | -        | Language for syntax highlighting                  |
+| `syntaxStyle`      | `SyntaxStyle`         | required | Syntax highlighting theme                         |
+| `streaming`        | `boolean`             | `false`  | Optimize for incremental content updates          |
+| `conceal`          | `boolean`             | `true`   | Hide concealed syntax elements                    |
+| `drawUnstyledText` | `boolean`             | `true`   | Show text before highlighting completes           |
+| `treeSitterClient` | `TreeSitterClient`    | -        | Custom Tree-sitter client instance                |
+| `baseHighlight`    | `string`              | -        | Base scope merged into generated chunks           |
+| `onHighlight`      | `OnHighlightCallback` | -        | Transform source highlights before chunk creation |
+| `onChunks`         | `OnChunksCallback`    | -        | Transform generated chunks before display         |
 
 ### Inherited from TextBufferRenderable
 

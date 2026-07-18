@@ -66,6 +66,19 @@ const markdown = new MarkdownRenderable(renderer, {
 
 Use `concealCode` to control concealment inside fenced code blocks independently (`false` by default).
 
+## Terminal hyperlinks
+
+Markdown link labels, their visible destinations, and bare HTTP(S) URLs carry OSC 8 hyperlink metadata. Inline code, fenced code, and raw HTML are not scanned for bare URLs.
+
+The terminal controls interaction, such as Cmd-click or Ctrl-click. When the terminal does not support hyperlinks, the same readable text is rendered without OSC 8 output.
+
+```typescript
+const markdown = new MarkdownRenderable(renderer, {
+  content: "[OpenTUI](https://opentui.com) or https://opentui.com/docs",
+  syntaxStyle,
+})
+```
+
 ## Streaming updates
 
 Enable streaming mode for incremental updates. Keep it `true` while appending chunks, then set `markdown.streaming = false` when complete to finalize trailing block parsing. Tables include trailing partial rows, with missing cells rendered empty.

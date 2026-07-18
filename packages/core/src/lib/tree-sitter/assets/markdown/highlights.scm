@@ -87,6 +87,8 @@
 
 (link_destination) @markup.link.url
 
+(html_block) @markup.raw.block
+
 [
   (link_title)
   (link_label)

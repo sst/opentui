@@ -20,6 +20,12 @@ export interface HighlightMeta {
 
 export type SimpleHighlight = [number, number, string, HighlightMeta?]
 
+export interface LinkRange {
+  start: number
+  end: number
+  url: string
+}
+
 export interface InjectionMapping {
   // Maps tree-sitter node types to target filetypes
   nodeTypes?: { [nodeType: string]: string }

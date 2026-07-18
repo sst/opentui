@@ -6,7 +6,7 @@ import { createTextAttributes } from "../utils.js"
 import type { BorderStyle } from "../lib/border.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
-import { CodeRenderable, type OnChunksCallback } from "./Code.js"
+import { CodeRenderable } from "./Code.js"
 import { BoxRenderable } from "./Box.js"
 import { StyledText } from "../lib/styled-text.js"
 import { TextRenderable } from "./Text.js"
@@ -21,7 +21,7 @@ import type { TreeSitterClient } from "../lib/tree-sitter/index.js"
 import { infoStringToFiletype } from "../lib/tree-sitter/resolve-ft.js"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser.js"
 import type { OptimizedBuffer } from "../buffer.js"
-import { detectLinks } from "../lib/detect-links.js"
+import { detectMarkdownLinks, resolveMarkedLinkTarget } from "../lib/detect-links.js"
 
 export type MarkdownTableStyle = "grid" | "columns"
 
@@ -275,12 +275,6 @@ export class MarkdownRenderable extends Renderable {
   _blockStates: BlockState[] = []
   _stableBlockCount = 0
   private _styleDirty: boolean = false
-  private _linkifyMarkdownChunks: OnChunksCallback = (chunks, context) =>
-    detectLinks(chunks, {
-      content: context.content,
-      highlights: context.highlights,
-    })
-
   protected _contentDefaultOptions = {
     content: "",
     conceal: true,
@@ -543,13 +537,18 @@ export class MarkdownRenderable extends Renderable {
         break
 
       case "link": {
-        const linkHref = { url: token.href }
+        const target = resolveMarkedLinkTarget(token)
+        if (!target) {
+          chunks.push(this.createDefaultChunk(token.text.replace(/[\u0000-\u001f\u007f-\u009f]/gu, "")))
+          break
+        }
+        const linkHref = { url: target }
         if (this._conceal) {
           for (const child of token.tokens) {
             this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
           }
           chunks.push(this.createChunk(" (", "markup.link", linkHref))
-          chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
+          chunks.push(this.createChunk(target, "markup.link.url", linkHref))
           chunks.push(this.createChunk(")", "markup.link", linkHref))
         } else {
           chunks.push(this.createChunk("[", "markup.link", linkHref))
@@ -557,21 +556,26 @@ export class MarkdownRenderable extends Renderable {
             this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
           }
           chunks.push(this.createChunk("](", "markup.link", linkHref))
-          chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
+          chunks.push(this.createChunk(target, "markup.link.url", linkHref))
           chunks.push(this.createChunk(")", "markup.link", linkHref))
         }
         break
       }
 
       case "image": {
-        const imageHref = { url: token.href }
+        const target = resolveMarkedLinkTarget(token)
+        if (!target) {
+          chunks.push(this.createDefaultChunk((token.text || "image").replace(/[\u0000-\u001f\u007f-\u009f]/gu, "")))
+          break
+        }
+        const imageHref = { url: target }
         if (this._conceal) {
           chunks.push(this.createChunk(token.text || "image", "markup.link.label", imageHref))
         } else {
           chunks.push(this.createChunk("![", "markup.link", imageHref))
           chunks.push(this.createChunk(token.text || "", "markup.link.label", imageHref))
           chunks.push(this.createChunk("](", "markup.link", imageHref))
-          chunks.push(this.createChunk(token.href, "markup.link.url", imageHref))
+          chunks.push(this.createChunk(target, "markup.link.url", imageHref))
           chunks.push(this.createChunk(")", "markup.link", imageHref))
         }
         break
@@ -631,7 +635,6 @@ export class MarkdownRenderable extends Renderable {
     content: string,
     id: string,
     marginBottom: number = 0,
-    onChunks: OnChunksCallback = this._linkifyMarkdownChunks,
     baseHighlight?: string,
     initialStyledText?: StyledText,
   ): CodeRenderable {
@@ -647,7 +650,7 @@ export class MarkdownRenderable extends Renderable {
       streaming: true,
       initialStyledText,
       baseHighlight,
-      onChunks,
+      onHighlight: detectMarkdownLinks,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
       marginBottom,
@@ -674,13 +677,7 @@ export class MarkdownRenderable extends Renderable {
     })
 
     renderable.add(
-      this.createMarkdownCodeRenderable(
-        this.getBlockquoteContent(token),
-        `${id}-content`,
-        0,
-        this._linkifyMarkdownChunks,
-        "markup.quote",
-      ),
+      this.createMarkdownCodeRenderable(this.getBlockquoteContent(token), `${id}-content`, 0, "markup.quote"),
     )
 
     return renderable
@@ -917,7 +914,6 @@ export class MarkdownRenderable extends Renderable {
         this.normalizeScrollbackMarkdownBlockRaw(token.raw),
         id,
         0,
-        this._linkifyMarkdownChunks,
         undefined,
         this.createInitialStyledText(token),
       )
@@ -928,14 +924,7 @@ export class MarkdownRenderable extends Renderable {
     if (token.type === "hr") return this.createHorizontalRuleRenderable(id)
     if (token.type === "table") return this.createTableBlock(token as Tokens.Table, id).renderable
     return token.raw
-      ? this.createMarkdownCodeRenderable(
-          token.raw,
-          id,
-          0,
-          this._linkifyMarkdownChunks,
-          undefined,
-          this.createInitialStyledText(token),
-        )
+      ? this.createMarkdownCodeRenderable(token.raw, id, 0, undefined, this.createInitialStyledText(token))
       : null
   }
 
@@ -1008,7 +997,6 @@ export class MarkdownRenderable extends Renderable {
         this.getBlockquoteContent(token),
         `${renderable.id}-content`,
         0,
-        this._linkifyMarkdownChunks,
         "markup.quote",
       ),
     )
@@ -1510,7 +1498,6 @@ export class MarkdownRenderable extends Renderable {
       markdownRaw,
       id,
       0,
-      this._linkifyMarkdownChunks,
       undefined,
       this.createInitialStyledText(token),
     )
@@ -1578,7 +1565,6 @@ export class MarkdownRenderable extends Renderable {
       token.raw,
       id,
       marginBottom,
-      this._linkifyMarkdownChunks,
       undefined,
       this.createInitialStyledText(token),
     )
@@ -1746,7 +1732,6 @@ export class MarkdownRenderable extends Renderable {
       this.getTopLevelBlockRaw(token) ?? token.raw,
       `${this.id}-block-${index}`,
       marginBottom,
-      this._linkifyMarkdownChunks,
       undefined,
       this.createInitialStyledText(token),
     )
@@ -2111,7 +2096,6 @@ export class MarkdownRenderable extends Renderable {
         this.getTopLevelBlockRaw(state.token) ?? state.token.raw,
         `${this.id}-block-${i}`,
         marginBottom,
-        this._linkifyMarkdownChunks,
         undefined,
         this.createInitialStyledText(state.token),
       )

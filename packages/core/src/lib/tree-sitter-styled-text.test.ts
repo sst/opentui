@@ -1043,6 +1043,28 @@ Normal paragraph with [link](https://example.com).`
       expect(chunk.attributes).toBe(expectedAttributes)
     })
 
+    test("applies adjacent link metadata without changing text", () => {
+      const content = "beforefirstsecondafter"
+      const testStyle = SyntaxStyle.fromStyles({ default: {} })
+      const highlights: SimpleHighlight[] = []
+
+      const chunks = treeSitterToTextChunks(content, highlights, testStyle, {
+        linkRanges: [
+          { start: 6, end: 11, url: "https://first.test" },
+          { start: 11, end: 17, url: "https://second.test" },
+        ],
+      })
+      testStyle.destroy()
+
+      expect(chunks.map((chunk) => chunk.text).join("")).toBe(content)
+      expect(chunks.map(({ text, link }) => [text, link?.url])).toEqual([
+        ["before", undefined],
+        ["first", "https://first.test"],
+        ["second", "https://second.test"],
+        ["after", undefined],
+      ])
+    })
+
     test("should handle style inheritance when parent only sets attributes", () => {
       const mockHighlights: SimpleHighlight[] = [
         [0, 15, "container"], // Parent: only underline
