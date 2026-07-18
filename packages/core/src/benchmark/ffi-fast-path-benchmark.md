@@ -118,3 +118,17 @@ were rejected because they failed the acceptance gate.
 | Full     | Bun     |  27.9 ns/op |   40.8 ns/op |  +46.1% |   [+45.0%, +47.4%] | Fail     |
 | Region   | Node    | 444.2 ns/op | 1053.5 ns/op | +137.2% |  [-28.6%, +187.9%] | Fail     |
 | Region   | Bun     |  29.7 ns/op |  147.4 ns/op | +396.1% | [+391.8%, +402.0%] | Fail     |
+
+### Text Draw Metadata Descriptor
+
+The three-argument text-owner and metadata-descriptor ABI was evaluated over 9 process rounds. It was rejected because
+all workloads failed the acceptance gate.
+
+| Scenario | Runtime |     Baseline |    Candidate |  Change |             95% CI | Decision |
+| -------- | ------- | -----------: | -----------: | ------: | -----------------: | -------- |
+| Short    | Node    | 1326.2 ns/op | 1215.3 ns/op |   -8.4% |  [-10.7%, +139.9%] | Fail     |
+| Short    | Bun     |   71.8 ns/op |  530.1 ns/op | +637.9% | [+631.3%, +653.0%] | Fail     |
+| Long     | Node    | 2982.8 ns/op | 4446.1 ns/op |  +49.1% |  [-10.7%, +107.7%] | Fail     |
+| Long     | Bun     | 1229.4 ns/op | 1737.1 ns/op |  +41.3% |   [+39.8%, +43.0%] | Fail     |
+| Unicode  | Node    | 7751.5 ns/op | 8531.0 ns/op |  +10.1% |  [+4.0%, +1243.0%] | Fail     |
+| Unicode  | Bun     | 4330.1 ns/op | 5253.9 ns/op |  +21.3% |   [+17.2%, +22.7%] | Fail     |
