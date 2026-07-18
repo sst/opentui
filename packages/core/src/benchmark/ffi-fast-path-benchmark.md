@@ -3,6 +3,12 @@
 This benchmark measures the public production wrappers for the 19 OpenTUI calls that miss Node 26.4's x86-64 SysV Fast
 API path. It does not introduce or exercise a benchmark-only ABI.
 
+## Outcome
+
+No evaluated ABI passed both the Node improvement and Bun non-inferiority gates. Production FFI signatures and public
+APIs remain unchanged. The retained work is the portable benchmark suite, broader scenarios, comparison tooling, and
+decision evidence below.
+
 ## Scenarios
 
 The 37 scenarios split behaviorally distinct inputs while mapping to 19 calls:
