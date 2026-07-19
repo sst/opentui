@@ -4516,6 +4516,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.rendering = false
       if (this._destroyPending) {
         this.finalizeDestroy()
+      } else if (this.immediateRerenderRequested) {
+        this.immediateRerenderRequested = false
+        setImmediate(() => {
+          if (!this._isDestroyed) this.requestRender()
+        })
       }
       this.resolveIdleIfNeeded()
     }
