@@ -77,12 +77,19 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
 
   if (isTextNodeRenderable(node)) {
     if (!(parent instanceof TextRenderable) && !isTextNodeRenderable(parent)) {
-      throw new Error(
-        `Orphan text error: "${node
-          .toChunks()
-          .map((c) => c.text)
-          .join("")}" must have a <text> as a parent: ${parent.id} above ${node.id}`,
-      )
+      const text = node
+        .toChunks()
+        .map((c) => c.text)
+        .join("")
+      // An empty text node carries nothing to render. Solid emits empty-string
+      // children for empty dynamic expressions (e.g. `{cond ? <x/> : ""}`, or a
+      // conditional/component that renders to ""), so treating this as a fatal
+      // orphan crashes otherwise-valid trees — mounting a real dashboard on a
+      // terminal that reports its capabilities is enough to hit it. Skip the
+      // empty node; only *non-empty* text under a non-<text> parent is a real
+      // authoring mistake worth reporting.
+      if (text === "") return
+      throw new Error(`Orphan text error: "${text}" must have a <text> as a parent: ${parent.id} above ${node.id}`)
     }
   }
 
