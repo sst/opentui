@@ -362,6 +362,16 @@ class OrbitThreeRenderable extends ThreeRenderable {
     this.updateCamera()
   }
 
+  public pan(horizontal: number, vertical: number): void {
+    const distanceScale = this.spherical.radius * 0.02
+    const forward = this.target.clone().sub(this.cameraNode.position).normalize()
+    const right = forward.clone().cross(this.cameraNode.up).normalize()
+    const up = right.clone().cross(forward).normalize()
+    this.target.addScaledVector(right, horizontal * distanceScale)
+    this.target.addScaledVector(up, vertical * distanceScale)
+    this.updateCamera()
+  }
+
   public resetOrbit(): void {
     this.target.copy(this.initialTarget)
     this.cameraNode.position.copy(this.initialPosition)
@@ -370,9 +380,9 @@ class OrbitThreeRenderable extends ThreeRenderable {
   }
 
   protected onMouseEvent(event: MouseEvent): void {
-    if (event.type === "down" && event.button === 0) {
+    if (event.type === "down" && (event.button === 0 || event.button === 2)) {
       this.dragging = true
-      this.panning = event.modifiers.shift
+      this.panning = event.button === 2
       this.lastX = event.x
       this.lastY = event.y
       event.stopPropagation()
@@ -386,9 +396,9 @@ class OrbitThreeRenderable extends ThreeRenderable {
       this.lastY = event.y
 
       if (this.panning) {
-        this.pan(deltaX, deltaY)
+        this.panFromDrag(deltaX, deltaY)
       } else {
-        this.rotate(-deltaX * 0.035, deltaY * 0.045)
+        this.rotate(-deltaX * 0.0175, deltaY * 0.0225)
       }
 
       event.stopPropagation()
@@ -403,7 +413,7 @@ class OrbitThreeRenderable extends ThreeRenderable {
     }
 
     if (event.type === "scroll" && event.scroll) {
-      this.zoom(event.scroll.direction === "up" ? 0.88 : 1.14)
+      this.zoom(event.scroll.direction === "up" ? 0.94 : 1.07)
       event.stopPropagation()
       event.preventDefault()
     }
@@ -419,8 +429,8 @@ class OrbitThreeRenderable extends ThreeRenderable {
     this.cameraNode.updateMatrixWorld()
   }
 
-  private pan(deltaX: number, deltaY: number): void {
-    const distanceScale = this.spherical.radius * 0.018
+  private panFromDrag(deltaX: number, deltaY: number): void {
+    const distanceScale = this.spherical.radius * 0.009
     const forward = this.target.clone().sub(this.cameraNode.position).normalize()
     const right = forward.clone().cross(this.cameraNode.up).normalize()
     const up = right.clone().cross(forward).normalize()
@@ -1131,12 +1141,16 @@ class ProgressiveLodDemo {
     renderer.on("resize", this.resizeListener)
 
     this.keyListener = (key) => {
-      if (key.name === "left") this.threeRenderable.rotate(0.12, 0)
-      else if (key.name === "right") this.threeRenderable.rotate(-0.12, 0)
-      else if (key.name === "up") this.threeRenderable.rotate(0, -0.1)
-      else if (key.name === "down") this.threeRenderable.rotate(0, 0.1)
-      else if (key.name === "z" || key.name === "+" || key.sequence === "+") this.threeRenderable.zoom(0.88)
-      else if (key.name === "x" || key.name === "-" || key.sequence === "-") this.threeRenderable.zoom(1.14)
+      if (key.name === "left") this.threeRenderable.rotate(-0.06, 0)
+      else if (key.name === "right") this.threeRenderable.rotate(0.06, 0)
+      else if (key.name === "up") this.threeRenderable.rotate(0, -0.05)
+      else if (key.name === "down") this.threeRenderable.rotate(0, 0.05)
+      else if (key.name === "a") this.threeRenderable.pan(-1, 0)
+      else if (key.name === "d") this.threeRenderable.pan(1, 0)
+      else if (key.name === "w") this.threeRenderable.pan(0, 1)
+      else if (key.name === "s") this.threeRenderable.pan(0, -1)
+      else if (key.name === "=" || key.name === "kpequal" || key.name === "kpplus") this.threeRenderable.zoom(0.94)
+      else if (key.name === "-" || key.name === "kpminus") this.threeRenderable.zoom(1.07)
       else if (key.name === "r") this.threeRenderable.resetOrbit()
       else if (key.name === "space") {
         this.animationPaused = !this.animationPaused
@@ -1251,7 +1265,7 @@ class ProgressiveLodDemo {
 
   private refreshControls(width: number): void {
     this.controlsText.content = truncate(
-      "Left drag/arrows: orbit | Shift+drag: pan | Wheel/ZX: zoom | R: reset | Space: animation | L: LOD | P: screenshot | Esc: return",
+      "Left drag/arrows: orbit | Right drag/WASD: pan | Wheel/+/-: zoom | R: reset | Space: animation | L: LOD | P: screenshot | Esc: return",
       Math.max(1, width - 2),
     )
   }
