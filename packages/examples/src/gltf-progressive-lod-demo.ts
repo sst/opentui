@@ -995,8 +995,11 @@ class ProgressiveLodDemo {
   private readonly camera = new PerspectiveCamera(40, 1, 0.1, 40)
   private readonly mixer = new AnimationMixer(this.scene)
   private readonly manager: ProgressiveGLTFManager
-  private readonly parent: BoxRenderable
   private readonly threeRenderable: OrbitThreeRenderable
+  private readonly headerStack: BoxRenderable
+  private readonly infoPanel: BoxRenderable
+  private readonly statusPanel: BoxRenderable
+  private readonly controlsPanel: BoxRenderable
   private readonly statusText: TextRenderable
   private readonly controlsText: TextRenderable
   private readonly frameCallback: (deltaMs: number) => Promise<void>
@@ -1055,86 +1058,113 @@ class ProgressiveLodDemo {
     })
     renderer.root.add(this.threeRenderable)
 
-    this.parent = new BoxRenderable(renderer, {
-      id: "gltf-progressive-lod-overlay",
+    this.headerStack = new BoxRenderable(renderer, {
+      id: "gltf-progressive-lod-header",
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "auto",
+      flexDirection: "column",
+      alignItems: "stretch",
       zIndex: 20,
     })
-    renderer.root.add(this.parent)
+    renderer.root.add(this.headerStack)
 
-    this.parent.add(
-      new TextRenderable(renderer, {
-        id: "gltf-progressive-lod-title",
-        content: "three.js GLTF progressive loading -> OpenTUI WebGPU",
-        position: "absolute",
-        left: 1,
-        top: 0,
-        fg: "#F8FAFC",
-        zIndex: 21,
-      }),
+    this.infoPanel = new BoxRenderable(renderer, {
+      id: "gltf-progressive-lod-info",
+      width: "100%",
+      height: 4,
+      flexDirection: "column",
+      flexShrink: 0,
+      paddingLeft: 1,
+      backgroundColor: "#101719",
+      zIndex: 21,
+    })
+    this.headerStack.add(this.infoPanel)
+
+    const addInfoLine = (id: string, content: string, fg: string) => {
+      this.infoPanel.add(
+        new TextRenderable(renderer, {
+          id,
+          content,
+          width: "100%",
+          height: 1,
+          flexShrink: 0,
+          fg,
+          zIndex: 22,
+        }),
+      )
+    }
+    addInfoLine("gltf-progressive-lod-title", "three.js GLTF progressive loading -> OpenTUI WebGPU", "#F8FAFC")
+    addInfoLine(
+      "gltf-progressive-lod-credit-one",
+      "Mobile Home & Peachy Balloon by ConradJustin | The Forgotten Knight by Dark Igorek",
+      "#F5D76E",
     )
-    this.parent.add(
-      new TextRenderable(renderer, {
-        id: "gltf-progressive-lod-credit-one",
-        content: "Mobile Home & Peachy Balloon by ConradJustin | The Forgotten Knight by Dark Igorek",
-        position: "absolute",
-        left: 1,
-        top: 1,
-        fg: "#F5D76E",
-        zIndex: 21,
-      }),
+    addInfoLine(
+      "gltf-progressive-lod-credit-two",
+      "Sources: https://sketchfab.com/3d-models/mobile-home-5240b1dbc29c4ea28be7f91b3638951a | https://sketchfab.com/3d-models/the-forgotten-knight-d14eb14d83bd4e7ba7cbe443d76a10fd",
+      "#CBD5E1",
     )
-    this.parent.add(
-      new TextRenderable(renderer, {
-        id: "gltf-progressive-lod-credit-two",
-        content:
-          "Sources: https://sketchfab.com/3d-models/mobile-home-5240b1dbc29c4ea28be7f91b3638951a | https://sketchfab.com/3d-models/the-forgotten-knight-d14eb14d83bd4e7ba7cbe443d76a10fd",
-        position: "absolute",
-        left: 1,
-        top: 2,
-        fg: "#CBD5E1",
-        zIndex: 21,
-      }),
+    addInfoLine(
+      "gltf-progressive-lod-credit-three",
+      "Progressive: https://www.npmjs.com/package/@needle-tools/gltf-progressive | Quarry 01: https://hdrihaven.com/hdri/?h=quarry_01 from https://hdrihaven.com | network required",
+      "#CBD5E1",
     )
-    this.parent.add(
-      new TextRenderable(renderer, {
-        id: "gltf-progressive-lod-credit-three",
-        content:
-          "Progressive: https://www.npmjs.com/package/@needle-tools/gltf-progressive | Quarry 01: https://hdrihaven.com/hdri/?h=quarry_01 from https://hdrihaven.com | network required",
-        position: "absolute",
-        left: 1,
-        top: 3,
-        fg: "#CBD5E1",
-        zIndex: 21,
-      }),
-    )
+
+    this.statusPanel = new BoxRenderable(renderer, {
+      id: "gltf-progressive-lod-status-panel",
+      width: "100%",
+      height: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      flexShrink: 0,
+      paddingLeft: 1,
+      backgroundColor: "#0B151B",
+      zIndex: 21,
+    })
+    this.headerStack.add(this.statusPanel)
 
     this.statusText = new TextRenderable(renderer, {
       id: "gltf-progressive-lod-status",
       content: "Loading base GLBs and environment...",
-      position: "absolute",
-      left: 1,
-      top: 4,
+      flexGrow: 1,
+      height: 1,
       fg: "#7DD3FC",
-      zIndex: 21,
+      zIndex: 22,
     })
-    this.parent.add(this.statusText)
+    this.statusPanel.add(this.statusText)
+
+    this.controlsPanel = new BoxRenderable(renderer, {
+      id: "gltf-progressive-lod-controls-panel",
+      position: "absolute",
+      left: 0,
+      bottom: 0,
+      width: "100%",
+      height: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      paddingLeft: 1,
+      backgroundColor: "#101719",
+      zIndex: 20,
+    })
+    renderer.root.add(this.controlsPanel)
 
     this.controlsText = new TextRenderable(renderer, {
       id: "gltf-progressive-lod-controls",
       content: "",
-      position: "absolute",
-      left: 1,
-      top: Math.max(0, renderer.terminalHeight - 2),
+      flexGrow: 1,
+      height: 1,
       fg: "#E2E8F0",
-      zIndex: 21,
+      zIndex: 22,
     })
-    this.parent.add(this.controlsText)
+    this.controlsPanel.add(this.controlsText)
 
     this.resizeListener = (width, height) => {
       this.threeRenderable.width = width
       this.threeRenderable.height = height
-      this.controlsText.y = Math.max(0, height - 2)
-      this.controlsText.visible = height > 7
+      this.controlsPanel.visible = height > 1
       this.refreshStatus()
       this.refreshControls(width)
     }
@@ -1153,6 +1183,8 @@ class ProgressiveLodDemo {
         this.threeRenderable.zoom(0.94)
       else if (key.name === "x" || key.name === "-" || key.name === "kpminus") this.threeRenderable.zoom(1.07)
       else if (key.name === "r") this.threeRenderable.resetOrbit()
+      else if (key.name === "i") this.infoPanel.visible = !this.infoPanel.visible
+      else if (key.name === "t") this.statusPanel.visible = !this.statusPanel.visible
       else if (key.name === "space") {
         this.animationPaused = !this.animationPaused
         this.refreshStatus()
@@ -1167,7 +1199,7 @@ class ProgressiveLodDemo {
     renderer.keyInput.on("keypress", this.keyListener)
 
     this.refreshControls(renderer.terminalWidth)
-    this.controlsText.visible = renderer.terminalHeight > 7
+    this.controlsPanel.visible = renderer.terminalHeight > 1
     void this.loadScene()
   }
 
@@ -1181,7 +1213,8 @@ class ProgressiveLodDemo {
     this.mixer.uncacheRoot(this.scene)
     this.manager.destroy()
     this.threeRenderable.destroy()
-    this.parent.destroyRecursively()
+    this.headerStack.destroyRecursively()
+    this.controlsPanel.destroyRecursively()
   }
 
   private async loadScene(): Promise<void> {
@@ -1266,7 +1299,7 @@ class ProgressiveLodDemo {
 
   private refreshControls(width: number): void {
     this.controlsText.content = truncate(
-      "Left drag/arrows: orbit | Right drag/WASD: pan | Wheel/Z/X/+/-: zoom | R: reset | Space: animation | L: LOD | P: screenshot | Esc: return",
+      "Left drag/arrows: orbit | Right drag/WASD: pan | Wheel/Z/X/+/-: zoom | I: info | T: status | R: reset | Space: animation | L: LOD | P: screenshot | Esc: return",
       Math.max(1, width - 2),
     )
   }
