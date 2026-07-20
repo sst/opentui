@@ -72,6 +72,7 @@ import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 import * as nativeAudioDemo from "./native-audio-demo.js"
 import * as audioStreamingDemo from "./audio-streaming-demo.js"
 import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
+import * as opentuiBeatDemo from "./opentui-beat-demo.js"
 
 type ExampleCategory =
   | "Layout & Composition"
@@ -543,6 +544,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       description: "Box opacity and transparency effects with animated opacity transitions",
       run: opacityExample.run,
       destroy: opacityExample.destroy,
+    },
+    {
+      name: "OpenTUI Beat Demo",
+      description: "The OpenTUI logo bouncing to a synthesized beat or a loaded audio-file spectrum",
+      run: opentuiBeatDemo.run,
+      destroy: opentuiBeatDemo.destroy,
     },
     {
       name: "Timeline Example",
