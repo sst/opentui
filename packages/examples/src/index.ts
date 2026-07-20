@@ -174,6 +174,7 @@ function unavailableThreeExample(name: string, description: string): ExampleDefi
 
 function threeExample(name: string, description: string, load: () => Promise<ExampleModule>): ExampleDefinition {
   let loaded: ExampleModule | null = null
+  let runVersion = 0
 
   async function loadModule(): Promise<ExampleModule> {
     loaded ??= await load()
@@ -184,10 +185,13 @@ function threeExample(name: string, description: string, load: () => Promise<Exa
     name,
     description,
     async run(renderer) {
+      const version = ++runVersion
       const module = await loadModule()
+      if (version !== runVersion) return
       return module.run?.(renderer)
     },
     destroy(renderer) {
+      runVersion++
       loaded?.destroy?.(renderer)
     },
   }
@@ -217,6 +221,11 @@ const THREE_EXAMPLES: ExampleDefinition[] = includeThreeExamples
         "3D golden star with particle effects and animated text celebrating 5000 stars",
         () => import("./golden-star-demo.js"),
       ),
+      threeExample(
+        "GLTF Progressive LOD",
+        "Screen-density-driven progressive GLTF loading with Three.js",
+        () => import("./gltf-progressive-lod-demo.js"),
+      ),
       threeExample("Physics Planck", "2D physics with Planck.js", () => import("./physx-planck-2d-demo.js")),
       threeExample("Physics Rapier", "2D physics with Rapier", () => import("./physx-rapier-2d-demo.js")),
       threeExample("Phong Lighting", "Phong lighting model demo", () => import("./lights-phong-demo.js")),
@@ -237,6 +246,7 @@ const THREE_EXAMPLES: ExampleDefinition[] = includeThreeExamples
         "Golden Star Demo",
         "3D golden star with particle effects and animated text celebrating 5000 stars",
       ),
+      unavailableThreeExample("GLTF Progressive LOD", "Screen-density-driven progressive GLTF loading with Three.js"),
       unavailableThreeExample("Physics Planck", "2D physics with Planck.js"),
       unavailableThreeExample("Physics Rapier", "2D physics with Rapier"),
       unavailableThreeExample("Phong Lighting", "Phong lighting model demo"),

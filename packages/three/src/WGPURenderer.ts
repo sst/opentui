@@ -1,4 +1,14 @@
-import { PerspectiveCamera, OrthographicCamera, Color, NoToneMapping, LinearSRGBColorSpace, Scene } from "three"
+import {
+  PerspectiveCamera,
+  OrthographicCamera,
+  Color,
+  NoToneMapping,
+  LinearSRGBColorSpace,
+  CustomToneMapping,
+  Scene,
+  type ColorSpace,
+  type ToneMapping,
+} from "three"
 import { WebGPURenderer } from "three/webgpu"
 import { createWebGPUDevice, setupGlobals } from "bun-webgpu"
 import { CliRenderEvents, RGBA, type CliRenderer, type OptimizedBuffer } from "@opentui/core"
@@ -19,6 +29,9 @@ export interface ThreeCliRendererOptions {
   alpha?: boolean
   autoResize?: boolean
   libPath?: string
+  toneMapping?: Exclude<ToneMapping, typeof CustomToneMapping>
+  toneMappingExposure?: number
+  outputColorSpace?: ColorSpace
 }
 
 export class ThreeCliRenderer {
@@ -29,9 +42,16 @@ export class ThreeCliRenderer {
   private superSample: SuperSampleType
   private backgroundColor: RGBA = RGBA.fromValues(0, 0, 0, 1)
   private alpha: boolean = false
+  private toneMapping: Exclude<ToneMapping, typeof CustomToneMapping>
+  private toneMappingExposure: number
+  private outputColorSpace: ColorSpace
   private threeRenderer?: WebGPURenderer
   private canvas?: CLICanvas
   private device: GPUDevice | null = null
+  private initPromise: Promise<void> | null = null
+  private readonly activeOperations = new Set<Promise<unknown>>()
+  private operationChain: Promise<void> = Promise.resolve()
+  private destroyingDevice = false
 
   private activeCamera: PerspectiveCamera | OrthographicCamera
   private _aspectRatio: number | null = null
@@ -64,6 +84,10 @@ export class ThreeCliRenderer {
     return terminalWidth / (terminalHeight * 2)
   }
 
+  public get renderingHeight(): number {
+    return this.renderHeight
+  }
+
   constructor(
     private readonly cliRenderer: CliRenderer,
     options: ThreeCliRendererOptions,
@@ -77,6 +101,9 @@ export class ThreeCliRenderer {
 
     this.backgroundColor = options.backgroundColor ?? RGBA.fromValues(0, 0, 0, 1)
     this.alpha = options.alpha ?? false
+    this.toneMapping = options.toneMapping ?? NoToneMapping
+    this.toneMappingExposure = options.toneMappingExposure ?? 1
+    this.outputColorSpace = options.outputColorSpace ?? LinearSRGBColorSpace
 
     if (process.env.CELL_ASPECT_RATIO) {
       this._aspectRatio = parseFloat(process.env.CELL_ASPECT_RATIO)
@@ -122,8 +149,20 @@ export class ThreeCliRenderer {
   }
 
   async init(): Promise<void> {
-    this.device = await createWebGPUDevice()
-    this.canvas = new CLICanvas(this.device, this.renderWidth, this.renderHeight, this.superSample)
+    if (this.destroyed) return
+    this.initPromise ??= this.initialize()
+    return this.initPromise
+  }
+
+  private async initialize(): Promise<void> {
+    const device = await createWebGPUDevice()
+    if (this.destroyed) {
+      device.destroy()
+      return
+    }
+
+    this.device = device
+    this.canvas = new CLICanvas(device, this.renderWidth, this.renderHeight, this.superSample)
 
     try {
       this.threeRenderer = new WebGPURenderer({
@@ -131,21 +170,30 @@ export class ThreeCliRenderer {
         device: this.device,
         alpha: this.alpha,
       })
+      const onDeviceLost = this.threeRenderer.onDeviceLost.bind(this.threeRenderer)
+      this.threeRenderer.onDeviceLost = (info) => {
+        if (!this.destroyingDevice) onDeviceLost(info)
+      }
 
       this.setBackgroundColor(this.backgroundColor)
 
-      this.threeRenderer.toneMapping = NoToneMapping
-      this.threeRenderer.outputColorSpace = LinearSRGBColorSpace
+      this.threeRenderer.toneMapping = this.toneMapping
+      this.threeRenderer.toneMappingExposure = this.toneMappingExposure
+      this.threeRenderer.outputColorSpace = this.outputColorSpace
 
       this.threeRenderer.setSize(this.renderWidth, this.renderHeight, false)
+      await this.threeRenderer.init()
+      if (this.destroyed) {
+        this.disposeResources()
+        return
+      }
+      this.renderMethod = this.doDrawScene.bind(this)
     } catch (error) {
+      this.disposeResources()
+      if (this.destroyed) return
       console.error("Error creating THREE.WebGPURenderer:", error)
       throw error
     }
-
-    await this.threeRenderer.init().then(() => {
-      this.renderMethod = this.doDrawScene.bind(this)
-    })
   }
 
   public getSuperSampleAlgorithm(): SuperSampleAlgorithm {
@@ -156,8 +204,10 @@ export class ThreeCliRenderer {
     this.canvas!.setSuperSampleAlgorithm(superSampleAlgorithm)
   }
 
-  public saveToFile(filePath: string): Promise<void> {
-    return this.canvas!.saveToFile(filePath)
+  public async saveToFile(filePath: string): Promise<void> {
+    await this.init()
+    if (this.destroyed || !this.canvas) throw new Error("Cannot save a screenshot after the renderer is destroyed")
+    return this.trackOperation(() => this.canvas!.saveToFile(filePath))
   }
 
   setActiveCamera(camera: PerspectiveCamera | OrthographicCamera): void {
@@ -185,10 +235,17 @@ export class ThreeCliRenderer {
     this.renderWidth = this.outputWidth * (this.superSample !== SuperSampleType.NONE ? 2 : 1)
     this.renderHeight = this.outputHeight * (this.superSample !== SuperSampleType.NONE ? 2 : 1)
 
-    this.canvas?.setSize(this.renderWidth, this.renderHeight)
-
-    this.threeRenderer?.setSize(this.renderWidth, this.renderHeight, false)
-    this.threeRenderer?.setViewport(0, 0, this.renderWidth, this.renderHeight)
+    const renderWidth = this.renderWidth
+    const renderHeight = this.renderHeight
+    const superSample = this.superSample
+    const applySize = async () => {
+      this.canvas?.setSuperSample(superSample)
+      this.canvas?.setSize(renderWidth, renderHeight)
+      this.threeRenderer?.setSize(renderWidth, renderHeight, false)
+      this.threeRenderer?.setViewport(0, 0, renderWidth, renderHeight)
+    }
+    if (this.activeOperations.size > 0) void this.trackOperation(applySize)
+    else void applySize()
 
     if (this.activeCamera instanceof PerspectiveCamera) {
       this.activeCamera.aspect = this.aspectRatio
@@ -197,7 +254,8 @@ export class ThreeCliRenderer {
   }
 
   public async drawScene(root: Scene, buffer: OptimizedBuffer, deltaTime: number): Promise<void> {
-    await this.renderMethod(root, this.activeCamera, buffer, deltaTime)
+    if (this.destroyed) return
+    await this.trackOperation(() => this.renderMethod(root, this.activeCamera, buffer, deltaTime))
 
     if (this.doRenderStats) {
       this.renderStats(buffer)
@@ -245,7 +303,6 @@ export class ThreeCliRenderer {
     } else {
       this.superSample = SuperSampleType.NONE
     }
-    this.canvas!.setSuperSample(this.superSample)
     this.setSize(this.outputWidth, this.outputHeight, true)
   }
 
@@ -271,22 +328,44 @@ export class ThreeCliRenderer {
   }
 
   public destroy(): void {
+    if (this.destroyed) return
     this.destroyed = true
 
     this.cliRenderer.off("resize", this.resizeHandler)
     this.cliRenderer.off(CliRenderEvents.DEBUG_OVERLAY_TOGGLE, this.debugToggleHandler)
+    this.cliRenderer.off(CliRenderEvents.DESTROY, this.destroyHandler)
+    this.renderMethod = () => Promise.resolve()
 
-    if (this.canvas) {
-      this.canvas.destroy()
+    void this.finishDestroy()
+  }
+
+  private async finishDestroy(): Promise<void> {
+    if (this.initPromise) await this.initPromise.catch(() => {})
+    await Promise.allSettled([...this.activeOperations])
+    this.disposeResources()
+  }
+
+  private async trackOperation<T>(start: () => Promise<T>): Promise<T> {
+    const operation = this.operationChain.then(start, start)
+    this.operationChain = operation.then(
+      () => {},
+      () => {},
+    )
+    this.activeOperations.add(operation)
+    try {
+      return await operation
+    } finally {
+      this.activeOperations.delete(operation)
     }
+  }
 
-    if (this.threeRenderer) {
-      this.threeRenderer.dispose()
-      this.threeRenderer = undefined
-    }
-
+  private disposeResources(): void {
+    this.destroyingDevice = true
+    this.canvas?.destroy()
+    this.threeRenderer?.dispose()
+    this.device?.destroy()
+    this.threeRenderer = undefined
     this.canvas = undefined
     this.device = null
-    this.renderMethod = () => Promise.resolve()
   }
 }

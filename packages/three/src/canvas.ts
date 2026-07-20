@@ -126,41 +126,43 @@ export class CLICanvas {
     this.device.queue.submit([commandBuffer])
 
     await this.screenshotGPUBuffer.mapAsync(GPUMapMode.READ)
+    try {
+      const resultBuffer = this.screenshotGPUBuffer.getMappedRange()
+      const pixelData = new Uint8Array(resultBuffer)
+      const contextFormat = texture.format
+      const isBGRA = contextFormat === "bgra8unorm"
 
-    const resultBuffer = this.screenshotGPUBuffer.getMappedRange()
-    const pixelData = new Uint8Array(resultBuffer)
-    const contextFormat = texture.format
-    const isBGRA = contextFormat === "bgra8unorm"
+      // Handle row padding - extract only the actual image data
+      const imageData = new Uint8Array(this.width * this.height * 4)
+      for (let y = 0; y < this.height; y++) {
+        const srcOffset = y * alignedBytesPerRow
+        const dstOffset = y * this.width * 4
 
-    // Handle row padding - extract only the actual image data
-    const imageData = new Uint8Array(this.width * this.height * 4)
-    for (let y = 0; y < this.height; y++) {
-      const srcOffset = y * alignedBytesPerRow
-      const dstOffset = y * this.width * 4
+        if (isBGRA) {
+          for (let x = 0; x < this.width; x++) {
+            const srcPixelOffset = srcOffset + x * 4
+            const dstPixelOffset = dstOffset + x * 4
 
-      if (isBGRA) {
-        for (let x = 0; x < this.width; x++) {
-          const srcPixelOffset = srcOffset + x * 4
-          const dstPixelOffset = dstOffset + x * 4
-
-          imageData[dstPixelOffset] = pixelData[srcPixelOffset + 2]
-          imageData[dstPixelOffset + 1] = pixelData[srcPixelOffset + 1]
-          imageData[dstPixelOffset + 2] = pixelData[srcPixelOffset]
-          imageData[dstPixelOffset + 3] = pixelData[srcPixelOffset + 3]
+            imageData[dstPixelOffset] = pixelData[srcPixelOffset + 2]
+            imageData[dstPixelOffset + 1] = pixelData[srcPixelOffset + 1]
+            imageData[dstPixelOffset + 2] = pixelData[srcPixelOffset]
+            imageData[dstPixelOffset + 3] = pixelData[srcPixelOffset + 3]
+          }
+        } else {
+          imageData.set(pixelData.subarray(srcOffset, srcOffset + this.width * 4), dstOffset)
         }
-      } else {
-        imageData.set(pixelData.subarray(srcOffset, srcOffset + this.width * 4), dstOffset)
       }
+
+      const image = new Jimp({
+        data: Buffer.from(imageData),
+        width: this.width,
+        height: this.height,
+      })
+
+      await image.write(filePath as `${string}.${string}`)
+    } finally {
+      this.screenshotGPUBuffer.unmap()
     }
-
-    const image = new Jimp({
-      data: Buffer.from(imageData),
-      width: this.width,
-      height: this.height,
-    })
-
-    await image.write(filePath as `${string}.${string}`)
-    this.screenshotGPUBuffer.unmap()
   }
 
   private async initComputePipeline(): Promise<void> {
