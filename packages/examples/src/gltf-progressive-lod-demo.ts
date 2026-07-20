@@ -1149,8 +1149,9 @@ class ProgressiveLodDemo {
       else if (key.name === "d") this.threeRenderable.pan(1, 0)
       else if (key.name === "w") this.threeRenderable.pan(0, 1)
       else if (key.name === "s") this.threeRenderable.pan(0, -1)
-      else if (key.name === "=" || key.name === "kpequal" || key.name === "kpplus") this.threeRenderable.zoom(0.94)
-      else if (key.name === "-" || key.name === "kpminus") this.threeRenderable.zoom(1.07)
+      else if (key.name === "z" || key.name === "=" || key.name === "kpequal" || key.name === "kpplus")
+        this.threeRenderable.zoom(0.94)
+      else if (key.name === "x" || key.name === "-" || key.name === "kpminus") this.threeRenderable.zoom(1.07)
       else if (key.name === "r") this.threeRenderable.resetOrbit()
       else if (key.name === "space") {
         this.animationPaused = !this.animationPaused
@@ -1265,7 +1266,7 @@ class ProgressiveLodDemo {
 
   private refreshControls(width: number): void {
     this.controlsText.content = truncate(
-      "Left drag/arrows: orbit | Right drag/WASD: pan | Wheel/+/-: zoom | R: reset | Space: animation | L: LOD | P: screenshot | Esc: return",
+      "Left drag/arrows: orbit | Right drag/WASD: pan | Wheel/Z/X/+/-: zoom | R: reset | Space: animation | L: LOD | P: screenshot | Esc: return",
       Math.max(1, width - 2),
     )
   }
