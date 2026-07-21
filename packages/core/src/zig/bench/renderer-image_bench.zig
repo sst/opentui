@@ -12,7 +12,7 @@ pub const benchName = "Renderer Image";
 
 const TERM_WIDTH = 200;
 const TERM_HEIGHT = 50;
-const VIDEO_FRAMES = 24;
+const IMAGE_VARIANTS = 24;
 const FRAME_ITERATIONS = 96;
 
 const Protocol = enum { kitty, sixel, blocks };
@@ -75,9 +75,9 @@ fn runPlacementScenario(
         .blocks => {},
     }
 
-    var images: [VIDEO_FRAMES]*image.Image = undefined;
-    var image_handles: [VIDEO_FRAMES]u32 = undefined;
-    for (0..VIDEO_FRAMES) |index| {
+    var images: [IMAGE_VARIANTS]*image.Image = undefined;
+    var image_handles: [IMAGE_VARIANTS]u32 = undefined;
+    for (0..IMAGE_VARIANTS) |index| {
         images[index] = try makeFrameImage(allocator, image_width, image_height, @truncate(index * 5));
         image_handles[index] = try handles.insert(.image, @ptrCast(images[index]));
     }
@@ -90,7 +90,7 @@ fn runPlacementScenario(
     var cost = FrameCost{};
     var frame: usize = 0;
     while (frame < FRAME_ITERATIONS) : (frame += 1) {
-        const index = if (animate) frame % VIDEO_FRAMES else 0;
+        const index = if (animate) frame % IMAGE_VARIANTS else 0;
         const next = test_renderer.renderer.getNextBuffer();
         drawTextBackdrop(next);
         if (text_change) {
@@ -195,12 +195,12 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         text_change: bool,
     };
     const scenarios = [_]Scenario{
-        .{ .name = "kitty video frames", .protocol = .kitty, .animate = true, .text_change = false },
+        .{ .name = "kitty image replacements", .protocol = .kitty, .animate = true, .text_change = false },
         .{ .name = "kitty static image one text change", .protocol = .kitty, .animate = false, .text_change = true },
         .{ .name = "kitty static image no changes", .protocol = .kitty, .animate = false, .text_change = false },
-        .{ .name = "sixel video frames", .protocol = .sixel, .animate = true, .text_change = false },
+        .{ .name = "sixel image replacements", .protocol = .sixel, .animate = true, .text_change = false },
         .{ .name = "sixel static image no changes", .protocol = .sixel, .animate = false, .text_change = false },
-        .{ .name = "blocks video frames", .protocol = .blocks, .animate = true, .text_change = false },
+        .{ .name = "blocks image replacements", .protocol = .blocks, .animate = true, .text_change = false },
     };
     for (scenarios) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
