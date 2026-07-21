@@ -183,6 +183,19 @@ describe("ImageRenderable image loading", () => {
     }
   })
 
+  test("falls back from Sixel when the terminal reports zero pixel resolution", () => {
+    const renderable = new ImageRenderable(renderer, { protocol: "sixel" })
+    ;(renderer as unknown as { _resolution: { width: number; height: number } | null })._resolution = {
+      width: 0,
+      height: 0,
+    }
+    try {
+      expect(renderable.effectiveProtocol).toBe("blocks")
+    } finally {
+      renderable.destroy()
+    }
+  })
+
   test("reports decode failures without installing an image", async () => {
     const onError = mock(() => {})
     const renderable = new ImageRenderable(renderer, {
