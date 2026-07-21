@@ -3249,7 +3249,7 @@ test "renderer leaves clean text alone when graphics content changes" {
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "HELLO") != null);
 
-    // A video-style frame: same text, same placement geometry, new image data.
+    // Replace the image while preserving text and placement geometry.
     // Kitty swaps the image server side; unchanged text must not be re-emitted
     // and the reserved cells must not be cleared again.
     next = test_renderer.renderer.getNextBuffer();
