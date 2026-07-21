@@ -1,0 +1,105 @@
+---
+title: Image
+description: Load and render images with Kitty, Sixel, or Unicode blocks
+order: 16
+skill:
+  entry: true
+  intents: [image, image-renderable, png, jpeg, webp, gif, kitty, sixel]
+---
+
+# Image
+
+`ImageRenderable` loads PNG, JPEG, WebP, GIF, or encoded bytes into a native image and renders it with Kitty graphics, Sixel, or a Unicode block fallback.
+
+## Renderable API
+
+```typescript
+import { ImageRenderable, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+const image = new ImageRenderable(renderer, {
+  id: "cover",
+  source: "./cover.webp",
+  width: 40,
+  height: 15,
+  fit: "cover",
+  protocol: "auto",
+  onError: console.error,
+})
+
+renderer.root.add(image)
+await image.loadPromise
+```
+
+`source` accepts a path, `file:`/HTTP(S) URL, `URL`, `Uint8Array`, or `ArrayBuffer`. Format detection uses the encoded bytes. See [Native images](/docs/reference/native-image) for formats, decoding, pixel access, and limits.
+
+## React
+
+```tsx
+import { createCliRenderer } from "@opentui/core"
+import { createRoot } from "@opentui/react"
+
+const renderer = await createCliRenderer()
+createRoot(renderer).render(
+  <image source="./cover.webp" fit="cover" protocol="auto" style={{ width: 40, height: 15 }} />,
+)
+```
+
+## Solid
+
+```tsx
+import { createCliRenderer } from "@opentui/core"
+import { render } from "@opentui/solid"
+
+const renderer = await createCliRenderer()
+await render(
+  () => <image source="./cover.webp" fit="cover" protocol="auto" style={{ width: 40, height: 15 }} />,
+  renderer,
+)
+```
+
+The `source`, callbacks, fit, and protocol props can be updated after construction. Replacing `source` keeps the current image visible until the replacement succeeds, cancels obsolete loading, and disposes stale native images. Setting `source` to `undefined` clears it.
+
+## Sizing
+
+| `fit`   | Behavior                                                    |
+| ------- | ----------------------------------------------------------- |
+| `fit`   | Contain the full image and preserve aspect ratio (default)  |
+| `cover` | Fill the renderable, preserve aspect ratio, and center-crop |
+| `fill`  | Fill the renderable and allow stretching                    |
+
+Sizing uses terminal pixel resolution when available and a 2:1 cell-height fallback otherwise.
+
+## Rendering protocol
+
+| `protocol` | Behavior                                                            |
+| ---------- | ------------------------------------------------------------------- |
+| `auto`     | Global override, then Kitty, then Sixel, then Unicode blocks        |
+| `kitty`    | Force Kitty graphics                                                |
+| `sixel`    | Force Sixel; falls back to blocks without terminal pixel resolution |
+| `blocks`   | Portable Unicode quadrant-block rendering                           |
+
+Automatic selection uses blocks inside tmux. An explicit per-image protocol overrides automatic detection. Normal cell content can render over image placements.
+
+Use `OPENTUI_IMAGE_PROTOCOL=auto|kitty|sixel|blocks` to set the global default. `OPENTUI_GRAPHICS=false` disables Kitty and Sixel detection. See [Environment variables](/docs/reference/env-vars).
+
+`resolveImageRenderProtocol(requested, capabilities, hasResolution)` exposes the same protocol-resolution policy for code that needs it without constructing a renderable.
+
+## Options and state
+
+| Member               | Type                                         | Description                                        |
+| -------------------- | -------------------------------------------- | -------------------------------------------------- |
+| `source`             | `string \| URL \| Uint8Array \| ArrayBuffer` | Image source; optional                             |
+| `fit`                | `"fit" \| "cover" \| "fill"`                 | Destination sizing                                 |
+| `protocol`           | `"auto" \| "kitty" \| "sixel" \| "blocks"`   | Requested rendering protocol                       |
+| `onLoad`             | `(image: NativeImage) => void`               | Called after the current source loads              |
+| `onError`            | `(error: unknown) => void`                   | Called when the current source fails               |
+| `image`              | `NativeImage \| null`                        | Currently displayed image                          |
+| `loading`            | `boolean`                                    | Whether the current source is loading              |
+| `loadError`          | `unknown`                                    | Current load error, otherwise `null`               |
+| `loadPromise`        | `Promise<void> \| null`                      | Settles after the current load attempt             |
+| `effectiveProtocol`  | `kitty \| sixel \| blocks`                   | Resolved protocol                                  |
+| `cellAspectRatio`    | `number`                                     | Physical or fallback cell aspect ratio             |
+| `getFittedSize(...)` | `(width, height) => { width, height }`       | Resolve destination cells for the current fit mode |
+
+The renderable owns `image` and the `NativeImage` passed to `onLoad`; do not dispose them yourself. Source replacement, clearing, and recursive destruction release them. `onError` reports failures through `loadError`; `loadPromise` resolves after reporting rather than rejecting.
