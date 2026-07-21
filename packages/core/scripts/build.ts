@@ -298,7 +298,8 @@ export default module.default
       [join(rootDir, "src", "zig", "vendor", "libwebp", "COPYING"), "LICENSE-LIBWEBP"],
       [join(rootDir, "src", "zig", "vendor", "libwebp", "PATENTS"), "PATENTS-LIBWEBP"],
     ] as const) {
-      if (existsSync(source)) copyFileSync(source, join(nativeDir, destination))
+      if (!existsSync(source)) throw new Error(`Required native image license file is missing: ${source}`)
+      copyFileSync(source, join(nativeDir, destination))
     }
     console.log("Built:", nativeName)
   }
