@@ -1508,6 +1508,15 @@ pub const CliRenderer = struct {
         return protocol == .sixel and self.placementExposed(placement);
     }
 
+    fn placementsOverlap(a: OptimizedBuffer.ImagePlacement, b: OptimizedBuffer.ImagePlacement) bool {
+        const a_left: i64 = a.x;
+        const a_top: i64 = a.y;
+        const b_left: i64 = b.x;
+        const b_top: i64 = b.y;
+        return a_left < b_left + b.width and b_left < a_left + a.width and
+            a_top < b_top + b.height and b_top < a_top + a.height;
+    }
+
     fn computeImageDirtyFlags(self: *CliRenderer, forced: bool) void {
         self.imageDirty.clearRetainingCapacity();
         const placements = self.nextRenderBuffer.image_placements.items;
@@ -1527,6 +1536,14 @@ pub const CliRenderer = struct {
                 .protocol = protocol,
                 .background_hash = background_hash,
             });
+        }
+        for (placements, 0..) |placement, index| {
+            const state = &self.imageDirty.items[index];
+            if (state.protocol != .sixel or !state.clear) continue;
+            for (placements[index + 1 ..], index + 1..) |upper, upper_index| {
+                const upper_state = &self.imageDirty.items[upper_index];
+                if (upper_state.protocol == .sixel and placementsOverlap(placement, upper)) upper_state.clear = true;
+            }
         }
     }
 
