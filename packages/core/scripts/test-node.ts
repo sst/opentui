@@ -34,6 +34,7 @@ const treeSitterTestDataPaths = [
 ]
 const treeSitterAssetsDir = "src/lib/tree-sitter/assets"
 const audioFixturesDir = "src/tests/fixtures/audio"
+const imageFixturesDir = "src/tests/fixtures/images"
 const nodeTestTimeoutMs = 30_000
 const nodeProcessTimeoutMs = 10 * 60_000
 const nodePath = requireNode26()
@@ -125,6 +126,8 @@ const emittedAllowlist = [
   ".node-test/src/tests/allocator-stats.test.js",
   ".node-test/src/tests/audio-stream.test.js",
   ".node-test/src/tests/audio.test.js",
+  ".node-test/src/tests/image-renderable.test.js",
+  ".node-test/src/tests/image.test.js",
   ".node-test/src/tests/destroy-on-exit.test.js",
   ".node-test/src/tests/destroy-during-render.test.js",
   ".node-test/src/tests/ffi-borrowed-pointer-callsites.test.js",
@@ -193,6 +196,7 @@ try {
   if (exitCode === 0) {
     cpSync(resolve(packageRoot, treeSitterAssetsDir), resolve(outDir, treeSitterAssetsDir), { recursive: true })
     cpSync(resolve(packageRoot, audioFixturesDir), resolve(outDir, audioFixturesDir), { recursive: true })
+    cpSync(resolve(packageRoot, imageFixturesDir), resolve(outDir, imageFixturesDir), { recursive: true })
     for (const dataPath of treeSitterTestDataPaths) {
       mkdirSync(dataPath, { recursive: true })
     }
