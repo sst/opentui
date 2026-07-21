@@ -125,22 +125,36 @@ fn runLargeStillTransmit(allocator: std.mem.Allocator, pool: *gp.GraphemePool) !
     defer test_renderer.deinit();
     test_renderer.renderer.terminal.caps.kitty_graphics = true;
 
-    const still = try makeFrameImage(allocator, 1600, 1200, 11);
-    const still_handle = try handles.insert(.image, @ptrCast(still));
+    const first = try makeFrameImage(allocator, 1600, 1200, 11);
+    const first_handle = handles.insert(.image, @ptrCast(first)) catch |err| {
+        first.deinit();
+        return err;
+    };
     defer {
-        const token = handles.beginDestroy(still_handle, .image, image.Image).?;
+        const token = handles.beginDestroy(first_handle, .image, image.Image).?;
         token.ptr.deinit();
         handles.finishDestroy(token.handle);
     }
+    const second = try makeFrameImage(allocator, 1600, 1200, 37);
+    const second_handle = handles.insert(.image, @ptrCast(second)) catch |err| {
+        second.deinit();
+        return err;
+    };
+    defer {
+        const token = handles.beginDestroy(second_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    const stills = [_]*image.Image{ first, second };
+    const still_handles = [_]u32{ first_handle, second_handle };
 
     var cost = FrameCost{};
-    // Fresh transmission each iteration: alternate the placement geometry so
-    // the committed state never matches and the image is retransmitted.
+    // Alternate content so every iteration exercises crop, downscale, and transmission.
     var frame: usize = 0;
     while (frame < 8) : (frame += 1) {
+        const index = frame % stills.len;
         const next = test_renderer.renderer.getNextBuffer();
-        const x: i32 = @intCast(5 + (frame % 2));
-        _ = try next.drawImage(still, still_handle, x, 5, 40, 20, 320, 200, 0, 0, 1600, 1200, .auto);
+        _ = try next.drawImage(stills[index], still_handles[index], 5, 5, 40, 20, 320, 200, 0, 0, 1600, 1200, .auto);
         test_renderer.memory.bytes.clearRetainingCapacity();
         test_renderer.memory.last_write_start = 0;
         test_renderer.memory.last_write_len = 0;
