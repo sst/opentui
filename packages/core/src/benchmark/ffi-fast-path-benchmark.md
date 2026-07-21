@@ -9,6 +9,8 @@ No evaluated ABI passed both the Node improvement and Bun non-inferiority gates.
 APIs remain unchanged. The retained work is the portable benchmark suite, broader scenarios, comparison tooling, and
 decision evidence below.
 
+The `bun-ffi-structs` 0.2.4 to 0.3.0 comparison is recorded in `ffi-fast-path-structs-030.md`.
+
 ## Scenarios
 
 The 37 scenarios split behaviorally distinct inputs while mapping to 19 calls:
