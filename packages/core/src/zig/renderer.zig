@@ -1634,10 +1634,19 @@ pub const CliRenderer = struct {
     // known pixel size and at least 4x the area, transmit a downscaled copy;
     // the terminal scales the remainder. PNG passthrough is skipped for these
     // because the raw downscaled payload is smaller than the original file.
-    fn kittyDownscaleApplies(placement: OptimizedBuffer.ImagePlacement) bool {
-        const pixel_area = @as(u64, placement.pixel_width) * placement.pixel_height;
-        const source_area = @as(u64, placement.source_width) * placement.source_height;
+    fn kittyDownscaleAppliesTo(source_width: u32, source_height: u32, pixel_width: u32, pixel_height: u32) bool {
+        const pixel_area = @as(u64, pixel_width) * pixel_height;
+        const source_area = @as(u64, source_width) * source_height;
         return pixel_area > 0 and source_area >= pixel_area * 4;
+    }
+
+    fn kittyDownscaleApplies(placement: OptimizedBuffer.ImagePlacement) bool {
+        return kittyDownscaleAppliesTo(placement.source_width, placement.source_height, placement.pixel_width, placement.pixel_height);
+    }
+
+    fn kittyCropApplies(placement: OptimizedBuffer.ImagePlacement) bool {
+        return placement.source_x != 0 or placement.source_y != 0 or
+            placement.source_width != placement.image.width() or placement.source_height != placement.image.height();
     }
 
     const KittyTransmit = struct {
@@ -1647,7 +1656,8 @@ pub const CliRenderer = struct {
 
     fn kittyPlacementTransmit(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement) !KittyTransmit {
         const source = placement.image;
-        if (kittyDownscaleApplies(placement)) {
+        const downscaled = kittyDownscaleApplies(placement);
+        if (downscaled or kittyCropApplies(placement)) {
             const cropped = try native_image.extract(
                 self.allocator,
                 source,
@@ -1656,10 +1666,14 @@ pub const CliRenderer = struct {
                 placement.source_width,
                 placement.source_height,
             );
-            defer cropped.deinit();
-            const resized = try native_image.resize(self.allocator, cropped, placement.pixel_width, placement.pixel_height, .area);
-            if (placement.opacity < 255) applyAlphaOpacity(resized, placement.opacity);
-            return .{ .image = resized, .owned = true };
+            if (downscaled) {
+                defer cropped.deinit();
+                const resized = try native_image.resize(self.allocator, cropped, placement.pixel_width, placement.pixel_height, .area);
+                if (placement.opacity < 255) applyAlphaOpacity(resized, placement.opacity);
+                return .{ .image = resized, .owned = true };
+            }
+            if (placement.opacity < 255) applyAlphaOpacity(cropped, placement.opacity);
+            return .{ .image = cropped, .owned = true };
         }
         const opacity_image = try imageWithOpacity(source, placement.opacity);
         return .{ .image = opacity_image orelse source, .owned = opacity_image != null };
@@ -1692,13 +1706,19 @@ pub const CliRenderer = struct {
                 }
             }
             const image_id = self.kittyImageId(placement.image_handle, placement.placement_id);
-            // Downscaled transmissions are tied to the pixel size and crop, so
-            // changing either invalidates the transmitted pixels.
-            const retransmit = previous != null and (previous.?.opacity != placement.opacity or
-                (kittyDownscaleApplies(placement) and (previous.?.pixel_width != placement.pixel_width or
-                    previous.?.pixel_height != placement.pixel_height or previous.?.source_x != placement.source_x or
-                    previous.?.source_y != placement.source_y or previous.?.source_width != placement.source_width or
-                    previous.?.source_height != placement.source_height)));
+            const downscaled = kittyDownscaleApplies(placement);
+            const retransmit = if (previous) |committed| blk: {
+                const previous_downscaled = kittyDownscaleAppliesTo(
+                    committed.source_width,
+                    committed.source_height,
+                    committed.pixel_width,
+                    committed.pixel_height,
+                );
+                const source_changed = committed.source_x != placement.source_x or committed.source_y != placement.source_y or
+                    committed.source_width != placement.source_width or committed.source_height != placement.source_height;
+                break :blk committed.opacity != placement.opacity or source_changed or previous_downscaled != downscaled or
+                    (downscaled and (committed.pixel_width != placement.pixel_width or committed.pixel_height != placement.pixel_height));
+            } else false;
             if (previous == null or retransmit) {
                 if (retransmit) try terminal_image.writeKittyDelete(writer, image_id, null, true, tmux);
                 const transmit = try self.kittyPlacementTransmit(placement);
@@ -1711,7 +1731,7 @@ pub const CliRenderer = struct {
                 try terminal_image.writeKittyDelete(writer, image_id, placement.placement_id, false, tmux);
             } else continue;
             if (placement.x < 0 or placement.y < 0) continue;
-            const downscaled = kittyDownscaleApplies(placement);
+            const normalized = downscaled or kittyCropApplies(placement);
             try terminal_image.writeKittyPlacement(
                 writer,
                 image_id,
@@ -1720,8 +1740,8 @@ pub const CliRenderer = struct {
                 @intCast(placement.y + @as(i32, @intCast(self.renderOffset))),
                 placement.width,
                 placement.height,
-                if (downscaled) 0 else placement.source_x,
-                if (downscaled) 0 else placement.source_y,
+                if (normalized) 0 else placement.source_x,
+                if (normalized) 0 else placement.source_y,
                 if (downscaled) placement.pixel_width else placement.source_width,
                 if (downscaled) placement.pixel_height else placement.source_height,
                 -1_500_000_000 + @as(i32, @intCast(placement.placement_id)),
