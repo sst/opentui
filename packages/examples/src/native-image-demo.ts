@@ -283,7 +283,7 @@ export function destroy(renderer: CliRenderer): void {
   if (capabilityListener) renderer.off("capabilities", capabilityListener)
   keyListener = null
   capabilityListener = null
-  root?.destroy()
+  root?.destroyRecursively()
   root = null
   previews = []
   controlsText = null

@@ -33,5 +33,12 @@ describe("native image demo", () => {
     const updated = setup.captureCharFrame()
     expect(updated).toContain("COVER")
     expect(updated).toContain("KITTY → KITTY")
+
+    const demoRoot = setup.renderer.root.getRenderable("native-image-demo")!
+    const preview = demoRoot.findDescendantById("native-image-preview-0")!
+    destroy(setup.renderer)
+    expect(demoRoot.isDestroyed).toBe(true)
+    expect(preview.isDestroyed).toBe(true)
+    expect(setup.renderer.root.getRenderable("native-image-demo")).toBeUndefined()
   })
 })

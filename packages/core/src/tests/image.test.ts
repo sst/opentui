@@ -326,7 +326,9 @@ describe("NativeImage", () => {
     const overlay = NativeImage.fromRgba(Uint8Array.of(255, 255, 255, 128), 1, 1)
     const output = base.composite(overlay)
     try {
-      expect(output.raw().data[0]).toBeWithin(187, 190)
+      const red = output.raw().data[0]
+      expect(red).toBeGreaterThanOrEqual(187)
+      expect(red).toBeLessThanOrEqual(190)
       expect(output.raw().data[3]).toBe(255)
     } finally {
       output.dispose()
