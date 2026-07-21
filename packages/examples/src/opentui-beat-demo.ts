@@ -18,16 +18,19 @@ import {
   type KeyEvent,
   type SelectOption,
 } from "@opentui/core"
-import FFT from "fft.js"
+import {
+  AdaptiveBeatDetector,
+  ReactiveSpectrumAnalyzer,
+  SPECTRUM_BAND_CENTERS,
+  SPECTRUM_FFT_SIZE,
+  type ReactiveSpectrumFrame,
+} from "./lib/adaptive-spectrum.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const SAMPLE_RATE = 48_000
-const FFT_SIZE = 2048
 const FFT_UPDATE_MS = 50
-const FFT_DB_FLOOR = -72
-const FFT_DB_CEILING = 0
 const FFT_PEAK_FALLOFF_PER_SECOND = 0.8
-const BAND_CENTERS = [63, 160, 400, 1000, 2500, 6000, 12000, 16000] as const
+const DIRECT_HIT_SUPPRESSION_MS = 150
 const SUPPORTED_AUDIO_EXTENSIONS = new Set([".flac", ".mp3", ".wav", ".wave"])
 const MAX_AUDIO_FILE_BYTES = 256 * 1024 * 1024
 const MAX_PICKER_ENTRIES = 4096
@@ -258,13 +261,10 @@ class OpenTUIBeatDemo {
   private readonly pickerContainer: BoxRenderable
   private readonly pickerTitle: TextRenderable
   private readonly pickerSelect: SelectRenderable
-  private readonly fft = new FFT(FFT_SIZE)
-  private readonly fftInput = new Float32Array(FFT_SIZE)
-  private readonly fftOutput = this.fft.createComplexArray()
-  private readonly fftWindow = new Float32Array(FFT_SIZE)
-  private readonly fftMagnitudes = new Float32Array(BAND_CENTERS.length)
-  private readonly spectrum = new Float32Array(BAND_CENTERS.length)
-  private readonly spectrumPeaks = new Float32Array(BAND_CENTERS.length)
+  private readonly spectrumAnalyzer = new ReactiveSpectrumAnalyzer()
+  private readonly beatDetector = new AdaptiveBeatDetector()
+  private readonly spectrum = new Float32Array(SPECTRUM_BAND_CENTERS.length)
+  private readonly spectrumPeaks = new Float32Array(SPECTRUM_BAND_CENTERS.length)
   private readonly frameCallback: (deltaMs: number) => Promise<void>
   private readonly keyHandler: (key: KeyEvent) => void
   private readonly audioErrorHandler: (error: Error, context: AudioErrorContext) => void
@@ -272,6 +272,7 @@ class OpenTUIBeatDemo {
 
   private audio: Audio | null = null
   private sounds: Partial<Record<Drum, AudioSound>> = {}
+  private drumVoices: Partial<Record<Drum, AudioVoice>> = {}
   private trackPath: string | null = null
   private trackSound: AudioSound | null = null
   private trackVoice: AudioVoice | null = null
@@ -285,6 +286,8 @@ class OpenTUIBeatDemo {
   private kickEnvelope = 0
   private snareEnvelope = 0
   private animationTimeMs = 0
+  private lastDirectKickMs = Number.NEGATIVE_INFINITY
+  private lastDirectSnareMs = Number.NEGATIVE_INFINITY
   private colorOffset = 0
   private logoColors: readonly string[] = DEFAULT_LOGO_COLORS
   private colorRevision = 0
@@ -294,7 +297,6 @@ class OpenTUIBeatDemo {
   private playbackAvailable = false
   private mixerAvailable = false
   private tapEnabled = false
-  private fftWindowSum = 0
   private fftElapsedMs = 0
   private lastAnalyzedFrame = -1n
   private peak = 0
@@ -310,12 +312,6 @@ class OpenTUIBeatDemo {
   constructor(renderer: CliRenderer) {
     this.renderer = renderer
     this.renderer.setBackgroundColor("#080A0F")
-
-    for (let index = 0; index < FFT_SIZE; index++) {
-      const windowValue = 0.5 * (1 - Math.cos((2 * Math.PI * index) / (FFT_SIZE - 1)))
-      this.fftWindow[index] = windowValue
-      this.fftWindowSum += windowValue
-    }
 
     this.root = new BoxRenderable(renderer, {
       id: "opentui-beat-demo-root",
@@ -608,6 +604,7 @@ class OpenTUIBeatDemo {
 
       const nextSound = audio.loadSound(bytes)
       if (nextSound == null) throw new Error("Audio decode failed")
+      this.stopDrumVoices()
       const nextVoice = audio.play(nextSound, { volume: 0.72, pan: 0, loop: true })
       if (nextVoice == null) {
         audio.unloadSound(nextSound)
@@ -621,6 +618,7 @@ class OpenTUIBeatDemo {
       this.trackVoice = nextVoice
       if (previousVoice != null) audio.stopVoice(previousVoice)
       if (previousSound != null) audio.unloadSound(previousSound)
+      this.resetTrackAnalysis()
       this.lastAction = `Playing ${displayName}`
     } catch (error) {
       if (this.destroyed || requestId !== this.loadRequestId) return
@@ -641,12 +639,39 @@ class OpenTUIBeatDemo {
     if (this.trackVoice != null) {
       audio.stopVoice(this.trackVoice)
       this.trackVoice = null
+      this.resetTrackAnalysis()
       this.lastAction = "Audio file stopped"
     } else {
+      this.stopDrumVoices()
       this.trackVoice = audio.play(this.trackSound, { volume: 0.72, pan: 0, loop: true })
+      if (this.trackVoice != null) this.resetTrackAnalysis()
       this.lastAction = this.trackVoice == null ? "Audio file failed to start" : "Audio file restarted"
     }
     this.updateSequencer()
+  }
+
+  private resetTrackAnalysis(): void {
+    if (this.audio && this.tapEnabled) {
+      this.audio.disableTap()
+      this.tapEnabled = this.audio.enableTap(8192)
+    }
+    this.spectrumAnalyzer.reset()
+    this.beatDetector.reset()
+    this.spectrum.fill(0)
+    this.spectrumPeaks.fill(0)
+    this.fftElapsedMs = 0
+    this.lastAnalyzedFrame = -1n
+    this.peak = 0
+    this.rms = 0
+  }
+
+  private stopDrumVoices(): void {
+    if (this.audio) {
+      for (const voice of Object.values(this.drumVoices)) {
+        if (voice != null) this.audio.stopVoice(voice)
+      }
+    }
+    this.drumVoices = {}
   }
 
   private stepDuration(step: number): number {
@@ -655,16 +680,22 @@ class OpenTUIBeatDemo {
     return sixteenth * (step % 2 === 0 ? 1 + swing : 1 - swing)
   }
 
-  private hit(drum: Drum): void {
-    if (drum === "kick") this.kickEnvelope = 1
-    if (drum === "snare") {
+  private hit(drum: Drum, forceVisual = false): void {
+    const reactDirectly = this.trackVoice == null || forceVisual
+    if (drum === "kick" && reactDirectly) {
+      this.kickEnvelope = 1
+      this.lastDirectKickMs = this.animationTimeMs
+    }
+    if (drum === "snare" && reactDirectly) {
       this.snareEnvelope = 1
+      this.lastDirectSnareMs = this.animationTimeMs
       this.colorOffset = (this.colorOffset + 1) % this.logoColors.length
     }
 
     const sound = this.sounds[drum]
-    if (!this.muted && this.audio && sound != null) {
-      this.audio.play(sound, { volume: drum === "kick" ? 0.9 : drum === "snare" ? 0.52 : 0.16 })
+    if (!this.muted && this.trackVoice == null && this.audio && sound != null) {
+      const voice = this.audio.play(sound, { volume: drum === "kick" ? 0.9 : drum === "snare" ? 0.52 : 0.16 })
+      if (voice != null) this.drumVoices[drum] = voice
     }
   }
 
@@ -682,37 +713,22 @@ class OpenTUIBeatDemo {
     for (let index = 0; index < this.spectrum.length; index++) this.spectrum[index] *= decay
   }
 
-  private computeSpectrum(pcm: Float32Array): void {
-    for (let index = 0; index < FFT_SIZE; index++) {
-      const left = pcm[index * 2] ?? 0
-      const right = pcm[index * 2 + 1] ?? left
-      this.fftInput[index] = (left + right) * 0.5 * this.fftWindow[index]!
-    }
-    this.fft.realTransform(this.fftOutput, this.fftInput)
-
-    const sampleRate = this.audio?.sampleRate ?? SAMPLE_RATE
-    for (let band = 0; band < BAND_CENTERS.length; band++) {
-      const center = BAND_CENTERS[band]!
-      const previous = BAND_CENTERS[band - 1]
-      const next = BAND_CENTERS[band + 1]
-      const low = previous ? Math.sqrt(previous * center) : center / Math.sqrt((next ?? center * 2) / center)
-      const high = next ? Math.sqrt(center * next) : center * Math.sqrt(center / (previous ?? center / 2))
-      const firstBin = Math.max(1, Math.floor((low * FFT_SIZE) / sampleRate))
-      const lastBin = Math.min(FFT_SIZE / 2, Math.ceil((high * FFT_SIZE) / sampleRate))
-      let maximum = 0
-      for (let bin = firstBin; bin < lastBin; bin++) {
-        const real = this.fftOutput[bin * 2] ?? 0
-        const imaginary = this.fftOutput[bin * 2 + 1] ?? 0
-        maximum = Math.max(maximum, (2 * Math.hypot(real, imaginary)) / this.fftWindowSum)
-      }
-      this.fftMagnitudes[band] = maximum
-    }
-
+  private applySpectrum(frame: ReactiveSpectrumFrame): void {
     for (let index = 0; index < this.spectrum.length; index++) {
-      const decibels = 20 * Math.log10(Math.max(this.fftMagnitudes[index] ?? 0, 1e-8))
-      const incoming = clamp((decibels - FFT_DB_FLOOR) / (FFT_DB_CEILING - FFT_DB_FLOOR), 0, 1)
+      const incoming = frame.levels[index] ?? 0
       const previous = this.spectrum[index] ?? 0
       this.spectrum[index] = incoming > previous ? incoming : previous * 0.8 + incoming * 0.2
+    }
+  }
+
+  private applyAdaptiveBeats(frame: ReactiveSpectrumFrame | null, elapsedMs: number): void {
+    const result = this.beatDetector.update(this.trackVoice != null ? frame : null, elapsedMs)
+    if (result.kick.triggered && this.animationTimeMs - this.lastDirectKickMs > DIRECT_HIT_SUPPRESSION_MS) {
+      this.kickEnvelope = 1
+    }
+    if (result.snare.triggered && this.animationTimeMs - this.lastDirectSnareMs > DIRECT_HIT_SUPPRESSION_MS) {
+      this.snareEnvelope = 1
+      this.colorOffset = (this.colorOffset + 1) % this.logoColors.length
     }
   }
 
@@ -729,14 +745,18 @@ class OpenTUIBeatDemo {
     this.peak = incomingPeak > this.peak ? incomingPeak : this.peak * Math.exp(-elapsedMs / 120)
     this.rms = incomingRms > this.rms ? incomingRms : this.rms * 0.72 + incomingRms * 0.28
 
+    let frame: ReactiveSpectrumFrame | null = null
     if (stats && stats.framesMixed !== this.lastAnalyzedFrame) {
       this.lastAnalyzedFrame = stats.framesMixed
-      const tap = audio.readTapFrames(FFT_SIZE, 2)
-      if (tap && tap.framesRead >= FFT_SIZE) this.computeSpectrum(tap.frames)
-      else this.decaySpectrum(elapsedMs)
+      const tap = audio.readTapFrames(SPECTRUM_FFT_SIZE, 2)
+      if (tap && tap.framesRead >= SPECTRUM_FFT_SIZE) {
+        frame = this.spectrumAnalyzer.analyze(tap.frames, 2, audio.sampleRate)
+        this.applySpectrum(frame)
+      } else this.decaySpectrum(elapsedMs)
     } else {
       this.decaySpectrum(elapsedMs)
     }
+    this.applyAdaptiveBeats(frame, elapsedMs)
 
     const falloff = (elapsedMs / 1000) * FFT_PEAK_FALLOFF_PER_SECOND
     for (let index = 0; index < this.spectrumPeaks.length; index++) {
@@ -745,28 +765,12 @@ class OpenTUIBeatDemo {
     this.updateSequencer()
   }
 
-  private bassPulse(): number {
-    const bass = Math.max(this.spectrum[0] ?? 0, this.spectrum[1] ?? 0)
-    return clamp((bass - 0.42) / 0.42, 0, 1)
-  }
-
-  private midPulse(): number {
-    const mids = Math.max(this.spectrum[2] ?? 0, this.spectrum[3] ?? 0, this.spectrum[4] ?? 0)
-    return clamp((mids - 0.48) / 0.38, 0, 1)
-  }
-
-  private highPulse(): number {
-    const highs = Math.max(this.spectrum[5] ?? 0, this.spectrum[6] ?? 0, this.spectrum[7] ?? 0)
-    return clamp((highs - 0.52) / 0.34, 0, 1)
-  }
-
   private logoScale(): number {
     const widthCapacity = Math.floor(Math.max(1, this.renderer.terminalWidth - 2) / LOGO_WIDTH)
     const heightCapacity = Math.floor(Math.max(3, this.renderer.terminalHeight - 12) / LOGO_ROWS.length)
     const capacity = Math.max(1, Math.min(widthCapacity, heightCapacity))
     const restingScale = Math.max(1, Math.min(3, capacity - 1))
-    const pulse = Math.max(this.kickEnvelope, this.bassPulse(), clamp(this.peak * 1.4, 0, 1))
-    return pulse > 0.48 ? Math.min(capacity, restingScale + 1) : restingScale
+    return this.kickEnvelope > 0.48 ? Math.min(capacity, restingScale + 1) : restingScale
   }
 
   private update(deltaMs: number): void {
@@ -801,16 +805,14 @@ class OpenTUIBeatDemo {
       this.renderedColorOffset = this.colorOffset
       this.renderedColorRevision = this.colorRevision
     }
-    const bass = this.bassPulse()
-    const mids = this.midPulse()
-    const highs = this.highPulse()
     const level = clamp(this.rms * 3.5, 0, 1)
-    this.logo.bottom = Math.round(this.kickEnvelope * 2 + this.snareEnvelope + bass * 3)
+    this.logo.bottom = Math.round(this.kickEnvelope * 3 + this.snareEnvelope)
     this.logo.left = Math.round(
-      Math.sin(this.snareEnvelope * 28) * this.snareEnvelope * 2 + Math.sin(this.animationTimeMs * 0.045) * mids * 2,
+      Math.sin(this.snareEnvelope * 28) * this.snareEnvelope * 2 +
+        Math.sin(this.animationTimeMs * 0.045) * this.snareEnvelope * 2,
     )
     this.logo.opacity = 0.76 + Math.max(this.kickEnvelope, this.snareEnvelope, level) * 0.24
-    this.title.opacity = 0.25 + Math.max(this.kickEnvelope * 0.7, this.snareEnvelope * 0.5, highs * 0.75, level * 0.5)
+    this.title.opacity = 0.25 + Math.max(this.kickEnvelope * 0.7, this.snareEnvelope * 0.75, level * 0.5)
   }
 
   private updateSequencer(): void {
@@ -920,12 +922,13 @@ class OpenTUIBeatDemo {
       case "m":
         this.muted = !this.muted
         this.audio?.setMasterVolume(this.muted ? 0 : 1)
+        this.resetTrackAnalysis()
         break
       case "k":
-        this.hit("kick")
+        this.hit("kick", true)
         break
       case "s":
-        this.hit("snare")
+        this.hit("snare", true)
         break
       case "f":
         this.showPicker()
@@ -970,11 +973,11 @@ class OpenTUIBeatDemo {
     audio?.off("error", this.audioErrorHandler)
     this.audio = null
     this.sounds = {}
+    this.drumVoices = {}
     this.tapEnabled = false
     this.mixerAvailable = false
     this.playbackAvailable = false
-    this.spectrum.fill(0)
-    this.spectrumPeaks.fill(0)
+    this.resetTrackAnalysis()
     this.root.destroyRecursively()
   }
 }
