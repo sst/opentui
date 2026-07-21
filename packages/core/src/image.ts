@@ -156,6 +156,8 @@ const BLEND_IDS: Record<BlendMode, number> = {
   "destination-over": 2,
 }
 
+const MAX_ENCODED_BYTES = 64 * 1024 * 1024
+
 function imageError(status: number): Error {
   return new ImageError(status)
 }
@@ -203,6 +205,45 @@ function encodedBytes(data: Uint8Array | ArrayBuffer): Uint8Array {
   if (data instanceof Uint8Array) return data
   if (data instanceof ArrayBuffer) return new Uint8Array(data)
   throw new TypeError("image data must be a Uint8Array or ArrayBuffer")
+}
+
+async function readResponseBytes(response: Response, signal?: AbortSignal): Promise<Uint8Array> {
+  const contentLength = response.headers.get("content-length")
+  if (contentLength !== null) {
+    const declaredLength = Number(contentLength)
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_ENCODED_BYTES) throw imageError(6)
+  }
+
+  if (!response.body) return new Uint8Array()
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (true) {
+      signal?.throwIfAborted()
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value.byteLength > MAX_ENCODED_BYTES - total) {
+        await reader.cancel()
+        throw imageError(6)
+      }
+      chunks.push(value.slice())
+      total += value.byteLength
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {})
+    throw error
+  } finally {
+    reader.releaseLock()
+  }
+
+  const data = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    data.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return data
 }
 
 export function imageInfo(data: Uint8Array | ArrayBuffer): ImageInfo {
@@ -270,11 +311,12 @@ export class NativeImage {
         status: response.status,
       })
     }
-    let data: ArrayBuffer
+    let data: Uint8Array
     try {
-      data = await response.arrayBuffer()
+      data = await readResponseBytes(response, options.signal)
     } catch (error) {
       if (options.signal?.aborted) throw options.signal.reason
+      if (error instanceof ImageError) throw error
       throw new ImageLoadError("network", url.href, `Failed to read image response: ${url.href}`, { cause: error })
     }
     options.signal?.throwIfAborted()
