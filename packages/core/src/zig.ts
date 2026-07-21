@@ -3342,7 +3342,7 @@ class FFIRenderLib implements RenderLib {
       sourceHeight,
       protocol: protocolId,
     })
-    return this.opentui.symbols.bufferDrawImage(buffer, image, ptr(options))
+    return Boolean(this.opentui.symbols.bufferDrawImage(buffer, image, ptr(options)))
   }
 
   public bufferDrawPackedBuffer(
