@@ -181,8 +181,8 @@ fn appendKittyBenchmarks(
         "Kitty cover placement",
         "Kitty cover forced RGBA direct",
         "Kitty cover forced RGB direct",
-        "Kitty video create+auto direct",
-        "Kitty video create+RGBA direct",
+        "Kitty photo create+auto direct",
+        "Kitty photo create+RGBA direct",
         "Kitty cover opacity preparation",
     };
     var run_any = false;
@@ -276,9 +276,9 @@ fn appendKittyBenchmarks(
         try appendResult(allocator, results, scenario.name, stats, mem_stats);
     }
 
-    const video_pixels = try work_allocator.alloc(u8, 576 * 1015 * 4);
-    defer work_allocator.free(video_pixels);
-    fillPixels(video_pixels, .{ .name = "", .width = 576, .height = 1015, .pattern = .photo });
+    const photo_pixels = try work_allocator.alloc(u8, 576 * 1015 * 4);
+    defer work_allocator.free(photo_pixels);
+    fillPixels(photo_pixels, .{ .name = "", .width = 576, .height = 1015, .pattern = .photo });
     for ([_]struct { name: []const u8, format: terminal_image.KittyPixelFormat }{
         .{ .name = names[6], .format = .auto },
         .{ .name = names[7], .format = .rgba },
@@ -286,12 +286,12 @@ fn appendKittyBenchmarks(
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
         var output: std.ArrayList(u8) = .empty;
         defer output.deinit(work_allocator);
-        try output.ensureTotalCapacity(work_allocator, video_pixels.len * 4 / 3 + 8192);
+        try output.ensureTotalCapacity(work_allocator, photo_pixels.len * 4 / 3 + 8192);
         var stats: bench_utils.BenchStats = .{};
         for (0..20) |_| {
             output.clearRetainingCapacity();
             var timer = try std.time.Timer.start();
-            const value = try image.createFromRgba(work_allocator, video_pixels, 576, 1015, 576 * 4);
+            const value = try image.createFromRgba(work_allocator, photo_pixels, 576, 1015, 576 * 4);
             try terminal_image.writeKittyTransmitFormat(output.writer(work_allocator), value, 7, false, scenario.format);
             value.deinit();
             stats.record(timer.read());
