@@ -488,6 +488,56 @@ describe("NativeImage", () => {
     }
   })
 
+  test("rejects an oversized HTTP response before consuming its body", async () => {
+    let consumed = false
+    const response = new Response(null, {
+      headers: { "content-length": String(64 * 1024 * 1024 + 1) },
+    })
+    response.arrayBuffer = async () => {
+      consumed = true
+      throw new Error("oversized body should not be consumed")
+    }
+
+    try {
+      await NativeImage.load(new URL("https://images.test/oversized"), {
+        fetch: async () => response,
+      })
+      throw new Error("expected load to fail")
+    } catch (error) {
+      expect(error).toBeInstanceOf(ImageError)
+      expect((error as ImageError).code).toBe("memory-limit")
+      expect(consumed).toBe(false)
+    }
+  })
+
+  test("stops consuming an HTTP stream when it exceeds the encoded byte limit", async () => {
+    const chunk = new Uint8Array(1024 * 1024)
+    let pulls = 0
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1
+        if (pulls <= 70) controller.enqueue(chunk)
+        else controller.close()
+      },
+      cancel() {
+        cancelled = true
+      },
+    })
+
+    try {
+      await NativeImage.load(new URL("https://images.test/stream"), {
+        fetch: async () => new Response(body),
+      })
+      throw new Error("expected load to fail")
+    } catch (error) {
+      expect(error).toBeInstanceOf(ImageError)
+      expect((error as ImageError).code).toBe("memory-limit")
+      expect(pulls).toBeLessThan(70)
+      expect(cancelled).toBe(true)
+    }
+  })
+
   test("reports and applies JPEG EXIF orientation", async () => {
     const plainBytes = new Uint8Array(await readFile(new URL("halves.jpg", FIXTURES)))
     const plain = NativeImage.decode(plainBytes)
