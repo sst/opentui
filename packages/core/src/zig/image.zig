@@ -477,6 +477,18 @@ pub fn probe(data: []const u8, limits: Limits, out: *Info) Status {
     return probeInternal(data, limits, out, true);
 }
 
+pub fn inspect(allocator: Allocator, data: []const u8, limits: Limits, out: *Info) Status {
+    var encoded_info: Info = .{};
+    const probe_status = probeInternal(data, limits, &encoded_info, false);
+    if (probe_status != .ok) return probe_status;
+
+    const decoded = decode(allocator, data, limits) catch |err| return statusFromError(err);
+    defer decoded.deinit();
+    encoded_info.has_alpha = decoded.metadata.has_alpha;
+    out.* = encoded_info;
+    return .ok;
+}
+
 fn allocateImage(allocator: Allocator, metadata: Info) !*Image {
     const len = try checkedPixelBytes(metadata.width, metadata.height, .{});
     const image = try allocator.create(Image);
@@ -703,6 +715,7 @@ pub fn extract(allocator: Allocator, source: *const Image, left: u32, top: u32, 
         const dst_offset = y * dst_stride;
         @memcpy(output.pixels[dst_offset .. dst_offset + dst_stride], source.pixels[src_offset .. src_offset + dst_stride]);
     }
+    output.metadata.has_alpha = @intFromBool(pixelsHaveTransparency(output.pixels));
     return output;
 }
 
@@ -757,6 +770,7 @@ pub fn resize(allocator: Allocator, source: *const Image, width: u32, height: u3
         width * 4,
         @intFromEnum(filter),
     ) != 0) return error.OutOfMemory;
+    output.metadata.has_alpha = @intFromBool(pixelsHaveTransparency(output.pixels));
     return output;
 }
 
@@ -823,6 +837,7 @@ pub fn composite(
             blendPixel(dst, src, mode, opacity);
         }
     }
+    output.metadata.has_alpha = @intFromBool(pixelsHaveTransparency(output.pixels));
     return output;
 }
 
