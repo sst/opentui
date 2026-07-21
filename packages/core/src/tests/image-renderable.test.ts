@@ -104,15 +104,15 @@ describe("ImageRenderable image loading", () => {
     renderer.root.add(renderable)
     await renderable.loadPromise
     await setup.renderOnce()
-    expect(setup.captureCharFrame().split("\n", 1)[0]).toStartWith("████")
+    expect(setup.captureCharFrame().split("\n", 1)[0].slice(0, 4)).toBe("████")
 
     renderable.fit = "fit"
     await setup.renderOnce()
 
     const lines = setup.captureCharFrame().split("\n")
-    expect(lines[0]).toStartWith("    ")
-    expect(lines[1]).toStartWith("████")
-    expect(lines[3]).toStartWith("    ")
+    expect(lines[0].slice(0, 4)).toBe("    ")
+    expect(lines[1].slice(0, 4)).toBe("████")
+    expect(lines[3].slice(0, 4)).toBe("    ")
   })
 
   test("preserves lower content beneath a zero-opacity image", async () => {
@@ -135,7 +135,7 @@ describe("ImageRenderable image loading", () => {
     await image.loadPromise
     await setup.renderOnce()
 
-    expect(setup.captureCharFrame().split("\n", 1)[0]).toStartWith("OK")
+    expect(setup.captureCharFrame().split("\n", 1)[0].slice(0, 2)).toBe("OK")
   })
 
   test("exposes requested and effective image protocols", async () => {
