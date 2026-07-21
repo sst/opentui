@@ -85,6 +85,17 @@ describe("NativeImage", () => {
     }
   })
 
+  test("reports transparency consistently for opaque RGBA PNG data", () => {
+    const inspected = imageInfo(PNG_1X1)
+    const image = NativeImage.decode(PNG_1X1)
+    try {
+      expect(inspected.hasAlpha).toBe(false)
+      expect(image.info().hasAlpha).toBe(false)
+    } finally {
+      image.dispose()
+    }
+  })
+
   test("rejects malformed PNG data", () => {
     const corrupt = PNG_1X1.slice()
     corrupt[29] ^= 1
@@ -310,6 +321,18 @@ describe("NativeImage", () => {
     }
   })
 
+  test("updates transparency metadata after extracting opaque pixels", () => {
+    const image = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255, 4, 5, 6, 0), 2, 1)
+    const extracted = image.extract({ left: 0, top: 0, width: 1, height: 1 })
+    try {
+      expect(image.info().hasAlpha).toBe(true)
+      expect(extracted.info().hasAlpha).toBe(false)
+    } finally {
+      extracted.dispose()
+      image.dispose()
+    }
+  })
+
   test("preserves aspect ratio when one resize dimension is omitted", () => {
     const image = NativeImage.fromRgba(new Uint8Array(4 * 4 * 2).fill(255), 4, 2)
     const resized = image.resize({ width: 2 })
@@ -330,6 +353,20 @@ describe("NativeImage", () => {
       expect(red).toBeGreaterThanOrEqual(187)
       expect(red).toBeLessThanOrEqual(190)
       expect(output.raw().data[3]).toBe(255)
+    } finally {
+      output.dispose()
+      overlay.dispose()
+      base.dispose()
+    }
+  })
+
+  test("updates transparency metadata after source compositing", () => {
+    const base = NativeImage.fromRgba(Uint8Array.of(0, 0, 0, 255), 1, 1)
+    const overlay = NativeImage.fromRgba(Uint8Array.of(255, 0, 0, 255), 1, 1)
+    const output = base.composite(overlay, { blend: "source", opacity: 0.5 })
+    try {
+      expect(output.raw().data[3]).toBe(128)
+      expect(output.info().hasAlpha).toBe(true)
     } finally {
       output.dispose()
       overlay.dispose()

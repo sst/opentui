@@ -2759,7 +2759,7 @@ fn insertImage(image: *native_image.Image, out_handle: *NativeHandle) native_ima
 export fn imageInfo(data_ptr: ?[*]const u8, data_len: u32, out_info: ?*native_image.Info) u32 {
     const output = out_info orelse return @intFromEnum(native_image.Status.invalid_argument);
     if (data_len == 0 or data_ptr == null) return @intFromEnum(native_image.Status.invalid_argument);
-    return @intFromEnum(native_image.probe(data_ptr.?[0..data_len], .{}, output));
+    return @intFromEnum(native_image.inspect(globalAllocator, data_ptr.?[0..data_len], .{}, output));
 }
 
 export fn imageDecode(data_ptr: ?[*]const u8, data_len: u32, out_handle: ?*NativeHandle) u32 {
