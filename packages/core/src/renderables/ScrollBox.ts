@@ -5,7 +5,6 @@ import type { BaseRenderable, Renderable, RenderableOptions } from "../Renderabl
 import type { MouseEvent } from "../renderer.js"
 import type { RenderContext } from "../types.js"
 import { BoxRenderable, type BoxOptions } from "./Box.js"
-import type { VNode } from "./composition/vnode.js"
 import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./ScrollBar.js"
 
 class ContentRenderable extends BoxRenderable {
@@ -511,11 +510,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
     }
   }
 
-  public add(obj: Renderable | VNode<any, any[]>, index?: number): number {
+  public add(obj: Renderable, index?: number): number {
     return this.content.add(obj, index)
   }
 
-  public insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
+  public insertBefore(obj: Renderable, anchor?: Renderable): number {
     return this.content.insertBefore(obj, anchor)
   }
 

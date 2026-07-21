@@ -41,7 +41,6 @@ import * as splitModeExample from "./split-mode-demo.js"
 import * as splitFooterStreamingDemo from "./split-footer-streaming-demo.js"
 import * as consoleExample from "./console-demo.js"
 import * as notificationDemo from "./notification-demo.js"
-import * as vnodeCompositionDemo from "./vnode-composition-demo.js"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo.js"
 import * as codeDemo from "./code-demo.js"
 import * as liveStateExample from "./live-state-demo.js"
@@ -325,12 +324,6 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       description: "Renderer confined to bottom area with normal terminal output above",
       run: splitModeExample.run,
       destroy: splitModeExample.destroy,
-    },
-    {
-      name: "VNode Composition Demo",
-      description: "Declarative Box(Box(Box(children))) composition",
-      run: vnodeCompositionDemo.run,
-      destroy: vnodeCompositionDemo.destroy,
     },
   ]),
   section("Input & Editing", [

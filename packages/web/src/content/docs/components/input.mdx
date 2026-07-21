@@ -34,22 +34,6 @@ input.focus()
 renderer.root.add(input)
 ```
 
-### Construct api
-
-```typescript
-import { Input, createCliRenderer } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-const input = Input({
-  placeholder: "Enter your name...",
-  width: 25,
-})
-
-input.focus()
-renderer.root.add(input)
-```
-
 ## Focus states
 
 The input changes appearance when focused:
@@ -129,54 +113,50 @@ input.value = "New value"
 ## Example: Login form
 
 ```typescript
-import { Box, Text, Input, delegate, createCliRenderer } from "@opentui/core"
+import { BoxRenderable, TextRenderable, InputRenderable, createCliRenderer, type RenderContext } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
-function LabeledInput(props: { id: string; label: string; placeholder: string }) {
-  return delegate(
-    { focus: `${props.id}-input` },
-    Box(
-      { flexDirection: "row", marginBottom: 1 },
-      Text({ content: props.label.padEnd(12), fg: "#888888" }),
-      Input({
-        id: `${props.id}-input`,
-        placeholder: props.placeholder,
-        width: 20,
-        backgroundColor: "#222",
-        focusedBackgroundColor: "#333",
-        textColor: "#FFF",
-        cursorColor: "#0F0",
-      }),
-    ),
-  )
+function createLabeledInput(renderer: RenderContext, props: { id: string; label: string; placeholder: string }) {
+  const row = new BoxRenderable(renderer, { flexDirection: "row", marginBottom: 1 })
+  const input = new InputRenderable(renderer, {
+    id: `${props.id}-input`,
+    placeholder: props.placeholder,
+    width: 20,
+    backgroundColor: "#222",
+    focusedBackgroundColor: "#333",
+    textColor: "#FFF",
+    cursorColor: "#0F0",
+  })
+
+  row.add(new TextRenderable(renderer, { content: props.label.padEnd(12), fg: "#888888" }))
+  row.add(input)
+  return { row, input }
 }
 
-const usernameInput = LabeledInput({
+const username = createLabeledInput(renderer, {
   id: "username",
   label: "Username:",
   placeholder: "Enter username",
 })
 
-const passwordInput = LabeledInput({
+const password = createLabeledInput(renderer, {
   id: "password",
   label: "Password:",
   placeholder: "Enter password",
 })
 
-const form = Box(
-  {
-    width: 40,
-    borderStyle: "rounded",
-    title: "Login",
-    padding: 1,
-  },
-  usernameInput,
-  passwordInput,
-)
+const form = new BoxRenderable(renderer, {
+  width: 40,
+  borderStyle: "rounded",
+  title: "Login",
+  padding: 1,
+})
+form.add(username.row)
+form.add(password.row)
 
 // Focus the username input
-usernameInput.focus()
+username.input.focus()
 
 renderer.root.add(form)
 ```
@@ -186,7 +166,7 @@ renderer.root.add(form)
 Add tab navigation between inputs:
 
 ```typescript
-const inputs = [usernameInput, passwordInput]
+const inputs = [username.input, password.input]
 let focusIndex = 0
 
 renderer.keyInput.on("keypress", (key) => {

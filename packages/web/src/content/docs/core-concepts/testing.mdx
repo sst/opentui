@@ -12,11 +12,11 @@ skill:
 
 ```typescript
 import { createTestRenderer } from "@opentui/core/testing"
-import { Text } from "@opentui/core"
+import { TextRenderable } from "@opentui/core"
 
 const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({ width: 40, height: 10 })
 
-renderer.root.add(Text({ content: "Hello" }))
+renderer.root.add(new TextRenderable(renderer, { content: "Hello" }))
 await renderOnce()
 
 console.log(captureCharFrame())

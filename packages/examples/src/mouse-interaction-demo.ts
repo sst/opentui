@@ -13,11 +13,8 @@ import {
   BoxRenderable,
   createTimeline,
   engine,
-  Box,
-  type ProxiedVNode,
   type BoxOptions,
-  Text,
-  type VChild,
+  type Renderable,
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
@@ -31,10 +28,11 @@ interface TrailCell {
 let demoContainer: MouseInteractionFrameBuffer | null = null
 let titleText: TextRenderable | null = null
 let instructionsText: TextRenderable | null = null
-let draggableBoxes: ProxiedVNode<typeof BoxRenderable>[] = []
+let draggableBoxes: BoxRenderable[] = []
 let nextZIndex = 101
 
 function DraggableBox(
+  renderer: CliRenderer,
   props: BoxOptions & {
     x: number
     y: number
@@ -43,10 +41,11 @@ function DraggableBox(
     color: RGBA
     label: string
   },
-  children?: VChild,
-) {
-  const bgColor = RGBA.fromValues(props.color.r, props.color.g, props.color.b, 0.8)
-  const borderColor = RGBA.fromValues(props.color.r * 1.2, props.color.g * 1.2, props.color.b * 1.2, 1.0)
+  children: Renderable[] = [],
+): BoxRenderable {
+  const { x, y, width, height, color, label, ...boxOptions } = props
+  const bgColor = RGBA.fromValues(color.r, color.g, color.b, 0.8)
+  const borderColor = RGBA.fromValues(color.r * 1.2, color.g * 1.2, color.b * 1.2, 1.0)
 
   let isDragging = false
   let gotText = ""
@@ -55,157 +54,160 @@ function DraggableBox(
   let dragOffsetX = 0
   let dragOffsetY = 0
   let bounceScale = { value: 1 }
-  let baseWidth: number = props.width
-  let baseHeight: number = props.height
+  let baseWidth: number = width
+  let baseHeight: number = height
   let originalBg: RGBA = bgColor
-  let dragBg: RGBA = RGBA.fromValues(props.color.r, props.color.g, props.color.b, 0.3)
+  let dragBg: RGBA = RGBA.fromValues(color.r, color.g, color.b, 0.3)
   let originalBorderColor: RGBA = borderColor
-  let dragBorderColor: RGBA = RGBA.fromValues(props.color.r * 1.2, props.color.g * 1.2, props.color.b * 1.2, 0.5)
+  let dragBorderColor: RGBA = RGBA.fromValues(color.r * 1.2, color.g * 1.2, color.b * 1.2, 0.5)
 
-  return Box(
-    {
-      ...props,
-      position: "absolute",
-      left: props.x,
-      top: props.y,
-      width: props.width,
-      height: props.height,
-      backgroundColor: bgColor,
-      borderColor: borderColor,
-      borderStyle: "rounded",
-      title: props.label,
-      titleAlignment: "center",
-      border: true,
-      zIndex: 100,
-      renderAfter(buffer, deltaTime) {
-        const currentTime = Date.now()
-        if (scrollText && currentTime - scrollTimestamp > 2000) {
-          scrollText = ""
-        }
+  const box = new BoxRenderable(renderer, {
+    ...boxOptions,
+    position: "absolute",
+    left: x,
+    top: y,
+    width,
+    height,
+    backgroundColor: bgColor,
+    borderColor: borderColor,
+    borderStyle: "rounded",
+    title: label,
+    titleAlignment: "center",
+    border: true,
+    zIndex: 100,
+    renderAfter(buffer, deltaTime) {
+      const currentTime = Date.now()
+      if (scrollText && currentTime - scrollTimestamp > 2000) {
+        scrollText = ""
+      }
 
-        const baseCenterX = this.x + Math.floor(this.width / 2)
-        const baseCenterY = this.y + Math.floor(this.height / 2)
+      const baseCenterX = this.x + Math.floor(this.width / 2)
+      const baseCenterY = this.y + Math.floor(this.height / 2)
 
-        let textLines = 0
-        if (isDragging) textLines++
-        if (scrollText) textLines++
-        if (gotText) textLines += 2
+      let textLines = 0
+      if (isDragging) textLines++
+      if (scrollText) textLines++
+      if (gotText) textLines += 2
 
-        let currentY = textLines > 1 ? baseCenterY - Math.floor(textLines / 2) : baseCenterY
+      let currentY = textLines > 1 ? baseCenterY - Math.floor(textLines / 2) : baseCenterY
 
-        if (isDragging) {
-          const centerX = baseCenterX - 2
-          buffer.drawText("drag", centerX, currentY, RGBA.fromInts(64, 224, 208))
-          currentY++
-        }
+      if (isDragging) {
+        const centerX = baseCenterX - 2
+        buffer.drawText("drag", centerX, currentY, RGBA.fromInts(64, 224, 208))
+        currentY++
+      }
 
-        if (scrollText) {
-          const age = currentTime - scrollTimestamp
-          const fadeRatio = Math.max(0, 1 - age / 2000)
-          const alpha = Math.round(255 * fadeRatio)
+      if (scrollText) {
+        const age = currentTime - scrollTimestamp
+        const fadeRatio = Math.max(0, 1 - age / 2000)
+        const alpha = Math.round(255 * fadeRatio)
 
-          const centerX = baseCenterX - Math.floor(scrollText.length / 2)
-          buffer.drawText(scrollText, centerX, currentY, RGBA.fromInts(255, 255, 0, alpha))
-          currentY++
-        }
+        const centerX = baseCenterX - Math.floor(scrollText.length / 2)
+        buffer.drawText(scrollText, centerX, currentY, RGBA.fromInts(255, 255, 0, alpha))
+        currentY++
+      }
 
-        if (gotText) {
-          const gotX = baseCenterX - 2
-          const gotTextX = baseCenterX - Math.floor(gotText.length / 2)
-          buffer.drawText("got", gotX, currentY, RGBA.fromInts(255, 182, 193))
-          currentY++
-          buffer.drawText(gotText, gotTextX, currentY, RGBA.fromInts(147, 226, 255))
-        }
-      },
-      onMouse(event: MouseEvent): void {
-        switch (event.type) {
-          case "down":
-            gotText = ""
-            isDragging = true
-            dragOffsetX = event.x - this.x
-            dragOffsetY = event.y - this.y
-            this.zIndex = nextZIndex++
-            this.backgroundColor = dragBg
-            this.borderColor = dragBorderColor
+      if (gotText) {
+        const gotX = baseCenterX - 2
+        const gotTextX = baseCenterX - Math.floor(gotText.length / 2)
+        buffer.drawText("got", gotX, currentY, RGBA.fromInts(255, 182, 193))
+        currentY++
+        buffer.drawText(gotText, gotTextX, currentY, RGBA.fromInts(147, 226, 255))
+      }
+    },
+    onMouse(event: MouseEvent): void {
+      switch (event.type) {
+        case "down":
+          gotText = ""
+          isDragging = true
+          dragOffsetX = event.x - this.x
+          dragOffsetY = event.y - this.y
+          this.zIndex = nextZIndex++
+          this.backgroundColor = dragBg
+          this.borderColor = dragBorderColor
+          event.stopPropagation()
+          break
+
+        case "drag-end":
+          if (isDragging) {
+            isDragging = false
+            this.zIndex = 100
+            this.backgroundColor = originalBg
+            this.borderColor = originalBorderColor
             event.stopPropagation()
-            break
+          }
+          break
 
-          case "drag-end":
-            if (isDragging) {
-              isDragging = false
-              this.zIndex = 100
-              this.backgroundColor = originalBg
-              this.borderColor = originalBorderColor
-              event.stopPropagation()
-            }
-            break
+        case "drag":
+          if (isDragging) {
+            const newX = event.x - dragOffsetX
+            const newY = event.y - dragOffsetY
 
-          case "drag":
-            if (isDragging) {
-              const newX = event.x - dragOffsetX
-              const newY = event.y - dragOffsetY
+            const boundedX = Math.max(0, Math.min(newX, this._ctx.width - this.width))
+            const boundedY = Math.max(4, Math.min(newY, this._ctx.height - this.height))
 
-              const boundedX = Math.max(0, Math.min(newX, this._ctx.width - this.width))
-              const boundedY = Math.max(4, Math.min(newY, this._ctx.height - this.height))
+            this.x = boundedX
+            this.y = boundedY
 
-              this.x = boundedX
-              this.y = boundedY
+            event.stopPropagation()
+          }
+          break
 
-              event.stopPropagation()
-            }
-            break
+        case "over":
+          gotText = "over " + (event.source?.id || "")
+          break
 
-          case "over":
-            gotText = "over " + (event.source?.id || "")
-            break
+        case "out":
+          gotText = "out"
+          break
 
-          case "out":
-            gotText = "out"
-            break
+        case "drop":
+          gotText = event.source?.id || ""
+          const timeline = createTimeline()
 
-          case "drop":
-            gotText = event.source?.id || ""
-            const timeline = createTimeline()
+          timeline.add(bounceScale, {
+            value: 1.5,
+            duration: 200,
+            ease: "outExpo",
+            onUpdate: (values) => {
+              const scale = values.targets[0].value
+              this.width = Math.round(baseWidth * scale)
+              this.height = Math.round(baseHeight * scale)
+            },
+          })
 
-            timeline.add(bounceScale, {
-              value: 1.5,
-              duration: 200,
+          timeline.add(
+            bounceScale,
+            {
+              value: 1.0,
+              duration: 400,
               ease: "outExpo",
               onUpdate: (values) => {
                 const scale = values.targets[0].value
                 this.width = Math.round(baseWidth * scale)
                 this.height = Math.round(baseHeight * scale)
               },
-            })
+            },
+            200,
+          )
+          break
 
-            timeline.add(
-              bounceScale,
-              {
-                value: 1.0,
-                duration: 400,
-                ease: "outExpo",
-                onUpdate: (values) => {
-                  const scale = values.targets[0].value
-                  this.width = Math.round(baseWidth * scale)
-                  this.height = Math.round(baseHeight * scale)
-                },
-              },
-              200,
-            )
-            break
-
-          case "scroll":
-            if (event.scroll) {
-              scrollText = `scroll ${event.scroll.direction}`
-              scrollTimestamp = Date.now()
-              event.stopPropagation()
-            }
-            break
-        }
-      },
+        case "scroll":
+          if (event.scroll) {
+            scrollText = `scroll ${event.scroll.direction}`
+            scrollTimestamp = Date.now()
+            event.stopPropagation()
+          }
+          break
+      }
     },
-    children,
-  )
+  })
+
+  for (const child of children) {
+    box.add(child)
+  }
+
+  return box
 }
 
 class MouseInteractionFrameBuffer extends FrameBufferRenderable {
@@ -359,7 +361,7 @@ Scroll on boxes: shows direction • Escape: menu`,
   mainGroup.add(demoContainer)
 
   draggableBoxes = [
-    DraggableBox({
+    DraggableBox(renderer, {
       id: "drag-box-1",
       x: 10,
       y: 8,
@@ -368,7 +370,7 @@ Scroll on boxes: shows direction • Escape: menu`,
       color: RGBA.fromInts(200, 100, 150),
       label: "Box 1",
     }),
-    DraggableBox({
+    DraggableBox(renderer, {
       id: "drag-box-2",
       x: 30,
       y: 12,
@@ -377,7 +379,7 @@ Scroll on boxes: shows direction • Escape: menu`,
       color: RGBA.fromInts(100, 200, 150),
       label: "Box 2",
     }),
-    DraggableBox({
+    DraggableBox(renderer, {
       id: "drag-box-3",
       x: 50,
       y: 15,
@@ -387,6 +389,7 @@ Scroll on boxes: shows direction • Escape: menu`,
       label: "Box 3",
     }),
     DraggableBox(
+      renderer,
       {
         id: "drag-box-4",
         x: 15,
@@ -397,15 +400,17 @@ Scroll on boxes: shows direction • Escape: menu`,
         label: "O hidden",
         overflow: "hidden",
       },
-      Text({
-        id: "overflow-hidden-box",
-        content: "This should be cut off to the right",
-        width: 25,
-        height: 25,
-        onMouse: (event: MouseEvent) => {
-          console.log("mouse", event.type)
-        },
-      }),
+      [
+        new TextRenderable(renderer, {
+          id: "overflow-hidden-box",
+          content: "This should be cut off to the right",
+          width: 25,
+          height: 25,
+          onMouse: (event: MouseEvent) => {
+            console.log("mouse", event.type)
+          },
+        }),
+      ],
     ),
   ]
 

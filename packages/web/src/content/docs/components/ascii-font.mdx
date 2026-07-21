@@ -27,22 +27,6 @@ const title = new ASCIIFontRenderable(renderer, {
 renderer.root.add(title)
 ```
 
-### Construct API
-
-```typescript
-import { ASCIIFont, createCliRenderer } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-renderer.root.add(
-  ASCIIFont({
-    text: "HELLO",
-    font: "block",
-    color: "#00FF00",
-  }),
-)
-```
-
 ## Available Fonts
 
 OpenTUI includes several ASCII art font styles:
@@ -116,32 +100,21 @@ const title = new ASCIIFontRenderable(renderer, {
 ## Example: Welcome Screen
 
 ```typescript
-import { Box, ASCIIFont, Text, createCliRenderer } from "@opentui/core"
+import { BoxRenderable, ASCIIFontRenderable, TextRenderable, createCliRenderer } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
-const welcomeScreen = Box(
-  {
-    width: "100%",
-    height: "100%",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  ASCIIFont({
-    text: "OPENTUI",
-    font: "huge",
-    color: "#00FFFF",
-  }),
-  Text({
-    content: "Terminal UI Framework",
-    fg: "#888888",
-  }),
-  Text({
-    content: "Press any key to continue...",
-    fg: "#444444",
-  }),
-)
+const welcomeScreen = new BoxRenderable(renderer, {
+  width: "100%",
+  height: "100%",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+})
+
+welcomeScreen.add(new ASCIIFontRenderable(renderer, { text: "OPENTUI", font: "huge", color: "#00FFFF" }))
+welcomeScreen.add(new TextRenderable(renderer, { content: "Terminal UI Framework", fg: "#888888" }))
+welcomeScreen.add(new TextRenderable(renderer, { content: "Press any key to continue...", fg: "#444444" }))
 
 renderer.root.add(welcomeScreen)
 ```
@@ -170,17 +143,13 @@ setInterval(() => {
 Create gradient-like effects by positioning multiple ASCII fonts:
 
 ```typescript
-import { Box, ASCIIFont } from "@opentui/core"
+import { BoxRenderable, ASCIIFontRenderable } from "@opentui/core"
 
-const gradientTitle = Box(
-  {},
-  ASCIIFont({
-    text: "HELLO",
-    font: "block",
-    color: "#FF0000",
-  }),
-  // Overlay with offset for shadow effect
-  ASCIIFont({
+const gradientTitle = new BoxRenderable(renderer, {})
+
+gradientTitle.add(new ASCIIFontRenderable(renderer, { text: "HELLO", font: "block", color: "#FF0000" }))
+gradientTitle.add(
+  new ASCIIFontRenderable(renderer, {
     text: "HELLO",
     font: "block",
     color: "#880000",

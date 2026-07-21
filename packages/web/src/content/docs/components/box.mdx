@@ -29,26 +29,6 @@ const panel = new BoxRenderable(renderer, {
 renderer.root.add(panel)
 ```
 
-### Construct API
-
-```typescript
-import { Box, Text, createCliRenderer } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-renderer.root.add(
-  Box(
-    {
-      width: 30,
-      height: 10,
-      backgroundColor: "#333366",
-      borderStyle: "rounded",
-    },
-    Text({ content: "Inside the box!" }),
-  ),
-)
-```
-
 ## Border styles
 
 ```typescript
@@ -124,20 +104,22 @@ const panel = new BoxRenderable(renderer, {
 Box works as a flex container for child elements:
 
 ```typescript
-const container = Box(
-  {
-    flexDirection: "column",
-    justifyContent: "space-between",
-    alignItems: "stretch",
-    width: 50,
-    height: 20,
-    padding: 1,
-    gap: 1,
-  },
-  Text({ content: "Header" }),
-  Box({ flexGrow: 1, backgroundColor: "#222" }, Text({ content: "Content area" })),
-  Text({ content: "Footer" }),
-)
+const container = new BoxRenderable(renderer, {
+  flexDirection: "column",
+  justifyContent: "space-between",
+  alignItems: "stretch",
+  width: 50,
+  height: 20,
+  padding: 1,
+  gap: 1,
+})
+
+const content = new BoxRenderable(renderer, { flexGrow: 1, backgroundColor: "#222" })
+content.add(new TextRenderable(renderer, { content: "Content area" }))
+
+container.add(new TextRenderable(renderer, { content: "Header" }))
+container.add(content)
+container.add(new TextRenderable(renderer, { content: "Footer" }))
 ```
 
 ## Mouse events
@@ -187,33 +169,26 @@ const button = new BoxRenderable(renderer, {
 ## Example: Card component
 
 ```typescript
-import { Box, Text, t, bold, fg } from "@opentui/core"
+import { BoxRenderable, TextRenderable, t, bold, fg, type RenderContext } from "@opentui/core"
 
-function Card(props: { title: string; description: string }) {
-  return Box(
-    {
-      width: 40,
-      borderStyle: "rounded",
-      borderColor: "#666",
-      padding: 1,
-      margin: 1,
-    },
-    Text({
-      content: t`${bold(fg("#00FFFF")(props.title))}`,
-    }),
-    Text({
-      content: props.description,
-      fg: "#AAAAAA",
-    }),
-  )
+function createCard(renderer: RenderContext, props: { title: string; description: string }): BoxRenderable {
+  const card = new BoxRenderable(renderer, {
+    width: 40,
+    borderStyle: "rounded",
+    borderColor: "#666",
+    padding: 1,
+    margin: 1,
+  })
+
+  card.add(new TextRenderable(renderer, { content: t`${bold(fg("#00FFFF")(props.title))}` }))
+  card.add(new TextRenderable(renderer, { content: props.description, fg: "#AAAAAA" }))
+  return card
 }
 
-renderer.root.add(
-  Box(
-    { flexDirection: "row", flexWrap: "wrap" },
-    Card({ title: "Feature 1", description: "Description of feature 1" }),
-    Card({ title: "Feature 2", description: "Description of feature 2" }),
-    Card({ title: "Feature 3", description: "Description of feature 3" }),
-  ),
-)
+const cards = new BoxRenderable(renderer, { flexDirection: "row", flexWrap: "wrap" })
+cards.add(createCard(renderer, { title: "Feature 1", description: "Description of feature 1" }))
+cards.add(createCard(renderer, { title: "Feature 2", description: "Description of feature 2" }))
+cards.add(createCard(renderer, { title: "Feature 3", description: "Description of feature 3" }))
+
+renderer.root.add(cards)
 ```

@@ -36,27 +36,6 @@ tabs.focus()
 renderer.root.add(tabs)
 ```
 
-### Construct API
-
-```typescript
-import { TabSelect, createCliRenderer } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-const tabs = TabSelect({
-  width: 60,
-  tabWidth: 15,
-  options: [
-    { name: "Tab 1", description: "First tab" },
-    { name: "Tab 2", description: "Second tab" },
-    { name: "Tab 3", description: "Third tab" },
-  ],
-})
-
-tabs.focus()
-renderer.root.add(tabs)
-```
-
 ## Keyboard Navigation
 
 When focused, the tab select responds to these keys:
@@ -118,25 +97,31 @@ tabs.on(TabSelectRenderableEvents.SELECTION_CHANGED, (index: number, option: Tab
 ## Example: Tabbed Interface
 
 ```typescript
-import { Box, Text, TabSelect, createCliRenderer } from "@opentui/core"
+import { BoxRenderable, TextRenderable, TabSelectRenderable, createCliRenderer } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
+function createPanel(content: string): BoxRenderable {
+  const panel = new BoxRenderable(renderer, { padding: 1 })
+  panel.add(new TextRenderable(renderer, { content }))
+  return panel
+}
+
 // Create content panels
 const panels = {
-  home: Box({ padding: 1 }, Text({ content: "Home content here" })),
-  files: Box({ padding: 1 }, Text({ content: "File browser here" })),
-  settings: Box({ padding: 1 }, Text({ content: "Settings form here" })),
+  home: createPanel("Home content here"),
+  files: createPanel("File browser here"),
+  settings: createPanel("Settings form here"),
 }
 
 // Create the tabbed container
-const container = Box({
+const container = new BoxRenderable(renderer, {
   width: 60,
   height: 20,
   borderStyle: "rounded",
 })
 
-const tabs = TabSelect({
+const tabs = new TabSelectRenderable(renderer, {
   width: 60,
   tabWidth: 20,
   options: [
@@ -148,7 +133,7 @@ const tabs = TabSelect({
 
 // Content area
 let currentPanel = panels.home
-const contentArea = Box({
+const contentArea = new BoxRenderable(renderer, {
   flexGrow: 1,
   padding: 1,
 })

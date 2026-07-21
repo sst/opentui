@@ -39,14 +39,14 @@ the required version before you run Node.js-specific examples or scripts.
 Create `index.ts`:
 
 ```typescript
-import { createCliRenderer, Text } from "@opentui/core"
+import { createCliRenderer, TextRenderable } from "@opentui/core"
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: true,
 })
 
 renderer.root.add(
-  Text({
+  new TextRenderable(renderer, {
     content: "Hello, OpenTUI!",
     fg: "#00FF00",
   }),
@@ -66,22 +66,20 @@ You should see green text. Press `Ctrl+C` to exit.
 Components nest naturally. Here's a bordered panel with content:
 
 ```typescript
-import { createCliRenderer, Box, Text } from "@opentui/core"
+import { createCliRenderer, BoxRenderable, TextRenderable } from "@opentui/core"
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: true,
 })
 
-renderer.root.add(
-  Box(
-    { borderStyle: "rounded", padding: 1, flexDirection: "column", gap: 1 },
-    Text({ content: "Welcome", fg: "#FFFF00" }),
-    Text({ content: "Press Ctrl+C to exit" }),
-  ),
-)
+const panel = new BoxRenderable(renderer, { borderStyle: "rounded", padding: 1, flexDirection: "column", gap: 1 })
+panel.add(new TextRenderable(renderer, { content: "Welcome", fg: "#FFFF00" }))
+panel.add(new TextRenderable(renderer, { content: "Press Ctrl+C to exit" }))
+
+renderer.root.add(panel)
 ```
 
-`Box` and `Text` are factory functions. The first argument is props; additional arguments are children.
+Create child renderables explicitly and attach them with `.add()`.
 
 ## What's next
 
@@ -89,7 +87,6 @@ renderer.root.add(
 
 - [Renderer](/docs/core-concepts/renderer) - The rendering engine
 - [Layout](/docs/core-concepts/layout) - Flexbox positioning
-- [Constructs](/docs/core-concepts/constructs) - The declarative component API
 
 ### Components
 

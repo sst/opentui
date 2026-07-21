@@ -271,10 +271,12 @@ For React and Solid, use the binding-level helpers that wrap `writeToScrollback`
 Every renderer has a `root` property. It is a special `RootRenderable` at the top of the component tree:
 
 ```typescript
-import { Box, Text } from "@opentui/core"
+import { BoxRenderable, TextRenderable } from "@opentui/core"
 
 // Add components to the root
-renderer.root.add(Box({ width: 40, height: 10, borderStyle: "rounded" }, Text({ content: "Hello, OpenTUI!" })))
+const box = new BoxRenderable(renderer, { width: 40, height: 10, borderStyle: "rounded" })
+box.add(new TextRenderable(renderer, { content: "Hello, OpenTUI!" }))
+renderer.root.add(box)
 ```
 
 The root renderable fills the entire terminal and adjusts when you resize it.
@@ -289,7 +291,7 @@ If you do not call `start()`, the renderer re-renders only when the component tr
 
 ```typescript
 const renderer = await createCliRenderer()
-renderer.root.add(Text({ content: "Static content" })) // Triggers render
+renderer.root.add(new TextRenderable(renderer, { content: "Static content" })) // Triggers render
 ```
 
 ### Continuous mode

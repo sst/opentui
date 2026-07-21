@@ -38,29 +38,6 @@ for (let i = 0; i < 100; i++) {
 renderer.root.add(scrollbox)
 ```
 
-### Construct API
-
-```typescript
-import { ScrollBox, Box, Text, createCliRenderer } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-renderer.root.add(
-  ScrollBox(
-    {
-      width: 40,
-      height: 20,
-    },
-    ...Array.from({ length: 100 }, (_, i) =>
-      Box(
-        { width: "100%", padding: 1, backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449" },
-        Text({ content: `Item ${i}` }),
-      ),
-    ),
-  ),
-)
-```
-
 ## Sticky scroll
 
 Enable sticky scroll to keep content pinned to an edge as new content arrives. Useful for log viewers or chat interfaces.

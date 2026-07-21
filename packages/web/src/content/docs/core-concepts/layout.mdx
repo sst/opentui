@@ -203,38 +203,36 @@ Position elements relative to their parent:
 }
 ```
 
-## Using Constructs
+## Nested renderables
 
-The same layout properties work with the declarative API:
+The same layout properties apply when composing renderables manually:
 
 ```typescript
-import { Box, Text } from "@opentui/core"
+import { BoxRenderable, TextRenderable } from "@opentui/core"
 
-renderer.root.add(
-  Box(
-    {
-      flexDirection: "row",
-      width: "100%",
-      height: 10,
-    },
-    Box(
-      {
-        flexGrow: 1,
-        backgroundColor: "#333",
-        padding: 1,
-      },
-      Text({ content: "Left Panel" }),
-    ),
-    Box(
-      {
-        width: 20,
-        backgroundColor: "#555",
-        padding: 1,
-      },
-      Text({ content: "Right Panel" }),
-    ),
-  ),
-)
+const row = new BoxRenderable(renderer, {
+  flexDirection: "row",
+  width: "100%",
+  height: 10,
+})
+
+const leftPanel = new BoxRenderable(renderer, {
+  flexGrow: 1,
+  backgroundColor: "#333",
+  padding: 1,
+})
+leftPanel.add(new TextRenderable(renderer, { content: "Left Panel" }))
+
+const rightPanel = new BoxRenderable(renderer, {
+  width: 20,
+  backgroundColor: "#555",
+  padding: 1,
+})
+rightPanel.add(new TextRenderable(renderer, { content: "Right Panel" }))
+
+row.add(leftPanel)
+row.add(rightPanel)
+renderer.root.add(row)
 ```
 
 ## Responsive Layouts

@@ -30,21 +30,6 @@ canvas.frameBuffer.drawText("Hello!", 8, 6, RGBA.fromHex("#FFFFFF"))
 renderer.root.add(canvas)
 ```
 
-### Construct API
-
-```typescript
-import { FrameBuffer, createCliRenderer } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-renderer.root.add(
-  FrameBuffer({
-    width: 50,
-    height: 20,
-  }),
-)
-```
-
 ## Drawing methods
 
 ### setCell

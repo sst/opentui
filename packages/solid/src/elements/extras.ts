@@ -23,7 +23,9 @@ export function Portal(props: { mount?: DomNode; ref?: (el: {}) => void; childre
     () => {
       // basically we backdoor into a sort of renderEffect here
       content || (content = runWithOwner(owner, () => createMemo(() => props.children)))
-      const el = mount()
+      // Mount through the wide dynamic contract (BaseRenderable); the mount
+      // point validates children at runtime.
+      const el: DomNode = mount()
       const container = createElement("box"),
         renderRoot = container
 

@@ -42,31 +42,6 @@ const code = new CodeRenderable(renderer, {
 renderer.root.add(code)
 ```
 
-### Construct API
-
-```typescript
-import { Code, Box, createCliRenderer, SyntaxStyle, RGBA } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-const syntaxStyle = SyntaxStyle.fromStyles({
-  keyword: { fg: RGBA.fromHex("#FF7B72"), bold: true },
-  string: { fg: RGBA.fromHex("#A5D6FF") },
-  default: { fg: RGBA.fromHex("#E6EDF3") },
-})
-
-renderer.root.add(
-  Box(
-    { border: true, width: 50, height: 10 },
-    Code({
-      content: 'const x = "hello"',
-      filetype: "javascript",
-      syntaxStyle,
-    }),
-  ),
-)
-```
-
 ## Creating syntax styles
 
 Use `SyntaxStyle.fromStyles()` to define colors and attributes for syntax tokens:

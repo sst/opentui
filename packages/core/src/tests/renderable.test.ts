@@ -674,6 +674,83 @@ describe("Renderable - Child Management", () => {
     expect(parent.getChildrenCount()).toBe(0)
   })
 
+  // Typed callers are rejected at compile time; these tests exercise the wide
+  // dynamic contract (BaseRenderable) used by reconcilers and plain JS callers,
+  // which validates at runtime.
+  test("add returns -1 for falsy input without warning", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const dynParent: BaseRenderable = parent
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+
+    expect(dynParent.add(null)).toBe(-1)
+    expect(dynParent.add(undefined)).toBe(-1)
+    expect(dynParent.add(false)).toBe(-1)
+    expect(dynParent.add(0)).toBe(-1)
+    expect(dynParent.add("")).toBe(-1)
+
+    expect(parent.getChildrenCount()).toBe(0)
+    expect(warnSpy).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  test("add returns -1 and warns for non-renderable input", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    const dynParent: BaseRenderable = parent
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+
+    expect(dynParent.add({})).toBe(-1)
+    expect(dynParent.add("not a renderable")).toBe(-1)
+    expect(dynParent.add(42)).toBe(-1)
+    expect(dynParent.add([child])).toBe(-1)
+
+    expect(parent.getChildrenCount()).toBe(0)
+    expect(warnSpy).toHaveBeenCalledTimes(4)
+    warnSpy.mockRestore()
+  })
+
+  test("insertBefore returns -1 for invalid input and keeps children unchanged", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const anchor = new TestRenderable(testRenderer, { id: "anchor" })
+    parent.add(anchor)
+
+    const dynParent: BaseRenderable = parent
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+
+    expect(dynParent.insertBefore({}, anchor)).toBe(-1)
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+
+    expect(dynParent.insertBefore(null, anchor)).toBe(-1)
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+
+    expect(parent.getChildrenCount()).toBe(1)
+    expect(parent.getChildren()[0]).toBe(anchor)
+    warnSpy.mockRestore()
+  })
+
+  test("insertBefore without anchor falls back to add semantics", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    const dynParent: BaseRenderable = parent
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+
+    expect(parent.insertBefore(child)).toBe(0)
+    expect(parent.getChildrenCount()).toBe(1)
+
+    expect(dynParent.insertBefore({}, undefined)).toBe(-1)
+    expect(parent.getChildrenCount()).toBe(1)
+    warnSpy.mockRestore()
+  })
+
+  test("insertBefore throws for truthy non-renderable anchor", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+    const dynParent: BaseRenderable = parent
+
+    expect(() => dynParent.insertBefore(child, {})).toThrow("Anchor must be a Renderable")
+    expect(parent.getChildrenCount()).toBe(0)
+  })
+
   test("can change renderable id and updates parent mapping", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const child = new TestRenderable(testRenderer, { id: "child" })

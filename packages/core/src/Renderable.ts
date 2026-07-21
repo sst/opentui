@@ -1,4 +1,5 @@
 import { EventEmitter } from "events"
+import util from "node:util"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Node as YogaNode } from "./yoga.js"
 import { OptimizedBuffer } from "./buffer.js"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
@@ -19,7 +20,6 @@ import {
   type PositionTypeString,
   type WrapString,
 } from "./lib/yoga.options.js"
-import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode.js"
 import type { MouseEvent } from "./renderer.js"
 import type { RenderContext } from "./types.js"
 import {
@@ -149,9 +149,9 @@ export abstract class BaseRenderable extends EventEmitter {
     this._id = options.id ?? `renderable-${this.num}`
   }
 
-  public abstract add(obj: BaseRenderable | unknown, index?: number): number
+  public abstract add(obj: unknown, index?: number): number
   public abstract remove(child: BaseRenderable): void
-  public abstract insertBefore(obj: BaseRenderable | unknown, anchor: BaseRenderable | unknown): void
+  public abstract insertBefore(obj: unknown, anchor: unknown): unknown
   public abstract getChildren(): BaseRenderable[]
   public abstract getChildrenCount(): number
   public abstract getRenderable(id: string): BaseRenderable | undefined
@@ -1187,15 +1187,19 @@ export abstract class Renderable extends BaseRenderable {
     obj.parent = this
   }
 
-  public add(obj: Renderable | VNode<any, any[]> | unknown, index?: number): number {
+  public add(obj: Renderable, index?: number): number {
     if (!obj) {
       return -1
     }
 
-    const renderable = maybeMakeRenderable(this._ctx, obj)
-    if (!renderable) {
+    if (!isRenderable(obj)) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("add() received an invalid renderable", util.inspect(obj, { depth: 2 }))
+      }
       return -1
     }
+
+    const renderable = obj
 
     if (renderable.isDestroyed) {
       if (process.env.NODE_ENV !== "production") {
@@ -1241,7 +1245,7 @@ export abstract class Renderable extends BaseRenderable {
     return insertedIndex
   }
 
-  insertBefore(obj: Renderable | VNode<any, any[]> | unknown, anchor?: Renderable | unknown): number {
+  insertBefore(obj: Renderable, anchor?: Renderable): number {
     if (!anchor) {
       return this.add(obj)
     }
@@ -1250,10 +1254,14 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    const renderable = maybeMakeRenderable(this._ctx, obj)
-    if (!renderable) {
+    if (!isRenderable(obj)) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("insertBefore() received an invalid renderable", util.inspect(obj, { depth: 2 }))
+      }
       return -1
     }
+
+    const renderable = obj
 
     if (renderable.isDestroyed) {
       if (process.env.NODE_ENV !== "production") {

@@ -42,20 +42,20 @@ const withAlpha = RGBA.fromHex("#FF000080") // Semi-transparent red
 Most component properties accept both `RGBA` objects and color strings:
 
 ```typescript
-import { Text, Box } from "@opentui/core"
+import { TextRenderable, BoxRenderable } from "@opentui/core"
 
 // Using hex strings
-Text({ content: "Hello", fg: "#00FF00" })
+new TextRenderable(renderer, { content: "Hello", fg: "#00FF00" })
 
 // Using CSS color names
-Box({ backgroundColor: "red", borderColor: "white" })
+new BoxRenderable(renderer, { backgroundColor: "red", borderColor: "white" })
 
 // Using RGBA objects
 const customColor = RGBA.fromInts(100, 150, 200, 255)
-Text({ content: "Custom", fg: customColor })
+new TextRenderable(renderer, { content: "Custom", fg: customColor })
 
 // Transparent
-Box({ backgroundColor: "transparent" })
+new BoxRenderable(renderer, { backgroundColor: "transparent" })
 ```
 
 ## The parseColor utility

@@ -256,14 +256,6 @@ const input = new InputRenderable(renderer, {
   placeholder: "Type here...",
 })
 
-// Focus the input to receive key events
 input.focus()
-
-// Or with constructs
-import { Input } from "@opentui/core"
-
-const inputNode = Input({ placeholder: "Type here..." })
-inputNode.focus() // Queued for when instantiated
-
-renderer.root.add(inputNode)
+renderer.root.add(input)
 ```

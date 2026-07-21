@@ -29,21 +29,6 @@ const text = new TextRenderable(renderer, {
 renderer.root.add(text)
 ```
 
-### Construct API
-
-```typescript
-import { Text, createCliRenderer } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-renderer.root.add(
-  Text({
-    content: "Hello, OpenTUI!",
-    fg: "#00FF00",
-  }),
-)
-```
-
 ## Text attributes
 
 Combine multiple text attributes using bitwise OR:
@@ -149,27 +134,22 @@ const nonSelectable = new TextRenderable(renderer, {
 ## Example: status bar
 
 ```typescript
-import { Text, Box, t, bold, fg } from "@opentui/core"
+import { TextRenderable, BoxRenderable, t, bold, fg } from "@opentui/core"
 
-const statusBar = Box(
-  {
-    position: "absolute",
-    bottom: 0,
-    width: "100%",
-    height: 1,
-    backgroundColor: "#333333",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingLeft: 1,
-    paddingRight: 1,
-  },
-  Text({
-    content: t`${bold("myfile.ts")} - ${fg("#888888")("TypeScript")}`,
-  }),
-  Text({
-    content: t`Ln ${fg("#00FF00")("42")}, Col ${fg("#00FF00")("15")}`,
-  }),
-)
+const statusBar = new BoxRenderable(renderer, {
+  position: "absolute",
+  bottom: 0,
+  width: "100%",
+  height: 1,
+  backgroundColor: "#333333",
+  flexDirection: "row",
+  justifyContent: "space-between",
+  paddingLeft: 1,
+  paddingRight: 1,
+})
+
+statusBar.add(new TextRenderable(renderer, { content: t`${bold("myfile.ts")} - ${fg("#888888")("TypeScript")}` }))
+statusBar.add(new TextRenderable(renderer, { content: t`Ln ${fg("#00FF00")("42")}, Col ${fg("#00FF00")("15")}` }))
 
 renderer.root.add(statusBar)
 ```

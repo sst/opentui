@@ -37,27 +37,6 @@ menu.focus()
 renderer.root.add(menu)
 ```
 
-### Construct API
-
-```typescript
-import { Select, createCliRenderer } from "@opentui/core"
-
-const renderer = await createCliRenderer()
-
-const menu = Select({
-  width: 30,
-  height: 8,
-  options: [
-    { name: "Option 1", description: "First option" },
-    { name: "Option 2", description: "Second option" },
-    { name: "Option 3", description: "Third option" },
-  ],
-})
-
-menu.focus()
-renderer.root.add(menu)
-```
-
 ## Keyboard navigation
 
 When focused, the select responds to these keys:
@@ -146,11 +125,11 @@ const styledMenu = new SelectRenderable(renderer, {
 ## Example: file menu
 
 ```typescript
-import { Box, Select, createCliRenderer } from "@opentui/core"
+import { BoxRenderable, SelectRenderable, createCliRenderer } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
-const fileMenu = Select({
+const fileMenu = new SelectRenderable(renderer, {
   width: 25,
   height: 12,
   options: [
@@ -163,13 +142,11 @@ const fileMenu = Select({
   ],
 })
 
-const menuPanel = Box(
-  {
-    borderStyle: "single",
-    borderColor: "#666",
-  },
-  fileMenu,
-)
+const menuPanel = new BoxRenderable(renderer, {
+  borderStyle: "single",
+  borderColor: "#666",
+})
+menuPanel.add(fileMenu)
 
 fileMenu.focus()
 renderer.root.add(menuPanel)
