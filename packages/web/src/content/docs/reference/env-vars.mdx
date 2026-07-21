@@ -38,6 +38,7 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 | `OTUI_USE_ALTERNATE_SCREEN`     | `boolean` | unset   | Force alternate-screen or main-screen mode when set             |
 | `OTUI_OVERRIDE_STDOUT`          | `boolean` | unset   | Force stdout capture/passthrough routing when set               |
 | `OTUI_DEBUG`                    | `boolean` | `false` | Capture all raw stdin input for debugging                       |
+| `OTUI_STDIN_LOG`                | `string`  | `""`    | Write the raw stdin byte stream to a file                       |
 
 ## Notes
 
@@ -51,3 +52,4 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 - `OTUI_OVERRIDE_STDOUT=true` captures only in `"split-footer"`; `false` forces passthrough. When set, it overrides `externalOutputMode`.
 - `OTUI_NO_NATIVE_RENDER` still runs the render loop. In `"split-footer"` mode, the current output flush path can still emit ANSI cursor movement and clear sequences.
 - `OTUI_DUMP_CAPTURES` runs from the renderer exit handler. A direct `renderer.destroy()` call does not trigger it by itself.
+- `OTUI_STDIN_LOG=/tmp/opentui-stdin.bin` records stdin exactly as OpenTUI receives it, before parsing. The file is truncated when the renderer starts. It is binary and may contain passwords or other sensitive input, so store and share it carefully. Recording uses synchronous file writes and is intended only for short debugging sessions.
