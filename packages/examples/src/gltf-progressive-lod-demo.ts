@@ -1078,7 +1078,7 @@ class ProgressiveLodDemo {
       flexDirection: "column",
       flexShrink: 0,
       paddingLeft: 1,
-      backgroundColor: "#101719",
+      backgroundColor: "transparent",
       zIndex: 21,
     })
     this.headerStack.add(this.infoPanel)
@@ -1121,7 +1121,7 @@ class ProgressiveLodDemo {
       alignItems: "center",
       flexShrink: 0,
       paddingLeft: 1,
-      backgroundColor: "#0B151B",
+      backgroundColor: "transparent",
       zIndex: 21,
     })
     this.headerStack.add(this.statusPanel)
@@ -1146,7 +1146,7 @@ class ProgressiveLodDemo {
       flexDirection: "row",
       alignItems: "center",
       paddingLeft: 1,
-      backgroundColor: "#101719",
+      backgroundColor: "transparent",
       zIndex: 20,
     })
     renderer.root.add(this.controlsPanel)
