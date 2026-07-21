@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from "bun:test"
-import { ImageRenderable } from "@opentui/core"
+import { ImageRenderable, NativeImage } from "@opentui/core"
 import { testRender } from "../src/test-utils.js"
 
 let originalConsoleError: (...args: any[]) => void
@@ -50,5 +50,33 @@ describe("React Renderer | image element", () => {
     expect(loaded).toEqual(["png"])
     expect(imageRef!.image?.width).toBe(1)
     expect(imageRef!.loadError).toBeNull()
+  })
+
+  it("decodes an initial byte source once", async () => {
+    const decode = NativeImage.decode
+    let decodeCalls = 0
+    NativeImage.decode = (data) => {
+      decodeCalls += 1
+      return decode(data)
+    }
+
+    try {
+      let imageRef: ImageRenderable | null = null
+      testSetup = await testRender(
+        <image
+          ref={(renderable: ImageRenderable | null) => {
+            imageRef = renderable
+          }}
+          source={PNG_1X1}
+          style={{ width: 4, height: 2 }}
+        />,
+        { width: 10, height: 6 },
+      )
+      await testSetup.renderOnce()
+      await imageRef!.loadPromise
+      expect(decodeCalls).toBe(1)
+    } finally {
+      NativeImage.decode = decode
+    }
   })
 })
