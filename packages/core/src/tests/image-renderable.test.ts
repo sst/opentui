@@ -4,16 +4,19 @@ import { fileURLToPath } from "node:url"
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { ImageRenderable } from "../renderables/Image.js"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import { TextRenderable } from "../renderables/Text.js"
+import { createTestRenderer, type TestRenderer, type TestRendererSetup } from "../testing/test-renderer.js"
 import { setRendererCapabilities } from "../testing/terminal-capabilities.js"
 
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
 
 describe("ImageRenderable image loading", () => {
+  let setup: TestRendererSetup
   let renderer: TestRenderer
 
   beforeEach(async () => {
-    renderer = (await createTestRenderer({})).renderer
+    setup = await createTestRenderer({})
+    renderer = setup.renderer
   })
 
   afterEach(() => {
@@ -66,6 +69,73 @@ describe("ImageRenderable image loading", () => {
     } finally {
       renderable.destroy()
     }
+  })
+
+  test("clears a buffered image from rendered output when its source is cleared", async () => {
+    const renderable = new ImageRenderable(renderer, {
+      source: await readFile(new URL("rgba.png", FIXTURES)),
+      buffered: true,
+      protocol: "blocks",
+      position: "absolute",
+      width: 2,
+      height: 1,
+    })
+    renderer.root.add(renderable)
+    await renderable.loadPromise
+    await setup.renderOnce()
+    expect(setup.captureCharFrame()).toContain("█")
+
+    renderable.source = undefined
+    await setup.renderOnce()
+
+    expect(setup.captureCharFrame()).not.toContain("█")
+  })
+
+  test("clears the previous buffered image placement before rerendering", async () => {
+    const renderable = new ImageRenderable(renderer, {
+      source: await readFile(new URL("rgba.png", FIXTURES)),
+      buffered: true,
+      protocol: "blocks",
+      fit: "fill",
+      position: "absolute",
+      width: 4,
+      height: 4,
+    })
+    renderer.root.add(renderable)
+    await renderable.loadPromise
+    await setup.renderOnce()
+    expect(setup.captureCharFrame().split("\n", 1)[0]).toStartWith("████")
+
+    renderable.fit = "fit"
+    await setup.renderOnce()
+
+    const lines = setup.captureCharFrame().split("\n")
+    expect(lines[0]).toStartWith("    ")
+    expect(lines[1]).toStartWith("████")
+    expect(lines[3]).toStartWith("    ")
+  })
+
+  test("preserves lower content beneath a zero-opacity image", async () => {
+    const text = new TextRenderable(renderer, {
+      content: "OK",
+      position: "absolute",
+      width: 2,
+      height: 1,
+    })
+    const image = new ImageRenderable(renderer, {
+      source: await readFile(new URL("rgba.png", FIXTURES)),
+      protocol: "blocks",
+      opacity: 0,
+      position: "absolute",
+      width: 2,
+      height: 1,
+    })
+    renderer.root.add(text)
+    renderer.root.add(image)
+    await image.loadPromise
+    await setup.renderOnce()
+
+    expect(setup.captureCharFrame().split("\n", 1)[0]).toStartWith("OK")
   })
 
   test("exposes requested and effective image protocols", async () => {
