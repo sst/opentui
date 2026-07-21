@@ -2211,6 +2211,8 @@ pub const OptimizedBuffer = struct {
         source_height: u32,
         protocol: native_image.RenderProtocol,
     ) !bool {
+        const opacity = opacityToU8(self.getCurrentOpacity());
+        if (opacity == 0) return false;
         if (width == 0 or height == 0 or source_width == 0 or source_height == 0 or
             source_x >= image.width() or source_y >= image.height() or source_width > image.width() - source_x or
             source_height > image.height() - source_y or self.image_placements.items.len >= gp.IMAGE_ID_MASK) return false;
@@ -2253,7 +2255,7 @@ pub const OptimizedBuffer = struct {
             .source_y = clipped_source_y,
             .source_width = source_end_x - clipped_source_x,
             .source_height = source_end_y - clipped_source_y,
-            .opacity = opacityToU8(self.getCurrentOpacity()),
+            .opacity = opacity,
             .protocol = protocol,
         });
         @constCast(image).retain();
