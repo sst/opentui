@@ -1,5 +1,7 @@
 # Portable FFI Fast-Path Benchmark
 
+This development-only suite is not part of the published runtime.
+
 This benchmark measures the public production wrappers for the 19 OpenTUI calls that miss Node 26.4's x86-64 SysV Fast
 API path. It does not introduce or exercise a benchmark-only ABI.
 
@@ -9,7 +11,7 @@ No evaluated ABI passed both the Node improvement and Bun non-inferiority gates.
 APIs remain unchanged. The retained work is the portable benchmark suite, broader scenarios, comparison tooling, and
 decision evidence below.
 
-The `bun-ffi-structs` 0.2.4 to 0.3.0 comparison is recorded in `ffi-fast-path-structs-030.md`.
+The `bun-ffi-structs` 0.2.4 to 0.3.0 comparison is recorded in `bun-ffi-structs-030.md`.
 
 ## Scenarios
 

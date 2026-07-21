@@ -44,9 +44,9 @@ const SUITES: Record<SuiteName, { targetMs: number; warmupMs: number }> = {
 
 const benchmarkDir = dirname(fileURLToPath(import.meta.url))
 const packageRoot = resolve(benchmarkDir, "../..")
-const childSource = join(benchmarkDir, "ffi-fast-path-scenarios.ts")
-const buildDir = join(benchmarkDir, ".ffi-fast-path-runtime-build")
-const nodeScript = join(buildDir, "ffi-fast-path-scenarios.js")
+const childSource = join(benchmarkDir, "scenarios.ts")
+const buildDir = join(benchmarkDir, ".runtime-build")
+const nodeScript = join(buildDir, "scenarios.js")
 const nodePath = process.env.NODE26_PATH ?? "node"
 
 const suite = stringArg("suite", "default") as SuiteName

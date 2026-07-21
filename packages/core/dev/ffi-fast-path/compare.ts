@@ -28,7 +28,9 @@ const MINIMUM_PROCESS_ROUNDS = 9
 const baselinePath = process.argv[2]
 const candidatePath = process.argv[3]
 if (!baselinePath || !candidatePath) {
-  throw new Error("usage: bun ffi-fast-path-compare.ts <baseline.json> <candidate.json> [--json=<path>] [--no-output]")
+  throw new Error(
+    "usage: bun run bench:ffi-fast-path-compare <baseline.json> <candidate.json> [--json=<path>] [--no-output]",
+  )
 }
 
 const baseline = readReport(baselinePath)
