@@ -30,6 +30,11 @@ export function resolveImageRenderProtocol(
   return "blocks"
 }
 
+function pixelResolution(ctx: RenderContext): { width: number; height: number } | null {
+  const resolution = ctx.terminalWidth > 0 && ctx.terminalHeight > 0 ? ctx.resolution : null
+  return resolution && resolution.width > 0 && resolution.height > 0 ? resolution : null
+}
+
 export class ImageRenderable extends Renderable {
   private _source: ImageSource | undefined
   private _image: NativeImage | null = null
@@ -104,12 +109,12 @@ export class ImageRenderable extends Renderable {
   }
 
   public get effectiveProtocol(): Exclude<ImageRenderProtocol, "auto"> {
-    return resolveImageRenderProtocol(this._protocol, this._ctx.capabilities, this._ctx.resolution !== null)
+    return resolveImageRenderProtocol(this._protocol, this._ctx.capabilities, pixelResolution(this._ctx) !== null)
   }
 
   public get cellAspectRatio(): number {
-    const resolution = this._ctx.terminalWidth > 0 && this._ctx.terminalHeight > 0 ? this._ctx.resolution : null
-    if (!resolution || this._ctx.terminalWidth <= 0 || this._ctx.terminalHeight <= 0) return 2
+    const resolution = pixelResolution(this._ctx)
+    if (!resolution) return 2
     const cellWidth = resolution.width / this._ctx.terminalWidth
     const cellHeight = resolution.height / this._ctx.terminalHeight
     return cellWidth > 0 && cellHeight > 0 ? cellHeight / cellWidth : 2
@@ -158,7 +163,7 @@ export class ImageRenderable extends Renderable {
     const originY = this.buffered ? 0 : this._screenY
     const x = originX + Math.floor((this.width - fitted.width) / 2)
     const y = originY + Math.floor((this.height - fitted.height) / 2)
-    const resolution = this._ctx.terminalWidth > 0 && this._ctx.terminalHeight > 0 ? this._ctx.resolution : null
+    const resolution = pixelResolution(this._ctx)
     const pixelWidth = resolution
       ? Math.max(1, Math.round((fitted.width * resolution.width) / this._ctx.terminalWidth))
       : 0
