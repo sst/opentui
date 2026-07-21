@@ -116,6 +116,42 @@ test "renderer emits Sixel only with known pixel dimensions" {
     try std.testing.expectEqual(@as(u64, 2), test_renderer.renderer.sixelCacheMisses);
 }
 
+test "renderer repaints unchanged upper Sixel after an overlapping lower image changes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 1, 1, pool);
+    defer test_renderer.deinit();
+
+    const red = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const blue = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 0, 255, 255 }, 1, 1, 4);
+    const green = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 255, 0, 255 }, 1, 1, 4);
+    const red_handle = try handles.insert(.image, @ptrCast(red));
+    const blue_handle = try handles.insert(.image, @ptrCast(blue));
+    const green_handle = try handles.insert(.image, @ptrCast(green));
+    defer for ([_]u32{ green_handle, blue_handle, red_handle }) |handle| {
+        const token = handles.beginDestroy(handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    };
+    test_renderer.renderer.terminal.caps.sixel = true;
+    test_renderer.renderer.terminal.multiplexer = .none;
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(red, red_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(blue, blue_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(green, green_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(blue, blue_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+
+    const output = test_renderer.memory.lastWrite();
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, output, "\x1bP0;1;0q"));
+    try expectSinglePaintedSixelColor(output, .{ 0, 2 }, .{ 0, 2 }, .{ 95, 100 });
+}
+
 test "renderer honors per-placement protocol overrides" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

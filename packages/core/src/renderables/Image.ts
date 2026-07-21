@@ -1,9 +1,12 @@
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { NativeImage, type ImageSource } from "../image.js"
 import type { OptimizedBuffer } from "../buffer.js"
+import { RGBA } from "../lib/RGBA.js"
 import type { ImageRenderProtocol, RenderContext, TerminalCapabilities } from "../types.js"
 
 export type ImageFit = "fit" | "cover" | "fill"
+
+const TRANSPARENT = RGBA.fromValues(0, 0, 0, 0)
 
 export interface ImageRenderableOptions extends RenderableOptions<ImageRenderable> {
   source?: ImageSource
@@ -139,6 +142,11 @@ export class ImageRenderable extends Renderable {
 
   public get loadError(): unknown {
     return this._loadError
+  }
+
+  public override render(buffer: OptimizedBuffer, deltaTime: number): void {
+    if (this.buffered) this.frameBuffer?.clear(TRANSPARENT)
+    super.render(buffer, deltaTime)
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
