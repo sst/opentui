@@ -1,0 +1,111 @@
+---
+title: Native images
+description: Decode and manipulate PNG, JPEG, WebP, GIF, and RGBA pixels
+order: 5
+skill:
+  entry: true
+  intents: [image, native-image, png, jpeg, webp, gif, rgba, pixels, resize]
+---
+
+# Native images
+
+`NativeImage` decodes and manipulates images through OpenTUI's native library. Every decoded image uses top-left, straight-alpha, sRGB RGBA8 pixels.
+
+## Decode WebP to RGBA
+
+```typescript
+import { NativeImage } from "@opentui/core"
+
+const image = await NativeImage.load("./image.webp")
+
+try {
+  const { data, width, height, stride } = image.raw("rgba8")
+  console.log({ data, width, height, stride })
+} finally {
+  image.dispose()
+}
+```
+
+`data` is a `Uint8Array` in row-major RGBA order. Use `raw("bgra8")` for BGRA. The returned `RawImage` also contains `width`, `height`, `stride`, `format`, `colorSpace: "srgb"`, and `alpha: "straight"`.
+
+## Inputs and formats
+
+| API                         | Input                                                                 |
+| --------------------------- | --------------------------------------------------------------------- |
+| `NativeImage.load(source)`  | Path, `file:`/HTTP(S) URL, `URL`, `Uint8Array`, or `ArrayBuffer`      |
+| `NativeImage.decode(data)`  | Encoded `Uint8Array` or `ArrayBuffer`                                 |
+| `NativeImage.fromRgba(...)` | Straight-alpha sRGB RGBA8 pixels, dimensions, and optional row stride |
+| `imageInfo(data)`           | Encoded bytes; returns metadata without retaining an image handle     |
+
+Format detection uses encoded bytes, not names, URL suffixes, response headers, or file extensions.
+
+| Format | Behavior                                                             |
+| ------ | -------------------------------------------------------------------- |
+| PNG    | Decodes alpha and supported sRGB metadata; applies EXIF orientation  |
+| JPEG   | Decodes opaque RGBA8; applies EXIF orientation                       |
+| WebP   | Decodes lossy, lossless, and alpha images; animated WebP is rejected |
+| GIF    | Decodes the first displayed frame on the logical canvas              |
+
+`load()` accepts `{ signal, fetch }`. `signal` cancels file or network loading; `fetch` replaces `globalThis.fetch` for HTTP(S). Files and responses are buffered before native decoding.
+
+## Metadata and pixels
+
+`image.info()` returns:
+
+| Field                         | Description                                                 |
+| ----------------------------- | ----------------------------------------------------------- |
+| `width`, `height`             | Decoded, orientation-corrected dimensions                   |
+| `sourceWidth`, `sourceHeight` | Encoded dimensions before orientation                       |
+| `format`                      | `png`, `jpeg`, `webp`, `gif`, or `raw-rgba`                 |
+| `colorStatus`                 | `explicit-srgb` or `assumed-srgb`                           |
+| `orientation`                 | `1` after decode; `imageInfo()` reports encoded orientation |
+| `hasAlpha`                    | Whether decoded pixels contain transparency                 |
+
+| Method                                    | Result                                                         |
+| ----------------------------------------- | -------------------------------------------------------------- |
+| `raw(format?)`                            | Allocates and returns RGBA8 or BGRA8 pixels and image metadata |
+| `copyTo(destination, { stride, format })` | Copies pixels into an existing `Uint8Array`                    |
+| `width`, `height`                         | Decoded dimensions                                             |
+| `ptr`                                     | Opaque native `ImageHandle`, valid until disposal              |
+
+The default output stride is `width * 4`. A custom `copyTo()` stride must fit one row, and the destination must fit every row.
+
+## Operations
+
+Operations are immutable: each returns a new `NativeImage`; the source remains unchanged.
+
+| Method                                              | Description                                          |
+| --------------------------------------------------- | ---------------------------------------------------- |
+| `clone()`                                           | Copy the image                                       |
+| `resize({ width?, height?, kernel? })`              | Resize; one omitted dimension preserves aspect ratio |
+| `extract({ left, top, width, height })`             | Crop a rectangle                                     |
+| `extend({ top, right, bottom, left, background })`  | Add RGBA padding                                     |
+| `rotate(90 \| 180 \| 270)`                          | Rotate clockwise                                     |
+| `flip()` / `flop()`                                 | Flip vertically / horizontally                       |
+| `composite(overlay, { left, top, blend, opacity })` | Composite in linear light                            |
+
+Resize kernels are `area` (the default), `default`, `triangle`, `cubic-bspline`, `catmull-rom`, `mitchell`, and `nearest`. Blend modes are `source-over` (the default), `source`, and `destination-over`; opacity is `0..1`.
+
+Dispose every image you own, including operation results:
+
+```typescript
+const source = await NativeImage.load("photo.jpg")
+const thumbnail = source.resize({ width: 320 })
+
+try {
+  console.log(thumbnail.raw().data)
+} finally {
+  thumbnail.dispose()
+  source.dispose()
+}
+```
+
+`dispose()` is idempotent. Other methods throw after disposal.
+
+## Errors and limits
+
+Source acquisition throws `ImageLoadError` with code `file-read`, `network`, `http-status`, or `unsupported-url-scheme`; it also exposes `source` and an HTTP `status` when applicable. Native decoding and operations throw `ImageError`; inspect its numeric `status` or `code` for format, color-space, malformed-data, dimension, memory, argument, allocation, output-size, feature, or internal errors. JavaScript argument validation uses `TypeError` and `RangeError`.
+
+Native decoding limits encoded data to 64 MiB, each dimension to 16,384 pixels, total pixels to 25 million, and decoded storage to 100 MiB. Unsupported embedded PNG color spaces are rejected instead of silently converted.
+
+To display an image, see [Image](/docs/components/image).
