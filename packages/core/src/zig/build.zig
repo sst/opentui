@@ -227,12 +227,18 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
     const arch_files: []const []const u8 = switch (target.result.cpu.arch) {
         .x86_64 => &.{
             "src/dsp/alpha_processing_sse2.c",
+            "src/dsp/alpha_processing_sse41.c",
             "src/dsp/dec_sse2.c",
+            "src/dsp/dec_sse41.c",
             "src/dsp/filters_sse2.c",
+            "src/dsp/lossless_avx2.c",
             "src/dsp/lossless_sse2.c",
+            "src/dsp/lossless_sse41.c",
             "src/dsp/rescaler_sse2.c",
             "src/dsp/upsampling_sse2.c",
+            "src/dsp/upsampling_sse41.c",
             "src/dsp/yuv_sse2.c",
+            "src/dsp/yuv_sse41.c",
         },
         .aarch64 => &.{
             "src/dsp/alpha_processing_neon.c",
