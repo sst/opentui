@@ -441,6 +441,27 @@ describe("NativeImage", () => {
     }
   })
 
+  test("reports unsupported URL schemes consistently for strings and URL objects", async () => {
+    for (const source of ["ftp://images.test/image.png", new URL("ftp://images.test/image.png")]) {
+      try {
+        await NativeImage.load(source)
+        throw new Error("expected load to fail")
+      } catch (error) {
+        expect(error).toBeInstanceOf(ImageLoadError)
+        expect((error as ImageLoadError).code).toBe("unsupported-url-scheme")
+        expect((error as ImageLoadError).source).toBe("ftp://images.test/image.png")
+      }
+    }
+
+    try {
+      await NativeImage.load("Z:\\opentui-definitely-missing-image.png")
+      throw new Error("expected load to fail")
+    } catch (error) {
+      expect(error).toBeInstanceOf(ImageLoadError)
+      expect((error as ImageLoadError).code).toBe("file-read")
+    }
+  })
+
   test("reports filesystem failures", async () => {
     try {
       await NativeImage.load(fileURLToPath(new URL("missing.png", FIXTURES)))

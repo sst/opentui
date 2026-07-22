@@ -279,7 +279,12 @@ export class NativeImage {
     options.signal?.throwIfAborted()
     if (source instanceof Uint8Array || source instanceof ArrayBuffer) return NativeImage.decode(source)
 
-    const url = source instanceof URL ? source : /^(?:https?|file):/i.test(source) ? new URL(source) : null
+    const url =
+      source instanceof URL
+        ? source
+        : /^[a-z][a-z0-9+.-]*:/i.test(source) && !/^[a-z]:[\\/]/i.test(source)
+          ? new URL(source)
+          : null
     if (!url || url.protocol === "file:") {
       const path = url ?? source
       let data: Uint8Array
