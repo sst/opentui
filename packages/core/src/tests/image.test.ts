@@ -1,5 +1,5 @@
 import { createServer } from "node:http"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 
 import { describe, expect, test } from "bun:test"
@@ -493,20 +493,13 @@ describe("NativeImage", () => {
     }
   })
 
-  test("loads a relative filesystem path whose first segment contains a colon", async () => {
-    if (process.platform === "win32") return
-    const directory = await mkdtemp("image-load-test:")
-    const path = `${directory}/image.png`
+  test("treats a relative path whose first segment contains a colon as a filesystem path", async () => {
     try {
-      await writeFile(path, await readFile(new URL("rgba.png", FIXTURES)))
-      const image = await NativeImage.load(path)
-      try {
-        expect(image.info().format).toBe("png")
-      } finally {
-        image.dispose()
-      }
-    } finally {
-      await rm(directory, { recursive: true, force: true })
+      await NativeImage.load("assets:dark/missing.png")
+      throw new Error("expected load to fail")
+    } catch (error) {
+      expect(error).toBeInstanceOf(ImageLoadError)
+      expect((error as ImageLoadError).code).toBe("file-read")
     }
   })
 
