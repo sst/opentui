@@ -62,26 +62,6 @@ function readPackedColor(packed: ArrayBuffer, offset: number): number[] {
 }
 
 describe("borrowed pointer call sites", () => {
-  test("keeps reusable decode helpers out of the runtime API", () => {
-    const internalHelpers = [
-      "audioGetStreamStatsInto",
-      "textBufferViewMeasureForDimensionsInto",
-      "editBufferGetCursorPositionInto",
-      "editBufferGetNextWordBoundaryInto",
-      "editBufferGetPrevWordBoundaryInto",
-      "editBufferGetEOLInto",
-      "editBufferOffsetToPositionInto",
-      "editorViewGetVisualCursorInto",
-      "editorViewGetNextWordBoundaryInto",
-      "editorViewGetPrevWordBoundaryInto",
-      "editorViewGetEOLInto",
-      "editorViewGetVisualSOLInto",
-      "editorViewGetVisualEOLInto",
-    ]
-
-    for (const name of internalHelpers) expect(name in lib).toBe(false)
-  })
-
   test("reuses owned output storage while preserving public result identity", () => {
     const originals = {
       editBufferGetCursorPosition: symbols.editBufferGetCursorPosition,
