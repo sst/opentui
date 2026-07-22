@@ -153,6 +153,19 @@ static wuffs_base__color_u32_argb_premul ot_image_gif_background_color(
            ((uint32_t)data[palette_offset + 1] << 8) | data[palette_offset + 2];
 }
 
+static int ot_image_gif_validate_remainder(wuffs_gif__decoder *decoder,
+                                           wuffs_base__io_buffer *src) {
+    while (1) {
+        wuffs_base__status status = wuffs_gif__decoder__decode_frame_config(decoder, NULL, src);
+        if (status.repr == wuffs_base__note__end_of_data) {
+            return (src->meta.ri > 0 && src->data.ptr[src->meta.ri - 1] == 0x3B)
+                       ? OT_IMAGE_SHIM_OK
+                       : OT_IMAGE_SHIM_INVALID;
+        }
+        if (!wuffs_base__status__is_ok(&status)) return OT_IMAGE_SHIM_INVALID;
+    }
+}
+
 int ot_image_gif_probe(const uint8_t *data, uint32_t data_len, uint32_t *width,
                        uint32_t *height, uint32_t *has_alpha) {
     if (!data || data_len == 0 || !width || !height || !has_alpha) return OT_IMAGE_SHIM_INVALID;
@@ -176,8 +189,9 @@ int ot_image_gif_probe(const uint8_t *data, uint32_t data_len, uint32_t *width,
     *width = wuffs_base__pixel_config__width(&config.pixcfg);
     *height = wuffs_base__pixel_config__height(&config.pixcfg);
     *has_alpha = wuffs_base__image_config__first_frame_is_opaque(&config) ? 0u : 1u;
+    result = ot_image_gif_validate_remainder(decoder, &src);
     free(decoder);
-    return (*width > 0 && *height > 0) ? OT_IMAGE_SHIM_OK : OT_IMAGE_SHIM_INVALID;
+    return (*width > 0 && *height > 0 && result == OT_IMAGE_SHIM_OK) ? OT_IMAGE_SHIM_OK : OT_IMAGE_SHIM_INVALID;
 }
 
 int ot_image_gif_decode_first_frame(const uint8_t *data, uint32_t data_len, uint8_t *output,
@@ -255,8 +269,13 @@ int ot_image_gif_decode_first_frame(const uint8_t *data, uint32_t data_len, uint
         decoder, &pixel_buffer, &src, WUFFS_BASE__PIXEL_BLEND__SRC_OVER,
         wuffs_base__make_slice_u8(workbuf, (size_t)workbuf_len), NULL);
     free(workbuf);
+    if (wuffs_base__status__is_ok(&status)) {
+        result = ot_image_gif_validate_remainder(decoder, &src);
+    } else {
+        result = OT_IMAGE_SHIM_INVALID;
+    }
     free(decoder);
-    return wuffs_base__status__is_ok(&status) ? OT_IMAGE_SHIM_OK : OT_IMAGE_SHIM_INVALID;
+    return result;
 }
 
 static int ot_image_jpeg_has_complete_structure(const uint8_t *data, uint32_t data_len) {

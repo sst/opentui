@@ -137,6 +137,7 @@ const ImageDirty = struct {
     clear: bool,
     protocol: ImageProtocol,
     background_hash: u64,
+    propagated: bool = false,
 };
 
 const ImageProtocol = enum { fallback, sixel, kitty };
@@ -1477,8 +1478,8 @@ pub const CliRenderer = struct {
                 if (x < 0 or x >= self.width) continue;
                 const current = self.currentRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
                 const next = self.nextRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
-                if (!gp.isImageChar(current.char) and gp.isImageChar(next.char) and
-                    gp.imageIdFromChar(next.char) == placement.placement_id) return true;
+                if (gp.isImageChar(next.char) and gp.imageIdFromChar(next.char) == placement.placement_id and
+                    (!gp.isImageChar(current.char) or gp.imageIdFromChar(current.char) != placement.placement_id)) return true;
             }
         }
         return false;
@@ -1538,12 +1539,20 @@ pub const CliRenderer = struct {
                 .background_hash = background_hash,
             });
         }
-        for (placements, 0..) |placement, index| {
-            const state = &self.imageDirty.items[index];
-            if (state.protocol != .sixel or !state.clear) continue;
-            for (placements[index + 1 ..], index + 1..) |upper, upper_index| {
-                const upper_state = &self.imageDirty.items[upper_index];
-                if (upper_state.protocol == .sixel and placementsOverlap(placement, upper)) upper_state.clear = true;
+        while (true) {
+            var dirty_index: ?usize = null;
+            for (self.imageDirty.items, 0..) |state, index| {
+                if (state.protocol == .sixel and state.clear and !state.propagated) {
+                    dirty_index = index;
+                    break;
+                }
+            }
+            const index = dirty_index orelse break;
+            self.imageDirty.items[index].propagated = true;
+            for (placements, 0..) |overlap, overlap_index| {
+                if (index == overlap_index) continue;
+                const overlap_state = &self.imageDirty.items[overlap_index];
+                if (overlap_state.protocol == .sixel and placementsOverlap(placements[index], overlap)) overlap_state.clear = true;
             }
         }
     }
