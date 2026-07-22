@@ -284,7 +284,8 @@ export class NativeImage {
     const url =
       source instanceof URL
         ? source
-        : /^[a-z][a-z0-9+.-]*:/i.test(source) && !/^[a-z]:[\\/]/i.test(source)
+        : (/^(?:https?|file):/i.test(source) || /^[a-z][a-z0-9+.-]*:\/\//i.test(source)) &&
+            !/^[a-z]:[\\/]/i.test(source)
           ? new URL(source)
           : null
     if (!url || url.protocol === "file:") {

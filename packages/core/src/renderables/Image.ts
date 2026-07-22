@@ -62,6 +62,7 @@ export class ImageRenderable extends Renderable {
   }
 
   public set source(source: ImageSource | undefined) {
+    source ??= undefined
     if (source === this._source) return
     this._source = source
     const generation = ++this._loadGeneration
