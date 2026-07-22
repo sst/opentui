@@ -29,12 +29,14 @@ const baselinePath = process.argv[2]
 const candidatePath = process.argv[3]
 if (!baselinePath || !candidatePath) {
   throw new Error(
-    "usage: bun run bench:ffi-fast-path-compare <baseline.json> <candidate.json> [--json=<path>] [--no-output]",
+    "usage: bun run bench:ffi-fast-path-compare <baseline.json[,baseline2.json...]> <candidate.json[,candidate2.json...]> [--json=<path>] [--no-output]",
   )
 }
 
-const baseline = readReport(baselinePath)
-const candidate = readReport(candidatePath)
+const baselineReports = readReports(baselinePath)
+const candidateReports = readReports(candidatePath)
+const baseline = mergeReports(baselineReports)
+const candidate = mergeReports(candidateReports)
 validateReports(baseline, candidate)
 const baselineByName = new Map(baseline.results.map((result) => [result.name, result]))
 
@@ -53,6 +55,8 @@ const payload = {
   benchmark: "opentui-ffi-fast-path-comparison",
   baselineRunId: baseline.runId,
   candidateRunId: candidate.runId,
+  baselineRunIds: baselineReports.map((report) => report.runId),
+  candidateRunIds: candidateReports.map((report) => report.runId),
   bootstrap: { samples: BOOTSTRAP_SAMPLES, confidence: 0.95, samplingUnit: "independent process round" },
   acceptance: {
     minimumProcessRoundsPerRevision: MINIMUM_PROCESS_ROUNDS,
@@ -168,6 +172,30 @@ function validateReports(baselineReport: BenchmarkReport, candidateReport: Bench
 
 function readReport(path: string): BenchmarkReport {
   return JSON.parse(readFileSync(resolve(path), "utf8")) as BenchmarkReport
+}
+
+function readReports(paths: string): BenchmarkReport[] {
+  return paths.split(",").map((path) => readReport(path))
+}
+
+function mergeReports(reports: BenchmarkReport[]): BenchmarkReport {
+  const first = reports[0]
+  if (!first) throw new Error("at least one report is required")
+
+  const merged = structuredClone(first)
+  const resultsByReport = reports.map((report) => {
+    validateReports(first, report)
+    validateReports(report, first)
+    return new Map(report.results.map((result) => [result.name, result]))
+  })
+  merged.runId = reports.map((report) => report.runId).join(",")
+  for (const result of merged.results) {
+    result.rawProcessRounds = {
+      bun: resultsByReport.flatMap((results) => results.get(result.name)!.rawProcessRounds.bun),
+      node: resultsByReport.flatMap((results) => results.get(result.name)!.rawProcessRounds.node),
+    }
+  }
+  return merged
 }
 
 function median(values: number[]): number {
