@@ -232,6 +232,8 @@ const nativePackage = await import(nativePackageName)
 assert.equal(typeof core.createCliRenderer, "function")
 assert.equal(typeof core.Audio, "function")
 assert.equal(typeof core.AudioStreamError, "function")
+assert.equal(typeof core.NativeImage, "function")
+assert.equal(typeof core.ImageRenderable, "function")
 assert.equal(typeof core.createIcyStreamDemuxer, "function")
 assert.equal(core.NativeAudioStreamCloseReason.TransportError, 1)
 assert.equal(core.NativeAudioStreamFormat.Mp3, 1)
@@ -256,6 +258,13 @@ assert.deepEqual(
 const buffer = core.OptimizedBuffer.create(2, 1, "unicode")
 assert.equal(buffer.width, 2)
 buffer.destroy()
+
+const image = core.NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+try {
+  assert.deepEqual([...image.raw().data], [1, 2, 3, 255])
+} finally {
+  image.dispose()
+}
 
 const dataPath = mkdtempSync(join(tmpdir(), "opentui-node-dist-tree-sitter-"))
 const client = new core.TreeSitterClient({ dataPath })
@@ -331,6 +340,8 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(typeof core.createCliRenderer).toBe("function")
     expect(typeof core.Audio).toBe("function")
     expect(typeof core.AudioStreamError).toBe("function")
+    expect(typeof core.NativeImage).toBe("function")
+    expect(typeof core.ImageRenderable).toBe("function")
     expect(core.NativeAudioStreamCloseReason.TransportError).toBe(1)
     expect(core.NativeAudioStreamFormat.Flac).toBe(2)
     expect(typeof testing.createTestRenderer).toBe("function")
@@ -339,6 +350,13 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(typeof parserWorker).toBe("object")
     expect(typeof runtimePlugin.createRuntimePlugin).toBe("function")
     expect(typeof nativePackage.default).toBe("string")
+
+    const image = core.NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+    try {
+      expect([...image.raw().data]).toEqual([1, 2, 3, 255])
+    } finally {
+      image.dispose()
+    }
   })
 })
 `,

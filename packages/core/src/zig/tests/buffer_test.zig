@@ -129,6 +129,34 @@ test "OptimizedBuffer image-free frame buffer copy does not allocate" {
     try std.testing.expectEqual(@as(u32, 'X'), target.get(0, 0).?.char);
 }
 
+test "OptimizedBuffer image-free alpha frame buffer copy does not allocate" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const source = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{
+        .pool = &pool,
+        .link_pool = &link_pool,
+        .respectAlpha = true,
+    });
+    defer source.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+
+    source.set(0, 0, .{
+        .char = 'X',
+        .fg = ansi.rgbColor(1, 2, 3, 255),
+        .bg = ansi.rgbColor(4, 5, 6, 255),
+        .attributes = 7,
+    });
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    target.allocator = failing.allocator();
+    target.drawFrameBuffer(0, 0, source, null, null, null, null);
+    target.allocator = std.testing.allocator;
+
+    try std.testing.expectEqual(@as(u32, 'X'), target.get(0, 0).?.char);
+}
+
 fn initBufferForOomRegression(allocator: std.mem.Allocator) !void {
     var local_pool = gp.GraphemePool.initWithOptions(allocator, .{});
     defer local_pool.deinit();

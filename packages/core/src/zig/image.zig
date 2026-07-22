@@ -736,6 +736,7 @@ pub fn extend(
     left: u32,
     background: [4]u8,
 ) !*Image {
+    if (top == 0 and right == 0 and bottom == 0 and left == 0) return source.clone();
     const width = std.math.add(u32, source.width(), left) catch return error.InvalidArgument;
     const final_width = std.math.add(u32, width, right) catch return error.InvalidArgument;
     const height = std.math.add(u32, source.height(), top) catch return error.InvalidArgument;

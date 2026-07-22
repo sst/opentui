@@ -102,4 +102,4 @@ Use `OPENTUI_IMAGE_PROTOCOL=auto|kitty|sixel|blocks` to set the global default. 
 | `cellAspectRatio`    | `number`                                     | Physical or fallback cell aspect ratio             |
 | `getFittedSize(...)` | `(width, height) => { width, height }`       | Resolve destination cells for the current fit mode |
 
-The renderable owns `image` and the `NativeImage` passed to `onLoad`; do not dispose them yourself. Source replacement, clearing, and recursive destruction release them. `onError` reports failures through `loadError`; `loadPromise` resolves after reporting rather than rejecting.
+The renderable owns `image` and the `NativeImage` passed to `onLoad`; do not dispose them yourself. Source replacement, clearing, and recursive destruction release them. `onError` reports load failures through `loadError`, and handled load failures resolve `loadPromise`. Exceptions thrown by `onLoad` or `onError` reject `loadPromise` after state has settled.

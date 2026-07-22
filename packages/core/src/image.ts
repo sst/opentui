@@ -211,7 +211,10 @@ async function readResponseBytes(response: Response, signal?: AbortSignal): Prom
   const contentLength = response.headers.get("content-length")
   if (contentLength !== null) {
     const declaredLength = Number(contentLength)
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_ENCODED_BYTES) throw imageError(6)
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_ENCODED_BYTES) {
+      void response.body?.cancel().catch(() => {})
+      throw imageError(6)
+    }
   }
 
   if (!response.body) return new Uint8Array()
@@ -224,14 +227,13 @@ async function readResponseBytes(response: Response, signal?: AbortSignal): Prom
       const { done, value } = await reader.read()
       if (done) break
       if (value.byteLength > MAX_ENCODED_BYTES - total) {
-        await reader.cancel()
         throw imageError(6)
       }
       chunks.push(value.slice())
       total += value.byteLength
     }
   } catch (error) {
-    await reader.cancel().catch(() => {})
+    void reader.cancel().catch(() => {})
     throw error
   } finally {
     reader.releaseLock()
@@ -312,6 +314,7 @@ export class NativeImage {
       throw new ImageLoadError("network", url.href, `Failed to fetch image: ${url.href}`, { cause: error })
     }
     if (!response.ok) {
+      void response.body?.cancel().catch(() => {})
       throw new ImageLoadError("http-status", url.href, `Failed to fetch image: HTTP ${response.status}`, {
         status: response.status,
       })

@@ -3275,7 +3275,7 @@ class FFIRenderLib implements RenderLib {
       sourceHeight,
       protocol: protocolId,
     })
-    return Boolean(this.opentui.symbols.bufferDrawImage(buffer, image, ptr(options)))
+    return Boolean(this.opentui.symbols.bufferDrawImage(buffer, image, options))
   }
 
   public bufferDrawPackedBuffer(
@@ -5453,14 +5453,17 @@ class FFIRenderLib implements RenderLib {
   public imageInfo(data: Uint8Array): { status: number; info: NativeImageInfo } {
     const length = toSafeFFIU32Length(data.byteLength, "image data")
     const output = new ArrayBuffer(NativeImageInfoStruct.size)
-    const status = this.opentui.symbols.imageInfo(ptrOrNull(data), length, ptr(output))
+    const status = this.opentui.symbols.imageInfo(data.byteLength === 0 ? null : data, length, output)
     return { status, info: NativeImageInfoStruct.unpack(output) }
   }
 
   public imageDecode(data: Uint8Array): { status: number; handle: ImageHandle | null } {
     const length = toSafeFFIU32Length(data.byteLength, "image data")
     const output = new Uint32Array(1)
-    return this.imageHandleResult(this.opentui.symbols.imageDecode(ptrOrNull(data), length, ptr(output)), output)
+    return this.imageHandleResult(
+      this.opentui.symbols.imageDecode(data.byteLength === 0 ? null : data, length, output),
+      output,
+    )
   }
 
   public imageCreateFromRgba(
@@ -5471,12 +5474,12 @@ class FFIRenderLib implements RenderLib {
   ): { status: number; handle: ImageHandle | null } {
     const output = new Uint32Array(1)
     const status = this.opentui.symbols.imageCreateFromRgba(
-      ptrOrNull(pixels),
+      pixels.byteLength === 0 ? null : pixels,
       BigInt(pixels.byteLength),
       width,
       height,
       stride,
-      ptr(output),
+      output,
     )
     return this.imageHandleResult(status, output)
   }
@@ -5487,19 +5490,19 @@ class FFIRenderLib implements RenderLib {
 
   public imageGetInfo(image: ImageHandle): { status: number; info: NativeImageInfo } {
     const output = new ArrayBuffer(NativeImageInfoStruct.size)
-    const status = this.opentui.symbols.imageGetInfo(image, ptr(output))
+    const status = this.opentui.symbols.imageGetInfo(image, output)
     return { status, info: NativeImageInfoStruct.unpack(output) }
   }
 
   public imageClone(image: ImageHandle): { status: number; handle: ImageHandle | null } {
     const output = new Uint32Array(1)
-    return this.imageHandleResult(this.opentui.symbols.imageClone(image, ptr(output)), output)
+    return this.imageHandleResult(this.opentui.symbols.imageClone(image, output), output)
   }
 
   public imageCopyPixels(image: ImageHandle, destination: Uint8Array, stride: number, bgra: boolean): number {
     return this.opentui.symbols.imageCopyPixels(
       image,
-      ptrOrNull(destination),
+      destination.byteLength === 0 ? null : destination,
       BigInt(destination.byteLength),
       stride,
       bgra ? 1 : 0,
@@ -5513,7 +5516,7 @@ class FFIRenderLib implements RenderLib {
     filter: number,
   ): { status: number; handle: ImageHandle | null } {
     const output = new Uint32Array(1)
-    return this.imageHandleResult(this.opentui.symbols.imageResize(image, width, height, filter, ptr(output)), output)
+    return this.imageHandleResult(this.opentui.symbols.imageResize(image, width, height, filter, output), output)
   }
 
   public imageExtract(
@@ -5524,10 +5527,7 @@ class FFIRenderLib implements RenderLib {
     height: number,
   ): { status: number; handle: ImageHandle | null } {
     const output = new Uint32Array(1)
-    return this.imageHandleResult(
-      this.opentui.symbols.imageExtract(image, left, top, width, height, ptr(output)),
-      output,
-    )
+    return this.imageHandleResult(this.opentui.symbols.imageExtract(image, left, top, width, height, output), output)
   }
 
   public imageExtend(
@@ -5538,16 +5538,17 @@ class FFIRenderLib implements RenderLib {
     left: number,
     background: Uint8Array,
   ): { status: number; handle: ImageHandle | null } {
+    if (!(background instanceof Uint8Array) || background.byteLength !== 4) return { status: 7, handle: null }
     const output = new Uint32Array(1)
     return this.imageHandleResult(
-      this.opentui.symbols.imageExtend(image, top, right, bottom, left, ptr(background), ptr(output)),
+      this.opentui.symbols.imageExtend(image, top, right, bottom, left, background, output),
       output,
     )
   }
 
   public imageTransform(image: ImageHandle, operation: number): { status: number; handle: ImageHandle | null } {
     const output = new Uint32Array(1)
-    return this.imageHandleResult(this.opentui.symbols.imageTransform(image, operation, ptr(output)), output)
+    return this.imageHandleResult(this.opentui.symbols.imageTransform(image, operation, output), output)
   }
 
   public imageComposite(
@@ -5560,7 +5561,7 @@ class FFIRenderLib implements RenderLib {
   ): { status: number; handle: ImageHandle | null } {
     const output = new Uint32Array(1)
     return this.imageHandleResult(
-      this.opentui.symbols.imageComposite(base, overlay, left, top, blend, opacity, ptr(output)),
+      this.opentui.symbols.imageComposite(base, overlay, left, top, blend, opacity, output),
       output,
     )
   }
