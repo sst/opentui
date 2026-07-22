@@ -1215,6 +1215,33 @@ pub const OptimizedBuffer = struct {
         const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
 
+        if (!graphemeAware and !frameBuffer.respectAlpha and !linkAware and !imageAware) {
+            // Fast path: direct memory copy
+            var dY = clippedStartY;
+
+            while (dY <= clippedEndY) : (dY += 1) {
+                const relativeDestY = dY - destY;
+                const sY = srcY + @as(u32, @intCast(relativeDestY));
+
+                if (sY >= frameBuffer.height) continue;
+
+                const relativeDestX = clippedStartX - destX;
+                const sX = srcX + @as(u32, @intCast(relativeDestX));
+
+                if (sX >= frameBuffer.width) continue;
+
+                const destRowStart = self.coordsToIndex(@intCast(clippedStartX), @intCast(dY));
+                const srcRowStart = frameBuffer.coordsToIndex(sX, sY);
+                const actualCopyWidth = @min(@as(u32, @intCast(clippedEndX - clippedStartX + 1)), frameBuffer.width - sX);
+
+                @memcpy(self.buffer.char[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.char[srcRowStart .. srcRowStart + actualCopyWidth]);
+                @memcpy(self.buffer.fg[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.fg[srcRowStart .. srcRowStart + actualCopyWidth]);
+                @memcpy(self.buffer.bg[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.bg[srcRowStart .. srcRowStart + actualCopyWidth]);
+                @memcpy(self.buffer.attributes[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.attributes[srcRowStart .. srcRowStart + actualCopyWidth]);
+            }
+            return;
+        }
+
         const image_id_map = self.allocator.alloc(u32, frameBuffer.image_placements.items.len + 1) catch return;
         defer self.allocator.free(image_id_map);
         @memset(image_id_map, 0);
@@ -1260,33 +1287,6 @@ pub const OptimizedBuffer = struct {
             });
             placement.image.retain();
             image_id_map[source_id] = @intCast(self.image_placements.items.len);
-        }
-
-        if (!graphemeAware and !frameBuffer.respectAlpha and !linkAware and !imageAware) {
-            // Fast path: direct memory copy
-            var dY = clippedStartY;
-
-            while (dY <= clippedEndY) : (dY += 1) {
-                const relativeDestY = dY - destY;
-                const sY = srcY + @as(u32, @intCast(relativeDestY));
-
-                if (sY >= frameBuffer.height) continue;
-
-                const relativeDestX = clippedStartX - destX;
-                const sX = srcX + @as(u32, @intCast(relativeDestX));
-
-                if (sX >= frameBuffer.width) continue;
-
-                const destRowStart = self.coordsToIndex(@intCast(clippedStartX), @intCast(dY));
-                const srcRowStart = frameBuffer.coordsToIndex(sX, sY);
-                const actualCopyWidth = @min(@as(u32, @intCast(clippedEndX - clippedStartX + 1)), frameBuffer.width - sX);
-
-                @memcpy(self.buffer.char[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.char[srcRowStart .. srcRowStart + actualCopyWidth]);
-                @memcpy(self.buffer.fg[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.fg[srcRowStart .. srcRowStart + actualCopyWidth]);
-                @memcpy(self.buffer.bg[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.bg[srcRowStart .. srcRowStart + actualCopyWidth]);
-                @memcpy(self.buffer.attributes[destRowStart .. destRowStart + actualCopyWidth], frameBuffer.buffer.attributes[srcRowStart .. srcRowStart + actualCopyWidth]);
-            }
-            return;
         }
 
         var dY = clippedStartY;
