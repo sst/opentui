@@ -165,6 +165,26 @@ test "kitty transmission sends retained PNG bytes as f=100" {
     try std.testing.expectEqualSlices(u8, png, decoded);
 }
 
+test "kitty transmission preserves retained PNG bytes through clone" {
+    const encoded = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==";
+    const png_len = try std.base64.standard.Decoder.calcSizeForSlice(encoded);
+    const png = try std.testing.allocator.alloc(u8, png_len);
+    defer std.testing.allocator.free(png);
+    try std.base64.standard.Decoder.decode(png, encoded);
+    const value = try image.decode(std.testing.allocator, png, .{});
+    defer value.deinit();
+    const cloned = try value.clone();
+    defer cloned.deinit();
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(std.testing.allocator);
+
+    try terminal_image.writeKittyTransmit(output.writer(std.testing.allocator), cloned, 10, false);
+    try std.testing.expect(std.mem.indexOf(u8, output.items, "a=t,f=100,i=10") != null);
+    const decoded = try decodeKittyChunks(output.items);
+    defer std.testing.allocator.free(decoded);
+    try std.testing.expectEqualSlices(u8, png, decoded);
+}
+
 test "kitty transmission rejects truncated image storage before writing" {
     var pixels = [_]u8{ 1, 2, 3 };
     const value = image.Image{
