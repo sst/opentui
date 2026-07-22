@@ -1,5 +1,5 @@
 import { createServer } from "node:http"
-import { readFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 
 import { describe, expect, test } from "bun:test"
@@ -136,6 +136,25 @@ describe("NativeImage", () => {
       const bytes = await readFile(new URL(name, FIXTURES))
       const truncated = bytes.subarray(0, Math.max(2, Math.floor(bytes.byteLength / 2)))
       expect(() => NativeImage.decode(truncated)).toThrow("malformed image data")
+    }
+  })
+
+  test("rejects a GIF with a missing or invalid mandatory trailer", async () => {
+    const gif = await readFile(new URL("first-frame.gif", FIXTURES))
+    expect(gif.at(-1)).toBe(0x3b)
+    const invalidTrailer = new Uint8Array(gif)
+    invalidTrailer[invalidTrailer.length - 1] = 0
+
+    for (const malformed of [gif.subarray(0, -1), invalidTrailer]) {
+      for (const operation of [() => imageInfo(malformed), () => NativeImage.decode(malformed)]) {
+        try {
+          operation()
+          throw new Error("expected image operation to fail")
+        } catch (error) {
+          expect(error).toBeInstanceOf(ImageError)
+          expect((error as ImageError).code).toBe("malformed-data")
+        }
+      }
     }
   })
 
@@ -471,6 +490,23 @@ describe("NativeImage", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ImageLoadError)
       expect((error as ImageLoadError).code).toBe("file-read")
+    }
+  })
+
+  test("loads a relative filesystem path whose first segment contains a colon", async () => {
+    if (process.platform === "win32") return
+    const directory = await mkdtemp("image-load-test:")
+    const path = `${directory}/image.png`
+    try {
+      await writeFile(path, await readFile(new URL("rgba.png", FIXTURES)))
+      const image = await NativeImage.load(path)
+      try {
+        expect(image.info().format).toBe("png")
+      } finally {
+        image.dispose()
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
     }
   })
 
