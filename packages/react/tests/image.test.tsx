@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from "bun:test"
 import { ImageRenderable, NativeImage } from "@opentui/core"
+import { act, useState } from "react"
 import { testRender } from "../src/test-utils.js"
 
 let originalConsoleError: (...args: any[]) => void
@@ -78,5 +79,39 @@ describe("React Renderer | image element", () => {
     } finally {
       NativeImage.decode = decode
     }
+  })
+
+  it("clears the image when the source prop is removed", async () => {
+    let imageRef: ImageRenderable | null = null
+    let setVisible!: (visible: boolean) => void
+
+    function App() {
+      const [visible, setImageVisible] = useState(true)
+      setVisible = setImageVisible
+      return (
+        <image
+          ref={(renderable: ImageRenderable | null) => {
+            imageRef = renderable
+          }}
+          {...(visible ? { source: PNG_1X1 } : {})}
+          protocol="blocks"
+          style={{ width: 2, height: 1 }}
+        />
+      )
+    }
+
+    testSetup = await testRender(<App />, { width: 4, height: 2 })
+    await imageRef!.loadPromise
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain("█")
+
+    act(() => setVisible(false))
+    if (imageRef!.loadPromise) await imageRef!.loadPromise
+    await testSetup.renderOnce()
+
+    expect(imageRef!.source).toBeUndefined()
+    expect(imageRef!.image).toBeNull()
+    expect(imageRef!.loadError).toBeNull()
+    expect(testSetup.captureCharFrame()).not.toContain("█")
   })
 })
