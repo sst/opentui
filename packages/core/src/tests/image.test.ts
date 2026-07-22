@@ -333,6 +333,18 @@ describe("NativeImage", () => {
     }
   })
 
+  test("zero-margin extension preserves opaque metadata and pixels", () => {
+    const image = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+    const extended = image.extend()
+    try {
+      expect(extended.info().hasAlpha).toBe(false)
+      expect(extended.raw().data).toEqual(image.raw().data)
+    } finally {
+      extended.dispose()
+      image.dispose()
+    }
+  })
+
   test("preserves aspect ratio when one resize dimension is omitted", () => {
     const image = NativeImage.fromRgba(new Uint8Array(4 * 4 * 2).fill(255), 4, 2)
     const resized = image.resize({ width: 2 })
@@ -510,14 +522,15 @@ describe("NativeImage", () => {
   })
 
   test("rejects an oversized HTTP response before consuming its body", async () => {
-    let consumed = false
-    const response = new Response(null, {
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true
+      },
+    })
+    const response = new Response(body, {
       headers: { "content-length": String(64 * 1024 * 1024 + 1) },
     })
-    response.arrayBuffer = async () => {
-      consumed = true
-      throw new Error("oversized body should not be consumed")
-    }
 
     try {
       await NativeImage.load(new URL("https://images.test/oversized"), {
@@ -527,7 +540,27 @@ describe("NativeImage", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ImageError)
       expect((error as ImageError).code).toBe("memory-limit")
-      expect(consumed).toBe(false)
+      expect(cancelled).toBe(true)
+    }
+  })
+
+  test("cancels an unsuccessful HTTP response body", async () => {
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true
+      },
+    })
+
+    try {
+      await NativeImage.load(new URL("https://images.test/missing"), {
+        fetch: async () => new Response(body, { status: 404 }),
+      })
+      throw new Error("expected load to fail")
+    } catch (error) {
+      expect(error).toBeInstanceOf(ImageLoadError)
+      expect((error as ImageLoadError).code).toBe("http-status")
+      expect(cancelled).toBe(true)
     }
   })
 
