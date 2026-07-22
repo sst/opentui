@@ -310,6 +310,7 @@ fn appendKittyBenchmarks(
         for (0..100) |_| {
             var timer = try std.time.Timer.start();
             const copy = try cover.clone();
+            copy.discardEncoded();
             var index: usize = 3;
             while (index < copy.pixels.len) : (index += 4) {
                 copy.pixels[index] = @intCast((@as(u16, copy.pixels[index]) * 128 + 127) / 255);
