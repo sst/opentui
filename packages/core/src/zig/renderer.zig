@@ -1490,7 +1490,8 @@ pub const CliRenderer = struct {
         if (forced) return true;
         var matched = false;
         for (self.currentImages.items) |committed| {
-            if (committed.protocol != protocol or committed.x != placement.x or committed.y != placement.y or
+            if (committed.protocol != protocol or committed.placement_id != placement.placement_id or
+                committed.x != placement.x or committed.y != placement.y or
                 committed.width != placement.width or committed.height != placement.height or
                 committed.pixel_width != placement.pixel_width or committed.pixel_height != placement.pixel_height or
                 committed.source_x != placement.source_x or committed.source_y != placement.source_y or

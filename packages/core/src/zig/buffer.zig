@@ -1242,13 +1242,20 @@ pub const OptimizedBuffer = struct {
             return;
         }
 
-        const image_id_map = self.allocator.alloc(u32, frameBuffer.image_placements.items.len + 1) catch return;
-        defer self.allocator.free(image_id_map);
+        const has_source_images = frameBuffer.image_placements.items.len != 0;
+        var empty_image_id_map = [_]u32{0};
+        const image_id_map = if (has_source_images)
+            self.allocator.alloc(u32, frameBuffer.image_placements.items.len + 1) catch return
+        else
+            empty_image_id_map[0..];
+        defer if (has_source_images) self.allocator.free(image_id_map);
         @memset(image_id_map, 0);
-        self.image_placements.ensureTotalCapacity(
-            self.allocator,
-            self.image_placements.items.len + frameBuffer.image_placements.items.len,
-        ) catch return;
+        if (has_source_images) {
+            self.image_placements.ensureTotalCapacity(
+                self.allocator,
+                self.image_placements.items.len + frameBuffer.image_placements.items.len,
+            ) catch return;
+        }
         for (frameBuffer.image_placements.items, 1..) |placement, source_id| {
             if (self.image_placements.items.len >= gp.IMAGE_ID_MASK) break;
             const full_x = destX + placement.x - @as(i32, @intCast(srcX));
