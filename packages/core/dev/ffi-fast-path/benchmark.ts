@@ -52,9 +52,15 @@ const nodePath = process.env.NODE26_PATH ?? "node"
 const suite = stringArg("suite", "default") as SuiteName
 if (!(suite in SUITES)) throw new Error(`invalid --suite=${suite}; expected quick, default, or long`)
 
-const listedScenarios = listScenarios()
+const listedScenarios = listScenarios("--list-scenarios")
+const targetedScenarios = listScenarios("--list-targeted-scenarios")
+const selectableScenarios = [...listedScenarios, ...targetedScenarios]
 if (process.argv.includes("--list-scenarios")) {
   process.stdout.write(`${listedScenarios.join("\n")}\n`)
+  process.exit(0)
+}
+if (process.argv.includes("--list-targeted-scenarios")) {
+  process.stdout.write(`${targetedScenarios.join("\n")}\n`)
   process.exit(0)
 }
 
@@ -68,7 +74,7 @@ const selectedNames = scenarioFilter
       .map((name) => name.trim())
       .filter(Boolean)
   : listedScenarios
-const unknownScenarios = selectedNames.filter((name) => !listedScenarios.includes(name))
+const unknownScenarios = selectedNames.filter((name) => !selectableScenarios.includes(name))
 if (unknownScenarios.length > 0) throw new Error(`unknown scenarios: ${unknownScenarios.join(", ")}`)
 if (selectedNames.length === 0) throw new Error("no benchmark scenarios selected")
 
@@ -150,8 +156,8 @@ if (outputPath) {
   if (!quiet) console.log(`results=${resolve(outputPath)}`)
 }
 
-function listScenarios(): string[] {
-  const child = spawnSync(process.execPath, [childSource, "--list-scenarios"], {
+function listScenarios(argument: "--list-scenarios" | "--list-targeted-scenarios"): string[] {
+  const child = spawnSync(process.execPath, [childSource, argument], {
     cwd: packageRoot,
     encoding: "utf8",
   })

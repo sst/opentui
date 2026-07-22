@@ -11,7 +11,17 @@ import { ptr } from "../../src/platform/ffi.js"
 import { TextBufferView } from "../../src/text-buffer-view.js"
 import { TextBuffer } from "../../src/text-buffer.js"
 import { createTestRenderer, type TestRenderer } from "../../src/testing/test-renderer.js"
-import { resolveRenderLib, type RenderLib } from "../../src/zig.js"
+import { SpanInfoStruct } from "../../src/zig-structs.js"
+import {
+  resolveRenderLib,
+  NativeAudioStreamCloseReason,
+  NativeAudioStreamFormat,
+  type NativeAudioStreamStats,
+  type LogicalCursor,
+  type MeasureResult,
+  type RenderLib,
+  type VisualCursor,
+} from "../../src/zig.js"
 
 type RuntimeName = "bun" | "node"
 
@@ -46,10 +56,17 @@ const COLORS = {
   translucentBg: RGBA.fromValues(0.1, 0.35, 0.8, 0.45),
 } as const
 
-const scenarios = createScenarios()
+const defaultScenarios = createScenarios()
+const targetedScenarios = createReusableStorageScenarios()
+const scenarios = [...defaultScenarios, ...targetedScenarios]
 
 if (process.argv.includes("--list-scenarios")) {
-  for (const scenario of scenarios) console.log(scenario.name)
+  for (const scenario of defaultScenarios) console.log(scenario.name)
+  process.exit(0)
+}
+
+if (process.argv.includes("--list-targeted-scenarios")) {
+  for (const scenario of targetedScenarios) console.log(scenario.name)
   process.exit(0)
 }
 
@@ -257,6 +274,200 @@ function createScenarios(): ScenarioDefinition[] {
     createEditorSelectionScenario(true, false),
     createEditorSelectionScenario(true, true),
   ]
+}
+
+function createReusableStorageScenarios(): ScenarioDefinition[] {
+  return [
+    createLogicalCursorScenario(false),
+    createLogicalCursorScenario(true),
+    createVisualCursorScenario(false),
+    createVisualCursorScenario(true),
+    createMeasureResultScenario(false),
+    createMeasureResultScenario(true),
+    createAudioStreamStatsScenario(false),
+    createAudioStreamStatsScenario(true),
+    createSpanInfoDecodeScenario(),
+  ]
+}
+
+function createAudioStreamStatsScenario(into: boolean): ScenarioDefinition {
+  return {
+    name: `reusable_audio_stream_stats_${into ? "into" : "public"}`,
+    operation: into ? "audioGetStreamStatsInto" : "audioGetStreamStats",
+    description: `${into ? "Decode into caller-owned" : "Return fresh"} audio stream stats`,
+    setup: ({ lib }) => {
+      const engine = lib.createAudioEngine()
+      if (!engine) throw new Error("failed to create benchmark audio engine")
+      const created = lib.audioCreateStream(engine, {
+        capacityMs: 2_000,
+        startupMs: 1_000,
+        resumeMs: 500,
+        volume: 1,
+        pan: 0,
+        groupId: 0,
+        maxProbeBytes: 2 * 1024 * 1024,
+        format: NativeAudioStreamFormat.Mp3,
+      })
+      if (created.status !== 0 || created.streamId == null) {
+        lib.destroyAudioEngine(engine)
+        throw new Error(`failed to create benchmark audio stream: ${created.status}`)
+      }
+      const target: NativeAudioStreamStats = {
+        bytesReceived: 0n,
+        framesDecoded: 0n,
+        framesPlayed: 0n,
+        state: 0,
+        sampleRate: 0,
+        channels: 0,
+        bufferedFrames: 0,
+        capacityFrames: 0,
+        underruns: 0,
+        errorCode: 0,
+        readyGeneration: 0,
+      }
+      return {
+        run: (operations) => {
+          let signal = 0
+          for (let index = 0; index < operations; index++) {
+            const stats = into
+              ? lib.audioGetStreamStatsInto(engine, created.streamId!, target)
+              : lib.audioGetStreamStats(engine, created.streamId!)
+            signal = (signal + (stats?.state ?? 0)) >>> 0
+          }
+          return signal
+        },
+        observe: () => lib.audioGetStreamStats(engine, created.streamId!)?.state ?? 0,
+        teardown: () => {
+          lib.audioCloseStream(engine, created.streamId!, NativeAudioStreamCloseReason.Disposed)
+          lib.destroyAudioEngine(engine)
+        },
+      }
+    },
+  }
+}
+
+function createSpanInfoDecodeScenario(): ScenarioDefinition {
+  return {
+    name: "reusable_span_info_unpack_list",
+    operation: "SpanInfoStruct.unpackList",
+    description: "Decode 256 reduced native span records",
+    setup: () => {
+      const count = 256
+      const buffer = new ArrayBuffer(SpanInfoStruct.size * count)
+      const view = new DataView(buffer)
+      for (let index = 0; index < count; index++) {
+        SpanInfoStruct.packInto(
+          { chunkPtr: index + 1, offset: index * 4, len: 4, chunkIndex: index, reserved: 0 },
+          view,
+          index * SpanInfoStruct.size,
+        )
+      }
+      return {
+        run: (operations) => {
+          let signal = 0
+          for (let index = 0; index < operations; index++) {
+            const spans = SpanInfoStruct.unpackList(buffer, count)
+            signal = (signal + spans[0]!.len + spans[count - 1]!.chunkIndex) >>> 0
+          }
+          return signal
+        },
+        observe: () => SpanInfoStruct.unpackList(buffer, count).length,
+        teardown: () => {},
+      }
+    },
+  }
+}
+
+function createLogicalCursorScenario(into: boolean): ScenarioDefinition {
+  return {
+    name: `reusable_logical_cursor_${into ? "into" : "public"}`,
+    operation: into ? "editBufferGetCursorPositionInto" : "editBufferGetCursorPosition",
+    description: `${into ? "Decode into a caller-owned" : "Return a fresh"} logical cursor from a live edit buffer`,
+    setup: ({ lib }) => {
+      const editBuffer = EditBuffer.create("unicode")
+      editBuffer.setText("logical cursor")
+      editBuffer.setCursorByOffset(3)
+      const target: LogicalCursor = { row: 0, col: 0, offset: 0 }
+      return {
+        run: (operations) => {
+          let signal = 0
+          for (let index = 0; index < operations; index++) {
+            const cursor = into
+              ? lib.editBufferGetCursorPositionInto(editBuffer.ptr, target)
+              : lib.editBufferGetCursorPosition(editBuffer.ptr)
+            signal = (signal + cursor.offset) >>> 0
+          }
+          return signal
+        },
+        observe: () => editBuffer.getCursorPosition().offset,
+        teardown: () => editBuffer.destroy(),
+      }
+    },
+  }
+}
+
+function createVisualCursorScenario(into: boolean): ScenarioDefinition {
+  return {
+    name: `reusable_visual_cursor_${into ? "into" : "public"}`,
+    operation: into ? "editorViewGetVisualCursorInto" : "editorViewGetVisualCursor",
+    description: `${into ? "Decode into a caller-owned" : "Return a fresh"} visual cursor from a live editor view`,
+    setup: ({ lib }) => {
+      const editBuffer = EditBuffer.create("unicode")
+      editBuffer.setText("visual cursor")
+      editBuffer.setCursorByOffset(4)
+      const editorView = EditorView.create(editBuffer, 16, 4)
+      const target: VisualCursor = { visualRow: 0, visualCol: 0, logicalRow: 0, logicalCol: 0, offset: 0 }
+      return {
+        run: (operations) => {
+          let signal = 0
+          for (let index = 0; index < operations; index++) {
+            const cursor = into
+              ? lib.editorViewGetVisualCursorInto(editorView.ptr, target)
+              : lib.editorViewGetVisualCursor(editorView.ptr)
+            signal = (signal + cursor.offset) >>> 0
+          }
+          return signal
+        },
+        observe: () => editorView.getVisualCursor().offset,
+        teardown: () => {
+          editorView.destroy()
+          editBuffer.destroy()
+        },
+      }
+    },
+  }
+}
+
+function createMeasureResultScenario(into: boolean): ScenarioDefinition {
+  return {
+    name: `reusable_measure_result_${into ? "into" : "public"}`,
+    operation: into ? "textBufferViewMeasureForDimensionsInto" : "textBufferViewMeasureForDimensions",
+    description: `${into ? "Decode into a caller-owned" : "Return a fresh"} text measurement result`,
+    setup: ({ lib }) => {
+      const textBuffer = TextBuffer.create("unicode")
+      textBuffer.setText("measure this text across wrapped lines")
+      const textBufferView = TextBufferView.create(textBuffer)
+      textBufferView.setWrapMode("word")
+      const target: MeasureResult = { lineCount: 0, widthColsMax: 0 }
+      return {
+        run: (operations) => {
+          let signal = 0
+          for (let index = 0; index < operations; index++) {
+            const measure = into
+              ? lib.textBufferViewMeasureForDimensionsInto(textBufferView.ptr, 10, 100, target)
+              : lib.textBufferViewMeasureForDimensions(textBufferView.ptr, 10, 100)
+            signal = (signal + (measure?.lineCount ?? 0)) >>> 0
+          }
+          return signal
+        },
+        observe: () => textBufferView.measureForDimensions(10, 100)?.widthColsMax ?? 0,
+        teardown: () => {
+          textBufferView.destroy()
+          textBuffer.destroy()
+        },
+      }
+    },
+  }
 }
 
 function createFrameBufferScenario(region: boolean): ScenarioDefinition {

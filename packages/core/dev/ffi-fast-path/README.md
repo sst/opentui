@@ -12,6 +12,7 @@ APIs remain unchanged. The retained work is the portable benchmark suite, broade
 decision evidence below.
 
 The `bun-ffi-structs` 0.2.4 to 0.3.0 comparison is recorded in `bun-ffi-structs-030.md`.
+The 0.3.0 to 0.3.1 reusable-storage comparison is recorded in `bun-ffi-structs-031.md`.
 
 ## Scenarios
 
@@ -31,6 +32,11 @@ The 37 scenarios split behaviorally distinct inputs while mapping to 19 calls:
 - TextBufferView `setLocalSelection` and `updateLocalSelection`, with plain and styled selections
 - EditorView `setLocalSelection` and `updateLocalSelection`, with plain and styled selections
 
+Nine reusable-storage scenarios separately measure the public and caller-owned `Into` paths for logical cursors, visual
+cursors, text measurement, audio stream stats, and reducer-aware span-list decoding. They are excluded from the default
+37-scenario suite so existing baseline reports remain comparable, and can be selected by name with
+`--scenario=reusable_visual_cursor_public,...`.
+
 Every child process creates a headless renderer with `createTestRenderer`, obtains the production library through
 `resolveRenderLib`, and passes live native handles to the public wrappers. Pointer backing arrays and encoded graphemes
 remain alive until teardown. Views are destroyed before their buffers, scenario-owned buffers are destroyed before the
@@ -49,6 +55,7 @@ bun run bench:ffi-fast-path-compare /tmp/ffi-baseline.json /tmp/ffi-candidate.js
 Options:
 
 - `--list-scenarios` prints scenario names without building the Node child.
+- `--list-targeted-scenarios` prints the separately selectable reusable-storage scenarios.
 - `--scenario=name[,name...]` selects scenarios.
 - `--suite=quick|default|long` selects 15 ms, 75 ms, or 250 ms target samples, with corresponding warmup budgets.
 - `--runs=N` sets process rounds and defaults to 9.
