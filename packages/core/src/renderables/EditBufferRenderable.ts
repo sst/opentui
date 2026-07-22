@@ -97,13 +97,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
   private nativeRenderable: NativeRenderableHandle | null = null
-  private readonly visualCursorTarget: VisualCursor = {
-    visualRow: 0,
-    visualCol: 0,
-    logicalRow: 0,
-    logicalCol: 0,
-    offset: 0,
-  }
 
   protected _defaultOptions = {
     textColor: RGBA.fromValues(1, 1, 1, 1),
@@ -982,7 +975,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   protected renderCursor(buffer: OptimizedBuffer): void {
     if (!this._showCursor || !this._focused) return
 
-    const visualCursor = this.editorView.getVisualCursorInto(this.visualCursorTarget)
+    const visualCursor = this.editorView.getVisualCursor()
     const screenX = this._screenX
     const screenY = this._screenY
 
@@ -1143,7 +1136,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     this._keyboardSelectionActive = true
 
-    const visualCursor = this.editorView.getVisualCursorInto(this.visualCursorTarget)
+    const visualCursor = this.editorView.getVisualCursor()
     const cursorX = this.x + visualCursor.visualCol
     const cursorY = this.y + visualCursor.visualRow
 

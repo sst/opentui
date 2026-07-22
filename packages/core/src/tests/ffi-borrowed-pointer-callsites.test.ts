@@ -62,6 +62,26 @@ function readPackedColor(packed: ArrayBuffer, offset: number): number[] {
 }
 
 describe("borrowed pointer call sites", () => {
+  test("keeps reusable decode helpers out of the runtime API", () => {
+    const internalHelpers = [
+      "audioGetStreamStatsInto",
+      "textBufferViewMeasureForDimensionsInto",
+      "editBufferGetCursorPositionInto",
+      "editBufferGetNextWordBoundaryInto",
+      "editBufferGetPrevWordBoundaryInto",
+      "editBufferGetEOLInto",
+      "editBufferOffsetToPositionInto",
+      "editorViewGetVisualCursorInto",
+      "editorViewGetNextWordBoundaryInto",
+      "editorViewGetPrevWordBoundaryInto",
+      "editorViewGetEOLInto",
+      "editorViewGetVisualSOLInto",
+      "editorViewGetVisualEOLInto",
+    ]
+
+    for (const name of internalHelpers) expect(name in lib).toBe(false)
+  })
+
   test("reuses owned output storage while preserving public result identity", () => {
     const originals = {
       editBufferGetCursorPosition: symbols.editBufferGetCursorPosition,
@@ -122,45 +142,32 @@ describe("borrowed pointer call sites", () => {
     try {
       const logicalFirst = lib.editBufferGetCursorPosition(1 as any)
       const logicalSecond = lib.editBufferGetCursorPosition(1 as any)
-      const logicalTarget = { row: -1, col: -1, offset: -1 }
-      expect(lib.editBufferGetCursorPositionInto(1 as any, logicalTarget)).toBe(logicalTarget)
       expect(logicalFirst).not.toBe(logicalSecond)
       expect(logicalFirst.offset).toBe(1)
       expect(logicalSecond.offset).toBe(2)
-      expect(logicalTarget.offset).toBe(3)
 
       const visualFirst = lib.editorViewGetVisualCursor(2 as any)
       const visualSecond = lib.editorViewGetVisualCursor(2 as any)
-      const visualTarget = { visualRow: -1, visualCol: -1, logicalRow: -1, logicalCol: -1, offset: -1 }
-      expect(lib.editorViewGetVisualCursorInto(2 as any, visualTarget)).toBe(visualTarget)
       expect(visualFirst).not.toBe(visualSecond)
       expect(visualFirst.offset).toBe(10)
       expect(visualSecond.offset).toBe(11)
-      expect(visualTarget.offset).toBe(12)
 
       const measureFirst = lib.textBufferViewMeasureForDimensions(3 as any, 8, 10)!
       const measureSecond = lib.textBufferViewMeasureForDimensions(3 as any, 8, 10)!
-      const measureTarget = { lineCount: -1, widthColsMax: -1 }
-      expect(lib.textBufferViewMeasureForDimensionsInto(3 as any, 8, 10, measureTarget)).toBe(measureTarget)
       expect(measureFirst).not.toBe(measureSecond)
       expect(measureFirst.lineCount).toBe(2)
       expect(measureSecond.lineCount).toBe(3)
-      expect(measureTarget.lineCount).toBe(4)
 
       const audioFirst = lib.audioGetStreamStats(4 as any, 5)!
       const audioSecond = lib.audioGetStreamStats(4 as any, 5)!
-      const audioTarget = { ...audioSecond, bytesReceived: -1n }
-      expect(lib.audioGetStreamStatsInto(4 as any, 5, audioTarget)).toBe(audioTarget)
       expect(audioFirst).not.toBe(audioSecond)
       expect(audioFirst.bytesReceived).toBe(20n)
       expect(audioSecond.bytesReceived).toBe(21n)
-      expect(audioTarget.bytesReceived).toBe(22n)
 
       for (const buffers of Object.values(outputBuffers)) {
-        expect(buffers).toHaveLength(3)
+        expect(buffers).toHaveLength(2)
         expect(buffers[0]).toBeInstanceOf(ArrayBuffer)
         expect(buffers[1]).toBe(buffers[0])
-        expect(buffers[2]).toBe(buffers[0])
       }
     } finally {
       Object.assign(symbols, originals)
@@ -195,7 +202,7 @@ describe("borrowed pointer call sites", () => {
     }
   })
 
-  test("all cursor Into queries return and mutate the caller target", () => {
+  test("all cursor queries return fresh results from reused native storage", () => {
     const logicalQueries = [
       "editBufferGetCursorPosition",
       "editBufferGetNextWordBoundary",
@@ -215,45 +222,59 @@ describe("borrowed pointer call sites", () => {
     try {
       for (const [index, name] of logicalQueries.entries()) {
         originals.set(name, symbols[name])
+        const outputBuffers: ArrayBuffer[] = []
+        let offset = index + 2
         symbols[name] = (...args: any[]) => {
           const output = args.at(-1) as ArrayBuffer
-          LogicalCursorStruct.packInto({ row: index, col: index + 1, offset: index + 2 }, new DataView(output), 0)
+          outputBuffers.push(output)
+          LogicalCursorStruct.packInto({ row: index, col: index + 1, offset: offset++ }, new DataView(output), 0)
         }
-        const target = { row: -1, col: -1, offset: -1 }
-        const result = (lib as any)[`${name}Into`](1, target)
-        expect(result).toBe(target)
-        expect(target).toEqual({ row: index, col: index + 1, offset: index + 2 })
+        const first = (lib as any)[name](1)
+        const second = (lib as any)[name](1)
+        expect(first).not.toBe(second)
+        expect(first).toEqual({ row: index, col: index + 1, offset: index + 2 })
+        expect(second).toEqual({ row: index, col: index + 1, offset: index + 3 })
+        expect(outputBuffers[1]).toBe(outputBuffers[0])
       }
 
       originals.set("editBufferOffsetToPosition", symbols.editBufferOffsetToPosition)
+      const positionBuffers: ArrayBuffer[] = []
       symbols.editBufferOffsetToPosition = (_buffer, offset: number, output: ArrayBuffer) => {
+        positionBuffers.push(output)
         LogicalCursorStruct.packInto({ row: 1, col: 2, offset }, new DataView(output), 0)
         return 1
       }
-      const positionTarget = { row: -1, col: -1, offset: -1 }
-      expect(lib.editBufferOffsetToPositionInto(1 as any, 9, positionTarget)).toBe(positionTarget)
-      expect(positionTarget).toEqual({ row: 1, col: 2, offset: 9 })
+      const firstPosition = lib.editBufferOffsetToPosition(1 as any, 9)
+      const secondPosition = lib.editBufferOffsetToPosition(1 as any, 10)
+      expect(firstPosition).toEqual({ row: 1, col: 2, offset: 9 })
+      expect(secondPosition).toEqual({ row: 1, col: 2, offset: 10 })
+      expect(positionBuffers[1]).toBe(positionBuffers[0])
 
       for (const [index, name] of visualQueries.entries()) {
         originals.set(name, symbols[name])
+        const outputBuffers: ArrayBuffer[] = []
+        let offset = index + 4
         symbols[name] = (...args: any[]) => {
           const output = args.at(-1) as ArrayBuffer
+          outputBuffers.push(output)
           VisualCursorStruct.packInto(
             {
               visualRow: index,
               visualCol: index + 1,
               logicalRow: index + 2,
               logicalCol: index + 3,
-              offset: index + 4,
+              offset: offset++,
             },
             new DataView(output),
             0,
           )
         }
-        const target = { visualRow: -1, visualCol: -1, logicalRow: -1, logicalCol: -1, offset: -1 }
-        const result = (lib as any)[`${name}Into`](1, target)
-        expect(result).toBe(target)
-        expect(target.offset).toBe(index + 4)
+        const first = (lib as any)[name](1)
+        const second = (lib as any)[name](1)
+        expect(first).not.toBe(second)
+        expect(first.offset).toBe(index + 4)
+        expect(second.offset).toBe(index + 5)
+        expect(outputBuffers[1]).toBe(outputBuffers[0])
       }
     } finally {
       for (const [name, original] of originals) symbols[name] = original

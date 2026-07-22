@@ -474,18 +474,15 @@ describe("EditorView", () => {
       expect(cursor.offset).toBe(6)
     })
 
-    it("preserves public cursor identity and supports caller-owned targets", () => {
+    it("preserves public cursor identity", () => {
       buffer.setText("abc")
       const first = view.getVisualCursor()
       buffer.moveCursorRight()
       const second = view.getVisualCursor()
-      const target = { visualRow: -1, visualCol: -1, logicalRow: -1, logicalCol: -1, offset: -1 }
 
-      expect(view.getVisualCursorInto(target)).toBe(target)
       expect(first).not.toBe(second)
       expect(first.offset).toBe(0)
       expect(second.offset).toBe(1)
-      expect(target.offset).toBe(1)
     })
 
     it("should handle vertical navigation through emoji cells correctly", () => {

@@ -1,5 +1,5 @@
 import type { EditBuffer } from "../edit-buffer.js"
-import type { EditorView, VisualCursor } from "../editor-view.js"
+import type { EditorView } from "../editor-view.js"
 import { stringWidth } from "../platform/runtime.js"
 import { ExtmarksHistory, type ExtmarksSnapshot } from "./extmarks-history.js"
 
@@ -42,14 +42,6 @@ export class ExtmarksController {
   private typeNameToId = new Map<string, number>()
   private typeIdToName = new Map<number, string>()
   private nextTypeId = 1
-  private readonly visualCursorTarget: VisualCursor = {
-    visualRow: 0,
-    visualCol: 0,
-    logicalRow: 0,
-    logicalCol: 0,
-    offset: 0,
-  }
-
   private originalMoveCursorLeft: typeof EditBuffer.prototype.moveCursorLeft
   private originalMoveCursorRight: typeof EditBuffer.prototype.moveCursorRight
   private originalSetCursorByOffset: typeof EditBuffer.prototype.setCursorByOffset
@@ -596,7 +588,7 @@ export class ExtmarksController {
   }
 
   private getVisualCursorOffset(): number {
-    return this.editorView.getVisualCursorInto(this.visualCursorTarget).offset
+    return this.editorView.getVisualCursor().offset
   }
 
   private updateHighlights(): void {

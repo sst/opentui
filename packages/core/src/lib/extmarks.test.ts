@@ -39,27 +39,6 @@ describe("ExtmarksController", () => {
     if (currentRenderer) currentRenderer.destroy()
   })
 
-  it("reuses a private visual cursor target for repeated reads", async () => {
-    await setup()
-    const view = textarea.editorView
-    const originalInto = view.getVisualCursorInto.bind(view)
-    let target: Parameters<typeof view.getVisualCursorInto>[0] | undefined
-    let calls = 0
-    view.getVisualCursor = () => {
-      throw new Error("extmarks used allocating cursor API")
-    }
-    view.getVisualCursorInto = (nextTarget) => {
-      target ??= nextTarget
-      expect(nextTarget).toBe(target)
-      calls += 1
-      return originalInto(nextTarget)
-    }
-
-    textarea.editBuffer.moveCursorRight()
-    textarea.editBuffer.moveCursorLeft()
-    expect(calls).toBeGreaterThanOrEqual(2)
-  })
-
   describe("Creation and Basic Operations", () => {
     it("should create extmark with basic options", async () => {
       await setup()

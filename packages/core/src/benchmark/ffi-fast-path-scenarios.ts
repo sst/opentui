@@ -12,16 +12,7 @@ import { TextBufferView } from "../text-buffer-view.js"
 import { TextBuffer } from "../text-buffer.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { SpanInfoStruct } from "../zig-structs.js"
-import {
-  resolveRenderLib,
-  NativeAudioStreamCloseReason,
-  NativeAudioStreamFormat,
-  type NativeAudioStreamStats,
-  type LogicalCursor,
-  type MeasureResult,
-  type RenderLib,
-  type VisualCursor,
-} from "../zig.js"
+import { resolveRenderLib, NativeAudioStreamCloseReason, NativeAudioStreamFormat, type RenderLib } from "../zig.js"
 
 type RuntimeName = "bun" | "node"
 
@@ -278,23 +269,19 @@ function createScenarios(): ScenarioDefinition[] {
 
 function createReusableStorageScenarios(): ScenarioDefinition[] {
   return [
-    createLogicalCursorScenario(false),
-    createLogicalCursorScenario(true),
-    createVisualCursorScenario(false),
-    createVisualCursorScenario(true),
-    createMeasureResultScenario(false),
-    createMeasureResultScenario(true),
-    createAudioStreamStatsScenario(false),
-    createAudioStreamStatsScenario(true),
+    createLogicalCursorScenario(),
+    createVisualCursorScenario(),
+    createMeasureResultScenario(),
+    createAudioStreamStatsScenario(),
     createSpanInfoDecodeScenario(),
   ]
 }
 
-function createAudioStreamStatsScenario(into: boolean): ScenarioDefinition {
+function createAudioStreamStatsScenario(): ScenarioDefinition {
   return {
-    name: `reusable_audio_stream_stats_${into ? "into" : "public"}`,
-    operation: into ? "audioGetStreamStatsInto" : "audioGetStreamStats",
-    description: `${into ? "Decode into caller-owned" : "Return fresh"} audio stream stats`,
+    name: "reusable_audio_stream_stats_public",
+    operation: "audioGetStreamStats",
+    description: "Return fresh audio stream stats from internally reused FFI storage",
     setup: ({ lib }) => {
       const engine = lib.createAudioEngine()
       if (!engine) throw new Error("failed to create benchmark audio engine")
@@ -312,26 +299,11 @@ function createAudioStreamStatsScenario(into: boolean): ScenarioDefinition {
         lib.destroyAudioEngine(engine)
         throw new Error(`failed to create benchmark audio stream: ${created.status}`)
       }
-      const target: NativeAudioStreamStats = {
-        bytesReceived: 0n,
-        framesDecoded: 0n,
-        framesPlayed: 0n,
-        state: 0,
-        sampleRate: 0,
-        channels: 0,
-        bufferedFrames: 0,
-        capacityFrames: 0,
-        underruns: 0,
-        errorCode: 0,
-        readyGeneration: 0,
-      }
       return {
         run: (operations) => {
           let signal = 0
           for (let index = 0; index < operations; index++) {
-            const stats = into
-              ? lib.audioGetStreamStatsInto(engine, created.streamId!, target)
-              : lib.audioGetStreamStats(engine, created.streamId!)
+            const stats = lib.audioGetStreamStats(engine, created.streamId!)
             signal = (signal + (stats?.state ?? 0)) >>> 0
           }
           return signal
@@ -378,23 +350,20 @@ function createSpanInfoDecodeScenario(): ScenarioDefinition {
   }
 }
 
-function createLogicalCursorScenario(into: boolean): ScenarioDefinition {
+function createLogicalCursorScenario(): ScenarioDefinition {
   return {
-    name: `reusable_logical_cursor_${into ? "into" : "public"}`,
-    operation: into ? "editBufferGetCursorPositionInto" : "editBufferGetCursorPosition",
-    description: `${into ? "Decode into a caller-owned" : "Return a fresh"} logical cursor from a live edit buffer`,
+    name: "reusable_logical_cursor_public",
+    operation: "editBufferGetCursorPosition",
+    description: "Return a fresh logical cursor from internally reused FFI storage",
     setup: ({ lib }) => {
       const editBuffer = EditBuffer.create("unicode")
       editBuffer.setText("logical cursor")
       editBuffer.setCursorByOffset(3)
-      const target: LogicalCursor = { row: 0, col: 0, offset: 0 }
       return {
         run: (operations) => {
           let signal = 0
           for (let index = 0; index < operations; index++) {
-            const cursor = into
-              ? lib.editBufferGetCursorPositionInto(editBuffer.ptr, target)
-              : lib.editBufferGetCursorPosition(editBuffer.ptr)
+            const cursor = lib.editBufferGetCursorPosition(editBuffer.ptr)
             signal = (signal + cursor.offset) >>> 0
           }
           return signal
@@ -406,24 +375,21 @@ function createLogicalCursorScenario(into: boolean): ScenarioDefinition {
   }
 }
 
-function createVisualCursorScenario(into: boolean): ScenarioDefinition {
+function createVisualCursorScenario(): ScenarioDefinition {
   return {
-    name: `reusable_visual_cursor_${into ? "into" : "public"}`,
-    operation: into ? "editorViewGetVisualCursorInto" : "editorViewGetVisualCursor",
-    description: `${into ? "Decode into a caller-owned" : "Return a fresh"} visual cursor from a live editor view`,
+    name: "reusable_visual_cursor_public",
+    operation: "editorViewGetVisualCursor",
+    description: "Return a fresh visual cursor from internally reused FFI storage",
     setup: ({ lib }) => {
       const editBuffer = EditBuffer.create("unicode")
       editBuffer.setText("visual cursor")
       editBuffer.setCursorByOffset(4)
       const editorView = EditorView.create(editBuffer, 16, 4)
-      const target: VisualCursor = { visualRow: 0, visualCol: 0, logicalRow: 0, logicalCol: 0, offset: 0 }
       return {
         run: (operations) => {
           let signal = 0
           for (let index = 0; index < operations; index++) {
-            const cursor = into
-              ? lib.editorViewGetVisualCursorInto(editorView.ptr, target)
-              : lib.editorViewGetVisualCursor(editorView.ptr)
+            const cursor = lib.editorViewGetVisualCursor(editorView.ptr)
             signal = (signal + cursor.offset) >>> 0
           }
           return signal
@@ -438,24 +404,21 @@ function createVisualCursorScenario(into: boolean): ScenarioDefinition {
   }
 }
 
-function createMeasureResultScenario(into: boolean): ScenarioDefinition {
+function createMeasureResultScenario(): ScenarioDefinition {
   return {
-    name: `reusable_measure_result_${into ? "into" : "public"}`,
-    operation: into ? "textBufferViewMeasureForDimensionsInto" : "textBufferViewMeasureForDimensions",
-    description: `${into ? "Decode into a caller-owned" : "Return a fresh"} text measurement result`,
+    name: "reusable_measure_result_public",
+    operation: "textBufferViewMeasureForDimensions",
+    description: "Return a fresh text measurement result from internally reused FFI storage",
     setup: ({ lib }) => {
       const textBuffer = TextBuffer.create("unicode")
       textBuffer.setText("measure this text across wrapped lines")
       const textBufferView = TextBufferView.create(textBuffer)
       textBufferView.setWrapMode("word")
-      const target: MeasureResult = { lineCount: 0, widthColsMax: 0 }
       return {
         run: (operations) => {
           let signal = 0
           for (let index = 0; index < operations; index++) {
-            const measure = into
-              ? lib.textBufferViewMeasureForDimensionsInto(textBufferView.ptr, 10, 100, target)
-              : lib.textBufferViewMeasureForDimensions(textBufferView.ptr, 10, 100)
+            const measure = lib.textBufferViewMeasureForDimensions(textBufferView.ptr, 10, 100)
             signal = (signal + (measure?.lineCount ?? 0)) >>> 0
           }
           return signal

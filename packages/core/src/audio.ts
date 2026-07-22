@@ -680,19 +680,6 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
   private readonly lifecycleController = new AbortController()
   private nativeStreamId: number | null = null
   private nativeStats: NativeAudioStreamStats | null = null
-  private readonly nativeStatsTarget: NativeAudioStreamStats = {
-    bytesReceived: 0n,
-    framesDecoded: 0n,
-    framesPlayed: 0n,
-    state: 0,
-    sampleRate: 0,
-    channels: 0,
-    bufferedFrames: 0,
-    capacityFrames: 0,
-    underruns: 0,
-    errorCode: 0,
-    readyGeneration: 0,
-  }
   private activeAttempt: AudioStreamAttempt<M> | null = null
   private pendingCleanup: Promise<void> | null = null
   private reconnectAttempts = 0
@@ -989,13 +976,11 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
   ): Promise<boolean> {
     const initial = await this.pollNativeSnapshot(attempt)
     if (initial == null || !this.isAttemptActive(attempt)) return false
-    // Preserve the generation before later polls reuse the stats target.
-    const initialReadyGeneration = initial.readyGeneration
-    const decoderReady = this.awaitReady(attempt, initialReadyGeneration)
+    const decoderReady = this.awaitReady(attempt, initial.readyGeneration)
     try {
       await this.pumpSource(connection, attempt)
     } catch (cause) {
-      this.observeReady(this.readNativeStats(), initialReadyGeneration)
+      this.observeReady(this.readNativeStats(), initial.readyGeneration)
       await this.stopSource(attempt)
       await decoderReady
       if (!this.lifecycleController.signal.aborted) throw cause
@@ -1525,7 +1510,7 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
 
   private readNativeStats(): NativeAudioStreamStats | null {
     if (this.nativeStreamId == null) return this.nativeStats
-    const stats = this.lib.audioGetStreamStatsInto(this.engine, this.nativeStreamId, this.nativeStatsTarget)
+    const stats = this.lib.audioGetStreamStats(this.engine, this.nativeStreamId)
     if (stats != null) this.nativeStats = stats
     return stats
   }

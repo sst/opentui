@@ -186,11 +186,6 @@ export class TextBufferView {
     return this.lib.textBufferViewMeasureForDimensions(this.viewPtr, width, height)
   }
 
-  public measureForDimensionsInto(width: number, height: number, target: MeasureResult): MeasureResult | null {
-    this.guard()
-    return this.lib.textBufferViewMeasureForDimensionsInto(this.viewPtr, width, height, target)
-  }
-
   public getVirtualLineCount(): number {
     this.guard()
     return this.lib.textBufferViewGetVirtualLineCount(this.viewPtr)

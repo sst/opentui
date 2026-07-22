@@ -61,31 +61,6 @@ describe("EditBufferRenderable", () => {
     expect(current.visualCursor.offset).toBe(2)
   })
 
-  test("reuses a private visual cursor target for rendering and selection movement", async () => {
-    const textarea = new TextareaRenderable(renderer, { width: 20, height: 3, initialValue: "hello" })
-    renderer.root.add(textarea)
-    await renderOnce()
-    textarea.focus()
-
-    const view = textarea.editorView
-    const originalInto = view.getVisualCursorInto.bind(view)
-    let target: Parameters<typeof view.getVisualCursorInto>[0] | undefined
-    let calls = 0
-    view.getVisualCursor = () => {
-      throw new Error("hot path used allocating cursor API")
-    }
-    view.getVisualCursorInto = (nextTarget) => {
-      target ??= nextTarget
-      expect(nextTarget).toBe(target)
-      calls += 1
-      return originalInto(nextTarget)
-    }
-
-    await renderOnce()
-    textarea.moveCursorRight({ select: true })
-    expect(calls).toBeGreaterThanOrEqual(3)
-  })
-
   test("stores generic editor traits per instance", async () => {
     const textarea = new TextareaRenderable(renderer, { width: 20, height: 3 })
     const input = new InputRenderable(renderer, { width: 20, value: "name" })

@@ -223,11 +223,6 @@ export class EditBuffer extends EventEmitter {
     return this.lib.editBufferGetCursorPosition(this.bufferPtr)
   }
 
-  public getCursorPositionInto(target: LogicalCursor): LogicalCursor {
-    this.guard()
-    return this.lib.editBufferGetCursorPositionInto(this.bufferPtr, target)
-  }
-
   public getNextWordBoundary(): LogicalCursor {
     this.guard()
     const boundary = this.lib.editBufferGetNextWordBoundary(this.bufferPtr)
@@ -236,11 +231,6 @@ export class EditBuffer extends EventEmitter {
       col: boundary.col,
       offset: boundary.offset,
     }
-  }
-
-  public getNextWordBoundaryInto(target: LogicalCursor): LogicalCursor {
-    this.guard()
-    return this.lib.editBufferGetNextWordBoundaryInto(this.bufferPtr, target)
   }
 
   public getPrevWordBoundary(): LogicalCursor {
@@ -253,11 +243,6 @@ export class EditBuffer extends EventEmitter {
     }
   }
 
-  public getPrevWordBoundaryInto(target: LogicalCursor): LogicalCursor {
-    this.guard()
-    return this.lib.editBufferGetPrevWordBoundaryInto(this.bufferPtr, target)
-  }
-
   public getEOL(): LogicalCursor {
     this.guard()
     const boundary = this.lib.editBufferGetEOL(this.bufferPtr)
@@ -268,21 +253,11 @@ export class EditBuffer extends EventEmitter {
     }
   }
 
-  public getEOLInto(target: LogicalCursor): LogicalCursor {
-    this.guard()
-    return this.lib.editBufferGetEOLInto(this.bufferPtr, target)
-  }
-
   public offsetToPosition(offset: number): { row: number; col: number } | null {
     this.guard()
     const result = this.lib.editBufferOffsetToPosition(this.bufferPtr, offset)
     if (!result) return null
     return { row: result.row, col: result.col }
-  }
-
-  public offsetToPositionInto(offset: number, target: LogicalCursor): LogicalCursor | null {
-    this.guard()
-    return this.lib.editBufferOffsetToPositionInto(this.bufferPtr, offset, target)
   }
 
   public positionToOffset(row: number, col: number): number {
