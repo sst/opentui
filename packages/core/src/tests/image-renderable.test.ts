@@ -213,6 +213,30 @@ describe("ImageRenderable image loading", () => {
     }
   })
 
+  test("propagates callback exceptions through loadPromise after settling state", async () => {
+    const loaded = new ImageRenderable(renderer, {
+      source: await readFile(new URL("rgba.png", FIXTURES)),
+      onLoad: () => {
+        throw new Error("onLoad failed")
+      },
+    })
+    await expect(loaded.loadPromise!).rejects.toThrow("onLoad failed")
+    expect(loaded.loading).toBe(false)
+    expect(loaded.image).not.toBeNull()
+    loaded.destroy()
+
+    const failed = new ImageRenderable(renderer, {
+      source: Uint8Array.of(1, 2, 3),
+      onError: () => {
+        throw new Error("onError failed")
+      },
+    })
+    await expect(failed.loadPromise!).rejects.toThrow("onError failed")
+    expect(failed.loading).toBe(false)
+    expect(failed.loadError).toBeDefined()
+    failed.destroy()
+  })
+
   test("loads local paths and file URLs through the same native decoder", async () => {
     const url = new URL("lossless.webp", FIXTURES)
     const renderable = new ImageRenderable(renderer, { source: fileURLToPath(url) })
