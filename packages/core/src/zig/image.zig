@@ -163,8 +163,16 @@ pub const Image = struct {
         return self.metadata;
     }
 
+    pub fn discardEncoded(self: *Image) void {
+        if (self.encoded_png) |bytes| self.allocator.free(bytes);
+        self.encoded_png = null;
+    }
+
     pub fn clone(self: *const Image) !*Image {
-        return copyImage(self.allocator, self.pixels, self.metadata);
+        const cloned = try copyImage(self.allocator, self.pixels, self.metadata);
+        errdefer cloned.deinit();
+        if (self.encoded_png) |bytes| cloned.encoded_png = try self.allocator.dupe(u8, bytes);
+        return cloned;
     }
 };
 

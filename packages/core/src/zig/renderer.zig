@@ -1616,6 +1616,7 @@ pub const CliRenderer = struct {
     }
 
     fn applyAlphaOpacity(target: *native_image.Image, opacity: u8) void {
+        target.discardEncoded();
         var index: usize = 3;
         while (index < target.pixels.len) : (index += 4) {
             target.pixels[index] = @intCast((@as(u16, target.pixels[index]) * opacity + 127) / 255);
