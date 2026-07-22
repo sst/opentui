@@ -3077,16 +3077,25 @@ test("AudioStream.getStats surfaces a native decoder failure while the source is
         errorCode: number
         readyGeneration: number
       } | null
+      audioGetStreamStatsInto: (
+        engine: unknown,
+        streamId: number,
+        target: NativeAudioStreamStats,
+      ) => NativeAudioStreamStats
     }
   }
   const originalGetStats = internals.lib.audioGetStreamStats
   const nativeStats = originalGetStats.call(internals.lib, internals.engine, internals.nativeStreamId)
   if (nativeStats == null) throw new Error("Native stream stats unavailable before fault injection")
-  const restoreGetStats = replaceMethod(internals.lib, "audioGetStreamStats", () => ({
-    ...nativeStats,
-    state: NativeAudioStreamState.Failed,
-    errorCode: -77,
-  }))
+  const restoreGetStats = replaceMethod(
+    internals.lib,
+    "audioGetStreamStatsInto",
+    (_engine: unknown, _streamId: number, target: NativeAudioStreamStats) =>
+      Object.assign(target, nativeStats, {
+        state: NativeAudioStreamState.Failed,
+        errorCode: -77,
+      }),
+  )
   const errors: Array<{ error: Error; context: AudioStreamErrorContext }> = []
   stream.on("error", (error, context) => {
     errors.push({ error, context })
@@ -4605,16 +4614,25 @@ test("AudioStream.closed waits for reentrant disposal during decoder-error clean
         state: number
         errorCode: number
       } | null
+      audioGetStreamStatsInto: (
+        engine: unknown,
+        streamId: number,
+        target: NativeAudioStreamStats,
+      ) => NativeAudioStreamStats
     }
   }
   const originalGetStats = internals.lib.audioGetStreamStats
   const nativeStats = originalGetStats.call(internals.lib, internals.engine, internals.nativeStreamId)
   if (nativeStats == null) throw new Error("Native stream stats unavailable before fault injection")
-  const restoreGetStats = replaceMethod(internals.lib, "audioGetStreamStats", () => ({
-    ...nativeStats,
-    state: NativeAudioStreamState.Failed,
-    errorCode: -88,
-  }))
+  const restoreGetStats = replaceMethod(
+    internals.lib,
+    "audioGetStreamStatsInto",
+    (_engine: unknown, _streamId: number, target: NativeAudioStreamStats) =>
+      Object.assign(target, nativeStats, {
+        state: NativeAudioStreamState.Failed,
+        errorCode: -88,
+      }),
+  )
   const order: string[] = []
   stream.on("error", () => {
     order.push("error")
@@ -4654,12 +4672,12 @@ test("Audio does not reacquire a source after cancellation during initial native
   }
   const internals = audio as unknown as {
     lib: {
-      audioGetStreamStats: (...args: unknown[]) => unknown
+      audioGetStreamStatsInto: (...args: unknown[]) => unknown
     }
   }
-  const originalGetStats = internals.lib.audioGetStreamStats
+  const originalGetStats = internals.lib.audioGetStreamStatsInto
   let disposed = false
-  const restoreGetStats = replaceMethod(internals.lib, "audioGetStreamStats", (...args: unknown[]) => {
+  const restoreGetStats = replaceMethod(internals.lib, "audioGetStreamStatsInto", (...args: unknown[]) => {
     const stats = originalGetStats.apply(internals.lib, args)
     if (!disposed) {
       disposed = true

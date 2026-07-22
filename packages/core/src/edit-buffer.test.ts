@@ -58,6 +58,20 @@ describe("EditBuffer", () => {
   })
 
   describe("cursor position", () => {
+    it("preserves public cursor identity and supports caller-owned targets", () => {
+      buffer.setText("abc")
+      const first = buffer.getCursorPosition()
+      buffer.moveCursorRight()
+      const second = buffer.getCursorPosition()
+      const target = { row: -1, col: -1, offset: -1 }
+
+      expect(buffer.getCursorPositionInto(target)).toBe(target)
+      expect(first).not.toBe(second)
+      expect(first).toEqual({ row: 0, col: 0, offset: 0 })
+      expect(second).toEqual({ row: 0, col: 1, offset: 1 })
+      expect(target).toEqual(second)
+    })
+
     it("should start cursor at beginning after setText", () => {
       buffer.setText("Hello World")
       const cursor = buffer.getCursorPosition()

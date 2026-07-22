@@ -87,6 +87,7 @@ export const NativeAudioStreamFormat = NativeAudioStreamFormatValue
 export type NativeAudioStreamFormat = NativeAudioStreamFormatType
 import { isBunfsPath } from "./lib/bunfs.js"
 import { resolveNativeLibraryPath } from "#opentui/runtime-assets"
+import { allocStruct } from "bun-ffi-structs"
 
 registerEnvVar({
   name: "OPENTUI_LIBC",
@@ -1875,6 +1876,11 @@ export interface LogicalCursor {
   offset: number
 }
 
+export interface MeasureResult {
+  lineCount: number
+  widthColsMax: number
+}
+
 export interface CursorState {
   x: number
   y: number
@@ -1951,6 +1957,11 @@ export interface AudioEngineLib {
   audioSetStreamPan: (engine: AudioEngineHandle, streamId: number, pan: number) => number
   audioSetStreamGroup: (engine: AudioEngineHandle, streamId: number, groupId: number) => number
   audioGetStreamStats: (engine: AudioEngineHandle, streamId: number) => NativeAudioStreamStats | null
+  audioGetStreamStatsInto: (
+    engine: AudioEngineHandle,
+    streamId: number,
+    target: NativeAudioStreamStats,
+  ) => NativeAudioStreamStats | null
   audioCloseStream: (
     engine: AudioEngineHandle,
     streamId: number,
@@ -2366,7 +2377,13 @@ export interface RenderLib extends AudioEngineLib {
     view: TextBufferViewHandle,
     width: number,
     height: number,
-  ) => { lineCount: number; widthColsMax: number } | null
+  ) => MeasureResult | null
+  textBufferViewMeasureForDimensionsInto: (
+    view: TextBufferViewHandle,
+    width: number,
+    height: number,
+    target: MeasureResult,
+  ) => MeasureResult | null
   textBufferViewGetVirtualLineCount: (view: TextBufferViewHandle) => number
 
   readonly encoder: TextEncoder
@@ -2404,6 +2421,7 @@ export interface RenderLib extends AudioEngineLib {
   editBufferSetCursorToLineCol: (buffer: EditBufferHandle, line: number, col: number) => void
   editBufferSetCursorByOffset: (buffer: EditBufferHandle, offset: number) => void
   editBufferGetCursorPosition: (buffer: EditBufferHandle) => LogicalCursor
+  editBufferGetCursorPositionInto: (buffer: EditBufferHandle, target: LogicalCursor) => LogicalCursor
   editBufferGetId: (buffer: EditBufferHandle) => number
   editBufferGetTextBuffer: (buffer: EditBufferHandle) => TextBufferHandle
   editBufferDebugLogRope: (buffer: EditBufferHandle) => void
@@ -2414,12 +2432,20 @@ export interface RenderLib extends AudioEngineLib {
   editBufferClearHistory: (buffer: EditBufferHandle) => void
   editBufferClear: (buffer: EditBufferHandle) => void
   editBufferGetNextWordBoundary: (buffer: EditBufferHandle) => { row: number; col: number; offset: number }
+  editBufferGetNextWordBoundaryInto: (buffer: EditBufferHandle, target: LogicalCursor) => LogicalCursor
   editBufferGetPrevWordBoundary: (buffer: EditBufferHandle) => { row: number; col: number; offset: number }
+  editBufferGetPrevWordBoundaryInto: (buffer: EditBufferHandle, target: LogicalCursor) => LogicalCursor
   editBufferGetEOL: (buffer: EditBufferHandle) => { row: number; col: number; offset: number }
+  editBufferGetEOLInto: (buffer: EditBufferHandle, target: LogicalCursor) => LogicalCursor
   editBufferOffsetToPosition: (
     buffer: EditBufferHandle,
     offset: number,
   ) => { row: number; col: number; offset: number } | null
+  editBufferOffsetToPositionInto: (
+    buffer: EditBufferHandle,
+    offset: number,
+    target: LogicalCursor,
+  ) => LogicalCursor | null
   editBufferPositionToOffset: (buffer: EditBufferHandle, row: number, col: number) => number
   editBufferGetLineStartOffset: (buffer: EditBufferHandle, row: number) => number
   editBufferGetTextRange: (
@@ -2494,15 +2520,21 @@ export interface RenderLib extends AudioEngineLib {
   editorViewGetCursor: (view: EditorViewHandle) => { row: number; col: number }
   editorViewGetText: (view: EditorViewHandle, maxLength: number) => Uint8Array | null
   editorViewGetVisualCursor: (view: EditorViewHandle) => VisualCursor
+  editorViewGetVisualCursorInto: (view: EditorViewHandle, target: VisualCursor) => VisualCursor
   editorViewMoveUpVisual: (view: EditorViewHandle) => void
   editorViewMoveDownVisual: (view: EditorViewHandle) => void
   editorViewDeleteSelectedText: (view: EditorViewHandle) => void
   editorViewSetCursorByOffset: (view: EditorViewHandle, offset: number) => void
   editorViewGetNextWordBoundary: (view: EditorViewHandle) => VisualCursor
+  editorViewGetNextWordBoundaryInto: (view: EditorViewHandle, target: VisualCursor) => VisualCursor
   editorViewGetPrevWordBoundary: (view: EditorViewHandle) => VisualCursor
+  editorViewGetPrevWordBoundaryInto: (view: EditorViewHandle, target: VisualCursor) => VisualCursor
   editorViewGetEOL: (view: EditorViewHandle) => VisualCursor
+  editorViewGetEOLInto: (view: EditorViewHandle, target: VisualCursor) => VisualCursor
   editorViewGetVisualSOL: (view: EditorViewHandle) => VisualCursor
+  editorViewGetVisualSOLInto: (view: EditorViewHandle, target: VisualCursor) => VisualCursor
   editorViewGetVisualEOL: (view: EditorViewHandle) => VisualCursor
+  editorViewGetVisualEOLInto: (view: EditorViewHandle, target: VisualCursor) => VisualCursor
   editorViewGetLineInfo: (view: EditorViewHandle) => LineInfo
   editorViewGetLogicalLineInfo: (view: EditorViewHandle) => LineInfo
   editorViewSetPlaceholderStyledText: (
@@ -2595,6 +2627,34 @@ class FFIRenderLib implements RenderLib {
   // Node does not allocate and resolve a new output pointer for every node.
   private readonly yogaLayout = new Float32Array(6)
   private readonly yogaLayoutPtr = ptr(this.yogaLayout)
+  private readonly logicalCursorStorage = allocStruct(LogicalCursorStruct)
+  private readonly visualCursorStorage = allocStruct(VisualCursorStruct)
+  private readonly measureResultStorage = allocStruct(MeasureResultStruct)
+  private readonly audioStreamStatsStorage = allocStruct(AudioStreamStatsStruct)
+  private readonly gridDrawOptionsStorage = allocStruct(GridDrawOptionsStruct)
+  // Public methods clone these reusable decode targets before returning.
+  private readonly logicalCursorResult: LogicalCursor = { row: 0, col: 0, offset: 0 }
+  private readonly visualCursorResult: VisualCursor = {
+    visualRow: 0,
+    visualCol: 0,
+    logicalRow: 0,
+    logicalCol: 0,
+    offset: 0,
+  }
+  private readonly measureResult: MeasureResult = { lineCount: 0, widthColsMax: 0 }
+  private readonly audioStreamStatsResult: NativeAudioStreamStats = {
+    bytesReceived: 0n,
+    framesDecoded: 0n,
+    framesPlayed: 0n,
+    state: 0,
+    sampleRate: 0,
+    channels: 0,
+    bufferedFrames: 0,
+    capacityFrames: 0,
+    underruns: 0,
+    errorCode: 0,
+    readyGeneration: 0,
+  }
   public readonly encoder: TextEncoder = new TextEncoder()
   public readonly decoder: TextDecoder = new TextDecoder()
   private logCallbackWrapper: FFICallbackInstance | null = null
@@ -3190,10 +3250,11 @@ class FFIRenderLib implements RenderLib {
     rowCount: number,
     options: { drawInner: boolean; drawOuter: boolean },
   ): void {
-    const optionsBuffer = GridDrawOptionsStruct.pack({
-      drawInner: options.drawInner,
-      drawOuter: options.drawOuter,
-    })
+    GridDrawOptionsStruct.packInto(
+      { drawInner: options.drawInner, drawOuter: options.drawOuter },
+      this.gridDrawOptionsStorage.view,
+      0,
+    )
 
     this.opentui.symbols.bufferDrawGrid(
       buffer,
@@ -3204,7 +3265,7 @@ class FFIRenderLib implements RenderLib {
       columnCount,
       ptr(rowOffsets),
       rowCount,
-      ptr(optionsBuffer),
+      this.gridDrawOptionsStorage.buffer,
     )
   }
 
@@ -4182,19 +4243,27 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferViewSetTruncate(view, ffiBool(truncate))
   }
 
-  public textBufferViewMeasureForDimensions(
+  public textBufferViewMeasureForDimensions(view: Pointer, width: number, height: number): MeasureResult | null {
+    const result = this.textBufferViewMeasureForDimensionsInto(view, width, height, this.measureResult)
+    return result ? { lineCount: result.lineCount, widthColsMax: result.widthColsMax } : null
+  }
+
+  public textBufferViewMeasureForDimensionsInto(
     view: Pointer,
     width: number,
     height: number,
-  ): { lineCount: number; widthColsMax: number } | null {
-    const resultBuffer = new ArrayBuffer(MeasureResultStruct.size)
-    const resultPtr = ptr(new Uint8Array(resultBuffer))
-    const success = this.opentui.symbols.textBufferViewMeasureForDimensions(view, width, height, resultPtr)
+    target: MeasureResult,
+  ): MeasureResult | null {
+    const success = this.opentui.symbols.textBufferViewMeasureForDimensions(
+      view,
+      width,
+      height,
+      this.measureResultStorage.buffer,
+    )
     if (!success) {
       return null
     }
-    const result = MeasureResultStruct.unpack(resultBuffer)
-    return result
+    return MeasureResultStruct.unpackInto(this.measureResultStorage.view, target)
   }
 
   public textBufferAddHighlightByCharRange(buffer: Pointer, highlight: Highlight): void {
@@ -4501,9 +4570,13 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editBufferGetCursorPosition(buffer: Pointer): LogicalCursor {
-    const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
-    this.opentui.symbols.editBufferGetCursorPosition(buffer, ptr(cursorBuffer))
-    return LogicalCursorStruct.unpack(cursorBuffer)
+    const cursor = this.editBufferGetCursorPositionInto(buffer, this.logicalCursorResult)
+    return { row: cursor.row, col: cursor.col, offset: cursor.offset }
+  }
+
+  public editBufferGetCursorPositionInto(buffer: Pointer, target: LogicalCursor): LogicalCursor {
+    this.opentui.symbols.editBufferGetCursorPosition(buffer, this.logicalCursorStorage.buffer)
+    return LogicalCursorStruct.unpackInto(this.logicalCursorStorage.view, target)
   }
 
   public editBufferGetId(buffer: Pointer): number {
@@ -4555,28 +4628,44 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editBufferGetNextWordBoundary(buffer: Pointer): LogicalCursor {
-    const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
-    this.opentui.symbols.editBufferGetNextWordBoundary(buffer, ptr(cursorBuffer))
-    return LogicalCursorStruct.unpack(cursorBuffer)
+    const cursor = this.editBufferGetNextWordBoundaryInto(buffer, this.logicalCursorResult)
+    return { row: cursor.row, col: cursor.col, offset: cursor.offset }
+  }
+
+  public editBufferGetNextWordBoundaryInto(buffer: Pointer, target: LogicalCursor): LogicalCursor {
+    this.opentui.symbols.editBufferGetNextWordBoundary(buffer, this.logicalCursorStorage.buffer)
+    return LogicalCursorStruct.unpackInto(this.logicalCursorStorage.view, target)
   }
 
   public editBufferGetPrevWordBoundary(buffer: Pointer): LogicalCursor {
-    const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
-    this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, ptr(cursorBuffer))
-    return LogicalCursorStruct.unpack(cursorBuffer)
+    const cursor = this.editBufferGetPrevWordBoundaryInto(buffer, this.logicalCursorResult)
+    return { row: cursor.row, col: cursor.col, offset: cursor.offset }
+  }
+
+  public editBufferGetPrevWordBoundaryInto(buffer: Pointer, target: LogicalCursor): LogicalCursor {
+    this.opentui.symbols.editBufferGetPrevWordBoundary(buffer, this.logicalCursorStorage.buffer)
+    return LogicalCursorStruct.unpackInto(this.logicalCursorStorage.view, target)
   }
 
   public editBufferGetEOL(buffer: Pointer): LogicalCursor {
-    const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
-    this.opentui.symbols.editBufferGetEOL(buffer, ptr(cursorBuffer))
-    return LogicalCursorStruct.unpack(cursorBuffer)
+    const cursor = this.editBufferGetEOLInto(buffer, this.logicalCursorResult)
+    return { row: cursor.row, col: cursor.col, offset: cursor.offset }
+  }
+
+  public editBufferGetEOLInto(buffer: Pointer, target: LogicalCursor): LogicalCursor {
+    this.opentui.symbols.editBufferGetEOL(buffer, this.logicalCursorStorage.buffer)
+    return LogicalCursorStruct.unpackInto(this.logicalCursorStorage.view, target)
   }
 
   public editBufferOffsetToPosition(buffer: Pointer, offset: number): LogicalCursor | null {
-    const cursorBuffer = new ArrayBuffer(LogicalCursorStruct.size)
-    const success = this.opentui.symbols.editBufferOffsetToPosition(buffer, offset, ptr(cursorBuffer))
+    const cursor = this.editBufferOffsetToPositionInto(buffer, offset, this.logicalCursorResult)
+    return cursor ? { row: cursor.row, col: cursor.col, offset: cursor.offset } : null
+  }
+
+  public editBufferOffsetToPositionInto(buffer: Pointer, offset: number, target: LogicalCursor): LogicalCursor | null {
+    const success = this.opentui.symbols.editBufferOffsetToPosition(buffer, offset, this.logicalCursorStorage.buffer)
     if (!success) return null
-    return LogicalCursorStruct.unpack(cursorBuffer)
+    return LogicalCursorStruct.unpackInto(this.logicalCursorStorage.view, target)
   }
 
   public editBufferPositionToOffset(buffer: Pointer, row: number, col: number): number {
@@ -4746,9 +4835,13 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editorViewGetVisualCursor(view: Pointer): VisualCursor {
-    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
-    this.opentui.symbols.editorViewGetVisualCursor(view, ptr(cursorBuffer))
-    return VisualCursorStruct.unpack(cursorBuffer)
+    const cursor = this.editorViewGetVisualCursorInto(view, this.visualCursorResult)
+    return { ...cursor }
+  }
+
+  public editorViewGetVisualCursorInto(view: Pointer, target: VisualCursor): VisualCursor {
+    this.opentui.symbols.editorViewGetVisualCursor(view, this.visualCursorStorage.buffer)
+    return VisualCursorStruct.unpackInto(this.visualCursorStorage.view, target)
   }
 
   public editorViewMoveUpVisual(view: Pointer): void {
@@ -4768,33 +4861,53 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editorViewGetNextWordBoundary(view: Pointer): VisualCursor {
-    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
-    this.opentui.symbols.editorViewGetNextWordBoundary(view, ptr(cursorBuffer))
-    return VisualCursorStruct.unpack(cursorBuffer)
+    const cursor = this.editorViewGetNextWordBoundaryInto(view, this.visualCursorResult)
+    return { ...cursor }
+  }
+
+  public editorViewGetNextWordBoundaryInto(view: Pointer, target: VisualCursor): VisualCursor {
+    this.opentui.symbols.editorViewGetNextWordBoundary(view, this.visualCursorStorage.buffer)
+    return VisualCursorStruct.unpackInto(this.visualCursorStorage.view, target)
   }
 
   public editorViewGetPrevWordBoundary(view: Pointer): VisualCursor {
-    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
-    this.opentui.symbols.editorViewGetPrevWordBoundary(view, ptr(cursorBuffer))
-    return VisualCursorStruct.unpack(cursorBuffer)
+    const cursor = this.editorViewGetPrevWordBoundaryInto(view, this.visualCursorResult)
+    return { ...cursor }
+  }
+
+  public editorViewGetPrevWordBoundaryInto(view: Pointer, target: VisualCursor): VisualCursor {
+    this.opentui.symbols.editorViewGetPrevWordBoundary(view, this.visualCursorStorage.buffer)
+    return VisualCursorStruct.unpackInto(this.visualCursorStorage.view, target)
   }
 
   public editorViewGetEOL(view: Pointer): VisualCursor {
-    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
-    this.opentui.symbols.editorViewGetEOL(view, ptr(cursorBuffer))
-    return VisualCursorStruct.unpack(cursorBuffer)
+    const cursor = this.editorViewGetEOLInto(view, this.visualCursorResult)
+    return { ...cursor }
+  }
+
+  public editorViewGetEOLInto(view: Pointer, target: VisualCursor): VisualCursor {
+    this.opentui.symbols.editorViewGetEOL(view, this.visualCursorStorage.buffer)
+    return VisualCursorStruct.unpackInto(this.visualCursorStorage.view, target)
   }
 
   public editorViewGetVisualSOL(view: Pointer): VisualCursor {
-    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
-    this.opentui.symbols.editorViewGetVisualSOL(view, ptr(cursorBuffer))
-    return VisualCursorStruct.unpack(cursorBuffer)
+    const cursor = this.editorViewGetVisualSOLInto(view, this.visualCursorResult)
+    return { ...cursor }
+  }
+
+  public editorViewGetVisualSOLInto(view: Pointer, target: VisualCursor): VisualCursor {
+    this.opentui.symbols.editorViewGetVisualSOL(view, this.visualCursorStorage.buffer)
+    return VisualCursorStruct.unpackInto(this.visualCursorStorage.view, target)
   }
 
   public editorViewGetVisualEOL(view: Pointer): VisualCursor {
-    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
-    this.opentui.symbols.editorViewGetVisualEOL(view, ptr(cursorBuffer))
-    return VisualCursorStruct.unpack(cursorBuffer)
+    const cursor = this.editorViewGetVisualEOLInto(view, this.visualCursorResult)
+    return { ...cursor }
+  }
+
+  public editorViewGetVisualEOLInto(view: Pointer, target: VisualCursor): VisualCursor {
+    this.opentui.symbols.editorViewGetVisualEOL(view, this.visualCursorStorage.buffer)
+    return VisualCursorStruct.unpackInto(this.visualCursorStorage.view, target)
   }
 
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {
@@ -5025,10 +5138,18 @@ class FFIRenderLib implements RenderLib {
   }
 
   public audioGetStreamStats(engine: AudioEngineHandle, streamId: number): NativeAudioStreamStats | null {
-    const outBuffer = new ArrayBuffer(AudioStreamStatsStruct.size)
-    const status = this.opentui.symbols.audioGetStreamStats(engine, streamId, outBuffer)
+    const stats = this.audioGetStreamStatsInto(engine, streamId, this.audioStreamStatsResult)
+    return stats ? { ...stats } : null
+  }
+
+  public audioGetStreamStatsInto(
+    engine: AudioEngineHandle,
+    streamId: number,
+    target: NativeAudioStreamStats,
+  ): NativeAudioStreamStats | null {
+    const status = this.opentui.symbols.audioGetStreamStats(engine, streamId, this.audioStreamStatsStorage.buffer)
     if (status !== 0) return null
-    return AudioStreamStatsStruct.unpack(outBuffer) as NativeAudioStreamStats
+    return AudioStreamStatsStruct.unpackInto(this.audioStreamStatsStorage.view, target) as NativeAudioStreamStats
   }
 
   public audioCloseStream(
@@ -5036,10 +5157,13 @@ class FFIRenderLib implements RenderLib {
     streamId: number,
     reason: NativeAudioStreamCloseReason,
   ): { status: number; stats: NativeAudioStreamStats | null } {
-    const outBuffer = new ArrayBuffer(AudioStreamStatsStruct.size)
-    const status = this.opentui.symbols.audioCloseStream(engine, streamId, reason, outBuffer)
+    const status = this.opentui.symbols.audioCloseStream(engine, streamId, reason, this.audioStreamStatsStorage.buffer)
     if (status !== 0) return { status, stats: null }
-    return { status, stats: AudioStreamStatsStruct.unpack(outBuffer) as NativeAudioStreamStats }
+    const stats = AudioStreamStatsStruct.unpackInto(
+      this.audioStreamStatsStorage.view,
+      this.audioStreamStatsResult,
+    ) as NativeAudioStreamStats
+    return { status, stats: { ...stats } }
   }
 
   public audioLoad(engine: Pointer, data: Uint8Array): { status: number; soundId: number | null } {

@@ -565,6 +565,20 @@ describe("TextBufferView", () => {
   })
 
   describe("measureForDimensions", () => {
+    it("preserves public result identity and supports caller-owned targets", () => {
+      buffer.setStyledText(stringToStyledText("abcdefghij"))
+      view.setWrapMode("char")
+      const first = view.measureForDimensions(10, 10)!
+      const second = view.measureForDimensions(5, 10)!
+      const target = { lineCount: -1, widthColsMax: -1 }
+
+      expect(view.measureForDimensionsInto(5, 10, target)).toBe(target)
+      expect(first).not.toBe(second)
+      expect(first).toEqual({ lineCount: 1, widthColsMax: 10 })
+      expect(second).toEqual({ lineCount: 2, widthColsMax: 5 })
+      expect(target).toEqual(second)
+    })
+
     it("should measure without modifying cache", () => {
       const styledText = stringToStyledText("ABCDEFGHIJKLMNOPQRST")
       buffer.setStyledText(styledText)

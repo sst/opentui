@@ -1,5 +1,5 @@
 import type { EditBuffer } from "../edit-buffer.js"
-import type { EditorView } from "../editor-view.js"
+import type { EditorView, VisualCursor } from "../editor-view.js"
 import { stringWidth } from "../platform/runtime.js"
 import { ExtmarksHistory, type ExtmarksSnapshot } from "./extmarks-history.js"
 
@@ -42,6 +42,13 @@ export class ExtmarksController {
   private typeNameToId = new Map<string, number>()
   private typeIdToName = new Map<number, string>()
   private nextTypeId = 1
+  private readonly visualCursorTarget: VisualCursor = {
+    visualRow: 0,
+    visualCol: 0,
+    logicalRow: 0,
+    logicalCol: 0,
+    offset: 0,
+  }
 
   private originalMoveCursorLeft: typeof EditBuffer.prototype.moveCursorLeft
   private originalMoveCursorRight: typeof EditBuffer.prototype.moveCursorRight
@@ -100,7 +107,7 @@ export class ExtmarksController {
         return
       }
 
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
       const hasSelection = this.editorView.hasSelection()
 
       if (hasSelection) {
@@ -129,7 +136,7 @@ export class ExtmarksController {
         return
       }
 
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
       const hasSelection = this.editorView.hasSelection()
 
       if (hasSelection) {
@@ -167,9 +174,9 @@ export class ExtmarksController {
         return
       }
 
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
       this.originalMoveUpVisual()
-      const newOffset = this.editorView.getVisualCursor().offset
+      const newOffset = this.getVisualCursorOffset()
 
       const virtualExtmark = this.findVirtualExtmarkContaining(newOffset)
       if (virtualExtmark) {
@@ -197,9 +204,9 @@ export class ExtmarksController {
         return
       }
 
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
       this.originalMoveDownVisual()
-      const newOffset = this.editorView.getVisualCursor().offset
+      const newOffset = this.getVisualCursorOffset()
 
       const virtualExtmark = this.findVirtualExtmarkContaining(newOffset)
       if (virtualExtmark) {
@@ -222,7 +229,7 @@ export class ExtmarksController {
         return
       }
 
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
       const hasSelection = this.editorView.hasSelection()
 
       if (hasSelection) {
@@ -260,7 +267,7 @@ export class ExtmarksController {
 
       this.saveSnapshot()
 
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
       const hadSelection = this.editorView.hasSelection()
 
       if (currentOffset === 0) {
@@ -293,7 +300,7 @@ export class ExtmarksController {
       }
 
       this.originalDeleteCharBackward()
-      const deleteOffset = this.editorView.getVisualCursor().offset
+      const deleteOffset = this.getVisualCursorOffset()
       const deleteLength = currentOffset - deleteOffset
       if (deleteLength > 0) {
         this.adjustExtmarksAfterDeletion(deleteOffset, deleteLength)
@@ -308,7 +315,7 @@ export class ExtmarksController {
 
       this.saveSnapshot()
 
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
       const hadSelection = this.editorView.hasSelection()
 
       if (hadSelection) {
@@ -370,7 +377,7 @@ export class ExtmarksController {
       this.saveSnapshot()
 
       const text = this.editBuffer.getText()
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
 
       let lineStart = 0
       for (let i = currentOffset - 1; i >= 0; i--) {
@@ -404,9 +411,9 @@ export class ExtmarksController {
 
       this.saveSnapshot()
 
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
       this.originalInsertText(text)
-      const insertLength = this.editorView.getVisualCursor().offset - currentOffset
+      const insertLength = this.getVisualCursorOffset() - currentOffset
       if (insertLength > 0) {
         this.adjustExtmarksAfterInsertion(currentOffset, insertLength)
       }
@@ -420,9 +427,9 @@ export class ExtmarksController {
 
       this.saveSnapshot()
 
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
       this.originalInsertChar(char)
-      const insertLength = this.editorView.getVisualCursor().offset - currentOffset
+      const insertLength = this.getVisualCursorOffset() - currentOffset
       if (insertLength > 0) {
         this.adjustExtmarksAfterInsertion(currentOffset, insertLength)
       }
@@ -469,7 +476,7 @@ export class ExtmarksController {
 
       this.saveSnapshot()
 
-      const currentOffset = this.editorView.getVisualCursor().offset
+      const currentOffset = this.getVisualCursorOffset()
       this.originalNewLine()
       this.adjustExtmarksAfterInsertion(currentOffset, 1)
     }
@@ -583,9 +590,13 @@ export class ExtmarksController {
 
   private getNextCursorOffset(currentOffset: number): number {
     this.originalMoveCursorRight()
-    const nextOffset = this.editorView.getVisualCursor().offset
+    const nextOffset = this.getVisualCursorOffset()
     this.originalSetCursorByOffset(currentOffset)
     return nextOffset
+  }
+
+  private getVisualCursorOffset(): number {
+    return this.editorView.getVisualCursorInto(this.visualCursorTarget).offset
   }
 
   private updateHighlights(): void {

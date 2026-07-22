@@ -9,6 +9,7 @@ import { SyntaxStyle } from "../syntax-style.js"
 import { type TextChunk, TextBuffer } from "../text-buffer.js"
 import { TextBufferView } from "../text-buffer-view.js"
 import type { RenderContext } from "../types.js"
+import type { MeasureResult } from "../zig.js"
 import { allocateProportionalColumnWidths } from "./text-table-width.js"
 
 // Large sentinel height for text measurement. The Zig measure path currently
@@ -131,6 +132,7 @@ export class TextTableRenderable extends Renderable {
 
   private _cachedMeasureLayout: TextTableLayout | null = null
   private _cachedMeasureWidth: number | undefined = undefined
+  private readonly _measureTarget: MeasureResult = { lineCount: 0, widthColsMax: 0 }
 
   private readonly _defaultOptions = {
     content: [] as TextTableContent,
@@ -701,7 +703,7 @@ export class TextTableRenderable extends Renderable {
         const cell = this._cells[rowIdx]?.[colIdx]
         if (!cell) continue
 
-        const measure = cell.textBufferView.measureForDimensions(0, MEASURE_HEIGHT)
+        const measure = cell.textBufferView.measureForDimensionsInto(0, MEASURE_HEIGHT, this._measureTarget)
         const measuredWidth = Math.max(1, measure?.widthColsMax ?? 0) + horizontalPadding
         intrinsicWidths[colIdx] = Math.max(intrinsicWidths[colIdx], measuredWidth)
       }
@@ -882,7 +884,7 @@ export class TextTableRenderable extends Renderable {
         if (!cell) continue
 
         const width = Math.max(1, (columnWidths[colIdx] ?? 1) - horizontalPadding)
-        const measure = cell.textBufferView.measureForDimensions(width, MEASURE_HEIGHT)
+        const measure = cell.textBufferView.measureForDimensionsInto(width, MEASURE_HEIGHT, this._measureTarget)
         const lineCount = Math.max(1, measure?.lineCount ?? 1)
         rowHeights[rowIdx] = Math.max(rowHeights[rowIdx], lineCount + verticalPadding)
       }

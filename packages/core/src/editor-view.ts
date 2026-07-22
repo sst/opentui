@@ -190,6 +190,11 @@ export class EditorView {
     return this.lib.editorViewGetVisualCursor(this.viewPtr)
   }
 
+  public getVisualCursorInto(target: VisualCursor): VisualCursor {
+    this.guard()
+    return this.lib.editorViewGetVisualCursorInto(this.viewPtr, target)
+  }
+
   public moveUpVisual(): void {
     this.guard()
     this.lib.editorViewMoveUpVisual(this.viewPtr)

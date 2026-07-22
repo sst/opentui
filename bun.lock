@@ -13,7 +13,7 @@
       "name": "@opentui/core",
       "version": "0.4.5",
       "dependencies": {
-        "bun-ffi-structs": "0.3.0",
+        "bun-ffi-structs": "0.3.1",
         "diff": "9.0.0",
         "marked": "17.0.1",
         "string-width": "7.2.0",
@@ -773,7 +773,7 @@
 
     "buildcheck": ["buildcheck@0.0.7", "", {}, "sha512-lHblz4ahamxpTmnsk+MNTRWsjYKv965MwOrSJyeD588rR3Jcu7swE+0wN5F+PbL5cjgu/9ObkhfzEPuofEMwLA=="],
 
-    "bun-ffi-structs": ["bun-ffi-structs@0.3.0", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-wyUMPvIXCEkymeRApw42wu/nHJxv8p3eaFy96MBWfF7wSpGTKeKFAQ9f58y8WnLGQ7eZYR3fLu71/H5qBC3+FQ=="],
+    "bun-ffi-structs": ["bun-ffi-structs@0.3.1", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-3gM7PpVWLyrwxWjcilSiGuhWanhZivvo6l0u573NziPH6f/gwk6McbaYgn7oJWov6pKGRTDbrg94W5DcJsKTtQ=="],
 
     "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 
