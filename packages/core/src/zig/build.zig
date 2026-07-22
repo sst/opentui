@@ -160,6 +160,13 @@ fn addMiniaudioShim(
     });
 }
 
+fn appendCFlags(b: *std.Build, base: []const []const u8, extra: []const []const u8) []const []const u8 {
+    const flags = b.allocator.alloc([]const u8, base.len + extra.len) catch @panic("OOM");
+    @memcpy(flags[0..base.len], base);
+    @memcpy(flags[base.len..], extra);
+    return flags;
+}
+
 fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, macos_sdk_path: ?[]const u8) void {
     const flags: []const []const u8 = switch (target.result.os.tag) {
         .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-isysroot", macos_sdk_path.? },
@@ -187,7 +194,15 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
         .macos => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern", "-isysroot", macos_sdk_path.? },
         else => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern" },
     };
+    const webp_dispatch_flags = if (target.result.cpu.arch == .x86_64)
+        appendCFlags(b, webp_flags, &.{ "-DWEBP_HAVE_SSE2", "-DWEBP_HAVE_SSE41", "-DWEBP_HAVE_AVX2" })
+    else
+        webp_flags;
     artifact.addIncludePath(b.path("vendor/libwebp"));
+    artifact.addCSourceFile(.{
+        .file = b.path("image-webp-config.c"),
+        .flags = webp_dispatch_flags,
+    });
     artifact.addCSourceFiles(.{
         .root = b.path("vendor/libwebp"),
         .files = &.{
@@ -221,41 +236,48 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
             "src/utils/thread_utils.c",
             "src/utils/utils.c",
         },
-        .flags = webp_flags,
+        .flags = webp_dispatch_flags,
     });
 
-    const arch_files: []const []const u8 = switch (target.result.cpu.arch) {
-        .x86_64 => &.{
-            "src/dsp/alpha_processing_sse2.c",
-            "src/dsp/alpha_processing_sse41.c",
-            "src/dsp/dec_sse2.c",
-            "src/dsp/dec_sse41.c",
-            "src/dsp/filters_sse2.c",
-            "src/dsp/lossless_avx2.c",
-            "src/dsp/lossless_sse2.c",
-            "src/dsp/lossless_sse41.c",
-            "src/dsp/rescaler_sse2.c",
-            "src/dsp/upsampling_sse2.c",
-            "src/dsp/upsampling_sse41.c",
-            "src/dsp/yuv_sse2.c",
-            "src/dsp/yuv_sse41.c",
+    switch (target.result.cpu.arch) {
+        .x86_64 => {
+            artifact.addCSourceFiles(.{
+                .root = b.path("vendor/libwebp"),
+                .files = &.{
+                    "src/dsp/alpha_processing_sse2.c",
+                    "src/dsp/dec_sse2.c",
+                    "src/dsp/filters_sse2.c",
+                    "src/dsp/lossless_sse2.c",
+                    "src/dsp/rescaler_sse2.c",
+                    "src/dsp/upsampling_sse2.c",
+                    "src/dsp/yuv_sse2.c",
+                },
+                .flags = webp_flags,
+            });
+            artifact.addCSourceFile(.{
+                .file = b.path("image-webp-sse41.c"),
+                .flags = webp_flags,
+            });
+            artifact.addCSourceFile(.{
+                .file = b.path("image-webp-avx2.c"),
+                .flags = webp_flags,
+            });
         },
-        .aarch64 => &.{
-            "src/dsp/alpha_processing_neon.c",
-            "src/dsp/dec_neon.c",
-            "src/dsp/filters_neon.c",
-            "src/dsp/lossless_neon.c",
-            "src/dsp/rescaler_neon.c",
-            "src/dsp/upsampling_neon.c",
-            "src/dsp/yuv_neon.c",
-        },
-        else => &.{},
-    };
-    artifact.addCSourceFiles(.{
-        .root = b.path("vendor/libwebp"),
-        .files = arch_files,
-        .flags = webp_flags,
-    });
+        .aarch64 => artifact.addCSourceFiles(.{
+            .root = b.path("vendor/libwebp"),
+            .files = &.{
+                "src/dsp/alpha_processing_neon.c",
+                "src/dsp/dec_neon.c",
+                "src/dsp/filters_neon.c",
+                "src/dsp/lossless_neon.c",
+                "src/dsp/rescaler_neon.c",
+                "src/dsp/upsampling_neon.c",
+                "src/dsp/yuv_neon.c",
+            },
+            .flags = webp_flags,
+        }),
+        else => {},
+    }
 }
 
 fn addMacOSSDKSearchPaths(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
