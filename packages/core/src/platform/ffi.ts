@@ -199,6 +199,7 @@ const isBun =
   typeof process.versions === "object" &&
   process.versions !== null &&
   typeof process.versions.bun === "string"
+export const usesBunFFI = isBun
 
 const requireModule = createRequire(import.meta.url)
 const backend = loadBackend()
@@ -236,9 +237,7 @@ export function ffiBool(value: boolean): 0 | 1 {
   return value ? 1 : 0
 }
 
-export function trimFFIOutputBytes(buffer: Uint8Array, length: number): Uint8Array {
-  // Bun optimizes slice better; Node can resize this fresh, synchronously borrowed buffer without another copy.
-  if (isBun) return buffer.slice(0, length)
+export function trimNodeFFIOutputBytes(buffer: Uint8Array, length: number): Uint8Array {
   if (length === buffer.byteLength) return buffer
   return new Uint8Array((buffer.buffer as ArrayBuffer).transferToFixedLength(length))
 }

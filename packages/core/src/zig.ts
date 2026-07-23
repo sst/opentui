@@ -1,12 +1,13 @@
 import {
   dlopen,
   ffiBool,
-  trimFFIOutputBytes,
+  trimNodeFFIOutputBytes,
   toArrayBuffer,
   ptr,
   toPointer,
   type FFICallbackInstance,
   type Pointer,
+  usesBunFFI,
 } from "./platform/ffi.js"
 import { writeFile } from "./platform/runtime.js"
 import { existsSync, writeFileSync } from "fs"
@@ -4024,7 +4025,7 @@ class FFIRenderLib implements RenderLib {
       return null
     }
 
-    return trimFFIOutputBytes(outBuffer, len)
+    return usesBunFFI ? outBuffer.slice(0, len) : trimNodeFFIOutputBytes(outBuffer, len)
   }
 
   // TextBufferView methods
@@ -4669,7 +4670,7 @@ class FFIRenderLib implements RenderLib {
     )
     const len = actualLen
     if (len === 0) return null
-    return trimFFIOutputBytes(outBuffer, len)
+    return usesBunFFI ? outBuffer.slice(0, len) : trimNodeFFIOutputBytes(outBuffer, len)
   }
 
   // EditorView selection and editing implementations

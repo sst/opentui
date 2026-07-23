@@ -20,12 +20,28 @@ import {
   createBunBackend,
   createNodeBackend,
   ffiBool,
+  trimNodeFFIOutputBytes,
   toPointer,
   type FFICallbackInstance,
   type Pointer,
 } from "./ffi.js"
 
 const IS_BUN = typeof process.versions?.bun === "string"
+
+test("trims fresh Node FFI output buffers without copying", () => {
+  const partial = new Uint8Array([1, 2, 3, 4])
+  const partialBuffer = partial.buffer
+  const trimmed = trimNodeFFIOutputBytes(partial, 2)
+
+  expect([...trimmed]).toEqual([1, 2])
+  expect(trimmed.byteLength).toBe(2)
+  expect(trimmed.buffer.byteLength).toBe(2)
+  expect(partialBuffer.byteLength).toBe(0)
+
+  const full = new Uint8Array([5, 6])
+  expect(trimNodeFFIOutputBytes(full, full.byteLength)).toBe(full)
+  expect(full.buffer.byteLength).toBe(2)
+})
 
 function createMockBackend() {
   const events: string[] = []
