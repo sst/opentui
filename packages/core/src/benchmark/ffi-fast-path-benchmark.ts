@@ -216,6 +216,7 @@ function runChild(runtime: RuntimeName, scenario: string, round: number): Proces
   const wallMs = performance.now() - start
 
   if (child.error) throw child.error
+  // Signal-terminated children can have no status or output, so retain all process metadata.
   if (child.status !== 0) {
     throw new Error(
       `${runtime} ${scenario} failed in round ${round + 1}/${runs} (status=${child.status ?? "null"}, signal=${child.signal ?? "none"}): ${child.stderr || child.stdout}`,
