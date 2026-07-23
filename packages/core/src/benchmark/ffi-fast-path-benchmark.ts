@@ -216,7 +216,11 @@ function runChild(runtime: RuntimeName, scenario: string, round: number): Proces
   const wallMs = performance.now() - start
 
   if (child.error) throw child.error
-  if (child.status !== 0) throw new Error(`${runtime} ${scenario} failed: ${child.stderr || child.stdout}`)
+  if (child.status !== 0) {
+    throw new Error(
+      `${runtime} ${scenario} failed (status=${child.status ?? "null"}, signal=${child.signal ?? "none"}): ${child.stderr || child.stdout}`,
+    )
+  }
 
   const payload = JSON.parse(readFileSync(resultPath, "utf8")) as ChildPayload
   rmSync(resultPath, { force: true })
