@@ -498,19 +498,44 @@ function createFrameBufferScenario(region: boolean): ScenarioDefinition {
 }
 
 function createDrawTextScenario(variant: "short" | "long" | "unicode", text: string): ScenarioDefinition {
-  return createSingleBufferScenario(
-    `buffer_draw_text_${variant}`,
-    "bufferDrawText",
-    `Draw ${variant} text through the encoding and FFI wrapper`,
-    Math.max(2, [...text].length + 2),
-    1,
-    (lib, buffer, operations) => {
-      for (let index = 0; index < operations; index++) {
-        lib.bufferDrawText(buffer.ptr, text, 0, 0, COLORS.fg, COLORS.bg, index & 1)
+  const codePoints = [...text].map((char) => char.codePointAt(0)!)
+  return {
+    name: `buffer_draw_text_${variant}`,
+    operation: "bufferDrawText",
+    description: `Draw ${variant} text through the encoding and FFI wrapper`,
+    setup: ({ lib }) => {
+      const buffer = lib.createOptimizedBuffer(
+        Math.max(2, codePoints.length + 2),
+        1,
+        "unicode",
+        false,
+        `ffi-bench-text-${variant}`,
+      )
+      return {
+        run: (operations) => {
+          for (let index = 0; index < operations; index++) {
+            lib.bufferDrawText(buffer.ptr, text, 0, 0, COLORS.fg, COLORS.bg, index & 1)
+          }
+          return operations
+        },
+        observe: () => {
+          lib.bufferDrawText(buffer.ptr, text, 0, 0, COLORS.fg, COLORS.bg, 0)
+          if (variant !== "unicode") {
+            const chars = buffer.buffers.char
+            for (let index = 0; index < codePoints.length; index++) {
+              if (chars[index] !== codePoints[index]) {
+                throw new Error(
+                  `text verification failed at ${index}: expected ${codePoints[index]}, got ${chars[index]}`,
+                )
+              }
+            }
+          }
+          return bufferChecksum(buffer)
+        },
+        teardown: () => buffer.destroy(),
       }
-      return operations
     },
-  )
+  }
 }
 
 function createDrawCharScenario(packed: boolean): ScenarioDefinition {
