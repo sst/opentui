@@ -20,6 +20,11 @@ interface ChildPayload {
     operations: number
     nsPerOp: number
     checksum: number
+    cpuUserMicros: number
+    cpuSystemMicros: number
+    voluntaryContextSwitches: number
+    involuntaryContextSwitches: number
+    calibration: { calibrationConverged: boolean; withinTargetWindow: boolean }
   }
 }
 
@@ -81,8 +86,6 @@ if (selectedNames.length === 0) throw new Error("no benchmark scenarios selected
 const nodeVersion = readNodeVersion()
 if (nodeVersion !== "v26.4.0") throw new Error(`Node v26.4.0 is required, got ${nodeVersion}`)
 
-buildNodeBenchmark()
-
 const raw = new Map<string, ProcessRoundSample[]>()
 const scenarioMetadata = new Map<string, ChildPayload["scenario"]>()
 for (const name of selectedNames) {
@@ -91,6 +94,7 @@ for (const name of selectedNames) {
 }
 
 try {
+  buildNodeBenchmark()
   for (let round = 0; round < runs; round++) {
     const scenarioOrder = round % 2 === 0 ? selectedNames : [...selectedNames].reverse()
     const runtimeOrder: RuntimeName[] = round % 2 === 0 ? ["bun", "node"] : ["node", "bun"]
@@ -215,30 +219,50 @@ function runChild(runtime: RuntimeName, scenario: string, round: number): Proces
   })
   const wallMs = performance.now() - start
 
-  if (child.error) throw child.error
-  // Signal-terminated children can have no status or output, so retain all process metadata.
-  if (child.status !== 0) {
-    throw new Error(
-      `${runtime} ${scenario} failed in round ${round + 1}/${runs} (status=${child.status ?? "null"}, signal=${child.signal ?? "none"}): ${child.stderr || child.stdout}`,
-    )
-  }
+  try {
+    if (child.error) throw child.error
+    // Signal-terminated children can have no status or output, so retain all process metadata.
+    if (child.status !== 0) {
+      throw new Error(
+        `${runtime} ${scenario} failed in round ${round + 1}/${runs} (status=${child.status ?? "null"}, signal=${child.signal ?? "none"}): ${child.stderr || child.stdout}`,
+      )
+    }
 
-  const payload = JSON.parse(readFileSync(resultPath, "utf8")) as ChildPayload
-  rmSync(resultPath, { force: true })
-  if (payload.schemaVersion !== 1 || payload.scenario.name !== scenario) {
-    throw new Error(`${runtime} returned invalid metadata for ${scenario}`)
+    const payload = JSON.parse(readFileSync(resultPath, "utf8")) as ChildPayload
+    if (payload.schemaVersion !== 1 || payload.scenario.name !== scenario) {
+      throw new Error(`${runtime} returned invalid metadata for ${scenario}`)
+    }
+    if (payload.sample.runtime.name !== runtime)
+      throw new Error(`expected ${runtime}, got ${payload.sample.runtime.name}`)
+    if (payload.sample.operations < 1 || payload.sample.elapsedNs <= 0 || payload.sample.checksum === 0) {
+      throw new Error(`${runtime} returned an invalid sample for ${scenario}`)
+    }
+    if (!hasValidDiagnostics(payload.sample)) {
+      throw new Error(`${runtime} returned invalid calibration diagnostics for ${scenario}`)
+    }
+    const existingMetadata = scenarioMetadata.get(scenario)
+    if (existingMetadata && existingMetadata.operation !== payload.scenario.operation) {
+      throw new Error(`inconsistent metadata for ${scenario}`)
+    }
+    scenarioMetadata.set(scenario, payload.scenario)
+    return { ...payload.sample, round, wallMs }
+  } finally {
+    rmSync(resultPath, { force: true })
   }
-  if (payload.sample.runtime.name !== runtime)
-    throw new Error(`expected ${runtime}, got ${payload.sample.runtime.name}`)
-  if (payload.sample.operations < 1 || payload.sample.elapsedNs <= 0 || payload.sample.checksum === 0) {
-    throw new Error(`${runtime} returned an invalid sample for ${scenario}`)
-  }
-  const existingMetadata = scenarioMetadata.get(scenario)
-  if (existingMetadata && existingMetadata.operation !== payload.scenario.operation) {
-    throw new Error(`inconsistent metadata for ${scenario}`)
-  }
-  scenarioMetadata.set(scenario, payload.scenario)
-  return { ...payload.sample, round, wallMs }
+}
+
+function hasValidDiagnostics(sample: ChildPayload["sample"]): boolean {
+  return (
+    sample.calibration?.calibrationConverged === true &&
+    Number.isFinite(sample.cpuUserMicros) &&
+    sample.cpuUserMicros >= 0 &&
+    Number.isFinite(sample.cpuSystemMicros) &&
+    sample.cpuSystemMicros >= 0 &&
+    Number.isFinite(sample.voluntaryContextSwitches) &&
+    sample.voluntaryContextSwitches >= 0 &&
+    Number.isFinite(sample.involuntaryContextSwitches) &&
+    sample.involuntaryContextSwitches >= 0
+  )
 }
 
 function summarize(samples: ProcessRoundSample[]) {

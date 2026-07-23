@@ -60,7 +60,7 @@ const payload = {
   bootstrap: { samples: BOOTSTRAP_SAMPLES, confidence: 0.95, samplingUnit: "independent process round" },
   acceptance: {
     minimumProcessRoundsPerRevision: MINIMUM_PROCESS_ROUNDS,
-    node: "at least 9 rounds, median improvement >= 10%, and CI upper bound < 0%",
+    node: "at least 9 rounds, median improvement >= 10%, and CI upper bound <= -10%",
     bun: "at least 9 rounds, median regression <= 3%, and CI upper bound <= 3%",
     passed: results.every((result) => result.node.accepted && result.bun.accepted),
   },
@@ -97,7 +97,7 @@ function compareRuntime(before: ScenarioResult, after: ScenarioResult, runtime: 
     baselineValues.length >= MINIMUM_PROCESS_ROUNDS && candidateValues.length >= MINIMUM_PROCESS_ROUNDS
   const accepted =
     enoughRounds &&
-    (runtime === "node" ? medianChange <= -0.1 && ci95.upper < 0 : medianChange <= 0.03 && ci95.upper <= 0.03)
+    (runtime === "node" ? medianChange <= -0.1 && ci95.upper <= -0.1 : medianChange <= 0.03 && ci95.upper <= 0.03)
   return {
     baselineMedianNsPerOp,
     candidateMedianNsPerOp,

@@ -13,6 +13,7 @@ import { TextBuffer } from "../text-buffer.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { SpanInfoStruct } from "../zig-structs.js"
 import { resolveRenderLib, NativeAudioStreamCloseReason, NativeAudioStreamFormat, type RenderLib } from "../zig.js"
+import { createCalibrationPlan, type CalibrationPlan } from "./ffi-fast-path-calibration.js"
 
 type RuntimeName = "bun" | "node"
 
@@ -38,6 +39,23 @@ interface TimedRun {
   elapsedNs: number
   operations: number
   signal: number
+  startedAtEpochMs: number
+  endedAtEpochMs: number
+  cpuUserMicros: number
+  cpuSystemMicros: number
+  voluntaryContextSwitches: number
+  involuntaryContextSwitches: number
+}
+
+interface CalibratedRun {
+  result: TimedRun
+  diagnostics: {
+    warmupBatches: TimedRun[]
+    measurementBatches: TimedRun[]
+    selectedAttempt: number
+    calibrationConverged: boolean
+    withinTargetWindow: boolean
+  }
 }
 
 const COLORS = {
@@ -88,7 +106,14 @@ let runtime: ScenarioRuntime | undefined
 
 try {
   runtime = scenario.setup(context)
-  const result = runCalibrated(runtime, targetMs, warmupMs)
+  const plan = createCalibrationPlan((operations) => timeRun(runtime!, operations), targetMs, warmupMs)
+  if (process.argv.includes("--wait-for-start")) {
+    if (outputEnabled) throw new Error("--wait-for-start requires --no-output")
+    process.stdout.write("READY\n")
+    await waitForStartSignal()
+  }
+  const calibrated = runRetained(runtime, plan, targetMs)
+  const result = calibrated.result
   const observedChecksum = runtime.observe() >>> 0
   const checksum = hashNumbers(result.signal, observedChecksum, result.operations)
   const runtimeName: RuntimeName = typeof process.versions.bun === "string" ? "bun" : "node"
@@ -112,6 +137,13 @@ try {
       operations: result.operations,
       nsPerOp: result.elapsedNs / result.operations,
       checksum,
+      startedAtEpochMs: result.startedAtEpochMs,
+      endedAtEpochMs: result.endedAtEpochMs,
+      cpuUserMicros: result.cpuUserMicros,
+      cpuSystemMicros: result.cpuSystemMicros,
+      voluntaryContextSwitches: result.voluntaryContextSwitches,
+      involuntaryContextSwitches: result.involuntaryContextSwitches,
+      calibration: calibrated.diagnostics,
     },
   }
 
@@ -892,41 +924,64 @@ function createSingleBufferScenario(
   }
 }
 
-function runCalibrated(runtime: ScenarioRuntime, targetMs: number, warmupMs: number): TimedRun {
+function runRetained(runtime: ScenarioRuntime, plan: CalibrationPlan<TimedRun>, targetMs: number): CalibratedRun {
   const targetNs = targetMs * 1_000_000
-  const warmupNs = warmupMs * 1_000_000
-  let batchOperations = 64
-  let warmedNs = 0
-  let lastElapsedNs = 1
-
-  while (warmedNs < warmupNs) {
-    const warmup = timeRun(runtime, batchOperations)
-    warmedNs += warmup.elapsedNs
-    lastElapsedNs = Math.max(warmup.elapsedNs, 1)
-    const scale = Math.max(0.25, Math.min(64, 5_000_000 / lastElapsedNs))
-    batchOperations = clampOperations(Math.round(batchOperations * scale))
+  const result = timeRun(runtime, plan.operations)
+  const withinTargetWindow = result.elapsedNs >= targetNs * 0.9 && result.elapsedNs <= targetNs * 1.1
+  return {
+    result,
+    diagnostics: {
+      ...plan.diagnostics,
+      withinTargetWindow,
+    },
   }
-
-  let operations = clampOperations(Math.round((batchOperations * targetNs) / lastElapsedNs))
-  let result = timeRun(runtime, operations)
-  for (let attempt = 0; attempt < 4; attempt++) {
-    if (result.elapsedNs >= targetNs * 0.8 && result.elapsedNs <= targetNs * 1.5) return result
-    const scale = Math.max(0.125, Math.min(16, targetNs / Math.max(result.elapsedNs, 1)))
-    operations = clampOperations(Math.round(operations * scale))
-    result = timeRun(runtime, operations)
-  }
-  return result
 }
 
 function timeRun(runtime: ScenarioRuntime, operations: number): TimedRun {
+  const cpuBefore = process.cpuUsage()
+  const resourceBefore = process.resourceUsage()
+  const startedAtEpochMs = performance.timeOrigin + performance.now()
   const start = process.hrtime.bigint()
   const signal = runtime.run(operations)
   const elapsedNs = Number(process.hrtime.bigint() - start)
-  return { elapsedNs, operations, signal }
+  const endedAtEpochMs = performance.timeOrigin + performance.now()
+  const cpu = process.cpuUsage(cpuBefore)
+  const resource = process.resourceUsage()
+  return {
+    elapsedNs,
+    operations,
+    signal,
+    startedAtEpochMs,
+    endedAtEpochMs,
+    cpuUserMicros: cpu.user,
+    cpuSystemMicros: cpu.system,
+    voluntaryContextSwitches: Math.max(0, resource.voluntaryContextSwitches - resourceBefore.voluntaryContextSwitches),
+    involuntaryContextSwitches: Math.max(
+      0,
+      resource.involuntaryContextSwitches - resourceBefore.involuntaryContextSwitches,
+    ),
+  }
 }
 
-function clampOperations(value: number): number {
-  return Math.max(1, Math.min(50_000_000, value))
+async function waitForStartSignal(): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => finish(new Error("timed out waiting for paired benchmark start signal")), 120_000)
+    const onData = () => finish()
+    const onEnd = () => finish(new Error("paired benchmark input closed before start signal"))
+    const onError = (error: Error) => finish(error)
+    const finish = (error?: Error) => {
+      clearTimeout(timeout)
+      process.stdin.off("data", onData)
+      process.stdin.off("end", onEnd)
+      process.stdin.off("error", onError)
+      if (error) reject(error)
+      else resolve()
+    }
+    process.stdin.once("data", onData)
+    process.stdin.once("end", onEnd)
+    process.stdin.once("error", onError)
+    process.stdin.resume()
+  })
 }
 
 function bufferChecksum(buffer: OptimizedBuffer): number {

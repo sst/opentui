@@ -32,6 +32,7 @@
     "bench:render-runtimes": "bun src/benchmark/render-runtime-benchmark.ts",
     "bench:render-compare": "bun src/benchmark/render-runtime-compare.ts",
     "bench:ffi-fast-path": "bun src/benchmark/ffi-fast-path-benchmark.ts",
+    "bench:ffi-fast-path-paired": "bun src/benchmark/ffi-fast-path-paired-benchmark.ts",
     "bench:ffi-fast-path-compare": "bun src/benchmark/ffi-fast-path-compare.ts",
     "stress:ffi-fast-path": "bun src/benchmark/ffi-fast-path-stress.ts",
     "bench:text-table": "bun src/benchmark/text-table-benchmark.ts",
