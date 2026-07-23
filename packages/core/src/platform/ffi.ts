@@ -236,6 +236,13 @@ export function ffiBool(value: boolean): 0 | 1 {
   return value ? 1 : 0
 }
 
+export function trimFFIOutputBytes(buffer: Uint8Array, length: number): Uint8Array {
+  // Bun optimizes slice better; Node can resize this fresh, synchronously borrowed buffer without another copy.
+  if (isBun) return buffer.slice(0, length)
+  if (length === buffer.byteLength) return buffer
+  return new Uint8Array((buffer.buffer as ArrayBuffer).transferToFixedLength(length))
+}
+
 // Convert a bigint pointer to a number only when JavaScript can represent it
 // exactly. A rounded pointer would target the wrong address.
 function toSafeNumberPointer(pointer: bigint): number {
@@ -472,6 +479,15 @@ function wrapNodeSymbol(fn: (...args: any[]) => any, definition: FFIFunction): (
     return fn
   }
 
+  // Fixed wrappers avoid rest/slice/spread overhead on pointer-heavy signatures. One-pointer arity 7 is faster generic.
+  if (definition.args?.length === 7 && pointerArgIndexes.length >= 2) {
+    return wrapNodeSymbol7(fn, pointerArgIndexes)
+  }
+
+  if (definition.args?.length === 8) {
+    return wrapNodeSymbol8(fn, pointerArgIndexes)
+  }
+
   const pointerArgs = new Set(pointerArgIndexes)
   const normalize = (value: unknown, index: number) =>
     pointerArgs.has(index) ? toNodePointerArgumentFast(value) : value
@@ -502,6 +518,73 @@ function wrapNodeSymbol(fn: (...args: any[]) => any, definition: FFIFunction): (
     }
 
     return fn(...normalizedArgs)
+  }
+}
+
+function wrapNodeSymbol7(fn: (...args: any[]) => any, pointerArgIndexes: number[]): (...args: any[]) => any {
+  const pointer0 = pointerArgIndexes.includes(0)
+  const pointer1 = pointerArgIndexes.includes(1)
+  const pointer2 = pointerArgIndexes.includes(2)
+  const pointer3 = pointerArgIndexes.includes(3)
+  const pointer4 = pointerArgIndexes.includes(4)
+  const pointer5 = pointerArgIndexes.includes(5)
+  const pointer6 = pointerArgIndexes.includes(6)
+  const normalize = (value: unknown, pointer: boolean) => (pointer ? toNodePointerArgumentFast(value) : value)
+
+  return function (
+    arg0: unknown,
+    arg1: unknown,
+    arg2: unknown,
+    arg3: unknown,
+    arg4: unknown,
+    arg5: unknown,
+    arg6: unknown,
+  ) {
+    if (arguments.length !== 7) return Reflect.apply(fn, undefined, arguments)
+    return fn(
+      normalize(arg0, pointer0),
+      normalize(arg1, pointer1),
+      normalize(arg2, pointer2),
+      normalize(arg3, pointer3),
+      normalize(arg4, pointer4),
+      normalize(arg5, pointer5),
+      normalize(arg6, pointer6),
+    )
+  }
+}
+
+function wrapNodeSymbol8(fn: (...args: any[]) => any, pointerArgIndexes: number[]): (...args: any[]) => any {
+  const pointer0 = pointerArgIndexes.includes(0)
+  const pointer1 = pointerArgIndexes.includes(1)
+  const pointer2 = pointerArgIndexes.includes(2)
+  const pointer3 = pointerArgIndexes.includes(3)
+  const pointer4 = pointerArgIndexes.includes(4)
+  const pointer5 = pointerArgIndexes.includes(5)
+  const pointer6 = pointerArgIndexes.includes(6)
+  const pointer7 = pointerArgIndexes.includes(7)
+  const normalize = (value: unknown, pointer: boolean) => (pointer ? toNodePointerArgumentFast(value) : value)
+
+  return function (
+    arg0: unknown,
+    arg1: unknown,
+    arg2: unknown,
+    arg3: unknown,
+    arg4: unknown,
+    arg5: unknown,
+    arg6: unknown,
+    arg7: unknown,
+  ) {
+    if (arguments.length !== 8) return Reflect.apply(fn, undefined, arguments)
+    return fn(
+      normalize(arg0, pointer0),
+      normalize(arg1, pointer1),
+      normalize(arg2, pointer2),
+      normalize(arg3, pointer3),
+      normalize(arg4, pointer4),
+      normalize(arg5, pointer5),
+      normalize(arg6, pointer6),
+      normalize(arg7, pointer7),
+    )
   }
 }
 

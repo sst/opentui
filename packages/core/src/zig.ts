@@ -1,6 +1,7 @@
 import {
   dlopen,
   ffiBool,
+  trimFFIOutputBytes,
   toArrayBuffer,
   ptr,
   toPointer,
@@ -4023,7 +4024,7 @@ class FFIRenderLib implements RenderLib {
       return null
     }
 
-    return outBuffer.slice(0, len)
+    return trimFFIOutputBytes(outBuffer, len)
   }
 
   // TextBufferView methods
@@ -4668,7 +4669,7 @@ class FFIRenderLib implements RenderLib {
     )
     const len = actualLen
     if (len === 0) return null
-    return outBuffer.slice(0, len)
+    return trimFFIOutputBytes(outBuffer, len)
   }
 
   // EditorView selection and editing implementations
