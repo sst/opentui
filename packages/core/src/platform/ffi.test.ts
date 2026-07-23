@@ -410,6 +410,25 @@ describe("platform/ffi", () => {
     expect(functionCalls[0]?.args[4]).toBe(0n)
   })
 
+  test("keeps short Node pointer wrappers fixed-arity", () => {
+    const { backend, functionCalls } = createMockNodeBackend()
+    const library = backend.dlopen("mock", {
+      one: { args: [FFIType.ptr], returns: FFIType.void },
+      two: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.void },
+      three: { args: [FFIType.ptr, FFIType.u32, FFIType.ptr], returns: FFIType.void },
+      four: { args: [FFIType.ptr, FFIType.u32, FFIType.u32, FFIType.ptr], returns: FFIType.void },
+    })
+
+    expect(library.symbols.one.length).toBe(1)
+    expect(library.symbols.two.length).toBe(2)
+    expect(library.symbols.three.length).toBe(3)
+    expect(library.symbols.four.length).toBe(0)
+
+    library.symbols.two(10n as Pointer)
+    library.symbols.two(10n as Pointer, 20, 30)
+    expect(functionCalls.map((call) => call.args)).toEqual([[10n], [10n, 20, 30]])
+  })
+
   test("accepts cross-realm ArrayBuffers and views at Node pointer boundaries", () => {
     const { backend, functionCalls } = createMockNodeBackend()
     const buffer = runInNewContext("new ArrayBuffer(16)") as ArrayBuffer

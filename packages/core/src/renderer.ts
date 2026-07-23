@@ -1,3 +1,4 @@
+import { appendFileSync, writeFileSync } from "node:fs"
 import { ANSI } from "./ansi.js"
 import { Renderable, RootRenderable } from "./Renderable.js"
 import { BoxRenderable } from "./renderables/Box.js"
@@ -88,6 +89,13 @@ registerEnvVar({
   description: "Enable debug mode to capture all raw input for debugging purposes.",
   type: "boolean",
   default: false,
+})
+
+registerEnvVar({
+  name: "OTUI_STDIN_LOG",
+  description: "Write the raw stdin byte stream to this file for debugging.",
+  type: "string",
+  default: "",
 })
 
 registerEnvVar({
@@ -888,6 +896,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _debugInputs: Array<{ timestamp: string; sequence: string }> = []
   private _debugModeEnabled: boolean = env.OTUI_DEBUG
+  private readonly stdinLogPath: string = env.OTUI_STDIN_LOG
 
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
@@ -3169,6 +3178,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     if (!this.stdinParser) return
 
+    if (this.stdinLogPath) {
+      appendFileSync(this.stdinLogPath, data)
+    }
+
     try {
       this.stdinParser.push(data)
       this.drainStdinParser()
@@ -3354,6 +3367,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private setupInput(): void {
+    if (this.stdinLogPath) {
+      writeFileSync(this.stdinLogPath, Buffer.alloc(0), { mode: 0o600 })
+    }
+
     for (const handler of this.prependedInputHandlers) {
       this.addInputHandler(handler)
     }

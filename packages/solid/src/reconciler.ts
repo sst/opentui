@@ -17,7 +17,7 @@ import {
   TextRenderable,
   type TextNodeOptions,
 } from "@opentui/core"
-import { decodeHTML } from "entities"
+import { decodeHTMLStrict } from "entities"
 import { useContext } from "solid-js"
 import { createRenderer } from "./renderer/index.js"
 import { getComponentCatalogue, RendererContext, SlotRenderable } from "./elements/index.js"
@@ -138,7 +138,7 @@ function _removeNode(parent: DomNode, node: DomNode): void {
   })
 }
 
-function _createTextNode(value: string | number): TextNode {
+function _createTextNode(value: string | number, decodeEntities: boolean): TextNode {
   log("Creating text node:", value)
 
   const id = getNextId("text-node")
@@ -147,7 +147,7 @@ function _createTextNode(value: string | number): TextNode {
     value = value.toString()
   }
 
-  return TextNode.fromString(decodeHTML(value), { id })
+  return TextNode.fromString(decodeEntities ? decodeHTMLStrict(value) : value, { id })
 }
 
 export function createSlotNode(): SlotRenderable {
@@ -206,7 +206,10 @@ export const {
     return element
   },
 
-  createTextNode: _createTextNode,
+  // The compiler escapes static JSX before calling createTextNode directly.
+  createTextNode: (value) => _createTextNode(value, true),
+
+  createDynamicTextNode: (value) => _createTextNode(value, false),
 
   createSlotNode,
 
@@ -214,7 +217,7 @@ export const {
     log("Replacing text:", value, "in node:", logId(textNode))
 
     if (!(textNode instanceof TextNode)) return
-    textNode.replace(decodeHTML(value), 0)
+    textNode.replace(value, 0)
   },
 
   setProperty(node: DomNode, name: string, value: any, prev: any): void {
@@ -334,7 +337,7 @@ export const {
       case "content": {
         const textValue = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : `${value}`
         // @ts-expect-error todo validate if prop is actually settable
-        node[name] = decodeHTML(textValue)
+        node[name] = textValue
         break
       }
 

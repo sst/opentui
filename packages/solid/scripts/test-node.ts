@@ -109,7 +109,7 @@ async function buildEntryPoint(source: string, output: string): Promise<void> {
 function ensureCoreBuildArtifacts(): void {
   const nativePackageName = `@opentui/core-${process.platform}-${process.arch}`
   const nativePackageDir = join(corePackageRoot, "node_modules", nativePackageName)
-  const hasCoreDist = existsSync(join(coreDistRoot, "index.js")) && existsSync(join(coreDistRoot, "testing.js"))
+  const hasCoreDist = existsSync(join(coreDistRoot, "index.node.js")) && existsSync(join(coreDistRoot, "testing.js"))
 
   if (hasCoreDist && existsSync(nativePackageDir)) {
     return
@@ -125,7 +125,7 @@ function writeCoreDistProxyPackage(): void {
   const proxyDir = join(outDir, "node_modules", "@opentui", "core")
   mkdirSync(proxyDir, { recursive: true })
 
-  const relativeCoreDistIndex = relative(proxyDir, join(coreDistRoot, "index.js")).replaceAll("\\", "/")
+  const relativeCoreDistIndex = relative(proxyDir, join(coreDistRoot, "index.node.js")).replaceAll("\\", "/")
   const relativeCoreDistTesting = relative(proxyDir, join(coreDistRoot, "testing.js")).replaceAll("\\", "/")
 
   writeFileSync(join(proxyDir, "index.js"), `export * from ${JSON.stringify(relativeCoreDistIndex)}\n`)

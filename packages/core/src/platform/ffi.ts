@@ -472,6 +472,28 @@ function wrapNodeSymbol(fn: (...args: any[]) => any, definition: FFIFunction): (
     return fn
   }
 
+  const pointerArgs = new Set(pointerArgIndexes)
+  const normalize = (value: unknown, index: number) =>
+    pointerArgs.has(index) ? toNodePointerArgumentFast(value) : value
+
+  switch (definition.args?.length) {
+    case 1:
+      return function (arg0: unknown) {
+        if (arguments.length !== 1) return Reflect.apply(fn, undefined, arguments)
+        return fn(normalize(arg0, 0))
+      }
+    case 2:
+      return function (arg0: unknown, arg1: unknown) {
+        if (arguments.length !== 2) return Reflect.apply(fn, undefined, arguments)
+        return fn(normalize(arg0, 0), normalize(arg1, 1))
+      }
+    case 3:
+      return function (arg0: unknown, arg1: unknown, arg2: unknown) {
+        if (arguments.length !== 3) return Reflect.apply(fn, undefined, arguments)
+        return fn(normalize(arg0, 0), normalize(arg1, 1), normalize(arg2, 2))
+      }
+  }
+
   return (...args: any[]) => {
     const normalizedArgs = args.slice()
 
@@ -481,6 +503,22 @@ function wrapNodeSymbol(fn: (...args: any[]) => any, definition: FFIFunction): (
 
     return fn(...normalizedArgs)
   }
+}
+
+function toNodePointerArgumentFast(value: unknown): bigint | ArrayBuffer | ArrayBufferView {
+  if (typeof value === "bigint") {
+    return value >= 0n ? value : toNodePointerArgument(value)
+  }
+
+  if (ArrayBuffer.isView(value) && value.byteLength > 0 && value.buffer instanceof ArrayBuffer) {
+    return value
+  }
+
+  if (value instanceof ArrayBuffer && value.byteLength > 0) {
+    return value
+  }
+
+  return toNodePointerArgument(value)
 }
 
 function isNodePointerArgumentType(type: FFITypeOrString): boolean {
