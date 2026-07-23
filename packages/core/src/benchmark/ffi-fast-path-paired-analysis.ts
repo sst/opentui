@@ -42,6 +42,13 @@ export function pairedSampleQualityReasons(role: string, sample: PairedSampleDia
   return reasons
 }
 
+export function pairGapWithinTarget(gapMs: number, targetMs: number): boolean {
+  if (!Number.isFinite(gapMs) || gapMs < 0) throw new Error("pair gap must be a finite non-negative number")
+  if (!Number.isFinite(targetMs) || targetMs < 0)
+    throw new Error("pair gap target must be a finite non-negative number")
+  return gapMs <= targetMs
+}
+
 export function createPairedSchedule(
   scenarios: readonly string[],
   runtimes: readonly PairedRuntime[],

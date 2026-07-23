@@ -4,11 +4,13 @@ import { spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { availableParallelism, cpus, loadavg, release, tmpdir } from "node:os"
-import { isAbsolute, join, resolve } from "node:path"
+import { dirname, isAbsolute, join, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { getNativeAssetDescriptor, type NodeAssetTarget } from "../node-asset-target.js"
 import {
   analyzePairedObservations,
   createPairedSchedule,
+  pairGapWithinTarget,
   pairedSampleQualityReasons,
   type PairedObservation,
   type PairedOrder,
@@ -88,6 +90,7 @@ interface RawPair {
   attempt: number
   order: PairedOrder
   gapMs: number
+  gapWithinTarget: boolean
   baseline: ProcessSample
   candidate: ProcessSample
 }
@@ -103,13 +106,16 @@ const SUITES: Record<SuiteName, { targetMs: number; warmupMs: number }> = {
   long: { targetMs: 250, warmupMs: 75 },
 }
 const BOOTSTRAP_SAMPLES = 100_000
+const pairedBenchmarkSource = fileURLToPath(import.meta.url)
+const benchmarkDir = dirname(pairedBenchmarkSource)
+const orchestratorRoot = resolve(benchmarkDir, "../../../..")
 const nodePath = process.env.NODE26_PATH ?? "node"
 const suite = stringArg("suite", "default") as SuiteName
 if (!(suite in SUITES)) throw new Error(`invalid --suite=${suite}; expected quick, default, or long`)
 const pairs = integerArg("runs", 10, 2)
 if (pairs % 2 !== 0) throw new Error("--runs must be even so every unit has balanced AB/BA order")
 const seed = integerArg("seed", 1284, 0)
-const maxPairGapMs = numberArg("max-pair-gap-ms", 10, 0)
+const pairGapTargetMs = numberArg("pair-gap-target-ms", 10, 0)
 const pairRetries = integerArg("pair-retries", 5, 0)
 const outputPath = resolve(stringArg("json", "ffi-fast-path-paired.json"))
 const quiet = process.argv.includes("--no-output")
@@ -118,6 +124,9 @@ const allowNativeDrift = process.argv.includes("--allow-native-drift")
 const baselineRoot = requiredAbsoluteRoot("baseline-root")
 const candidateRoot = requiredAbsoluteRoot("candidate-root")
 if (baselineRoot === candidateRoot) throw new Error("baseline and candidate roots must differ")
+if (candidateRoot !== orchestratorRoot) {
+  throw new Error(`paired benchmark must run from the candidate root (${orchestratorRoot})`)
+}
 if (process.env.OTUI_ASSET_ROOT) {
   throw new Error("unset OTUI_ASSET_ROOT so paired provenance matches the native packages being hashed")
 }
@@ -164,6 +173,15 @@ const rejectedPairAttempts: Array<{
   baseline: ProcessSample
   candidate: ProcessSample
 }> = []
+const pairGapExceedances: Array<{
+  pair: number
+  sequence: number
+  attempt: number
+  scenario: string
+  runtime: PairedRuntime
+  order: PairedOrder
+  gapMs: number
+}> = []
 for (const name of selectedNames) for (const runtime of ["bun", "node"]) raw.set(`${name}:${runtime}`, [])
 const startedAt = new Date().toISOString()
 
@@ -207,8 +225,20 @@ try {
         throw error
       }
       const gapMs = secondSample.startedAtEpochMs - firstSample.endedAtEpochMs
+      const gapWithinTarget = pairGapWithinTarget(gapMs, pairGapTargetMs)
       const byRole = { [order[0].role]: firstSample, [order[1].role]: secondSample } as Record<Role, ProcessSample>
-      const reasons = pairQualityReasons(byRole.baseline, byRole.candidate, gapMs)
+      if (!gapWithinTarget) {
+        pairGapExceedances.push({
+          pair: entry.pair,
+          sequence: entry.sequence,
+          attempt,
+          scenario: entry.scenario,
+          runtime: entry.runtime,
+          order: entry.order,
+          gapMs,
+        })
+      }
+      const reasons = pairQualityReasons(byRole.baseline, byRole.candidate)
       if (reasons.length === 0) {
         raw.get(`${entry.scenario}:${entry.runtime}`)!.push({
           pair: entry.pair,
@@ -216,6 +246,7 @@ try {
           attempt,
           order: entry.order,
           gapMs,
+          gapWithinTarget,
           baseline: byRole.baseline,
           candidate: byRole.candidate,
         })
@@ -282,9 +313,19 @@ const payload = {
     nominalConfidence: 0.95,
     familywiseConfidence,
     familywiseComparisons,
-    maxPairGapMs,
+    pairGapTargetMs,
     pairRetries,
     ...SUITES[suite],
+  },
+  tooling: {
+    root: orchestratorRoot,
+    revision: candidate.revision,
+    dirty: candidate.dirty,
+    sources: {
+      pairedBenchmark: { path: pairedBenchmarkSource, sha256: sha256(pairedBenchmarkSource) },
+      pairedAnalysis: sourceMetadata(join(benchmarkDir, "ffi-fast-path-paired-analysis.ts")),
+      nodeAssetTarget: sourceMetadata(join(benchmarkDir, "../node-asset-target.ts")),
+    },
   },
   environment: {
     bun: { version: process.versions.bun, platform: process.platform, arch: process.arch },
@@ -299,10 +340,11 @@ const payload = {
     candidate: targetMetadata(candidate),
   },
   schedule: {
-    algorithm: "seeded per-pair unit shuffle; exact per-unit AB/BA balance; adjacent revision children",
+    algorithm:
+      "seeded per-pair unit shuffle; exact per-unit AB/BA balance; concurrent preparation; sequential retained batches",
     entries: schedule,
   },
-  quality: { rejectedPairAttempts },
+  quality: { rejectedPairAttempts, pairGapExceedances },
   results,
 }
 
@@ -632,7 +674,8 @@ function analyzeRuntime(name: string, runtime: PairedRuntime, familywiseConfiden
       baseline: summarizeSamples(pairsForRuntime.map((pair) => pair.baseline)),
       candidate: summarizeSamples(pairsForRuntime.map((pair) => pair.candidate)),
     },
-    acceptance: {
+    safety: {
+      criterion: "familywise confidence interval upper bound <= 3%",
       minimumPairs: 10,
       maximumRegression: 0.03,
       enoughPairs: pairsForRuntime.length >= 10,
@@ -711,14 +754,11 @@ function workingTreeProvenance(root: string): WorkingTreeProvenance {
   }
 }
 
-function pairQualityReasons(baselineSample: ProcessSample, candidateSample: ProcessSample, gapMs: number): string[] {
-  const reasons = [
+function pairQualityReasons(baselineSample: ProcessSample, candidateSample: ProcessSample): string[] {
+  return [
     ...pairedSampleQualityReasons("baseline", baselineSample),
     ...pairedSampleQualityReasons("candidate", candidateSample),
   ]
-  if (!Number.isFinite(gapMs) || gapMs < 0) reasons.push(`pair gap ${gapMs}ms is invalid`)
-  else if (gapMs > maxPairGapMs) reasons.push(`pair gap ${gapMs.toFixed(3)}ms exceeds ${maxPairGapMs}ms`)
-  return reasons
 }
 
 function git(root: string, args: string[]): string {
@@ -730,6 +770,11 @@ function git(root: string, args: string[]): string {
 
 function sha256(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex")
+}
+
+function sourceMetadata(path: string): { path: string; sha256: string } {
+  if (!existsSync(path)) throw new Error(`missing benchmark driver source: ${path}`)
+  return { path, sha256: sha256(path) }
 }
 
 function writeJsonAtomic(path: string, value: unknown): void {

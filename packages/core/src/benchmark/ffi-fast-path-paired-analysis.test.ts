@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   analyzePairedObservations,
   createPairedSchedule,
+  pairGapWithinTarget,
   pairedSampleQualityReasons,
   type PairedObservation,
 } from "./ffi-fast-path-paired-analysis.js"
@@ -110,5 +111,11 @@ describe("ffi fast path paired analysis", () => {
         calibration: { ...diagnostics.calibration, calibrationConverged: false },
       }),
     ).toEqual(["candidate calibration did not converge", "candidate cpuSystemMicros is invalid"])
+  })
+
+  test("classifies pair-gap drift without rejecting the observation", () => {
+    expect(pairGapWithinTarget(9.5, 10)).toBe(true)
+    expect(pairGapWithinTarget(10.5, 10)).toBe(false)
+    expect(() => pairGapWithinTarget(-1, 10)).toThrow("finite non-negative")
   })
 })

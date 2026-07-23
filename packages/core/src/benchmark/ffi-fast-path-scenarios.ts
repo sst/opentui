@@ -797,35 +797,35 @@ function createTextRangeScenario(editable: boolean, variant: "short" | "multilin
       const owner = editable ? EditBuffer.create("unicode") : TextBuffer.create("unicode")
       owner.setText(text)
       const getRange = editable
-        ? (startCol: number, endCol: number) =>
-            lib.editBufferGetTextRangeByCoords(
-              (owner as EditBuffer).ptr,
-              0,
-              startCol,
-              variant === "short" ? 1 : lines.length - 1,
-              endCol,
-              maxLength,
-            )
-        : (startCol: number, endCol: number) =>
-            lib.textBufferGetTextRangeByCoords(
-              (owner as TextBuffer).ptr,
-              0,
-              startCol,
-              variant === "short" ? 1 : lines.length - 1,
-              endCol,
-              maxLength,
-            )
+        ? (startCol: number, endRow: number, endCol: number) =>
+            lib.editBufferGetTextRangeByCoords((owner as EditBuffer).ptr, 0, startCol, endRow, endCol, maxLength)
+        : (startCol: number, endRow: number, endCol: number) =>
+            lib.textBufferGetTextRangeByCoords((owner as TextBuffer).ptr, 0, startCol, endRow, endCol, maxLength)
       return {
         run: (operations) => {
           let signal = 0
           for (let index = 0; index < operations; index++) {
-            const bytes = getRange(index & 1, variant === "short" ? 5 + (index & 1) : lines.at(-1)!.length)
+            const bytes = getRange(
+              index & 1,
+              variant === "short" ? 1 : lines.length - 1,
+              variant === "short" ? 5 + (index & 1) : lines.at(-1)!.length,
+            )
             signal = (signal + (bytes?.byteLength ?? 0) + (bytes?.[0] ?? 0)) >>> 0
           }
           return signal
         },
-        observe: () =>
-          stringChecksum(editable ? (owner as EditBuffer).getText() : (owner as TextBuffer).getPlainText()),
+        observe: () => {
+          const endRow = variant === "short" ? 1 : lines.length - 1
+          const endCol = variant === "short" ? 5 : lines.at(-1)!.length
+          const expected =
+            variant === "short"
+              ? `${lines[0]}\n${lines[1]!.slice(0, endCol)}`
+              : `${lines.slice(0, -1).join("\n")}\n${lines.at(-1)!.slice(0, -1)}`
+          const bytes = getRange(0, endRow, endCol)
+          const actual = bytes ? new TextDecoder().decode(bytes) : null
+          if (actual !== expected) throw new Error(`range verification failed: expected ${expected}, got ${actual}`)
+          return stringChecksum(actual)
+        },
         teardown: () => owner.destroy(),
       }
     },
@@ -857,7 +857,13 @@ function createTextBufferSelectionScenario(update: boolean, styled: boolean): Sc
           }
           return signal
         },
-        observe: () => stringChecksum(view.getSelectedText()),
+        observe: () => {
+          if (update) lib.textBufferViewUpdateLocalSelection(view.ptr, 0, 0, 5, 0, bg, fg)
+          else lib.textBufferViewSetLocalSelection(view.ptr, 0, 0, 5, 0, bg, fg)
+          const selected = view.getSelectedText()
+          if (selected !== "alpha") throw new Error(`selection verification failed: ${selected}`)
+          return stringChecksum(selected)
+        },
         teardown: () => {
           view.destroy()
           buffer.destroy()
