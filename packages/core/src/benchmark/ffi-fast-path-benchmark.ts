@@ -218,7 +218,7 @@ function runChild(runtime: RuntimeName, scenario: string, round: number): Proces
   if (child.error) throw child.error
   if (child.status !== 0) {
     throw new Error(
-      `${runtime} ${scenario} failed (status=${child.status ?? "null"}, signal=${child.signal ?? "none"}): ${child.stderr || child.stdout}`,
+      `${runtime} ${scenario} failed in round ${round + 1}/${runs} (status=${child.status ?? "null"}, signal=${child.signal ?? "none"}): ${child.stderr || child.stdout}`,
     )
   }
 
