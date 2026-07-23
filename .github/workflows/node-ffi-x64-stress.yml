@@ -151,7 +151,7 @@ jobs:
             done
             if [ "${{ runner.os }}" = "macOS" ]; then
               sysctl -n machdep.cpu.brand_string
-              sysctl -n hw.optional.arm64
+              sysctl -n hw.optional.arm64 2>/dev/null || printf '0\n'
             fi
             if [ "${{ runner.os }}" = "Linux" ]; then
               printf 'core_pattern='
@@ -276,20 +276,20 @@ jobs:
               errors: report.summary.errors,
             }))
           const nativeCrashes = rows.filter((row) => row.mode === "native").reduce((sum, row) => sum + row.targetCrashes, 0)
+          const nativeOtherCrashes = rows.filter((row) => row.mode === "native").reduce((sum, row) => sum + row.otherCrashes, 0)
           const rosettaCrashes = rows.filter((row) => row.mode === "Rosetta").reduce((sum, row) => sum + row.targetCrashes, 0)
           const incomplete = manifests.length !== 4 || manifests.some(
-            (report) =>
-              report.summary.completed !== report.config.runs ||
-              report.summary.errors !== 0 ||
-              report.summary.otherCrashes !== 0,
+            (report) => report.summary.completed !== report.config.runs || report.summary.errors !== 0,
           )
           const conclusion = incomplete
             ? "Inconclusive: one or more diagnostic runs were incomplete or invalid."
             : nativeCrashes > 0
               ? "Non-Rosetta native x64 reproduced the crash. A comprehensive crash-debugging document is required."
-              : rosettaCrashes > 0
-                ? "Only Rosetta reproduced the crash in this CI run."
-                : "No runner reproduced the crash; this run is inconclusive about Rosetta exclusivity."
+              : nativeOtherCrashes > 0
+                ? "Non-Rosetta native x64 had a different abnormal termination. A comprehensive crash-debugging document is required."
+                : rosettaCrashes > 0
+                  ? "Only Rosetta reproduced the crash in this CI run."
+                  : "No runner reproduced the crash; this run is inconclusive about Rosetta exclusivity."
           const markdown = [
             "## Node FFI x64 teardown classification",
             "",
@@ -302,7 +302,7 @@ jobs:
           ].join("\n")
           writeFileSync("classification.md", markdown)
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown)
-          if (incomplete || nativeCrashes > 0) process.exit(1)
+          if (incomplete || nativeCrashes > 0 || nativeOtherCrashes > 0) process.exit(1)
           NODE
 
       - name: Upload classification

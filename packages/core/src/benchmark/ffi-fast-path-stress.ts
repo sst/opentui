@@ -213,7 +213,7 @@ for (let attemptIndex = 0; attemptIndex < runs; attemptIndex++) {
     `attempt=${attemptNumber}/${runs} classification=${classification} status=${child.status ?? "null"}` +
       ` signal=${child.signal ?? "none"} payload=${payloadValid ? "valid" : payload ? "invalid" : "missing"}\n`,
   )
-  if (classification === "error" || classification === "other-crash") break
+  if (classification === "error") break
 }
 
 manifest.completedAt = new Date().toISOString()
@@ -228,8 +228,7 @@ console.log(
 
 if (
   manifest.summary.errors > 0 ||
-  manifest.summary.otherCrashes > 0 ||
-  (!allowCrashes && manifest.summary.targetCrashes > 0)
+  (!allowCrashes && (manifest.summary.targetCrashes > 0 || manifest.summary.otherCrashes > 0))
 )
   process.exit(1)
 
