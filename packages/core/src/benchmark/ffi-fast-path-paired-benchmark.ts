@@ -2,7 +2,7 @@
 
 import { spawn, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { availableParallelism, cpus, loadavg, release, tmpdir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -124,7 +124,9 @@ const allowDirty = process.argv.includes("--allow-dirty")
 const allowNativeDrift = process.argv.includes("--allow-native-drift")
 const baselineRoot = requiredAbsoluteRoot("baseline-root")
 const candidateRoot = requiredAbsoluteRoot("candidate-root")
-if (baselineRoot === candidateRoot) throw new Error("baseline and candidate roots must differ")
+if (realpathSync(baselineRoot) === realpathSync(candidateRoot)) {
+  throw new Error("baseline and candidate roots must differ")
+}
 if (candidateRoot !== orchestratorRoot) {
   throw new Error(`paired benchmark must run from the candidate root (${orchestratorRoot})`)
 }

@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 
 const temporaryDirectories: string[] = []
 
@@ -31,6 +31,30 @@ test.each(["", "."])("stress output %p does not remove its package directory", (
 
   expect(child.status).not.toBe(0)
   expect(existsSync(sentinel)).toBe(true)
+})
+
+test("paired comparison rejects a baseline alias of the candidate worktree", () => {
+  const root = mkdtempSync(join(tmpdir(), "opentui-ffi-paired-test-"))
+  temporaryDirectories.push(root)
+  const candidateRoot = resolve(import.meta.dir, "../../../..")
+  const baselineRoot = join(root, "baseline")
+  symlinkSync(candidateRoot, baselineRoot, process.platform === "win32" ? "junction" : "dir")
+
+  const child = spawnSync(
+    process.execPath,
+    [
+      join(import.meta.dir, "ffi-fast-path-paired-benchmark.ts"),
+      `--baseline-root=${baselineRoot}`,
+      `--candidate-root=${candidateRoot}`,
+      `--json=${join(root, "report.json")}`,
+      "--runs=2",
+      "--no-output",
+    ],
+    { cwd: resolve(import.meta.dir, "../.."), encoding: "utf8", timeout: 10_000 },
+  )
+
+  expect(child.status).not.toBe(0)
+  expect(child.stderr).toContain("roots must differ")
 })
 
 test("comparison rejects repeated report files as independent rounds", () => {
