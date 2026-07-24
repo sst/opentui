@@ -26,15 +26,19 @@ The existing native image API already provides:
 - A `file:` URL.
 - An `http:` URL.
 - An `https:` URL.
+- A `blob:` URL.
+- A `data:` URL.
+- A `Blob`.
+- A `Response`.
 - Encoded image bytes supplied as a `Uint8Array` or `ArrayBuffer`.
 
-Local paths and `file:` URLs must be read as bytes. HTTP and HTTPS URLs must be fetched as bytes. Encoded bytes from every source must be passed to the same native decoder path.
+Paths and `file:` URLs must be read as bytes. HTTP(S), `blob:`, and `data:` URLs must be fetched as bytes. Blob and response bodies must be read as bytes. Every source must use the same native decoder path.
 
 Image format detection must be based on the encoded data, not the filename extension, URL suffix, or HTTP `Content-Type` header.
 
 ## Loading Behavior
 
-Loading from a local path or remote URL must be asynchronous.
+Loading from a path, URL, blob, or response must be asynchronous.
 
 Loading must:
 
@@ -127,12 +131,12 @@ The following behavior must be consistent across PNG, JPEG, WebP, and GIF:
 
 ## ImageRenderable Integration
 
-`ImageRenderable` must use one source-loading path that resolves a local path, URL, or encoded byte array to a `NativeImage`.
+`ImageRenderable` must use one source-loading path that resolves a path, URL, blob, response, or encoded byte array to a `NativeImage`.
 
 It must:
 
 - Accept the supported source types.
-- Begin loading when given a path, URL, or encoded bytes.
+- Begin loading when given any supported source.
 - Retain the successfully decoded `NativeImage` for drawing.
 - Request a render after loading succeeds.
 - Report loading and decoding failures.
@@ -146,6 +150,8 @@ Tests must cover:
 - Loading an image from a local filesystem path.
 - Loading an image from a `file:` URL.
 - Loading an image from an HTTP or HTTPS response.
+- Loading from `blob:` and `data:` URLs.
+- Loading from a `Blob` and a `Response`.
 - Loading directly from encoded bytes.
 - Successful PNG decoding.
 - Successful JPEG decoding.
@@ -163,4 +169,4 @@ Test fixtures should be small encoded files committed to the test suite so decod
 
 ## Completion Criteria
 
-This work is complete when an `ImageRenderable` can receive a local path, file URL, HTTP or HTTPS URL, or encoded byte array and resolve it to the existing native RGBA image representation for PNG, JPEG, WebP, and the first frame of GIF images.
+This work is complete when an `ImageRenderable` can resolve every supported source to the native RGBA representation for PNG, JPEG, WebP, and the first frame of GIF images.
