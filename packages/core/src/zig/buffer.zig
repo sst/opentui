@@ -828,6 +828,39 @@ pub const OptimizedBuffer = struct {
         return overlayCell;
     }
 
+    inline fn opaqueCell(cell: Cell) Cell {
+        return makeCell(
+            cell.char,
+            ansi.packRGBA8(ansi.red(cell.fg), ansi.green(cell.fg), ansi.blue(cell.fg), 255, ansi.getMeta(cell.fg)),
+            ansi.packRGBA8(ansi.red(cell.bg), ansi.green(cell.bg), ansi.blue(cell.bg), 255, ansi.getMeta(cell.bg)),
+            cell.attributes,
+        );
+    }
+
+    inline fn cellSpanOverlapsImage(self: *const OptimizedBuffer, x: u32, y: u32, char: u32) bool {
+        if (self.image_placements.items.len == 0) return false;
+
+        const width = if (gp.isGraphemeChar(char)) gp.charRightExtent(char) + 1 else 1;
+        var offset: u32 = 0;
+        while (offset < width and x + offset < self.width) : (offset += 1) {
+            if (self.get(x + offset, y)) |dest| {
+                if (gp.isImageChar(dest.char)) return true;
+            }
+        }
+        return false;
+    }
+
+    inline fn rectOverlapsImagePlacement(self: *const OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) bool {
+        for (self.image_placements.items) |placement| {
+            if (@as(i64, x) < @as(i64, placement.x) + placement.width and @as(i64, placement.x) < @as(i64, x) + width and
+                @as(i64, y) < @as(i64, placement.y) + placement.height and @as(i64, placement.y) < @as(i64, y) + height)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     pub fn setCellWithAlphaBlending(
         self: *OptimizedBuffer,
         x: u32,
@@ -844,11 +877,18 @@ pub const OptimizedBuffer = struct {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
         const opacity = self.getCurrentOpacity();
-        if (isFullyTransparent(opacity, cell.fg, cell.bg)) return;
+        if (opacity == 0.0) return;
         if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
             self.set(x, y, cell);
             return;
         }
+
+        const destCell = self.get(x, y);
+        if (self.cellSpanOverlapsImage(x, y, cell.char)) {
+            self.set(x, y, opaqueCell(cell));
+            return;
+        }
+        if (isFullyTransparent(opacity, cell.fg, cell.bg)) return;
 
         const opacity_u8 = opacityToU8(opacity);
         const effectiveCell = makeCell(
@@ -858,8 +898,8 @@ pub const OptimizedBuffer = struct {
             cell.attributes,
         );
 
-        if (self.get(x, y)) |destCell| {
-            const blendedCell = self.blendCells(effectiveCell, destCell);
+        if (destCell) |dest| {
+            const blendedCell = self.blendCells(effectiveCell, dest);
             self.set(x, y, blendedCell);
         } else {
             self.set(x, y, effectiveCell);
@@ -882,13 +922,15 @@ pub const OptimizedBuffer = struct {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
         const opacity = self.getCurrentOpacity();
-        if (isFullyTransparent(opacity, cell.fg, cell.bg)) return;
+        if (opacity == 0.0) return;
         if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
             assert(!gp.isGraphemeChar(cell.char));
             assert(!gp.isContinuationChar(cell.char));
             self.setRaw(x, y, cell);
             return;
         }
+
+        if (isFullyTransparent(opacity, cell.fg, cell.bg)) return;
 
         const opacity_u8 = opacityToU8(opacity);
         const effectiveCell = makeCell(
@@ -898,8 +940,8 @@ pub const OptimizedBuffer = struct {
             cell.attributes,
         );
 
-        if (self.get(x, y)) |destCell| {
-            const blendedCell = self.blendCells(effectiveCell, destCell);
+        if (self.get(x, y)) |dest| {
+            const blendedCell = self.blendCells(effectiveCell, dest);
             assert(!gp.isGraphemeChar(blendedCell.char));
             assert(!gp.isContinuationChar(blendedCell.char));
             self.setRaw(x, y, blendedCell);
@@ -908,6 +950,16 @@ pub const OptimizedBuffer = struct {
             assert(!gp.isContinuationChar(effectiveCell.char));
             self.setRaw(x, y, effectiveCell);
         }
+    }
+
+    inline fn setCellWithAlphaBlendingRawImageAware(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
+        if (self.get(x, y)) |dest| {
+            if (gp.isImageChar(dest.char) and self.getCurrentOpacity() > 0.0) {
+                self.setRaw(x, y, opaqueCell(cell));
+                return;
+            }
+        }
+        self.setCellWithAlphaBlendingRawCell(x, y, cell);
     }
 
     inline fn trySetTransparentTextCellFast(
@@ -931,6 +983,7 @@ pub const OptimizedBuffer = struct {
         const dest_attributes = self.buffer.attributes[index];
         if (ansi.TextAttributes.getLinkId(dest_attributes) != 0) return false;
         if (gp.isGraphemeChar(dest_char) or gp.isContinuationChar(dest_char)) return false;
+        if (self.image_placements.items.len != 0 and gp.isImageChar(dest_char)) return false;
 
         if (char == DEFAULT_SPACE_CHAR and dest_char != 0 and dest_char != DEFAULT_SPACE_CHAR and gp.encodedCharWidth(dest_char) == 1) {
             return true;
@@ -968,7 +1021,8 @@ pub const OptimizedBuffer = struct {
         if (!self.isRectInScissor(@intCast(x), @intCast(y), width, height)) return;
 
         const opacity = self.getCurrentOpacity();
-        if (isFullyTransparent(opacity, ansi.rgbColor(0, 0, 0, 0), bg)) return;
+        const fully_transparent = isFullyTransparent(opacity, ansi.rgbColor(0, 0, 0, 0), bg);
+        if (fully_transparent and (opacity == 0.0 or self.image_placements.items.len == 0)) return;
 
         const startX = x;
         const startY = y;
@@ -986,6 +1040,56 @@ pub const OptimizedBuffer = struct {
         const clippedStartY = @max(startY, @as(u32, @intCast(clippedRect.y)));
         const clippedEndX = @min(endX, @as(u32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endY, @as(u32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
+
+        if (fully_transparent) {
+            const cell = makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
+            const clipped_area = @as(u64, clippedEndX - clippedStartX + 1) * (clippedEndY - clippedStartY + 1);
+            var intersection_area: u64 = 0;
+            for (self.image_placements.items) |placement| {
+                const intersection_start_x = @max(@as(i64, clippedStartX), placement.x);
+                const intersection_start_y = @max(@as(i64, clippedStartY), placement.y);
+                const intersection_end_x = @min(@as(i64, clippedEndX) + 1, @as(i64, placement.x) + placement.width);
+                const intersection_end_y = @min(@as(i64, clippedEndY) + 1, @as(i64, placement.y) + placement.height);
+                if (intersection_start_x >= intersection_end_x or intersection_start_y >= intersection_end_y) continue;
+
+                const width_u64: u64 = @intCast(intersection_end_x - intersection_start_x);
+                const height_u64: u64 = @intCast(intersection_end_y - intersection_start_y);
+                intersection_area = @min(clipped_area, intersection_area +| width_u64 *| height_u64);
+            }
+            if (intersection_area == 0) return;
+
+            if (intersection_area >= clipped_area / 2 + clipped_area % 2) {
+                var fill_y = clippedStartY;
+                while (fill_y <= clippedEndY) : (fill_y += 1) {
+                    var fill_x = clippedStartX;
+                    while (fill_x <= clippedEndX) : (fill_x += 1) {
+                        if (self.get(fill_x, fill_y)) |dest| {
+                            if (gp.isImageChar(dest.char)) self.setRaw(fill_x, fill_y, opaqueCell(cell));
+                        }
+                    }
+                }
+                return;
+            }
+
+            for (self.image_placements.items) |placement| {
+                const intersection_start_x = @max(@as(i64, clippedStartX), placement.x);
+                const intersection_start_y = @max(@as(i64, clippedStartY), placement.y);
+                const intersection_end_x = @min(@as(i64, clippedEndX) + 1, @as(i64, placement.x) + placement.width);
+                const intersection_end_y = @min(@as(i64, clippedEndY) + 1, @as(i64, placement.y) + placement.height);
+                if (intersection_start_x >= intersection_end_x or intersection_start_y >= intersection_end_y) continue;
+
+                var fill_y: u32 = @intCast(intersection_start_y);
+                while (fill_y < intersection_end_y) : (fill_y += 1) {
+                    var fill_x: u32 = @intCast(intersection_start_x);
+                    while (fill_x < intersection_end_x) : (fill_x += 1) {
+                        if (self.get(fill_x, fill_y)) |dest| {
+                            if (gp.isImageChar(dest.char)) self.setRaw(fill_x, fill_y, opaqueCell(cell));
+                        }
+                    }
+                }
+            }
+            return;
+        }
 
         const hasAlpha = isRGBAWithAlpha(bg) or opacity < 1.0;
         const graphemeAware = self.grapheme_tracker.hasAny();
@@ -1006,11 +1110,13 @@ pub const OptimizedBuffer = struct {
         } else if (hasAlpha) {
             // No grapheme/link bookkeeping is needed here, so the raw blend
             // path avoids the extra tracker work done by the generic setter.
+            const image_aware = self.image_placements.items.len != 0;
             var fillY = clippedStartY;
             while (fillY <= clippedEndY) : (fillY += 1) {
                 var fillX = clippedStartX;
                 while (fillX <= clippedEndX) : (fillX += 1) {
-                    self.setCellWithAlphaBlendingRaw(fillX, fillY, DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
+                    const cell = makeCell(DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
+                    if (image_aware) self.setCellWithAlphaBlendingRawImageAware(fillX, fillY, cell) else self.setCellWithAlphaBlendingRawCell(fillX, fillY, cell);
                 }
             }
         } else {
@@ -1059,6 +1165,14 @@ pub const OptimizedBuffer = struct {
         );
     }
 
+    inline fn setTextCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
+        if (self.cellSpanOverlapsImage(x, y, cell.char)) {
+            self.set(x, y, opaqueCell(cell));
+            return;
+        }
+        if (isRGBAWithAlpha(cell.bg)) self.setCellWithAlphaBlendingCell(x, y, cell) else self.set(x, y, cell);
+    }
+
     pub fn drawText(
         self: *OptimizedBuffer,
         text: []const u8,
@@ -1072,7 +1186,7 @@ pub const OptimizedBuffer = struct {
         if (text.len == 0) return;
 
         const opacity = self.getCurrentOpacity();
-        if (isFullyTransparent(opacity, fg, bg orelse ansi.rgbColor(0, 0, 0, 0))) return;
+        if (isFullyTransparent(opacity, fg, bg orelse ansi.rgbColor(0, 0, 0, 0)) and (opacity == 0.0 or self.image_placements.items.len == 0)) return;
 
         const is_ascii_only = utf8.isAsciiOnly(text);
 
@@ -1088,7 +1202,7 @@ pub const OptimizedBuffer = struct {
         var col: u32 = 0;
         var special_idx: usize = 0;
 
-        while (byte_offset < text.len) {
+        text_loop: while (byte_offset < text.len) {
             const charX = x + advance_cells;
             if (charX >= self.width) break;
 
@@ -1110,7 +1224,8 @@ pub const OptimizedBuffer = struct {
                 byte_offset += 1;
             }
 
-            if (!self.isPointInScissor(@intCast(charX), @intCast(y))) {
+            const is_tab = grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t';
+            if (!is_tab and !self.isPointInScissor(@intCast(charX), @intCast(y))) {
                 advance_cells += g_width;
                 col += g_width;
                 continue;
@@ -1130,22 +1245,29 @@ pub const OptimizedBuffer = struct {
                 col += g_width;
                 continue;
             }
+            if (cell_width > 1 and !is_tab) {
+                if (charX + cell_width > self.width) {
+                    advance_cells += g_width;
+                    col += g_width;
+                    continue;
+                }
+                for (1..cell_width) |span_offset| {
+                    if (!self.isPointInScissor(@intCast(charX + @as(u32, @intCast(span_offset))), @intCast(y))) {
+                        advance_cells += g_width;
+                        col += g_width;
+                        continue :text_loop;
+                    }
+                }
+            }
 
-            if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
+            if (is_tab) {
                 var tab_col: u32 = 0;
                 while (tab_col < g_width) : (tab_col += 1) {
                     const tab_x = charX + tab_col;
                     if (tab_x >= self.width) break;
+                    if (!self.isPointInScissor(@intCast(tab_x), @intCast(y))) continue;
 
-                    if (isRGBAWithAlpha(bgColor)) {
-                        self.setCellWithAlphaBlendingCell(
-                            tab_x,
-                            y,
-                            makeCell(DEFAULT_SPACE_CHAR, fg, bgColor, attributes),
-                        );
-                    } else {
-                        self.set(tab_x, y, makeCell(DEFAULT_SPACE_CHAR, fg, bgColor, attributes));
-                    }
+                    self.setTextCell(tab_x, y, makeCell(DEFAULT_SPACE_CHAR, fg, bgColor, attributes));
                 }
                 advance_cells += g_width;
                 col += g_width;
@@ -1160,15 +1282,7 @@ pub const OptimizedBuffer = struct {
                 encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, cell_width);
             }
 
-            if (isRGBAWithAlpha(bgColor)) {
-                self.setCellWithAlphaBlendingCell(
-                    charX,
-                    y,
-                    makeCell(encoded_char, fg, bgColor, attributes),
-                );
-            } else {
-                self.set(charX, y, makeCell(encoded_char, fg, bgColor, attributes));
-            }
+            self.setTextCell(charX, y, makeCell(encoded_char, fg, bgColor, attributes));
 
             advance_cells += cell_width;
             col += g_width;
@@ -1516,7 +1630,7 @@ pub const OptimizedBuffer = struct {
                     }
                 }
 
-                while (col < col_end) {
+                text_buffer_loop: while (col < col_end) {
                     const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
 
                     var grapheme_bytes: []const u8 = undefined;
@@ -1562,12 +1676,34 @@ pub const OptimizedBuffer = struct {
                         break;
                     }
 
-                    if (!self.isPointInScissor(currentX, currentY)) {
+                    const is_tab = grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t';
+                    if (!is_tab and !self.isPointInScissor(currentX, currentY)) {
                         globalCharPos += g_width;
                         currentX += @as(i32, @intCast(g_width));
                         column_in_line += g_width;
                         col += g_width;
                         continue;
+                    }
+
+                    if (g_width > 1 and !is_tab) {
+                        if (column_in_line + g_width > horizontal_offset + viewport_width or
+                            currentX < 0 or currentX + @as(i32, @intCast(g_width)) > @as(i32, @intCast(self.width)))
+                        {
+                            globalCharPos += g_width;
+                            currentX += @as(i32, @intCast(g_width));
+                            column_in_line += g_width;
+                            col += g_width;
+                            continue;
+                        }
+                        for (1..g_width) |span_offset| {
+                            if (!self.isPointInScissor(currentX + @as(i32, @intCast(span_offset)), currentY)) {
+                                globalCharPos += g_width;
+                                currentX += @as(i32, @intCast(g_width));
+                                column_in_line += g_width;
+                                col += g_width;
+                                continue :text_buffer_loop;
+                            }
+                        }
                     }
 
                     var selection_offset = globalCharPos;
@@ -1716,26 +1852,30 @@ pub const OptimizedBuffer = struct {
                     // path instead of paying for generic per-cell blending.
                     const useTransparentTextFastPath = self.getCurrentOpacity() == 1.0 and ansi.alpha(drawBg) == 0;
 
-                    if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
+                    if (is_tab) {
                         const tab_indicator = view.getTabIndicator();
                         const tab_indicator_color = view.getTabIndicatorColor();
 
                         var tab_col: u32 = 0;
                         while (tab_col < g_width) : (tab_col += 1) {
-                            if (currentX + @as(i32, @intCast(tab_col)) >= @as(i32, @intCast(self.width))) break;
+                            if (column_in_line + tab_col >= horizontal_offset + viewport_width) break;
+                            const tab_x = currentX + @as(i32, @intCast(tab_col));
+                            if (tab_x < 0) continue;
+                            if (tab_x >= @as(i32, @intCast(self.width))) break;
+                            if (!self.isPointInScissor(tab_x, currentY)) continue;
 
                             const char = if (tab_col == 0 and tab_indicator != null) tab_indicator.? else DEFAULT_SPACE_CHAR;
                             const fg = if (tab_col == 0 and tab_indicator_color != null) tab_indicator_color.? else drawFg;
 
                             if (useTransparentTextFastPath) {
-                                const index = self.coordsToIndex(@intCast(currentX + @as(i32, @intCast(tab_col))), @intCast(currentY));
+                                const index = self.coordsToIndex(@intCast(tab_x), @intCast(currentY));
                                 if (self.trySetTransparentTextCellFast(index, char, fg, drawAttributes)) {
                                     continue;
                                 }
                             }
 
                             self.setCellWithAlphaBlendingCell(
-                                @intCast(currentX + @as(i32, @intCast(tab_col))),
+                                @intCast(tab_x),
                                 @intCast(currentY),
                                 makeCell(char, fg, drawBg, drawAttributes),
                             );
@@ -1943,7 +2083,16 @@ pub const OptimizedBuffer = struct {
         return utf8.eastAsianWidth(@intCast(char)) == 1;
     }
 
-    inline fn canUseTransparentBorderFastPath(self: *const OptimizedBuffer, borderChars: [*]const u32, borderColor: RGBA, backgroundColor: RGBA) bool {
+    inline fn canUseTransparentBorderFastPath(
+        self: *const OptimizedBuffer,
+        borderChars: [*]const u32,
+        borderColor: RGBA,
+        backgroundColor: RGBA,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    ) bool {
         // When border glyphs are width-1, opaque, and tracker-free, drawing them
         // over a transparent background is just a direct char/fg/attrs write
         // while keeping the destination background unchanged.
@@ -1957,7 +2106,8 @@ pub const OptimizedBuffer = struct {
             isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.bottomLeft)]) and
             isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.bottomRight)]) and
             isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.horizontal)]) and
-            isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.vertical)]);
+            isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.vertical)]) and
+            !self.rectOverlapsImagePlacement(x, y, width, height);
     }
 
     /// Draw a box with borders and optional fill
@@ -1984,8 +2134,6 @@ pub const OptimizedBuffer = struct {
         const has_title = title != null or bottomTitle != null;
         const title_visible = has_title and !isFullyTransparent(opacity, titleColor, backgroundColor);
 
-        if (border_bg_transparent and !title_visible) return;
-
         const startX = @max(0, x);
         const startY = @max(0, y);
         const endX = @min(@as(i32, @intCast(self.width)) - 1, x + @as(i32, @intCast(width)) - 1);
@@ -1996,6 +2144,8 @@ pub const OptimizedBuffer = struct {
         const boxWidth = @as(u32, @intCast(endX - startX + 1));
         const boxHeight = @as(u32, @intCast(endY - startY + 1));
         if (!self.isRectInScissor(startX, startY, boxWidth, boxHeight)) return;
+        if (border_bg_transparent and !title_visible and
+            (opacity == 0.0 or !self.rectOverlapsImagePlacement(startX, startY, boxWidth, boxHeight))) return;
 
         const isAtActualLeft = startX == x;
         const isAtActualRight = endX == x + @as(i32, @intCast(width)) - 1;
@@ -2032,7 +2182,7 @@ pub const OptimizedBuffer = struct {
 
         const extendVerticalsToTop = leftBorderOnly or rightBorderOnly or bottomOnlyWithVerticals;
         const extendVerticalsToBottom = leftBorderOnly or rightBorderOnly or topOnlyWithVerticals;
-        const useTransparentBorderFastPath = canUseTransparentBorderFastPath(self, borderChars, borderColor, backgroundColor);
+        const useTransparentBorderFastPath = canUseTransparentBorderFastPath(self, borderChars, borderColor, backgroundColor, startX, startY, boxWidth, boxHeight);
 
         // Draw horizontal borders
         if (borderSides.top or borderSides.bottom) {
