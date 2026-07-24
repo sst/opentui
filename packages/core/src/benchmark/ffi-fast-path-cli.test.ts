@@ -41,11 +41,10 @@ test("stress output cannot be nested under its runtime build directory", () => {
   const script = join(benchmarkDir, "ffi-fast-path-stress.ts")
   mkdirSync(benchmarkDir, { recursive: true })
   cpSync(join(import.meta.dir, "ffi-fast-path-stress.ts"), script)
-  const outputBenchmarkDir = process.platform === "win32" ? benchmarkDir : realpathSync(benchmarkDir)
 
   const child = spawnSync(
     process.execPath,
-    [script, `--output=${join(outputBenchmarkDir, ".runtime-build/results")}`],
+    [script, `--output=${join(realpathSync(benchmarkDir), ".runtime-build/results")}`],
     {
       cwd: packageRoot,
       encoding: "utf8",
