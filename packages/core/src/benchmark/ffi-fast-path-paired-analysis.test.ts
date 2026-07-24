@@ -4,6 +4,7 @@ import {
   createPairedSchedule,
   pairGapWithinTarget,
   pairedSampleQualityReasons,
+  withinRegressionBudget,
   type PairedObservation,
 } from "./ffi-fast-path-paired-analysis.js"
 
@@ -92,6 +93,20 @@ describe("ffi fast path paired analysis", () => {
 
     expect(adjusted.ci.lower).toBeLessThanOrEqual(nominal.ci.lower)
     expect(adjusted.ci.upper).toBeGreaterThanOrEqual(nominal.ci.upper)
+  })
+
+  test("includes the exact regression budget boundary", () => {
+    const observations: PairedObservation[] = Array.from({ length: 10 }, (_, pair) => ({
+      pair,
+      order: pair % 2 === 0 ? "baseline-first" : "candidate-first",
+      gapMs: 1,
+      baselineNsPerOp: 100,
+      candidateNsPerOp: 103,
+    }))
+    const result = analyzePairedObservations(observations, 1_000, 0.995, 1)
+
+    expect(withinRegressionBudget(result.ci.upper, 0.03)).toBe(true)
+    expect(withinRegressionBudget(0.030_000_000_001, 0.03)).toBe(false)
   })
 
   test("records retained timing drift without censoring a calibrated sample", () => {

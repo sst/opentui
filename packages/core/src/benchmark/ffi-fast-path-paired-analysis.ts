@@ -49,6 +49,10 @@ export function pairGapWithinTarget(gapMs: number, targetMs: number): boolean {
   return gapMs <= targetMs
 }
 
+export function withinRegressionBudget(upperBound: number, maximumRegression: number): boolean {
+  return upperBound <= maximumRegression + Number.EPSILON
+}
+
 export function createPairedSchedule(
   scenarios: readonly string[],
   runtimes: readonly PairedRuntime[],

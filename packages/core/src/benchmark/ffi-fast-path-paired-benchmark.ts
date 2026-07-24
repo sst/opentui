@@ -12,6 +12,7 @@ import {
   createPairedSchedule,
   pairGapWithinTarget,
   pairedSampleQualityReasons,
+  withinRegressionBudget,
   type PairedObservation,
   type PairedOrder,
   type PairedRuntime,
@@ -667,6 +668,7 @@ function analyzeRuntime(name: string, runtime: PairedRuntime, familywiseConfiden
   const analysisSeed = seedFromString(`${seed}:${runtime}:${name}:paired-v1`)
   const nominal = analyzePairedObservations(observations, BOOTSTRAP_SAMPLES, 0.95, analysisSeed)
   const familywise = analyzePairedObservations(observations, BOOTSTRAP_SAMPLES, familywiseConfidence, analysisSeed)
+  const withinBudget = pairsForRuntime.length >= 10 && withinRegressionBudget(familywise.ci.upper, 0.03)
   return {
     nominal,
     familywise,
@@ -680,8 +682,8 @@ function analyzeRuntime(name: string, runtime: PairedRuntime, familywiseConfiden
       maximumRegression: 0.03,
       enoughPairs: pairsForRuntime.length >= 10,
       significantImprovement: pairsForRuntime.length >= 10 && familywise.ci.upper < 0,
-      withinRegressionBudget: pairsForRuntime.length >= 10 && familywise.ci.upper <= 0.03,
-      passed: pairsForRuntime.length >= 10 && familywise.ci.upper <= 0.03,
+      withinRegressionBudget: withinBudget,
+      passed: withinBudget,
     },
   }
 }
