@@ -260,10 +260,12 @@ assert.equal(buffer.width, 2)
 buffer.destroy()
 
 const image = core.NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+const raw = image.takeRaw()
 try {
-  assert.deepEqual([...image.raw().data], [1, 2, 3, 255])
+  assert.deepEqual([...raw.data], [1, 2, 3, 255])
+  assert.throws(() => image.info(), /disposed/)
 } finally {
-  image.dispose()
+  raw.dispose()
 }
 
 const dataPath = mkdtempSync(join(tmpdir(), "opentui-node-dist-tree-sitter-"))
@@ -352,10 +354,12 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(typeof nativePackage.default).toBe("string")
 
     const image = core.NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
+    const raw = image.takeRaw()
     try {
-      expect([...image.raw().data]).toEqual([1, 2, 3, 255])
+      expect([...raw.data]).toEqual([1, 2, 3, 255])
+      expect(() => image.info()).toThrow(/disposed/)
     } finally {
-      image.dispose()
+      raw.dispose()
     }
   })
 })

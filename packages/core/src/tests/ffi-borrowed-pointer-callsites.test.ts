@@ -560,6 +560,22 @@ describe("borrowed pointer call sites", () => {
     }
   })
 
+  test("imageGetPixelsPtr preserves portable pointer returns", () => {
+    const original = symbols.imageGetPixelsPtr
+    const pointer = 1234n as Pointer
+    symbols.imageGetPixelsPtr = (handle) => {
+      expect(handle).toBe(1)
+      return pointer
+    }
+    try {
+      expect(lib.imageGetPixelsPtr(1 as any)).toBe(pointer)
+      symbols.imageGetPixelsPtr = () => 0n
+      expect(lib.imageGetPixelsPtr(1 as any)).toBeNull()
+    } finally {
+      symbols.imageGetPixelsPtr = original
+    }
+  })
+
   test("imageExtend rejects a short background before native access", () => {
     withStubbedSymbol("imageExtend", (calls) => {
       expect(lib.imageExtend(1 as any, 0, 0, 0, 0, Uint8Array.of(1, 2, 3))).toEqual({
