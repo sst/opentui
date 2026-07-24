@@ -42,20 +42,34 @@ describe("image component", () => {
     expect(imageRef!.loadError).toBeNull()
   })
 
-  it("reloads when the source prop changes reactively", async () => {
+  it("replaces and clears the image when the source prop changes reactively", async () => {
     let imageRef: ImageRenderable | undefined
-    const [source, setSource] = createSignal<Uint8Array | undefined>(undefined)
+    const [source, setSource] = createSignal<Uint8Array | undefined>(PNG_1X1)
 
-    testSetup = await testRender(() => <image ref={imageRef} source={source()} style={{ width: 4, height: 2 }} />, {
-      width: 10,
-      height: 6,
-    })
+    testSetup = await testRender(
+      () => <image ref={imageRef} source={source()} protocol="blocks" width={2} height={1} />,
+      {
+        width: 4,
+        height: 2,
+      },
+    )
+    await imageRef!.loadPromise
+    await testSetup.renderOnce()
+    const firstImage = imageRef!.image!
+    expect(testSetup.captureCharFrame()).toContain("█")
+
+    setSource(PNG_1X1.slice())
+    await imageRef!.loadPromise
+    await testSetup.renderOnce()
+    const replacementImage = imageRef!.image!
+    expect(replacementImage).not.toBe(firstImage)
+    expect(() => firstImage.info()).toThrow("NativeImage is disposed")
+    expect(testSetup.captureCharFrame()).toContain("█")
+
+    setSource(undefined)
     await testSetup.renderOnce()
     expect(imageRef!.image).toBeNull()
-
-    setSource(PNG_1X1)
-    await testSetup.renderOnce()
-    await imageRef!.loadPromise
-    expect(imageRef!.image?.info().format).toBe("png")
+    expect(() => replacementImage.info()).toThrow("NativeImage is disposed")
+    expect(testSetup.captureCharFrame()).not.toContain("█")
   })
 })
