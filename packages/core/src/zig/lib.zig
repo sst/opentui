@@ -2871,6 +2871,11 @@ export fn imageGetInfo(image_handle: NativeHandle, out_info: ?*native_image.Info
     return @intFromEnum(native_image.Status.ok);
 }
 
+export fn imageGetPixelsPtr(image_handle: NativeHandle) ?[*]u8 {
+    const image = acquireImage(image_handle) orelse return null;
+    return image.pixels.ptr;
+}
+
 export fn imageClone(image_handle: NativeHandle, out_handle: ?*NativeHandle) u32 {
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
@@ -2892,6 +2897,27 @@ export fn imageCopyPixels(
     }
     const destination = destination_ptr.?[0..@intCast(destination_len)];
     return @intFromEnum(native_image.copyPixels(image, destination, stride, bgra == 1));
+}
+
+test "imageGetPixelsPtr aliases the image pixel allocation" {
+    const pixels = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
+    var handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageCreateFromRgba(&pixels, pixels.len, 2, 1, 8, &handle),
+    );
+    defer imageDestroy(handle);
+
+    const pointer = imageGetPixelsPtr(handle) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualSlices(u8, &pixels, pointer[0..pixels.len]);
+    pointer[0] = 42;
+
+    var copied: [pixels.len]u8 = undefined;
+    try std.testing.expectEqual(
+        @as(u32, @intFromEnum(native_image.Status.ok)),
+        imageCopyPixels(handle, &copied, copied.len, 8, 0),
+    );
+    try std.testing.expectEqual(@as(u8, 42), copied[0]);
 }
 
 export fn imageResize(image_handle: NativeHandle, width: u32, height: u32, filter: u32, out_handle: ?*NativeHandle) u32 {

@@ -64,11 +64,27 @@ Format detection uses encoded bytes, not names, URL suffixes, response headers, 
 | Method                                    | Result                                                         |
 | ----------------------------------------- | -------------------------------------------------------------- |
 | `raw(format?)`                            | Allocates and returns RGBA8 or BGRA8 pixels and image metadata |
+| `takeRaw()`                               | Transfers ownership of the native RGBA8 pixels without copying |
 | `copyTo(destination, { stride, format })` | Copies pixels into an existing `Uint8Array`                    |
 | `width`, `height`                         | Decoded dimensions                                             |
 | `ptr`                                     | Opaque native `ImageHandle`, valid until disposal              |
 
 The default output stride is `width * 4`. A custom `copyTo()` stride must fit one row, and the destination must fit every row.
+
+`takeRaw()` consumes the `NativeImage`; all later image methods throw. The returned `OwnedRawImage.data` directly views native memory. Dispose it only after every consumer has finished, because explicit disposal frees the native allocation and invalidates the view:
+
+```typescript
+const image = await NativeImage.load(new Blob([encodedImage]))
+const raw = image.takeRaw()
+
+try {
+  consumeRgba(raw.data, raw.width, raw.height, raw.stride)
+} finally {
+  raw.dispose()
+}
+```
+
+`OwnedRawImage.dispose()` is idempotent and required. Keep the owner alive for as long as any consumer uses `data`.
 
 ## Operations
 
