@@ -48,20 +48,7 @@ test "GIF probe and first frame decode preserve logical canvas transparency" {
     }, decoded.pixels);
 }
 
-test "GIF first frame uses logical canvas dimensions and frame offset" {
-    const gif = try decodeBase64("R0lGODlhAwADAPAAAP8AAAAAACH5BAAAAAAALAEAAQABAAEAAAICRAEAOw==");
-    defer std.testing.allocator.free(gif);
-    const decoded = try image.decode(std.testing.allocator, gif, .{});
-    defer decoded.deinit();
-    try std.testing.expectEqual(@as(u32, 3), decoded.width());
-    try std.testing.expectEqual(@as(u32, 3), decoded.height());
-    try std.testing.expectEqual(@as(u32, 0), decoded.info().has_alpha);
-    const center = (1 * 3 + 1) * 4;
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels[center .. center + 4]);
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels[0..4]);
-}
-
-test "GIF first frame honors a nonzero logical background palette index" {
+test "GIF first frame offset exposes the logical background palette index" {
     const encoded = "R0lGODlhAwADAPAAAP8AAAAAACH5BAAAAAAALAEAAQABAAEAAAICRAEAOw==";
     const gif = try decodeBase64(encoded);
     defer std.testing.allocator.free(gif);
@@ -69,6 +56,8 @@ test "GIF first frame honors a nonzero logical background palette index" {
 
     const decoded = try image.decode(std.testing.allocator, gif, .{});
     defer decoded.deinit();
+    try std.testing.expectEqual(@as(u32, 3), decoded.width());
+    try std.testing.expectEqual(@as(u32, 3), decoded.height());
     const center = (1 * 3 + 1) * 4;
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0, 255 }, decoded.pixels[0..4]);
     try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels[center .. center + 4]);
@@ -226,10 +215,37 @@ test "JPEG decode accepts trailing data after a complete stream" {
 }
 
 test "lossy lossless and alpha WebP decode to canonical RGBA" {
-    const fixtures = [_]struct { encoded: []const u8, has_alpha: u32 }{
-        .{ .encoded = "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoDAAIAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=", .has_alpha = 0 },
-        .{ .encoded = "UklGRhwAAABXRUJQVlA4TA8AAAAvAkAAAAcQ/Y/+ByKi/wEA", .has_alpha = 0 },
-        .{ .encoded = "UklGRh4AAABXRUJQVlA4TBEAAAAvAUAAEA8Q8x/zH4wViOh/CAA=", .has_alpha = 1 },
+    const fixtures = [_]struct {
+        encoded: []const u8,
+        width: u32,
+        height: u32,
+        has_alpha: u32,
+        pixels: []const u8,
+    }{
+        .{
+            .encoded = "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoDAAIAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=",
+            .width = 3,
+            .height = 2,
+            .has_alpha = 0,
+            .pixels = &([_]u8{ 255, 1, 0, 255 } ** 6),
+        },
+        .{
+            .encoded = "UklGRhwAAABXRUJQVlA4TA8AAAAvAkAAAAcQ/Y/+ByKi/wEA",
+            .width = 3,
+            .height = 2,
+            .has_alpha = 0,
+            .pixels = &([_]u8{ 255, 0, 0, 255 } ** 6),
+        },
+        .{
+            .encoded = "UklGRh4AAABXRUJQVlA4TBEAAAAvAUAAEA8Q8x/zH4wViOh/CAA=",
+            .width = 2,
+            .height = 2,
+            .has_alpha = 1,
+            .pixels = &[_]u8{
+                255, 0, 0, 255, 0,   0, 0, 0,
+                0,   0, 0, 0,   255, 0, 0, 255,
+            },
+        },
     };
     for (fixtures) |fixture| {
         const webp = try decodeBase64(fixture.encoded);
@@ -237,10 +253,14 @@ test "lossy lossless and alpha WebP decode to canonical RGBA" {
         var info: image.Info = .{};
         try std.testing.expectEqual(image.Status.ok, image.probe(webp, .{}, &info));
         try std.testing.expectEqual(@as(u32, @intFromEnum(image.Format.webp)), info.format);
+        try std.testing.expectEqual(fixture.width, info.width);
+        try std.testing.expectEqual(fixture.height, info.height);
         try std.testing.expectEqual(fixture.has_alpha, info.has_alpha);
         const decoded = try image.decode(std.testing.allocator, webp, .{});
         defer decoded.deinit();
         try std.testing.expectEqual(info, decoded.info());
+        try std.testing.expectEqual(@as(usize, fixture.width * fixture.height * 4), decoded.pixels.len);
+        try std.testing.expectEqualSlices(u8, fixture.pixels, decoded.pixels);
     }
 }
 
@@ -307,8 +327,11 @@ test "extend fills every edge and preserves source pixels" {
     defer output.deinit();
     try std.testing.expectEqual(@as(u32, 4), output.width());
     try std.testing.expectEqual(@as(u32, 3), output.height());
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 10, 20, 30, 40 }, output.pixels[20..24]);
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 1, 2, 3, 4 }, output.pixels[0..4]);
+    try std.testing.expectEqualSlices(u8, &[_]u8{
+        1, 2, 3, 4, 1,  2,  3,  4,  1, 2, 3, 4, 1, 2, 3, 4,
+        1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4, 1, 2, 3, 4,
+        1, 2, 3, 4, 1,  2,  3,  4,  1, 2, 3, 4, 1, 2, 3, 4,
+    }, output.pixels);
 }
 
 test "orthogonal transforms map pixels exactly" {
@@ -352,16 +375,24 @@ test "orthogonal transforms map pixels exactly" {
 }
 
 test "copyPixels supports RGBA, BGRA, and padded rows" {
-    const source = try makeImage(&[_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 }, 2, 1);
+    const source = try makeImage(&[_]u8{
+        1, 2,  3,  4,  5,  6,  7,  8,
+        9, 10, 11, 12, 13, 14, 15, 16,
+    }, 2, 2);
     defer source.deinit();
-    var rgba = [_]u8{99} ** 12;
+    var rgba = [_]u8{99} ** 24;
     try std.testing.expectEqual(image.Status.ok, image.copyPixels(source, &rgba, 12, false));
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 }, rgba[0..8]);
-    try std.testing.expectEqual(@as(u8, 99), rgba[8]);
+    try std.testing.expectEqualSlices(u8, &[_]u8{
+        1, 2,  3,  4,  5,  6,  7,  8,  99, 99, 99, 99,
+        9, 10, 11, 12, 13, 14, 15, 16, 99, 99, 99, 99,
+    }, &rgba);
 
-    var bgra: [8]u8 = undefined;
+    var bgra: [16]u8 = undefined;
     try std.testing.expectEqual(image.Status.ok, image.copyPixels(source, &bgra, 8, true));
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 3, 2, 1, 4, 7, 6, 5, 8 }, &bgra);
+    try std.testing.expectEqualSlices(u8, &[_]u8{
+        3,  2,  1, 4,  7,  6,  5,  8,
+        11, 10, 9, 12, 15, 14, 13, 16,
+    }, &bgra);
 }
 
 test "source-over composite uses linear light and correct alpha" {
@@ -433,9 +464,10 @@ fn injectJpegExifOrientation(
 }
 
 test "JPEG EXIF orientation swaps probe and decode dimensions" {
-    const jpeg = std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/halves.jpg", 1 << 20) catch
-        return error.SkipZigTest;
+    const jpeg = try std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/orientation.jpg", 1 << 20);
     defer std.testing.allocator.free(jpeg);
+    const plain = try image.decode(std.testing.allocator, jpeg, .{});
+    defer plain.deinit();
 
     var plain_info: image.Info = .{};
     try std.testing.expectEqual(image.Status.ok, image.probe(jpeg, .{}, &plain_info));
@@ -460,22 +492,24 @@ test "JPEG EXIF orientation swaps probe and decode dimensions" {
         try std.testing.expectEqual(@as(u32, 8), decoded.width());
         try std.testing.expectEqual(@as(u32, 16), decoded.height());
         try std.testing.expectEqual(@as(u32, 1), decoded.metadata.orientation);
-        // Orientation 6: output (dx, dy) = source (dy, srcH - 1 - dx). The
-        // source is left-red, right-green, so the output's top rows come from
-        // the source's left (red) half and the bottom rows from the right
-        // (green) half.
-        const top = decoded.pixels[0..4];
+        // Orientation 6: output (dx, dy) = source (dy, srcH - 1 - dx).
+        const source_top = (@as(usize, 7) * 16) * 4;
+        const source_bottom = (@as(usize, 7) * 16 + 15) * 4;
         const bottom_offset = (@as(usize, 15) * 8) * 4;
-        const bottom = decoded.pixels[bottom_offset .. bottom_offset + 4];
-        try std.testing.expect(top[0] > 200 and top[1] < 60);
-        try std.testing.expect(bottom[1] > 200 and bottom[0] < 60);
+        try std.testing.expectEqualSlices(u8, plain.pixels[source_top .. source_top + 4], decoded.pixels[0..4]);
+        try std.testing.expectEqualSlices(
+            u8,
+            plain.pixels[source_bottom .. source_bottom + 4],
+            decoded.pixels[bottom_offset .. bottom_offset + 4],
+        );
     }
 }
 
 test "JPEG EXIF orientation 180 keeps dimensions" {
-    const jpeg = std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/halves.jpg", 1 << 20) catch
-        return error.SkipZigTest;
+    const jpeg = try std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/orientation.jpg", 1 << 20);
     defer std.testing.allocator.free(jpeg);
+    const plain = try image.decode(std.testing.allocator, jpeg, .{});
+    defer plain.deinit();
     const flipped = try injectJpegExifOrientation(std.testing.allocator, jpeg, 3, .little);
     defer std.testing.allocator.free(flipped);
 
@@ -488,15 +522,20 @@ test "JPEG EXIF orientation 180 keeps dimensions" {
     const decoded = try image.decode(std.testing.allocator, flipped, .{});
     defer decoded.deinit();
     try std.testing.expectEqual(@as(u32, 16), decoded.width());
-    // 180 degrees: the left half becomes green, the right half red.
-    try std.testing.expect(decoded.pixels[1] > 200);
+    // Orientation 3: output (dx, dy) = source (srcW - 1 - dx, srcH - 1 - dy).
+    const source_left = (@as(usize, 7) * 16 + 15) * 4;
+    const source_right = (@as(usize, 7) * 16) * 4;
     const right_offset = (@as(usize, 15)) * 4;
-    try std.testing.expect(decoded.pixels[right_offset] > 200);
+    try std.testing.expectEqualSlices(u8, plain.pixels[source_left .. source_left + 4], decoded.pixels[0..4]);
+    try std.testing.expectEqualSlices(
+        u8,
+        plain.pixels[source_right .. source_right + 4],
+        decoded.pixels[right_offset .. right_offset + 4],
+    );
 }
 
-test "JPEG EXIF orientation rejects invalid values" {
-    const jpeg = std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/halves.jpg", 1 << 20) catch
-        return error.SkipZigTest;
+test "JPEG EXIF orientation ignores invalid values and uses the default" {
+    const jpeg = try std.fs.cwd().readFileAlloc(std.testing.allocator, "../tests/fixtures/images/orientation.jpg", 1 << 20);
     defer std.testing.allocator.free(jpeg);
     for ([_]u16{ 0, 9, 200 }) |invalid| {
         const bytes = try injectJpegExifOrientation(std.testing.allocator, jpeg, invalid, .little);
