@@ -114,6 +114,7 @@ test("comparison rejects repeated run identities as independent rounds", () => {
     { encoding: "utf8", timeout: 10_000 },
   )
 
+  expect(child.status).not.toBe(0)
   expect(child.stderr).toContain("duplicate report runId")
 })
 
