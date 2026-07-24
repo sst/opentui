@@ -1,18 +1,7 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test"
 import { ImageRenderable, NativeImage } from "@opentui/core"
 import { act, useState } from "react"
 import { testRender } from "../src/test-utils.js"
-
-let originalConsoleError: (...args: any[]) => void
-
-beforeAll(() => {
-  originalConsoleError = console.error
-  console.error = mock(() => {})
-})
-
-afterAll(() => {
-  console.error = originalConsoleError
-})
 
 const PNG_1X1 = Uint8Array.from(
   Buffer.from(
@@ -22,10 +11,20 @@ const PNG_1X1 = Uint8Array.from(
 )
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined
+let consoleError: ReturnType<typeof spyOn>
+
+beforeEach(() => {
+  consoleError = spyOn(console, "error")
+})
 
 afterEach(() => {
-  testSetup?.renderer.destroy()
-  testSetup = undefined
+  try {
+    act(() => testSetup?.renderer.destroy())
+    expect(consoleError).not.toHaveBeenCalled()
+  } finally {
+    testSetup = undefined
+    consoleError.mockRestore()
+  }
 })
 
 describe("React Renderer | image element", () => {
