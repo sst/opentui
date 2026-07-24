@@ -53,6 +53,23 @@ test("comparison rejects repeated report files as independent rounds", () => {
   expect(child.stderr).toContain("duplicate report path")
 })
 
+test("comparison exits unsuccessfully when its acceptance gate fails", () => {
+  const root = mkdtempSync(join(tmpdir(), "opentui-ffi-compare-test-"))
+  temporaryDirectories.push(root)
+  const baseline = join(root, "baseline.json")
+  const candidate = join(root, "candidate.json")
+  writeReport(baseline, 100, 100, 9)
+  writeReport(candidate, 100, 95, 9)
+
+  const child = spawnSync(
+    process.execPath,
+    [join(import.meta.dir, "ffi-fast-path-compare.ts"), baseline, candidate, "--no-output"],
+    { encoding: "utf8", timeout: 10_000 },
+  )
+
+  expect(child.status).toBe(1)
+})
+
 function writeReport(path: string, bunNsPerOp: number, nodeNsPerOp: number, rounds = 1): void {
   const samples = (nsPerOp: number) => Array.from({ length: rounds }, () => ({ nsPerOp }))
   writeFileSync(

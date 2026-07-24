@@ -80,6 +80,7 @@ if (!process.argv.includes("--no-output")) {
 
 const jsonPath = optionalArg("json")
 if (jsonPath) writeFileSync(resolve(jsonPath), JSON.stringify(payload, null, 2))
+if (!payload.acceptance.passed) process.exitCode = 1
 
 function compareRuntime(before: ScenarioResult, after: ScenarioResult, runtime: RuntimeName) {
   const baselineValues = sampleValues(before, runtime)
