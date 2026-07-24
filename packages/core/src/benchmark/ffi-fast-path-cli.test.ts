@@ -53,6 +53,23 @@ test("comparison rejects repeated report files as independent rounds", () => {
   expect(child.stderr).toContain("duplicate report path")
 })
 
+test("comparison rejects repeated run identities as independent rounds", () => {
+  const root = mkdtempSync(join(tmpdir(), "opentui-ffi-compare-test-"))
+  temporaryDirectories.push(root)
+  const baselines = [join(root, "baseline-1.json"), join(root, "baseline-2.json")]
+  const candidates = [join(root, "candidate-1.json"), join(root, "candidate-2.json")]
+  for (const path of baselines) writeReport(path, 100, 100, 1, "baseline-run")
+  for (const path of candidates) writeReport(path, 100, 80, 1, "candidate-run")
+
+  const child = spawnSync(
+    process.execPath,
+    [join(import.meta.dir, "ffi-fast-path-compare.ts"), baselines.join(","), candidates.join(","), "--no-output"],
+    { encoding: "utf8", timeout: 10_000 },
+  )
+
+  expect(child.stderr).toContain("duplicate report runId")
+})
+
 test("comparison exits unsuccessfully when its acceptance gate fails", () => {
   const root = mkdtempSync(join(tmpdir(), "opentui-ffi-compare-test-"))
   temporaryDirectories.push(root)
@@ -70,14 +87,14 @@ test("comparison exits unsuccessfully when its acceptance gate fails", () => {
   expect(child.status).toBe(1)
 })
 
-function writeReport(path: string, bunNsPerOp: number, nodeNsPerOp: number, rounds = 1): void {
+function writeReport(path: string, bunNsPerOp: number, nodeNsPerOp: number, rounds = 1, runId = path): void {
   const samples = (nsPerOp: number) => Array.from({ length: rounds }, () => ({ nsPerOp }))
   writeFileSync(
     path,
     JSON.stringify({
       schemaVersion: 1,
       benchmark: "opentui-ffi-fast-path",
-      runId: path,
+      runId,
       suite: "default",
       environment: {
         bun: { name: "bun", version: "1.3.14", platform: "darwin", arch: "arm64" },
