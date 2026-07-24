@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises"
 
+import { toArrayBuffer } from "./platform/ffi.js"
 import { resolveRenderLib, type ImageHandle, type RenderLib } from "./zig.js"
 import type { NativeImageInfo } from "./zig-structs.js"
 
@@ -83,6 +84,35 @@ export interface RawImage {
   format: PixelFormat
   colorSpace: "srgb"
   alpha: "straight"
+}
+
+export interface OwnedRawImage extends RawImage {
+  dispose(): void
+}
+
+class OwnedRawImageImpl implements OwnedRawImage {
+  private handle: ImageHandle | null
+
+  public readonly format = "rgba8"
+  public readonly colorSpace = "srgb"
+  public readonly alpha = "straight"
+
+  constructor(
+    public readonly data: Uint8Array,
+    public readonly width: number,
+    public readonly height: number,
+    public readonly stride: number,
+    private readonly lib: RenderLib,
+    handle: ImageHandle,
+  ) {
+    this.handle = handle
+  }
+
+  public dispose(): void {
+    if (!this.handle) return
+    this.lib.imageDestroy(this.handle)
+    this.handle = null
+  }
 }
 
 const STATUS_MESSAGES = [
@@ -482,6 +512,19 @@ export class NativeImage {
     const data = new Uint8Array(stride * this.height)
     checkStatus(this.lib.imageCopyPixels(this.guard(), data, stride, format === "bgra8"))
     return { data, width: this.width, height: this.height, stride, format, colorSpace: "srgb", alpha: "straight" }
+  }
+
+  public takeRaw(): OwnedRawImage {
+    const handle = this.guard()
+    const pointer = this.lib.imageGetPixelsPtr(handle)
+    if (!pointer) throw imageError(10)
+    const width = this.imageInfo.width
+    const height = this.imageInfo.height
+    const stride = width * 4
+    const data = new Uint8Array(toArrayBuffer(pointer, 0, stride * height))
+    const raw = new OwnedRawImageImpl(data, width, height, stride, this.lib, handle)
+    this.handle = null
+    return raw
   }
 
   public copyTo(destination: Uint8Array, options: { stride?: number; format?: PixelFormat } = {}): void {
