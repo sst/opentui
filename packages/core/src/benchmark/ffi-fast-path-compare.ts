@@ -175,7 +175,9 @@ function readReport(path: string): BenchmarkReport {
 }
 
 function readReports(paths: string): BenchmarkReport[] {
-  return paths.split(",").map((path) => readReport(path))
+  const resolvedPaths = paths.split(",").map((path) => resolve(path))
+  if (new Set(resolvedPaths).size !== resolvedPaths.length) throw new Error("duplicate report path")
+  return resolvedPaths.map((path) => readReport(path))
 }
 
 function mergeReports(reports: BenchmarkReport[]): BenchmarkReport {
