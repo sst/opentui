@@ -161,6 +161,11 @@ fn runLargeStillTransmit(allocator: std.mem.Allocator, pool: *gp.GraphemePool) !
         var timer = try std.time.Timer.start();
         _ = test_renderer.renderer.render(false);
         cost.stats.record(timer.read());
+        // Match the other renderer scenarios by excluding initial full paint.
+        if (frame == 0) {
+            cost.stats = .{};
+            continue;
+        }
         cost.total_bytes += test_renderer.memory.bytes.items.len;
         cost.frames += 1;
     }

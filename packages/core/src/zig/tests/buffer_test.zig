@@ -126,6 +126,7 @@ test "OptimizedBuffer image-free frame buffer copy does not allocate" {
     target.drawFrameBuffer(0, 0, source, null, null, null, null);
     target.allocator = std.testing.allocator;
 
+    try std.testing.expect(!failing.has_induced_failure);
     try std.testing.expectEqual(@as(u32, 'X'), target.get(0, 0).?.char);
 }
 
@@ -154,6 +155,7 @@ test "OptimizedBuffer image-free alpha frame buffer copy does not allocate" {
     target.drawFrameBuffer(0, 0, source, null, null, null, null);
     target.allocator = std.testing.allocator;
 
+    try std.testing.expect(!failing.has_induced_failure);
     try std.testing.expectEqual(@as(u32, 'X'), target.get(0, 0).?.char);
 }
 
