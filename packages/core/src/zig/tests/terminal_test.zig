@@ -748,12 +748,16 @@ test "queryTerminalSend - sends unwrapped queries when not in tmux" {
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?2027$p") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?u") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1bP+q4d73\x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.kittyGraphicsQuery) != null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.primaryDeviceAttrs) != null);
 
     // Should NOT contain tmux DCS wrapper
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
 
     // Should mark capability queries as pending
     try testing.expect(term.capability_queries_pending);
+    try testing.expect(term.graphics_query_pending);
+    try testing.expect(term.sixel_query_pending);
 }
 
 test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
