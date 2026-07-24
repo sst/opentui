@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 
@@ -31,6 +31,29 @@ test.each(["", "."])("stress output %p does not remove its package directory", (
 
   expect(child.status).not.toBe(0)
   expect(existsSync(sentinel)).toBe(true)
+})
+
+test("stress output cannot be nested under its runtime build directory", () => {
+  const root = mkdtempSync(join(tmpdir(), "opentui-ffi-stress-test-"))
+  temporaryDirectories.push(root)
+  const packageRoot = join(root, "packages/core")
+  const benchmarkDir = join(packageRoot, "src/benchmark")
+  const script = join(benchmarkDir, "ffi-fast-path-stress.ts")
+  mkdirSync(benchmarkDir, { recursive: true })
+  cpSync(join(import.meta.dir, "ffi-fast-path-stress.ts"), script)
+
+  const child = spawnSync(
+    process.execPath,
+    [script, `--output=${join(realpathSync(benchmarkDir), ".runtime-build/results")}`],
+    {
+      cwd: packageRoot,
+      encoding: "utf8",
+      timeout: 10_000,
+    },
+  )
+
+  expect(child.status).not.toBe(0)
+  expect(child.stderr).toContain("--output must not be inside the runtime build directory")
 })
 
 test("paired comparison rejects a baseline alias of the candidate worktree", () => {

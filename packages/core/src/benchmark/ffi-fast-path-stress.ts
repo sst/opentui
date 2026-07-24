@@ -3,7 +3,7 @@
 import { spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { availableParallelism, cpus, hostname, release } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 
 interface ChildPayload {
@@ -42,11 +42,15 @@ interface Attempt {
 const benchmarkDir = dirname(fileURLToPath(import.meta.url))
 const packageRoot = resolve(benchmarkDir, "../..")
 const childSource = join(benchmarkDir, "ffi-fast-path-scenarios.ts")
+const buildDir = join(benchmarkDir, ".runtime-build")
 const outputValue = stringArg("output", join(benchmarkDir, "ffi-fast-path-stress-output"))
 if (!outputValue) throw new Error("--output must not be empty")
 const outputDir = resolve(outputValue)
 if (outputDir === packageRoot) throw new Error("--output must not be the package root")
-const buildDir = join(benchmarkDir, ".runtime-build")
+const outputBuildRelative = relative(buildDir, outputDir)
+if (outputBuildRelative === "" || (!isAbsolute(outputBuildRelative) && outputBuildRelative.split(sep)[0] !== "..")) {
+  throw new Error("--output must not be inside the runtime build directory")
+}
 const attemptsDir = join(outputDir, "attempts")
 const reportsDir = join(outputDir, "node-reports")
 const nodeScript = join(buildDir, "ffi-fast-path-scenarios.js")
