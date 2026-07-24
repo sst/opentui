@@ -49,7 +49,7 @@ const outputDir = resolve(outputValue)
 if (outputDir === packageRoot) throw new Error("--output must not be the package root")
 mkdirSync(outputDir, { recursive: true })
 if (existsSync(buildDir)) {
-  const outputBuildRelative = relative(realpathSync(buildDir), realpathSync(outputDir))
+  const outputBuildRelative = relative(realpathSync.native(buildDir), realpathSync.native(outputDir))
   if (outputBuildRelative === "" || (!isAbsolute(outputBuildRelative) && outputBuildRelative.split(sep)[0] !== "..")) {
     throw new Error("--output must not be inside the runtime build directory")
   }
