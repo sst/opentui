@@ -32,10 +32,13 @@ From `packages/core`, set `NODE26_PATH` to Node 26.4.0:
 
 ```sh
 export NODE26_PATH=/absolute/path/to/node
+bun run bench:ffi-fast-path --list-targeted-scenarios
 bun run bench:ffi-fast-path --suite=default --runs=9 --json=/tmp/ffi.json
 bun run bench:ffi-fast-path-paired --baseline-root=/absolute/base --candidate-root=/absolute/candidate --runs=40
 bun run bench:ffi-fast-path-compare /tmp/base.json /tmp/candidate.json
 ```
+
+Default runs omit the separately listed reusable-storage scenarios. Pass their comma-separated names with `--scenario=<names>` to either runner.
 
 Run paired comparisons from the candidate worktree. Roots must be absolute and use matching scenario/calibration sources and native libraries; pair counts must be even. Worktrees must be clean unless `--allow-dirty` is passed.
 
