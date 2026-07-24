@@ -38,19 +38,17 @@ test("stress output cannot be nested under its runtime build directory", () => {
   temporaryDirectories.push(root)
   const packageRoot = join(root, "packages/core")
   const benchmarkDir = join(packageRoot, "src/benchmark")
-  const script = join(benchmarkDir, "ffi-fast-path-stress.ts")
+  const copiedScript = join(benchmarkDir, "ffi-fast-path-stress.ts")
   mkdirSync(benchmarkDir, { recursive: true })
-  cpSync(join(import.meta.dir, "ffi-fast-path-stress.ts"), script)
+  cpSync(join(import.meta.dir, "ffi-fast-path-stress.ts"), copiedScript)
+  const canonicalBenchmarkDir = realpathSync(benchmarkDir)
+  const script = join(canonicalBenchmarkDir, "ffi-fast-path-stress.ts")
 
-  const child = spawnSync(
-    process.execPath,
-    [script, `--output=${join(realpathSync(benchmarkDir), ".runtime-build/results")}`],
-    {
-      cwd: packageRoot,
-      encoding: "utf8",
-      timeout: 10_000,
-    },
-  )
+  const child = spawnSync(process.execPath, [script, "--output=.runtime-build/results"], {
+    cwd: canonicalBenchmarkDir,
+    encoding: "utf8",
+    timeout: 10_000,
+  })
 
   expect(child.status).not.toBe(0)
   expect(child.stderr).toContain("--output must not be inside the runtime build directory")
