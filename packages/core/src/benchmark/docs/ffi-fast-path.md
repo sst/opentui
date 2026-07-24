@@ -38,3 +38,5 @@ bun run bench:ffi-fast-path-compare /tmp/base.json /tmp/candidate.json
 ```
 
 Run paired comparisons from the candidate worktree. Roots must be absolute and use matching scenario/calibration sources and native libraries; pair counts must be even. Worktrees must be clean unless `--allow-dirty` is passed.
+
+If the baseline predates this suite, copy `ffi-fast-path-scenarios.ts` and `ffi-fast-path-calibration.ts` from the candidate into the same baseline paths, then pass `--allow-dirty`. The report records the copied files.
