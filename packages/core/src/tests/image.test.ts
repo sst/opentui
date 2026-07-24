@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url"
 
 import { describe, expect, test } from "bun:test"
 import { ImageError, ImageLoadError, NativeImage, imageInfo } from "../image.js"
+import { toArrayBuffer } from "../platform/ffi.js"
+import { resolveRenderLib } from "../zig.js"
 
 const PNG_1X1 = Uint8Array.from(
   Buffer.from(
@@ -205,6 +207,49 @@ describe("NativeImage", () => {
       expect([...image.raw("bgra8").data]).toEqual([3, 2, 1, 4, 7, 6, 5, 8])
     } finally {
       image.dispose()
+    }
+  })
+
+  test("transfers native RGBA pixels without copying", () => {
+    const pixels = Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8)
+    const image = NativeImage.fromRgba(pixels, 2, 1)
+    const handle = image.ptr
+    const raw = image.takeRaw()
+    try {
+      expect(raw).toMatchObject({
+        width: 2,
+        height: 1,
+        stride: 8,
+        format: "rgba8",
+        colorSpace: "srgb",
+        alpha: "straight",
+      })
+      expect([...raw.data]).toEqual([...pixels])
+      expect(() => image.info()).toThrow("disposed")
+
+      const pointer = resolveRenderLib().imageGetPixelsPtr(handle)
+      expect(pointer).not.toBeNull()
+      const alias = new Uint8Array(toArrayBuffer(pointer!, 0, pixels.byteLength))
+      raw.data[0] = 42
+      expect(alias[0]).toBe(42)
+    } finally {
+      raw.dispose()
+      raw.dispose()
+    }
+    expect(resolveRenderLib().imageGetPixelsPtr(handle)).toBeNull()
+  })
+
+  test("keeps transferred pixels alive after the NativeImage wrapper is dropped", async () => {
+    let image: NativeImage | null = NativeImage.fromRgba(Uint8Array.of(9, 8, 7, 6), 1, 1)
+    const raw = image.takeRaw()
+    image = null
+    if (typeof Bun !== "undefined") Bun.gc(true)
+    ;(globalThis as any).gc?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    try {
+      expect([...raw.data]).toEqual([9, 8, 7, 6])
+    } finally {
+      raw.dispose()
     }
   })
 
