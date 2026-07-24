@@ -8,7 +8,7 @@ import {
   BoxRenderable,
   CliRenderer,
   ImageRenderable,
-  NativeImage,
+  RGBA,
   TextAttributes,
   TextRenderable,
   createCliRenderer,
@@ -42,6 +42,12 @@ const P = {
 
 type FitMode = "fit" | "cover"
 
+enum OverlayMode {
+  NONE = "NONE",
+  IMAGE = "IMAGE",
+  BOX = "BOX",
+}
+
 interface GalleryItem {
   name: string
   sourceType: string
@@ -56,15 +62,30 @@ let keyListener: ((key: KeyEvent) => void) | null = null
 let capabilityListener: (() => void) | null = null
 let controlsText: TextRenderable | null = null
 let previews: ImageRenderable[] = []
+let overlayImage: ImageRenderable | null = null
+let overlayBox: BoxRenderable | null = null
 let fitMode: FitMode = "fit"
 let protocol: ImageRenderProtocol = "auto"
+let overlayMode = OverlayMode.NONE
+let boxAlphaIndex = 0
 
 const protocols: ImageRenderProtocol[] = ["auto", "kitty", "sixel", "blocks"]
+const overlayModes = [OverlayMode.NONE, OverlayMode.IMAGE, OverlayMode.BOX]
+const boxAlphas = [0, 0.5, 1]
 
 function updateControls(): void {
   if (!controlsText) return
   const effective = previews[0]?.effectiveProtocol ?? "blocks"
-  controlsText.content = `F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     ESC  MENU`
+  controlsText.content = `F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     O  ${overlayMode}     A  ${boxAlphas[boxAlphaIndex]}     ESC  MENU`
+}
+
+function updateOverlay(): void {
+  if (overlayImage) overlayImage.visible = overlayMode === OverlayMode.IMAGE
+  if (overlayBox) {
+    overlayBox.backgroundColor = RGBA.fromValues(0.15, 0.55, 0.95, boxAlphas[boxAlphaIndex])
+    overlayBox.visible = overlayMode === OverlayMode.BOX
+  }
+  updateControls()
 }
 
 function createCard(renderer: CliRenderer, item: GalleryItem, index: number): BoxRenderable {
@@ -152,7 +173,59 @@ function createCard(renderer: CliRenderer, item: GalleryItem, index: number): Bo
     },
   })
   previews.push(preview)
-  card.add(preview)
+  if (index === 0) {
+    const previewStage = new BoxRenderable(renderer, {
+      id: "native-image-preview-stage",
+      width: "100%",
+      height: "auto",
+      flexGrow: 1,
+      flexShrink: 1,
+      minHeight: 5,
+    })
+    preview.width = "100%"
+    preview.height = "100%"
+    preview.flexGrow = 0
+    preview.flexShrink = 0
+    previewStage.add(preview)
+
+    overlayImage = new ImageRenderable(renderer, {
+      id: "native-image-overlay-image",
+      source: jpegPath,
+      fit: "cover",
+      protocol,
+      position: "absolute",
+      left: "20%",
+      top: "25%",
+      width: "60%",
+      height: "50%",
+      zIndex: 1,
+      visible: false,
+    })
+    previews.push(overlayImage)
+    previewStage.add(overlayImage)
+
+    overlayBox = new BoxRenderable(renderer, {
+      id: "native-image-overlay-box",
+      position: "absolute",
+      left: "20%",
+      top: "25%",
+      width: "60%",
+      height: "50%",
+      zIndex: 1,
+      visible: false,
+      border: true,
+      borderColor: P.text,
+      title: "OVERLAY",
+      shouldFill: false,
+      renderBefore(buffer) {
+        buffer.fillRect(this.x, this.y, this.width, this.height, this.backgroundColor)
+      },
+    })
+    previewStage.add(overlayBox)
+    card.add(previewStage)
+  } else {
+    card.add(preview)
+  }
   card.add(metadata)
   return card
 }
@@ -260,18 +333,20 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   footer.add(controlsText)
   root.add(footer)
-  updateControls()
+  updateOverlay()
 
   keyListener = (key: KeyEvent) => {
     if (key.name === "f") fitMode = fitMode === "fit" ? "cover" : "fit"
     else if (key.name === "p") protocol = protocols[(protocols.indexOf(protocol) + 1) % protocols.length]
+    else if (key.name === "o") overlayMode = overlayModes[(overlayModes.indexOf(overlayMode) + 1) % overlayModes.length]
+    else if (key.name === "a") boxAlphaIndex = (boxAlphaIndex + 1) % boxAlphas.length
     else return
 
     for (const preview of previews) {
       preview.fit = fitMode
       preview.protocol = protocol
     }
-    updateControls()
+    updateOverlay()
   }
   renderer.keyInput.on("keypress", keyListener)
   capabilityListener = updateControls
@@ -286,9 +361,13 @@ export function destroy(renderer: CliRenderer): void {
   root?.destroyRecursively()
   root = null
   previews = []
+  overlayImage = null
+  overlayBox = null
   controlsText = null
   fitMode = "fit"
   protocol = "auto"
+  overlayMode = OverlayMode.NONE
+  boxAlphaIndex = 0
   server?.close()
   server = null
 }

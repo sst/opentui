@@ -79,7 +79,7 @@ Sizing uses terminal pixel resolution when available and a 2:1 cell-height fallb
 | `sixel`    | Force Sixel; falls back to blocks without terminal pixel resolution |
 | `blocks`   | Portable Unicode quadrant-block rendering                           |
 
-Automatic selection uses blocks inside tmux. An explicit per-image protocol overrides automatic detection. Normal cell content can render over image placements.
+Automatic selection uses blocks inside tmux. An explicit per-image protocol overrides automatic detection. Direct, unbuffered plane fills, text, and box borders cover image placements at whole-cell granularity; their foreground and background alpha are ignored instead of blended with image pixels.
 
 Use `OPENTUI_IMAGE_PROTOCOL=auto|kitty|sixel|blocks` to set the global default. `OPENTUI_GRAPHICS=false` disables Kitty and Sixel detection. See [Environment variables](/docs/reference/env-vars).
 
