@@ -313,9 +313,12 @@ test "renderer keeps unresolved Sixel fallback frames as no-ops" {
     }
     test_renderer.renderer.terminal.caps.sixel = true;
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
-    _ = test_renderer.renderer.render(true);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const first = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOf(u8, first, "\x1bP0;1;0q") == null);
+    try std.testing.expect(std.mem.indexOf(u8, first, "█") != null);
     try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
-    _ = test_renderer.renderer.render(false);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
     try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
 }
 
@@ -2095,9 +2098,11 @@ test "renderer - split scrollback omits image graphics and fallback markers" {
     const snapshot = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = pool, .link_pool = &local_link_pool });
     defer snapshot.deinit();
     try std.testing.expect(try snapshot.drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
+    try snapshot.drawText("X", 1, 0, .{ 255, 255, 255, 255 }, null, 0);
     _ = test_renderer.renderer.resetSplitScrollback(2, 2);
     _ = test_renderer.renderer.commitSplitFooterSnapshotBatched(snapshot, 2, false, true, 2, false, true, true);
     const output = test_renderer.memory.lastWrite();
+    try std.testing.expect(std.mem.indexOfScalar(u8, output, 'X') != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b_G") == null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1bP0;1;0q") == null);
     for (buffer.quadrantChars) |char| {
@@ -3125,15 +3130,12 @@ test "threaded buffered backend skips instead of blocking behind output" {
 
 test "buffered backend reports a failed frame when growth allocation fails" {
     const rout = @import("../renderer-output.zig");
-    // Initial create performs exactly two allocations (buffer A and B). The
-    // growth realloc is the next allocation/resize, which must fail.
-    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{
-        .fail_index = 2,
-        .resize_fail_index = 0,
-    });
     var out = CountingOutput{};
-    var backend = try renderer.BufferedBackend.create(failing.allocator(), out.bufferedOutput());
+    var backend = try renderer.BufferedBackend.create(std.testing.allocator, out.bufferedOutput());
     defer backend.deinit();
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0, .resize_fail_index = 0 });
+    backend.allocator = failing.allocator();
+    defer backend.allocator = std.testing.allocator;
 
     backend.beginFrame();
     var w = backend.writer();
@@ -3147,6 +3149,7 @@ test "buffered backend reports a failed frame when growth allocation fails" {
         };
     }
     try std.testing.expect(write_failed);
+    try std.testing.expect(failing.has_induced_failure);
 
     // A frame whose bytes were dropped must be reported as failed so the
     // renderer can force a full repaint, and the truncated ANSI stream must
@@ -3261,7 +3264,7 @@ test "renderer scales kitty transmission alpha by placement opacity" {
     try std.testing.expect(@abs(@as(i16, retransmitted[3]) - 64) <= 1);
 }
 
-test "renderer bounds the sixel cache and evicts least recently used payloads" {
+test "renderer bounds sixel cache entries and evicts least recently used payloads" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
@@ -3543,6 +3546,16 @@ test "renderer transmits only cropped kitty source pixels" {
     const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
     defer std.testing.allocator.free(transmitted);
     try std.testing.expectEqual(@as(usize, 8 * 8 * 3), transmitted.len);
+    var expected: [8 * 8 * 3]u8 = undefined;
+    for (0..8) |y| {
+        for (0..8) |x| {
+            const offset = (y * 8 + x) * 3;
+            expected[offset] = @truncate((12 + y) * 64 + 8 + x);
+            expected[offset + 1] = 100;
+            expected[offset + 2] = 200;
+        }
+    }
+    try std.testing.expectEqualSlices(u8, &expected, transmitted);
 
     const changed = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try changed.drawImage(value, value_handle, 0, 0, 2, 2, 16, 16, 16, 12, 8, 8, .auto));
@@ -3550,4 +3563,16 @@ test "renderer transmits only cropped kitty source pixels" {
     const changed_output = test_renderer.memory.lastWrite();
     try std.testing.expect(std.mem.indexOf(u8, changed_output, "a=d,d=I") != null);
     try std.testing.expect(std.mem.indexOf(u8, changed_output, "a=t,f=24,s=8,v=8") != null);
+    const changed_start = std.mem.indexOf(u8, changed_output, "\x1b_Ga=t").?;
+    const changed_end = std.mem.indexOfPos(u8, changed_output, changed_start, "\x1b[").?;
+    const changed_transmitted = try terminal_image_test.decodeKittyChunks(changed_output[changed_start..changed_end]);
+    defer std.testing.allocator.free(changed_transmitted);
+    for (0..8) |y| {
+        for (0..8) |x| {
+            const offset = (y * 8 + x) * 3;
+            expected[offset] = @truncate((12 + y) * 64 + 16 + x);
+        }
+    }
+    try std.testing.expectEqualSlices(u8, &expected, changed_transmitted);
+    try std.testing.expect(!std.mem.eql(u8, transmitted, changed_transmitted));
 }
