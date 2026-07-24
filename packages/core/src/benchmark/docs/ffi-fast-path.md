@@ -33,7 +33,10 @@ From `packages/core`, set `NODE26_PATH` to Node 26.4.0:
 ```sh
 export NODE26_PATH=/absolute/path/to/node
 bun run bench:ffi-fast-path --list-targeted-scenarios
-bun run bench:ffi-fast-path --suite=default --runs=9 --json=/tmp/ffi.json
+# Run in the prepared baseline worktree.
+bun run bench:ffi-fast-path --suite=default --runs=9 --json=/tmp/base.json
+# Run in the candidate worktree.
+bun run bench:ffi-fast-path --suite=default --runs=9 --json=/tmp/candidate.json
 bun run bench:ffi-fast-path-paired --baseline-root=/absolute/base --candidate-root=/absolute/candidate --runs=40
 bun run bench:ffi-fast-path-compare /tmp/base.json /tmp/candidate.json
 ```
