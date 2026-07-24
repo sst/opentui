@@ -325,6 +325,73 @@ describe("NativeImage", () => {
     }
   })
 
+  test("loads Blob, Response, data URL, and blob URL sources", async () => {
+    const bytes = await readFile(new URL("rgba.png", FIXTURES))
+    const blob = new Blob([bytes], { type: "image/png" })
+    const objectUrl = URL.createObjectURL(blob)
+    const sources = [
+      blob,
+      new Response(bytes),
+      `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`,
+      objectUrl,
+    ]
+    try {
+      for (const source of sources) {
+        const image = await NativeImage.load(source)
+        try {
+          expect(image.info().format).toBe("png")
+          expect([image.width, image.height]).toEqual([2, 2])
+        } finally {
+          image.dispose()
+        }
+      }
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
+  })
+
+  test("preserves HTTP status errors and cancels direct Response bodies", async () => {
+    let cancelled = false
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelled = true
+        },
+      }),
+      { status: 503 },
+    )
+
+    try {
+      await NativeImage.load(response)
+      throw new Error("expected load to fail")
+    } catch (error) {
+      expect(error).toBeInstanceOf(ImageLoadError)
+      expect((error as ImageLoadError).code).toBe("http-status")
+      expect((error as ImageLoadError).status).toBe(503)
+      expect(cancelled).toBe(true)
+    }
+  })
+
+  test("aborts a pending direct Response read", async () => {
+    let cancelled = false
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        pull() {},
+        cancel() {
+          cancelled = true
+        },
+      }),
+    )
+    const controller = new AbortController()
+    const reason = new Error("stop")
+    const loading = NativeImage.load(response, { signal: controller.signal })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    controller.abort(reason)
+
+    await expect(loading).rejects.toBe(reason)
+    expect(cancelled).toBe(true)
+  })
+
   test("loads local paths and file URLs", async () => {
     const url = new URL("rgba.png", FIXTURES)
     const fromPath = await NativeImage.load(fileURLToPath(url))
