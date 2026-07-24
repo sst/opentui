@@ -42,7 +42,10 @@ interface Attempt {
 const benchmarkDir = dirname(fileURLToPath(import.meta.url))
 const packageRoot = resolve(benchmarkDir, "../..")
 const childSource = join(benchmarkDir, "ffi-fast-path-scenarios.ts")
-const outputDir = resolve(stringArg("output", join(benchmarkDir, "ffi-fast-path-stress-output")))
+const outputValue = stringArg("output", join(benchmarkDir, "ffi-fast-path-stress-output"))
+if (!outputValue) throw new Error("--output must not be empty")
+const outputDir = resolve(outputValue)
+if (outputDir === packageRoot) throw new Error("--output must not be the package root")
 const buildDir = join(benchmarkDir, ".runtime-build")
 const attemptsDir = join(outputDir, "attempts")
 const reportsDir = join(outputDir, "node-reports")
@@ -64,7 +67,10 @@ const nodeFlags = [
   `--report-directory=${reportsDir}`,
 ]
 
-rmSync(outputDir, { recursive: true, force: true })
+rmSync(attemptsDir, { recursive: true, force: true })
+rmSync(reportsDir, { recursive: true, force: true })
+rmSync(manifestPath, { force: true })
+rmSync(summaryPath, { force: true })
 rmSync(buildDir, { recursive: true, force: true })
 mkdirSync(attemptsDir, { recursive: true })
 mkdirSync(reportsDir, { recursive: true })
