@@ -8,7 +8,7 @@ export type ImageColorStatus = "assumed-srgb" | "explicit-srgb"
 export type ResizeKernel = "default" | "area" | "triangle" | "cubic-bspline" | "catmull-rom" | "mitchell" | "nearest"
 export type BlendMode = "source-over" | "source" | "destination-over"
 export type PixelFormat = "rgba8" | "bgra8"
-export type ImageSource = string | URL | Uint8Array | ArrayBuffer
+export type ImageSource = string | URL | Uint8Array | ArrayBuffer | Blob | Response
 
 export type ImageLoadErrorCode = "file-read" | "network" | "http-status" | "unsupported-url-scheme"
 
@@ -219,6 +219,8 @@ async function readResponseBytes(response: Response, signal?: AbortSignal): Prom
 
   if (!response.body) return new Uint8Array()
   const reader = response.body.getReader()
+  const abort = () => void reader.cancel(signal?.reason).catch(() => {})
+  signal?.addEventListener("abort", abort, { once: true })
   const chunks: Uint8Array[] = []
   let total = 0
   try {
@@ -236,6 +238,7 @@ async function readResponseBytes(response: Response, signal?: AbortSignal): Prom
     void reader.cancel().catch(() => {})
     throw error
   } finally {
+    signal?.removeEventListener("abort", abort)
     reader.releaseLock()
   }
 
@@ -246,6 +249,30 @@ async function readResponseBytes(response: Response, signal?: AbortSignal): Prom
     offset += chunk.byteLength
   }
   return data
+}
+
+async function loadResponseBytes(response: Response, source: string, signal?: AbortSignal): Promise<Uint8Array> {
+  try {
+    signal?.throwIfAborted()
+  } catch (error) {
+    void response.body?.cancel().catch(() => {})
+    throw error
+  }
+  if (!response.ok) {
+    void response.body?.cancel().catch(() => {})
+    throw new ImageLoadError("http-status", source, `Failed to fetch image: HTTP ${response.status}`, {
+      status: response.status,
+    })
+  }
+  try {
+    const data = await readResponseBytes(response, signal)
+    signal?.throwIfAborted()
+    return data
+  } catch (error) {
+    if (signal?.aborted) throw signal.reason
+    if (error instanceof ImageError) throw error
+    throw new ImageLoadError("network", source, `Failed to read image response: ${source}`, { cause: error })
+  }
 }
 
 export function imageInfo(data: Uint8Array | ArrayBuffer): ImageInfo {
@@ -280,11 +307,18 @@ export class NativeImage {
   public static async load(source: ImageSource, options: ImageLoadOptions = {}): Promise<NativeImage> {
     options.signal?.throwIfAborted()
     if (source instanceof Uint8Array || source instanceof ArrayBuffer) return NativeImage.decode(source)
+    if (source instanceof Blob) {
+      if (source.size > MAX_ENCODED_BYTES) throw imageError(6)
+      return NativeImage.decode(await loadResponseBytes(new Response(source), "Blob", options.signal))
+    }
+    if (source instanceof Response) {
+      return NativeImage.decode(await loadResponseBytes(source, source.url || "Response", options.signal))
+    }
 
     const url =
       source instanceof URL
         ? source
-        : (/^(?:https?|file):/i.test(source) || /^[a-z][a-z0-9+.-]*:\/\//i.test(source)) &&
+        : (/^(?:https?|file|blob|data):/i.test(source) || /^[a-z][a-z0-9+.-]*:\/\//i.test(source)) &&
             !/^[a-z]:[\\/]/i.test(source)
           ? new URL(source)
           : null
@@ -303,7 +337,7 @@ export class NativeImage {
       return NativeImage.decode(data)
     }
 
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
+    if (url.protocol !== "http:" && url.protocol !== "https:" && url.protocol !== "blob:" && url.protocol !== "data:") {
       throw new ImageLoadError("unsupported-url-scheme", url.href, `Unsupported image URL scheme: ${url.protocol}`)
     }
 
@@ -314,22 +348,7 @@ export class NativeImage {
       if (options.signal?.aborted) throw options.signal.reason
       throw new ImageLoadError("network", url.href, `Failed to fetch image: ${url.href}`, { cause: error })
     }
-    if (!response.ok) {
-      void response.body?.cancel().catch(() => {})
-      throw new ImageLoadError("http-status", url.href, `Failed to fetch image: HTTP ${response.status}`, {
-        status: response.status,
-      })
-    }
-    let data: Uint8Array
-    try {
-      data = await readResponseBytes(response, options.signal)
-    } catch (error) {
-      if (options.signal?.aborted) throw options.signal.reason
-      if (error instanceof ImageError) throw error
-      throw new ImageLoadError("network", url.href, `Failed to read image response: ${url.href}`, { cause: error })
-    }
-    options.signal?.throwIfAborted()
-    return NativeImage.decode(data)
+    return NativeImage.decode(await loadResponseBytes(response, url.href, options.signal))
   }
 
   public static fromRgba(pixels: Uint8Array, width: number, height: number, stride = width * 4): NativeImage {

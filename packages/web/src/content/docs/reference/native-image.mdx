@@ -30,12 +30,12 @@ try {
 
 ## Inputs and formats
 
-| API                         | Input                                                                 |
-| --------------------------- | --------------------------------------------------------------------- |
-| `NativeImage.load(source)`  | Path, `file:`/HTTP(S) URL, `URL`, `Uint8Array`, or `ArrayBuffer`      |
-| `NativeImage.decode(data)`  | Encoded `Uint8Array` or `ArrayBuffer`                                 |
-| `NativeImage.fromRgba(...)` | Straight-alpha sRGB RGBA8 pixels, dimensions, and optional row stride |
-| `imageInfo(data)`           | Encoded bytes; returns metadata without retaining an image handle     |
+| API                         | Input                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| `NativeImage.load(source)`  | Path, `file:`/HTTP(S)/`blob:`/`data:` URL, `URL`, `Blob`, `Response`, or encoded bytes |
+| `NativeImage.decode(data)`  | Encoded `Uint8Array` or `ArrayBuffer`                                                  |
+| `NativeImage.fromRgba(...)` | Straight-alpha sRGB RGBA8 pixels, dimensions, and optional row stride                  |
+| `imageInfo(data)`           | Encoded bytes; returns metadata without retaining an image handle                      |
 
 Format detection uses encoded bytes, not names, URL suffixes, response headers, or file extensions.
 
@@ -46,7 +46,7 @@ Format detection uses encoded bytes, not names, URL suffixes, response headers, 
 | WebP   | Decodes lossy, lossless, and alpha images; animated WebP is rejected |
 | GIF    | Decodes the first displayed frame on the logical canvas              |
 
-`load()` accepts `{ signal, fetch }`. `signal` cancels file or network loading; `fetch` replaces `globalThis.fetch` for HTTP(S). Files and responses are buffered before native decoding.
+`load()` accepts `{ signal, fetch }`. `signal` cancels source acquisition; `fetch` replaces `globalThis.fetch` for fetched URLs. Files and responses are buffered before native decoding.
 
 ## Metadata and pixels
 
