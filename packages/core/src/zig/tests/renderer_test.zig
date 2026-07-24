@@ -384,7 +384,32 @@ test "renderer does not retransmit Sixel when overlay text changes" {
     try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
 }
 
-test "renderer does not clear Sixel for alpha styling on image markers" {
+test "renderer replays a wide grapheme that starts before a Sixel placement" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 2, 1, pool);
+    defer test_renderer.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 1, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try next.drawText("界", 0, 0, ansi.rgbColor(255, 255, 255, 0), ansi.rgbColor(0, 0, 0, 0), 0);
+    _ = test_renderer.renderer.render(true);
+
+    const output = test_renderer.memory.lastWrite();
+    const sixel = std.mem.indexOf(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
+    const overlay = std.mem.lastIndexOf(u8, output, "界") orelse return error.TestUnexpectedResult;
+    try std.testing.expect(overlay > sixel);
+}
+
+fn expectPlaneCoversImage(protocol: image.RenderProtocol) !void {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
@@ -399,19 +424,51 @@ test "renderer does not clear Sixel for alpha styling on image markers" {
     }
 
     var next = test_renderer.renderer.getNextBuffer();
-    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, protocol));
     _ = test_renderer.renderer.render(true);
 
     next = test_renderer.renderer.getNextBuffer();
-    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
-    next.fillRect(0, 0, 2, 1, ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5));
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, protocol));
+    next.fillRect(0, 0, 1, 1, ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5));
+    try std.testing.expectEqual(@as(usize, 1), next.image_placements.items.len);
+    try std.testing.expectEqual(@as(u32, ' '), next.get(0, 0).?.char);
+    try std.testing.expectEqual(ansi.rgbColor(0, 0, 255, 255), next.get(0, 0).?.bg);
+    try std.testing.expect(gp.isImageChar(next.get(1, 0).?.char));
     _ = test_renderer.renderer.render(false);
-    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+    const covered_output = test_renderer.memory.lastWrite();
+    try std.testing.expect(covered_output.len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, covered_output, "\x1b_Ga=t") == null);
+    try std.testing.expect(std.mem.indexOf(u8, covered_output, "a=p") == null);
+    try std.testing.expect(std.mem.indexOf(u8, covered_output, "a=d") == null);
+    try std.testing.expect(std.mem.indexOf(u8, covered_output, "\x1bP0;1;0q") == null);
 
     next = test_renderer.renderer.getNextBuffer();
-    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 2, 1, 2, 2, 0, 0, 1, 1, protocol));
+    try std.testing.expectEqual(@as(usize, 1), next.image_placements.items.len);
     _ = test_renderer.renderer.render(false);
-    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+    const restored_output = test_renderer.memory.lastWrite();
+    switch (protocol) {
+        .kitty => {
+            try std.testing.expect(restored_output.len > 0);
+            try std.testing.expect(std.mem.indexOf(u8, restored_output, "\x1b_Ga=t") == null);
+            try std.testing.expect(std.mem.indexOf(u8, restored_output, "a=p") == null);
+        },
+        .sixel => try std.testing.expect(std.mem.indexOf(u8, restored_output, "\x1bP0;1;0q") != null),
+        .blocks => try std.testing.expect(std.mem.indexOf(u8, restored_output, "█") != null),
+        .auto => unreachable,
+    }
+}
+
+test "renderer keeps Kitty placement under an alpha-colored plane" {
+    try expectPlaneCoversImage(.kitty);
+}
+
+test "renderer retransmits Sixel after removing an alpha-colored plane" {
+    try expectPlaneCoversImage(.sixel);
+}
+
+test "renderer redraws blocks after removing an alpha-colored plane" {
+    try expectPlaneCoversImage(.blocks);
 }
 
 test "renderer clears old Sixel pixels when replacing an image" {

@@ -2143,13 +2143,22 @@ pub const CliRenderer = struct {
                     while (px < placement.width) : (px += 1) {
                         const x_i = placement.x + @as(i32, @intCast(px));
                         if (x_i < 0 or x_i >= self.width) continue;
-                        const cell = self.nextRenderBuffer.get(@intCast(x_i), @intCast(y_i)) orelse continue;
+                        var draw_x_i = x_i;
+                        var cell = self.nextRenderBuffer.get(@intCast(x_i), @intCast(y_i)) orelse continue;
                         if (gp.isImageChar(cell.char)) {
                             if (self.placementFrameState(cell.char)) |state| {
                                 if (state.protocol != .fallback) continue;
                             }
                         }
-                        ansi.ANSI.moveToOutput(writer, @intCast(x_i + 1), @intCast(y_i + 1 + @as(i32, @intCast(self.renderOffset)))) catch {};
+                        if (gp.isContinuationChar(cell.char)) {
+                            const start_x_i = x_i - @as(i32, @intCast(gp.charLeftExtent(cell.char)));
+                            const first_visible_placement_x = @max(placement.x, 0);
+                            if (start_x_i >= placement.x or x_i != first_visible_placement_x or start_x_i < 0) continue;
+                            draw_x_i = start_x_i;
+                            cell = self.nextRenderBuffer.get(@intCast(draw_x_i), @intCast(y_i)) orelse continue;
+                            if (!gp.isGraphemeChar(cell.char)) continue;
+                        }
+                        ansi.ANSI.moveToOutput(writer, @intCast(draw_x_i + 1), @intCast(y_i + 1 + @as(i32, @intCast(self.renderOffset)))) catch {};
                         self.emitColor(writer, cell.fg, false);
                         self.emitColor(writer, cell.bg, true);
                         ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
