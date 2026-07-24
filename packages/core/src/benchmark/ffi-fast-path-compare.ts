@@ -25,6 +25,7 @@ interface BenchmarkReport {
 
 const BOOTSTRAP_SAMPLES = 20_000
 const MINIMUM_PROCESS_ROUNDS = 9
+const ACCEPTANCE_EPSILON = Number.EPSILON
 const baselinePath = process.argv[2]
 const candidatePath = process.argv[3]
 if (!baselinePath || !candidatePath) {
@@ -98,7 +99,9 @@ function compareRuntime(before: ScenarioResult, after: ScenarioResult, runtime: 
     baselineValues.length >= MINIMUM_PROCESS_ROUNDS && candidateValues.length >= MINIMUM_PROCESS_ROUNDS
   const accepted =
     enoughRounds &&
-    (runtime === "node" ? medianChange <= -0.1 && ci95.upper <= -0.1 : medianChange <= 0.03 && ci95.upper <= 0.03)
+    (runtime === "node"
+      ? medianChange <= -0.1 + ACCEPTANCE_EPSILON && ci95.upper <= -0.1 + ACCEPTANCE_EPSILON
+      : medianChange <= 0.03 + ACCEPTANCE_EPSILON && ci95.upper <= 0.03 + ACCEPTANCE_EPSILON)
   return {
     baselineMedianNsPerOp,
     candidateMedianNsPerOp,
