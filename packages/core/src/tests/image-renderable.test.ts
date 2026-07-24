@@ -10,6 +10,29 @@ import { setRendererCapabilities } from "../testing/terminal-capabilities.js"
 
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
 
+async function within<T>(promise: Promise<T>, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), 2_000)
+      }),
+    ])
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function closeServer(server: Server): Promise<void> {
+  if (!server.listening) return
+  const closed = new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()))
+  })
+  server.closeAllConnections()
+  await closed
+}
+
 describe("ImageRenderable image loading", () => {
   let setup: TestRendererSetup
   let renderer: TestRenderer
@@ -220,10 +243,13 @@ describe("ImageRenderable image loading", () => {
         throw new Error("onLoad failed")
       },
     })
-    await expect(loaded.loadPromise!).rejects.toThrow("onLoad failed")
-    expect(loaded.loading).toBe(false)
-    expect(loaded.image).not.toBeNull()
-    loaded.destroy()
+    try {
+      await expect(loaded.loadPromise!).rejects.toThrow("onLoad failed")
+      expect(loaded.loading).toBe(false)
+      expect(loaded.image).not.toBeNull()
+    } finally {
+      loaded.destroy()
+    }
 
     const failed = new ImageRenderable(renderer, {
       source: Uint8Array.of(1, 2, 3),
@@ -231,10 +257,13 @@ describe("ImageRenderable image loading", () => {
         throw new Error("onError failed")
       },
     })
-    await expect(failed.loadPromise!).rejects.toThrow("onError failed")
-    expect(failed.loading).toBe(false)
-    expect(failed.loadError).toBeDefined()
-    failed.destroy()
+    try {
+      await expect(failed.loadPromise!).rejects.toThrow("onError failed")
+      expect(failed.loading).toBe(false)
+      expect(failed.loadError).toBeDefined()
+    } finally {
+      failed.destroy()
+    }
   })
 
   test("loads local paths and file URLs through the same native decoder", async () => {
@@ -286,69 +315,153 @@ describe("ImageRenderable image loading", () => {
   })
 
   test("clearing the source aborts loading and disposes the retained image", async () => {
-    const renderable = new ImageRenderable(renderer, { source: await readFile(new URL("rgba.png", FIXTURES)) })
-    await renderable.loadPromise
-    const previous = renderable.image
-    renderable.source = undefined
+    const png = await readFile(new URL("rgba.png", FIXTURES))
+    const requestStarted = Promise.withResolvers<void>()
+    const requestAborted = Promise.withResolvers<void>()
+    const socketClosed = Promise.withResolvers<void>()
+    let requestWasAborted = false
+    let socketWasClosed = false
+    const server = createServer((request) => {
+      request.once("aborted", () => {
+        requestWasAborted = true
+        requestAborted.resolve()
+      })
+      request.socket.once("close", () => {
+        socketWasClosed = true
+        socketClosed.resolve()
+      })
+      requestStarted.resolve()
+    })
+    let renderable: ImageRenderable | undefined
     try {
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+      const address = server.address()
+      if (!address || typeof address === "string") throw new Error("missing test server address")
+      renderable = new ImageRenderable(renderer, { source: png })
+      await renderable.loadPromise
+      const previous = renderable.image
+
+      renderable.source = `http://127.0.0.1:${address.port}/pending`
+      const pendingLoad = renderable.loadPromise
+      if (!pendingLoad) throw new Error("missing pending image load")
+      await within(requestStarted.promise, "server did not receive the pending image request")
+      renderable.source = undefined
+      await within(
+        Promise.all([pendingLoad, requestAborted.promise, socketClosed.promise]),
+        "image request was not aborted",
+      )
+
       expect(renderable.image).toBeNull()
       expect(renderable.loading).toBe(false)
       expect(() => previous?.raw()).toThrow("disposed")
+      expect(requestWasAborted).toBe(true)
+      expect(socketWasClosed).toBe(true)
     } finally {
-      renderable.destroy()
+      renderable?.destroy()
+      await closeServer(server)
     }
   })
 
-  test("a newer source wins when an older request completes later", async () => {
-    const png = await readFile(new URL("rgba.png", FIXTURES))
+  test("a newer source aborts the older request and replaces its image", async () => {
     const gif = await readFile(new URL("transparent.gif", FIXTURES))
-    let server: Server | undefined
-    server = createServer((request, response) => {
+    const requestStarted = Promise.withResolvers<void>()
+    const requestAborted = Promise.withResolvers<void>()
+    const socketClosed = Promise.withResolvers<void>()
+    let requestWasAborted = false
+    let socketWasClosed = false
+    const server = createServer((request, response) => {
       if (request.url === "/slow") {
-        setTimeout(() => response.end(png), 50)
+        request.once("aborted", () => {
+          requestWasAborted = true
+          requestAborted.resolve()
+        })
+        request.socket.once("close", () => {
+          socketWasClosed = true
+          socketClosed.resolve()
+        })
+        requestStarted.resolve()
       } else {
+        response.setHeader("Connection", "close")
         response.end(gif)
       }
     })
-    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve))
-    const address = server.address()
-    if (!address || typeof address === "string") throw new Error("missing test server address")
-    const base = `http://127.0.0.1:${address.port}`
     const onError = mock(() => {})
-    const renderable = new ImageRenderable(renderer, { source: `${base}/slow`, onError })
-    renderable.source = `${base}/fast`
-    await renderable.loadPromise
-    await new Promise((resolve) => setTimeout(resolve, 75))
+    let renderable: ImageRenderable | undefined
     try {
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+      const address = server.address()
+      if (!address || typeof address === "string") throw new Error("missing test server address")
+      const base = `http://127.0.0.1:${address.port}`
+      renderable = new ImageRenderable(renderer, { source: `${base}/slow`, onError })
+      const olderLoad = renderable.loadPromise
+      if (!olderLoad) throw new Error("missing older image load")
+      await within(requestStarted.promise, "server did not receive the older image request")
+
+      renderable.source = `${base}/fast`
+      const newerLoad = renderable.loadPromise
+      if (!newerLoad) throw new Error("missing newer image load")
+      await within(
+        Promise.all([olderLoad, newerLoad, requestAborted.promise, socketClosed.promise]),
+        "older image request was not aborted",
+      )
+
       expect(renderable.image?.info().format).toBe("gif")
       expect(onError).not.toHaveBeenCalled()
+      expect(requestWasAborted).toBe(true)
+      expect(socketWasClosed).toBe(true)
     } finally {
-      renderable.destroy()
-      await new Promise<void>((resolve, reject) => server!.close((error) => (error ? reject(error) : resolve())))
+      renderable?.destroy()
+      await closeServer(server)
     }
   })
 
   test("destroy aborts an in-flight load and prevents callbacks", async () => {
-    const png = await readFile(new URL("rgba.png", FIXTURES))
-    const server = createServer((_request, response) => setTimeout(() => response.end(png), 50))
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
-    const address = server.address()
-    if (!address || typeof address === "string") throw new Error("missing test server address")
+    const requestStarted = Promise.withResolvers<void>()
+    const requestAborted = Promise.withResolvers<void>()
+    const socketClosed = Promise.withResolvers<void>()
+    let requestWasAborted = false
+    let socketWasClosed = false
+    const server = createServer((request) => {
+      request.once("aborted", () => {
+        requestWasAborted = true
+        requestAborted.resolve()
+      })
+      request.socket.once("close", () => {
+        socketWasClosed = true
+        socketClosed.resolve()
+      })
+      requestStarted.resolve()
+    })
     const onLoad = mock(() => {})
     const onError = mock(() => {})
-    const renderable = new ImageRenderable(renderer, {
-      source: `http://127.0.0.1:${address.port}/slow`,
-      onLoad,
-      onError,
-    })
-    renderable.destroy()
-    await renderable.loadPromise
+    let renderable: ImageRenderable | undefined
     try {
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+      const address = server.address()
+      if (!address || typeof address === "string") throw new Error("missing test server address")
+      renderable = new ImageRenderable(renderer, {
+        source: `http://127.0.0.1:${address.port}/pending`,
+        onLoad,
+        onError,
+      })
+      const pendingLoad = renderable.loadPromise
+      if (!pendingLoad) throw new Error("missing pending image load")
+      await within(requestStarted.promise, "server did not receive the pending image request")
+
+      renderable.destroy()
+      await within(
+        Promise.all([pendingLoad, requestAborted.promise, socketClosed.promise]),
+        "image request was not aborted",
+      )
+
       expect(renderable.image).toBeNull()
       expect(onLoad).not.toHaveBeenCalled()
       expect(onError).not.toHaveBeenCalled()
+      expect(requestWasAborted).toBe(true)
+      expect(socketWasClosed).toBe(true)
     } finally {
-      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+      renderable?.destroy()
+      await closeServer(server)
     }
   })
 })
