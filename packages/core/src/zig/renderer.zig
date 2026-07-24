@@ -1,4 +1,6 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const io = if (builtin.is_test) std.testing.io else @import("root").io;
 const Allocator = std.mem.Allocator;
 const ansi = @import("ansi.zig");
 const buf = @import("buffer.zig");
@@ -292,8 +294,8 @@ pub const CliRenderer = struct {
     palette_epoch: u32,
     last_rendered_palette_epoch: ?u32 = null,
     force_full_repaint: bool = false,
-    palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .{},
-    sixelCache: std.AutoHashMapUnmanaged(SixelCacheKey, SixelCacheEntry) = .{},
+    palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .empty,
+    sixelCache: std.AutoHashMapUnmanaged(SixelCacheKey, SixelCacheEntry) = .empty,
     sixelCacheBytes: usize = 0,
     sixelCacheClock: u64 = 0,
     sixelCacheHits: u64 = 0,
@@ -314,7 +316,7 @@ pub const CliRenderer = struct {
         clearOnShutdown: bool = true,
         // Optional override for terminal environment lookups. Borrowed: the
         // caller owns the map and must keep it alive for the renderer's lifetime.
-        env_map: ?*const std.process.EnvMap = null,
+        env_map: ?*const std.process.Environ.Map = null,
     };
 
     pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool) !*CliRenderer {
@@ -337,19 +339,19 @@ pub const CliRenderer = struct {
         errdefer nextBuffer.deinit();
 
         // stat sample arrays
-        var lastFrameTime: std.ArrayListUnmanaged(f64) = .{};
+        var lastFrameTime: std.ArrayListUnmanaged(f64) = .empty;
         errdefer lastFrameTime.deinit(allocator);
-        var renderTime: std.ArrayListUnmanaged(f64) = .{};
+        var renderTime: std.ArrayListUnmanaged(f64) = .empty;
         errdefer renderTime.deinit(allocator);
-        var overallFrameTime: std.ArrayListUnmanaged(f64) = .{};
+        var overallFrameTime: std.ArrayListUnmanaged(f64) = .empty;
         errdefer overallFrameTime.deinit(allocator);
-        var bufferResetTime: std.ArrayListUnmanaged(f64) = .{};
+        var bufferResetTime: std.ArrayListUnmanaged(f64) = .empty;
         errdefer bufferResetTime.deinit(allocator);
-        var outputWriteTime: std.ArrayListUnmanaged(f64) = .{};
+        var outputWriteTime: std.ArrayListUnmanaged(f64) = .empty;
         errdefer outputWriteTime.deinit(allocator);
-        var cellsUpdated: std.ArrayListUnmanaged(u32) = .{};
+        var cellsUpdated: std.ArrayListUnmanaged(u32) = .empty;
         errdefer cellsUpdated.deinit(allocator);
-        var frameCallbackTimes: std.ArrayListUnmanaged(f64) = .{};
+        var frameCallbackTimes: std.ArrayListUnmanaged(f64) = .empty;
         errdefer frameCallbackTimes.deinit(allocator);
 
         try lastFrameTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
@@ -367,7 +369,7 @@ pub const CliRenderer = struct {
         errdefer allocator.free(nextHitGrid);
         @memset(currentHitGrid, 0); // Initialize with 0 (no renderable)
         @memset(nextHitGrid, 0);
-        const hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect) = .{};
+        const hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect) = .empty;
 
         // Backend variant selected once by opts.output.
         var backend: OutputBackend = switch (opts.output) {
@@ -420,7 +422,7 @@ pub const CliRenderer = struct {
                 .cellsUpdated = cellsUpdated,
                 .frameCallbackTime = frameCallbackTimes,
             },
-            .lastRenderTime = std.time.microTimestamp(),
+            .lastRenderTime = std.Io.Clock.now(.awake, io).toMicroseconds(),
             .allocator = allocator,
             .currentHitGrid = currentHitGrid,
             .nextHitGrid = nextHitGrid,
@@ -485,19 +487,19 @@ pub const CliRenderer = struct {
         // Build capability query into a stack buffer, then emit via backend.
         // Buffer sized to accommodate all capability-query sequences with margin.
         var queryBuf: [4096]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&queryBuf);
-        self.terminal.queryTerminalSend(stream.writer()) catch {
+        var writer: std.Io.Writer = .fixed(&queryBuf);
+        self.terminal.queryTerminalSend(&writer) catch {
             logger.warn("Failed to query terminal capabilities", .{});
         };
-        self.backend.writeOut(stream.getWritten());
+        self.backend.writeOut(writer.buffered());
 
         self.setupTerminalWithoutDetection(useAlternateScreen, true);
     }
 
     fn setupTerminalWithoutDetection(self: *CliRenderer, useAlternateScreen: bool, reserve_non_alt_surface: bool) void {
         var setupBuf: [4096]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&setupBuf);
-        const writer = stream.writer();
+        var fixed_writer: std.Io.Writer = .fixed(&setupBuf);
+        const writer = &fixed_writer;
 
         writer.writeAll(ansi.ANSI.saveCursorState) catch {};
 
@@ -511,7 +513,7 @@ pub const CliRenderer = struct {
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
         self.terminal.enableDetectedFeatures(writer, useKitty) catch {};
 
-        self.backend.writeOut(stream.getWritten());
+        self.backend.writeOut(fixed_writer.buffered());
     }
 
     pub fn suspendRenderer(self: *CliRenderer) void {
@@ -556,8 +558,8 @@ pub const CliRenderer = struct {
 
         // Build the shutdown ANSI sequence into a stack buffer, then emit.
         var shutdownBuf: [4096]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&shutdownBuf);
-        const writer = stream.writer();
+        var fixed_writer: std.Io.Writer = .fixed(&shutdownBuf);
+        const writer = &fixed_writer;
 
         self.terminal.resetState(writer) catch {
             logger.warn("Failed to reset terminal state", .{});
@@ -579,13 +581,13 @@ pub const CliRenderer = struct {
         writer.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
         writer.writeAll(ansi.ANSI.showCursor) catch {};
 
-        self.backend.writeOut(stream.getWritten());
+        self.backend.writeOut(fixed_writer.buffered());
 
         // Workaround for Ghostty not showing the cursor after shutdown for some reason.
         // Keep this backend-agnostic: the active output transport owns delivery.
-        std.Thread.sleep(10 * std.time.ns_per_ms);
+        io.sleep(.fromMilliseconds(10), .awake) catch {};
         self.backend.writeOut(ansi.ANSI.showCursor);
-        std.Thread.sleep(10 * std.time.ns_per_ms);
+        io.sleep(.fromMilliseconds(10), .awake) catch {};
     }
 
     pub fn setClearOnShutdown(self: *CliRenderer, clear: bool) void {
@@ -824,10 +826,10 @@ pub const CliRenderer = struct {
     pub fn setRenderOffset(self: *CliRenderer, offset: u32) void {
         if (self.terminalSetup and !self.useAlternateScreen and self.renderOffset > 0 and offset == 0) {
             var clearBuf: [256]u8 = undefined;
-            var stream = std.io.fixedBufferStream(&clearBuf);
-            const writer = stream.writer();
+            var fixed_writer: std.Io.Writer = .fixed(&clearBuf);
+            const writer = &fixed_writer;
             self.clearSplitFooterSurface(writer);
-            self.backend.writeOut(stream.getWritten());
+            self.backend.writeOut(fixed_writer.buffered());
         }
 
         self.renderOffset = offset;
@@ -909,7 +911,7 @@ pub const CliRenderer = struct {
             return self.finishSkippedFrame();
         }
 
-        const now = std.time.microTimestamp();
+        const now = std.Io.Clock.now(.awake, io).toMicroseconds();
         const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
         const deltaTime = deltaTimeMs / 1000.0;
 
@@ -1045,7 +1047,7 @@ pub const CliRenderer = struct {
             return self.renderResult(status);
         }
 
-        const now = std.time.microTimestamp();
+        const now = std.Io.Clock.now(.awake, io).toMicroseconds();
         const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
         const deltaTime = deltaTimeMs / 1000.0;
 
@@ -1087,7 +1089,7 @@ pub const CliRenderer = struct {
                 return self.renderResult(status);
             }
 
-            const now = std.time.microTimestamp();
+            const now = std.Io.Clock.now(.awake, io).toMicroseconds();
             const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
             const deltaTime = deltaTimeMs / 1000.0;
 
@@ -2286,7 +2288,7 @@ pub const CliRenderer = struct {
     /// `sync_started` is true only when the caller already opened the
     /// synchronized-update envelope for a batched split-footer commit.
     pub fn prepareRenderFrameWithWriter(self: *CliRenderer, writer: anytype, force: bool, sync_started: bool) void {
-        const renderStartTime = std.time.microTimestamp();
+        const renderStartTime = std.Io.Clock.now(.awake, io).toMicroseconds();
         var cellsUpdated: u32 = 0;
         const palette_force = self.last_rendered_palette_epoch == null or self.last_rendered_palette_epoch.? != self.palette_epoch;
         const should_force = force or self.force_full_repaint or palette_force;
@@ -2725,7 +2727,7 @@ pub const CliRenderer = struct {
             writer.writeAll(ansi.ANSI.syncReset) catch {};
         }
 
-        const renderEndTime = std.time.microTimestamp();
+        const renderEndTime = std.Io.Clock.now(.awake, io).toMicroseconds();
         const renderTime = @as(f64, @floatFromInt(renderEndTime - renderStartTime));
 
         self.renderStats.cellsUpdated = cellsUpdated;
@@ -2947,15 +2949,15 @@ pub const CliRenderer = struct {
     }
 
     pub fn dumpHitGrid(self: *CliRenderer) void {
-        const timestamp = std.time.timestamp();
+        const timestamp = std.Io.Clock.now(.real, io).toSeconds();
         var filename_buf: [64]u8 = undefined;
         const filename = std.fmt.bufPrint(&filename_buf, "hitgrid_{d}.txt", .{timestamp}) catch return;
 
-        const file = std.fs.cwd().createFile(filename, .{}) catch return;
-        defer file.close();
+        const file = std.Io.Dir.cwd().createFile(io, filename, .{}) catch return;
+        defer file.close(io);
 
         var fileBuffer: [4096]u8 = undefined;
-        var fileWriter = file.writer(&fileBuffer);
+        var fileWriter = file.writer(io, &fileBuffer);
         const writer = &fileWriter.interface;
 
         for (0..self.hitGridHeight) |y| {
@@ -2972,7 +2974,7 @@ pub const CliRenderer = struct {
     }
 
     fn dumpSingleBuffer(self: *CliRenderer, buffer: *OptimizedBuffer, buffer_name: []const u8, timestamp: i64) void {
-        std.fs.cwd().makeDir("buffer_dump") catch |err| switch (err) {
+        std.Io.Dir.cwd().createDir(io, "buffer_dump", .default_dir) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return,
         };
@@ -2980,11 +2982,11 @@ pub const CliRenderer = struct {
         var filename_buf: [128]u8 = undefined;
         const filename = std.fmt.bufPrint(&filename_buf, "buffer_dump/{s}_buffer_{d}.txt", .{ buffer_name, timestamp }) catch return;
 
-        const file = std.fs.cwd().createFile(filename, .{}) catch return;
-        defer file.close();
+        const file = std.Io.Dir.cwd().createFile(io, filename, .{}) catch return;
+        defer file.close(io);
 
         var fileBuffer: [4096]u8 = undefined;
-        var fileWriter = file.writer(&fileBuffer);
+        var fileWriter = file.writer(io, &fileBuffer);
         const writer = &fileWriter.interface;
 
         writer.print("{s} Buffer ({d}x{d}):\n", .{ buffer_name, self.width, self.height }) catch return;
@@ -3022,7 +3024,7 @@ pub const CliRenderer = struct {
     /// Dump the last rendered output to a file. Backend-specific formatting
     /// is delegated to `backend.dumpTo(writer)` — no tag inspection here.
     pub fn dumpOutputBuffer(self: *CliRenderer, timestamp: i64) void {
-        std.fs.cwd().makeDir("buffer_dump") catch |err| switch (err) {
+        std.Io.Dir.cwd().createDir(io, "buffer_dump", .default_dir) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return,
         };
@@ -3030,11 +3032,11 @@ pub const CliRenderer = struct {
         var filename_buf: [128]u8 = undefined;
         const filename = std.fmt.bufPrint(&filename_buf, "buffer_dump/output_buffer_{d}.txt", .{timestamp}) catch return;
 
-        const file = std.fs.cwd().createFile(filename, .{}) catch return;
-        defer file.close();
+        const file = std.Io.Dir.cwd().createFile(io, filename, .{}) catch return;
+        defer file.close(io);
 
         var fileBuffer: [4096]u8 = undefined;
-        var fileWriter = file.writer(&fileBuffer);
+        var fileWriter = file.writer(io, &fileBuffer);
         const writer = &fileWriter.interface;
 
         writer.print("Output Buffer Dump (timestamp: {d}):\n", .{timestamp}) catch return;
@@ -3053,15 +3055,15 @@ pub const CliRenderer = struct {
     }
 
     pub fn restoreTerminalModes(self: *CliRenderer) void {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.restoreTerminalModes(stream.writer()) catch {};
-        self.writeOut(stream.getWritten());
+        var writer: std.Io.Writer = .fixed(&self.writeOutBuf);
+        self.terminal.restoreTerminalModes(&writer) catch {};
+        self.writeOut(writer.buffered());
     }
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setMouseMode(stream.writer(), true, enableMovement) catch {};
-        self.writeOut(stream.getWritten());
+        var writer: std.Io.Writer = .fixed(&self.writeOutBuf);
+        self.terminal.setMouseMode(&writer, true, enableMovement) catch {};
+        self.writeOut(writer.buffered());
     }
 
     pub fn queryPixelResolution(self: *CliRenderer) void {
@@ -3069,27 +3071,27 @@ pub const CliRenderer = struct {
     }
 
     pub fn queryThemeColors(self: *CliRenderer) void {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.queryThemeColors(stream.writer()) catch {};
-        self.writeOut(stream.getWritten());
+        var writer: std.Io.Writer = .fixed(&self.writeOutBuf);
+        self.terminal.queryThemeColors(&writer) catch {};
+        self.writeOut(writer.buffered());
     }
 
     pub fn disableMouse(self: *CliRenderer) void {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setMouseMode(stream.writer(), false, self.terminal.state.mouse_movement) catch {};
-        self.writeOut(stream.getWritten());
+        var writer: std.Io.Writer = .fixed(&self.writeOutBuf);
+        self.terminal.setMouseMode(&writer, false, self.terminal.state.mouse_movement) catch {};
+        self.writeOut(writer.buffered());
     }
 
     pub fn enableKittyKeyboard(self: *CliRenderer, flags: u8) void {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setKittyKeyboard(stream.writer(), true, flags) catch {};
-        self.writeOut(stream.getWritten());
+        var writer: std.Io.Writer = .fixed(&self.writeOutBuf);
+        self.terminal.setKittyKeyboard(&writer, true, flags) catch {};
+        self.writeOut(writer.buffered());
     }
 
     pub fn disableKittyKeyboard(self: *CliRenderer) void {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setKittyKeyboard(stream.writer(), false, 0) catch {};
-        self.writeOut(stream.getWritten());
+        var writer: std.Io.Writer = .fixed(&self.writeOutBuf);
+        self.terminal.setKittyKeyboard(&writer, false, 0) catch {};
+        self.writeOut(writer.buffered());
     }
 
     pub fn getTerminalCapabilities(self: *CliRenderer) Terminal.Capabilities {
@@ -3103,14 +3105,14 @@ pub const CliRenderer = struct {
 
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        _ = self.terminal.sendPendingQueries(stream.writer()) catch |err| blk: {
+        var writer: std.Io.Writer = .fixed(&self.writeOutBuf);
+        _ = self.terminal.sendPendingQueries(&writer) catch |err| blk: {
             logger.warn("Failed to send pending queries: {}", .{err});
             break :blk false;
         };
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
-        self.terminal.enableDetectedFeatures(stream.writer(), useKitty) catch {};
-        self.writeOut(stream.getWritten());
+        self.terminal.enableDetectedFeatures(&writer, useKitty) catch {};
+        self.writeOut(writer.buffered());
     }
 
     pub fn setKittyKeyboardFlags(self: *CliRenderer, flags: u8) void {
@@ -3122,9 +3124,9 @@ pub const CliRenderer = struct {
     }
 
     pub fn setTerminalTitle(self: *CliRenderer, title: []const u8) void {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setTerminalTitle(stream.writer(), title);
-        self.writeOut(stream.getWritten());
+        var writer: std.Io.Writer = .fixed(&self.writeOutBuf);
+        self.terminal.setTerminalTitle(&writer, title);
+        self.writeOut(writer.buffered());
     }
 
     pub fn copyToClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget, text_utf8: []const u8) bool {
@@ -3132,29 +3134,29 @@ pub const CliRenderer = struct {
         const output_bytes = self.allocator.alloc(u8, output_len) catch return false;
         defer self.allocator.free(output_bytes);
 
-        var stream = std.io.fixedBufferStream(output_bytes);
-        self.terminal.writeClipboard(stream.writer(), target, text_utf8) catch return false;
-        const written = stream.getWritten();
+        var writer: std.Io.Writer = .fixed(output_bytes);
+        self.terminal.writeClipboard(&writer, target, text_utf8) catch return false;
+        const written = writer.buffered();
         std.debug.assert(written.len == output_len);
         self.writeOut(written);
         return true;
     }
 
     pub fn clearClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget) bool {
-        var stream: std.ArrayListUnmanaged(u8) = .{};
-        defer stream.deinit(self.allocator);
-        self.terminal.writeClipboard(stream.writer(self.allocator), target, "") catch return false;
-        self.writeOut(stream.items);
+        var stream: std.Io.Writer.Allocating = .init(self.allocator);
+        defer stream.deinit();
+        self.terminal.writeClipboard(&stream.writer, target, "") catch return false;
+        self.writeOut(stream.written());
         return true;
     }
 
     pub fn triggerNotification(self: *CliRenderer, message: []const u8, title: ?[]const u8) bool {
-        var stream: std.ArrayListUnmanaged(u8) = .{};
-        defer stream.deinit(self.allocator);
+        var stream: std.Io.Writer.Allocating = .init(self.allocator);
+        defer stream.deinit();
 
-        const ok = self.terminal.writeNotification(self.allocator, stream.writer(self.allocator), message, title) catch return false;
+        const ok = self.terminal.writeNotification(self.allocator, &stream.writer, message, title) catch return false;
         if (!ok) return false;
-        self.writeOut(stream.items);
+        self.writeOut(stream.written());
         return true;
     }
 

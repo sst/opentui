@@ -114,7 +114,7 @@ pub const GraphemePool = struct {
             assert(slots_per_page[i] > 0);
             classes[i] = ClassPool.init(allocator, CLASS_SIZES[i], slots_per_page[i]);
         }
-        return .{ .allocator = allocator, .classes = classes, .interned_live_ids = .{} };
+        return .{ .allocator = allocator, .classes = classes, .interned_live_ids = .empty };
     }
 
     pub fn deinit(self: *GraphemePool) void {
@@ -364,8 +364,8 @@ pub const GraphemePool = struct {
                 .slot_capacity = slot_capacity,
                 .slots_per_page = slots_per_page,
                 .slot_size_bytes = slot_size_bytes,
-                .slots = .{},
-                .free_list = .{},
+                .slots = .empty,
+                .free_list = .empty,
                 .num_slots = 0,
             };
         }

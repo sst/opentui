@@ -1,4 +1,5 @@
 const std = @import("std");
+const io = std.testing.io;
 const renderer = @import("../renderer.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
@@ -80,7 +81,7 @@ const SlowThreadSafeOutput = struct {
             self.lengths[index] = @min(data.len, self.payloads[index].len);
             @memcpy(self.payloads[index][0..self.lengths[index]], data[0..self.lengths[index]]);
         }
-        std.Thread.sleep(self.delay_ns);
+        io.sleep(.fromNanoseconds(self.delay_ns), .awake) catch unreachable;
     }
 };
 test "renderer emits Kitty image once and leaves unchanged frame empty" {
@@ -1649,7 +1650,7 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
     _ = cli_renderer.render(false);
 
     const first_output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, first_output, "👋") != null);
+    try std.testing.expect(std.mem.find(u8, first_output, "👋") != null);
 
     const current_buffer = cli_renderer.getCurrentBuffer();
     const first_cell = current_buffer.get(0, 0);
@@ -1672,7 +1673,7 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
     _ = cli_renderer.render(false);
 
     const second_output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, second_output, "👋") == null);
+    try std.testing.expect(std.mem.find(u8, second_output, "👋") == null);
 }
 
 test "renderer - grows frame output instead of committing cells whose ANSI was dropped" {
@@ -1718,8 +1719,8 @@ test "renderer - grows frame output instead of committing cells whose ANSI was d
         // must not fit in the default output buffer.
         try std.testing.expect(output.len > renderer.OUTPUT_BUFFER_SIZE);
         try std.testing.expect(current.get(width - 24, height - 1).?.char == 'F');
-        try std.testing.expect(std.mem.indexOf(u8, output, "EARLY_SCROLL_CHANGED") != null);
-        try std.testing.expect(std.mem.indexOf(u8, output, "FULL_TOOL_RESULT_MARKER") != null);
+        try std.testing.expect(std.mem.find(u8, output, "EARLY_SCROLL_CHANGED") != null);
+        try std.testing.expect(std.mem.find(u8, output, "FULL_TOOL_RESULT_MARKER") != null);
     }
 }
 
@@ -1756,15 +1757,15 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
     const output = test_cli_renderer.lastOutput();
 
     // Verify OSC 8 contains id parameter
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b]8;id=") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b]8;id=") != null);
     // Verify OSC 8 contains the URL
-    try std.testing.expect(std.mem.indexOf(u8, output, ";https://example.com\x1b\\") != null);
+    try std.testing.expect(std.mem.find(u8, output, ";https://example.com\x1b\\") != null);
 
     // Verify output contains OSC 8 end sequence
     const end_seq = "\x1b]8;;\x1b\\";
     var count: usize = 0;
     var pos: usize = 0;
-    while (std.mem.indexOf(u8, output[pos..], end_seq)) |found| {
+    while (std.mem.find(u8, output[pos..], end_seq)) |found| {
         count += 1;
         pos += found + end_seq.len;
     }
@@ -1804,8 +1805,8 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
     const output = test_cli_renderer.lastOutput();
 
     // Verify output does NOT contain OSC 8 sequences
-    try std.testing.expect(std.mem.indexOf(u8, output, "]8;;") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "]8;id=") == null);
+    try std.testing.expect(std.mem.find(u8, output, "]8;;") == null);
+    try std.testing.expect(std.mem.find(u8, output, "]8;id=") == null);
 }
 
 test "renderer - link transition mid-line" {
@@ -1850,14 +1851,14 @@ test "renderer - link transition mid-line" {
     const output = test_cli_renderer.lastOutput();
 
     // Should contain both URLs
-    try std.testing.expect(std.mem.indexOf(u8, output, "https://first.com") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "https://second.com") != null);
+    try std.testing.expect(std.mem.find(u8, output, "https://first.com") != null);
+    try std.testing.expect(std.mem.find(u8, output, "https://second.com") != null);
 
     // Should have multiple OSC 8 end sequences (at least 2 transitions)
     const end_seq = "\x1b]8;;\x1b\\";
     var count: usize = 0;
     var pos: usize = 0;
-    while (std.mem.indexOf(u8, output[pos..], end_seq)) |found| {
+    while (std.mem.find(u8, output[pos..], end_seq)) |found| {
         count += 1;
         pos += found + end_seq.len;
     }
@@ -1906,7 +1907,7 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
     const expected_open = std.fmt.bufPrint(&buf, "\x1b]8;id={d};https://example.com/long-url\x1b\\", .{link_id}) catch unreachable;
     var count: usize = 0;
     var pos: usize = 0;
-    while (std.mem.indexOf(u8, output[pos..], expected_open)) |found| {
+    while (std.mem.find(u8, output[pos..], expected_open)) |found| {
         count += 1;
         pos += found + expected_open.len;
     }
@@ -1950,8 +1951,8 @@ test "renderer - explicit default and indexed tags use ANSI default/indexed outp
     _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[39m") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[39m") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[38;5;6m") != null);
 }
 
 test "renderer - indexed snapshots fall back to rgb and explicit bg default resets without ansi256" {
@@ -1983,9 +1984,9 @@ test "renderer - indexed snapshots fall back to rgb and explicit bg default rese
     _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;51;102;153m") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[38;2;51;102;153m") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[38;5;6m") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[49m") != null);
 }
 
 test "renderer - rgb colors fall back to ANSI256 mapping when rgb is unavailable" {
@@ -2012,8 +2013,8 @@ test "renderer - rgb colors fall back to ANSI256 mapping when rgb is unavailable
     _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[38;5;") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[38;2;") == null);
 }
 
 test "renderer - rgb fallback uses published palette state" {
@@ -2045,7 +2046,7 @@ test "renderer - rgb fallback uses published palette state" {
     _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;42m") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[38;5;42m") != null);
 }
 
 test "renderer - palette epoch changes force repaint and use new palette mapping" {
@@ -2078,13 +2079,13 @@ test "renderer - palette epoch changes force repaint and use new palette mapping
     _ = cli_renderer.render(false);
 
     const first_output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, first_output, "\x1b[38;5;42m") != null);
+    try std.testing.expect(std.mem.find(u8, first_output, "\x1b[38;5;42m") != null);
 
     try next_buffer.drawText("A", 0, 0, target, bg, 0);
     _ = cli_renderer.render(false);
 
     const second_output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, second_output, "A") == null);
+    try std.testing.expect(std.mem.find(u8, second_output, "A") == null);
 
     var palette_b = [_]RGBA{ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0)} ** 256;
     palette_b[77] = target;
@@ -2094,8 +2095,8 @@ test "renderer - palette epoch changes force repaint and use new palette mapping
     _ = cli_renderer.render(false);
 
     const third_output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, third_output, "A") != null);
-    try std.testing.expect(std.mem.indexOf(u8, third_output, "\x1b[38;5;77m") != null);
+    try std.testing.expect(std.mem.find(u8, third_output, "A") != null);
+    try std.testing.expect(std.mem.find(u8, third_output, "\x1b[38;5;77m") != null);
 }
 
 test "renderer - transparent rgb backgrounds still emit 49 reset" {
@@ -2121,7 +2122,7 @@ test "renderer - transparent rgb backgrounds still emit 49 reset" {
     _ = cli_renderer.render(false);
 
     const output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[49m") != null);
 }
 
 // ============================================================================
@@ -2148,8 +2149,8 @@ test "renderer - default cursor style emits reset cursor ANSI" {
 
     const output = test_cli_renderer.lastOutput();
 
-    try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.defaultCursorStyle) != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.cursorBlock) == null);
+    try std.testing.expect(std.mem.find(u8, output, ansi.ANSI.defaultCursorStyle) != null);
+    try std.testing.expect(std.mem.find(u8, output, ansi.ANSI.cursorBlock) == null);
 }
 
 test "renderer - explicit_cursor_positioning emits cursor move after wide graphemes" {
@@ -2185,7 +2186,7 @@ test "renderer - explicit_cursor_positioning emits cursor move after wide graphe
 
     const output = test_cli_renderer.lastOutput();
 
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[1;3H") != null);
 }
 
 test "renderer - explicit_cursor_positioning produces more cursor moves" {
@@ -2296,7 +2297,7 @@ test "renderer - explicit_cursor_positioning with CJK characters" {
 
     const output = test_cli_renderer.lastOutput();
 
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[1;3H") != null);
 }
 
 test "renderer - commitSplitFooterSnapshot writes append before footer repaint in one output" {
@@ -2340,12 +2341,12 @@ test "renderer - commitSplitFooterSnapshot writes append before footer repaint i
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 11, false, true, 2, false, true, true);
 
     const output = test_cli_renderer.lastOutput();
-    const append_index = std.mem.indexOf(u8, output, appended);
-    const scroll_region_set_index = std.mem.indexOf(u8, output, "\x1b[1;2r");
-    const scroll_region_reset_index = std.mem.indexOf(u8, output, "\x1b[r");
-    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
+    const append_index = std.mem.find(u8, output, appended);
+    const scroll_region_set_index = std.mem.find(u8, output, "\x1b[1;2r");
+    const scroll_region_reset_index = std.mem.find(u8, output, "\x1b[r");
+    const sync_index = std.mem.find(u8, output, ansi.ANSI.syncSet);
     const footer_move_after_sync = if (sync_index) |sync_start|
-        std.mem.indexOf(u8, output[sync_start + ansi.ANSI.syncSet.len ..], "\x1b[3;1H")
+        std.mem.find(u8, output[sync_start + ansi.ANSI.syncSet.len ..], "\x1b[3;1H")
     else
         null;
 
@@ -2360,7 +2361,7 @@ test "renderer - commitSplitFooterSnapshot writes append before footer repaint i
 
     var sync_count: usize = 0;
     var pos: usize = 0;
-    while (std.mem.indexOf(u8, output[pos..], ansi.ANSI.syncSet)) |found| {
+    while (std.mem.find(u8, output[pos..], ansi.ANSI.syncSet)) |found| {
         sync_count += 1;
         pos += found + ansi.ANSI.syncSet.len;
     }
@@ -2583,14 +2584,14 @@ test "renderer - commitSplitFooterSnapshot settling phase moves footer downward"
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 6, false, true, 3, false, true, true);
 
     const output = test_cli_renderer.lastOutput();
-    const settling_clear_index = std.mem.indexOf(u8, output, "\x1b[1;1H\x1b[J");
-    const stale_footer_clear_top_index = std.mem.indexOf(u8, output, "\x1b[1;1H\x1b[2K");
-    const stale_footer_clear_next_index = std.mem.indexOf(u8, output, "\x1b[2;1H\x1b[2K");
-    const append_index = std.mem.indexOf(u8, output, appended);
-    const scroll_region_reset_index = std.mem.indexOf(u8, output, "\x1b[r");
-    const footer_clear_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[2K");
-    const footer_erase_below_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[J");
-    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
+    const settling_clear_index = std.mem.find(u8, output, "\x1b[1;1H\x1b[J");
+    const stale_footer_clear_top_index = std.mem.find(u8, output, "\x1b[1;1H\x1b[2K");
+    const stale_footer_clear_next_index = std.mem.find(u8, output, "\x1b[2;1H\x1b[2K");
+    const append_index = std.mem.find(u8, output, appended);
+    const scroll_region_reset_index = std.mem.find(u8, output, "\x1b[r");
+    const footer_clear_index = std.mem.find(u8, output, "\x1b[3;1H\x1b[2K");
+    const footer_erase_below_index = std.mem.find(u8, output, "\x1b[3;1H\x1b[J");
+    const sync_index = std.mem.find(u8, output, ansi.ANSI.syncSet);
 
     try std.testing.expectEqual(@as(u32, 2), cli_renderer.renderOffset);
     try std.testing.expect(settling_clear_index == null);
@@ -2642,8 +2643,8 @@ test "renderer - commitSplitFooterSnapshot multiline settling enables bounded sc
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 6, false, true, 3, false, true, true);
 
     const output = test_cli_renderer.lastOutput();
-    const expanded_region_index = std.mem.indexOf(u8, output, "\x1b[1;3r");
-    const collapsed_region_index = std.mem.indexOf(u8, output, "\x1b[r");
+    const expanded_region_index = std.mem.find(u8, output, "\x1b[1;3r");
+    const collapsed_region_index = std.mem.find(u8, output, "\x1b[r");
 
     try std.testing.expectEqual(@as(u32, 3), cli_renderer.renderOffset);
     try std.testing.expect(expanded_region_index != null);
@@ -2703,13 +2704,13 @@ test "renderer - commitSplitFooterSnapshot multiline short final row keeps conti
     _ = cli_renderer.commitSplitFooterSnapshotBatched(second_snapshot, 1, false, false, 2, false, true, true);
 
     const output = test_cli_renderer.lastOutput();
-    const move_index = std.mem.indexOf(u8, output, "\x1b[2;6H");
-    const comma_index = std.mem.indexOf(u8, output, ",");
+    const move_index = std.mem.find(u8, output, "\x1b[2;6H");
+    const comma_index = std.mem.find(u8, output, ",");
 
     try std.testing.expect(move_index != null);
     try std.testing.expect(comma_index != null);
     try std.testing.expect(move_index.? < comma_index.?);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[2;17H") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[2;17H") == null);
 }
 
 test "renderer - commitSplitFooterSnapshot exact-width continuation preserves autowrap" {
@@ -2761,8 +2762,8 @@ test "renderer - commitSplitFooterSnapshot exact-width continuation preserves au
     _ = cli_renderer.commitSplitFooterSnapshotBatched(second_snapshot, 8, false, false, 2, false, true, true);
 
     const output = test_cli_renderer.lastOutput();
-    const wrap_index = std.mem.indexOf(u8, output, "\x1b[2;20H\r\n");
-    const text_index = std.mem.indexOf(u8, output, " letters");
+    const wrap_index = std.mem.find(u8, output, "\x1b[2;20H\r\n");
+    const text_index = std.mem.find(u8, output, " letters");
 
     try std.testing.expectEqual(@as(u32, 8), cli_renderer.splitScrollback.tail_column);
     try std.testing.expect(wrap_index != null);
@@ -2808,14 +2809,14 @@ test "renderer - commitSplitFooterSnapshot does not emit continuation spaces for
 
     const output = test_cli_renderer.lastOutput();
 
-    try std.testing.expect(std.mem.indexOf(u8, output, "│甲│乙│丙│") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "│😀│🚀│🧪│") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "甲 ") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "乙 ") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "丙 ") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "😀 ") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "🚀 ") == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "🧪 ") == null);
+    try std.testing.expect(std.mem.find(u8, output, "│甲│乙│丙│") != null);
+    try std.testing.expect(std.mem.find(u8, output, "│😀│🚀│🧪│") != null);
+    try std.testing.expect(std.mem.find(u8, output, "甲 ") == null);
+    try std.testing.expect(std.mem.find(u8, output, "乙 ") == null);
+    try std.testing.expect(std.mem.find(u8, output, "丙 ") == null);
+    try std.testing.expect(std.mem.find(u8, output, "😀 ") == null);
+    try std.testing.expect(std.mem.find(u8, output, "🚀 ") == null);
+    try std.testing.expect(std.mem.find(u8, output, "🧪 ") == null);
 }
 
 test "renderer - repaintSplitFooter repaints footer without append payload" {
@@ -2843,10 +2844,10 @@ test "renderer - repaintSplitFooter repaints footer without append payload" {
     _ = cli_renderer.repaintSplitFooter(2, true);
 
     const output = test_cli_renderer.lastOutput();
-    const footer_text_index = std.mem.indexOf(u8, output, "FOOT");
-    const footer_clear_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[2K");
-    const footer_erase_below_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[J");
-    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
+    const footer_text_index = std.mem.find(u8, output, "FOOT");
+    const footer_clear_index = std.mem.find(u8, output, "\x1b[3;1H\x1b[2K");
+    const footer_erase_below_index = std.mem.find(u8, output, "\x1b[3;1H\x1b[J");
+    const sync_index = std.mem.find(u8, output, ansi.ANSI.syncSet);
 
     try std.testing.expect(footer_text_index != null);
     try std.testing.expect(footer_clear_index == null);
@@ -2882,10 +2883,10 @@ test "renderer - repaintSplitFooter applies pending viewport scroll transition i
     _ = cli_renderer.repaintSplitFooter(4, true);
 
     const output = test_cli_renderer.lastOutput();
-    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
-    const scroll_index = std.mem.indexOf(u8, output, "\x1b[1T");
-    const footer_move_index = std.mem.indexOf(u8, output, "\x1b[5;1H");
-    const footer_text_index = std.mem.indexOf(u8, output, "FOOT");
+    const sync_index = std.mem.find(u8, output, ansi.ANSI.syncSet);
+    const scroll_index = std.mem.find(u8, output, "\x1b[1T");
+    const footer_move_index = std.mem.find(u8, output, "\x1b[5;1H");
+    const footer_text_index = std.mem.find(u8, output, "FOOT");
 
     try std.testing.expect(sync_index != null);
     try std.testing.expect(scroll_index != null);
@@ -2926,8 +2927,8 @@ test "renderer - repaintSplitFooter viewport scroll uses explicit split scroll d
     _ = cli_renderer.repaintSplitFooter(2, true);
 
     const output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[2S") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[4S") == null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[2S") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[4S") == null);
     try std.testing.expectEqual(@as(u32, 2), cli_renderer.getSplitOutputOffset(2));
 }
 
@@ -2957,9 +2958,9 @@ test "renderer - repaintSplitFooter applies pending stale row clear transition i
     _ = cli_renderer.repaintSplitFooter(7, true);
 
     const output = test_cli_renderer.lastOutput();
-    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
-    const clear_index = std.mem.indexOf(u8, output, "\x1b[5;1H\x1b[2K");
-    const footer_text_index = std.mem.indexOf(u8, output, "FOOT");
+    const sync_index = std.mem.find(u8, output, ansi.ANSI.syncSet);
+    const clear_index = std.mem.find(u8, output, "\x1b[5;1H\x1b[2K");
+    const footer_text_index = std.mem.find(u8, output, "FOOT");
 
     try std.testing.expect(sync_index != null);
     try std.testing.expect(clear_index != null);
@@ -3010,11 +3011,11 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 8, true, true, 2, false, true, true);
 
     const output = test_cli_renderer.lastOutput();
-    const snapshot_text_index = std.mem.indexOf(u8, output, "SNAP");
-    const orange_fg_index = std.mem.indexOf(u8, output, "\x1b[38;2;255;128;0m");
-    const bold_index = std.mem.indexOf(u8, output, "\x1b[1m");
-    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
-    const footer_clear_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[2K");
+    const snapshot_text_index = std.mem.find(u8, output, "SNAP");
+    const orange_fg_index = std.mem.find(u8, output, "\x1b[38;2;255;128;0m");
+    const bold_index = std.mem.find(u8, output, "\x1b[1m");
+    const sync_index = std.mem.find(u8, output, ansi.ANSI.syncSet);
+    const footer_clear_index = std.mem.find(u8, output, "\x1b[3;1H\x1b[2K");
 
     try std.testing.expect(snapshot_text_index != null);
     try std.testing.expect(orange_fg_index != null);
@@ -3069,12 +3070,12 @@ test "renderer - commitSplitFooterSnapshot preserves indexed and default color t
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 2, true, false, 2, false, true, true);
 
     const output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOf(u8, output, "A") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "B") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[39m") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;51;102;153m") == null);
+    try std.testing.expect(std.mem.find(u8, output, "A") != null);
+    try std.testing.expect(std.mem.find(u8, output, "B") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[39m") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[38;5;6m") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[49m") != null);
+    try std.testing.expect(std.mem.find(u8, output, "\x1b[38;2;51;102;153m") == null);
 }
 
 test "renderer - commitSplitFooterSnapshot does not emit NUL padding for short rows" {
@@ -3114,9 +3115,9 @@ test "renderer - commitSplitFooterSnapshot does not emit NUL padding for short r
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 16, true, true, 2, false, true, true);
 
     const output = test_cli_renderer.lastOutput();
-    try std.testing.expect(std.mem.indexOfScalar(u8, output, 0) == null);
-    try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.eraseToEndOfLine) != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "\r\n\x1b[0m\x1b[K") != null);
+    try std.testing.expect(std.mem.findScalar(u8, output, 0) == null);
+    try std.testing.expect(std.mem.find(u8, output, ansi.ANSI.eraseToEndOfLine) != null);
+    try std.testing.expect(std.mem.find(u8, output, "\r\n\x1b[0m\x1b[K") != null);
 }
 
 test "renderer - batched split commits share single sync frame" {
@@ -3185,8 +3186,8 @@ test "renderer - batched split commits share single sync frame" {
 
     const output = test_cli_renderer.lastOutput();
     // Batching should keep both commits inside one synchronized update envelope.
-    try std.testing.expect(std.mem.indexOf(u8, output, "FIRST") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output, "SECOND") != null);
+    try std.testing.expect(std.mem.find(u8, output, "FIRST") != null);
+    try std.testing.expect(std.mem.find(u8, output, "SECOND") != null);
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncSet));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, ansi.ANSI.syncReset));
 }
@@ -3241,12 +3242,12 @@ test "renderer - buffered debug dump includes non-threaded last render" {
     _ = cli_renderer.render(false);
 
     var dump_buf: [4096]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&dump_buf);
-    cli_renderer.backend.dumpTo(stream.writer());
-    const dump = stream.getWritten();
+    var writer: std.Io.Writer = .fixed(&dump_buf);
+    cli_renderer.backend.dumpTo(&writer);
+    const dump = writer.buffered();
 
-    try std.testing.expect(std.mem.indexOf(u8, dump, "DUMP") != null);
-    try std.testing.expect(std.mem.indexOf(u8, dump, "(no output rendered yet)") == null);
+    try std.testing.expect(std.mem.find(u8, dump, "DUMP") != null);
+    try std.testing.expect(std.mem.find(u8, dump, "(no output rendered yet)") == null);
 }
 
 // ---- FeedBackend tests ----
@@ -3284,7 +3285,7 @@ test "FeedBackend - renderer writes through feed" {
     for (span_out[0..count]) |span| {
         total_bytes += span.len;
         const slice = span.slice();
-        if (std.mem.indexOf(u8, slice, "Hello") != null) {
+        if (std.mem.find(u8, slice, "Hello") != null) {
             found_hello = true;
         }
     }
@@ -3776,10 +3777,10 @@ test "two renderers on buffered backend have independent buffers" {
     const out1 = test_r1.lastOutput();
     const out2 = test_r2.lastOutput();
 
-    try std.testing.expect(std.mem.indexOf(u8, out1, "AAA") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out1, "BBB") == null);
-    try std.testing.expect(std.mem.indexOf(u8, out2, "BBB") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out2, "AAA") == null);
+    try std.testing.expect(std.mem.find(u8, out1, "AAA") != null);
+    try std.testing.expect(std.mem.find(u8, out1, "BBB") == null);
+    try std.testing.expect(std.mem.find(u8, out2, "BBB") != null);
+    try std.testing.expect(std.mem.find(u8, out2, "AAA") == null);
 }
 
 test "threaded buffered destroy: no stale write after shutdown ANSI" {
@@ -3824,9 +3825,9 @@ test "threaded buffered backend skips instead of blocking behind output" {
     try backend.writer().writeAll("large graphics frame");
     try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
 
-    var timer = try std.time.Timer.start();
+    const start_time: std.Io.Timestamp = .now(io, .awake);
     try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.skipped, backend.prepareFrame());
-    try std.testing.expect(timer.read() < 100 * std.time.ns_per_ms);
+    try std.testing.expect(start_time.untilNow(io, .awake).toNanoseconds() < 100 * std.time.ns_per_ms);
 
     backend.setUseThread(false);
     try std.testing.expectEqualStrings("large graphics frame", output.payloads[0][0..output.lengths[0]]);
@@ -3880,7 +3881,7 @@ test "buffered backend reports a failed frame when growth allocation fails" {
 }
 
 test "buffered backend releases oversized frame buffers after the spike passes" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
+    var gpa: std.heap.DebugAllocator(.{ .enable_memory_limit = true }) = .init;
     defer std.debug.assert(gpa.deinit() == .ok);
     var out = CountingOutput{};
 

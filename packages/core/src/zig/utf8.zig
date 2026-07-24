@@ -65,7 +65,7 @@ pub const LineBreakResult = struct {
 
     pub fn init(allocator: std.mem.Allocator) LineBreakResult {
         return .{
-            .breaks = .{},
+            .breaks = .empty,
             .allocator = allocator,
         };
     }
@@ -86,7 +86,7 @@ pub const TabStopResult = struct {
 
     pub fn init(allocator: std.mem.Allocator) TabStopResult {
         return .{
-            .positions = .{},
+            .positions = .empty,
             .allocator = allocator,
         };
     }
@@ -118,7 +118,7 @@ pub const WrapBreakResult = struct {
 
     pub fn init(allocator: std.mem.Allocator) WrapBreakResult {
         return .{
-            .breaks = .{},
+            .breaks = .empty,
             .allocator = allocator,
         };
     }
@@ -1641,15 +1641,17 @@ pub const GraphemeInfo = struct {
 
 pub const GraphemeInfoResult = struct {
     graphemes: std.ArrayList(GraphemeInfo),
+    allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) GraphemeInfoResult {
         return .{
-            .graphemes = std.ArrayList(GraphemeInfo).init(allocator),
+            .graphemes = .empty,
+            .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *GraphemeInfoResult) void {
-        self.graphemes.deinit();
+        self.graphemes.deinit(self.allocator);
         self.* = undefined;
     }
 

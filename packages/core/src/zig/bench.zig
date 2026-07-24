@@ -35,7 +35,7 @@
 // Adding New Benchmarks:
 //   1. Create a new file in bench/ directory (e.g., bench/my_bench.zig)
 //   2. Export `pub const benchName = "My Benchmark";`
-//   3. Export `pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]BenchResult`
+//   3. Export `pub fn run(io: std.Io, allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]BenchResult`
 //   4. Import the module at the top of this file
 //   5. Add an entry to the `benchmarks` array in main() with your module
 
@@ -66,7 +66,7 @@ const renderer_output_bench = @import("bench/renderer-output_bench.zig");
 
 const BenchModule = struct {
     name: []const u8,
-    run: *const fn (std.mem.Allocator, bool, ?[]const u8) anyerror![]bench_utils.BenchResult,
+    run: *const fn (std.Io, std.mem.Allocator, bool, ?[]const u8) anyerror![]bench_utils.BenchResult,
 };
 
 fn matchesFilter(bench_name: []const u8, filter: ?[]const u8) bool {
@@ -91,8 +91,9 @@ fn matchesFilter(bench_name: []const u8, filter: ?[]const u8) bool {
     return false;
 }
 
-pub fn main() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -123,8 +124,9 @@ pub fn main() !void {
         .{ .name = renderer_output_bench.benchName, .run = renderer_output_bench.run },
     };
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    var args_arena = std.heap.ArenaAllocator.init(allocator);
+    defer args_arena.deinit();
+    const args = try init.minimal.args.toSlice(args_arena.allocator());
 
     var show_mem = false;
     var json_output = false;
@@ -149,7 +151,7 @@ pub fn main() !void {
             }
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
             var stdout_buffer: [4096]u8 = undefined;
-            var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+            var stdout_writer = std.Io.File.stdout().writerStreaming(io, &stdout_buffer);
             const stdout = &stdout_writer.interface;
             try stdout.print("Usage: bench [options]\n\n", .{});
             try stdout.print("Options:\n", .{});
@@ -168,7 +170,7 @@ pub fn main() !void {
     }
 
     var stdout_buffer: [4096]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writerStreaming(io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
 
     if (!json_output and filter != null) {
@@ -187,10 +189,9 @@ pub fn main() !void {
         var results_arena = std.heap.ArenaAllocator.init(allocator);
         defer results_arena.deinit();
 
-        const start_time = std.time.nanoTimestamp();
-        const results = try bench.run(results_arena.allocator(), show_mem, bench_filter);
-        const end_time = std.time.nanoTimestamp();
-        const elapsed_ns = end_time - start_time;
+        const timer = bench_utils.BenchTimer.start(io);
+        const results = try bench.run(io, results_arena.allocator(), show_mem, bench_filter);
+        const elapsed_ns = timer.read();
 
         if (results.len == 0) continue;
 

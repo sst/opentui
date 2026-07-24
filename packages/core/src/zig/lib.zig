@@ -2,6 +2,9 @@ const std = @import("std");
 const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 
+var io_threaded: std.Io.Threaded = .init_single_threaded;
+pub const io = io_threaded.io();
+
 const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
@@ -220,10 +223,10 @@ export fn destroyEventSink(sink_handle: NativeHandle) void {
     handles.finishDestroy(token.handle);
 }
 
-var gpa: std.heap.GeneralPurposeAllocator(.{
+var gpa: std.heap.DebugAllocator(.{
     .enable_memory_limit = build_options.gpa_safe_stats,
     .safety = build_options.gpa_safe_stats,
-}) = .{};
+}) = .init;
 const globalAllocator = gpa.allocator();
 var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
@@ -1143,14 +1146,14 @@ export fn setTerminalTitle(renderer_handle: NativeHandle, titlePtr: ?[*]const u8
 
 export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, text_ptr: ?[*]const u8, text_len: u32) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
-    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
+    const targetEnum = std.enums.fromInt(terminal.ClipboardTarget, target) orelse .clipboard;
     const text_utf8 = sliceFromPtrLen(text_ptr, text_len);
     return object_ptr.copyToClipboardOSC52(targetEnum, text_utf8);
 }
 
 export fn clearClipboardOSC52(renderer_handle: NativeHandle, target: u8) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
-    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
+    const targetEnum = std.enums.fromInt(terminal.ClipboardTarget, target) orelse .clipboard;
     return object_ptr.clearClipboardOSC52(targetEnum);
 }
 
@@ -3072,7 +3075,7 @@ export fn encodeUnicode(
     const is_ascii_only = utf8.isAsciiOnly(text);
 
     // Find grapheme info
-    var grapheme_list: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var grapheme_list: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer grapheme_list.deinit(globalAllocator);
 
     const tab_width: u8 = 2;

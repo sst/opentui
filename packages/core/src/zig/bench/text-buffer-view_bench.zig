@@ -26,7 +26,7 @@ const large_text_patterns = [_][]const u8{
 };
 
 pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes: usize) ![]u8 {
-    var buffer: std.ArrayListUnmanaged(u8) = .{};
+    var buffer: std.ArrayList(u8) = .empty;
     errdefer buffer.deinit(allocator);
 
     var current_bytes: usize = 0;
@@ -49,7 +49,7 @@ pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes:
 }
 
 pub fn generateLargeTextSingleLine(allocator: std.mem.Allocator, target_bytes: usize) ![]u8 {
-    var buffer: std.ArrayListUnmanaged(u8) = .{};
+    var buffer: std.ArrayList(u8) = .empty;
     errdefer buffer.deinit(allocator);
 
     var current_bytes: usize = 0;
@@ -92,13 +92,14 @@ fn computeSingleLineTextSize(target_bytes: usize) usize {
 }
 
 fn benchSetText(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
     const link_pool = link.initGlobalLinkPool(allocator);
 
@@ -114,7 +115,7 @@ fn benchSetText(
                 var tb = try UnifiedTextBuffer.init(allocator, pool, link_pool, .unicode);
                 defer tb.deinit();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try tb.setText(text);
                 stats.record(timer.read());
 
@@ -164,7 +165,7 @@ fn benchSetText(
                 var tb = try UnifiedTextBuffer.init(allocator, pool, link_pool, .unicode);
                 defer tb.deinit();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 try tb.setText(text);
                 stats.record(timer.read());
 
@@ -195,6 +196,7 @@ fn benchSetText(
 }
 
 fn benchWrap(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     text: []const u8,
@@ -219,7 +221,7 @@ fn benchWrap(
 
         view.setWrapMode(wrap_mode);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         view.setWrapWidth(wrap_width);
         const count = view.getVirtualLineCount();
         stats.record(timer.read());
@@ -250,6 +252,7 @@ fn benchWrap(
 }
 
 fn benchMeasureForDimensionsLayout(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     text: []const u8,
@@ -288,7 +291,7 @@ fn benchMeasureForDimensionsLayout(
             newline_mem_id = try tb.registerMemBuffer(newline, false);
         }
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         for (0..steps) |step| {
             if (streaming) {
                 try tb.appendFromMemId(token_mem_id);
@@ -329,6 +332,7 @@ fn benchMeasureForDimensionsLayout(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
@@ -336,13 +340,13 @@ pub fn run(
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
 
-    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var all_results: std.ArrayList(BenchResult) = .empty;
     errdefer all_results.deinit(allocator);
 
     const iterations: usize = 10;
 
     // Run setText benchmarks
-    const setText_results = try benchSetText(allocator, pool, iterations, show_mem, bench_filter);
+    const setText_results = try benchSetText(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, setText_results);
 
     var text_multiline: ?[]u8 = null;
@@ -382,6 +386,7 @@ pub fn run(
         }
 
         var bench_result = try benchMeasureForDimensionsLayout(
+            io,
             allocator,
             pool,
             text_multiline.?,
@@ -442,6 +447,7 @@ pub fn run(
         }
 
         var bench_result = try benchWrap(
+            io,
             allocator,
             pool,
             text,

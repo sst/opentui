@@ -3606,7 +3606,7 @@
     .{ .codepoint = "U+1F6D5", .width = 2 },
     .{ .codepoint = "U+1F6D6", .width = 2 },
     .{ .codepoint = "U+1F6D7", .width = 2 },
-    .{ .codepoint = "U+1F6D8", .width = 1 },
+    .{ .codepoint = "U+1F6D8", .width = 2 },
     .{ .codepoint = "U+1F6D9", .width = 1 },
     .{ .codepoint = "U+1F6DA", .width = 1 },
     .{ .codepoint = "U+1F6DB", .width = 1 },

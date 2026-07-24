@@ -3,7 +3,7 @@ const testing = std.testing;
 const utf8 = @import("../utf8.zig");
 
 test "findGraphemeInfo wcwidth: empty string" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, "", 4, false, .wcwidth, &result);
@@ -11,7 +11,7 @@ test "findGraphemeInfo wcwidth: empty string" {
 }
 
 test "findGraphemeInfo wcwidth: ASCII-only returns empty" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, "hello world", 4, true, .wcwidth, &result);
@@ -19,7 +19,7 @@ test "findGraphemeInfo wcwidth: ASCII-only returns empty" {
 }
 
 test "findGraphemeInfo wcwidth: ASCII with tab" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     try utf8.findGraphemeInfo(testing.allocator, "hello\tworld", 4, false, .wcwidth, &result);
@@ -33,7 +33,7 @@ test "findGraphemeInfo wcwidth: ASCII with tab" {
 }
 
 test "findGraphemeInfo wcwidth: CJK characters" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "hello世界";
@@ -56,7 +56,7 @@ test "findGraphemeInfo wcwidth: CJK characters" {
 }
 
 test "findGraphemeInfo wcwidth: emoji with skin tone - single grapheme cluster" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "👋🏿"; // Wave + skin tone modifier
@@ -70,7 +70,7 @@ test "findGraphemeInfo wcwidth: emoji with skin tone - single grapheme cluster" 
 }
 
 test "findGraphemeInfo wcwidth: emoji with ZWJ - single grapheme cluster" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "👩‍🚀"; // Woman + ZWJ + Rocket (11 bytes total)
@@ -83,7 +83,7 @@ test "findGraphemeInfo wcwidth: emoji with ZWJ - single grapheme cluster" {
 }
 
 test "findGraphemeInfo wcwidth: combining mark - part of base grapheme" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result.deinit(testing.allocator);
 
     const text = "e\u{0301}test"; // e + combining acute accent + test
@@ -96,9 +96,9 @@ test "findGraphemeInfo wcwidth: combining mark - part of base grapheme" {
 }
 
 test "findGraphemeInfo wcwidth vs unicode: emoji with skin tone" {
-    var result_wcwidth: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result_wcwidth: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result_wcwidth.deinit(testing.allocator);
-    var result_unicode: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result_unicode: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result_unicode.deinit(testing.allocator);
 
     const text = "Hi👋🏿Bye";
@@ -120,9 +120,9 @@ test "findGraphemeInfo wcwidth vs unicode: emoji with skin tone" {
 }
 
 test "findGraphemeInfo wcwidth vs unicode: flag emoji" {
-    var result_wcwidth: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result_wcwidth: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result_wcwidth.deinit(testing.allocator);
-    var result_unicode: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    var result_unicode: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .empty;
     defer result_unicode.deinit(testing.allocator);
 
     const text = "🇺🇸"; // US flag (two regional indicators)

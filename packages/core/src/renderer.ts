@@ -527,6 +527,10 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
 }
 
 const DEFAULT_FORWARDED_ENV_KEYS = [
+  "SSH_CONNECTION",
+  "SSH_CLIENT",
+  "SSH_TTY",
+  "MOSH_CONNECTION",
   "TMUX",
   "ZELLIJ",
   "ZELLIJ_SESSION_NAME",
@@ -1138,7 +1142,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.clearOnShutdown = config.clearOnShutdown ?? true
     this.lib.setClearOnShutdown(this.rendererPtr, this.clearOnShutdown)
 
-    const forwardEnvKeys = config.forwardEnvKeys ?? (config.remote === false ? [...DEFAULT_FORWARDED_ENV_KEYS] : [])
+    const forwardEnvKeys = config.forwardEnvKeys ?? (remoteMode === true ? [] : [...DEFAULT_FORWARDED_ENV_KEYS])
     for (const key of forwardEnvKeys) {
       const value = process.env[key]
       if (value === undefined) continue

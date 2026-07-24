@@ -586,7 +586,7 @@ test "drawTextBuffer - very long unwrapped line clipping" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var long_text: std.ArrayListUnmanaged(u8) = .{};
+    var long_text: std.ArrayListUnmanaged(u8) = .empty;
     defer long_text.deinit(std.testing.allocator);
     try long_text.appendNTimes(std.testing.allocator, 'A', 200);
 
@@ -1304,14 +1304,8 @@ test "loadFile - loads and renders file correctly" {
     var tmp = tmpdir;
     defer tmp.cleanup();
 
-    const file = try tmp.dir.createFile("test.txt", .{});
-    try file.writeAll(test_content);
-    file.close();
-
-    const dir_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
-    defer std.testing.allocator.free(dir_path);
-
-    const file_path = try std.fs.path.join(std.testing.allocator, &[_][]const u8{ dir_path, "test.txt" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "test.txt", .data = test_content });
+    const file_path = try tmp.dir.realPathFileAlloc(std.testing.io, "test.txt", std.testing.allocator);
     defer std.testing.allocator.free(file_path);
 
     try tb.loadFile(file_path);
@@ -1409,9 +1403,9 @@ test "drawTextBuffer - horizontal viewport offset with multiple lines" {
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
     const result = out_buffer[0..written];
 
-    try std.testing.expect(std.mem.indexOf(u8, result, "DEFGHIJK") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result, "3456789!") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result, "[\\]^_`{|") != null);
+    try std.testing.expect(std.mem.find(u8, result, "DEFGHIJK") != null);
+    try std.testing.expect(std.mem.find(u8, result, "3456789!") != null);
+    try std.testing.expect(std.mem.find(u8, result, "[\\]^_`{|") != null);
 }
 
 test "drawTextBuffer - combined horizontal and vertical viewport offsets" {
@@ -1447,8 +1441,8 @@ test "drawTextBuffer - combined horizontal and vertical viewport offsets" {
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
     const result = out_buffer[0..written];
 
-    try std.testing.expect(std.mem.indexOf(u8, result, "KLMNOPQRST") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result, "UVWXYZ0123") != null);
+    try std.testing.expect(std.mem.find(u8, result, "KLMNOPQRST") != null);
+    try std.testing.expect(std.mem.find(u8, result, "UVWXYZ0123") != null);
 }
 
 test "drawTextBuffer - horizontal viewport stops rendering at viewport width" {
@@ -1549,7 +1543,7 @@ test "drawTextBuffer - horizontal viewport width limits rendering (efficiency te
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var long_line: std.ArrayListUnmanaged(u8) = .{};
+    var long_line: std.ArrayListUnmanaged(u8) = .empty;
     defer long_line.deinit(std.testing.allocator);
     try long_line.appendNTimes(std.testing.allocator, 'A', 1000);
 
@@ -1955,7 +1949,7 @@ test "drawTextBuffer - mixed ASCII and Unicode with emoji renders completely" {
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
     const result = out_buffer[0..written];
 
-    try std.testing.expect(std.mem.indexOf(u8, result, "- ✅ All 881 native tests passs") != null);
+    try std.testing.expect(std.mem.find(u8, result, "- ✅ All 881 native tests passs") != null);
 
     const plain_text = tb.getPlainTextIntoBuffer(&out_buffer);
     const plain_result = out_buffer[0..plain_text];
@@ -2062,16 +2056,16 @@ test "drawTextBuffer - complex multilingual text with diverse scripts and emojis
     const plain_text = plain_buffer[0..plain_len];
 
     // Verify some key multilingual content is present
-    try std.testing.expect(std.mem.indexOf(u8, plain_text, "संस्कृति") != null);
-    try std.testing.expect(std.mem.indexOf(u8, plain_text, "नमस्ते") != null);
-    try std.testing.expect(std.mem.indexOf(u8, plain_text, "漢字") != null);
-    try std.testing.expect(std.mem.indexOf(u8, plain_text, "한글") != null);
-    try std.testing.expect(std.mem.indexOf(u8, plain_text, "தமிழ்") != null);
-    try std.testing.expect(std.mem.indexOf(u8, plain_text, "বাংলা") != null);
-    try std.testing.expect(std.mem.indexOf(u8, plain_text, "ಕನ್ನಡ") != null);
-    try std.testing.expect(std.mem.indexOf(u8, plain_text, "മലയാളം") != null);
-    try std.testing.expect(std.mem.indexOf(u8, plain_text, "🌟") != null);
-    try std.testing.expect(std.mem.indexOf(u8, plain_text, "🙏") != null);
+    try std.testing.expect(std.mem.find(u8, plain_text, "संस्कृति") != null);
+    try std.testing.expect(std.mem.find(u8, plain_text, "नमस्ते") != null);
+    try std.testing.expect(std.mem.find(u8, plain_text, "漢字") != null);
+    try std.testing.expect(std.mem.find(u8, plain_text, "한글") != null);
+    try std.testing.expect(std.mem.find(u8, plain_text, "தமிழ்") != null);
+    try std.testing.expect(std.mem.find(u8, plain_text, "বাংলা") != null);
+    try std.testing.expect(std.mem.find(u8, plain_text, "ಕನ್ನಡ") != null);
+    try std.testing.expect(std.mem.find(u8, plain_text, "മലയാളം") != null);
+    try std.testing.expect(std.mem.find(u8, plain_text, "🌟") != null);
+    try std.testing.expect(std.mem.find(u8, plain_text, "🙏") != null);
 
     // Test with no wrapping
     view.setWrapMode(.none);
@@ -3009,17 +3003,17 @@ test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
     try std.testing.expect(std.unicode.utf8ValidateSlice(result));
 
     // Verify that the original text is contained in the output (with possible spaces/newlines from wrapping)
-    try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result, "实时输入验证和错误处理") != null);
+    try std.testing.expect(std.mem.find(u8, result, "完整的验证") != null);
+    try std.testing.expect(std.mem.find(u8, result, "实时输入验证和错误处理") != null);
 
     // Check specific problematic line - should NOT contain stray bytes
     // The line should be present correctly (possibly wrapped with spaces)
     // But there should be NO stray å character or partial UTF-8 sequences
-    try std.testing.expect(std.mem.indexOf(u8, result, "å式") == null); // This should NOT appear
-    try std.testing.expect(std.mem.indexOf(u8, result, "å") == null); // No stray partial bytes
+    try std.testing.expect(std.mem.find(u8, result, "å式") == null); // This should NOT appear
+    try std.testing.expect(std.mem.find(u8, result, "å") == null); // No stray partial bytes
 
     // Verify the problematic characters appear correctly
-    try std.testing.expect(std.mem.indexOf(u8, result, "形式") != null);
+    try std.testing.expect(std.mem.find(u8, result, "形式") != null);
 }
 
 test "drawTextBuffer - Chinese text WITHOUT wrapping no duplicate chunks" {
@@ -3078,10 +3072,10 @@ test "drawTextBuffer - Chinese text WITHOUT wrapping no duplicate chunks" {
     try std.testing.expect(std.unicode.utf8ValidateSlice(result));
 
     // Should NOT contain stray bytes
-    try std.testing.expect(std.mem.indexOf(u8, result, "å") == null);
+    try std.testing.expect(std.mem.find(u8, result, "å") == null);
 
     // All text should be present
-    try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证 - 实时输入验证和错误处理") != null);
+    try std.testing.expect(std.mem.find(u8, result, "完整的验证 - 实时输入验证和错误处理") != null);
 }
 
 test "drawTextBuffer - Chinese text with CHAR wrapping no stray bytes" {
@@ -3132,11 +3126,11 @@ test "drawTextBuffer - Chinese text with CHAR wrapping no stray bytes" {
     try std.testing.expect(std.unicode.utf8ValidateSlice(result));
 
     // Should NOT contain stray bytes
-    try std.testing.expect(std.mem.indexOf(u8, result, "å") == null);
+    try std.testing.expect(std.mem.find(u8, result, "å") == null);
 
     // Verify the problematic characters appear correctly
-    try std.testing.expect(std.mem.indexOf(u8, result, "形式") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result, "完整的验证") != null);
+    try std.testing.expect(std.mem.find(u8, result, "形式") != null);
+    try std.testing.expect(std.mem.find(u8, result, "完整的验证") != null);
 }
 
 test "drawTextBuffer - word wrap CJK mixed text without break points" {
@@ -3220,7 +3214,7 @@ test "drawTextBuffer - word wrap CJK text preserves UTF-8 boundaries" {
     const result = out_buffer[0..written];
 
     try std.testing.expect(std.unicode.utf8ValidateSlice(result));
-    try std.testing.expect(std.mem.indexOf(u8, result, "ä") == null);
+    try std.testing.expect(std.mem.find(u8, result, "ä") == null);
 
     var i: usize = 0;
     while (i < result.len) : (i += 1) {
@@ -3287,5 +3281,5 @@ test "drawTextBuffer - Thai ว่ grapheme in quotes occupies one cell" {
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
     const result = out_buffer[0..written];
 
-    try std.testing.expect(std.mem.indexOf(u8, result, "\"ว่\"") != null);
+    try std.testing.expect(std.mem.find(u8, result, "\"ว่\"") != null);
 }

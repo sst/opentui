@@ -12,13 +12,14 @@ const MemStat = bench_utils.MemStat;
 pub const benchName = "EditBuffer Operations";
 
 fn benchInsertOperations(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
     const link_pool = link.initGlobalLinkPool(allocator);
 
@@ -34,7 +35,7 @@ fn benchInsertOperations(
                 defer eb.deinit();
 
                 const text = "Hello, world! ";
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..1000) |_| {
                     try eb.insertText(text);
                     try eb.setCursor(0, 0);
@@ -76,7 +77,7 @@ fn benchInsertOperations(
                 defer eb.deinit();
 
                 const text = "Line 1\nLine 2\nLine 3\n";
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..500) |_| {
                     try eb.insertText(text);
                 }
@@ -109,13 +110,14 @@ fn benchInsertOperations(
 }
 
 fn benchDeleteOperations(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
     const link_pool = link.initGlobalLinkPool(allocator);
 
@@ -136,7 +138,7 @@ fn benchDeleteOperations(
                     try eb.insertText(text);
                 }
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 for (0..500) |_| {
                     try eb.backspace();
                 }
@@ -182,7 +184,7 @@ fn benchDeleteOperations(
                     try eb.insertText(text);
                 }
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 // Delete across 50 lines
                 try eb.deleteRange(.{ .row = 10, .col = 0 }, .{ .row = 60, .col = 0 });
                 stats.record(timer.read());
@@ -214,13 +216,14 @@ fn benchDeleteOperations(
 }
 
 fn benchMixedOperations(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
     const link_pool = link.initGlobalLinkPool(allocator);
 
@@ -235,7 +238,7 @@ fn benchMixedOperations(
                 var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode, null);
                 defer eb.deinit();
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
 
                 // Type some text
                 for (0..100) |_| {
@@ -280,13 +283,14 @@ fn benchMixedOperations(
 }
 
 fn benchWordBoundaryOperations(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
     const link_pool = link.initGlobalLinkPool(allocator);
 
@@ -309,7 +313,7 @@ fn benchWordBoundaryOperations(
 
                 try eb.setCursor(0, 0);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 // Navigate through 1000 word boundaries
                 for (0..1000) |_| {
                     const cursor = eb.getNextWordBoundary();
@@ -362,7 +366,7 @@ fn benchWordBoundaryOperations(
                 const last_line = if (line_count > 0) line_count - 1 else 0;
                 try eb.setCursor(last_line, 4500);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 // Navigate backward through 1000 word boundaries
                 for (0..1000) |_| {
                     const cursor = eb.getPrevWordBoundary();
@@ -412,7 +416,7 @@ fn benchWordBoundaryOperations(
 
                 try eb.setCursor(0, 0);
 
-                var timer = try std.time.Timer.start();
+                const timer = bench_utils.BenchTimer.start(io);
                 // Navigate through 500 word boundaries across lines
                 for (0..500) |_| {
                     const cursor = eb.getNextWordBoundary();
@@ -447,6 +451,7 @@ fn benchWordBoundaryOperations(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
@@ -454,22 +459,22 @@ pub fn run(
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
 
-    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var all_results: std.ArrayList(BenchResult) = .empty;
     errdefer all_results.deinit(allocator);
 
     const iterations: usize = 5;
 
     // Run all benchmark categories and filter results
-    const insert_results = try benchInsertOperations(allocator, pool, iterations, show_mem, bench_filter);
+    const insert_results = try benchInsertOperations(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, insert_results);
 
-    const delete_results = try benchDeleteOperations(allocator, pool, iterations, show_mem, bench_filter);
+    const delete_results = try benchDeleteOperations(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, delete_results);
 
-    const mixed_results = try benchMixedOperations(allocator, pool, iterations, show_mem, bench_filter);
+    const mixed_results = try benchMixedOperations(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, mixed_results);
 
-    const word_boundary_results = try benchWordBoundaryOperations(allocator, pool, iterations, show_mem, bench_filter);
+    const word_boundary_results = try benchWordBoundaryOperations(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, word_boundary_results);
 
     return all_results.toOwnedSlice(allocator);

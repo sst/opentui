@@ -84,15 +84,35 @@ pub const BenchStats = struct {
     }
 };
 
+pub const BenchTimer = struct {
+    io: std.Io,
+    start_timestamp: std.Io.Timestamp,
+
+    pub fn start(io: std.Io) BenchTimer {
+        return .{
+            .io = io,
+            .start_timestamp = std.Io.Clock.awake.now(io),
+        };
+    }
+
+    pub fn read(self: BenchTimer) u64 {
+        const end_timestamp = std.Io.Clock.awake.now(self.io);
+        const elapsed: std.Io.Duration = self.start_timestamp.durationTo(end_timestamp);
+        return @intCast(elapsed.toNanoseconds());
+    }
+};
+
 /// Helper for running benchmark iterations with timing
 pub const BenchRunner = struct {
+    io: std.Io,
     allocator: std.mem.Allocator,
-    results: std.ArrayListUnmanaged(BenchResult),
+    results: std.ArrayList(BenchResult),
 
-    pub fn init(allocator: std.mem.Allocator) BenchRunner {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator) BenchRunner {
         return .{
+            .io = io,
             .allocator = allocator,
-            .results = .{},
+            .results = .empty,
         };
     }
 
@@ -127,7 +147,7 @@ pub const BenchRunner = struct {
         var stats: BenchStats = .{};
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            var timer = try std.time.Timer.start();
+            const timer = BenchTimer.start(self.io);
             @call(.auto, benchFn, args);
             stats.record(timer.read());
         }
@@ -148,11 +168,11 @@ pub const BenchRunner = struct {
 /// Create a stdout writer with buffer for benchmark output
 pub const StdoutWriter = struct {
     buffer: [4096]u8 = undefined,
-    writer: std.fs.File.Writer = undefined,
+    writer: std.Io.File.Writer = undefined,
 
-    pub fn init() StdoutWriter {
+    pub fn init(io: std.Io) StdoutWriter {
         var self: StdoutWriter = .{};
-        self.writer = std.fs.File.stdout().writer(&self.buffer);
+        self.writer = std.Io.File.stdout().writerStreaming(io, &self.buffer);
         return self;
     }
 
@@ -220,7 +240,7 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
     const allocator = arena.allocator();
 
     // Collect all unique memory stat names
-    var mem_stat_names: std.ArrayListUnmanaged([]const u8) = .{};
+    var mem_stat_names: std.ArrayList([]const u8) = .empty;
     for (results) |result| {
         if (result.mem_stats) |stats| {
             for (stats) |stat| {
@@ -247,7 +267,7 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
     var rme_col_width: usize = 6; // minimum for "RME95%"
 
     // Create a map to store column widths for each memory stat
-    var mem_col_widths: std.ArrayListUnmanaged(usize) = .{};
+    var mem_col_widths: std.ArrayList(usize) = .empty;
     for (mem_stat_names.items) |name| {
         try mem_col_widths.append(allocator, name.len); // minimum is the name length
     }

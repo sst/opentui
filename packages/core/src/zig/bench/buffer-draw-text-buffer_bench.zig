@@ -24,7 +24,7 @@ fn rgba(r: f32, g: f32, b: f32, a: f32) buffer.RGBA {
 }
 
 fn generateText(allocator: std.mem.Allocator, lines: u32, avg_line_len: u32) ![]u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
+    var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(allocator);
 
     const patterns = [_][]const u8{
@@ -49,7 +49,7 @@ fn generateText(allocator: std.mem.Allocator, lines: u32, avg_line_len: u32) ![]
 }
 
 fn generateManySmallChunks(allocator: std.mem.Allocator, chunks: u32) ![]u8 {
-    var buf: std.ArrayListUnmanaged(u8) = .{};
+    var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(allocator);
 
     for (0..chunks) |i| {
@@ -86,13 +86,14 @@ fn setupTextBuffer(
 }
 
 fn benchRenderColdCache(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name = "COLD: 120x40 render (500 lines, wrap=120, includes setup)";
@@ -114,7 +115,7 @@ fn benchRenderColdCache(
 
         buf.clear(CLEAR_BG, null);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
@@ -143,13 +144,14 @@ fn benchRenderColdCache(
 }
 
 fn benchWrapAndRender(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name = "WRAP+RENDER: 120x40 render (500 lines, wrap=120)";
@@ -173,7 +175,7 @@ fn benchWrapAndRender(
 
         buf.clear(CLEAR_BG, null);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
@@ -206,13 +208,14 @@ fn benchWrapAndRender(
 }
 
 fn benchRenderWarmCache(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const warm_name = "WARM: 120x40 render (500 lines, pre-wrapped, pure render)";
@@ -238,7 +241,7 @@ fn benchRenderWarmCache(
 
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
 
@@ -277,7 +280,7 @@ fn benchRenderWarmCache(
         for (0..iterations) |_| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
@@ -297,13 +300,14 @@ fn benchRenderWarmCache(
 }
 
 fn benchRenderSmallResolution(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const no_wrap_name = "80x24 render (100 lines, no wrap)";
@@ -329,7 +333,7 @@ fn benchRenderSmallResolution(
         for (0..iterations) |i| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
 
@@ -368,7 +372,7 @@ fn benchRenderSmallResolution(
         for (0..iterations) |_| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
@@ -388,13 +392,14 @@ fn benchRenderSmallResolution(
 }
 
 fn benchRenderMediumResolution(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name = "200x60 render (1000 lines, wrap=200)";
@@ -416,7 +421,7 @@ fn benchRenderMediumResolution(
     for (0..iterations) |i| {
         buf.clear(CLEAR_BG, null);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
@@ -445,13 +450,14 @@ fn benchRenderMediumResolution(
 }
 
 fn benchRenderMassiveResolution(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name = "400x200 render (10k lines, wrap=400)";
@@ -473,7 +479,7 @@ fn benchRenderMassiveResolution(
     for (0..iterations) |i| {
         buf.clear(CLEAR_BG, null);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
@@ -502,13 +508,14 @@ fn benchRenderMassiveResolution(
 }
 
 fn benchRenderMassiveLines(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name = "120x40 render (50k lines, viewport first 40)";
@@ -530,7 +537,7 @@ fn benchRenderMassiveLines(
     for (0..iterations) |i| {
         buf.clear(CLEAR_BG, null);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
@@ -559,19 +566,20 @@ fn benchRenderMassiveLines(
 }
 
 fn benchRenderOneMassiveLine(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name = "80x30 render (1 massive line 500KB, wrap=80)";
     if (!bench_utils.matchesBenchFilter(name, bench_filter)) return results.toOwnedSlice(allocator);
 
-    var buf_builder: std.ArrayListUnmanaged(u8) = .{};
+    var buf_builder: std.ArrayList(u8) = .empty;
     defer buf_builder.deinit(allocator);
 
     for (0..100000) |_| {
@@ -593,7 +601,7 @@ fn benchRenderOneMassiveLine(
     for (0..iterations) |i| {
         buf.clear(CLEAR_BG, null);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
@@ -622,13 +630,14 @@ fn benchRenderOneMassiveLine(
 }
 
 fn benchRenderManySmallChunks(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
 
     const name = "80x30 render (10k tiny chunks)";
@@ -650,7 +659,7 @@ fn benchRenderManySmallChunks(
     for (0..iterations) |i| {
         buf.clear(CLEAR_BG, null);
 
-        var timer = try std.time.Timer.start();
+        const timer = bench_utils.BenchTimer.start(io);
         buf.drawTextBuffer(view, 0, 0);
         stats.record(timer.read());
 
@@ -679,13 +688,14 @@ fn benchRenderManySmallChunks(
 }
 
 fn benchRenderWithViewport(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
     _ = show_mem;
 
@@ -713,7 +723,7 @@ fn benchRenderWithViewport(
         for (0..iterations) |_| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
@@ -742,7 +752,7 @@ fn benchRenderWithViewport(
         for (0..iterations) |_| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
@@ -762,13 +772,14 @@ fn benchRenderWithViewport(
 }
 
 fn benchRenderWithSelection(
+    io: std.Io,
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var results: std.ArrayList(BenchResult) = .empty;
     errdefer results.deinit(allocator);
     _ = show_mem;
 
@@ -796,7 +807,7 @@ fn benchRenderWithSelection(
         for (0..iterations) |_| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
@@ -825,7 +836,7 @@ fn benchRenderWithSelection(
         for (0..iterations) |_| {
             buf.clear(CLEAR_BG, null);
 
-            var timer = try std.time.Timer.start();
+            const timer = bench_utils.BenchTimer.start(io);
             buf.drawTextBuffer(view, 0, 0);
             stats.record(timer.read());
         }
@@ -845,6 +856,7 @@ fn benchRenderWithSelection(
 }
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     show_mem: bool,
     bench_filter: ?[]const u8,
@@ -852,42 +864,42 @@ pub fn run(
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
 
-    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    var all_results: std.ArrayList(BenchResult) = .empty;
     errdefer all_results.deinit(allocator);
 
     const iterations: usize = 10;
 
-    const cold_cache_results = try benchRenderColdCache(allocator, pool, iterations, show_mem, bench_filter);
+    const cold_cache_results = try benchRenderColdCache(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, cold_cache_results);
 
-    const warm_cache_results = try benchRenderWarmCache(allocator, pool, iterations, show_mem, bench_filter);
+    const warm_cache_results = try benchRenderWarmCache(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, warm_cache_results);
 
-    const wrap_render_results = try benchWrapAndRender(allocator, pool, iterations, show_mem, bench_filter);
+    const wrap_render_results = try benchWrapAndRender(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, wrap_render_results);
 
-    const small_res_results = try benchRenderSmallResolution(allocator, pool, iterations, show_mem, bench_filter);
+    const small_res_results = try benchRenderSmallResolution(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, small_res_results);
 
-    const medium_res_results = try benchRenderMediumResolution(allocator, pool, iterations, show_mem, bench_filter);
+    const medium_res_results = try benchRenderMediumResolution(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, medium_res_results);
 
-    const massive_res_results = try benchRenderMassiveResolution(allocator, pool, iterations, show_mem, bench_filter);
+    const massive_res_results = try benchRenderMassiveResolution(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, massive_res_results);
 
-    const massive_lines_results = try benchRenderMassiveLines(allocator, pool, iterations, show_mem, bench_filter);
+    const massive_lines_results = try benchRenderMassiveLines(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, massive_lines_results);
 
-    const one_massive_line_results = try benchRenderOneMassiveLine(allocator, pool, iterations, show_mem, bench_filter);
+    const one_massive_line_results = try benchRenderOneMassiveLine(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, one_massive_line_results);
 
-    const many_chunks_results = try benchRenderManySmallChunks(allocator, pool, iterations, show_mem, bench_filter);
+    const many_chunks_results = try benchRenderManySmallChunks(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, many_chunks_results);
 
-    const viewport_results = try benchRenderWithViewport(allocator, pool, iterations, show_mem, bench_filter);
+    const viewport_results = try benchRenderWithViewport(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, viewport_results);
 
-    const selection_results = try benchRenderWithSelection(allocator, pool, iterations, show_mem, bench_filter);
+    const selection_results = try benchRenderWithSelection(io, allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, selection_results);
 
     return all_results.toOwnedSlice(allocator);
