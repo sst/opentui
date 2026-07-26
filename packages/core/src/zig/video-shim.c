@@ -10,13 +10,13 @@
 #include <libavutil/pixdesc.h>
 #include <libavutil/log.h>
 #include <libavutil/opt.h>
+#include <libavutil/time.h>
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <zlib.h>
 
 // Stage timing diagnostics, enabled with OPENTUI_VIDEO_TIMING=1.
@@ -30,9 +30,7 @@ static int ot_video_timing_enabled(void) {
 }
 
 static double ot_video_now_ms(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1000000.0;
+    return (double)av_gettime_relative() / 1000.0;
 }
 
 typedef struct {
