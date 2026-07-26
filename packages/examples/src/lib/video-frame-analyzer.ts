@@ -62,6 +62,7 @@ export interface VideoFrameAnalysis {
   sourceHistogram: Float32Array
   sourceStructure: Float32Array
   sceneReferenceStructure: Float32Array | null
+  sourceRgba: Uint8Array
   sourceLuminance: Float32Array
   previousSourceLuminance: Float32Array | null
   sourceWidth: number
@@ -332,8 +333,10 @@ export function analyzeVideoFrame(
   const sourceLuminance = new Float32Array(sourceWidth * sourceHeight)
   for (let index = 0; index < sourceLuminance.length; index += 1) {
     const offset = index * 4
-    sourceLuminance[index] =
-      ((rgba[offset] ?? 0) * 0.2126 + (rgba[offset + 1] ?? 0) * 0.7152 + (rgba[offset + 2] ?? 0) * 0.0722) / 255
+    const red = rgba[offset] ?? 0
+    const green = rgba[offset + 1] ?? 0
+    const blue = rgba[offset + 2] ?? 0
+    sourceLuminance[index] = (red * 0.2126 + green * 0.7152 + blue * 0.0722) / 255
   }
   const sourceAspect = sourceWidth / sourceHeight
   const histogram = sourceHistogram(sourceLuminance)
@@ -533,6 +536,7 @@ export function analyzeVideoFrame(
     sourceHistogram: histogram,
     sourceStructure: structure,
     sceneReferenceStructure: structureValid ? structure : previousReference,
+    sourceRgba: rgba,
     sourceLuminance,
     previousSourceLuminance: previousSource,
     sourceWidth,

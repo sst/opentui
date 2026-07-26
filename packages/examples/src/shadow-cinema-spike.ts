@@ -19,6 +19,12 @@ import { AudioVisualChoreographer } from "./lib/audio-visual-choreographer.js"
 import { SubjectCropTracker, sampleFlowingContour } from "./lib/cinematic-motion.js"
 import { parseShadowCinemaArgs } from "./lib/shadow-cinema-args.js"
 import {
+  SEXTANT_SAMPLE_CHANNELS,
+  sextantAverageColor,
+  sextantGlyph,
+  sextantMaskByLuminance,
+} from "./lib/sextant-cell.js"
+import {
   RECEIVER_HEIGHT,
   RECEIVER_WIDTH,
   type VideoFrameColor,
@@ -48,6 +54,7 @@ interface AmbientStop {
 
 type ColorMode = "video" | "ambient" | "fixed"
 type ViewportMode = "original" | "widescreen" | "cover"
+type RenderStyle = "cinematic" | "mosaic"
 
 interface ColorCycleSpeed {
   name: string
@@ -97,13 +104,16 @@ interface ViewportRect {
   height: number
 }
 
-interface CoverSamplingContext {
+interface SourceSamplingContext {
   analysis: VideoFrameAnalysis
   crop: SourceCrop
-  lowLuminance: number
-  highLuminance: number
   viewportWidth: number
   viewportHeight: number
+}
+
+interface CoverSamplingContext extends SourceSamplingContext {
+  lowLuminance: number
+  highLuminance: number
 }
 
 const LOGO_SOURCE = ["▄▄▄ ▄▄▄ ▄▄▄ ▄▄  █▄▄ ▄ ▄ ▄", "█ █ █ █ █ ▀ █ █ █ ▄ █ █ █", "▀▀▀ █▀▀ ▀▀▀ ▀ ▀ ▀▀▀ ▀▀▀ ▀"]
@@ -166,6 +176,7 @@ const COLOR_CYCLE_SPEEDS: readonly ColorCycleSpeed[] = [
   { name: "fast", responseMs: 220, holdMs: 350, transitionMs: 850 },
 ]
 const VIEWPORT_MODES: readonly ViewportMode[] = ["original", "widescreen", "cover"]
+const RENDER_STYLES: readonly RenderStyle[] = ["cinematic", "mosaic"]
 const TERMINAL_CELL_ASPECT = 2
 const WIDESCREEN_ASPECT_RATIO = 16 / 9
 const RECEIVER_WIDESCREEN_WIDTH = Math.round(RECEIVER_HEIGHT * TERMINAL_CELL_ASPECT * WIDESCREEN_ASPECT_RATIO)
@@ -195,6 +206,7 @@ const SCENE_CUT_REVEAL_MS = 220
 const SHADOW_GLYPHS = ["⋅", "∙", "•", "⦁", "●"] as const
 const AUDIO_FIELD_GLYPHS = ["·", "∙", "◦", "○", "●"] as const
 const COVER_VIDEO_GLYPHS = [" ", "·", "∙", "•", "⦁", "●", "◉"] as const
+const MOSAIC_EFFECT_MASKS = [1, 9, 21, 29, 31, 63] as const
 
 const rhythmAnalyzer = new AudioRhythmAnalyzer()
 const audioAnalysisBuffer = new AudioAnalysisBuffer(AUDIO_ANALYSIS_FRAMES, AUDIO_CHANNELS)
@@ -236,6 +248,7 @@ let colorCycleSpeedIndex = 2
 let shadowGlyphIndex = -1
 let equalizerProjectionVisible = false
 let viewportMode: ViewportMode = "widescreen"
+let renderStyle: RenderStyle = "cinematic"
 let helpVisible = false
 let videoName = ""
 let previousRendererTargetFps: number | null = null
@@ -250,6 +263,8 @@ let receiverViewportWidth = RECEIVER_WIDTH
 let receiverViewportHeight = RECEIVER_HEIGHT
 
 const TRANSPARENT = RGBA.fromValues(0, 0, 0, 0)
+const MOSAIC_FOREGROUND = RGBA.fromInts(0, 0, 0)
+const MOSAIC_COLOR_SAMPLES = new Uint8Array(SEXTANT_SAMPLE_CHANNELS)
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
@@ -653,6 +668,113 @@ function sourceCropForAspect(analysis: VideoFrameAnalysis, receiverAspect: numbe
   }
 }
 
+function createSourceSamplingContext(viewportWidth: number, viewportHeight: number): SourceSamplingContext | null {
+  const analysis = frameAnalysis
+  if (!analysis) return null
+  return {
+    analysis,
+    crop: sourceCropForAspect(analysis, receiverAspectForSize(viewportWidth, viewportHeight)),
+    viewportWidth,
+    viewportHeight,
+  }
+}
+
+function sampleSourceColor(
+  context: SourceSamplingContext,
+  sampleColumn: number,
+  sampleRow: number,
+  sampleColumns: number,
+  sampleRows: number,
+  outputOffset: number,
+): void {
+  const sourceLeft = context.crop.left + Math.floor((sampleColumn * context.crop.width) / sampleColumns)
+  const sourceTop = context.crop.top + Math.floor((sampleRow * context.crop.height) / sampleRows)
+  const sourceRight = Math.min(
+    context.crop.left + context.crop.width,
+    context.crop.left +
+      Math.max(
+        sourceLeft - context.crop.left + 1,
+        Math.floor(((sampleColumn + 1) * context.crop.width) / sampleColumns),
+      ),
+  )
+  const sourceBottom = Math.min(
+    context.crop.top + context.crop.height,
+    context.crop.top +
+      Math.max(sourceTop - context.crop.top + 1, Math.floor(((sampleRow + 1) * context.crop.height) / sampleRows)),
+  )
+  let red = 0
+  let green = 0
+  let blue = 0
+  let count = 0
+  for (let sourceY = sourceTop; sourceY < sourceBottom; sourceY += 1) {
+    for (let sourceX = sourceLeft; sourceX < sourceRight; sourceX += 1) {
+      const sourceOffset = (sourceY * context.analysis.sourceWidth + sourceX) * 4
+      red += context.analysis.sourceRgba[sourceOffset] ?? 0
+      green += context.analysis.sourceRgba[sourceOffset + 1] ?? 0
+      blue += context.analysis.sourceRgba[sourceOffset + 2] ?? 0
+      count += 1
+    }
+  }
+  MOSAIC_COLOR_SAMPLES[outputOffset] = Math.round(red / count)
+  MOSAIC_COLOR_SAMPLES[outputOffset + 1] = Math.round(green / count)
+  MOSAIC_COLOR_SAMPLES[outputOffset + 2] = Math.round(blue / count)
+}
+
+function setGradedColor(color: RGBA, packed: number, base: RGBA, sourceMix: number): void {
+  const red = ((packed >> 16) & 0xff) / 255
+  const green = ((packed >> 8) & 0xff) / 255
+  const blue = (packed & 0xff) / 255
+  color.r = base.r + (red - base.r) * sourceMix
+  color.g = base.g + (green - base.g) * sourceMix
+  color.b = base.b + (blue - base.b) * sourceMix
+}
+
+function renderMosaicCell(
+  buffer: OptimizedBuffer,
+  originX: number,
+  originY: number,
+  context: SourceSamplingContext,
+  targetColumn: number,
+  targetRow: number,
+  sampleColumn: number,
+  sampleRow: number,
+  strength: number,
+  baseColor: RGBA,
+): void {
+  const sampleColumns = context.viewportWidth * 2
+  const sampleRows = context.viewportHeight * 3
+  const clampedColumn = clamp(sampleColumn, 0, context.viewportWidth - 1)
+  const clampedRow = clamp(sampleRow, 0, context.viewportHeight - 1)
+  for (let sampleY = 0; sampleY < 3; sampleY += 1) {
+    for (let sampleX = 0; sampleX < 2; sampleX += 1) {
+      const sample = sampleY * 2 + sampleX
+      sampleSourceColor(
+        context,
+        clampedColumn * 2 + sampleX,
+        clampedRow * 3 + sampleY,
+        sampleColumns,
+        sampleRows,
+        sample * 3,
+      )
+    }
+  }
+  const mask = sextantMaskByLuminance(MOSAIC_COLOR_SAMPLES, strength)
+  setGradedColor(MOSAIC_FOREGROUND, sextantAverageColor(MOSAIC_COLOR_SAMPLES, mask), baseColor, 0.22 + strength * 0.12)
+  buffer.setCell(
+    originX + targetColumn,
+    originY + targetRow,
+    sextantGlyph(mask),
+    MOSAIC_FOREGROUND,
+    receiverPalette.background,
+  )
+}
+
+function mosaicEffectGlyph(strength: number): string {
+  const mask =
+    MOSAIC_EFFECT_MASKS[Math.min(MOSAIC_EFFECT_MASKS.length - 1, Math.floor(strength * MOSAIC_EFFECT_MASKS.length))]!
+  return sextantGlyph(mask)
+}
+
 function createCoverSamplingContext(viewportWidth: number, viewportHeight: number): CoverSamplingContext | null {
   const analysis = frameAnalysis
   if (!analysis || !coverPresentationActive()) return null
@@ -860,7 +982,15 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
   const viewportHeight = Math.max(1, receiverViewportHeight)
   const baseViewportWidth = receiverWidthForProgress(aspectBloomProgress)
   const baseRect = baseViewportRect(viewportWidth, viewportHeight, baseViewportWidth)
+  const coverActive = coverPresentationActive()
   const coverContext = createCoverSamplingContext(viewportWidth, viewportHeight)
+  const mosaicContext =
+    renderStyle === "mosaic"
+      ? createSourceSamplingContext(
+          coverActive ? viewportWidth : baseRect.width,
+          coverActive ? viewportHeight : baseRect.height,
+        )
+      : null
   const borderDissolve = Math.max(
     coverTransitionProgress,
     smoothstep(BORDER_DISSOLVE_START, BORDER_DISSOLVE_END, aspectBloomProgress),
@@ -927,18 +1057,16 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
           trebleSparkle > 0.12 &&
           hashNoise(column + Math.floor(elapsedMs / 45), row * 2.1) > 0.993 - trebleSparkle * 0.01
         ) {
-          buffer.setCell(
-            originX + column,
-            originY + row,
-            trebleSparkle > 0.62 ? "•" : "⋅",
-            palette.accent,
-            palette.background,
-          )
+          const glyph = renderStyle === "mosaic" ? mosaicEffectGlyph(trebleSparkle) : trebleSparkle > 0.62 ? "•" : "⋅"
+          buffer.setCell(originX + column, originY + row, glyph, palette.accent, palette.background)
           continue
         }
 
         if (field && field.strength > 0.11) {
-          const glyph = AUDIO_FIELD_GLYPHS[Math.min(AUDIO_FIELD_GLYPHS.length - 1, Math.floor(field.strength * 5))]!
+          const glyph =
+            renderStyle === "mosaic"
+              ? mosaicEffectGlyph(field.strength)
+              : AUDIO_FIELD_GLYPHS[Math.min(AUDIO_FIELD_GLYPHS.length - 1, Math.floor(field.strength * 5))]!
           buffer.setCell(originX + column, originY + row, glyph, palette.spectrum[field.band]!, palette.background)
           continue
         }
@@ -971,25 +1099,40 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
           }
         }
         if (memoryStrength > 0.1) {
-          buffer.setCell(
-            originX + column,
-            originY + row,
-            memoryStrength > 0.24 ? "∙" : "⋅",
-            palette.shadow,
-            palette.background,
-          )
+          const glyph =
+            renderStyle === "mosaic"
+              ? mosaicEffectGlyph(Math.min(1, memoryStrength * 3))
+              : memoryStrength > 0.24
+                ? "∙"
+                : "⋅"
+          buffer.setCell(originX + column, originY + row, glyph, palette.shadow, palette.background)
           continue
         }
 
         const strength = coverVideoStrength(sample)
         if (strength > 0.035) {
-          buffer.setCell(
-            originX + column,
-            originY + row,
-            coverVideoGlyph(strength),
-            coverVideoColor(sample, strength, palette),
-            palette.background,
-          )
+          if (renderStyle === "mosaic" && mosaicContext) {
+            renderMosaicCell(
+              buffer,
+              originX,
+              originY,
+              mosaicContext,
+              column,
+              row,
+              coverCell!.x,
+              coverCell!.y,
+              strength,
+              coverVideoColor(sample, strength, palette),
+            )
+          } else {
+            buffer.setCell(
+              originX + column,
+              originY + row,
+              coverVideoGlyph(strength),
+              coverVideoColor(sample, strength, palette),
+              palette.background,
+            )
+          }
         } else {
           buffer.setCell(originX + column, originY + row, " ", TRANSPARENT, palette.background)
         }
@@ -1004,9 +1147,24 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
         hashNoise(column * 1.7 + row * 0.13, row * 2.3 + column * 0.17) > 0.94 - sample.intensity * 0.16
       if (revealed && (contourStrength > 0.14 || tonalAnchor)) {
         const strength = Math.max(contourStrength, sample.intensity * 0.62)
-        const glyph = shadowGlyph(strength)
         const color = sample.edge > 0.26 ? palette.accent : palette.foreground
-        buffer.setCell(originX + column, originY + row, glyph, color, palette.background)
+        if (renderStyle === "mosaic" && mosaicContext) {
+          const displaced = coverDisplacedCell(localColumn, localRow, baseRect.width, baseRect.height)
+          renderMosaicCell(
+            buffer,
+            originX + baseRect.left,
+            originY + baseRect.top,
+            mosaicContext,
+            localColumn,
+            localRow,
+            displaced.x,
+            displaced.y,
+            strength,
+            color,
+          )
+        } else {
+          buffer.setCell(originX + column, originY + row, shadowGlyph(strength), color, palette.background)
+        }
         continue
       }
 
@@ -1015,18 +1173,16 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
         trebleSparkle > 0.12 &&
         hashNoise(column + Math.floor(elapsedMs / 45), row * 2.1) > 0.992 - trebleSparkle * 0.012
       ) {
-        buffer.setCell(
-          originX + column,
-          originY + row,
-          trebleSparkle > 0.62 ? "•" : "⋅",
-          palette.accent,
-          palette.background,
-        )
+        const glyph = renderStyle === "mosaic" ? mosaicEffectGlyph(trebleSparkle) : trebleSparkle > 0.62 ? "•" : "⋅"
+        buffer.setCell(originX + column, originY + row, glyph, palette.accent, palette.background)
         continue
       }
 
       if (field && field.strength > 0.075) {
-        const glyph = AUDIO_FIELD_GLYPHS[Math.min(AUDIO_FIELD_GLYPHS.length - 1, Math.floor(field.strength * 5))]!
+        const glyph =
+          renderStyle === "mosaic"
+            ? mosaicEffectGlyph(field.strength)
+            : AUDIO_FIELD_GLYPHS[Math.min(AUDIO_FIELD_GLYPHS.length - 1, Math.floor(field.strength * 5))]!
         buffer.setCell(originX + column, originY + row, glyph, palette.spectrum[field.band]!, palette.background)
         continue
       }
@@ -1049,13 +1205,13 @@ function renderReceiver(buffer: OptimizedBuffer, originX: number, originY: numbe
         }
       }
       if (memoryStrength > 0.08) {
-        buffer.setCell(
-          originX + column,
-          originY + row,
-          memoryStrength > 0.24 ? "∙" : "⋅",
-          palette.shadow,
-          palette.background,
-        )
+        const glyph =
+          renderStyle === "mosaic"
+            ? mosaicEffectGlyph(Math.min(1, memoryStrength * 3))
+            : memoryStrength > 0.24
+              ? "∙"
+              : "⋅"
+        buffer.setCell(originX + column, originY + row, glyph, palette.shadow, palette.background)
       } else {
         buffer.setCell(originX + column, originY + row, " ", TRANSPARENT, palette.background)
       }
@@ -1090,7 +1246,7 @@ function updateControls(): void {
     `C           colors: ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}`,
     `Shift+C     color speed: ${COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.name}`,
     "1 2 3 4     select fixed palette",
-    `G           glyph: ${glyph}`,
+    `G / S       glyph: ${glyph}  style: ${renderStyle}`,
     `E / W       equalizer: ${equalizerProjectionVisible ? "on" : "off"}  viewport: ${viewportMode}`,
     "? / Esc     close help",
     "Q           quit",
@@ -1101,7 +1257,7 @@ function updateControls(): void {
           `Space ${playback}  M ${muted ? "muted" : "audio"}  R restart`,
           "←/→ seek .25s  Shift+←/→ seek 5s",
           `C colors ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}  Shift+C speed  1-4 fixed`,
-          `G glyph ${glyph}  E equalizer ${equalizerProjectionVisible ? "on" : "off"}  W viewport ${viewportMode}`,
+          `G glyph ${glyph}  S style ${renderStyle}  E equalizer ${equalizerProjectionVisible ? "on" : "off"}  W viewport ${viewportMode}`,
           "? / Esc close  Q quit",
         ].join("\n")
       : controls.join("\n")
@@ -1408,6 +1564,7 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
   shadowGlyphIndex = -1
   equalizerProjectionVisible = false
   viewportMode = "widescreen"
+  renderStyle = "cinematic"
   helpVisible = false
   lastHelpSecond = -1
   aspectBloomProgress = 0
@@ -1547,6 +1704,12 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
       key.preventDefault()
     } else if (key.name === "g" && !key.ctrl && !key.meta && !key.shift) {
       shadowGlyphIndex = shadowGlyphIndex === SHADOW_GLYPHS.length - 1 ? -1 : shadowGlyphIndex + 1
+      refreshScene()
+      updateControls()
+      key.preventDefault()
+    } else if (key.name === "s" && !key.ctrl && !key.meta && !key.shift) {
+      renderStyle = RENDER_STYLES[(RENDER_STYLES.indexOf(renderStyle) + 1) % RENDER_STYLES.length]!
+      shadowMemories.length = 0
       refreshScene()
       updateControls()
       key.preventDefault()

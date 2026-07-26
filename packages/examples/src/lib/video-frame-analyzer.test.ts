@@ -240,6 +240,7 @@ test("excluded cover-crop pixels do not control retained contrast", () => {
 test("extracts scene and accent colors from the retained crop", () => {
   const analysis = analyzeVideoFrame(colorFrame(220, 45, 35), VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT)
 
+  expect(Array.from(analysis.sourceRgba.subarray(0, 4))).toEqual([220, 45, 35, 255])
   expect(analysis.sceneColor).not.toBeNull()
   expect(analysis.accentColor).not.toBeNull()
   expect(analysis.sceneColor!.hue).toBeGreaterThan(20)
