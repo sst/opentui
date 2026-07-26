@@ -16,6 +16,7 @@ import {
 import { AUDIO_ANALYSIS_FRAMES, AUDIO_SPECTRUM_BANDS, AudioRhythmAnalyzer } from "./lib/audio-rhythm-analyzer.js"
 import { AudioAnalysisBuffer, audioDecayDeltaMs, audioTapReadFrames } from "./lib/audio-analysis-buffer.js"
 import { AudioVisualChoreographer } from "./lib/audio-visual-choreographer.js"
+import { paletteForAppearance, type AppearanceMode, type ColorStop } from "./lib/appearance-palette.js"
 import { SubjectCropTracker, sampleFlowingContour } from "./lib/cinematic-motion.js"
 import { parseShadowCinemaArgs } from "./lib/shadow-cinema-args.js"
 import {
@@ -33,13 +34,6 @@ import {
   analyzeVideoFrame,
   smoothVideoFrameColor,
 } from "./lib/video-frame-analyzer.js"
-
-interface ColorStop {
-  background: string
-  foreground: string
-  shadow: string
-  accent: string
-}
 
 interface Oklch {
   lightness: number
@@ -249,6 +243,7 @@ let shadowGlyphIndex = -1
 let equalizerProjectionVisible = false
 let viewportMode: ViewportMode = "widescreen"
 let renderStyle: RenderStyle = "cinematic"
+let appearanceMode: AppearanceMode = "dark"
 let helpVisible = false
 let videoName = ""
 let previousRendererTargetFps: number | null = null
@@ -505,10 +500,15 @@ function ambientPalette(timeMs: number): ColorStop {
 }
 
 function activePalette(): ColorStop {
-  if (colorMode === "fixed") return COLOR_STOPS[colorIndex]!
-  if (colorMode === "ambient") return ambientPalette(ambientElapsedMs)
-  if (smoothedSceneColor) return videoColorPalette(smoothedSceneColor, smoothedAccentColor ?? smoothedSceneColor)
-  return VIDEO_COLOR_FALLBACK
+  const palette =
+    colorMode === "fixed"
+      ? COLOR_STOPS[colorIndex]!
+      : colorMode === "ambient"
+        ? ambientPalette(ambientElapsedMs)
+        : smoothedSceneColor
+          ? videoColorPalette(smoothedSceneColor, smoothedAccentColor ?? smoothedSceneColor)
+          : VIDEO_COLOR_FALLBACK
+  return paletteForAppearance(palette, appearanceMode)
 }
 
 function videoColorPalette(scene: VideoFrameColor, accent: VideoFrameColor): ColorStop {
@@ -1243,7 +1243,7 @@ function updateControls(): void {
     "Shift+←/→   seek -/+5s",
     `M           audio: ${muted ? "muted" : "unmuted"}`,
     "R           restart video",
-    `C           colors: ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}`,
+    `C / L       colors: ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}  appearance: ${appearanceMode}`,
     `Shift+C     color speed: ${COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.name}`,
     "1 2 3 4     select fixed palette",
     `G / S       glyph: ${glyph}  style: ${renderStyle}`,
@@ -1256,7 +1256,7 @@ function updateControls(): void {
       ? [
           `Space ${playback}  M ${muted ? "muted" : "audio"}  R restart`,
           "←/→ seek .25s  Shift+←/→ seek 5s",
-          `C colors ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}  Shift+C speed  1-4 fixed`,
+          `C colors ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}  L ${appearanceMode}  Shift+C speed  1-4 fixed`,
           `G glyph ${glyph}  S style ${renderStyle}  E equalizer ${equalizerProjectionVisible ? "on" : "off"}  W viewport ${viewportMode}`,
           "? / Esc close  Q quit",
         ].join("\n")
@@ -1565,6 +1565,7 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
   equalizerProjectionVisible = false
   viewportMode = "widescreen"
   renderStyle = "cinematic"
+  appearanceMode = "dark"
   helpVisible = false
   lastHelpSecond = -1
   aspectBloomProgress = 0
@@ -1695,6 +1696,10 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
       colorMode = colorMode === "video" ? "ambient" : "video"
       if (colorMode === "ambient") ambientElapsedMs = 0
       paletteAccumulatorMs = 0
+      applyPalette()
+      key.preventDefault()
+    } else if (key.name === "l" && !key.ctrl && !key.meta && !key.shift) {
+      appearanceMode = appearanceMode === "dark" ? "light" : "dark"
       applyPalette()
       key.preventDefault()
     } else if (/^[1-4]$/.test(key.sequence) && !key.ctrl && !key.meta && !key.shift) {
