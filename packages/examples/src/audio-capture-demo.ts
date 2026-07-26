@@ -52,6 +52,8 @@ class AudioCaptureDemo {
   private errorVersion = 0
   private peak = 0
   private rms = 0
+  private consecutiveSilentFrames = 0
+  private noSignalDetected = false
   private lastFramesRead = 0
   private visualizationElapsedMs = 0
   private captureRunning = false
@@ -318,6 +320,8 @@ class AudioCaptureDemo {
     this.lastFramesRead = 0
     this.peak = 0
     this.rms = 0
+    this.consecutiveSilentFrames = 0
+    this.noSignalDetected = false
     this.spectrumPanel.reset()
   }
 
@@ -619,6 +623,27 @@ class AudioCaptureDemo {
     if (totalSamplesRead > 0) {
       this.peak = peak
       this.rms = Math.sqrt(sumSquares / totalSamplesRead)
+      if (nativeRunning && peak === 0) {
+        this.consecutiveSilentFrames += totalFramesRead
+        if (!this.noSignalDetected && this.consecutiveSilentFrames >= SAMPLE_RATE) {
+          this.noSignalDetected = true
+          if (this.statusColor !== AUDIO_DEMO_PALETTE.error) {
+            this.setStatus(
+              "No input signal: allow microphone access for the host terminal/app, or check input mute and routing",
+              AUDIO_DEMO_PALETTE.warning,
+            )
+          }
+        }
+      } else {
+        this.consecutiveSilentFrames = 0
+        if (this.noSignalDetected && peak > 0) {
+          this.noSignalDetected = false
+          this.setStatus(
+            `Signal detected from ${displayText(this.selectedDevice?.name ?? "selected input")}`,
+            AUDIO_DEMO_PALETTE.signal,
+          )
+        }
+      }
       if (spectrumPcm) {
         this.spectrumPanel.update({
           mode: "analyze",
@@ -706,16 +731,25 @@ class AudioCaptureDemo {
     const dropped = stats?.framesDropped ?? 0n
     const lossBasisPoints = received > 0n ? Number((dropped * 10_000n) / received) : 0
     const lossPercent = (lossBasisPoints / 100).toFixed(2)
-    const healthColor =
-      dropped === 0n
+    const healthColor = this.noSignalDetected
+      ? AUDIO_DEMO_PALETTE.warning
+      : dropped === 0n
         ? received > 0n
           ? AUDIO_DEMO_PALETTE.signal
           : AUDIO_DEMO_PALETTE.muted
         : lossBasisPoints >= 100
           ? AUDIO_DEMO_PALETTE.error
           : AUDIO_DEMO_PALETTE.warning
-    const health =
-      dropped === 0n ? (received > 0n ? "HEALTHY" : "WAITING") : lossBasisPoints >= 100 ? "LOSS CRITICAL" : "LOSS"
+    const health = this.noSignalDetected
+      ? "NO SIGNAL"
+      : dropped === 0n
+        ? received > 0n
+          ? "HEALTHY"
+          : "WAITING"
+        : lossBasisPoints >= 100
+          ? "LOSS CRITICAL"
+          : "LOSS"
+    const healthDetail = this.noSignalDetected ? "check permission / mute / routing" : `loss ${lossPercent}%`
     const label = (value: string) => fg(AUDIO_DEMO_PALETTE.muted)(value.padEnd(10))
 
     this.statsText.content = t`${label("state")}${bold(fg(stateColor)(state))}
@@ -727,7 +761,7 @@ ${label("buffer")}${fg(bufferColor)(`${bufferedFrames}/${capacityFrames} f  ${bu
 ${label("received")}${fg(AUDIO_DEMO_PALETTE.accent)(`${received.toString()} frames`)}
 ${label("read")}${fg(AUDIO_DEMO_PALETTE.signal)(`${read.toString()} frames`)}
 ${label("dropped")}${fg(dropped > 0n ? healthColor : AUDIO_DEMO_PALETTE.muted)(`${dropped.toString()} frames`)}
-${label("health")}${bold(fg(healthColor)(health))} ${fg(healthColor)(`loss ${lossPercent}%`)}`
+${label("health")}${bold(fg(healthColor)(health))} ${fg(healthColor)(healthDetail)}`
   }
 
   private refreshControls(): void {
