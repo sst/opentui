@@ -1,15 +1,15 @@
 ---
 title: Native audio
-description: Load, stream, play, mix, and inspect audio with the native miniaudio backend
+description: Capture, load, stream, play, mix, and inspect audio with the native miniaudio backend
 order: 11
 skill:
   entry: true
-  intents: [audio, native-audio, sound, playback, streaming, radio, mp3, flac, pcm, fft]
+  intents: [audio, native-audio, sound, playback, capture, microphone, streaming, radio, mp3, flac, pcm, fft]
 ---
 
 # Native audio
 
-OpenTUI exposes a native miniaudio-backed `Audio` engine from `@opentui/core`. It can decode audio bytes or files, play sounds through named groups, choose playback devices, mix into PCM buffers, and expose recent mixed frames for visualization.
+OpenTUI exposes a native miniaudio-backed `Audio` engine from `@opentui/core`. It can capture input, decode audio bytes or files, play sounds through named groups, choose devices, mix into PCM buffers, and expose recent mixed frames for visualization.
 
 ## Basic usage
 
@@ -281,6 +281,113 @@ if (!audio.start()) {
 ```
 
 `listPlaybackDevices()` returns `{ index, name, isDefault }[] | null`. Use `clearPlaybackDeviceSelection()` to return to the default device selection.
+
+## Capture
+
+Capture records PCM from an input device into a bounded native ring buffer. It is independent from playback: `startCapture()` does not start output or the mixer, and `start()`, `startMixer()`, and `stop()` do not change capture state.
+
+Select a device before starting capture, then poll bounded chunks from application code:
+
+```typescript
+import { Audio } from "@opentui/core"
+
+const audio = Audio.create({ autoStart: false })
+const channels = 1
+
+audio.on("error", (error, context) => {
+  console.error(`${context.action}: ${error.message}`)
+})
+
+try {
+  const devices = audio.listCaptureDevices()
+  if (devices == null) throw new Error("Could not enumerate capture devices")
+
+  const device = devices.find((item) => item.isDefault) ?? devices[0]
+  if (!device) throw new Error("No capture device is available")
+  if (!audio.selectCaptureDevice(device.index)) throw new Error("Could not select the capture device")
+  if (!audio.startCapture({ channels })) throw new Error("Could not start capture")
+
+  const result = audio.readCaptureFrames(1024)
+  if (result) {
+    const validSamples = result.framesRead * channels
+    let sumSquares = 0
+    for (let index = 0; index < validSamples; index += 1) {
+      const sample = result.frames[index] ?? 0
+      sumSquares += sample * sample
+    }
+    const rms = validSamples > 0 ? Math.sqrt(sumSquares / validSamples) : 0
+    console.log({ framesRead: result.framesRead, rms })
+  }
+} finally {
+  audio.stopCapture()
+  audio.dispose()
+}
+```
+
+### Types and options
+
+```typescript
+interface AudioCaptureDevice {
+  index: number
+  name: string
+  isDefault: boolean
+}
+
+interface AudioCaptureOptions {
+  channels?: number
+  capacityFrames?: number
+  startOptions?: AudioStartOptions
+}
+
+interface AudioCaptureStats {
+  sampleRate: number
+  channels: number
+  capacityFrames: number
+  bufferedFrames: number
+  framesReceived: bigint
+  framesRead: bigint
+  framesDropped: bigint
+}
+```
+
+| Capture option   | Default            | Description                                             |
+| ---------------- | ------------------ | ------------------------------------------------------- |
+| `channels`       | `1`                | Number of interleaved input channels                    |
+| `capacityFrames` | `audio.sampleRate` | Ring capacity in frames, equal to one second by default |
+| `startOptions`   | defaults           | Low-level device options passed when starting the input |
+
+`channels` and `capacityFrames` must be positive integers. The capture sample rate is the engine's `audio.sampleRate`; create a new `Audio` instance to use another rate. `startOptions` accepts the same low-level fields listed in [Start options](#start-options).
+
+### Methods
+
+| Method                          | Result and behavior                                                               |
+| ------------------------------- | --------------------------------------------------------------------------------- |
+| `listCaptureDevices()`          | Returns `AudioCaptureDevice[] \| null`; an empty array means no inputs were found |
+| `selectCaptureDevice(index)`    | Selects an enumerated input and returns whether selection succeeded               |
+| `clearCaptureDeviceSelection()` | Clears the explicit selection so the backend chooses the default input            |
+| `startCapture(options?)`        | Initializes and starts input, returning `false` on native or permission failure   |
+| `isCapturing()`                 | Reports whether input is currently running                                        |
+| `readCaptureFrames(frameCount)` | Consumes up to `frameCount` frames and returns `{ frames, framesRead } \| null`   |
+| `getCaptureStats()`             | Returns `AudioCaptureStats \| null`                                               |
+| `stopCapture()`                 | Stops and uninitializes input while preserving unread PCM; returns success        |
+
+Device indices belong to the latest enumeration and can change after hot-plugging. `selectCaptureDevice()` copies the selected native device ID, so later enumeration does not silently redirect an existing selection; enumerate again before replacing it. Native failures return `false` or `null` and emit `Audio.error` with an action and optional status. Successful transitions emit `captureStarted` and `captureStopped`. `isCapturing()` checks native device state and reports an externally stopped or disconnected device the next time it is called. Invalid numeric dimensions and device indices throw `TypeError` or `RangeError` before native work begins.
+
+### PCM and buffering
+
+Captured PCM is interleaved 32-bit floating point, nominally in `[-1, 1]`. A frame contains one sample per channel, so a stereo read of 256 frames contains 512 valid samples.
+
+`readCaptureFrames(frameCount)` accepts at most the configured `capacityFrames` and allocates `frameCount * channels` elements, but only the first `framesRead * channels` elements contain captured data. Reads consume the oldest buffered frames. Always use `framesRead`, rather than `frames.length`, when analyzing or persisting a partial read.
+
+The native capture callback never blocks waiting for JavaScript. If the ring is full, incoming newest frames are dropped and counted in `framesDropped`; already-buffered frames remain available in order. Poll often enough for the configured capacity and use `bufferedFrames`, `capacityFrames`, `framesReceived`, `framesRead`, and `framesDropped` to monitor the consumer.
+
+`stopCapture()` closes and uninitializes the input device but leaves buffered PCM available to `readCaptureFrames()` for draining. A later `startCapture()` resets the buffer and capture counters. `dispose()` stops capture and releases the buffer with the rest of the engine.
+
+### Permissions and scope
+
+The process hosting OpenTUI must have OS microphone permission. macOS may attribute permission to the terminal or packaged application; Windows privacy controls can disable desktop microphone access; Linux capture uses PulseAudio or ALSA, including PipeWire through its PulseAudio compatibility layer, and depends on the selected device's permissions. Headless sessions, sandboxes, containers, and CI commonly expose no input. Enumeration can therefore return `null` or `[]`, and capture can still fail at `startCapture()` if access is denied or the device became unavailable.
+
+Capture provides raw PCM polling only. It does not encode audio files or containers, create system-output loopback capture, invoke JavaScript callbacks on the native audio thread, or provide echo cancellation. Perform encoding and signal processing outside the capture callback path, and use platform-specific facilities when those features are required.
 
 ## Mixing and analysis
 

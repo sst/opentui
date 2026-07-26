@@ -216,6 +216,33 @@ export interface AudioPlaybackDevice {
   isDefault: boolean
 }
 
+export interface AudioCaptureDevice {
+  index: number
+  name: string
+  isDefault: boolean
+}
+
+export interface AudioCaptureOptions {
+  channels?: number
+  capacityFrames?: number
+  startOptions?: AudioStartOptions
+}
+
+export interface AudioCaptureStats {
+  sampleRate: number
+  channels: number
+  capacityFrames: number
+  bufferedFrames: number
+  framesReceived: bigint
+  framesRead: bigint
+  framesDropped: bigint
+}
+
+export interface AudioCaptureReadResult {
+  frames: Float32Array
+  framesRead: number
+}
+
 export type AudioAction =
   | "createAudioEngine"
   | "start"
@@ -236,6 +263,13 @@ export type AudioAction =
   | "listPlaybackDevices"
   | "selectPlaybackDevice"
   | "clearPlaybackDeviceSelection"
+  | "listCaptureDevices"
+  | "selectCaptureDevice"
+  | "clearCaptureDeviceSelection"
+  | "startCapture"
+  | "readCaptureFrames"
+  | "getCaptureStats"
+  | "stopCapture"
   | "getStats"
 
 export interface AudioErrorContext {
@@ -247,6 +281,8 @@ export interface AudioEvents {
   error: [error: Error, context: AudioErrorContext]
   started: []
   mixerStarted: []
+  captureStarted: []
+  captureStopped: []
   stopped: []
   disposed: []
 }
@@ -375,6 +411,14 @@ function resolvePositiveU32(value: number | undefined, fallback: number, name: s
   }
   if (resolved > MAX_U32) throw new RangeError(`${name} exceeds the supported limit`)
   return resolved
+}
+
+function resolveU32Index(value: number, name: string): number {
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+    throw new TypeError(`${name} must be a finite non-negative integer`)
+  }
+  if (value > MAX_U32) throw new RangeError(`${name} exceeds the supported limit`)
+  return value
 }
 
 function resolveReconnectOptions(options: AudioStreamReconnectOptions): ResolvedAudioStreamReconnectOptions {
@@ -1565,6 +1609,11 @@ export class Audio extends EventEmitter<AudioEvents> {
   private readonly streams = new Set<{ dispose(): void }>()
   private playbackStarted = false
   private mixerStarted = false
+  private captureStarted = false
+  private captureDeviceOpen = false
+  private captureBufferAvailable = false
+  private captureChannels = 1
+  private captureCapacityFrames = 0
   private disposing = false
 
   private constructor(lib: RenderLib, options: AudioSetupOptions) {
@@ -2049,6 +2098,161 @@ export class Audio extends EventEmitter<AudioEvents> {
     this.lib.audioClearPlaybackDeviceSelection(engine)
   }
 
+  listCaptureDevices(): AudioCaptureDevice[] | null {
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("listCaptureDevices", undefined, "Audio engine unavailable during listCaptureDevices")
+      return null
+    }
+
+    const refreshStatus = this.lib.audioRefreshCaptureDevices(engine)
+    if (refreshStatus !== 0) {
+      this.emitError("listCaptureDevices", refreshStatus)
+      return null
+    }
+
+    const count = this.lib.audioGetCaptureDeviceCount(engine)
+    const devices: AudioCaptureDevice[] = []
+    for (let index = 0; index < count; index += 1) {
+      devices.push({
+        index,
+        name: this.lib.audioGetCaptureDeviceName(engine, index),
+        isDefault: this.lib.audioIsCaptureDeviceDefault(engine, index),
+      })
+    }
+    return devices
+  }
+
+  selectCaptureDevice(index: number): boolean {
+    const resolvedIndex = resolveU32Index(index, "index")
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("selectCaptureDevice", undefined, "Audio engine unavailable during selectCaptureDevice")
+      return false
+    }
+
+    const status = this.lib.audioSelectCaptureDevice(engine, resolvedIndex)
+    if (status !== 0) {
+      this.emitError("selectCaptureDevice", status)
+      return false
+    }
+    return true
+  }
+
+  clearCaptureDeviceSelection(): void {
+    const engine = this.engine
+    if (!engine) {
+      this.emitError(
+        "clearCaptureDeviceSelection",
+        undefined,
+        "Audio engine unavailable during clearCaptureDeviceSelection",
+      )
+      return
+    }
+    this.lib.audioClearCaptureDeviceSelection(engine)
+  }
+
+  startCapture(options: AudioCaptureOptions = {}): boolean {
+    if (this.disposing) return false
+    if (this.isCapturing()) return true
+    const channels = resolvePositiveU32(options.channels, 1, "channels")
+    const capacityFrames = resolvePositiveU32(options.capacityFrames, this.sampleRate, "capacityFrames")
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("startCapture", undefined, "Audio engine unavailable during startCapture")
+      return false
+    }
+    const status = this.lib.audioStartCapture(engine, options.startOptions, channels, capacityFrames)
+    if (status !== 0) {
+      this.emitError("startCapture", status)
+      return false
+    }
+    this.captureChannels = channels
+    this.captureCapacityFrames = capacityFrames
+    this.captureBufferAvailable = true
+    this.captureDeviceOpen = true
+    this.captureStarted = true
+    this.emit("captureStarted")
+    return true
+  }
+
+  isCapturing(): boolean {
+    if (!this.captureStarted) return false
+    const engine = this.engine
+    if (engine && this.lib.audioIsCaptureRunning(engine)) return true
+    this.captureStarted = false
+    this.emit("captureStopped")
+    return this.captureStarted
+  }
+
+  readCaptureFrames(frameCount: number): AudioCaptureReadResult | null {
+    const resolvedFrameCount = resolvePositiveU32(frameCount, frameCount, "frameCount")
+    if (!this.captureBufferAvailable) {
+      this.emitError("readCaptureFrames", -4)
+      return null
+    }
+    if (resolvedFrameCount > this.captureCapacityFrames) {
+      throw new RangeError("frameCount exceeds the capture buffer capacity")
+    }
+    if (resolvedFrameCount > Math.floor(MAX_U32 / this.captureChannels)) {
+      throw new RangeError("frameCount * channels exceeds the supported limit")
+    }
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("readCaptureFrames", undefined, "Audio engine unavailable during readCaptureFrames")
+      return null
+    }
+    const output = new Float32Array(resolvedFrameCount * this.captureChannels)
+    const result = this.lib.audioReadCapture(engine, output, resolvedFrameCount)
+    if (result.status !== 0) {
+      this.emitError("readCaptureFrames", result.status)
+      return null
+    }
+    const framesRead = Math.min(resolvedFrameCount, result.framesRead)
+    return { frames: output, framesRead }
+  }
+
+  getCaptureStats(): AudioCaptureStats | null {
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("getCaptureStats", undefined, "Audio engine unavailable during getCaptureStats")
+      return null
+    }
+    const result = this.lib.audioGetCaptureStats(engine)
+    if (result.status !== 0 || result.stats == null) {
+      this.emitError("getCaptureStats", result.status)
+      return null
+    }
+    return {
+      sampleRate: result.stats.sampleRate,
+      channels: result.stats.channels,
+      capacityFrames: result.stats.capacityFrames,
+      bufferedFrames: result.stats.bufferedFrames,
+      framesReceived: result.stats.framesReceived,
+      framesRead: result.stats.framesRead,
+      framesDropped: result.stats.framesDropped,
+    }
+  }
+
+  stopCapture(): boolean {
+    if (!this.captureDeviceOpen) return true
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("stopCapture", undefined, "Audio engine unavailable during stopCapture")
+      return false
+    }
+    const status = this.lib.audioStopCapture(engine)
+    if (status !== 0) {
+      this.emitError("stopCapture", status)
+      return false
+    }
+    const wasStarted = this.captureStarted
+    this.captureDeviceOpen = false
+    this.captureStarted = false
+    if (wasStarted) this.emit("captureStopped")
+    return true
+  }
+
   getStats(): AudioStats | null {
     const engine = this.engine
     if (!engine) {
@@ -2067,12 +2271,22 @@ export class Audio extends EventEmitter<AudioEvents> {
     this.disposing = true
     try {
       for (const stream of [...this.streams]) stream.dispose()
+      if (this.captureDeviceOpen && !this.stopCapture()) {
+        const wasStarted = this.captureStarted
+        this.captureDeviceOpen = false
+        this.captureStarted = false
+        if (wasStarted) this.emit("captureStopped")
+      }
       if (this.mixerStarted) {
         this.stop()
       }
       this.groups.clear()
       this.lib.destroyAudioEngine(this.engine)
       this.engine = null
+      this.captureStarted = false
+      this.captureDeviceOpen = false
+      this.captureBufferAvailable = false
+      this.captureCapacityFrames = 0
       this.emit("disposed")
     } finally {
       this.disposing = false

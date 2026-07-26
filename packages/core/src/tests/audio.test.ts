@@ -533,3 +533,418 @@ test("audioCreateGroup rejects oversized encoded name lengths before truncating 
     lib.destroyAudioEngine(engine)
   }
 })
+
+test("Audio capture applies defaults, honors explicit options, and emits lifecycle events once", () => {
+  const lib = resolveRenderLib()
+  const starts: Array<{ options: unknown; channels: number; capacityFrames: number }> = []
+  let stopCalls = 0
+  let running = false
+  const restoreStart = replaceMethod(
+    lib,
+    "audioStartCapture",
+    (_engine: unknown, options: unknown, channels: number, capacityFrames: number) => {
+      starts.push({ options, channels, capacityFrames })
+      running = true
+      return 0
+    },
+  )
+  const restoreStop = replaceMethod(lib, "audioStopCapture", () => {
+    stopCalls += 1
+    running = false
+    return 0
+  })
+  const restoreRunning = replaceMethod(lib, "audioIsCaptureRunning", () => running)
+
+  try {
+    const audio = Audio.create({ autoStart: false, sampleRate: 44_100 })
+    instances.push(audio)
+    const events: string[] = []
+    audio.on("captureStarted", () => events.push("started"))
+    audio.on("captureStopped", () => events.push("stopped"))
+
+    expect(audio.startCapture()).toBe(true)
+    expect(audio.startCapture({ channels: 2, capacityFrames: 12 })).toBe(true)
+    expect(starts).toEqual([{ options: undefined, channels: 1, capacityFrames: 44_100 }])
+    expect(audio.isCapturing()).toBe(true)
+
+    expect(audio.stopCapture()).toBe(true)
+    expect(audio.stopCapture()).toBe(true)
+    expect(stopCalls).toBe(1)
+    expect(audio.isCapturing()).toBe(false)
+
+    expect(
+      audio.startCapture({
+        channels: 2,
+        capacityFrames: 12,
+        startOptions: { periods: 3, noFixedSizedCallback: false },
+      }),
+    ).toBe(true)
+    expect(starts[1]).toEqual({
+      options: { periods: 3, noFixedSizedCallback: false },
+      channels: 2,
+      capacityFrames: 12,
+    })
+    expect(events).toEqual(["started", "stopped", "started"])
+  } finally {
+    restoreRunning()
+    restoreStop()
+    restoreStart()
+  }
+})
+
+test("Audio capture validates dimensions before allocation or native calls", () => {
+  const lib = resolveRenderLib()
+  let startCalls = 0
+  let readCalls = 0
+  const restoreStart = replaceMethod(lib, "audioStartCapture", () => {
+    startCalls += 1
+    return 0
+  })
+  const restoreRead = replaceMethod(lib, "audioReadCapture", () => {
+    readCalls += 1
+    return { status: 0, framesRead: 0 }
+  })
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+
+    for (const channels of [Number.NaN, Number.POSITIVE_INFINITY, 1.5, 0, -1]) {
+      expect(() => audio.startCapture({ channels })).toThrow(TypeError)
+    }
+    expect(() => audio.startCapture({ channels: 0x1_0000_0000 })).toThrow(RangeError)
+    for (const capacityFrames of [Number.NaN, Number.POSITIVE_INFINITY, 1.5, 0, -1]) {
+      expect(() => audio.startCapture({ capacityFrames })).toThrow(TypeError)
+    }
+    expect(() => audio.startCapture({ capacityFrames: 0x1_0000_0000 })).toThrow(RangeError)
+    expect(startCalls).toBe(0)
+
+    expect(audio.startCapture({ channels: 2 })).toBe(true)
+    expect(startCalls).toBe(1)
+    for (const frameCount of [Number.NaN, Number.POSITIVE_INFINITY, 1.5, 0, -1]) {
+      expect(() => audio.readCaptureFrames(frameCount)).toThrow(TypeError)
+    }
+    expect(() => audio.readCaptureFrames(0x1_0000_0000)).toThrow(RangeError)
+    expect(() => audio.readCaptureFrames(0xffffffff)).toThrow(RangeError)
+    expect(readCalls).toBe(0)
+  } finally {
+    restoreRead()
+    restoreStart()
+  }
+})
+
+test("Audio capture device methods mirror playback device mapping and selection", () => {
+  const lib = resolveRenderLib()
+  const selected: number[] = []
+  let clearCalls = 0
+  const restores = [
+    replaceMethod(lib, "audioRefreshCaptureDevices", () => 0),
+    replaceMethod(lib, "audioGetCaptureDeviceCount", () => 2),
+    replaceMethod(
+      lib,
+      "audioGetCaptureDeviceName",
+      (_engine: unknown, index: number) => ["Built-in Mic", "USB Mic"][index],
+    ),
+    replaceMethod(lib, "audioIsCaptureDeviceDefault", (_engine: unknown, index: number) => index === 0),
+    replaceMethod(lib, "audioSelectCaptureDevice", (_engine: unknown, index: number) => {
+      selected.push(index)
+      return 0
+    }),
+    replaceMethod(lib, "audioClearCaptureDeviceSelection", () => {
+      clearCalls += 1
+    }),
+  ]
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    expect(audio.listCaptureDevices()).toEqual([
+      { index: 0, name: "Built-in Mic", isDefault: true },
+      { index: 1, name: "USB Mic", isDefault: false },
+    ])
+    expect(audio.selectCaptureDevice(1)).toBe(true)
+    for (const index of [Number.NaN, Number.POSITIVE_INFINITY, -1, 0.5]) {
+      expect(() => audio.selectCaptureDevice(index)).toThrow(TypeError)
+    }
+    expect(() => audio.selectCaptureDevice(0x1_0000_0000)).toThrow(RangeError)
+    audio.clearCaptureDeviceSelection()
+    expect(selected).toEqual([1])
+    expect(clearCalls).toBe(1)
+  } finally {
+    for (const restore of restores.reverse()) restore()
+  }
+})
+
+test("Audio capture reports status failures through Audio.error", () => {
+  const lib = resolveRenderLib()
+  let refreshStatus = -2
+  let startStatus = -3
+  let stopStatus = -6
+  const restores = [
+    replaceMethod(lib, "audioRefreshCaptureDevices", () => refreshStatus),
+    replaceMethod(lib, "audioStartCapture", () => startStatus),
+    replaceMethod(lib, "audioReadCapture", () => ({ status: -4, framesRead: 0 })),
+    replaceMethod(lib, "audioGetCaptureStats", () => ({ status: -5, stats: null })),
+    replaceMethod(lib, "audioStopCapture", () => stopStatus),
+    replaceMethod(lib, "audioIsCaptureRunning", () => true),
+  ]
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    const errors: unknown[] = []
+    audio.on("error", (error, context) => errors.push({ message: error.message, context }))
+
+    expect(audio.listCaptureDevices()).toBeNull()
+    refreshStatus = 0
+    expect(audio.startCapture()).toBe(false)
+    startStatus = 0
+    expect(audio.startCapture()).toBe(true)
+    expect(audio.readCaptureFrames(1)).toBeNull()
+    expect(audio.getCaptureStats()).toBeNull()
+    expect(audio.stopCapture()).toBe(false)
+    expect(audio.isCapturing()).toBe(true)
+    expect(errors).toEqual([
+      { message: "Audio listCaptureDevices failed: -2", context: { action: "listCaptureDevices", status: -2 } },
+      { message: "Audio startCapture failed: -3", context: { action: "startCapture", status: -3 } },
+      { message: "Audio readCaptureFrames failed: -4", context: { action: "readCaptureFrames", status: -4 } },
+      { message: "Audio getCaptureStats failed: -5", context: { action: "getCaptureStats", status: -5 } },
+      { message: "Audio stopCapture failed: -6", context: { action: "stopCapture", status: -6 } },
+    ])
+    stopStatus = 0
+  } finally {
+    for (const restore of restores.reverse()) restore()
+  }
+})
+
+test("Audio capture reads interleaved frames, drains after stop, and exposes bigint stats", () => {
+  const lib = resolveRenderLib()
+  let readIndex = 0
+  const readLengths: number[] = []
+  const restores = [
+    replaceMethod(lib, "audioStartCapture", () => 0),
+    replaceMethod(lib, "audioStopCapture", () => 0),
+    replaceMethod(lib, "audioIsCaptureRunning", () => true),
+    replaceMethod(lib, "audioReadCapture", (_engine: unknown, output: Float32Array, frameCount: number) => {
+      readLengths.push(output.length)
+      if (readIndex++ === 0) {
+        output.set([0.25, -0.25, 0.5, -0.5])
+        return { status: 0, framesRead: Math.min(2, frameCount) }
+      }
+      return { status: 0, framesRead: 0 }
+    }),
+    replaceMethod(lib, "audioGetCaptureStats", () => ({
+      status: 0,
+      stats: {
+        framesReceived: 9_007_199_254_740_993n,
+        framesRead: 2n,
+        framesDropped: 3n,
+        sampleRate: 48_000,
+        channels: 2,
+        bufferedFrames: 4,
+        capacityFrames: 8,
+      },
+    })),
+  ]
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    expect(audio.startCapture({ channels: 2, capacityFrames: 8 })).toBe(true)
+    expect(audio.stopCapture()).toBe(true)
+
+    expect(audio.readCaptureFrames(3)).toEqual({
+      frames: new Float32Array([0.25, -0.25, 0.5, -0.5, 0, 0]),
+      framesRead: 2,
+    })
+    expect(audio.readCaptureFrames(3)).toEqual({ frames: new Float32Array(6), framesRead: 0 })
+    expect(readLengths).toEqual([6, 6])
+    expect(audio.getCaptureStats()).toEqual({
+      sampleRate: 48_000,
+      channels: 2,
+      capacityFrames: 8,
+      bufferedFrames: 4,
+      framesReceived: 9_007_199_254_740_993n,
+      framesRead: 2n,
+      framesDropped: 3n,
+    })
+  } finally {
+    for (const restore of restores.reverse()) restore()
+  }
+})
+
+test("Audio playback stop is capture-independent and disposal stops capture before destroy", () => {
+  const lib = resolveRenderLib()
+  const calls: string[] = []
+  const originalDestroy = lib.destroyAudioEngine
+  const restores = [
+    replaceMethod(lib, "audioStart", () => 0),
+    replaceMethod(lib, "audioStop", () => {
+      calls.push("playbackStop")
+      return 0
+    }),
+    replaceMethod(lib, "audioStartCapture", () => 0),
+    replaceMethod(lib, "audioIsCaptureRunning", () => true),
+    replaceMethod(lib, "audioStopCapture", () => {
+      calls.push("captureStop")
+      return 0
+    }),
+    replaceMethod(lib, "destroyAudioEngine", (engine: Parameters<typeof originalDestroy>[0]) => {
+      calls.push("destroy")
+      originalDestroy.call(lib, engine)
+    }),
+  ]
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    let stoppedEvents = 0
+    audio.on("captureStopped", () => {
+      stoppedEvents += 1
+    })
+    expect(audio.start()).toBe(true)
+    expect(audio.startCapture()).toBe(true)
+    expect(audio.stop()).toBe(true)
+    expect(audio.isCapturing()).toBe(true)
+    expect(calls).toEqual(["playbackStop"])
+
+    audio.dispose()
+    audio.dispose()
+    expect(calls).toEqual(["playbackStop", "captureStop", "destroy"])
+    expect(stoppedEvents).toBe(1)
+  } finally {
+    for (const restore of restores.reverse()) restore()
+  }
+})
+
+test("Audio capture observes external stops and can restart without duplicating lifecycle events", () => {
+  const lib = resolveRenderLib()
+  let running = false
+  let starts = 0
+  let stops = 0
+  const restores = [
+    replaceMethod(lib, "audioStartCapture", () => {
+      starts += 1
+      running = true
+      return 0
+    }),
+    replaceMethod(lib, "audioIsCaptureRunning", () => running),
+    replaceMethod(lib, "audioStopCapture", () => {
+      stops += 1
+      return 0
+    }),
+  ]
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    const events: string[] = []
+    audio.on("captureStarted", () => events.push("started"))
+    audio.on("captureStopped", () => events.push("stopped"))
+
+    expect(audio.startCapture()).toBe(true)
+    running = false
+    expect(audio.isCapturing()).toBe(false)
+    expect(audio.stopCapture()).toBe(true)
+    expect(stops).toBe(1)
+
+    expect(audio.startCapture()).toBe(true)
+    expect(starts).toBe(2)
+    expect(events).toEqual(["started", "stopped", "started"])
+  } finally {
+    for (const restore of restores.reverse()) restore()
+  }
+})
+
+test("Audio capture preserves reentrant restart format after an external stop event", () => {
+  const lib = resolveRenderLib()
+  let running = false
+  const starts: Array<{ channels: number; capacityFrames: number }> = []
+  const restores = [
+    replaceMethod(
+      lib,
+      "audioStartCapture",
+      (_engine: unknown, _options: unknown, channels: number, capacityFrames: number) => {
+        starts.push({ channels, capacityFrames })
+        running = true
+        return 0
+      },
+    ),
+    replaceMethod(lib, "audioIsCaptureRunning", () => running),
+    replaceMethod(lib, "audioReadCapture", () => ({ status: 0, framesRead: 0 })),
+  ]
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    expect(audio.startCapture({ channels: 2, capacityFrames: 16 })).toBe(true)
+    let restartOnStop = true
+    audio.on("captureStopped", () => {
+      if (!restartOnStop) return
+      restartOnStop = false
+      expect(audio.startCapture({ channels: 1, capacityFrames: 8 })).toBe(true)
+    })
+
+    running = false
+    expect(audio.startCapture({ channels: 2, capacityFrames: 16 })).toBe(true)
+    expect(starts).toEqual([
+      { channels: 2, capacityFrames: 16 },
+      { channels: 1, capacityFrames: 8 },
+    ])
+    expect(audio.readCaptureFrames(8)?.frames.length).toBe(8)
+    expect(() => audio.readCaptureFrames(9)).toThrow(RangeError)
+  } finally {
+    for (const restore of restores.reverse()) restore()
+  }
+})
+
+test("Audio capture bounds reads to initialized buffer capacity", () => {
+  const lib = resolveRenderLib()
+  let readCalls = 0
+  const restores = [
+    replaceMethod(lib, "audioStartCapture", () => 0),
+    replaceMethod(lib, "audioReadCapture", () => {
+      readCalls += 1
+      return { status: 0, framesRead: 0 }
+    }),
+  ]
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    audio.on("error", () => {})
+    expect(audio.readCaptureFrames(1)).toBeNull()
+    expect(readCalls).toBe(0)
+
+    expect(audio.startCapture({ channels: 1, capacityFrames: 8 })).toBe(true)
+    expect(() => audio.readCaptureFrames(9)).toThrow(RangeError)
+    expect(() => audio.readCaptureFrames(0xffffffff)).toThrow(RangeError)
+    expect(readCalls).toBe(0)
+  } finally {
+    for (const restore of restores.reverse()) restore()
+  }
+})
+
+test("Audio capture cannot restart reentrantly while disposal emits captureStopped", () => {
+  const lib = resolveRenderLib()
+  let starts = 0
+  const restores = [
+    replaceMethod(lib, "audioStartCapture", () => {
+      starts += 1
+      return 0
+    }),
+    replaceMethod(lib, "audioStopCapture", () => 0),
+  ]
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    expect(audio.startCapture()).toBe(true)
+    audio.on("captureStopped", () => {
+      expect(audio.startCapture()).toBe(false)
+    })
+    audio.dispose()
+    expect(starts).toBe(1)
+    expect(audio.isCapturing()).toBe(false)
+  } finally {
+    for (const restore of restores.reverse()) restore()
+  }
+})
