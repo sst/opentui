@@ -42,12 +42,6 @@ const P = {
 
 type FitMode = "fit" | "cover"
 
-enum OverlayMode {
-  NONE = "NONE",
-  IMAGE = "IMAGE",
-  BOX = "BOX",
-}
-
 interface GalleryItem {
   name: string
   sourceType: string
@@ -62,28 +56,41 @@ let keyListener: ((key: KeyEvent) => void) | null = null
 let capabilityListener: (() => void) | null = null
 let controlsText: TextRenderable | null = null
 let previews: ImageRenderable[] = []
-let overlayImage: ImageRenderable | null = null
 let overlayBox: BoxRenderable | null = null
 let fitMode: FitMode = "fit"
 let protocol: ImageRenderProtocol = "auto"
-let overlayMode = OverlayMode.NONE
-let boxAlphaIndex = 0
+let overlayVisible = true
+let overlayX = 2
+let overlayY = 9
+let boxAlphaIndex = 1
 
 const protocols: ImageRenderProtocol[] = ["auto", "kitty", "sixel", "blocks"]
-const overlayModes = [OverlayMode.NONE, OverlayMode.IMAGE, OverlayMode.BOX]
 const boxAlphas = [0, 0.5, 1]
+const overlayWidth = 24
+const overlayHeight = 8
+const headerHeight = 4
+const footerHeight = 3
 
 function updateControls(): void {
   if (!controlsText) return
   const effective = previews[0]?.effectiveProtocol ?? "blocks"
-  controlsText.content = `F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     O  ${overlayMode}     A  ${boxAlphas[boxAlphaIndex]}     ESC  MENU`
+  controlsText.content = `F  ${fitMode.toUpperCase()}   P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}   O  ${overlayVisible ? "ON" : "OFF"}   A  ${boxAlphas[boxAlphaIndex]}   ARROWS  MOVE   ESC  MENU`
 }
 
 function updateOverlay(): void {
-  if (overlayImage) overlayImage.visible = overlayMode === OverlayMode.IMAGE
   if (overlayBox) {
+    if (root && root.width > 0 && root.height > 0) {
+      overlayX = Math.max(0, Math.min(overlayX, Math.max(0, root.width - overlayWidth)))
+      overlayY = Math.max(
+        headerHeight,
+        Math.min(overlayY, Math.max(headerHeight, root.height - footerHeight - overlayHeight)),
+      )
+    }
+    overlayBox.left = overlayX
+    overlayBox.top = overlayY
+    overlayBox.title = `OVERLAY ${overlayX},${overlayY}`
     overlayBox.backgroundColor = RGBA.fromValues(0.15, 0.55, 0.95, boxAlphas[boxAlphaIndex])
-    overlayBox.visible = overlayMode === OverlayMode.BOX
+    overlayBox.visible = overlayVisible
   }
   updateControls()
 }
@@ -173,59 +180,7 @@ function createCard(renderer: CliRenderer, item: GalleryItem, index: number): Bo
     },
   })
   previews.push(preview)
-  if (index === 0) {
-    const previewStage = new BoxRenderable(renderer, {
-      id: "native-image-preview-stage",
-      width: "100%",
-      height: "auto",
-      flexGrow: 1,
-      flexShrink: 1,
-      minHeight: 5,
-    })
-    preview.width = "100%"
-    preview.height = "100%"
-    preview.flexGrow = 0
-    preview.flexShrink = 0
-    previewStage.add(preview)
-
-    overlayImage = new ImageRenderable(renderer, {
-      id: "native-image-overlay-image",
-      source: jpegPath,
-      fit: "cover",
-      protocol,
-      position: "absolute",
-      left: "20%",
-      top: "25%",
-      width: "60%",
-      height: "50%",
-      zIndex: 1,
-      visible: false,
-    })
-    previews.push(overlayImage)
-    previewStage.add(overlayImage)
-
-    overlayBox = new BoxRenderable(renderer, {
-      id: "native-image-overlay-box",
-      position: "absolute",
-      left: "20%",
-      top: "25%",
-      width: "60%",
-      height: "50%",
-      zIndex: 1,
-      visible: false,
-      border: true,
-      borderColor: P.text,
-      title: "OVERLAY",
-      shouldFill: false,
-      renderBefore(buffer) {
-        buffer.fillRect(this.x, this.y, this.width, this.height, this.backgroundColor)
-      },
-    })
-    previewStage.add(overlayBox)
-    card.add(previewStage)
-  } else {
-    card.add(preview)
-  }
+  card.add(preview)
   card.add(metadata)
   return card
 }
@@ -333,19 +288,39 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   footer.add(controlsText)
   root.add(footer)
+
+  overlayBox = new BoxRenderable(renderer, {
+    id: "native-image-overlay",
+    position: "absolute",
+    left: overlayX,
+    top: overlayY,
+    width: overlayWidth,
+    height: overlayHeight,
+    zIndex: 100,
+    visible: overlayVisible,
+    border: true,
+    borderColor: P.text,
+    title: "OVERLAY",
+    shouldFill: true,
+  })
+  root.add(overlayBox)
   updateOverlay()
 
   keyListener = (key: KeyEvent) => {
-    if (key.name === "f") fitMode = fitMode === "fit" ? "cover" : "fit"
-    else if (key.name === "p") protocol = protocols[(protocols.indexOf(protocol) + 1) % protocols.length]
-    else if (key.name === "o") overlayMode = overlayModes[(overlayModes.indexOf(overlayMode) + 1) % overlayModes.length]
+    if (key.name === "f") {
+      fitMode = fitMode === "fit" ? "cover" : "fit"
+      for (const preview of previews) preview.fit = fitMode
+    } else if (key.name === "p") {
+      protocol = protocols[(protocols.indexOf(protocol) + 1) % protocols.length]
+      for (const preview of previews) preview.protocol = protocol
+    } else if (key.name === "o") overlayVisible = !overlayVisible
     else if (key.name === "a") boxAlphaIndex = (boxAlphaIndex + 1) % boxAlphas.length
+    else if (key.name === "left") overlayX -= 2
+    else if (key.name === "right") overlayX += 2
+    else if (key.name === "up") overlayY -= 1
+    else if (key.name === "down") overlayY += 1
     else return
 
-    for (const preview of previews) {
-      preview.fit = fitMode
-      preview.protocol = protocol
-    }
     updateOverlay()
   }
   renderer.keyInput.on("keypress", keyListener)
@@ -361,13 +336,14 @@ export function destroy(renderer: CliRenderer): void {
   root?.destroyRecursively()
   root = null
   previews = []
-  overlayImage = null
   overlayBox = null
   controlsText = null
   fitMode = "fit"
   protocol = "auto"
-  overlayMode = OverlayMode.NONE
-  boxAlphaIndex = 0
+  overlayVisible = true
+  overlayX = 2
+  overlayY = 9
+  boxAlphaIndex = 1
   server?.close()
   server = null
 }
