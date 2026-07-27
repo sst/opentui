@@ -25,7 +25,7 @@ export interface DocPage {
   title: string
   navTitle: string
   description?: string
-  order?: number
+  order: number
   skill: SkillMetadata
 }
 
@@ -148,6 +148,15 @@ async function buildDocPage(filePath: string): Promise<DocPage> {
   if (typeof raw.title !== "string") {
     throw new Error(`Missing or invalid title in ${toSourcePath(filePath)}`)
   }
+  if (typeof raw.order !== "number" || !Number.isInteger(raw.order) || raw.order <= 0) {
+    throw new Error(`Missing or invalid positive integer order in ${toSourcePath(filePath)}`)
+  }
+  if (raw.description !== undefined && typeof raw.description !== "string") {
+    throw new Error(`Invalid description in ${toSourcePath(filePath)}`)
+  }
+  if (raw.navTitle !== undefined && typeof raw.navTitle !== "string") {
+    throw new Error(`Invalid navTitle in ${toSourcePath(filePath)}`)
+  }
 
   const sourcePath = toSourcePath(filePath)
   const slug = toSlug(filePath)
@@ -163,7 +172,7 @@ async function buildDocPage(filePath: string): Promise<DocPage> {
     title: raw.title,
     navTitle: typeof raw.navTitle === "string" ? raw.navTitle : raw.title,
     description: typeof raw.description === "string" ? raw.description : undefined,
-    order: typeof raw.order === "number" ? raw.order : undefined,
+    order: raw.order,
     skill,
   }
 }
@@ -259,7 +268,7 @@ function parseSimpleYamlValue(rawValue: string): unknown {
   }
 
   if (value.startsWith("[") && value.endsWith("]")) {
-    return splitInlineArray(value.slice(1, -1)).map((item) => String(parseSimpleYamlValue(item)))
+    return splitInlineArray(value.slice(1, -1)).map((item) => parseSimpleYamlValue(item))
   }
 
   return value
@@ -305,10 +314,20 @@ function normalizeSkill(rawSkill: unknown, sourcePath: string): SkillMetadata {
   }
 
   const skill = rawSkill as RawSkillMetadata
+  if (skill.include !== undefined && typeof skill.include !== "boolean") {
+    throw new Error(`Invalid skill.include in ${sourcePath}`)
+  }
+  if (skill.entry !== undefined && typeof skill.entry !== "boolean") {
+    throw new Error(`Invalid skill.entry in ${sourcePath}`)
+  }
+  if (skill.intents !== undefined && !Array.isArray(skill.intents)) {
+    throw new Error(`Invalid skill.intents in ${sourcePath}`)
+  }
+  if (Array.isArray(skill.intents) && skill.intents.some((value) => typeof value !== "string" || !value.trim())) {
+    throw new Error(`skill.intents must contain non-empty strings in ${sourcePath}`)
+  }
   const rawIntents = skill.intents
-  const intents = Array.isArray(rawIntents)
-    ? rawIntents.map((value) => String(value).trim().toLowerCase()).filter((value) => value.length > 0)
-    : []
+  const intents = Array.isArray(rawIntents) ? rawIntents.map((value) => value.trim().toLowerCase()) : []
 
   return {
     include: typeof skill.include === "boolean" ? skill.include : true,
@@ -354,15 +373,7 @@ function comparePages(left: DocPage, right: DocPage): number {
     return sectionDelta
   }
 
-  if (left.order === undefined && right.order !== undefined) {
-    return 1
-  }
-
-  if (left.order !== undefined && right.order === undefined) {
-    return -1
-  }
-
-  if (left.order !== undefined && right.order !== undefined && left.order !== right.order) {
+  if (left.order !== right.order) {
     return left.order - right.order
   }
 
