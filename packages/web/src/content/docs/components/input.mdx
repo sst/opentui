@@ -70,7 +70,7 @@ const input = new InputRenderable(renderer, {
 
 ### Input event
 
-Fires on every keystroke as the value changes:
+Emitted after text insertion and deletion operations, and when assigning a different `value`. The listener receives the current value:
 
 ```typescript
 import { InputRenderableEvents } from "@opentui/core"
@@ -92,7 +92,7 @@ input.on(InputRenderableEvents.CHANGE, (value: string) => {
 
 ### Enter event
 
-Fires when the user presses Enter/Return:
+Emitted when an Enter/Return submit succeeds. No event is emitted when the current UTF-16 code-unit length is less than `minLength`:
 
 ```typescript
 input.on(InputRenderableEvents.ENTER, (value: string) => {
@@ -114,17 +114,18 @@ input.value = "New value"
 
 ## Properties
 
-| Property                 | Type                                   | Default      | Description                  |
-| ------------------------ | -------------------------------------- | ------------ | ---------------------------- |
-| `width`                  | `number`                               | -            | Input field width            |
-| `value`                  | `string`                               | `""`         | Initial text value           |
-| `placeholder`            | `string`                               | `""`         | Placeholder text when empty  |
-| `maxLength`              | `number`                               | `1000`       | Maximum number of characters |
-| `backgroundColor`        | `string \| RGBA`                       | -            | Background when unfocused    |
-| `focusedBackgroundColor` | `string \| RGBA`                       | -            | Background when focused      |
-| `textColor`              | `string \| RGBA`                       | -            | Text color                   |
-| `cursorColor`            | `string \| RGBA`                       | -            | Cursor color                 |
-| `position`               | `"static" \| "relative" \| "absolute"` | `"relative"` | Positioning mode             |
+| Property                 | Type                                   | Default                                 | Description                                         |
+| ------------------------ | -------------------------------------- | --------------------------------------- | --------------------------------------------------- |
+| `width`                  | number, `"auto"`, or percentage string | `"auto"`                                | Input field width                                   |
+| `value`                  | `string`                               | `""`                                    | Initial text value                                  |
+| `placeholder`            | `string`                               | `""`                                    | Placeholder text when empty                         |
+| `minLength`              | `number`                               | `0`                                     | Minimum UTF-16 code-unit length required for submit |
+| `maxLength`              | `number`                               | `1000`                                  | Maximum UTF-16 code-unit length                     |
+| `backgroundColor`        | `string \| RGBA`                       | `"transparent"`                         | Background when unfocused                           |
+| `focusedBackgroundColor` | `string \| RGBA`                       | `backgroundColor`, else `"transparent"` | Background when focused                             |
+| `textColor`              | `string \| RGBA`                       | `"#FFFFFF"`                             | Text color                                          |
+| `cursorColor`            | `string \| RGBA`                       | `"#FFFFFF"`                             | Cursor color                                        |
+| `position`               | `"relative" \| "absolute"`             | `"relative"`                            | Effective positioning mode                          |
 
 ## Example: Login form
 

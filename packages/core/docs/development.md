@@ -90,7 +90,7 @@ The script automatically links:
 
 ## Debugging
 
-OpenTUI captures `console.log` output. Toggle the built-in console with backtick or use [Environment Variables](./env-vars.md) for debugging.
+OpenTUI captures `console.log` output. Toggle the built-in console with backtick or use [Environment Variables](https://opentui.com/docs/reference/env-vars) for debugging.
 
 ## Terminal Compatibility
 

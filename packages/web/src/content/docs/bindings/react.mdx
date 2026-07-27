@@ -78,6 +78,7 @@ OpenTUI React provides JSX intrinsic elements that map to core renderables:
 - `<box>` - Container with borders and layout
 - `<scrollbox>` - Scrollable container
 - `<ascii-font>` - ASCII art text
+- [`<TimeToFirstDraw />`](/docs/components/time-to-first-draw) - Exported first-draw performance timestamp component
 
 QR code support is available from `@opentui/qrcode/react` and must be registered explicitly with `registerQRCode()`.
 
@@ -115,6 +116,10 @@ Creates a React root for rendering into the terminal.
 ```tsx
 import { createCliRenderer } from "@opentui/core"
 import { createRoot } from "@opentui/react"
+
+function App() {
+  return <text>Hello, React!</text>
+}
 
 const renderer = await createCliRenderer()
 createRoot(renderer).render(<App />)
@@ -337,6 +342,34 @@ Style components with props or the `style` prop:
   <text>Hello</text>
 </box>
 ```
+
+## Testing
+
+`@opentui/react/test-utils` exports `testRender(node, options)`, a React-aware wrapper around [`createTestRenderer()`](/docs/core-concepts/testing). It mounts the initial node with React `act()`, returns the core `TestRendererSetup`, and unmounts the React root with `act()` when the renderer is destroyed.
+
+```tsx
+import { expect, test } from "bun:test"
+import { testRender } from "@opentui/react/test-utils"
+
+function App() {
+  return <text>Ready</text>
+}
+
+test("renders the application", async () => {
+  const setup = await testRender(<App />, { width: 20, height: 4 })
+
+  try {
+    await setup.renderOnce()
+    expect(setup.captureCharFrame()).toContain("Ready")
+  } finally {
+    setup.renderer.destroy()
+  }
+})
+```
+
+The options argument is required and has the same type/default behavior as `TestRendererOptions`. The helper also enables React's act-environment flag for the mounted test root. On renderer destruction it unmounts the root, invokes any `options.onDestroy` callback, and then sets that flag to `false`. It does not preserve a previous global value, and a throwing `onDestroy` callback prevents the final reset.
+
+`testRender()` does not return the React root or a separate rerender function. Use the returned core setup for frame capture, waits, resize, keyboard/mouse input, native stats, and external output. Always destroy the renderer in test teardown so the React tree unmounts and the global act-environment flag is reset.
 
 ## Example: Login form
 

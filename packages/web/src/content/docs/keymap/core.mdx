@@ -15,7 +15,9 @@ Use the bare engine when you want a custom host or when you want to build addons
 ```ts
 import { Keymap, type KeymapHost } from "@opentui/keymap"
 
-const keymap = new Keymap(host as KeymapHost<object>)
+function createKeymap(host: KeymapHost<object>) {
+  return new Keymap(host)
+}
 ```
 
 Bare keymaps do not parse string bindings until you install binding parsers and event match resolvers. In practice that usually means `registerDefaultKeys()` or one of the default host helpers.

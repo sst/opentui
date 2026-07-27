@@ -138,27 +138,27 @@ registerEnvVar({
 // Env vars used in terminal.zig
 registerEnvVar({
   name: "OPENTUI_FORCE_WCWIDTH",
-  description: "Use wcwidth for character width calculations",
-  type: "boolean",
-  default: false,
+  description: "Use wcwidth for character width calculations when the variable is present",
+  type: "string",
+  required: false,
 })
 registerEnvVar({
   name: "OPENTUI_FORCE_UNICODE",
-  description: "Force Mode 2026 Unicode support in terminal capabilities",
-  type: "boolean",
-  default: false,
+  description: "Force Mode 2026 Unicode support when the variable is present",
+  type: "string",
+  required: false,
 })
 registerEnvVar({
   name: "OPENTUI_GRAPHICS",
-  description: "Enable Kitty graphics protocol detection",
-  type: "boolean",
-  default: true,
+  description: "Override Kitty graphics detection with the exact value true, 1, false, or 0",
+  type: "string",
+  required: false,
 })
 registerEnvVar({
   name: "OPENTUI_FORCE_NOZWJ",
-  description: "Use no_zwj width method (Unicode without ZWJ joining)",
-  type: "boolean",
-  default: false,
+  description: "Use no_zwj width mode when the variable is present",
+  type: "string",
+  required: false,
 })
 
 // Cursor & mouse pointer style mappings (avoid recreation on each call)

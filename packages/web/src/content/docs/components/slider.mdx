@@ -52,13 +52,13 @@ const slider = new SliderRenderable(renderer, {
 
 ## Properties
 
-| Property          | Type                           | Default      | Description                    |
-| ----------------- | ------------------------------ | ------------ | ------------------------------ |
-| `orientation`     | `"vertical"` or `"horizontal"` | -            | Slider direction               |
-| `value`           | `number`                       | `min`        | Current value                  |
-| `min`             | `number`                       | `0`          | Minimum value                  |
-| `max`             | `number`                       | `100`        | Maximum value                  |
-| `viewPortSize`    | `number`                       | range \* 0.1 | Thumb size relative to content |
-| `backgroundColor` | `string` or `RGBA`             | -            | Track color                    |
-| `foregroundColor` | `string` or `RGBA`             | -            | Thumb color                    |
-| `onChange`        | `(value: number) => void`      | -            | Fired when value changes       |
+| Property          | Type                         | Default                          | Description                                    |
+| ----------------- | ---------------------------- | -------------------------------- | ---------------------------------------------- |
+| `orientation`     | `"vertical" \| "horizontal"` | required                         | Slider direction                               |
+| `value`           | `number`                     | `min`                            | Current value                                  |
+| `min`             | `number`                     | `0`                              | Minimum value                                  |
+| `max`             | `number`                     | `100`                            | Maximum value                                  |
+| `viewPortSize`    | `number`                     | `Math.max(1, (max - min) * 0.1)` | Viewport size used to calculate the thumb size |
+| `backgroundColor` | `ColorInput`                 | `"#252527"`                      | Track color                                    |
+| `foregroundColor` | `ColorInput`                 | `"#9a9ea3"`                      | Thumb color                                    |
+| `onChange`        | `(value: number) => void`    | -                                | Called when the stored value changes           |

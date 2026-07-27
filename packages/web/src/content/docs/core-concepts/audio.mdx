@@ -260,7 +260,28 @@ Compile the app normally with `bun build --compile ./app.ts --outfile app`.
 
 ## Node.js standalone executables
 
-Coming soon.
+After following the [Node.js SEA asset setup](/docs/reference/standalone-executables#nodejs-sea), add application audio files to the SEA `assets` map alongside the OpenTUI runtime manifest:
+
+```js
+assets: {
+  ...Object.fromEntries(openTuiAssets.map(({ key, source }) => [key, source])),
+  "app/click.wav": resolve("click.wav"),
+}
+```
+
+Load the embedded bytes through Node's SEA API and pass them directly to `loadSound()`, which accepts `ArrayBuffer` and `Uint8Array`:
+
+```typescript
+import { getAsset } from "node:sea"
+import { Audio } from "@opentui/core"
+
+const audio = Audio.create({ autoStart: false })
+const click = audio.loadSound(getAsset("app/click.wav"))
+
+if (click != null && audio.start()) {
+  audio.play(click)
+}
+```
 
 ## Devices
 
