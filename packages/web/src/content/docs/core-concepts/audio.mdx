@@ -286,6 +286,10 @@ if (!audio.start()) {
 
 Capture records PCM from an input device into a bounded native ring buffer. It is independent from playback: `startCapture()` does not start output or the mixer, and `start()`, `startMixer()`, and `stop()` do not change capture state.
 
+> **Microphone access**
+>
+> The terminal app launching OpenTUI must be allowed to use the microphone. On macOS, enable it under **System Settings > Privacy & Security > Microphone**, then fully restart the terminal. Packaged apps need their own microphone permission.
+
 Select a device before starting capture, then poll bounded chunks from application code:
 
 ```typescript
@@ -385,7 +389,7 @@ The native capture callback never blocks waiting for JavaScript. If the ring is 
 
 ### Permissions and scope
 
-The process hosting OpenTUI must have OS microphone permission. macOS may attribute permission to the terminal or packaged application; Windows privacy controls can disable desktop microphone access; Linux capture uses PulseAudio or ALSA, including PipeWire through its PulseAudio compatibility layer, and depends on the selected device's permissions. Headless sessions, sandboxes, containers, and CI commonly expose no input. Enumeration can therefore return `null` or `[]`, and capture can still fail at `startCapture()` if access is denied or the device became unavailable.
+Windows privacy controls can block desktop microphone access. Linux capture uses PulseAudio or ALSA, including PipeWire through its PulseAudio compatibility layer, and depends on device permissions. Headless sessions, sandboxes, containers, and CI commonly expose no input. Enumeration may return `null` or `[]`; denied or unavailable inputs may make `startCapture()` fail or deliver clocked digital silence, so advancing frame counters alone does not prove a signal is present.
 
 Capture provides raw PCM polling only. It does not encode audio files or containers, create system-output loopback capture, invoke JavaScript callbacks on the native audio thread, or provide echo cancellation. Perform encoding and signal processing outside the capture callback path, and use platform-specific facilities when those features are required.
 
