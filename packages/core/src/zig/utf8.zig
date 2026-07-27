@@ -1187,13 +1187,13 @@ pub fn findPosByWidth(
     width_method: WidthMethod,
 ) PosByWidthResult {
     switch (width_method) {
-        .unicode, .no_zwj => return findPosByWidthUnicode(text, max_columns, tab_width, isASCIIOnly, include_start_before, width_method),
+        .unicode, .no_zwj => return findGraphemePosByWidth(text, max_columns, tab_width, isASCIIOnly, include_start_before, width_method),
         .wcwidth => return findPosByWidthWCWidth(text, max_columns, tab_width, isASCIIOnly, include_start_before),
     }
 }
 
 /// Find position by column width using Unicode grapheme cluster segmentation
-fn findPosByWidthUnicode(
+pub fn findGraphemePosByWidth(
     text: []const u8,
     max_columns: u32,
     tab_width: u8,
@@ -1307,12 +1307,8 @@ fn findPosByWidthUnicode(
 
     // Final cluster
     if (state.prev_cp != null and state.cluster_width > 0) {
-        if (state.columns_used >= max_columns) {
+        if (handleClusterForPos(&state, true, text.len, max_columns, include_start_before)) {
             return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
-        }
-        state.columns_used += state.cluster_width;
-        if (include_start_before) {
-            state.grapheme_count += 1;
         }
     }
 

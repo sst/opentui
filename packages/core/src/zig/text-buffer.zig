@@ -167,7 +167,7 @@ pub const UnifiedTextBuffer = struct {
         segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
         line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
     ) void {
-        iter_mod.walkLinesAndSegments(&self._rope, ctx, segment_callback, line_end_callback);
+        iter_mod.walkLinesAndSegments(&self._rope, null, ctx, segment_callback, line_end_callback);
     }
 
     pub fn init(
@@ -524,7 +524,7 @@ pub const UnifiedTextBuffer = struct {
             flags |= TextChunk.Flags.ASCII_ONLY;
         }
 
-        const chunk_width: u16 = @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method)));
+        const chunk_width = utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method);
 
         return .{
             .mem_id = mem_id,
@@ -1242,14 +1242,22 @@ pub const UnifiedTextBuffer = struct {
     /// Automatically snaps to grapheme boundaries:
     /// Returns number of bytes written to out_buffer
     pub fn getTextRange(self: *const Self, start_offset: u32, end_offset: u32, out_buffer: []u8) usize {
-        if (start_offset >= end_offset) return 0;
         if (out_buffer.len == 0) return 0;
+        return self.processTextRange(start_offset, end_offset, out_buffer);
+    }
+
+    /// Return the exact number of UTF-8 bytes selected by a display-width range.
+    pub fn getTextRangeByteSize(self: *const Self, start_offset: u32, end_offset: u32) usize {
+        return self.processTextRange(start_offset, end_offset, null);
+    }
+
+    fn processTextRange(self: *const Self, start_offset: u32, end_offset: u32, out_buffer: ?[]u8) usize {
+        if (start_offset >= end_offset) return 0;
 
         const total_weight = self._rope.totalWeight();
         if (start_offset >= total_weight) return 0;
 
         const clamped_end = @min(end_offset, total_weight);
-
         return iter_mod.extractTextBetweenOffsets(
             &self._rope,
             &self.mem_registry,
@@ -1268,5 +1276,12 @@ pub const UnifiedTextBuffer = struct {
         const start_offset = iter_mod.coordsToOffset(&self._rope, start_row, start_col) orelse return 0;
         const end_offset = iter_mod.coordsToOffset(&self._rope, end_row, end_col) orelse return 0;
         return self.getTextRange(start_offset, end_offset, out_buffer);
+    }
+
+    /// Return the exact number of UTF-8 bytes selected by row/column coordinates.
+    pub fn getTextRangeByteSizeByCoords(self: *Self, start_row: u32, start_col: u32, end_row: u32, end_col: u32) usize {
+        const start_offset = iter_mod.coordsToOffset(&self._rope, start_row, start_col) orelse return 0;
+        const end_offset = iter_mod.coordsToOffset(&self._rope, end_row, end_col) orelse return 0;
+        return self.getTextRangeByteSize(start_offset, end_offset);
     }
 };

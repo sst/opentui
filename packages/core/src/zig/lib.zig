@@ -2643,6 +2643,16 @@ export fn textBufferGetHighlightCount(tb_handle: NativeHandle) u32 {
     return object_ptr.getHighlightCount();
 }
 
+export fn textBufferGetTextRangeByteSize(tb_handle: NativeHandle, start_offset: u32, end_offset: u32) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
+    return @intCast(object_ptr.getTextRangeByteSize(start_offset, end_offset));
+}
+
+export fn textBufferGetTextRangeByteSizeByCoords(tb_handle: NativeHandle, start_row: u32, start_col: u32, end_row: u32, end_col: u32) u32 {
+    const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
+    return @intCast(object_ptr.getTextRangeByteSizeByCoords(start_row, start_col, end_row, end_col));
+}
+
 export fn textBufferGetTextRange(tb_handle: NativeHandle, start_offset: u32, end_offset: u32, outPtr: ?[*]u8, maxLen: u32) u32 {
     const object_ptr = acquireTextBuffer(tb_handle) orelse return 0;
     if (maxLen == 0) return 0;

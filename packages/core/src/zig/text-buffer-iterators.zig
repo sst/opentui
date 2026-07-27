@@ -61,13 +61,16 @@ pub fn walkLines(
     }
 }
 
-/// This is the most efficient way to iterate lines and their content
+/// This is the most efficient way to iterate lines and their content.
+/// A bounded walk does not emit line_end_callback for a partial final line.
 pub fn walkLinesAndSegments(
     rope: *const UnifiedRope,
+    end_offset: ?u32,
     ctx: *anyopaque,
     segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
     line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
 ) void {
+    if (end_offset == 0) return;
     if (rope.count() == 0) {
         return;
     }
@@ -82,6 +85,8 @@ pub fn walkLinesAndSegments(
         current_seg_idx: u32 = 0,
         line_width_cols: u32 = 0,
         chunk_idx_in_line: u32 = 0,
+        end_offset: ?u32,
+        stopped: bool = false,
 
         fn walker(walk_ctx_ptr: *anyopaque, seg: *const Segment, idx: u32) UnifiedRope.Node.WalkerResult {
             const walk_ctx = @as(*@This(), @ptrCast(@alignCast(walk_ctx_ptr)));
@@ -90,6 +95,13 @@ pub fn walkLinesAndSegments(
                 walk_ctx.seg_callback(walk_ctx.user_ctx, walk_ctx.current_line_idx, chunk, walk_ctx.chunk_idx_in_line);
                 walk_ctx.chunk_idx_in_line += 1;
                 walk_ctx.line_width_cols += chunk.width;
+
+                if (walk_ctx.end_offset) |end| {
+                    if (walk_ctx.current_col_offset + walk_ctx.line_width_cols >= end) {
+                        walk_ctx.stopped = true;
+                        return .{ .keep_walking = false };
+                    }
+                }
             } else if (seg.isBreak()) {
                 walk_ctx.line_callback(walk_ctx.user_ctx, .{
                     .line_idx = walk_ctx.current_line_idx,
@@ -104,6 +116,13 @@ pub fn walkLinesAndSegments(
                 walk_ctx.line_start_seg = idx + 1;
                 walk_ctx.line_width_cols = 0;
                 walk_ctx.chunk_idx_in_line = 0;
+
+                if (walk_ctx.end_offset) |end| {
+                    if (walk_ctx.current_col_offset >= end) {
+                        walk_ctx.stopped = true;
+                        return .{ .keep_walking = false };
+                    }
+                }
             }
 
             walk_ctx.current_seg_idx = idx + 1;
@@ -115,8 +134,11 @@ pub fn walkLinesAndSegments(
         .user_ctx = ctx,
         .seg_callback = segment_callback,
         .line_callback = line_end_callback,
+        .end_offset = end_offset,
     };
     rope.walk(&walk_ctx, WalkContext.walker) catch {};
+
+    if (walk_ctx.stopped) return;
 
     // Emit final line if we have content after last break OR if we had at least one break
     // (A trailing break creates an empty final line)
@@ -380,40 +402,54 @@ pub fn charOffsetToColumn(
     return .{ .col = break_col, .width = width };
 }
 
-/// Extract text between display-width offsets into a buffer
+/// Extract text between display-width offsets, or measure the exact byte size when out_buffer is null.
 /// Automatically snaps to grapheme boundaries:
 /// - start_offset excludes graphemes that start before it
 /// - end_offset includes graphemes that start before it
-/// Returns number of bytes written to out_buffer
+/// Returns the number of bytes written or measured.
 pub fn extractTextBetweenOffsets(
     rope: *const UnifiedRope,
     mem_registry: *const MemRegistry,
     tab_width: u8,
     start_offset: u32,
     end_offset: u32,
-    out_buffer: []u8,
+    out_buffer: ?[]u8,
     width_method: utf8.WidthMethod,
 ) usize {
     if (start_offset >= end_offset) return 0;
-    if (out_buffer.len == 0) return 0;
+    if (out_buffer) |output| {
+        if (output.len == 0) return 0;
+    }
 
     const line_count = rope.root.metrics().custom.linestart_count;
 
     var out_index: usize = 0;
     var col_offset: u32 = 0;
 
-    _ = width_method; // Just ignore for now, will use .unicode as default
-
     const Context = struct {
         rope: *const UnifiedRope,
         mem_registry: *const MemRegistry,
         tab_width: u8,
-        out_buffer: []u8,
+        out_buffer: ?[]u8,
         out_index: *usize,
         col_offset: *u32,
         start: u32,
         end: u32,
         line_count: u32,
+        width_method: utf8.WidthMethod,
+
+        fn appendBytes(ctx: *@This(), bytes: []const u8) void {
+            if (ctx.out_buffer) |output| {
+                std.debug.assert(ctx.out_index.* <= output.len);
+                const copy_len = @min(bytes.len, output.len - ctx.out_index.*);
+                if (copy_len > 0) {
+                    @memcpy(output[ctx.out_index.* .. ctx.out_index.* + copy_len], bytes[0..copy_len]);
+                    ctx.out_index.* += copy_len;
+                }
+            } else {
+                ctx.out_index.* += bytes.len;
+            }
+        }
 
         fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
             _ = line_idx;
@@ -439,24 +475,19 @@ pub fn extractTextBetweenOffsets(
             var byte_end: u32 = @intCast(chunk_bytes.len);
 
             if (local_start_col > 0) {
-                const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, ctx.tab_width, is_ascii_only, false, .unicode);
+                const start_result = utf8.findGraphemePosByWidth(chunk_bytes, local_start_col, ctx.tab_width, is_ascii_only, false, ctx.width_method);
                 byte_start = start_result.byte_offset;
             }
 
             if (local_end_col < chunk.width) {
-                const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, ctx.tab_width, is_ascii_only, true, .unicode);
+                const end_result = utf8.findGraphemePosByWidth(chunk_bytes, local_end_col, ctx.tab_width, is_ascii_only, true, ctx.width_method);
                 byte_end = end_result.byte_offset;
             }
 
             if (byte_start < byte_end and byte_start < chunk_bytes.len) {
                 const actual_end = @min(byte_end, @as(u32, @intCast(chunk_bytes.len)));
                 const selected_bytes = chunk_bytes[byte_start..actual_end];
-                const copy_len = @min(selected_bytes.len, ctx.out_buffer.len - ctx.out_index.*);
-
-                if (copy_len > 0) {
-                    @memcpy(ctx.out_buffer[ctx.out_index.* .. ctx.out_index.* + copy_len], selected_bytes[0..copy_len]);
-                    ctx.out_index.* += copy_len;
-                }
+                ctx.appendBytes(selected_bytes);
             }
 
             ctx.col_offset.* = chunk_end_offset;
@@ -468,9 +499,8 @@ pub fn extractTextBetweenOffsets(
             // Add newline when the newline offset is inside the selected range,
             // even for empty logical lines.
             const newline_offset = ctx.col_offset.*;
-            if (line_info.line_idx < ctx.line_count - 1 and newline_offset >= ctx.start and newline_offset < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
-                ctx.out_buffer[ctx.out_index.*] = '\n';
-                ctx.out_index.* += 1;
+            if (line_info.line_idx < ctx.line_count - 1 and newline_offset >= ctx.start and newline_offset < ctx.end) {
+                ctx.appendBytes("\n");
             }
 
             // Account for newline in display offset
@@ -488,9 +518,10 @@ pub fn extractTextBetweenOffsets(
         .start = start_offset,
         .end = end_offset,
         .line_count = line_count,
+        .width_method = width_method,
     };
 
-    walkLinesAndSegments(rope, &ctx, Context.segment_callback, Context.line_end_callback);
+    walkLinesAndSegments(rope, end_offset, &ctx, Context.segment_callback, Context.line_end_callback);
 
     return out_index;
 }

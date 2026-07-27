@@ -782,6 +782,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "u32",
     },
+    textBufferGetTextRangeByteSize: {
+      args: ["u32", "u32", "u32"],
+      returns: "u32",
+    },
+    textBufferGetTextRangeByteSizeByCoords: {
+      args: ["u32", "u32", "u32", "u32", "u32"],
+      returns: "u32",
+    },
     textBufferGetTextRange: {
       args: ["u32", "u32", "u32", "ptr", "u32"],
       returns: "u32",
@@ -2306,6 +2314,14 @@ export interface RenderLib extends AudioEngineLib {
   textBufferSetTabWidth: (buffer: TextBufferHandle, width: number) => void
   textBufferGetLineCount: (buffer: TextBufferHandle) => number
   getPlainTextBytes: (buffer: TextBufferHandle, maxLength: number) => Uint8Array | null
+  textBufferGetTextRangeByteSize: (buffer: TextBufferHandle, startOffset: number, endOffset: number) => number
+  textBufferGetTextRangeByteSizeByCoords: (
+    buffer: TextBufferHandle,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+  ) => number
   textBufferGetTextRange: (
     buffer: TextBufferHandle,
     startOffset: number,
@@ -3974,6 +3990,20 @@ class FFIRenderLib implements RenderLib {
     return outBuffer.slice(0, actualLen)
   }
 
+  public textBufferGetTextRangeByteSize(buffer: Pointer, startOffset: number, endOffset: number): number {
+    return this.opentui.symbols.textBufferGetTextRangeByteSize(buffer, startOffset, endOffset)
+  }
+
+  public textBufferGetTextRangeByteSizeByCoords(
+    buffer: Pointer,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+  ): number {
+    return this.opentui.symbols.textBufferGetTextRangeByteSizeByCoords(buffer, startRow, startCol, endRow, endCol)
+  }
+
   public textBufferGetTextRange(
     buffer: Pointer,
     startOffset: number,
@@ -4468,7 +4498,7 @@ class FFIRenderLib implements RenderLib {
     const actualLen = this.opentui.symbols.editBufferGetText(buffer, ptrOrNull(outBuffer), maxLength)
     const len = actualLen
     if (len === 0) return null
-    return outBuffer.slice(0, len)
+    return len === outBuffer.length ? outBuffer : outBuffer.slice(0, len)
   }
 
   public editBufferInsertChar(buffer: Pointer, char: string): void {
@@ -4647,7 +4677,7 @@ class FFIRenderLib implements RenderLib {
     )
     const len = actualLen
     if (len === 0) return null
-    return outBuffer.slice(0, len)
+    return len === outBuffer.length ? outBuffer : outBuffer.slice(0, len)
   }
 
   public editBufferGetTextRangeByCoords(
@@ -4670,6 +4700,7 @@ class FFIRenderLib implements RenderLib {
     )
     const len = actualLen
     if (len === 0) return null
+    if (len === outBuffer.length) return outBuffer
     return usesBunFFI ? outBuffer.slice(0, len) : trimNodeFFIOutputBytes(outBuffer, len)
   }
 
