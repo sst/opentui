@@ -758,7 +758,16 @@ function renderMosaicCell(
       )
     }
   }
-  const mask = sextantMaskByLuminance(MOSAIC_COLOR_SAMPLES, strength)
+  const mask = sextantMaskByLuminance(
+    MOSAIC_COLOR_SAMPLES,
+    strength,
+    hashNoise(originX + targetColumn, originY + targetRow),
+    hashNoise(originY + targetRow + 19.19, originX + targetColumn + 73.73),
+  )
+  if (mask === 0) {
+    buffer.setCell(originX + targetColumn, originY + targetRow, " ", TRANSPARENT, receiverPalette.background)
+    return
+  }
   setGradedColor(MOSAIC_FOREGROUND, sextantAverageColor(MOSAIC_COLOR_SAMPLES, mask), baseColor, 0.22 + strength * 0.12)
   buffer.setCell(
     originX + targetColumn,

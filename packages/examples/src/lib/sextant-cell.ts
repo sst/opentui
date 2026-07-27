@@ -1,26 +1,49 @@
 export const SEXTANT_SAMPLE_COUNT = 6
 export const SEXTANT_SAMPLE_CHANNELS = SEXTANT_SAMPLE_COUNT * 3
 
-export function sextantMaskByLuminance(samples: Uint8Array, strength: number): number {
+function tiePriority(sample: number, patternDither: number): number {
+  const value = Math.sin(patternDither * 8191 + sample * 127.1) * 43758.5453
+  return value - Math.floor(value)
+}
+
+export function sextantMaskByLuminance(
+  samples: Uint8Array,
+  strength: number,
+  densityDither: number,
+  patternDither: number,
+): number {
   if (samples.length !== SEXTANT_SAMPLE_CHANNELS) {
     throw new RangeError(`sextant samples must contain exactly ${SEXTANT_SAMPLE_CHANNELS} channels`)
   }
   if (!Number.isFinite(strength) || strength < 0 || strength > 1) {
     throw new RangeError("sextant strength must be between 0 and 1")
   }
-  // Full video cells merge into visually louder slabs than full-strength point glyphs.
-  const occupied = Math.max(1, Math.min(SEXTANT_SAMPLE_COUNT - 1, Math.ceil(strength ** 1.2 * 5)))
+  if (!Number.isFinite(densityDither) || densityDither < 0 || densityDither > 1) {
+    throw new RangeError("sextant density dither must be between 0 and 1")
+  }
+  if (!Number.isFinite(patternDither) || patternDither < 0 || patternDither > 1) {
+    throw new RangeError("sextant pattern dither must be between 0 and 1")
+  }
+  // Match the point ramp's apparent area: low strengths skip whole cells and the strongest video mark fills half a cell.
+  const expectedOccupancy = Math.max(0, Math.min(3, (strength - 1 / 7) * 3.5))
+  const wholeOccupancy = Math.floor(expectedOccupancy)
+  const occupied = wholeOccupancy + (densityDither < expectedOccupancy - wholeOccupancy ? 1 : 0)
+  if (occupied === 0) return 0
+
   let mask = 0
   for (let selection = 0; selection < occupied; selection += 1) {
     let brightestSample = -1
     let brightestLuminance = -1
+    let brightestPriority = -1
     for (let sample = 0; sample < SEXTANT_SAMPLE_COUNT; sample += 1) {
       if ((mask & (1 << sample)) !== 0) continue
       const offset = sample * 3
       const luminance = samples[offset]! * 0.2126 + samples[offset + 1]! * 0.7152 + samples[offset + 2]! * 0.0722
-      if (luminance > brightestLuminance) {
+      const priority = tiePriority(sample, patternDither)
+      if (luminance > brightestLuminance || (luminance === brightestLuminance && priority > brightestPriority)) {
         brightestSample = sample
         brightestLuminance = luminance
+        brightestPriority = priority
       }
     }
     mask |= 1 << brightestSample
