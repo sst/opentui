@@ -127,7 +127,7 @@ describe("createClipboard", () => {
     const notAttempted = {
       host: { status: "not-attempted" },
       terminal: { status: "not-attempted", capability: "unknown" },
-    }
+    } as const
     expect(write).toEqual(notAttempted)
     expect(clear).toEqual(notAttempted)
     expect(service.events).toEqual([])
