@@ -107,20 +107,29 @@ describe("createClipboard", () => {
     await service.clipboard.dispose()
   })
 
-  it("attempts neither destination for pre-aborted all-available operations", async () => {
-    const service = createServices()
+  it("validates before handling pre-abort and does not dispatch pre-aborted operations", async () => {
+    const service = createServices({ maxWriteBytes: 4 })
     const signal = AbortSignal.abort()
-    const write = await service.clipboard.writeText("text", { destination: "all-available", signal })
-    const clear = await service.clipboard.clear({ destination: "all-available", signal })
+    const options = { destination: "all-available", signal } as const
 
-    expect(write).toEqual({
+    await expect(service.clipboard.writeText("", options)).rejects.toThrow("non-empty")
+    await expect(
+      service.clipboard.writeText("text", {
+        ...options,
+        destination: "invalid" as never,
+      }),
+    ).rejects.toThrow("destination")
+    await expect(service.clipboard.clear({ ...options, selection: "invalid" as never })).rejects.toThrow("selection")
+    await expect(service.clipboard.read({ preferredTypes: [] as never, signal })).rejects.toThrow("at least one")
+
+    const write = await service.clipboard.writeText("text", options)
+    const clear = await service.clipboard.clear(options)
+    const notAttempted = {
       host: { status: "not-attempted" },
       terminal: { status: "not-attempted", capability: "unknown" },
-    })
-    expect(clear).toEqual({
-      host: { status: "not-attempted" },
-      terminal: { status: "not-attempted", capability: "unknown" },
-    })
+    }
+    expect(write).toEqual(notAttempted)
+    expect(clear).toEqual(notAttempted)
     expect(service.events).toEqual([])
     await service.clipboard.dispose()
   })
@@ -146,6 +155,22 @@ describe("createClipboard", () => {
       host: { status: "cancelled" },
       terminal: { status: "attempted", capability: "supported" },
     })
+    await service.clipboard.dispose()
+  })
+
+  it("does not start a best-available terminal fallback after cancellation", async () => {
+    const service = createServices({ hostStatus: "unsupported" })
+    const controller = new AbortController()
+    const pending = service.clipboard.writeText("text", {
+      destination: "best-available",
+      signal: controller.signal,
+    })
+
+    expect(service.events).toEqual(["host-write"])
+    controller.abort()
+
+    expect((await pending).terminal).toEqual({ status: "not-attempted", capability: "unknown" })
+    expect(service.events).toEqual(["host-write"])
     await service.clipboard.dispose()
   })
 

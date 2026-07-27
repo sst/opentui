@@ -586,7 +586,11 @@ pub const Connection = struct {
         if (event_type == EVENT_SELECTION_NOTIFY) {
             const notify: *const linux.XcbSelectionNotifyEvent = @ptrCast(@alignCast(event));
             if (state.phase != .selection or notify.requestor != state.window or
-                notify.selection != state.selection or notify.target != state.target) return false;
+                notify.selection != state.selection) return false;
+            if (notify.target != state.target) {
+                const atoms_value = self.atoms() orelse return false;
+                if (state.target != atoms_value.text or notify.target != ATOM_STRING) return false;
+            }
             if (notify.property == 0) {
                 state.phase = .refused;
                 return true;
@@ -1198,7 +1202,7 @@ pub const Connection = struct {
     fn handleSelectionClear(self: *Connection, event: *const linux.XcbSelectionClearEvent) void {
         if (event.owner != self.owner_window) return;
         const provider = self.currentProvider(event.selection) orelse return;
-        if (!timestampBefore(provider.timestamp, event.time)) return;
+        if (timestampBefore(event.time, provider.timestamp)) return;
         self.retireProvider(provider);
     }
 
@@ -1897,6 +1901,41 @@ test "X11 SelectionNotify routing isolates concurrent requestor windows" {
     try std.testing.expectEqual(ReadPhase.refused, second.phase);
 }
 
+test "X11 SelectionNotify routing accepts the xsel TEXT to STRING alias" {
+    var symbols: linux.XcbSymbols = undefined;
+    symbols.xcb_get_property = fakeGetProperty;
+    var connection = Connection.init(std.testing.allocator, &symbols, 1);
+    connection.connection = @ptrFromInt(1);
+    connection.phase = .ready;
+    connection.output_ready_override = false;
+    for (&connection.atom_values, 0..) |*atom, index| atom.* = @intCast(100 + index);
+    var state: ReadState = .{
+        .phase = .selection,
+        .window = 10,
+        .selection = 1,
+        .target = connection.atoms().?.text,
+    };
+    var event: linux.XcbSelectionNotifyEvent = .{
+        .response_type = EVENT_SELECTION_NOTIFY,
+        .pad0 = 0,
+        .sequence = 0,
+        .time = 0,
+        .requestor = 10,
+        .selection = 1,
+        .target = ATOM_STRING,
+        .property = connection.atoms().?.property,
+    };
+
+    try std.testing.expect(connection.routeReadEvent(&state, @ptrCast(&event)));
+    try std.testing.expectEqual(ReadPhase.property, state.phase);
+    try std.testing.expect(state.property_cookie != null);
+
+    state.phase = .selection;
+    state.target = connection.atoms().?.utf8_string;
+    try std.testing.expect(!connection.routeReadEvent(&state, @ptrCast(&event)));
+    try std.testing.expectEqual(ReadPhase.selection, state.phase);
+}
+
 test "X11 property parsing enforces reply framing bounds" {
     const Property = extern struct {
         reply: linux.XcbGetPropertyReply,
@@ -2156,7 +2195,7 @@ test "X11 write and clear commit after the server confirms selection ownership" 
     connection.releaseProviders();
 }
 
-test "X11 stale and equal SelectionClear events preserve a newer provider generation" {
+test "X11 SelectionClear ignores older timestamps and accepts equal timestamps" {
     var connection: Connection = undefined;
     connection.owner_window = 1;
     var provider: Provider = .{
@@ -2180,9 +2219,6 @@ test "X11 stale and equal SelectionClear events preserve a newer provider genera
     connection.handleSelectionClear(&event);
     try std.testing.expect(connection.primary_provider == &provider);
     event.time = 7;
-    connection.handleSelectionClear(&event);
-    try std.testing.expect(connection.primary_provider == &provider);
-    event.time = 8;
     connection.handleSelectionClear(&event);
     try std.testing.expect(connection.primary_provider == null);
     try std.testing.expect(provider.retired);
@@ -2908,6 +2944,18 @@ fn fakeGetSelectionOwner(connection: *linux.XcbConnection, _: u32) callconv(.c) 
     const sequence = fake.next_sequence;
     fake.next_sequence += 1;
     return .{ .sequence = sequence };
+}
+
+fn fakeGetProperty(
+    _: *linux.XcbConnection,
+    _: u8,
+    _: u32,
+    _: u32,
+    _: u32,
+    _: u32,
+    _: u32,
+) callconv(.c) linux.XcbCookie {
+    return .{ .sequence = 1 };
 }
 
 fn fakePollSelectionOwnerReply(
