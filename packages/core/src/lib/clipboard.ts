@@ -193,6 +193,7 @@ export const createClipboard = ({ host, terminal }: ClipboardOptions): Clipboard
 
   const composeMutation = async <Result extends HostMutationResult>(
     options: ClipboardWriteOptions,
+    signal: AbortSignal,
     hostOperation: () => Promise<Result>,
     terminalOperation: () => TerminalClipboardOperationResult,
   ): Promise<MutationResult<Result>> => {
@@ -209,7 +210,7 @@ export const createClipboard = ({ host, terminal }: ClipboardOptions): Clipboard
       }
       const hostResult = await hostOperation()
       const terminalResult =
-        hostResult.status === "unsupported" || hostResult.status === "failed"
+        !signal.aborted && (hostResult.status === "unsupported" || hostResult.status === "failed")
           ? terminalOperation()
           : NOT_ATTEMPTED_TERMINAL
       return { host: hostResult, terminal: terminalResult }
@@ -224,7 +225,7 @@ export const createClipboard = ({ host, terminal }: ClipboardOptions): Clipboard
     read(options) {
       try {
         assertUsable()
-        if (options.signal?.aborted) return Promise.resolve({ status: "cancelled" })
+        if (options.signal?.aborted) return host.read(options)
         return runTrackedOperation(active, options.signal, (signal) => host.read({ ...options, signal }))
       } catch (error) {
         return Promise.reject(error)
@@ -233,16 +234,17 @@ export const createClipboard = ({ host, terminal }: ClipboardOptions): Clipboard
     writeText(text, options) {
       try {
         assertUsable()
-        if (options.signal?.aborted) {
-          return Promise.resolve({ host: { status: "not-attempted" }, terminal: NOT_ATTEMPTED_TERMINAL })
-        }
         validateDestination(options.destination)
         validateClipboardText(text, host.maxWriteBytes)
         const selection = validateSelection(options.selection)
+        if (options.signal?.aborted) {
+          return Promise.resolve({ host: { status: "not-attempted" }, terminal: NOT_ATTEMPTED_TERMINAL })
+        }
         return runTrackedOperation(active, options.signal, (signal) => {
           const operationOptions = { selection, signal }
           return composeMutation(
             options,
+            signal,
             () => host.writeText(text, operationOptions),
             () => terminal.writeText(text, selection),
           )
@@ -254,15 +256,16 @@ export const createClipboard = ({ host, terminal }: ClipboardOptions): Clipboard
     clear(options) {
       try {
         assertUsable()
+        validateDestination(options.destination)
+        const selection = validateSelection(options.selection)
         if (options.signal?.aborted) {
           return Promise.resolve({ host: { status: "not-attempted" }, terminal: NOT_ATTEMPTED_TERMINAL })
         }
-        validateDestination(options.destination)
-        const selection = validateSelection(options.selection)
         return runTrackedOperation(active, options.signal, (signal) => {
           const operationOptions = { selection, signal }
           return composeMutation(
             options,
+            signal,
             () => host.clear(operationOptions),
             () => terminal.clear(selection),
           )

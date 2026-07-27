@@ -346,6 +346,13 @@ fn parseDib(dib: []const u8, explicit_pixel_offset: ?usize, options: ConvertOpti
             red_mask = 0x7c00;
             green_mask = 0x03e0;
             blue_mask = 0x001f;
+        } else if (bits_per_pixel == 32 and header_size_u32 >= 108) {
+            alpha_mask = readInt(u32, dib, 52) catch return error.InvalidData;
+            if (alpha_mask != 0) {
+                red_mask = 0x00ff0000;
+                green_mask = 0x0000ff00;
+                blue_mask = 0x000000ff;
+            }
         }
     } else if (header_size_u32 == 40) {
         external_mask_bytes = if (compression == BI_ALPHABITFIELDS) 16 else 12;
@@ -366,7 +373,7 @@ fn parseDib(dib: []const u8, explicit_pixel_offset: ?usize, options: ConvertOpti
     var green: ?ChannelMask = null;
     var blue: ?ChannelMask = null;
     var alpha: ?ChannelMask = null;
-    if (bits_per_pixel == 16 or compression != BI_RGB) {
+    if (bits_per_pixel == 16 or compression != BI_RGB or alpha_mask != 0) {
         red = try parseMask(red_mask, bits_per_pixel, false);
         green = try parseMask(green_mask, bits_per_pixel, false);
         blue = try parseMask(blue_mask, bits_per_pixel, false);
@@ -584,6 +591,20 @@ fn dibV5Fixture() [132]u8 {
     return dib;
 }
 
+fn dibV5RgbFixture(alpha_mask: u32) [132]u8 {
+    var dib: [132]u8 = @splat(0);
+    std.mem.writeInt(u32, dib[0..4], 124, .little);
+    std.mem.writeInt(i32, dib[4..8], 2, .little);
+    std.mem.writeInt(i32, dib[8..12], 1, .little);
+    std.mem.writeInt(u16, dib[12..14], 1, .little);
+    std.mem.writeInt(u16, dib[14..16], 32, .little);
+    std.mem.writeInt(u32, dib[16..20], BI_RGB, .little);
+    std.mem.writeInt(u32, dib[52..56], alpha_mask, .little);
+    std.mem.writeInt(u32, dib[56..60], LCS_WINDOWS_COLOR_SPACE, .little);
+    dib[124..132].* = .{ 10, 20, 30, 40, 50, 60, 70, 255 };
+    return dib;
+}
+
 test "Windows CF_DIB converts bottom-up padded BGR pixels to PNG" {
     const dib = dibFixture();
     const png = try convertToPng(std.testing.allocator, &dib, testOptions());
@@ -599,6 +620,20 @@ test "Windows CF_DIBV5 converts top-down bitfields and alpha to PNG" {
     const png = try convertToPng(std.testing.allocator, &dib, testOptions());
     defer std.testing.allocator.free(png);
     try expectPngPixels(png, 2, 1, &.{ 30, 20, 10, 40, 70, 60, 50, 255 });
+}
+
+test "Windows CF_DIBV5 honors an explicit BI_RGB alpha mask" {
+    const dib = dibV5RgbFixture(0xff000000);
+    const png = try convertToPng(std.testing.allocator, &dib, testOptions());
+    defer std.testing.allocator.free(png);
+    try expectPngPixels(png, 2, 1, &.{ 30, 20, 10, 40, 70, 60, 50, 255 });
+}
+
+test "Windows CF_DIBV5 keeps BI_RGB padding opaque without an alpha mask" {
+    const dib = dibV5RgbFixture(0);
+    const png = try convertToPng(std.testing.allocator, &dib, testOptions());
+    defer std.testing.allocator.free(png);
+    try expectPngPixels(png, 2, 1, &.{ 30, 20, 10, 70, 60, 50 });
 }
 
 test "Windows DIB conversion honors a noncanonical BMP pixel gap" {
