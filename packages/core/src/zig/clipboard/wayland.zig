@@ -404,12 +404,18 @@ pub const Connection = struct {
             self.allocator.destroy(provider);
             return self.selectionFailure(.protocol);
         }
+        const flush_result = self.queueFlush();
+        if (flush_result == .failed) {
+            self.symbols.wl_proxy_destroy(source);
+            self.allocator.free(transfers);
+            self.allocator.destroy(provider);
+            _ = self.fail(.flush);
+            return .failed;
+        }
         const previous = if (primary) self.primary_provider else self.clipboard_provider;
         if (previous) |old| self.retireProvider(old);
         slot.* = provider;
         if (primary) self.primary_provider = provider else self.clipboard_provider = provider;
-        const flush_result = self.queueFlush();
-        if (flush_result == .failed) _ = self.fail(.flush);
         return if (flush_result == .complete) .ok else .committed;
     }
 
@@ -421,11 +427,14 @@ pub const Connection = struct {
         var arguments = [_]WlArgument{.{ .o = null }};
         _ = self.marshal(device, if (primary) 2 else 0, null, self.symbols.wl_proxy_get_version(device), 0, &arguments);
         if (!self.displayHealthy()) return self.selectionFailure(.protocol);
+        const flush_result = self.queueFlush();
+        if (flush_result == .failed) {
+            _ = self.fail(.flush);
+            return .failed;
+        }
         const provider = if (primary) self.primary_provider else self.clipboard_provider;
         if (provider) |value| self.retireProvider(value);
         if (primary) self.primary_provider = null else self.clipboard_provider = null;
-        const flush_result = self.queueFlush();
-        if (flush_result == .failed) _ = self.fail(.flush);
         return if (flush_result == .complete) .ok else .committed;
     }
 
@@ -1518,7 +1527,7 @@ test "Wayland writes and clears settle deterministically after marshalling for e
     const cases = [_]TestCase{
         .{ .flush = .{ .result = 0, .errno = .SUCCESS }, .selection = .ok, .output_pending = false, .phase = .ready },
         .{ .flush = .{ .result = -1, .errno = .AGAIN }, .selection = .committed, .output_pending = true, .phase = .ready },
-        .{ .flush = .{ .result = -1, .errno = .PIPE }, .selection = .committed, .output_pending = false, .phase = .failed },
+        .{ .flush = .{ .result = -1, .errno = .PIPE }, .selection = .failed, .output_pending = false, .phase = .failed },
     };
 
     var symbols: linux.WaylandSymbols = undefined;
@@ -1541,6 +1550,29 @@ test "Wayland writes and clears settle deterministically after marshalling for e
         try std.testing.expectEqual(case.phase, clear.phase);
         try std.testing.expectEqual(@as(u8, 1), clear.test_flush_marshal_count);
     }
+}
+
+test "Wayland fatal selection flush preserves local ownership state" {
+    var symbols: linux.WaylandSymbols = undefined;
+    symbols.wl_proxy_marshal_array_flags = testMarshal;
+    symbols.wl_proxy_add_listener = testAddListener;
+    symbols.wl_proxy_destroy = testDestroyProxy;
+    symbols.wl_proxy_get_version = testProxyVersion;
+
+    var failed_write = testReadyConnection(&symbols, .{ .result = -1, .errno = .PIPE });
+    const caller_data = try std.testing.allocator.dupe(u8, "caller-owned");
+    defer std.testing.allocator.free(caller_data);
+    try std.testing.expectEqual(SelectionResult.failed, failed_write.publishText(false, caller_data));
+    try std.testing.expect(!failed_write.hasProviders());
+
+    var failed_clear = testReadyConnection(&symbols, .{ .result = 0, .errno = .SUCCESS });
+    const provider_data = try std.testing.allocator.dupe(u8, "provider-owned");
+    try std.testing.expectEqual(SelectionResult.ok, failed_clear.publishText(false, provider_data));
+    const provider = failed_clear.clipboard_provider.?;
+    failed_clear.flush_outcome_override = .{ .result = -1, .errno = .PIPE };
+    try std.testing.expectEqual(SelectionResult.failed, failed_clear.clearSelection(false));
+    try std.testing.expect(failed_clear.clipboard_provider == provider);
+    failed_clear.releaseProviders();
 }
 
 fn testReadyConnection(symbols: *const linux.WaylandSymbols, flush: FlushOutcome) Connection {
