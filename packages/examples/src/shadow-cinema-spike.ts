@@ -21,6 +21,7 @@ import { SubjectCropTracker, sampleFlowingContour } from "./lib/cinematic-motion
 import { parseShadowCinemaArgs } from "./lib/shadow-cinema-args.js"
 import {
   SEXTANT_SAMPLE_CHANNELS,
+  luminancePreservingColor,
   sextantAverageColor,
   sextantGlyph,
   sextantMaskByLuminance,
@@ -720,13 +721,14 @@ function sampleSourceColor(
   MOSAIC_COLOR_SAMPLES[outputOffset + 2] = Math.round(blue / count)
 }
 
-function setGradedColor(color: RGBA, packed: number, base: RGBA, sourceMix: number): void {
-  const red = ((packed >> 16) & 0xff) / 255
-  const green = ((packed >> 8) & 0xff) / 255
-  const blue = (packed & 0xff) / 255
-  color.r = base.r + (red - base.r) * sourceMix
-  color.g = base.g + (green - base.g) * sourceMix
-  color.b = base.b + (blue - base.b) * sourceMix
+function packedColor(color: RGBA): number {
+  return (Math.round(color.r * 255) << 16) | (Math.round(color.g * 255) << 8) | Math.round(color.b * 255)
+}
+
+function setPackedColor(color: RGBA, packed: number): void {
+  color.r = ((packed >> 16) & 0xff) / 255
+  color.g = ((packed >> 8) & 0xff) / 255
+  color.b = (packed & 0xff) / 255
 }
 
 function renderMosaicCell(
@@ -768,7 +770,14 @@ function renderMosaicCell(
     buffer.setCell(originX + targetColumn, originY + targetRow, " ", TRANSPARENT, receiverPalette.background)
     return
   }
-  setGradedColor(MOSAIC_FOREGROUND, sextantAverageColor(MOSAIC_COLOR_SAMPLES, mask), baseColor, 0.22 + strength * 0.12)
+  setPackedColor(
+    MOSAIC_FOREGROUND,
+    luminancePreservingColor(
+      sextantAverageColor(MOSAIC_COLOR_SAMPLES, mask),
+      packedColor(baseColor),
+      0.22 + strength * 0.12,
+    ),
+  )
   buffer.setCell(
     originX + targetColumn,
     originY + targetRow,

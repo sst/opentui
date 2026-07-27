@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test"
 
-import { sextantAverageColor, sextantGlyph, sextantMaskByLuminance } from "./sextant-cell.js"
+import { luminancePreservingColor, sextantAverageColor, sextantGlyph, sextantMaskByLuminance } from "./sextant-cell.js"
+
+function packedLuminance(color: number): number {
+  return ((color >> 16) & 0xff) * 0.2126 + ((color >> 8) & 0xff) * 0.7152 + (color & 0xff) * 0.0722
+}
 
 test("maps sextant masks around the unified block characters", () => {
   expect(sextantGlyph(0)).toBe(" ")
@@ -31,4 +35,19 @@ test("varies equal-luminance placement by cell dither instead of manufacturing r
 
   expect(masks.every((mask) => (mask & (mask - 1)) === 0)).toBe(true)
   expect(new Set(masks).size).toBeGreaterThanOrEqual(4)
+})
+
+test("source color cannot collapse cinematic brightness groups in a low-light frame", () => {
+  const source = 0x061426
+  const shadow = 0x31566a
+  const foreground = 0x58c8ec
+  const gradedShadow = luminancePreservingColor(source, shadow, 0.22)
+  const gradedForeground = luminancePreservingColor(source, foreground, 0.34)
+
+  expect(packedLuminance(gradedShadow)).toBeCloseTo(packedLuminance(shadow), 0)
+  expect(packedLuminance(gradedForeground)).toBeCloseTo(packedLuminance(foreground), 0)
+  expect(packedLuminance(gradedForeground) - packedLuminance(gradedShadow)).toBeCloseTo(
+    packedLuminance(foreground) - packedLuminance(shadow),
+    0,
+  )
 })

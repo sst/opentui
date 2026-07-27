@@ -72,6 +72,39 @@ export function sextantAverageColor(samples: Uint8Array, mask: number): number {
   return (Math.round(red / count) << 16) | (Math.round(green / count) << 8) | Math.round(blue / count)
 }
 
+function chromaGamutScale(luminance: number, deviation: number): number {
+  if (deviation > 0) return (1 - luminance) / deviation
+  if (deviation < 0) return luminance / -deviation
+  return 1
+}
+
+export function luminancePreservingColor(source: number, base: number, sourceMix: number): number {
+  if (!Number.isFinite(sourceMix) || sourceMix < 0 || sourceMix > 1) {
+    throw new RangeError("source color mix must be between 0 and 1")
+  }
+  const sourceRed = ((source >> 16) & 0xff) / 255
+  const sourceGreen = ((source >> 8) & 0xff) / 255
+  const sourceBlue = (source & 0xff) / 255
+  const baseRed = ((base >> 16) & 0xff) / 255
+  const baseGreen = ((base >> 8) & 0xff) / 255
+  const baseBlue = (base & 0xff) / 255
+  const sourceLuminance = sourceRed * 0.2126 + sourceGreen * 0.7152 + sourceBlue * 0.0722
+  const baseLuminance = baseRed * 0.2126 + baseGreen * 0.7152 + baseBlue * 0.0722
+  const redDeviation = sourceRed - sourceLuminance
+  const greenDeviation = sourceGreen - sourceLuminance
+  const blueDeviation = sourceBlue - sourceLuminance
+  const gamutScale = Math.min(
+    1,
+    chromaGamutScale(baseLuminance, redDeviation),
+    chromaGamutScale(baseLuminance, greenDeviation),
+    chromaGamutScale(baseLuminance, blueDeviation),
+  )
+  const red = baseRed + (baseLuminance + redDeviation * gamutScale - baseRed) * sourceMix
+  const green = baseGreen + (baseLuminance + greenDeviation * gamutScale - baseGreen) * sourceMix
+  const blue = baseBlue + (baseLuminance + blueDeviation * gamutScale - baseBlue) * sourceMix
+  return (Math.round(red * 255) << 16) | (Math.round(green * 255) << 8) | Math.round(blue * 255)
+}
+
 function glyphForMask(mask: number): string {
   // Unicode reuses the existing empty, left, right, and full block glyphs for four of the 64 masks.
   if (mask === 0) return " "
