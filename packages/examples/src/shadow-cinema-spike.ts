@@ -242,6 +242,7 @@ let colorIndex = 0
 let colorCycleSpeedIndex = 2
 let shadowGlyphIndex = -1
 let equalizerProjectionVisible = false
+let videoPulseEnabled = true
 let viewportMode: ViewportMode = "widescreen"
 let renderStyle: RenderStyle = "cinematic"
 let appearanceMode: AppearanceMode = "dark"
@@ -939,7 +940,9 @@ function coverDisplacedCell(column: number, row: number, viewportWidth: number, 
   if (!frameAnalysis) return { x: column, y: row }
   const scale = Math.max(1, Math.min(viewportWidth / RECEIVER_WIDTH, viewportHeight / RECEIVER_HEIGHT))
   const displacement = Math.min(5, Math.round(frameAnalysis.motionMagnitude * 18 * scale))
-  const bassDisplacement = choreography.bassImpact * (2 + rhythmAnalyzer.stereoWidth * 2) * scale
+  const bassDisplacement = videoPulseEnabled
+    ? choreography.bassImpact * (2 + rhythmAnalyzer.stereoWidth * 2) * scale
+    : 0
   const midDisplacement = Math.round(choreography.midImpact * (1 + rhythmAnalyzer.stereoWidth * 2) * scale)
   const impactPolarity = (row + Math.floor(column / Math.max(1, Math.round(viewportWidth / 14)))) % 2 === 0 ? -1 : 1
   const centerX = Math.max(1, (viewportWidth - 1) * 0.5)
@@ -955,7 +958,7 @@ function coverDisplacedCell(column: number, row: number, viewportWidth: number, 
 function videoSample(column: number, row: number): VideoSampleResult {
   if (!frameAnalysis) return { intensity: 0, edge: 0, detail: 0, difference: 0 }
   const displacement = Math.min(2, Math.round(frameAnalysis.motionMagnitude * 18))
-  const bassDisplacement = choreography.bassImpact * (2 + rhythmAnalyzer.stereoWidth * 2)
+  const bassDisplacement = videoPulseEnabled ? choreography.bassImpact * (2 + rhythmAnalyzer.stereoWidth * 2) : 0
   const midDisplacement = Math.round(choreography.midImpact * (1 + rhythmAnalyzer.stereoWidth * 2))
   const impactPolarity = (row + Math.floor(column / 4)) % 2 === 0 ? -1 : 1
   const centerX = (RECEIVER_WIDTH - 1) * 0.5
@@ -1259,7 +1262,7 @@ function updateControls(): void {
     `Space       ${paused ? "resume" : "pause"} playback`,
     `← / →       seek -/+0.25s  (${formatTime(currentTime)} / ${formatTime(video?.info.duration ?? 0)})`,
     "Shift+←/→   seek -/+5s",
-    `M           audio: ${muted ? "muted" : "unmuted"}`,
+    `M / P       audio: ${muted ? "muted" : "unmuted"}  pulse: ${videoPulseEnabled ? "on" : "off"}`,
     "R           restart video",
     `C / L       colors: ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}  appearance: ${appearanceMode}`,
     `Shift+C     color speed: ${COLOR_CYCLE_SPEEDS[colorCycleSpeedIndex]!.name}`,
@@ -1272,7 +1275,7 @@ function updateControls(): void {
   helpText.content =
     (rendererInstance?.height ?? 40) < 18
       ? [
-          `Space ${playback}  M ${muted ? "muted" : "audio"}  R restart`,
+          `Space ${playback}  M ${muted ? "muted" : "audio"}  P pulse ${videoPulseEnabled ? "on" : "off"}  R restart`,
           "←/→ seek .25s  Shift+←/→ seek 5s",
           `C colors ${colorMode === "fixed" ? `fixed ${colorIndex + 1}` : colorMode}  L ${appearanceMode}  Shift+C speed  1-4 fixed`,
           `G glyph ${glyph}  S style ${renderStyle}  E equalizer ${equalizerProjectionVisible ? "on" : "off"}  W viewport ${viewportMode}`,
@@ -1581,6 +1584,7 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
   colorCycleSpeedIndex = 2
   shadowGlyphIndex = -1
   equalizerProjectionVisible = false
+  videoPulseEnabled = true
   viewportMode = "widescreen"
   renderStyle = "cinematic"
   appearanceMode = "dark"
@@ -1699,6 +1703,11 @@ export async function run(renderer: CliRenderer, videoPath: string): Promise<voi
     } else if (key.name === "m" && !key.ctrl && !key.meta && !key.shift && video) {
       muted = !muted
       video.setMuted(muted)
+      updateControls()
+      key.preventDefault()
+    } else if (key.name === "p" && !key.ctrl && !key.meta && !key.shift) {
+      videoPulseEnabled = !videoPulseEnabled
+      refreshScene()
       updateControls()
       key.preventDefault()
     } else if (key.name === "r" && !key.ctrl && !key.meta && !key.shift) {
