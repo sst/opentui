@@ -87,6 +87,29 @@ test "OptimizedBuffer retains image data for deferred protocol rendering" {
     try std.testing.expectEqual(@as(u8, 7), target.image_placements.items[0].image.pixels[0]);
 }
 
+test "OptimizedBuffer blocks fallback composites transparent images over lower placements" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+    const lower = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 0, 255, 255 }, 1, 1, 4);
+    defer lower.deinit();
+    const upper = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 0 }, 1, 1, 4);
+    defer upper.deinit();
+    try std.testing.expect(try target.drawImage(lower, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .blocks));
+    try std.testing.expect(try target.drawImage(upper, 2, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .blocks));
+
+    target.materializeImageFallback(1);
+    target.materializeImageFallback(2);
+
+    const cell = target.get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), gp.imageIdFromChar(cell.char));
+    try std.testing.expectEqual(ansi.rgbColor(0, 0, 255, 255), cell.fg);
+    try std.testing.expectEqual(ansi.rgbColor(0, 0, 255, 255), cell.bg);
+}
+
 test "OptimizedBuffer copies transparent image reservation markers from frame buffers" {
     var pool = gp.GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
@@ -103,6 +126,91 @@ test "OptimizedBuffer copies transparent image reservation markers from frame bu
     target.drawFrameBuffer(0, 0, source_buffer, null, null, null, null);
     try std.testing.expect(gp.isImageChar(target.get(0, 0).?.char));
     try std.testing.expectEqual(@as(usize, 1), target.image_placements.items.len);
+}
+
+test "OptimizedBuffer copies malformed image markers as fallback cells" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const source_buffer = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer source_buffer.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+    const source = try image.createFromRgba(std.testing.allocator, &[_]u8{ 7, 8, 9, 255 }, 1, 1, 4);
+    defer source.deinit();
+    try std.testing.expect(try source_buffer.drawImage(source, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+    source_buffer.setRaw(1, 0, .{
+        .char = gp.packImageCell(100, 15),
+        .fg = ansi.rgbColor(1, 2, 3, 255),
+        .bg = ansi.rgbColor(4, 5, 6, 255),
+        .attributes = 0,
+    });
+
+    target.drawFrameBuffer(0, 0, source_buffer, null, null, null, null);
+
+    try std.testing.expect(gp.isImageChar(target.get(0, 0).?.char));
+    try std.testing.expectEqual(@as(u32, 0x2588), target.get(1, 0).?.char);
+}
+
+test "OptimizedBuffer copies ordinary cells when image bookkeeping allocation fails" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const source_buffer = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer source_buffer.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+    const source = try image.createFromRgba(std.testing.allocator, &[_]u8{ 7, 8, 9, 255 }, 1, 1, 4);
+    defer source.deinit();
+    try std.testing.expect(try source_buffer.drawImage(source, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+    source_buffer.setRaw(1, 0, .{
+        .char = 'X',
+        .fg = ansi.rgbColor(1, 2, 3, 255),
+        .bg = ansi.rgbColor(4, 5, 6, 255),
+        .attributes = 0,
+    });
+
+    for (0..2) |fail_index| {
+        target.clear(ansi.rgbColor(0, 0, 0, 255), null);
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        target.allocator = failing.allocator();
+        target.drawFrameBuffer(0, 0, source_buffer, null, null, null, null);
+        target.allocator = std.testing.allocator;
+
+        try std.testing.expect(failing.has_induced_failure);
+        try std.testing.expectEqual(@as(u32, 'X'), target.get(1, 0).?.char);
+        try std.testing.expect(!gp.isImageChar(target.get(0, 0).?.char));
+        try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+    }
+}
+
+test "OptimizedBuffer clips image geometry without signed overflow" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+    const source = try image.createFromRgba(std.testing.allocator, &[_]u8{ 7, 8, 9, 255 }, 1, 1, 4);
+    defer source.deinit();
+
+    try std.testing.expect(!try target.drawImage(
+        source,
+        1,
+        std.math.maxInt(i32),
+        std.math.maxInt(i32),
+        std.math.maxInt(u32),
+        std.math.maxInt(u32),
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        .auto,
+    ));
 }
 
 test "OptimizedBuffer plane fills ignore color alpha over image markers" {
@@ -126,6 +234,33 @@ test "OptimizedBuffer plane fills ignore color alpha over image markers" {
         try std.testing.expect(gp.isImageChar(target.get(1, 0).?.char));
         try std.testing.expectEqual(@as(usize, 1), target.image_placements.items.len);
     }
+}
+
+test "OptimizedBuffer transparent drawChar only writes over an image marker" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 2, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+    const source = try image.createFromRgba(std.testing.allocator, &[_]u8{ 7, 8, 9, 255 }, 1, 1, 4);
+    defer source.deinit();
+    target.setRaw(1, 0, .{
+        .char = 'B',
+        .fg = ansi.rgbColor(1, 2, 3, 255),
+        .bg = ansi.rgbColor(4, 5, 6, 255),
+        .attributes = 0,
+    });
+    try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
+
+    target.drawChar('X', 0, 0, ansi.rgbColor(40, 50, 60, 0), ansi.rgbColor(10, 20, 30, 0), 0);
+    target.drawChar('X', 1, 0, ansi.rgbColor(40, 50, 60, 0), ansi.rgbColor(10, 20, 30, 0), 0);
+
+    const covered = target.get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, 'X'), covered.char);
+    try std.testing.expectEqual(@as(u8, 255), ansi.alpha(covered.fg));
+    try std.testing.expectEqual(@as(u8, 255), ansi.alpha(covered.bg));
+    try std.testing.expectEqual(@as(u32, 'B'), target.get(1, 0).?.char);
 }
 
 test "OptimizedBuffer transparent text space covers an image marker" {

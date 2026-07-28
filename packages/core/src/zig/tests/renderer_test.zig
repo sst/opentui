@@ -409,6 +409,42 @@ test "renderer replays a wide grapheme that starts before a Sixel placement" {
     try std.testing.expect(overlay > sixel);
 }
 
+test "renderer preserves terminal semantics when replaying cells over Sixel" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 3, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.sixel = true;
+    test_renderer.renderer.terminal.caps.hyperlinks = true;
+    test_renderer.renderer.terminal.caps.explicit_width = true;
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    const link_id = try link_pool.alloc("https://example.com/replayed");
+    const linked_bold = ansi.TextAttributes.setLinkId(ansi.TextAttributes.BOLD, link_id);
+
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, image_handle, 0, 0, 3, 1, 6, 2, 0, 0, 1, 1, .sixel));
+    try next.drawText("界", 0, 0, ansi.rgbColor(255, 255, 255, 255), ansi.rgbColor(0, 0, 0, 255), linked_bold);
+    try next.drawText("X", 2, 0, ansi.rgbColor(255, 255, 255, 255), ansi.rgbColor(0, 0, 0, 255), 0);
+    _ = test_renderer.renderer.render(true);
+
+    const output = test_renderer.memory.lastWrite();
+    const sixel = std.mem.lastIndexOf(u8, output, "\x1bP0;1;0q") orelse return error.TestUnexpectedResult;
+    const replay = output[sixel..];
+    try std.testing.expect(std.mem.indexOf(u8, replay, "\x1b]8;id=") != null);
+    try std.testing.expect(std.mem.indexOf(u8, replay, ";https://example.com/replayed\x1b\\") != null);
+    try std.testing.expect(std.mem.indexOf(u8, replay, "\x1b]8;;\x1b\\") != null);
+    try std.testing.expect(std.mem.indexOf(u8, replay, "\x1b]66;w=2;界\x1b\\") != null);
+    try std.testing.expect(std.mem.indexOf(u8, replay, "\x1b[0m\x1b[1;3H") != null);
+}
+
 fn expectPlaneCoversImage(protocol: image.RenderProtocol) !void {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
