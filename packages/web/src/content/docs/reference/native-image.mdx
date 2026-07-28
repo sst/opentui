@@ -1,9 +1,8 @@
 ---
 title: Native images
 description: Decode and manipulate PNG, JPEG, WebP, GIF, and RGBA pixels
-order: 5
+order: 10
 skill:
-  entry: true
   intents: [image, native-image, png, jpeg, webp, gif, rgba, pixels, resize]
 ---
 
@@ -71,7 +70,7 @@ Format detection uses encoded bytes, not names, URL suffixes, response headers, 
 
 The default output stride is `width * 4`. A custom `copyTo()` stride must fit one row, and the destination must fit every row.
 
-`takeRaw()` consumes the `NativeImage`; later accessors and operations throw, while `dispose()` remains a safe no-op. The returned `OwnedRawImage.data` directly views native memory. Dispose it only after every consumer has finished, because explicit disposal frees the native allocation and invalidates the view:
+`takeRaw()` consumes an exclusively owned `NativeImage`; it throws while a native render buffer retains the image. Later accessors and operations throw, while `dispose()` remains a safe no-op. The returned `OwnedRawImage.data` directly views native memory. Dispose it only after every consumer has finished, because explicit disposal frees the native allocation and invalidates the view:
 
 ```typescript
 const image = await NativeImage.load(new Blob([encodedImage]))
@@ -122,6 +121,6 @@ try {
 
 Filesystem, network, HTTP-status, and unsupported-scheme failures throw `ImageLoadError`. Aborts rethrow `AbortSignal.reason`; acquisition limits throw `ImageError` with code `memory-limit`. Native decoding and operations also throw `ImageError`; JavaScript argument validation uses `TypeError` and `RangeError`.
 
-Native decoding limits encoded data to 64 MiB, each dimension to 16,384 pixels, total pixels to 25 million, and decoded storage to 100 MiB. PNG `iCCP` and unsupported `gAMA`/`cHRM` profiles are rejected; unsupported `cICP` is treated as assumed sRGB.
+Native decoding limits encoded data to 64 MiB, each dimension to 16,384 pixels, total pixels to 25 million, and decoded storage to 100 MiB. PNG `iCCP` without a supported higher-priority `cICP`, plus unsupported `cICP`/`gAMA`/`cHRM` metadata, is rejected.
 
 To display an image, see [Image](/docs/components/image).

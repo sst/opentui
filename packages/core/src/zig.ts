@@ -1265,7 +1265,7 @@ function getOpenTUILib(libPath?: string) {
     imageCopyPixels: { args: ["u32", "ptr", "u64", "u32", "u8"], returns: "u32" },
     imageResize: { args: ["u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
     imageExtract: { args: ["u32", "u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
-    imageExtend: { args: ["u32", "u32", "u32", "u32", "u32", "ptr", "ptr"], returns: "u32" },
+    imageExtend: { args: ["u32", "u32", "u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
     imageTransform: { args: ["u32", "u32", "ptr"], returns: "u32" },
     imageComposite: { args: ["u32", "u32", "i32", "i32", "u32", "u8", "ptr"], returns: "u32" },
 
@@ -2793,6 +2793,7 @@ class FFIRenderLib implements RenderLib {
         readyGeneration: 0,
       } as NativeAudioStreamStats,
     },
+    imageDrawOptions: allocStruct(ImageDrawOptionsStruct),
     gridDrawOptions: allocStruct(GridDrawOptionsStruct),
   }
   public readonly encoder: TextEncoder = new TextEncoder()
@@ -3331,20 +3332,25 @@ class FFIRenderLib implements RenderLib {
     protocol: ImageRenderProtocol,
   ): boolean {
     const protocolId = { auto: 0, kitty: 1, sixel: 2, blocks: 3 }[protocol]
-    const options = ImageDrawOptionsStruct.pack({
-      x,
-      y,
-      width,
-      height,
-      pixelWidth,
-      pixelHeight,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
-      protocol: protocolId,
-    })
-    return Boolean(this.opentui.symbols.bufferDrawImage(buffer, image, options))
+    const storage = this.ffiStructStorage.imageDrawOptions
+    ImageDrawOptionsStruct.packInto(
+      {
+        x,
+        y,
+        width,
+        height,
+        pixelWidth,
+        pixelHeight,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
+        protocol: protocolId,
+      },
+      storage.view,
+      0,
+    )
+    return Boolean(this.opentui.symbols.bufferDrawImage(buffer, image, storage.buffer))
   }
 
   public bufferDrawPackedBuffer(
@@ -5709,8 +5715,10 @@ class FFIRenderLib implements RenderLib {
   ): { status: number; handle: ImageHandle | null } {
     if (!(background instanceof Uint8Array) || background.byteLength !== 4) return { status: 7, handle: null }
     const output = new Uint32Array(1)
+    const packedBackground =
+      (background[0] | (background[1] << 8) | (background[2] << 16) | (background[3] << 24)) >>> 0
     return this.imageHandleResult(
-      this.opentui.symbols.imageExtend(image, top, right, bottom, left, background, output),
+      this.opentui.symbols.imageExtend(image, top, right, bottom, left, packedBackground, output),
       output,
     )
   }

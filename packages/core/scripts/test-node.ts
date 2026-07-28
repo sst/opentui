@@ -17,6 +17,7 @@ const treeSitterMarkdownRenderableTestDataPath = resolve(tmpdir(), "tree-sitter-
 const textBufferTestDataPath = resolve(tmpdir(), "text-buffer-node-test")
 const runtimeAssetTestDataPath = resolve(tmpdir(), "opentui-runtime-asset-node-test")
 const audioRecorderTestDataPath = resolve(tmpdir(), "opentui-audio-recorder-node-test")
+const imageTestDataPath = resolve(tmpdir(), "opentui-image-node-test")
 const treeSitterClientTestDataPaths = [
   "tree-sitter-shared-test-data",
   "tree-sitter-injections-test-data",
@@ -32,6 +33,7 @@ const treeSitterTestDataPaths = [
   textBufferTestDataPath,
   runtimeAssetTestDataPath,
   audioRecorderTestDataPath,
+  imageTestDataPath,
   ...treeSitterClientTestDataPaths,
 ]
 const treeSitterAssetsDir = "src/lib/tree-sitter/assets"
@@ -230,6 +232,7 @@ try {
           OTUI_TEXT_BUFFER_TEST_TMPDIR: textBufferTestDataPath,
           OTUI_RUNTIME_ASSET_TEST_TMPDIR: runtimeAssetTestDataPath,
           OTUI_AUDIO_RECORDER_TEST_TMPDIR: audioRecorderTestDataPath,
+          OTUI_IMAGE_TEST_TMPDIR: imageTestDataPath,
           XDG_DATA_HOME: treeSitterDefaultDataPath,
         },
         timeout: nodeProcessTimeoutMs,

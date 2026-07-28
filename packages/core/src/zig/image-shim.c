@@ -15,6 +15,24 @@
 #define WUFFS_CONFIG__MODULE__PNG
 #include "vendor/wuffs/wuffs-v0.3.c"
 
+static _Thread_local int ot_image_stbi_out_of_memory = 0;
+
+static void *ot_image_stbi_malloc(size_t size) {
+    void *result = malloc(size);
+    if (!result && size > 0) ot_image_stbi_out_of_memory = 1;
+    return result;
+}
+
+static void *ot_image_stbi_realloc(void *pointer, size_t old_size, size_t new_size) {
+    (void)old_size;
+    void *result = realloc(pointer, new_size);
+    if (!result && new_size > 0) ot_image_stbi_out_of_memory = 1;
+    return result;
+}
+
+#define STBI_MALLOC(size) ot_image_stbi_malloc(size)
+#define STBI_REALLOC_SIZED(pointer, old_size, new_size) ot_image_stbi_realloc(pointer, old_size, new_size)
+#define STBI_FREE(pointer) free(pointer)
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_STATIC
 #define STBI_ONLY_JPEG
@@ -325,8 +343,9 @@ int ot_image_jpeg_header_probe(const uint8_t *data, uint32_t data_len, uint32_t 
     int w = 0;
     int h = 0;
     int channels = 0;
+    ot_image_stbi_out_of_memory = 0;
     if (!stbi_info_from_memory(data, (int)data_len, &w, &h, &channels) || w <= 0 || h <= 0) {
-        return OT_IMAGE_SHIM_INVALID;
+        return ot_image_stbi_out_of_memory ? OT_IMAGE_SHIM_OUT_OF_MEMORY : OT_IMAGE_SHIM_INVALID;
     }
     *width = (uint32_t)w;
     *height = (uint32_t)h;
@@ -339,8 +358,9 @@ int ot_image_jpeg_probe(const uint8_t *data, uint32_t data_len, uint32_t *width,
     int w = 0;
     int h = 0;
     int channels = 0;
+    ot_image_stbi_out_of_memory = 0;
     uint8_t *decoded = stbi_load_from_memory(data, (int)data_len, &w, &h, &channels, 4);
-    if (!decoded) return OT_IMAGE_SHIM_INVALID;
+    if (!decoded) return ot_image_stbi_out_of_memory ? OT_IMAGE_SHIM_OUT_OF_MEMORY : OT_IMAGE_SHIM_INVALID;
     stbi_image_free(decoded);
     if (w <= 0 || h <= 0) return OT_IMAGE_SHIM_INVALID;
     *width = (uint32_t)w;
@@ -359,8 +379,9 @@ int ot_image_jpeg_decode(const uint8_t *data, uint32_t data_len, uint8_t *output
     int width = 0;
     int height = 0;
     int channels = 0;
+    ot_image_stbi_out_of_memory = 0;
     uint8_t *decoded = stbi_load_from_memory(data, (int)data_len, &width, &height, &channels, 4);
-    if (!decoded) return OT_IMAGE_SHIM_INVALID;
+    if (!decoded) return ot_image_stbi_out_of_memory ? OT_IMAGE_SHIM_OUT_OF_MEMORY : OT_IMAGE_SHIM_INVALID;
     if ((uint32_t)width != expected_width || (uint32_t)height != expected_height) {
         stbi_image_free(decoded);
         return OT_IMAGE_SHIM_INVALID;

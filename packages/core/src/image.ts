@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises"
+import { open, stat } from "node:fs/promises"
 
 import { toArrayBuffer } from "./platform/ffi.js"
 import { resolveRenderLib, type ImageHandle, type RenderLib } from "./zig.js"
@@ -281,6 +281,36 @@ async function readResponseBytes(response: Response, signal?: AbortSignal): Prom
   return data
 }
 
+async function readFileBytes(path: string | URL, signal?: AbortSignal): Promise<Uint8Array> {
+  signal?.throwIfAborted()
+  if ((await stat(path)).size > MAX_ENCODED_BYTES) throw imageError(6)
+
+  const file = await open(path, "r")
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (true) {
+      signal?.throwIfAborted()
+      const chunk = new Uint8Array(Math.min(64 * 1024, MAX_ENCODED_BYTES - total + 1))
+      const { bytesRead } = await file.read(chunk, 0, chunk.byteLength, null)
+      if (bytesRead === 0) break
+      total += bytesRead
+      if (total > MAX_ENCODED_BYTES) throw imageError(6)
+      chunks.push(chunk.subarray(0, bytesRead))
+    }
+  } finally {
+    await file.close()
+  }
+
+  const data = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    data.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return data
+}
+
 async function loadResponseBytes(response: Response, source: string, signal?: AbortSignal): Promise<Uint8Array> {
   try {
     signal?.throwIfAborted()
@@ -356,9 +386,10 @@ export class NativeImage {
       const path = url ?? source
       let data: Uint8Array
       try {
-        data = await readFile(path, { signal: options.signal })
+        data = await readFileBytes(path, options.signal)
       } catch (error) {
         if (options.signal?.aborted) throw options.signal.reason
+        if (error instanceof ImageError) throw error
         throw new ImageLoadError("file-read", String(source), `Failed to read image: ${String(source)}`, {
           cause: error,
         })
@@ -446,6 +477,8 @@ export class NativeImage {
     if (height !== undefined) requireU32(height, "height")
     if (width === undefined) width = Math.max(1, Math.round((this.width * height!) / this.height))
     if (height === undefined) height = Math.max(1, Math.round((this.height * width) / this.width))
+    requireU32(width, "width")
+    requireU32(height, "height")
     return this.wrap(this.lib.imageResize(this.guard(), width, height, FILTER_IDS[options.kernel ?? "area"]))
   }
 
@@ -517,7 +550,7 @@ export class NativeImage {
   public takeRaw(): OwnedRawImage {
     const handle = this.guard()
     const pointer = this.lib.imageGetPixelsPtr(handle)
-    if (!pointer) throw imageError(10)
+    if (!pointer) throw new Error("Cannot transfer image pixels while native buffers retain the image")
     const width = this.imageInfo.width
     const height = this.imageInfo.height
     const stride = width * 4

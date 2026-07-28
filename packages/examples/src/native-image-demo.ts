@@ -170,8 +170,7 @@ function createCard(renderer: CliRenderer, item: GalleryItem, index: number): Bo
     flexGrow: 1,
     flexShrink: 1,
     minHeight: 5,
-    onLoad: (image) => {
-      const info = image.info()
+    onLoad: (info) => {
       metadata.content = `${info.format.toUpperCase()}  ${info.width}×${info.height}\nRGBA8  ${info.hasAlpha ? "ALPHA" : "OPAQUE"}`
     },
     onError: (error) => {
