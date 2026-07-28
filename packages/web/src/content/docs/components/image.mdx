@@ -3,6 +3,7 @@ title: Image
 description: Load and render images with Kitty, Sixel, or Unicode blocks
 order: 19
 skill:
+  entry: true
   intents: [image, image-renderable, png, jpeg, webp, gif, kitty, sixel]
 ---
 
@@ -86,19 +87,19 @@ Use `OPENTUI_IMAGE_PROTOCOL=auto|kitty|sixel|blocks` to set the global default. 
 
 ## Options and state
 
-| Member               | Type                                       | Description                                         |
-| -------------------- | ------------------------------------------ | --------------------------------------------------- |
-| `source`             | `ImageSource`                              | Image source; optional                              |
-| `fit`                | `"fit" \| "cover" \| "fill"`               | Destination sizing                                  |
-| `protocol`           | `"auto" \| "kitty" \| "sixel" \| "blocks"` | Requested rendering protocol                        |
-| `onLoad`             | `(info: ImageInfo) => void`                | Called with metadata after the current source loads |
-| `onError`            | `(error: unknown) => void`                 | Called when the current source fails                |
-| `imageInfo`          | `ImageInfo \| null`                        | Metadata for the currently displayed image          |
-| `loading`            | `boolean`                                  | Whether the current source is loading               |
-| `loadError`          | `unknown`                                  | Current load error, otherwise `null`                |
-| `loadPromise`        | `Promise<void> \| null`                    | Settles after the current load attempt              |
-| `effectiveProtocol`  | `kitty \| sixel \| blocks`                 | Resolved protocol                                   |
-| `cellAspectRatio`    | `number`                                   | Physical or fallback cell aspect ratio              |
-| `getFittedSize(...)` | `(width, height) => { width, height }`     | Resolve destination cells for the current fit mode  |
+| Member               | Type                                       | Description                                        |
+| -------------------- | ------------------------------------------ | -------------------------------------------------- |
+| `source`             | `ImageSource`                              | Image source; optional                             |
+| `fit`                | `"fit" \| "cover" \| "fill"`               | Destination sizing                                 |
+| `protocol`           | `"auto" \| "kitty" \| "sixel" \| "blocks"` | Requested rendering protocol                       |
+| `onLoad`             | `(image: NativeImage) => void`             | Called after the current source loads              |
+| `onError`            | `(error: unknown) => void`                 | Called when the current source fails               |
+| `image`              | `NativeImage \| null`                      | Currently displayed renderable-owned image         |
+| `loading`            | `boolean`                                  | Whether the current source is loading              |
+| `loadError`          | `unknown`                                  | Current load error, otherwise `null`               |
+| `loadPromise`        | `Promise<void> \| null`                    | Settles after the current load attempt             |
+| `effectiveProtocol`  | `kitty \| sixel \| blocks`                 | Resolved protocol                                  |
+| `cellAspectRatio`    | `number`                                   | Physical or fallback cell aspect ratio             |
+| `getFittedSize(...)` | `(width, height) => { width, height }`     | Resolve destination cells for the current fit mode |
 
-The renderable owns its native image and exposes only copied metadata. Source replacement, clearing, and recursive destruction release native image storage. `onError` reports load failures through `loadError`, and handled load failures resolve `loadPromise`. Exceptions thrown by `onLoad` or `onError` reject `loadPromise` after state has settled.
+The renderable owns `image` and the `NativeImage` passed to `onLoad`; do not dispose or transfer them yourself. Source replacement, clearing, and recursive destruction release the image. `onError` reports load failures through `loadError`, and handled load failures resolve `loadPromise`. Exceptions thrown by `onLoad` or `onError` reject `loadPromise` after state has settled.
