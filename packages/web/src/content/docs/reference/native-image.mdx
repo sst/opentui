@@ -4,7 +4,7 @@ description: Decode and manipulate PNG, JPEG, WebP, GIF, and RGBA pixels
 order: 10
 skill:
   entry: true
-  intents: [image, native-image, png, jpeg, webp, gif, rgba, pixels, resize]
+  intents: [native-image, image-decode, png, jpeg, webp, gif, rgba, pixels, resize]
 ---
 
 # Native images
@@ -30,12 +30,12 @@ try {
 
 ## Inputs and formats
 
-| API                         | Input                                                                                  |
-| --------------------------- | -------------------------------------------------------------------------------------- |
-| `NativeImage.load(source)`  | Path, `file:`/HTTP(S)/`blob:`/`data:` URL, `URL`, `Blob`, `Response`, or encoded bytes |
-| `NativeImage.decode(data)`  | Encoded `Uint8Array` or `ArrayBuffer`                                                  |
-| `NativeImage.fromRgba(...)` | Straight-alpha sRGB RGBA8 pixels, dimensions, and optional row stride                  |
-| `imageInfo(data)`           | Encoded bytes; returns metadata without retaining an image handle                      |
+| API                         | Input                                                                                                |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `NativeImage.load(source)`  | Path, `file:`/HTTP(S)/`blob:`/`data:` URL, `URL`, `Blob`, `Response`, `Uint8Array`, or `ArrayBuffer` |
+| `NativeImage.decode(data)`  | Encoded `Uint8Array` or `ArrayBuffer`                                                                |
+| `NativeImage.fromRgba(...)` | Straight-alpha sRGB RGBA8 pixels, dimensions, and optional row stride                                |
+| `imageInfo(data)`           | Encoded `Uint8Array` or `ArrayBuffer`; returns metadata without retaining an image handle            |
 
 Format detection uses encoded bytes, not names, URL suffixes, response headers, or file extensions.
 
@@ -61,13 +61,13 @@ Format detection uses encoded bytes, not names, URL suffixes, response headers, 
 | `orientation`                 | `1` after decode; `imageInfo()` reports encoded orientation |
 | `hasAlpha`                    | Whether decoded pixels contain transparency                 |
 
-| Method                                    | Result                                                           |
-| ----------------------------------------- | ---------------------------------------------------------------- |
-| `raw(format?)`                            | Allocates and returns RGBA8 or BGRA8 pixels and image metadata   |
-| `takeRaw()`                               | Transfers ownership of the native RGBA8 pixels without copying   |
-| `copyTo(destination, { stride, format })` | Copies pixels into an existing `Uint8Array`                      |
-| `width`, `height`                         | Decoded dimensions                                               |
-| `ptr`                                     | Opaque native `ImageHandle`, valid until disposal or `takeRaw()` |
+| Method                          | Result                                                           |
+| ------------------------------- | ---------------------------------------------------------------- |
+| `raw(format?)`                  | Allocates and returns RGBA8 or BGRA8 pixels and image metadata   |
+| `takeRaw()`                     | Transfers ownership of the native RGBA8 pixels without copying   |
+| `copyTo(destination, options?)` | Copies pixels into an existing `Uint8Array`                      |
+| `width`, `height`               | Decoded dimensions                                               |
+| `ptr`                           | Opaque native `ImageHandle`, valid until disposal or `takeRaw()` |
 
 The default output stride is `width * 4`. A custom `copyTo()` stride must fit one row, and the destination must fit every row.
 
@@ -90,15 +90,15 @@ try {
 
 Operations are immutable: each returns a new `NativeImage`; the source remains unchanged.
 
-| Method                                              | Description                                          |
-| --------------------------------------------------- | ---------------------------------------------------- |
-| `clone()`                                           | Copy the image                                       |
-| `resize({ width?, height?, kernel? })`              | Resize; one omitted dimension preserves aspect ratio |
-| `extract({ left, top, width, height })`             | Crop a rectangle                                     |
-| `extend({ top, right, bottom, left, background })`  | Add RGBA padding                                     |
-| `rotate(90 \| 180 \| 270)`                          | Rotate clockwise                                     |
-| `flip()` / `flop()`                                 | Flip vertically / horizontally                       |
-| `composite(overlay, { left, top, blend, opacity })` | Composite in linear light                            |
+| Method                                  | Description                                          |
+| --------------------------------------- | ---------------------------------------------------- |
+| `clone()`                               | Copy the image                                       |
+| `resize({ width?, height?, kernel? })`  | Resize; one omitted dimension preserves aspect ratio |
+| `extract({ left, top, width, height })` | Crop a rectangle                                     |
+| `extend(options?)`                      | Add RGBA padding                                     |
+| `rotate(90 \| 180 \| 270)`              | Rotate clockwise                                     |
+| `flip()` / `flop()`                     | Flip vertically / horizontally                       |
+| `composite(overlay, options?)`          | Composite in linear light                            |
 
 Resize kernels are `area` (the default), `default`, `triangle`, `cubic-bspline`, `catmull-rom`, `mitchell`, and `nearest`. Blend modes are `source-over` (the default), `source`, and `destination-over`; opacity is `0..1`.
 
@@ -120,8 +120,10 @@ try {
 
 ## Errors and limits
 
-Filesystem, network, HTTP-status, and unsupported-scheme failures throw `ImageLoadError`. Aborts rethrow `AbortSignal.reason`; acquisition limits throw `ImageError` with code `memory-limit`. Native decoding and operations also throw `ImageError`; JavaScript argument validation uses `TypeError` and `RangeError`.
+`ImageLoadError` exposes `code`, `source`, and optional HTTP `status`; codes are `file-read`, `network`, `http-status`, and `unsupported-url-scheme`. Aborts rethrow `AbortSignal.reason`.
 
-Native decoding limits encoded data to 64 MiB, each dimension to 16,384 pixels, total pixels to 25 million, and decoded storage to 100 MiB. PNG `iCCP` and unsupported `gAMA`/`cHRM` profiles are rejected; unsupported `cICP` is treated as assumed sRGB.
+`ImageError` exposes numeric `status` and `code`: `invalid-handle`, `unsupported-format`, `unsupported-color-space`, `malformed-data`, `dimension-limit`, `memory-limit`, `invalid-argument`, `out-of-memory`, `output-too-small`, `internal-error`, or `unsupported-feature`. JavaScript argument validation uses `TypeError` and `RangeError`.
+
+Encoded input is limited to 64 MiB. Images and operation outputs are limited to 16,384 pixels per axis, 25 million pixels, and 100 MiB decoded storage. PNG `iCCP` and unsupported `gAMA`/`cHRM` profiles are rejected; unsupported `cICP` is treated as assumed sRGB.
 
 To display an image, see [Image](/docs/components/image).
