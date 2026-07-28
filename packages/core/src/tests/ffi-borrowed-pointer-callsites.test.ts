@@ -724,7 +724,7 @@ describe("borrowed pointer call sites", () => {
       expect(calls.get("imageCopyPixels")![1]).toBe(destination)
       expect(calls.get("imageResize")![4]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageExtract")![5]).toBeInstanceOf(Uint32Array)
-      expect(calls.get("imageExtend")![5]).toBe(0xff0a0908)
+      expect(calls.get("imageExtend")![5]).toBe(background)
       expect(calls.get("imageExtend")![6]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageTransform")![2]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageComposite")![6]).toBeInstanceOf(Uint32Array)

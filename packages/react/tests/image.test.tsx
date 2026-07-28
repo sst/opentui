@@ -38,7 +38,7 @@ describe("React Renderer | image element", () => {
           imageRef = renderable
         }}
         source={PNG_1X1}
-        onLoad={(info) => loaded.push(info.format)}
+        onLoad={(image) => loaded.push(image.info().format)}
         style={{ width: 4, height: 2 }}
       />,
       { width: 10, height: 6 },
@@ -48,7 +48,7 @@ describe("React Renderer | image element", () => {
     expect(imageRef).toBeInstanceOf(ImageRenderable)
     await imageRef!.loadPromise
     expect(loaded).toEqual(["png"])
-    expect(imageRef!.imageInfo?.width).toBe(1)
+    expect(imageRef!.image?.width).toBe(1)
     expect(imageRef!.loadError).toBeNull()
   })
 
@@ -109,7 +109,7 @@ describe("React Renderer | image element", () => {
     await testSetup.renderOnce()
 
     expect(imageRef!.source).toBeUndefined()
-    expect(imageRef!.imageInfo).toBeNull()
+    expect(imageRef!.image).toBeNull()
     expect(imageRef!.loadError).toBeNull()
     expect(testSetup.captureCharFrame()).not.toContain("█")
   })
