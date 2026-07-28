@@ -72,6 +72,7 @@ import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 import * as nativeAudioDemo from "./native-audio-demo.js"
 import * as audioStreamingDemo from "./audio-streaming-demo.js"
 import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
+import * as opentuiLogoDemo from "./opentui-logo-demo.js"
 
 type ExampleCategory =
   | "Layout & Composition"
@@ -533,6 +534,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       description: "Box opacity and transparency effects with animated opacity transitions",
       run: opacityExample.run,
       destroy: opacityExample.destroy,
+    },
+    {
+      name: "OpenTUI Logo Demo",
+      description: "OpenTUI wordmark rendered with Unicode half-block characters",
+      run: opentuiLogoDemo.run,
+      destroy: opentuiLogoDemo.destroy,
     },
     {
       name: "Timeline Example",
