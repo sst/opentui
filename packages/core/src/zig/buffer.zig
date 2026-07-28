@@ -877,7 +877,8 @@ pub const OptimizedBuffer = struct {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
         const opacity = self.getCurrentOpacity();
-        if (opacity == 0.0) return;
+        const fully_transparent = isFullyTransparent(opacity, cell.fg, cell.bg);
+        if (fully_transparent and (opacity == 0.0 or self.image_placements.items.len == 0)) return;
         if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
             self.set(x, y, cell);
             return;
@@ -888,7 +889,7 @@ pub const OptimizedBuffer = struct {
             self.set(x, y, opaqueCell(cell));
             return;
         }
-        if (isFullyTransparent(opacity, cell.fg, cell.bg)) return;
+        if (fully_transparent) return;
 
         const opacity_u8 = opacityToU8(opacity);
         const effectiveCell = makeCell(
@@ -1166,7 +1167,7 @@ pub const OptimizedBuffer = struct {
     }
 
     inline fn setTextCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
-        if (self.cellSpanOverlapsImage(x, y, cell.char)) {
+        if (self.image_placements.items.len != 0 and self.cellSpanOverlapsImage(x, y, cell.char)) {
             self.set(x, y, opaqueCell(cell));
             return;
         }
@@ -1358,20 +1359,24 @@ pub const OptimizedBuffer = struct {
 
         const has_source_images = frameBuffer.image_placements.items.len != 0;
         var empty_image_id_map = [_]u32{0};
-        const image_id_map = if (has_source_images)
-            self.allocator.alloc(u32, frameBuffer.image_placements.items.len + 1) catch return
+        const allocated_image_id_map = if (has_source_images)
+            self.allocator.alloc(u32, frameBuffer.image_placements.items.len + 1) catch null
         else
-            empty_image_id_map[0..];
-        defer if (has_source_images) self.allocator.free(image_id_map);
+            null;
+        const image_id_map = allocated_image_id_map orelse empty_image_id_map[0..];
+        defer if (allocated_image_id_map) |allocated| self.allocator.free(allocated);
         @memset(image_id_map, 0);
-        if (has_source_images) {
+        var can_copy_images = allocated_image_id_map != null;
+        if (can_copy_images) {
             self.image_placements.ensureTotalCapacity(
                 self.allocator,
                 self.image_placements.items.len + frameBuffer.image_placements.items.len,
-            ) catch return;
+            ) catch {
+                can_copy_images = false;
+            };
         }
         for (frameBuffer.image_placements.items, 1..) |placement, source_id| {
-            if (self.image_placements.items.len >= gp.IMAGE_ID_MASK) break;
+            if (!can_copy_images or self.image_placements.items.len >= gp.IMAGE_ID_MASK) break;
             const full_x = destX + placement.x - @as(i32, @intCast(srcX));
             const full_y = destY + placement.y - @as(i32, @intCast(srcY));
             const x0 = @max(full_x, clippedStartX);
@@ -1428,8 +1433,16 @@ pub const OptimizedBuffer = struct {
 
                 var srcChar = frameBuffer.buffer.char[srcIndex];
                 if (gp.isImageChar(srcChar)) {
-                    const mapped_id = image_id_map[gp.imageIdFromChar(srcChar)];
-                    if (mapped_id != 0) srcChar = gp.packImageCell(mapped_id, gp.imageFallbackFromChar(srcChar));
+                    const source_id = gp.imageIdFromChar(srcChar);
+                    if (source_id < image_id_map.len) {
+                        const mapped_id = image_id_map[source_id];
+                        srcChar = if (mapped_id != 0)
+                            gp.packImageCell(mapped_id, gp.imageFallbackFromChar(srcChar))
+                        else
+                            quadrantChars[gp.imageFallbackFromChar(srcChar)];
+                    } else {
+                        srcChar = quadrantChars[gp.imageFallbackFromChar(srcChar)];
+                    }
                 }
                 const srcFg = frameBuffer.buffer.fg[srcIndex];
                 const srcBg = frameBuffer.buffer.bg[srcIndex];
@@ -2107,7 +2120,7 @@ pub const OptimizedBuffer = struct {
             isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.bottomRight)]) and
             isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.horizontal)]) and
             isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.vertical)]) and
-            !self.rectOverlapsImagePlacement(x, y, width, height);
+            (self.image_placements.items.len == 0 or !self.rectOverlapsImagePlacement(x, y, width, height));
     }
 
     /// Draw a box with borders and optional fill
@@ -2133,6 +2146,7 @@ pub const OptimizedBuffer = struct {
         const border_bg_transparent = isFullyTransparent(opacity, borderColor, backgroundColor);
         const has_title = title != null or bottomTitle != null;
         const title_visible = has_title and !isFullyTransparent(opacity, titleColor, backgroundColor);
+        if (border_bg_transparent and !title_visible and (opacity == 0.0 or self.image_placements.items.len == 0)) return;
 
         const startX = @max(0, x);
         const startY = @max(0, y);
@@ -2144,8 +2158,7 @@ pub const OptimizedBuffer = struct {
         const boxWidth = @as(u32, @intCast(endX - startX + 1));
         const boxHeight = @as(u32, @intCast(endY - startY + 1));
         if (!self.isRectInScissor(startX, startY, boxWidth, boxHeight)) return;
-        if (border_bg_transparent and !title_visible and
-            (opacity == 0.0 or !self.rectOverlapsImagePlacement(startX, startY, boxWidth, boxHeight))) return;
+        if (border_bg_transparent and !title_visible and !self.rectOverlapsImagePlacement(startX, startY, boxWidth, boxHeight)) return;
 
         const isAtActualLeft = startX == x;
         const isAtActualRight = endX == x + @as(i32, @intCast(width)) - 1;
@@ -2372,23 +2385,24 @@ pub const OptimizedBuffer = struct {
         if (opacity == 0) return false;
         if (width == 0 or height == 0 or source_width == 0 or source_height == 0 or
             source_x >= image.width() or source_y >= image.height() or source_width > image.width() - source_x or
-            source_height > image.height() - source_y or self.image_placements.items.len >= gp.IMAGE_ID_MASK) return false;
-        var clip_x0 = @max(pos_x, 0);
-        var clip_y0 = @max(pos_y, 0);
-        var clip_x1 = @min(pos_x + @as(i32, @intCast(width)), @as(i32, @intCast(self.width)));
-        var clip_y1 = @min(pos_y + @as(i32, @intCast(height)), @as(i32, @intCast(self.height)));
+            source_height > image.height() - source_y or self.image_placements.items.len >= gp.IMAGE_ID_MASK or
+            self.width > std.math.maxInt(i32) or self.height > std.math.maxInt(i32)) return false;
+        var clip_x0 = @max(@as(i64, pos_x), 0);
+        var clip_y0 = @max(@as(i64, pos_y), 0);
+        var clip_x1 = @min(@as(i64, pos_x) + width, self.width);
+        var clip_y1 = @min(@as(i64, pos_y) + height, self.height);
         if (self.getCurrentScissorRect()) |scissor| {
             clip_x0 = @max(clip_x0, scissor.x);
             clip_y0 = @max(clip_y0, scissor.y);
-            clip_x1 = @min(clip_x1, scissor.x + @as(i32, @intCast(scissor.width)));
-            clip_y1 = @min(clip_y1, scissor.y + @as(i32, @intCast(scissor.height)));
+            clip_x1 = @min(clip_x1, @as(i64, scissor.x) + scissor.width);
+            clip_y1 = @min(clip_y1, @as(i64, scissor.y) + scissor.height);
         }
         if (clip_x0 >= clip_x1 or clip_y0 >= clip_y1) return false;
 
-        const left: u32 = @intCast(clip_x0 - pos_x);
-        const top: u32 = @intCast(clip_y0 - pos_y);
-        const right: u32 = @intCast(clip_x1 - pos_x);
-        const bottom: u32 = @intCast(clip_y1 - pos_y);
+        const left: u32 = @intCast(clip_x0 - @as(i64, pos_x));
+        const top: u32 = @intCast(clip_y0 - @as(i64, pos_y));
+        const right: u32 = @intCast(clip_x1 - @as(i64, pos_x));
+        const bottom: u32 = @intCast(clip_y1 - @as(i64, pos_y));
         const clipped_source_x = source_x + @as(u32, @intCast((@as(u64, left) * source_width) / width));
         const clipped_source_y = source_y + @as(u32, @intCast((@as(u64, top) * source_height) / height));
         const source_end_x = source_x + @as(u32, @intCast((@as(u64, right) * source_width + width - 1) / width));
@@ -2402,8 +2416,8 @@ pub const OptimizedBuffer = struct {
             .placement_id = placement_id,
             .image_handle = image_handle,
             .image = @constCast(image),
-            .x = clip_x0,
-            .y = clip_y0,
+            .x = @intCast(clip_x0),
+            .y = @intCast(clip_y0),
             .width = clipped_width,
             .height = clipped_height,
             .pixel_width = clipped_pixel_width,
@@ -2419,10 +2433,10 @@ pub const OptimizedBuffer = struct {
 
         var cell_y: u32 = 0;
         while (cell_y < clipped_height) : (cell_y += 1) {
-            const dest_y: u32 = @intCast(clip_y0 + @as(i32, @intCast(cell_y)));
+            const dest_y: u32 = @intCast(clip_y0 + cell_y);
             var cell_x: u32 = 0;
             while (cell_x < clipped_width) : (cell_x += 1) {
-                const dest_x: u32 = @intCast(clip_x0 + @as(i32, @intCast(cell_x)));
+                const dest_x: u32 = @intCast(clip_x0 + cell_x);
                 const current = self.get(dest_x, dest_y) orelse continue;
                 self.set(dest_x, dest_y, makeCell(gp.packImageCell(placement_id, 0), current.fg, current.bg, current.attributes));
             }
@@ -2440,7 +2454,9 @@ pub const OptimizedBuffer = struct {
             while (cell_x < placement.width) : (cell_x += 1) {
                 const dest_x: u32 = @intCast(placement.x + @as(i32, @intCast(cell_x)));
                 const current = self.get(dest_x, dest_y) orelse continue;
-                if (!gp.isImageChar(current.char) or gp.imageIdFromChar(current.char) != placement_id) continue;
+                if (!gp.isImageChar(current.char)) continue;
+                const current_placement_id = gp.imageIdFromChar(current.char);
+                if (current_placement_id < placement_id) continue;
 
                 var pixels: [4]RGBA = undefined;
                 inline for (0..4) |quadrant| {
@@ -2457,7 +2473,15 @@ pub const OptimizedBuffer = struct {
                     );
                 }
                 const rendered = renderQuadrantBlock(pixels);
-                const fallback = makeCell(gp.packImageCell(placement_id, quadrantIndex(rendered.char)), rendered.fg, rendered.bg, 0);
+                const fallback = makeCell(
+                    if (current_placement_id == placement_id)
+                        gp.packImageCell(placement_id, quadrantIndex(rendered.char))
+                    else
+                        current.char,
+                    rendered.fg,
+                    rendered.bg,
+                    if (current_placement_id == placement_id) 0 else current.attributes,
+                );
                 if (placement.opacity == 255 and !isRGBAWithAlpha(fallback.fg) and !isRGBAWithAlpha(fallback.bg)) {
                     self.setRaw(dest_x, dest_y, fallback);
                 } else {

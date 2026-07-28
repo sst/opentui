@@ -88,6 +88,14 @@ fn runPlacementScenario(
     };
 
     var cost = FrameCost{};
+    if (protocol == .sixel and animate) {
+        for (images, image_handles) |value, handle| {
+            const next = test_renderer.renderer.getNextBuffer();
+            drawTextBackdrop(next);
+            _ = try next.drawImage(value, handle, 5, 5, 40, 20, 320, 200, 0, 0, image_width, image_height, .auto);
+            _ = test_renderer.renderer.render(true);
+        }
+    }
     var frame: usize = 0;
     while (frame < FRAME_ITERATIONS) : (frame += 1) {
         const index = if (animate) frame % IMAGE_VARIANTS else 0;
@@ -217,7 +225,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         .{ .name = "kitty image replacements", .protocol = .kitty, .animate = true, .text_change = false },
         .{ .name = "kitty static image one text change", .protocol = .kitty, .animate = false, .text_change = true },
         .{ .name = "kitty static image no changes", .protocol = .kitty, .animate = false, .text_change = false },
-        .{ .name = "sixel image replacements", .protocol = .sixel, .animate = true, .text_change = false },
+        .{ .name = "sixel cached image replacements", .protocol = .sixel, .animate = true, .text_change = false },
         .{ .name = "sixel static image no changes", .protocol = .sixel, .animate = false, .text_change = false },
         .{ .name = "blocks image replacements", .protocol = .blocks, .animate = true, .text_change = false },
     };
@@ -231,6 +239,8 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             .max_ns = cost.stats.max_ns,
             .total_ns = cost.stats.total_ns,
             .iterations = cost.stats.count,
+            .stddev_ns = cost.stats.standardDeviation(),
+            .rme_95 = cost.stats.relativeMarginOfError95(),
             .mem_stats = null,
         });
     }
@@ -244,6 +254,8 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             .max_ns = cost.stats.max_ns,
             .total_ns = cost.stats.total_ns,
             .iterations = cost.stats.count,
+            .stddev_ns = cost.stats.standardDeviation(),
+            .rme_95 = cost.stats.relativeMarginOfError95(),
             .mem_stats = null,
         });
     }
@@ -262,6 +274,8 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             .max_ns = cost.stats.max_ns,
             .total_ns = cost.stats.total_ns,
             .iterations = cost.stats.count,
+            .stddev_ns = cost.stats.standardDeviation(),
+            .rme_95 = cost.stats.relativeMarginOfError95(),
             .mem_stats = null,
         });
     }
