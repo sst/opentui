@@ -11,6 +11,7 @@ registerEnvVar({ name: "OTUI_TS_STYLE_WARN", default: false, description: "Enabl
 interface TextChunkOptions {
   enabled?: boolean
   baseHighlight?: string
+  sourceRanges?: Array<[start: number, end: number]>
 }
 
 interface Boundary {
@@ -118,6 +119,7 @@ export function treeSitterToTextChunks(
                 })
               : 0,
           })
+          options?.sourceRanges?.push([currentOffset, boundary.offset])
         }
       } else {
         const insideInjectionContainer = injectionContainerRanges.some(
@@ -198,6 +200,7 @@ export function treeSitterToTextChunks(
               })
             : 0,
         })
+        options?.sourceRanges?.push([currentOffset, boundary.offset])
       }
     } else if (currentOffset < boundary.offset) {
       const text = content.slice(currentOffset, boundary.offset)
@@ -216,6 +219,7 @@ export function treeSitterToTextChunks(
             })
           : 0,
       })
+      options?.sourceRanges?.push([currentOffset, boundary.offset])
     }
 
     if (boundary.type === "start") {
@@ -274,6 +278,7 @@ export function treeSitterToTextChunks(
           })
         : 0,
     })
+    options?.sourceRanges?.push([currentOffset, content.length])
   }
 
   return chunks

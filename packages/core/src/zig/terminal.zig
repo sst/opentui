@@ -832,7 +832,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
-    if (!self.caps.hyperlinks and self.term_info.from_xtversion) {
+    if (!self.caps.hyperlinks) {
         if (isHyperlinkTerm(self.getTerminalName())) {
             self.caps.hyperlinks = true;
         }
@@ -1258,7 +1258,9 @@ fn isHyperlinkTerm(value: []const u8) bool {
         std.ascii.indexOfIgnoreCase(value, "kitty") != null or
         std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
         std.ascii.indexOfIgnoreCase(value, "alacritty") != null or
-        std.ascii.indexOfIgnoreCase(value, "iterm") != null;
+        std.ascii.indexOfIgnoreCase(value, "iterm") != null or
+        std.ascii.eqlIgnoreCase(value, "zed") or
+        std.ascii.eqlIgnoreCase(value, "vscode");
 }
 
 pub fn getCapabilities(self: *Terminal) Capabilities {

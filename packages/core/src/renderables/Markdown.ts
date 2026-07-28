@@ -6,7 +6,7 @@ import { createTextAttributes } from "../utils.js"
 import type { BorderStyle } from "../lib/border.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
-import { CodeRenderable, type OnChunksCallback } from "./Code.js"
+import { CodeRenderable, type OnChunksCallback, type OnHighlightCallback } from "./Code.js"
 import { BoxRenderable } from "./Box.js"
 import { StyledText } from "../lib/styled-text.js"
 import { TextRenderable } from "./Text.js"
@@ -21,7 +21,7 @@ import type { TreeSitterClient } from "../lib/tree-sitter/index.js"
 import { infoStringToFiletype } from "../lib/tree-sitter/resolve-ft.js"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser.js"
 import type { OptimizedBuffer } from "../buffer.js"
-import { detectLinks } from "../lib/detect-links.js"
+import { detectLinks, isLinkTargetSupported, normalizeMarkdownLinkTarget } from "../lib/detect-links.js"
 
 export type MarkdownTableStyle = "grid" | "columns"
 
@@ -275,10 +275,20 @@ export class MarkdownRenderable extends Renderable {
   _blockStates: BlockState[] = []
   _stableBlockCount = 0
   private _styleDirty: boolean = false
+  private _hyperlinksEnabled: boolean
+  private _capabilitiesListener = (): void => {
+    if (this.isDestroyed) return
+    const hyperlinksEnabled = this.ctx.capabilities?.hyperlinks === true
+    if (hyperlinksEnabled === this._hyperlinksEnabled) return
+    this._hyperlinksEnabled = hyperlinksEnabled
+    this._styleDirty = true
+    this.requestRender()
+  }
   private _linkifyMarkdownChunks: OnChunksCallback = (chunks, context) =>
     detectLinks(chunks, {
       content: context.content,
       highlights: context.highlights,
+      sourceRanges: context.sourceRanges,
     })
 
   protected _contentDefaultOptions = {
@@ -307,7 +317,9 @@ export class MarkdownRenderable extends Renderable {
     this._renderNode = options.renderNode
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
     this._internalBlockMode = options.internalBlockMode ?? this._contentDefaultOptions.internalBlockMode
+    this._hyperlinksEnabled = this.ctx.capabilities?.hyperlinks === true
 
+    this.ctx.on("capabilities", this._capabilitiesListener)
     this.updateBlocks()
   }
 
@@ -548,9 +560,11 @@ export class MarkdownRenderable extends Renderable {
           for (const child of token.tokens) {
             this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
           }
-          chunks.push(this.createChunk(" (", "markup.link", linkHref))
-          chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
-          chunks.push(this.createChunk(")", "markup.link", linkHref))
+          if (!this._hyperlinksEnabled || !isLinkTargetSupported(token.href)) {
+            chunks.push(this.createChunk(" (", "markup.link", linkHref))
+            chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
+            chunks.push(this.createChunk(")", "markup.link", linkHref))
+          }
         } else {
           chunks.push(this.createChunk("[", "markup.link", linkHref))
           for (const child of token.tokens) {
@@ -647,6 +661,7 @@ export class MarkdownRenderable extends Renderable {
       streaming: true,
       initialStyledText,
       baseHighlight,
+      onHighlight: this.createMarkdownHighlightCallback(),
       onChunks,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
@@ -984,6 +999,7 @@ export class MarkdownRenderable extends Renderable {
     renderable.drawUnstyledText = initialStyledText !== undefined
     renderable.streaming = true
     renderable.baseHighlight = baseHighlight
+    renderable.onHighlight = this.createMarkdownHighlightCallback()
     renderable.content = content
     renderable.marginBottom = marginBottom
   }
@@ -2131,6 +2147,49 @@ export class MarkdownRenderable extends Renderable {
     this._styleDirty = false
     this.rerenderBlocks()
     this.requestRender()
+  }
+
+  private createMarkdownHighlightCallback(): OnHighlightCallback {
+    return (highlights, context) => {
+      if (!this._hyperlinksEnabled) return highlights
+
+      const delimiters = highlights
+        .filter((highlight) => highlight[2] === "markup.link.destination")
+        .sort((left, right) => left[0] - right[0])
+      if (delimiters.length === 0) return highlights
+
+      const concealed = [...highlights]
+      const closingLabels = new Map<number, number>()
+      for (let index = 0; index < concealed.length; index++) {
+        const highlight = concealed[index]
+        if (highlight[3]?.conceal === " ") closingLabels.set(highlight[1], index)
+      }
+      let delimiterIndex = 0
+      for (const [urlStart, urlEnd, group] of highlights) {
+        if (group !== "markup.link.url") continue
+        const target = normalizeMarkdownLinkTarget(context.content.slice(urlStart, urlEnd))
+        if (!isLinkTargetSupported(target)) continue
+        while (delimiterIndex < delimiters.length && delimiters[delimiterIndex][1] <= urlStart) delimiterIndex++
+
+        const close = delimiters[delimiterIndex]
+        const open = delimiters[delimiterIndex - 1]
+        if (!open || !close || open[0] >= urlStart || close[0] < urlEnd) continue
+
+        concealed.push([open[0], close[1], "conceal.link.destination", { conceal: "" }])
+        const closingLabel = closingLabels.get(open[0])
+        if (closingLabel !== undefined) {
+          const highlight = concealed[closingLabel]
+          concealed[closingLabel] = [highlight[0], highlight[1], highlight[2], { ...highlight[3], conceal: "" }]
+        }
+        delimiterIndex++
+      }
+      return concealed
+    }
+  }
+
+  protected override destroySelf(): void {
+    this.ctx.off("capabilities", this._capabilitiesListener)
+    super.destroySelf()
   }
 
   protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {

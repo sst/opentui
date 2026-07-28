@@ -21,6 +21,8 @@ import {
 } from "../../testing.js"
 import { ManualClock } from "../../testing/manual-clock.js"
 import { TextAttributes, type CapturedFrame } from "../../types.js"
+import { getLinkId } from "../../utils.js"
+import { createTerminalCapabilities, setRendererCapabilities } from "../../testing/terminal-capabilities.js"
 
 let renderer: TestRenderer
 let mockMouse: MockMouse
@@ -170,6 +172,20 @@ function findSpanContaining(frame: CapturedFrame, text: string) {
   }
 
   return undefined
+}
+
+function getLinkedSpans(frame: CapturedFrame): Array<{ text: string; url: string }> {
+  const renderLib = (renderer as unknown as { lib: { linkGetUrl: (id: number) => string } }).lib
+  const linked: Array<{ text: string; url: string }> = []
+
+  for (const line of frame.lines) {
+    for (const span of line.spans) {
+      const linkId = getLinkId(span.attributes)
+      if (linkId !== 0) linked.push({ text: span.text, url: renderLib.linkGetUrl(linkId) })
+    }
+  }
+
+  return linked
 }
 
 function getMarginBottom(renderable: { getLayoutNode(): { getMargin(edge: Edge): unknown } }): number {
@@ -1977,6 +1993,93 @@ test("links with conceal=false", async () => {
     Check out [OpenTUI](https://github.com/sst/opentui) for
     more."
   `)
+})
+
+test("real Tree-sitter linkifies bare URLs across wrapping but excludes code", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-bare-links",
+    content:
+      "Visit https://example.com/a((b))/long/path now. `https://inline.example`\n\n```text\nhttps://fenced.example\n```",
+    syntaxStyle,
+    conceal: true,
+    width: 24,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const linked = getLinkedSpans(captureSpans())
+  expect(linked.map((span) => span.text).join("")).toContain("https://example.com/a((b))/long/path")
+  expect(new Set(linked.map((span) => span.url))).toEqual(new Set(["https://example.com/a((b))/long/path"]))
+})
+
+test("real Tree-sitter normalizes angle destinations and preserves entity-concealed labels", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-normalized-link",
+    content: String.raw`[a&amp;b](<https://example.com/a\(b\)> "escaped \"title\"")`,
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const linked = getLinkedSpans(captureSpans())
+  expect(linked.map((span) => span.text).join("")).toContain("a&b")
+  expect(linked.every((span) => span.url === "https://example.com/a(b)")).toBe(true)
+})
+
+test("Markdown link concealment follows hyperlink capability transitions", async () => {
+  setRendererCapabilities(renderer, { hyperlinks: false })
+  const linkSyntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    "markup.link.label": { bold: true },
+  })
+  const md = createMarkdownRenderable({
+    id: "markdown-capability-links",
+    content: String.raw`Read [label](https://example.com/a\(b\) "escaped \"title\"") now`,
+    syntaxStyle: linkSyntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+  expect(captureFrame()).toContain('label (https://example.com/a\\(b\\) "escaped \\"title\\"")')
+
+  const supported = setRendererCapabilities(renderer, { hyperlinks: true })
+  renderer.emit("capabilities", supported)
+  await renderMarkdownRenderable(md)
+  expect(captureFrame()).toContain("Read label now")
+  expect(captureFrame()).not.toContain("https://example.com")
+  const supportedFrame = captureSpans()
+  expect(getLinkedSpans(supportedFrame).some((span) => span.text.includes("label"))).toBe(true)
+  expect(findSpanContaining(supportedFrame, "label")!.attributes & TextAttributes.BOLD).toBeTruthy()
+
+  const unsupported = createTerminalCapabilities({ hyperlinks: false })
+  ;(renderer as unknown as { _capabilities: typeof unsupported })._capabilities = unsupported
+  renderer.emit("capabilities", unsupported)
+  await renderMarkdownRenderable(md)
+  expect(captureFrame()).toContain("https://example.com")
+
+  md.destroyRecursively()
+  expect(renderer.listenerCount("capabilities")).toBe(0)
+})
+
+test("keeps an overlong Markdown destination visible when native links cannot store it", async () => {
+  setRendererCapabilities(renderer, { hyperlinks: true })
+  const destination = `https://example.com/${"a".repeat(512)}`
+  const md = createMarkdownRenderable({
+    id: "markdown-overlong-link",
+    content: `[label](${destination})`,
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(captureFrame().replace(/\s/g, "")).toContain(destination)
+  expect(getLinkedSpans(captureSpans())).toEqual([])
 })
 
 // Horizontal rule

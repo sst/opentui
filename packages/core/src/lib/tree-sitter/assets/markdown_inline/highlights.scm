@@ -28,6 +28,9 @@
   ["[" "(" ")"] @markup.link)
 
 (inline_link
+  ["(" ")"] @markup.link.destination)
+
+(inline_link
   "]" @markup.link.bracket.close)
 
 ; Conceal opening bracket

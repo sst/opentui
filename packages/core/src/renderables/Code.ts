@@ -21,6 +21,7 @@ export type OnHighlightCallback = (
 
 export interface ChunkRenderContext extends HighlightContext {
   highlights: SimpleHighlight[]
+  sourceRanges?: ReadonlyArray<readonly [start: number, end: number]>
 }
 
 export type OnChunksCallback = (
@@ -366,16 +367,19 @@ export class CodeRenderable extends TextBufferRenderable {
       }
 
       if (highlights.length > 0 || this._onChunks || this._baseHighlight) {
+        const sourceRanges: Array<[number, number]> = []
         const context: ChunkRenderContext = {
           content,
           filetype,
           syntaxStyle: this._syntaxStyle,
           highlights,
+          sourceRanges,
         }
 
         let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
           enabled: this._conceal,
           baseHighlight: this._baseHighlight,
+          sourceRanges,
         })
         // onChunks may rewrite text arbitrarily, so the conceal-only source map would be invalid.
         const renderedLineSources = this._onChunks ? undefined : this.getConcealLinesSourceMap(content, highlights)

@@ -23,6 +23,47 @@ test "LinkPool - alloc and get URL" {
     try std.testing.expectEqualSlices(u8, url, retrieved);
 }
 
+test "LinkPool - rejects unsafe OSC 8 targets" {
+    var pool = LinkPool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const invalid_targets = [_][]const u8{
+        "",
+        "https://example.com/\x00suffix",
+        "https://example.com/\x07suffix",
+        "https://example.com/\x1bsuffix",
+        "https://example.com/\x7fsuffix",
+        "https://example.com/\xc2\x80suffix",
+        "https://example.com/\xc2\x9fsuffix",
+        "https://example.com/\xffsuffix",
+    };
+
+    for (invalid_targets) |target| {
+        try std.testing.expectError(LinkPoolError.InvalidUrl, pool.alloc(target));
+    }
+
+    var overlong: [link.MAX_URL_LENGTH + 1]u8 = undefined;
+    @memset(&overlong, 'a');
+    try std.testing.expectError(LinkPoolError.UrlTooLong, pool.alloc(&overlong));
+    try std.testing.expectEqual(@as(u64, 0), pool.getTotalSlots());
+}
+
+test "LinkPool - accepts bounded UTF-8 absolute and relative targets" {
+    var pool = LinkPool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const targets = [_][]const u8{
+        "https://example.com/a?b=c#d",
+        "../docs/readme.md",
+        "https://example.com/caf\xc3\xa9",
+    };
+
+    for (targets) |target| {
+        const id = try pool.alloc(target);
+        try std.testing.expectEqualSlices(u8, target, try pool.get(id));
+    }
+}
+
 test "LinkPool - decref to zero allows slot reuse" {
     var pool = LinkPool.init(std.testing.allocator);
     defer pool.deinit();

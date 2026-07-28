@@ -184,7 +184,7 @@ export class OptimizedBuffer {
         const cp = char[i]
         const cellFg = RGBA.fromArray(fg.slice(i * 4, i * 4 + 4))
         const cellBg = RGBA.fromArray(bg.slice(i * 4, i * 4 + 4))
-        const cellAttrs = attributes[i] & 0xff
+        const cellAttrs = attributes[i]
 
         // Continuation cells are placeholders for wide characters (emojis, CJK)
         const isContinuation = (cp & CHAR_FLAG_MASK) === CHAR_FLAG_CONTINUATION

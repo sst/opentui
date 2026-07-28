@@ -3,6 +3,7 @@ const std = @import("std");
 pub const LinkPoolError = error{
     OutOfMemory,
     InvalidId,
+    InvalidUrl,
     WrongGeneration,
     UrlTooLong,
 };
@@ -148,10 +149,30 @@ pub const LinkPool = struct {
         }
     }
 
-    pub fn alloc(self: *LinkPool, url: []const u8) LinkPoolError!IdPayload {
-        if (url.len > self.slot_capacity) {
-            return LinkPoolError.UrlTooLong;
+    fn validateUrl(url: []const u8) LinkPoolError!void {
+        // OSC 8 targets are opaque UTF-8 URI references. Scheme and percent-encoding
+        // policy belongs to callers; this boundary rejects terminal control bytes.
+        if (url.len == 0) return LinkPoolError.InvalidUrl;
+        if (url.len > MAX_URL_LENGTH) return LinkPoolError.UrlTooLong;
+        if (!std.unicode.utf8ValidateSlice(url)) return LinkPoolError.InvalidUrl;
+
+        var index: usize = 0;
+        while (index < url.len) {
+            const byte = url[index];
+            if (byte <= 0x1f or byte == 0x7f) return LinkPoolError.InvalidUrl;
+
+            // UTF-8 encodes the C1 control range U+0080..U+009F as C2 80..9F.
+            if (byte == 0xc2 and index + 1 < url.len and url[index + 1] <= 0x9f) {
+                return LinkPoolError.InvalidUrl;
+            }
+
+            index += std.unicode.utf8ByteSequenceLength(byte) catch return LinkPoolError.InvalidUrl;
         }
+    }
+
+    pub fn alloc(self: *LinkPool, url: []const u8) LinkPoolError!IdPayload {
+        std.debug.assert(self.slot_capacity == MAX_URL_LENGTH);
+        try validateUrl(url);
 
         if (self.lookupOrInvalidate(url)) |live_id| {
             return live_id;

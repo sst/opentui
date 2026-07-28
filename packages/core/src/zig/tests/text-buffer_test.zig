@@ -1675,6 +1675,108 @@ test "TextBuffer setStyledText - repeated calls with SyntaxStyle (crash reproduc
     try std.testing.expect(arena_growth < max_expected_growth);
 }
 
+test "TextBuffer setStyledText - generated styles are isolated and cleaned up" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var first = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer first.deinit();
+    var second = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer second.deinit();
+
+    const ss = @import("../syntax-style.zig");
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    first.setSyntaxStyle(style);
+    second.setSyntaxStyle(style);
+
+    const a = "a";
+    const b = "b";
+    const chunks = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = a.ptr, .text_len = a.len, .fg_ptr = null, .bg_ptr = null, .attributes = 1 },
+        .{ .text_ptr = b.ptr, .text_len = b.len, .fg_ptr = null, .bg_ptr = null, .attributes = 2 },
+    };
+    try first.setStyledText(&chunks);
+    const first_ids = [_]u32{
+        first.getLineHighlights(0)[0].style_id,
+        first.getLineHighlights(0)[1].style_id,
+    };
+    try second.setStyledText(&chunks);
+    try std.testing.expectEqual(@as(usize, 4), style.getStyleCount());
+    try std.testing.expect(first_ids[0] != second.getLineHighlights(0)[0].style_id);
+
+    try first.setStyledText(chunks[0..1]);
+    try std.testing.expectEqual(@as(usize, 3), style.getStyleCount());
+    try std.testing.expectEqual(first_ids[0], first.getLineHighlights(0)[0].style_id);
+
+    first.clear();
+    try std.testing.expectEqual(@as(usize, 3), style.getStyleCount());
+    try std.testing.expect(style.resolveById(first_ids[0]) != null);
+
+    try second.setText("plain");
+    try std.testing.expectEqual(@as(usize, 1), style.getStyleCount());
+
+    try first.setStyledText(&chunks);
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+
+    var temporary_directory = std.testing.tmpDir(.{});
+    defer temporary_directory.cleanup();
+    const file = try temporary_directory.dir.createFile("plain.txt", .{});
+    try file.writeAll("loaded");
+    file.close();
+    const file_path = try temporary_directory.dir.realpathAlloc(std.testing.allocator, "plain.txt");
+    defer std.testing.allocator.free(file_path);
+    try first.loadFile(file_path);
+    try std.testing.expectEqual(@as(usize, 0), style.getStyleCount());
+
+    try first.setStyledText(&chunks);
+    first.setSyntaxStyle(null);
+    try std.testing.expectEqual(@as(usize, 0), style.getStyleCount());
+
+    var third = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    third.setSyntaxStyle(style);
+    try third.setStyledText(&chunks);
+    try std.testing.expectEqual(@as(usize, 2), style.getStyleCount());
+    third.deinit();
+    try std.testing.expectEqual(@as(usize, 0), style.getStyleCount());
+}
+
+test "TextBuffer setStyledText - growth allocation failure preserves owned buffer" {
+    var failing_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const allocator = failing_allocator.allocator();
+    const pool = gp.initGlobalPool(allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    const small = "small";
+    const small_chunks = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = small.ptr, .text_len = small.len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+    };
+    try tb.setStyledText(&small_chunks);
+
+    const large = "this replacement requires a larger persistent styled buffer";
+    const large_chunks = [_]text_buffer.StyledChunk{
+        .{ .text_ptr = large.ptr, .text_len = large.len, .fg_ptr = null, .bg_ptr = null, .attributes = 0 },
+    };
+    failing_allocator.fail_index = failing_allocator.alloc_index;
+    try std.testing.expectError(error.OutOfMemory, tb.setStyledText(&large_chunks));
+    try std.testing.expect(failing_allocator.has_induced_failure);
+
+    var preserved: [small.len]u8 = undefined;
+    const preserved_len = tb.getTextRange(0, small.len, &preserved);
+    try std.testing.expectEqual(small.len, preserved_len);
+    try std.testing.expectEqualStrings(small, preserved[0..preserved_len]);
+
+    failing_allocator.fail_index = std.math.maxInt(usize);
+    try tb.setStyledText(&small_chunks);
+}
+
 test "addHighlightByCharRange - single line highlight should not extend to EOL" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

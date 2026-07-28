@@ -64,6 +64,10 @@ pub const SyntaxStyle = struct {
 
         self.emitter.emit(.Destroy);
         self.emitter.deinit();
+        var name_iterator = self.name_to_id.keyIterator();
+        while (name_iterator.next()) |name| {
+            global_allocator.free(@constCast(name.*));
+        }
         self.arena.deinit();
         global_allocator.destroy(self.arena);
         self.* = undefined;
@@ -72,16 +76,18 @@ pub const SyntaxStyle = struct {
     fn putStyle(self: *SyntaxStyle, name: []const u8, definition: StyleDefinition) SyntaxStyleError!u32 {
         if (self.name_to_id.get(name)) |existing_id| {
             try self.id_to_style.put(self.allocator, existing_id, definition);
+            self.clearCache();
             return existing_id;
         }
 
         const id = self.next_id;
-        self.next_id += 1;
-
-        const owned_name = self.allocator.dupe(u8, name) catch return SyntaxStyleError.OutOfMemory;
+        const owned_name = self.global_allocator.dupe(u8, name) catch return SyntaxStyleError.OutOfMemory;
+        errdefer self.global_allocator.free(owned_name);
 
         try self.name_to_id.put(self.allocator, owned_name, id);
+        errdefer std.debug.assert(self.name_to_id.remove(owned_name));
         try self.id_to_style.put(self.allocator, id, definition);
+        self.next_id += 1;
 
         return id;
     }
@@ -96,6 +102,13 @@ pub const SyntaxStyle = struct {
 
     pub fn registerStyleDefinition(self: *SyntaxStyle, name: []const u8, definition: StyleDefinition) SyntaxStyleError!u32 {
         return self.putStyle(name, definition);
+    }
+
+    pub fn removeStyle(self: *SyntaxStyle, name: []const u8) void {
+        const removed = self.name_to_id.fetchRemove(name) orelse return;
+        std.debug.assert(self.id_to_style.remove(removed.value));
+        self.global_allocator.free(removed.key);
+        self.clearCache();
     }
 
     pub fn resolveById(self: *const SyntaxStyle, id: u32) ?StyleDefinition {

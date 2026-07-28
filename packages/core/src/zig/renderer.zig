@@ -1380,24 +1380,17 @@ pub const CliRenderer = struct {
                 const sameAttributes = fgMatch and bgMatch and currentAttributes != null and cell.attributes == currentAttributes.?;
 
                 const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
+                const starts_run = !sameAttributes or runStart == -1;
+                const repositions_cursor = runStart == -1;
 
-                if (hyperlinksEnabled and linkId != currentLinkId) {
-                    if (currentLinkId != 0) {
-                        writer.writeAll("\x1b]8;;\x1b\\") catch {};
-                    }
-                    currentLinkId = linkId;
-                    if (currentLinkId != 0) {
-                        const lp = link.initGlobalLinkPool(self.allocator);
-                        if (lp.get(currentLinkId)) |url_bytes| {
-                            writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
-                        } else |_| {
-                            // Link not found, treat as no link
-                            currentLinkId = 0;
-                        }
-                    }
+                if (hyperlinksEnabled and currentLinkId != 0 and
+                    (linkId != currentLinkId or repositions_cursor))
+                {
+                    writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                    currentLinkId = 0;
                 }
 
-                if (!sameAttributes or runStart == -1) {
+                if (starts_run) {
                     if (runLength > 0) {
                         writer.writeAll(ansi.ANSI.reset) catch {};
                     }
@@ -1409,12 +1402,24 @@ pub const CliRenderer = struct {
                     currentBg = cell.bg;
                     currentAttributes = cell.attributes;
 
-                    ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
+                    if (repositions_cursor) {
+                        ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
+                    }
 
                     self.emitColor(writer, cell.fg, false);
                     self.emitColor(writer, cell.bg, true);
 
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
+                }
+
+                if (hyperlinksEnabled and linkId != 0 and currentLinkId != linkId) {
+                    currentLinkId = linkId;
+                    const lp = link.initGlobalLinkPool(self.allocator);
+                    if (lp.get(currentLinkId)) |url_bytes| {
+                        writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
+                    } else |_| {
+                        currentLinkId = 0;
+                    }
                 }
 
                 // Handle grapheme characters
@@ -1434,7 +1439,18 @@ pub const CliRenderer = struct {
                             if (capabilities.explicit_cursor_positioning) {
                                 const nextX = x + graphemeWidth;
                                 if (nextX < self.width) {
+                                    if (currentLinkId != 0) {
+                                        writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                                    }
                                     ansi.ANSI.moveToOutput(writer, nextX + 1, y + 1 + self.renderOffset) catch {};
+                                    if (currentLinkId != 0) {
+                                        const lp = link.initGlobalLinkPool(self.allocator);
+                                        if (lp.get(currentLinkId)) |url_bytes| {
+                                            writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
+                                        } else |_| {
+                                            currentLinkId = 0;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1458,6 +1474,11 @@ pub const CliRenderer = struct {
                 self.currentRenderBuffer.syncCell(x, y, nextCell.?);
 
                 cellsUpdated += 1;
+            }
+
+            if (hyperlinksEnabled and currentLinkId != 0) {
+                writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                currentLinkId = 0;
             }
         }
 

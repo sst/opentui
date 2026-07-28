@@ -1042,9 +1042,45 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
         count += 1;
         pos += found + expected_open.len;
     }
-    // Should appear exactly once: the link stays open across rows without
-    // close/reopen at row boundaries, so terminals treat it as one contiguous link.
-    try std.testing.expectEqual(@as(usize, 1), count);
+    try std.testing.expectEqual(@as(usize, 2), count);
+
+    const second_row_move = std.mem.indexOf(u8, output, "\x1b[2;1H") orelse return error.TestUnexpectedResult;
+    const second_open = std.mem.lastIndexOf(u8, output, expected_open) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(second_row_move < second_open);
+}
+
+test "renderer - closes OSC 8 around wide grapheme cursor correction" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var test_cli_renderer = try TestRenderer.create(std.testing.allocator, 8, 1, pool);
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
+    cli_renderer.terminal.caps.hyperlinks = true;
+    cli_renderer.terminal.caps.explicit_cursor_positioning = true;
+
+    const link_id = try link_pool.alloc("https://example.com/wide");
+    const attributes = ansi.TextAttributes.setLinkId(0, link_id);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    try cli_renderer.getNextBuffer().drawText("\xf0\x9f\x91\x8bX", 0, 0, fg, bg, attributes);
+
+    _ = cli_renderer.render(false);
+    const rendered = test_cli_renderer.lastOutput();
+    const correction = std.mem.indexOf(u8, rendered, "\x1b[1;3H") orelse return error.TestUnexpectedResult;
+    const close_before = std.mem.lastIndexOf(u8, rendered[0..correction], "\x1b]8;;\x1b\\") orelse
+        return error.TestUnexpectedResult;
+    const open_after_offset = std.mem.indexOf(u8, rendered[correction..], "\x1b]8;id=") orelse
+        return error.TestUnexpectedResult;
+    const open_after = correction + open_after_offset;
+    const following_text_offset = std.mem.indexOfScalar(u8, rendered[correction..], 'X') orelse
+        return error.TestUnexpectedResult;
+    const following_text = correction + following_text_offset;
+    try std.testing.expect(close_before < correction);
+    try std.testing.expect(correction < open_after);
+    try std.testing.expect(open_after < following_text);
 }
 
 test "renderer - explicit default and indexed tags use ANSI default/indexed output" {
