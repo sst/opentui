@@ -1501,12 +1501,20 @@ pub fn stopCapture(engine: *Engine) i32 {
     return Status.ok;
 }
 
-pub fn readCapture(engine: *Engine, out_ptr: ?[*]f32, frame_count: u32, out_frames_read: ?*u32) i32 {
+pub fn readCapture(
+    engine: *Engine,
+    out_ptr: ?[*]f32,
+    out_sample_capacity: u32,
+    frame_count: u32,
+    out_frames_read: ?*u32,
+) i32 {
     const frames_read = out_frames_read orelse return Status.err_invalid;
     frames_read.* = 0;
     const output = out_ptr orelse return Status.err_invalid;
 
     const capture = engine.capture orelse return Status.err_not_found;
+    const required_samples = std.math.mul(u32, frame_count, capture.channels) catch return Status.err_invalid;
+    if (out_sample_capacity < required_samples) return Status.err_invalid;
     frames_read.* = capture.read(output, frame_count);
     return Status.ok;
 }

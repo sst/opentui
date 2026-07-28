@@ -442,11 +442,12 @@ export fn audioIsCaptureRunning(engine_handle: NativeHandle) bool {
 export fn audioReadCapture(
     engine_handle: NativeHandle,
     out_ptr: ?[*]f32,
+    out_sample_capacity: u32,
     frame_count: u32,
     out_frames_read: ?*u32,
 ) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    return native_audio.readCapture(object_ptr, out_ptr, frame_count, out_frames_read);
+    return native_audio.readCapture(object_ptr, out_ptr, out_sample_capacity, frame_count, out_frames_read);
 }
 
 export fn audioGetCaptureStats(engine_handle: NativeHandle, out_stats: ?*native_audio.CaptureStats) i32 {

@@ -179,7 +179,7 @@ describe("borrowed pointer call sites", () => {
     }
     symbols.audioReadCapture = (...args: any[]) => {
       calls.read.push(args)
-      new Uint32Array(args[3] as ArrayBuffer)[0] = 2
+      new Uint32Array(args[4] as ArrayBuffer)[0] = 2
       return 0
     }
     symbols.audioGetCaptureStats = (...args: any[]) => {
@@ -223,7 +223,9 @@ describe("borrowed pointer call sites", () => {
       expect(calls.name[0]![2]).toBeInstanceOf(Uint8Array)
       expect(calls.start[0]![1]).toBeInstanceOf(ArrayBuffer)
       expect(calls.read[0]![1]).toBe(output)
-      expect(calls.read[0]![3]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.read[0]![2]).toBe(output.length)
+      expect(calls.read[0]![3]).toBe(4)
+      expect(calls.read[0]![4]).toBeInstanceOf(ArrayBuffer)
       expect(calls.stats[0]![1]).toBeInstanceOf(ArrayBuffer)
     } finally {
       symbols.audioGetCaptureDeviceName = originals.name
@@ -232,6 +234,27 @@ describe("borrowed pointer call sites", () => {
       symbols.audioIsCaptureRunning = originals.running
       symbols.audioReadCapture = originals.read
       symbols.audioGetCaptureStats = originals.stats
+    }
+  })
+
+  test("audio capture reads forward the destination sample capacity", () => {
+    const calls: any[][] = []
+    const original = symbols.audioReadCapture
+    symbols.audioReadCapture = (...args: any[]) => {
+      calls.push(args)
+      return -1
+    }
+    try {
+      const output = new Float32Array(3)
+      expect(lib.audioReadCapture(1 as any, output, 1)).toEqual({ status: -1, framesRead: 0 })
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toHaveLength(5)
+      expect(calls[0]![1]).toBe(output)
+      expect(calls[0]![2]).toBe(output.length)
+      expect(calls[0]![3]).toBe(1)
+      expect(calls[0]![4]).toBeInstanceOf(ArrayBuffer)
+    } finally {
+      symbols.audioReadCapture = original
     }
   })
 

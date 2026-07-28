@@ -1533,7 +1533,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "bool",
     },
     audioReadCapture: {
-      args: ["u32", "ptr", "u32", "ptr"],
+      args: ["u32", "ptr", "u32", "u32", "ptr"],
       returns: "i32",
     },
     audioGetCaptureStats: {
@@ -5094,7 +5094,14 @@ class FFIRenderLib implements RenderLib {
     frameCount: number,
   ): { status: number; framesRead: number } {
     const outFramesReadBuffer = new ArrayBuffer(4)
-    const status = this.opentui.symbols.audioReadCapture(engine, outBuffer, frameCount, outFramesReadBuffer)
+    const sampleCapacity = toSafeFFIU32Length(outBuffer.length, "Audio capture output sample capacity")
+    const status = this.opentui.symbols.audioReadCapture(
+      engine,
+      outBuffer,
+      sampleCapacity,
+      frameCount,
+      outFramesReadBuffer,
+    )
     if (status !== 0) return { status, framesRead: 0 }
     return { status, framesRead: new Uint32Array(outFramesReadBuffer)[0] ?? 0 }
   }

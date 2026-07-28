@@ -268,7 +268,7 @@ test "audio capture stop is idempotent and preserves storage for draining" {
 
     var output: [4]f32 = undefined;
     var frames_read: u32 = 99;
-    try expectStatusOk(audio.readCapture(engine, &output, 4, &frames_read));
+    try expectStatusOk(audio.readCapture(engine, &output, output.len, 4, &frames_read));
     try testing.expectEqual(@as(u32, 3), frames_read);
     try testing.expectEqualSlices(f32, &.{ 1, 2, 3 }, output[0..3]);
 
@@ -276,6 +276,23 @@ test "audio capture stop is idempotent and preserves storage for draining" {
     try expectStatusOk(audio.getCaptureStats(engine, &stats));
     try testing.expectEqual(@as(u64, 3), stats.frames_read);
     try testing.expectEqual(@as(u32, 0), stats.buffered_frames);
+}
+
+test "audio capture read rejects a destination smaller than one interleaved frame" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    const capture = try audio.CaptureBuffer.create(testing.allocator, TEST_SAMPLE_RATE, 2, 4);
+    engine.capture = capture;
+    const input = [_]f32{ 0.25, -0.5 };
+    capture.write(&input, 1);
+
+    var output = [_]f32{ 0, 12345 };
+    var frames_read: u32 = 99;
+    const status = audio.readCapture(engine, output[0..1].ptr, 1, 1, &frames_read);
+    try testing.expectEqual(@as(f32, 12345), output[1]);
+    try testing.expectEqual(audio.Status.err_invalid, status);
+    try testing.expectEqual(@as(u32, 0), frames_read);
 }
 
 test "audio capture rejects invalid and overflowing sizes before allocation" {
@@ -297,10 +314,10 @@ test "audio capture rejects invalid and overflowing sizes before allocation" {
     var frames_read: u32 = 99;
     var sample = [_]f32{0};
     var stats: audio.CaptureStats = undefined;
-    try testing.expectEqual(audio.Status.err_not_found, audio.readCapture(engine, &sample, 1, &frames_read));
+    try testing.expectEqual(audio.Status.err_not_found, audio.readCapture(engine, &sample, sample.len, 1, &frames_read));
     try testing.expectEqual(@as(u32, 0), frames_read);
-    try testing.expectEqual(audio.Status.err_invalid, audio.readCapture(engine, null, 1, &frames_read));
-    try testing.expectEqual(audio.Status.err_invalid, audio.readCapture(engine, &sample, 1, null));
+    try testing.expectEqual(audio.Status.err_invalid, audio.readCapture(engine, null, sample.len, 1, &frames_read));
+    try testing.expectEqual(audio.Status.err_invalid, audio.readCapture(engine, &sample, sample.len, 1, null));
     try testing.expectEqual(audio.Status.err_not_found, audio.getCaptureStats(engine, &stats));
     try testing.expectEqual(audio.Status.err_invalid, audio.getCaptureStats(engine, null));
 }
