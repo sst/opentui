@@ -303,6 +303,7 @@ fn scanPng(data: []const u8) !PngMetadata {
     var gamma_supported = false;
     var saw_chrm = false;
     var chrm_supported = false;
+    var saw_plte = false;
     var saw_idat = false;
     var saw_iend = false;
 
@@ -330,9 +331,12 @@ fn scanPng(data: []const u8) !PngMetadata {
             if (saw_iccp) return error.MalformedInput;
             saw_iccp = true;
         } else if (std.mem.eql(u8, kind, "cICP")) {
-            if (saw_cicp or length != 4) return error.MalformedInput;
+            if (saw_cicp or saw_plte or saw_idat or length != 4) return error.MalformedInput;
             saw_cicp = true;
             cicp_supported = std.mem.eql(u8, payload, &[_]u8{ 1, 13, 0, 1 });
+        } else if (std.mem.eql(u8, kind, "PLTE")) {
+            if (saw_plte or saw_idat) return error.MalformedInput;
+            saw_plte = true;
         } else if (std.mem.eql(u8, kind, "sRGB")) {
             if (saw_srgb or length != 1 or payload[0] > 3) return error.MalformedInput;
             saw_srgb = true;
@@ -365,6 +369,8 @@ fn scanPng(data: []const u8) !PngMetadata {
     var result = metadata orelse return error.MalformedInput;
     if (saw_cicp and cicp_supported) {
         result.color_status = .explicit_srgb;
+    } else if (saw_cicp) {
+        return error.UnsupportedColorSpace;
     } else if (saw_iccp) {
         return error.UnsupportedColorSpace;
     } else if (saw_srgb) {
@@ -461,11 +467,9 @@ fn probeInternal(data: []const u8, limits: Limits, out: *Info, validate_jpeg: bo
 
     var decoder_width: u32 = 0;
     var decoder_height: u32 = 0;
-    if (ot_image_png_probe(data.ptr, @intCast(data.len), &decoder_width, &decoder_height) != 0 or
-        decoder_width != metadata.width or decoder_height != metadata.height)
-    {
-        return .malformed_input;
-    }
+    const png_probe_status = ot_image_png_probe(data.ptr, @intCast(data.len), &decoder_width, &decoder_height);
+    if (png_probe_status == 2) return .out_of_memory;
+    if (png_probe_status != 0 or decoder_width != metadata.width or decoder_height != metadata.height) return .malformed_input;
 
     const swaps_dimensions = metadata.orientation >= 5 and metadata.orientation <= 8;
     out.* = .{

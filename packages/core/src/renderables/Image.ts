@@ -1,5 +1,5 @@
 import { Renderable, type RenderableOptions } from "../Renderable.js"
-import { NativeImage, type ImageSource } from "../image.js"
+import { NativeImage, type ImageInfo, type ImageSource } from "../image.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { RGBA } from "../lib/RGBA.js"
 import type { ImageRenderProtocol, RenderContext, TerminalCapabilities } from "../types.js"
@@ -12,7 +12,7 @@ export interface ImageRenderableOptions extends RenderableOptions<ImageRenderabl
   source?: ImageSource
   fit?: ImageFit
   protocol?: ImageRenderProtocol
-  onLoad?: (image: NativeImage) => void
+  onLoad?: (info: ImageInfo) => void
   onError?: (error: unknown) => void
 }
 
@@ -42,7 +42,7 @@ export class ImageRenderable extends Renderable {
   private _loadError: unknown = null
   private _loadGeneration = 0
   private _loadController: AbortController | null = null
-  public onLoad?: (image: NativeImage) => void
+  public onLoad?: (info: ImageInfo) => void
   public onError?: (error: unknown) => void
   private _fit: ImageFit
   private _protocol: ImageRenderProtocol
@@ -86,8 +86,8 @@ export class ImageRenderable extends Renderable {
     this.loadPromise = this.load(source, generation, controller)
   }
 
-  public get image(): NativeImage | null {
-    return this._image
+  public get imageInfo(): ImageInfo | null {
+    return this._image?.info() ?? null
   }
 
   public get fit(): ImageFit {
@@ -227,7 +227,7 @@ export class ImageRenderable extends Renderable {
     this._loadController = null
     previous?.dispose()
     this.requestRender()
-    this.onLoad?.(image)
+    this.onLoad?.(image.info())
   }
 
   protected destroySelf(): void {

@@ -6,6 +6,7 @@ import {
   AudioStreamStatsStruct,
   CursorStyleOptionsStruct,
   GridDrawOptionsStruct,
+  ImageDrawOptionsStruct,
   LogicalCursorStruct,
   MeasureResultStruct,
   NativeAudioStreamCloseReason,
@@ -686,6 +687,8 @@ describe("borrowed pointer call sites", () => {
       const handle = 1 as any
 
       lib.bufferDrawImage(handle, handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, "auto")
+      const firstImageOptions = calls.get("bufferDrawImage")![2]
+      lib.bufferDrawImage(handle, handle, 2, 3, 4, 5, 6, 7, 0, 0, 1, 1, "sixel")
       lib.imageInfo(data)
       lib.imageDecode(data)
       lib.imageCreateFromRgba(pixels, 1, 1, 4)
@@ -698,7 +701,18 @@ describe("borrowed pointer call sites", () => {
       lib.imageTransform(handle, 0)
       lib.imageComposite(handle, handle, 0, 0, 0, 255)
 
-      expect(calls.get("bufferDrawImage")![2]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.get("bufferDrawImage")![2]).toBe(firstImageOptions)
+      expect(firstImageOptions).toBeInstanceOf(ArrayBuffer)
+      expect((firstImageOptions as ArrayBuffer).byteLength).toBe(ImageDrawOptionsStruct.size)
+      expect(ImageDrawOptionsStruct.unpack(firstImageOptions as ArrayBuffer)).toMatchObject({
+        x: 2,
+        y: 3,
+        width: 4,
+        height: 5,
+        pixelWidth: 6,
+        pixelHeight: 7,
+        protocol: 2,
+      })
       expect(calls.get("imageInfo")![0]).toBe(data)
       expect(calls.get("imageInfo")![2]).toBeInstanceOf(ArrayBuffer)
       expect(calls.get("imageDecode")![0]).toBe(data)
@@ -710,7 +724,7 @@ describe("borrowed pointer call sites", () => {
       expect(calls.get("imageCopyPixels")![1]).toBe(destination)
       expect(calls.get("imageResize")![4]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageExtract")![5]).toBeInstanceOf(Uint32Array)
-      expect(calls.get("imageExtend")![5]).toBe(background)
+      expect(calls.get("imageExtend")![5]).toBe(0xff0a0908)
       expect(calls.get("imageExtend")![6]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageTransform")![2]).toBeInstanceOf(Uint32Array)
       expect(calls.get("imageComposite")![6]).toBeInstanceOf(Uint32Array)

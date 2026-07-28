@@ -3271,7 +3271,7 @@ test "buffered backend frees grown buffers cleanly on deinit" {
     try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
 }
 
-test "renderer scales kitty transmission alpha by placement opacity" {
+test "renderer composites kitty placement opacity over the covered background" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
@@ -3293,18 +3293,12 @@ test "renderer scales kitty transmission alpha by placement opacity" {
     try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
     const output = test_renderer.memory.lastWrite();
 
-    // Translucent placements transmit RGBA with the alpha channel scaled so the
-    // terminal composites the fade; colors are left for kitty to blend.
-    try std.testing.expect(std.mem.indexOf(u8, output, "f=32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "f=24") != null);
     const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
     const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b\\").? + 2;
     const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
     defer std.testing.allocator.free(transmitted);
-    try std.testing.expectEqual(@as(usize, 4), transmitted.len);
-    try std.testing.expectEqual(@as(u8, 200), transmitted[0]);
-    try std.testing.expectEqual(@as(u8, 100), transmitted[1]);
-    try std.testing.expectEqual(@as(u8, 50), transmitted[2]);
-    try std.testing.expect(@abs(@as(i16, transmitted[3]) - 128) <= 1);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 100, 50, 25 }, transmitted);
 
     // Opacity changes retransmit under the same kitty id: delete then new data.
     next = test_renderer.renderer.getNextBuffer();
@@ -3318,7 +3312,7 @@ test "renderer scales kitty transmission alpha by placement opacity" {
     const second_end = std.mem.indexOfPos(u8, second, second_start, "\x1b\\").? + 2;
     const retransmitted = try terminal_image_test.decodeKittyChunks(second[second_start..second_end]);
     defer std.testing.allocator.free(retransmitted);
-    try std.testing.expect(@abs(@as(i16, retransmitted[3]) - 64) <= 1);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 50, 25, 13 }, retransmitted);
 }
 
 test "renderer bounds sixel cache entries and evicts least recently used payloads" {
@@ -3632,4 +3626,171 @@ test "renderer transmits only cropped kitty source pixels" {
     }
     try std.testing.expectEqualSlices(u8, &expected, changed_transmitted);
     try std.testing.expect(!std.mem.eql(u8, transmitted, changed_transmitted));
+}
+
+test "renderer composites intrinsic sixel alpha over the covered background" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 4, 2, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.sixel = true;
+    test_renderer.renderer.setBackgroundColor(ansi.rgbColor(0, 0, 255, 255));
+    _ = test_renderer.renderer.render(true);
+
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 128 }, 1, 1, 4);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try expectSinglePaintedSixelColor(test_renderer.memory.lastWrite(), .{ 45, 55 }, .{ 0, 2 }, .{ 45, 55 });
+}
+
+test "renderer composites intrinsic kitty alpha over the covered background" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 2, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+    test_renderer.renderer.setBackgroundColor(ansi.rgbColor(0, 0, 255, 255));
+    _ = test_renderer.renderer.render(true);
+
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 128 }, 1, 1, 4);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+    const transmit_start = std.mem.indexOf(u8, output, "\x1b_Ga=t").?;
+    const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b\\").? + 2;
+    const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
+    defer std.testing.allocator.free(transmitted);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 128, 0, 127 }, transmitted);
+}
+
+test "renderer preserves kitty alpha over a lower image placement" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 2, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+
+    const lower = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 0, 255, 255 }, 1, 1, 4);
+    const upper = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 128 }, 1, 1, 4);
+    const lower_handle = try handles.insert(.image, @ptrCast(lower));
+    const upper_handle = try handles.insert(.image, @ptrCast(upper));
+    defer for ([_]u32{ upper_handle, lower_handle }) |handle| {
+        const token = handles.beginDestroy(handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    };
+
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(lower, lower_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+    try std.testing.expect(try next.drawImage(upper, upper_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    const output = test_renderer.memory.lastWrite();
+    const transmit_start = std.mem.lastIndexOf(u8, output, "\x1b_Ga=t").?;
+    const transmit_end = std.mem.indexOfPos(u8, output, transmit_start, "\x1b\\").? + 2;
+    const transmitted = try terminal_image_test.decodeKittyChunks(output[transmit_start..transmit_end]);
+    defer std.testing.allocator.free(transmitted);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 128 }, transmitted);
+}
+
+test "renderer reports image preparation allocation failure" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 2, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    test_renderer.renderer.allocator = failing.allocator();
+    const status = test_renderer.renderer.render(true);
+    test_renderer.renderer.allocator = std.testing.allocator;
+
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, status);
+}
+
+test "renderer keeps translucent sixel placement visible over a lower image" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 2, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    const lower = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 0, 255, 255 }, 1, 1, 4);
+    const upper = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const lower_handle = try handles.insert(.image, @ptrCast(lower));
+    const upper_handle = try handles.insert(.image, @ptrCast(upper));
+    defer for ([_]u32{ upper_handle, lower_handle }) |handle| {
+        const token = handles.beginDestroy(handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    };
+
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(lower, lower_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try next.pushOpacity(0.4);
+    try std.testing.expect(try next.drawImage(upper, upper_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    next.popOpacity();
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try expectSinglePaintedSixelColor(test_renderer.memory.lastWrite(), .{ 35, 45 }, .{ 0, 2 }, .{ 0, 2 });
+}
+
+test "renderer clears an upper sixel hole when its lower image moves away" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 2, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    const lower = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 0, 255, 255 }, 1, 1, 4);
+    const upper = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 0, 0, 0 }, 1, 1, 4);
+    const lower_handle = try handles.insert(.image, @ptrCast(lower));
+    const upper_handle = try handles.insert(.image, @ptrCast(upper));
+    defer for ([_]u32{ upper_handle, lower_handle }) |handle| {
+        const token = handles.beginDestroy(handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    };
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(lower, lower_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(upper, upper_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(lower, lower_handle, 1, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(upper, upper_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b[1;1H") != null);
 }
