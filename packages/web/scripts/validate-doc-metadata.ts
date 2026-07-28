@@ -34,6 +34,7 @@ async function main() {
     addDuplicateKeyViolations(index.pages, (page) => page.url, "url", violations)
     addDuplicateKeyViolations(index.pages, (page) => page.sourcePath, "sourcePath", violations)
     addOrderCollisionViolations(index.pages, violations)
+    addOrderSequenceViolations(index.pages, violations)
 
     if (violations.length > 0) {
       console.error("Metadata validation failed:\n")
@@ -76,10 +77,6 @@ function addOrderCollisionViolations(pages: DocPage[], violations: string[]) {
   const grouped = new Map<string, DocPage[]>()
 
   for (const page of pages) {
-    if (page.order === undefined) {
-      continue
-    }
-
     const key = `${page.section}:${page.order}`
     grouped.set(key, [...(grouped.get(key) ?? []), page])
   }
@@ -93,6 +90,23 @@ function addOrderCollisionViolations(pages: DocPage[], violations: string[]) {
     violations.push(
       `order collision in ${section} for order ${order}: ${matches.map((page) => page.sourcePath).join(", ")}`,
     )
+  }
+}
+
+function addOrderSequenceViolations(pages: DocPage[], violations: string[]) {
+  for (const section of Object.keys(DOC_SECTION_CONFIG)) {
+    const orders = pages
+      .filter((page) => page.section === section)
+      .map((page) => page.order)
+      .toSorted((left, right) => left - right)
+
+    for (const [index, order] of orders.entries()) {
+      const expected = index + 1
+      if (order !== expected) {
+        violations.push(`${section}: expected contiguous orders starting at 1; expected ${expected}, found ${order}`)
+        break
+      }
+    }
   }
 }
 

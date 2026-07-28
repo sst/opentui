@@ -112,7 +112,7 @@ Applications that can reconstruct their scrollback may opt into a destructive re
 
 The `externalOutputMode` option controls what happens to writes that go through the renderer's configured `stdout.write` while the renderer is active. It does not change `stderr`, the built-in console overlay, or renderer-owned frame bytes.
 
-Renderer-owned native frames go through the renderer output backend: `process.stdout` by default, or a custom `stdout` through `NativeSpanFeed`. `externalOutputMode` only changes application writes through the configured `stdout.write` path.
+Renderer-owned native frames go through the renderer output backend: `process.stdout` by default, or a custom `stdout` through [`NativeSpanFeed`](/docs/reference/native-span-feed). `externalOutputMode` only changes application writes through the configured `stdout.write` path.
 
 - **`"capture-stdout"`**: Intercepts `stdout.write`, queues the text, and flushes it above the footer during split-footer renders. Only valid when `screenMode` is `"split-footer"`.
 - **`"passthrough"`**: Leaves `stdout.write` untouched. Output goes directly to the configured `stdout`.
@@ -146,6 +146,8 @@ const renderer = await createCliRenderer({
 ```
 
 Initial size comes from `stdout.columns` / `stdout.rows`, then `width` / `height`, then `80x24`. For custom `stdout`, `remote` defaults to `true`; set `remote: false` only when the stream behaves like the local terminal and should receive default terminal env forwarding.
+
+When `stdout` is not `process.stdout`, the renderer creates a `NativeSpanFeed` unless `bufferedOutput: "memory"` is set. It forwards native frame bytes to the original `stdout.write` and keeps each borrowed native chunk alive until the write callback runs, providing asynchronous backpressure. Applications normally should not create this low-level transport directly; see the [NativeSpanFeed reference](/docs/reference/native-span-feed) for its ownership and lifecycle rules.
 
 Call `renderer.resize(cols, rows)` when the external terminal changes size. `SIGWINCH` is only registered for `process.stdout`.
 
@@ -264,7 +266,7 @@ surface.destroy()
 
 `commitRows` throws if you call it before `render()`, or if the renderer's width or `widthMethod` changed since the last `render()`. Re-render before committing fresh rows in either case.
 
-For React and Solid, use the binding-level helpers that wrap `writeToScrollback` with JSX support. See [`createScrollbackWriter` / `writeSolidToScrollback`](/docs/bindings/solid#scrollback-writers) in the Solid docs.
+For Solid, use the binding-level helpers that wrap `writeToScrollback` with JSX support. See [`createScrollbackWriter` / `writeSolidToScrollback`](/docs/bindings/solid#scrollback-writers). The React binding does not currently provide an equivalent JSX scrollback helper.
 
 ## The root renderable
 

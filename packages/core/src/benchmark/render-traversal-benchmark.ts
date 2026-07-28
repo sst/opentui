@@ -6,7 +6,7 @@
 
 import { performance } from "node:perf_hooks"
 import { existsSync } from "node:fs"
-import { mkdir } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { Command } from "commander"
 import { BoxRenderable, RGBA, ScrollBarRenderable, ScrollBoxRenderable, TextRenderable } from "../index.js"
@@ -90,6 +90,8 @@ const COLORS = {
   accent: RGBA.fromInts(84, 171, 224),
   warning: RGBA.fromInts(219, 186, 96),
 } as const
+
+let benchmarkChecksum = 0
 
 const program = new Command()
 program
@@ -207,7 +209,7 @@ if (outputEnabled) {
 }
 
 if (jsonPath) {
-  await Bun.write(
+  await writeFile(
     jsonPath,
     JSON.stringify(
       {
@@ -219,6 +221,13 @@ if (jsonPath) {
           warmupIterations,
           scenarioFilter,
           timestamp: new Date().toISOString(),
+          runtime: {
+            name: typeof process.versions.bun === "string" ? "bun" : "node",
+            version: process.versions.bun ?? process.version,
+            platform: process.platform,
+            arch: process.arch,
+          },
+          checksum: benchmarkChecksum,
         },
         scenarios: results,
       },
@@ -231,6 +240,9 @@ if (jsonPath) {
 
 function createScenarios(): ScenarioDefinition[] {
   return [
+    createYogaLayoutReadScenario(100),
+    createYogaLayoutReadScenario(1000),
+    createYogaLayoutReadScenario(10000),
     {
       name: "layout_only_opencode_wrappers",
       description: "OpenCode-like nested layout boxes with no visible box output",
@@ -466,6 +478,51 @@ function createScenarios(): ScenarioDefinition[] {
       },
     },
   ]
+}
+
+function createYogaLayoutReadScenario(nodeCount: number): ScenarioDefinition {
+  return {
+    name: `yoga_layout_reads_${nodeCount}`,
+    description: `Read ${nodeCount} computed Yoga layouts through the production FFI path`,
+    setup: async (ctx) => {
+      clearRoot(ctx.renderer)
+      resetBuffers(ctx.renderer)
+
+      const root = new BoxRenderable(ctx.renderer, {
+        id: `bench-yoga-layout-root-${nodeCount}`,
+        width: "100%",
+        flexDirection: "column",
+      })
+      ctx.renderer.root.add(root)
+
+      const nodes = Array.from({ length: nodeCount }, (_, index) => {
+        const node = new BoxRenderable(ctx.renderer, {
+          id: `bench-yoga-layout-node-${nodeCount}-${index}`,
+          width: "100%",
+          height: 1,
+          flexShrink: 0,
+        })
+        root.add(node)
+        return node.getLayoutNode()
+      })
+
+      await ctx.renderOnce()
+
+      return {
+        renderablesPerIteration: nodeCount,
+        layoutOnlyBoxesPerIteration: nodeCount,
+        runIteration: async () => {
+          let checksum = 0
+          for (let index = 0; index < nodes.length; index++) {
+            const layout = nodes[index]!.getComputedLayout()
+            checksum += layout.left + layout.top + layout.width + layout.height + index
+          }
+          benchmarkChecksum = (benchmarkChecksum + checksum) >>> 0
+        },
+        teardown: () => root.destroyRecursively(),
+      }
+    },
+  }
 }
 
 // Frame-time scaling with total child count under viewport culling, at a

@@ -199,6 +199,7 @@ const isBun =
   typeof process.versions === "object" &&
   process.versions !== null &&
   typeof process.versions.bun === "string"
+export const usesBunFFI = isBun
 
 const requireModule = createRequire(import.meta.url)
 const backend = loadBackend()
@@ -234,6 +235,11 @@ export function toPointer(value: PointerInput): Pointer {
 
 export function ffiBool(value: boolean): 0 | 1 {
   return value ? 1 : 0
+}
+
+export function trimNodeFFIOutputBytes(buffer: Uint8Array, length: number): Uint8Array {
+  if (length === buffer.byteLength) return buffer
+  return new Uint8Array((buffer.buffer as ArrayBuffer).transferToFixedLength(length))
 }
 
 // Convert a bigint pointer to a number only when JavaScript can represent it
@@ -472,6 +478,37 @@ function wrapNodeSymbol(fn: (...args: any[]) => any, definition: FFIFunction): (
     return fn
   }
 
+  // Fixed wrappers avoid rest/slice/spread overhead on pointer-heavy signatures. One-pointer arity 7 is faster generic.
+  if (definition.args?.length === 7 && pointerArgIndexes.length >= 2) {
+    return wrapNodeSymbol7(fn, pointerArgIndexes)
+  }
+
+  if (definition.args?.length === 8) {
+    return wrapNodeSymbol8(fn, pointerArgIndexes)
+  }
+
+  const pointerArgs = new Set(pointerArgIndexes)
+  const normalize = (value: unknown, index: number) =>
+    pointerArgs.has(index) ? toNodePointerArgumentFast(value) : value
+
+  switch (definition.args?.length) {
+    case 1:
+      return function (arg0: unknown) {
+        if (arguments.length !== 1) return Reflect.apply(fn, undefined, arguments)
+        return fn(normalize(arg0, 0))
+      }
+    case 2:
+      return function (arg0: unknown, arg1: unknown) {
+        if (arguments.length !== 2) return Reflect.apply(fn, undefined, arguments)
+        return fn(normalize(arg0, 0), normalize(arg1, 1))
+      }
+    case 3:
+      return function (arg0: unknown, arg1: unknown, arg2: unknown) {
+        if (arguments.length !== 3) return Reflect.apply(fn, undefined, arguments)
+        return fn(normalize(arg0, 0), normalize(arg1, 1), normalize(arg2, 2))
+      }
+  }
+
   return (...args: any[]) => {
     const normalizedArgs = args.slice()
 
@@ -481,6 +518,89 @@ function wrapNodeSymbol(fn: (...args: any[]) => any, definition: FFIFunction): (
 
     return fn(...normalizedArgs)
   }
+}
+
+function wrapNodeSymbol7(fn: (...args: any[]) => any, pointerArgIndexes: number[]): (...args: any[]) => any {
+  const pointer0 = pointerArgIndexes.includes(0)
+  const pointer1 = pointerArgIndexes.includes(1)
+  const pointer2 = pointerArgIndexes.includes(2)
+  const pointer3 = pointerArgIndexes.includes(3)
+  const pointer4 = pointerArgIndexes.includes(4)
+  const pointer5 = pointerArgIndexes.includes(5)
+  const pointer6 = pointerArgIndexes.includes(6)
+  const normalize = (value: unknown, pointer: boolean) => (pointer ? toNodePointerArgumentFast(value) : value)
+
+  return function (
+    arg0: unknown,
+    arg1: unknown,
+    arg2: unknown,
+    arg3: unknown,
+    arg4: unknown,
+    arg5: unknown,
+    arg6: unknown,
+  ) {
+    if (arguments.length !== 7) return Reflect.apply(fn, undefined, arguments)
+    return fn(
+      normalize(arg0, pointer0),
+      normalize(arg1, pointer1),
+      normalize(arg2, pointer2),
+      normalize(arg3, pointer3),
+      normalize(arg4, pointer4),
+      normalize(arg5, pointer5),
+      normalize(arg6, pointer6),
+    )
+  }
+}
+
+function wrapNodeSymbol8(fn: (...args: any[]) => any, pointerArgIndexes: number[]): (...args: any[]) => any {
+  const pointer0 = pointerArgIndexes.includes(0)
+  const pointer1 = pointerArgIndexes.includes(1)
+  const pointer2 = pointerArgIndexes.includes(2)
+  const pointer3 = pointerArgIndexes.includes(3)
+  const pointer4 = pointerArgIndexes.includes(4)
+  const pointer5 = pointerArgIndexes.includes(5)
+  const pointer6 = pointerArgIndexes.includes(6)
+  const pointer7 = pointerArgIndexes.includes(7)
+  const normalize = (value: unknown, pointer: boolean) => (pointer ? toNodePointerArgumentFast(value) : value)
+
+  return function (
+    arg0: unknown,
+    arg1: unknown,
+    arg2: unknown,
+    arg3: unknown,
+    arg4: unknown,
+    arg5: unknown,
+    arg6: unknown,
+    arg7: unknown,
+  ) {
+    if (arguments.length !== 8) return Reflect.apply(fn, undefined, arguments)
+    return fn(
+      normalize(arg0, pointer0),
+      normalize(arg1, pointer1),
+      normalize(arg2, pointer2),
+      normalize(arg3, pointer3),
+      normalize(arg4, pointer4),
+      normalize(arg5, pointer5),
+      normalize(arg6, pointer6),
+      normalize(arg7, pointer7),
+    )
+  }
+}
+
+function toNodePointerArgumentFast(value: unknown): bigint | ArrayBuffer | ArrayBufferView {
+  if (typeof value === "bigint") {
+    return value >= 0n ? value : toNodePointerArgument(value)
+  }
+
+  if (ArrayBuffer.isView(value) && value.byteLength > 0 && value.buffer instanceof ArrayBuffer) {
+    return value
+  }
+
+  if (value instanceof ArrayBuffer && value.byteLength > 0) {
+    return value
+  }
+
+  return toNodePointerArgument(value)
 }
 
 function isNodePointerArgumentType(type: FFITypeOrString): boolean {

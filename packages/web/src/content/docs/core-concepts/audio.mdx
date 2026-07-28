@@ -26,9 +26,9 @@ const sound = await audio.loadSoundFile("click.wav")
 if (sound != null && audio.start()) {
   audio.play(sound, { volume: 0.8, pan: 0, loop: false })
 }
-
-audio.dispose()
 ```
+
+Keep the engine alive while playback is needed, then call `audio.dispose()` from your application's shutdown lifecycle.
 
 Use `setupAudio(options?)` when you prefer a function wrapper around `Audio.create(options?)`.
 
@@ -236,6 +236,8 @@ Streams use the same mixer and master tap as loaded sounds. Once `enableTap()` i
 
 `start()` starts native playback and returns `false` when no output device is available. Use `isStarted()` to check native playback state.
 
+The playback device remains open until `stop()` or `dispose()` is called, even when no voices are active. `stop()` releases the device while preserving loaded sounds, so call `start()` again before the next playback. Because `play()` returns when a voice starts rather than when it finishes, calling `stop()` immediately afterward can interrupt the sound.
+
 For headless mixing, tests, benchmarks, or manual `mixFrames()` output, use `startMixer()`. It starts the mixer without opening a playback device. Use `isMixerStarted()` to check either mode.
 
 ## Bun standalone executables
@@ -260,7 +262,28 @@ Compile the app normally with `bun build --compile ./app.ts --outfile app`.
 
 ## Node.js standalone executables
 
-Coming soon.
+After following the [Node.js SEA asset setup](/docs/reference/standalone-executables#nodejs-sea), add application audio files to the SEA `assets` map alongside the OpenTUI runtime manifest:
+
+```js
+assets: {
+  ...Object.fromEntries(openTuiAssets.map(({ key, source }) => [key, source])),
+  "app/click.wav": resolve("click.wav"),
+}
+```
+
+Load the embedded bytes through Node's SEA API and pass them directly to `loadSound()`, which accepts `ArrayBuffer` and `Uint8Array`:
+
+```typescript
+import { getAsset } from "node:sea"
+import { Audio } from "@opentui/core"
+
+const audio = Audio.create({ autoStart: false })
+const click = audio.loadSound(getAsset("app/click.wav"))
+
+if (click != null && audio.start()) {
+  audio.play(click)
+}
+```
 
 ## Devices
 

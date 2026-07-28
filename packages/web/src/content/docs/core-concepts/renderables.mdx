@@ -30,23 +30,25 @@ renderer.root.add(greeting)
 
 OpenTUI provides these built-in renderables:
 
-| Class                   | Description                                   |
-| ----------------------- | --------------------------------------------- |
-| `BoxRenderable`         | Container with border, background, and layout |
-| `TextRenderable`        | Read-only styled text display                 |
-| `InputRenderable`       | Single-line text input                        |
-| `TextareaRenderable`    | Multi-line editable text                      |
-| `SelectRenderable`      | Dropdown/list selection                       |
-| `TabSelectRenderable`   | Horizontal tab selection                      |
-| `ScrollBoxRenderable`   | Scrollable container                          |
-| `ScrollBarRenderable`   | Standalone scroll bar control                 |
-| `CodeRenderable`        | Syntax-highlighted code display               |
-| `LineNumberRenderable`  | Line number gutter for code/text views        |
-| `DiffRenderable`        | Unified or split diff viewer                  |
-| `ASCIIFontRenderable`   | ASCII art font display                        |
-| `FrameBufferRenderable` | Raw framebuffer for custom graphics           |
-| `MarkdownRenderable`    | Markdown renderer                             |
-| `SliderRenderable`      | Numeric slider control                        |
+| Class                                                              | Description                                   |
+| ------------------------------------------------------------------ | --------------------------------------------- |
+| `BoxRenderable`                                                    | Container with border, background, and layout |
+| `TextRenderable`                                                   | Read-only styled text display                 |
+| [`TextTableRenderable`](/docs/components/text-table)               | Styled, wrapping, selectable text table       |
+| `InputRenderable`                                                  | Single-line text input                        |
+| `TextareaRenderable`                                               | Multi-line editable text                      |
+| `SelectRenderable`                                                 | Dropdown/list selection                       |
+| `TabSelectRenderable`                                              | Horizontal tab selection                      |
+| `ScrollBoxRenderable`                                              | Scrollable container                          |
+| `ScrollBarRenderable`                                              | Standalone scroll bar control                 |
+| `CodeRenderable`                                                   | Syntax-highlighted code display               |
+| `LineNumberRenderable`                                             | Line number gutter for code/text views        |
+| `DiffRenderable`                                                   | Unified or split diff viewer                  |
+| `ASCIIFontRenderable`                                              | ASCII art font display                        |
+| `FrameBufferRenderable`                                            | Raw framebuffer for custom graphics           |
+| `MarkdownRenderable`                                               | Markdown renderer                             |
+| `SliderRenderable`                                                 | Numeric slider control                        |
+| [`TimeToFirstDrawRenderable`](/docs/components/time-to-first-draw) | First-draw performance timestamp display      |
 
 QR code support is available from the separate `@opentui/qrcode` package.
 
@@ -311,7 +313,7 @@ This moves the renderable visually without affecting layout.
 Enable offscreen rendering for complex content and use hooks to draw to the buffer:
 
 ```typescript
-import { RGBA } from "@opentui/core"
+import { BoxRenderable, RGBA } from "@opentui/core"
 
 const complex = new BoxRenderable(renderer, {
   id: "complex",
