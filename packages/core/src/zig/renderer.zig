@@ -2007,11 +2007,12 @@ pub const CliRenderer = struct {
         }
 
         const hyperlinksEnabled = self.terminal.getCapabilities().hyperlinks;
+        var use_row_equality = !should_force and !clears_pending;
 
         for (0..self.height) |uy| {
             const y = @as(u32, @intCast(uy));
 
-            if (!should_force and !clears_pending) {
+            if (use_row_equality) {
                 const row_start = @as(usize, y) * self.width;
                 const row_end = row_start + self.width;
                 if (std.mem.eql(u32, self.currentRenderBuffer.buffer.char[row_start..row_end], self.nextRenderBuffer.buffer.char[row_start..row_end]) and
@@ -2022,6 +2023,7 @@ pub const CliRenderer = struct {
 
             var runStart: i64 = -1;
             var runLength: u32 = 0;
+            const cells_updated_before_row = cellsUpdated;
 
             for (0..self.width) |ux| {
                 const x = @as(u32, @intCast(ux));
@@ -2031,13 +2033,14 @@ pub const CliRenderer = struct {
                 if (currentCell == null or nextCell == null) continue;
 
                 const cell = nextCell.?;
+                const cell_type = cell.char & gp.CHAR_TYPE_MASK;
 
                 if (!should_force) {
                     const cellsEqual = currentCell.?.char == cell.char and currentCell.?.attributes == cell.attributes and
                         buf.rgbaEqual(currentCell.?.fg, cell.fg) and buf.rgbaEqual(currentCell.?.bg, cell.bg);
                     // Identical reserved cells still repaint when their
                     // placement's pixels are dirty (e.g. Sixel content change).
-                    if (cellsEqual and !(clears_pending and gp.isImageChar(cell.char) and dirtyImageChar(image_dirty_items, cell.char))) {
+                    if (cellsEqual and !(clears_pending and cell_type == gp.CHAR_FLAG_IMAGE and dirtyImageChar(image_dirty_items, cell.char))) {
                         if (runLength > 0) {
                             writer.writeAll(ansi.ANSI.reset) catch {};
                             runStart = -1;
@@ -2052,7 +2055,7 @@ pub const CliRenderer = struct {
                 // (re)painted clear their cells, as one batched space run.
                 // Fallback placements materialize as ordinary cells and fall
                 // through to normal diffing.
-                if (gp.isImageChar(cell.char)) blk: {
+                if (cell_type == gp.CHAR_FLAG_IMAGE) blk: {
                     const id = gp.imageIdFromChar(cell.char);
                     if (id == 0 or id > image_dirty_items.len) break :blk;
                     const state = &image_dirty_items[id - 1];
@@ -2130,40 +2133,43 @@ pub const CliRenderer = struct {
                 }
 
                 // Handle grapheme characters
-                if (gp.isImageChar(cell.char)) {
-                    const fallback = buf.quadrantChars[gp.imageFallbackFromChar(cell.char)];
-                    const len = std.unicode.utf8Encode(@intCast(fallback), &utf8Buf) catch unreachable;
-                    writer.writeAll(utf8Buf[0..len]) catch {};
-                } else if (gp.isGraphemeChar(cell.char)) {
-                    const gid: u32 = gp.graphemeIdFromChar(cell.char);
-                    const bytes = self.pool.get(gid) catch |err| {
-                        self.performShutdownSequence();
-                        std.debug.panic("Fatal: no grapheme bytes in pool for gid {d}: {}", .{ gid, err });
-                    };
-                    if (bytes.len > 0) {
-                        const capabilities = self.terminal.getCapabilities();
-                        const graphemeWidth = gp.charRightExtent(cell.char) + 1;
-                        if (capabilities.explicit_width) {
-                            ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
-                        } else {
-                            writer.writeAll(bytes) catch {};
-                            if (capabilities.explicit_cursor_positioning) {
-                                const nextX = x + graphemeWidth;
-                                if (nextX < self.width) {
-                                    ansi.ANSI.moveToOutput(writer, nextX + 1, y + 1 + self.renderOffset) catch {};
+                switch (cell_type) {
+                    gp.CHAR_FLAG_IMAGE => {
+                        const fallback = buf.quadrantChars[gp.imageFallbackFromChar(cell.char)];
+                        const len = std.unicode.utf8Encode(@intCast(fallback), &utf8Buf) catch unreachable;
+                        writer.writeAll(utf8Buf[0..len]) catch {};
+                    },
+                    gp.CHAR_FLAG_GRAPHEME => {
+                        const gid: u32 = gp.graphemeIdFromChar(cell.char);
+                        const bytes = self.pool.get(gid) catch |err| {
+                            self.performShutdownSequence();
+                            std.debug.panic("Fatal: no grapheme bytes in pool for gid {d}: {}", .{ gid, err });
+                        };
+                        if (bytes.len > 0) {
+                            const capabilities = self.terminal.getCapabilities();
+                            const graphemeWidth = gp.charRightExtent(cell.char) + 1;
+                            if (capabilities.explicit_width) {
+                                ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
+                            } else {
+                                writer.writeAll(bytes) catch {};
+                                if (capabilities.explicit_cursor_positioning) {
+                                    const nextX = x + graphemeWidth;
+                                    if (nextX < self.width) {
+                                        ansi.ANSI.moveToOutput(writer, nextX + 1, y + 1 + self.renderOffset) catch {};
+                                    }
                                 }
                             }
                         }
-                    }
-                } else if (gp.isContinuationChar(cell.char)) {
-                    // Intentionally do not write a space for continuation cells.
-                    // NOTE: disabled to fix 2-cell emoji rendering when the two
-                    // cells have distinct colors (space overwrite can break glyph output)
-
-                    // writer.writeByte(' ') catch {};
-                } else {
-                    const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8Buf) catch 1;
-                    writer.writeAll(utf8Buf[0..len]) catch {};
+                    },
+                    gp.CHAR_FLAG_CONTINUATION => {},
+                    else => {
+                        if (cell.char >= 32 and cell.char <= 126) {
+                            writer.writeByte(@intCast(cell.char)) catch {};
+                        } else {
+                            const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8Buf) catch 1;
+                            writer.writeAll(utf8Buf[0..len]) catch {};
+                        }
+                    },
                 }
                 runLength += 1;
 
@@ -2175,6 +2181,7 @@ pub const CliRenderer = struct {
 
                 cellsUpdated += 1;
             }
+            if (cellsUpdated - cells_updated_before_row == self.width) use_row_equality = false;
         }
 
         var sixel_dirty = false;
