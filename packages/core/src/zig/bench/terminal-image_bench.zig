@@ -608,6 +608,8 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
                 .max_ns = stats.max_ns,
                 .total_ns = stats.total_ns,
                 .iterations = stats.count,
+                .stddev_ns = stats.standardDeviation(),
+                .rme_95 = stats.relativeMarginOfError95(),
                 .mem_stats = mem_stats,
             });
         }
@@ -628,6 +630,8 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
                 .max_ns = count_stats.max_ns,
                 .total_ns = count_stats.total_ns,
                 .iterations = count_stats.count,
+                .stddev_ns = count_stats.standardDeviation(),
+                .rme_95 = count_stats.relativeMarginOfError95(),
                 .mem_stats = null,
             });
         }
@@ -649,6 +653,8 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
                 .max_ns = quantize_stats.max_ns,
                 .total_ns = quantize_stats.total_ns,
                 .iterations = quantize_stats.count,
+                .stddev_ns = quantize_stats.standardDeviation(),
+                .rme_95 = quantize_stats.relativeMarginOfError95(),
                 .mem_stats = null,
             });
         }

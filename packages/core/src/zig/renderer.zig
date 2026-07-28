@@ -1634,6 +1634,7 @@ pub const CliRenderer = struct {
             self.pendingImages.clearRetainingCapacity();
             return;
         }
+        if (self.currentImages.items.len == 0 and self.pendingImages.items.len == 0) return;
         std.mem.swap(std.ArrayListUnmanaged(CommittedImage), &self.currentImages, &self.pendingImages);
         self.pendingImages.clearRetainingCapacity();
     }
@@ -1961,9 +1962,14 @@ pub const CliRenderer = struct {
         const palette_force = self.last_rendered_palette_epoch == null or self.last_rendered_palette_epoch.? != self.palette_epoch;
         const should_force = force or self.force_full_repaint or palette_force;
         self.imageRenderFailed = false;
-        self.materializeFallbackImages();
-        self.computeImageDirtyFlags(should_force);
-        const images_changed = self.imageStateChanged();
+        const has_image_state = self.nextRenderBuffer.image_placements.items.len != 0 or self.currentImages.items.len != 0;
+        if (self.nextRenderBuffer.image_placements.items.len != 0) {
+            self.materializeFallbackImages();
+            self.computeImageDirtyFlags(should_force);
+        } else {
+            self.imageDirty.clearRetainingCapacity();
+        }
+        const images_changed = has_image_state and self.imageStateChanged();
 
         // Lazy frame start is the core no-op suppression mechanism. If diffing,
         // cursor state, and pointer state are unchanged, frame_started stays false
@@ -2004,6 +2010,15 @@ pub const CliRenderer = struct {
 
         for (0..self.height) |uy| {
             const y = @as(u32, @intCast(uy));
+
+            if (!should_force and !clears_pending) {
+                const row_start = @as(usize, y) * self.width;
+                const row_end = row_start + self.width;
+                if (std.mem.eql(u32, self.currentRenderBuffer.buffer.char[row_start..row_end], self.nextRenderBuffer.buffer.char[row_start..row_end]) and
+                    std.mem.eql(RGBA, self.currentRenderBuffer.buffer.fg[row_start..row_end], self.nextRenderBuffer.buffer.fg[row_start..row_end]) and
+                    std.mem.eql(RGBA, self.currentRenderBuffer.buffer.bg[row_start..row_end], self.nextRenderBuffer.buffer.bg[row_start..row_end]) and
+                    std.mem.eql(u32, self.currentRenderBuffer.buffer.attributes[row_start..row_end], self.nextRenderBuffer.buffer.attributes[row_start..row_end])) continue;
+            }
 
             var runStart: i64 = -1;
             var runLength: u32 = 0;
@@ -2174,6 +2189,10 @@ pub const CliRenderer = struct {
                 beginRenderFrame(writer);
                 frame_started = true;
             }
+            if (hyperlinksEnabled and currentLinkId != 0) {
+                writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                currentLinkId = 0;
+            }
             self.writeSixelImages(writer) catch {
                 self.force_full_repaint = true;
                 self.imageRenderFailed = true;
@@ -2204,18 +2223,35 @@ pub const CliRenderer = struct {
                             cell = self.nextRenderBuffer.get(@intCast(draw_x_i), @intCast(y_i)) orelse continue;
                             if (!gp.isGraphemeChar(cell.char)) continue;
                         }
+                        writer.writeAll(ansi.ANSI.reset) catch {};
                         ansi.ANSI.moveToOutput(writer, @intCast(draw_x_i + 1), @intCast(y_i + 1 + @as(i32, @intCast(self.renderOffset)))) catch {};
                         self.emitColor(writer, cell.fg, false);
                         self.emitColor(writer, cell.bg, true);
                         ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
+                        const replay_link_id = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
+                        if (replay_link_id != 0) {
+                            const lp = link.initGlobalLinkPool(self.allocator);
+                            if (lp.get(replay_link_id)) |url_bytes| {
+                                writer.print("\x1b]8;id={d};{s}\x1b\\", .{ replay_link_id, url_bytes }) catch {};
+                            } else |_| {}
+                        }
                         if (gp.isGraphemeChar(cell.char)) {
-                            const bytes = self.pool.get(gp.graphemeIdFromChar(cell.char)) catch continue;
-                            writer.writeAll(bytes) catch {};
+                            if (self.pool.get(gp.graphemeIdFromChar(cell.char))) |bytes| {
+                                const capabilities = self.terminal.getCapabilities();
+                                const grapheme_width = gp.charRightExtent(cell.char) + 1;
+                                if (capabilities.explicit_width) {
+                                    ansi.ANSI.explicitWidthOutput(writer, grapheme_width, bytes) catch {};
+                                } else {
+                                    writer.writeAll(bytes) catch {};
+                                }
+                            } else |_| {}
                         } else if (!gp.isContinuationChar(cell.char)) {
                             const draw_char = if (gp.isImageChar(cell.char)) buf.quadrantChars[gp.imageFallbackFromChar(cell.char)] else cell.char;
-                            const len = std.unicode.utf8Encode(@intCast(draw_char), &utf8Buf) catch continue;
-                            writer.writeAll(utf8Buf[0..len]) catch {};
+                            if (std.unicode.utf8Encode(@intCast(draw_char), &utf8Buf)) |len| {
+                                writer.writeAll(utf8Buf[0..len]) catch {};
+                            } else |_| {}
                         }
+                        if (replay_link_id != 0) writer.writeAll("\x1b]8;;\x1b\\") catch {};
                     }
                 }
             }
@@ -2345,7 +2381,11 @@ pub const CliRenderer = struct {
             self.pendingImages.clearRetainingCapacity();
         } else {
             self.force_full_repaint = false;
-            self.stageImageState();
+            if (has_image_state) {
+                self.stageImageState();
+            } else {
+                self.pendingImages.clearRetainingCapacity();
+            }
         }
 
         self.nextRenderBuffer.clear(self.backgroundColor, null);
