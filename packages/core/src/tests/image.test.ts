@@ -476,7 +476,13 @@ describe("NativeImage", () => {
     if (process.platform !== "win32") await chmod(path, 0)
 
     try {
-      await expect(NativeImage.load(path)).rejects.toMatchObject({ code: "memory-limit" })
+      try {
+        await NativeImage.load(path)
+        throw new Error("expected oversized image load to fail")
+      } catch (error) {
+        expect(error).toBeInstanceOf(ImageError)
+        expect((error as ImageError).code).toBe("memory-limit")
+      }
     } finally {
       if (process.platform !== "win32") await chmod(path, 0o600)
       await rm(directory, { recursive: true, force: true })

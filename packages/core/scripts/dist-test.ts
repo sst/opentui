@@ -205,6 +205,9 @@ function writeConsumerPackage(consumerDir: string, coreTarball: string, nativeTa
           [packageJson.name]: coreDependency,
           [nativePackageName]: nativeDependency,
         },
+        overrides: {
+          [nativePackageName]: nativeDependency,
+        },
       },
       null,
       2,
