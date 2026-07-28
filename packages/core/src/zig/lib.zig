@@ -2908,17 +2908,15 @@ export fn imageExtend(
     right: u32,
     bottom: u32,
     left: u32,
-    background: u32,
+    background_ptr: ?[*]const u8,
     out_handle: ?*NativeHandle,
 ) u32 {
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
     output.* = INVALID_HANDLE;
+    const background = background_ptr orelse return @intFromEnum(native_image.Status.invalid_argument);
     const extended = native_image.extend(globalAllocator, image, top, right, bottom, left, .{
-        @truncate(background),
-        @truncate(background >> 8),
-        @truncate(background >> 16),
-        @truncate(background >> 24),
+        background[0], background[1], background[2], background[3],
     }) catch |err| return @intFromEnum(native_image.statusFromError(err));
     return @intFromEnum(insertImage(extended, output));
 }

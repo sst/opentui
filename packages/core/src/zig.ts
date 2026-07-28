@@ -1262,7 +1262,7 @@ function getOpenTUILib(libPath?: string) {
     imageCopyPixels: { args: ["u32", "ptr", "u64", "u32", "u8"], returns: "u32" },
     imageResize: { args: ["u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
     imageExtract: { args: ["u32", "u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
-    imageExtend: { args: ["u32", "u32", "u32", "u32", "u32", "u32", "ptr"], returns: "u32" },
+    imageExtend: { args: ["u32", "u32", "u32", "u32", "u32", "ptr", "ptr"], returns: "u32" },
     imageTransform: { args: ["u32", "u32", "ptr"], returns: "u32" },
     imageComposite: { args: ["u32", "u32", "i32", "i32", "u32", "u8", "ptr"], returns: "u32" },
 
@@ -5553,10 +5553,8 @@ class FFIRenderLib implements RenderLib {
   ): { status: number; handle: ImageHandle | null } {
     if (!(background instanceof Uint8Array) || background.byteLength !== 4) return { status: 7, handle: null }
     const output = new Uint32Array(1)
-    const packedBackground =
-      (background[0] | (background[1] << 8) | (background[2] << 16) | (background[3] << 24)) >>> 0
     return this.imageHandleResult(
-      this.opentui.symbols.imageExtend(image, top, right, bottom, left, packedBackground, output),
+      this.opentui.symbols.imageExtend(image, top, right, bottom, left, background, output),
       output,
     )
   }

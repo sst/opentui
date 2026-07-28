@@ -3,6 +3,7 @@ title: Native images
 description: Decode and manipulate PNG, JPEG, WebP, GIF, and RGBA pixels
 order: 10
 skill:
+  entry: true
   intents: [image, native-image, png, jpeg, webp, gif, rgba, pixels, resize]
 ---
 
@@ -121,6 +122,6 @@ try {
 
 Filesystem, network, HTTP-status, and unsupported-scheme failures throw `ImageLoadError`. Aborts rethrow `AbortSignal.reason`; acquisition limits throw `ImageError` with code `memory-limit`. Native decoding and operations also throw `ImageError`; JavaScript argument validation uses `TypeError` and `RangeError`.
 
-Native decoding limits encoded data to 64 MiB, each dimension to 16,384 pixels, total pixels to 25 million, and decoded storage to 100 MiB. PNG `iCCP` without a supported higher-priority `cICP`, plus unsupported `cICP`/`gAMA`/`cHRM` metadata, is rejected.
+Native decoding limits encoded data to 64 MiB, each dimension to 16,384 pixels, total pixels to 25 million, and decoded storage to 100 MiB. PNG `iCCP` and unsupported `gAMA`/`cHRM` profiles are rejected; unsupported `cICP` is treated as assumed sRGB.
 
 To display an image, see [Image](/docs/components/image).

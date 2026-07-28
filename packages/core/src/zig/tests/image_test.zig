@@ -29,24 +29,6 @@ test "PNG probe and decode return canonical red RGBA" {
     try std.testing.expectEqualSlices(u8, &[_]u8{ 255, 0, 0, 255 }, decoded.pixels);
 }
 
-test "PNG rejects unsupported cICP color spaces" {
-    const png = try decodeBase64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==");
-    defer std.testing.allocator.free(png);
-
-    const chunk = [_]u8{ 0, 0, 0, 4, 'c', 'I', 'C', 'P', 9, 16, 0, 1, 0, 0, 0, 0 };
-    const unsupported = try std.testing.allocator.alloc(u8, png.len + chunk.len);
-    defer std.testing.allocator.free(unsupported);
-    @memcpy(unsupported[0..33], png[0..33]);
-    @memcpy(unsupported[33 .. 33 + chunk.len], &chunk);
-    @memcpy(unsupported[33 + chunk.len ..], png[33..]);
-    const crc = std.hash.Crc32.hash(unsupported[37..45]);
-    std.mem.writeInt(u32, unsupported[45..49], crc, .big);
-
-    var info: image.Info = .{};
-    try std.testing.expectEqual(image.Status.unsupported_color_space, image.probe(unsupported, .{}, &info));
-    try std.testing.expectError(error.UnsupportedColorSpace, image.decode(std.testing.allocator, unsupported, .{}));
-}
-
 test "PNG rejects cICP after image data" {
     const png = try decodeBase64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==");
     defer std.testing.allocator.free(png);
