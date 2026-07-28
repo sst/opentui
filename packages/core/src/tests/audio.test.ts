@@ -1209,6 +1209,27 @@ test("AudioCaptureStream applies defaults and reads only on demand", async () =>
   }
 })
 
+test("AudioCaptureStream preserves multichannel interleaving and channel count", async () => {
+  const samples = [0.125, 0.25, 0.375, 0.5, -0.125, -0.25, -0.375, -0.5]
+  const ring = replaceCaptureRing(samples, 4)
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    const stream = await audio.openCapture({ channels: 4, capacityFrames: 4, chunkFrames: 2 })
+    const reader = stream.readable.getReader()
+
+    expect(stream.channels).toBe(4)
+    expect(stream.getStats().channels).toBe(4)
+    expect(await reader.read()).toEqual({ done: false, value: new Float32Array(samples) })
+
+    stream.stop()
+    expect((await reader.read()).done).toBe(true)
+    await stream.closed
+  } finally {
+    ring.restore()
+  }
+})
+
 test("AudioCaptureStream waits for full chunks, drains a final partial chunk, and orders closed after stopped", async () => {
   const ring = replaceCaptureRing([0.25])
   try {
