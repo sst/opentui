@@ -127,6 +127,7 @@ class AudioCaptureDemo {
         flexGrow: 1,
         flexBasis: 0,
         minWidth: 0,
+        overflow: "hidden",
         alignItems: "center",
         justifyContent: "center",
         visible: false,
@@ -140,6 +141,8 @@ class AudioCaptureDemo {
         id: `audio-capture-demo-device-label-${slot + 1}`,
         content: "",
         fg: AUDIO_DEMO_PALETTE.muted,
+        width: "100%",
+        minWidth: 0,
         height: 1,
         wrapMode: "none",
         truncate: true,
@@ -713,6 +716,17 @@ class AudioCaptureDemo {
   }
 
   private handleKeyPress = (key: KeyEvent): void => {
+    const cycleDirection =
+      (!key.ctrl && (key.name === "[" || key.baseCode === 91)) || (!key.ctrl && !key.meta && key.name === "left")
+        ? -1
+        : (!key.ctrl && (key.name === "]" || key.baseCode === 93)) || (!key.ctrl && !key.meta && key.name === "right")
+          ? 1
+          : 0
+    if (cycleDirection !== 0) {
+      key.preventDefault()
+      this.cycleDevice(cycleDirection)
+      return
+    }
     if (key.ctrl || key.meta) return
 
     const slot = Number.parseInt(key.name, 10) - 1
@@ -726,14 +740,6 @@ class AudioCaptureDemo {
     }
 
     switch (key.name) {
-      case "[":
-        key.preventDefault()
-        this.cycleDevice(-1)
-        break
-      case "]":
-        key.preventDefault()
-        this.cycleDevice(1)
-        break
       case "d":
         key.preventDefault()
         this.refreshDeviceEnumeration()
@@ -878,7 +884,7 @@ ${label("health")}${bold(fg(healthColor)(health))} ${fg(healthColor)(healthDetai
   private refreshControls(): void {
     const exitControl = import.meta.main ? "Ctrl+C quit" : "Esc back"
     this.controlsText.content = t`${bold(fg(AUDIO_DEMO_PALETTE.warning)("S"))} ${fg(AUDIO_DEMO_PALETTE.muted)("stop+drain")}  ${bold(fg(AUDIO_DEMO_PALETTE.signal)("R"))} ${fg(AUDIO_DEMO_PALETTE.muted)("restart")}  ${bold(fg(AUDIO_DEMO_PALETTE.purple)("D"))} ${fg(AUDIO_DEMO_PALETTE.muted)("refresh")}
-${bold(fg(AUDIO_DEMO_PALETTE.accent)("1-5"))} ${fg(AUDIO_DEMO_PALETTE.muted)("select")}  ${bold(fg(AUDIO_DEMO_PALETTE.accent)("[/]"))} ${fg(AUDIO_DEMO_PALETTE.muted)("cycle")}  ${fg(AUDIO_DEMO_PALETTE.muted)("click input")}  ${fg(AUDIO_DEMO_PALETTE.border)("|")} ${fg(AUDIO_DEMO_PALETTE.text)(exitControl)}`
+${bold(fg(AUDIO_DEMO_PALETTE.accent)("1-5"))} ${fg(AUDIO_DEMO_PALETTE.muted)("select")}  ${bold(fg(AUDIO_DEMO_PALETTE.accent)("Left/Right"))} ${fg(AUDIO_DEMO_PALETTE.muted)("cycle")}  ${fg(AUDIO_DEMO_PALETTE.muted)("click input")}  ${fg(AUDIO_DEMO_PALETTE.border)("|")} ${fg(AUDIO_DEMO_PALETTE.text)(exitControl)}`
   }
 
   destroy(): void {
