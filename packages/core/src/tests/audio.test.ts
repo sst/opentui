@@ -854,15 +854,16 @@ test("Audio capture validates dimensions before allocation or native calls", () 
 test("Audio capture device methods mirror playback device mapping and selection", () => {
   const lib = resolveRenderLib()
   const selected: number[] = []
+  let refreshCalls = 0
+  let deviceNames = ["Built-in Mic", "USB Mic"]
   let clearCalls = 0
   const restores = [
-    replaceMethod(lib, "audioRefreshCaptureDevices", () => 0),
+    replaceMethod(lib, "audioRefreshCaptureDevices", () => {
+      refreshCalls += 1
+      return 0
+    }),
     replaceMethod(lib, "audioGetCaptureDeviceCount", () => 2),
-    replaceMethod(
-      lib,
-      "audioGetCaptureDeviceName",
-      (_engine: unknown, index: number) => ["Built-in Mic", "USB Mic"][index],
-    ),
+    replaceMethod(lib, "audioGetCaptureDeviceName", (_engine: unknown, index: number) => deviceNames[index]),
     replaceMethod(lib, "audioIsCaptureDeviceDefault", (_engine: unknown, index: number) => index === 0),
     replaceMethod(lib, "audioSelectCaptureDevice", (_engine: unknown, index: number) => {
       selected.push(index)
@@ -881,12 +882,25 @@ test("Audio capture device methods mirror playback device mapping and selection"
       { index: 1, name: "USB Mic", isDefault: false },
     ])
     expect(audio.selectCaptureDevice(1)).toBe(true)
+    expect(refreshCalls).toBe(1)
+    expect(selected).toEqual([1])
+
+    deviceNames = ["USB Mic", "USB Mic"]
+    expect(audio.listCaptureDevices()).toEqual([
+      { index: 0, name: "USB Mic", isDefault: true },
+      { index: 1, name: "USB Mic", isDefault: false },
+    ])
+    expect(refreshCalls).toBe(2)
+    expect(selected).toEqual([1])
+    expect(audio.selectCaptureDevice(0)).toBe(true)
+    expect(selected).toEqual([1, 0])
+
     for (const index of [Number.NaN, Number.POSITIVE_INFINITY, -1, 0.5]) {
       expect(() => audio.selectCaptureDevice(index)).toThrow(TypeError)
     }
     expect(() => audio.selectCaptureDevice(0x1_0000_0000)).toThrow(RangeError)
     audio.clearCaptureDeviceSelection()
-    expect(selected).toEqual([1])
+    expect(selected).toEqual([1, 0])
     expect(clearCalls).toBe(1)
   } finally {
     for (const restore of restores.reverse()) restore()

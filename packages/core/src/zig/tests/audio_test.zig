@@ -688,6 +688,15 @@ test "audio - refresh and capture device selection APIs" {
         std.mem.asBytes(&engine.selected_capture_device_id),
     );
 
+    const selected_device_id = engine.selected_capture_device_id;
+    try expectStatusOk(audio.refreshCaptureDevices(engine));
+    try testing.expect(engine.has_selected_capture_device);
+    try testing.expectEqualSlices(
+        u8,
+        std.mem.asBytes(&selected_device_id),
+        std.mem.asBytes(&engine.selected_capture_device_id),
+    );
+
     audio.clearCaptureDeviceSelection(engine);
     try testing.expectEqual(@as(?u32, null), engine.selected_capture_index);
     try testing.expect(!engine.has_selected_capture_device);
