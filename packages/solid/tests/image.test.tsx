@@ -27,7 +27,7 @@ describe("image component", () => {
         <image
           ref={imageRef}
           source={PNG_1X1}
-          onLoad={(info) => loaded.push(info.format)}
+          onLoad={(image) => loaded.push(image.info().format)}
           style={{ width: 4, height: 2 }}
         />
       ),
@@ -38,7 +38,7 @@ describe("image component", () => {
     expect(imageRef).toBeInstanceOf(ImageRenderable)
     await imageRef!.loadPromise
     expect(loaded).toEqual(["png"])
-    expect(imageRef!.imageInfo?.width).toBe(1)
+    expect(imageRef!.image?.width).toBe(1)
     expect(imageRef!.loadError).toBeNull()
   })
 
@@ -55,18 +55,21 @@ describe("image component", () => {
     )
     await imageRef!.loadPromise
     await testSetup.renderOnce()
-    expect(imageRef!.imageInfo?.format).toBe("png")
+    const firstImage = imageRef!.image!
     expect(testSetup.captureCharFrame()).toContain("█")
 
     setSource(PNG_1X1.slice())
     await imageRef!.loadPromise
     await testSetup.renderOnce()
-    expect(imageRef!.imageInfo?.format).toBe("png")
+    const replacementImage = imageRef!.image!
+    expect(replacementImage).not.toBe(firstImage)
+    expect(() => firstImage.info()).toThrow("NativeImage is disposed")
     expect(testSetup.captureCharFrame()).toContain("█")
 
     setSource(undefined)
     await testSetup.renderOnce()
-    expect(imageRef!.imageInfo).toBeNull()
+    expect(imageRef!.image).toBeNull()
+    expect(() => replacementImage.info()).toThrow("NativeImage is disposed")
     expect(testSetup.captureCharFrame()).not.toContain("█")
   })
 })

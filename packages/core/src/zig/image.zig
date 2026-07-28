@@ -369,8 +369,6 @@ fn scanPng(data: []const u8) !PngMetadata {
     var result = metadata orelse return error.MalformedInput;
     if (saw_cicp and cicp_supported) {
         result.color_status = .explicit_srgb;
-    } else if (saw_cicp) {
-        return error.UnsupportedColorSpace;
     } else if (saw_iccp) {
         return error.UnsupportedColorSpace;
     } else if (saw_srgb) {

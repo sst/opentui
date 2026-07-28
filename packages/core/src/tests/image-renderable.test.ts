@@ -4,16 +4,11 @@ import { fileURLToPath } from "node:url"
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { ImageRenderable } from "../renderables/Image.js"
-import type { NativeImage } from "../image.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { createTestRenderer, type TestRenderer, type TestRendererSetup } from "../testing/test-renderer.js"
 import { setRendererCapabilities } from "../testing/terminal-capabilities.js"
 
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
-
-function ownedImage(renderable: ImageRenderable): NativeImage | null {
-  return (renderable as unknown as { _image: NativeImage | null })._image
-}
 
 async function within<T>(promise: Promise<T>, message: string): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined
@@ -54,8 +49,7 @@ describe("ImageRenderable image loading", () => {
   test("loads encoded bytes, retains the image, and requests a render", async () => {
     const requestRender = mock(() => {})
     renderer.requestRender = requestRender
-    const loaded: unknown[] = []
-    const onLoad = mock((info: unknown) => loaded.push(info))
+    const onLoad = mock(() => {})
     const renderable = new ImageRenderable(renderer, {
       source: await readFile(new URL("rgba.png", FIXTURES)),
       onLoad,
@@ -64,10 +58,8 @@ describe("ImageRenderable image loading", () => {
     try {
       expect(renderable.loading).toBe(false)
       expect(renderable.loadError).toBeNull()
-      expect(renderable.imageInfo?.format).toBe("png")
+      expect(renderable.image?.info().format).toBe("png")
       expect(onLoad).toHaveBeenCalledTimes(1)
-      expect(loaded[0]).toMatchObject({ format: "png", width: 2, height: 2 })
-      expect("dispose" in (loaded[0] as object)).toBe(false)
       expect(requestRender).toHaveBeenCalledTimes(1)
     } finally {
       renderable.destroy()
@@ -236,7 +228,7 @@ describe("ImageRenderable image loading", () => {
     await renderable.loadPromise
     try {
       expect(renderable.loading).toBe(false)
-      expect(renderable.imageInfo).toBeNull()
+      expect(renderable.image).toBeNull()
       expect(renderable.loadError).toBeDefined()
       expect(onError).toHaveBeenCalledTimes(1)
     } finally {
@@ -254,7 +246,7 @@ describe("ImageRenderable image loading", () => {
     try {
       await expect(loaded.loadPromise!).rejects.toThrow("onLoad failed")
       expect(loaded.loading).toBe(false)
-      expect(loaded.imageInfo).not.toBeNull()
+      expect(loaded.image).not.toBeNull()
     } finally {
       loaded.destroy()
     }
@@ -278,11 +270,11 @@ describe("ImageRenderable image loading", () => {
     const url = new URL("lossless.webp", FIXTURES)
     const renderable = new ImageRenderable(renderer, { source: fileURLToPath(url) })
     await renderable.loadPromise
-    expect(renderable.imageInfo?.format).toBe("webp")
+    expect(renderable.image?.info().format).toBe("webp")
     renderable.source = url
     await renderable.loadPromise
     try {
-      expect(renderable.imageInfo?.format).toBe("webp")
+      expect(renderable.image?.info().format).toBe("webp")
     } finally {
       renderable.destroy()
     }
@@ -291,12 +283,12 @@ describe("ImageRenderable image loading", () => {
   test("replaces images atomically and disposes the previous image", async () => {
     const renderable = new ImageRenderable(renderer, { source: await readFile(new URL("rgba.png", FIXTURES)) })
     await renderable.loadPromise
-    const previous = ownedImage(renderable)
+    const previous = renderable.image
     renderable.source = await readFile(new URL("transparent.gif", FIXTURES))
-    expect(ownedImage(renderable)).toBe(previous)
+    expect(renderable.image).toBe(previous)
     await renderable.loadPromise
     try {
-      expect(renderable.imageInfo?.format).toBe("gif")
+      expect(renderable.image?.info().format).toBe("gif")
       expect(() => previous?.raw()).toThrow("disposed")
     } finally {
       renderable.destroy()
@@ -310,11 +302,11 @@ describe("ImageRenderable image loading", () => {
       onError,
     })
     await renderable.loadPromise
-    const previous = ownedImage(renderable)
+    const previous = renderable.image
     renderable.source = Uint8Array.of(1, 2, 3)
     await renderable.loadPromise
     try {
-      expect(ownedImage(renderable)).toBe(previous)
+      expect(renderable.image).toBe(previous)
       expect(previous?.raw().data.byteLength).toBeGreaterThan(0)
       expect(onError).toHaveBeenCalledTimes(1)
     } finally {
@@ -347,7 +339,7 @@ describe("ImageRenderable image loading", () => {
       if (!address || typeof address === "string") throw new Error("missing test server address")
       renderable = new ImageRenderable(renderer, { source: png })
       await renderable.loadPromise
-      const previous = ownedImage(renderable)
+      const previous = renderable.image
 
       renderable.source = `http://127.0.0.1:${address.port}/pending`
       const pendingLoad = renderable.loadPromise
@@ -359,7 +351,7 @@ describe("ImageRenderable image loading", () => {
         "image request was not aborted",
       )
 
-      expect(renderable.imageInfo).toBeNull()
+      expect(renderable.image).toBeNull()
       expect(renderable.loading).toBe(false)
       expect(() => previous?.raw()).toThrow("disposed")
       expect(requestWasAborted).toBe(true)
@@ -413,7 +405,7 @@ describe("ImageRenderable image loading", () => {
         "older image request was not aborted",
       )
 
-      expect(renderable.imageInfo?.format).toBe("gif")
+      expect(renderable.image?.info().format).toBe("gif")
       expect(onError).not.toHaveBeenCalled()
       expect(requestWasAborted).toBe(true)
       expect(socketWasClosed).toBe(true)
@@ -462,7 +454,7 @@ describe("ImageRenderable image loading", () => {
         "image request was not aborted",
       )
 
-      expect(renderable.imageInfo).toBeNull()
+      expect(renderable.image).toBeNull()
       expect(onLoad).not.toHaveBeenCalled()
       expect(onError).not.toHaveBeenCalled()
       expect(requestWasAborted).toBe(true)
