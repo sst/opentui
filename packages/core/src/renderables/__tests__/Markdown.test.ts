@@ -27,6 +27,7 @@ let mockMouse: MockMouse
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
 let captureSpans: () => CapturedFrame
+let resizeRenderer: (width: number, height: number) => void
 let markdownTreeSitterClient: TreeSitterClient
 let mockTreeSitterClients: MockTreeSitterClient[] = []
 const HIGHLIGHT_TIMEOUT_MS = 5000
@@ -34,6 +35,10 @@ const HIGHLIGHT_TIMEOUT_MS = 5000
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromValues(1, 1, 1, 1) },
 })
+const ISSUE_TABLE_MARKDOWN = `| Rank | Issue | Size | Why It Is Ready | Likely Surface |
+| --- | --- | --- | --- | --- |
+| 1 | A moderately long linked issue title | XS | A longer prose explanation of why the issue is ready. | packages/tui/src/context/sdk.tsx |
+| 2 | Another moderately long linked issue title | XS/S | Another longer prose explanation. | packages/core/src/tool/subagent.ts |`
 
 beforeAll(async () => {
   const dataPath = join(tmpdir(), "tree-sitter-markdown-renderable-test-data")
@@ -51,6 +56,7 @@ beforeEach(async () => {
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
   captureSpans = testRenderer.captureSpans
+  resizeRenderer = testRenderer.resize
 })
 
 afterEach(async () => {
@@ -175,6 +181,13 @@ function getMarginBottom(renderable: { getLayoutNode(): { getMargin(edge: Edge):
   return 0
 }
 
+function getTableColumnWidths(headerY: number): number[] {
+  const borderXs = Array.from({ length: renderer.width }, (_, x) => x).filter(
+    (x) => renderer.currentRenderBuffer.buffers.char[headerY * renderer.width + x] === "│".codePointAt(0),
+  )
+  return borderXs.slice(1).map((x, index) => x - borderXs[index]! - 1)
+}
+
 test("basic table alignment", async () => {
   const markdown = `| Name | Age |
 |---|---|
@@ -211,6 +224,61 @@ test("tableOptions.widthMode configures markdown table layout", async () => {
   expect(table).toBeInstanceOf(TextTableRenderable)
   expect(table.columnWidthMode).toBe("full")
   expect(table.columnFitter).toBe("balanced")
+})
+
+test("wide five-column tables preserve short metadata columns", async () => {
+  resizeRenderer(110, 40)
+  const md = createMarkdownRenderable({
+    id: "markdown-wide-metadata-table",
+    content: ISSUE_TABLE_MARKDOWN,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+    tableOptions: { style: "grid" },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  const headerY = frame.split("\n").findIndex((line) => line.includes("Ran"))
+  expect(headerY).toBeGreaterThanOrEqual(0)
+
+  const columnWidths = getTableColumnWidths(headerY)
+
+  expect(columnWidths).toEqual([4, 32, 4, 36, 28])
+  expect(columnWidths.reduce((sum, width) => sum + width, 0)).toBe(104)
+  expect(columnWidths[0]).toBeGreaterThanOrEqual(4)
+  expect(columnWidths[2]).toBeGreaterThanOrEqual(4)
+  expect(columnWidths[1]).toBeGreaterThanOrEqual("Issue".length)
+  expect(columnWidths[3]).toBeGreaterThanOrEqual("Why It Is Ready".length)
+  expect(columnWidths[4]).toBeGreaterThanOrEqual("Likely Surface".length)
+  expect(frame).toContain("│Rank")
+  expect(frame).toContain("│Size")
+  expect(frame).toContain("XS/S")
+})
+
+test("five-column tables still shrink metadata columns when constrained", async () => {
+  resizeRenderer(20, 120)
+  const md = createMarkdownRenderable({
+    id: "markdown-narrow-metadata-table",
+    content: ISSUE_TABLE_MARKDOWN,
+    syntaxStyle,
+    internalBlockMode: "top-level",
+    tableOptions: { style: "grid" },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureFrame()
+  const headerY = frame.split("\n").findIndex((line) => line.includes("│"))
+  expect(headerY).toBeGreaterThanOrEqual(0)
+
+  const columnWidths = getTableColumnWidths(headerY)
+  expect(columnWidths.reduce((sum, width) => sum + width, 0)).toBe(14)
+  expect(columnWidths.every((width) => width >= 1)).toBe(true)
+  expect(columnWidths[0]).toBeLessThan(4)
+  expect(columnWidths[2]).toBeLessThan(4)
 })
 
 test("tableOptions updates existing markdown table renderable", async () => {

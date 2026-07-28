@@ -29,6 +29,7 @@ const mem_registry_tests = @import("tests/mem-registry_test.zig");
 const memory_leak_regression_tests = @import("tests/memory_leak_regression_test.zig");
 const wrap_cache_perf_tests = @import("tests/wrap-cache-perf_test.zig");
 const native_span_feed_tests = @import("tests/native-span-feed_test.zig");
+const native_renderable_tests = @import("tests/native-renderable_test.zig");
 const buffer_methods_tests = @import("tests/buffer-methods_test.zig");
 const split_scrollback_tests = @import("tests/split-scrollback_test.zig");
 const audio_tests = @import("tests/audio_test.zig");
@@ -70,6 +71,7 @@ comptime {
     _ = memory_leak_regression_tests;
     _ = wrap_cache_perf_tests;
     _ = native_span_feed_tests;
+    _ = native_renderable_tests;
     _ = buffer_methods_tests;
     _ = split_scrollback_tests;
     _ = audio_tests;

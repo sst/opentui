@@ -86,7 +86,7 @@ OpenTUI includes several ASCII art font styles:
 
 ## Positioning
 
-Position the ASCII text anywhere on screen:
+ASCIIFont inherits the standard layout positioning options. To position it at coordinates relative to its parent, use absolute positioning with `left` and `top`:
 
 ```typescript
 const title = new ASCIIFontRenderable(renderer, {
@@ -94,24 +94,28 @@ const title = new ASCIIFontRenderable(renderer, {
   text: "TITLE",
   font: "block",
   color: RGBA.fromHex("#FFFF00"),
-  x: 10,
-  y: 2,
+  position: "absolute",
+  left: 10,
+  top: 2,
 })
 ```
 
 ## Properties
 
-| Property          | Type                         | Default         | Description                |
-| ----------------- | ---------------------------- | --------------- | -------------------------- |
-| `text`            | `string`                     | `""`            | Text to display            |
-| `font`            | `ASCIIFontName`              | `"tiny"`        | Font style to use          |
-| `color`           | `ColorInput \| ColorInput[]` | `"#FFFFFF"`     | Text color(s)              |
-| `backgroundColor` | `ColorInput`                 | `"transparent"` | Background color           |
-| `selectable`      | `boolean`                    | `true`          | Whether text is selectable |
-| `selectionBg`     | `ColorInput`                 | -               | Selection background color |
-| `selectionFg`     | `ColorInput`                 | -               | Selection foreground color |
-| `x`               | `number`                     | -               | X position offset          |
-| `y`               | `number`                     | -               | Y position offset          |
+| Property          | Type                                   | Default         | Description                |
+| ----------------- | -------------------------------------- | --------------- | -------------------------- |
+| `text`            | `string`                               | `""`            | Text to display            |
+| `font`            | `ASCIIFontName`                        | `"tiny"`        | Font style                 |
+| `color`           | `ColorInput \| ColorInput[]`           | `"#FFFFFF"`     | Text color or color bands  |
+| `backgroundColor` | `ColorInput`                           | `"transparent"` | Background color           |
+| `selectable`      | `boolean`                              | `true`          | Whether text is selectable |
+| `selectionBg`     | `ColorInput`                           | -               | Selection background color |
+| `selectionFg`     | `ColorInput`                           | -               | Selection foreground color |
+| `position`        | `"relative" \| "absolute"`             | `"relative"`    | Effective positioning mode |
+| `top`             | number, `"auto"`, or percentage string | -               | Top position offset        |
+| `right`           | number, `"auto"`, or percentage string | -               | Right position offset      |
+| `bottom`          | number, `"auto"`, or percentage string | -               | Bottom position offset     |
+| `left`            | number, `"auto"`, or percentage string | -               | Left position offset       |
 
 ## Example: Welcome Screen
 
@@ -167,25 +171,27 @@ setInterval(() => {
 
 ## Color Effects
 
-Create gradient-like effects by positioning multiple ASCII fonts:
+Create a shadow by overlaying two ASCII fonts:
 
 ```typescript
 import { Box, ASCIIFont } from "@opentui/core"
 
-const gradientTitle = Box(
-  {},
-  ASCIIFont({
-    text: "HELLO",
-    font: "block",
-    color: "#FF0000",
-  }),
-  // Overlay with offset for shadow effect
+const shadowTitle = Box(
+  { position: "relative" },
   ASCIIFont({
     text: "HELLO",
     font: "block",
     color: "#880000",
+    position: "absolute",
     left: 1,
     top: 1,
+    zIndex: 0,
+  }),
+  ASCIIFont({
+    text: "HELLO",
+    font: "block",
+    color: "#FF0000",
+    zIndex: 1,
   }),
 )
 ```

@@ -443,13 +443,14 @@ export function destroy(renderer: CliRenderer): void {
   }
 
   if (framebufferRenderableRef) {
-    renderer.root.remove(framebufferRenderableRef.id)
+    renderer.root.remove(framebufferRenderableRef)
     framebufferRenderableRef = null
   }
   framebuffer = null
 
   if (parentContainer) {
-    renderer.root.remove("particle-container")
+    const particleContainer = renderer.root.getRenderable("particle-container")
+    if (particleContainer) renderer.root.remove(particleContainer)
     parentContainer = null
   }
 

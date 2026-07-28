@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  NODE_VERSION: 26.3.0
+  NODE_VERSION: 26.4.0
 
 jobs:
   # Extract version and check if it's a dry run

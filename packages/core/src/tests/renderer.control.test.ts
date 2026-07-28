@@ -363,7 +363,7 @@ test("mouse input is suspended when renderer is suspended", async () => {
   await mockMouse.click(0, 0)
   expect(mouseEventReceived).toBe(true)
 
-  renderer.root.remove(testRenderable.id)
+  renderer.root.remove(testRenderable)
 })
 
 test("paste input is suspended when renderer is suspended", () => {

@@ -61,7 +61,17 @@ pub const Multiplexer = enum(u8) {
     unknown,
 };
 
+pub const Osc52Support = enum(u8) {
+    unknown,
+    supported,
+    unsupported,
+};
+
 const NOTIFICATION_QUERY_ID = "opentui-notifications";
+pub const SCREEN_PASSTHROUGH_CHUNK_SIZE = 252;
+pub const CLIPBOARD_PAYLOAD_SIZE_MAX = std.math.maxInt(u32);
+const OSC52_FRAMING_SIZE = "\x1b]52;c;".len + "\x1b\\".len;
+const PASSTHROUGH_ESCAPED_OSC52_SIZE = OSC52_FRAMING_SIZE + 2;
 
 pub const MouseLevel = enum {
     none,
@@ -91,18 +101,18 @@ pub const MousePointerStyle = enum(u8) {
     }
 };
 
-pub const ClipboardTarget = enum {
-    clipboard, // "c"
-    primary, // "p"
-    secondary, // "s"
-    query, // "q"
+pub const ClipboardTarget = enum(u8) {
+    clipboard = 0, // "c"
+    primary = 1, // "p"
+    select = 2, // "s"
+    secondary = 3, // "q"
 
     pub fn toChar(self: ClipboardTarget) u8 {
         return switch (self) {
             .clipboard => 'c',
             .primary => 'p',
-            .secondary => 's',
-            .query => 'q',
+            .select => 's',
+            .secondary => 'q',
         };
     }
 };
@@ -136,6 +146,7 @@ opts: Options = .{},
 host_env_map: ?std.process.EnvMap = null,
 remote: bool = false,
 multiplexer: Multiplexer = .none,
+osc52_support: Osc52Support = .unknown,
 is_foot: bool = false,
 skip_graphics_query: bool = false,
 skip_explicit_width_query: bool = false,
@@ -1041,6 +1052,7 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
 pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     self.parseOsc99NotificationQuery(response);
     self.parseItermCapabilities(response);
+    self.parseXtgettcapMs(response);
 
     // DECRPM responses
     if (std.mem.indexOf(u8, response, "1016;2$y")) |_| {
@@ -1198,6 +1210,33 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
 
     if (!self.caps.hyperlinks and isHyperlinkTerm(response)) {
         self.caps.hyperlinks = true;
+    }
+}
+
+fn parseXtgettcapMs(self: *Terminal, response: []const u8) void {
+    const prefix = "\x1bP";
+    var scan_pos: usize = 0;
+    while (std.mem.indexOfPos(u8, response, scan_pos, prefix)) |start| {
+        const body_start = start + prefix.len;
+        const end = std.mem.indexOfPos(u8, response, body_start, "\x1b\\") orelse return;
+        const body = response[body_start..end];
+        scan_pos = end + 2;
+
+        if (body.len < 6 or body[0] != '1') continue;
+        if (!std.mem.eql(u8, body[1..3], "+r")) continue;
+
+        const result = body[3..];
+        const separator = std.mem.indexOfScalar(u8, result, '=') orelse continue;
+        if (!std.ascii.eqlIgnoreCase(result[0..separator], "4d73")) continue;
+
+        const value = result[separator + 1 ..];
+        if (value.len == 0 or value.len % 2 != 0) continue;
+        for (value) |byte| {
+            if (!std.ascii.isHex(byte)) break;
+        } else {
+            self.osc52_support = .supported;
+            self.caps.osc52 = true;
+        }
     }
 }
 
@@ -1396,87 +1435,134 @@ pub fn writeNotification(self: *Terminal, allocator: std.mem.Allocator, tty: any
     return true;
 }
 
-/// Write OSC 52 clipboard sequence to the terminal
+/// Return the exact number of bytes emitted by writeClipboard.
+pub fn clipboardSequenceSize(self: *Terminal, payload_len: usize) !usize {
+    if (payload_len > CLIPBOARD_PAYLOAD_SIZE_MAX) return error.ClipboardPayloadTooLarge;
+    const padded_len = try std.math.add(usize, payload_len, 2);
+    const encoded_len = try std.math.mul(usize, @divFloor(padded_len, 3), 4);
+    const sequence_len = try std.math.add(usize, encoded_len, OSC52_FRAMING_SIZE);
+
+    if (self.isInTmux()) {
+        const wrapped_len = try std.math.add(usize, sequence_len, 2);
+        return std.math.add(usize, wrapped_len, ansi.ANSI.tmuxDcsStart.len + ansi.ANSI.tmuxDcsEnd.len);
+    }
+
+    if (self.isInScreen()) {
+        const escaped_len = try std.math.add(usize, encoded_len, PASSTHROUGH_ESCAPED_OSC52_SIZE);
+        const chunk_count = @divFloor(escaped_len - 1, SCREEN_PASSTHROUGH_CHUNK_SIZE) + 1;
+        const envelopes_len = try std.math.mul(usize, chunk_count, ansi.ANSI.screenDcsStart.len + ansi.ANSI.screenDcsEnd.len);
+        return std.math.add(usize, escaped_len, envelopes_len);
+    }
+
+    return sequence_len;
+}
+
+/// Write OSC 52 clipboard sequence to the terminal from raw clipboard bytes.
 /// Supports tmux/screen passthrough, including nested tmux sessions
-pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, payload: []const u8) !void {
+pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, text_utf8: []const u8) !void {
     if (!self.canWriteClipboard()) {
         return error.NotSupported;
     }
+    _ = try self.clipboardSequenceSize(text_utf8.len);
 
-    var buf: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    const writer = stream.writer();
+    if (self.isInTmux()) {
+        try tty.writeAll(ansi.ANSI.tmuxDcsStart);
+        try writeClipboardSequence(tty, target, text_utf8, true);
+        try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
+        return;
+    }
 
-    // Build OSC 52 sequence: ESC]52;<target>;<payload>ESC\
-    try writer.writeAll("\x1b]52;");
+    if (self.isInScreen()) {
+        var screen_writer = ScreenPassthroughWriter(@TypeOf(tty)).init(tty);
+        try writeClipboardSequence(&screen_writer, target, text_utf8, false);
+        try screen_writer.finish();
+        return;
+    }
+
+    try writeClipboardSequence(tty, target, text_utf8, false);
+}
+
+fn ScreenPassthroughWriter(comptime Writer: type) type {
+    return struct {
+        writer: Writer,
+        buffer: [SCREEN_PASSTHROUGH_CHUNK_SIZE]u8 = undefined,
+        length: usize = 0,
+
+        const Self = @This();
+
+        fn init(writer: Writer) Self {
+            return .{ .writer = writer };
+        }
+
+        pub fn writeAll(self: *Self, bytes: []const u8) !void {
+            for (bytes) |byte| try self.writeByte(byte);
+        }
+
+        pub fn writeByte(self: *Self, byte: u8) !void {
+            const encoded_length: usize = if (byte == '\x1b') 2 else 1;
+            if (self.length + encoded_length > self.buffer.len) try self.flush();
+
+            if (byte == '\x1b') {
+                self.buffer[self.length] = '\x1b';
+                self.length += 1;
+            }
+            self.buffer[self.length] = byte;
+            self.length += 1;
+        }
+
+        fn finish(self: *Self) !void {
+            try self.flush();
+        }
+
+        fn flush(self: *Self) !void {
+            if (self.length == 0) return;
+            try self.writer.writeAll(ansi.ANSI.screenDcsStart);
+            try self.writer.writeAll(self.buffer[0..self.length]);
+            try self.writer.writeAll(ansi.ANSI.screenDcsEnd);
+            self.length = 0;
+        }
+    };
+}
+
+fn writeClipboardSequence(writer: anytype, target: ClipboardTarget, text_utf8: []const u8, escape: bool) !void {
+    try writeClipboardBytes(writer, "\x1b]52;", escape);
     try writer.writeByte(target.toChar());
     try writer.writeByte(';');
-    try writer.writeAll(payload);
-    try writer.writeAll("\x1b\\");
+    try writeClipboardBase64(writer, text_utf8);
+    try writeClipboardBytes(writer, "\x1b\\", escape);
+}
 
-    const osc52 = stream.getWritten();
+fn writeClipboardBase64(writer: anytype, source: []const u8) !void {
+    const source_chunk_size = 3 * 1024;
+    var encoded_buffer: [4 * 1024]u8 = undefined;
+    var offset: usize = 0;
 
-    // Use the detected multiplexer from env vars, xtversion response, and remote option.
-    const is_tmux = self.isInTmux();
+    while (offset < source.len) {
+        const chunk_len = @min(source.len - offset, source_chunk_size);
+        const chunk = source[offset .. offset + chunk_len];
+        const encoded = std.base64.standard.Encoder.encode(&encoded_buffer, chunk);
+        try writer.writeAll(encoded);
+        offset += chunk_len;
+    }
+}
 
-    if (is_tmux) {
-        // For nested tmux, we use a fixed level of 1 as we don't have access
-        // to env vars here (by design - detection already happened in checkEnvironmentOverrides)
-        // In practice, single-level wrapping works for most cases
-        var wrapped_buf: [4096]u8 = undefined;
-        var wrapped_stream = std.io.fixedBufferStream(&wrapped_buf);
-        const wrap_writer = wrapped_stream.writer();
-        for (osc52) |c| {
-            if (c == '\x1b') {
-                try wrap_writer.writeByte('\x1b');
-            }
-            try wrap_writer.writeByte(c);
-        }
-        const doubled = wrapped_stream.getWritten();
+fn writeClipboardBytes(writer: anytype, bytes: []const u8, escape: bool) !void {
+    if (!escape) {
+        try writer.writeAll(bytes);
+        return;
+    }
 
-        try tty.writeAll(ansi.ANSI.tmuxDcsStart);
-        try tty.writeAll(doubled);
-        try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
-    } else if (self.remote) {
-        try tty.writeAll(osc52);
-    } else {
-        var env_map_storage: ?std.process.EnvMap = null;
-        const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
-            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
-                logger.err("Failed to get environment map: {}", .{err});
-                return;
-            };
-            break :blk &env_map_storage.?;
-        };
-        defer if (env_map_storage) |*map| map.deinit();
-
-        if (env_map.get("STY")) |_| {
-            var wrapped_buf: [2048]u8 = undefined;
-            var wrapped_stream = std.io.fixedBufferStream(&wrapped_buf);
-            const wrapped_writer = wrapped_stream.writer();
-
-            for (osc52) |c| {
-                if (c == '\x1b') {
-                    try wrapped_writer.writeByte('\x1b');
-                }
-                try wrapped_writer.writeByte(c);
-            }
-            const doubled = wrapped_stream.getWritten();
-
-            try tty.writeAll(ansi.ANSI.screenDcsStart);
-            try tty.writeAll(doubled);
-            try tty.writeAll(ansi.ANSI.screenDcsEnd);
-        } else {
-            try tty.writeAll(osc52);
-        }
+    for (bytes) |byte| {
+        if (byte == '\x1b') try writer.writeByte('\x1b');
+        try writer.writeByte(byte);
     }
 }
 
 /// Check if we can write to the clipboard (TTY and OSC 52 supported)
 fn canWriteClipboard(self: *Terminal) bool {
     // In a real TTY environment, we'd check isTTY here
-    // For now, we just check if OSC 52 is supported
-    return self.caps.osc52;
+    // Missing or inconclusive capability responses must not block optimistic emission.
+    return self.osc52_support != .unsupported;
 }
 
 /// Parse xtversion response string and extract terminal name and version

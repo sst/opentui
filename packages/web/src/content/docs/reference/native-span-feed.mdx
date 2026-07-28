@@ -1,0 +1,135 @@
+---
+title: NativeSpanFeed
+description: Low-level native-to-JavaScript byte transport used for custom renderer output
+order: 6
+skill:
+  intents: [native-span-feed, custom-stdout, output-transport, backpressure]
+---
+
+# NativeSpanFeed
+
+`NativeSpanFeed` is a zero-copy wrapper around a native Zig byte feed. `CliRenderer` uses it internally to deliver native frame bytes to a custom `stdout` while respecting asynchronous `Writable` callbacks.
+
+Most applications should not create a feed directly. Pass streams to [`createCliRenderer()`](/docs/core-concepts/renderer#custom-streams) instead:
+
+```typescript
+const renderer = await createCliRenderer({
+  stdin,
+  stdout,
+  width: cols,
+  height: rows,
+  exitOnCtrlC: false,
+  exitSignals: [],
+})
+```
+
+When `stdout` is not `process.stdout` and `bufferedOutput` is not `"memory"`, the renderer creates the feed, forwards each borrowed byte view to the original `stdout.write`, and keeps the native chunk pinned until the write callback runs. The renderer also drains and closes the feed during destruction.
+
+## Low-level use
+
+Direct use is intended for native integrations that already produce data through a native span-feed pointer. `NativeSpanFeed` is not a Node stream and does not expose `read()`, `write()`, or `pipe()`.
+
+```typescript
+import { NativeSpanFeed } from "@opentui/core"
+
+const feed = NativeSpanFeed.create({
+  chunkSize: 64 * 1024,
+  initialChunks: 2,
+})
+
+const chunks: Uint8Array[] = []
+const offData = feed.onData((bytes) => {
+  // Copy data that must outlive this synchronous handler.
+  chunks.push(bytes.slice())
+})
+
+try {
+  // A native producer that accepts NativeSpanFeed uses feed.streamPtr.
+  await feed.idle()
+} finally {
+  offData()
+  feed.close()
+}
+```
+
+The wrapper owns the attached feed after `create()` or `attach()` succeeds. Calling `close()` unregisters the callback and destroys the native feed. Do not use `streamPtr` or previously received views afterward.
+
+## Public API
+
+```typescript
+type DataHandler = (data: Uint8Array) => void | Promise<void>
+
+class NativeSpanFeed {
+  static create(options?: NativeSpanFeedOptions): NativeSpanFeed
+  static attach(streamPtr: Pointer, options?: NativeSpanFeedOptions): NativeSpanFeed
+
+  readonly streamPtr: Pointer
+
+  onData(handler: DataHandler): () => void
+  onError(handler: (code: number) => void): () => void
+  isBackpressured(): boolean
+  drainAll(): void
+  idle(): Promise<void>
+  close(): void
+}
+```
+
+`attach()` wraps an existing native feed pointer and registers the JavaScript callback. Its current `options` parameter is accepted but not applied; configure the native feed when it is created.
+
+`onData()` and `onError()` return unsubscribe functions. If committed data arrives before a data handler exists, the feed marks it pending and drains it when the first handler is added.
+
+`drainAll()` synchronously drains all currently queued spans in batches. Data-available callbacks normally invoke it automatically when handlers are registered.
+
+## Options
+
+```typescript
+type GrowthPolicy = "grow" | "block"
+
+type NativeSpanFeedOptions = {
+  chunkSize?: number
+  initialChunks?: number
+  maxBytes?: bigint
+  growthPolicy?: GrowthPolicy
+  autoCommitOnFull?: boolean
+  spanQueueCapacity?: number
+}
+```
+
+| Option              | Default     | Description                                                                                           |
+| ------------------- | ----------- | ----------------------------------------------------------------------------------------------------- |
+| `chunkSize`         | `64 * 1024` | Bytes allocated for each native chunk                                                                 |
+| `initialChunks`     | `2`         | Chunks allocated at creation                                                                          |
+| `maxBytes`          | `0n`        | Allocation cap; `0n` means no cap                                                                     |
+| `growthPolicy`      | `"grow"`    | Add capacity when all available chunks or span slots are occupied; `"block"` reports no space instead |
+| `autoCommitOnFull`  | `true`      | Let the native producer commit a chunk automatically when it fills                                    |
+| `spanQueueCapacity` | `0`         | Native default sentinel, normalized to `4096` span entries                                            |
+
+An explicit `chunkSize: 0` normalizes to 64 KiB. An explicit `initialChunks: 0` normalizes to one chunk. An explicit `spanQueueCapacity: 0` selects the native capacity of 4096.
+
+## Borrowed data and backpressure
+
+Each `onData` argument is a `Uint8Array` view into native chunk memory, not an owned copy.
+
+- A synchronous handler must copy the bytes if it retains them after returning.
+- If a handler returns a promise, the chunk remains pinned until all promises returned for that span settle.
+- Promise rejection still releases the native chunk; it is not delivered to `onError` by this wrapper.
+- `isBackpressured()` is true while async handlers are pending, committed data is waiting for a handler, or native chunks remain pinned.
+- `idle()` resolves when no callback or drain is active, no async handlers or pending data remain, and no chunks are pinned.
+- `close()` is idempotent after destruction. If called during a callback, drain, or async handler, final destruction is deferred until that work settles.
+
+Renderer-managed custom output uses these rules to turn the `stdout.write(..., callback)` lifetime into feed backpressure. During `renderer.destroy()`, OpenTUI drains existing frames, destroys the native renderer so it can commit shutdown bytes, drains those bytes, detaches handlers, and closes the feed. If an application immediately destroys its underlying transport after `renderer.destroy()`, allow a microtask for pending asynchronous write callbacks to finish.
+
+## Stats type
+
+`@opentui/core` exports the native data shape:
+
+```typescript
+type NativeSpanFeedStats = {
+  bytesWritten: bigint
+  spansCommitted: bigint
+  chunks: number
+  pendingSpans: number
+}
+```
+
+`NativeSpanFeed` itself has no public stats method. Do not call a nonexistent `feed.getStats()` or `feed.stats` property.

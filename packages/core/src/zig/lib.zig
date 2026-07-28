@@ -19,6 +19,7 @@ const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const native_span_feed = @import("native-span-feed.zig");
 const native_audio = @import("audio.zig");
+const native_renderable = @import("native-renderable.zig");
 const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
@@ -85,6 +86,10 @@ fn acquireAudioEngine(handle: NativeHandle) ?*native_audio.Engine {
     return handles.acquire(handle, .audio_engine, native_audio.Engine);
 }
 
+fn acquireNativeRenderable(handle: NativeHandle) ?*native_renderable.NativeRenderable {
+    return handles.acquire(handle, .native_renderable, native_renderable.NativeRenderable);
+}
+
 fn emptyLineInfo(outPtr: *ExternalLineInfo) void {
     outPtr.* = .{
         .start_cols_ptr = EMPTY_U32[0..].ptr,
@@ -117,6 +122,7 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
 comptime {
     _ = native_span_feed;
     _ = native_audio;
+    _ = native_renderable;
     _ = native_yoga;
 }
 
@@ -141,6 +147,59 @@ fn clearEditBufferEventSinkRefs(sink: *event_bus.EventSink) void {
         }
         handles.unpause(token.handle);
     }
+}
+
+export fn createNativeRenderable() NativeHandle {
+    const renderable = globalAllocator.create(native_renderable.NativeRenderable) catch return INVALID_HANDLE;
+    renderable.* = .{};
+    return handles.insert(.native_renderable, erasePtr(renderable)) catch {
+        globalAllocator.destroy(renderable);
+        return INVALID_HANDLE;
+    };
+}
+
+export fn destroyNativeRenderable(native_renderable_handle: NativeHandle) void {
+    const token = handles.beginDestroy(native_renderable_handle, .native_renderable, native_renderable.NativeRenderable) orelse return;
+    token.ptr.deinit();
+    globalAllocator.destroy(token.ptr);
+    handles.finishDestroy(token.handle);
+}
+
+export fn nativeRenderableAttachYogaNode(native_renderable_handle: NativeHandle, node: native_yoga.YGNodeRef) bool {
+    // Temporary bridge: JS-created Renderables still own Yoga nodes, so native
+    // renderables borrow and attach them after construction. This should go away
+    // when the renderable tree and Yoga ownership move native-side.
+    const renderable = acquireNativeRenderable(native_renderable_handle) orelse return false;
+    if (node == null) return false;
+    renderable.attachYogaNode(node);
+    return true;
+}
+
+export fn nativeRenderableSetMeasureTarget(
+    native_renderable_handle: NativeHandle,
+    kind: u32,
+    target_handle: NativeHandle,
+) bool {
+    const renderable = acquireNativeRenderable(native_renderable_handle) orelse return false;
+
+    // Resolve handles once at setup time. The Yoga measure callback then uses raw
+    // native pointers and does not pay handle-registry lookup cost on the hot path.
+    // Kind `none` clears the measure target; unknown kinds are rejected.
+    const measure_kind: native_renderable.MeasureTargetKind = switch (kind) {
+        @intFromEnum(native_renderable.MeasureTargetKind.none) => .none,
+        @intFromEnum(native_renderable.MeasureTargetKind.text_buffer_view) => .text_buffer_view,
+        @intFromEnum(native_renderable.MeasureTargetKind.editor_view) => .editor_view,
+        else => return false,
+    };
+
+    const target: native_renderable.MeasureTarget = switch (measure_kind) {
+        .none => .none,
+        .text_buffer_view => .{ .text_buffer_view = acquireTextBufferView(target_handle) orelse return false },
+        .editor_view => .{ .editor_view = acquireEditorView(target_handle) orelse return false },
+    };
+
+    renderable.setMeasureTarget(target);
+    return true;
 }
 
 export fn destroyEventSink(sink_handle: NativeHandle) void {
@@ -343,6 +402,65 @@ export fn audioStartMixer(engine_handle: NativeHandle) i32 {
 export fn audioStop(engine_handle: NativeHandle) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
     return native_audio.stop(object_ptr);
+}
+
+export fn audioCreateStream(
+    engine_handle: NativeHandle,
+    options_ptr: ?*const native_audio.StreamOptions,
+    out_stream_id: ?*u32,
+) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.createStream(object_ptr, options_ptr, out_stream_id);
+}
+
+export fn audioWriteStream(
+    engine_handle: NativeHandle,
+    stream_id: u32,
+    data_ptr: ?[*]const u8,
+    data_len: u32,
+) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.writeStream(object_ptr, stream_id, data_ptr, data_len);
+}
+
+export fn audioEndStream(engine_handle: NativeHandle, stream_id: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.endStream(object_ptr, stream_id);
+}
+
+export fn audioRestartStream(engine_handle: NativeHandle, stream_id: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.restartStream(object_ptr, stream_id);
+}
+
+export fn audioSetStreamVolume(engine_handle: NativeHandle, stream_id: u32, volume: f32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.setStreamVolume(object_ptr, stream_id, volume);
+}
+
+export fn audioSetStreamPan(engine_handle: NativeHandle, stream_id: u32, pan: f32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.setStreamPan(object_ptr, stream_id, pan);
+}
+
+export fn audioSetStreamGroup(engine_handle: NativeHandle, stream_id: u32, group_id: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.setStreamGroup(object_ptr, stream_id, group_id);
+}
+
+export fn audioGetStreamStats(engine_handle: NativeHandle, stream_id: u32, out_stats: ?*native_audio.StreamStats) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.getStreamStats(object_ptr, stream_id, out_stats);
+}
+
+export fn audioCloseStream(
+    engine_handle: NativeHandle,
+    stream_id: u32,
+    reason: u32,
+    out_final_stats: ?*native_audio.StreamStats,
+) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.closeStream(object_ptr, stream_id, reason, out_final_stats);
 }
 
 export fn audioLoad(engine_handle: NativeHandle, data_ptr: ?[*]const u8, data_len: u32, out_sound_id: ?*u32) i32 {
@@ -781,6 +899,7 @@ pub const ExternalCapabilities = extern struct {
     term_version_ptr: [*]const u8,
     term_version_len: usize,
     term_from_xtversion: bool,
+    osc52_support: u8,
 };
 
 export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *ExternalCapabilities) void {
@@ -809,6 +928,7 @@ export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *Exter
         .bracketed_paste = caps.bracketed_paste,
         .hyperlinks = caps.hyperlinks,
         .osc52 = caps.osc52,
+        .osc52_support = @intFromEnum(term.osc52_support),
         .notifications = caps.notifications,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .remote = caps.remote,
@@ -942,11 +1062,11 @@ export fn setTerminalTitle(renderer_handle: NativeHandle, titlePtr: ?[*]const u8
     object_ptr.setTerminalTitle(title);
 }
 
-export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, payloadPtr: ?[*]const u8, payloadLen: u32) bool {
+export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, text_ptr: ?[*]const u8, text_len: u32) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
     const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
-    const payload = sliceFromPtrLen(payloadPtr, payloadLen);
-    return object_ptr.copyToClipboardOSC52(targetEnum, payload);
+    const text_utf8 = sliceFromPtrLen(text_ptr, text_len);
+    return object_ptr.copyToClipboardOSC52(targetEnum, text_utf8);
 }
 
 export fn clearClipboardOSC52(renderer_handle: NativeHandle, target: u8) bool {

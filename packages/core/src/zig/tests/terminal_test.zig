@@ -503,6 +503,7 @@ test "queryTerminalSend - sends unwrapped queries when not in tmux" {
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?1016$p") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?2027$p") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?u") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bP+q4d73\x1b\\") != null);
 
     // Should NOT contain tmux DCS wrapper
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
@@ -538,7 +539,8 @@ test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
 
     // Should contain tmux DCS wrapper start and doubled ESC for queries
     // wrapForTmux wraps all queries together with one DCS envelope
-    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1bP+q4d73\x1b\x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b[?1016$p") != null);
 
     // Should NOT mark capability queries as pending (already sent wrapped)
     try testing.expect(!term.capability_queries_pending);
@@ -585,7 +587,8 @@ test "sendPendingQueries - sends wrapped queries after tmux detected via xtversi
     const output = writer.getWritten();
 
     // Should send DCS wrapped capability queries (wrapForTmux wraps all queries together)
-    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1bP+q4d73\x1b\x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b[?1016$p") != null);
 
     // Should send DCS wrapped graphics query
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b_G") != null);
@@ -769,6 +772,37 @@ test "processCapabilityResponse - foot applies osc52 heuristic without explicit 
     try testing.expect(!term.caps.explicit_cursor_positioning);
 }
 
+test "processCapabilityResponse - XTGETTCAP Ms only establishes positive support" {
+    var supported: Terminal = .{};
+    supported.processCapabilityResponse("\x1bP1+r4d73=2570312573\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.supported, supported.osc52_support);
+    try testing.expect(supported.caps.osc52);
+
+    var bare_negative: Terminal = .{};
+    bare_negative.processCapabilityResponse("\x1bP>|iTerm2 3.5.0\x1b\\");
+    bare_negative.processCapabilityResponse("\x1bP0+r\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, bare_negative.osc52_support);
+    try testing.expect(bare_negative.caps.osc52);
+
+    var named_negative: Terminal = .{};
+    named_negative.processCapabilityResponse("\x1bP>|kitty(0.40.1)\x1b\\");
+    named_negative.processCapabilityResponse("\x1bP0+r4D73\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, named_negative.osc52_support);
+    try testing.expect(named_negative.caps.osc52);
+
+    var unknown: Terminal = .{};
+    unknown.processCapabilityResponse("\x1bP1+r4d73\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r4d73=\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r4d73=abc\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r4d73=zz\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r544e=787465726d\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+}
+
 // ============================================================================
 // CLIPBOARD (OSC 52) TESTS
 // ============================================================================
@@ -785,11 +819,32 @@ test "writeClipboard - generates basic OSC52 sequence" {
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
 
-    try term.writeClipboard(&writer, .clipboard, "aGVsbG8=");
+    try term.writeClipboard(&writer, .clipboard, "hello");
 
     const output = writer.getWritten();
     // Should be: ESC]52;c;aGVsbG8=ESC\
     try testing.expectEqualStrings("\x1b]52;c;aGVsbG8=\x1b\\", output);
+}
+
+test "writeClipboard - maps every selection target to its OSC 52 byte" {
+    const cases = [_]struct {
+        target: Terminal.ClipboardTarget,
+        expected: []const u8,
+    }{
+        .{ .target = .clipboard, .expected = "\x1b]52;c;eA==\x1b\\" },
+        .{ .target = .primary, .expected = "\x1b]52;p;eA==\x1b\\" },
+        .{ .target = .select, .expected = "\x1b]52;s;eA==\x1b\\" },
+        .{ .target = .secondary, .expected = "\x1b]52;q;eA==\x1b\\" },
+    };
+
+    for (cases) |case| {
+        var term: Terminal = .{};
+        var writer = TestWriter.init(testing.allocator);
+        defer writer.deinit();
+
+        try term.writeClipboard(&writer, case.target, "x");
+        try testing.expectEqualStrings(case.expected, writer.getWritten());
+    }
 }
 
 test "writeNotification - returns false when unsupported" {
@@ -927,11 +982,11 @@ test "writeClipboard - supports different targets" {
     try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;p;") != null);
 
     writer.reset();
-    try term.writeClipboard(&writer, .secondary, "test");
+    try term.writeClipboard(&writer, .select, "test");
     try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;s;") != null);
 
     writer.reset();
-    try term.writeClipboard(&writer, .query, "test");
+    try term.writeClipboard(&writer, .secondary, "test");
     try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;q;") != null);
 }
 
@@ -939,13 +994,205 @@ test "writeClipboard - returns error when OSC52 not supported" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     var term = Terminal.init(.{});
-    term.caps.osc52 = false;
+    term.osc52_support = .unsupported;
 
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
 
     const result = term.writeClipboard(&writer, .clipboard, "test");
     try testing.expectError(error.NotSupported, result);
+}
+
+test "writeClipboard - emits optimistically when XTGETTCAP state is unknown" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+    try testing.expectEqual(Terminal.Osc52Support.unknown, term.osc52_support);
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, "test");
+
+    try testing.expectEqualStrings("\x1b]52;c;dGVzdA==\x1b\\", writer.getWritten());
+}
+
+test "writeClipboard - writes large payload without a fixed buffer limit" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload = try testing.allocator.alloc(u8, 16 * 1024);
+    defer testing.allocator.free(payload);
+    @memset(payload, 'A');
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, payload);
+
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    try testing.expectEqual(encoded_len + 9, writer.getWritten().len);
+    try testing.expect(std.mem.startsWith(u8, writer.getWritten(), "\x1b]52;c;"));
+    try testing.expect(std.mem.endsWith(u8, writer.getWritten(), "\x1b\\"));
+}
+
+test "writeClipboard - writes large payload through tmux passthrough" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload = try testing.allocator.alloc(u8, 16 * 1024);
+    defer testing.allocator.free(payload);
+    @memset(payload, 'A');
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, payload);
+
+    const output = writer.getWritten();
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    try testing.expectEqual(encoded_len + 20, output.len);
+    try testing.expect(std.mem.startsWith(u8, output, "\x1bPtmux;\x1b\x1b]52;c;"));
+    try testing.expect(std.mem.endsWith(u8, output, "\x1b\x1b\\\x1b\\"));
+}
+
+test "writeClipboard - chunks large payload through GNU Screen passthrough" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("STY", "12345.pts-0.hostname");
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload = try testing.allocator.alloc(u8, 16 * 1024);
+    defer testing.allocator.free(payload);
+    @memset(payload, 'A');
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, payload);
+
+    const output = writer.getWritten();
+    try testing.expect(countSubstring(output, ansi.ANSI.screenDcsStart) > 1);
+    try testing.expect(std.mem.endsWith(u8, output, ansi.ANSI.screenDcsEnd));
+
+    var frame_start: usize = 0;
+    while (std.mem.indexOfPos(u8, output, frame_start, ansi.ANSI.screenDcsStart)) |start| {
+        const content_start = start + ansi.ANSI.screenDcsStart.len;
+        const next_start = std.mem.indexOfPos(u8, output, content_start, ansi.ANSI.screenDcsStart) orelse output.len;
+        try testing.expect(next_start - content_start <= Terminal.SCREEN_PASSTHROUGH_CHUNK_SIZE + ansi.ANSI.screenDcsEnd.len);
+        frame_start = next_start;
+    }
+}
+
+test "writeClipboard - base64 encodes raw UTF-8 bytes" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, "世界 café 🚀");
+
+    try testing.expectEqualStrings("\x1b]52;c;5LiW55WMIGNhZsOpIPCfmoA=\x1b\\", writer.getWritten());
+}
+
+test "writeClipboard - handles base64 padding and encoding chunk boundaries" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const cases = [_]struct { raw: []const u8, encoded: []const u8 }{
+        .{ .raw = "", .encoded = "" },
+        .{ .raw = "a", .encoded = "YQ==" },
+        .{ .raw = "ab", .encoded = "YWI=" },
+        .{ .raw = "abc", .encoded = "YWJj" },
+    };
+    for (cases) |case| {
+        writer.reset();
+        try term.writeClipboard(&writer, .clipboard, case.raw);
+        try testing.expectEqualStrings("\x1b]52;c;", writer.getWritten()[0..7]);
+        try testing.expectEqualStrings(case.encoded, writer.getWritten()[7 .. writer.getWritten().len - 2]);
+        try testing.expect(std.mem.endsWith(u8, writer.getWritten(), "\x1b\\"));
+    }
+
+    const payload = [_]u8{'A'} ** (3 * 1024 + 1);
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    const expected = try testing.allocator.alloc(u8, encoded_len);
+    defer testing.allocator.free(expected);
+    _ = std.base64.standard.Encoder.encode(expected, &payload);
+
+    writer.reset();
+    try term.writeClipboard(&writer, .clipboard, &payload);
+    try testing.expectEqualSlices(u8, expected, writer.getWritten()[7 .. writer.getWritten().len - 2]);
+}
+
+test "clipboardSequenceSize - matches plain, tmux, and Screen output" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const payload = "size me 世界";
+    const environments = [_]struct { key: ?[]const u8, value: []const u8 }{
+        .{ .key = null, .value = "" },
+        .{ .key = "TMUX", .value = "/tmp/tmux-1000/default,12345,0" },
+        .{ .key = "STY", .value = "12345.pts-0.hostname" },
+    };
+
+    for (environments) |environment| {
+        var env = std.process.EnvMap.init(testing.allocator);
+        defer env.deinit();
+        if (environment.key) |key| try env.put(key, environment.value);
+        var term = Terminal.init(.{ .env_map = &env });
+
+        var writer = TestWriter.init(testing.allocator);
+        defer writer.deinit();
+        try term.writeClipboard(&writer, .clipboard, payload);
+
+        try testing.expectEqual(try term.clipboardSequenceSize(payload.len), writer.getWritten().len);
+    }
+}
+
+test "clipboardSequenceSize - rejects payloads beyond the FFI limit" {
+    if (std.math.maxInt(usize) == std.math.maxInt(u32)) return error.SkipZigTest;
+
+    var term: Terminal = .{};
+    try testing.expectError(
+        error.ClipboardPayloadTooLarge,
+        term.clipboardSequenceSize(@as(usize, Terminal.CLIPBOARD_PAYLOAD_SIZE_MAX) + 1),
+    );
+}
+
+test "writeClipboard - Screen framing crosses the 252-byte boundary" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("STY", "12345.pts-0.hostname");
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload_one_chunk = [_]u8{'A'} ** 180;
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, &payload_one_chunk);
+    try testing.expectEqual(@as(usize, 1), countSubstring(writer.getWritten(), ansi.ANSI.screenDcsStart));
+    try testing.expectEqual(try term.clipboardSequenceSize(payload_one_chunk.len), writer.getWritten().len);
+
+    writer.reset();
+    const payload_two_chunks = [_]u8{'A'} ** 181;
+    try term.writeClipboard(&writer, .clipboard, &payload_two_chunks);
+    try testing.expectEqual(@as(usize, 2), countSubstring(writer.getWritten(), ansi.ANSI.screenDcsStart));
+    try testing.expectEqual(try term.clipboardSequenceSize(payload_two_chunks.len), writer.getWritten().len);
 }
 
 test "writeClipboard - wraps in DCS passthrough for tmux" {

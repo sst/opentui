@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: 26.3.0
+  NODE_VERSION: 26.4.0
 
 jobs:
   publish:

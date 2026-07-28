@@ -260,7 +260,8 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   if (parentContainer) {
-    rendererInstance.root.remove("styled-text-container")
+    const styledTextContainer = rendererInstance.root.getRenderable("styled-text-container")
+    if (styledTextContainer) rendererInstance.root.remove(styledTextContainer)
     parentContainer = null
   }
 

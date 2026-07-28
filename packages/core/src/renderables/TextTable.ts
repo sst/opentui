@@ -9,6 +9,7 @@ import { SyntaxStyle } from "../syntax-style.js"
 import { type TextChunk, TextBuffer } from "../text-buffer.js"
 import { TextBufferView } from "../text-buffer-view.js"
 import type { RenderContext } from "../types.js"
+import { allocateProportionalColumnWidths } from "./text-table-width.js"
 
 // Large sentinel height for text measurement. The Zig measure path currently
 // ignores height, but we pass an effectively unbounded value so if height-aware
@@ -769,65 +770,7 @@ export class TextTableRenderable extends Renderable {
 
   private fitColumnWidthsProportional(widths: number[], targetContentWidth: number): number[] {
     const minWidth = 1 + this.getHorizontalCellPadding()
-    const hardMinWidths = new Array(widths.length).fill(minWidth)
-    const baseWidths = widths.map((width) => Math.max(1, Math.floor(width)))
-
-    const preferredMinWidths = baseWidths.map((width) => Math.min(width, minWidth + 1))
-    const preferredMinTotal = preferredMinWidths.reduce((sum, width) => sum + width, 0)
-
-    const floorWidths = preferredMinTotal <= targetContentWidth ? preferredMinWidths : hardMinWidths
-    const floorTotal = floorWidths.reduce((sum, width) => sum + width, 0)
-    const clampedTarget = Math.max(floorTotal, targetContentWidth)
-
-    const totalBaseWidth = baseWidths.reduce((sum, width) => sum + width, 0)
-
-    if (totalBaseWidth <= clampedTarget) {
-      return baseWidths
-    }
-
-    const shrinkable = baseWidths.map((width, idx) => width - floorWidths[idx])
-    const totalShrinkable = shrinkable.reduce((sum, value) => sum + value, 0)
-    if (totalShrinkable <= 0) {
-      return [...floorWidths]
-    }
-
-    const targetShrink = totalBaseWidth - clampedTarget
-    const integerShrink = new Array(baseWidths.length).fill(0)
-    const fractions = new Array(baseWidths.length).fill(0)
-    let usedShrink = 0
-
-    for (let idx = 0; idx < baseWidths.length; idx++) {
-      if (shrinkable[idx] <= 0) continue
-
-      const exact = (shrinkable[idx] / totalShrinkable) * targetShrink
-      const whole = Math.min(shrinkable[idx], Math.floor(exact))
-      integerShrink[idx] = whole
-      fractions[idx] = exact - whole
-      usedShrink += whole
-    }
-
-    let remainingShrink = targetShrink - usedShrink
-
-    while (remainingShrink > 0) {
-      let bestIdx = -1
-      let bestFraction = -1
-
-      for (let idx = 0; idx < baseWidths.length; idx++) {
-        if (shrinkable[idx] - integerShrink[idx] <= 0) continue
-        if (fractions[idx] > bestFraction) {
-          bestFraction = fractions[idx]
-          bestIdx = idx
-        }
-      }
-
-      if (bestIdx === -1) break
-
-      integerShrink[bestIdx] += 1
-      fractions[bestIdx] = 0
-      remainingShrink -= 1
-    }
-
-    return baseWidths.map((width, idx) => Math.max(floorWidths[idx], width - integerShrink[idx]))
+    return allocateProportionalColumnWidths(widths, targetContentWidth, minWidth)
   }
 
   private fitColumnWidthsBalanced(widths: number[], targetContentWidth: number): number[] {

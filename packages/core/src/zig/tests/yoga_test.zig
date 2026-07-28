@@ -53,11 +53,13 @@ test "Yoga wrapper packs style values" {
     try std.testing.expectApproxEqAbs(@as(f32, 10), value, 0.001);
 }
 
-test "Yoga wrapper stores dirtied callback alongside measure callback" {
+test "Yoga wrapper uses global callback routing without per-node context" {
     const node = yoga.yogaNodeCreate();
     defer yoga.yogaNodeFree(node);
 
-    yoga.yogaNodeSetMeasureFunc(node, null);
-    yoga.yogaNodeSetDirtiedFunc(node, null);
+    yoga.yogaSetMeasureCallback(null);
+    yoga.yogaSetDirtiedCallback(null);
+    yoga.yogaNodeSetMeasureFunc(node, false);
+    yoga.yogaNodeSetDirtiedFunc(node, false);
     try std.testing.expect(!yoga.yogaNodeHasContext(node));
 }

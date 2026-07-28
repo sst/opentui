@@ -248,7 +248,9 @@ If neither built-in host fits your runtime, implement `KeymapHost` yourself and 
 ```ts
 import { Keymap, type KeymapHost } from "@opentui/keymap"
 
-const keymap = new Keymap(host as KeymapHost<object>)
+function createCustomKeymap(host: KeymapHost<object>) {
+  return new Keymap(host)
+}
 ```
 
 Custom hosts must provide conservative metadata. Use `unknown` when the host cannot prove a platform or modifier capability.

@@ -474,6 +474,17 @@ describe("EditorView", () => {
       expect(cursor.offset).toBe(6)
     })
 
+    it("preserves public cursor identity", () => {
+      buffer.setText("abc")
+      const first = view.getVisualCursor()
+      buffer.moveCursorRight()
+      const second = view.getVisualCursor()
+
+      expect(first).not.toBe(second)
+      expect(first.offset).toBe(0)
+      expect(second.offset).toBe(1)
+    })
+
     it("should handle vertical navigation through emoji cells correctly", () => {
       buffer.setText("1234567890123456789\n(emoji 🌟 and CJK 世界)\n1234567890123456789")
 

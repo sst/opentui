@@ -348,13 +348,14 @@ export function destroy(rendererInstance: CliRenderer): void {
 
   inputElements.forEach((input) => {
     if (input) {
-      rendererInstance.root.remove(input.id)
+      rendererInstance.root.remove(input)
       input.destroy()
     }
   })
   inputElements.length = 0
 
-  rendererInstance.root.remove("parent-container")
+  const parentContainer = rendererInstance.root.getRenderable("parent-container")
+  if (parentContainer) rendererInstance.root.remove(parentContainer)
 
   nameInput = null
   emailInput = null
