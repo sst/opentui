@@ -3372,9 +3372,17 @@ export class Audio extends EventEmitter<AudioEvents> {
       this.emitCaptureOwnershipError("startCapture")
       return false
     }
-    if (this.isCapturing()) return true
     const channels = resolvePositiveU32(options.channels, 1, "channels")
     const capacityFrames = resolvePositiveU32(options.capacityFrames, this.sampleRate, "capacityFrames")
+    if (this.isCapturing()) {
+      const configurationMatches =
+        (options.channels === undefined || channels === this.captureChannels) &&
+        (options.capacityFrames === undefined || capacityFrames === this.captureCapacityFrames) &&
+        options.startOptions === undefined
+      if (configurationMatches) return true
+      this.emitError("startCapture", undefined, "Audio capture is already running with a different configuration")
+      return false
+    }
     const engine = this.engine
     if (!engine) {
       this.emitError("startCapture", undefined, "Audio engine unavailable during startCapture")

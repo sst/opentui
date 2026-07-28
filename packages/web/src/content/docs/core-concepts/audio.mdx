@@ -419,7 +419,7 @@ audio.dispose()
 | `getCaptureStats()`             | Returns format, buffer use, and received/read/dropped counters                    |
 | `stopCapture()`                 | Stops input while preserving unread PCM for direct reads                          |
 
-Direct reads allocate `frameCount * channels` samples, but only the first `framesRead * channels` are valid. `frameCount` cannot exceed the configured capacity. A later `startCapture()` resets the ring and counters. Successful transitions emit `captureStarted` and `captureStopped`; native failures return `false` or `null` and emit `Audio.error`. Device indices belong to the latest enumeration and can change after hot-plugging. Invalid dimensions and indices throw `TypeError` or `RangeError` before native work.
+Direct reads allocate `frameCount * channels` samples, but only the first `framesRead * channels` are valid. `frameCount` cannot exceed the configured capacity. While running, `startCapture()` is idempotent when no new device options are supplied and any explicit channels/capacity match the active configuration. Stop capture before changing its configuration. A later successful start resets the ring and counters. Successful transitions emit `captureStarted` and `captureStopped`; native failures return `false` or `null` and emit `Audio.error`. Device indices belong to the latest enumeration and can change after hot-plugging. Invalid dimensions and indices throw `TypeError` or `RangeError` before native work.
 
 ### Permissions and scope
 

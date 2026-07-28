@@ -709,7 +709,7 @@ test("Audio capture applies defaults, honors explicit options, and emits lifecyc
     audio.on("captureStopped", () => events.push("stopped"))
 
     expect(audio.startCapture()).toBe(true)
-    expect(audio.startCapture({ channels: 2, capacityFrames: 12 })).toBe(true)
+    expect(audio.startCapture()).toBe(true)
     expect(starts).toEqual([{ options: undefined, channels: 1, capacityFrames: 44_100 }])
     expect(audio.isCapturing()).toBe(true)
 
@@ -735,6 +735,78 @@ test("Audio capture applies defaults, honors explicit options, and emits lifecyc
     restoreRunning()
     restoreStop()
     restoreStart()
+  }
+})
+
+test("Audio capture validates explicit options while active", () => {
+  const lib = resolveRenderLib()
+  let running = false
+  let startCalls = 0
+  const restores = [
+    replaceMethod(lib, "audioStartCapture", () => {
+      startCalls += 1
+      running = true
+      return 0
+    }),
+    replaceMethod(lib, "audioIsCaptureRunning", () => running),
+    replaceMethod(lib, "audioStopCapture", () => {
+      running = false
+      return 0
+    }),
+  ]
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    audio.on("error", () => {})
+
+    expect(audio.startCapture({ channels: 1, capacityFrames: 8 })).toBe(true)
+    expect(() => audio.startCapture({ channels: 0 })).toThrow(TypeError)
+    expect(() => audio.startCapture({ capacityFrames: Number.NaN })).toThrow(TypeError)
+    expect(startCalls).toBe(1)
+  } finally {
+    for (const restore of restores.reverse()) restore()
+  }
+})
+
+test("Audio capture rejects explicit reconfiguration while active", () => {
+  const lib = resolveRenderLib()
+  let running = false
+  let startCalls = 0
+  const restores = [
+    replaceMethod(lib, "audioStartCapture", () => {
+      startCalls += 1
+      running = true
+      return 0
+    }),
+    replaceMethod(lib, "audioIsCaptureRunning", () => running),
+    replaceMethod(lib, "audioStopCapture", () => {
+      running = false
+      return 0
+    }),
+  ]
+
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    const errors: Array<{ message: string; action: string }> = []
+    audio.on("error", (error, context) => errors.push({ message: error.message, action: context.action }))
+
+    expect(audio.startCapture({ channels: 1, capacityFrames: 8 })).toBe(true)
+    expect(audio.startCapture()).toBe(true)
+    expect(audio.startCapture({ channels: 1, capacityFrames: 8 })).toBe(true)
+    expect(audio.startCapture({ channels: 2 })).toBe(false)
+    expect(audio.startCapture({ capacityFrames: 16 })).toBe(false)
+    expect(audio.startCapture({ startOptions: { periods: 3 } })).toBe(false)
+
+    expect(startCalls).toBe(1)
+    expect(errors).toEqual([
+      { message: "Audio capture is already running with a different configuration", action: "startCapture" },
+      { message: "Audio capture is already running with a different configuration", action: "startCapture" },
+      { message: "Audio capture is already running with a different configuration", action: "startCapture" },
+    ])
+  } finally {
+    for (const restore of restores.reverse()) restore()
   }
 })
 
@@ -1022,6 +1094,7 @@ test("Audio capture preserves reentrant restart format after an external stop ev
   try {
     const audio = Audio.create({ autoStart: false })
     instances.push(audio)
+    audio.on("error", () => {})
     expect(audio.startCapture({ channels: 2, capacityFrames: 16 })).toBe(true)
     let restartOnStop = true
     audio.on("captureStopped", () => {
@@ -1031,7 +1104,7 @@ test("Audio capture preserves reentrant restart format after an external stop ev
     })
 
     running = false
-    expect(audio.startCapture({ channels: 2, capacityFrames: 16 })).toBe(true)
+    expect(audio.startCapture({ channels: 2, capacityFrames: 16 })).toBe(false)
     expect(starts).toEqual([
       { channels: 2, capacityFrames: 16 },
       { channels: 1, capacityFrames: 8 },
