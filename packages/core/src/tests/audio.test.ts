@@ -1406,6 +1406,9 @@ test("AudioCaptureStream cancellation, abort, exclusivity, external stop, and pa
       disposed += 1
       stream.dispose()
     })
+    ring.framesDropped = 2n
+    expect(stream.getStats().framesDropped).toBe(2n)
+    ring.framesDropped = 0n
 
     expect(await rejectionOf(audio.openCapture({ capacityFrames: 8, chunkFrames: 2 }))).toBeInstanceOf(
       AudioCaptureStreamError,
@@ -1535,6 +1538,20 @@ test("AudioCaptureStream rejects invalid and pre-aborted setup without native ca
     expect(ring.starts).toEqual([])
   } finally {
     ring.restore()
+  }
+})
+
+test("AudioCaptureStream preserves native setup error status", async () => {
+  const lib = resolveRenderLib()
+  const restoreStart = replaceMethod(lib, "audioStartCapture", () => -5)
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    const error = await rejectionOf(audio.openCapture())
+    expect(error).toBeInstanceOf(AudioCaptureStreamError)
+    expect((error as AudioCaptureStreamError).context).toEqual({ action: "start", status: -5 })
+  } finally {
+    restoreStart()
   }
 })
 
