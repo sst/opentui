@@ -733,6 +733,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private exitOnCtrlC: boolean
   private exitSignals: NodeJS.Signals[]
   private _exitListenersAdded: boolean = false
+  private _sigtstpListenersAdded: boolean = false
+  private _suspendedBySigtstp: boolean = false
   private _isDestroyed: boolean = false
   private _destroyPending: boolean = false
   private _destroyFinalized: boolean = false
@@ -1194,6 +1196,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
 
     this.addExitListeners()
+    this.addSigtstpListeners()
 
     const stdinParserMaxBufferBytes = config.stdinParserMaxBufferBytes ?? DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
     this.stdinParser = new StdinParser({
@@ -1284,6 +1287,41 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
 
     this._exitListenersAdded = false
+  }
+
+  private sigtstpHandler = (): void => {
+    this._suspendedBySigtstp = true
+    this.suspend()
+    // Remove handler to allow default SIGTSTP behavior (suspend process)
+    process.removeListener("SIGTSTP", this.sigtstpHandler)
+    // Re-raise to actually suspend
+    process.kill(process.pid, "SIGTSTP")
+  }
+
+  private sigcontHandler = (): void => {
+    // Re-register SIGTSTP handler before resuming
+    this.addSigtstpListeners()
+    // Only resume if our SIGTSTP handler called suspend(). A spurious SIGCONT
+    // (e.g., terminal refocus without prior SIGTSTP) would add a duplicate
+    // stdin listener, causing every keystroke to be delivered twice.
+    if (this._suspendedBySigtstp) {
+      this._suspendedBySigtstp = false
+      this.resume()
+    }
+  }
+
+  private addSigtstpListeners(): void {
+    if (this._sigtstpListenersAdded) return
+    process.on("SIGTSTP", this.sigtstpHandler)
+    process.on("SIGCONT", this.sigcontHandler)
+    this._sigtstpListenersAdded = true
+  }
+
+  private removeSigtstpListeners(): void {
+    if (!this._sigtstpListenersAdded) return
+    process.removeListener("SIGTSTP", this.sigtstpHandler)
+    process.removeListener("SIGCONT", this.sigcontHandler)
+    this._sigtstpListenersAdded = false
   }
 
   public get isDestroyed(): boolean {
@@ -4018,6 +4056,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this.removeExitListeners()
+    this.removeSigtstpListeners()
     this.waitingForPixelResolution = false
     this.updateStdinParserProtocolContext({
       privateCapabilityRepliesActive: false,
@@ -4052,6 +4091,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdin.on("data", this.stdinListener)
     this.stdin.resume()
     this.addExitListeners()
+    this.addSigtstpListeners()
 
     const resumePreservedNonAltSurface =
       this.pendingSuspendedTerminalSetup &&
@@ -4162,6 +4202,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.removeListener("warning", this.warningHandler)
     process.removeListener("beforeExit", this.exitHandler)
     this.removeExitListeners()
+    this.removeSigtstpListeners()
 
     if (this.resizeTimeoutId !== null) {
       this.clock.clearTimeout(this.resizeTimeoutId)
