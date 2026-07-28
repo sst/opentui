@@ -1,5 +1,7 @@
 import { createServer } from "node:http"
-import { readFile } from "node:fs/promises"
+import { chmod, mkdtemp, open, readFile, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { describe, expect, test } from "bun:test"
@@ -309,6 +311,15 @@ describe("NativeImage", () => {
     }
   })
 
+  test("validates aspect-ratio-derived dimensions before FFI conversion", () => {
+    const image = NativeImage.fromRgba(new Uint8Array(8), 2, 1)
+    try {
+      expect(() => image.resize({ height: 0xffff_ffff })).toThrow("width must be a positive u32 integer")
+    } finally {
+      image.dispose()
+    }
+  })
+
   test("composites in linear light", () => {
     const base = NativeImage.fromRgba(Uint8Array.of(0, 0, 0, 255), 1, 1)
     const overlay = NativeImage.fromRgba(Uint8Array.of(255, 255, 255, 128), 1, 1)
@@ -450,6 +461,25 @@ describe("NativeImage", () => {
       fromUrlString.dispose()
       fromUrl.dispose()
       fromPath.dispose()
+    }
+  })
+
+  test("rejects oversized local files before reading their contents", async () => {
+    const directory = await mkdtemp(join(process.env.OTUI_IMAGE_TEST_TMPDIR ?? tmpdir(), "opentui-image-limit-"))
+    const path = join(directory, "oversized.png")
+    const file = await open(path, "w")
+    try {
+      await file.truncate(64 * 1024 * 1024 + 1)
+    } finally {
+      await file.close()
+    }
+    if (process.platform !== "win32") await chmod(path, 0)
+
+    try {
+      await expect(NativeImage.load(path)).rejects.toMatchObject({ code: "memory-limit" })
+    } finally {
+      if (process.platform !== "win32") await chmod(path, 0o600)
+      await rm(directory, { recursive: true, force: true })
     }
   })
 
