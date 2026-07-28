@@ -9,7 +9,8 @@ import {
   fg,
   t,
   type AudioCaptureDevice,
-  type AudioCaptureStats,
+  type AudioCaptureStream,
+  type AudioCaptureStreamStats,
   type AudioErrorContext,
   type CliRenderer,
   type KeyEvent,
@@ -21,7 +22,6 @@ const SAMPLE_RATE = 48_000
 const CHANNELS = 1
 const CAPACITY_FRAMES = SAMPLE_RATE
 const READ_FRAMES = 2048
-const MAX_READS_PER_UPDATE = 8
 const VISUALIZATION_INTERVAL_MS = 50
 const MAX_VISIBLE_DEVICES = 5
 
@@ -43,23 +43,26 @@ class AudioCaptureDemo {
   private readonly frameCallback: (deltaMs: number) => Promise<void>
 
   private audio: Audio | null = null
+  private capture: AudioCaptureStream | null = null
   private devices: AudioCaptureDevice[] = []
   private selectedDevice: AudioCaptureDevice | null = null
-  private stats: AudioCaptureStats | null = null
+  private stats: AudioCaptureStreamStats | null = null
   private visibleDeviceOffset = 0
   private statusMessage = "Initializing microphone capture"
   private statusColor: string = AUDIO_DEMO_PALETTE.warning
   private errorVersion = 0
   private peak = 0
   private rms = 0
-  private consecutiveSilentFrames = 0
+  private consecutiveZeroFrames = 0
   private noSignalDetected = false
-  private lastFramesRead = 0
+  private latestChunkFrames = 0
+  private chunkArrivedSinceFrame = false
   private visualizationElapsedMs = 0
-  private captureRunning = false
-  private captureDeviceOpen = false
-  private canRead = false
-  private intentionalStop = false
+  private captureGeneration = 0
+  private captureStreamGeneration = 0
+  private captureOperation: Promise<void> = Promise.resolve()
+  private stopRequested: AudioCaptureStream | null = null
+  private externalStopObserved: AudioCaptureStream | null = null
   private liveRequested = false
   private destroyed = false
 
@@ -253,22 +256,11 @@ class AudioCaptureDemo {
     this.refreshText()
   }
 
-  private readonly handleCaptureStopped = (): void => {
-    if (this.destroyed) return
-    const externallyStopped = this.captureRunning && !this.intentionalStop
-    this.captureRunning = false
-    if (externallyStopped && this.statusColor !== AUDIO_DEMO_PALETTE.error) {
-      this.setStatus("Input stopped externally; draining buffered PCM", AUDIO_DEMO_PALETTE.warning)
-    }
-    this.refreshText()
-  }
-
   private initializeCapture(): void {
     try {
       const audio = Audio.create({ autoStart: false, sampleRate: SAMPLE_RATE })
       this.audio = audio
       audio.on("error", this.handleAudioError)
-      audio.on("captureStopped", this.handleCaptureStopped)
       this.refreshDevices(true)
     } catch (error) {
       this.setStatus(
@@ -287,48 +279,67 @@ class AudioCaptureDemo {
     if (this.errorVersion === version) this.setStatus(message, AUDIO_DEMO_PALETTE.error)
   }
 
-  private closeCaptureForReset(): boolean {
-    const audio = this.audio
-    if (!audio) return false
+  private isCurrentCapture(stream: AudioCaptureStream, generation: number): boolean {
+    return (
+      !this.destroyed &&
+      this.capture === stream &&
+      this.captureGeneration === generation &&
+      this.captureStreamGeneration === generation
+    )
+  }
 
-    const nativeRunning = audio.isCapturing()
-    this.captureRunning = nativeRunning
-    if (!nativeRunning && !this.captureDeviceOpen && !this.canRead) return true
+  private isCurrentGeneration(generation: number): boolean {
+    return !this.destroyed && this.captureGeneration === generation
+  }
 
-    const errorVersion = this.errorVersion
-    this.intentionalStop = true
-    let stopped = false
-    try {
-      stopped = audio.stopCapture()
-    } finally {
-      this.intentionalStop = false
-    }
-    if (!stopped) {
-      this.setFallbackError(errorVersion, "Could not stop the current capture device")
+  private queueCaptureOperation(operation: (generation: number) => Promise<void>): void {
+    const generation = ++this.captureGeneration
+    const closingCapture = this.disposeCurrentCapture()
+    const pending = this.captureOperation.then(async () => {
+      await closingCapture
+      if (!this.isCurrentGeneration(generation)) return
+      await operation(generation)
+    })
+    this.captureOperation = pending.catch((error) => {
+      if (!this.isCurrentGeneration(generation)) return
+      this.setStatus(
+        error instanceof Error ? `Capture operation failed: ${error.message}` : "Capture operation failed",
+        AUDIO_DEMO_PALETTE.error,
+      )
       this.refreshText()
-      return false
-    }
+    })
+  }
 
-    this.captureRunning = false
-    this.captureDeviceOpen = false
-    return true
+  private async disposeCurrentCapture(): Promise<void> {
+    const stream = this.capture
+    if (!stream) return
+
+    this.capture = null
+    this.captureStreamGeneration = 0
+    if (this.stopRequested === stream) this.stopRequested = null
+    if (this.externalStopObserved === stream) this.externalStopObserved = null
+    stream.dispose()
+    this.stats = stream.getStats()
+    await stream.closed
   }
 
   private resetSignal(): void {
-    this.canRead = false
     this.stats = null
-    this.lastFramesRead = 0
+    this.latestChunkFrames = 0
+    this.chunkArrivedSinceFrame = false
     this.peak = 0
     this.rms = 0
-    this.consecutiveSilentFrames = 0
+    this.consecutiveZeroFrames = 0
     this.noSignalDetected = false
     this.spectrumPanel.reset()
   }
 
-  private refreshDevices(startAfterRefresh: boolean): void {
+  private refreshDevices(startWhenStopped: boolean = false): void {
     const audio = this.audio
     if (!audio || this.destroyed) return
-
+    const wasRunning = this.capture?.state === "capturing" || this.capture?.state === "initializing"
+    this.setStatus("Refreshing microphone inputs", AUDIO_DEMO_PALETTE.warning)
+    this.refreshText()
     const previousSelection = this.selectedDevice
     const devices = audio.listCaptureDevices()
     if (devices == null) {
@@ -338,15 +349,17 @@ class AudioCaptureDemo {
       this.refreshText()
       return
     }
-    if (!this.closeCaptureForReset()) return
 
-    this.resetSignal()
     this.devices = devices
     if (devices.length === 0) {
       this.selectedDevice = null
       this.visibleDeviceOffset = 0
       this.setStatus("No microphone input is available; check OS permission and hardware", AUDIO_DEMO_PALETTE.error)
       this.refreshText()
+      this.queueCaptureOperation(async (generation) => {
+        if (!this.isCurrentGeneration(generation)) return
+        this.resetSignal()
+      })
       return
     }
 
@@ -360,25 +373,21 @@ class AudioCaptureDemo {
       devices.find((candidate) => candidate.isDefault) ??
       devices[0]!
 
-    const errorVersion = this.errorVersion
-    if (!audio.selectCaptureDevice(device.index)) {
-      this.setFallbackError(errorVersion, `Could not select ${displayText(device.name)}`)
-      this.ensureSelectedDeviceVisible()
-      this.refreshText()
-      return
-    }
-
     this.selectedDevice = device
     this.ensureSelectedDeviceVisible()
-    if (startAfterRefresh) {
-      this.startCapture()
-    } else {
-      this.setStatus(
-        `Found ${devices.length} input${devices.length === 1 ? "" : "s"}; capture remains stopped`,
-        AUDIO_DEMO_PALETTE.muted,
-      )
-      this.refreshText()
-    }
+    this.queueCaptureOperation(async (generation) => {
+      if (!this.isCurrentGeneration(generation)) return
+      this.resetSignal()
+      if (startWhenStopped || wasRunning) {
+        await this.selectAndOpenCapture(device, generation)
+      } else if (audio.selectCaptureDevice(device.index)) {
+        this.setStatus(
+          `Found ${devices.length} input${devices.length === 1 ? "" : "s"}; capture remains stopped`,
+          AUDIO_DEMO_PALETTE.muted,
+        )
+        this.refreshText()
+      }
+    })
   }
 
   private ensureSelectedDeviceVisible(): void {
@@ -392,30 +401,26 @@ class AudioCaptureDemo {
   }
 
   private selectDevice(device: AudioCaptureDevice): void {
-    const audio = this.audio
-    if (!audio || this.destroyed || !this.devices.includes(device)) return
-    if (device === this.selectedDevice && this.captureRunning) {
+    if (!this.audio || this.destroyed || !this.devices.includes(device)) return
+    if (
+      device === this.selectedDevice &&
+      this.capture?.state === "capturing" &&
+      this.captureStreamGeneration === this.captureGeneration
+    ) {
       this.setStatus(`Already capturing ${displayText(device.name)}`, AUDIO_DEMO_PALETTE.signal)
-      this.refreshText()
-      return
-    }
-    if (device === this.selectedDevice) {
-      this.restartCapture()
-      return
-    }
-    if (!this.closeCaptureForReset()) return
-
-    this.resetSignal()
-    const errorVersion = this.errorVersion
-    if (!audio.selectCaptureDevice(device.index)) {
-      this.setFallbackError(errorVersion, `Could not select ${displayText(device.name)}`)
       this.refreshText()
       return
     }
 
     this.selectedDevice = device
     this.ensureSelectedDeviceVisible()
-    this.startCapture()
+    this.setStatus(`Switching to ${displayText(device.name)}`, AUDIO_DEMO_PALETTE.warning)
+    this.refreshText()
+    this.queueCaptureOperation(async (generation) => {
+      if (!this.isCurrentGeneration(generation)) return
+      this.resetSignal()
+      await this.selectAndOpenCapture(device, generation)
+    })
   }
 
   private cycleDevice(direction: -1 | 1): void {
@@ -434,58 +439,74 @@ class AudioCaptureDemo {
     if (device) this.selectDevice(device)
   }
 
-  private startCapture(): void {
+  private async selectAndOpenCapture(device: AudioCaptureDevice, generation: number): Promise<void> {
     const audio = this.audio
-    const device = this.selectedDevice
-    if (!audio || !device || this.destroyed) return
+    if (!audio || !this.isCurrentGeneration(generation)) return
 
     const errorVersion = this.errorVersion
-    if (!audio.startCapture({ channels: CHANNELS, capacityFrames: CAPACITY_FRAMES })) {
-      this.captureRunning = false
-      this.captureDeviceOpen = false
-      this.canRead = false
-      this.setFallbackError(errorVersion, "Capture failed; check the selected input and OS microphone permission")
+    if (!audio.selectCaptureDevice(device.index)) {
+      this.setFallbackError(errorVersion, `Could not select ${displayText(device.name)}`)
       this.refreshText()
       return
     }
 
-    this.captureRunning = true
-    this.captureDeviceOpen = true
-    this.canRead = true
-    this.setStatus(`Capturing ${displayText(device.name)}`, AUDIO_DEMO_PALETTE.signal)
-    const stats = audio.getCaptureStats()
-    if (stats) this.stats = stats
-    this.refreshText()
+    let stream: AudioCaptureStream
+    try {
+      stream = await audio.openCapture({
+        channels: CHANNELS,
+        capacityFrames: CAPACITY_FRAMES,
+        chunkFrames: READ_FRAMES,
+      })
+    } catch (error) {
+      if (!this.isCurrentGeneration(generation)) return
+      this.setStatus(
+        error instanceof Error
+          ? `Capture failed: ${error.message}`
+          : "Capture failed; check the selected input and OS microphone permission",
+        AUDIO_DEMO_PALETTE.error,
+      )
+      this.refreshText()
+      return
+    }
+
+    if (!this.isCurrentGeneration(generation)) {
+      stream.dispose()
+      await stream.closed
+      return
+    }
+
+    this.selectedDevice = device
+    this.ensureSelectedDeviceVisible()
+    this.attachCapture(stream, generation)
   }
 
   private stopAndDrain(): void {
-    const audio = this.audio
-    if (!audio || this.destroyed) return
+    if (!this.audio || this.destroyed) return
 
-    this.captureRunning = audio.isCapturing()
-    if (this.captureRunning || this.captureDeviceOpen) {
-      const errorVersion = this.errorVersion
-      this.intentionalStop = true
-      let stopped = false
-      try {
-        stopped = audio.stopCapture()
-      } finally {
-        this.intentionalStop = false
-      }
-      if (!stopped) {
-        this.setFallbackError(errorVersion, "Could not stop microphone capture")
-        this.refreshText()
-        return
-      }
-      this.captureRunning = false
-      this.captureDeviceOpen = false
+    const stream = this.capture
+    if (!stream || this.captureStreamGeneration !== this.captureGeneration) {
+      this.captureGeneration += 1
+      this.setStatus("Capture is stopped", AUDIO_DEMO_PALETTE.muted)
+      this.refreshText()
+      return
     }
 
-    if (this.statusColor !== AUDIO_DEMO_PALETTE.error) {
+    if (stream.state === "capturing" || stream.state === "initializing") {
+      this.stopRequested = stream
+      stream.stop()
+      const stats = stream.getStats()
+      this.stats = stats
+      if (stats.state !== "errored") {
+        this.setStatus("Capture stopped; draining buffered PCM", AUDIO_DEMO_PALETTE.warning)
+      }
+    } else if (stream.state === "stopping") {
+      const external = this.stopRequested !== stream
       this.setStatus(
-        this.canRead ? "Capture stopped; draining buffered PCM" : "Capture is stopped",
-        this.canRead ? AUDIO_DEMO_PALETTE.warning : AUDIO_DEMO_PALETTE.muted,
+        external ? "Input stopped externally; draining buffered PCM" : "Capture stopped; draining buffered PCM",
+        AUDIO_DEMO_PALETTE.warning,
       )
+    } else if (this.statusColor !== AUDIO_DEMO_PALETTE.error) {
+      this.setStatus("Capture is stopped", AUDIO_DEMO_PALETTE.muted)
     }
     this.refreshText()
   }
@@ -496,17 +517,199 @@ class AudioCaptureDemo {
       this.refreshText()
       return
     }
-    if (!this.closeCaptureForReset()) return
-    this.resetSignal()
-    this.startCapture()
+    const device = this.selectedDevice
+    this.setStatus(`Restarting ${displayText(device.name)}`, AUDIO_DEMO_PALETTE.warning)
+    this.refreshText()
+    this.queueCaptureOperation(async (generation) => {
+      if (!this.isCurrentGeneration(generation)) return
+      this.resetSignal()
+      await this.selectAndOpenCapture(device, generation)
+    })
   }
 
   private refreshDeviceEnumeration(): void {
-    const audio = this.audio
-    if (!audio || this.destroyed) return
-    const restartAfterRefresh = audio.isCapturing()
-    this.captureRunning = restartAfterRefresh
-    this.refreshDevices(restartAfterRefresh)
+    this.refreshDevices(false)
+  }
+
+  private attachCapture(stream: AudioCaptureStream, generation: number): void {
+    let terminalHandled = false
+    const finishTerminal = (kind: "stopped" | "disposed" | "error", error?: unknown, action?: string): void => {
+      if (terminalHandled) return
+      terminalHandled = true
+      if (!this.isCurrentCapture(stream, generation)) return
+
+      this.stats = stream.getStats()
+      const intentionallyStopped = this.stopRequested === stream
+      this.stopRequested = null
+      this.externalStopObserved = null
+      if (kind === "error") {
+        this.setStatus(
+          `${action ?? "capture"}: ${error instanceof Error ? error.message : "Capture stream failed"}`,
+          AUDIO_DEMO_PALETTE.error,
+        )
+      } else if (kind === "disposed") {
+        this.setStatus("Capture stream disposed", AUDIO_DEMO_PALETTE.muted)
+      } else if (intentionallyStopped) {
+        this.setStatus("Capture stopped; buffered PCM drained", AUDIO_DEMO_PALETTE.muted)
+      } else {
+        this.setStatus("Input stopped externally; buffered PCM drained", AUDIO_DEMO_PALETTE.warning)
+      }
+      this.refreshText()
+    }
+    const handleStopped = (): void => finishTerminal("stopped")
+    const handleDisposed = (): void => finishTerminal("disposed")
+    const handleError = (error: Error, context: { action: string }): void =>
+      finishTerminal("error", error, context.action)
+    const removeListeners = (): void => {
+      stream.off("stopped", handleStopped)
+      stream.off("disposed", handleDisposed)
+      stream.off("error", handleError)
+    }
+
+    this.capture = stream
+    this.captureStreamGeneration = generation
+    this.stopRequested = null
+    this.externalStopObserved = null
+    stream.on("stopped", handleStopped)
+    stream.on("disposed", handleDisposed)
+    stream.on("error", handleError)
+    this.stats = stream.getStats()
+    this.setStatus(`Capturing ${displayText(this.selectedDevice?.name ?? "selected input")}`, AUDIO_DEMO_PALETTE.signal)
+    this.refreshText()
+
+    void this.consumeCapture(stream, generation, finishTerminal, removeListeners).catch((error) => {
+      finishTerminal("error", error, "read")
+      stream.dispose()
+    })
+  }
+
+  private async consumeCapture(
+    stream: AudioCaptureStream,
+    generation: number,
+    finishTerminal: (kind: "stopped" | "disposed" | "error", error?: unknown, action?: string) => void,
+    removeListeners: () => void,
+  ): Promise<void> {
+    let reader: ReadableStreamDefaultReader<Float32Array> | null = null
+    try {
+      reader = stream.readable.getReader()
+      while (true) {
+        const result = await reader.read()
+        if (result.done) {
+          if (stream.state === "stopped") finishTerminal("stopped")
+          else if (stream.state === "disposed") finishTerminal("disposed")
+          break
+        }
+        this.processCaptureChunk(stream, generation, result.value)
+      }
+    } catch (error) {
+      const action =
+        typeof error === "object" && error !== null && "context" in error
+          ? (error as { context?: { action?: string } }).context?.action
+          : undefined
+      finishTerminal("error", error, action ?? "read")
+      stream.dispose()
+    } finally {
+      if (reader) {
+        try {
+          reader.releaseLock()
+        } catch {}
+      }
+      await stream.closed
+      removeListeners()
+      if (this.isCurrentCapture(stream, generation)) {
+        this.stats = stream.getStats()
+        this.capture = null
+        this.captureStreamGeneration = 0
+        this.stopRequested = null
+        this.externalStopObserved = null
+        this.chunkArrivedSinceFrame = false
+        this.refreshText()
+      }
+    }
+  }
+
+  private processCaptureChunk(stream: AudioCaptureStream, generation: number, pcm: Float32Array): void {
+    if (!this.isCurrentCapture(stream, generation)) return
+
+    const framesRead = Math.floor(pcm.length / stream.channels)
+    const sampleCount = framesRead * stream.channels
+    const trackSilence = stream.state === "capturing"
+    let peak = 0
+    let sumSquares = 0
+
+    for (let frame = 0; frame < framesRead; frame += 1) {
+      let exactZero = true
+      const frameOffset = frame * stream.channels
+      for (let channel = 0; channel < stream.channels; channel += 1) {
+        const sample = pcm[frameOffset + channel] ?? 0
+        peak = Math.max(peak, Math.abs(sample))
+        sumSquares += sample * sample
+        if (sample !== 0) exactZero = false
+      }
+
+      if (!exactZero) {
+        this.consecutiveZeroFrames = 0
+        if (this.noSignalDetected) {
+          this.noSignalDetected = false
+          if (trackSilence) {
+            this.setStatus(
+              `Signal detected from ${displayText(this.selectedDevice?.name ?? "selected input")}`,
+              AUDIO_DEMO_PALETTE.signal,
+            )
+          }
+        }
+      } else if (trackSilence) {
+        this.consecutiveZeroFrames += 1
+        if (!this.noSignalDetected && this.consecutiveZeroFrames >= stream.sampleRate) {
+          this.noSignalDetected = true
+          if (this.statusColor !== AUDIO_DEMO_PALETTE.error) {
+            this.setStatus(
+              "No input signal: allow microphone access for the host terminal/app, or check input mute and routing",
+              AUDIO_DEMO_PALETTE.warning,
+            )
+          }
+        }
+      } else {
+        this.consecutiveZeroFrames = 0
+      }
+    }
+
+    this.latestChunkFrames = framesRead
+    if (framesRead > 0) this.chunkArrivedSinceFrame = true
+    if (sampleCount > 0) {
+      this.peak = peak
+      this.rms = Math.sqrt(sumSquares / sampleCount)
+      if (framesRead === stream.chunkFrames && framesRead >= AUDIO_SPECTRUM_FFT_SIZE) {
+        this.spectrumPanel.update({
+          mode: "analyze",
+          pcm,
+          framesRead: AUDIO_SPECTRUM_FFT_SIZE,
+          channels: stream.channels,
+          peak: this.peak,
+          rms: this.rms,
+        })
+      } else {
+        this.spectrumPanel.update({ mode: "hold", peak: this.peak, rms: this.rms })
+      }
+    }
+
+    const stats = stream.getStats()
+    if (!this.isCurrentCapture(stream, generation)) return
+    this.stats = stats
+    this.observeExternalStop(stream, stats)
+  }
+
+  private observeExternalStop(stream: AudioCaptureStream, stats: AudioCaptureStreamStats): void {
+    if (
+      stats.state !== "stopping" ||
+      this.stopRequested === stream ||
+      this.externalStopObserved === stream ||
+      this.statusColor === AUDIO_DEMO_PALETTE.error
+    ) {
+      return
+    }
+    this.externalStopObserved = stream
+    this.setStatus("Input stopped externally; draining buffered PCM", AUDIO_DEMO_PALETTE.warning)
   }
 
   private handleKeyPress = (key: KeyEvent): void => {
@@ -558,123 +761,31 @@ class AudioCaptureDemo {
     if (this.visualizationElapsedMs < VISUALIZATION_INTERVAL_MS) return
     this.visualizationElapsedMs %= VISUALIZATION_INTERVAL_MS
 
-    const audio = this.audio
-    if (!audio) {
-      this.decaySignal()
-      this.refreshText()
-      return
-    }
-
-    const nativeRunning = audio.isCapturing()
-    this.captureRunning = nativeRunning
-    if (!this.canRead) {
-      this.lastFramesRead = 0
-      this.decaySignal()
-      this.refreshText()
-      return
-    }
-
-    let totalFramesRead = 0
-    let totalSamplesRead = 0
-    let sumSquares = 0
-    let peak = 0
-    let finalReadSize = 0
-    let spectrumPcm: Float32Array | null = null
-
-    for (let readIndex = 0; readIndex < MAX_READS_PER_UPDATE; readIndex += 1) {
-      const result = audio.readCaptureFrames(READ_FRAMES)
-      if (result == null) {
-        this.canRead = false
-        this.lastFramesRead = 0
-        if (this.captureDeviceOpen) {
-          this.intentionalStop = true
-          try {
-            if (audio.stopCapture()) {
-              this.captureRunning = false
-              this.captureDeviceOpen = false
-            } else {
-              this.captureRunning = audio.isCapturing()
-            }
-          } finally {
-            this.intentionalStop = false
-          }
-        }
-        this.decaySignal()
-        this.refreshText()
-        return
-      }
-
-      const framesRead = Math.min(result.framesRead, READ_FRAMES, Math.floor(result.frames.length / CHANNELS))
-      const sampleCount = framesRead * CHANNELS
-      finalReadSize = framesRead
-      totalFramesRead += framesRead
-      totalSamplesRead += sampleCount
-      if (framesRead >= AUDIO_SPECTRUM_FFT_SIZE) spectrumPcm = result.frames
-
-      for (let index = 0; index < sampleCount; index += 1) {
-        const sample = result.frames[index] ?? 0
-        peak = Math.max(peak, Math.abs(sample))
-        sumSquares += sample * sample
-      }
-      if (framesRead < READ_FRAMES) break
-    }
-
-    this.lastFramesRead = totalFramesRead
-    if (totalSamplesRead > 0) {
-      this.peak = peak
-      this.rms = Math.sqrt(sumSquares / totalSamplesRead)
-      if (nativeRunning && peak === 0) {
-        this.consecutiveSilentFrames += totalFramesRead
-        if (!this.noSignalDetected && this.consecutiveSilentFrames >= SAMPLE_RATE) {
-          this.noSignalDetected = true
-          if (this.statusColor !== AUDIO_DEMO_PALETTE.error) {
-            this.setStatus(
-              "No input signal: allow microphone access for the host terminal/app, or check input mute and routing",
-              AUDIO_DEMO_PALETTE.warning,
-            )
-          }
-        }
-      } else {
-        this.consecutiveSilentFrames = 0
-        if (this.noSignalDetected && peak > 0) {
-          this.noSignalDetected = false
-          this.setStatus(
-            `Signal detected from ${displayText(this.selectedDevice?.name ?? "selected input")}`,
-            AUDIO_DEMO_PALETTE.signal,
-          )
-        }
-      }
-      if (spectrumPcm) {
-        this.spectrumPanel.update({
-          mode: "analyze",
-          pcm: spectrumPcm,
-          framesRead: AUDIO_SPECTRUM_FFT_SIZE,
-          channels: CHANNELS,
-          peak: this.peak,
-          rms: this.rms,
-        })
-      } else {
-        this.spectrumPanel.update({ mode: "hold", peak: this.peak, rms: this.rms })
-      }
-    } else {
-      this.decaySignal()
-    }
-
-    const stats = audio.getCaptureStats()
-    if (stats) this.stats = stats
-    if (!nativeRunning && finalReadSize === 0) {
-      this.canRead = false
-      if (this.statusColor !== AUDIO_DEMO_PALETTE.error) {
-        this.setStatus("Capture stopped; buffered PCM drained", AUDIO_DEMO_PALETTE.muted)
+    const stream = this.capture
+    let terminal = true
+    if (stream && this.captureStreamGeneration === this.captureGeneration) {
+      const stats = stream.getStats()
+      if (this.capture === stream) {
+        this.stats = stats
+        this.observeExternalStop(stream, stats)
+        terminal = stats.state === "stopped" || stats.state === "errored" || stats.state === "disposed"
       }
     }
+
+    if (!this.chunkArrivedSinceFrame || terminal) this.decaySignal()
+    this.chunkArrivedSinceFrame = false
     this.refreshText()
   }
 
   private captureState(): CaptureState {
     if (!this.audio || !this.selectedDevice) return "unavailable"
-    if (this.captureRunning) return "capturing"
-    if (this.canRead) return "draining"
+    const stream = this.capture
+    const state =
+      stream && this.captureStreamGeneration === this.captureGeneration
+        ? stream.state
+        : (this.stats?.state ?? "stopped")
+    if (state === "initializing" || state === "capturing") return "capturing"
+    if (state === "stopping") return "draining"
     return "stopped"
   }
 
@@ -719,7 +830,7 @@ class AudioCaptureDemo {
     const capacityFrames = stats?.capacityFrames ?? CAPACITY_FRAMES
     const bufferedFrames = stats?.bufferedFrames ?? 0
     const bufferRatio = capacityFrames > 0 ? bufferedFrames / capacityFrames : 0
-    const bufferedMs = sampleRate > 0 ? (bufferedFrames / sampleRate) * 1000 : 0
+    const bufferedMs = stats?.bufferedDurationMs ?? (sampleRate > 0 ? (bufferedFrames / sampleRate) * 1000 : 0)
     const bufferColor =
       bufferRatio >= 0.85
         ? AUDIO_DEMO_PALETTE.error
@@ -727,7 +838,7 @@ class AudioCaptureDemo {
           ? AUDIO_DEMO_PALETTE.warning
           : AUDIO_DEMO_PALETTE.signal
     const received = stats?.framesReceived ?? 0n
-    const read = stats?.framesRead ?? 0n
+    const consumed = stats?.framesRead ?? 0n
     const dropped = stats?.framesDropped ?? 0n
     const lossBasisPoints = received > 0n ? Number((dropped * 10_000n) / received) : 0
     const lossPercent = (lossBasisPoints / 100).toFixed(2)
@@ -756,10 +867,10 @@ class AudioCaptureDemo {
 ${label("input")}${fg(AUDIO_DEMO_PALETTE.accent)(displayText(this.selectedDevice?.name ?? "-"))}
 ${label("status")}${fg(this.statusColor)(displayText(this.statusMessage))}
 ${label("format")}${fg(AUDIO_DEMO_PALETTE.accent)(`${sampleRate} Hz / ${channels === 1 ? "mono" : `${channels} ch`}`)}
-${label("drained")}${fg(AUDIO_DEMO_PALETTE.purple)(`${this.lastFramesRead} frames / tick`)}
+${label("drained")}${fg(AUDIO_DEMO_PALETTE.purple)(`${this.latestChunkFrames} frames / chunk`)}
 ${label("buffer")}${fg(bufferColor)(`${bufferedFrames}/${capacityFrames} f  ${bufferedMs.toFixed(0)}ms  ${Math.round(bufferRatio * 100)}%`)}
 ${label("received")}${fg(AUDIO_DEMO_PALETTE.accent)(`${received.toString()} frames`)}
-${label("read")}${fg(AUDIO_DEMO_PALETTE.signal)(`${read.toString()} frames`)}
+${label("consumed")}${fg(AUDIO_DEMO_PALETTE.signal)(`${consumed.toString()} frames`)}
 ${label("dropped")}${fg(dropped > 0n ? healthColor : AUDIO_DEMO_PALETTE.muted)(`${dropped.toString()} frames`)}
 ${label("health")}${bold(fg(healthColor)(health))} ${fg(healthColor)(healthDetail)}`
   }
@@ -773,6 +884,7 @@ ${bold(fg(AUDIO_DEMO_PALETTE.accent)("1-5"))} ${fg(AUDIO_DEMO_PALETTE.muted)("se
   destroy(): void {
     if (this.destroyed) return
     this.destroyed = true
+    this.captureGeneration += 1
 
     this.renderer.removeFrameCallback(this.frameCallback)
     if (this.liveRequested) {
@@ -781,17 +893,23 @@ ${bold(fg(AUDIO_DEMO_PALETTE.accent)("1-5"))} ${fg(AUDIO_DEMO_PALETTE.muted)("se
     }
     this.renderer.keyInput.off("keypress", this.handleKeyPress)
 
+    const stream = this.capture
+    this.capture = null
+    this.captureStreamGeneration = 0
+    this.stopRequested = null
+    this.externalStopObserved = null
+    if (stream) {
+      stream.dispose()
+      void stream.closed.catch(() => undefined)
+    }
+    void this.captureOperation.catch(() => undefined)
+
     const audio = this.audio
     this.audio = null
     if (audio) {
-      audio.off("error", this.handleAudioError)
-      audio.off("captureStopped", this.handleCaptureStopped)
-      audio.stopCapture()
       audio.dispose()
+      audio.off("error", this.handleAudioError)
     }
-    this.captureRunning = false
-    this.captureDeviceOpen = false
-    this.canRead = false
     if (!this.root.isDestroyed) this.root.destroyRecursively()
   }
 }
