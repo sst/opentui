@@ -21,6 +21,9 @@ const Scenario = enum {
     opaque_text,
     transparent_boxes,
     transparent_borders,
+    opaque_boxes,
+    translucent_boxes,
+    half_clipped_boxes,
 };
 
 fn runWorkload(target: *buffer.OptimizedBuffer, scenario: Scenario, text: []const u8) !void {
@@ -35,35 +38,49 @@ fn runWorkload(target: *buffer.OptimizedBuffer, scenario: Scenario, text: []cons
                 var y: u32 = 0;
                 while (y < HEIGHT) : (y += 1) {
                     var x: u32 = 0;
-                    while (x < WIDTH) : (x += 1) target.drawChar('X', x, y, color, color, 0);
+                    while (x < WIDTH) : (x += 1) {
+                        if (scenario == .transparent_char) std.mem.doNotOptimizeAway(target);
+                        target.drawChar('X', x, y, color, color, 0);
+                    }
                 }
             }
         },
         .transparent_text => {
             for (0..1000) |_| {
                 var y: u32 = 0;
-                while (y < HEIGHT) : (y += 1) try target.drawText(text, 0, y, transparent, transparent, 0);
+                while (y < HEIGHT) : (y += 1) {
+                    std.mem.doNotOptimizeAway(target);
+                    try target.drawText(text, 0, y, transparent, transparent, 0);
+                }
             }
         },
         .opaque_text => {
             var y: u32 = 0;
             while (y < HEIGHT) : (y += 1) try target.drawText(text, 0, y, opaque_color, opaque_color, 0);
         },
-        .transparent_boxes, .transparent_borders => {
+        .transparent_boxes, .transparent_borders, .opaque_boxes, .translucent_boxes, .half_clipped_boxes => {
             const fully_transparent = scenario == .transparent_boxes;
             const box_count: usize = if (fully_transparent) 100_000 else 1000;
+            const border_color = if (fully_transparent) transparent else opaque_color;
+            const background_color = if (fully_transparent or scenario == .transparent_borders)
+                transparent
+            else if (scenario == .translucent_boxes)
+                translucent
+            else
+                opaque_color;
             for (0..box_count) |index| {
+                if (fully_transparent) std.mem.doNotOptimizeAway(target);
                 try target.drawBox(
                     @intCast(index % WIDTH),
-                    0,
+                    if (scenario == .half_clipped_boxes) -10 else 0,
                     40,
                     20,
                     &BOX_CHARS,
                     .{ .top = true, .right = true, .bottom = true, .left = true },
-                    if (fully_transparent) transparent else opaque_color,
-                    transparent,
-                    if (fully_transparent) transparent else opaque_color,
-                    false,
+                    border_color,
+                    background_color,
+                    border_color,
+                    scenario != .transparent_borders and !fully_transparent,
                     null,
                     0,
                     null,
@@ -140,6 +157,9 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         .{ .name = "10k opaque drawText cells no images", .kind = .opaque_text },
         .{ .name = "100k fully transparent boxes no images", .kind = .transparent_boxes },
         .{ .name = "1k transparent borders no images", .kind = .transparent_borders },
+        .{ .name = "1k opaque filled boxes no images", .kind = .opaque_boxes },
+        .{ .name = "1k translucent filled boxes no images", .kind = .translucent_boxes },
+        .{ .name = "1k half-clipped filled boxes no images", .kind = .half_clipped_boxes },
     };
     var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
     for (scenarios) |scenario| {
