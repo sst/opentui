@@ -4,7 +4,7 @@ description: Load and render images with Kitty, Sixel, or Unicode blocks
 order: 19
 skill:
   entry: true
-  intents: [image, image-renderable, png, jpeg, webp, gif, kitty, sixel]
+  intents: [image, image-renderable, image-display, kitty, sixel]
 ---
 
 # Image
@@ -79,7 +79,9 @@ Sizing uses terminal pixel resolution when available and a 2:1 cell-height fallb
 | `sixel`    | Force Sixel; falls back to blocks without terminal pixel resolution |
 | `blocks`   | Portable Unicode quadrant-block rendering                           |
 
-Automatic selection uses blocks inside tmux. An explicit per-image protocol overrides automatic detection. Direct, unbuffered plane fills, text, and box borders cover image placements at whole-cell granularity; their foreground and background alpha are ignored instead of blended with image pixels.
+With global and per-image protocols set to `auto`, tmux uses blocks. Explicit Kitty, or Sixel with pixel resolution, uses tmux passthrough.
+
+Kitty preserves image alpha, Sixel treats alpha below 128 as transparent, and blocks blend sampled alpha. Placement opacity scales Kitty alpha and dims Sixel toward cell backgrounds. Direct, unbuffered fills, text, and box borders cover images at whole-cell granularity without blending.
 
 Use `OPENTUI_IMAGE_PROTOCOL=auto|kitty|sixel|blocks` to set the global default. `OPENTUI_GRAPHICS=false` disables Kitty and Sixel detection. See [Environment variables](/docs/reference/env-vars).
 
@@ -102,4 +104,4 @@ Use `OPENTUI_IMAGE_PROTOCOL=auto|kitty|sixel|blocks` to set the global default. 
 | `cellAspectRatio`    | `number`                                   | Physical or fallback cell aspect ratio             |
 | `getFittedSize(...)` | `(width, height) => { width, height }`     | Resolve destination cells for the current fit mode |
 
-The renderable owns `image` and the `NativeImage` passed to `onLoad`; do not dispose or transfer them yourself. Source replacement, clearing, and recursive destruction release the image. `onError` reports load failures through `loadError`, and handled load failures resolve `loadPromise`. Exceptions thrown by `onLoad` or `onError` reject `loadPromise` after state has settled.
+The renderable owns `image` and the `NativeImage` passed to `onLoad`; do not dispose or transfer them. Current-source failures set `loadError`, call `onError`, and resolve `loadPromise`. Superseded, cleared, or destroyed loads resolve without callbacks. Exceptions from either callback reject after state settles. Source replacement, clearing, and destruction release owned images.
