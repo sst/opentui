@@ -869,7 +869,7 @@ pub const CliRenderer = struct {
         }
 
         const status = renderStatusFromWrite(write_status);
-        if (status == .failed) {
+        if (status == .failed or self.imageRenderFailed) {
             return self.finishFailedFrame();
         }
         self.commitPendingImageState();
@@ -1056,7 +1056,7 @@ pub const CliRenderer = struct {
                         self.prepareRenderFrameWithWriter(&w, redraw_footer, true);
                         write_status = b.endFrame();
                         const status = renderStatusFromWrite(write_status);
-                        if (status == .failed) {
+                        if (status == .failed or self.imageRenderFailed) {
                             result_status = self.finishFailedFrame();
                         } else {
                             self.commitPendingImageState();
@@ -1113,7 +1113,7 @@ pub const CliRenderer = struct {
                     write_status = b.endFrame();
 
                     const status = renderStatusFromWrite(write_status);
-                    if (status == .failed) {
+                    if (status == .failed or self.imageRenderFailed) {
                         result_status = self.finishFailedFrame();
                     } else {
                         self.commitPendingImageState();
@@ -1401,7 +1401,7 @@ pub const CliRenderer = struct {
             },
         }
         const status = renderStatusFromWrite(write_status);
-        if (status == .failed) return self.finishFailedFrame();
+        if (status == .failed or self.imageRenderFailed) return self.finishFailedFrame();
         self.commitPendingImageState();
         return status;
     }
@@ -1417,11 +1417,12 @@ pub const CliRenderer = struct {
     fn imageStateChanged(self: *CliRenderer) bool {
         const next = self.nextRenderBuffer.image_placements.items;
         if (next.len != self.currentImages.items.len) return true;
-        for (next, self.currentImages.items) |a, b| {
+        for (next, self.currentImages.items, 0..) |a, b, index| {
             if (a.placement_id != b.placement_id or a.image_handle != b.image_handle or a.x != b.x or a.y != b.y or a.width != b.width or a.height != b.height or
                 a.pixel_width != b.pixel_width or a.pixel_height != b.pixel_height) return true;
             if (a.source_x != b.source_x or a.source_y != b.source_y or a.source_width != b.source_width or a.source_height != b.source_height or a.opacity != b.opacity) return true;
             if (self.nextPlacementProtocol(a) != b.protocol) return true;
+            if (index < self.imageDirty.items.len and self.imageDirty.items[index].background_hash != b.background_hash) return true;
         }
         return false;
     }
@@ -1501,8 +1502,8 @@ pub const CliRenderer = struct {
             // Kitty replaces image data server side, so content changes do not
             // require clearing cells. Sixel pixels are the cells, so content and
             // blended-background changes repaint the rectangle.
-            if (protocol == .sixel and (committed.image_handle != placement.image_handle or
-                committed.background_hash != background_hash)) continue;
+            if (protocol == .sixel and committed.image_handle != placement.image_handle) continue;
+            if ((protocol == .kitty or protocol == .sixel) and committed.background_hash != background_hash) continue;
             matched = true;
             break;
         }
@@ -1529,8 +1530,9 @@ pub const CliRenderer = struct {
         };
         for (placements) |placement| {
             const protocol = self.nextPlacementProtocol(placement);
-            const background_hash = if (placement.opacity < 255 and protocol == .sixel)
-                self.placementBackgroundHash(placement)
+            const background_hash = if ((protocol == .kitty or protocol == .sixel) and
+                (placement.opacity < 255 or placement.image.metadata.has_alpha != 0))
+                self.placementBackgroundHash(placement, protocol)
             else
                 0;
             self.imageDirty.appendAssumeCapacity(.{
@@ -1625,20 +1627,74 @@ pub const CliRenderer = struct {
         return self.imageIdSalt + placement_id;
     }
 
-    fn applyAlphaOpacity(target: *native_image.Image, opacity: u8) void {
-        target.discardEncoded();
-        var index: usize = 3;
-        while (index < target.pixels.len) : (index += 4) {
-            target.pixels[index] = @intCast((@as(u16, target.pixels[index]) * opacity + 127) / 255);
+    fn hasLowerImageAtCell(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement, protocol: ImageProtocol, x: i32, y: i32) bool {
+        for (self.nextRenderBuffer.image_placements.items) |candidate| {
+            if (candidate.placement_id >= placement.placement_id) break;
+            if (self.nextPlacementProtocol(candidate) != protocol) continue;
+            if (x >= candidate.x and y >= candidate.y and
+                @as(i64, x) < @as(i64, candidate.x) + candidate.width and
+                @as(i64, y) < @as(i64, candidate.y) + candidate.height) return true;
         }
-        target.metadata.has_alpha = 1;
+        return false;
     }
 
-    fn imageWithOpacity(source: *const native_image.Image, opacity: u8) !?*native_image.Image {
-        if (opacity == 255) return null;
-        const copy = try source.clone();
-        applyAlphaOpacity(copy, opacity);
-        return copy;
+    fn resolvedBackgroundColor(self: *CliRenderer, color: RGBA) RGBA {
+        const source = switch (ansi.intent(color)) {
+            .default => self.default_bg_rgba,
+            .indexed => self.palette_rgba[ansi.slot(color)],
+            .rgb => color,
+        };
+        const source_alpha: u32 = ansi.alpha(source);
+        const inverse: u32 = 255 - source_alpha;
+        return ansi.rgbColor(
+            @intCast((@as(u32, ansi.red(source)) * source_alpha + @as(u32, ansi.red(self.default_bg_rgba)) * inverse + 127) / 255),
+            @intCast((@as(u32, ansi.green(source)) * source_alpha + @as(u32, ansi.green(self.default_bg_rgba)) * inverse + 127) / 255),
+            @intCast((@as(u32, ansi.blue(source)) * source_alpha + @as(u32, ansi.blue(self.default_bg_rgba)) * inverse + 127) / 255),
+            255,
+        );
+    }
+
+    fn flattenImageAgainstBackground(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement, target: *native_image.Image, protocol: ImageProtocol) void {
+        target.discardEncoded();
+        var has_alpha = false;
+        var py: u32 = 0;
+        while (py < target.height()) : (py += 1) {
+            const cell_y = placement.y + @as(i32, @intCast((@as(u64, py) * placement.height) / target.height()));
+            var previous_cell_x: ?i32 = null;
+            var background = self.resolvedBackgroundColor(self.backgroundColor);
+            var lower_image = false;
+            var px: u32 = 0;
+            while (px < target.width()) : (px += 1) {
+                const cell_x = placement.x + @as(i32, @intCast((@as(u64, px) * placement.width) / target.width()));
+                if (previous_cell_x == null or previous_cell_x.? != cell_x) {
+                    const cell = if (cell_x >= 0 and cell_y >= 0 and
+                        cell_x < @as(i32, @intCast(self.width)) and cell_y < @as(i32, @intCast(self.height)))
+                        self.nextRenderBuffer.get(@intCast(cell_x), @intCast(cell_y))
+                    else
+                        null;
+                    background = self.resolvedBackgroundColor(if (cell) |value| value.bg else self.backgroundColor);
+                    lower_image = self.hasLowerImageAtCell(placement, protocol, cell_x, cell_y);
+                    previous_cell_x = cell_x;
+                }
+                const offset = (@as(usize, py) * target.width() + px) * 4;
+                const source_alpha = (@as(u32, target.pixels[offset + 3]) * placement.opacity + 127) / 255;
+                const preserve_alpha = (protocol == .kitty and lower_image) or
+                    (protocol == .sixel and source_alpha == 0);
+                if (preserve_alpha) {
+                    target.pixels[offset + 3] = @intCast(source_alpha);
+                    has_alpha = has_alpha or source_alpha < 255;
+                    continue;
+                }
+                const inverse_source_alpha = 255 - source_alpha;
+                const background_channels = [3]u32{ ansi.red(background), ansi.green(background), ansi.blue(background) };
+                inline for (0..3) |channel| {
+                    const source: u32 = target.pixels[offset + channel];
+                    target.pixels[offset + channel] = @intCast((source * source_alpha + background_channels[channel] * inverse_source_alpha + 127) / 255);
+                }
+                target.pixels[offset + 3] = 255;
+            }
+        }
+        target.metadata.has_alpha = @intFromBool(has_alpha);
     }
 
     // Large stills carry far more pixels than the placement can show. With a
@@ -1680,14 +1736,16 @@ pub const CliRenderer = struct {
             if (downscaled) {
                 defer cropped.deinit();
                 const resized = try native_image.resize(self.allocator, cropped, placement.pixel_width, placement.pixel_height, .area);
-                if (placement.opacity < 255) applyAlphaOpacity(resized, placement.opacity);
+                if (placement.opacity < 255 or resized.metadata.has_alpha != 0) self.flattenImageAgainstBackground(placement, resized, .kitty);
                 return .{ .image = resized, .owned = true };
             }
-            if (placement.opacity < 255) applyAlphaOpacity(cropped, placement.opacity);
+            if (placement.opacity < 255 or cropped.metadata.has_alpha != 0) self.flattenImageAgainstBackground(placement, cropped, .kitty);
             return .{ .image = cropped, .owned = true };
         }
-        const opacity_image = try imageWithOpacity(source, placement.opacity);
-        return .{ .image = opacity_image orelse source, .owned = opacity_image != null };
+        if (placement.opacity == 255 and source.metadata.has_alpha == 0) return .{ .image = source, .owned = false };
+        const flattened = try source.clone();
+        self.flattenImageAgainstBackground(placement, flattened, .kitty);
+        return .{ .image = flattened, .owned = true };
     }
 
     fn writeKittyImages(self: *CliRenderer, writer: anytype, force_place: bool) !void {
@@ -1718,6 +1776,10 @@ pub const CliRenderer = struct {
             }
             const image_id = self.kittyImageId(placement.image_handle, placement.placement_id);
             const downscaled = kittyDownscaleApplies(placement);
+            const background_hash = if (placement.placement_id <= self.imageDirty.items.len)
+                self.imageDirty.items[placement.placement_id - 1].background_hash
+            else
+                0;
             const retransmit = if (previous) |committed| blk: {
                 const previous_downscaled = kittyDownscaleAppliesTo(
                     committed.source_width,
@@ -1727,7 +1789,8 @@ pub const CliRenderer = struct {
                 );
                 const source_changed = committed.source_x != placement.source_x or committed.source_y != placement.source_y or
                     committed.source_width != placement.source_width or committed.source_height != placement.source_height;
-                break :blk committed.opacity != placement.opacity or source_changed or previous_downscaled != downscaled or
+                break :blk committed.opacity != placement.opacity or committed.background_hash != background_hash or
+                    source_changed or previous_downscaled != downscaled or
                     (downscaled and (committed.pixel_width != placement.pixel_width or committed.pixel_height != placement.pixel_height));
             } else false;
             if (previous == null or retransmit) {
@@ -1801,7 +1864,7 @@ pub const CliRenderer = struct {
             defer cropped.deinit();
             const resized = try native_image.resize(self.allocator, cropped, placement.pixel_width, placement.pixel_height, .area);
             defer resized.deinit();
-            if (placement.opacity < 255) self.dimSixelPixels(placement, resized);
+            if (placement.opacity < 255 or resized.metadata.has_alpha != 0) self.flattenImageAgainstBackground(placement, resized, .sixel);
             var quantized = try terminal_image.quantizeSixel(self.allocator, resized, 255);
             defer quantized.deinit();
             var payload: std.ArrayList(u8) = .empty;
@@ -1822,38 +1885,7 @@ pub const CliRenderer = struct {
         }
     }
 
-    // Sixel cannot composite in the terminal, so placement opacity blends pixel
-    // colors toward the covered cell backgrounds (composited over black for
-    // non-opaque backgrounds). Image alpha is left untouched: holes stay holes
-    // and the encoder's visibility threshold keeps applying to the image alpha.
-    fn dimSixelPixels(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement, resized: *native_image.Image) void {
-        const opacity: u32 = placement.opacity;
-        const inverse: u32 = 255 - opacity;
-        var py: u32 = 0;
-        while (py < resized.height()) : (py += 1) {
-            const cell_y = placement.y + @as(i32, @intCast((@as(u64, py) * placement.height) / placement.pixel_height));
-            var px: u32 = 0;
-            while (px < resized.width()) : (px += 1) {
-                const cell_x = placement.x + @as(i32, @intCast((@as(u64, px) * placement.width) / placement.pixel_width));
-                const cell = if (cell_x >= 0 and cell_y >= 0 and
-                    cell_x < @as(i32, @intCast(self.width)) and cell_y < @as(i32, @intCast(self.height)))
-                    self.nextRenderBuffer.get(@intCast(cell_x), @intCast(cell_y))
-                else
-                    null;
-                const bg = if (cell) |value| value.bg else ansi.rgbColor(0, 0, 0, 0);
-                const bg_alpha: u32 = ansi.alpha(bg);
-                const bg_channels = [3]u32{ ansi.red(bg), ansi.green(bg), ansi.blue(bg) };
-                const offset = (@as(usize, py) * resized.width() + px) * 4;
-                inline for (0..3) |channel| {
-                    const bg_effective = (bg_channels[channel] * bg_alpha + 127) / 255;
-                    const value: u32 = resized.pixels[offset + channel];
-                    resized.pixels[offset + channel] = @intCast((value * opacity + bg_effective * inverse + 127) / 255);
-                }
-            }
-        }
-    }
-
-    fn placementBackgroundHash(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement) u64 {
+    fn placementBackgroundHash(self: *CliRenderer, placement: OptimizedBuffer.ImagePlacement, protocol: ImageProtocol) u64 {
         var hasher = std.hash.Wyhash.init(0x6f70656e_74756921);
         var cy: u32 = 0;
         while (cy < placement.height) : (cy += 1) {
@@ -1864,7 +1896,10 @@ pub const CliRenderer = struct {
                 const x = placement.x + @as(i32, @intCast(cx));
                 if (x < 0 or x >= self.width) continue;
                 const cell = self.nextRenderBuffer.get(@intCast(x), @intCast(y)) orelse continue;
-                hasher.update(std.mem.asBytes(&cell.bg));
+                const background = self.resolvedBackgroundColor(cell.bg);
+                hasher.update(std.mem.asBytes(&background));
+                const lower: u8 = @intFromBool(self.hasLowerImageAtCell(placement, protocol, x, y));
+                hasher.update(&.{lower});
             }
         }
         return hasher.final();
@@ -1943,6 +1978,7 @@ pub const CliRenderer = struct {
         var utf8Buf: [4]u8 = undefined;
         var clearRunY: i64 = -1;
         var clearRunEnd: i64 = -1;
+        var clearRunBg: ?RGBA = null;
         const image_dirty_items = self.imageDirty.items;
         // Whether any identical-looking reserved cell may still need a clear
         // this frame; keeps the per-cell diff free of graphics work otherwise.
@@ -2004,13 +2040,22 @@ pub const CliRenderer = struct {
                         beginRenderFrame(writer);
                         frame_started = true;
                     }
-                    if (clearRunY != y or clearRunEnd != x) {
+                    const sixel_background = self.resolvedBackgroundColor(cell.bg);
+                    const explicit_sixel_background = state.protocol == .sixel and ansi.alpha(cell.bg) > 0;
+                    if (explicit_sixel_background and
+                        (clearRunY != y or clearRunEnd != x or clearRunBg == null or !buf.rgbaEqual(clearRunBg.?, sixel_background)))
+                    {
+                        writer.writeAll(ansi.ANSI.reset) catch {};
+                        ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
+                        self.emitColor(writer, sixel_background, true);
+                    } else if (clearRunY != y or clearRunEnd != x or clearRunBg != null) {
                         writer.writeAll(ansi.ANSI.reset) catch {};
                         ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
                     }
                     writer.writeByte(' ') catch {};
                     clearRunY = y;
                     clearRunEnd = x + 1;
+                    clearRunBg = if (explicit_sixel_background) sixel_background else null;
                     currentFg = null;
                     currentBg = null;
                     currentAttributes = null;

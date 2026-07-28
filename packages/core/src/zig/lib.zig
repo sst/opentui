@@ -2873,6 +2873,10 @@ export fn imageGetInfo(image_handle: NativeHandle, out_info: ?*native_image.Info
 
 export fn imageGetPixelsPtr(image_handle: NativeHandle) ?[*]u8 {
     const image = acquireImage(image_handle) orelse return null;
+    if (image.ref_count != 1) return null;
+    image.discardEncoded();
+    // Callers receive mutable pixels, so opacity can no longer be proven.
+    image.metadata.has_alpha = 1;
     return image.pixels.ptr;
 }
 
@@ -2920,6 +2924,22 @@ test "imageGetPixelsPtr aliases the image pixel allocation" {
     try std.testing.expectEqual(@as(u8, 42), copied[0]);
 }
 
+test "imageGetPixelsPtr requires exclusive ownership and invalidates encoded state" {
+    const value = try native_image.createFromRgba(globalAllocator, &[_]u8{ 1, 2, 3, 255 }, 1, 1, 4);
+    value.encoded_png = try globalAllocator.dupe(u8, "encoded");
+    var handle: NativeHandle = INVALID_HANDLE;
+    try std.testing.expectEqual(native_image.Status.ok, insertImage(value, &handle));
+    defer imageDestroy(handle);
+
+    value.retain();
+    try std.testing.expectEqual(@as(?[*]u8, null), imageGetPixelsPtr(handle));
+    value.deinit();
+
+    try std.testing.expect(imageGetPixelsPtr(handle) != null);
+    try std.testing.expectEqual(@as(?[]u8, null), value.encoded_png);
+    try std.testing.expectEqual(@as(u32, 1), value.metadata.has_alpha);
+}
+
 export fn imageResize(image_handle: NativeHandle, width: u32, height: u32, filter: u32, out_handle: ?*NativeHandle) u32 {
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
@@ -2954,15 +2974,17 @@ export fn imageExtend(
     right: u32,
     bottom: u32,
     left: u32,
-    background_ptr: ?[*]const u8,
+    background: u32,
     out_handle: ?*NativeHandle,
 ) u32 {
     const image = acquireImage(image_handle) orelse return @intFromEnum(native_image.Status.invalid_handle);
     const output = out_handle orelse return @intFromEnum(native_image.Status.invalid_argument);
-    const background_data = background_ptr orelse return @intFromEnum(native_image.Status.invalid_argument);
     output.* = INVALID_HANDLE;
     const extended = native_image.extend(globalAllocator, image, top, right, bottom, left, .{
-        background_data[0], background_data[1], background_data[2], background_data[3],
+        @truncate(background),
+        @truncate(background >> 8),
+        @truncate(background >> 16),
+        @truncate(background >> 24),
     }) catch |err| return @intFromEnum(native_image.statusFromError(err));
     return @intFromEnum(insertImage(extended, output));
 }
