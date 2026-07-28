@@ -1372,6 +1372,9 @@ test("AudioCaptureStream cancellation, abort, exclusivity, external stop, and pa
       stream.dispose()
     })
 
+    expect(await rejectionOf(audio.openCapture({ capacityFrames: 8, chunkFrames: 2 }))).toBeInstanceOf(
+      AudioCaptureStreamError,
+    )
     expect(audio.startCapture()).toBe(false)
     expect(audio.readCaptureFrames(1)).toBeNull()
     expect(audio.stopCapture()).toBe(false)
@@ -1384,6 +1387,7 @@ test("AudioCaptureStream cancellation, abort, exclusivity, external stop, and pa
       "selectCaptureDevice",
       "clearCaptureDeviceSelection",
     ])
+    expect(ring.starts).toHaveLength(1)
 
     ring.running = false
     const reader = stream.readable.getReader()
