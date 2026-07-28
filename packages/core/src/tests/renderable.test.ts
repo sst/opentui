@@ -7,6 +7,7 @@ import {
   RenderableEvents,
   isRenderable,
   type BaseRenderableOptions,
+  type RenderCommand,
   type RenderableOptions,
 } from "../Renderable.js"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer.js"
@@ -64,6 +65,25 @@ class CountingRenderable extends Renderable {
 
   public getScreenPosition(): { x: number; y: number } {
     return { x: this.screenX, y: this.screenY }
+  }
+}
+
+class CustomLayoutRenderable extends Renderable {
+  public layoutCount = 0
+  public customLayout?: () => void
+
+  public updateLayout(deltaTime: number, renderList: RenderCommand[]): void {
+    this.layoutCount += 1
+    this.customLayout?.()
+    super.updateLayout(deltaTime, renderList)
+  }
+}
+
+class CustomLayoutWithoutSuperRenderable extends Renderable {
+  public layoutCount = 0
+
+  public updateLayout(): void {
+    this.layoutCount += 1
   }
 }
 
@@ -1824,6 +1844,52 @@ describe("Renderable - Complex Layout Update Scenarios", () => {
 })
 
 describe("RootRenderable", () => {
+  test("does not cache traversal when a child overrides updateLayout", async () => {
+    const renderable = new CustomLayoutRenderable(testRenderer, { id: "custom-layout" })
+    testRenderer.root.add(renderable)
+
+    await renderOnce()
+    const layoutCount = renderable.layoutCount
+    renderable.requestRender()
+    await renderOnce()
+
+    expect(renderable.layoutCount).toBe(layoutCount + 1)
+  })
+
+  test("detects an updateLayout override that omits super", async () => {
+    const renderable = new CustomLayoutWithoutSuperRenderable(testRenderer, { id: "custom-layout-without-super" })
+    testRenderer.root.add(renderable)
+
+    await renderOnce()
+    const layoutCount = renderable.layoutCount
+    renderable.requestRender()
+    await renderOnce()
+
+    expect(renderable.layoutCount).toBe(layoutCount + 1)
+  })
+
+  test("keeps traversal state isolated during a nested root rebuild", async () => {
+    const nestedRoot = new RootRenderable(testRenderer)
+    const nestedChild = new TestRenderable(testRenderer, { id: "nested-child" })
+    nestedRoot.add(nestedChild)
+    nestedRoot.render(testRenderer.currentRenderBuffer, 0)
+
+    const renderable = new CustomLayoutRenderable(testRenderer, { id: "reentrant-custom-layout" })
+    testRenderer.root.add(renderable)
+    await renderOnce()
+
+    nestedChild.opacity = 0.5
+    renderable.customLayout = () => nestedRoot.render(testRenderer.currentRenderBuffer, 0)
+    await renderOnce()
+
+    const layoutCount = renderable.layoutCount
+    renderable.requestRender()
+    await renderOnce()
+
+    expect(renderable.layoutCount).toBe(layoutCount + 1)
+    nestedRoot.destroyRecursively()
+  })
+
   test("creates with proper setup", () => {
     const root = new RootRenderable(testRenderer)
     expect(root.id).toBe("__root__")
