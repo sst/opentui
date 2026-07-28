@@ -2059,6 +2059,7 @@ export class AudioCaptureStream extends EventEmitter<AudioCaptureStreamEvents> {
       this.fail(new AudioCaptureStreamError("Audio capture stream stats failed", { action: "stats" }, cause))
       return false
     }
+    if (this.terminal) return false
     if (running) return true
     this.currentState = "stopping"
     const result = this.stopProducer()

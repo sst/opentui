@@ -1443,6 +1443,46 @@ test("AudioCaptureStream cancellation, abort, exclusivity, external stop, and pa
   }
 })
 
+test("AudioCaptureStream disposal reentered from Audio.captureStopped remains disposed", async () => {
+  const ring = replaceCaptureRing([])
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    const stream = await audio.openCapture({ capacityFrames: 8, chunkFrames: 2 })
+    const events: string[] = []
+    let stateDuringListener = ""
+    let disposedEvents = 0
+    let stoppedEvents = 0
+
+    audio.on("captureStopped", () => {
+      events.push("audio.captureStopped")
+      stream.dispose()
+      stateDuringListener = stream.state
+    })
+    stream.on("disposed", () => {
+      events.push("stream.disposed")
+      disposedEvents += 1
+    })
+    stream.on("stopped", () => {
+      events.push("stream.stopped")
+      stoppedEvents += 1
+    })
+
+    ring.running = false
+    const reader = stream.readable.getReader()
+    expect((await reader.read()).done).toBe(true)
+    await stream.closed
+
+    expect(stateDuringListener).toBe("disposed")
+    expect(stream.state).toBe("disposed")
+    expect(disposedEvents).toBe(1)
+    expect(stoppedEvents).toBe(0)
+    expect(events).toEqual(["audio.captureStopped", "stream.disposed"])
+  } finally {
+    ring.restore()
+  }
+})
+
 test("AudioCaptureStream rejects invalid and pre-aborted setup without native capture calls", async () => {
   const ring = replaceCaptureRing([])
   try {
