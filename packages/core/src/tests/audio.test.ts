@@ -2159,6 +2159,134 @@ test("AudioRecorder preserves capture read error context through cleanup", async
   }
 })
 
+test("Audio.dispose destroys the native engine when a captureStopped listener throws", () => {
+  const ring = replaceCaptureRing([])
+  const audio = Audio.create({ autoStart: false })
+  instances.push(audio)
+  audio.on("error", () => {})
+  const listener = (): never => {
+    throw new Error("captureStopped listener failed")
+  }
+  audio.on("captureStopped", listener)
+
+  try {
+    expect(audio.startCapture()).toBe(true)
+    try {
+      audio.dispose()
+    } catch {}
+    expect(audio.getStats()).toBeNull()
+  } finally {
+    audio.off("captureStopped", listener)
+    audio.dispose()
+    ring.restore()
+  }
+})
+
+test("Audio.dispose retains the engine when native destruction throws so cleanup can retry", () => {
+  const audio = Audio.create({ autoStart: false })
+  instances.push(audio)
+  audio.on("error", () => {})
+  const lib = resolveRenderLib()
+  const restoreDestroy = replaceMethod(lib, "destroyAudioEngine", () => {
+    throw new Error("injected destroy failure")
+  })
+  try {
+    expect(() => audio.dispose()).toThrow("injected destroy failure")
+    expect(audio.getStats()).not.toBeNull()
+  } finally {
+    restoreDestroy()
+  }
+
+  audio.dispose()
+  expect(audio.getStats()).toBeNull()
+})
+
+test("Audio.dispose propagates undefined thrown by native destruction", () => {
+  const audio = Audio.create({ autoStart: false })
+  instances.push(audio)
+  audio.on("error", () => {})
+  const lib = resolveRenderLib()
+  const restoreDestroy = replaceMethod(lib, "destroyAudioEngine", () => {
+    throw undefined
+  })
+  let didThrow = false
+  try {
+    try {
+      audio.dispose()
+    } catch {
+      didThrow = true
+    }
+    expect(didThrow).toBe(true)
+    expect(audio.getStats()).not.toBeNull()
+  } finally {
+    restoreDestroy()
+  }
+  audio.dispose()
+})
+
+test("AudioRecorder accepts a destination at the filesystem component-length limit", async () => {
+  const ring = replaceCaptureRing([0.25])
+  try {
+    const directory = await createRecorderTempDirectory()
+    let minimum = 1
+    let maximum = 512
+    let supported = 0
+    while (minimum <= maximum) {
+      const length = Math.floor((minimum + maximum) / 2)
+      const candidate = join(directory, "r".repeat(length))
+      try {
+        await writeFile(candidate, "existing")
+        await unlinkFile(candidate)
+        supported = length
+        minimum = length + 1
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENAMETOOLONG") throw error
+        maximum = length - 1
+      }
+    }
+    expect(supported).toBeGreaterThan(0)
+
+    const filePath = join(directory, "r".repeat(supported))
+    await writeFile(filePath, "existing")
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    const recorder = await audio.recordToFile(filePath, { capacityFrames: 2, chunkFrames: 1 })
+    recorder.stop()
+    await recorder.closed
+
+    expect(recorder.state).toBe("stopped")
+    expect((await readFile(filePath)).equals(buildPcm16Wav([0.25], 1))).toBe(true)
+    expect(await readdir(directory)).toEqual(["r".repeat(supported)])
+  } finally {
+    ring.restore()
+  }
+})
+
+test("AudioRecorder temporary path is never longer than its destination path", async () => {
+  const ring = replaceCaptureRing([0.25])
+  const directory = await createRecorderTempDirectory()
+  const filePath = join(directory, "r")
+  const fileSystem = getRecorderFileSystem()
+  const originalOpen = fileSystem.open
+  let temporaryPath = ""
+  const restoreOpen = replaceMethod(fileSystem, "open", async (...args: Parameters<typeof originalOpen>) => {
+    temporaryPath = String(args[0])
+    return originalOpen(...args)
+  })
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    const recorder = await audio.recordToFile(filePath, { capacityFrames: 2, chunkFrames: 1 })
+    recorder.stop()
+    await recorder.closed
+
+    expect(Buffer.byteLength(temporaryPath)).toBeLessThanOrEqual(Buffer.byteLength(filePath))
+  } finally {
+    restoreOpen()
+    ring.restore()
+  }
+})
+
 test("AudioRecorder retains failed close cleanup and later dispose releases it without another terminal event", async () => {
   const ring = replaceCaptureRing([])
   const directory = await createRecorderTempDirectory()

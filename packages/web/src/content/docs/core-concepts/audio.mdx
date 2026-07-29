@@ -447,4 +447,4 @@ The tap is disabled by default. When enabled, it stores the latest frames and ov
 
 ## Lifecycle and errors
 
-Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. After construction, `Audio` emits `started`, `mixerStarted`, `stopped`, `disposed`, and `error`. Most non-stream operations report failure by returning `false` or `null` and emitting `Audio.error` with `{ action, status }`; stream setup rejection and `AudioStream` errors are described above.
+Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. After construction, `Audio` emits `started`, `mixerStarted`, `captureStarted`, `captureStopped`, `stopped`, `disposed`, and `error`. Most non-stream operations report failure by returning `false` or `null` and emitting `Audio.error` with `{ action, status }`; stream setup rejection and `AudioStream` errors are described above.

@@ -25,7 +25,7 @@ const READ_FRAMES = 2048
 const VISUALIZATION_INTERVAL_MS = 50
 const MAX_VISIBLE_DEVICES = 5
 
-type CaptureState = "capturing" | "draining" | "stopped" | "unavailable"
+type CaptureState = "capturing" | "draining" | "stopped" | "errored" | "unavailable"
 
 function displayText(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim() || "-"
@@ -792,6 +792,7 @@ class AudioCaptureDemo {
         : (this.stats?.state ?? "stopped")
     if (state === "initializing" || state === "capturing") return "capturing"
     if (state === "stopping") return "draining"
+    if (state === "errored") return "errored"
     return "stopped"
   }
 
@@ -817,7 +818,7 @@ class AudioCaptureDemo {
         ? AUDIO_DEMO_PALETTE.signal
         : state === "draining"
           ? AUDIO_DEMO_PALETTE.warning
-          : state === "unavailable"
+          : state === "errored" || state === "unavailable"
             ? AUDIO_DEMO_PALETTE.error
             : AUDIO_DEMO_PALETTE.muted
     const firstVisible = this.devices.length === 0 ? 0 : this.visibleDeviceOffset + 1

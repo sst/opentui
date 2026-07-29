@@ -968,16 +968,21 @@ export class AudioStream<M = AudioStreamMetadata> extends EventEmitter<AudioStre
   }
 
   dispose(): void {
-    if (this.disposed) {
-      if (this.nativeStreamId != null && this.closeNativeStream(CloseReason.Disposed) === 0) this.removeOwner()
-      return
-    }
-    this.disposed = true
     const wasExposed = this.exposed
-    this.lifecycleController.abort()
+    if (!this.disposed) {
+      this.disposed = true
+      this.lifecycleController.abort()
+      this.setupReject(createAbortError())
+    }
     const cleanup = this.stopSource()
-    this.setupReject(createAbortError())
-    if (this.closeNativeStream(CloseReason.Disposed) === 0) this.removeOwner()
+    const closeStatus = this.closeNativeStream(CloseReason.Disposed)
+    if (closeStatus !== 0) {
+      throw new AudioStreamError(`Audio stream destroy failed: ${closeStatus}`, {
+        action: "destroy",
+        status: closeStatus,
+      })
+    }
+    this.removeOwner()
     void cleanup.finally(() => {
       if (wasExposed && !this.terminalEventScheduled) this.emitTerminal("disposed")
       else if (!this.terminalEventScheduled) this.closedResolve()
@@ -2649,9 +2654,14 @@ export class AudioRecorder extends EventEmitter<AudioRecorderEvents> {
 
   private async openTemporaryFile(): Promise<FileHandle> {
     const directory = dirname(this.filePath)
-    const name = basename(this.filePath)
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const tempPath = join(directory, `.${name}.${randomBytes(8).toString("hex")}.tmp`)
+    const destinationName = basename(this.filePath)
+    const tempNameLength = Math.max(1, Math.min(24, destinationName.length))
+    const singleCharacterNames = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-"
+    for (let attempt = 0; attempt < singleCharacterNames.length; attempt += 1) {
+      const tempName =
+        tempNameLength === 1 ? singleCharacterNames[attempt]! : randomBytes(16).toString("hex").slice(0, tempNameLength)
+      if (tempName === destinationName) continue
+      const tempPath = join(directory, tempName)
       try {
         const handle = await AudioRecorder.fileSystem.open(tempPath, "wx")
         this.tempPath = tempPath
@@ -3580,35 +3590,73 @@ export class Audio extends EventEmitter<AudioEvents> {
   dispose(): void {
     if (!this.engine || this.disposing) return
     this.disposing = true
+    let firstError: unknown
+    let hasError = false
+    let childCleanupFailed = false
+    const runCleanup = (operation: () => void): void => {
+      try {
+        operation()
+      } catch (error) {
+        if (!hasError) {
+          firstError = error
+          hasError = true
+        }
+      }
+    }
     try {
-      for (const stream of [...this.streams]) stream.dispose()
+      for (const stream of [...this.streams]) {
+        try {
+          stream.dispose()
+        } catch (error) {
+          childCleanupFailed = true
+          if (!hasError) {
+            firstError = error
+            hasError = true
+          }
+        }
+      }
       if (this.captureDeviceOpen) {
-        const result = this.stopCaptureInternal(this.captureOwner)
-        if (result.status !== 0) {
-          this.emitError("stopCapture", result.status, undefined, result.cause)
+        let result: AudioCaptureOperationResult | undefined
+        runCleanup(() => {
+          result = this.stopCaptureInternal(this.captureOwner)
+        })
+        if (result && result.status !== 0) {
           const wasStarted = this.captureStarted
           this.captureDeviceOpen = false
           this.captureStarted = false
-          if (wasStarted) this.emit("captureStopped")
+          runCleanup(() => this.emitError("stopCapture", result!.status, undefined, result!.cause))
+          if (wasStarted) runCleanup(() => void this.emit("captureStopped"))
         }
       }
-      if (this.captureStream != null) refreshAudioCaptureStreamFinalStats(this.captureStream)
+      if (this.captureStream != null) {
+        runCleanup(() => refreshAudioCaptureStreamFinalStats(this.captureStream!))
+      }
       if (this.mixerStarted) {
-        this.stop()
+        runCleanup(() => void this.stop())
       }
       this.groups.clear()
-      this.lib.destroyAudioEngine(this.engine)
-      this.engine = null
-      this.captureStarted = false
-      this.captureDeviceOpen = false
-      this.captureBufferAvailable = false
-      this.captureCapacityFrames = 0
-      this.captureOwner = null
-      this.captureStream = null
-      this.emit("disposed")
+      const engine = this.engine
+      let engineDestroyed = false
+      if (!childCleanupFailed) {
+        runCleanup(() => {
+          this.lib.destroyAudioEngine(engine)
+          engineDestroyed = true
+        })
+      }
+      if (engineDestroyed) {
+        this.engine = null
+        this.captureStarted = false
+        this.captureDeviceOpen = false
+        this.captureBufferAvailable = false
+        this.captureCapacityFrames = 0
+        this.captureOwner = null
+        this.captureStream = null
+        runCleanup(() => void this.emit("disposed"))
+      }
     } finally {
       this.disposing = false
     }
+    if (hasError) throw firstError
   }
 }
 
