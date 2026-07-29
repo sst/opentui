@@ -1344,6 +1344,7 @@ test("DiffRenderable - multiple hunks in unified view", async () => {
     view: "unified",
     syntaxStyle,
     showLineNumbers: true,
+    lineNumberBg: "#123456",
     width: "100%",
     height: "100%",
   })
@@ -1376,7 +1377,10 @@ test("DiffRenderable - multiple hunks in unified view", async () => {
 
   const side = diffRenderable.getChildren()[0]
   expect(side).toBeInstanceOf(LineNumberRenderable)
-  expect((side as LineNumberRenderable).getLineColors().gutter.get(4)).toEqual(parseColor("transparent"))
+  const hunkColors = (side as LineNumberRenderable).getLineColors()
+  expect(hunkColors.gutter.get(4)).toEqual(parseColor("#123456"))
+  expect(hunkColors.content.get(4)).toEqual(parseColor("#123456"))
+  expect(frameLines.find((line) => line.startsWith("@@ -15,4 +15,5 @@"))).toBeDefined()
 })
 
 test("DiffRenderable - multiple hunks in split view", async () => {
@@ -1478,7 +1482,7 @@ ${" "}
   await Promise.resolve()
   await renderOnce()
 
-  expect(captureFrame()).toContain("⋯")
+  expect(captureFrame()).toContain("@@ -45,7 +46,9 @@")
   expect(client.contents).toHaveLength(2)
   expect(client.contents[0]).toContain("NotFoundError")
   expect(client.contents[0]).not.toContain("export interface Interface")

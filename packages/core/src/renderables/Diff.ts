@@ -1,7 +1,7 @@
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { RenderContext } from "../types.js"
 import { CodeRenderable, type CodeOptions, type SyntaxSegment } from "./Code.js"
-import { LineNumberRenderable, type LineSign, type LineColorConfig } from "./LineNumberRenderable.js"
+import { LineNumberRenderable, type LineSign, type LineColorConfig, type LineLabel } from "./LineNumberRenderable.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
 import { SyntaxStyle } from "../syntax-style.js"
 import { parsePatch, type StructuredPatch } from "diff"
@@ -10,7 +10,6 @@ import type { TreeSitterClient } from "../lib/tree-sitter/index.js"
 import type { MouseEvent } from "../renderer.js"
 
 const TRANSPARENT = parseColor("transparent")
-const HUNK_SEPARATOR = "⋯"
 
 interface LogicalLine {
   content: string
@@ -18,8 +17,22 @@ interface LogicalLine {
   hideLineNumber?: boolean
   color?: string | RGBA
   sign?: LineSign
+  label?: string
   type: "context" | "add" | "remove" | "empty" | "hunk"
   hunkStart?: boolean
+}
+
+function formatRange(prefix: "-" | "+", start: number, lines: number): string {
+  return `${prefix}${start}${lines === 1 ? "" : `,${lines}`}`
+}
+
+function formatHunkHeader(hunk: StructuredPatch["hunks"][number]): string {
+  return `${formatRange("-", hunk.oldStart, hunk.oldLines)} ${formatRange("+", hunk.newStart, hunk.newLines)} @@`
+}
+
+function formatSplitHunkHeader(hunk: StructuredPatch["hunks"][number], side: "left" | "right"): string {
+  if (side === "left") return formatRange("-", hunk.oldStart, hunk.oldLines)
+  return `${formatRange("+", hunk.newStart, hunk.newLines)} @@`
 }
 
 function contentAndSyntaxSegments(lines: readonly LogicalLine[]): {
@@ -460,6 +473,7 @@ export class DiffRenderable extends Renderable {
     lineSigns: Map<number, LineSign>,
     lineNumbers: Map<number, number>,
     hideLineNumbers: Set<number>,
+    lineLabels: Map<number, LineLabel>,
     width: "50%" | "100%",
   ): void {
     const sideRef = side === "left" ? this.leftSide : this.rightSide
@@ -476,6 +490,7 @@ export class DiffRenderable extends Renderable {
         lineNumbers,
         lineNumberOffset: 0,
         hideLineNumbers,
+        lineLabels,
         width,
         height: "100%",
       })
@@ -497,6 +512,7 @@ export class DiffRenderable extends Renderable {
       sideRef.setLineSigns(lineSigns)
       sideRef.setLineNumbers(lineNumbers)
       sideRef.setHideLineNumbers(hideLineNumbers)
+      sideRef.setLineLabels(lineLabels)
 
       if (!addedFlag) {
         super.add(sideRef)
@@ -532,14 +548,16 @@ export class DiffRenderable extends Renderable {
     const lineSigns = new Map<number, LineSign>()
     const lineNumbers = new Map<number, number>()
     const hideLineNumbers = new Set<number>()
+    const lineLabels = new Map<number, LineLabel>()
 
     let lineIndex = 0
 
     for (const [hunkIndex, hunk] of this._parsedDiff.hunks.entries()) {
       this._hunkStartLines.push(lineIndex)
       if (hunkIndex > 0) {
-        contentLines.push({ content: HUNK_SEPARATOR, hideLineNumber: true, type: "hunk" })
-        lineColors.set(lineIndex, { gutter: parseColor("transparent"), content: this._contextBg })
+        contentLines.push({ content: "", hideLineNumber: true, type: "hunk" })
+        lineColors.set(lineIndex, { gutter: this._lineNumberBg, content: this._lineNumberBg })
+        lineLabels.set(lineIndex, { text: `@@ ${formatHunkHeader(hunk)}`, fg: this._lineNumberFg })
         hideLineNumbers.add(lineIndex)
         lineIndex++
       }
@@ -611,7 +629,16 @@ export class DiffRenderable extends Renderable {
     const codeRenderable = this.createOrUpdateCodeRenderable("left", content, this._wrapMode, undefined, syntaxSegments)
     this.attachLineInfoListeners()
 
-    this.createOrUpdateSide("left", codeRenderable, lineColors, lineSigns, lineNumbers, hideLineNumbers, "100%")
+    this.createOrUpdateSide(
+      "left",
+      codeRenderable,
+      lineColors,
+      lineSigns,
+      lineNumbers,
+      hideLineNumbers,
+      lineLabels,
+      "100%",
+    )
 
     if (this.rightSide && this.rightSideAdded) {
       super.remove(this.rightSide)
@@ -643,14 +670,16 @@ export class DiffRenderable extends Renderable {
     for (const [hunkIndex, hunk] of this._parsedDiff.hunks.entries()) {
       if (hunkIndex > 0) {
         leftLogicalLines.push({
-          content: HUNK_SEPARATOR,
+          content: "",
           hideLineNumber: true,
+          label: `@@ ${formatSplitHunkHeader(hunk, "left")}`,
           type: "hunk",
           hunkStart: true,
         })
         rightLogicalLines.push({
-          content: HUNK_SEPARATOR,
+          content: "",
           hideLineNumber: true,
+          label: formatSplitHunkHeader(hunk, "right"),
           type: "hunk",
         })
       }
@@ -867,6 +896,8 @@ export class DiffRenderable extends Renderable {
     const rightHideLineNumbers = new Set<number>()
     const leftLineNumbers = new Map<number, number>()
     const rightLineNumbers = new Map<number, number>()
+    const leftLineLabels = new Map<number, LineLabel>()
+    const rightLineLabels = new Map<number, LineLabel>()
 
     finalLeftLines.forEach((line, index) => {
       if (line.hunkStart) {
@@ -891,9 +922,11 @@ export class DiffRenderable extends Renderable {
         leftLineColors.set(index, config)
       } else if (line.type === "context" || line.type === "hunk") {
         const config: LineColorConfig = {
-          gutter: line.type === "hunk" ? parseColor("transparent") : this._lineNumberBg,
+          gutter: this._lineNumberBg,
         }
-        if (this._contextContentBg) {
+        if (line.type === "hunk") {
+          config.content = this._lineNumberBg
+        } else if (this._contextContentBg) {
           config.content = this._contextContentBg
         } else {
           config.content = this._contextBg
@@ -902,6 +935,9 @@ export class DiffRenderable extends Renderable {
       }
       if (line.sign) {
         leftLineSigns.set(index, line.sign)
+      }
+      if (line.label) {
+        leftLineLabels.set(index, { text: line.label, fg: this._lineNumberFg })
       }
     })
 
@@ -924,9 +960,11 @@ export class DiffRenderable extends Renderable {
         rightLineColors.set(index, config)
       } else if (line.type === "context" || line.type === "hunk") {
         const config: LineColorConfig = {
-          gutter: line.type === "hunk" ? parseColor("transparent") : this._lineNumberBg,
+          gutter: this._lineNumberBg,
         }
-        if (this._contextContentBg) {
+        if (line.type === "hunk") {
+          config.content = this._lineNumberBg
+        } else if (this._contextContentBg) {
           config.content = this._contextContentBg
         } else {
           config.content = this._contextBg
@@ -935,6 +973,9 @@ export class DiffRenderable extends Renderable {
       }
       if (line.sign) {
         rightLineSigns.set(index, line.sign)
+      }
+      if (line.label) {
+        rightLineLabels.set(index, { text: line.label, fg: this._lineNumberFg })
       }
     })
 
@@ -953,6 +994,7 @@ export class DiffRenderable extends Renderable {
       leftLineSigns,
       leftLineNumbers,
       leftHideLineNumbers,
+      leftLineLabels,
       "50%",
     )
     this.createOrUpdateSide(
@@ -962,6 +1004,7 @@ export class DiffRenderable extends Renderable {
       rightLineSigns,
       rightLineNumbers,
       rightHideLineNumbers,
+      rightLineLabels,
       "50%",
     )
   }

@@ -17,6 +17,11 @@ export interface LineColorConfig {
   content?: string | RGBA
 }
 
+export interface LineLabel {
+  text: string
+  fg?: string | RGBA
+}
+
 export interface LineNumberOptions extends RenderableOptions<LineNumberRenderable> {
   target?: Renderable & LineInfoProvider
   fg?: string | RGBA
@@ -28,11 +33,13 @@ export interface LineNumberOptions extends RenderableOptions<LineNumberRenderabl
   lineNumberOffset?: number
   hideLineNumbers?: Set<number>
   lineNumbers?: Map<number, number>
+  lineLabels?: Map<number, LineLabel>
   showLineNumbers?: boolean
 }
 
 const DEFAULT_GUTTER_FG = "#888888"
 const DEFAULT_GUTTER_BG = "transparent"
+const TRANSPARENT = parseColor("transparent")
 
 class GutterRenderable extends Renderable {
   private target: Renderable & LineInfoProvider
@@ -342,6 +349,56 @@ class GutterRenderable extends Renderable {
   }
 }
 
+class LineLabelRenderable extends Renderable {
+  constructor(
+    ctx: RenderContext,
+    private target: Renderable & LineInfoProvider,
+    private labels: Map<number, LineLabel>,
+    private fg: RGBA,
+  ) {
+    super(ctx, {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: "100%",
+      height: "100%",
+    })
+  }
+
+  setLabels(labels: Map<number, LineLabel>): void {
+    this.labels = labels
+    this.requestRender()
+  }
+
+  setFg(fg: RGBA): void {
+    this.fg = fg
+    this.requestRender()
+  }
+
+  public override render(buffer: OptimizedBuffer): void {
+    if (!this.visible || this.isDestroyed) return
+    this.renderSelf(buffer)
+    this.markClean()
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    const sources = this.target.lineInfo.lineSources
+    const startLine = this.target.scrollY
+    let lastSource = startLine > 0 ? sources[startLine - 1] : -1
+
+    for (let row = 0; row < this.height; row++) {
+      const logicalLine = sources[startLine + row]
+      if (logicalLine === undefined) break
+      if (logicalLine === lastSource) continue
+      const label = this.labels.get(logicalLine)
+      if (label) {
+        buffer.drawText(label.text, this.x, this.y + row, label.fg ? parseColor(label.fg) : this.fg, TRANSPARENT)
+      }
+      lastSource = logicalLine
+    }
+  }
+}
+
 // Helper function to darken an RGBA color by 20%
 function darkenColor(color: RGBA): RGBA {
   return RGBA.fromValues(color.r * 0.8, color.g * 0.8, color.b * 0.8, color.a)
@@ -349,6 +406,7 @@ function darkenColor(color: RGBA): RGBA {
 
 export class LineNumberRenderable extends Renderable {
   private gutter: GutterRenderable | null = null
+  private lineLabel: LineLabelRenderable | null = null
   private target: (Renderable & LineInfoProvider) | null = null
   private _lineColorsGutter: Map<number, RGBA>
   private _lineColorsContent: Map<number, RGBA>
@@ -360,6 +418,7 @@ export class LineNumberRenderable extends Renderable {
   private _lineNumberOffset: number
   private _hideLineNumbers: Set<number>
   private _lineNumbers: Map<number, number>
+  private _lineLabels: Map<number, LineLabel>
   private _isDestroying: boolean = false
   private handleLineInfoChange = (): void => {
     // When line info changes in the target, remeasure the gutter
@@ -404,6 +463,7 @@ export class LineNumberRenderable extends Renderable {
     this._lineNumberOffset = options.lineNumberOffset ?? 0
     this._hideLineNumbers = options.hideLineNumbers ?? new Set()
     this._lineNumbers = options.lineNumbers ?? new Map()
+    this._lineLabels = options.lineLabels ?? new Map()
 
     this._lineColorsGutter = new Map<number, RGBA>()
     this._lineColorsContent = new Map<number, RGBA>()
@@ -439,6 +499,10 @@ export class LineNumberRenderable extends Renderable {
       super.remove(this.gutter)
       this.gutter = null
     }
+    if (this.lineLabel) {
+      super.remove(this.lineLabel)
+      this.lineLabel = null
+    }
 
     this.target = target
 
@@ -462,6 +526,8 @@ export class LineNumberRenderable extends Renderable {
 
     super.add(this.gutter)
     super.add(this.target)
+    this.lineLabel = new LineLabelRenderable(this.ctx, this.target, this._lineLabels, this._fg)
+    super.add(this.lineLabel)
   }
 
   // Override add to intercept and set as target if it's a LineInfoProvider
@@ -508,6 +574,7 @@ export class LineNumberRenderable extends Renderable {
     super.destroyRecursively()
 
     this.gutter = null
+    this.lineLabel = null
     this.target = null
   }
 
@@ -520,6 +587,10 @@ export class LineNumberRenderable extends Renderable {
     if (this.gutter) {
       super.remove(this.gutter)
       this.gutter = null
+    }
+    if (this.lineLabel) {
+      super.remove(this.lineLabel)
+      this.lineLabel = null
     }
   }
 
@@ -573,6 +644,7 @@ export class LineNumberRenderable extends Renderable {
     if (this._fg !== parsed) {
       this._fg = parsed
       this.gutter?.setFg(parsed)
+      this.lineLabel?.setFg(parsed)
     }
   }
 
@@ -594,6 +666,11 @@ export class LineNumberRenderable extends Renderable {
     if (this.gutter) {
       this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
     }
+  }
+
+  public setLineLabels(lineLabels: Map<number, LineLabel>): void {
+    this._lineLabels = lineLabels
+    this.lineLabel?.setLabels(lineLabels)
   }
 
   public clearLineColor(line: number): void {

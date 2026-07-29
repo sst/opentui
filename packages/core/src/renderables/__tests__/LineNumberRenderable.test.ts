@@ -144,6 +144,37 @@ describe("LineNumberRenderable", () => {
     expect(frame).toContain(" 3 Line 3")
   })
 
+  test("renders a line label from the start of the numbered row", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 4,
+    })
+    const textRenderable = new MockTextBuffer(renderer, {
+      text: "before\n\nafter",
+      width: "100%",
+      height: "100%",
+    })
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      lineNumbers: new Map([
+        [0, 999],
+        [2, 1000],
+      ]),
+      hideLineNumbers: new Set([1]),
+      lineLabels: new Map([[1, { text: "@@ -999,1 +1000,1 @@" }]]),
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+    await renderOnce()
+
+    const lines = captureCharFrame().split("\n")
+    expect(lines[0]).toContain("999 before")
+    expect(lines[1]).toStartWith("@@ -999,1 +1000,1 @@")
+    expect(lines[2]).toContain("1000 after")
+  })
+
   test("renders line numbers for wrapping text", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 20,
