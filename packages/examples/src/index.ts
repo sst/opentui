@@ -70,6 +70,7 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as corePluginSlotsDemo from "./core-plugin-slots-demo.js"
 import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 import * as nativeAudioDemo from "./native-audio-demo.js"
+import * as audioCaptureDemo from "./audio-capture-demo.js"
 import * as audioStreamingDemo from "./audio-streaming-demo.js"
 import * as clipboardPasteDemo from "./clipboard-paste-demo.js"
 
@@ -568,6 +569,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
     },
   ]),
   section("Terminal & Native", [
+    {
+      name: "Audio Capture Demo",
+      description: "Native microphone capture with a bounded PCM level meter and buffer telemetry",
+      run: audioCaptureDemo.run,
+      destroy: audioCaptureDemo.destroy,
+    },
     {
       name: "Audio Streaming Demo",
       description: "Live MP3 URL streaming with reconnect controls, telemetry, and master-mix FFT visualization",

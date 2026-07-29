@@ -1,15 +1,15 @@
 ---
 title: Native audio
-description: Load, stream, play, mix, and inspect audio with the native miniaudio backend
+description: Capture, load, stream, play, mix, and inspect audio with the native miniaudio backend
 order: 11
 skill:
   entry: true
-  intents: [audio, native-audio, sound, playback, streaming, radio, mp3, flac, pcm, fft]
+  intents: [audio, native-audio, sound, playback, capture, microphone, streaming, radio, mp3, flac, pcm, fft]
 ---
 
 # Native audio
 
-OpenTUI exposes a native miniaudio-backed `Audio` engine from `@opentui/core`. It can decode audio bytes or files, play sounds through named groups, choose playback devices, mix into PCM buffers, and expose recent mixed frames for visualization.
+OpenTUI exposes a native miniaudio-backed `Audio` engine from `@opentui/core`. It can capture input, decode audio bytes or files, play sounds through named groups, choose devices, mix into PCM buffers, and expose recent mixed frames for visualization.
 
 ## Basic usage
 
@@ -305,6 +305,151 @@ if (!audio.start()) {
 
 `listPlaybackDevices()` returns `{ index, name, isDefault }[] | null`. Use `clearPlaybackDeviceSelection()` to return to the default device selection.
 
+## Capture
+
+Capture records PCM from an input device into a bounded native ring buffer. It is independent from playback: capture does not start output or the mixer, and `start()`, `startMixer()`, and `stop()` do not change capture state.
+
+> **Microphone access**
+>
+> The terminal app launching OpenTUI must be allowed to use the microphone. On macOS, enable it under **System Settings > Privacy & Security > Microphone**, then fully restart the terminal. Packaged apps need their own microphone permission.
+
+Select an input with `selectCaptureDevice()` before opening capture, or let the backend use its default input.
+
+### Capture streams
+
+`openCapture()` starts input and resolves to an `AudioCaptureStream`. Its `readable` emits exact-length `Float32Array` chunks: normally `chunkFrames * channels` samples, with a shorter final chunk when `stop()` drains the ring.
+
+```typescript
+import { Audio } from "@opentui/core"
+
+const audio = Audio.create({ autoStart: false })
+const stream = await audio.openCapture({ channels: 1, chunkFrames: 2048 })
+
+stream.on("error", (error, context) => {
+  console.error(`${context.action}: ${error.message}`)
+})
+
+async function consumePcm(pcm: Float32Array) {
+  console.log(`received ${pcm.length / stream.channels} frames`)
+}
+
+const consumption = (async () => {
+  for await (const pcm of stream.readable) {
+    await consumePcm(pcm)
+  }
+})()
+
+// Later: stop input, consume the final drain, then await terminal event delivery.
+stream.stop()
+await consumption
+await stream.closed
+audio.dispose()
+```
+
+| Stream option    | Default            | Description                                             |
+| ---------------- | ------------------ | ------------------------------------------------------- |
+| `channels`       | `1`                | Number of interleaved input channels                    |
+| `capacityFrames` | `audio.sampleRate` | Native ring capacity, equal to one second by default    |
+| `chunkFrames`    | `2048`             | Frames per normal stream chunk                          |
+| `startOptions`   | defaults           | Low-level options passed when starting the input device |
+| `signal`         | none               | Disposes capture when aborted                           |
+
+All frame counts and channel counts must be positive integers, and `chunkFrames` cannot exceed `capacityFrames`. Capture uses `audio.sampleRate`; create another `Audio` instance to change it. `startOptions` accepts the fields in [Start options](#start-options).
+
+PCM is interleaved 32-bit floating point, nominally in `[-1, 1]`; every emitted array contains only valid samples and a frame contains one sample per channel. The stream does not build a JavaScript chunk queue. Its native ring is the bounded backpressure buffer, and the native callback never waits for JavaScript. If it fills, newest input frames are dropped while older frames remain ordered; `getStats().framesDropped` reports the loss.
+
+| `AudioCaptureStream` member | Description                                                                                     |
+| --------------------------- | ----------------------------------------------------------------------------------------------- |
+| `readable`                  | Demand-driven `ReadableStream<Float32Array>` of interleaved PCM                                 |
+| `sampleRate`, `channels`    | Output format                                                                                   |
+| `chunkFrames`               | Requested normal chunk size                                                                     |
+| `state`                     | `initializing`, `capturing`, `stopping`, `stopped`, `errored`, or `disposed`                    |
+| `getStats()`                | Returns state, format, ring capacity/use and duration, and received/read/dropped frame counters |
+| `stop()`                    | Stops the device and gracefully drains unread PCM to an active consumer                         |
+| `dispose()`                 | Terminates capture without a graceful stream drain                                              |
+| `closed`                    | Resolves after cleanup and delivery of the one terminal `stopped`, `error`, or `disposed` event |
+
+After `stop()`, a locked consumer can read all remaining full chunks and one exact-length partial chunk. If no consumer holds the readable lock, unread PCM is discarded in bounded batches so shutdown and `closed` cannot be held open by absent demand. Canceling `readable`, calling `dispose()`, aborting `signal`, or disposing the owning `Audio` terminates the stream as `disposed` instead of performing the graceful drain.
+
+An `AudioCaptureStream` exclusively owns capture until terminal cleanup completes. A second `openCapture()` or `recordToFile()` rejects, while direct destructive methods `startCapture()`, `readCaptureFrames()`, `stopCapture()`, `selectCaptureDevice()`, and `clearCaptureDeviceSelection()` fail and emit `Audio.error`. Device enumeration and capture statistics remain available.
+
+Setup failures reject with `AudioCaptureStreamError`; a pre-start abort rejects with `AbortError`. Later native failures error `readable` and emit `error` with the same `AudioCaptureStreamError` and `{ action, status? }` context. Terminal events are asynchronous and emitted once; `closed` always resolves after the event handler has run.
+
+### Record WAV
+
+`recordToFile()` captures directly to a PCM16 WAV file through an `AudioRecorder`:
+
+```typescript
+import { Audio } from "@opentui/core"
+
+const audio = Audio.create({ autoStart: false })
+const recorder = await audio.recordToFile("recording.wav", { channels: 1 })
+
+recorder.on("error", (error, context) => {
+  console.error(`${context.action}: ${error.message}`)
+})
+
+// Later: drain capture, finalize the WAV header, and publish the file.
+recorder.stop()
+await recorder.closed
+audio.dispose()
+```
+
+The recorder always writes little-endian PCM16 WAV (`format === "wav"`) and accepts only mono or stereo capture. It converts each exact-length float chunk and awaits each file write sequentially, so the native capture ring remains the bounded buffer while storage is slow. The classic RIFF size limit applies.
+
+Recording inherits the capture options and defaults above. Data is first written to a uniquely named temporary file in the destination directory; the destination is atomically replaced only after the temporary file has its final header, is synced, and is closed.
+
+| `AudioRecorder` member   | Description                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------- |
+| `filePath`, `format`     | Destination path and the literal `"wav"`                                                        |
+| `sampleRate`, `channels` | Recorded format                                                                                 |
+| `state`                  | `initializing`, `recording`, `stopping`, `stopped`, `errored`, or `disposed`                    |
+| `getStats()`             | Capture stats plus `framesWritten`, `dataBytesWritten`, and `durationMs`                        |
+| `stop()`                 | Stops input, drains every buffered frame, finalizes and syncs the WAV, then publishes it        |
+| `dispose()`              | Aborts before publication and removes the temporary file                                        |
+| `closed`                 | Resolves after cleanup and delivery of the one terminal `stopped`, `error`, or `disposed` event |
+
+Aborting `signal` or disposing the owning `Audio` has the same cleanup behavior as `AudioRecorder.dispose()`. Once publication has started it is the point of no return and is allowed to finish. Any dropped capture frame is terminal: the recorder emits `AudioRecorderError`, removes its temporary file, and never publishes incomplete audio. Open/start failures reject `recordToFile()` after cleanup; later failures emit `error` with `{ action, status? }`. `stopped`, `error`, and `disposed` are asynchronous, mutually exclusive terminal events, and `closed` resolves after event delivery.
+
+### Low-level capture
+
+Use `startCapture()` and `readCaptureFrames()` when application-controlled polling is required. They expose the same native ring without stream lifecycle management:
+
+```typescript
+import { Audio } from "@opentui/core"
+
+const audio = Audio.create({ autoStart: false })
+if (!audio.startCapture({ channels: 1 })) throw new Error("Could not start capture")
+
+const result = audio.readCaptureFrames(1024)
+if (result) {
+  const pcm = result.frames.subarray(0, result.framesRead)
+  console.log(`read ${pcm.length} mono frames`)
+}
+
+audio.stopCapture()
+audio.dispose()
+```
+
+| Method                          | Result and behavior                                                               |
+| ------------------------------- | --------------------------------------------------------------------------------- |
+| `listCaptureDevices()`          | Returns `AudioCaptureDevice[] \| null`; an empty array means no inputs were found |
+| `selectCaptureDevice(index)`    | Selects an enumerated input and returns whether selection succeeded               |
+| `clearCaptureDeviceSelection()` | Clears the explicit selection so the backend chooses the default input            |
+| `startCapture(options?)`        | Starts input, returning `false` on native or permission failure                   |
+| `isCapturing()`                 | Reports whether input is currently running                                        |
+| `readCaptureFrames(frameCount)` | Consumes up to `frameCount` frames and returns `{ frames, framesRead } \| null`   |
+| `getCaptureStats()`             | Returns format, buffer use, and received/read/dropped counters                    |
+| `stopCapture()`                 | Stops input while preserving unread PCM for direct reads                          |
+
+Direct reads allocate `frameCount * channels` samples, but only the first `framesRead * channels` are valid. `frameCount` cannot exceed the configured capacity. While running, `startCapture()` is idempotent when no new device options are supplied and any explicit channels/capacity match the active configuration. Stop capture before changing its configuration. A later successful start resets the ring and counters. Successful transitions emit `captureStarted` and `captureStopped`; native failures return `false` or `null` and emit `Audio.error`. Device indices belong to the latest enumeration and can change after hot-plugging. Invalid dimensions and indices throw `TypeError` or `RangeError` before native work.
+
+### Permissions and scope
+
+Windows privacy controls can block desktop microphone access. Linux capture uses PulseAudio or ALSA, including PipeWire through its PulseAudio compatibility layer, and depends on device permissions. Headless sessions, sandboxes, containers, and CI commonly expose no input. Enumeration may return `null` or `[]`; denied or unavailable inputs may make `startCapture()` fail or deliver clocked digital silence, so advancing frame counters alone does not prove a signal is present.
+
+Capture streams expose raw PCM and the recorder encodes PCM16 WAV. Compressed recording formats, system-output loopback capture, JavaScript callbacks on the native audio thread, and echo cancellation remain unsupported. Perform compressed encoding and signal processing outside the capture callback path, and use platform-specific facilities for loopback capture.
+
 ## Mixing and analysis
 
 | Method                                  | Description                                                                                |
@@ -325,4 +470,4 @@ The tap is disabled by default. When enabled, it stores the latest frames and ov
 
 ## Lifecycle and errors
 
-Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. After construction, `Audio` emits `started`, `mixerStarted`, `stopped`, `disposed`, and `error`. Most non-stream operations report failure by returning `false` or `null` and emitting `Audio.error` with `{ action, status }`; stream setup rejection and `AudioStream` errors are described above.
+Use `start()`, `startMixer()`, `stop()`, `isStarted()`, `isMixerStarted()`, and `dispose()` for lifecycle. After construction, `Audio` emits `started`, `mixerStarted`, `captureStarted`, `captureStopped`, `stopped`, `disposed`, and `error`. Most non-stream operations report failure by returning `false` or `null` and emitting `Audio.error` with `{ action, status }`; stream setup rejection and `AudioStream` errors are described above.

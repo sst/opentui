@@ -28,6 +28,7 @@ export type {
   AllocatorStats,
   AudioStreamCreateOptions,
   BuildOptions,
+  NativeAudioCaptureStats,
   NativeAudioStreamStats,
   NativeRenderStats,
 }
@@ -56,6 +57,7 @@ import {
   AudioVoiceOptionsStruct,
   AudioStreamCreateOptionsStruct,
   AudioStreamStatsStruct,
+  AudioCaptureStatsStruct,
   NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonValue,
   NativeAudioStreamFormat as NativeAudioStreamFormatValue,
   NativeAudioStreamState as NativeAudioStreamStateValue,
@@ -76,6 +78,7 @@ import type {
   NativeAudioStreamFormat as NativeAudioStreamFormatType,
   NativeAudioStreamState as NativeAudioStreamStateType,
   NativeAudioStreamStats,
+  NativeAudioCaptureStats,
   AudioStats,
   BuildOptions,
   AllocatorStats,
@@ -1496,6 +1499,50 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "void",
     },
+    audioRefreshCaptureDevices: {
+      args: ["u32"],
+      returns: "i32",
+    },
+    audioGetCaptureDeviceCount: {
+      args: ["u32"],
+      returns: "u32",
+    },
+    audioGetCaptureDeviceName: {
+      args: ["u32", "u32", "ptr", "u32"],
+      returns: "u32",
+    },
+    audioIsCaptureDeviceDefault: {
+      args: ["u32", "u32"],
+      returns: "bool",
+    },
+    audioSelectCaptureDevice: {
+      args: ["u32", "u32"],
+      returns: "i32",
+    },
+    audioClearCaptureDeviceSelection: {
+      args: ["u32"],
+      returns: "void",
+    },
+    audioStartCapture: {
+      args: ["u32", "ptr", "u32", "u32"],
+      returns: "i32",
+    },
+    audioStopCapture: {
+      args: ["u32"],
+      returns: "i32",
+    },
+    audioIsCaptureRunning: {
+      args: ["u32"],
+      returns: "bool",
+    },
+    audioReadCapture: {
+      args: ["u32", "ptr", "u32", "u32", "ptr"],
+      returns: "i32",
+    },
+    audioGetCaptureStats: {
+      args: ["u32", "ptr"],
+      returns: "i32",
+    },
     audioStart: {
       args: ["u32", "ptr"],
       returns: "i32",
@@ -1945,6 +1992,26 @@ export interface AudioEngineLib {
   audioIsPlaybackDeviceDefault: (engine: AudioEngineHandle, index: number) => boolean
   audioSelectPlaybackDevice: (engine: AudioEngineHandle, index: number) => number
   audioClearPlaybackDeviceSelection: (engine: AudioEngineHandle) => void
+  audioRefreshCaptureDevices: (engine: AudioEngineHandle) => number
+  audioGetCaptureDeviceCount: (engine: AudioEngineHandle) => number
+  audioGetCaptureDeviceName: (engine: AudioEngineHandle, index: number) => string
+  audioIsCaptureDeviceDefault: (engine: AudioEngineHandle, index: number) => boolean
+  audioSelectCaptureDevice: (engine: AudioEngineHandle, index: number) => number
+  audioClearCaptureDeviceSelection: (engine: AudioEngineHandle) => void
+  audioStartCapture: (
+    engine: AudioEngineHandle,
+    options: AudioStartOptions | undefined,
+    channels: number,
+    capacityFrames: number,
+  ) => number
+  audioStopCapture: (engine: AudioEngineHandle) => number
+  audioIsCaptureRunning: (engine: AudioEngineHandle) => boolean
+  audioReadCapture: (
+    engine: AudioEngineHandle,
+    outBuffer: Float32Array,
+    frameCount: number,
+  ) => { status: number; framesRead: number }
+  audioGetCaptureStats: (engine: AudioEngineHandle) => { status: number; stats: NativeAudioCaptureStats | null }
   audioStart: (engine: AudioEngineHandle, options?: AudioStartOptions | null) => number
   audioStartMixer: (engine: AudioEngineHandle) => number
   audioStop: (engine: AudioEngineHandle) => number
@@ -5011,6 +5078,101 @@ class FFIRenderLib implements RenderLib {
 
   public audioClearPlaybackDeviceSelection(engine: Pointer): void {
     this.opentui.symbols.audioClearPlaybackDeviceSelection(engine)
+  }
+
+  public audioRefreshCaptureDevices(engine: AudioEngineHandle): number {
+    return this.opentui.symbols.audioRefreshCaptureDevices(engine)
+  }
+
+  public audioGetCaptureDeviceCount(engine: AudioEngineHandle): number {
+    return this.opentui.symbols.audioGetCaptureDeviceCount(engine)
+  }
+
+  public audioGetCaptureDeviceName(engine: AudioEngineHandle, index: number): string {
+    const outBuffer = new Uint8Array(512)
+    const bytesWritten = toNumber(
+      this.opentui.symbols.audioGetCaptureDeviceName(engine, index, outBuffer, outBuffer.length),
+    )
+    const safeBytesWritten = Math.max(0, Math.min(outBuffer.length, bytesWritten))
+    return this.decoder.decode(outBuffer.subarray(0, safeBytesWritten))
+  }
+
+  public audioIsCaptureDeviceDefault(engine: AudioEngineHandle, index: number): boolean {
+    return Boolean(this.opentui.symbols.audioIsCaptureDeviceDefault(engine, index))
+  }
+
+  public audioSelectCaptureDevice(engine: AudioEngineHandle, index: number): number {
+    return this.opentui.symbols.audioSelectCaptureDevice(engine, index)
+  }
+
+  public audioClearCaptureDeviceSelection(engine: AudioEngineHandle): void {
+    this.opentui.symbols.audioClearCaptureDeviceSelection(engine)
+  }
+
+  public audioStartCapture(
+    engine: AudioEngineHandle,
+    options: AudioStartOptions | undefined,
+    channels: number,
+    capacityFrames: number,
+  ): number {
+    let optionsBuffer: ArrayBuffer
+    try {
+      const noFixedSizedCallback = options?.noFixedSizedCallback
+      optionsBuffer = AudioStartOptionsStruct.pack(options ?? {})
+      if (noFixedSizedCallback === undefined) {
+        const field = AudioStartOptionsStruct.layoutByName.get("noFixedSizedCallback")
+        if (!field) return -1
+        new DataView(optionsBuffer).setUint8(field.offset, 1)
+      }
+    } catch {
+      return -1
+    }
+    return this.opentui.symbols.audioStartCapture(engine, optionsBuffer, channels, capacityFrames)
+  }
+
+  public audioStopCapture(engine: AudioEngineHandle): number {
+    return this.opentui.symbols.audioStopCapture(engine)
+  }
+
+  public audioIsCaptureRunning(engine: AudioEngineHandle): boolean {
+    return Boolean(this.opentui.symbols.audioIsCaptureRunning(engine))
+  }
+
+  public audioReadCapture(
+    engine: AudioEngineHandle,
+    outBuffer: Float32Array,
+    frameCount: number,
+  ): { status: number; framesRead: number } {
+    const outFramesReadBuffer = new ArrayBuffer(4)
+    const sampleCapacity = toSafeFFIU32Length(outBuffer.length, "Audio capture output sample capacity")
+    const status = this.opentui.symbols.audioReadCapture(
+      engine,
+      outBuffer,
+      sampleCapacity,
+      frameCount,
+      outFramesReadBuffer,
+    )
+    if (status !== 0) return { status, framesRead: 0 }
+    return { status, framesRead: new Uint32Array(outFramesReadBuffer)[0] ?? 0 }
+  }
+
+  public audioGetCaptureStats(engine: AudioEngineHandle): { status: number; stats: NativeAudioCaptureStats | null } {
+    const statsBuffer = new ArrayBuffer(AudioCaptureStatsStruct.size)
+    const status = this.opentui.symbols.audioGetCaptureStats(engine, statsBuffer)
+    if (status !== 0) return { status, stats: null }
+    const stats = AudioCaptureStatsStruct.unpack(statsBuffer)
+    return {
+      status,
+      stats: {
+        framesReceived: typeof stats.framesReceived === "bigint" ? stats.framesReceived : BigInt(stats.framesReceived),
+        framesRead: typeof stats.framesRead === "bigint" ? stats.framesRead : BigInt(stats.framesRead),
+        framesDropped: typeof stats.framesDropped === "bigint" ? stats.framesDropped : BigInt(stats.framesDropped),
+        sampleRate: stats.sampleRate,
+        channels: stats.channels,
+        bufferedFrames: stats.bufferedFrames,
+        capacityFrames: stats.capacityFrames,
+      },
+    }
   }
 
   public audioStart(engine: Pointer, options?: AudioStartOptions | null): number {

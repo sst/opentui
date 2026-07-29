@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { NativeAudioStreamState as ExportedAudioStreamState, resolveRenderLib } from "../zig.js"
 import {
+  AudioCaptureStatsStruct,
   AudioStreamCreateOptionsStruct,
   AudioStreamStatsStruct,
   CursorStyleOptionsStruct,
@@ -331,6 +332,164 @@ describe("borrowed pointer call sites", () => {
       errorCode: 48,
       readyGeneration: 52,
     })
+  })
+
+  test("audio capture stats preserve the 40-byte native ABI", () => {
+    expect(AudioCaptureStatsStruct.size).toBe(40)
+    expect(
+      Object.fromEntries(
+        [
+          "framesReceived",
+          "framesRead",
+          "framesDropped",
+          "sampleRate",
+          "channels",
+          "bufferedFrames",
+          "capacityFrames",
+        ].map((name) => [name, fieldOffset(AudioCaptureStatsStruct, name)]),
+      ),
+    ).toEqual({
+      framesReceived: 0,
+      framesRead: 8,
+      framesDropped: 16,
+      sampleRate: 24,
+      channels: 28,
+      bufferedFrames: 32,
+      capacityFrames: 36,
+    })
+  })
+
+  test("audio capture wrappers pass transient buffers directly and normalize booleans", () => {
+    const originals = {
+      name: symbols.audioGetCaptureDeviceName,
+      isDefault: symbols.audioIsCaptureDeviceDefault,
+      start: symbols.audioStartCapture,
+      running: symbols.audioIsCaptureRunning,
+      read: symbols.audioReadCapture,
+      stats: symbols.audioGetCaptureStats,
+    }
+    const calls: Record<string, any[][]> = { name: [], start: [], read: [], stats: [] }
+    symbols.audioGetCaptureDeviceName = (...args: any[]) => {
+      calls.name.push(args)
+      ;(args[2] as Uint8Array).set(new TextEncoder().encode("Microphone"))
+      return 10
+    }
+    symbols.audioIsCaptureDeviceDefault = () => 1
+    symbols.audioIsCaptureRunning = () => 1
+    symbols.audioStartCapture = (...args: any[]) => {
+      calls.start.push(args)
+      return 0
+    }
+    symbols.audioReadCapture = (...args: any[]) => {
+      calls.read.push(args)
+      new Uint32Array(args[4] as ArrayBuffer)[0] = 2
+      return 0
+    }
+    symbols.audioGetCaptureStats = (...args: any[]) => {
+      calls.stats.push(args)
+      AudioCaptureStatsStruct.packInto(
+        {
+          framesReceived: 5n,
+          framesRead: 2n,
+          framesDropped: 1n,
+          sampleRate: 48_000,
+          channels: 1,
+          bufferedFrames: 3,
+          capacityFrames: 48_000,
+        },
+        new DataView(args[1] as ArrayBuffer),
+        0,
+      )
+      return 0
+    }
+
+    try {
+      expect(lib.audioGetCaptureDeviceName(1 as any, 2)).toBe("Microphone")
+      expect(lib.audioIsCaptureDeviceDefault(1 as any, 2)).toBe(true)
+      expect(lib.audioStartCapture(1 as any, { noFixedSizedCallback: true }, 1, 48_000)).toBe(0)
+      expect(lib.audioIsCaptureRunning(1 as any)).toBe(true)
+      const output = new Float32Array(4)
+      expect(lib.audioReadCapture(1 as any, output, 4)).toEqual({ status: 0, framesRead: 2 })
+      expect(lib.audioGetCaptureStats(1 as any)).toEqual({
+        status: 0,
+        stats: {
+          framesReceived: 5n,
+          framesRead: 2n,
+          framesDropped: 1n,
+          sampleRate: 48_000,
+          channels: 1,
+          bufferedFrames: 3,
+          capacityFrames: 48_000,
+        },
+      })
+
+      expect(calls.name[0]![2]).toBeInstanceOf(Uint8Array)
+      expect(calls.start[0]![1]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.read[0]![1]).toBe(output)
+      expect(calls.read[0]![2]).toBe(output.length)
+      expect(calls.read[0]![3]).toBe(4)
+      expect(calls.read[0]![4]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.stats[0]![1]).toBeInstanceOf(ArrayBuffer)
+    } finally {
+      symbols.audioGetCaptureDeviceName = originals.name
+      symbols.audioIsCaptureDeviceDefault = originals.isDefault
+      symbols.audioStartCapture = originals.start
+      symbols.audioIsCaptureRunning = originals.running
+      symbols.audioReadCapture = originals.read
+      symbols.audioGetCaptureStats = originals.stats
+    }
+  })
+
+  test("audio capture reads forward the destination sample capacity", () => {
+    const calls: any[][] = []
+    const original = symbols.audioReadCapture
+    symbols.audioReadCapture = (...args: any[]) => {
+      calls.push(args)
+      return -1
+    }
+    try {
+      const output = new Float32Array(3)
+      expect(lib.audioReadCapture(1 as any, output, 1)).toEqual({ status: -1, framesRead: 0 })
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toHaveLength(5)
+      expect(calls[0]![1]).toBe(output)
+      expect(calls[0]![2]).toBe(output.length)
+      expect(calls[0]![3]).toBe(1)
+      expect(calls[0]![4]).toBeInstanceOf(ArrayBuffer)
+    } finally {
+      symbols.audioReadCapture = original
+    }
+  })
+
+  test("audio capture start contains option getter failures and defaults callback sizing", () => {
+    const calls: any[][] = []
+    const original = symbols.audioStartCapture
+    symbols.audioStartCapture = (...args: any[]) => {
+      calls.push(args)
+      return 0
+    }
+    try {
+      expect(lib.audioStartCapture(1 as any, undefined, 1, 48_000)).toBe(0)
+      const packed = new Uint8Array(calls[0]![1] as ArrayBuffer)
+      expect(packed[17]).toBe(1)
+
+      const options = Object.create({ periods: 3 }) as { periods?: number; noFixedSizedCallback?: boolean }
+      Object.defineProperty(options, "noFixedSizedCallback", { value: false, enumerable: false })
+      expect(lib.audioStartCapture(1 as any, options, 1, 48_000)).toBe(0)
+      const inherited = new DataView(calls[1]![1] as ArrayBuffer)
+      expect(inherited.getUint32(8, true)).toBe(3)
+      expect(inherited.getUint8(17)).toBe(0)
+
+      const throwing = {
+        get periods(): number {
+          throw new Error("getter failed")
+        },
+      }
+      expect(lib.audioStartCapture(1 as any, throwing, 1, 48_000)).toBe(-1)
+      expect(calls).toHaveLength(2)
+    } finally {
+      symbols.audioStartCapture = original
+    }
   })
 
   test("audioCloseStream forwards its reason and unpacks the owned output buffer", () => {
