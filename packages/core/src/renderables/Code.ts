@@ -23,6 +23,8 @@ export interface ChunkRenderContext extends HighlightContext {
   highlights: SimpleHighlight[]
 }
 
+export type SyntaxSegment = readonly [start: number, end: number]
+
 export type OnChunksCallback = (
   chunks: TextChunk[],
   context: ChunkRenderContext,
@@ -38,11 +40,21 @@ export interface CodeOptions extends TextBufferOptions {
   streaming?: boolean
   initialStyledText?: StyledText
   baseHighlight?: string
+  syntaxSegments?: readonly SyntaxSegment[]
   onHighlight?: OnHighlightCallback
   onChunks?: OnChunksCallback
 }
 
 type ConcealLineRange = [start: number, end: number]
+
+function sameSyntaxSegments(
+  left: readonly SyntaxSegment[] | undefined,
+  right: readonly SyntaxSegment[] | undefined,
+): boolean {
+  if (left === right) return true
+  if (!left || !right || left.length !== right.length) return false
+  return left.every(([start, end], index) => start === right[index][0] && end === right[index][1])
+}
 
 export class CodeRenderable extends TextBufferRenderable {
   private _content: string
@@ -60,6 +72,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private _hadInitialContent: boolean = false
   private _lastHighlights: SimpleHighlight[] = []
   private _baseHighlight?: string
+  private _syntaxSegments?: readonly SyntaxSegment[]
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
   private _highlightingPromise: Promise<void> = Promise.resolve()
@@ -86,6 +99,7 @@ export class CodeRenderable extends TextBufferRenderable {
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
     this._initialStyledText = options.initialStyledText
     this._baseHighlight = options.baseHighlight
+    this._syntaxSegments = options.syntaxSegments
     this._onHighlight = options.onHighlight
     this._onChunks = options.onChunks
 
@@ -253,6 +267,17 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  get syntaxSegments(): readonly SyntaxSegment[] | undefined {
+    return this._syntaxSegments
+  }
+
+  set syntaxSegments(value: readonly SyntaxSegment[] | undefined) {
+    if (sameSyntaxSegments(this._syntaxSegments, value)) return
+    this._syntaxSegments = value
+    this._highlightsDirty = true
+    this._highlightSnapshotId++
+  }
+
   set onHighlight(value: OnHighlightCallback | undefined) {
     if (this._onHighlight !== value) {
       this._onHighlight = value
@@ -314,6 +339,24 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  private async highlight(content: string, filetype: string): Promise<SimpleHighlight[]> {
+    if (!this._syntaxSegments) {
+      return (await this._treeSitterClient.highlightOnce(content, filetype)).highlights ?? []
+    }
+
+    return (
+      await Promise.all(
+        this._syntaxSegments.map(async ([start, end]) => {
+          const result = await this._treeSitterClient.highlightOnce(content.slice(start, end), filetype)
+          return (result.highlights ?? []).map(
+            ([highlightStart, highlightEnd, group, meta]) =>
+              [highlightStart + start, highlightEnd + start, group, meta] as SimpleHighlight,
+          )
+        }),
+      )
+    ).flat()
+  }
+
   private async startHighlight(): Promise<void> {
     const content = this._content
     const filetype = this._filetype
@@ -329,7 +372,7 @@ export class CodeRenderable extends TextBufferRenderable {
     this._isHighlighting = true
 
     try {
-      const result = await this._treeSitterClient.highlightOnce(content, filetype)
+      let highlights = await this.highlight(content, filetype)
 
       if (snapshotId !== this._highlightSnapshotId) {
         this.requestRender()
@@ -337,8 +380,6 @@ export class CodeRenderable extends TextBufferRenderable {
       }
 
       if (this.isDestroyed) return
-
-      let highlights = result.highlights ?? []
 
       if (this._onHighlight && highlights.length >= 0) {
         const context: HighlightContext = {

@@ -1,6 +1,6 @@
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { RenderContext } from "../types.js"
-import { CodeRenderable, type CodeOptions } from "./Code.js"
+import { CodeRenderable, type CodeOptions, type SyntaxSegment } from "./Code.js"
 import { LineNumberRenderable, type LineSign, type LineColorConfig } from "./LineNumberRenderable.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
 import { SyntaxStyle } from "../syntax-style.js"
@@ -15,8 +15,44 @@ interface LogicalLine {
   hideLineNumber?: boolean
   color?: string | RGBA
   sign?: LineSign
-  type: "context" | "add" | "remove" | "empty"
+  type: "context" | "add" | "remove" | "empty" | "hunk"
   hunkStart?: boolean
+}
+
+function formatRange(prefix: "-" | "+", start: number, lines: number): string {
+  return `${prefix}${start}${lines === 1 ? "" : `,${lines}`}`
+}
+
+function formatHunkHeader(hunk: StructuredPatch["hunks"][number]): string {
+  return `@@ ${formatRange("-", hunk.oldStart, hunk.oldLines)} ${formatRange("+", hunk.newStart, hunk.newLines)} @@`
+}
+
+function formatSplitHunkHeader(hunk: StructuredPatch["hunks"][number], side: "left" | "right"): string {
+  if (side === "left") return `@@ ${formatRange("-", hunk.oldStart, hunk.oldLines)}`
+  return `${formatRange("+", hunk.newStart, hunk.newLines)} @@`
+}
+
+function contentAndSyntaxSegments(lines: readonly LogicalLine[]): {
+  content: string
+  syntaxSegments: SyntaxSegment[]
+} {
+  const content = lines.map((line) => line.content).join("\n")
+  const syntaxSegments: SyntaxSegment[] = []
+  let offset = 0
+  let start: number | undefined
+
+  lines.forEach((line, index) => {
+    if (line.type === "hunk") {
+      if (start !== undefined) syntaxSegments.push([start, offset - 1])
+      start = undefined
+    } else if (start === undefined) {
+      start = offset
+    }
+    offset += line.content.length + (index === lines.length - 1 ? 0 : 1)
+  })
+
+  if (start !== undefined) syntaxSegments.push([start, content.length])
+  return { content, syntaxSegments }
 }
 
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
@@ -369,6 +405,7 @@ export class DiffRenderable extends Renderable {
     content: string,
     wrapMode: "word" | "char" | "none" | undefined,
     drawUnstyledText?: boolean,
+    syntaxSegments?: readonly SyntaxSegment[],
   ): CodeRenderable {
     const existingRenderable = side === "left" ? this.leftCodeRenderable : this.rightCodeRenderable
 
@@ -380,6 +417,7 @@ export class DiffRenderable extends Renderable {
         wrapMode,
         conceal: this._conceal,
         syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
+        syntaxSegments,
         width: "100%",
         height: "100%",
         ...(this._fg !== undefined && { fg: this._fg }),
@@ -401,6 +439,7 @@ export class DiffRenderable extends Renderable {
       existingRenderable.content = content
       existingRenderable.wrapMode = wrapMode ?? "none"
       existingRenderable.conceal = this._conceal
+      existingRenderable.syntaxSegments = syntaxSegments
       if (drawUnstyledText !== undefined) {
         existingRenderable.drawUnstyledText = drawUnstyledText
       }
@@ -498,16 +537,22 @@ export class DiffRenderable extends Renderable {
       }
     }
 
-    const contentLines: string[] = []
+    const contentLines: LogicalLine[] = []
     const lineColors = new Map<number, string | RGBA | LineColorConfig>()
     const lineSigns = new Map<number, LineSign>()
     const lineNumbers = new Map<number, number>()
+    const hideLineNumbers = new Set<number>()
 
     let lineIndex = 0
 
-    for (const hunk of this._parsedDiff.hunks) {
-      // Unified view flattens hunks directly into the left CodeRenderable line stream.
+    for (const [hunkIndex, hunk] of this._parsedDiff.hunks.entries()) {
       this._hunkStartLines.push(lineIndex)
+      if (hunkIndex > 0) {
+        contentLines.push({ content: formatHunkHeader(hunk), hideLineNumber: true, type: "hunk" })
+        lineColors.set(lineIndex, { gutter: this._lineNumberBg, content: this._contextBg })
+        hideLineNumbers.add(lineIndex)
+        lineIndex++
+      }
 
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart
@@ -517,7 +562,7 @@ export class DiffRenderable extends Renderable {
         const content = line.slice(1)
 
         if (firstChar === "+") {
-          contentLines.push(content)
+          contentLines.push({ content, type: "add" })
           const config: LineColorConfig = {
             gutter: this._addedLineNumberBg,
           }
@@ -535,7 +580,7 @@ export class DiffRenderable extends Renderable {
           newLineNum++
           lineIndex++
         } else if (firstChar === "-") {
-          contentLines.push(content)
+          contentLines.push({ content, type: "remove" })
           const config: LineColorConfig = {
             gutter: this._removedLineNumberBg,
           }
@@ -553,7 +598,7 @@ export class DiffRenderable extends Renderable {
           oldLineNum++
           lineIndex++
         } else if (firstChar === " ") {
-          contentLines.push(content)
+          contentLines.push({ content, type: "context" })
           const config: LineColorConfig = {
             gutter: this._lineNumberBg,
           }
@@ -571,12 +616,12 @@ export class DiffRenderable extends Renderable {
       }
     }
 
-    const content = contentLines.join("\n")
+    const { content, syntaxSegments } = contentAndSyntaxSegments(contentLines)
 
-    const codeRenderable = this.createOrUpdateCodeRenderable("left", content, this._wrapMode)
+    const codeRenderable = this.createOrUpdateCodeRenderable("left", content, this._wrapMode, undefined, syntaxSegments)
     this.attachLineInfoListeners()
 
-    this.createOrUpdateSide("left", codeRenderable, lineColors, lineSigns, lineNumbers, new Set<number>(), "100%")
+    this.createOrUpdateSide("left", codeRenderable, lineColors, lineSigns, lineNumbers, hideLineNumbers, "100%")
 
     if (this.rightSide && this.rightSideAdded) {
       super.remove(this.rightSide)
@@ -604,11 +649,21 @@ export class DiffRenderable extends Renderable {
 
     const leftLogicalLines: LogicalLine[] = []
     const rightLogicalLines: LogicalLine[] = []
-    const hunkFirstLeftLine: number[] = []
 
-    for (const hunk of this._parsedDiff.hunks) {
-      // Split view may insert padding later, so carry hunk starts through LogicalLine metadata.
-      hunkFirstLeftLine.push(leftLogicalLines.length)
+    for (const [hunkIndex, hunk] of this._parsedDiff.hunks.entries()) {
+      if (hunkIndex > 0) {
+        leftLogicalLines.push({
+          content: formatSplitHunkHeader(hunk, "left"),
+          hideLineNumber: true,
+          type: "hunk",
+          hunkStart: true,
+        })
+        rightLogicalLines.push({
+          content: formatSplitHunkHeader(hunk, "right"),
+          hideLineNumber: true,
+          type: "hunk",
+        })
+      }
 
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart
@@ -706,31 +761,29 @@ export class DiffRenderable extends Renderable {
       }
     }
 
-    // Mark before wrap-alignment so padding does not lose the hunk start.
-    for (const startIndex of hunkFirstLeftLine) {
-      const firstLine = leftLogicalLines[startIndex]
-      if (firstLine) firstLine.hunkStart = true
-    }
+    if (leftLogicalLines[0]) leftLogicalLines[0].hunkStart = true
 
     const canDoWrapAlignment = this.width > 0 && (this._wrapMode === "word" || this._wrapMode === "char")
 
-    const preLeftContent = leftLogicalLines.map((l) => l.content).join("\n")
-    const preRightContent = rightLogicalLines.map((l) => l.content).join("\n")
+    const preLeft = contentAndSyntaxSegments(leftLogicalLines)
+    const preRight = contentAndSyntaxSegments(rightLogicalLines)
 
     const needsConsistentConcealing =
       (this._wrapMode === "word" || this._wrapMode === "char") && this._conceal && this._filetype
     const drawUnstyledText = !needsConsistentConcealing
     const leftCodeRenderable = this.createOrUpdateCodeRenderable(
       "left",
-      preLeftContent,
+      preLeft.content,
       this._wrapMode,
       drawUnstyledText,
+      preLeft.syntaxSegments,
     )
     const rightCodeRenderable = this.createOrUpdateCodeRenderable(
       "right",
-      preRightContent,
+      preRight.content,
       this._wrapMode,
       drawUnstyledText,
+      preRight.syntaxSegments,
     )
     this.attachLineInfoListeners()
 
@@ -846,7 +899,7 @@ export class DiffRenderable extends Renderable {
           config.content = this._removedBg
         }
         leftLineColors.set(index, config)
-      } else if (line.type === "context") {
+      } else if (line.type === "context" || line.type === "hunk") {
         const config: LineColorConfig = {
           gutter: this._lineNumberBg,
         }
@@ -879,7 +932,7 @@ export class DiffRenderable extends Renderable {
           config.content = this._addedBg
         }
         rightLineColors.set(index, config)
-      } else if (line.type === "context") {
+      } else if (line.type === "context" || line.type === "hunk") {
         const config: LineColorConfig = {
           gutter: this._lineNumberBg,
         }
@@ -895,11 +948,13 @@ export class DiffRenderable extends Renderable {
       }
     })
 
-    const leftContentFinal = finalLeftLines.map((l) => l.content).join("\n")
-    const rightContentFinal = finalRightLines.map((l) => l.content).join("\n")
+    const leftContentFinal = contentAndSyntaxSegments(finalLeftLines)
+    const rightContentFinal = contentAndSyntaxSegments(finalRightLines)
 
-    leftCodeRenderable.content = leftContentFinal
-    rightCodeRenderable.content = rightContentFinal
+    leftCodeRenderable.content = leftContentFinal.content
+    leftCodeRenderable.syntaxSegments = leftContentFinal.syntaxSegments
+    rightCodeRenderable.content = rightContentFinal.content
+    rightCodeRenderable.syntaxSegments = rightContentFinal.syntaxSegments
 
     this.createOrUpdateSide(
       "left",

@@ -1424,6 +1424,64 @@ test("DiffRenderable - multiple hunks in split view", async () => {
   expect(frame).toContain('console.log("old")')
 })
 
+test("DiffRenderable - separates syntax highlighting and labels omitted ranges between hunks", async () => {
+  class RecordingTreeSitterClient extends MockTreeSitterClient {
+    readonly contents: string[] = []
+
+    override async highlightOnce(content: string): Promise<{ highlights: SimpleHighlight[] }> {
+      this.contents.push(content)
+      return { highlights: [] }
+    }
+  }
+
+  const client = new RecordingTreeSitterClient()
+  const diff = `--- a/shell.ts
++++ b/shell.ts
+@@ -11,8 +11,9 @@
+ import { Bus } from "./bus"
+ import { Location } from "./location"
+ import { Global } from "@opencode-ai/util/global"
+ import { ShellSelect } from "./shell/select"
++import { PluginHooks } from "./plugin/hooks"
+${" "}
+ export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("Shell.NotFoundError", {
+   id: Shell.ID,
+ }) {}
+@@ -45,7 +46,9 @@
+  * here; callers own that association and store the shell ID.
+  */
+ export interface Interface {
+   readonly name: () => Effect.Effect<string>
++  readonly prepare: (input: Shell.CreateInput) => Effect.Effect<Prepared>
++  readonly start: (input: Prepared) => Effect.Effect<Shell.Info>
+   readonly create: (input: Shell.CreateInput) => Effect.Effect<Shell.Info>
+   // Currently running commands only; exited shells are retained but excluded here.
+   readonly list: () => Effect.Effect<Shell.Info[]>`
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    diff,
+    filetype: "typescript",
+    syntaxStyle,
+    treeSitterClient: client,
+    view: "unified",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+  await Promise.resolve()
+  await renderOnce()
+
+  expect(captureFrame()).toContain("@@ -45,7 +46,9 @@")
+  expect(client.contents).toHaveLength(2)
+  expect(client.contents[0]).toContain("NotFoundError")
+  expect(client.contents[0]).not.toContain("export interface Interface")
+  expect(client.contents[1]).toContain("export interface Interface")
+  expect(client.contents[1]).not.toContain("NotFoundError")
+  await client.destroy()
+})
+
 test("DiffRenderable - no newline at end of file in unified view", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -3138,8 +3196,8 @@ test("DiffRenderable - getHunkRowOffsets returns the first row of each hunk (uni
   currentRenderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Hunks flatten into one column: 4 lines, then 5 lines, then 4 lines.
-  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 4, 9])
+  // Later hunks start on their visible header rows.
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 4, 10])
 })
 
 test("DiffRenderable - getHunkRowOffsets accounts for wrapped lines (unified)", async () => {
@@ -3183,7 +3241,7 @@ test("DiffRenderable - getHunkRowOffsets accounts for wrapped lines (unified)", 
 
   // The wrapped line in the first hunk pushes the later hunks down by extra visual rows.
   expect(sources.length).toBeGreaterThan(12)
-  expect(diffRenderable.getHunkRowOffsets()).toEqual([sources.indexOf(0), sources.indexOf(4), sources.indexOf(8)])
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 7, 12])
 })
 
 test("DiffRenderable - getHunkRowOffsets uses split-view rows (split)", async () => {
@@ -3202,9 +3260,8 @@ test("DiffRenderable - getHunkRowOffsets uses split-view rows (split)", async ()
   currentRenderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Split view pairs adds/removes side by side, so the add-only second hunk leaves the
-  // left column one row shorter than the unified flattening.
-  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 3, 8])
+  // Split view uses the paired header rows as later hunk anchors.
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 3, 9])
 })
 
 test("DiffRenderable - getHunkRowOffsets is empty without a diff", async () => {
