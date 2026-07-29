@@ -13,7 +13,7 @@ import { createNativeHostClipboardBackend } from "./host-clipboard.native.js"
 export interface ClipboardRepresentation {
   // Identifies the content with a canonical, lowercase MIME essence without parameters.
   readonly mimeType: string
-  // Contains stable, caller-owned data. The backend does not reuse or change these bytes.
+  // Contains stable, caller-owned encoded data. Image bytes are not decoded pixels and may require separate validation.
   readonly bytes: Uint8Array
 }
 
@@ -126,7 +126,9 @@ export interface HostClipboardOptions {
   readonly timeoutMs?: number
   readonly maxReadBytes?: number
   readonly maxWriteBytes?: number
+  // Bounds pixels inspected or transcoded by image conversion fallbacks, not direct PNG transfers.
   readonly maxImagePixels?: number
+  // Bounds temporary decoded storage used by image conversion fallbacks, not direct PNG transfers.
   readonly maxConversionBytes?: number
   readonly maxConcurrentOperations?: number
   readonly maxProviderTransfers?: number
@@ -141,6 +143,7 @@ export interface TerminalClipboardAdapter {
 }
 
 export interface ClipboardOptions {
+  // Transfers ownership to the composed service. `ClipboardService.dispose()` disposes this host.
   readonly host: HostClipboardService
   readonly terminal: TerminalClipboardAdapter
 }
