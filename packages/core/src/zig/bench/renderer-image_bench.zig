@@ -207,6 +207,145 @@ fn runDrawFrameBuffer(allocator: std.mem.Allocator, with_image: bool) !FrameCost
     return cost;
 }
 
+fn drawStaticKittyPlacements(target: *buffer.OptimizedBuffer, value: *image.Image, image_handle: u32, count: usize) !void {
+    for (0..count) |index| {
+        const x: i32 = @intCast(index % TERM_WIDTH);
+        const y: i32 = @intCast(index / TERM_WIDTH);
+        _ = try target.drawImage(value, image_handle, x, y, 1, 1, 1, 1, 0, 0, 1, 1, .kitty);
+    }
+}
+
+fn runStaticKittyPlacementCount(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    count: usize,
+) !FrameCost {
+    var test_renderer = try test_renderer_mod.TestRenderer.create(allocator, TERM_WIDTH, TERM_HEIGHT, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+
+    const value = try makeFrameImage(allocator, 1, 1, 7);
+    const image_handle = handles.insert(.image, @ptrCast(value)) catch |err| {
+        value.deinit();
+        return err;
+    };
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+
+    try drawStaticKittyPlacements(test_renderer.renderer.getNextBuffer(), value, image_handle, count);
+    if (test_renderer.renderer.render(true) != .rendered) return error.RenderFailed;
+
+    const iterations: usize = if (count <= 128) 100 else if (count <= 512) 50 else if (count <= 2048) 20 else 10;
+    var cost = FrameCost{};
+    for (0..iterations) |_| {
+        try drawStaticKittyPlacements(test_renderer.renderer.getNextBuffer(), value, image_handle, count);
+        test_renderer.memory.bytes.clearRetainingCapacity();
+        test_renderer.memory.last_write_start = 0;
+        test_renderer.memory.last_write_len = 0;
+        var timer = try std.time.Timer.start();
+        if (test_renderer.renderer.render(false) == .failed) return error.RenderFailed;
+        cost.stats.record(timer.read());
+        cost.total_bytes += test_renderer.memory.bytes.items.len;
+        cost.frames += 1;
+    }
+    return cost;
+}
+
+fn drawOverlappingSixelPlacements(
+    target: *buffer.OptimizedBuffer,
+    base: *image.Image,
+    base_handle: u32,
+    replacement: *image.Image,
+    replacement_handle: u32,
+    replace_first: bool,
+    count: usize,
+) !void {
+    for (0..count) |index| {
+        const value = if (replace_first and index == 0) replacement else base;
+        const image_handle = if (replace_first and index == 0) replacement_handle else base_handle;
+        _ = try target.drawImage(value, image_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .sixel);
+    }
+}
+
+fn runDirtySixelOverlapCount(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    count: usize,
+) !FrameCost {
+    var test_renderer = try test_renderer_mod.TestRenderer.create(allocator, 1, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    const transparent = [_]u8{ 0, 0, 0, 0 };
+    const base = try image.createFromRgba(allocator, &transparent, 1, 1, 4);
+    const base_handle = handles.insert(.image, @ptrCast(base)) catch |err| {
+        base.deinit();
+        return err;
+    };
+    defer {
+        const token = handles.beginDestroy(base_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    const replacement = try image.createFromRgba(allocator, &transparent, 1, 1, 4);
+    const replacement_handle = handles.insert(.image, @ptrCast(replacement)) catch |err| {
+        replacement.deinit();
+        return err;
+    };
+    defer {
+        const token = handles.beginDestroy(replacement_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+
+    try drawOverlappingSixelPlacements(
+        test_renderer.renderer.getNextBuffer(),
+        base,
+        base_handle,
+        replacement,
+        replacement_handle,
+        false,
+        count,
+    );
+    if (test_renderer.renderer.render(true) != .rendered) return error.RenderFailed;
+    try drawOverlappingSixelPlacements(
+        test_renderer.renderer.getNextBuffer(),
+        base,
+        base_handle,
+        replacement,
+        replacement_handle,
+        true,
+        count,
+    );
+    if (test_renderer.renderer.render(false) == .failed) return error.RenderFailed;
+
+    const iterations: usize = if (count <= 128) 100 else if (count <= 512) 50 else if (count <= 2048) 20 else 10;
+    var cost = FrameCost{};
+    for (0..iterations) |iteration| {
+        try drawOverlappingSixelPlacements(
+            test_renderer.renderer.getNextBuffer(),
+            base,
+            base_handle,
+            replacement,
+            replacement_handle,
+            iteration % 2 != 0,
+            count,
+        );
+        test_renderer.memory.bytes.clearRetainingCapacity();
+        test_renderer.memory.last_write_start = 0;
+        test_renderer.memory.last_write_len = 0;
+        var timer = try std.time.Timer.start();
+        if (test_renderer.renderer.render(false) == .failed) return error.RenderFailed;
+        cost.stats.record(timer.read());
+        cost.total_bytes += test_renderer.memory.bytes.items.len;
+        cost.frames += 1;
+    }
+    return cost;
+}
+
 pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]bench_utils.BenchResult {
     _ = show_mem;
     const pool = gp.initGlobalPool(allocator);
@@ -269,6 +408,40 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         const cost = try runDrawFrameBuffer(allocator, scenario.with_image);
         try results.append(allocator, .{
             .name = scenario.name,
+            .min_ns = cost.stats.min_ns,
+            .avg_ns = cost.stats.avg(),
+            .max_ns = cost.stats.max_ns,
+            .total_ns = cost.stats.total_ns,
+            .iterations = cost.stats.count,
+            .stddev_ns = cost.stats.standardDeviation(),
+            .rme_95 = cost.stats.relativeMarginOfError95(),
+            .mem_stats = null,
+        });
+    }
+
+    for ([_]usize{ 8, 32, 128, 512, 2048, 4096 }) |count| {
+        const name = try std.fmt.allocPrint(allocator, "kitty static {d} placements", .{count});
+        if (!bench_utils.matchesBenchFilter(name, bench_filter)) continue;
+        const cost = try runStaticKittyPlacementCount(allocator, pool, count);
+        try results.append(allocator, .{
+            .name = try std.fmt.allocPrint(allocator, "{s} ({d} bytes/frame)", .{ name, cost.bytesPerFrame() }),
+            .min_ns = cost.stats.min_ns,
+            .avg_ns = cost.stats.avg(),
+            .max_ns = cost.stats.max_ns,
+            .total_ns = cost.stats.total_ns,
+            .iterations = cost.stats.count,
+            .stddev_ns = cost.stats.standardDeviation(),
+            .rme_95 = cost.stats.relativeMarginOfError95(),
+            .mem_stats = null,
+        });
+    }
+
+    for ([_]usize{ 8, 32, 128, 512, 2048, 4096 }) |count| {
+        const name = try std.fmt.allocPrint(allocator, "sixel dirty overlap {d} transparent placements", .{count});
+        if (!bench_utils.matchesBenchFilter(name, bench_filter)) continue;
+        const cost = try runDirtySixelOverlapCount(allocator, pool, count);
+        try results.append(allocator, .{
+            .name = try std.fmt.allocPrint(allocator, "{s} ({d} bytes/frame)", .{ name, cost.bytesPerFrame() }),
             .min_ns = cost.stats.min_ns,
             .avg_ns = cost.stats.avg(),
             .max_ns = cost.stats.max_ns,
