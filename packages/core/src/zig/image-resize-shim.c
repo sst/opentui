@@ -6,8 +6,9 @@
 // intentionally biases a static table pointer out of bounds
 // (fp32_to_srgb8_tab4 - (127-13)*8) and rebalances it with large indices.
 // That idiom is correct at runtime but trips UBSan's bounds check, so this
-// file is compiled with the bounds sanitizers disabled while the decoders in
-// image-shim.c keep full sanitization for untrusted input.
+// file is compiled with bounds instrumentation disabled while the decoders in
+// image-shim.c keep full sanitization for untrusted input. The accepted
+// exception and permanent remediation are documented in vendor/stb/README.md.
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_STATIC
 #include "vendor/stb/stb_image_resize2.h"
