@@ -3755,6 +3755,42 @@ test "renderer reports image preparation allocation failure" {
     try std.testing.expectEqual(renderer.RenderStatus.failed, status);
 }
 
+test "renderer does not publish Kitty output when image state staging fails" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 1, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.kitty_graphics = true;
+
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    try test_renderer.renderer.imageDirty.ensureTotalCapacity(std.testing.allocator, 1);
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .kitty));
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    test_renderer.renderer.allocator = failing.allocator();
+    const status = test_renderer.renderer.render(true);
+    test_renderer.renderer.allocator = std.testing.allocator;
+
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, status);
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.renderer.currentImages.items.len);
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+
+    const retry = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try retry.drawImage(value, value_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .kitty));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);
+    try std.testing.expectEqual(@as(usize, 1), test_renderer.renderer.currentImages.items.len);
+}
+
 test "renderer clears an upper sixel hole when its lower image moves away" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
