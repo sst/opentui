@@ -251,7 +251,7 @@ async function readResponseBytes(response: Response, signal?: AbortSignal): Prom
   const reader = response.body.getReader()
   const abort = () => void reader.cancel(signal?.reason).catch(() => {})
   signal?.addEventListener("abort", abort, { once: true })
-  const chunks: Uint8Array[] = []
+  let data = new Uint8Array()
   let total = 0
   try {
     while (true) {
@@ -261,8 +261,16 @@ async function readResponseBytes(response: Response, signal?: AbortSignal): Prom
       if (value.byteLength > MAX_ENCODED_BYTES - total) {
         throw imageError(6)
       }
-      chunks.push(value.slice())
-      total += value.byteLength
+      if (value.byteLength === 0) continue
+      const required = total + value.byteLength
+      if (required > data.byteLength) {
+        const capacity = Math.min(MAX_ENCODED_BYTES, Math.max(required, data.byteLength * 2))
+        const grown = new Uint8Array(capacity)
+        grown.set(data.subarray(0, total))
+        data = grown
+      }
+      data.set(value, total)
+      total = required
     }
   } catch (error) {
     void reader.cancel().catch(() => {})
@@ -272,13 +280,7 @@ async function readResponseBytes(response: Response, signal?: AbortSignal): Prom
     reader.releaseLock()
   }
 
-  const data = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    data.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return data
+  return data.byteLength === total ? data : data.slice(0, total)
 }
 
 async function readFileBytes(path: string | URL, signal?: AbortSignal): Promise<Uint8Array> {
