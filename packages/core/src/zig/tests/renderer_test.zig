@@ -2602,3 +2602,47 @@ test "buffered backend frees grown buffers cleanly on deinit" {
     }
     try std.testing.expectEqual(@import("../renderer-output.zig").WriteStatus.ok, backend.endFrame());
 }
+
+test "renderer - explicit_width leaves kitty image placeholder cells unwrapped" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
+    defer tb.deinit();
+
+    // An emoji as positive control, then a kitty Unicode-placeholder image
+    // row: U+10EEEE with a row diacritic, then a bare U+10EEEE continuation.
+    try tb.setText("👋\u{10EEEE}\u{0305}\u{10EEEE}");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var test_cli_renderer = try TestRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+    );
+    defer test_cli_renderer.deinit();
+    const cli_renderer = test_cli_renderer.renderer;
+
+    cli_renderer.terminal.caps.explicit_width = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    next_buffer.drawTextBuffer(view, 0, 0);
+
+    _ = cli_renderer.render(false);
+
+    const output = test_cli_renderer.lastOutput();
+
+    // Ordinary graphemes still get OSC 66 text-sizing.
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b]66;w=2;👋\x1b\\") != null);
+
+    // Placeholder cells must reach the terminal bare: kitty only treats
+    // plain U+10EEEE cells as image placements; wrapped in OSC 66 it
+    // draws nothing where the image should be.
+    try std.testing.expect(std.mem.indexOf(u8, output, "\u{10EEEE}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b]66;w=1;\u{10EEEE}") == null);
+}
