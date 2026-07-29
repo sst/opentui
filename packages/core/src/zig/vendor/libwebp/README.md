@@ -9,4 +9,7 @@ Only decoder sources, the supported x64/ARM64 decoder DSP paths, and their
 transitive headers and utilities are vendored. `encode.h` and `mux_types.h`
 remain because upstream decoder-common sources include them. Encoders, muxers,
 demuxers, build-system files, tools, examples, and animation utilities are
-excluded. See `COPYING` and `PATENTS`.
+excluded. The exact subset is listed in `FILES`. See `COPYING`, `PATENTS`, and
+`AUTHORS`.
+
+Update with `bun run vendor:update:images` from `packages/core`; see `../README.md`.

@@ -24,6 +24,7 @@
     "build:lib": "bun scripts/build.ts --lib",
     "build:native": "bun scripts/build.ts --native",
     "build:native:dev": "bun scripts/build.ts --native --dev",
+    "vendor:update:images": "sh src/zig/vendor/update.sh",
     "test:native": "cd src/zig && zig build test --summary all",
     "bench:native": "cd src/zig && zig build bench -Dbench-optimize=ReleaseFast --",
     "bench:layout": "bun src/benchmark/layout-benchmark.ts",

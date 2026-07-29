@@ -134,6 +134,7 @@ jobs:
           cp packages/core/src/zig/vendor/stb/LICENSE artifacts/example-notices/LICENSE-STB
           cp packages/core/src/zig/vendor/libwebp/COPYING artifacts/example-notices/LICENSE-LIBWEBP
           cp packages/core/src/zig/vendor/libwebp/PATENTS artifacts/example-notices/PATENTS-LIBWEBP
+          cp packages/core/src/zig/vendor/libwebp/AUTHORS artifacts/example-notices/AUTHORS-LIBWEBP
 
       # Create separate zips for each platform's examples
       - name: Package examples - darwin-x64
@@ -194,6 +195,9 @@ jobs:
           test -f artifacts/examples-windows-x64.zip || (echo "❌ examples-windows-x64.zip missing!" && exit 1)
           for directory in artifacts/examples-{darwin-x64,darwin-arm64,linux-x64,windows-x64}; do
             test -f "$directory/LICENSE-LIBWEBP" || (echo "❌ libwebp notice missing from $directory" && exit 1)
+            test -f "$directory/PATENTS-LIBWEBP" || (echo "❌ libwebp patents missing from $directory" && exit 1)
+            test -f "$directory/AUTHORS-LIBWEBP" || (echo "❌ libwebp authors missing from $directory" && exit 1)
+            test -f "$directory/LICENSE-STB" || (echo "❌ stb notice missing from $directory" && exit 1)
             test -f "$directory/LICENSE-WUFFS" || (echo "❌ Wuffs notice missing from $directory" && exit 1)
           done
 
