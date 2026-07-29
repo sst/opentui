@@ -1500,26 +1500,26 @@ pub const CliRenderer = struct {
         // Fallback placements materialize into ordinary cells; diffing covers them.
         if (protocol == .fallback) return false;
         if (forced) return true;
-        var matched = false;
-        for (self.currentImages.items) |committed| {
-            if (committed.protocol != protocol or committed.placement_id != placement.placement_id or
-                committed.x != placement.x or committed.y != placement.y or
-                committed.width != placement.width or committed.height != placement.height or
-                committed.pixel_width != placement.pixel_width or committed.pixel_height != placement.pixel_height or
-                committed.source_x != placement.source_x or committed.source_y != placement.source_y or
-                committed.source_width != placement.source_width or committed.source_height != placement.source_height or
-                committed.opacity != placement.opacity) continue;
-            // Kitty replaces image data server side, so content changes do not
-            // require clearing cells. Sixel pixels are the cells, so content and
-            // blended-background changes repaint the rectangle.
-            if (protocol == .sixel and (committed.image_handle != placement.image_handle or
-                committed.background_hash != background_hash or
-                committed.lower_occupancy_hash != lower_occupancy_hash)) continue;
-            matched = true;
-            break;
-        }
-        if (!matched) return true;
+        const committed = self.currentImageForPlacement(placement.placement_id) orelse return true;
+        if (committed.protocol != protocol or committed.x != placement.x or committed.y != placement.y or
+            committed.width != placement.width or committed.height != placement.height or
+            committed.pixel_width != placement.pixel_width or committed.pixel_height != placement.pixel_height or
+            committed.source_x != placement.source_x or committed.source_y != placement.source_y or
+            committed.source_width != placement.source_width or committed.source_height != placement.source_height or
+            committed.opacity != placement.opacity) return true;
+        // Kitty replaces image data server side, so content changes do not
+        // require clearing cells. Sixel pixels are the cells, so content and
+        // blended-background changes repaint the rectangle.
+        if (protocol == .sixel and (committed.image_handle != placement.image_handle or
+            committed.background_hash != background_hash or
+            committed.lower_occupancy_hash != lower_occupancy_hash)) return true;
         return protocol == .sixel and self.placementExposed(placement);
+    }
+
+    fn currentImageForPlacement(self: *const CliRenderer, placement_id: u32) ?CommittedImage {
+        if (placement_id == 0 or placement_id > self.currentImages.items.len) return null;
+        const committed = self.currentImages.items[placement_id - 1];
+        return if (committed.placement_id == placement_id) committed else null;
     }
 
     fn placementsOverlap(a: OptimizedBuffer.ImagePlacement, b: OptimizedBuffer.ImagePlacement) bool {
@@ -1721,10 +1721,11 @@ pub const CliRenderer = struct {
         const next = self.nextRenderBuffer.image_placements.items;
         for (self.currentImages.items) |current| {
             if (current.protocol != .kitty) continue;
-            var placement_found = false;
-            for (next) |placement| {
-                if (self.nextPlacementProtocol(placement) == .kitty and placement.placement_id == current.placement_id and placement.image_handle == current.image_handle) placement_found = true;
-            }
+            const placement_found = if (current.placement_id > 0 and current.placement_id <= next.len) blk: {
+                const placement = next[current.placement_id - 1];
+                break :blk placement.placement_id == current.placement_id and placement.image_handle == current.image_handle and
+                    self.nextPlacementProtocol(placement) == .kitty;
+            } else false;
             if (!placement_found) try terminal_image.writeKittyDelete(
                 writer,
                 self.kittyImageId(current.image_handle, current.placement_id),
@@ -1735,13 +1736,10 @@ pub const CliRenderer = struct {
         }
         for (next) |placement| {
             if (self.nextPlacementProtocol(placement) != .kitty) continue;
-            var previous: ?CommittedImage = null;
-            for (self.currentImages.items) |current| {
-                if (current.protocol == .kitty and current.placement_id == placement.placement_id and current.image_handle == placement.image_handle) {
-                    previous = current;
-                    break;
-                }
-            }
+            const previous = if (self.currentImageForPlacement(placement.placement_id)) |current|
+                if (current.protocol == .kitty and current.image_handle == placement.image_handle) current else null
+            else
+                null;
             const image_id = self.kittyImageId(placement.image_handle, placement.placement_id);
             const downscaled = kittyDownscaleApplies(placement);
             const retransmit = if (previous) |committed| blk: {

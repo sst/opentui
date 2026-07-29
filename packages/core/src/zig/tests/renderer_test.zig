@@ -186,6 +186,45 @@ test "renderer repaints overlapping Sixel images when their order changes" {
     try expectSinglePaintedSixelColor(output, .{ 95, 100 }, .{ 0, 2 }, .{ 0, 2 });
 }
 
+test "renderer propagates Sixel repaint through an overlap chain" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 6, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    const red = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const green = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 255, 0, 255 }, 1, 1, 4);
+    const blue = try image.createFromRgba(std.testing.allocator, &[_]u8{ 0, 0, 255, 255 }, 1, 1, 4);
+    const white = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 255, 255, 255 }, 1, 1, 4);
+    const red_handle = try handles.insert(.image, @ptrCast(red));
+    const green_handle = try handles.insert(.image, @ptrCast(green));
+    const blue_handle = try handles.insert(.image, @ptrCast(blue));
+    const white_handle = try handles.insert(.image, @ptrCast(white));
+    defer for ([_]u32{ white_handle, blue_handle, green_handle, red_handle }) |handle| {
+        const token = handles.beginDestroy(handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    };
+
+    var next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(red, red_handle, 0, 0, 2, 1, 2, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(blue, blue_handle, 1, 0, 2, 1, 2, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(white, white_handle, 2, 0, 2, 1, 2, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(red, red_handle, 5, 0, 1, 1, 1, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+
+    next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(green, green_handle, 0, 0, 2, 1, 2, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(blue, blue_handle, 1, 0, 2, 1, 2, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(white, white_handle, 2, 0, 2, 1, 2, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expect(try next.drawImage(red, red_handle, 5, 0, 1, 1, 1, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(false));
+
+    try std.testing.expectEqual(@as(usize, 3), std.mem.count(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q"));
+}
+
 test "renderer repaints lower Sixel after removing an overlapping upper image" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
