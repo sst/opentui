@@ -949,6 +949,18 @@ test("Audio capture reports status failures through Audio.error", () => {
   }
 })
 
+test("Audio capture retains EventEmitter unhandled error semantics", () => {
+  const lib = resolveRenderLib()
+  const restoreRefresh = replaceMethod(lib, "audioRefreshCaptureDevices", () => -2)
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    expect(() => audio.listCaptureDevices()).toThrow("Audio listCaptureDevices failed: -2")
+  } finally {
+    restoreRefresh()
+  }
+})
+
 test("Audio capture reads interleaved frames, drains after stop, and exposes bigint stats", () => {
   const lib = resolveRenderLib()
   let readIndex = 0
@@ -1480,6 +1492,27 @@ test("AudioCaptureStream cancellation, abort, exclusivity, external stop, and pa
     expect(parentOwned.getStats()).toMatchObject({ framesReceived: 4n, bufferedFrames: 4 })
     expect(parentStopCalls).toBeGreaterThanOrEqual(3)
     expect(disposed).toBe(3)
+  } finally {
+    ring.restore()
+  }
+})
+
+test("Audio direct capture validates arguments before reporting stream ownership", async () => {
+  const ring = replaceCaptureRing([])
+  try {
+    const audio = Audio.create({ autoStart: false })
+    instances.push(audio)
+    const errors: string[] = []
+    audio.on("error", (_error, context) => errors.push(context.action))
+    const stream = await audio.openCapture({ capacityFrames: 8, chunkFrames: 2 })
+
+    expect(() => audio.selectCaptureDevice(Number.NaN)).toThrow(TypeError)
+    expect(() => audio.startCapture({ channels: 0 })).toThrow(TypeError)
+    expect(() => audio.readCaptureFrames(0)).toThrow(TypeError)
+    expect(errors).toEqual([])
+
+    stream.dispose()
+    await stream.closed
   } finally {
     ring.restore()
   }

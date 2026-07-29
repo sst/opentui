@@ -3331,11 +3331,11 @@ export class Audio extends EventEmitter<AudioEvents> {
   }
 
   selectCaptureDevice(index: number): boolean {
+    const resolvedIndex = resolveU32Index(index, "index")
     if (this.captureOwner != null) {
       this.emitCaptureOwnershipError("selectCaptureDevice")
       return false
     }
-    const resolvedIndex = resolveU32Index(index, "index")
     const engine = this.engine
     if (!engine) {
       this.emitError("selectCaptureDevice", undefined, "Audio engine unavailable during selectCaptureDevice")
@@ -3369,12 +3369,12 @@ export class Audio extends EventEmitter<AudioEvents> {
 
   startCapture(options: AudioCaptureOptions = {}): boolean {
     if (this.disposing) return false
+    const channels = resolvePositiveU32(options.channels, 1, "channels")
+    const capacityFrames = resolvePositiveU32(options.capacityFrames, this.sampleRate, "capacityFrames")
     if (this.captureOwner != null) {
       this.emitCaptureOwnershipError("startCapture")
       return false
     }
-    const channels = resolvePositiveU32(options.channels, 1, "channels")
-    const capacityFrames = resolvePositiveU32(options.capacityFrames, this.sampleRate, "capacityFrames")
     if (this.isCapturing()) {
       const configurationMatches =
         (options.channels === undefined || channels === this.captureChannels) &&
@@ -3414,11 +3414,11 @@ export class Audio extends EventEmitter<AudioEvents> {
   }
 
   readCaptureFrames(frameCount: number): AudioCaptureReadResult | null {
+    const resolvedFrameCount = resolvePositiveU32(frameCount, frameCount, "frameCount")
     if (this.captureOwner != null) {
       this.emitCaptureOwnershipError("readCaptureFrames")
       return null
     }
-    const resolvedFrameCount = resolvePositiveU32(frameCount, frameCount, "frameCount")
     if (!this.captureBufferAvailable) {
       this.emitError("readCaptureFrames", -4)
       return null
