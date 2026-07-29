@@ -1602,11 +1602,7 @@ pub const CliRenderer = struct {
 
     fn stageImageState(self: *CliRenderer) void {
         self.pendingImages.clearRetainingCapacity();
-        self.pendingImages.ensureTotalCapacity(self.allocator, self.nextRenderBuffer.image_placements.items.len) catch {
-            self.imageRenderFailed = true;
-            self.force_full_repaint = true;
-            return;
-        };
+        std.debug.assert(self.pendingImages.capacity >= self.nextRenderBuffer.image_placements.items.len);
         for (self.nextRenderBuffer.image_placements.items, 0..) |placement, index| {
             self.pendingImages.appendAssumeCapacity(.{
                 .image_handle = placement.image_handle,
@@ -1968,6 +1964,15 @@ pub const CliRenderer = struct {
             self.computeImageDirtyFlags(should_force);
         } else {
             self.imageDirty.clearRetainingCapacity();
+        }
+        self.pendingImages.clearRetainingCapacity();
+        if (has_image_state) {
+            self.pendingImages.ensureTotalCapacity(self.allocator, self.nextRenderBuffer.image_placements.items.len) catch {
+                self.imageRenderFailed = true;
+                self.force_full_repaint = true;
+                self.clearSkippedFrameState();
+                return;
+            };
         }
         const images_changed = has_image_state and self.imageStateChanged();
 
