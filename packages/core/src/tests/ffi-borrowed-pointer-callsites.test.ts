@@ -769,6 +769,8 @@ describe("borrowed pointer call sites", () => {
       })
       expect(calls).toHaveLength(0)
     })
+  })
+
   test("clipboard calls pass transient request and output buffers as object values", () => {
     withStubbedSymbols(
       {
