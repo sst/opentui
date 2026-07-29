@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { NativeImage } from "../image.js"
 import {
   type ClipboardReadResult,
   type HostClipboardBackend,
@@ -11,6 +12,13 @@ import {
   normalizeRemainingTimeout,
   type NormalizedHostClipboardOptions,
 } from "./host-clipboard.internal.js"
+
+const PNG_1X1 = Uint8Array.from(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+)
 
 const createBackend = (overrides: Partial<HostClipboardBackend> = {}) => {
   const reads: HostClipboardReadOptions[] = []
@@ -171,6 +179,54 @@ describe("createHostClipboard", () => {
     await host.read({ preferredTypes: ["Application/Foo*Bar"] })
     expect(fake.reads[1]?.preferredTypes).toEqual(["application/foo*bar"])
     await host.dispose()
+  })
+
+  it("keeps encoded PNG bytes and decoded images valid across disposal", async () => {
+    const fake = createBackend({
+      async read() {
+        return { status: "read", representation: { mimeType: "image/png", bytes: PNG_1X1.slice() } }
+      },
+    })
+    const host = createHost(fake.backend)
+    try {
+      const result = await host.read({ preferredTypes: ["image/png"] })
+      expect(result.status).toBe("read")
+      if (result.status !== "read") return
+
+      const encoded = result.representation.bytes
+      const expectedEncoded = encoded.slice()
+      const image = NativeImage.decode(encoded)
+      try {
+        const expectedRaw = image.raw().data
+        await host.dispose()
+        expect(encoded).toEqual(expectedEncoded)
+
+        encoded.fill(0)
+        expect(image.raw().data).toEqual(expectedRaw)
+      } finally {
+        image.dispose()
+      }
+    } finally {
+      await host.dispose()
+    }
+  })
+
+  it("passes through MIME-tagged PNG bytes that fail image decoding", async () => {
+    const malformed = PNG_1X1.slice()
+    malformed[29] ^= 1
+    const fake = createBackend({
+      async read() {
+        return { status: "read", representation: { mimeType: "image/png", bytes: malformed } }
+      },
+    })
+    const host = createHost(fake.backend)
+    try {
+      const result = await host.read({ preferredTypes: ["image/png"] })
+      expect(result).toEqual({ status: "read", representation: { mimeType: "image/png", bytes: malformed } })
+      expect(() => NativeImage.decode(malformed)).toThrow("malformed image data")
+    } finally {
+      await host.dispose()
+    }
   })
 
   it("validates UTF-8 text and the write limit before dispatch", async () => {

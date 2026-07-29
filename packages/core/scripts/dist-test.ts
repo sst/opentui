@@ -241,6 +241,9 @@ assert.equal(typeof core.AudioRecorderError, "function")
 assert.equal(typeof core.AudioStreamError, "function")
 assert.equal(typeof core.NativeImage, "function")
 assert.equal(typeof core.ImageRenderable, "function")
+assert.equal(typeof core.createHostClipboard, "function")
+assert.equal(typeof core.createClipboard, "function")
+assert.equal(typeof core.createRendererClipboardAdapter, "function")
 assert.equal(typeof core.Audio.prototype.openCapture, "function")
 assert.equal(typeof core.Audio.prototype.recordToFile, "function")
 assert.equal(typeof core.createIcyStreamDemuxer, "function")
@@ -275,6 +278,13 @@ try {
   assert.throws(() => image.info(), /disposed/)
 } finally {
   raw.dispose()
+}
+
+const clipboard = core.createHostClipboard({ timeoutMs: 0 })
+try {
+  assert.equal((await clipboard.read({ preferredTypes: ["text/plain"] })).status, "timed-out")
+} finally {
+  await clipboard.dispose()
 }
 
 const dataPath = mkdtempSync(join(tmpdir(), "opentui-node-dist-tree-sitter-"))
@@ -357,6 +367,9 @@ describe("${packageJson.name} dist smoke test", () => {
     expect(typeof core.AudioStreamError).toBe("function")
     expect(typeof core.NativeImage).toBe("function")
     expect(typeof core.ImageRenderable).toBe("function")
+    expect(typeof core.createHostClipboard).toBe("function")
+    expect(typeof core.createClipboard).toBe("function")
+    expect(typeof core.createRendererClipboardAdapter).toBe("function")
     expect(typeof core.Audio.prototype.openCapture).toBe("function")
     expect(typeof core.Audio.prototype.recordToFile).toBe("function")
     expect(core.NativeAudioStreamCloseReason.TransportError).toBe(1)
@@ -375,6 +388,13 @@ describe("${packageJson.name} dist smoke test", () => {
       expect(() => image.info()).toThrow(/disposed/)
     } finally {
       raw.dispose()
+    }
+
+    const clipboard = core.createHostClipboard({ timeoutMs: 0 })
+    try {
+      expect((await clipboard.read({ preferredTypes: ["text/plain"] })).status).toBe("timed-out")
+    } finally {
+      await clipboard.dispose()
     }
   })
 })
