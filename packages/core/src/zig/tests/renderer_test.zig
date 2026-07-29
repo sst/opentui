@@ -116,6 +116,34 @@ test "renderer emits Sixel only with known pixel dimensions" {
     try std.testing.expectEqual(@as(u64, 2), test_renderer.renderer.sixelCacheMisses);
 }
 
+test "renderer does not copy identity Sixel geometry" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 1, 1, pool);
+    defer test_renderer.deinit();
+
+    var source_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const value = try image.createFromRgba(source_allocator.allocator(), &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    // A full-image extract consumes two allocations. Fail if rendering tries
+    // to allocate a second image copy for the identity resize.
+    source_allocator.fail_index = source_allocator.alloc_index + 2;
+    const source_allocations_before_render = source_allocator.allocations;
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    try std.testing.expect(try test_renderer.renderer.getNextBuffer().drawImage(value, image_handle, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(!source_allocator.has_induced_failure);
+    try std.testing.expectEqual(source_allocations_before_render, source_allocator.allocations);
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+}
+
 test "renderer repaints unchanged upper Sixel after an overlapping lower image changes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

@@ -1814,19 +1814,36 @@ pub const CliRenderer = struct {
             }
             self.sixelCacheMisses += 1;
             const source = placement.image;
-            const cropped = try native_image.extract(
-                self.allocator,
-                source,
-                placement.source_x,
-                placement.source_y,
-                placement.source_width,
-                placement.source_height,
-            );
-            defer cropped.deinit();
-            const resized = try native_image.resize(self.allocator, cropped, placement.pixel_width, placement.pixel_height, .area);
-            defer resized.deinit();
-            if (placement.opacity < 255) self.dimSixelPixels(placement, resized);
-            var quantized = try terminal_image.quantizeSixel(self.allocator, resized, 255);
+            var prepared = source;
+            var prepared_owned = false;
+            defer if (prepared_owned) prepared.deinit();
+            if (placement.source_x != 0 or placement.source_y != 0 or
+                placement.source_width != source.width() or placement.source_height != source.height())
+            {
+                prepared = try native_image.extract(
+                    self.allocator,
+                    source,
+                    placement.source_x,
+                    placement.source_y,
+                    placement.source_width,
+                    placement.source_height,
+                );
+                prepared_owned = true;
+            }
+            if (placement.pixel_width != prepared.width() or placement.pixel_height != prepared.height()) {
+                const resized = try native_image.resize(self.allocator, prepared, placement.pixel_width, placement.pixel_height, .area);
+                if (prepared_owned) prepared.deinit();
+                prepared = resized;
+                prepared_owned = true;
+            }
+            if (placement.opacity < 255) {
+                if (!prepared_owned) {
+                    prepared = try source.clone();
+                    prepared_owned = true;
+                }
+                self.dimSixelPixels(placement, prepared);
+            }
+            var quantized = try terminal_image.quantizeSixel(self.allocator, prepared, 255);
             defer quantized.deinit();
             var payload: std.ArrayList(u8) = .empty;
             defer payload.deinit(self.allocator);
@@ -1836,8 +1853,8 @@ pub const CliRenderer = struct {
                     payload.writer(self.allocator),
                     quantized.indices,
                     quantized.palette[0..quantized.palette_len],
-                    resized.width(),
-                    resized.height(),
+                    prepared.width(),
+                    prepared.height(),
                 );
                 try ansi.ANSI.moveToOutput(writer, @intCast(placement.x + 1), @intCast(placement.y + 1 + @as(i32, @intCast(self.renderOffset))));
                 try terminal_image.writeSixelFramedPayload(writer, payload.items, self.terminal.isInTmux());
