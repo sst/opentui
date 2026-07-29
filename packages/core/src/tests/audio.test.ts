@@ -2240,7 +2240,8 @@ test("AudioRecorder accepts a destination at the filesystem component-length lim
         supported = length
         minimum = length + 1
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENAMETOOLONG") throw error
+        const code = (error as NodeJS.ErrnoException).code
+        if (code !== "ENAMETOOLONG" && !(process.platform === "win32" && code === "ENOENT")) throw error
         maximum = length - 1
       }
     }
