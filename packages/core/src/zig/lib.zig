@@ -24,6 +24,7 @@ const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
 const native_image = @import("image.zig");
+const clipboard = @import("clipboard/host.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -365,6 +366,133 @@ export fn destroyAudioEngine(engine_handle: NativeHandle) void {
     handles.finishDestroy(token.handle);
 }
 
+export fn clipboardServiceCreate(
+    max_operations: u32,
+    max_provider_transfers: u32,
+    wayland_seat_pointer: ?[*]const u8,
+    wayland_seat_length: u32,
+) NativeHandle {
+    return clipboard.createService(
+        globalAllocator,
+        max_operations,
+        max_provider_transfers,
+        wayland_seat_pointer,
+        wayland_seat_length,
+    );
+}
+
+export fn clipboardServiceBeginShutdown(service_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.beginServiceShutdown(service_handle));
+}
+
+export fn clipboardServicePollShutdown(service_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.pollServiceShutdown(service_handle));
+}
+
+export fn clipboardServiceDestroy(service_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.destroyService(service_handle));
+}
+
+export fn clipboardServiceDrain(service_handle: NativeHandle) u8 {
+    return clipboard.drainService(service_handle);
+}
+
+export fn clipboardReadOperationStart(
+    service_handle: NativeHandle,
+    request_pointer: ?[*]const u8,
+    request_length: u32,
+    selection: u8,
+    max_bytes: u32,
+    max_image_pixels: u32,
+    max_conversion_bytes: u32,
+    timeout_ms: u32,
+    out_operation_handle: ?*NativeHandle,
+) u8 {
+    return @intFromEnum(clipboard.startReadOperation(
+        service_handle,
+        request_pointer,
+        request_length,
+        selection,
+        max_bytes,
+        max_image_pixels,
+        max_conversion_bytes,
+        timeout_ms,
+        out_operation_handle,
+    ));
+}
+
+export fn clipboardWriteOperationStart(
+    service_handle: NativeHandle,
+    text_pointer: ?[*]const u8,
+    text_length: u32,
+    selection: u8,
+    timeout_ms: u32,
+    out_operation_handle: ?*NativeHandle,
+) u8 {
+    return @intFromEnum(clipboard.startWriteOperation(
+        service_handle,
+        text_pointer,
+        text_length,
+        selection,
+        timeout_ms,
+        out_operation_handle,
+    ));
+}
+
+export fn clipboardClearOperationStart(
+    service_handle: NativeHandle,
+    selection: u8,
+    timeout_ms: u32,
+    out_operation_handle: ?*NativeHandle,
+) u8 {
+    return @intFromEnum(clipboard.startClearOperation(
+        service_handle,
+        selection,
+        timeout_ms,
+        out_operation_handle,
+    ));
+}
+
+export fn clipboardOperationPoll(operation_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.pollOperation(operation_handle));
+}
+
+export fn clipboardOperationCancel(operation_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.cancelOperation(operation_handle));
+}
+
+export fn clipboardOperationResultMimeLength(operation_handle: NativeHandle, out_length: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultMimeLength(operation_handle, out_length));
+}
+
+export fn clipboardOperationResultMimeCopy(operation_handle: NativeHandle, out_pointer: ?[*]u8, capacity: u32) u8 {
+    return @intFromEnum(clipboard.resultMimeCopy(operation_handle, out_pointer, capacity));
+}
+
+export fn clipboardOperationResultDataLength(operation_handle: NativeHandle, out_length: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultDataLength(operation_handle, out_length));
+}
+
+export fn clipboardOperationResultDataCopy(operation_handle: NativeHandle, out_pointer: ?[*]u8, capacity: u32) u8 {
+    return @intFromEnum(clipboard.resultDataCopy(operation_handle, out_pointer, capacity));
+}
+
+export fn clipboardOperationResultErrorCode(operation_handle: NativeHandle, out_error_code: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultErrorCode(operation_handle, out_error_code));
+}
+
+export fn clipboardOperationResultDiagnosticLength(operation_handle: NativeHandle, out_length: ?*u32) u8 {
+    return @intFromEnum(clipboard.resultDiagnosticLength(operation_handle, out_length));
+}
+
+export fn clipboardOperationResultDiagnosticCopy(operation_handle: NativeHandle, out_pointer: ?[*]u8, capacity: u32) u8 {
+    return @intFromEnum(clipboard.resultDiagnosticCopy(operation_handle, out_pointer, capacity));
+}
+
+export fn clipboardOperationDestroy(operation_handle: NativeHandle) u8 {
+    return @intFromEnum(clipboard.destroyOperation(operation_handle));
+}
+
 export fn audioRefreshPlaybackDevices(engine_handle: NativeHandle) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
     return native_audio.refreshPlaybackDevices(object_ptr);
@@ -393,6 +521,72 @@ export fn audioSelectPlaybackDevice(engine_handle: NativeHandle, index: u32) i32
 export fn audioClearPlaybackDeviceSelection(engine_handle: NativeHandle) void {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return;
     native_audio.clearPlaybackDeviceSelection(object_ptr);
+}
+
+export fn audioRefreshCaptureDevices(engine_handle: NativeHandle) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.refreshCaptureDevices(object_ptr);
+}
+
+export fn audioGetCaptureDeviceCount(engine_handle: NativeHandle) u32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return 0;
+    return native_audio.getCaptureDeviceCount(object_ptr);
+}
+
+export fn audioGetCaptureDeviceName(engine_handle: NativeHandle, index: u32, out_ptr: [*]u8, max_len: u32) u32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return 0;
+    return @intCast(native_audio.getCaptureDeviceName(object_ptr, index, out_ptr, @as(usize, max_len)));
+}
+
+export fn audioIsCaptureDeviceDefault(engine_handle: NativeHandle, index: u32) bool {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return false;
+    return native_audio.isCaptureDeviceDefault(object_ptr, index);
+}
+
+export fn audioSelectCaptureDevice(engine_handle: NativeHandle, index: u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.selectCaptureDevice(object_ptr, index);
+}
+
+export fn audioClearCaptureDeviceSelection(engine_handle: NativeHandle) void {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return;
+    native_audio.clearCaptureDeviceSelection(object_ptr);
+}
+
+export fn audioStartCapture(
+    engine_handle: NativeHandle,
+    options_ptr: ?*const native_audio.StartOptions,
+    channels: u32,
+    capacity_frames: u32,
+) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.startCapture(object_ptr, options_ptr, channels, capacity_frames);
+}
+
+export fn audioStopCapture(engine_handle: NativeHandle) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.stopCapture(object_ptr);
+}
+
+export fn audioIsCaptureRunning(engine_handle: NativeHandle) bool {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return false;
+    return native_audio.isCaptureRunning(object_ptr);
+}
+
+export fn audioReadCapture(
+    engine_handle: NativeHandle,
+    out_ptr: ?[*]f32,
+    out_sample_capacity: u32,
+    frame_count: u32,
+    out_frames_read: ?*u32,
+) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.readCapture(object_ptr, out_ptr, out_sample_capacity, frame_count, out_frames_read);
+}
+
+export fn audioGetCaptureStats(engine_handle: NativeHandle, out_stats: ?*native_audio.CaptureStats) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.getCaptureStats(object_ptr, out_stats);
 }
 
 export fn audioStart(engine_handle: NativeHandle, options_ptr: ?*const native_audio.StartOptions) i32 {

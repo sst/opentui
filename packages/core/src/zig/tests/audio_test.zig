@@ -98,6 +98,10 @@ fn hasSignal(samples: []const f32) bool {
     return false;
 }
 
+fn createCaptureBuffer(channels: u32, capacity_frames: u32) !*audio.CaptureBuffer {
+    return audio.CaptureBuffer.create(testing.allocator, TEST_SAMPLE_RATE, channels, capacity_frames);
+}
+
 fn writeAllStreamBytes(engine: *audio.Engine, stream_id: u32, bytes: []const u8) !void {
     var offset: usize = 0;
     var attempts: usize = 0;
@@ -162,6 +166,175 @@ test "audio stream ABI layouts remain stable" {
     try testing.expectEqual(@as(usize, 44), @offsetOf(audio.StreamStats, "underruns"));
     try testing.expectEqual(@as(usize, 48), @offsetOf(audio.StreamStats, "error_code"));
     try testing.expectEqual(@as(usize, 52), @offsetOf(audio.StreamStats, "ready_generation"));
+
+    try testing.expectEqual(@as(usize, 40), @sizeOf(audio.CaptureStats));
+    try testing.expectEqual(@as(usize, 0), @offsetOf(audio.CaptureStats, "frames_received"));
+    try testing.expectEqual(@as(usize, 8), @offsetOf(audio.CaptureStats, "frames_read"));
+    try testing.expectEqual(@as(usize, 16), @offsetOf(audio.CaptureStats, "frames_dropped"));
+    try testing.expectEqual(@as(usize, 24), @offsetOf(audio.CaptureStats, "sample_rate"));
+    try testing.expectEqual(@as(usize, 28), @offsetOf(audio.CaptureStats, "channels"));
+    try testing.expectEqual(@as(usize, 32), @offsetOf(audio.CaptureStats, "buffered_frames"));
+    try testing.expectEqual(@as(usize, 36), @offsetOf(audio.CaptureStats, "capacity_frames"));
+}
+
+test "audio capture buffer reads exact interleaved order with partial and empty reads" {
+    const capture = try createCaptureBuffer(2, 5);
+    defer capture.destroy();
+
+    const input = [_]f32{ 1, 10, 2, 20, 3, 30 };
+    capture.write(&input, 3);
+
+    var output = [_]f32{99} ** 8;
+    try testing.expectEqual(@as(u32, 2), capture.read(&output, 2));
+    try testing.expectEqualSlices(f32, &.{ 1, 10, 2, 20 }, output[0..4]);
+    try testing.expectEqual(@as(f32, 99), output[4]);
+
+    @memset(&output, 99);
+    try testing.expectEqual(@as(u32, 1), capture.read(&output, 4));
+    try testing.expectEqualSlices(f32, &.{ 3, 30 }, output[0..2]);
+    try testing.expectEqual(@as(f32, 99), output[2]);
+
+    @memset(&output, 77);
+    try testing.expectEqual(@as(u32, 0), capture.read(&output, 4));
+    try testing.expectEqual(@as(f32, 77), output[0]);
+
+    const stats = capture.snapshot();
+    try testing.expectEqual(@as(u64, 3), stats.frames_received);
+    try testing.expectEqual(@as(u64, 3), stats.frames_read);
+    try testing.expectEqual(@as(u64, 0), stats.frames_dropped);
+    try testing.expectEqual(@as(u32, 0), stats.buffered_frames);
+}
+
+test "audio capture buffer preserves order across wrap" {
+    const capture = try createCaptureBuffer(1, 4);
+    defer capture.destroy();
+
+    const first = [_]f32{ 1, 2, 3 };
+    capture.write(&first, 3);
+    var prefix: [2]f32 = undefined;
+    try testing.expectEqual(@as(u32, 2), capture.read(&prefix, 2));
+    try testing.expectEqualSlices(f32, &.{ 1, 2 }, &prefix);
+
+    const wrapped = [_]f32{ 4, 5, 6 };
+    capture.write(&wrapped, 3);
+    var output: [4]f32 = undefined;
+    try testing.expectEqual(@as(u32, 4), capture.read(&output, 4));
+    try testing.expectEqualSlices(f32, &.{ 3, 4, 5, 6 }, &output);
+
+    const stats = capture.snapshot();
+    try testing.expectEqual(@as(u64, 6), stats.frames_received);
+    try testing.expectEqual(@as(u64, 6), stats.frames_read);
+    try testing.expectEqual(@as(u64, 0), stats.frames_dropped);
+}
+
+test "audio capture buffer drops newest complete frames and counts overflow" {
+    const capture = try createCaptureBuffer(2, 3);
+    defer capture.destroy();
+
+    const first = [_]f32{ 1, 10, 2, 20, 3, 30, 4, 40, 5, 50 };
+    capture.write(&first, 5);
+    var prefix: [2]f32 = undefined;
+    try testing.expectEqual(@as(u32, 1), capture.read(&prefix, 1));
+    try testing.expectEqualSlices(f32, &.{ 1, 10 }, &prefix);
+
+    const second = [_]f32{ 6, 60, 7, 70 };
+    capture.write(&second, 2);
+    var output: [6]f32 = undefined;
+    try testing.expectEqual(@as(u32, 3), capture.read(&output, 3));
+    try testing.expectEqualSlices(f32, &.{ 2, 20, 3, 30, 6, 60 }, &output);
+
+    const stats = capture.snapshot();
+    try testing.expectEqual(@as(u64, 7), stats.frames_received);
+    try testing.expectEqual(@as(u64, 4), stats.frames_read);
+    try testing.expectEqual(@as(u64, 3), stats.frames_dropped);
+    try testing.expectEqual(@as(u32, 0), stats.buffered_frames);
+    try testing.expectEqual(@as(u32, 3), stats.capacity_frames);
+}
+
+test "audio capture stop is idempotent and preserves storage for draining" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+    try expectStatusOk(audio.startMixer(engine));
+
+    const capture = try createCaptureBuffer(1, 4);
+    engine.capture = capture;
+    const input = [_]f32{ 1, 2, 3 };
+    capture.write(&input, 3);
+
+    try expectStatusOk(audio.stopCapture(engine));
+    try expectStatusOk(audio.stopCapture(engine));
+    try testing.expect(engine.capture.? == capture);
+    try testing.expect(engine.started);
+
+    var output: [4]f32 = undefined;
+    var frames_read: u32 = 99;
+    try expectStatusOk(audio.readCapture(engine, &output, output.len, 4, &frames_read));
+    try testing.expectEqual(@as(u32, 3), frames_read);
+    try testing.expectEqualSlices(f32, &.{ 1, 2, 3 }, output[0..3]);
+
+    var stats: audio.CaptureStats = undefined;
+    try expectStatusOk(audio.getCaptureStats(engine, &stats));
+    try testing.expectEqual(@as(u64, 3), stats.frames_read);
+    try testing.expectEqual(@as(u32, 0), stats.buffered_frames);
+}
+
+test "audio capture read rejects a destination smaller than one interleaved frame" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    const capture = try audio.CaptureBuffer.create(testing.allocator, TEST_SAMPLE_RATE, 2, 4);
+    engine.capture = capture;
+    const input = [_]f32{ 0.25, -0.5 };
+    capture.write(&input, 1);
+
+    var output = [_]f32{ 0, 12345 };
+    var frames_read: u32 = 99;
+    const status = audio.readCapture(engine, output[0..1].ptr, 1, 1, &frames_read);
+    try testing.expectEqual(@as(f32, 12345), output[1]);
+    try testing.expectEqual(audio.Status.err_invalid, status);
+    try testing.expectEqual(@as(u32, 0), frames_read);
+}
+
+test "audio capture rejects invalid and overflowing sizes before allocation" {
+    var failing = testing.FailingAllocator.init(testing.allocator, .{});
+    const engine = audio.create(failing.allocator(), null) orelse return error.TestUnexpectedResult;
+    defer audio.destroy(engine);
+
+    const allocation_index = failing.alloc_index;
+    failing.fail_index = allocation_index;
+
+    try testing.expectEqual(audio.Status.err_invalid, audio.startCapture(engine, null, 0, 16));
+    try testing.expectEqual(audio.Status.err_invalid, audio.startCapture(engine, null, 1, 0));
+    try testing.expectEqual(audio.Status.err_invalid, audio.startCapture(engine, null, audio.max_capture_channels + 1, 16));
+    try testing.expectEqual(audio.Status.err_invalid, audio.startCapture(engine, null, audio.max_capture_channels, std.math.maxInt(u32)));
+    try testing.expectEqual(allocation_index, failing.alloc_index);
+    try testing.expect(!failing.has_induced_failure);
+    try testing.expect(engine.capture == null);
+
+    var frames_read: u32 = 99;
+    var sample = [_]f32{0};
+    var stats: audio.CaptureStats = undefined;
+    try testing.expectEqual(audio.Status.err_not_found, audio.readCapture(engine, &sample, sample.len, 1, &frames_read));
+    try testing.expectEqual(@as(u32, 0), frames_read);
+    try testing.expectEqual(audio.Status.err_invalid, audio.readCapture(engine, null, sample.len, 1, &frames_read));
+    try testing.expectEqual(audio.Status.err_invalid, audio.readCapture(engine, &sample, sample.len, 1, null));
+    try testing.expectEqual(audio.Status.err_not_found, audio.getCaptureStats(engine, &stats));
+    try testing.expectEqual(audio.Status.err_invalid, audio.getCaptureStats(engine, null));
+}
+
+test "audio capture allocation failures clean up partial storage" {
+    for (0..2) |failure_offset| {
+        var failing = testing.FailingAllocator.init(testing.allocator, .{});
+        const engine = audio.create(failing.allocator(), null) orelse return error.TestUnexpectedResult;
+        defer audio.destroy(engine);
+
+        const allocation_index = failing.alloc_index;
+        failing.fail_index = allocation_index + failure_offset;
+        try testing.expectEqual(audio.Status.err_no_space, audio.startCapture(engine, null, 1, 16));
+        try testing.expect(failing.has_induced_failure);
+        try testing.expect(engine.capture == null);
+        try testing.expect(!engine.has_capture_device);
+    }
 }
 
 test "audio - create initializes engine with defaults" {
@@ -487,6 +660,87 @@ test "audio - refresh and playback device selection APIs" {
 
     audio.clearPlaybackDeviceSelection(engine);
     try testing.expectEqual(@as(?u32, null), engine.selected_playback_index);
+}
+
+test "audio - refresh and capture device selection APIs" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    const refresh_status = audio.refreshCaptureDevices(engine);
+    if (refresh_status != audio.Status.ok) return error.SkipZigTest;
+
+    const count = audio.getCaptureDeviceCount(engine);
+    try testing.expectEqual(@as(u32, @intCast(engine.capture_devices.items.len)), count);
+    if (count == 0) return error.SkipZigTest;
+
+    var name_buf: [256]u8 = [_]u8{0} ** 256;
+    const copied = audio.getCaptureDeviceName(engine, 0, name_buf[0..].ptr, name_buf.len);
+    try testing.expect(copied <= name_buf.len);
+
+    _ = audio.isCaptureDeviceDefault(engine, 0);
+
+    try expectStatusOk(audio.selectCaptureDevice(engine, 0));
+    try testing.expectEqual(@as(?u32, 0), engine.selected_capture_index);
+    try testing.expect(engine.has_selected_capture_device);
+    try testing.expectEqualSlices(
+        u8,
+        std.mem.asBytes(&engine.capture_devices.items[0].id),
+        std.mem.asBytes(&engine.selected_capture_device_id),
+    );
+
+    const selected_device_id = engine.selected_capture_device_id;
+    try expectStatusOk(audio.refreshCaptureDevices(engine));
+    try testing.expect(engine.has_selected_capture_device);
+    try testing.expectEqualSlices(
+        u8,
+        std.mem.asBytes(&selected_device_id),
+        std.mem.asBytes(&engine.selected_capture_device_id),
+    );
+
+    audio.clearCaptureDeviceSelection(engine);
+    try testing.expectEqual(@as(?u32, null), engine.selected_capture_index);
+    try testing.expect(!engine.has_selected_capture_device);
+}
+
+test "audio - capture hardware honors default and provided callback sizing options" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+    try expectStatusOk(audio.startMixer(engine));
+
+    const default_status = audio.startCapture(engine, null, 1, 64);
+    if (default_status != audio.Status.ok) {
+        try testing.expectEqual(audio.Status.err_device, default_status);
+        try testing.expect(!engine.has_capture_device);
+        try testing.expect(engine.capture == null);
+        return error.SkipZigTest;
+    }
+
+    try testing.expect(engine.has_capture_device);
+    try testing.expect(audio.isCaptureRunning(engine));
+    try testing.expect(engine.capture_device.noFixedSizedCallback != 0);
+    try testing.expect(engine.started);
+    try expectStatusOk(audio.stopCapture(engine));
+    try testing.expect(!engine.has_capture_device);
+    try testing.expect(!audio.isCaptureRunning(engine));
+    try testing.expect(engine.capture != null);
+    try testing.expect(engine.started);
+
+    var options = audio.StartOptions{};
+    options.no_fixed_sized_callback = false;
+    const provided_status = audio.startCapture(engine, &options, 1, 96);
+    if (provided_status != audio.Status.ok) {
+        try testing.expectEqual(audio.Status.err_device, provided_status);
+        return error.SkipZigTest;
+    }
+
+    try testing.expectEqual(@as(u8, 0), engine.capture_device.noFixedSizedCallback);
+    var stats: audio.CaptureStats = undefined;
+    try expectStatusOk(audio.getCaptureStats(engine, &stats));
+    try testing.expectEqual(@as(u32, 96), stats.capacity_frames);
+    try testing.expectEqual(@as(u32, 1), stats.channels);
+    try testing.expectEqual(engine.sample_rate, stats.sample_rate);
+    try testing.expect(engine.started);
+    try expectStatusOk(audio.stopCapture(engine));
 }
 
 test "audio - getStats returns current counters" {

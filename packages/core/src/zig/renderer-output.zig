@@ -21,7 +21,7 @@ const Allocator = std.mem.Allocator;
 const NativeSpanFeed = @import("native-span-feed.zig");
 
 pub const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2 MiB, double-buffered per BufferedBackend for thread handoff
-const WINDOWS_UTF8_CODE_PAGE = 65001;
+const UTF16_BUFFER_SIZE = 4096;
 
 pub const WriteStatus = enum(u8) {
     ok = 0,
@@ -41,6 +41,96 @@ pub const BufferedOutput = struct {
     }
 };
 
+const Utf16Chunk = struct {
+    input_len: usize,
+    output_len: usize,
+};
+
+fn utf8ToUtf16Chunk(output: []u16, input: []const u8) error{InvalidUtf8}!Utf16Chunk {
+    std.debug.assert(output.len >= 2);
+
+    var input_index: usize = 0;
+    var output_index: usize = 0;
+    while (input_index < input.len) {
+        const first_byte = input[input_index];
+        if (first_byte < 0x80) {
+            if (output_index == output.len) break;
+            output[output_index] = first_byte;
+            input_index += 1;
+            output_index += 1;
+            continue;
+        }
+
+        const sequence_len = std.unicode.utf8ByteSequenceLength(first_byte) catch return error.InvalidUtf8;
+        if (input.len - input_index < sequence_len) return error.InvalidUtf8;
+        const codepoint = std.unicode.utf8Decode(input[input_index..][0..sequence_len]) catch return error.InvalidUtf8;
+        const output_len: usize = if (codepoint < 0x10000) 1 else 2;
+        if (output.len - output_index < output_len) break;
+
+        if (output_len == 1) {
+            output[output_index] = @intCast(codepoint);
+        } else {
+            const value = codepoint - 0x10000;
+            output[output_index] = @intCast(0xD800 + (value >> 10));
+            output[output_index + 1] = @intCast(0xDC00 + (value & 0x3FF));
+        }
+        input_index += sequence_len;
+        output_index += output_len;
+    }
+
+    return .{ .input_len = input_index, .output_len = output_index };
+}
+
+test "UTF-8 output converts to UTF-16" {
+    const input = "Aé東😀";
+    const expected = [_]u16{ 'A', 0x00E9, 0x6771, 0xD83D, 0xDE00 };
+    var output: [expected.len]u16 = undefined;
+
+    const result = try utf8ToUtf16Chunk(&output, input);
+
+    try std.testing.expectEqual(input.len, result.input_len);
+    try std.testing.expectEqual(expected.len, result.output_len);
+    try std.testing.expectEqualSlices(u16, &expected, output[0..result.output_len]);
+}
+
+test "UTF-8 output chunking does not split surrogate pairs" {
+    const input = "A😀B";
+    var output: [2]u16 = undefined;
+
+    const first = try utf8ToUtf16Chunk(&output, input);
+    try std.testing.expectEqual(@as(usize, 1), first.input_len);
+    try std.testing.expectEqualSlices(u16, &.{'A'}, output[0..first.output_len]);
+
+    const second = try utf8ToUtf16Chunk(&output, input[first.input_len..]);
+    try std.testing.expectEqual(@as(usize, 4), second.input_len);
+    try std.testing.expectEqualSlices(u16, &.{ 0xD83D, 0xDE00 }, output[0..second.output_len]);
+
+    const third_offset = first.input_len + second.input_len;
+    const third = try utf8ToUtf16Chunk(&output, input[third_offset..]);
+    try std.testing.expectEqual(@as(usize, 1), third.input_len);
+    try std.testing.expectEqualSlices(u16, &.{'B'}, output[0..third.output_len]);
+}
+
+test "UTF-8 output conversion is bounded by the UTF-16 buffer" {
+    const input = "x" ** (UTF16_BUFFER_SIZE + 1);
+    var output: [UTF16_BUFFER_SIZE]u16 = undefined;
+
+    const first = try utf8ToUtf16Chunk(&output, input);
+    try std.testing.expectEqual(@as(usize, UTF16_BUFFER_SIZE), first.input_len);
+    try std.testing.expectEqual(@as(usize, UTF16_BUFFER_SIZE), first.output_len);
+
+    const second = try utf8ToUtf16Chunk(&output, input[first.input_len..]);
+    try std.testing.expectEqual(@as(usize, 1), second.input_len);
+    try std.testing.expectEqualSlices(u16, &.{'x'}, output[0..second.output_len]);
+}
+
+test "UTF-8 output rejects invalid and incomplete input" {
+    var output: [8]u16 = undefined;
+
+    try std.testing.expectError(error.InvalidUtf8, utf8ToUtf16Chunk(&output, "\xFF"));
+    try std.testing.expectError(error.InvalidUtf8, utf8ToUtf16Chunk(&output, "\xF0\x9F"));
+}
+
 fn isWindowsConsole(file: std.fs.File) bool {
     if (builtin.os.tag != .windows) return false;
 
@@ -49,33 +139,20 @@ fn isWindowsConsole(file: std.fs.File) bool {
 }
 
 pub const StdoutOutput = struct {
+    stdout: std.fs.File,
     stdoutBuffer: [4096]u8 = undefined,
-    previousOutputCodePage: ?u32 = null,
+    utf16Buffer: [UTF16_BUFFER_SIZE]u16 = undefined,
+    windowsConsole: bool,
 
     pub fn init() StdoutOutput {
         return initForFile(std.fs.File.stdout());
     }
 
     fn initForFile(stdout: std.fs.File) StdoutOutput {
-        var result: StdoutOutput = .{};
-        if (builtin.os.tag != .windows) return result;
-        if (!isWindowsConsole(stdout)) return result;
-
-        const code_page = std.os.windows.kernel32.GetConsoleOutputCP();
-        if (code_page == 0 or code_page == WINDOWS_UTF8_CODE_PAGE) return result;
-        if (std.os.windows.kernel32.SetConsoleOutputCP(WINDOWS_UTF8_CODE_PAGE) == 0) return result;
-
-        result.previousOutputCodePage = code_page;
-        return result;
-    }
-
-    pub fn deinit(self: *StdoutOutput) void {
-        if (builtin.os.tag != .windows) return;
-        const code_page = self.previousOutputCodePage orelse return;
-        if (std.os.windows.kernel32.GetConsoleOutputCP() == WINDOWS_UTF8_CODE_PAGE) {
-            _ = std.os.windows.kernel32.SetConsoleOutputCP(code_page);
-        }
-        self.previousOutputCodePage = null;
+        return .{
+            .stdout = stdout,
+            .windowsConsole = isWindowsConsole(stdout),
+        };
     }
 
     pub fn bufferedOutput(self: *StdoutOutput) BufferedOutput {
@@ -90,14 +167,55 @@ pub const StdoutOutput = struct {
         if (data.len == 0) return;
 
         const self: *StdoutOutput = @ptrCast(@alignCast(ctx));
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+        if (builtin.os.tag == .windows) {
+            if (self.windowsConsole) {
+                self.writeWindowsConsole(data);
+                return;
+            }
+        }
+
+        self.writeBytes(data);
+    }
+
+    fn writeBytes(self: *StdoutOutput, data: []const u8) void {
+        var stdoutWriter = self.stdout.writerStreaming(&self.stdoutBuffer);
         const w = &stdoutWriter.interface;
         w.writeAll(data) catch {};
         w.flush() catch {};
     }
+
+    fn writeWindowsConsole(self: *StdoutOutput, data: []const u8) void {
+        // Frames and control writes are complete UTF-8 units. Drop malformed
+        // input rather than partially emitting an ANSI sequence to the console.
+        if (!std.unicode.utf8ValidateSlice(data)) return;
+
+        var input = data;
+        while (input.len > 0) {
+            const chunk = utf8ToUtf16Chunk(&self.utf16Buffer, input) catch unreachable;
+            std.debug.assert(chunk.input_len > 0);
+            if (!self.writeWindowsConsoleUtf16(self.utf16Buffer[0..chunk.output_len])) return;
+            input = input[chunk.input_len..];
+        }
+    }
+
+    fn writeWindowsConsoleUtf16(self: *StdoutOutput, data: []const u16) bool {
+        var remaining = data;
+        while (remaining.len > 0) {
+            var written: std.os.windows.DWORD = 0;
+            if (std.os.windows.kernel32.WriteConsoleW(
+                self.stdout.handle,
+                remaining.ptr,
+                @intCast(remaining.len),
+                &written,
+                null,
+            ) == 0 or written == 0) return false;
+            remaining = remaining[@intCast(written)..];
+        }
+        return true;
+    }
 };
 
-test "StdoutOutput restores the Windows console output code page" {
+test "StdoutOutput leaves the Windows console output code page unchanged" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
     if (!isWindowsConsole(std.fs.File.stdout())) return error.SkipZigTest;
 
@@ -107,50 +225,28 @@ test "StdoutOutput restores the Windows console output code page" {
 
     if (std.os.windows.kernel32.SetConsoleOutputCP(437) == 0) return error.SkipZigTest;
 
-    var stdout_output = StdoutOutput.init();
-    try std.testing.expectEqual(@as(u32, WINDOWS_UTF8_CODE_PAGE), std.os.windows.kernel32.GetConsoleOutputCP());
-
-    stdout_output.deinit();
+    const stdout_output = StdoutOutput.init();
+    try std.testing.expect(stdout_output.windowsConsole);
     try std.testing.expectEqual(@as(u32, 437), std.os.windows.kernel32.GetConsoleOutputCP());
 }
 
-test "StdoutOutput leaves the code page unchanged for redirected output" {
-    if (builtin.os.tag != .windows) return error.SkipZigTest;
-
-    const original_code_page = std.os.windows.kernel32.GetConsoleOutputCP();
-    if (original_code_page == 0) return error.SkipZigTest;
-    defer _ = std.os.windows.kernel32.SetConsoleOutputCP(original_code_page);
-
-    if (std.os.windows.kernel32.SetConsoleOutputCP(437) == 0) return error.SkipZigTest;
-
+test "StdoutOutput preserves bytes for redirected output" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    const file = try tmp.dir.createFile("stdout", .{});
+    const file = try tmp.dir.createFile("stdout", .{ .read = true });
     defer file.close();
     try std.testing.expect(!isWindowsConsole(file));
 
     var stdout_output = StdoutOutput.initForFile(file);
-    defer stdout_output.deinit();
-    try std.testing.expectEqual(@as(u32, 437), std.os.windows.kernel32.GetConsoleOutputCP());
-}
+    const expected = "\x1b[31mAé東😀\x1b[0m";
+    const split = expected.len / 2;
+    stdout_output.bufferedOutput().write(expected[0..split]);
+    stdout_output.bufferedOutput().write(expected[split..]);
 
-test "StdoutOutput preserves an intervening code page change" {
-    if (builtin.os.tag != .windows) return error.SkipZigTest;
-    if (!isWindowsConsole(std.fs.File.stdout())) return error.SkipZigTest;
-
-    const original_code_page = std.os.windows.kernel32.GetConsoleOutputCP();
-    if (original_code_page == 0) return error.SkipZigTest;
-    defer _ = std.os.windows.kernel32.SetConsoleOutputCP(original_code_page);
-
-    if (std.os.windows.kernel32.SetConsoleOutputCP(437) == 0) return error.SkipZigTest;
-
-    var stdout_output = StdoutOutput.init();
-    defer stdout_output.deinit();
-    try std.testing.expectEqual(@as(u32, WINDOWS_UTF8_CODE_PAGE), std.os.windows.kernel32.GetConsoleOutputCP());
-
-    if (std.os.windows.kernel32.SetConsoleOutputCP(850) == 0) return error.SkipZigTest;
-    stdout_output.deinit();
-    try std.testing.expectEqual(@as(u32, 850), std.os.windows.kernel32.GetConsoleOutputCP());
+    var actual: [expected.len]u8 = undefined;
+    const actual_len = try file.preadAll(&actual, 0);
+    try std.testing.expectEqual(expected.len, actual_len);
+    try std.testing.expectEqualStrings(expected, &actual);
 }
 
 pub const MemoryOutput = struct {
@@ -314,11 +410,8 @@ pub const BufferedBackend = struct {
 
     pub fn createStdout(allocator: Allocator) !BufferedBackend {
         const stdoutOutput = try allocator.create(StdoutOutput);
+        errdefer allocator.destroy(stdoutOutput);
         stdoutOutput.* = StdoutOutput.init();
-        errdefer {
-            stdoutOutput.deinit();
-            allocator.destroy(stdoutOutput);
-        }
 
         var backend = try BufferedBackend.create(allocator, stdoutOutput.bufferedOutput());
         backend.ownedStdoutOutput = stdoutOutput;
@@ -359,7 +452,6 @@ pub const BufferedBackend = struct {
         self.allocator.free(self.outputA);
         self.allocator.free(self.outputB);
         if (self.ownedStdoutOutput) |stdoutOutput| {
-            stdoutOutput.deinit();
             self.allocator.destroy(stdoutOutput);
             self.ownedStdoutOutput = null;
         }

@@ -29,6 +29,7 @@ export type {
   AllocatorStats,
   AudioStreamCreateOptions,
   BuildOptions,
+  NativeAudioCaptureStats,
   NativeAudioStreamStats,
   NativeRenderStats,
 }
@@ -57,6 +58,7 @@ import {
   AudioVoiceOptionsStruct,
   AudioStreamCreateOptionsStruct,
   AudioStreamStatsStruct,
+  AudioCaptureStatsStruct,
   NativeAudioStreamCloseReason as NativeAudioStreamCloseReasonValue,
   NativeAudioStreamFormat as NativeAudioStreamFormatValue,
   NativeAudioStreamState as NativeAudioStreamStateValue,
@@ -79,6 +81,7 @@ import type {
   NativeAudioStreamFormat as NativeAudioStreamFormatType,
   NativeAudioStreamState as NativeAudioStreamStateType,
   NativeAudioStreamStats,
+  NativeAudioCaptureStats,
   AudioStats,
   BuildOptions,
   AllocatorStats,
@@ -114,6 +117,57 @@ export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
 export type NativeRenderableHandle = NativeHandle<"native_renderable">
 export type ImageHandle = NativeHandle<"image">
+export type ClipboardServiceHandle = number & { readonly __nativeHandle: "clipboard_service" }
+export type ClipboardOperationHandle = number & { readonly __nativeHandle: "clipboard_operation" }
+
+export enum NativeClipboardOperationStatus {
+  Pending = 0,
+  Read = 1,
+  Empty = 2,
+  Written = 3,
+  Cleared = 4,
+  Unsupported = 5,
+  Cancelled = 6,
+  TimedOut = 7,
+  LimitExceeded = 8,
+  Failed = 9,
+  InvalidHandle = 10,
+}
+
+export enum NativeClipboardStartStatus {
+  Ok = 0,
+  InvalidService = 1,
+  ShuttingDown = 2,
+  LimitExceeded = 3,
+  InvalidArgument = 4,
+  OutOfMemory = 5,
+}
+
+export enum NativeClipboardCancelStatus {
+  Requested = 0,
+  AlreadyTerminal = 1,
+  InvalidHandle = 2,
+}
+
+export enum NativeClipboardCopyStatus {
+  Ok = 0,
+  BufferTooSmall = 1,
+  InvalidHandle = 2,
+  InvalidState = 3,
+  InvalidArgument = 4,
+}
+
+export enum NativeClipboardDestroyStatus {
+  Destroyed = 0,
+  NotReady = 1,
+  InvalidHandle = 2,
+}
+
+export enum NativeClipboardShutdownStatus {
+  Pending = 0,
+  Ready = 1,
+  InvalidHandle = 2,
+}
 let targetLibPath: string | undefined
 let targetLibError: Error | undefined
 
@@ -519,6 +573,78 @@ function getOpenTUILib(libPath?: string) {
     clearClipboardOSC52: {
       args: ["u32", "u8"],
       returns: "bool",
+    },
+    clipboardServiceCreate: {
+      args: ["u32", "u32", "ptr", "u32"],
+      returns: "u32",
+    },
+    clipboardServiceBeginShutdown: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardServicePollShutdown: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardServiceDestroy: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardServiceDrain: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardReadOperationStart: {
+      args: ["u32", "ptr", "u32", "u8", "u32", "u32", "u32", "u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardWriteOperationStart: {
+      args: ["u32", "ptr", "u32", "u8", "u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardClearOperationStart: {
+      args: ["u32", "u8", "u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardOperationPoll: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardOperationCancel: {
+      args: ["u32"],
+      returns: "u8",
+    },
+    clipboardOperationResultMimeLength: {
+      args: ["u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardOperationResultMimeCopy: {
+      args: ["u32", "ptr", "u32"],
+      returns: "u8",
+    },
+    clipboardOperationResultDataLength: {
+      args: ["u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardOperationResultDataCopy: {
+      args: ["u32", "ptr", "u32"],
+      returns: "u8",
+    },
+    clipboardOperationResultErrorCode: {
+      args: ["u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardOperationResultDiagnosticLength: {
+      args: ["u32", "ptr"],
+      returns: "u8",
+    },
+    clipboardOperationResultDiagnosticCopy: {
+      args: ["u32", "ptr", "u32"],
+      returns: "u8",
+    },
+    clipboardOperationDestroy: {
+      args: ["u32"],
+      returns: "u8",
     },
     triggerNotification: {
       args: ["u32", "ptr", "u32", "ptr", "u32"],
@@ -1525,6 +1651,50 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32"],
       returns: "void",
     },
+    audioRefreshCaptureDevices: {
+      args: ["u32"],
+      returns: "i32",
+    },
+    audioGetCaptureDeviceCount: {
+      args: ["u32"],
+      returns: "u32",
+    },
+    audioGetCaptureDeviceName: {
+      args: ["u32", "u32", "ptr", "u32"],
+      returns: "u32",
+    },
+    audioIsCaptureDeviceDefault: {
+      args: ["u32", "u32"],
+      returns: "bool",
+    },
+    audioSelectCaptureDevice: {
+      args: ["u32", "u32"],
+      returns: "i32",
+    },
+    audioClearCaptureDeviceSelection: {
+      args: ["u32"],
+      returns: "void",
+    },
+    audioStartCapture: {
+      args: ["u32", "ptr", "u32", "u32"],
+      returns: "i32",
+    },
+    audioStopCapture: {
+      args: ["u32"],
+      returns: "i32",
+    },
+    audioIsCaptureRunning: {
+      args: ["u32"],
+      returns: "bool",
+    },
+    audioReadCapture: {
+      args: ["u32", "ptr", "u32", "u32", "ptr"],
+      returns: "i32",
+    },
+    audioGetCaptureStats: {
+      args: ["u32", "ptr"],
+      returns: "i32",
+    },
     audioStart: {
       args: ["u32", "ptr"],
       returns: "i32",
@@ -1974,6 +2144,26 @@ export interface AudioEngineLib {
   audioIsPlaybackDeviceDefault: (engine: AudioEngineHandle, index: number) => boolean
   audioSelectPlaybackDevice: (engine: AudioEngineHandle, index: number) => number
   audioClearPlaybackDeviceSelection: (engine: AudioEngineHandle) => void
+  audioRefreshCaptureDevices: (engine: AudioEngineHandle) => number
+  audioGetCaptureDeviceCount: (engine: AudioEngineHandle) => number
+  audioGetCaptureDeviceName: (engine: AudioEngineHandle, index: number) => string
+  audioIsCaptureDeviceDefault: (engine: AudioEngineHandle, index: number) => boolean
+  audioSelectCaptureDevice: (engine: AudioEngineHandle, index: number) => number
+  audioClearCaptureDeviceSelection: (engine: AudioEngineHandle) => void
+  audioStartCapture: (
+    engine: AudioEngineHandle,
+    options: AudioStartOptions | undefined,
+    channels: number,
+    capacityFrames: number,
+  ) => number
+  audioStopCapture: (engine: AudioEngineHandle) => number
+  audioIsCaptureRunning: (engine: AudioEngineHandle) => boolean
+  audioReadCapture: (
+    engine: AudioEngineHandle,
+    outBuffer: Float32Array,
+    frameCount: number,
+  ) => { status: number; framesRead: number }
+  audioGetCaptureStats: (engine: AudioEngineHandle) => { status: number; stats: NativeAudioCaptureStats | null }
   audioStart: (engine: AudioEngineHandle, options?: AudioStartOptions | null) => number
   audioStartMixer: (engine: AudioEngineHandle) => number
   audioStop: (engine: AudioEngineHandle) => number
@@ -2236,6 +2426,66 @@ export interface RenderLib extends AudioEngineLib {
   setTerminalTitle: (renderer: RendererHandle, title: string) => void
   copyToClipboardOSC52: (renderer: RendererHandle, target: number, textUtf8: Uint8Array) => boolean
   clearClipboardOSC52: (renderer: RendererHandle, target: number) => boolean
+  clipboardServiceCreate: (
+    maxConcurrentOperations: number,
+    maxProviderTransfers: number,
+    waylandSeat?: string,
+  ) => ClipboardServiceHandle | null
+  clipboardServiceBeginShutdown: (service: ClipboardServiceHandle) => NativeClipboardShutdownStatus
+  clipboardServicePollShutdown: (service: ClipboardServiceHandle) => NativeClipboardShutdownStatus
+  clipboardServiceDestroy: (service: ClipboardServiceHandle) => NativeClipboardDestroyStatus
+  clipboardServiceDrain: (service: ClipboardServiceHandle) => number
+  clipboardReadOperationStart: (
+    service: ClipboardServiceHandle,
+    request: Uint8Array,
+    selection: number,
+    maxBytes: number,
+    maxImagePixels: number,
+    maxConversionBytes: number,
+    timeoutMs: number,
+  ) => { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null }
+  clipboardWriteOperationStart: (
+    service: ClipboardServiceHandle,
+    textUtf8: Uint8Array,
+    selection: number,
+    timeoutMs: number,
+  ) => { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null }
+  clipboardClearOperationStart: (
+    service: ClipboardServiceHandle,
+    selection: number,
+    timeoutMs: number,
+  ) => { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null }
+  clipboardOperationPoll: (operation: ClipboardOperationHandle) => NativeClipboardOperationStatus
+  clipboardOperationCancel: (operation: ClipboardOperationHandle) => NativeClipboardCancelStatus
+  clipboardOperationResultMimeLength: (operation: ClipboardOperationHandle) => {
+    status: NativeClipboardCopyStatus
+    length: number
+  }
+  clipboardOperationResultMimeCopy: (
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ) => NativeClipboardCopyStatus
+  clipboardOperationResultDataLength: (operation: ClipboardOperationHandle) => {
+    status: NativeClipboardCopyStatus
+    length: number
+  }
+  clipboardOperationResultDataCopy: (
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ) => NativeClipboardCopyStatus
+  clipboardOperationResultErrorCode: (operation: ClipboardOperationHandle) => {
+    status: NativeClipboardCopyStatus
+    errorCode: number
+  }
+  clipboardOperationResultDiagnosticLength: (operation: ClipboardOperationHandle) => {
+    status: NativeClipboardCopyStatus
+    length: number
+  }
+  clipboardOperationResultDiagnosticCopy: (
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ) => NativeClipboardCopyStatus
+  clipboardOperationDestroy: (operation: ClipboardOperationHandle) => NativeClipboardDestroyStatus
   triggerNotification: (renderer: RendererHandle, message: string, title?: string) => boolean
   addToHitGrid: (renderer: RendererHandle, x: number, y: number, width: number, height: number, id: number) => void
   clearCurrentHitGrid: (renderer: RendererHandle) => void
@@ -2729,6 +2979,8 @@ class FFIRenderLib implements RenderLib {
     imageDrawOptions: allocStruct(ImageDrawOptionsStruct),
     gridDrawOptions: allocStruct(GridDrawOptionsStruct),
   }
+  private disposed = false
+  private clipboardServices = new Set<ClipboardServiceHandle>()
   public readonly encoder: TextEncoder = new TextEncoder()
   public readonly decoder: TextDecoder = new TextDecoder()
   private logCallbackWrapper: FFICallbackInstance | null = null
@@ -2829,6 +3081,11 @@ class FFIRenderLib implements RenderLib {
   }
 
   public dispose(): void {
+    if (this.disposed) return
+    if (this.clipboardServices.size > 0) {
+      throw new Error("Cannot dispose OpenTUI native library while clipboard services are active")
+    }
+    this.disposed = true
     try {
       if (this.eventSinkPtr) {
         this.opentui.symbols.destroyEventSink(this.eventSinkPtr)
@@ -3600,6 +3857,197 @@ class FFIRenderLib implements RenderLib {
 
   public clearClipboardOSC52(renderer: Pointer, target: number): boolean {
     return Boolean(this.opentui.symbols.clearClipboardOSC52(renderer, target))
+  }
+
+  public clipboardServiceCreate(
+    maxConcurrentOperations: number,
+    maxProviderTransfers: number,
+    waylandSeat?: string,
+  ): ClipboardServiceHandle | null {
+    const seat = waylandSeat === undefined ? null : this.encoder.encode(waylandSeat)
+    const handle = this.opentui.symbols.clipboardServiceCreate(
+      toSafeFFIU32Length(maxConcurrentOperations, "clipboard operation limit"),
+      toSafeFFIU32Length(maxProviderTransfers, "clipboard provider transfer limit"),
+      seat,
+      seat?.byteLength ?? 0,
+    )
+    if (handle === 0) return null
+    const service = handle as ClipboardServiceHandle
+    this.clipboardServices.add(service)
+    return service
+  }
+
+  public clipboardServiceBeginShutdown(service: ClipboardServiceHandle): NativeClipboardShutdownStatus {
+    if (!this.clipboardServices.has(service)) return NativeClipboardShutdownStatus.InvalidHandle
+    return this.opentui.symbols.clipboardServiceBeginShutdown(service)
+  }
+
+  public clipboardServicePollShutdown(service: ClipboardServiceHandle): NativeClipboardShutdownStatus {
+    if (!this.clipboardServices.has(service)) return NativeClipboardShutdownStatus.InvalidHandle
+    return this.opentui.symbols.clipboardServicePollShutdown(service)
+  }
+
+  public clipboardServiceDestroy(service: ClipboardServiceHandle): NativeClipboardDestroyStatus {
+    if (!this.clipboardServices.has(service)) return NativeClipboardDestroyStatus.InvalidHandle
+    const status = this.opentui.symbols.clipboardServiceDestroy(service)
+    if (status === NativeClipboardDestroyStatus.Destroyed) this.clipboardServices.delete(service)
+    return status
+  }
+
+  public clipboardServiceDrain(service: ClipboardServiceHandle): number {
+    if (!this.clipboardServices.has(service)) return 2
+    return this.opentui.symbols.clipboardServiceDrain(service)
+  }
+
+  private clipboardStartResult(
+    status: NativeClipboardStartStatus,
+    output: Uint32Array,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    return {
+      status,
+      operation: output[0] === 0 ? null : (output[0] as ClipboardOperationHandle),
+    }
+  }
+
+  public clipboardReadOperationStart(
+    service: ClipboardServiceHandle,
+    request: Uint8Array,
+    selection: number,
+    maxBytes: number,
+    maxImagePixels: number,
+    maxConversionBytes: number,
+    timeoutMs: number,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.clipboardReadOperationStart(
+      service,
+      request,
+      toSafeFFIU32Length(request.byteLength, "clipboard read request"),
+      selection,
+      toSafeFFIU32Length(maxBytes, "clipboard read byte limit"),
+      toSafeFFIU32Length(maxImagePixels, "clipboard image pixel limit"),
+      toSafeFFIU32Length(maxConversionBytes, "clipboard conversion byte limit"),
+      toSafeFFIU32Length(timeoutMs, "clipboard read timeout"),
+      output,
+    )
+    return this.clipboardStartResult(status, output)
+  }
+
+  public clipboardWriteOperationStart(
+    service: ClipboardServiceHandle,
+    textUtf8: Uint8Array,
+    selection: number,
+    timeoutMs: number,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.clipboardWriteOperationStart(
+      service,
+      textUtf8,
+      toSafeFFIU32Length(textUtf8.byteLength, "clipboard write text"),
+      selection,
+      toSafeFFIU32Length(timeoutMs, "clipboard write timeout"),
+      output,
+    )
+    return this.clipboardStartResult(status, output)
+  }
+
+  public clipboardClearOperationStart(
+    service: ClipboardServiceHandle,
+    selection: number,
+    timeoutMs: number,
+  ): { status: NativeClipboardStartStatus; operation: ClipboardOperationHandle | null } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.clipboardClearOperationStart(
+      service,
+      selection,
+      toSafeFFIU32Length(timeoutMs, "clipboard clear timeout"),
+      output,
+    )
+    return this.clipboardStartResult(status, output)
+  }
+
+  public clipboardOperationPoll(operation: ClipboardOperationHandle): NativeClipboardOperationStatus {
+    return this.opentui.symbols.clipboardOperationPoll(operation)
+  }
+
+  public clipboardOperationCancel(operation: ClipboardOperationHandle): NativeClipboardCancelStatus {
+    return this.opentui.symbols.clipboardOperationCancel(operation)
+  }
+
+  private clipboardResultLength(
+    symbol: (operation: ClipboardOperationHandle, output: Uint32Array) => number,
+    operation: ClipboardOperationHandle,
+  ): { status: NativeClipboardCopyStatus; length: number } {
+    const output = new Uint32Array(1)
+    const status = symbol(operation, output)
+    return { status, length: output[0] }
+  }
+
+  public clipboardOperationResultMimeLength(operation: ClipboardOperationHandle): {
+    status: NativeClipboardCopyStatus
+    length: number
+  } {
+    return this.clipboardResultLength(this.opentui.symbols.clipboardOperationResultMimeLength, operation)
+  }
+
+  public clipboardOperationResultMimeCopy(
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ): NativeClipboardCopyStatus {
+    return this.opentui.symbols.clipboardOperationResultMimeCopy(
+      operation,
+      output.byteLength === 0 ? null : output,
+      toSafeFFIU32Length(output.byteLength, "clipboard MIME output"),
+    )
+  }
+
+  public clipboardOperationResultDataLength(operation: ClipboardOperationHandle): {
+    status: NativeClipboardCopyStatus
+    length: number
+  } {
+    return this.clipboardResultLength(this.opentui.symbols.clipboardOperationResultDataLength, operation)
+  }
+
+  public clipboardOperationResultDataCopy(
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ): NativeClipboardCopyStatus {
+    return this.opentui.symbols.clipboardOperationResultDataCopy(
+      operation,
+      output.byteLength === 0 ? null : output,
+      toSafeFFIU32Length(output.byteLength, "clipboard data output"),
+    )
+  }
+
+  public clipboardOperationResultErrorCode(operation: ClipboardOperationHandle): {
+    status: NativeClipboardCopyStatus
+    errorCode: number
+  } {
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.clipboardOperationResultErrorCode(operation, output)
+    return { status, errorCode: output[0] }
+  }
+
+  public clipboardOperationResultDiagnosticLength(operation: ClipboardOperationHandle): {
+    status: NativeClipboardCopyStatus
+    length: number
+  } {
+    return this.clipboardResultLength(this.opentui.symbols.clipboardOperationResultDiagnosticLength, operation)
+  }
+
+  public clipboardOperationResultDiagnosticCopy(
+    operation: ClipboardOperationHandle,
+    output: Uint8Array,
+  ): NativeClipboardCopyStatus {
+    return this.opentui.symbols.clipboardOperationResultDiagnosticCopy(
+      operation,
+      output.byteLength === 0 ? null : output,
+      toSafeFFIU32Length(output.byteLength, "clipboard diagnostic output"),
+    )
+  }
+
+  public clipboardOperationDestroy(operation: ClipboardOperationHandle): NativeClipboardDestroyStatus {
+    return this.opentui.symbols.clipboardOperationDestroy(operation)
   }
 
   public triggerNotification(renderer: Pointer, message: string, title?: string): boolean {
@@ -5138,6 +5586,101 @@ class FFIRenderLib implements RenderLib {
 
   public audioClearPlaybackDeviceSelection(engine: Pointer): void {
     this.opentui.symbols.audioClearPlaybackDeviceSelection(engine)
+  }
+
+  public audioRefreshCaptureDevices(engine: AudioEngineHandle): number {
+    return this.opentui.symbols.audioRefreshCaptureDevices(engine)
+  }
+
+  public audioGetCaptureDeviceCount(engine: AudioEngineHandle): number {
+    return this.opentui.symbols.audioGetCaptureDeviceCount(engine)
+  }
+
+  public audioGetCaptureDeviceName(engine: AudioEngineHandle, index: number): string {
+    const outBuffer = new Uint8Array(512)
+    const bytesWritten = toNumber(
+      this.opentui.symbols.audioGetCaptureDeviceName(engine, index, outBuffer, outBuffer.length),
+    )
+    const safeBytesWritten = Math.max(0, Math.min(outBuffer.length, bytesWritten))
+    return this.decoder.decode(outBuffer.subarray(0, safeBytesWritten))
+  }
+
+  public audioIsCaptureDeviceDefault(engine: AudioEngineHandle, index: number): boolean {
+    return Boolean(this.opentui.symbols.audioIsCaptureDeviceDefault(engine, index))
+  }
+
+  public audioSelectCaptureDevice(engine: AudioEngineHandle, index: number): number {
+    return this.opentui.symbols.audioSelectCaptureDevice(engine, index)
+  }
+
+  public audioClearCaptureDeviceSelection(engine: AudioEngineHandle): void {
+    this.opentui.symbols.audioClearCaptureDeviceSelection(engine)
+  }
+
+  public audioStartCapture(
+    engine: AudioEngineHandle,
+    options: AudioStartOptions | undefined,
+    channels: number,
+    capacityFrames: number,
+  ): number {
+    let optionsBuffer: ArrayBuffer
+    try {
+      const noFixedSizedCallback = options?.noFixedSizedCallback
+      optionsBuffer = AudioStartOptionsStruct.pack(options ?? {})
+      if (noFixedSizedCallback === undefined) {
+        const field = AudioStartOptionsStruct.layoutByName.get("noFixedSizedCallback")
+        if (!field) return -1
+        new DataView(optionsBuffer).setUint8(field.offset, 1)
+      }
+    } catch {
+      return -1
+    }
+    return this.opentui.symbols.audioStartCapture(engine, optionsBuffer, channels, capacityFrames)
+  }
+
+  public audioStopCapture(engine: AudioEngineHandle): number {
+    return this.opentui.symbols.audioStopCapture(engine)
+  }
+
+  public audioIsCaptureRunning(engine: AudioEngineHandle): boolean {
+    return Boolean(this.opentui.symbols.audioIsCaptureRunning(engine))
+  }
+
+  public audioReadCapture(
+    engine: AudioEngineHandle,
+    outBuffer: Float32Array,
+    frameCount: number,
+  ): { status: number; framesRead: number } {
+    const outFramesReadBuffer = new ArrayBuffer(4)
+    const sampleCapacity = toSafeFFIU32Length(outBuffer.length, "Audio capture output sample capacity")
+    const status = this.opentui.symbols.audioReadCapture(
+      engine,
+      outBuffer,
+      sampleCapacity,
+      frameCount,
+      outFramesReadBuffer,
+    )
+    if (status !== 0) return { status, framesRead: 0 }
+    return { status, framesRead: new Uint32Array(outFramesReadBuffer)[0] ?? 0 }
+  }
+
+  public audioGetCaptureStats(engine: AudioEngineHandle): { status: number; stats: NativeAudioCaptureStats | null } {
+    const statsBuffer = new ArrayBuffer(AudioCaptureStatsStruct.size)
+    const status = this.opentui.symbols.audioGetCaptureStats(engine, statsBuffer)
+    if (status !== 0) return { status, stats: null }
+    const stats = AudioCaptureStatsStruct.unpack(statsBuffer)
+    return {
+      status,
+      stats: {
+        framesReceived: typeof stats.framesReceived === "bigint" ? stats.framesReceived : BigInt(stats.framesReceived),
+        framesRead: typeof stats.framesRead === "bigint" ? stats.framesRead : BigInt(stats.framesRead),
+        framesDropped: typeof stats.framesDropped === "bigint" ? stats.framesDropped : BigInt(stats.framesDropped),
+        sampleRate: stats.sampleRate,
+        channels: stats.channels,
+        bufferedFrames: stats.bufferedFrames,
+        capacityFrames: stats.capacityFrames,
+      },
+    }
   }
 
   public audioStart(engine: Pointer, options?: AudioStartOptions | null): number {

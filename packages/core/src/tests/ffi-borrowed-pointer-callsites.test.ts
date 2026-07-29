@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { NativeAudioStreamState as ExportedAudioStreamState, resolveRenderLib } from "../zig.js"
 import {
+  AudioCaptureStatsStruct,
   AudioStreamCreateOptionsStruct,
   AudioStreamStatsStruct,
   CursorStyleOptionsStruct,
@@ -25,17 +26,29 @@ import { toArrayBuffer, type Pointer } from "../platform/ffi.js"
 const lib = resolveRenderLib()
 const symbols = (lib as any).opentui.symbols as Record<string, (...args: any[]) => any>
 
-function withStubbedSymbol(name: string, fn: (calls: any[][]) => void): void {
-  const calls: any[][] = []
-  const original = symbols[name]
-  symbols[name] = (...args: any[]) => {
-    calls.push(args)
+function withStubbedSymbols(
+  replacements: Record<string, (...args: any[]) => any>,
+  fn: (calls: Record<string, any[][]>) => void,
+): void {
+  const originals: Record<string, (...args: any[]) => any> = {}
+  const calls: Record<string, any[][]> = {}
+  for (const [name, replacement] of Object.entries(replacements)) {
+    originals[name] = symbols[name]!
+    calls[name] = []
+    symbols[name] = (...args: any[]) => {
+      calls[name]!.push(args)
+      return replacement(...args)
+    }
   }
   try {
     fn(calls)
   } finally {
-    symbols[name] = original
+    for (const [name, original] of Object.entries(originals)) symbols[name] = original
   }
+}
+
+function withStubbedSymbol(name: string, fn: (calls: any[][]) => void): void {
+  withStubbedSymbols({ [name]: () => undefined }, (calls) => fn(calls[name]!))
 }
 
 async function forceGc(): Promise<void> {
@@ -334,6 +347,164 @@ describe("borrowed pointer call sites", () => {
     })
   })
 
+  test("audio capture stats preserve the 40-byte native ABI", () => {
+    expect(AudioCaptureStatsStruct.size).toBe(40)
+    expect(
+      Object.fromEntries(
+        [
+          "framesReceived",
+          "framesRead",
+          "framesDropped",
+          "sampleRate",
+          "channels",
+          "bufferedFrames",
+          "capacityFrames",
+        ].map((name) => [name, fieldOffset(AudioCaptureStatsStruct, name)]),
+      ),
+    ).toEqual({
+      framesReceived: 0,
+      framesRead: 8,
+      framesDropped: 16,
+      sampleRate: 24,
+      channels: 28,
+      bufferedFrames: 32,
+      capacityFrames: 36,
+    })
+  })
+
+  test("audio capture wrappers pass transient buffers directly and normalize booleans", () => {
+    const originals = {
+      name: symbols.audioGetCaptureDeviceName,
+      isDefault: symbols.audioIsCaptureDeviceDefault,
+      start: symbols.audioStartCapture,
+      running: symbols.audioIsCaptureRunning,
+      read: symbols.audioReadCapture,
+      stats: symbols.audioGetCaptureStats,
+    }
+    const calls: Record<string, any[][]> = { name: [], start: [], read: [], stats: [] }
+    symbols.audioGetCaptureDeviceName = (...args: any[]) => {
+      calls.name.push(args)
+      ;(args[2] as Uint8Array).set(new TextEncoder().encode("Microphone"))
+      return 10
+    }
+    symbols.audioIsCaptureDeviceDefault = () => 1
+    symbols.audioIsCaptureRunning = () => 1
+    symbols.audioStartCapture = (...args: any[]) => {
+      calls.start.push(args)
+      return 0
+    }
+    symbols.audioReadCapture = (...args: any[]) => {
+      calls.read.push(args)
+      new Uint32Array(args[4] as ArrayBuffer)[0] = 2
+      return 0
+    }
+    symbols.audioGetCaptureStats = (...args: any[]) => {
+      calls.stats.push(args)
+      AudioCaptureStatsStruct.packInto(
+        {
+          framesReceived: 5n,
+          framesRead: 2n,
+          framesDropped: 1n,
+          sampleRate: 48_000,
+          channels: 1,
+          bufferedFrames: 3,
+          capacityFrames: 48_000,
+        },
+        new DataView(args[1] as ArrayBuffer),
+        0,
+      )
+      return 0
+    }
+
+    try {
+      expect(lib.audioGetCaptureDeviceName(1 as any, 2)).toBe("Microphone")
+      expect(lib.audioIsCaptureDeviceDefault(1 as any, 2)).toBe(true)
+      expect(lib.audioStartCapture(1 as any, { noFixedSizedCallback: true }, 1, 48_000)).toBe(0)
+      expect(lib.audioIsCaptureRunning(1 as any)).toBe(true)
+      const output = new Float32Array(4)
+      expect(lib.audioReadCapture(1 as any, output, 4)).toEqual({ status: 0, framesRead: 2 })
+      expect(lib.audioGetCaptureStats(1 as any)).toEqual({
+        status: 0,
+        stats: {
+          framesReceived: 5n,
+          framesRead: 2n,
+          framesDropped: 1n,
+          sampleRate: 48_000,
+          channels: 1,
+          bufferedFrames: 3,
+          capacityFrames: 48_000,
+        },
+      })
+
+      expect(calls.name[0]![2]).toBeInstanceOf(Uint8Array)
+      expect(calls.start[0]![1]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.read[0]![1]).toBe(output)
+      expect(calls.read[0]![2]).toBe(output.length)
+      expect(calls.read[0]![3]).toBe(4)
+      expect(calls.read[0]![4]).toBeInstanceOf(ArrayBuffer)
+      expect(calls.stats[0]![1]).toBeInstanceOf(ArrayBuffer)
+    } finally {
+      symbols.audioGetCaptureDeviceName = originals.name
+      symbols.audioIsCaptureDeviceDefault = originals.isDefault
+      symbols.audioStartCapture = originals.start
+      symbols.audioIsCaptureRunning = originals.running
+      symbols.audioReadCapture = originals.read
+      symbols.audioGetCaptureStats = originals.stats
+    }
+  })
+
+  test("audio capture reads forward the destination sample capacity", () => {
+    const calls: any[][] = []
+    const original = symbols.audioReadCapture
+    symbols.audioReadCapture = (...args: any[]) => {
+      calls.push(args)
+      return -1
+    }
+    try {
+      const output = new Float32Array(3)
+      expect(lib.audioReadCapture(1 as any, output, 1)).toEqual({ status: -1, framesRead: 0 })
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toHaveLength(5)
+      expect(calls[0]![1]).toBe(output)
+      expect(calls[0]![2]).toBe(output.length)
+      expect(calls[0]![3]).toBe(1)
+      expect(calls[0]![4]).toBeInstanceOf(ArrayBuffer)
+    } finally {
+      symbols.audioReadCapture = original
+    }
+  })
+
+  test("audio capture start contains option getter failures and defaults callback sizing", () => {
+    const calls: any[][] = []
+    const original = symbols.audioStartCapture
+    symbols.audioStartCapture = (...args: any[]) => {
+      calls.push(args)
+      return 0
+    }
+    try {
+      expect(lib.audioStartCapture(1 as any, undefined, 1, 48_000)).toBe(0)
+      const packed = new Uint8Array(calls[0]![1] as ArrayBuffer)
+      expect(packed[17]).toBe(1)
+
+      const options = Object.create({ periods: 3 }) as { periods?: number; noFixedSizedCallback?: boolean }
+      Object.defineProperty(options, "noFixedSizedCallback", { value: false, enumerable: false })
+      expect(lib.audioStartCapture(1 as any, options, 1, 48_000)).toBe(0)
+      const inherited = new DataView(calls[1]![1] as ArrayBuffer)
+      expect(inherited.getUint32(8, true)).toBe(3)
+      expect(inherited.getUint8(17)).toBe(0)
+
+      const throwing = {
+        get periods(): number {
+          throw new Error("getter failed")
+        },
+      }
+      expect(lib.audioStartCapture(1 as any, throwing, 1, 48_000)).toBe(-1)
+      expect(calls).toHaveLength(2)
+    } finally {
+      symbols.audioStartCapture = original
+    }
+  })
+
   test("audioCloseStream forwards its reason and unpacks the owned output buffer", () => {
     const calls: any[][] = []
     const original = symbols.audioCloseStream
@@ -598,6 +769,46 @@ describe("borrowed pointer call sites", () => {
       })
       expect(calls).toHaveLength(0)
     })
+  test("clipboard calls pass transient request and output buffers as object values", () => {
+    withStubbedSymbols(
+      {
+        clipboardServiceCreate: () => 1,
+        clipboardServiceDestroy: () => 0,
+        clipboardReadOperationStart: () => 0,
+        clipboardWriteOperationStart: () => 0,
+        clipboardClearOperationStart: () => 0,
+        clipboardOperationResultMimeLength: () => 0,
+        clipboardOperationResultMimeCopy: () => 0,
+        clipboardOperationResultDataCopy: () => 0,
+        clipboardOperationResultErrorCode: () => 0,
+        clipboardOperationResultDiagnosticCopy: () => 0,
+      },
+      (calls) => {
+        const service = lib.clipboardServiceCreate(4, 5, "seat0")!
+        lib.clipboardReadOperationStart(service, Uint8Array.of(1, 2), 0, 16, 32, 64, 100)
+        lib.clipboardWriteOperationStart(service, Uint8Array.of(3, 4), 0, 100)
+        lib.clipboardClearOperationStart(service, 0, 100)
+        lib.clipboardOperationResultMimeLength(1 as any)
+        lib.clipboardOperationResultMimeCopy(1 as any, new Uint8Array(2))
+        lib.clipboardOperationResultDataCopy(1 as any, new Uint8Array(2))
+        lib.clipboardOperationResultErrorCode(1 as any)
+        lib.clipboardOperationResultDiagnosticCopy(1 as any, new Uint8Array(2))
+        lib.clipboardServiceDestroy(service)
+
+        expect(calls.clipboardServiceCreate![0]![2]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardReadOperationStart![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardReadOperationStart![0]!.slice(4, 8)).toEqual([16, 32, 64, 100])
+        expect(calls.clipboardReadOperationStart![0]![8]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardWriteOperationStart![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardWriteOperationStart![0]![5]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardClearOperationStart![0]![3]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardOperationResultMimeLength![0]![1]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardOperationResultMimeCopy![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardOperationResultDataCopy![0]![1]).toBeInstanceOf(Uint8Array)
+        expect(calls.clipboardOperationResultErrorCode![0]![1]).toBeInstanceOf(Uint32Array)
+        expect(calls.clipboardOperationResultDiagnosticCopy![0]![1]).toBeInstanceOf(Uint8Array)
+      },
+    )
   })
 })
 

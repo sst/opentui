@@ -442,6 +442,16 @@ export type AudioStats = {
   lastRms: number
 }
 
+export type NativeAudioCaptureStats = {
+  framesReceived: bigint
+  framesRead: bigint
+  framesDropped: bigint
+  sampleRate: number
+  channels: number
+  bufferedFrames: number
+  capacityFrames: number
+}
+
 export const AudioCreateOptionsStruct = defineStruct([
   ["sampleRate", "u32", { default: 48_000 }],
   ["playbackChannels", "u32", { default: 2 }],
@@ -496,6 +506,16 @@ export const AudioStreamStatsStruct = defineStruct([
   ["underruns", "u32"],
   ["errorCode", "i32"],
   ["readyGeneration", "u32"],
+])
+
+export const AudioCaptureStatsStruct = defineStruct([
+  ["framesReceived", "u64"],
+  ["framesRead", "u64"],
+  ["framesDropped", "u64"],
+  ["sampleRate", "u32"],
+  ["channels", "u32"],
+  ["bufferedFrames", "u32"],
+  ["capacityFrames", "u32"],
 ])
 
 export const AudioStatsStruct = defineStruct([

@@ -17,6 +17,7 @@ const treeSitterMarkdownRenderableTestDataPath = resolve(tmpdir(), "tree-sitter-
 const textBufferTestDataPath = resolve(tmpdir(), "text-buffer-node-test")
 const runtimeAssetTestDataPath = resolve(tmpdir(), "opentui-runtime-asset-node-test")
 const imageTestDataPath = resolve(tmpdir(), "opentui-image-node-test")
+const audioRecorderTestDataPath = resolve(tmpdir(), "opentui-audio-recorder-node-test")
 const treeSitterClientTestDataPaths = [
   "tree-sitter-shared-test-data",
   "tree-sitter-injections-test-data",
@@ -32,6 +33,7 @@ const treeSitterTestDataPaths = [
   textBufferTestDataPath,
   runtimeAssetTestDataPath,
   imageTestDataPath,
+  audioRecorderTestDataPath,
   ...treeSitterClientTestDataPaths,
 ]
 const treeSitterAssetsDir = "src/lib/tree-sitter/assets"
@@ -47,6 +49,9 @@ const emittedAllowlist = [
   ".node-test/src/lib/bunfs.test.js",
   ".node-test/src/lib/border.test.js",
   ".node-test/src/lib/clipboard.test.js",
+  ".node-test/src/lib/clipboard-service.test.js",
+  ".node-test/src/lib/host-clipboard.test.js",
+  ".node-test/src/lib/host-clipboard.native.scheduler.test.js",
   ".node-test/src/lib/extmarks.test.js",
   ".node-test/src/lib/detect-links.test.js",
   ".node-test/src/lib/extmarks-multiwidth.test.js",
@@ -127,6 +132,7 @@ const emittedAllowlist = [
   ".node-test/src/tests/renderable.snapshot.test.js",
   ".node-test/src/tests/allocator-stats.test.js",
   ".node-test/src/tests/audio-stream.test.js",
+  ".node-test/src/tests/clipboard-native-lifecycle.test.js",
   ".node-test/src/tests/audio.test.js",
   ".node-test/src/tests/image-renderable.test.js",
   ".node-test/src/tests/image.test.js",
@@ -230,6 +236,7 @@ try {
           OTUI_TEXT_BUFFER_TEST_TMPDIR: textBufferTestDataPath,
           OTUI_RUNTIME_ASSET_TEST_TMPDIR: runtimeAssetTestDataPath,
           OTUI_IMAGE_TEST_TMPDIR: imageTestDataPath,
+          OTUI_AUDIO_RECORDER_TEST_TMPDIR: audioRecorderTestDataPath,
           XDG_DATA_HOME: treeSitterDefaultDataPath,
         },
         timeout: nodeProcessTimeoutMs,
