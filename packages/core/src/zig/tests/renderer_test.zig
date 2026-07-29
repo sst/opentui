@@ -3023,31 +3023,91 @@ test "FeedBackend - prepareFrame commits existing pending bytes before new frame
     try std.testing.expectEqual(.ok, backend.prepareFrame());
 }
 
-test "FeedBackend - failed frame write preserves pending bytes" {
+test "FeedBackend - failed frame publishes no partial bytes" {
     var opts = native_span_feed.defaultOptions();
     opts.chunk_size = 32;
     opts.initial_chunks = 1;
+    opts.max_bytes = 32;
+    opts.growth_policy = @intFromEnum(native_span_feed.GrowthPolicy.block);
     opts.auto_commit_on_full = 0;
 
     const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
     defer feed.destroy();
 
     var backend = renderer.FeedBackend.create(feed);
+    defer backend.deinit();
 
     backend.beginFrame();
     var failed_writer = backend.writer();
     try failed_writer.writeAll("pending");
-    try std.testing.expectError(error.BufferFull, failed_writer.writeAll("this-write-is-too-large-for-the-current-chunk"));
+    try failed_writer.writeAll("this-write-is-too-large-for-the-current-chunk");
     try std.testing.expectEqual(.failed, backend.endFrame());
 
     var span_out: [4]native_span_feed.SpanInfo = undefined;
     const count = feed.drainSpans(&span_out);
-    try std.testing.expectEqual(@as(u32, 1), count);
-    const pending_span = span_out[0].slice();
-    try std.testing.expect(std.mem.indexOf(u8, pending_span, "pending") != null);
+    try std.testing.expectEqual(@as(u32, 0), count);
 }
 
-test "FeedBackend - writeOut keeps pending bytes when commit is blocked" {
+test "FeedBackend - failed Sixel frame does not publish an unterminated DCS" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var opts = native_span_feed.defaultOptions();
+    opts.chunk_size = 256;
+    opts.initial_chunks = 1;
+    opts.max_bytes = 256;
+    opts.growth_policy = @intFromEnum(native_span_feed.GrowthPolicy.block);
+    opts.auto_commit_on_full = 0;
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 8, 4, pool, .{
+        .remote_mode = .remote,
+        .output = .{ .feed = feed },
+    });
+    defer feed.destroy();
+    defer cli_renderer.destroy();
+    cli_renderer.terminal.caps.sixel = true;
+
+    const pixels = try std.testing.allocator.alloc(u8, 32 * 16 * 4);
+    defer std.testing.allocator.free(pixels);
+    for (0..32 * 16) |index| {
+        pixels[index * 4] = @truncate(index * 17);
+        pixels[index * 4 + 1] = @truncate(index * 31);
+        pixels[index * 4 + 2] = @truncate(index * 47);
+        pixels[index * 4 + 3] = 255;
+    }
+    const value = try image.createFromRgba(std.testing.allocator, pixels, 32, 16, 32 * 4);
+    const image_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(image_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+
+    try std.testing.expect(try cli_renderer.getNextBuffer().drawImage(
+        value,
+        image_handle,
+        0,
+        0,
+        8,
+        4,
+        32,
+        16,
+        0,
+        0,
+        32,
+        16,
+        .sixel,
+    ));
+    try std.testing.expectEqual(renderer.RenderStatus.failed, cli_renderer.render(true));
+
+    var spans: [8]native_span_feed.SpanInfo = undefined;
+    const count = feed.drainSpans(&spans);
+    try std.testing.expectEqual(@as(u32, 0), count);
+}
+
+test "FeedBackend - writeOut publishes nothing when the queue is blocked" {
     var opts = native_span_feed.defaultOptions();
     opts.chunk_size = 64;
     opts.initial_chunks = 2;
@@ -3065,24 +3125,24 @@ test "FeedBackend - writeOut keeps pending bytes when commit is blocked" {
     try std.testing.expect(backend.shouldSkipFrame());
 
     backend.writeOut("shutdown");
-    try std.testing.expect(feed.hasPendingBytes());
+    try std.testing.expect(!feed.hasPendingBytes());
 
     var span_out: [4]native_span_feed.SpanInfo = undefined;
     var count = feed.drainSpans(&span_out);
     try std.testing.expectEqual(@as(u32, 1), count);
     feed.markSpanConsumed(span_out[0]);
 
-    try std.testing.expectEqual(.skipped, backend.prepareFrame());
-
+    try std.testing.expectEqual(.ok, backend.prepareFrame());
     count = feed.drainSpans(&span_out);
-    try std.testing.expectEqual(@as(u32, 1), count);
-    try std.testing.expectEqualStrings("shutdown", span_out[0].slice());
+    try std.testing.expectEqual(@as(u32, 0), count);
 }
 
-test "FeedBackend - writeOutMultiple keeps partial pending batch bytes" {
+test "FeedBackend - writeOutMultiple publishes no partial batch" {
     var opts = native_span_feed.defaultOptions();
     opts.chunk_size = 32;
     opts.initial_chunks = 1;
+    opts.max_bytes = 32;
+    opts.growth_policy = @intFromEnum(native_span_feed.GrowthPolicy.block);
     opts.auto_commit_on_full = 0;
 
     const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
@@ -3095,14 +3155,12 @@ test "FeedBackend - writeOutMultiple keeps partial pending batch bytes" {
     };
 
     backend.writeOutMultiple(&failed_batch);
-    try std.testing.expect(feed.hasPendingBytes());
-
-    try std.testing.expectEqual(.skipped, backend.prepareFrame());
+    try std.testing.expect(!feed.hasPendingBytes());
+    try std.testing.expectEqual(.ok, backend.prepareFrame());
 
     var span_out: [4]native_span_feed.SpanInfo = undefined;
     const count = feed.drainSpans(&span_out);
-    try std.testing.expectEqual(@as(u32, 1), count);
-    try std.testing.expectEqualStrings("pending", span_out[0].slice());
+    try std.testing.expectEqual(@as(u32, 0), count);
 }
 
 test "FeedBackend - supportsThreading is false" {
