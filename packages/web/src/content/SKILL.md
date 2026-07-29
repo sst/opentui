@@ -1,6 +1,6 @@
 ---
 name: opentui
-description: Build terminal UIs with OpenTUI. Covers core, components, native images, audio, keymaps, React, Solid, plugins, testing, standalone executables, QR encoding, SSH, and Three.js WebGPU.
+description: Build terminal UIs with OpenTUI. Covers core, components, clipboard, native images, audio, keymaps, React, Solid, plugins, testing, standalone executables, QR encoding, SSH, and Three.js WebGPU.
 ---
 
 # OpenTUI Skill
@@ -29,6 +29,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 - Plugins: `/docs/plugins/slots`
 - Runtime and packaging: `/docs/reference/env-vars`, `/docs/reference/standalone-executables`
 - Package entrypoints: `/docs/reference/package-entrypoints`
+- Clipboard: `/docs/reference/clipboard`
 - Native images: `/docs/reference/native-image`
 - QR encoding: `/docs/reference/qr-encoder`
 - SSH: `/docs/reference/ssh`
@@ -36,28 +37,29 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 
 ## Quick routing by intent
 
-| Intent(s)                                                                                          | Start here                                  |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `getting-started`, `installation`, `quickstart`, `intro`                                           | `docs/getting-started.mdx`                  |
-| `core`, `renderer`, `terminal`, `scrollback`, `lifecycle`                                          | `docs/core-concepts/renderer.mdx`           |
-| `audio`, `native-audio`, `sound`, `playback`, `streaming`, `radio`, `mp3`, `flac`, `pcm`, `fft`    | `docs/core-concepts/audio.mdx`              |
-| `keymap`, `keybindings`, `shortcuts`, `commands`, `leader`, `ex-commands`                          | `docs/keymap/overview.mdx`                  |
-| `layout`, `flexbox`, `yoga`, `positioning`                                                         | `docs/core-concepts/layout.mdx`             |
-| `keyboard`, `input`, `keybindings`, `paste`, `focus`                                               | `docs/core-concepts/keyboard.mdx`           |
-| `testing`, `test-renderer`, `snapshots`, `frames`                                                  | `docs/core-concepts/testing.mdx`            |
-| `react`, `jsx`, `hooks`, `keyboard`, `paste`, `focus`, `blur`, `selection`, `animation`, `testing` | `docs/bindings/react.mdx`                   |
-| `solid`, `jsx`, `signals`, `hooks`, `keyboard`, `animation`, `testing`                             | `docs/bindings/solid.mdx`                   |
-| `plugins`, `plugin`, `slots`, `registry`, `extensions`                                             | `docs/plugins/slots.mdx`                    |
-| `text`, `styling`, `content`, `selection`                                                          | `docs/components/text.mdx`                  |
-| `input`, `form`, `editing`, `focus`                                                                | `docs/components/input.mdx`                 |
-| `image`, `image-renderable`, `image-display`, `kitty`, `sixel`                                     | `docs/components/image.mdx`                 |
-| `env`, `environment`, `configuration`, `flags`                                                     | `docs/reference/env-vars.mdx`               |
-| `standalone`, `executable`, `bun-compile`, `node-sea`, `node-assets`                               | `docs/reference/standalone-executables.mdx` |
-| `package-exports`, `entrypoints`, `subpath-exports`, `imports`                                     | `docs/reference/package-entrypoints.mdx`    |
-| `native-image`, `image-decode`, `png`, `jpeg`, `webp`, `gif`, `rgba`, `pixels`, `resize`           | `docs/reference/native-image.mdx`           |
-| `qr`, `qrcode`, `qr-encoder`, `svg-qr`, `gs1`, `eci`, `structured-append`                          | `docs/reference/qr-encoder.mdx`             |
-| `ssh`, `remote-tui`, `ssh-server`, `authentication`, `middleware`                                  | `docs/reference/ssh.mdx`                    |
-| `three`, `threejs`, `webgpu`, `3d`, `sprites`, `physics`                                           | `docs/reference/three.mdx`                  |
+| Intent(s)                                                                                                                | Start here                                  |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| `getting-started`, `installation`, `quickstart`, `intro`                                                                 | `docs/getting-started.mdx`                  |
+| `core`, `renderer`, `terminal`, `scrollback`, `lifecycle`                                                                | `docs/core-concepts/renderer.mdx`           |
+| `audio`, `native-audio`, `sound`, `playback`, `capture`, `microphone`, `streaming`, `radio`, `mp3`, `flac`, `pcm`, `fft` | `docs/core-concepts/audio.mdx`              |
+| `keymap`, `keybindings`, `shortcuts`, `commands`, `leader`, `ex-commands`                                                | `docs/keymap/overview.mdx`                  |
+| `layout`, `flexbox`, `yoga`, `positioning`                                                                               | `docs/core-concepts/layout.mdx`             |
+| `keyboard`, `input`, `keybindings`, `paste`, `focus`                                                                     | `docs/core-concepts/keyboard.mdx`           |
+| `testing`, `test-renderer`, `snapshots`, `frames`                                                                        | `docs/core-concepts/testing.mdx`            |
+| `react`, `jsx`, `hooks`, `keyboard`, `paste`, `focus`, `blur`, `selection`, `animation`, `testing`                       | `docs/bindings/react.mdx`                   |
+| `solid`, `jsx`, `signals`, `hooks`, `keyboard`, `animation`, `testing`                                                   | `docs/bindings/solid.mdx`                   |
+| `plugins`, `plugin`, `slots`, `registry`, `extensions`                                                                   | `docs/plugins/slots.mdx`                    |
+| `text`, `styling`, `content`, `selection`                                                                                | `docs/components/text.mdx`                  |
+| `input`, `form`, `editing`, `focus`                                                                                      | `docs/components/input.mdx`                 |
+| `image`, `image-renderable`, `image-display`, `kitty`, `sixel`                                                           | `docs/components/image.mdx`                 |
+| `env`, `environment`, `configuration`, `flags`                                                                           | `docs/reference/env-vars.mdx`               |
+| `standalone`, `executable`, `bun-compile`, `node-sea`, `node-assets`                                                     | `docs/reference/standalone-executables.mdx` |
+| `package-exports`, `entrypoints`, `subpath-exports`, `imports`                                                           | `docs/reference/package-entrypoints.mdx`    |
+| `clipboard`, `copy`, `paste`, `osc52`, `primary-selection`, `remote-clipboard`                                           | `docs/reference/clipboard.mdx`              |
+| `native-image`, `image-decode`, `png`, `jpeg`, `webp`, `gif`, `rgba`, `pixels`, `resize`                                 | `docs/reference/native-image.mdx`           |
+| `qr`, `qrcode`, `qr-encoder`, `svg-qr`, `gs1`, `eci`, `structured-append`                                                | `docs/reference/qr-encoder.mdx`             |
+| `ssh`, `remote-tui`, `ssh-server`, `authentication`, `middleware`                                                        | `docs/reference/ssh.mdx`                    |
+| `three`, `threejs`, `webgpu`, `3d`, `sprites`, `physics`                                                                 | `docs/reference/three.mdx`                  |
 
 For concrete component requests, jump straight to `docs/components/<name>.mdx` after the relevant entry page. For plugin implementation details, narrow from `docs/plugins/slots.mdx` into `docs/plugins/core.mdx`, `docs/plugins/react.mdx`, or `docs/plugins/solid.mdx`.
 
@@ -79,6 +81,7 @@ For concrete component requests, jump straight to `docs/components/<name>.mdx` a
 - `docs/reference/env-vars.mdx`
 - `docs/reference/standalone-executables.mdx`
 - `docs/reference/package-entrypoints.mdx`
+- `docs/reference/clipboard.mdx`
 - `docs/reference/native-image.mdx`
 - `docs/reference/qr-encoder.mdx`
 - `docs/reference/ssh.mdx`

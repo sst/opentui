@@ -1,0 +1,131 @@
+---
+title: Clipboard
+description: Read the host clipboard and compose native writes with terminal OSC 52
+order: 11
+skill:
+  entry: true
+  intents: [clipboard, copy, paste, osc52, primary-selection, remote-clipboard]
+---
+
+# Clipboard
+
+OpenTUI separates the process host clipboard from the terminal user's clipboard. Host reads and writes use native platform backends. Terminal writes use OSC 52. Terminal paste events are input events and do not perform a host clipboard read.
+
+## Read text or PNG
+
+```typescript
+import { NativeImage, createClipboard, createHostClipboard, createRendererClipboardAdapter } from "@opentui/core"
+
+const host = createHostClipboard()
+const clipboard = createClipboard({
+  host,
+  terminal: createRendererClipboardAdapter(renderer),
+})
+
+try {
+  const result = await clipboard.read({
+    preferredTypes: ["image/png", "text/plain"],
+  })
+
+  if (result.status === "read") {
+    const { mimeType, bytes } = result.representation
+
+    if (mimeType === "text/plain") {
+      console.log(new TextDecoder().decode(bytes))
+    }
+
+    if (mimeType === "image/png") {
+      const image = NativeImage.decode(bytes)
+      try {
+        console.log(image.info())
+      } finally {
+        image.dispose()
+      }
+    }
+  }
+} finally {
+  await clipboard.dispose()
+}
+```
+
+`preferredTypes` is ordered. Native host backends currently return `text/plain` as UTF-8 or `image/png` as encoded PNG. Windows DIB/DIBV5, macOS TIFF, and the WSLg Wayland BMP fallback are converted to PNG when needed.
+
+Every successful representation has a canonical lowercase MIME essence without parameters and a stable, caller-owned `Uint8Array`. The bytes remain valid after the operation and service are disposed. They do not alias native memory.
+
+PNG bytes are encoded transport data, not decoded RGBA pixels. Direct platform PNG data may not have been decoded or semantically validated. `NativeImage.decode(bytes)` creates an independent native image, can fail separately for malformed data, color profiles, dimensions, or memory limits, and must be disposed. Callers that only need a file, upload, or Base64 data URL should keep the encoded bytes instead of decoding them.
+
+Reads return one of:
+
+- `read` with a representation
+- `empty`, `unsupported`, `cancelled`, `timed-out`, or `limit-exceeded`
+- `failed` with an `Error`
+
+Zero-byte text is a successful text representation. Empty or stale image transfers are not returned as valid images.
+
+## Host and terminal destinations
+
+`createClipboard()` combines a `HostClipboardService` with a terminal adapter. Reads always use the host. Writes and clears require a destination policy:
+
+| Destination      | Behavior                                                                                      |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `host-only`      | Use only the process host clipboard                                                           |
+| `terminal-only`  | Emit only terminal OSC 52                                                                     |
+| `best-available` | Prefer the local host and use eligible terminal fallback after host `unsupported` or `failed` |
+| `all-available`  | Attempt eligible host and terminal destinations                                               |
+
+```typescript
+const result = await clipboard.writeText("copied text", {
+  destination: "all-available",
+  selection: "clipboard",
+})
+```
+
+Host results distinguish `written`, `unsupported`, `cancelled`, `timed-out`, and `failed`. Terminal status `attempted` confirms only that OpenTUI emitted the OSC 52 sequence locally. OSC 52 does not acknowledge terminal acceptance or a clipboard change.
+
+`writeText()` rejects empty text and NUL characters. Use `clear()` for an explicit clear operation:
+
+```typescript
+await clipboard.clear({
+  destination: "all-available",
+  selection: "clipboard",
+})
+```
+
+The standard `clipboard` selection is portable. The `primary` selection is supported where the native platform provides it, principally Linux Wayland/X11; unsupported platforms return `unsupported`.
+
+## Remote sessions
+
+Over SSH or mosh, a host read refers to the machine running the OpenTUI process, not the local terminal user's clipboard. OSC 52 writes travel through terminal output toward the user's terminal.
+
+Composed host writes are suppressed by default when the terminal adapter reports a remote session. Pass `allowRemoteHost: true` only when mutating the remote machine's host clipboard is intentional. Terminal bracketed paste remains a separate input path and can still carry text from the user's local terminal.
+
+There is no portable OSC 52 clipboard-read operation in this API and no host image-write API.
+
+## Ownership and disposal
+
+`createClipboard({ host, terminal })` takes ownership of `host`. Dispose only the composed service. Disposal aborts active operations, waits for their cleanup, shuts down native workers and providers, and then destroys the host service.
+
+Native Linux writes may make the process the Wayland or X11 clipboard owner. Keep the service alive while it must continue serving those bytes. Disposing it can make process-owned clipboard contents unavailable unless a clipboard manager has retained them.
+
+`dispose()` is asynchronous and idempotent. Await it before destroying the renderer or unloading the native library.
+
+## Bounds
+
+`createHostClipboard()` bounds untrusted clipboard work. Defaults are:
+
+| Option                    |    Default | Scope                                                 |
+| ------------------------- | ---------: | ----------------------------------------------------- |
+| `timeoutMs`               |   1,000 ms | Each host operation                                   |
+| `maxReadBytes`            |      8 MiB | Returned encoded representation                       |
+| `maxWriteBytes`           |      8 MiB | UTF-8 text write                                      |
+| `maxImagePixels`          | 67,108,864 | Pixels inspected by DIB/BMP/TIFF conversion fallbacks |
+| `maxConversionBytes`      |    512 MiB | Temporary decoded storage for conversion fallbacks    |
+| `maxConcurrentOperations` |         16 | Active native operations                              |
+| `maxProviderTransfers`    |         16 | Concurrent Linux provider transfers                   |
+| `maxWorkUnitsPerDrain`    |         64 | Native work processed per scheduler drain             |
+
+`maxImagePixels` and `maxConversionBytes` do not decode or inspect a direct PNG transfer. A direct PNG is bounded by `maxReadBytes`; a later `NativeImage.decode()` applies its own independent image limits.
+
+`waylandSeat` selects an explicit Wayland seat. A process started with only an inherited `WAYLAND_SOCKET` can create one host service from that one-shot descriptor.
+
+For low-level renderer OSC 52 methods and target values, see [Renderer lifecycle and control](/docs/core-concepts/renderer#osc-52-clipboard).
