@@ -179,8 +179,8 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
     });
 
     // stb_image_resize2 intentionally biases static table pointers out of
-    // bounds; see image-resize-shim.c. Keep bounds sanitizers off for that
-    // translation unit only so Debug test builds can exercise resizing.
+    // bounds. Keep this sanitizer exception scoped to the resize translation
+    // unit; its rationale and permanent fix are in vendor/stb/README.md.
     const resize_flags: []const []const u8 = switch (target.result.os.tag) {
         .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds,pointer-overflow", "-isysroot", macos_sdk_path.? },
         else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds,pointer-overflow" },
