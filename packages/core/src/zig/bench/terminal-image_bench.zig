@@ -145,6 +145,8 @@ fn appendDragonGeometryBenchmarks(
             .max_ns = stats.max_ns,
             .total_ns = stats.total_ns,
             .iterations = stats.count,
+            .stddev_ns = stats.standardDeviation(),
+            .rme_95 = stats.relativeMarginOfError95(),
             .mem_stats = mem_stats,
         });
     }
@@ -164,6 +166,8 @@ fn appendResult(
         .max_ns = stats.max_ns,
         .total_ns = stats.total_ns,
         .iterations = stats.count,
+        .stddev_ns = stats.standardDeviation(),
+        .rme_95 = stats.relativeMarginOfError95(),
         .mem_stats = mem_stats,
     });
 }

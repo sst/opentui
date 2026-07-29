@@ -51,7 +51,7 @@ jobs:
         working-directory: packages/core
         run: |
           set -euo pipefail
-          output="$(bun run bench:native --mem --filter "UTF-8 Operations" --bench "isAsciiOnly: ASCII text (1KB)" --json)"
+          output="$(bun run bench:native --mem --filter "Terminal Image" --bench "Kitty cover placement" --json)"
           printf '%s\n' "$output"
           OUTPUT="$output" bun -e '
             const output = process.env.OUTPUT ?? ""
@@ -67,13 +67,17 @@ jobs:
             if (!jsonLine) throw new Error("Native benchmark smoke test produced no JSON output")
 
             const data = JSON.parse(jsonLine)
-            if (data.benchmark !== "UTF-8 Operations") {
+            if (data.benchmark !== "Terminal Image") {
               throw new Error(`Unexpected benchmark category: ${data.benchmark}`)
             }
             if (!Array.isArray(data.results) || data.results.length !== 1) {
               throw new Error(`Expected exactly one benchmark result, got ${data.results?.length ?? 0}`)
             }
-            if (data.results[0].name !== "isAsciiOnly: ASCII text (1KB)") {
+            const result = data.results[0]
+            if (result.name !== "Kitty cover placement") {
               throw new Error(`Unexpected benchmark result: ${data.results[0].name}`)
+            }
+            if (!Number.isFinite(result.stddev_ns) || !Number.isFinite(result.rme_95)) {
+              throw new Error(`Benchmark result is missing confidence fields: ${JSON.stringify(result)}`)
             }
           '
