@@ -1334,15 +1334,15 @@ pub fn clearPlaybackDeviceSelection(engine: *Engine) void {
 
 pub fn refreshCaptureDevices(engine: *Engine) i32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     return refreshCaptureDevicesLocked(e);
 }
 
 pub fn getCaptureDeviceCount(engine: *Engine) u32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     return @intCast(e.capture_devices.items.len);
 }
 
@@ -1350,8 +1350,8 @@ pub fn getCaptureDeviceName(engine: *Engine, index: u32, out_ptr: ?[*]u8, max_le
     if (out_ptr == null) return 0;
 
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const idx: usize = @intCast(index);
     if (idx >= e.capture_devices.items.len) return 0;
@@ -1360,8 +1360,8 @@ pub fn getCaptureDeviceName(engine: *Engine, index: u32, out_ptr: ?[*]u8, max_le
 
 pub fn isCaptureDeviceDefault(engine: *Engine, index: u32) bool {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     const idx: usize = @intCast(index);
     if (idx >= e.capture_devices.items.len) return false;
@@ -1370,8 +1370,8 @@ pub fn isCaptureDeviceDefault(engine: *Engine, index: u32) bool {
 
 pub fn selectCaptureDevice(engine: *Engine, index: u32) i32 {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
 
     if (e.has_capture_device) return Status.err_invalid;
     if (e.capture_devices.items.len == 0) {
@@ -1390,8 +1390,8 @@ pub fn selectCaptureDevice(engine: *Engine, index: u32) i32 {
 
 pub fn clearCaptureDeviceSelection(engine: *Engine) void {
     const e = engine;
-    e.lock.lock();
-    defer e.lock.unlock();
+    e.lock.lockUncancelable(io);
+    defer e.lock.unlock(io);
     e.selected_capture_index = null;
     e.has_selected_capture_device = false;
 }
