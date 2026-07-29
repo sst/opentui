@@ -6,6 +6,7 @@ import { createMockMouse, createTestRenderer, type TestRenderer } from "../testi
 import { MockTreeSitterClient } from "../testing/mock-tree-sitter-client.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 import { settleDiffHighlighting } from "./__tests__/renderable-test-utils.js"
+import { LineNumberRenderable } from "./LineNumberRenderable.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -1372,6 +1373,10 @@ test("DiffRenderable - multiple hunks in unified view", async () => {
   // Third hunk around line 32
   const thirdHunkLine = frameLines.find((l) => l.includes('console.log("new")'))
   expect(thirdHunkLine).toMatch(/32 \+/)
+
+  const side = diffRenderable.getChildren()[0]
+  expect(side).toBeInstanceOf(LineNumberRenderable)
+  expect((side as LineNumberRenderable).getLineColors().gutter.get(4)).toEqual(parseColor("transparent"))
 })
 
 test("DiffRenderable - multiple hunks in split view", async () => {
@@ -1424,7 +1429,7 @@ test("DiffRenderable - multiple hunks in split view", async () => {
   expect(frame).toContain('console.log("old")')
 })
 
-test("DiffRenderable - separates syntax highlighting and labels omitted ranges between hunks", async () => {
+test("DiffRenderable - separates syntax highlighting and marks omitted ranges between hunks", async () => {
   class RecordingTreeSitterClient extends MockTreeSitterClient {
     readonly contents: string[] = []
 
@@ -1473,7 +1478,7 @@ ${" "}
   await Promise.resolve()
   await renderOnce()
 
-  expect(captureFrame()).toContain("@@ -45,7 +46,9 @@")
+  expect(captureFrame()).toContain("⋯")
   expect(client.contents).toHaveLength(2)
   expect(client.contents[0]).toContain("NotFoundError")
   expect(client.contents[0]).not.toContain("export interface Interface")
