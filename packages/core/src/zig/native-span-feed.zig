@@ -106,6 +106,11 @@ const SpanRing = struct {
         }
     }
 
+    fn ensureAdditionalCapacity(self: *SpanRing, stream: *Stream, additional: u32) StreamError!void {
+        const required = @as(u64, self.count()) + additional;
+        while (required > self.capacity) try self.grow(stream);
+    }
+
     pub fn popMany(self: *SpanRing, out: []SpanInfo) u32 {
         const available = self.tail -% self.head;
         if (available == 0) return 0;
@@ -297,6 +302,60 @@ pub const Stream = struct {
                 }
             }
         }
+    }
+
+    /// Publish one complete byte sequence or nothing. Renderer frames use this
+    /// so a capacity/allocation failure cannot expose a truncated ANSI sequence.
+    pub fn writeAtomic(self: *Stream, data: []const u8) StreamError!void {
+        if (self.closed) return StreamError.Invalid;
+        if (data.len == 0) return;
+        if (self.reserved_active or self.pending_len != 0) return StreamError.Busy;
+
+        const chunk_size = @as(usize, self.options.chunk_size);
+        const required_chunks_usize = std.math.divCeil(usize, data.len, chunk_size) catch return StreamError.Invalid;
+        const required_chunks = std.math.cast(u32, required_chunks_usize) orelse return StreamError.NoSpace;
+
+        var free_chunks: usize = 0;
+        for (0..self.chunks.items.len) |index| {
+            if (self.isChunkFree(index)) free_chunks += 1;
+        }
+        if (free_chunks < required_chunks_usize) {
+            if (self.options.growth_policy == @intFromEnum(GrowthPolicy.block)) return StreamError.NoSpace;
+            var missing = required_chunks_usize - free_chunks;
+            while (missing > 0) : (missing -= 1) try self.addChunkLocked();
+        }
+        try self.span_ring.ensureAdditionalCapacity(self, required_chunks);
+
+        var notify = false;
+        defer self.finish(notify, 0);
+        var source_offset: usize = 0;
+        var last_chunk_index: usize = self.current_chunk_index;
+        for (self.chunks.items, 0..) |chunk, index| {
+            if (!self.isChunkFree(index)) continue;
+            const len = @min(chunk_size, data.len - source_offset);
+            @memcpy(chunk.ptr[0..len], data[source_offset .. source_offset + len]);
+            const info: SpanInfo = .{
+                .chunk_ptr = @intFromPtr(chunk.ptr),
+                .offset = 0,
+                .len = @intCast(len),
+                .chunk_index = @intCast(index),
+                .reserved = 0,
+            };
+            // Capacity was secured before the first byte was copied.
+            self.span_ring.push(self, info, &notify) catch unreachable;
+            self.markSpanPending(info.chunk_index);
+            self.stats.spans_committed += 1;
+            source_offset += len;
+            last_chunk_index = index;
+            if (source_offset == data.len) break;
+        }
+        std.debug.assert(source_offset == data.len);
+        self.current_chunk_index = last_chunk_index;
+        self.write_offset = @as(usize, self.chunks.items[last_chunk_index].len);
+        self.pending_chunk_index = last_chunk_index;
+        self.pending_offset = self.write_offset;
+        self.pending_len = 0;
+        self.stats.bytes_written += @as(u64, @intCast(data.len));
     }
 
     pub fn reserve(self: *Stream, min_len: u32) StreamError!ReserveInfo {
