@@ -11,6 +11,7 @@ import {
   resolveRenderLib,
   type ClipboardOperationHandle,
   type ClipboardServiceHandle,
+  type ImageHandle,
 } from "../zig.js"
 
 const READ_REQUEST = Uint8Array.of(1, 0, 0, 0, 10, 0, 0, 0, ...new TextEncoder().encode("text/plain"))
@@ -33,6 +34,22 @@ test("native clipboard production-symbol ABI lifecycle", async () => {
   try {
     expect(() => (lib as typeof lib & { dispose(): void }).dispose()).toThrow("clipboard services are active")
     expect(lib.clipboardServiceDrain(service)).not.toBe(2)
+    const createdImage = lib.imageCreateFromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1, 4)
+    expect(createdImage.status).toBe(0)
+    expect(createdImage.handle).not.toBeNull()
+    if (createdImage.handle) {
+      try {
+        expect(lib.clipboardServicePollShutdown(createdImage.handle as unknown as ClipboardServiceHandle)).toBe(
+          NativeClipboardShutdownStatus.InvalidHandle,
+        )
+        expect(lib.clipboardOperationPoll(createdImage.handle as unknown as ClipboardOperationHandle)).toBe(
+          NativeClipboardOperationStatus.InvalidHandle,
+        )
+        expect(lib.imageGetInfo(service as unknown as ImageHandle).status).toBe(1)
+      } finally {
+        lib.imageDestroy(createdImage.handle)
+      }
+    }
     const starts = [
       lib.clipboardReadOperationStart(service, READ_REQUEST, 0, 1024, 4096, 8192, 0),
       lib.clipboardWriteOperationStart(service, new TextEncoder().encode("text"), 0, 0),
