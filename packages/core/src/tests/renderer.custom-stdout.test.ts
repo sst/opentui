@@ -394,6 +394,63 @@ test("tall scrollback surfaces composite translucent Sixel images over snapshot 
   expect(stdout.getWrittenBytes().toString("binary")).toContain("#0;2;50;0;50")
 })
 
+for (const testCase of [
+  {
+    name: "Kitty",
+    capabilities: "\x1b[4;6;8t\x1b_Gi=31337;OK\x1b\\\x1b[3;1R",
+    placement: "\x1b_Ga=p",
+  },
+  {
+    name: "Sixel",
+    capabilities: "\x1b[?1;4c\x1b[4;6;8t\x1b[3;1R",
+    placement: "\x1bP0;1;0q",
+  },
+]) {
+  test(`pinned split-footer appends repaint unchanged live ${testCase.name} images`, async () => {
+    const stdin = createTestStdin()
+    const stdout = createCollectingStdout(8, 6)
+    const renderer = await createCliRenderer({
+      stdin,
+      stdout,
+      screenMode: "split-footer",
+      footerHeight: 3,
+      externalOutputMode: "capture-stdout",
+      consoleMode: "disabled",
+    })
+    destroyFns.push(() => renderer.destroy())
+
+    stdin.emit("data", Buffer.from(testCase.capabilities))
+    const image = new ImageRenderable(renderer, {
+      source: PNG_1X1,
+      protocol: "auto",
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: 1,
+      height: 1,
+      fit: "fill",
+    })
+    renderer.root.add(image)
+    await image.loadPromise
+    renderer.requestRender()
+    await renderer.idle()
+    await (renderer as any)._feed.idle()
+    stdout.clearWrites()
+
+    const appended = `pin${testCase.name[0]}`
+    stdout.write(`${appended}\n`)
+    renderer.requestRender()
+    await renderer.idle()
+    await (renderer as any)._feed.idle()
+
+    const output = stdout.getWrittenBytes().toString("binary")
+    const appendIndex = output.indexOf(appended)
+    const placementIndex = output.indexOf(testCase.placement)
+    expect(output).toContain(appended)
+    expect(placementIndex).toBeGreaterThan(appendIndex)
+  })
+}
+
 test("split-footer custom stdout: native feed bytes bypass stdout capture", async () => {
   const stdin = createTestStdin()
   const stdout = createCollectingStdout(80, 24)
