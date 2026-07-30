@@ -115,6 +115,7 @@ const SplitFrameState = struct {
     scrollback: split_scrollback.SplitScrollback,
     render_offset: u32,
     transition: SplitFooterTransition,
+    kitty_history_next_image_id: ?u32 = null,
 };
 
 const CommittedImage = struct {
@@ -880,6 +881,7 @@ pub const CliRenderer = struct {
             .scrollback = self.splitScrollback,
             .render_offset = self.renderOffset,
             .transition = self.pendingSplitFooterTransition,
+            .kitty_history_next_image_id = self.kittyHistoryNextImageId,
         };
     }
 
@@ -887,6 +889,7 @@ pub const CliRenderer = struct {
         self.splitScrollback = state.scrollback;
         self.renderOffset = state.render_offset;
         self.pendingSplitFooterTransition = state.transition;
+        self.kittyHistoryNextImageId = state.kitty_history_next_image_id;
     }
 
     fn finishSplitBatch(self: *CliRenderer, published: bool) void {

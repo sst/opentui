@@ -2356,6 +2356,7 @@ test "renderer - failed Kitty scrollback preparation does not publish the batch"
     defer snapshot.deinit();
     try std.testing.expect(try snapshot.drawImage(value, image_handle, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, .auto));
     _ = test_renderer.renderer.resetSplitScrollback(2, 2);
+    test_renderer.renderer.kittyHistoryNextImageId = std.math.maxInt(u32);
     const split_scrollback = test_renderer.renderer.splitScrollback;
     const render_offset = test_renderer.renderer.renderOffset;
 
@@ -2370,6 +2371,11 @@ test "renderer - failed Kitty scrollback preparation does not publish the batch"
     try std.testing.expectEqualDeep(split_scrollback, test_renderer.renderer.splitScrollback);
     try std.testing.expectEqual(render_offset, test_renderer.renderer.renderOffset);
     try std.testing.expectEqual(@as(usize, 1), snapshot.image_placements.items.len);
+    try std.testing.expectEqual(@as(?u32, std.math.maxInt(u32)), test_renderer.renderer.kittyHistoryNextImageId);
+
+    const retry = test_renderer.renderer.commitSplitFooterSnapshotBatched(snapshot, 1, false, true, 2, false, true, true);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, retry.status);
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1b_Ga=t") != null);
 }
 
 test "renderer - split scrollback emits native Sixel images when placement geometry is available" {
