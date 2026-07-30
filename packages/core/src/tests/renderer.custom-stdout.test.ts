@@ -219,6 +219,52 @@ test("auto images use detected Sixel when pixel resolution is available", async 
   expect(stdout.getWrittenBytes().toString("binary")).toContain("\x1bP0;1;0q")
 })
 
+test("resized images wait for the new pixel resolution before using Sixel", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+
+  stdin.emit("data", Buffer.from("\x1b[4;80;80t"))
+  const image = new ImageRenderable(renderer, {
+    source: PNG_1X1,
+    protocol: "sixel",
+    position: "absolute",
+    width: 2,
+    height: 1,
+    fit: "fill",
+  })
+  renderer.root.add(image)
+  await image.loadPromise
+  renderer.requestRender()
+  await renderer.idle()
+  await flushWritable(stdout)
+  expect(image.effectiveProtocol).toBe("sixel")
+  expect(stdout.getWrittenBytes().toString("binary")).toContain('0;1;0q"1;1;20;20')
+
+  stdout.clearWrites()
+  renderer.resize(16, 4)
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  const pendingOutput = stdout.getWrittenBytes().toString("binary")
+  expect(pendingOutput).toContain("\x1b[14t")
+  expect(pendingOutput).not.toContain('0;1;0q"1;1;10;20')
+  expect(renderer.resolution).toBeNull()
+  expect(image.effectiveProtocol).toBe("blocks")
+  expect(pendingOutput).not.toContain("\x1bP0;1;0q")
+  expect(stdout.getWrittenBytes().toString("utf8")).toContain("█")
+
+  stdout.clearWrites()
+  stdin.emit("data", Buffer.from("\x1b[4;80;160t"))
+  await renderer.idle()
+  await flushWritable(stdout)
+
+  expect(renderer.resolution).toEqual({ width: 160, height: 80 })
+  expect(image.effectiveProtocol).toBe("sixel")
+  expect(stdout.getWrittenBytes().toString("binary")).toContain('0;1;0q"1;1;20;20')
+})
+
 test("split-footer Kitty scrollback does not rasterize images to terminal pixel dimensions", async () => {
   const stdin = createTestStdin()
   const stdout = createCollectingStdout(80, 60)

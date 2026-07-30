@@ -3814,6 +3814,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._terminalWidth = width
     this._terminalHeight = height
+    this._resolution = null
     this.queryPixelResolution()
 
     this.setCapturedRenderable(undefined)
