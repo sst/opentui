@@ -194,6 +194,9 @@ pub const CliRenderer = struct {
     splitBatchActive: bool = false,
     splitBatchRedrawFooter: bool = false,
     splitBatchDeltaTime: f64 = 0,
+    splitBatchStartScrollback: split_scrollback.SplitScrollback = .{},
+    splitBatchStartRenderOffset: u32 = 0,
+    splitBatchStartTransition: SplitFooterTransition = .{},
     pendingSplitFooterTransition: SplitFooterTransition = .{},
 
     /// Output transport. Owned by the renderer; destroyed in `destroy()`.
@@ -843,6 +846,17 @@ pub const CliRenderer = struct {
         return .{ .renderOffset = self.renderOffset, .status = status };
     }
 
+    fn finishSplitBatch(self: *CliRenderer, published: bool) void {
+        if (!published) {
+            self.splitScrollback = self.splitBatchStartScrollback;
+            self.renderOffset = self.splitBatchStartRenderOffset;
+            self.pendingSplitFooterTransition = self.splitBatchStartTransition;
+        }
+        self.splitBatchActive = false;
+        self.splitBatchRedrawFooter = false;
+        self.splitBatchDeltaTime = 0;
+    }
+
     // One code path; backend selects writer type at compile time.
     pub fn render(self: *CliRenderer, force: bool) RenderStatus {
         // Backpressure: skipping must NOT update lastRenderTime so the next
@@ -1037,6 +1051,9 @@ pub const CliRenderer = struct {
                     var w = b.writer();
                     beginRenderFrame(&w);
                     var frame_started = true;
+                    self.splitBatchStartScrollback = self.splitScrollback;
+                    self.splitBatchStartRenderOffset = self.renderOffset;
+                    self.splitBatchStartTransition = self.pendingSplitFooterTransition;
                     self.applyPendingSplitFooterTransition(&w, &frame_started);
 
                     // Track batch lifetime so subsequent calls can append into the same
@@ -1068,9 +1085,7 @@ pub const CliRenderer = struct {
                             self.collectFrameStats(deltaTime);
                         }
 
-                        self.splitBatchActive = false;
-                        self.splitBatchRedrawFooter = false;
-                        self.splitBatchDeltaTime = 0;
+                        self.finishSplitBatch(result_status != .failed);
                     } else {
                         result_status = .rendered;
                         self.splitBatchRedrawFooter = redraw_footer;
@@ -1126,9 +1141,7 @@ pub const CliRenderer = struct {
                         self.collectFrameStats(self.splitBatchDeltaTime);
                     }
 
-                    self.splitBatchActive = false;
-                    self.splitBatchRedrawFooter = false;
-                    self.splitBatchDeltaTime = 0;
+                    self.finishSplitBatch(result_status != .failed);
                 } else {
                     result_status = .rendered;
                 }
