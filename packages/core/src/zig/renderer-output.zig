@@ -845,6 +845,8 @@ pub const FeedBackend = struct {
 
     pub fn writeOut(self: *FeedBackend, data: []const u8) void {
         if (data.len == 0) return;
+        // High-level renderers use a growable, uncapped feed. Manually bounded
+        // low-level feeds intentionally get atomic best-effort control writes.
         self.feed.writeAtomic(data) catch {};
     }
 

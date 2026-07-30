@@ -538,6 +538,32 @@ test("destroy emits shutdown ANSI sequence through the custom Writable", async (
   expect(shutdownBytes).toContain("\x1b[?25h") // showCursor
 })
 
+test("destroy preserves shutdown output while slow writes pin initial feed chunks", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(80, 24)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+
+  const feed = (renderer as any)._feed
+  expect(feed).not.toBeNull()
+  await feed.idle()
+  stdout.clearWrites()
+
+  stdout.delayMs = 100
+  // Two delayed writes pin the default feed's initial chunks during shutdown.
+  renderer.setTerminalTitle("pin-feed-1")
+  renderer.setTerminalTitle("pin-feed-2")
+  renderer.destroy()
+
+  await new Promise<void>((resolve, reject) => {
+    stdout.write(Buffer.alloc(0), (error) => (error ? reject(error) : resolve()))
+  })
+  const output = stdout.getWrittenBytes().toString("binary")
+  expect(output).toContain("\x1b]0;pin-feed-1\x07")
+  expect(output).toContain("\x1b]0;pin-feed-2\x07")
+  expect(output).toContain("\x1b[?25h")
+})
+
 // ---- Backpressure ----
 
 test("slow Writable marks feed as backpressured until write callback settles", async () => {
