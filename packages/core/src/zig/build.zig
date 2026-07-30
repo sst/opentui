@@ -76,6 +76,14 @@ fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
     return b.resolveTargetQuery(query);
 }
 
+fn nativeTestTarget(b: *std.Build, use_host_libc: bool) std.Build.ResolvedTarget {
+    if (builtin.os.tag != .linux or !use_host_libc) return nativeExecutableTarget(b);
+    var query = b.graph.host.query;
+    query.abi = .gnu;
+    query.glibc_version = .{ .major = 2, .minor = 17, .patch = 0 };
+    return b.resolveTargetQuery(query);
+}
+
 fn pathExists(path: []const u8) bool {
     if (path.len == 0) return false;
     std.fs.cwd().access(path, .{}) catch return false;
@@ -276,6 +284,7 @@ pub fn build(b: *std.Build) void {
     const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu.2.17').");
     const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
     const gpa_safe_stats = b.option(bool, "gpa-safe-stats", "Enable GPA safety checks for trustworthy allocator stats") orelse false;
+    const test_host_libc = b.option(bool, "test-host-libc", "Use the host libc for native tests that require dlopen") orelse false;
     const macos_sdk_path = resolveMacOSSDKPath(b);
     const build_options = b.addOptions();
     build_options.addOption(bool, "gpa_safe_stats", gpa_safe_stats);
@@ -302,7 +311,7 @@ pub fn build(b: *std.Build) void {
 
     // Test step (native only)
     const test_step = b.step("test", "Run unit tests");
-    const native_target = nativeExecutableTarget(b);
+    const native_target = nativeTestTarget(b, test_host_libc);
     const test_mod = b.createModule(.{
         .root_source_file = b.path("test.zig"),
         .target = native_target,
