@@ -3093,7 +3093,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   // TODO: All input management may move to native when zig finally has async io support again,
   // without rolling a full event loop
   public async setupTerminal(): Promise<void> {
-    if (this._terminalIsSetup) return
+    if (this._isDestroyed || this._terminalIsSetup) return
     this._terminalIsSetup = true
 
     const startupCursorCprActive = this._screenMode === "split-footer" && this._externalOutputMode === "capture-stdout"

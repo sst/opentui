@@ -2120,6 +2120,22 @@ test("terminal setup while suspended queries pixel resolution after resume", asy
   }
 })
 
+test("terminal setup after destroy is a no-op", async () => {
+  const originalQuery = currentRenderer.lib.queryPixelResolution
+  let queries = 0
+  currentRenderer.lib.queryPixelResolution = () => {
+    queries++
+  }
+
+  try {
+    currentRenderer.destroy()
+    await currentRenderer.setupTerminal()
+    expect(queries).toBe(0)
+  } finally {
+    currentRenderer.lib.queryPixelResolution = originalQuery
+  }
+})
+
 test("kitty full capability response arriving in realistic chunks", async () => {
   const keypresses: KeyEvent[] = []
   currentRenderer.keyInput.on("keypress", (event) => {
