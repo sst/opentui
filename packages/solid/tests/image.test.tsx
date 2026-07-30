@@ -72,4 +72,24 @@ describe("image component", () => {
     expect(() => replacementImage.info()).toThrow("NativeImage is disposed")
     expect(testSetup.captureCharFrame()).not.toContain("█")
   })
+
+  it("restores image defaults when optional props are cleared", async () => {
+    let imageRef: ImageRenderable | undefined
+    const [fit, setFit] = createSignal<"fill" | undefined>("fill")
+    const [protocol, setProtocol] = createSignal<"kitty" | undefined>("kitty")
+
+    testSetup = await testRender(() => <image ref={imageRef} fit={fit()} protocol={protocol()} />, {
+      width: 4,
+      height: 2,
+    })
+    expect(imageRef!.fit).toBe("fill")
+    expect(imageRef!.protocol).toBe("kitty")
+
+    setFit(undefined)
+    setProtocol(undefined)
+
+    expect(imageRef!.fit).toBe("fit")
+    expect(imageRef!.protocol).toBe("auto")
+    expect(imageRef!.effectiveProtocol).toBe("blocks")
+  })
 })

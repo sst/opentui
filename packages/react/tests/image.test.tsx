@@ -113,4 +113,32 @@ describe("React Renderer | image element", () => {
     expect(imageRef!.loadError).toBeNull()
     expect(testSetup.captureCharFrame()).not.toContain("█")
   })
+
+  it("restores image defaults when optional props are removed", async () => {
+    let imageRef: ImageRenderable | null = null
+    let setConfigured!: (configured: boolean) => void
+
+    function App() {
+      const [configured, setImageConfigured] = useState(true)
+      setConfigured = setImageConfigured
+      return (
+        <image
+          ref={(renderable: ImageRenderable | null) => {
+            imageRef = renderable
+          }}
+          {...(configured ? { fit: "fill" as const, protocol: "kitty" as const } : {})}
+        />
+      )
+    }
+
+    testSetup = await testRender(<App />, { width: 4, height: 2 })
+    expect(imageRef!.fit).toBe("fill")
+    expect(imageRef!.protocol).toBe("kitty")
+
+    act(() => setConfigured(false))
+
+    expect(imageRef!.fit).toBe("fit")
+    expect(imageRef!.protocol).toBe("auto")
+    expect(imageRef!.effectiveProtocol).toBe("blocks")
+  })
 })
