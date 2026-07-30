@@ -1050,6 +1050,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     let feed: NativeSpanFeed | null = null
     if (useFeedOutput) {
       try {
+        // Keep high-level feeds growable and uncapped so control/shutdown writes
+        // can publish while async Writable callbacks still pin earlier chunks.
         feed = NativeSpanFeed.create()
       } catch (error) {
         throw new Error(
