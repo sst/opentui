@@ -591,8 +591,10 @@ test "PNG eXIf orientation applies during decode" {
 }
 
 test "area resize upscales tiny sources exactly" {
-    // Regression: stb's sRGB table-bias idiom aborted Debug builds under UBSan
-    // for these paths before the resize shim was isolated (image-resize-shim.c).
+    // Regression: bounds instrumentation aborts on stb's upstream sRGB
+    // table-bias idiom. On supported native x86_64/aarch64 builds, the first
+    // case reaches the SIMD RGBA sRGB path and checks every output pixel. This
+    // is evidence for the scoped exception, not a general stb safety proof.
     const source = try makeImage(&[_]u8{ 200, 40, 10, 255 }, 1, 1);
     defer source.deinit();
     const output = try image.resize(std.testing.allocator, source, 12, 2, .area);

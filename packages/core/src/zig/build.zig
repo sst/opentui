@@ -178,9 +178,12 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
         .flags = flags,
     });
 
-    // stb_image_resize2 intentionally biases static table pointers out of
-    // bounds. Keep this sanitizer exception scoped to the resize translation
-    // unit; its rationale and permanent fix are in vendor/stb/README.md.
+    // One upstream SIMD sRGB idiom forms `fp32_to_srgb8_tab4 - 912`; its
+    // clamped indexes 912...1015 resolve to actual table elements 0...103.
+    // The reads are in range, but the pre-array pointer trips C bounds
+    // instrumentation. Disable only `bounds` for this translation unit;
+    // pointer-overflow, alignment, and other sanitizers remain enabled. This
+    // is separate from our coefficient-copy alignment patch. See vendor/stb/README.md.
     const resize_flags: []const []const u8 = switch (target.result.os.tag) {
         .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds", "-isysroot", macos_sdk_path.? },
         else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds" },

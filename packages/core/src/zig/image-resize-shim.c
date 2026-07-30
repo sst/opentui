@@ -2,13 +2,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-// stb_image_resize2 lives in its own translation unit: its sRGB conversion
-// intentionally biases a static table pointer out of bounds
-// (fp32_to_srgb8_tab4 - (127-13)*8) and rebalances it with large indices.
-// That idiom is correct at runtime but trips UBSan's bounds check, so this
-// file is compiled with bounds instrumentation disabled while the decoders in
-// image-shim.c keep full sanitization for untrusted input. The accepted
-// exception and permanent remediation are documented in vendor/stb/README.md.
+// Keep stb_image_resize2 isolated for one accepted upstream exception. Three
+// SIMD sRGB lookups form `fp32_to_srgb8_tab4 - 912`; clamped indexes 912...1015
+// resolve to the real 104-entry table at 0...103. The effective reads are in
+// range, but forming the pre-array pointer violates C's pointer model and trips
+// bounds instrumentation. Only `bounds` is disabled for this translation unit;
+// pointer-overflow, alignment, and other sanitizers remain enabled, and
+// image-shim.c keeps normal instrumentation. This is unrelated to OpenTUI's
+// coefficient-copy alignment patch. See vendor/stb/README.md for evidence,
+// scope, accepted policy, and the permanent remediation.
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_STATIC
 #include "vendor/stb/stb_image_resize2.h"
