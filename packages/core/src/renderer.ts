@@ -1950,6 +1950,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     let surfaceWidth = renderer.width
     let surfaceHeight = 1
     let surfaceWidthMethod = renderer.widthMethod
+    let surfaceTerminalWidth = renderer._terminalWidth
+    let surfaceTerminalHeight = renderer._terminalHeight
+    let surfaceResolutionWidth = renderer.resolution?.width ?? null
+    let surfaceResolutionHeight = renderer.resolution?.height ?? null
     let surfaceDestroyed = false
     let hasRendered = false
     let nextCommitStartOnNewLine = startOnNewLine
@@ -1974,7 +1978,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     const assertGeometryStillCurrent = (): void => {
-      if (renderer.width !== surfaceWidth || renderer.widthMethod !== surfaceWidthMethod) {
+      if (
+        renderer.width !== surfaceWidth ||
+        renderer.widthMethod !== surfaceWidthMethod ||
+        renderer._terminalWidth !== surfaceTerminalWidth ||
+        renderer._terminalHeight !== surfaceTerminalHeight ||
+        (renderer.resolution?.width ?? null) !== surfaceResolutionWidth ||
+        (renderer.resolution?.height ?? null) !== surfaceResolutionHeight
+      ) {
         throw new Error("ScrollbackSurface.commitRows requires render() after renderer geometry changes")
       }
     }
@@ -2088,6 +2099,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           surfaceWidth = width
           surfaceHeight = measuredHeight
           surfaceWidthMethod = widthMethod
+          surfaceTerminalWidth = renderer._terminalWidth
+          surfaceTerminalHeight = renderer._terminalHeight
+          surfaceResolutionWidth = renderer.resolution?.width ?? null
+          surfaceResolutionHeight = renderer.resolution?.height ?? null
           hasRendered = true
           return
         }
@@ -2100,6 +2115,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       surfaceWidth = width
       surfaceHeight = targetHeight
       surfaceWidthMethod = widthMethod
+      surfaceTerminalWidth = renderer._terminalWidth
+      surfaceTerminalHeight = renderer._terminalHeight
+      surfaceResolutionWidth = renderer.resolution?.width ?? null
+      surfaceResolutionHeight = renderer.resolution?.height ?? null
       hasRendered = true
     }
 
