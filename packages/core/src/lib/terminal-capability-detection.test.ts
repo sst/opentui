@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test"
 import {
+  countPixelResolutionResponses,
   isCapabilityResponse,
   isPixelResolutionResponse,
   parsePixelResolution,
@@ -131,6 +132,16 @@ describe("parsePixelResolution", () => {
     expect(parsePixelResolution("\x1b[?1016;2$y")).toBeNull()
     expect(parsePixelResolution(`\x1b[4;${"9".repeat(400)};${"9".repeat(400)}t`)).toBeNull()
   })
+})
+
+test("counts complete pixel resolution responses across chunks", () => {
+  const encoder = new TextEncoder()
+  expect(
+    countPixelResolutionResponses([
+      encoder.encode("ignored\x1b[4;720;"),
+      encoder.encode("1280t\x1b[4;1080;1920tpartial\x1b[4;"),
+    ]),
+  ).toBe(2)
 })
 
 describe("real-world terminal capability sequences", () => {
