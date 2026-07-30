@@ -39,6 +39,7 @@ import * as textSelectionExample from "./text-selection-demo.js"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo.js"
 import * as splitModeExample from "./split-mode-demo.js"
 import * as splitFooterStreamingDemo from "./split-footer-streaming-demo.js"
+import * as splitFooterImageDemo from "./split-footer-image-demo.js"
 import * as consoleExample from "./console-demo.js"
 import * as notificationDemo from "./notification-demo.js"
 import * as vnodeCompositionDemo from "./vnode-composition-demo.js"
@@ -315,6 +316,12 @@ const EXAMPLE_SECTIONS: ExampleSection[] = [
       description: "Shows how child positions are relative to their parent containers",
       run: relativePositioningDemo.run,
       destroy: relativePositioningDemo.destroy,
+    },
+    {
+      name: "Split Footer Image Demo",
+      description: "Live Kitty, Sixel, and block images alongside split-footer scrollback commits",
+      run: splitFooterImageDemo.run,
+      destroy: splitFooterImageDemo.destroy,
     },
     {
       name: "Split Footer Streaming Demo",
