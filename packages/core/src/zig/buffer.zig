@@ -2651,6 +2651,17 @@ pub const OptimizedBuffer = struct {
         }
     }
 
+    pub fn materializeImageFallbacks(self: *OptimizedBuffer) void {
+        if (self.image_placements.items.len == 0) return;
+        for (1..self.image_placements.items.len + 1) |placement_id| {
+            self.materializeImageFallback(@intCast(placement_id));
+        }
+        for (self.buffer.char) |*char| {
+            if (gp.isImageChar(char.*)) char.* = quadrantChars[gp.imageFallbackFromChar(char.*)];
+        }
+        self.clearImagePlacements();
+    }
+
     /// Draw a buffer of pixel data using super sampling (2x2 pixels per character cell)
     /// alignedBytesPerRow: The number of bytes per row in the pixelData buffer, considering alignment/padding.
     pub fn drawSuperSampleBuffer(

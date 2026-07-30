@@ -55,6 +55,31 @@ test "OptimizedBuffer materializes block fallback on demand" {
     try std.testing.expect(gp.imageFallbackFromChar(cell.char) != 0);
 }
 
+test "OptimizedBuffer flattens image placements into owned block cells" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+    const source = try image.createFromRgba(std.testing.allocator, &[_]u8{
+        255, 0, 0,   255, 0,   255, 0,   255,
+        0,   0, 255, 255, 255, 255, 255, 255,
+    }, 2, 2, 8);
+    defer source.deinit();
+
+    try std.testing.expect(try target.drawImage(source, 1, 0, 0, 1, 1, 0, 0, 0, 0, 2, 2, .kitty));
+    try std.testing.expectEqual(@as(u32, 2), source.ref_count);
+
+    target.materializeImageFallbacks();
+
+    const cell = target.get(0, 0).?;
+    try std.testing.expect(!gp.isImageChar(cell.char));
+    try std.testing.expect(std.mem.indexOfScalar(u32, &buffer_mod.quadrantChars, cell.char) != null);
+    try std.testing.expectEqual(@as(usize, 0), target.image_placements.items.len);
+    try std.testing.expectEqual(@as(u32, 1), source.ref_count);
+}
+
 test "OptimizedBuffer clips image placements and source crop to scissor" {
     var pool = gp.GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
@@ -126,6 +151,31 @@ test "OptimizedBuffer copies transparent image reservation markers from frame bu
     target.drawFrameBuffer(0, 0, source_buffer, null, null, null, null);
     try std.testing.expect(gp.isImageChar(target.get(0, 0).?.char));
     try std.testing.expectEqual(@as(usize, 1), target.image_placements.items.len);
+}
+
+test "OptimizedBuffer flattening a framebuffer copy preserves source image ownership" {
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const source_buffer = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer source_buffer.deinit();
+    const target = try OptimizedBuffer.init(std.testing.allocator, 1, 1, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 7, 8, 9, 255 }, 1, 1, 4);
+    defer value.deinit();
+
+    try std.testing.expect(try source_buffer.drawImage(value, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, .auto));
+    target.drawFrameBuffer(0, 0, source_buffer, null, null, null, null);
+    try std.testing.expectEqual(@as(u32, 3), value.ref_count);
+
+    target.materializeImageFallbacks();
+
+    try std.testing.expect(!gp.isImageChar(target.get(0, 0).?.char));
+    try std.testing.expectEqual(@as(usize, 0), target.image_placements.items.len);
+    try std.testing.expect(gp.isImageChar(source_buffer.get(0, 0).?.char));
+    try std.testing.expectEqual(@as(usize, 1), source_buffer.image_placements.items.len);
+    try std.testing.expectEqual(@as(u32, 2), value.ref_count);
 }
 
 test "OptimizedBuffer copies malformed image markers as fallback cells" {

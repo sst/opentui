@@ -112,6 +112,20 @@ pub fn writeKittyPlacement(
     if (tmux) try writer.writeAll("\x1b\x1b\\\x1b\\") else try writer.writeAll("\x1b\\");
 }
 
+pub fn writeKittyPlacementAtCursor(
+    writer: anytype,
+    id: u32,
+    placement_id: u32,
+    width: u32,
+    height: u32,
+    z: i32,
+    tmux: bool,
+) !void {
+    if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
+    try writer.print("a=p,i={d},p={d},c={d},r={d},C=1,z={d},q=2", .{ id, placement_id, width, height, z });
+    if (tmux) try writer.writeAll("\x1b\x1b\\\x1b\\") else try writer.writeAll("\x1b\\");
+}
+
 pub fn writeKittyDelete(writer: anytype, id: u32, placement_id: ?u32, free_image: bool, tmux: bool) !void {
     if (tmux) try writer.writeAll("\x1bPtmux;\x1b\x1b_G") else try writer.writeAll("\x1b_G");
     try writer.print("a=d,d={c},i={d}", .{ if (free_image) @as(u8, 'I') else @as(u8, 'i'), id });
