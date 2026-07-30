@@ -765,6 +765,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private postProcessFns: ((buffer: OptimizedBuffer, deltaTime: number) => void)[] = []
   private backgroundColor: RGBA = RGBA.fromInts(0, 0, 0, 0)
   private pendingPixelResolutionQueries: number = 0
+  private queryPixelResolutionOnResume: boolean = false
   private readonly clock: Clock
 
   private rendering: boolean = false
@@ -3749,7 +3750,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._terminalWidth = width
     this._terminalHeight = height
-    this.queryPixelResolution()
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      this.queryPixelResolutionOnResume = true
+    } else {
+      this.queryPixelResolution()
+    }
 
     this.setCapturedRenderable(undefined)
     this.stdinParser?.resetMouseState()
@@ -4073,6 +4078,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lib.resumeRenderer(this.rendererPtr)
     }
 
+    if (this.queryPixelResolutionOnResume) {
+      this.queryPixelResolutionOnResume = false
+      this.queryPixelResolution()
+    }
+
     this.suspendedNonAltSurfacePreserved = false
 
     this.flushPendingSplitOutputBeforeTransition(false, { allowSuspended: true, allowPassthrough: true })
@@ -4192,6 +4202,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._isRunning = false
     this.pendingPixelResolutionQueries = 0
+    this.queryPixelResolutionOnResume = false
     this.updateStdinParserProtocolContext(
       {
         privateCapabilityRepliesActive: false,
