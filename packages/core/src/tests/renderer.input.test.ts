@@ -97,6 +97,10 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve()
 }
 
+function getCurrentRenderLib(): RenderLib {
+  return (currentRenderer as unknown as { lib: RenderLib }).lib
+}
+
 class MouseTarget extends Renderable {
   constructor(context: RenderContext, options: RenderableOptions) {
     super(context, options)
@@ -2057,9 +2061,10 @@ test("chunked pixel resolution response", async () => {
 })
 
 test("latest outstanding pixel resolution response wins", () => {
-  const originalQuery = currentRenderer.lib.queryPixelResolution
+  const lib = getCurrentRenderLib()
+  const originalQuery = lib.queryPixelResolution
   let queries = 0
-  currentRenderer.lib.queryPixelResolution = () => {
+  lib.queryPixelResolution = () => {
     queries++
   }
 
@@ -2074,27 +2079,29 @@ test("latest outstanding pixel resolution response wins", () => {
     currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
     expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
   } finally {
-    currentRenderer.lib.queryPixelResolution = originalQuery
+    lib.queryPixelResolution = originalQuery
   }
 })
 
 test("oversized pixel resolution response is ignored", () => {
-  const originalQuery = currentRenderer.lib.queryPixelResolution
-  currentRenderer.lib.queryPixelResolution = () => {}
+  const lib = getCurrentRenderLib()
+  const originalQuery = lib.queryPixelResolution
+  lib.queryPixelResolution = () => {}
   try {
     currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
     const huge = "9".repeat(400)
     currentRenderer.stdin.emit("data", Buffer.from(`\x1b[4;${huge};${huge}t`))
     expect(currentRenderer.resolution).toBeNull()
   } finally {
-    currentRenderer.lib.queryPixelResolution = originalQuery
+    lib.queryPixelResolution = originalQuery
   }
 })
 
 test("resize while suspended queries pixel resolution after resume", () => {
-  const originalQuery = currentRenderer.lib.queryPixelResolution
+  const lib = getCurrentRenderLib()
+  const originalQuery = lib.queryPixelResolution
   let queries = 0
-  currentRenderer.lib.queryPixelResolution = () => {
+  lib.queryPixelResolution = () => {
     queries++
   }
 
@@ -2108,19 +2115,20 @@ test("resize while suspended queries pixel resolution after resume", () => {
     currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
     expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
   } finally {
-    currentRenderer.lib.queryPixelResolution = originalQuery
+    lib.queryPixelResolution = originalQuery
   }
 })
 
 test("terminal setup while suspended queries pixel resolution after resume", async () => {
-  const originalQuery = currentRenderer.lib.queryPixelResolution
-  const originalSetup = currentRenderer.lib.setupTerminal
+  const lib = getCurrentRenderLib()
+  const originalQuery = lib.queryPixelResolution
+  const originalSetup = lib.setupTerminal
   let queries = 0
   let setups = 0
-  currentRenderer.lib.queryPixelResolution = () => {
+  lib.queryPixelResolution = () => {
     queries++
   }
-  currentRenderer.lib.setupTerminal = () => {
+  lib.setupTerminal = () => {
     setups++
   }
 
@@ -2136,15 +2144,16 @@ test("terminal setup while suspended queries pixel resolution after resume", asy
     currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
     expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
   } finally {
-    currentRenderer.lib.queryPixelResolution = originalQuery
-    currentRenderer.lib.setupTerminal = originalSetup
+    lib.queryPixelResolution = originalQuery
+    lib.setupTerminal = originalSetup
   }
 })
 
 test("a delayed pre-suspend resolution cannot consume the post-resume query", () => {
-  const originalQuery = currentRenderer.lib.queryPixelResolution
+  const lib = getCurrentRenderLib()
+  const originalQuery = lib.queryPixelResolution
   let queries = 0
-  currentRenderer.lib.queryPixelResolution = () => {
+  lib.queryPixelResolution = () => {
     queries++
   }
 
@@ -2159,13 +2168,14 @@ test("a delayed pre-suspend resolution cannot consume the post-resume query", ()
     currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
     expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
   } finally {
-    currentRenderer.lib.queryPixelResolution = originalQuery
+    lib.queryPixelResolution = originalQuery
   }
 })
 
 test("a buffered pre-suspend resolution is discarded without leaving a pending query", () => {
-  const originalQuery = currentRenderer.lib.queryPixelResolution
-  currentRenderer.lib.queryPixelResolution = () => {}
+  const lib = getCurrentRenderLib()
+  const originalQuery = lib.queryPixelResolution
+  lib.queryPixelResolution = () => {}
 
   try {
     currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
@@ -2181,14 +2191,15 @@ test("a buffered pre-suspend resolution is discarded without leaving a pending q
     currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;480;640t"))
     expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
   } finally {
-    currentRenderer.lib.queryPixelResolution = originalQuery
+    lib.queryPixelResolution = originalQuery
   }
 })
 
 test("terminal setup after destroy is a no-op", async () => {
-  const originalQuery = currentRenderer.lib.queryPixelResolution
+  const lib = getCurrentRenderLib()
+  const originalQuery = lib.queryPixelResolution
   let queries = 0
-  currentRenderer.lib.queryPixelResolution = () => {
+  lib.queryPixelResolution = () => {
     queries++
   }
 
@@ -2197,7 +2208,7 @@ test("terminal setup after destroy is a no-op", async () => {
     await currentRenderer.setupTerminal()
     expect(queries).toBe(0)
   } finally {
-    currentRenderer.lib.queryPixelResolution = originalQuery
+    lib.queryPixelResolution = originalQuery
   }
 })
 
