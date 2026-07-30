@@ -1345,7 +1345,7 @@ pub const CliRenderer = struct {
                 prepared = try source.clone();
                 prepared_owned = true;
             }
-            self.dimSixelPixels(snapshot, placement, prepared);
+            dimSixelPixels(snapshot, placement, prepared);
         }
         var quantized = try terminal_image.quantizeSixel(self.allocator, prepared, 255);
         defer quantized.deinit();
@@ -2146,7 +2146,7 @@ pub const CliRenderer = struct {
                     prepared = try source.clone();
                     prepared_owned = true;
                 }
-                self.dimSixelPixels(self.nextRenderBuffer, placement, prepared);
+                dimSixelPixels(self.nextRenderBuffer, placement, prepared);
             }
             var quantized = try terminal_image.quantizeSixel(self.allocator, prepared, 255);
             defer quantized.deinit();
@@ -2173,7 +2173,6 @@ pub const CliRenderer = struct {
     // non-opaque backgrounds). Image alpha is left untouched: holes stay holes
     // and the encoder's visibility threshold keeps applying to the image alpha.
     fn dimSixelPixels(
-        self: *CliRenderer,
         source_buffer: *OptimizedBuffer,
         placement: OptimizedBuffer.ImagePlacement,
         resized: *native_image.Image,
@@ -2187,7 +2186,7 @@ pub const CliRenderer = struct {
             while (px < resized.width()) : (px += 1) {
                 const cell_x = placement.x + @as(i32, @intCast((@as(u64, px) * placement.width) / placement.pixel_width));
                 const cell = if (cell_x >= 0 and cell_y >= 0 and
-                    cell_x < @as(i32, @intCast(self.width)) and cell_y < @as(i32, @intCast(self.height)))
+                    cell_x < @as(i32, @intCast(source_buffer.width)) and cell_y < @as(i32, @intCast(source_buffer.height)))
                     source_buffer.get(@intCast(cell_x), @intCast(cell_y))
                 else
                     null;
