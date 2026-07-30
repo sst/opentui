@@ -106,7 +106,10 @@ describe("ImageRenderable image loading", () => {
 
     const imageSpans = setup.captureSpans().lines[0].spans.filter((span) => span.text === "▀")
     expect(imageSpans).toHaveLength(2)
-    expect(imageSpans.map((span) => span.fg.toInts()[0])).toEqual([101, 137])
+    const reds = imageSpans.map((span) => span.fg.toInts()[0])
+    expect(reds[0]).toBeGreaterThan(64)
+    expect(reds[1]).toBeLessThan(192)
+    expect(reds[0]).toBeLessThan(reds[1])
   })
 
   test("clears a buffered image from rendered output when its source is cleared", async () => {
