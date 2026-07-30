@@ -3195,6 +3195,57 @@ test "FeedBackend - failed split repaint restores unpublished transition state" 
     try std.testing.expectEqual(before_transition, cli_renderer.pendingSplitFooterTransition);
 }
 
+test "FeedBackend - failed ordinary render retries split transition" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var opts = native_span_feed.defaultOptions();
+    opts.chunk_size = 32;
+    opts.initial_chunks = 8;
+    opts.max_bytes = 256;
+    opts.growth_policy = @intFromEnum(native_span_feed.GrowthPolicy.block);
+    opts.auto_commit_on_full = 0;
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 4, 2, pool, .{
+        .remote_mode = .remote,
+        .output = .{ .feed = feed },
+        .clearOnShutdown = false,
+    });
+    defer feed.destroy();
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+    cli_renderer.setPendingSplitFooterTransition(.viewport_scroll, 1, 1, 2, 1, 1);
+    const before_scrollback = cli_renderer.splitScrollback;
+    const before_offset = cli_renderer.renderOffset;
+    const before_transition = cli_renderer.pendingSplitFooterTransition;
+
+    const blocker = [_]u8{'x'} ** 193;
+    try feed.writeAtomic(&blocker);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, cli_renderer.render(true));
+    try std.testing.expectEqual(before_scrollback, cli_renderer.splitScrollback);
+    try std.testing.expectEqual(before_offset, cli_renderer.renderOffset);
+    try std.testing.expectEqual(before_transition, cli_renderer.pendingSplitFooterTransition);
+
+    var spans: [8]native_span_feed.SpanInfo = undefined;
+    var count = feed.drainSpans(&spans);
+    for (spans[0..count]) |span| feed.markSpanConsumed(span);
+
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(true));
+    count = feed.drainSpans(&spans);
+    var output: [256]u8 = undefined;
+    var output_len: usize = 0;
+    for (spans[0..count]) |span| {
+        const bytes = span.slice();
+        @memcpy(output[output_len .. output_len + bytes.len], bytes);
+        output_len += bytes.len;
+        feed.markSpanConsumed(span);
+    }
+    try std.testing.expect(std.mem.indexOf(u8, output[0..output_len], "\x1b[1T") != null);
+}
+
 test "FeedBackend - failed frame retries unsent terminal controls" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
