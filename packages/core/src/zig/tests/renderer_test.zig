@@ -3246,6 +3246,47 @@ test "FeedBackend - failed ordinary render retries split transition" {
     try std.testing.expect(std.mem.indexOf(u8, output[0..output_len], "\x1b[1T") != null);
 }
 
+test "FeedBackend - failed frame keeps the published hit grid" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var opts = native_span_feed.defaultOptions();
+    opts.chunk_size = 32;
+    opts.initial_chunks = 8;
+    opts.max_bytes = 256;
+    opts.growth_policy = @intFromEnum(native_span_feed.GrowthPolicy.block);
+    opts.auto_commit_on_full = 0;
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 1, 1, pool, .{
+        .remote_mode = .remote,
+        .output = .{ .feed = feed },
+        .clearOnShutdown = false,
+    });
+    defer feed.destroy();
+    defer cli_renderer.destroy();
+
+    cli_renderer.addToHitGrid(0, 0, 1, 1, 11);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(true));
+    var spans: [8]native_span_feed.SpanInfo = undefined;
+    var count = feed.drainSpans(&spans);
+    for (spans[0..count]) |span| feed.markSpanConsumed(span);
+    try std.testing.expectEqual(@as(u32, 11), cli_renderer.checkHit(0, 0));
+
+    cli_renderer.addToHitGrid(0, 0, 1, 1, 22);
+    const blocker = [_]u8{'x'} ** 193;
+    try feed.writeAtomic(&blocker);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, cli_renderer.render(true));
+    try std.testing.expectEqual(@as(u32, 11), cli_renderer.checkHit(0, 0));
+
+    count = feed.drainSpans(&spans);
+    for (spans[0..count]) |span| feed.markSpanConsumed(span);
+    cli_renderer.addToHitGrid(0, 0, 1, 1, 22);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, cli_renderer.render(true));
+    try std.testing.expectEqual(@as(u32, 22), cli_renderer.checkHit(0, 0));
+}
+
 test "FeedBackend - failed frame retries unsent terminal controls" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
