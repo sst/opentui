@@ -286,25 +286,36 @@ describe("NativeImage", () => {
       3,
       2,
     )
-    const rotated = image.rotate(90)
-    const rotated270 = image.rotate(270)
-    const nearest = image.resize({ width: 6, height: 2, kernel: "nearest" })
-    const extracted = image.extract({ left: 1, top: 0, width: 2, height: 2 })
-    const extended = extracted.extend({ top: 1, left: 1, background: [9, 8, 7, 6] })
+    let rotated: NativeImage | undefined
+    let rotated270: NativeImage | undefined
+    let extracted: NativeImage | undefined
+    let extended: NativeImage | undefined
     try {
+      rotated = image.rotate(90)
+      rotated270 = image.rotate(270)
+      extracted = image.extract({ left: 1, top: 0, width: 2, height: 2 })
+      extended = extracted.extend({ top: 1, left: 1, background: [9, 8, 7, 6] })
       expect([rotated.width, rotated.height]).toEqual([2, 3])
       expect([...rotated.raw().data.filter((_, index) => index % 4 === 0)]).toEqual([4, 1, 5, 2, 6, 3])
       expect([...rotated270.raw().data.filter((_, index) => index % 4 === 0)]).toEqual([3, 6, 2, 5, 1, 4])
-      expect([...nearest.raw().data.filter((_, index) => index % 4 === 0)]).toEqual([
-        1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
-      ])
       expect([...extended.raw().data.slice(0, 4)]).toEqual([9, 8, 7, 6])
     } finally {
-      extended.dispose()
-      extracted.dispose()
-      nearest.dispose()
-      rotated270.dispose()
-      rotated.dispose()
+      extended?.dispose()
+      extracted?.dispose()
+      rotated270?.dispose()
+      rotated?.dispose()
+      image.dispose()
+    }
+  })
+
+  test("uses nearest-neighbor sampling when requested", () => {
+    const image = NativeImage.fromRgba(Uint8Array.of(0, 0, 0, 255, 255, 0, 0, 255), 2, 1)
+    let resized: NativeImage | undefined
+    try {
+      resized = image.resize({ width: 3, height: 1, kernel: "nearest" })
+      expect([...resized.raw().data.filter((_, index) => index % 4 === 0)]).toEqual([0, 255, 255])
+    } finally {
+      resized?.dispose()
       image.dispose()
     }
   })
@@ -385,13 +396,15 @@ describe("NativeImage", () => {
 
   test("supports destination-over compositing", () => {
     const base = NativeImage.fromRgba(Uint8Array.of(0, 0, 255, 255), 1, 1)
-    const overlay = NativeImage.fromRgba(Uint8Array.of(255, 0, 0, 255), 1, 1)
-    const output = base.composite(overlay, { blend: "destination-over" })
+    let overlay: NativeImage | undefined
+    let output: NativeImage | undefined
     try {
+      overlay = NativeImage.fromRgba(Uint8Array.of(255, 0, 0, 255), 1, 1)
+      output = base.composite(overlay, { blend: "destination-over" })
       expect([...output.raw().data]).toEqual([0, 0, 255, 255])
     } finally {
-      output.dispose()
-      overlay.dispose()
+      output?.dispose()
+      overlay?.dispose()
       base.dispose()
     }
   })

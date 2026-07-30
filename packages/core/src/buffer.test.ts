@@ -34,15 +34,17 @@ describe("OptimizedBuffer", () => {
 
   it("retains drawn images until the buffer releases them", () => {
     const image = NativeImage.fromRgba(Uint8Array.of(1, 2, 3, 255), 1, 1)
-    expect(buffer.drawImage(image, 0, 0, 1, 1)).toBe(true)
-    expect(() => image.takeRaw()).toThrow("native buffers retain the image")
-
-    buffer.destroy()
-    const raw = image.takeRaw()
+    let raw: ReturnType<NativeImage["takeRaw"]> | undefined
     try {
+      expect(buffer.drawImage(image, 0, 0, 1, 1)).toBe(true)
+      expect(() => image.takeRaw()).toThrow("native buffers retain the image")
+
+      buffer.destroy()
+      raw = image.takeRaw()
       expect([...raw.data]).toEqual([1, 2, 3, 255])
     } finally {
-      raw.dispose()
+      raw?.dispose()
+      image.dispose()
     }
   })
 
