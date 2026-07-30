@@ -38,9 +38,7 @@ function pixelResolution(ctx: RenderContext): { width: number; height: number } 
 export class ImageRenderable extends Renderable {
   private _source: ImageSource | undefined
   private _image: NativeImage | null = null
-  private _loading = false
   private _loadError: unknown = null
-  private _loadGeneration = 0
   private _loadController: AbortController | null = null
   public onLoad?: (image: NativeImage) => void
   public onError?: (error: unknown) => void
@@ -65,12 +63,10 @@ export class ImageRenderable extends Renderable {
     source ??= undefined
     if (source === this._source) return
     this._source = source
-    const generation = ++this._loadGeneration
     this._loadController?.abort()
     this._loadController = null
 
     if (source === undefined) {
-      this._loading = false
       this._loadError = null
       this._image?.dispose()
       this._image = null
@@ -81,9 +77,8 @@ export class ImageRenderable extends Renderable {
 
     const controller = new AbortController()
     this._loadController = controller
-    this._loading = true
     this._loadError = null
-    this.loadPromise = this.load(source, generation, controller)
+    this.loadPromise = this.load(source, controller)
   }
 
   public get image(): NativeImage | null {
@@ -146,7 +141,7 @@ export class ImageRenderable extends Renderable {
   }
 
   public get loading(): boolean {
-    return this._loading
+    return this._loadController !== null
   }
 
   public get loadError(): unknown {
@@ -205,27 +200,25 @@ export class ImageRenderable extends Renderable {
     )
   }
 
-  private async load(source: ImageSource, generation: number, controller: AbortController): Promise<void> {
+  private async load(source: ImageSource, controller: AbortController): Promise<void> {
     let image: NativeImage
     try {
       image = await NativeImage.load(source, { signal: controller.signal })
     } catch (error) {
-      if (controller.signal.aborted || this.isDestroyed || generation !== this._loadGeneration) return
-      this._loading = false
+      if (controller.signal.aborted || this.isDestroyed || this._loadController !== controller) return
       this._loadController = null
       this._loadError = error
       this.onError?.(error)
       return
     }
 
-    if (this.isDestroyed || generation !== this._loadGeneration) {
+    if (this.isDestroyed || this._loadController !== controller) {
       image.dispose()
       return
     }
 
     const previous = this._image
     this._image = image
-    this._loading = false
     this._loadController = null
     previous?.dispose()
     this.requestRender()
@@ -233,10 +226,8 @@ export class ImageRenderable extends Renderable {
   }
 
   protected destroySelf(): void {
-    ++this._loadGeneration
     this._loadController?.abort()
     this._loadController = null
-    this._loading = false
     this._image?.dispose()
     this._image = null
     super.destroySelf()
