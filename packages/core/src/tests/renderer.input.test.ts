@@ -2078,6 +2078,19 @@ test("latest outstanding pixel resolution response wins", () => {
   }
 })
 
+test("oversized pixel resolution response is ignored", () => {
+  const originalQuery = currentRenderer.lib.queryPixelResolution
+  currentRenderer.lib.queryPixelResolution = () => {}
+  try {
+    currentRenderer.resize(currentRenderer.width + 1, currentRenderer.height)
+    const huge = "9".repeat(400)
+    currentRenderer.stdin.emit("data", Buffer.from(`\x1b[4;${huge};${huge}t`))
+    expect(currentRenderer.resolution).toBeNull()
+  } finally {
+    currentRenderer.lib.queryPixelResolution = originalQuery
+  }
+})
+
 test("resize while suspended queries pixel resolution after resume", () => {
   const originalQuery = currentRenderer.lib.queryPixelResolution
   let queries = 0

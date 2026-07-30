@@ -89,9 +89,14 @@ export function isPixelResolutionResponse(sequence: string): boolean {
 export function parsePixelResolution(sequence: string): { width: number; height: number } | null {
   const match = sequence.match(/\x1b\[4;(\d+);(\d+)t/)
   if (match) {
+    const width = Number(match[2])
+    const height = Number(match[1])
+    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width > 0xffffffff || height > 0xffffffff) {
+      return null
+    }
     return {
-      width: parseInt(match[2]),
-      height: parseInt(match[1]),
+      width,
+      height,
     }
   }
   return null
