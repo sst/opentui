@@ -22,7 +22,7 @@ array is outside the strict C array model and Zig's C bounds instrumentation
 aborts when that path executes.
 
 OpenTUI isolates the implementation in `image-resize-shim.c` and passes
-`-fno-sanitize=bounds,pointer-overflow` for that translation unit. The existing
+`-fno-sanitize=bounds` for that translation unit. The existing
 `area resize upscales tiny sources exactly` native test exercises the actual
 SIMD sRGB path and verifies every output pixel. Review of the exception also
 established that only the bounds suppression is necessary: the test passes with
