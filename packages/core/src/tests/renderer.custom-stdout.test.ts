@@ -731,6 +731,45 @@ test("split-footer custom stdout retains captured commits when native fails and 
   expect(stdout.getWrittenBytes().toString("binary")).toContain("captured-while-native-failed")
 })
 
+test("split-footer retains the whole batch when final native publication fails", async () => {
+  const clock = new ManualClock()
+  const stdout = createCollectingStdout(80, 24)
+  const renderer = new CliRenderer(createTestStdin(), stdout, 80, 24, {
+    screenMode: "split-footer",
+    consoleMode: "disabled",
+    clock,
+  })
+  ;(renderer as any).updateScheduled = false
+  clock.runAll()
+  destroyFns.push(() => renderer.destroy())
+
+  const rendererAny = renderer as any
+  const originalCommit = rendererAny.lib.commitSplitFooterSnapshot.bind(rendererAny.lib)
+  let calls = 0
+  rendererAny.lib.commitSplitFooterSnapshot = (...args: any[]) => {
+    calls++
+    const finalizeFrame = args[8]
+    return { renderOffset: rendererAny.renderOffset, status: finalizeFrame ? 2 : 0 }
+  }
+
+  stdout.write("first\nsecond\n")
+  expect(rendererAny.externalOutputQueue.size).toBe(2)
+
+  try {
+    await rendererAny.loop()
+    expect(calls).toBe(2)
+    expect(rendererAny.externalOutputQueue.size).toBe(2)
+  } finally {
+    rendererAny.lib.commitSplitFooterSnapshot = originalCommit
+  }
+
+  await rendererAny.loop()
+  await (rendererAny._feed?.idle() ?? Promise.resolve())
+  const output = stdout.getWrittenBytes().toString("binary")
+  expect(output).toContain("first")
+  expect(output).toContain("second")
+})
+
 test("split-footer native failure without a feed does not schedule automatic retries", async () => {
   const clock = new ManualClock()
   const stdout = createPlainStdout()

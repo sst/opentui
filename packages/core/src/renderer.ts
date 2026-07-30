@@ -2574,6 +2574,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     let acceptedCommits = 0
     let nativeBackpressured = false
     let nativeFailed = false
+    let nextRenderOffset = this.renderOffset
 
     for (const [index, commit] of commits.entries()) {
       // Force repaint only on the last commit in a frame. Repainting after every
@@ -2607,14 +2608,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         break
       }
 
-      this.renderOffset = nativeResult.renderOffset
-      this.recordSplitCommit(commit)
+      nextRenderOffset = nativeResult.renderOffset
       hasCommittedOutput = true
       acceptedCommits++
-    }
-
-    if (acceptedCommits > 0) {
-      this.externalOutputQueue.drop(acceptedCommits)
     }
 
     if (nativeFailed) {
@@ -2624,6 +2620,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (nativeBackpressured) {
       this.scheduleRenderAfterFeedIdle()
       return "backpressured"
+    }
+
+    if (acceptedCommits > 0) {
+      this.renderOffset = nextRenderOffset
+      for (const commit of commits.slice(0, acceptedCommits)) this.recordSplitCommit(commit)
+      this.externalOutputQueue.drop(acceptedCommits)
     }
 
     if (!hasCommittedOutput) {

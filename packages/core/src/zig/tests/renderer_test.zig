@@ -3115,6 +3115,50 @@ test "FeedBackend - failed frame publishes no partial bytes" {
     try std.testing.expectEqual(@as(u32, 0), count);
 }
 
+test "FeedBackend - failed split batch restores unpublished scrollback state" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var opts = native_span_feed.defaultOptions();
+    opts.chunk_size = 64;
+    opts.initial_chunks = 1;
+    opts.max_bytes = 64;
+    opts.growth_policy = @intFromEnum(native_span_feed.GrowthPolicy.block);
+    opts.auto_commit_on_full = 0;
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 40, 4, pool, .{
+        .remote_mode = .remote,
+        .output = .{ .feed = feed },
+    });
+    defer feed.destroy();
+    defer cli_renderer.destroy();
+
+    var snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        32,
+        1,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer snapshot.deinit();
+    try snapshot.drawText("first split batch row", 0, 0, .{ 255, 255, 255, 255 }, null, 0);
+
+    _ = cli_renderer.resetSplitScrollback(1, 3);
+    const before_scrollback = cli_renderer.splitScrollback;
+    const before_offset = cli_renderer.renderOffset;
+
+    const first = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 32, false, true, 3, false, true, false);
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, first.status);
+    const final = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 32, false, true, 3, false, false, true);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, final.status);
+
+    try std.testing.expectEqual(before_scrollback, cli_renderer.splitScrollback);
+    try std.testing.expectEqual(before_offset, cli_renderer.renderOffset);
+    var spans: [4]native_span_feed.SpanInfo = undefined;
+    try std.testing.expectEqual(@as(u32, 0), feed.drainSpans(&spans));
+}
+
 test "FeedBackend - failed Sixel frame does not publish an unterminated DCS" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
