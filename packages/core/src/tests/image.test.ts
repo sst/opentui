@@ -287,15 +287,23 @@ describe("NativeImage", () => {
       2,
     )
     const rotated = image.rotate(90)
+    const rotated270 = image.rotate(270)
+    const nearest = image.resize({ width: 6, height: 2, kernel: "nearest" })
     const extracted = image.extract({ left: 1, top: 0, width: 2, height: 2 })
     const extended = extracted.extend({ top: 1, left: 1, background: [9, 8, 7, 6] })
     try {
       expect([rotated.width, rotated.height]).toEqual([2, 3])
       expect([...rotated.raw().data.filter((_, index) => index % 4 === 0)]).toEqual([4, 1, 5, 2, 6, 3])
+      expect([...rotated270.raw().data.filter((_, index) => index % 4 === 0)]).toEqual([3, 6, 2, 5, 1, 4])
+      expect([...nearest.raw().data.filter((_, index) => index % 4 === 0)]).toEqual([
+        1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+      ])
       expect([...extended.raw().data.slice(0, 4)]).toEqual([9, 8, 7, 6])
     } finally {
       extended.dispose()
       extracted.dispose()
+      nearest.dispose()
+      rotated270.dispose()
       rotated.dispose()
       image.dispose()
     }
@@ -368,6 +376,19 @@ describe("NativeImage", () => {
     try {
       expect(output.raw().data[3]).toBe(128)
       expect(output.info().hasAlpha).toBe(true)
+    } finally {
+      output.dispose()
+      overlay.dispose()
+      base.dispose()
+    }
+  })
+
+  test("supports destination-over compositing", () => {
+    const base = NativeImage.fromRgba(Uint8Array.of(0, 0, 255, 255), 1, 1)
+    const overlay = NativeImage.fromRgba(Uint8Array.of(255, 0, 0, 255), 1, 1)
+    const output = base.composite(overlay, { blend: "destination-over" })
+    try {
+      expect([...output.raw().data]).toEqual([0, 0, 255, 255])
     } finally {
       output.dispose()
       overlay.dispose()
