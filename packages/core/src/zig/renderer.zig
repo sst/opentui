@@ -866,6 +866,7 @@ pub const CliRenderer = struct {
                 b.beginFrame();
                 var w = b.writer();
                 self.prepareRenderFrameWithWriter(&w, force, false);
+                if (self.imageRenderFailed) b.failFrame();
                 write_status = b.endFrame();
             },
         }
@@ -1056,6 +1057,7 @@ pub const CliRenderer = struct {
 
                     if (finalize_frame) {
                         self.prepareRenderFrameWithWriter(&w, redraw_footer, true);
+                        if (self.imageRenderFailed) b.failFrame();
                         write_status = b.endFrame();
                         const status = renderStatusFromWrite(write_status);
                         if (status == .failed or self.imageRenderFailed) {
@@ -1112,6 +1114,7 @@ pub const CliRenderer = struct {
 
                 if (finalize_frame) {
                     self.prepareRenderFrameWithWriter(&w, self.splitBatchRedrawFooter, true);
+                    if (self.imageRenderFailed) b.failFrame();
                     write_status = b.endFrame();
 
                     const status = renderStatusFromWrite(write_status);
@@ -1399,6 +1402,7 @@ pub const CliRenderer = struct {
                 b.beginFrame();
                 var w = b.writer();
                 self.prepareRenderFrameWithWriter(&w, redraw_footer, false);
+                if (self.imageRenderFailed) b.failFrame();
                 write_status = b.endFrame();
             },
         }

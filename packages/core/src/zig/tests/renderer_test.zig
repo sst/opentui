@@ -3795,7 +3795,7 @@ test "renderer transmits only cropped kitty source pixels" {
     try std.testing.expect(!std.mem.eql(u8, transmitted, changed_transmitted));
 }
 
-test "renderer reports image preparation allocation failure" {
+test "renderer does not publish a frame when image dirty preparation fails" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
@@ -3810,6 +3810,7 @@ test "renderer reports image preparation allocation failure" {
         token.ptr.deinit();
         handles.finishDestroy(token.handle);
     }
+    try test_renderer.renderer.pendingImages.ensureTotalCapacity(std.testing.allocator, 1);
     const next = test_renderer.renderer.getNextBuffer();
     try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
 
@@ -3820,6 +3821,51 @@ test "renderer reports image preparation allocation failure" {
 
     try std.testing.expect(failing.has_induced_failure);
     try std.testing.expectEqual(renderer.RenderStatus.failed, status);
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.renderer.currentImages.items.len);
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+
+    const retry = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try retry.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expectEqual(@as(usize, 1), test_renderer.renderer.currentImages.items.len);
+}
+
+test "renderer does not publish a frame when Sixel preparation fails" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+    var test_renderer = try TestRenderer.create(std.testing.allocator, 1, 1, pool);
+    defer test_renderer.deinit();
+    test_renderer.renderer.terminal.caps.sixel = true;
+
+    const value = try image.createFromRgba(std.testing.allocator, &[_]u8{ 255, 0, 0, 255 }, 1, 1, 4);
+    const value_handle = try handles.insert(.image, @ptrCast(value));
+    defer {
+        const token = handles.beginDestroy(value_handle, .image, image.Image).?;
+        token.ptr.deinit();
+        handles.finishDestroy(token.handle);
+    }
+    try test_renderer.renderer.imageDirty.ensureTotalCapacity(std.testing.allocator, 1);
+    try test_renderer.renderer.pendingImages.ensureTotalCapacity(std.testing.allocator, 1);
+    const next = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try next.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    test_renderer.renderer.allocator = failing.allocator();
+    const status = test_renderer.renderer.render(true);
+    test_renderer.renderer.allocator = std.testing.allocator;
+
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expectEqual(renderer.RenderStatus.failed, status);
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.renderer.currentImages.items.len);
+    try std.testing.expectEqual(@as(usize, 0), test_renderer.memory.lastWrite().len);
+
+    const retry = test_renderer.renderer.getNextBuffer();
+    try std.testing.expect(try retry.drawImage(value, value_handle, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1, .sixel));
+    try std.testing.expectEqual(renderer.RenderStatus.rendered, test_renderer.renderer.render(true));
+    try std.testing.expect(std.mem.indexOf(u8, test_renderer.memory.lastWrite(), "\x1bP0;1;0q") != null);
+    try std.testing.expectEqual(@as(usize, 1), test_renderer.renderer.currentImages.items.len);
 }
 
 test "renderer does not publish Kitty output when image state staging fails" {
