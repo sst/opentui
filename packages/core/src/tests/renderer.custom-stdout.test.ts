@@ -173,8 +173,7 @@ test("auto images use detected Kitty graphics and delete cleared placements", as
   const stdout = createCollectingStdout(8, 4)
   const renderer = await createCliRenderer({ stdin, stdout })
   destroyFns.push(() => renderer.destroy())
-  const rendererAny = renderer as any
-  await rendererAny._feed.idle()
+  await flushWritable(stdout)
   stdout.clearWrites()
 
   stdin.emit("data", Buffer.from("\x1b_Gi=31337;OK\x1b\\"))
@@ -187,16 +186,17 @@ test("auto images use detected Kitty graphics and delete cleared placements", as
   })
   renderer.root.add(image)
   await image.loadPromise
-  await rendererAny.loop()
-  await rendererAny._feed.idle()
+  renderer.requestRender()
+  await renderer.idle()
+  await flushWritable(stdout)
 
   expect(renderer.capabilities?.kitty_graphics).toBe(true)
   expect(stdout.getWrittenBytes().toString("binary")).toContain("\x1b_G")
 
   stdout.clearWrites()
   image.source = undefined
-  await rendererAny.loop()
-  await rendererAny._feed.idle()
+  await renderer.idle()
+  await flushWritable(stdout)
   expect(stdout.getWrittenBytes().toString("binary")).toContain("a=d")
 })
 
@@ -205,8 +205,7 @@ test("auto images use detected Sixel when pixel resolution is available", async 
   const stdout = createCollectingStdout(8, 4)
   const renderer = await createCliRenderer({ stdin, stdout })
   destroyFns.push(() => renderer.destroy())
-  const rendererAny = renderer as any
-  await rendererAny._feed.idle()
+  await flushWritable(stdout)
   stdout.clearWrites()
 
   stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[4;80;80t"))
@@ -219,8 +218,9 @@ test("auto images use detected Sixel when pixel resolution is available", async 
   })
   renderer.root.add(image)
   await image.loadPromise
-  await rendererAny.loop()
-  await rendererAny._feed.idle()
+  renderer.requestRender()
+  await renderer.idle()
+  await flushWritable(stdout)
 
   expect(renderer.capabilities?.sixel).toBe(true)
   expect(renderer.resolution).toEqual({ width: 80, height: 80 })
