@@ -46,9 +46,8 @@ OpenTUI reads environment variables from `process.env`. Bun loads `.env` automat
 
 - `OTUI_TS_STYLE_WARN` is a presence-like string setting: any explicit nonempty value, including `false`, enables warnings.
 - `OPENTUI_FORCE_WCWIDTH`, `OPENTUI_FORCE_UNICODE`, and `OPENTUI_FORCE_NOZWJ` are native presence flags. Any value, including `0` or `false`, enables the corresponding override. Leave them unset to disable them.
-- `OPENTUI_GRAPHICS` recognizes the exact lowercase values `false`/`0` and `true`/`1`; other values leave automatic behavior unchanged.
+- `OPENTUI_GRAPHICS` recognizes only lowercase `false`/`0` (disable graphics detection) and `true`/`1` (automatic detection); other values leave automatic behavior unchanged. `OPENTUI_IMAGE_PROTOCOL` overrides automatic selection; forcing an unsupported protocol can produce incorrect output.
 - `OPENTUI_FORCE_EXPLICIT_WIDTH=false` skips OSC 66 queries on older terminals.
-- `OPENTUI_GRAPHICS=false` disables Kitty and Sixel detection. `OPENTUI_IMAGE_PROTOCOL` overrides automatic protocol selection; explicitly forcing an unsupported protocol can produce incorrect terminal output.
 - Linux uses the glibc native package by default. Set `OPENTUI_LIBC=musl` before importing OpenTUI, or define `process.env.OPENTUI_LIBC` as `"musl"` at standalone build time, to use the musl native package. See [Standalone Executables](/docs/reference/standalone-executables).
 - `OPENTUI_NOTIFICATION_PROTOCOL=none` disables notifications. Protocol overrides should only be used when terminal detection cannot identify a supported notification protocol.
 - `OPENTUI_NOTIFICATIONS=0`, `false`, or `off` disables notifications without changing other terminal capability detection.

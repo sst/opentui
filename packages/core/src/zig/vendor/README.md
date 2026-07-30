@@ -10,7 +10,7 @@ The script requires `curl`, `git`, `tar`, and either `sha256sum` or `shasum`. It
 
 To update a dependency:
 
-1. Change its pin and upstream hash in `update.sh`.
+1. Change its pin and matching hashes in `update.sh`; stb updates must also refresh the patch and `*_PATCHED_SHA256`.
 2. Update the matching vendor README.
 3. Refresh an stb patch if it no longer applies, or update `libwebp/FILES` if the required source closure changed.
 4. Run `bun run vendor:update:images` and review the diff.

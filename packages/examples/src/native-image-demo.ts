@@ -266,7 +266,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
       card: P.cards[1],
     },
     { name: "WEBP BYTES", sourceType: "Uint8Array", source: webpBytes, accent: P.coral, card: P.cards[2] },
-    { name: "GIF FETCH", sourceType: "HTTP response", source: gifUrl, accent: P.lime, card: P.cards[3] },
+    { name: "GIF FETCH", sourceType: "HTTP URL", source: gifUrl, accent: P.lime, card: P.cards[3] },
   ]
   for (const [index, item] of items.entries()) gallery.add(createCard(renderer, item, index))
 
