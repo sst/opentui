@@ -185,6 +185,33 @@ test("auto images use detected Kitty graphics and delete cleared placements", as
   expect(stdout.getWrittenBytes().toString("binary")).toContain("a=d")
 })
 
+test("auto images use detected Sixel when pixel resolution is available", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  const rendererAny = renderer as any
+  await rendererAny._feed.idle()
+  stdout.clearWrites()
+
+  stdin.emit("data", Buffer.from("\x1b[?1;4c\x1b[4;80;80t"))
+  const image = new ImageRenderable(renderer, {
+    source: PNG_1X1,
+    protocol: "auto",
+    position: "absolute",
+    width: 2,
+    height: 1,
+  })
+  renderer.root.add(image)
+  await image.loadPromise
+  await rendererAny.loop()
+  await rendererAny._feed.idle()
+
+  expect(renderer.capabilities?.sixel).toBe(true)
+  expect(renderer.resolution).toEqual({ width: 80, height: 80 })
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("\x1bP0;1;0q")
+})
+
 test("split-footer custom stdout: native feed bytes bypass stdout capture", async () => {
   const stdin = createTestStdin()
   const stdout = createCollectingStdout(80, 24)
