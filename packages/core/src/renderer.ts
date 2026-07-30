@@ -835,6 +835,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _suspendedMouseEnabled: boolean = false
   private _previousControlState: RendererControlState = RendererControlState.IDLE
   private pendingSuspendedTerminalSetup: boolean = false
+  private pendingInitialTerminalSetup: boolean = false
   private suspendedNonAltSurfacePreserved: boolean = false
   private capturedRenderable?: Renderable
   private lastOverRenderableNum: number = 0
@@ -3105,6 +3106,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   // without rolling a full event loop
   public async setupTerminal(): Promise<void> {
     if (this._isDestroyed || this._terminalIsSetup) return
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      this.pendingInitialTerminalSetup = true
+      return
+    }
     this._terminalIsSetup = true
 
     const startupCursorCprActive = this._screenMode === "split-footer" && this._externalOutputMode === "capture-stdout"
@@ -4057,6 +4062,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public resume(): void {
+    const setupTerminalAfterResume = this.pendingInitialTerminalSetup
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(true)
     }
@@ -4076,7 +4082,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.suspendedNonAltSurfacePreserved &&
       this.renderOffset > 0
 
-    if (this.pendingSuspendedTerminalSetup) {
+    if (setupTerminalAfterResume) {
+      this.pendingInitialTerminalSetup = false
+      this.pendingSuspendedTerminalSetup = false
+      this._controlState = this._previousControlState
+      void this.setupTerminal()
+    } else if (this.pendingSuspendedTerminalSetup) {
       this.pendingSuspendedTerminalSetup = false
       if (resumePreservedNonAltSurface) {
         this.lib.resumeRenderer(this.rendererPtr)
@@ -4215,6 +4226,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._isRunning = false
     this.pendingPixelResolutionQueries = 0
     this.queryPixelResolutionOnResume = false
+    this.pendingInitialTerminalSetup = false
     this.updateStdinParserProtocolContext(
       {
         privateCapabilityRepliesActive: false,

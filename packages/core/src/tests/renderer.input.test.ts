@@ -2114,22 +2114,30 @@ test("resize while suspended queries pixel resolution after resume", () => {
 
 test("terminal setup while suspended queries pixel resolution after resume", async () => {
   const originalQuery = currentRenderer.lib.queryPixelResolution
+  const originalSetup = currentRenderer.lib.setupTerminal
   let queries = 0
+  let setups = 0
   currentRenderer.lib.queryPixelResolution = () => {
     queries++
+  }
+  currentRenderer.lib.setupTerminal = () => {
+    setups++
   }
 
   try {
     currentRenderer.suspend()
     await currentRenderer.setupTerminal()
     expect(queries).toBe(0)
+    expect(setups).toBe(0)
 
     currentRenderer.resume()
     expect(queries).toBe(1)
+    expect(setups).toBe(1)
     currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;1920t"))
     expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
   } finally {
     currentRenderer.lib.queryPixelResolution = originalQuery
+    currentRenderer.lib.setupTerminal = originalSetup
   }
 })
 
