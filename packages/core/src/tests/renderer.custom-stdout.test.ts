@@ -1,8 +1,16 @@
 import { test, expect, afterEach } from "bun:test"
 import { Writable } from "stream"
 import { createCliRenderer, CliRenderer, CliRenderEvents } from "../renderer.js"
+import { ImageRenderable } from "../renderables/Image.js"
 import { ManualClock } from "../testing/manual-clock.js"
 import { createTestStdin, TestWriteStream } from "../testing/test-streams.js"
+
+const PNG_1X1 = Uint8Array.from(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWP4z8DwHwAFAAH/e+m+7wAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+)
 
 // Collecting Writable used as a mock stdout. Because it is !== process.stdout,
 // createCliRenderer allocates a NativeSpanFeed and pipes bytes through it.
@@ -143,6 +151,38 @@ test("non-process stdout: rendered bytes flow to the custom Writable", async () 
   expect(received.length).toBeGreaterThan(0)
   // ANSI escape sequences contain ESC (0x1b).
   expect(received.includes(0x1b)).toBe(true)
+})
+
+test("auto images use detected Kitty graphics and delete cleared placements", async () => {
+  const stdin = createTestStdin()
+  const stdout = createCollectingStdout(8, 4)
+  const renderer = await createCliRenderer({ stdin, stdout })
+  destroyFns.push(() => renderer.destroy())
+  const rendererAny = renderer as any
+  await rendererAny._feed.idle()
+  stdout.clearWrites()
+
+  stdin.emit("data", Buffer.from("\x1b_Gi=31337;OK\x1b\\"))
+  const image = new ImageRenderable(renderer, {
+    source: PNG_1X1,
+    protocol: "auto",
+    position: "absolute",
+    width: 2,
+    height: 1,
+  })
+  renderer.root.add(image)
+  await image.loadPromise
+  await rendererAny.loop()
+  await rendererAny._feed.idle()
+
+  expect(renderer.capabilities?.kitty_graphics).toBe(true)
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("\x1b_G")
+
+  stdout.clearWrites()
+  image.source = undefined
+  await rendererAny.loop()
+  await rendererAny._feed.idle()
+  expect(stdout.getWrittenBytes().toString("binary")).toContain("a=d")
 })
 
 test("split-footer custom stdout: native feed bytes bypass stdout capture", async () => {

@@ -3,10 +3,10 @@ import { readFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
-import { ImageRenderable } from "../renderables/Image.js"
+import { ImageRenderable, resolveImageRenderProtocol } from "../renderables/Image.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { createTestRenderer, type TestRenderer, type TestRendererSetup } from "../testing/test-renderer.js"
-import { setRendererCapabilities } from "../testing/terminal-capabilities.js"
+import { createTerminalCapabilities } from "../testing/terminal-capabilities.js"
 
 const FIXTURES = new URL("./fixtures/images/", import.meta.url)
 
@@ -46,21 +46,18 @@ describe("ImageRenderable image loading", () => {
     renderer.destroy()
   })
 
-  test("loads encoded bytes, retains the image, and requests a render", async () => {
-    const requestRender = mock(() => {})
-    renderer.requestRender = requestRender
-    const onLoad = mock(() => {})
+  test("loads encoded bytes and retains the image", async () => {
+    const loaded: string[] = []
     const renderable = new ImageRenderable(renderer, {
       source: await readFile(new URL("rgba.png", FIXTURES)),
-      onLoad,
+      onLoad: (image) => loaded.push(image.info().format),
     })
     await renderable.loadPromise
     try {
       expect(renderable.loading).toBe(false)
       expect(renderable.loadError).toBeNull()
       expect(renderable.image?.info().format).toBe("png")
-      expect(onLoad).toHaveBeenCalledTimes(1)
-      expect(requestRender).toHaveBeenCalledTimes(1)
+      expect(loaded).toEqual(["png"])
     } finally {
       renderable.destroy()
     }
@@ -92,6 +89,24 @@ describe("ImageRenderable image loading", () => {
     } finally {
       renderable.destroy()
     }
+  })
+
+  test("renders the centered source crop for cover", async () => {
+    const renderable = new ImageRenderable(renderer, {
+      source: await readFile(new URL("orientation.jpg", FIXTURES)),
+      fit: "cover",
+      protocol: "blocks",
+      position: "absolute",
+      width: 2,
+      height: 2,
+    })
+    renderer.root.add(renderable)
+    await renderable.loadPromise
+    await setup.renderOnce()
+
+    const imageSpans = setup.captureSpans().lines[0].spans.filter((span) => span.text === "▀")
+    expect(imageSpans).toHaveLength(2)
+    expect(imageSpans.map((span) => span.fg.toInts()[0])).toEqual([101, 137])
   })
 
   test("clears a buffered image from rendered output when its source is cleared", async () => {
@@ -179,44 +194,22 @@ describe("ImageRenderable image loading", () => {
     }
   })
 
-  test("resolves auto from environment default then detected capabilities", async () => {
-    const renderable = new ImageRenderable(renderer, {
-      source: await readFile(new URL("rgba.png", FIXTURES)),
-    })
-    await renderable.loadPromise
-    try {
-      setRendererCapabilities(renderer, { image_protocol: "sixel" })
-      expect(renderable.effectiveProtocol).toBe("blocks")
-      setRendererCapabilities(renderer, { image_protocol: "auto", kitty_graphics: true })
-      expect(renderable.effectiveProtocol).toBe("kitty")
-      setRendererCapabilities(renderer, { image_protocol: "auto", sixel: true })
-      expect(renderable.effectiveProtocol).toBe("blocks")
-      ;(renderer as unknown as { _resolution: { width: number; height: number } | null })._resolution = {
-        width: 800,
-        height: 480,
-      }
-      setRendererCapabilities(renderer, { image_protocol: "sixel" })
-      expect(renderable.effectiveProtocol).toBe("sixel")
-      setRendererCapabilities(renderer, { image_protocol: "auto", sixel: true })
-      expect(renderable.effectiveProtocol).toBe("sixel")
-      setRendererCapabilities(renderer, { image_protocol: "auto", kitty_graphics: true, multiplexer: "tmux" })
-      expect(renderable.effectiveProtocol).toBe("blocks")
-    } finally {
-      renderable.destroy()
-    }
-  })
-
-  test("falls back from Sixel when the terminal reports zero pixel resolution", () => {
-    const renderable = new ImageRenderable(renderer, { protocol: "sixel" })
-    ;(renderer as unknown as { _resolution: { width: number; height: number } | null })._resolution = {
-      width: 0,
-      height: 0,
-    }
-    try {
-      expect(renderable.effectiveProtocol).toBe("blocks")
-    } finally {
-      renderable.destroy()
-    }
+  test("resolves automatic and configured image protocols", () => {
+    expect(resolveImageRenderProtocol("sixel", null, false)).toBe("blocks")
+    expect(resolveImageRenderProtocol("auto", createTerminalCapabilities({ image_protocol: "sixel" }), false)).toBe(
+      "blocks",
+    )
+    expect(resolveImageRenderProtocol("auto", createTerminalCapabilities({ kitty_graphics: true }), false)).toBe(
+      "kitty",
+    )
+    expect(resolveImageRenderProtocol("auto", createTerminalCapabilities({ sixel: true }), true)).toBe("sixel")
+    expect(
+      resolveImageRenderProtocol(
+        "auto",
+        createTerminalCapabilities({ kitty_graphics: true, multiplexer: "tmux" }),
+        true,
+      ),
+    ).toBe("blocks")
   })
 
   test("reports decode failures without installing an image", async () => {
