@@ -99,14 +99,11 @@ fn benchGetGraphemes(
         else => false,
     };
 
-    // Create TextChunk
-    // Width is approximate - clamped to u16 max
-    const approx_width: u16 = @intCast(@min(text.len, std.math.maxInt(u16)));
     var chunk: TextChunk = .{
         .mem_id = mem_id,
         .byte_start = 0,
         .byte_end = @intCast(text.len),
-        .width = approx_width,
+        .width = @intCast(text.len),
         .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
     };
 
@@ -186,12 +183,11 @@ fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextTy
         .ascii => true,
         else => false,
     };
-    const approx_width: u16 = @intCast(@min(text.len, std.math.maxInt(u16)));
     var chunk: TextChunk = .{
         .mem_id = mem_id,
         .byte_start = 0,
         .byte_end = @intCast(text.len),
-        .width = approx_width,
+        .width = @intCast(text.len),
         .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
     };
 

@@ -524,13 +524,11 @@ pub const UnifiedTextBuffer = struct {
             flags |= TextChunk.Flags.ASCII_ONLY;
         }
 
-        const chunk_width = utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method);
-
         return .{
             .mem_id = mem_id,
             .byte_start = byte_start,
             .byte_end = byte_end,
-            .width = chunk_width,
+            .width = utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method),
             .flags = flags,
         };
     }

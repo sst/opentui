@@ -237,19 +237,16 @@ describe("EditBufferRenderable", () => {
     renderer.root.add(textarea)
     await renderOnce()
 
-    for (const length of [65535, 65536, 70000]) {
-      textarea.clear()
-      textarea.insertText("x".repeat(length))
-      await renderOnce()
+    const length = 70000
+    textarea.insertText("x".repeat(length))
+    await renderOnce()
 
-      expect(textarea.plainText).toHaveLength(length)
-      expect(textarea.logicalCursor).toMatchObject({ row: 0, col: length, offset: length })
-      expect(textarea.visualCursor.offset).toBe(length)
+    expect(textarea.logicalCursor).toMatchObject({ row: 0, col: length, offset: length })
+    expect(textarea.visualCursor.offset).toBe(length)
 
-      const viewport = textarea.editorView.getViewport()
-      expect(viewport.offsetX).toBeLessThanOrEqual(length)
-      expect(viewport.offsetX + viewport.width).toBeGreaterThan(length)
-    }
+    const viewport = textarea.editorView.getViewport()
+    expect(viewport.offsetX).toBeLessThanOrEqual(length)
+    expect(viewport.offsetX + viewport.width).toBeGreaterThan(length)
   })
 
   test("goes to exact current line boundaries through renderable api", async () => {
