@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test"
-import { ImageRenderable, NativeImage } from "@opentui/core"
+import { ImageRenderable } from "@opentui/core"
 import { act, useState } from "react"
 import { testRender } from "../src/test-utils.js"
 
@@ -52,32 +52,35 @@ describe("React Renderer | image element", () => {
     expect(imageRef!.loadError).toBeNull()
   })
 
-  it("decodes an initial byte source once", async () => {
-    const decode = NativeImage.decode
-    let decodeCalls = 0
-    NativeImage.decode = (data) => {
-      decodeCalls += 1
-      return decode(data)
-    }
+  it("keeps the loaded image across parent rerenders", async () => {
+    let imageRef: ImageRenderable | null = null
+    let rerender!: () => void
+    let loads = 0
 
-    try {
-      let imageRef: ImageRenderable | null = null
-      testSetup = await testRender(
+    function App() {
+      const [revision, setRevision] = useState(0)
+      rerender = () => setRevision((value) => value + 1)
+      return (
         <image
           ref={(renderable: ImageRenderable | null) => {
             imageRef = renderable
           }}
           source={PNG_1X1}
-          style={{ width: 4, height: 2 }}
-        />,
-        { width: 10, height: 6 },
+          onLoad={() => loads++}
+          style={{ width: 4, height: 2, left: revision }}
+        />
       )
-      await testSetup.renderOnce()
-      await imageRef!.loadPromise
-      expect(decodeCalls).toBe(1)
-    } finally {
-      NativeImage.decode = decode
     }
+
+    testSetup = await testRender(<App />, { width: 10, height: 6 })
+    await imageRef!.loadPromise
+    const loadedImage = imageRef!.image
+
+    act(() => rerender())
+    await testSetup.renderOnce()
+
+    expect(imageRef!.image).toBe(loadedImage)
+    expect(loads).toBe(1)
   })
 
   it("clears the image when the source prop is removed", async () => {
